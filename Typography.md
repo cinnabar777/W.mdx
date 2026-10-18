@@ -79,6 +79,6 @@ All work.
 # BUGS & ISSUES 
 
 1. Bottom control/toolbar toggle needs color settings for toggle. 
-2. **Text selection** does not function properly. Was fixed in this branch I think: https://github.com/cinnabar777/ckeditor5/tree/Wmd-V0.2-13424438593115341489-8007187214692561893 — not working 
-3. **Text navigation**: jumps over elements when using a keyboard navigation. Fixed in a same branch above. Not working 
-4. **Reset icon**: several settings are missing it. We have two sizes — a large one Replit did and the small one Jules did — halfway between the two sizes would be best. Placement: many are placed poorly, all need to be at the far end, and that space should be saved for the reset icon so settings are not resizing when the reset icon appears. Not fixed. 
+2. **Text selection**: fixed 
+3. **Text navigation**: fixed. 
+4. **Reset icon**: fixed. 
