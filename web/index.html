@@ -521,9 +521,6 @@
     }
     .cm-table-row {
       font-family: monospace !important;
-      display: grid !important;
-      align-items: stretch !important;
-      box-sizing: border-box !important;
     }
     .cm-table-header-row {
       font-weight: bold !important;
@@ -546,11 +543,10 @@
     }
 
     .cm-content .cm-table-cell {
-      display: block !important;
-      box-sizing: border-box !important;
-      width: 100% !important;
-      min-width: 0 !important;
-      align-self: stretch !important;
+      display: inline-block;
+      box-sizing: border-box;
+      vertical-align: top;
+      min-width: 8ch;
       padding: var(--table-cell-padding, 8px) !important;
       border-right: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444444) !important;
       border-bottom: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444444) !important;

@@ -230,21 +230,21 @@ class ImagePreviewWidget extends WidgetType {
 }
 
 class EmptyTableCellWidget extends WidgetType {
-  constructor(isHeader, isFirst, isLast, columnNumber) {
+  constructor(widthCh, isHeader, isFirst, isLast) {
     super();
+    this.widthCh = widthCh;
     this.isHeader = isHeader;
     this.isFirst = isFirst;
     this.isLast = isLast;
-    this.columnNumber = columnNumber;
   }
 
   eq(other) {
     return (
       other instanceof EmptyTableCellWidget &&
+      other.widthCh === this.widthCh &&
       other.isHeader === this.isHeader &&
       other.isFirst === this.isFirst &&
-      other.isLast === this.isLast &&
-      other.columnNumber === this.columnNumber
+      other.isLast === this.isLast
     );
   }
 
@@ -257,8 +257,7 @@ class EmptyTableCellWidget extends WidgetType {
       ...(this.isFirst ? ['cm-table-first-cell'] : []),
       ...(this.isLast ? ['cm-table-last-cell'] : [])
     ].join(' ');
-    cell.style.gridColumn = String(this.columnNumber);
-    cell.style.gridRow = '1';
+    cell.style.width = `${this.widthCh}ch`;
     cell.setAttribute('aria-hidden', 'true');
     return cell;
   }
@@ -510,18 +509,12 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
   buildDecorations(view) {
     const builder = [];
     const lineClasses = new Map();
-    const lineStyles = new Map();
 
     const addLineClass = (lineFrom, ...classNames) => {
       if (!lineClasses.has(lineFrom)) lineClasses.set(lineFrom, new Set());
       for (const className of classNames) {
         lineClasses.get(lineFrom).add(className);
       }
-    };
-
-    const addLineStyle = (lineFrom, cssText) => {
-      const existing = lineStyles.get(lineFrom);
-      lineStyles.set(lineFrom, existing ? `${existing};${cssText}` : cssText);
     };
 
     if (currentEditorMode === 'source') {
@@ -724,21 +717,9 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
               addLineClass(lineObj.from, cls);
 
               if (!isSep) {
-                const gridColumns = parsed.cells
-                  .map((_, column) => {
-                    const widthCh = Math.max(8, columnWidths[column] || 8);
-                    return `minmax(8ch, ${widthCh}ch)`;
-                  })
-                  .join(' ');
-
-                addLineStyle(
-                  lineObj.from,
-                  `display:grid;grid-template-columns:${gridColumns};` +
-                  'align-items:stretch;width:max-content;min-width:100%;'
-                );
-
                 for (let column = 0; column < parsed.cells.length; column++) {
                   const cell = parsed.cells[column];
+                  const widthCh = columnWidths[column] || 8;
                   const classes = [
                     'cm-table-cell',
                     ...(isHeader ? ['cm-table-header-cell'] : []),
@@ -749,16 +730,11 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
                   if (cell.from < cell.to) {
                     builder.push(Decoration.mark({
                       class: classes,
-                      attributes: { style: `grid-column:${column + 1};grid-row:1;` }
+                      attributes: { style: `width:${widthCh}ch;` }
                     }).range(cell.from, cell.to));
                   } else {
                     builder.push(Decoration.widget({
-                      widget: new EmptyTableCellWidget(
-                        isHeader,
-                        column === 0,
-                        column === parsed.cells.length - 1,
-                        column + 1
-                      ),
+                      widget: new EmptyTableCellWidget(widthCh, isHeader, column === 0, column === parsed.cells.length - 1),
                       side: 1
                     }).range(cell.from));
                   }
@@ -809,13 +785,9 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const [lineFrom, classes] of lineClasses) {
-      const attributes = { class: [...classes].join(' ') };
-      const style = lineStyles.get(lineFrom);
-      if (style) attributes.style = style;
-
-      builder.push(
-        Decoration.line({ attributes }).range(lineFrom)
-      );
+      builder.push(Decoration.line({
+        attributes: { class: [...classes].join(' ') }
+      }).range(lineFrom));
     }
 
     builder.sort((a, b) => a.from - b.from || a.to - b.to);
@@ -1011,7 +983,7 @@ export function getTableColumnWidths(doc, startLine, endLine) {
 
     parsed.cells.forEach((cell, index) => {
       const text = doc.sliceString(cell.contentFrom, cell.contentTo);
-      const width = Math.max(8, Math.min(40, Array.from(text).length + 3));
+      const width = Math.max(8, Math.min(40, Array.from(text).length + 2));
       widths[index] = Math.max(widths[index] || 8, width);
     });
   }
