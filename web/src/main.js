@@ -967,7 +967,7 @@ async function setEditorMode(mode) {
 }
 
 function setupGroupedControlBar() {
-  const topContainer = document.querySelector('.ck-editor__top') || document.querySelector('#editor-container');
+  const topContainer = document.querySelector('#editor-container');
   if (!topContainer) return;
 
   let bar = document.querySelector('.grouped-control-bar');
