@@ -1,6 +1,6 @@
 import { EditorState, Compartment, Transaction } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, syntaxTree, HighlightStyle } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
@@ -994,11 +994,15 @@ class CodeMirrorAdapter {
   }
 
   undo() {
-    if (this.view) cmUndo(this.view);
+    if (this.view && typeof undoDepth === 'function' && undoDepth(this.view.state) > 0) {
+      cmUndo(this.view);
+    }
   }
 
   redo() {
-    if (this.view) cmRedo(this.view);
+    if (this.view && typeof redoDepth === 'function' && redoDepth(this.view.state) > 0) {
+      cmRedo(this.view);
+    }
   }
 
   setLineWrap(enabled) {
@@ -1989,7 +1993,9 @@ window.editorBridge = {
       const pLineHeight = prefs['pref_heading_' + i + '_line_height'] ?? globalHeadingLineHeight;
       const pLetterSpacing = prefs['pref_heading_' + i + '_letter_spacing'] ?? globalHeadingLetterSpacing;
       const pTransform = prefs['pref_heading_' + i + '_transform'] ?? globalHeadingTransform;
-      const pUnderlineStyle = prefs['pref_heading_' + i + '_underline_style'] ?? globalHeadingUnderlineStyle;
+      const pUnderlineRaw = prefs['pref_heading_' + i + '_underline_style'] ?? globalHeadingUnderlineStyle;
+      const pUnderlineLine = (pUnderlineRaw && pUnderlineRaw !== 'none') ? 'underline' : 'none';
+      const pUnderlineStyle = (pUnderlineRaw && pUnderlineRaw !== 'none') ? pUnderlineRaw : 'solid';
       const pUnderlineThickness = prefs['pref_heading_' + i + '_underline_thickness'] ?? globalHeadingUnderlineThickness;
       const pUnderlineColor = prefs['pref_heading_' + i + '_underline_color'] ?? globalHeadingUnderlineColor;
       const pMarginTop = prefs['pref_heading_' + i + '_margin_top'] ?? globalHeadingMarginTop;
@@ -1997,11 +2003,12 @@ window.editorBridge = {
       const pWeight = prefs['pref_heading_' + i + '_font_weight'] ?? globalHeadingWeight;
 
       setCssVar('--heading-' + i + '-color', pColor);
-      setCssVar('--heading-' + i + '-scale', pScale); // null means use H1–H6 CSS defaults
+      setCssVar('--heading-' + i + '-scale', pScale);
       setCssVar('--heading-' + i + '-align', pAlign);
       setCssVar('--heading-' + i + '-line-height', pLineHeight);
       setCssVar('--heading-' + i + '-letter-spacing', pLetterSpacing, 'px');
       setCssVar('--heading-' + i + '-text-transform', pTransform);
+      setCssVar('--heading-' + i + '-underline-line', pUnderlineLine);
       setCssVar('--heading-' + i + '-underline-style', pUnderlineStyle);
       setCssVar('--heading-' + i + '-underline-thickness', pUnderlineThickness, 'px');
       setCssVar('--heading-' + i + '-underline-color', pUnderlineColor);

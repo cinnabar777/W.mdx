@@ -297,12 +297,12 @@ object PreferenceResetHelper {
                         resetSinglePreference(context, preference)
                     }
                 } else {
-                    btnReset.visibility = View.GONE
+                    btnReset.visibility = View.INVISIBLE
                 }
             }
         } else {
             val btnReset = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
-            btnReset?.visibility = View.GONE
+            btnReset?.visibility = View.INVISIBLE
         }
 
         applySettingsTheme(holder, preference)
