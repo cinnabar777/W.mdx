@@ -81,10 +81,11 @@ All work.
 1. Bottom control/toolbar toggle needs color settings for toggle. 
 2. **Text selection**: fixed 
 3. **Text navigation**: fixed. 
-4. **Reset icon**: fixed. 
+4. **Reset icon**: fixed. Some are misaligned, seems like on sliders. 
 
 
 # ADDITIONS 
 
 1. Color for inactive reset icon. 
-2. 
+2. Setting for cursor: Color for cursor, blink rate, color for drag balloon, 
+3.
