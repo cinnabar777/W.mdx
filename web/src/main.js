@@ -124,6 +124,15 @@ class CheckboxWidget extends WidgetType {
     this.len = len || 3;
   }
 
+  eq(other) {
+    return (
+      other instanceof CheckboxWidget &&
+      other.checked === this.checked &&
+      other.pos === this.pos &&
+      other.len === this.len
+    );
+  }
+
   toDOM(view) {
     const input = document.createElement('input');
     input.type = 'checkbox';
@@ -146,6 +155,14 @@ class CodeBlockHeaderWidget extends WidgetType {
     super();
     this.lang = lang || 'Plain text';
     this.codeText = codeText;
+  }
+
+  eq(other) {
+    return (
+      other instanceof CodeBlockHeaderWidget &&
+      other.lang === this.lang &&
+      other.codeText === this.codeText
+    );
   }
 
   toDOM() {
@@ -193,6 +210,14 @@ class ImagePreviewWidget extends WidgetType {
     super();
     this.url = url;
     this.alt = alt || 'image';
+  }
+
+  eq(other) {
+    return (
+      other instanceof ImagePreviewWidget &&
+      other.url === this.url &&
+      other.alt === this.alt
+    );
   }
 
   toDOM() {
@@ -591,19 +616,24 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'Table') {
-            const tableText = view.state.doc.sliceString(node.from, node.to);
             const startLine = view.state.doc.lineAt(node.from);
             const endLine = view.state.doc.lineAt(node.to);
 
             for (let l = startLine.number; l <= endLine.number; l++) {
               const lineObj = view.state.doc.line(l);
-              if (l === startLine.number) {
-                builder.push(Decoration.replace({ widget: new GFMTableWidget(tableText, node.from, node.to) }).range(lineObj.from, lineObj.to));
-              } else {
-                builder.push(Decoration.replace({}).range(lineObj.from, lineObj.to));
+              if (lineObj.from >= from && lineObj.from <= to) {
+                const lineText = lineObj.text.trim();
+                const isSep = /^\|?\s*[:\-]+(\s*\|\s*[:\-]+)*\s*\|?$/.test(lineText);
+                const isHeader = (l === startLine.number);
+
+                let cls = 'cm-table-row';
+                if (isHeader) cls += ' cm-table-header-row';
+                else if (isSep) cls += ' cm-table-sep-row';
+                else cls += ' cm-table-data-row';
+
+                addLineClass(lineObj.from, cls);
               }
             }
-            return false;
           }
 
           if (node.name === 'Link') {
@@ -926,6 +956,7 @@ class CodeMirrorAdapter {
             updateTocActiveSection();
           }
         }),
+        tableNavigationKeymap,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap
