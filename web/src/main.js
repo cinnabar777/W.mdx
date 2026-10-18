@@ -97,10 +97,11 @@ const svgIcons = {
 };
 
 class CheckboxWidget extends WidgetType {
-  constructor(checked, pos) {
+  constructor(checked, pos, len) {
     super();
     this.checked = checked;
     this.pos = pos;
+    this.len = len || 3;
   }
 
   toDOM(view) {
@@ -110,9 +111,10 @@ class CheckboxWidget extends WidgetType {
     input.className = 'cm-todo-checkbox';
     input.addEventListener('click', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       const newText = this.checked ? '[ ]' : '[x]';
       view.dispatch({
-        changes: { from: this.pos, to: this.pos + 3, insert: newText }
+        changes: { from: this.pos, to: this.pos + this.len, insert: newText }
       });
     });
     return input;
@@ -467,10 +469,9 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'TaskMarker') {
             const taskText = view.state.doc.sliceString(node.from, node.to);
-            const isChecked = taskText.includes('[x]') || taskText.includes('[X]');
-            if (!isNodeActive && (node.to - node.from >= 3)) {
-              const replaceFrom = line.text.startsWith('- ') ? line.from : node.from;
-              builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, replaceFrom) }).range(replaceFrom, node.from + 3));
+            const isChecked = taskText.toLowerCase().includes('x');
+            if (!isNodeActive && node.to > node.from) {
+              builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
             }
           }
 
@@ -987,29 +988,11 @@ function setupGroupedControlBar() {
 
   const undoBtn = bar.querySelector('#grp-btn-undo');
   if (undoBtn) {
-    let holdTimer = null;
-    let didRedo = false;
-
-    undoBtn.addEventListener('pointerdown', () => {
-      didRedo = false;
-      holdTimer = setTimeout(() => {
-        didRedo = true;
-        if (activeAdapter) activeAdapter.redo();
-      }, 500);
-    });
-
-    const clearHold = () => {
-      clearTimeout(holdTimer);
+    undoBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (activeAdapter) activeAdapter.undo();
     };
-
-    undoBtn.addEventListener('pointerup', () => {
-      clearHold();
-      if (!didRedo && activeAdapter) {
-        activeAdapter.undo();
-      }
-    });
-
-    undoBtn.addEventListener('pointercancel', clearHold);
   }
 
   document.addEventListener('pointerdown', (e) => {
@@ -1829,43 +1812,119 @@ window.editorBridge = {
 
     if (prefs.pref_app_theme === 'light') {
       document.body.classList.add('light-theme');
-    } else if (prefs.pref_app_theme === 'amoled') {
+    } else {
       document.body.classList.remove('light-theme');
     }
+
     if (prefs.pref_line_wrap === false) {
       document.body.classList.add('no-line-wrap');
     } else if (prefs.pref_line_wrap === true) {
       document.body.classList.remove('no-line-wrap');
     }
 
+    // Body & Paragraph
     setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');
-    setCssVar('--heading-scale', prefs.pref_heading_scale_percent ? (prefs.pref_heading_scale_percent / 100.0) : null);
-    setCssVar('--bold-font-weight', prefs.pref_font_weight_bold);
-    setCssVar('--italic-font-weight', prefs.pref_font_weight_italic);
-    setCssVar('--heading-font-weight', prefs.pref_font_weight_heading);
+    setCssVar('--paragraph-line-height', prefs.pref_paragraph_line_height);
+    setCssVar('--paragraph-letter-spacing', prefs.pref_paragraph_letter_spacing, 'px');
+    setCssVar('--paragraph-align', prefs.pref_paragraph_align || prefs.pref_paragraph_justify);
+    setCssVar('--paragraph-indent', prefs.pref_paragraph_first_line_indent, 'px');
+    setCssVar('--paragraph-margin-top', prefs.pref_paragraph_margin_top, 'px');
+    setCssVar('--paragraph-margin-bottom', prefs.pref_paragraph_margin_bottom, 'px');
 
+    // Headings (H1 to H6 individualized)
     for (let i = 1; i <= 6; i++) {
-      setCssVar(`--heading-${i}-color`, prefs[`pref_heading_${i}_color`]);
+      const pColor = prefs[`pref_heading_${i}_color`];
+      const pScale = prefs[`pref_heading_${i}_scale`] || (prefs[`pref_heading_${i}_font_size`] ? prefs[`pref_heading_${i}_font_size`] / 16.0 : null);
+      const pAlign = prefs[`pref_heading_${i}_align`];
+      const pLineHeight = prefs[`pref_heading_${i}_line_height`];
+      const pLetterSpacing = prefs[`pref_heading_${i}_letter_spacing`];
+      const pTransform = prefs[`pref_heading_${i}_transform`];
+      const pUnderlineStyle = prefs[`pref_heading_${i}_underline_style`];
+      const pUnderlineThickness = prefs[`pref_heading_${i}_underline_thickness`];
+      const pUnderlineColor = prefs[`pref_heading_${i}_underline_color`];
+      const pMarginTop = prefs[`pref_heading_${i}_margin_top`];
+      const pMarginBottom = prefs[`pref_heading_${i}_margin_bottom`];
+      const pWeight = prefs[`pref_heading_${i}_font_weight`];
+
+      setCssVar(`--heading-${i}-color`, pColor);
+      setCssVar(`--heading-${i}-scale`, pScale);
+      setCssVar(`--heading-${i}-align`, pAlign);
+      setCssVar(`--heading-${i}-line-height`, pLineHeight);
+      setCssVar(`--heading-${i}-letter-spacing`, pLetterSpacing, 'px');
+      setCssVar(`--heading-${i}-text-transform`, pTransform);
+      setCssVar(`--heading-${i}-underline-style`, pUnderlineStyle);
+      setCssVar(`--heading-${i}-underline-thickness`, pUnderlineThickness, 'px');
+      setCssVar(`--heading-${i}-underline-color`, pUnderlineColor);
+      setCssVar(`--heading-${i}-margin-top`, pMarginTop, 'px');
+      setCssVar(`--heading-${i}-margin-bottom`, pMarginBottom, 'px');
+      setCssVar(`--heading-${i}-font-weight`, pWeight);
     }
 
+    // Inline formats
     setCssVar('--bold-color', prefs.pref_bold_color);
+    setCssVar('--bold-font-weight', prefs.pref_font_weight_bold);
     setCssVar('--italic-color', prefs.pref_italic_color);
+    setCssVar('--italic-font-weight', prefs.pref_font_weight_italic);
     setCssVar('--link-color', prefs.pref_link_color);
+    setCssVar('--link-decoration', prefs.pref_link_decoration);
     setCssVar('--code-color', prefs.pref_code_color);
     setCssVar('--code-bg-color', prefs.pref_code_bg_color);
     setCssVar('--code-padding', prefs.pref_code_padding, 'px');
     setCssVar('--code-border-radius', prefs.pref_code_border_radius, 'px');
 
+    // Footnote
+    setCssVar('--footnote-text-color', prefs.pref_footnote_text_color);
+    setCssVar('--footnote-bg-color', prefs.pref_footnote_bg_color);
+    setCssVar('--footnote-ref-color', prefs.pref_footnote_ref_color);
+    setCssVar('--footnote-font-size', prefs.pref_footnote_font_size, 'px');
+
+    // Lists
+    setCssVar('--list-left-indent', prefs.pref_list_left_indent, 'px');
+    setCssVar('--list-item-spacing', prefs.pref_list_item_spacing, 'px');
+    setCssVar('--list-line-height', prefs.pref_list_line_height);
+    setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
+    setCssVar('--list-number-color', prefs.pref_list_number_color);
+    setCssVar('--todo-border-color', prefs.pref_todo_unchecked_border_color);
+    setCssVar('--todo-accent-color', prefs.pref_todo_checked_accent_color);
+    setCssVar('--todo-bg-color', prefs.pref_todo_unchecked_bg_color);
+
+    // Blockquotes
     setCssVar('--blockquote-border-width', prefs.pref_blockquote_line_thickness, 'px');
     setCssVar('--blockquote-border-style', prefs.pref_blockquote_line_style);
     setCssVar('--blockquote-border-color', prefs.pref_blockquote_line_color);
     setCssVar('--blockquote-bg-color', prefs.pref_blockquote_bg_color);
     setCssVar('--blockquote-text-color', prefs.pref_blockquote_text_color);
+    setCssVar('--blockquote-left-margin', prefs.pref_blockquote_left_margin, 'px');
+    setCssVar('--blockquote-padding', prefs.pref_blockquote_padding, 'px');
 
+    // Tables
+    setCssVar('--table-border-style', prefs.pref_table_border_style);
+    setCssVar('--table-border-width', prefs.pref_table_border_width, 'px');
+    setCssVar('--table-border-color', prefs.pref_table_border_color);
+    setCssVar('--table-header-bg', prefs.pref_table_header_bg);
+    setCssVar('--table-header-color', prefs.pref_table_header_color);
+    setCssVar('--table-header-font-weight', prefs.pref_table_header_font_weight);
+    setCssVar('--table-cell-bg', prefs.pref_table_cell_bg);
+    setCssVar('--table-cell-color', prefs.pref_table_cell_color);
+    setCssVar('--table-cell-padding', prefs.pref_table_cell_padding, 'px');
+
+    // Code blocks
+    setCssVar('--code-block-color', prefs.pref_code_block_color);
+    setCssVar('--code-block-bg-color', prefs.pref_code_block_bg_color);
+    setCssVar('--code-block-label-bg', prefs.pref_code_block_label_bg);
+    setCssVar('--code-block-label-color', prefs.pref_code_block_label_color);
+    setCssVar('--code-block-copy-bg', prefs.pref_code_block_copy_bg);
+    setCssVar('--code-block-copy-color', prefs.pref_code_block_copy_color);
+
+    // Dividers
     setCssVar('--hr-thickness', prefs.pref_hr_thickness, 'px');
     setCssVar('--hr-style', prefs.pref_hr_style);
     setCssVar('--hr-color', prefs.pref_hr_color);
+    setCssVar('--hr-width', prefs.pref_hr_width, '%');
+    setCssVar('--hr-margin-top', prefs.pref_hr_margin_top, 'px');
+    setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
+    // Toolbar
     setCssVar('--toolbar-bg', prefs.pref_toolbar_bg_color);
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);
     setCssVar('--toolbar-active-icon-color', prefs.pref_toolbar_active_icon_color);
