@@ -369,12 +369,17 @@ class GFMTableWidget extends WidgetType {
 }
 
 const customHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'bold' },
-  { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--italic-color, inherit)' },
-  { tag: tags.strong, fontWeight: 'bold', color: 'var(--bold-color, inherit)' },
+  { tag: tags.heading1, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.8 * var(--heading-scale, 1))' },
+  { tag: tags.heading2, color: 'var(--heading-2-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.5 * var(--heading-scale, 1))' },
+  { tag: tags.heading3, color: 'var(--heading-3-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.3 * var(--heading-scale, 1))' },
+  { tag: tags.heading4, color: 'var(--heading-4-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.1 * var(--heading-scale, 1))' },
+  { tag: tags.heading5, color: 'var(--heading-5-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.0 * var(--heading-scale, 1))' },
+  { tag: tags.heading6, color: 'var(--heading-6-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 0.9 * var(--heading-scale, 1))' },
+  { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--italic-color, inherit)', fontWeight: 'var(--italic-font-weight, normal)' },
+  { tag: tags.strong, fontWeight: 'var(--bold-font-weight, bold)', color: 'var(--bold-color, inherit)' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
   { tag: tags.link, color: 'var(--link-color, #29b6f6)', textDecoration: 'underline' },
-  { tag: tags.monospace, color: 'var(--code-color, #ff80ab)' },
+  { tag: tags.monospace, color: 'var(--code-color, #ff80ab)', backgroundColor: 'var(--code-bg-color, rgba(255,255,255,0.1))' },
   { tag: tags.meta, color: '#888888' },
   { tag: tags.comment, color: '#888888' },
   { tag: tags.propertyName, color: '#29b6f6' },

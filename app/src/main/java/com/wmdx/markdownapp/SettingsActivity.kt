@@ -157,7 +157,7 @@ class SettingsFragment : BaseSettingsFragment() {
         setPreferencesFromResource(R.xml.preferences, rootKey)
 
         findPreference<Preference>("pref_export_backup")?.setOnPreferenceClickListener {
-            exportBackupLauncher.launch("CKE5_Backup_${System.currentTimeMillis()}.zip")
+            exportBackupLauncher.launch("Wmdx_Backup_${System.currentTimeMillis()}.zip")
             true
         }
 
