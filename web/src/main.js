@@ -229,6 +229,44 @@ class ImagePreviewWidget extends WidgetType {
   }
 }
 
+class EmptyTableCellWidget extends WidgetType {
+  constructor(widthCh, isHeader, isFirst, isLast) {
+    super();
+    this.widthCh = widthCh;
+    this.isHeader = isHeader;
+    this.isFirst = isFirst;
+    this.isLast = isLast;
+  }
+
+  eq(other) {
+    return (
+      other instanceof EmptyTableCellWidget &&
+      other.widthCh === this.widthCh &&
+      other.isHeader === this.isHeader &&
+      other.isFirst === this.isFirst &&
+      other.isLast === this.isLast
+    );
+  }
+
+  toDOM() {
+    const cell = document.createElement('span');
+    cell.className = [
+      'cm-table-cell',
+      'cm-table-empty-cell',
+      ...(this.isHeader ? ['cm-table-header-cell'] : []),
+      ...(this.isFirst ? ['cm-table-first-cell'] : []),
+      ...(this.isLast ? ['cm-table-last-cell'] : [])
+    ].join(' ');
+    cell.style.width = `${this.widthCh}ch`;
+    cell.setAttribute('aria-hidden', 'true');
+    return cell;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
 class GFMTableWidget extends WidgetType {
   constructor(tableText, from, to) {
     super();
@@ -492,9 +530,11 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
         to,
         enter: (node) => {
           const line = view.state.doc.lineAt(node.from);
-          const isNodeActive = selection.empty
-            ? selection.head >= node.from && selection.head <= node.to
-            : selection.from < node.to && selection.to > node.from;
+          const isNodeActive = !isPureWysiwyg && (
+            selection.empty
+              ? selection.head >= node.from && selection.head <= node.to
+              : selection.from < node.to && selection.to > node.from
+          );
 
           if (node.name === 'HeaderMark' && !isNodeActive) {
             const end = Math.min(node.to + 1, line.to);
@@ -590,8 +630,6 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'Table') {
             const startLine = view.state.doc.lineAt(node.from);
             const endLine = view.state.doc.lineAt(node.to);
-            const cursorHead = view.state.selection.main.head;
-            const cursorLine = view.state.doc.lineAt(cursorHead).number;
             const columnWidths = getTableColumnWidths(
               view.state.doc,
               startLine.number,
@@ -615,23 +653,32 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
               addLineClass(lineObj.from, cls);
 
-              const isActiveRow = (l === cursorLine);
               if (!isSep) {
                 for (let column = 0; column < parsed.cells.length; column++) {
                   const cell = parsed.cells[column];
                   const widthCh = columnWidths[column] || 8;
-                  if (cell.from <= cell.to) {
+                  const classes = [
+                    'cm-table-cell',
+                    ...(isHeader ? ['cm-table-header-cell'] : []),
+                    ...(column === 0 ? ['cm-table-first-cell'] : []),
+                    ...(column === parsed.cells.length - 1 ? ['cm-table-last-cell'] : [])
+                  ].join(' ');
+
+                  if (cell.from < cell.to) {
                     builder.push(Decoration.mark({
-                      class: isHeader
-                        ? 'cm-table-cell cm-table-header-cell'
-                        : 'cm-table-cell',
+                      class: classes,
                       attributes: { style: `width:${widthCh}ch;` }
                     }).range(cell.from, cell.to));
+                  } else {
+                    builder.push(Decoration.widget({
+                      widget: new EmptyTableCellWidget(widthCh, isHeader, column === 0, column === parsed.cells.length - 1),
+                      side: 1
+                    }).range(cell.from));
                   }
                 }
               }
 
-              const hideSyntax = !isActiveRow && (isPureWysiwyg || currentEditorMode === 'live_preview');
+              const hideSyntax = currentEditorMode === 'wysiwyg' || currentEditorMode === 'live_preview';
               if (hideSyntax) {
                 if (isSep) {
                   builder.push(Decoration.replace({}).range(lineObj.from, lineObj.to));
@@ -797,9 +844,28 @@ export function isEscapedPipe(text, index) {
 }
 
 export function trimCellRange(text, start, end, lineFrom) {
-  while (start < end && /\s/.test(text[start])) start++;
-  while (end > start && /\s/.test(text[end - 1])) end--;
-  return { start, end, from: lineFrom + start, to: lineFrom + end };
+  const cellStart = start;
+  const cellEnd = end;
+  let contentStart = start;
+  let contentEnd = end;
+
+  while (contentStart < contentEnd && /\s/.test(text[contentStart])) {
+    contentStart++;
+  }
+  while (contentEnd > contentStart && /\s/.test(text[contentEnd - 1])) {
+    contentEnd--;
+  }
+
+  return {
+    start: cellStart,
+    end: cellEnd,
+    from: lineFrom + cellStart,
+    to: lineFrom + cellEnd,
+    contentStart,
+    contentEnd,
+    contentFrom: lineFrom + contentStart,
+    contentTo: lineFrom + contentEnd
+  };
 }
 
 export function parsePipeRow(line) {
@@ -840,8 +906,8 @@ export function parsePipeRow(line) {
 
 export function isTableSeparatorRow(text, parsedCells) {
   return parsedCells.length > 0 &&
-    parsedCells.every(({ start, end }) =>
-      /^:?-{3,}:?$/.test(text.slice(start, end).trim())
+    parsedCells.every(({ contentStart, contentEnd }) =>
+      /^:?-{3,}:?$/.test(text.slice(contentStart, contentEnd).trim())
     );
 }
 
@@ -853,7 +919,7 @@ export function getTableColumnWidths(doc, startLine, endLine) {
     if (!parsed || isTableSeparatorRow(line.text, parsed.cells)) continue;
 
     parsed.cells.forEach((cell, index) => {
-      const text = doc.sliceString(cell.from, cell.to);
+      const text = doc.sliceString(cell.contentFrom, cell.contentTo);
       const width = Math.max(8, Math.min(40, Array.from(text).length + 2));
       widths[index] = Math.max(widths[index] || 8, width);
     });
@@ -919,8 +985,9 @@ function navigateTableCell(view, direction) {
   }
 
   const targetCell = cells[targetIdx];
+  const targetPos = direction > 0 ? targetCell.from : targetCell.to;
   view.dispatch({
-    selection: { anchor: targetCell.from, head: targetCell.to },
+    selection: { anchor: targetPos, head: targetPos },
     scrollIntoView: true
   });
   return true;

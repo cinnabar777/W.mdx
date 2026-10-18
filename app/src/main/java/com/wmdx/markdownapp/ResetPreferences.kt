@@ -159,6 +159,23 @@ object PreferenceResetHelper {
             key == "pref_settings_switch_color" -> "#00E5FF"
             key == "pref_settings_reset_icon_color" -> "#00E5FF"
             key == "pref_settings_bg_color" -> "#000000"
+            key == "pref_hide_status_bar" -> false
+            key == "pref_hide_nav_bar" -> false
+            key == "pref_editor_mode" -> "wysiwyg"
+            key == "pref_export_format" -> "html"
+            key == "pref_export_include_css" -> true
+            key == "pref_export_css_placement" -> "head"
+            key == "pref_export_include_toc" -> true
+            key == "pref_export_toc_levels" -> 3
+            key == "pref_hotkey_export" -> "ctrl+shift+e"
+            key == "pref_hotkey_open_with" -> "ctrl+shift+o"
+            key == "pref_hotkey_line_numbers" -> "ctrl+alt+l"
+            key == "pref_hotkey_footnote" -> "ctrl+shift+f"
+            key == "pref_footnote_font_size" -> 14
+            key == "pref_footnote_text_color" -> "default"
+            key == "pref_footnote_ref_color" -> "default"
+            key == "pref_footnote_link_color" -> "default"
+            key == "pref_footnote_bg_color" -> "default"
             key == "pref_auto_save_on_leave" -> true
             key == "pref_hotkey_new" -> "ctrl+n"
             key == "pref_hotkey_open" -> "ctrl+o"
@@ -204,9 +221,16 @@ object PreferenceResetHelper {
         }
     }
 
+    private fun shouldShowResetButton(key: String?): Boolean =
+        key != null &&
+            key != "pref_reset_all_defaults" &&
+            key != "pref_export_backup" &&
+            key != "pref_import_backup" &&
+            !key.startsWith("pref_page_") &&
+            !key.endsWith("_page")
+
     fun isModifiedFromDefault(context: Context, key: String?): Boolean {
-        if (key == null) return false
-        if (key.startsWith("pref_export") || key.startsWith("pref_import") || key == "pref_reset_all_defaults" || key.startsWith("pref_page_") || key.endsWith("_page")) return false
+        if (key == null || !shouldShowResetButton(key)) return false
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 
@@ -233,15 +257,10 @@ object PreferenceResetHelper {
     fun bindResetButton(holder: PreferenceViewHolder, preference: Preference) {
         val context = preference.context
         val key = preference.key
-        val excluded = key == null ||
-            key.startsWith("pref_export") ||
-            key.startsWith("pref_import") ||
-            key == "pref_reset_all_defaults" ||
-            key.startsWith("pref_page_") ||
-            key.endsWith("_page")
+        val showReset = shouldShowResetButton(key)
 
         var button = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
-        if (excluded) {
+        if (!showReset) {
             button?.visibility = View.INVISIBLE
             applySettingsTheme(holder, preference)
             return
