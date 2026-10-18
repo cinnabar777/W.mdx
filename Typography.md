@@ -8,10 +8,10 @@ All heading settings need to be individualized for each heading, not just global
 
 # PARAGRAPH & BODY TYPOGRAPHY
 
-1. Body text size: works but affects all text **except** headings.
-2. Global letter spacing: fixed, should say paragraph not global. **Affects list** items still. 
-3. Body paragraph font: fixed. **Affects lists**. 
-4. Top margin: fixed, **affects lists**. 
+1. Body text size: works but affects codeblock. 
+2. Paragraph letter spacing: fixed
+3. Body paragraph font: fixed.  
+4. Top margin: fixed. 
 
 ----------
 # INLINE FORMATS
@@ -82,3 +82,9 @@ All work.
 2. **Text selection**: fixed 
 3. **Text navigation**: fixed. 
 4. **Reset icon**: fixed. 
+
+
+# ADDITIONS 
+
+1. Color for inactive reset icon. 
+2. 
