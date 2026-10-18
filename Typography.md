@@ -4,14 +4,14 @@
 
 1. Heading size scale: fixed 
 2. Heading font weight: fixed 
-3. Heading font file: **NOT working** 
+3. Heading font file: fixed 🎉
 4. Heading text alignment: fixed 
 5. Heading line height: fixed 
 6. Heading letter spacing: fixed 
 7. Heading text transform: fixed 
-8. Underline style: **NOT working**, tested all. 
-9. Underline thickness: dependent 
-10. Underline color: dependent 
+8. Underline style: fixed 🎉
+9. Underline thickness: fixed 
+10. Underline color: fixed 
 11. Top margin: fixed 
 12. Bottom margin: fixed 
 
@@ -69,7 +69,7 @@ All heading settings need to be individualized for each heading, not just global
 6. Unchecked box boarder color: fixed. 
 7. Check box accent color: fixed. 
 
-Checkbox: need a background color for unchecked, option to hide the bullet in front of a box, option to color the check mark. 
+Checkbox: need a background color for unchecked, option to hide the bullet in front of a box or proper syntax ` [ ] `, option to color the check mark. 
 
 List now indents whole paragraph but the first line is indebted further, remaining lines are flush with bullet. 
 
@@ -91,7 +91,7 @@ Callouts skipped: as far as I can see are not functional yet — no toolbar key,
 -----------
 # TABLES
 
-1. Table boarder style: **NOT working**.
+1. Table boarder style: none and dash work—Jules put tables inside of another element that has edit buttons, it's not good.
 2. Table boarder thickness: fixed. 
 3. Table boarder color: fixed. 
 4. Header row background: fixed 
@@ -114,7 +114,7 @@ Callouts skipped: as far as I can see are not functional yet — no toolbar key,
 
 Bug with the language and copy label: does not appear until cursor is in the codeblock itself.
 
-Language and copy label need styling added to typography: background color, text color, copy background and text colors, boarder colors, etc.
+Language and copy label need styling added to typography: background color, text color, copy background and text colors, boarder colors, etc. Not working at all now. 
 
 -----------
 
@@ -137,8 +137,8 @@ All work.
 
 # BUGS & ISSUES 
 
-1. **Undo deletes all**: when the undo key is used when there is nothing to undo it deletes everything.
-2. **Bottom control/toolbar toggle not working**. 
-3. **Text selection** does not function properly. Was fixed in this branch I think: https://github.com/cinnabar777/ckeditor5/tree/Wmd-V0.2-13424438593115341489-8007187214692561893
-4. **Text navigation**: jumps over elements when using a keyboard navigation. Fixed in a same branch above. 
-5. **Reset icon**: several settings are missing it. We have two sizes — a large one Replit did and the small one Jules did — halfway between the two sizes would be best. Placement: many are placed poorly, all need to be at the far end, and that space should be saved for the reset icon so settings are not resizing when the reset icon appears 
+1. **Undo deletes all**: when the undo key is used when there is nothing to undo it deletes everything. Fixed 🎉
+2. **Bottom control/toolbar toggle not working**. Fixed 🎉 need color settings for toggle. 
+3. **Text selection** does not function properly. Was fixed in this branch I think: https://github.com/cinnabar777/ckeditor5/tree/Wmd-V0.2-13424438593115341489-8007187214692561893 — not working 
+4. **Text navigation**: jumps over elements when using a keyboard navigation. Fixed in a same branch above. Not working 
+5. **Reset icon**: several settings are missing it. We have two sizes — a large one Replit did and the small one Jules did — halfway between the two sizes would be best. Placement: many are placed poorly, all need to be at the far end, and that space should be saved for the reset icon so settings are not resizing when the reset icon appears. Not fixed. 
