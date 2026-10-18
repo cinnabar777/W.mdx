@@ -492,14 +492,9 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
         to,
         enter: (node) => {
           const line = view.state.doc.lineAt(node.from);
-          const cursor = selection.head;
-          const isNodeActive = !isPureWysiwyg && (cursor >= node.from && cursor <= node.to);
-
-          if (node.name.startsWith('ATXHeading')) {
-            const level = node.name.replace('ATXHeading', '');
-            addLineClass(line.from, 'cm-heading');
-            addLineClass(line.from, `cm-heading-${level}`);
-          }
+          const isNodeActive = selection.empty
+            ? selection.head >= node.from && selection.head <= node.to
+            : selection.from < node.to && selection.to > node.from;
 
           if (node.name === 'HeaderMark' && !isNodeActive) {
             const end = Math.min(node.to + 1, line.to);
@@ -533,26 +528,6 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.replace({}).range(node.from, node.to));
           }
 
-          if (node.name === 'Paragraph') {
-            const doc = view.state.doc;
-            const first = doc.lineAt(node.from);
-            const last = doc.lineAt(Math.max(node.from, node.to - 1));
-
-            for (let number = first.number; number <= last.number; number++) {
-              const paragraphLine = doc.line(number);
-              if (paragraphLine.from < from || paragraphLine.from > to) continue;
-              if (paragraphLineStarts.has(paragraphLine.from)) continue;
-              paragraphLineStarts.add(paragraphLine.from);
-
-              addLineClass(paragraphLine.from, 'cm-paragraph');
-              if (number === first.number) addLineClass(paragraphLine.from, 'cm-paragraph-first');
-              if (number === last.number) addLineClass(paragraphLine.from, 'cm-paragraph-last');
-            }
-          }
-
-          if (node.name === 'ListItem') {
-            addLineClass(line.from, 'cm-list-item');
-          }
 
           if (node.name === 'ListMark') {
             const marker = view.state.doc.sliceString(node.from, node.to);
@@ -568,9 +543,6 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             }
           }
 
-          if (node.name === 'Blockquote') {
-            addLineClass(line.from, 'cm-blockquote');
-          }
           if (node.name === 'QuoteMark' && !isNodeActive) {
             const end = Math.min(node.to + 1, line.to);
             if (end > node.from) {
@@ -620,6 +592,11 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             const endLine = view.state.doc.lineAt(node.to);
             const cursorHead = view.state.selection.main.head;
             const cursorLine = view.state.doc.lineAt(cursorHead).number;
+            const columnWidths = getTableColumnWidths(
+              view.state.doc,
+              startLine.number,
+              endLine.number
+            );
 
             for (let l = startLine.number; l <= endLine.number; l++) {
               const lineObj = view.state.doc.line(l);
@@ -640,10 +617,15 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
               const isActiveRow = (l === cursorLine);
               if (!isSep) {
-                for (const cell of parsed.cells) {
+                for (let column = 0; column < parsed.cells.length; column++) {
+                  const cell = parsed.cells[column];
+                  const widthCh = columnWidths[column] || 8;
                   if (cell.from <= cell.to) {
                     builder.push(Decoration.mark({
-                      class: isHeader ? 'cm-table-cell cm-table-header-cell' : 'cm-table-cell'
+                      class: isHeader
+                        ? 'cm-table-cell cm-table-header-cell'
+                        : 'cm-table-cell',
+                      attributes: { style: `width:${widthCh}ch;` }
                     }).range(cell.from, cell.to));
                   }
                 }
@@ -863,6 +845,22 @@ export function isTableSeparatorRow(text, parsedCells) {
     );
 }
 
+export function getTableColumnWidths(doc, startLine, endLine) {
+  const widths = [];
+  for (let number = startLine; number <= endLine; number++) {
+    const line = doc.line(number);
+    const parsed = parsePipeRow(line);
+    if (!parsed || isTableSeparatorRow(line.text, parsed.cells)) continue;
+
+    parsed.cells.forEach((cell, index) => {
+      const text = doc.sliceString(cell.from, cell.to);
+      const width = Math.max(8, Math.min(40, Array.from(text).length + 2));
+      widths[index] = Math.max(widths[index] || 8, width);
+    });
+  }
+  return widths;
+}
+
 function parseTableCells(doc, startLineNum, endLineNum) {
   const cells = [];
   for (let lNum = startLineNum; lNum <= endLineNum; lNum++) {
@@ -939,93 +937,153 @@ export const tableNavigationKeymap = keymap.of([
   }
 ]);
 
-export function buildLayoutDecorations(state) {
-  if (currentEditorMode === 'source') return Decoration.none;
+export function isQuoteLine(text) {
+  return /^ {0,3}>/.test(text);
+}
 
-  const builder = [];
-  const tree = syntaxTree(state);
-  const paragraphLineStarts = new Set();
-
-  tree.iterate({
-    from: 0,
-    to: state.doc.length,
-    enter: (node) => {
-      const line = state.doc.lineAt(node.from);
-
-      if (node.name.startsWith('ATXHeading')) {
-        const level = node.name.replace('ATXHeading', '');
-        builder.push(Decoration.line({
-          attributes: { class: `cm-heading cm-heading-${level}` }
-        }).range(line.from));
-      }
-
-      if (node.name === 'Paragraph') {
-        const doc = state.doc;
-        const first = doc.lineAt(node.from);
-        const last = doc.lineAt(Math.max(node.from, node.to - 1));
-
-        for (let number = first.number; number <= last.number; number++) {
-          const pLine = doc.line(number);
-          if (paragraphLineStarts.has(pLine.from)) continue;
-          paragraphLineStarts.add(pLine.from);
-
-          let cls = 'cm-paragraph';
-          if (number === first.number) cls += ' cm-paragraph-first';
-          if (number === last.number) cls += ' cm-paragraph-last';
-
-          builder.push(Decoration.line({
-            attributes: { class: cls }
-          }).range(pLine.from));
-        }
-      }
-
-      if (node.name === 'ListItem') {
-        builder.push(Decoration.line({
-          attributes: { class: 'cm-list-item' }
-        }).range(line.from));
-      }
-
-      if (node.name === 'Blockquote') {
-        builder.push(Decoration.line({
-          attributes: { class: 'cm-blockquote' }
-        }).range(line.from));
-      }
-
-      if (node.name === 'HorizontalRule') {
-        builder.push(Decoration.line({
-          attributes: { class: 'cm-hr' }
-        }).range(line.from));
-      }
-
-      if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
-        const startLine = state.doc.lineAt(node.from);
-        const endLine = state.doc.lineAt(node.to);
-        for (let l = startLine.number; l <= endLine.number; l++) {
-          const codeLine = state.doc.line(l);
-          let cls = 'cm-codeblock-line';
-          if (l === startLine.number) cls += ' cm-codeblock-first';
-          if (l === endLine.number) cls += ' cm-codeblock-last';
-          builder.push(Decoration.line({
-            attributes: { class: cls }
-          }).range(codeLine.from));
-        }
-      }
+export function expandQuoteRun(doc, first, last) {
+  let containsQuote = false;
+  for (let line = first; line <= last; line++) {
+    if (isQuoteLine(doc.line(line).text)) {
+      containsQuote = true;
+      break;
     }
+  }
+  if (!containsQuote) return { first, last };
+
+  while (first > 1 && isQuoteLine(doc.line(first - 1).text)) first--;
+  while (last < doc.lines && isQuoteLine(doc.line(last + 1).text)) last++;
+  return { first, last };
+}
+
+export function structuralRangesForLines(state, firstLine, lastLine) {
+  const doc = state.doc;
+  if (currentEditorMode === 'source') return [];
+
+  let scanStart = firstLine;
+  while (scanStart > 1 && isQuoteLine(doc.line(scanStart - 1).text)) scanStart--;
+
+  let activeCallout = '';
+  const ranges = [];
+
+  for (let number = scanStart; number <= lastLine; number++) {
+    const line = doc.line(number);
+    const text = line.text;
+    const isQuote = isQuoteLine(text);
+    const calloutMarker = isQuote
+      ? text.match(/^ {0,3}>\s*\[!([A-Za-z]+)\](?:[+-])?/)
+      : null;
+
+    if (!isQuote) {
+      activeCallout = '';
+    } else if (calloutMarker) {
+      activeCallout = calloutMarker[1].toLowerCase();
+    }
+
+    if (number < firstLine || number > lastLine) continue;
+
+    const classes = [];
+    const heading = text.match(/^ {0,3}(#{1,6})(?:[ \t]+|$)/);
+    if (heading) {
+      classes.push('cm-heading', `cm-heading-${heading[1].length}`);
+    }
+
+    if (/^ {0,3}(?:[-+*]|\d+[.)])[ \t]+/.test(text)) {
+      classes.push('cm-list-item');
+    }
+
+    if (isQuote) classes.push('cm-blockquote');
+    if (activeCallout) {
+      classes.push('cm-callout', `cm-callout-${activeCallout}`);
+      if (calloutMarker) classes.push('cm-callout-title');
+    }
+
+    if (classes.length) {
+      ranges.push(
+        Decoration.line({
+          attributes: { class: classes.join(' ') }
+        }).range(line.from)
+      );
+    }
+  }
+
+  return ranges;
+}
+
+export function mergeLineRanges(ranges) {
+  ranges.sort((a, b) => a.first - b.first);
+  const merged = [];
+  for (const range of ranges) {
+    const previous = merged[merged.length - 1];
+    if (previous && range.first <= previous.last + 1) {
+      previous.last = Math.max(previous.last, range.last);
+    } else {
+      merged.push({ first: range.first, last: range.last });
+    }
+  }
+  return merged;
+}
+
+export function changedStructuralRanges(tr) {
+  const oldDoc = tr.startState.doc;
+  const newDoc = tr.state.doc;
+  const ranges = [];
+
+  tr.changes.iterChangedRanges((oldFrom, oldTo, newFrom, newTo) => {
+    let oldFirst = Math.max(1, oldDoc.lineAt(oldFrom).number - 1);
+    let oldLast = Math.min(oldDoc.lines, oldDoc.lineAt(oldTo).number + 1);
+    ({ first: oldFirst, last: oldLast } = expandQuoteRun(oldDoc, oldFirst, oldLast));
+
+    const mappedOldFrom = tr.changes.mapPos(oldDoc.line(oldFirst).from, -1);
+    const mappedOldTo = tr.changes.mapPos(oldDoc.line(oldLast).to, 1);
+    let first = Math.max(
+      1,
+      Math.min(
+        newDoc.lineAt(newFrom).number - 1,
+        newDoc.lineAt(mappedOldFrom).number
+      )
+    );
+    let last = Math.min(
+      newDoc.lines,
+      Math.max(
+        newDoc.lineAt(newTo).number + 1,
+        newDoc.lineAt(mappedOldTo).number
+      )
+    );
+    ({ first, last } = expandQuoteRun(newDoc, first, last));
+    ranges.push({ first, last });
   });
 
-  builder.sort((a, b) => a.from - b.from || a.to - b.to);
-  return Decoration.set(builder, true);
+  return mergeLineRanges(ranges);
+}
+
+export function buildInitialStructuralDecorations(state) {
+  return Decoration.set(
+    structuralRangesForLines(state, 1, state.doc.lines),
+    true
+  );
 }
 
 export const persistentLayoutField = StateField.define({
   create(state) {
-    return buildLayoutDecorations(state);
+    return buildInitialStructuralDecorations(state);
   },
   update(current, tr) {
-    if (tr.docChanged) {
-      return buildLayoutDecorations(tr.state);
+    if (!tr.docChanged) return current;
+
+    let next = current.map(tr.changes);
+    for (const range of changedStructuralRanges(tr)) {
+      const from = tr.state.doc.line(range.first).from;
+      const to = tr.state.doc.line(range.last).to;
+      next = next.update({
+        filterFrom: from,
+        filterTo: to,
+        filter: () => false,
+        add: structuralRangesForLines(tr.state, range.first, range.last),
+        sort: true
+      });
     }
-    return current;
+    return next;
   },
   provide: field => EditorView.decorations.from(field)
 });
@@ -1153,20 +1211,25 @@ class CodeMirrorAdapter {
       if (typeof sel === 'string') {
         sel = JSON.parse(sel);
       }
+      const hasSavedScroll = Number.isFinite(scrollTop) && scrollTop >= 0;
+
       if (sel && typeof sel.head === 'number') {
         const len = this.view.state.doc.length;
         const head = Math.min(Math.max(0, sel.head), len);
         const anchor = Math.min(Math.max(0, sel.anchor !== undefined ? sel.anchor : sel.head), len);
         this.view.dispatch({
           selection: { anchor, head },
-          scrollIntoView: true
+          scrollIntoView: !hasSavedScroll
+        });
+      }
+
+      if (hasSavedScroll) {
+        requestAnimationFrame(() => {
+          if (this.view) this.view.scrollDOM.scrollTop = scrollTop;
         });
       }
     } catch (e) {
       console.error('Error setting CodeMirror selection:', e);
-    }
-    if (typeof scrollTop === 'number' && scrollTop >= 0) {
-      this.view.scrollDOM.scrollTop = scrollTop;
     }
   }
 

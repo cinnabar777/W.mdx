@@ -228,76 +228,138 @@ object PreferenceResetHelper {
         }
     }
 
+    private const val RESET_CONTROL_ROW_TAG = "reset_control_row"
+
     fun bindResetButton(holder: PreferenceViewHolder, preference: Preference) {
         val context = preference.context
         val key = preference.key
+        val excluded = key == null ||
+            key.startsWith("pref_export") ||
+            key.startsWith("pref_import") ||
+            key == "pref_reset_all_defaults" ||
+            key.startsWith("pref_page_") ||
+            key.endsWith("_page")
 
-        val isExcluded = key == null || key.startsWith("pref_export") || key.startsWith("pref_import") || key == "pref_reset_all_defaults" || key.startsWith("pref_page_") || key.endsWith("_page")
+        var button = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
+        if (excluded) {
+            button?.visibility = View.INVISIBLE
+            applySettingsTheme(holder, preference)
+            return
+        }
 
-        if (!isExcluded) {
-            val titleView = holder.findViewById(android.R.id.title) as? TextView
-            if (titleView != null && titleView.parent is ViewGroup) {
-                val titleParent = titleView.parent as ViewGroup
-                var btnReset = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
+        val seekBarRow =
+            holder.findViewById(androidx.preference.R.id.seekbar)?.parent as? LinearLayout
+        val widgetFrame =
+            holder.findViewById(android.R.id.widget_frame) as? ViewGroup
+        val targetRow = seekBarRow ?: ensureHorizontalWidgetRow(context, widgetFrame)
 
-                if (btnReset == null) {
-                    btnReset = ImageView(context).apply {
-                        id = R.id.btn_reset_widget
-                        setImageResource(R.drawable.ic_reset)
-                        val paddingPx = (6 * context.resources.displayMetrics.density).toInt()
-                        setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
-                        isClickable = true
-                        isFocusable = true
-                        contentDescription = "Reset"
-                        val typedValue = TypedValue()
-                        context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, typedValue, true)
-                        setBackgroundResource(typedValue.resourceId)
-                    }
+        if (targetRow == null) {
+            android.util.Log.e("PreferenceReset", "No reset slot for preference: $key")
+            button?.visibility = View.INVISIBLE
+            applySettingsTheme(holder, preference)
+            return
+        }
 
-                    val sizePx = (48 * context.resources.displayMetrics.density).toInt()
-                    val marginPx = (4 * context.resources.displayMetrics.density).toInt()
-                    val params = LinearLayout.LayoutParams(sizePx, sizePx).apply {
-                        gravity = Gravity.CENTER_VERTICAL
-                        marginStart = marginPx
-                    }
-
-                    if (titleParent is LinearLayout && titleParent.orientation == LinearLayout.HORIZONTAL) {
-                        titleParent.addView(btnReset, params)
-                    } else {
-                        val containerTag = "title_reset_row_container"
-                        var container = titleParent.findViewWithTag<LinearLayout>(containerTag)
-                        if (container == null) {
-                            val indexInParent = titleParent.indexOfChild(titleView)
-                            titleParent.removeView(titleView)
-                            container = LinearLayout(context).apply {
-                                tag = containerTag
-                                orientation = LinearLayout.HORIZONTAL
-                                gravity = Gravity.CENTER_VERTICAL
-                            }
-                            container.addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f))
-                            container.addView(btnReset, params)
-                            titleParent.addView(container, indexInParent)
-                        }
-                    }
+        if (button == null) button = createResetButton(context)
+        if (button.parent !== targetRow) {
+            (button.parent as? ViewGroup)?.removeView(button)
+            targetRow.addView(
+                button,
+                LinearLayout.LayoutParams(dp(context, 40), dp(context, 40)).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    marginStart = dp(context, 4)
                 }
+            )
+        }
 
-                val isModified = isModifiedFromDefault(context, key)
-                if (isModified) {
-                    btnReset.visibility = View.VISIBLE
-                    btnReset.setOnClickListener {
-                        resetSinglePreference(context, preference)
-                    }
-                } else {
-                    btnReset.visibility = View.INVISIBLE
-                }
+        button.visibility = View.VISIBLE
+        val modified = isModifiedFromDefault(context, key)
+        button.isEnabled = modified
+        button.alpha = if (modified) 1f else 0.45f
+        button.setOnClickListener {
+            if (isModifiedFromDefault(context, key)) {
+                resetSinglePreference(context, preference)
             }
-        } else {
-            val btnReset = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
-            btnReset?.visibility = View.INVISIBLE
         }
 
         applySettingsTheme(holder, preference)
     }
+
+    private fun ensureHorizontalWidgetRow(
+        context: Context,
+        widgetFrame: ViewGroup?
+    ): LinearLayout? {
+        if (widgetFrame == null) return null
+
+        val existingRow =
+            widgetFrame.findViewWithTag<LinearLayout>(RESET_CONTROL_ROW_TAG)
+        if (existingRow != null) return existingRow
+
+        if (widgetFrame is LinearLayout &&
+            widgetFrame.orientation == LinearLayout.HORIZONTAL
+        ) {
+            return widgetFrame
+        }
+
+        val oldChildren = (0 until widgetFrame.childCount)
+            .map { widgetFrame.getChildAt(it) }
+            .filterNot { it.id == R.id.btn_reset_widget }
+        widgetFrame.removeAllViews()
+
+        val row = LinearLayout(context).apply {
+            tag = RESET_CONTROL_ROW_TAG
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        oldChildren.forEach { child ->
+            (child.parent as? ViewGroup)?.removeView(child)
+            row.addView(
+                child,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        val rowParams = if (widgetFrame is android.widget.FrameLayout) {
+            android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.END or Gravity.CENTER_VERTICAL
+            )
+        } else {
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        widgetFrame.addView(row, rowParams)
+        return row
+    }
+
+    private fun createResetButton(context: Context): ImageView {
+        val padding = dp(context, 7)
+        val typedValue = TypedValue()
+        context.theme.resolveAttribute(
+            android.R.attr.selectableItemBackgroundBorderless,
+            typedValue,
+            true
+        )
+        return ImageView(context).apply {
+            id = R.id.btn_reset_widget
+            setImageResource(R.drawable.ic_reset)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(padding, padding, padding, padding)
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Reset setting to default"
+            setBackgroundResource(typedValue.resourceId)
+        }
+    }
+
+    private fun dp(context: Context, value: Int): Int =
+        (value * context.resources.displayMetrics.density).toInt()
 
     fun applySettingsTheme(holder: PreferenceViewHolder, preference: Preference) {
         val context = preference.context
@@ -457,18 +519,23 @@ open class ResetColorPickerPreference @JvmOverloads constructor(
 
         val widgetFrame = holder.findViewById(android.R.id.widget_frame) as? ViewGroup
         if (widgetFrame != null) {
+            val previewHost =
+                widgetFrame.findViewWithTag<LinearLayout>("reset_control_row")
+                    ?: widgetFrame as? LinearLayout
+
             val previewTag = "color_picker_preview_circle"
-            var previewCircle = widgetFrame.findViewWithTag<View>(previewTag)
-            if (previewCircle == null) {
+            var previewCircle = previewHost?.findViewWithTag<View>(previewTag)
+            if (previewCircle == null && previewHost != null) {
                 val density = context.resources.displayMetrics.density
                 val sizePx = (24 * density).toInt()
-                previewCircle = View(context).apply {
+                val createdCircle = View(context).apply {
                     tag = previewTag
                     layoutParams = LinearLayout.LayoutParams(sizePx, sizePx).apply {
                         marginEnd = (8 * density).toInt()
                     }
                 }
-                widgetFrame.addView(previewCircle, 0)
+                previewHost.addView(createdCircle, 0)
+                previewCircle = createdCircle
             }
 
             val prefs = PreferenceManager.getDefaultSharedPreferences(context)
@@ -476,7 +543,7 @@ open class ResetColorPickerPreference @JvmOverloads constructor(
             val effectiveHex = if (colorHex == "default") PreferenceResetHelper.getDefaultColorHex(key) else colorHex
             val colorInt = ColorPickerDialog.parseHexColor(effectiveHex, android.graphics.Color.WHITE)
 
-            previewCircle.background = android.graphics.drawable.GradientDrawable().apply {
+            previewCircle?.background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(colorInt)
                 setStroke((1.5 * context.resources.displayMetrics.density).toInt(), android.graphics.Color.parseColor("#888888"))
