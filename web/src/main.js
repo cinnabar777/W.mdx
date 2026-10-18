@@ -96,6 +96,26 @@ const svgIcons = {
   circlePen: (color) => `<svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="${color}"/></svg>`
 };
 
+class ListMarkerWidget extends WidgetType {
+  constructor(source, isBullet) {
+    super();
+    this.source = source;
+    this.isBullet = isBullet;
+  }
+  eq(other) {
+    return other instanceof ListMarkerWidget &&
+      other.source === this.source &&
+      other.isBullet === this.isBullet;
+  }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = this.isBullet ? 'cm-list-bullet' : 'cm-list-number';
+    span.textContent = this.isBullet ? '•' : this.source;
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  }
+}
+
 class CheckboxWidget extends WidgetType {
   constructor(checked, pos, len) {
     super();
@@ -393,12 +413,12 @@ class GFMTableWidget extends WidgetType {
 }
 
 const customHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading1, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'var(--heading-1-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-1-scale, 1.8) * var(--heading-scale, 1))' },
-  { tag: tags.heading2, color: 'var(--heading-2-color, #ffffff)', fontWeight: 'var(--heading-2-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-2-scale, 1.5) * var(--heading-scale, 1))' },
-  { tag: tags.heading3, color: 'var(--heading-3-color, #ffffff)', fontWeight: 'var(--heading-3-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-3-scale, 1.3) * var(--heading-scale, 1))' },
-  { tag: tags.heading4, color: 'var(--heading-4-color, #ffffff)', fontWeight: 'var(--heading-4-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-4-scale, 1.1) * var(--heading-scale, 1))' },
-  { tag: tags.heading5, color: 'var(--heading-5-color, #ffffff)', fontWeight: 'var(--heading-5-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-5-scale, 1.0) * var(--heading-scale, 1))' },
-  { tag: tags.heading6, color: 'var(--heading-6-color, #ffffff)', fontWeight: 'var(--heading-6-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-6-scale, 0.9) * var(--heading-scale, 1))' },
+  { tag: tags.heading1, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'var(--heading-1-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading2, color: 'var(--heading-2-color, #ffffff)', fontWeight: 'var(--heading-2-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading3, color: 'var(--heading-3-color, #ffffff)', fontWeight: 'var(--heading-3-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading4, color: 'var(--heading-4-color, #ffffff)', fontWeight: 'var(--heading-4-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading5, color: 'var(--heading-5-color, #ffffff)', fontWeight: 'var(--heading-5-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading6, color: 'var(--heading-6-color, #ffffff)', fontWeight: 'var(--heading-6-font-weight, var(--heading-font-weight, bold))' },
   { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--italic-color, inherit)', fontWeight: 'var(--italic-font-weight, normal)' },
   { tag: tags.strong, fontWeight: 'var(--bold-font-weight, bold)', color: 'var(--bold-color, inherit)' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
@@ -510,9 +530,17 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'ListMark') {
-            const markText = view.state.doc.sliceString(node.from, node.to);
-            const cls = /^\d+[\.\)]/.test(markText) ? 'cm-list-number' : 'cm-list-bullet';
-            builder.push(Decoration.mark({ class: cls }).range(node.from, node.to));
+            const marker = view.state.doc.sliceString(node.from, node.to);
+            const isBullet = /^[-*+]$/.test(marker.trim());
+            if (!isNodeActive) {
+              builder.push(Decoration.replace({
+                widget: new ListMarkerWidget(marker, isBullet)
+              }).range(node.from, node.to));
+            } else {
+              builder.push(Decoration.mark({
+                class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
+              }).range(node.from, node.to));
+            }
           }
 
           if (node.name === 'Blockquote') {
@@ -544,7 +572,10 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             const startLine = view.state.doc.lineAt(node.from);
             const endLine = view.state.doc.lineAt(node.to);
             for (let l = startLine.number; l <= endLine.number; l++) {
-              addLineClass(view.state.doc.line(l).from, 'cm-codeblock-line');
+              const codeLine = view.state.doc.line(l);
+              addLineClass(codeLine.from, 'cm-codeblock-line');
+              if (l === startLine.number) addLineClass(codeLine.from, 'cm-codeblock-first');
+              if (l === endLine.number) addLineClass(codeLine.from, 'cm-codeblock-last');
             }
             if (line.from === node.from) {
               const codeText = view.state.doc.sliceString(node.from, node.to);
@@ -575,8 +606,21 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             return false;
           }
 
-          if (node.name === 'URL' || node.name === 'Link') {
-            builder.push(Decoration.mark({ class: 'cm-link' }).range(node.from, node.to));
+          if (node.name === 'Link') {
+            const raw = view.state.doc.sliceString(node.from, node.to);
+            const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+            if (match) {
+              const labelFrom = node.from + 1;
+              const labelTo = labelFrom + match[1].length;
+              builder.push(
+                Decoration.mark({ class: 'cm-link' }).range(labelFrom, labelTo)
+              );
+
+              if (!isNodeActive) {
+                builder.push(Decoration.replace({}).range(node.from, labelFrom));
+                builder.push(Decoration.replace({}).range(labelTo, node.to));
+              }
+            }
           }
 
           if (node.name === 'Image') {
@@ -1900,6 +1944,9 @@ window.editorBridge = {
     } else if (prefs.pref_line_wrap === true) {
       document.body.classList.remove('no-line-wrap');
     }
+    if (typeof window.editorBridge.setLineWrap === 'function') {
+      window.editorBridge.setLineWrap(prefs.pref_line_wrap !== false);
+    }
 
     // Body & Paragraph
     setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');
@@ -1969,7 +2016,9 @@ window.editorBridge = {
     setCssVar('--italic-color', prefs.pref_italic_color);
     setCssVar('--italic-font-weight', prefs.pref_font_weight_italic);
     setCssVar('--link-color', prefs.pref_link_color);
-    setCssVar('--link-decoration', prefs.pref_link_decoration);
+    const linkStyle = prefs.pref_link_decoration || 'solid';
+    setCssVar('--link-decoration-line', linkStyle === 'none' ? 'none' : 'underline');
+    setCssVar('--link-decoration-style', linkStyle === 'none' ? 'solid' : linkStyle);
     setCssVar('--code-color', prefs.pref_code_color);
     setCssVar('--code-bg-color', prefs.pref_code_bg_color);
     setCssVar('--code-padding', prefs.pref_code_padding, 'px');

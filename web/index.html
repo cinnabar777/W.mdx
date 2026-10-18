@@ -597,11 +597,23 @@
       border-radius: var(--code-border-radius, 4px) !important;
     }
     .cm-content .cm-codeblock-line {
+      box-sizing: border-box !important;
       color: var(--code-block-color, #e0e0e0) !important;
       background: var(--code-block-bg-color, #121212) !important;
       line-height: var(--code-block-line-height, 1.4) !important;
       padding-left: var(--code-block-padding, 16px) !important;
       padding-right: var(--code-block-padding, 16px) !important;
+    }
+    .cm-content .cm-codeblock-line span {
+      color: var(--code-block-color, #e0e0e0) !important;
+    }
+    .cm-content .cm-codeblock-first {
+      border-top-left-radius: var(--code-block-border-radius, 6px) !important;
+      border-top-right-radius: var(--code-block-border-radius, 6px) !important;
+    }
+    .cm-content .cm-codeblock-last {
+      border-bottom-left-radius: var(--code-block-border-radius, 6px) !important;
+      border-bottom-right-radius: var(--code-block-border-radius, 6px) !important;
     }
     .cm-content .cm-blockquote {
       border-left: var(--blockquote-border-width, 4px) var(--blockquote-border-style, solid) var(--blockquote-border-color, #444444) !important;
@@ -614,6 +626,34 @@
       border-left: var(--callout-border-width, 4px) var(--callout-border-style, solid) var(--callout-border-color, #29b6f6) !important;
       background-color: var(--callout-bg-color, rgba(41, 182, 246, 0.12)) !important;
       padding: var(--callout-padding, 12px) !important;
+    }
+    .cm-todo-checkbox {
+      appearance: none !important;
+      -webkit-appearance: none !important;
+      width: 16px !important;
+      height: 16px !important;
+      box-sizing: border-box !important;
+      border: 1.5px solid var(--todo-border-color, #888888) !important;
+      border-radius: 3px !important;
+      background: var(--todo-bg-color, #222222) !important;
+      vertical-align: text-bottom !important;
+      margin: 0 6px 0 0 !important;
+      position: relative !important;
+    }
+    .cm-todo-checkbox:checked {
+      border-color: var(--todo-accent-color, #00e5ff) !important;
+      background: var(--todo-accent-color, #00e5ff) !important;
+    }
+    .cm-todo-checkbox:checked::after {
+      content: '' !important;
+      position: absolute !important;
+      left: 4px !important;
+      top: 1px !important;
+      width: 4px !important;
+      height: 8px !important;
+      border: solid #111111 !important;
+      border-width: 0 2px 2px 0 !important;
+      transform: rotate(45deg) !important;
     }
     .cm-link {
       color: var(--link-color, #29b6f6) !important;
