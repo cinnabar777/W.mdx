@@ -1,4 +1,4 @@
-name: CI Build & Test
+name: Build Debug APK
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main, master ]
 
 jobs:
-  build:
+  build-debug:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,12 +31,22 @@ jobs:
           cd web
           npm ci
 
-      - name: Run Web Tests
+      - name: Build Web Bundle
+        run: |
+          node web/build.cjs
+
+      - name: Run Web Unit Tests
         run: |
           node --test web/test/*.test.cjs
 
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
-      - name: Build Android App & Run Unit Tests
+      - name: Build Debug APK & Run Unit Tests
         run: ./gradlew assembleDebug testDebugUnitTest
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wmdx-Debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk

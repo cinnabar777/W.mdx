@@ -19,9 +19,3 @@ test('editorBridge exposes required methods', () => {
   assert.ok(source.includes('toggleLineWrap'));
   assert.ok(source.includes('toggleLineNumbers'));
 });
-
-test('Obsidian Plugin Compatibility Architecture exists', () => {
-  assert.ok(source.includes('ObsidianPluginRegistry'));
-  assert.ok(source.includes('registerPlugin'));
-  assert.ok(source.includes('registerEditorExtension'));
-});

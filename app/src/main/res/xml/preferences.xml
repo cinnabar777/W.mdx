@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Editor Configuration Pages">
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_settings_theme"
+            app:title="Settings UI Theme &amp; Custom Colors"
+            app:summary="Customize category header, title, subtext, toggle &amp; background colors" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_styling"
+            app:title="Styling &amp; Typography Settings"
+            app:summary="Fonts, weights, sizes, heading colors, line thickness &amp; element colors" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_hotkeys"
+            app:title="Custom Keyboard Shortcuts"
+            app:summary="Configure hotkeys for actions, formatting, headings &amp; highlighter markers" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_plugins"
+            app:title="Editor Plugins &amp; Toolbar Tools"
+            app:summary="Enable or disable active editor plugins and toolbar items" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_export"
+            app:title="HTML &amp; MHTML Export Settings"
+            app:summary="Configure HTML/MHTML format, TOC levels, CSS embedding &amp; stylesheet options" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="App Display &amp; Image Settings">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_app_theme"
+            app:title="App Theme"
+            app:summary="Select dark amoled or light mode"
+            app:entries="@array/pref_theme_entries"
+            app:entryValues="@array/pref_theme_values"
+            app:defaultValue="amoled" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_hide_status_bar"
+            app:title="Hide Status Bar (Notification Bar)"
+            app:summary="Hide top system status bar for fullscreen editing"
+            android:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_hide_nav_bar"
+            app:title="Hide Navigation Bar"
+            app:summary="Hide bottom system navigation bar"
+            android:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_image_mode"
+            app:title="Image Insertion Mode"
+            app:summary="Select how images are added to document"
+            app:entries="@array/pref_image_mode_entries"
+            app:entryValues="@array/pref_image_mode_values"
+            app:defaultValue="picker" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Window &amp; Document Management Settings">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_editor_mode"
+            app:title="Document Editor Mode"
+            app:summary="Select Pure WYSIWYG, Obsidian Live Preview, or Raw Source View"
+            app:entries="@array/pref_editor_mode_entries"
+            app:entryValues="@array/pref_editor_mode_values"
+            app:defaultValue="wysiwyg" />
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_diagnostics"
+            app:title="Diagnostic report"
+            app:summary="Copy or share launch timings and errors; no document content is recorded" />
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_auto_save_on_leave"
+            app:title="Auto-Save File on App Switch / Leave"
+            app:summary="Automatically saves unsaved document changes when switching apps, returning home, or navigating away"
+            android:defaultValue="true" />
+
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Backup &amp; Restore Settings (ZIP File)">
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_export_backup"
+            app:title="Export Settings &amp; Custom Fonts (.zip)"
+            app:summary="Save all preferences and loaded font files to a ZIP backup file" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_import_backup"
+            app:title="Import Settings &amp; Custom Fonts (.zip)"
+            app:summary="Restore preferences and font files from a ZIP backup file" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Reset Settings">
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_reset_all_defaults"
+            app:title="Reset All Settings to Defaults ↺"
+            app:summary="Tap to restore all typography, element colors, shortcuts, custom fonts, and plugin settings back to default values" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

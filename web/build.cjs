@@ -30,7 +30,7 @@ async function build() {
     sourcemap: false
   });
 
-  // Copy index.html into www directory and reference bundle.js
+  // Copy index.html into www directory and reference bundle.js and bundle.css
   let htmlContent = fs.readFileSync(path.join(webDir, 'index.html'), 'utf8');
   if (!htmlContent.includes('bundle.css')) {
     htmlContent = htmlContent.replace('</head>', '  <link rel="stylesheet" href="./bundle.css">\n</head>');

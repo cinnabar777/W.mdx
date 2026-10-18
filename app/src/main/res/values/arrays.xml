@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="pref_color_entries">
+        <item>Default (Theme Color)</item>
+        <item>Light Blue (#00B0FF)</item>
+        <item>Cyan (#00E5FF)</item>
+        <item>Yellow (#FFEA00)</item>
+        <item>Orange (#FF9100)</item>
+        <item>Green (#00E676)</item>
+        <item>Pink (#FF4081)</item>
+    </string-array>
+    <string-array name="pref_color_values">
+        <item>default</item>
+        <item>#00B0FF</item>
+        <item>#00E5FF</item>
+        <item>#FFEA00</item>
+        <item>#FF9100</item>
+        <item>#00E676</item>
+        <item>#FF4081</item>
+    </string-array>
+    <string-array name="pref_editor_mode_entries">
+        <item>Pure WYSIWYG (WYSIWYG)</item>
+        <item>Obsidian Live Preview (Live Preview)</item>
+        <item>Raw Source View (Source View)</item>
+    </string-array>
+    <string-array name="pref_editor_mode_values">
+        <item>wysiwyg</item>
+        <item>live_preview</item>
+        <item>source</item>
+    </string-array>
+    <string-array name="pref_theme_entries">
+        <item>Dark AMOLED (Black)</item>
+        <item>Light Mode</item>
+    </string-array>
+    <string-array name="pref_theme_values">
+        <item>amoled</item>
+        <item>light</item>
+    </string-array>
+    <string-array name="pref_image_mode_entries">
+        <item>Android Local File Picker</item>
+        <item>URL / Base64 Data Input</item>
+    </string-array>
+    <string-array name="pref_image_mode_values">
+        <item>picker</item>
+        <item>url</item>
+    </string-array>
+    <string-array name="align_entries">
+        <item>Default</item>
+        <item>Left</item>
+        <item>Center</item>
+        <item>Right</item>
+        <item>Justify</item>
+    </string-array>
+    <string-array name="align_values">
+        <item>default</item>
+        <item>left</item>
+        <item>center</item>
+        <item>right</item>
+        <item>justify</item>
+    </string-array>
+
+    <string-array name="text_transform_entries">
+        <item>None</item>
+        <item>Uppercase</item>
+        <item>Lowercase</item>
+        <item>Capitalize</item>
+    </string-array>
+    <string-array name="text_transform_values">
+        <item>none</item>
+        <item>uppercase</item>
+        <item>lowercase</item>
+        <item>capitalize</item>
+    </string-array>
+
+    <string-array name="underline_style_entries">
+        <item>None</item>
+        <item>Solid</item>
+        <item>Double</item>
+        <item>Dashed</item>
+        <item>Dotted</item>
+        <item>Wavy</item>
+    </string-array>
+    <string-array name="underline_style_values">
+        <item>none</item>
+        <item>solid</item>
+        <item>double</item>
+        <item>dashed</item>
+        <item>dotted</item>
+        <item>wavy</item>
+    </string-array>
+
+    <string-array name="border_style_entries">
+        <item>Solid</item>
+        <item>Double</item>
+        <item>Dashed</item>
+        <item>Dotted</item>
+        <item>None</item>
+    </string-array>
+    <string-array name="border_style_values">
+        <item>solid</item>
+        <item>double</item>
+        <item>dashed</item>
+        <item>dotted</item>
+        <item>none</item>
+    </string-array>
+
+    <string-array name="font_weight_entries">
+        <item>Normal (400)</item>
+        <item>Semi-Bold (600)</item>
+        <item>Bold (700)</item>
+        <item>Extra Bold (800)</item>
+    </string-array>
+    <string-array name="font_weight_values">
+        <item>400</item>
+        <item>600</item>
+        <item>700</item>
+        <item>800</item>
+    </string-array>
+    <string-array name="pref_export_format_entries">
+        <item>Clean HTML Document (.html)</item>
+        <item>MHTML Self-Contained Archive (.mht / .mhtml)</item>
+    </string-array>
+    <string-array name="pref_export_format_values">
+        <item>html</item>
+        <item>mhtml</item>
+    </string-array>
+
+    <string-array name="pref_export_css_placement_entries">
+        <item>Embed CSS in HTML &lt;head&gt;</item>
+        <item>Export Separate .css Stylesheet File</item>
+    </string-array>
+    <string-array name="pref_export_css_placement_values">
+        <item>head</item>
+        <item>file</item>
+    </string-array>
+</resources>

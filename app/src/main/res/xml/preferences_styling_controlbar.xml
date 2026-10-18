@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Bottom Control Bar Customization">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_bg_color"
+            app:title="Toolbar Background Color"
+            app:summary="Background color for bottom control bar"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_icon_color"
+            app:title="Toolbar Icon Color"
+            app:summary="Default color for toolbar SVG icons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_active_icon_color"
+            app:title="Selected / Active Icon Accent Color"
+            app:summary="Accent color when a toolbar item or popup is active"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_height"
+            app:title="Toolbar Height (dp)"
+            app:summary="Height of the bottom toolbar bar"
+            android:defaultValue="48"
+            app:min="36"
+            android:max="72"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

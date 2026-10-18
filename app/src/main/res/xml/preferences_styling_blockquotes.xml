@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Block Quote Settings">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_blockquote_line_thickness"
+            app:title="Block Quote Border Thickness (px)"
+            app:summary="Thickness of the left accent border"
+            app:min="1"
+            android:max="20"
+            app:defaultValue="4"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_blockquote_line_style"
+            app:title="Block Quote Border Style"
+            app:summary="Style of left accent border"
+            android:entries="@array/border_style_entries"
+            android:entryValues="@array/border_style_values"
+            android:defaultValue="solid" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_blockquote_line_color"
+            app:title="Block Quote Border Color"
+            app:summary="Tap to select border color or default"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_blockquote_bg_color"
+            app:title="Block Quote Background Color"
+            app:summary="Tap to select background color or default"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_blockquote_text_color"
+            app:title="Block Quote Text Color"
+            app:summary="Tap to select text color or default"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_blockquote_left_indent"
+            app:title="Block Quote Left Margin (px)"
+            app:summary="Left margin offset for block quotes"
+            app:min="0"
+            android:max="40"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_blockquote_padding"
+            app:title="Block Quote Inside Padding (px)"
+            app:summary="Padding inside block quote container"
+            app:min="0"
+            android:max="30"
+            app:defaultValue="12"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Callouts Settings">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_callout_line_thickness"
+            app:title="Callout Border Thickness (px)"
+            app:summary="Thickness of callout accent border"
+            app:min="1"
+            android:max="20"
+            app:defaultValue="4"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_callout_line_style"
+            app:title="Callout Border Style"
+            app:summary="Style of callout border"
+            android:entries="@array/border_style_entries"
+            android:entryValues="@array/border_style_values"
+            android:defaultValue="solid" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_line_color"
+            app:title="Callout Border Color"
+            app:summary="Tap to select border color or default"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_bg_color"
+            app:title="Callout Background Color"
+            app:summary="Tap to select background tint color or default"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_callout_padding"
+            app:title="Callout Inside Padding (px)"
+            app:summary="Padding inside callout container"
+            app:min="0"
+            android:max="30"
+            app:defaultValue="12"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

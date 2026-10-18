@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Code Block Styling">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_color"
+            app:title="Code Block Text Color"
+            app:summary="Tap to select text color for code blocks or default"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_bg_color"
+            app:title="Code Block Background Color"
+            app:summary="Tap to select background color for code blocks or default"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_code_block_padding"
+            app:title="Code Block Padding (px)"
+            app:summary="Inside padding for code blocks"
+            app:min="8"
+            android:max="32"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_code_block_border_radius"
+            app:title="Code Block Border Radius (px)"
+            app:summary="Corner radius for code blocks"
+            app:min="0"
+            android:max="16"
+            app:defaultValue="6"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_code_block_line_height"
+            app:title="Code Block Line Height"
+            app:summary="Line height multiplier for code blocks (e.g. 1.4 or default)"
+            app:defaultValue="1.4" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_lang_label_color"
+            app:title="Language Label Text Color"
+            app:summary="Text color for the top-left language label"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

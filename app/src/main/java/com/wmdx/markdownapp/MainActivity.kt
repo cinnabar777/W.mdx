@@ -1,54 +1,1058 @@
 package com.wmdx.markdownapp
 
+import android.content.Context
+import android.graphics.Color
+import android.content.SharedPreferences
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.Base64
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
+import android.widget.ProgressBar
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.wmdx.markdownapp.databinding.ActivityMainBinding
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.preference.PreferenceManager
+import androidx.webkit.WebViewAssetLoader
+import org.json.JSONArray
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
-    private lateinit var binding: ActivityMainBinding
+    private lateinit var webView: WebView
+    private lateinit var progressBar: ProgressBar
+
+    private var currentFileUri: Uri? = null
+        set(value) {
+            field = value
+            WindowRegistry.register(this, value)
+        }
+    private var currentFileName: String = "Untitled.md"
+    private var isDirty: Boolean = false
+    private var isEditorReady: Boolean = false
+    private var currentEditorMode: String = "rich_text"
+    private var currentRevision: Long = 0
+    private var hasBom: Boolean = false
+    private var hasCrlf: Boolean = false
+    private var latestMarkdownContent: String? = null
+    private var pendingOpenUri: Uri? = null
+    private var pendingSharedText: String? = null
+    private var currentToast: Toast? = null
+    private var currentTextPackSession: TextPackSession? = null
+    private val documentHistoryStack = java.util.ArrayDeque<Uri>()
+
+    private fun showCustomToast(message: String) {
+        runOnUiThread {
+            try {
+                currentToast?.cancel()
+            } catch (e: Exception) {}
+
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
+
+            val textView = android.widget.TextView(this).apply {
+                text = message
+                textSize = 14f
+                setPadding(
+                    (16 * resources.displayMetrics.density).toInt(),
+                    (10 * resources.displayMetrics.density).toInt(),
+                    (16 * resources.displayMetrics.density).toInt(),
+                    (10 * resources.displayMetrics.density).toInt()
+                )
+                gravity = android.view.Gravity.CENTER
+
+                val bgDrawable = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = 20 * resources.displayMetrics.density
+                    if (isLightTheme) {
+                        setColor(Color.parseColor("#E0E0E0"))
+                    } else {
+                        setColor(Color.parseColor("#282828"))
+                    }
+                }
+                background = bgDrawable
+                setTextColor(if (isLightTheme) Color.parseColor("#111111") else Color.parseColor("#FFFFFF"))
+            }
+
+            val toast = Toast(this).apply {
+                duration = Toast.LENGTH_SHORT
+                view = textView
+            }
+            currentToast = toast
+            toast.show()
+        }
+    }
+
+    private val openDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { openFile(it, forceReload = true) }
+    }
+
+    private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        uri?.let { saveFileToUri(it) }
+    }
+
+    private val exportDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        uri?.let { saveExportToUri(it) }
+    }
+
+    private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { insertImageFromUri(it) }
+    }
+
+    private val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (isEditorReady) {
+            applyPluginPreferences()
+            applyThemeAndFullscreenPreferences()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        setContentView(R.layout.activity_main)
+
+        applySystemBarDimming()
+
+        webView = findViewById(R.id.webView)
+        progressBar = findViewById(R.id.progressBar)
+
+        updateTitle()
 
         setupWebView()
+        savedInstanceState?.getStringArrayList("document_history")?.forEach {
+            documentHistoryStack.addLast(Uri.parse(it))
+        }
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (documentHistoryStack.isNotEmpty()) {
+                    if (isDirty) {
+                        showUnsavedChangesDialog { navigateBackOrFinish() }
+                    } else {
+                        navigateBackOrFinish()
+                    }
+                } else {
+                    if (isDirty) {
+                        showUnsavedChangesDialog { finish() }
+                    } else {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
+                }
+            }
+        })
+
+        AppDiagnostics.record(this, "window_created")
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        // All new opens go through DocumentDispatchActivity. A task brought to
+        // the foreground must not replay its old URI or shared text.
+        AppDiagnostics.record(this, "window_refocused")
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putStringArrayList("document_history",
+            ArrayList(documentHistoryStack.map { it.toString() }))
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun applySystemBarDimming() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val hideStatusBar = prefs.getBoolean("pref_hide_status_bar", false)
+            val hideNavBar = prefs.getBoolean("pref_hide_nav_bar", false)
+
+            window.statusBarColor = Color.BLACK
+            window.navigationBarColor = Color.BLACK
+
+            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+            insetsController.isAppearanceLightStatusBars = false
+            insetsController.isAppearanceLightNavigationBars = false
+
+            if (hideStatusBar) {
+                insetsController.hide(WindowInsetsCompat.Type.statusBars())
+            } else {
+                insetsController.show(WindowInsetsCompat.Type.statusBars())
+            }
+
+            if (hideNavBar) {
+                insetsController.hide(WindowInsetsCompat.Type.navigationBars())
+            } else {
+                insetsController.show(WindowInsetsCompat.Type.navigationBars())
+            }
+
+            if (hideStatusBar || hideNavBar) {
+                insetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LOW_PROFILE
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
+        }
+    }
+
+    private fun handleIntent(intent: android.content.Intent?) {
+        if (intent == null) return
+
+        if (intent.getBooleanExtra("is_new_document", false)) {
+            currentFileUri = null
+            currentFileName = getString(R.string.untitled_document)
+            isDirty = false
+            updateTitle()
+            if (isEditorReady) {
+                webView.evaluateJavascript("window.editorBridge.setMarkdown('');", null)
+            }
+            return
+        }
+
+        val data: Uri? = if (WindowRegistry.hasState(this, taskId)) WindowRegistry.current(this, taskId) else intent.data
+
+        if (data != null) {
+            if (currentFileUri == data) {
+                return
+            }
+
+            WindowRegistry.register(this, data)
+            if (isEditorReady) {
+                openFile(data)
+            } else {
+                pendingOpenUri = data
+            }
+            return
+        }
+
+        pendingSharedText = intent.getStringExtra("shared_text")
+        WindowRegistry.register(this, null)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        AppDiagnostics.record(this, "window_resumed")
+        PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(this)
+        if (::webView.isInitialized) {
+            webView.onResume()
+            applyThemeAndFullscreenPreferences()
+        }
+    }
+
+    override fun onPause() {
+        AppDiagnostics.record(this, "window_paused")
+        super.onPause()
+        PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
+        if (::webView.isInitialized) {
+            webView.onPause()
+        }
+        performAutoSaveOnLeave()
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+        if (key == null || !key.startsWith("pref_")) return
+        if (key == "pref_editor_mode") {
+            val newMode = sharedPreferences?.getString("pref_editor_mode", "rich_text") ?: "rich_text"
+            if (newMode != currentEditorMode) {
+                if (isDirty) {
+                    showUnsavedChangesDialog {
+                        currentEditorMode = newMode
+                        if (::webView.isInitialized) {
+                            webView.evaluateJavascript("window.editorBridge.setEditorMode('$newMode');", null)
+                        }
+                    }
+                } else {
+                    currentEditorMode = newMode
+                    if (::webView.isInitialized) {
+                        webView.evaluateJavascript("window.editorBridge.setEditorMode('$newMode');", null)
+                    }
+                }
+            }
+            return
+        }
+        if (::webView.isInitialized) {
+            applyThemeAndFullscreenPreferences()
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        AppDiagnostics.record(this, "window_focus", hasFocus.toString())
+    }
+
+    override fun onStop() {
+        super.onStop()
+        performAutoSaveOnLeave()
+    }
+
+    private fun performAutoSaveOnLeave() {
+        if (!isDirty || currentFileUri == null) return
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val autoSaveEnabled = prefs.getBoolean("pref_auto_save_on_leave", true)
+        if (autoSaveEnabled) {
+            currentFileUri?.let { uri ->
+                saveFileToUri(uri)
+            }
+        }
     }
 
     private fun setupWebView() {
-        binding.webView.settings.apply {
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
+
+        webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            allowFileAccess = true
+            allowFileAccess = false
+            allowContentAccess = false
         }
 
-        binding.webView.addJavascriptInterface(WebAppInterface(), "AndroidHost")
+        webView.addJavascriptInterface(WebAppInterface(), "AndroidNative")
 
-        binding.webView.webViewClient = object : WebViewClient() {
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                return request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                // Page loaded successfully
+                AppDiagnostics.record(this@MainActivity, "web_page_ready")
+                progressBar.visibility = View.GONE
             }
         }
 
-        binding.webView.loadUrl("file:///android_asset/www/index.html")
+        webView.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onJsPrompt(
+                view: WebView?,
+                url: String?,
+                message: String?,
+                defaultValue: String?,
+                result: android.webkit.JsPromptResult?
+            ): Boolean {
+                val input = EditText(this@MainActivity)
+                input.setText(defaultValue ?: "")
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(message ?: "Enter URL")
+                    .setView(input)
+                    .setPositiveButton("OK") { _, _ ->
+                        result?.confirm(input.text.toString())
+                    }
+                    .setNegativeButton("Cancel") { _, _ ->
+                        result?.cancel()
+                    }
+                    .setOnCancelListener {
+                        result?.cancel()
+                    }
+                    .show()
+                return true
+            }
+        }
+
+        webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
+    }
+
+    private fun updateTitle() {
+        val dirtyIndicator = if (isDirty) " *" else ""
+        val titleText = "$currentFileName$dirtyIndicator"
+        val escapedTitle = JSONObjectWrapper.quote(titleText)
+        webView.evaluateJavascript("window.editorBridge.setDocumentTitle($escapedTitle);", null)
+    }
+
+    private fun saveCurrentStateBeforeSettings() {
+        if (!isEditorReady) return
+        webView.evaluateJavascript("window.editorBridge.getSelectionState();") { selectionJson ->
+            val fileName = currentFileName
+            if (fileName.isNotEmpty() && fileName != getString(R.string.untitled_document)) {
+                val key = "doc_$fileName"
+                val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+                prefs.edit().putString("cursor_sel_$key", selectionJson).apply()
+            }
+        }
+    }
+
+    private fun applyThemeAndFullscreenPreferences() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        applySystemBarDimming()
+
+        val jsonObject = org.json.JSONObject()
+        val allEntries = prefs.all
+        for ((key, value) in allEntries) {
+            jsonObject.put(key, value)
+        }
+        val escapedJson = JSONObjectWrapper.quote(jsonObject.toString())
+        webView.evaluateJavascript("if (window.editorBridge && window.editorBridge.applyAllPreferences) { window.editorBridge.applyAllPreferences($escapedJson); }", null)
+
+        val fontBodyData = loadFontDataUri(prefs.getString("pref_font_file_body_path", null))
+        val fontHeadingData = loadFontDataUri(prefs.getString("pref_font_file_heading_path", null))
+        val fontBoldData = loadFontDataUri(prefs.getString("pref_font_file_bold_path", null))
+        val fontItalicData = loadFontDataUri(prefs.getString("pref_font_file_italic_path", null))
+        val fontCodeData = loadFontDataUri(prefs.getString("pref_font_file_code_path", null))
+
+        val bodyFontSize = prefs.getInt("pref_body_font_size", 16)
+        val headingScalePercent = prefs.getInt("pref_heading_scale_percent", 100)
+        val headingScale = headingScalePercent / 100.0
+        val fontWeightBold = prefs.getInt("pref_font_weight_bold", 700)
+        val fontWeightItalic = prefs.getInt("pref_font_weight_italic", 400)
+        val fontWeightHeading = prefs.getInt("pref_font_weight_heading", 700)
+
+        val boldColor = JSONObjectWrapper.quote(prefs.getString("pref_bold_color", "default"))
+        val italicColor = JSONObjectWrapper.quote(prefs.getString("pref_italic_color", "default"))
+        val linkColor = JSONObjectWrapper.quote(prefs.getString("pref_link_color", "default"))
+        val codeColor = JSONObjectWrapper.quote(prefs.getString("pref_code_color", "default"))
+        val codeBgColor = JSONObjectWrapper.quote(prefs.getString("pref_code_bg_color", "default"))
+        val codeBlockColor = JSONObjectWrapper.quote(prefs.getString("pref_code_block_color", "default"))
+        val codeBlockBgColor = JSONObjectWrapper.quote(prefs.getString("pref_code_block_bg_color", "default"))
+
+        val escapedBodyFont = JSONObjectWrapper.quote(fontBodyData)
+        val escapedHeadingFont = JSONObjectWrapper.quote(fontHeadingData)
+        val escapedBoldFont = JSONObjectWrapper.quote(fontBoldData)
+        val escapedItalicFont = JSONObjectWrapper.quote(fontItalicData)
+        val escapedCodeFont = JSONObjectWrapper.quote(fontCodeData)
+
+        webView.evaluateJavascript(
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading); }",
+            null
+        )
+
+        // Read and pass all custom hotkey preferences
+        val hotkeys = mapOf(
+            "new" to prefs.getString("pref_hotkey_new", "ctrl+n"),
+            "open" to prefs.getString("pref_hotkey_open", "ctrl+o"),
+            "save" to prefs.getString("pref_hotkey_save", "ctrl+s"),
+            "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
+            "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
+            "image" to prefs.getString("pref_hotkey_image", "ctrl+shift+i"),
+            "settings" to prefs.getString("pref_hotkey_settings", "ctrl+,"),
+            "toggle_toolbar" to prefs.getString("pref_hotkey_toggle_toolbar", "ctrl+t"),
+            "line_wrap" to prefs.getString("pref_hotkey_line_wrap", "ctrl+alt+w"),
+            "bold" to prefs.getString("pref_hotkey_bold", "ctrl+b"),
+            "italic" to prefs.getString("pref_hotkey_italic", "ctrl+i"),
+            "underline" to prefs.getString("pref_hotkey_underline", "ctrl+u"),
+            "strikethrough" to prefs.getString("pref_hotkey_strikethrough", "ctrl+shift+x"),
+            "code" to prefs.getString("pref_hotkey_code", "ctrl+e"),
+            "link" to prefs.getString("pref_hotkey_link", "ctrl+k"),
+            "footnote" to prefs.getString("pref_hotkey_footnote", "ctrl+shift+f"),
+            "blockQuote" to prefs.getString("pref_hotkey_blockQuote", "ctrl+shift+q"),
+            "codeBlock" to prefs.getString("pref_hotkey_codeBlock", "ctrl+shift+c"),
+            "bulletedList" to prefs.getString("pref_hotkey_bulletedList", "ctrl+shift+8"),
+            "numberedList" to prefs.getString("pref_hotkey_numberedList", "ctrl+shift+7"),
+            "todoList" to prefs.getString("pref_hotkey_todoList", "ctrl+shift+l"),
+            "indent" to prefs.getString("pref_hotkey_indent", "tab"),
+            "outdent" to prefs.getString("pref_hotkey_outdent", "shift+tab"),
+            "horizontalLine" to prefs.getString("pref_hotkey_horizontalLine", "ctrl+shift+h"),
+            "findAndReplace" to prefs.getString("pref_hotkey_findAndReplace", "ctrl+f"),
+            "sourceEditing" to prefs.getString("pref_hotkey_sourceEditing", "ctrl+shift+u"),
+            "heading_p" to prefs.getString("pref_hotkey_heading_p", "ctrl+alt+0"),
+            "heading_1" to prefs.getString("pref_hotkey_heading_1", "ctrl+alt+1"),
+            "heading_2" to prefs.getString("pref_hotkey_heading_2", "ctrl+alt+2"),
+            "heading_3" to prefs.getString("pref_hotkey_heading_3", "ctrl+alt+3"),
+            "heading_4" to prefs.getString("pref_hotkey_heading_4", "ctrl+alt+4"),
+            "heading_5" to prefs.getString("pref_hotkey_heading_5", "ctrl+alt+5"),
+            "heading_6" to prefs.getString("pref_hotkey_heading_6", "ctrl+alt+6"),
+            "highlight_yellow" to prefs.getString("pref_hotkey_highlight_yellow", "ctrl+alt+y"),
+            "highlight_green" to prefs.getString("pref_hotkey_highlight_green", "ctrl+alt+g"),
+            "highlight_pink" to prefs.getString("pref_hotkey_highlight_pink", "ctrl+alt+p"),
+            "highlight_blue" to prefs.getString("pref_hotkey_highlight_blue", "ctrl+alt+b"),
+            "highlight_red" to prefs.getString("pref_hotkey_highlight_red", "ctrl+alt+r"),
+            "highlight_red_pen" to prefs.getString("pref_hotkey_highlight_red_pen", "ctrl+alt+r"),
+            "highlight_green_pen" to prefs.getString("pref_hotkey_highlight_green_pen", "ctrl+alt+shift+g"),
+            "highlight_remove" to prefs.getString("pref_hotkey_highlight_remove", "ctrl+alt+x")
+        )
+        val hotkeysJson = org.json.JSONObject(hotkeys).toString()
+        val escapedHotkeys = JSONObjectWrapper.quote(hotkeysJson)
+        webView.evaluateJavascript("window.editorBridge.setHotkeys($escapedHotkeys);", null)
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        menu?.add(0, 0x4d44, 100, "Diagnostic report")
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            0x4d44 -> {
+                AppDiagnostics.show(this)
+                true
+            }
+            R.id.action_new -> {
+                handleNewFile()
+                true
+            }
+            R.id.action_open -> {
+                handleOpenFile()
+                true
+            }
+            R.id.action_save -> {
+                handleSaveFile()
+                true
+            }
+            R.id.action_save_as -> {
+                handleSaveAsFile()
+                true
+            }
+            R.id.action_export -> {
+                handleExportDocument()
+                true
+            }
+            R.id.action_insert_image -> {
+                handleInsertImage()
+                true
+            }
+            R.id.action_settings -> {
+                saveCurrentStateBeforeSettings()
+                settingsLauncher.launch(android.content.Intent(this, SettingsActivity::class.java))
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun handleNewFile() {
+        if (isDirty) {
+            showUnsavedChangesDialog { createNewDocument() }
+        } else {
+            createNewDocument()
+        }
+    }
+
+    private fun createNewDocument() {
+        if (currentFileUri != null) {
+            documentHistoryStack.push(currentFileUri)
+        }
+        currentTextPackSession = null
+        latestMarkdownContent = ""
+        currentFileUri = null
+        currentFileName = getString(R.string.untitled_document)
+        isDirty = false
+        updateTitle()
+        webView.evaluateJavascript("window.editorBridge.setMarkdown('');", null)
+    }
+
+    private fun navigateBackOrFinish() {
+        if (documentHistoryStack.isNotEmpty()) {
+            val previousUri = documentHistoryStack.pop()
+            openFileFromHistory(previousUri)
+        } else {
+            finish()
+        }
+    }
+
+    private fun openFileFromHistory(uri: Uri) {
+        openFile(uri, rememberHistory = false)
+    }
+
+    private fun handleOpenFile() {
+        if (isDirty) {
+            showUnsavedChangesDialog { openDocumentLauncher.launch(arrayOf("text/markdown", "text/plain", "application/zip", "application/x-zip-compressed", "*/*")) }
+        } else {
+            openDocumentLauncher.launch(arrayOf("text/markdown", "text/plain", "application/zip", "application/x-zip-compressed", "*/*"))
+        }
+    }
+
+    private fun openFile(uri: Uri, rememberHistory: Boolean = true, forceReload: Boolean = false) {
+        if (!isEditorReady) {
+            pendingOpenUri = uri
+            return
+        }
+
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        if (!forceReload && currentFileUri == uri && !isDirty) return
+        if (WindowRegistry.focus(this, uri, excludeTask = taskId)) return
+        if (rememberHistory && currentFileUri != null) {
+            documentHistoryStack.push(currentFileUri)
+        }
+
+        AppDiagnostics.record(this, "native_read_start")
+        val readStarted = android.os.SystemClock.elapsedRealtime()
+
+        try {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                // Ignore if not a persistable document grant
+            }
+
+            val fileName = getFileNameFromUri(uri)
+
+            if (TextPackManager.isTextPackFile(this, uri, fileName)) {
+                val session = TextPackManager.openTextPack(this, uri)
+                val text = session.markdownContent
+                hasBom = text.startsWith("\uFEFF")
+                hasCrlf = text.contains("\r\n")
+                val lines = text.lineSequence().count()
+                val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
+                AppDiagnostics.record(this, "textpack_read_done", "chars=${text.length} lines=$lines ms=$readMs")
+
+                currentTextPackSession = session
+                currentFileUri = uri
+                currentFileName = fileName
+                isDirty = false
+                updateTitle()
+
+                prefs.edit().putString("last_opened_uri", uri.toString()).apply()
+
+                val escaped = JSONObjectWrapper.quote(text)
+                webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
+                    restoreCursorAndScrollState()
+                    webView.post {
+                        webView.requestFocus()
+                        webView.requestLayout()
+                        webView.invalidate()
+                        webView.postInvalidate()
+                    }
+                }
+            } else {
+                currentTextPackSession = null
+                contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val reader = BufferedReader(InputStreamReader(inputStream))
+                    val content = reader.readText()
+                    hasBom = content.startsWith("\uFEFF")
+                    hasCrlf = content.contains("\r\n")
+                    val lines = content.lineSequence().count()
+                    val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
+                    AppDiagnostics.record(this, "file_read_done", "chars=${content.length} lines=$lines ms=$readMs")
+
+                    currentFileUri = uri
+                    currentFileName = fileName
+                    isDirty = false
+                    updateTitle()
+
+                    prefs.edit().putString("last_opened_uri", uri.toString()).apply()
+
+                    val escaped = JSONObjectWrapper.quote(content)
+                    webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
+                        restoreCursorAndScrollState()
+                        webView.post {
+                            webView.requestFocus()
+                            webView.requestLayout()
+                            webView.invalidate()
+                            webView.postInvalidate()
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            WindowRegistry.register(this, currentFileUri)
+            AppDiagnostics.record(this, "file_load_error", "category=${e.javaClass.simpleName}")
+            Toast.makeText(this, "Failed to open file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun restoreCursorAndScrollState() {
+        val fileName = currentFileName
+        if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val key = "doc_$fileName"
+        val savedSelection = prefs.getString("cursor_sel_$key", null)
+        val savedScroll = prefs.getInt("cursor_scroll_$key", 0)
+        if (savedSelection != null || savedScroll > 0) {
+            val escapedSelection = JSONObjectWrapper.quote(savedSelection ?: "")
+            webView.evaluateJavascript("window.editorBridge.setSelectionState($escapedSelection, $savedScroll);", null)
+        }
+    }
+
+    private fun handleSaveFile() {
+        if (currentFileUri != null) {
+            currentFileUri?.let { saveFileToUri(it) }
+        } else {
+            handleSaveAsFile()
+        }
+    }
+
+    private fun handleSaveAsFile() {
+        val defaultName = if (currentFileName.endsWith(".textpack", ignoreCase = true)) {
+            currentFileName
+        } else if (currentFileName.contains(".")) {
+            "${currentFileName.substringBeforeLast(".")}.textpack"
+        } else {
+            "$currentFileName.textpack"
+        }
+        createDocumentLauncher.launch(defaultName)
+    }
+
+    private fun handleExportDocument() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val format = prefs.getString("pref_export_format", "html") ?: "html"
+        val baseName = if (currentFileName.contains(".")) currentFileName.substringBeforeLast(".") else currentFileName
+        val defaultName = if (format == "mhtml") "$baseName.mht" else "$baseName.html"
+        exportDocumentLauncher.launch(defaultName)
+    }
+
+    private fun saveExportToUri(targetUri: Uri) {
+        val targetName = getFileNameFromUri(targetUri)
+        val isMht = targetName.endsWith(".mht", ignoreCase = true) ||
+                    targetName.endsWith(".mhtml", ignoreCase = true) ||
+                    PreferenceManager.getDefaultSharedPreferences(this).getString("pref_export_format", "html") == "mhtml"
+
+        webView.evaluateJavascript("document.querySelector('.ck-content').innerHTML;") { htmlResult ->
+            val htmlPayload = JSONObjectWrapper.unquote(htmlResult)
+            val (cleanHtml, _) = DocumentExporter.generateCleanHtml(this, htmlPayload, currentFileName)
+
+            if (isMht) {
+                Toast.makeText(this, "Generating MHTML archive...", Toast.LENGTH_SHORT).show()
+                DocumentExporter.exportToMht(this, cleanHtml, targetUri) { success, errorMsg ->
+                    if (success) {
+                        Toast.makeText(this, "MHTML archive exported successfully!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "Export failed: $errorMsg", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } else {
+                try {
+                    contentResolver.openOutputStream(targetUri, "rwt")?.use { out ->
+                        val writer = OutputStreamWriter(out)
+                        writer.write(cleanHtml)
+                        writer.flush()
+                    }
+                    Toast.makeText(this, "HTML document exported successfully!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun saveFileToUri(uri: Uri) {
+        val saveStarted = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record(this, "save_start", "mode=$currentEditorMode rev=$currentRevision")
+        webView.evaluateJavascript("window.editorBridge.getMarkdown();") { result ->
+            var markdownText = JSONObjectWrapper.unquote(result)
+            AppDiagnostics.record(this, "snapshot_taken", "mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length}")
+
+            if (hasCrlf && !markdownText.contains("\r\n") && markdownText.contains("\n")) {
+                markdownText = markdownText.replace("\r\n", "\n").replace("\n", "\r\n")
+            }
+            if (hasBom && !markdownText.startsWith("\uFEFF")) {
+                markdownText = "\uFEFF$markdownText"
+            }
+
+            try {
+                val targetFileName = getFileNameFromUri(uri)
+                val isTextPackTarget = targetFileName.endsWith(".textpack", ignoreCase = true) ||
+                                       targetFileName.endsWith(".textpack.zip", ignoreCase = true) ||
+                                       currentTextPackSession != null
+
+                if (isTextPackTarget) {
+                    val session = currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
+                    currentTextPackSession = session
+                    TextPackManager.saveTextPack(this, session, markdownText, uri)
+                } else {
+                    val output = contentResolver.openOutputStream(uri, "rwt")
+                        ?: throw java.io.IOException("Could not open document for writing")
+                    output.use { outputStream ->
+                        val writer = OutputStreamWriter(outputStream, Charsets.UTF_8)
+                        writer.write(markdownText)
+                        writer.flush()
+                    }
+                }
+
+                currentFileUri = uri
+                currentFileName = targetFileName
+                latestMarkdownContent = markdownText
+                isDirty = false
+                updateTitle()
+                val saveMs = android.os.SystemClock.elapsedRealtime() - saveStarted
+                AppDiagnostics.record(this, "save_done", "status=success mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length} ms=$saveMs")
+                Toast.makeText(this, "File saved successfully", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                val saveMs = android.os.SystemClock.elapsedRealtime() - saveStarted
+                AppDiagnostics.record(this, "save_done", "status=failure category=${e.javaClass.simpleName} ms=$saveMs")
+                Toast.makeText(this, "Failed to save file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun handleNewWindow() {
+        val intent = android.content.Intent(this, MainActivity::class.java).apply {
+            action = android.content.Intent.ACTION_MAIN
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT or android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            putExtra("is_new_document", true)
+        }
+        startActivity(intent)
+    }
+
+
+    private fun handleInsertImage() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val imageMode = prefs.getString("pref_image_mode", "picker")
+        if (imageMode == "url") {
+            showImageUrlDialog()
+        } else {
+            pickImageLauncher.launch("image/*")
+        }
+    }
+
+    private fun showImageUrlDialog() {
+        val input = EditText(this)
+        input.hint = "https://example.com/image.png"
+        AlertDialog.Builder(this)
+            .setTitle("Insert Image URL")
+            .setView(input)
+            .setPositiveButton("Insert") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.isNotEmpty()) {
+                    val escapedUrl = JSONObjectWrapper.quote(url)
+                    webView.evaluateJavascript("window.editorBridge.insertImage($escapedUrl);", null)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun insertImageFromUri(uri: Uri) {
+        try {
+            contentResolver.openInputStream(uri)?.use { inputStream ->
+                val session = currentTextPackSession
+                if (session != null) {
+                    val originalName = getFileNameFromUri(uri)
+                    val assetPath = TextPackManager.addAssetImage(session, inputStream, originalName)
+                    val markdownImageTag = "![Image]($assetPath)"
+                    val escapedTag = JSONObjectWrapper.quote(markdownImageTag)
+                    webView.evaluateJavascript("window.editorBridge.insertImage($escapedTag);", null)
+                } else {
+                    val bytes = inputStream.readBytes()
+                    val mimeType = contentResolver.getType(uri) ?: "image/png"
+                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    val dataUri = "data:$mimeType;base64,$base64"
+                    val escapedUri = JSONObjectWrapper.quote(dataUri)
+                    webView.evaluateJavascript("window.editorBridge.insertImage($escapedUri);", null)
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Failed to insert image: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun applyPluginPreferences() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val disabledPlugins = mutableListOf<String>()
+
+        val keys = listOf(
+            "heading", "bold", "italic", "strikethrough", "highlight", "code", "link",
+            "image", "blockQuote", "codeBlock", "table", "list",
+            "todoList", "indent", "horizontalLine", "sourceEditing", "findAndReplace", "autoformat"
+        )
+
+        for (key in keys) {
+            val enabled = prefs.getBoolean("pref_plugin_$key", true)
+            if (!enabled) {
+                disabledPlugins.add(key)
+            }
+        }
+
+        val jsonArray = JSONArray(disabledPlugins)
+        val escapedJson = JSONObjectWrapper.quote(jsonArray.toString())
+        webView.evaluateJavascript("window.editorBridge.configurePlugins($escapedJson);", null)
+    }
+
+    private fun showUnsavedChangesDialog(onConfirm: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.unsaved_changes_title)
+            .setMessage(R.string.unsaved_changes_message)
+            .setPositiveButton(R.string.discard) { _, _ -> onConfirm() }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun getFileNameFromUri(uri: Uri): String {
+        var result: String? = null
+        if (uri.scheme == "content") {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1) {
+                        result = cursor.getString(nameIndex)
+                    }
+                }
+            }
+        }
+        if (result == null) {
+            result = uri.path
+            val cut = result?.lastIndexOf('/') ?: -1
+            if (cut != -1) {
+                result = result?.substring(cut + 1)
+            }
+        }
+        return result ?: "Document.md"
+    }
+
+    private fun loadFontDataUri(path: String?): String {
+        if (path.isNullOrEmpty()) return ""
+        return try {
+            val file = java.io.File(path)
+            if (!file.exists()) return ""
+            val bytes = file.readBytes()
+            val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            val mimeType = when {
+                path.endsWith(".otf", ignoreCase = true) -> "font/otf"
+                path.endsWith(".woff2", ignoreCase = true) -> "font/woff2"
+                path.endsWith(".woff", ignoreCase = true) -> "font/woff"
+                else -> "font/ttf"
+            }
+            "data:$mimeType;base64,$base64"
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     inner class WebAppInterface {
         @JavascriptInterface
-        fun onDocumentChanged(content: String) {
-            // Handle content change in native code
+        fun showToast(message: String) {
+            showCustomToast(message)
         }
 
         @JavascriptInterface
-        fun openExternalUrl(url: String) {
+        fun onHostReady() {
             runOnUiThread {
-                Toast.makeText(this@MainActivity, "Opening: $url", Toast.LENGTH_SHORT).show()
+                AppDiagnostics.record(this@MainActivity, "web_host_ready")
+                val prefs = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                val selectedMode = prefs.getString("pref_editor_mode", "rich_text") ?: "rich_text"
+                currentEditorMode = selectedMode
+                AppDiagnostics.record(this@MainActivity, "init_mode_requested", "mode=$selectedMode")
+                webView.evaluateJavascript("window.editorBridge.setEditorMode('$selectedMode');", null)
+            }
+        }
+
+        @JavascriptInterface
+        fun onDirtyStateChanged(dirty: Boolean, revision: Long) {
+            runOnUiThread {
+                currentRevision = revision
+                if (isDirty != dirty) {
+                    isDirty = dirty
+                    updateTitle()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onContentChanged(markdownText: String?, revision: Long = 0) {
+            if (markdownText != null) {
+                latestMarkdownContent = markdownText
+            }
+            currentRevision = revision
+            runOnUiThread {
+                if (!isDirty) {
+                    isDirty = true
+                    updateTitle()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun reportDiagnostic(event: String, detail: String = "") {
+            AppDiagnostics.record(this@MainActivity, event, detail)
+        }
+
+        @JavascriptInterface
+        fun onEditorReady(mode: String? = null) {
+            runOnUiThread {
+                val activeMode = mode ?: currentEditorMode
+                currentEditorMode = activeMode
+                AppDiagnostics.record(this@MainActivity, "editor_ready", "mode=$activeMode")
+                val wasReady = isEditorReady
+                isEditorReady = true
+                if (!wasReady) {
+                    applyPluginPreferences()
+                    applyThemeAndFullscreenPreferences()
+                }
+                updateTitle()
+
+                pendingOpenUri?.let { uri ->
+                    pendingOpenUri = null
+                    openFile(uri)
+                }
+                pendingSharedText?.let { text ->
+                    pendingSharedText = null
+                    val escaped = JSONObjectWrapper.quote(text)
+                    webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
+                        latestMarkdownContent = text
+                        isDirty = text.isNotEmpty()
+                        updateTitle()
+                    }
+                }
+
+                webView.post {
+                    webView.requestLayout()
+                    webView.invalidate()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onNativeAction(action: String) {
+            runOnUiThread {
+                when (action) {
+                    "new" -> handleNewFile()
+                    "open" -> handleOpenFile()
+                    "save" -> handleSaveFile()
+                    "save_as" -> handleSaveAsFile()
+                    "export" -> handleExportDocument()
+                    "image" -> handleInsertImage()
+                    "new_window" -> handleNewWindow()
+                    "settings" -> settingsLauncher.launch(android.content.Intent(this@MainActivity, SettingsActivity::class.java))
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onSelectionChanged(selectionJson: String) {
+            val fileName = currentFileName
+            if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
+            if (selectionJson.isEmpty() || selectionJson == "{\"path\":[],\"offset\":0}" || selectionJson == "{}") return
+            val key = "doc_$fileName"
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+            prefs.edit().putString("cursor_sel_$key", selectionJson).apply()
+        }
+
+        @JavascriptInterface
+        fun restoreNativeCursorAndScrollState() {
+            runOnUiThread {
+                restoreCursorAndScrollState()
+            }
+        }
+
+        @JavascriptInterface
+        fun onScrollChanged(scrollTop: Int) {
+            val fileName = currentFileName
+            if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
+            val key = "doc_$fileName"
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+            prefs.edit().putInt("cursor_scroll_$key", scrollTop).apply()
+        }
+    }
+
+    object JSONObjectWrapper {
+        fun quote(string: String?): String {
+            return org.json.JSONObject.quote(string ?: "")
+        }
+
+        fun unquote(quoted: String): String {
+            if (quoted.isEmpty() || quoted == "null") return ""
+            return try {
+                org.json.JSONTokener(quoted).nextValue().toString()
+            } catch (e: Exception) {
+                quoted
             }
         }
     }
