@@ -837,7 +837,8 @@ class CodeMirrorAdapter {
     const currentDoc = this.view.state.doc.toString();
     if (currentDoc !== text) {
       this.view.dispatch({
-        changes: { from: 0, to: currentDoc.length, insert: text || '' }
+        changes: { from: 0, to: currentDoc.length, insert: text || '' },
+        annotations: Transaction.addToHistory.of(false)
       });
     }
     this.revision = 0;
@@ -995,7 +996,7 @@ function setupGroupedControlBar() {
     };
   }
 
-  document.addEventListener('pointerdown', (e) => {
+  document.addEventListener('click', (e) => {
     const strip = document.querySelector('#popup-toolbar-strip');
     const barEl = document.querySelector('.grouped-control-bar');
     if (strip && !strip.classList.contains('hidden')) {
