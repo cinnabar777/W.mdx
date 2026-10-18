@@ -1,0 +1,7 @@
+node_modules/
+web/node_modules/
+.gradle/
+build/
+app/build/
+app/src/main/assets/www/
+*.log

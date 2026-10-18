@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>WMdx Editor</title>
+  <style>
+    :root {
+      --bg-primary: #ffffff;
+      --text-primary: #222222;
+      --border-color: #e0e0e0;
+      --accent-color: #7c3aed;
+      --toolbar-bg: #f8f9fa;
+      --controlbar-bg: #ffffff;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    [data-theme="dark"] {
+      --bg-primary: #1e1e1e;
+      --text-primary: #e0e0e0;
+      --border-color: #333333;
+      --toolbar-bg: #252526;
+      --controlbar-bg: #1e1e1e;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-family);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #editor-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cm-editor {
+      height: 100%;
+      font-size: 16px;
+    }
+
+    .cm-scroller {
+      overflow: auto;
+      padding: 16px;
+      font-family: var(--font-family);
+    }
+
+    /* WYSIWYG & Obsidian Styling */
+    .cm-line {
+      line-height: 1.6;
+    }
+
+    .cm-header-1 { font-size: 2em; font-weight: bold; margin-top: 0.5em; }
+    .cm-header-2 { font-size: 1.6em; font-weight: bold; margin-top: 0.4em; }
+    .cm-header-3 { font-size: 1.3em; font-weight: bold; margin-top: 0.3em; }
+    .cm-header-4 { font-size: 1.1em; font-weight: bold; }
+    .cm-header-5 { font-size: 1em; font-weight: bold; }
+    .cm-header-6 { font-size: 0.9em; font-weight: bold; text-transform: uppercase; }
+
+    .cm-strong { font-weight: bold; }
+    .cm-emphasis { font-style: italic; }
+    .cm-strikethrough { text-decoration: line-through; }
+
+    .cm-link-widget {
+      color: var(--accent-color);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .cm-image-widget img {
+      max-width: 100%;
+      border-radius: 4px;
+      margin: 8px 0;
+    }
+
+    .cm-task-widget {
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .cm-codeblock-widget {
+      background: rgba(0, 0, 0, 0.05);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: monospace;
+      margin: 8px 0;
+    }
+
+    /* Control bar */
+    #bottom-control-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 48px;
+      padding: 0 12px;
+      background-color: var(--controlbar-bg);
+      border-top: 1px solid var(--border-color);
+      user-select: none;
+    }
+
+    .control-btn {
+      background: none;
+      border: none;
+      color: var(--text-primary);
+      font-size: 14px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .control-btn:active {
+      background-color: rgba(0, 0, 0, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div id="app-container">
+    <div id="editor-container"></div>
+    <div id="bottom-control-bar">
+      <button class="control-btn" id="btn-mode-toggle">Mode: WYSIWYG</button>
+      <div id="status-info" style="font-size: 12px; opacity: 0.7;">0 words</div>
+    </div>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
