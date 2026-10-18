@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Settings UI Text Colors">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_settings_category_title_color"
+            app:title="Category Header Text Color"
+            app:summary="Color for major section headings (default: #00E5FF)"
+            app:defaultValue="#00E5FF" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_settings_title_color"
+            app:title="Preference Title Text Color"
+            app:summary="Color for preference item titles (default: #FFFFFF)"
+            app:defaultValue="#FFFFFF" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_settings_summary_color"
+            app:title="Preference Subtext / Summary Color"
+            app:summary="Color for preference descriptions and subtext (default: #AAAAAA)"
+            app:defaultValue="#AAAAAA" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Settings UI Controls &amp; Icons">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_settings_switch_color"
+            app:title="Switch Toggle Active Color"
+            app:summary="Accent color for active switch toggles (default: #00E5FF)"
+            app:defaultValue="#00E5FF" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_settings_reset_icon_color"
+            app:title="Reset Icon (↺) Color"
+            app:summary="Tint color for reset buttons next to preferences (default: #00E5FF)"
+            app:defaultValue="#00E5FF" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_settings_bg_color"
+            app:title="Settings Screen Background Color"
+            app:summary="Background color for all settings screens (default: #000000)"
+            app:defaultValue="#000000" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

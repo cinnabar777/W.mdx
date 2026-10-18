@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Editor Plugins &amp; Toolbar Tools">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_heading"
+            app:title="Headings"
+            app:summary="Heading 1 to Heading 6 support"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_bold"
+            app:title="Bold"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_italic"
+            app:title="Italic"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_strikethrough"
+            app:title="Strikethrough"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_highlight"
+            app:title="Highlight / Markers"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_code"
+            app:title="Inline Code"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_link"
+            app:title="Links"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_image"
+            app:title="Images"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_blockQuote"
+            app:title="Block Quotes"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_codeBlock"
+            app:title="Code Blocks"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_table"
+            app:title="Tables"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_list"
+            app:title="Lists (Bulleted &amp; Numbered)"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_todoList"
+            app:title="Task / To-Do Lists"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_indent"
+            app:title="Increase &amp; Decrease Indent"
+            app:summary="Indent or outdent text blocks and list items"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_horizontalLine"
+            app:title="Horizontal Line"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_sourceEditing"
+            app:title="Source Editing Mode"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_findAndReplace"
+            app:title="Find and Replace"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_plugin_autoformat"
+            app:title="Autoformat Markdown Syntax"
+            app:summary="Automatically converts typed Markdown syntax (#, **, *, -, >) into formatted text in WYSIWYG mode"
+            app:defaultValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

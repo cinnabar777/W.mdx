@@ -2,143 +2,1357 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>WMdx Editor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CKE5</title>
   <style>
     :root {
-      --bg-primary: #ffffff;
-      --text-primary: #222222;
-      --border-color: #e0e0e0;
-      --accent-color: #7c3aed;
+      --bg-color: #000000;
+      --text-color: #ffffff;
+      --toolbar-bg: #121212;
+      --toolbar-icon-color: #ffffff;
+      --toolbar-height: 48px;
+      --border-color: #444444;
+      --button-hover: #1f1f1f;
+      --body-font-size: 16px;
+      --heading-scale: 1.0;
+      --bold-color: inherit;
+      --italic-color: inherit;
+      --link-color: #29b6f6;
+      --code-color: #ff80ab;
+      --code-bg-color: #212121;
+      --code-block-color: #e0e0e0;
+      --code-block-bg-color: #121212;
+      --body-font-family: inherit;
+      --heading-font-family: inherit;
+      --bold-font-family: inherit;
+      --italic-font-family: inherit;
+      --code-font-family: inherit;
+      --bold-font-weight: 700;
+      --italic-font-weight: 400;
+      --heading-font-weight: 700;
+      --hr-thickness: 2px;
+      --hr-color: #444444;
+      --hr-width: 100%;
+      --paragraph-justify: left;
+      --paragraph-line-height: 1.6;
+      --letter-spacing: normal;
+      --blockquote-border-width: 4px;
+      --blockquote-border-color: #444444;
+      --callout-border-width: 4px;
+      --callout-border-color: #29b6f6;
+      --toggle-bg: transparent;
+      --toggle-color: #ffffff;
+      --ck-border-surface: none !important;
+      --ck-border-width-surface: 0px !important;
+      --ck-color-base-border: transparent !important;
+      --ck-color-border-container: transparent !important;
+      --ck-color-toolbar-border: transparent !important;
+      --ck-color-base-border-light: transparent !important;
+    }
+
+    body.light-theme {
+      --hr-color: #cccccc;
+      --bg-color: #ffffff;
+      --text-color: #111111;
       --toolbar-bg: #f8f9fa;
-      --controlbar-bg: #ffffff;
-      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-
-    [data-theme="dark"] {
-      --bg-primary: #1e1e1e;
-      --text-primary: #e0e0e0;
-      --border-color: #333333;
-      --toolbar-bg: #252526;
-      --controlbar-bg: #1e1e1e;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
+      --toolbar-icon-color: #111111;
+      --border-color: #e0e0e0;
+      --button-hover: #e9ecef;
+      --link-color: #0288d1;
+      --code-color: #d81b60;
+      --code-bg-color: #f1f3f4;
+      --code-block-color: #212121;
+      --code-block-bg-color: #f5f5f5;
+      --toggle-bg: transparent;
+      --toggle-color: #111111;
     }
 
     html, body {
-      width: 100%;
+      margin: 0;
+      padding: 0;
       height: 100%;
+      width: 100%;
       overflow: hidden;
-      background-color: var(--bg-primary);
-      color: var(--text-primary);
-      font-family: var(--font-family);
-      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
     }
 
-    #app-container {
+    #editor-container {
       display: flex;
       flex-direction: column;
       height: 100vh;
       width: 100vw;
+      box-sizing: border-box;
+      position: relative;
     }
 
-    #editor-container {
+    /* Custom Compact Phone-Optimized Find & Replace Bar */
+    .search-bar-container {
+      background-color: #121212 !important;
+      color: #ffffff !important;
+      border-bottom: 1px solid #282828 !important;
+      padding: 6px 10px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 6px !important;
+      z-index: 10001 !important;
+      box-sizing: border-box !important;
+      width: 100% !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    .search-bar-container.hidden {
+      display: none !important;
+    }
+
+    .search-bar-row {
+      display: flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+
+    .search-bar-row.hidden {
+      display: none !important;
+    }
+
+    .search-input {
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+      background-color: #1e1e1e !important;
+      color: #ffffff !important;
+      border: 1px solid #333333 !important;
+      border-radius: 6px !important;
+      padding: 4px 8px !important;
+      font-size: 14px !important;
+      height: 32px !important;
+      outline: none !important;
+      box-sizing: border-box !important;
+    }
+
+    .search-input:focus {
+      border-color: #0078d4 !important;
+    }
+
+    .search-counter {
+      font-size: 11px !important;
+      color: #888888 !important;
+      white-space: nowrap !important;
+      text-align: center !important;
+      flex-shrink: 0 !important;
+      padding: 0 2px !important;
+    }
+
+    .search-icon-group {
+      display: flex !important;
+      align-items: center !important;
+      gap: 3px !important;
+      flex-shrink: 0 !important;
+    }
+
+    .search-icon-btn {
+      background-color: #1e1e1e !important;
+      color: #aaaaaa !important;
+      border: 1px solid #333333 !important;
+      border-radius: 6px !important;
+      height: 32px !important;
+      min-width: 28px !important;
+      padding: 0 5px !important;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      cursor: pointer !important;
+      user-select: none !important;
+      flex-shrink: 0 !important;
+    }
+
+    .search-icon-btn.active,
+    .search-icon-btn:active {
+      background-color: #0078d4 !important;
+      color: #ffffff !important;
+      border-color: #0078d4 !important;
+    }
+
+    #editor {
       flex: 1;
-      position: relative;
+      height: 100%;
+      width: 100%;
       overflow: hidden;
     }
 
-    .cm-editor {
-      height: 100%;
-      font-size: 16px;
+    /* CKEditor Custom Edge-to-Edge Styles */
+    .ck-editor {
+      display: flex !important;
+      flex-direction: column-reverse !important; /* Bottom Toolbar Layout */
+      height: 100% !important;
+      width: 100% !important;
+      border: none !important;
+      box-shadow: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
     }
 
-    .cm-scroller {
-      overflow: auto;
-      padding: 16px;
-      font-family: var(--font-family);
+    .ck, .ck *,
+    .ck-editor, .ck-editor *,
+    .ck-editor__top, .ck-editor__top *,
+    .ck-editor__main, .ck-editor__main *,
+    .grouped-control-bar, .grouped-control-bar * {
+      border-top: none !important;
+      border-bottom: none !important;
+      border-left: none !important;
+      border-right: none !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
     }
 
-    /* WYSIWYG & Obsidian Styling */
-    .cm-line {
+    /* Bottom Control Bar Container */
+    .ck-editor__top {
+      background: var(--toolbar-bg) !important;
+      border: none !important;
+      border-top: none !important;
+      z-index: 100;
+      margin: 0 !important;
+      padding: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    /* Hide entire bottom bar in full screen mode */
+    body.toolbar-hidden .ck-editor__top,
+    body.toolbar-hidden .grouped-control-bar {
+      display: none !important;
+    }
+
+    /* Floating Rounded Sub-Toolbar Strip */
+    .popup-toolbar-strip {
+      position: fixed;
+      bottom: calc(var(--toolbar-height) + 10px);
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #282a2e !important;
+      color: #ffffff !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      border-radius: 14px !important;
+      padding: 6px 10px !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      z-index: 10003 !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+      max-width: 94vw;
+      overflow: visible !important;
+      white-space: nowrap;
+      transition: opacity 0.2s ease;
+    }
+
+    body.light-theme .popup-toolbar-strip {
+      background-color: #f0f2f5 !important;
+      color: #111111 !important;
+      border: 1px solid rgba(0, 0, 0, 0.15) !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .popup-toolbar-strip.hidden {
+      display: none !important;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .popup-strip-btn {
+      background: transparent !important;
+      color: var(--toolbar-icon-color) !important;
+      border: none !important;
+      font-size: 15px !important;
+      font-weight: 600 !important;
+      padding: 6px 10px !important;
+      border-radius: 8px !important;
+      cursor: pointer !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      white-space: nowrap !important;
+      user-select: none !important;
+      gap: 4px !important;
+    }
+
+    .popup-strip-btn svg {
+      stroke: var(--toolbar-icon-color) !important;
+    }
+
+    .popup-strip-btn:active,
+    .popup-strip-btn.active {
+      background-color: rgba(255, 255, 255, 0.2) !important;
+    }
+
+    /* Bottom 7-Key Grouped Control Bar */
+    .grouped-control-bar {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-around !important;
+      height: var(--toolbar-height) !important;
+      padding: 4px !important;
+      box-sizing: border-box !important;
+      background-color: var(--toolbar-bg) !important;
+      border: none !important;
+      border-top: none !important;
+      padding-right: 44px !important; /* Space for corner toggle button */
+    }
+
+    .grouped-key-btn {
+      background: transparent !important;
+      color: var(--toolbar-icon-color) !important;
+      border: none !important;
+      border-radius: 8px !important;
+      height: calc(var(--toolbar-height) - 12px) !important;
+      padding: 0 10px !important;
+      cursor: pointer !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      flex: 1 !important;
+      max-width: 60px !important;
+      user-select: none !important;
+    }
+
+    .grouped-key-btn svg {
+      stroke: var(--toolbar-icon-color) !important;
+    }
+
+    .grouped-key-btn:active,
+    .grouped-key-btn.active {
+      background-color: var(--button-hover) !important;
+    }
+
+    /* Hide top main CKEditor toolbar since grouped control bar handles bottom actions */
+    .ck-editor__top .ck-toolbar {
+      display: none !important;
+    }
+
+    /* Contextual Balloon Panel & Dropdown Dark Theme Styling */
+    .ck-balloon-panel,
+    .ck-dropdown__panel,
+    .ck-list,
+    .ck-table-grid {
+      background: #222428 !important;
+      color: #ffffff !important;
+      border: 1px solid #3a3d45 !important;
+      border-radius: 10px !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+      z-index: 10005 !important;
+    }
+
+    body.light-theme .ck-balloon-panel,
+    body.light-theme .ck-dropdown__panel,
+    body.light-theme .ck-list,
+    body.light-theme .ck-table-grid {
+      background: #ffffff !important;
+      color: #111111 !important;
+      border: 1px solid #e0e0e0 !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+    }
+
+    /* Native Split Buttons and Dropdowns inside Popup Toolbar Strip */
+    .popup-toolbar-strip .ck-dropdown,
+    .popup-toolbar-strip .ck-splitbutton {
+      display: inline-flex !important;
+      align-items: center !important;
+      background: transparent !important;
+      border: none !important;
+    }
+
+    .popup-toolbar-strip .ck-button,
+    .popup-toolbar-strip .ck-splitbutton__action,
+    .popup-toolbar-strip .ck-splitbutton__arrow {
+      background: transparent !important;
+      color: var(--toolbar-icon-color, #ffffff) !important;
+      border: none !important;
+      border-radius: 8px !important;
+      padding: 6px 8px !important;
+      cursor: pointer !important;
+    }
+
+    body.light-theme .popup-toolbar-strip .ck-button,
+    body.light-theme .popup-toolbar-strip .ck-splitbutton__action,
+    body.light-theme .popup-toolbar-strip .ck-splitbutton__arrow {
+      color: #111111 !important;
+    }
+
+    .popup-toolbar-strip .ck-button:hover,
+    .popup-toolbar-strip .ck-button:active,
+    .popup-toolbar-strip .ck-button.ck-on,
+    .popup-toolbar-strip .ck-splitbutton__action:hover,
+    .popup-toolbar-strip .ck-splitbutton__action:active,
+    .popup-toolbar-strip .ck-splitbutton__arrow:hover,
+    .popup-toolbar-strip .ck-splitbutton__arrow:active {
+      background-color: rgba(255, 255, 255, 0.2) !important;
+    }
+
+    body.light-theme .popup-toolbar-strip .ck-button:hover,
+    body.light-theme .popup-toolbar-strip .ck-button:active,
+    body.light-theme .popup-toolbar-strip .ck-button.ck-on,
+    body.light-theme .popup-toolbar-strip .ck-splitbutton__action:hover,
+    body.light-theme .popup-toolbar-strip .ck-splitbutton__action:active,
+    body.light-theme .popup-toolbar-strip .ck-splitbutton__arrow:hover,
+    body.light-theme .popup-toolbar-strip .ck-splitbutton__arrow:active {
+      background-color: rgba(0, 0, 0, 0.1) !important;
+    }
+
+    .popup-toolbar-strip .ck-icon,
+    .popup-toolbar-strip .ck-dropdown__arrow {
+      color: var(--toolbar-icon-color, #ffffff) !important;
+      fill: currentColor !important;
+    }
+
+    body.light-theme .popup-toolbar-strip .ck-icon,
+    body.light-theme .popup-toolbar-strip .ck-dropdown__arrow {
+      color: #111111 !important;
+      fill: currentColor !important;
+    }
+
+    /* Floating Contextual Toolbar inside Balloon Panel */
+    .ck-balloon-panel .ck-toolbar {
+      display: flex !important;
+      background: #222428 !important;
+      color: #ffffff !important;
+      border: none !important;
+      padding: 4px !important;
+      border-radius: 8px !important;
+    }
+
+    body.light-theme .ck-balloon-panel .ck-toolbar {
+      background: #f8f9fa !important;
+      color: #111111 !important;
+    }
+
+    .ck-balloon-panel .ck-button,
+    .ck-dropdown__panel .ck-button,
+    .ck-list__item .ck-button {
+      color: #ffffff !important;
+      background: transparent !important;
+      border-radius: 6px !important;
+    }
+
+    body.light-theme .ck-balloon-panel .ck-button,
+    body.light-theme .ck-dropdown__panel .ck-button,
+    body.light-theme .ck-list__item .ck-button {
+      color: #111111 !important;
+    }
+
+    .ck-balloon-panel .ck-button:hover,
+    .ck-balloon-panel .ck-button:active,
+    .ck-balloon-panel .ck-button.ck-on,
+    .ck-dropdown__panel .ck-button:hover,
+    .ck-dropdown__panel .ck-button.ck-on,
+    .ck-list__item .ck-button:hover,
+    .ck-list__item .ck-button.ck-on {
+      background-color: rgba(255, 255, 255, 0.18) !important;
+      color: #ffffff !important;
+    }
+
+    body.light-theme .ck-balloon-panel .ck-button:hover,
+    body.light-theme .ck-balloon-panel .ck-button:active,
+    body.light-theme .ck-balloon-panel .ck-button.ck-on,
+    body.light-theme .ck-dropdown__panel .ck-button:hover,
+    body.light-theme .ck-dropdown__panel .ck-button.ck-on,
+    body.light-theme .ck-list__item .ck-button:hover,
+    body.light-theme .ck-list__item .ck-button.ck-on {
+      background-color: rgba(0, 0, 0, 0.08) !important;
+      color: #111111 !important;
+    }
+
+    /* Icon SVGs inside balloons and dropdowns */
+    .ck-balloon-panel .ck-button .ck-icon,
+    .ck-dropdown__panel .ck-button .ck-icon,
+    .ck-list__item .ck-button .ck-icon {
+      color: #ffffff !important;
+    }
+
+    body.light-theme .ck-balloon-panel .ck-button .ck-icon,
+    body.light-theme .ck-dropdown__panel .ck-button .ck-icon,
+    body.light-theme .ck-list__item .ck-button .ck-icon {
+      color: #111111 !important;
+    }
+
+    /* Labeled Input Fields & Forms (Link Balloon Form, Image URL Form, etc.) */
+    .ck-balloon-panel,
+    .ck-dropdown__panel {
+      --ck-color-text: #ffffff;
+      --ck-color-base-text: #ffffff;
+    }
+
+    body.light-theme .ck-balloon-panel,
+    body.light-theme .ck-dropdown__panel {
+      --ck-color-text: #111111;
+      --ck-color-base-text: #111111;
+    }
+
+    .ck-labeled-field-view,
+    .ck-form,
+    .ck-form__header,
+    .ck-form__header__label,
+    .ck-form__row {
+      color: #ffffff !important;
+    }
+
+    body.light-theme .ck-labeled-field-view,
+    body.light-theme .ck-form,
+    body.light-theme .ck-form__header,
+    body.light-theme .ck-form__header__label,
+    body.light-theme .ck-form__row {
+      color: #111111 !important;
+    }
+
+    .ck-labeled-field-view .ck-label {
+      color: #bbbbbb !important;
+      background-color: transparent !important;
+    }
+
+    body.light-theme .ck-labeled-field-view .ck-label {
+      color: #555555 !important;
+    }
+
+    .ck-labeled-field-view .ck-input-text {
+      background-color: #18191c !important;
+      color: #ffffff !important;
+      border: 1px solid #444444 !important;
+      border-radius: 6px !important;
+      padding: 6px 10px !important;
+    }
+
+    body.light-theme .ck-labeled-field-view .ck-input-text {
+      background-color: #f1f3f4 !important;
+      color: #111111 !important;
+      border: 1px solid #cccccc !important;
+    }
+
+    .ck-button.ck-button-action,
+    .ck-button.ck-button-save {
+      background-color: #0078d4 !important;
+      color: #ffffff !important;
+      padding: 6px 16px !important;
+      border-radius: 6px !important;
+    }
+
+    .ck-button.ck-button-action:hover,
+    .ck-button.ck-button-action:active,
+    .ck-button.ck-button-save:hover,
+    .ck-button.ck-button-save:active {
+      background-color: #106ebe !important;
+    }
+
+    /* Table Grid Picker Styling */
+    .ck-table-grid__cell {
+      border-color: rgba(255, 255, 255, 0.25) !important;
+      background-color: rgba(255, 255, 255, 0.12) !important;
+    }
+
+    .ck-table-grid__cell.ck-table-grid__cell_focused,
+    .ck-table-grid__cell.ck-table-grid__cell_selected {
+      background-color: #0078d4 !important;
+      border-color: #0078d4 !important;
+    }
+
+    .ck-table-grid__label {
+      color: #ffffff !important;
+    }
+
+    body.light-theme .ck-table-grid__cell {
+      border-color: #cccccc !important;
+      background-color: #f1f3f4 !important;
+    }
+
+    body.light-theme .ck-table-grid__cell.ck-table-grid__cell_focused,
+    body.light-theme .ck-table-grid__cell.ck-table-grid__cell_selected {
+      background-color: #0078d4 !important;
+      border-color: #0078d4 !important;
+    }
+
+    body.light-theme .ck-table-grid__label {
+      color: #111111 !important;
+    }
+
+    /* Tooltip Styling */
+    .ck-tooltip .ck-tooltip__text {
+      background-color: #111111 !important;
+      color: #ffffff !important;
+      border-radius: 4px !important;
+      padding: 4px 8px !important;
+    }
+
+    /* Suppress tooltips inside popup toolbar strip to avoid overlapping buttons */
+    .popup-toolbar-strip .ck-tooltip {
+      display: none !important;
+    }
+
+    .ck-editor__main {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      height: 100% !important;
+      background-color: var(--bg-color) !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      border-bottom: none !important;
+    }
+
+    /* Line Wrap Toggle Rule: Enables native horizontal scrolling instead of caret drag */
+    body.no-line-wrap .ck-editor__main {
+      overflow-x: auto !important;
+    }
+
+    body.no-line-wrap .ck-content {
+      white-space: pre !important;
+      width: max-content !important;
+      min-width: 100% !important;
+    }
+
+    .ck-content {
+      touch-action: pan-x pan-y;
+      min-height: 100% !important;
+      padding: 8px 12px !important;
+      margin: 0 !important;
+      box-sizing: border-box;
+      font-size: var(--body-font-size) !important;
+      font-family: var(--body-font-family), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+      letter-spacing: var(--letter-spacing) !important;
       line-height: 1.6;
+      background-color: var(--bg-color) !important;
+      color: var(--text-color) !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
     }
 
-    .cm-header-1 { font-size: 2em; font-weight: bold; margin-top: 0.5em; }
-    .cm-header-2 { font-size: 1.6em; font-weight: bold; margin-top: 0.4em; }
-    .cm-header-3 { font-size: 1.3em; font-weight: bold; margin-top: 0.3em; }
-    .cm-header-4 { font-size: 1.1em; font-weight: bold; }
-    .cm-header-5 { font-size: 1em; font-weight: bold; }
-    .cm-header-6 { font-size: 0.9em; font-weight: bold; text-transform: uppercase; }
-
-    .cm-strong { font-weight: bold; }
-    .cm-emphasis { font-style: italic; }
-    .cm-strikethrough { text-decoration: line-through; }
-
-    .cm-link-widget {
-      color: var(--accent-color);
-      text-decoration: underline;
-      cursor: pointer;
+    /* Paragraph Exclusive Typography Overrides */
+    .ck-content p {
+      text-align: var(--paragraph-justify) !important;
+      line-height: var(--paragraph-line-height) !important;
     }
 
-    .cm-image-widget img {
-      max-width: 100%;
+    /* Text Selection Highlight Styling Overrides for High Contrast */
+    ::selection {
+      background-color: #0078d4 !important;
+      color: #ffffff !important;
+    }
+
+    .ck-content ::selection,
+    .ck-content *::selection {
+      background-color: #0078d4 !important;
+      color: #ffffff !important;
+    }
+
+    /* Relative Heading Scalings, Font Families & Weights */
+    .ck-content h1, .ck-content h2, .ck-content h3, .ck-content h4, .ck-content h5, .ck-content h6,
+    .ck-content h1 *, .ck-content h2 *, .ck-content h3 *, .ck-content h4 *, .ck-content h5 *, .ck-content h6 *,
+    .ck-content .ck-heading_heading1, .ck-content .ck-heading_heading2, .ck-content .ck-heading_heading3,
+    .ck-content .ck-heading_heading4, .ck-content .ck-heading_heading5, .ck-content .ck-heading_heading6,
+    .ck-content .ck-heading_heading1 *, .ck-content .ck-heading_heading2 *, .ck-content .ck-heading_heading3 *,
+    .ck-content .ck-heading_heading4 *, .ck-content .ck-heading_heading5 *, .ck-content .ck-heading_heading6 *,
+    .ck-heading-dropdown .ck-button__label {
+      font-family: var(--heading-font-family), var(--body-font-family), sans-serif !important;
+      font-weight: var(--heading-font-weight, 700) !important;
+      text-align: var(--heading-align, inherit) !important;
+      line-height: var(--heading-line-height, 1.2) !important;
+      letter-spacing: var(--heading-letter-spacing, 0px) !important;
+      text-transform: var(--heading-text-transform, none) !important;
+      text-decoration: var(--heading-underline-style, none) !important;
+      text-decoration-thickness: var(--heading-underline-thickness, 2px) !important;
+      text-decoration-color: var(--heading-underline-color, currentColor) !important;
+    }
+    .ck-content h1, .ck-content h2, .ck-content h3, .ck-content h4, .ck-content h5, .ck-content h6 {
+      margin-top: var(--heading-margin-top, 16px) !important;
+      margin-bottom: var(--heading-margin-bottom, 8px) !important;
+    }
+    .ck-content h1 { font-size: calc(2.0em * var(--heading-scale)) !important; }
+    .ck-content h2 { font-size: calc(1.6em * var(--heading-scale)) !important; }
+    .ck-content h3 { font-size: calc(1.3em * var(--heading-scale)) !important; }
+    .ck-content h4 { font-size: calc(1.1em * var(--heading-scale)) !important; }
+    .ck-content h5 { font-size: calc(1.0em * var(--heading-scale)) !important; }
+    .ck-content h6 { font-size: calc(0.9em * var(--heading-scale)) !important; }
+
+    /* Heading Colors 1 to 6 */
+    .ck-content h1, .ck-content h1 * { color: var(--heading-1-color, inherit) !important; }
+    .ck-content h2, .ck-content h2 * { color: var(--heading-2-color, inherit) !important; }
+    .ck-content h3, .ck-content h3 * { color: var(--heading-3-color, inherit) !important; }
+    .ck-content h4, .ck-content h4 * { color: var(--heading-4-color, inherit) !important; }
+    .ck-content h5, .ck-content h5 * { color: var(--heading-5-color, inherit) !important; }
+    .ck-content h6, .ck-content h6 * { color: var(--heading-6-color, inherit) !important; }
+
+    /* Custom Paragraph & Body Typography */
+    .ck-content p {
+      text-align: var(--paragraph-align, var(--paragraph-justify, left)) !important;
+      line-height: var(--paragraph-line-height, 1.6) !important;
+      text-indent: var(--paragraph-first-line-indent, 0px) !important;
+      margin-top: var(--paragraph-margin-top, 0px) !important;
+      margin-bottom: var(--paragraph-margin-bottom, 8px) !important;
+    }
+
+    /* Custom Bold / Italic / Link Colors, Fonts, and Weights */
+    .ck-content strong, .ck-content strong *,
+    .ck-content b, .ck-content b * {
+      color: var(--bold-color, inherit) !important;
+      font-family: var(--bold-font-family), inherit !important;
+      font-weight: var(--bold-font-weight, 700) !important;
+    }
+    .ck-content em, .ck-content em *,
+    .ck-content i, .ck-content i * {
+      color: var(--italic-color, inherit) !important;
+      font-family: var(--italic-font-family), inherit !important;
+      font-weight: var(--italic-font-weight, 400) !important;
+    }
+    .ck-content a {
+      color: var(--link-color) !important;
+      text-decoration: var(--link-decoration, underline) !important;
+    }
+
+    /* Custom Inline Code Styling & Font */
+    .ck-content code {
+      color: var(--code-color) !important;
+      background-color: var(--code-bg-color) !important;
+      font-family: var(--code-font-family), monospace !important;
+      padding: var(--code-padding, 4px) !important;
+      border-radius: var(--code-border-radius, 4px) !important;
+    }
+
+    /* Lists & Todos Styling */
+    .ck-content ul, .ck-content ol {
+      padding-left: var(--list-left-indent, 24px) !important;
+    }
+    .ck-content li {
+      margin-bottom: var(--list-item-spacing, 4px) !important;
+      line-height: var(--list-line-height, 1.5) !important;
+    }
+    .ck-content ul > li::marker {
+      color: var(--list-bullet-color, currentColor) !important;
+    }
+    .ck-content ol > li::marker {
+      color: var(--list-number-color, currentColor) !important;
+    }
+    .ck-content .todo-list__label > input[type="checkbox"] {
+      accent-color: var(--todo-checked-color, #00e5ff) !important;
+      border-color: var(--todo-unchecked-color, #888888) !important;
+    }
+
+    /* Table Dark & Light Theme Styling Overrides */
+    .ck-content table,
+    .ck-content figure.table,
+    .ck-content figure.table table {
+      border-color: var(--table-border-color, var(--border-color)) !important;
+      background-color: transparent !important;
+      color: var(--text-color) !important;
+    }
+
+    .ck-content table td,
+    .ck-content table th,
+    .ck-content figure.table table td,
+    .ck-content figure.table table th {
+      border: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, var(--border-color)) !important;
+      color: var(--table-cell-color, var(--text-color)) !important;
+      background-color: var(--table-cell-bg, transparent) !important;
+      padding: var(--table-cell-padding, 8px) !important;
+    }
+
+    .ck-content table th,
+    .ck-content figure.table th,
+    .ck-content figure.table table th {
+      background-color: var(--table-header-bg, rgba(255, 255, 255, 0.12)) !important;
+      color: var(--table-header-color, var(--text-color)) !important;
+      font-weight: var(--table-header-font-weight, 700) !important;
+    }
+
+    body.light-theme .ck-content table th,
+    body.light-theme .ck-content figure.table th,
+    body.light-theme .ck-content figure.table table th {
+      background-color: var(--table-header-bg, rgba(0, 0, 0, 0.05)) !important;
+    }
+
+    .ck-content table td *,
+    .ck-content table th *,
+    .ck-content figure.table table td *,
+    .ck-content figure.table table th * {
+      color: var(--table-cell-color, var(--text-color)) !important;
+    }
+
+    /* Custom Code Block Styling, Font & Language Label Position */
+    .ck-content pre {
+      position: relative !important;
+      color: var(--code-block-color) !important;
+      background-color: var(--code-block-bg-color) !important;
+      font-family: var(--code-font-family), monospace !important;
+      letter-spacing: normal !important;
+      border-radius: var(--code-block-border-radius, 6px) !important;
+      padding: var(--code-block-padding, 16px) !important;
+      padding-top: calc(var(--code-block-padding, 16px) + 20px) !important;
+      line-height: var(--code-block-line-height, 1.4) !important;
+    }
+
+    /* CKEditor supplies the language name on the editing-view pre element. */
+    .ck-content pre::before {
+      content: 'Plain text' !important;
+      position: absolute !important;
+      top: 6px !important;
+      left: 8px !important;
+      max-width: calc(100% - 110px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px !important;
+      color: var(--code-block-lang-label-color, #aaaaaa) !important;
+      pointer-events: none !important;
+      display: block !important;
+    }
+    .ck-content pre[data-language]:not([data-language=""])::before {
+      content: attr(data-language) !important;
+    }
+    .ck-content pre[data-language="plaintext"]::before {
+      content: 'Plain text' !important;
+    }
+
+    .ck-content pre .ck-code-block-language-label {
+      position: absolute !important;
+      top: 6px !important;
+      left: 8px !important;
+      right: auto !important;
+      font-size: 12px !important;
+      font-weight: 700 !important;
+      color: var(--code-block-lang-label-color, #ffffff) !important;
+      background: rgba(255, 255, 255, 0.2) !important;
+      border: 1px solid rgba(255, 255, 255, 0.35) !important;
+      border-radius: 4px !important;
+      padding: 3px 10px !important;
+      cursor: pointer !important;
+      user-select: none !important;
+      pointer-events: none !important;
+      z-index: 10 !important;
+      display: inline-block !important;
+    }
+
+    /* Copy has its own target, separate from the language label. */
+    .ck-content pre::after {
+      content: 'COPY' !important;
+      position: absolute !important;
+      top: 6px !important;
+      left: auto !important;
+      right: 8px !important;
+      height: 26px !important;
+      width: 60px !important;
+      text-align: center !important;
+      font-size: 12px !important;
+      padding: 3px 10px !important;
+      background: transparent !important;
+      color: var(--code-block-lang-label-color, #aaaaaa) !important;
+      border: none !important;
+      cursor: pointer !important;
+      user-select: none !important;
+      z-index: 20 !important;
+    }
+
+    .ck-content pre code {
+      color: var(--code-block-color) !important;
+      background-color: var(--code-block-bg-color) !important;
+      font-family: var(--code-font-family), monospace !important;
+    }
+
+    /* Footnotes Styling & Themes */
+    .ck-content .footnote-section,
+    .ck-content .ck-widget.footnote-section,
+    .ck-content ol.footnote-section {
+      background-color: var(--footnote-bg-color, rgba(255, 255, 255, 0.05)) !important;
+      border: 1px solid var(--border-color, #444444) !important;
+      border-radius: 6px !important;
+      padding: 12px !important;
+      margin-top: 1.5em !important;
+      color: var(--footnote-text-color, var(--text-color)) !important;
+    }
+
+    body.light-theme .ck-content .footnote-section,
+    body.light-theme .ck-content .ck-widget.footnote-section,
+    body.light-theme .ck-content ol.footnote-section {
+      background-color: var(--footnote-bg-color, rgba(0, 0, 0, 0.03)) !important;
+    }
+
+    .ck-content .footnote-item,
+    .ck-content .footnote-item * {
+      color: var(--footnote-text-color, var(--text-color)) !important;
+      font-size: var(--footnote-font-size, 14px) !important;
+    }
+
+    .ck-content .footnote-content,
+    .ck-content .footnote-content.ck-editor__nested-editable,
+    .ck-content .footnote-content.ck-editor__editable {
+      background-color: transparent !important;
+      color: var(--footnote-text-color, var(--text-color)) !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+    }
+
+    .ck-content .footnote-reference,
+    .ck-content .footnote-reference *,
+    .ck-content sup[data-footnote-reference],
+    .ck-content sup[data-footnote-reference] * {
+      color: var(--footnote-ref-color, var(--link-color, #29b6f6)) !important;
+      font-weight: bold !important;
+    }
+
+    .ck-content .footnote-back-link,
+    .ck-content .footnote-back-link * {
+      color: var(--footnote-link-color, var(--link-color, #29b6f6)) !important;
+      text-decoration: none !important;
+    }
+
+    /* Block Quote & Callout Line Styling Overrides */
+    .ck-content blockquote {
+      border-left: var(--blockquote-border-width) var(--blockquote-border-style, solid) var(--blockquote-border-color) !important;
+      background-color: var(--blockquote-bg-color, transparent) !important;
+      color: var(--blockquote-text-color, inherit) !important;
+      margin-left: var(--blockquote-left-indent, 0px) !important;
+      padding-left: var(--blockquote-padding, 12px) !important;
+      padding-top: 4px !important;
+      padding-bottom: 4px !important;
+      margin-right: 0 !important;
+      font-style: italic;
+    }
+
+    .ck-content .callout,
+    .ck-content [data-callout] {
+      border-left: var(--callout-border-width) var(--callout-border-style, solid) var(--callout-border-color) !important;
+      background-color: var(--callout-bg-color, transparent) !important;
+      padding: var(--callout-padding, 12px) !important;
       border-radius: 4px;
-      margin: 8px 0;
+      margin: 8px 0 !important;
     }
 
-    .cm-task-widget {
-      margin-right: 6px;
-      vertical-align: middle;
+    /* Horizontal Rule Custom Styling & Centering */
+    .ck-content .ck-horizontal-line {
+      background: transparent !important;
+      border: none !important;
+      margin-top: 1em !important;
+      margin-bottom: 1em !important;
+      padding: 0 !important;
+      display: flex !important;
+      justify-content: center !important;
     }
 
-    .cm-codeblock-widget {
-      background: rgba(0, 0, 0, 0.05);
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-family: monospace;
-      margin: 8px 0;
+    .ck-content hr,
+    .ck-content .ck-horizontal-line hr {
+      border: none !important;
+      height: var(--hr-thickness) !important;
+      border-top: var(--hr-thickness) var(--hr-style, solid) var(--hr-color) !important;
+      background-color: transparent !important;
+      width: var(--hr-width) !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+      margin-top: var(--hr-margin-top, 16px) !important;
+      margin-bottom: var(--hr-margin-bottom, 16px) !important;
+      display: block !important;
     }
 
-    /* Control bar */
-    #bottom-control-bar {
+    /* Active Toolbar Icon Accent Color */
+    .grouped-key-btn.active svg,
+    .popup-strip-btn.active svg {
+      stroke: var(--toolbar-active-icon-color, var(--toolbar-icon-color)) !important;
+    }
+
+    /* Slide-over Table of Contents (TOC) Panel */
+    #toc-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 10001;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+
+    #toc-overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    #toc-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 80vw;
+      max-width: 360px;
+      height: 100vh;
+      background-color: var(--toolbar-bg);
+      color: var(--text-color);
+      border-left: 1px solid var(--border-color);
+      z-index: 10002;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      display: flex;
+      flex-direction: column;
+      box-shadow: -4px 0 16px rgba(0, 0, 0, 0.4);
+      box-sizing: border-box;
+    }
+
+    #toc-panel.open {
+      transform: translateX(0);
+    }
+
+    .toc-header {
+      padding: 16px;
+      font-size: 16px;
+      font-weight: bold;
+      border-bottom: 1px solid var(--border-color);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 48px;
-      padding: 0 12px;
-      background-color: var(--controlbar-bg);
-      border-top: 1px solid var(--border-color);
+    }
+
+    .toc-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 8px;
+    }
+
+    .toc-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 10px;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 4px;
+    }
+
+    .toc-item:active {
+      background-color: var(--button-hover);
+    }
+
+    .toc-item.active-section {
+      color: #ffff00 !important;
+      font-weight: bold !important;
+    }
+
+    .toc-item.active-section .toc-text {
+      color: #ffff00 !important;
+      font-weight: bold !important;
+    }
+
+    .toc-toggle {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      margin-right: 8px;
+      border-radius: 4px;
+      background-color: rgba(255, 255, 255, 0.15);
+      font-size: 24px;
+      flex-shrink: 0;
       user-select: none;
     }
 
-    .control-btn {
-      background: none;
-      border: none;
-      color: var(--text-primary);
-      font-size: 14px;
-      padding: 6px 12px;
-      border-radius: 4px;
-      cursor: pointer;
+    .toc-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      font-size: 16px;
     }
 
-    .control-btn:active {
-      background-color: rgba(0, 0, 0, 0.1);
+    .toc-global-toggle-btn {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+      font-size: 20px;
+      font-weight: bold;
+      padding: 2px 10px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .toc-item.level-1 { padding-left: 8px; font-weight: 600; }
+    .toc-item.level-2 { padding-left: 20px; }
+    .toc-item.level-3 { padding-left: 32px; }
+    .toc-item.level-4 { padding-left: 44px; }
+    .toc-item.level-5 { padding-left: 56px; }
+    .toc-item.level-6 { padding-left: 68px; }
+
+    /* Fast Scroll Bar Track and Thumb Overlay */
+    #fast-scrollbar-track {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 18px;
+      height: 100vh;
+      z-index: 10005;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    #fast-scrollbar-track.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    #fast-scrollbar-thumb {
+      position: absolute;
+      top: 0;
+      right: 2px;
+      width: 12px;
+      height: 60px;
+      background-color: rgba(255, 255, 255, 0.12) !important;
+      border-radius: 6px;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
+
+    #fast-scrollbar-thumb:active {
+      cursor: grabbing;
+      background-color: rgba(255, 255, 255, 0.3) !important;
+    }
+
+    /* Dark Mode Source Editing View Fix */
+    .ck-source-editing-area,
+    .ck-source-editing-area textarea {
+      background-color: var(--bg-color) !important;
+      color: var(--text-color) !important;
+      border: none !important;
+      font-family: monospace !important;
+      font-size: var(--body-font-size) !important;
+      padding: 12px !important;
+      box-sizing: border-box !important;
+    }
+
+    /* Transparent Floating Corner Toggle Button */
+    .floating-toggle-btn {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      z-index: 10010;
+      width: 34px;
+      height: 34px;
+      background: transparent !important;
+      background-color: transparent !important;
+      color: var(--text-color) !important;
+      border: none !important;
+      font-size: 18px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: none !important;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      opacity: 0.7;
+    }
+
+    .floating-toggle-btn:active {
+      transform: scale(0.92);
+      opacity: 1.0;
+    }
+
+    /* CodeMirror 6 Live Preview Styling Rules */
+    .cm-editor {
+      height: 100% !important;
+      background-color: var(--bg-color) !important;
+      color: var(--text-color) !important;
+    }
+    .cm-scroller {
+      overflow: auto !important;
+    }
+    .cm-editor:not(.cm-show-line-numbers) .cm-gutters {
+      display: none !important;
+      width: 0 !important;
+    }
+    .cm-editor.cm-show-line-numbers .cm-gutters {
+      display: flex !important;
+      width: auto !important;
+      background-color: var(--toolbar-bg, #121212) !important;
+      color: var(--text-color, #888888) !important;
+      border-right: 1px solid var(--border-color, #444444) !important;
+    }
+    .cm-table {
+      font-family: monospace !important;
+      background-color: var(--table-cell-bg, rgba(255, 255, 255, 0.03)) !important;
+      border-left: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444444) !important;
+      border-right: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444444) !important;
+      padding-left: 8px !important;
+    }
+    .cm-table-header {
+      font-weight: bold !important;
+      background-color: var(--table-header-bg, rgba(255, 255, 255, 0.12)) !important;
+      color: var(--table-header-color, var(--text-color)) !important;
+    }
+    .cm-activeLine {
+      background-color: rgba(255, 255, 255, 0.05) !important;
+    }
+    .cm-content {
+      font-size: var(--body-font-size, 16px) !important;
+      font-family: var(--body-font-family), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+      line-height: var(--paragraph-line-height, 1.6) !important;
+      color: var(--text-color, #ffffff) !important;
+      caret-color: var(--text-color, #ffffff) !important;
+      padding: 12px 16px !important;
+    }
+    .cm-content .cm-line {
+      color: var(--text-color, #ffffff) !important;
+    }
+    .cm-heading {
+      font-family: var(--heading-font-family), var(--body-font-family), sans-serif !important;
+      font-weight: var(--heading-font-weight, 700) !important;
+      line-height: var(--heading-line-height, 1.2) !important;
+    }
+    .cm-heading-1 { font-size: calc(2.0em * var(--heading-scale, 1.0)) !important; color: var(--heading-1-color, inherit) !important; padding-top: var(--heading-margin-top, 16px) !important; padding-bottom: var(--heading-margin-bottom, 8px) !important; }
+    .cm-heading-2 { font-size: calc(1.6em * var(--heading-scale, 1.0)) !important; color: var(--heading-2-color, inherit) !important; padding-top: var(--heading-margin-top, 16px) !important; padding-bottom: var(--heading-margin-bottom, 8px) !important; }
+    .cm-heading-3 { font-size: calc(1.3em * var(--heading-scale, 1.0)) !important; color: var(--heading-3-color, inherit) !important; padding-top: var(--heading-margin-top, 16px) !important; padding-bottom: var(--heading-margin-bottom, 8px) !important; }
+    .cm-heading-4 { font-size: calc(1.1em * var(--heading-scale, 1.0)) !important; color: var(--heading-4-color, inherit) !important; padding-top: var(--heading-margin-top, 16px) !important; padding-bottom: var(--heading-margin-bottom, 8px) !important; }
+    .cm-heading-5 { font-size: calc(1.0em * var(--heading-scale, 1.0)) !important; color: var(--heading-5-color, inherit) !important; padding-top: var(--heading-margin-top, 16px) !important; padding-bottom: var(--heading-margin-bottom, 8px) !important; }
+    .cm-heading-6 { font-size: calc(0.9em * var(--heading-scale, 1.0)) !important; color: var(--heading-6-color, inherit) !important; padding-top: var(--heading-margin-top, 16px) !important; padding-bottom: var(--heading-margin-bottom, 8px) !important; }
+
+    .cm-bold { font-weight: var(--bold-font-weight, 700) !important; color: var(--bold-color, inherit) !important; }
+    .cm-italic { font-style: italic !important; color: var(--italic-color, inherit) !important; }
+    .cm-strikethrough { text-decoration: line-through !important; }
+    .cm-inline-code {
+      font-family: var(--code-font-family), monospace !important;
+      color: var(--code-color, #ff80ab) !important;
+      background-color: var(--code-bg-color, #212121) !important;
+      padding: var(--code-padding, 2px 4px) !important;
+      border-radius: var(--code-border-radius, 4px) !important;
+    }
+    .cm-blockquote {
+      border-left: var(--blockquote-border-width, 4px) var(--blockquote-border-style, solid) var(--blockquote-border-color, #444444) !important;
+      background-color: var(--blockquote-bg-color, transparent) !important;
+      color: var(--blockquote-text-color, inherit) !important;
+      padding-left: var(--blockquote-padding, 12px) !important;
+    }
+    .cm-link {
+      color: var(--link-color, #29b6f6) !important;
+      text-decoration: var(--link-decoration, underline) !important;
+    }
+    .cm-hr {
+      border-bottom: var(--hr-thickness, 2px) var(--hr-style, solid) var(--hr-color, #444444) !important;
+    }
+    .cm-todo-checkbox {
+      appearance: none !important;
+      -webkit-appearance: none !important;
+      width: 16px !important;
+      height: 16px !important;
+      border: 1.5px solid #666666 !important;
+      border-radius: 3px !important;
+      background-color: #222222 !important;
+      cursor: pointer !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin-right: 6px !important;
+      position: relative !important;
+      vertical-align: text-bottom !important;
+      box-sizing: border-box !important;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .cm-todo-checkbox:checked {
+      background-color: #333333 !important;
+      border-color: #888888 !important;
+    }
+
+    .cm-todo-checkbox:checked::after {
+      content: '' !important;
+      width: 4px !important;
+      height: 8px !important;
+      border: solid #ffffff !important;
+      border-width: 0 2px 2px 0 !important;
+      transform: rotate(45deg) translate(-1px, -1px) !important;
+      display: block !important;
+    }
+
+    body.light-theme .cm-todo-checkbox {
+      background-color: #ffffff !important;
+      border-color: #999999 !important;
+    }
+
+    body.light-theme .cm-todo-checkbox:checked {
+      background-color: #e0e0e0 !important;
+      border-color: #555555 !important;
+    }
+
+    body.light-theme .cm-todo-checkbox:checked::after {
+      border-color: #111111 !important;
+    }
+    .cm-highlight {
+      background-color: #ffe066 !important;
+      color: #111111 !important;
+      border-radius: 3px !important;
+      padding: 1px 4px !important;
+    }
+    .cm-wikilink {
+      color: var(--link-color, #29b6f6) !important;
+      font-weight: 600 !important;
+      cursor: pointer !important;
+    }
+    .cm-underline {
+      text-decoration: underline !important;
+    }
+    .cm-callout {
+      border-left: var(--callout-border-width, 4px) solid var(--callout-border-color, #29b6f6) !important;
+      background-color: var(--callout-bg-color, rgba(41, 182, 246, 0.12)) !important;
+      padding-left: 12px !important;
+      border-radius: 4px !important;
     }
   </style>
 </head>
-<body>
-  <div id="app-container">
-    <div id="editor-container"></div>
-    <div id="bottom-control-bar">
-      <button class="control-btn" id="btn-mode-toggle">Mode: WYSIWYG</button>
-      <div id="status-info" style="font-size: 12px; opacity: 0.7;">0 words</div>
+<body class="toolbar-hidden">
+  <div id="editor-container">
+    <div id="custom-search-bar" class="search-bar-container hidden">
+      <div class="search-bar-row">
+        <input type="text" id="search-input" class="search-input" placeholder="Find..." />
+        <span id="search-counter" class="search-counter"></span>
+        <div class="search-icon-group">
+          <button id="search-btn-prev" class="search-icon-btn" title="Find Previous">▲</button>
+          <button id="search-btn-next" class="search-icon-btn" title="Find Next">▼</button>
+          <button id="search-btn-highlight" class="search-icon-btn active" title="Highlight All Instances">≡</button>
+          <button id="search-btn-regex" class="search-icon-btn" title="Regular Expression">.*</button>
+          <button id="search-btn-close" class="search-icon-btn" title="Close Search">✕</button>
+        </div>
+      </div>
+      <div id="search-replace-row" class="search-bar-row replace-row">
+        <input type="text" id="replace-input" class="search-input" placeholder="Replace..." />
+        <div class="search-icon-group">
+          <button id="search-btn-replace-one" class="search-icon-btn" title="Replace One">1➔</button>
+          <button id="search-btn-replace-all" class="search-icon-btn" title="Replace All">∀➔</button>
+          <button id="search-btn-case" class="search-icon-btn" title="Match Case">Aa</button>
+          <button id="search-btn-word" class="search-icon-btn" title="Match Whole Word">\b</button>
+        </div>
+      </div>
+    </div>
+    <div id="editor"></div>
+  </div>
+  <div id="popup-toolbar-strip" class="popup-toolbar-strip hidden"></div>
+  <div id="fast-scrollbar-track">
+    <div id="fast-scrollbar-thumb"></div>
+  </div>
+  <div id="toc-overlay"></div>
+  <div id="toc-panel">
+    <div class="toc-header">
+      <span>Table of Contents</span>
+      <button id="toc-global-toggle" class="toc-global-toggle-btn" title="Toggle Expand/Collapse All">±</button>
+    </div>
+    <div id="toc-content" class="toc-content">
+      <div style="padding:16px;color:#888;font-size:14px;">No headings in document.</div>
     </div>
   </div>
+  <button id="floating-toggle-btn" class="floating-toggle-btn" title="Toggle Toolbar">⟨</button>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

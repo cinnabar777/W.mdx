@@ -28,6 +28,10 @@ jobs:
           cd web
           npm ci
 
+      - name: Build Web Bundle
+        run: |
+          node web/build.cjs
+
       - name: Run Web Unit Tests
         run: |
           node --test web/test/*.test.cjs
