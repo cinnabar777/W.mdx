@@ -2367,6 +2367,7 @@ window.editorBridge = {
     // Code blocks
     setCssVar('--code-block-color', prefs.pref_code_block_color);
     setCssVar('--code-block-bg-color', prefs.pref_code_block_bg_color);
+    setCssVar('--code-block-font-size', prefs.pref_code_block_font_size, 'px');
     setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
     setCssVar('--code-block-border-radius', prefs.pref_code_block_border_radius, 'px');
     setCssVar('--code-block-line-height', prefs.pref_code_block_line_height);

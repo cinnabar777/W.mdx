@@ -127,6 +127,7 @@ object PreferenceResetHelper {
             key == "pref_table_cell_bg_color" -> "default"
             key == "pref_table_cell_text_color" -> "default"
             key == "pref_table_cell_padding" -> 8
+            key == "pref_code_block_font_size" -> 14
             key == "pref_code_block_padding" -> 16
             key == "pref_code_block_border_radius" -> 6
             key == "pref_code_block_line_height" -> "1.4"

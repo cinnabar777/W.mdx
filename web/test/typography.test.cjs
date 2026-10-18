@@ -67,6 +67,11 @@ const paragraphSettingsPath = path.join(
   '../../app/src/main/res/xml/preferences_styling_paragraph.xml'
 );
 const paragraphSettings = fs.readFileSync(paragraphSettingsPath, 'utf8');
+const codeSettingsPath = path.join(
+  __dirname,
+  '../../app/src/main/res/xml/preferences_styling_code.xml'
+);
+const codeSettings = fs.readFileSync(codeSettingsPath, 'utf8');
 
 test('paragraph and list typography selectors have matching editor line classes', () => {
   assert.match(source, /tree\.resolveInner\(probe, 1\)/);
@@ -85,4 +90,12 @@ test('letter-spacing control is labeled as paragraph-only, not global', () => {
   assert.match(paragraphSettings, /app:title="Paragraph Letter Spacing \(px\)"/);
   assert.match(paragraphSettings, /Letter spacing for regular paragraph text only/);
   assert.doesNotMatch(paragraphSettings, /Global Letter Spacing/);
+});
+
+test('code blocks have a separate font-size preference and CSS variable', () => {
+  assert.match(codeSettings, /app:key="pref_code_block_font_size"/);
+  assert.match(codeSettings, /app:title="Code Block Text Size \(px\)"/);
+  assert.match(source, /pref_code_block_font_size/);
+  assert.match(source, /setCssVar\('--code-block-font-size', prefs\.pref_code_block_font_size, 'px'\)/);
+  assert.match(indexHtml, /font-size:\s*var\(--code-block-font-size,\s*14px\)\s*!important/);
 });
