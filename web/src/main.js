@@ -258,6 +258,7 @@ class EmptyTableCellWidget extends WidgetType {
       ...(this.isLast ? ['cm-table-last-cell'] : [])
     ].join(' ');
     cell.style.gridColumn = String(this.columnNumber);
+    cell.style.gridRow = '1';
     cell.setAttribute('aria-hidden', 'true');
     return cell;
   }
@@ -748,7 +749,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
                   if (cell.from < cell.to) {
                     builder.push(Decoration.mark({
                       class: classes,
-                      attributes: { style: `grid-column:${column + 1};` }
+                      attributes: { style: `grid-column:${column + 1};grid-row:1;` }
                     }).range(cell.from, cell.to));
                   } else {
                     builder.push(Decoration.widget({

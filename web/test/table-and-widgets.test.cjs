@@ -45,8 +45,9 @@ test('table rows use shared grid columns so wrapped cells keep aligned borders',
 
   assert.ok(code.includes('const lineStyles = new Map()'));
   assert.ok(code.includes('grid-template-columns:${gridColumns}'));
-  assert.ok(code.includes('grid-column:${column + 1}'));
+  assert.ok(code.includes('grid-column:${column + 1};grid-row:1;'));
   assert.ok(code.includes('cell.style.gridColumn = String(this.columnNumber)'));
+  assert.ok(code.includes("cell.style.gridRow = '1'"));
   assert.ok(code.includes('align-items:stretch;width:max-content;min-width:100%'));
   assert.match(styles, /\.cm-table-row\s*\{[^}]*display:\s*grid/s);
   assert.match(styles, /\.cm-content \.cm-table-cell\s*\{[^}]*align-self:\s*stretch/s);
