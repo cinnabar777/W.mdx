@@ -527,6 +527,24 @@
     .cm-table-data-row {
       background-color: var(--table-cell-bg, rgba(255, 255, 255, 0.03)) !important;
     }
+
+    .cm-content .cm-table-cell {
+      display: inline-block;
+      box-sizing: border-box;
+      vertical-align: top;
+      padding: var(--table-cell-padding, 8px) !important;
+      border-right: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444444) !important;
+      color: var(--table-cell-color, var(--text-color, #ffffff)) !important;
+      background: var(--table-cell-bg, transparent) !important;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .cm-content .cm-table-header-cell {
+      color: var(--table-header-color, var(--text-color, #ffffff)) !important;
+      background: var(--table-header-bg, rgba(255, 255, 255, 0.12)) !important;
+      font-weight: var(--table-header-font-weight, 700) !important;
+    }
     .cm-activeLine {
       background-color: rgba(255, 255, 255, 0.05) !important;
     }
@@ -543,19 +561,19 @@
       color: var(--text-color, #ffffff) !important;
     }
 
-    /* Paragraph settings apply only to Markdown Paragraph nodes. */
-    .cm-content .cm-paragraph {
+    /* Paragraph settings apply only to Markdown Paragraph nodes that are NOT list items. */
+    .cm-content .cm-paragraph:not(.cm-list-item) {
       font-size: var(--body-font-size, 16px) !important;
       font-family: var(--body-font-family, inherit) !important;
       text-align: var(--paragraph-align, left) !important;
       letter-spacing: var(--paragraph-letter-spacing, 0px) !important;
       line-height: var(--paragraph-line-height, 1.6) !important;
     }
-    .cm-content .cm-paragraph-first {
+    .cm-content .cm-paragraph-first:not(.cm-list-item) {
       text-indent: var(--paragraph-indent, 0px) !important;
       margin-top: var(--paragraph-margin-top, 0px) !important;
     }
-    .cm-content .cm-paragraph-last {
+    .cm-content .cm-paragraph-last:not(.cm-list-item) {
       margin-bottom: var(--paragraph-margin-bottom, 8px) !important;
     }
 
@@ -662,6 +680,11 @@
     }
 
     .cm-content .cm-list-item {
+      font-size: var(--list-font-size, 16px) !important;
+      font-family: var(--list-font-family, inherit) !important;
+      letter-spacing: var(--list-letter-spacing, normal) !important;
+      text-indent: 0 !important;
+      margin-top: 0 !important;
       margin-left: var(--list-left-indent, 24px) !important;
       margin-bottom: var(--list-item-spacing, 4px) !important;
       line-height: var(--list-line-height, 1.5) !important;

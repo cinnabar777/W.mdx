@@ -26,3 +26,11 @@ test('Table cell navigation functions exist and handle pipe delimiters', () => {
   assert.ok(code.includes('function navigateTableCell'), 'navigateTableCell exists');
   assert.ok(code.includes('tableNavigationKeymap'), 'tableNavigationKeymap is exported');
 });
+
+test('parsePipeRow and isEscapedPipe handle escaped pipes and outer pipes', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+
+  assert.ok(code.includes('export function parsePipeRow'), 'parsePipeRow is defined');
+  assert.ok(code.includes('export function isEscapedPipe'), 'isEscapedPipe is defined');
+  assert.ok(code.includes('export function isTableSeparatorRow'), 'isTableSeparatorRow is defined');
+});

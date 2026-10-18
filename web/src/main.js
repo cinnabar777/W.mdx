@@ -1,4 +1,4 @@
-import { EditorState, Compartment, Transaction } from '@codemirror/state';
+import { EditorState, Compartment, Transaction, StateField } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
@@ -618,20 +618,46 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'Table') {
             const startLine = view.state.doc.lineAt(node.from);
             const endLine = view.state.doc.lineAt(node.to);
+            const cursorHead = view.state.selection.main.head;
+            const cursorLine = view.state.doc.lineAt(cursorHead).number;
 
             for (let l = startLine.number; l <= endLine.number; l++) {
               const lineObj = view.state.doc.line(l);
-              if (lineObj.from >= from && lineObj.from <= to) {
-                const lineText = lineObj.text.trim();
-                const isSep = /^\|?\s*[:\-]+(\s*\|\s*[:\-]+)*\s*\|?$/.test(lineText);
-                const isHeader = (l === startLine.number);
+              if (lineObj.from < from || lineObj.from > to) continue;
 
-                let cls = 'cm-table-row';
-                if (isHeader) cls += ' cm-table-header-row';
-                else if (isSep) cls += ' cm-table-sep-row';
-                else cls += ' cm-table-data-row';
+              const parsed = parsePipeRow(lineObj);
+              if (!parsed) continue;
 
-                addLineClass(lineObj.from, cls);
+              const isSep = isTableSeparatorRow(lineObj.text, parsed.cells);
+              const isHeader = (l === startLine.number);
+
+              let cls = 'cm-table-row';
+              if (isHeader) cls += ' cm-table-header-row';
+              else if (isSep) cls += ' cm-table-sep-row';
+              else cls += ' cm-table-data-row';
+
+              addLineClass(lineObj.from, cls);
+
+              const isActiveRow = (l === cursorLine);
+              if (!isSep) {
+                for (const cell of parsed.cells) {
+                  if (cell.from <= cell.to) {
+                    builder.push(Decoration.mark({
+                      class: isHeader ? 'cm-table-cell cm-table-header-cell' : 'cm-table-cell'
+                    }).range(cell.from, cell.to));
+                  }
+                }
+              }
+
+              const hideSyntax = !isActiveRow && (isPureWysiwyg || currentEditorMode === 'live_preview');
+              if (hideSyntax) {
+                if (isSep) {
+                  builder.push(Decoration.replace({}).range(lineObj.from, lineObj.to));
+                } else {
+                  for (const pipePos of parsed.pipes) {
+                    builder.push(Decoration.replace({}).range(pipePos, pipePos + 1));
+                  }
+                }
               }
             }
           }
@@ -779,31 +805,73 @@ function cmOutdentSelection(view, spaces = '  ') {
 }
 
 
+export function isEscapedPipe(text, index) {
+  if (text[index] !== '|') return false;
+  let backslashes = 0;
+  for (let i = index - 1; i >= 0 && text[i] === '\\'; i--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 1;
+}
+
+export function trimCellRange(text, start, end, lineFrom) {
+  while (start < end && /\s/.test(text[start])) start++;
+  while (end > start && /\s/.test(text[end - 1])) end--;
+  return { start, end, from: lineFrom + start, to: lineFrom + end };
+}
+
+export function parsePipeRow(line) {
+  const text = line.text;
+  const pipeOffsets = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '|' && !isEscapedPipe(text, i)) pipeOffsets.push(i);
+  }
+  if (pipeOffsets.length === 0) return null;
+
+  const hasLeadingPipe = /^\s*\|/.test(text);
+  const hasTrailingPipe = /\|\s*$/.test(text);
+  const firstCellStart = hasLeadingPipe ? pipeOffsets[0] + 1 : 0;
+  const lastCellEnd = hasTrailingPipe
+    ? pipeOffsets[pipeOffsets.length - 1]
+    : text.length;
+
+  const internalPipes = pipeOffsets.filter((offset, i) =>
+    !(hasLeadingPipe && i === 0) &&
+    !(hasTrailingPipe && i === pipeOffsets.length - 1)
+  );
+
+  const cells = [];
+  let cellStart = firstCellStart;
+  for (const pipe of internalPipes) {
+    cells.push(trimCellRange(text, cellStart, pipe, line.from));
+    cellStart = pipe + 1;
+  }
+  if (lastCellEnd >= cellStart) {
+    cells.push(trimCellRange(text, cellStart, lastCellEnd, line.from));
+  }
+
+  return {
+    pipes: pipeOffsets.map(offset => line.from + offset),
+    cells: cells.filter(cell => cell.from <= cell.to)
+  };
+}
+
+export function isTableSeparatorRow(text, parsedCells) {
+  return parsedCells.length > 0 &&
+    parsedCells.every(({ start, end }) =>
+      /^:?-{3,}:?$/.test(text.slice(start, end).trim())
+    );
+}
+
 function parseTableCells(doc, startLineNum, endLineNum) {
   const cells = [];
   for (let lNum = startLineNum; lNum <= endLineNum; lNum++) {
     const line = doc.line(lNum);
-    const text = line.text;
-    const trimmed = text.trim();
-    if (!trimmed.startsWith('|')) continue;
-    // Skip separator row (|---|---|)
-    if (/^\|\s*[:\-]+\s*(\|\s*[:\-]+\s*)+\|?$/.test(trimmed)) continue;
-
-    // Find unescaped pipe positions
-    const pipes = [];
-    for (let i = 0; i < text.length; i++) {
-      if (text[i] === '|' && (i === 0 || text[i - 1] !== '\\')) {
-        pipes.push(line.from + i);
-      }
-    }
-    for (let c = 0; c < pipes.length - 1; c++) {
-      const pStart = pipes[c];
-      const pEnd = pipes[c + 1];
-      let cStart = pStart + 1;
-      while (cStart < pEnd && doc.sliceDoc(cStart, cStart + 1) === ' ') cStart++;
-      let cEnd = pEnd;
-      while (cEnd > cStart && doc.sliceDoc(cEnd - 1, cEnd) === ' ') cEnd--;
-      cells.push({ from: cStart, to: cEnd, lineNum: lNum });
+    const parsed = parsePipeRow(line);
+    if (!parsed) continue;
+    if (isTableSeparatorRow(line.text, parsed.cells)) continue;
+    for (const cell of parsed.cells) {
+      cells.push({ ...cell, lineNum: lNum });
     }
   }
   return cells;
@@ -813,25 +881,23 @@ function navigateTableCell(view, direction) {
   const state = view.state;
   const pos = state.selection.main.head;
   const line = state.doc.lineAt(pos);
-  const trimmed = line.text.trim();
-  if (!trimmed.startsWith('|')) return false;
+  const parsedLine = parsePipeRow(line);
+  if (!parsedLine) return false;
 
-  // Find table block boundaries
   let startL = line.number;
   let endL = line.number;
   for (let l = line.number; l >= 1; l--) {
-    if (state.doc.line(l).text.trim().startsWith('|')) startL = l;
+    if (parsePipeRow(state.doc.line(l))) startL = l;
     else break;
   }
   for (let l = line.number; l <= state.doc.lines; l++) {
-    if (state.doc.line(l).text.trim().startsWith('|')) endL = l;
+    if (parsePipeRow(state.doc.line(l))) endL = l;
     else break;
   }
 
   const cells = parseTableCells(state.doc, startL, endL);
   if (cells.length === 0) return false;
 
-  // Find current cell index
   let currentIdx = -1;
   for (let i = 0; i < cells.length; i++) {
     if (pos >= cells[i].from - 1 && pos <= cells[i].to + 1) {
@@ -840,27 +906,15 @@ function navigateTableCell(view, direction) {
     }
   }
 
-  if (currentIdx === -1) {
-    // Find closest
-    let minDist = Infinity;
-    for (let i = 0; i < cells.length; i++) {
-      const dist = Math.abs(pos - cells[i].from);
-      if (dist < minDist) {
-        minDist = dist;
-        currentIdx = i;
-      }
-    }
-  }
+  if (currentIdx === -1) return false;
 
   const targetIdx = currentIdx + direction;
   if (targetIdx < 0) {
-    // Exit table upward
     const prevLinePos = Math.max(0, state.doc.line(startL).from - 1);
     view.dispatch({ selection: { anchor: prevLinePos, head: prevLinePos }, scrollIntoView: true });
     return true;
   }
   if (targetIdx >= cells.length) {
-    // Exit table downward
     const nextLinePos = Math.min(state.doc.length, state.doc.line(endL).to + 1);
     view.dispatch({ selection: { anchor: nextLinePos, head: nextLinePos }, scrollIntoView: true });
     return true;
@@ -884,6 +938,97 @@ export const tableNavigationKeymap = keymap.of([
     run: (view) => navigateTableCell(view, -1)
   }
 ]);
+
+export function buildLayoutDecorations(state) {
+  if (currentEditorMode === 'source') return Decoration.none;
+
+  const builder = [];
+  const tree = syntaxTree(state);
+  const paragraphLineStarts = new Set();
+
+  tree.iterate({
+    from: 0,
+    to: state.doc.length,
+    enter: (node) => {
+      const line = state.doc.lineAt(node.from);
+
+      if (node.name.startsWith('ATXHeading')) {
+        const level = node.name.replace('ATXHeading', '');
+        builder.push(Decoration.line({
+          attributes: { class: `cm-heading cm-heading-${level}` }
+        }).range(line.from));
+      }
+
+      if (node.name === 'Paragraph') {
+        const doc = state.doc;
+        const first = doc.lineAt(node.from);
+        const last = doc.lineAt(Math.max(node.from, node.to - 1));
+
+        for (let number = first.number; number <= last.number; number++) {
+          const pLine = doc.line(number);
+          if (paragraphLineStarts.has(pLine.from)) continue;
+          paragraphLineStarts.add(pLine.from);
+
+          let cls = 'cm-paragraph';
+          if (number === first.number) cls += ' cm-paragraph-first';
+          if (number === last.number) cls += ' cm-paragraph-last';
+
+          builder.push(Decoration.line({
+            attributes: { class: cls }
+          }).range(pLine.from));
+        }
+      }
+
+      if (node.name === 'ListItem') {
+        builder.push(Decoration.line({
+          attributes: { class: 'cm-list-item' }
+        }).range(line.from));
+      }
+
+      if (node.name === 'Blockquote') {
+        builder.push(Decoration.line({
+          attributes: { class: 'cm-blockquote' }
+        }).range(line.from));
+      }
+
+      if (node.name === 'HorizontalRule') {
+        builder.push(Decoration.line({
+          attributes: { class: 'cm-hr' }
+        }).range(line.from));
+      }
+
+      if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+        const startLine = state.doc.lineAt(node.from);
+        const endLine = state.doc.lineAt(node.to);
+        for (let l = startLine.number; l <= endLine.number; l++) {
+          const codeLine = state.doc.line(l);
+          let cls = 'cm-codeblock-line';
+          if (l === startLine.number) cls += ' cm-codeblock-first';
+          if (l === endLine.number) cls += ' cm-codeblock-last';
+          builder.push(Decoration.line({
+            attributes: { class: cls }
+          }).range(codeLine.from));
+        }
+      }
+    }
+  });
+
+  builder.sort((a, b) => a.from - b.from || a.to - b.to);
+  return Decoration.set(builder, true);
+}
+
+export const persistentLayoutField = StateField.define({
+  create(state) {
+    return buildLayoutDecorations(state);
+  },
+  update(current, tr) {
+    if (tr.docChanged) {
+      return buildLayoutDecorations(tr.state);
+    }
+    return current;
+  },
+  provide: field => EditorView.decorations.from(field)
+});
 
 
 class CodeMirrorAdapter {
@@ -957,6 +1102,7 @@ class CodeMirrorAdapter {
           }
         }),
         tableNavigationKeymap,
+        persistentLayoutField,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap
