@@ -371,12 +371,12 @@ class GFMTableWidget extends WidgetType {
 }
 
 const customHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading1, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.8 * var(--heading-scale, 1))' },
-  { tag: tags.heading2, color: 'var(--heading-2-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.5 * var(--heading-scale, 1))' },
-  { tag: tags.heading3, color: 'var(--heading-3-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.3 * var(--heading-scale, 1))' },
-  { tag: tags.heading4, color: 'var(--heading-4-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.1 * var(--heading-scale, 1))' },
-  { tag: tags.heading5, color: 'var(--heading-5-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 1.0 * var(--heading-scale, 1))' },
-  { tag: tags.heading6, color: 'var(--heading-6-color, #ffffff)', fontWeight: 'var(--heading-font-weight, bold)', fontSize: 'calc(var(--body-font-size, 16px) * 0.9 * var(--heading-scale, 1))' },
+  { tag: tags.heading1, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'var(--heading-1-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-1-scale, 1.8) * var(--heading-scale, 1))' },
+  { tag: tags.heading2, color: 'var(--heading-2-color, #ffffff)', fontWeight: 'var(--heading-2-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-2-scale, 1.5) * var(--heading-scale, 1))' },
+  { tag: tags.heading3, color: 'var(--heading-3-color, #ffffff)', fontWeight: 'var(--heading-3-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-3-scale, 1.3) * var(--heading-scale, 1))' },
+  { tag: tags.heading4, color: 'var(--heading-4-color, #ffffff)', fontWeight: 'var(--heading-4-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-4-scale, 1.1) * var(--heading-scale, 1))' },
+  { tag: tags.heading5, color: 'var(--heading-5-color, #ffffff)', fontWeight: 'var(--heading-5-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-5-scale, 1.0) * var(--heading-scale, 1))' },
+  { tag: tags.heading6, color: 'var(--heading-6-color, #ffffff)', fontWeight: 'var(--heading-6-font-weight, var(--heading-font-weight, bold))', fontSize: 'calc(var(--body-font-size, 16px) * var(--heading-6-scale, 0.9) * var(--heading-scale, 1))' },
   { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--italic-color, inherit)', fontWeight: 'var(--italic-font-weight, normal)' },
   { tag: tags.strong, fontWeight: 'var(--bold-font-weight, bold)', color: 'var(--bold-color, inherit)' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
@@ -403,6 +403,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
   buildDecorations(view) {
     const builder = [];
+    const paragraphLineStarts = new Set();
     if (currentEditorMode === 'source') {
       return Decoration.none;
     }
@@ -455,6 +456,27 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
           if (node.name === 'CodeMark' && !isNodeActive) {
             builder.push(Decoration.replace({}).range(node.from, node.to));
+          }
+
+          // Give CodeMirror real line classes for the paragraph-only settings.
+          if (node.name === 'Paragraph') {
+            const doc = view.state.doc;
+            const first = doc.lineAt(node.from);
+            const last = doc.lineAt(Math.max(node.from, node.to - 1));
+
+            for (let number = first.number; number <= last.number; number++) {
+              const paragraphLine = doc.line(number);
+              if (paragraphLine.from < from || paragraphLine.from > to) continue;
+              if (paragraphLineStarts.has(paragraphLine.from)) continue;
+              paragraphLineStarts.add(paragraphLine.from);
+
+              const classes = ['cm-paragraph'];
+              if (number === first.number) classes.push('cm-paragraph-first');
+              if (number === last.number) classes.push('cm-paragraph-last');
+              builder.push(Decoration.line({
+                attributes: { class: classes.join(' ') }
+              }).range(paragraphLine.from));
+            }
           }
 
           if (node.name === 'Blockquote') {
@@ -1803,12 +1825,21 @@ window.editorBridge = {
     if (!prefsJson) return;
     const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
 
-    const setCssVar = (varName, val, unit = '') => {
-      if (val !== undefined && val !== null && val !== 'default' && val !== '') {
-        document.documentElement.style.setProperty(varName, val + unit);
-      } else {
+    // Set a CSS custom property; only append a unit to a plain numeric value.
+    const setCssVar = (varName, value, unit = '') => {
+      if (value === undefined || value === null || value === '' || value === 'default') {
         document.documentElement.style.removeProperty(varName);
+        return;
       }
+
+      const raw = String(value).trim();
+      if (!raw || raw === 'default') {
+        document.documentElement.style.removeProperty(varName);
+        return;
+      }
+
+      const isPlainNumber = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(raw);
+      document.documentElement.style.setProperty(varName, unit && isPlainNumber ? raw + unit : raw);
     };
 
     if (prefs.pref_app_theme === 'light') {
@@ -1833,8 +1864,13 @@ window.editorBridge = {
     setCssVar('--paragraph-margin-top', prefs.pref_paragraph_margin_top, 'px');
     setCssVar('--paragraph-margin-bottom', prefs.pref_paragraph_margin_bottom, 'px');
 
-    // Headings Global Defaults
-    const globalHeadingScale = prefs.pref_heading_scale_percent ? (prefs.pref_heading_scale_percent / 100.0) : null;
+    // Android stores these as shared preferences. Keep the shared multiplier
+    // separate from each level's base size (H1 remains larger than H6).
+    const globalHeadingScale = prefs.pref_heading_scale_percent != null
+      ? Number(prefs.pref_heading_scale_percent) / 100
+      : null;
+    setCssVar('--heading-scale', globalHeadingScale);
+
     const globalHeadingWeight = prefs.pref_font_weight_heading;
     const globalHeadingAlign = prefs.pref_heading_align;
     const globalHeadingLineHeight = prefs.pref_heading_line_height;
@@ -1846,33 +1882,38 @@ window.editorBridge = {
     const globalHeadingMarginTop = prefs.pref_heading_margin_top;
     const globalHeadingMarginBottom = prefs.pref_heading_margin_bottom;
 
-    // Headings (H1 to H6 individualized with global fallback)
+    // Preserve per-level colors and any older per-level values, while falling
+    // back to the actual shared keys shown in preferences_styling_headings.xml.
     for (let i = 1; i <= 6; i++) {
-      const pColor = prefs[`pref_heading_${i}_color`];
-      const pScale = prefs[`pref_heading_${i}_scale`] || (prefs[`pref_heading_${i}_font_size`] ? prefs[`pref_heading_${i}_font_size`] / 16.0 : globalHeadingScale);
-      const pAlign = prefs[`pref_heading_${i}_align`] || globalHeadingAlign;
-      const pLineHeight = prefs[`pref_heading_${i}_line_height`] || globalHeadingLineHeight;
-      const pLetterSpacing = prefs[`pref_heading_${i}_letter_spacing`] || globalHeadingLetterSpacing;
-      const pTransform = prefs[`pref_heading_${i}_transform`] || globalHeadingTransform;
-      const pUnderlineStyle = prefs[`pref_heading_${i}_underline_style`] || globalHeadingUnderlineStyle;
-      const pUnderlineThickness = prefs[`pref_heading_${i}_underline_thickness`] || globalHeadingUnderlineThickness;
-      const pUnderlineColor = prefs[`pref_heading_${i}_underline_color`] || globalHeadingUnderlineColor;
-      const pMarginTop = prefs[`pref_heading_${i}_margin_top`] || globalHeadingMarginTop;
-      const pMarginBottom = prefs[`pref_heading_${i}_margin_bottom`] || globalHeadingMarginBottom;
-      const pWeight = prefs[`pref_heading_${i}_font_weight`] || globalHeadingWeight;
+      const pColor = prefs['pref_heading_' + i + '_color'];
+      const oldLevelScale = prefs['pref_heading_' + i + '_scale'];
+      const oldLevelFontSize = prefs['pref_heading_' + i + '_font_size'];
+      const pScale = oldLevelScale != null
+        ? oldLevelScale
+        : (oldLevelFontSize != null ? Number(oldLevelFontSize) / 16 : null);
+      const pAlign = prefs['pref_heading_' + i + '_align'] ?? globalHeadingAlign;
+      const pLineHeight = prefs['pref_heading_' + i + '_line_height'] ?? globalHeadingLineHeight;
+      const pLetterSpacing = prefs['pref_heading_' + i + '_letter_spacing'] ?? globalHeadingLetterSpacing;
+      const pTransform = prefs['pref_heading_' + i + '_transform'] ?? globalHeadingTransform;
+      const pUnderlineStyle = prefs['pref_heading_' + i + '_underline_style'] ?? globalHeadingUnderlineStyle;
+      const pUnderlineThickness = prefs['pref_heading_' + i + '_underline_thickness'] ?? globalHeadingUnderlineThickness;
+      const pUnderlineColor = prefs['pref_heading_' + i + '_underline_color'] ?? globalHeadingUnderlineColor;
+      const pMarginTop = prefs['pref_heading_' + i + '_margin_top'] ?? globalHeadingMarginTop;
+      const pMarginBottom = prefs['pref_heading_' + i + '_margin_bottom'] ?? globalHeadingMarginBottom;
+      const pWeight = prefs['pref_heading_' + i + '_font_weight'] ?? globalHeadingWeight;
 
-      setCssVar(`--heading-${i}-color`, pColor);
-      setCssVar(`--heading-${i}-scale`, pScale);
-      setCssVar(`--heading-${i}-align`, pAlign);
-      setCssVar(`--heading-${i}-line-height`, pLineHeight);
-      setCssVar(`--heading-${i}-letter-spacing`, pLetterSpacing, 'px');
-      setCssVar(`--heading-${i}-text-transform`, pTransform);
-      setCssVar(`--heading-${i}-underline-style`, pUnderlineStyle);
-      setCssVar(`--heading-${i}-underline-thickness`, pUnderlineThickness, 'px');
-      setCssVar(`--heading-${i}-underline-color`, pUnderlineColor);
-      setCssVar(`--heading-${i}-margin-top`, pMarginTop, 'px');
-      setCssVar(`--heading-${i}-margin-bottom`, pMarginBottom, 'px');
-      setCssVar(`--heading-${i}-font-weight`, pWeight);
+      setCssVar('--heading-' + i + '-color', pColor);
+      setCssVar('--heading-' + i + '-scale', pScale); // null means use H1–H6 CSS defaults
+      setCssVar('--heading-' + i + '-align', pAlign);
+      setCssVar('--heading-' + i + '-line-height', pLineHeight);
+      setCssVar('--heading-' + i + '-letter-spacing', pLetterSpacing, 'px');
+      setCssVar('--heading-' + i + '-text-transform', pTransform);
+      setCssVar('--heading-' + i + '-underline-style', pUnderlineStyle);
+      setCssVar('--heading-' + i + '-underline-thickness', pUnderlineThickness, 'px');
+      setCssVar('--heading-' + i + '-underline-color', pUnderlineColor);
+      setCssVar('--heading-' + i + '-margin-top', pMarginTop, 'px');
+      setCssVar('--heading-' + i + '-margin-bottom', pMarginBottom, 'px');
+      setCssVar('--heading-' + i + '-font-weight', pWeight);
     }
 
     // Inline formats
