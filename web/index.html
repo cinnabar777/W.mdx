@@ -521,9 +521,10 @@
       background-color: rgba(255, 255, 255, 0.05) !important;
     }
     .cm-content {
-      font-size: var(--body-font-size, 16px) !important;
-      font-family: var(--body-font-family), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-      line-height: var(--paragraph-line-height, 1.6) !important;
+      font-size: inherit !important;
+      font-family: inherit !important;
+      line-height: normal !important;
+      letter-spacing: normal !important;
       color: var(--text-color, #ffffff) !important;
       caret-color: var(--text-color, #ffffff) !important;
       padding: 12px 16px !important;
@@ -534,8 +535,10 @@
 
     /* Paragraph settings apply only to Markdown Paragraph nodes. */
     .cm-content .cm-paragraph {
+      font-size: var(--body-font-size, 16px) !important;
+      font-family: var(--body-font-family, inherit) !important;
       text-align: var(--paragraph-align, left) !important;
-      letter-spacing: var(--paragraph-letter-spacing, normal) !important;
+      letter-spacing: var(--paragraph-letter-spacing, 0px) !important;
       line-height: var(--paragraph-line-height, 1.6) !important;
     }
     .cm-content .cm-paragraph-first {
@@ -545,33 +548,66 @@
     .cm-content .cm-paragraph-last {
       margin-bottom: var(--paragraph-margin-bottom, 8px) !important;
     }
-    .cm-heading {
-      font-family: var(--heading-font-family), var(--body-font-family), sans-serif !important;
-      font-weight: var(--heading-font-weight, 700) !important;
-      line-height: var(--heading-line-height, 1.2) !important;
-    }
-    .cm-heading-1 { font-size: calc(var(--body-font-size, 16px) * var(--heading-1-scale, 1.8) * var(--heading-scale, 1)) !important; color: var(--heading-1-color, inherit) !important; text-align: var(--heading-1-align, left) !important; line-height: var(--heading-1-line-height, 1.2) !important; letter-spacing: var(--heading-1-letter-spacing, normal) !important; text-transform: var(--heading-1-text-transform, none) !important; text-decoration: var(--heading-1-underline-style, none) !important; text-decoration-thickness: var(--heading-1-underline-thickness, 2px) !important; text-decoration-color: var(--heading-1-underline-color, currentColor) !important; margin-top: var(--heading-1-margin-top, 16px) !important; margin-bottom: var(--heading-1-margin-bottom, 8px) !important; font-weight: var(--heading-1-font-weight, 700) !important; }
-    .cm-heading-2 { font-size: calc(var(--body-font-size, 16px) * var(--heading-2-scale, 1.5) * var(--heading-scale, 1)) !important; color: var(--heading-2-color, inherit) !important; text-align: var(--heading-2-align, left) !important; line-height: var(--heading-2-line-height, 1.2) !important; letter-spacing: var(--heading-2-letter-spacing, normal) !important; text-transform: var(--heading-2-text-transform, none) !important; text-decoration: var(--heading-2-underline-style, none) !important; text-decoration-thickness: var(--heading-2-underline-thickness, 2px) !important; text-decoration-color: var(--heading-2-underline-color, currentColor) !important; margin-top: var(--heading-2-margin-top, 16px) !important; margin-bottom: var(--heading-2-margin-bottom, 8px) !important; font-weight: var(--heading-2-font-weight, 700) !important; }
-    .cm-heading-3 { font-size: calc(var(--body-font-size, 16px) * var(--heading-3-scale, 1.3)) !important; color: var(--heading-3-color, inherit) !important; text-align: var(--heading-3-align, left) !important; line-height: var(--heading-3-line-height, 1.2) !important; letter-spacing: var(--heading-3-letter-spacing, normal) !important; text-transform: var(--heading-3-text-transform, none) !important; text-decoration: var(--heading-3-underline-style, none) !important; text-decoration-thickness: var(--heading-3-underline-thickness, 2px) !important; text-decoration-color: var(--heading-3-underline-color, currentColor) !important; margin-top: var(--heading-3-margin-top, 16px) !important; margin-bottom: var(--heading-3-margin-bottom, 8px) !important; font-weight: var(--heading-3-font-weight, 700) !important; }
-    .cm-heading-4 { font-size: calc(var(--body-font-size, 16px) * var(--heading-4-scale, 1.1)) !important; color: var(--heading-4-color, inherit) !important; text-align: var(--heading-4-align, left) !important; line-height: var(--heading-4-line-height, 1.2) !important; letter-spacing: var(--heading-4-letter-spacing, normal) !important; text-transform: var(--heading-4-text-transform, none) !important; text-decoration: var(--heading-4-underline-style, none) !important; text-decoration-thickness: var(--heading-4-underline-thickness, 2px) !important; text-decoration-color: var(--heading-4-underline-color, currentColor) !important; margin-top: var(--heading-4-margin-top, 16px) !important; margin-bottom: var(--heading-4-margin-bottom, 8px) !important; font-weight: var(--heading-4-font-weight, 700) !important; }
-    .cm-heading-5 { font-size: calc(var(--body-font-size, 16px) * var(--heading-5-scale, 1.0)) !important; color: var(--heading-5-color, inherit) !important; text-align: var(--heading-5-align, left) !important; line-height: var(--heading-5-line-height, 1.2) !important; letter-spacing: var(--heading-5-letter-spacing, normal) !important; text-transform: var(--heading-5-text-transform, none) !important; text-decoration: var(--heading-5-underline-style, none) !important; text-decoration-thickness: var(--heading-5-underline-thickness, 2px) !important; text-decoration-color: var(--heading-5-underline-color, currentColor) !important; margin-top: var(--heading-5-margin-top, 16px) !important; margin-bottom: var(--heading-5-margin-bottom, 8px) !important; font-weight: var(--heading-5-font-weight, 700) !important; }
-    .cm-heading-6 { font-size: calc(var(--body-font-size, 16px) * var(--heading-6-scale, 0.9)) !important; color: var(--heading-6-color, inherit) !important; text-align: var(--heading-6-align, left) !important; line-height: var(--heading-6-line-height, 1.2) !important; letter-spacing: var(--heading-6-letter-spacing, normal) !important; text-transform: var(--heading-6-text-transform, none) !important; text-decoration: var(--heading-6-underline-style, none) !important; text-decoration-thickness: var(--heading-6-underline-thickness, 2px) !important; text-decoration-color: var(--heading-6-underline-color, currentColor) !important; margin-top: var(--heading-6-margin-top, 16px) !important; margin-bottom: var(--heading-6-margin-bottom, 8px) !important; font-weight: var(--heading-6-font-weight, 700) !important; }
 
-    .cm-bold { font-weight: var(--bold-font-weight, 700) !important; color: var(--bold-color, inherit) !important; }
-    .cm-italic { font-style: italic !important; color: var(--italic-color, inherit) !important; }
-    .cm-strikethrough { text-decoration: line-through !important; }
-    .cm-inline-code {
-      font-family: var(--code-font-family), monospace !important;
+    .cm-content .cm-heading {
+      text-align: var(--heading-align, inherit) !important;
+      line-height: var(--heading-line-height, 1.2) !important;
+      letter-spacing: var(--heading-letter-spacing, 0px) !important;
+      text-transform: var(--heading-text-transform, none) !important;
+      text-decoration-line: var(--heading-underline-style, none) !important;
+      text-decoration-thickness: var(--heading-underline-thickness, 2px) !important;
+      text-decoration-color: var(--heading-underline-color, currentColor) !important;
+      margin-top: var(--heading-margin-top, 16px) !important;
+      margin-bottom: var(--heading-margin-bottom, 8px) !important;
+      font-weight: var(--heading-font-weight, 700) !important;
+    }
+
+    .cm-heading-1 { font-size: calc(16px * 1.8 * var(--heading-1-scale, 1) * var(--heading-scale, 1)) !important; color: var(--heading-1-color, inherit) !important; }
+    .cm-heading-2 { font-size: calc(16px * 1.5 * var(--heading-2-scale, 1) * var(--heading-scale, 1)) !important; color: var(--heading-2-color, inherit) !important; }
+    .cm-heading-3 { font-size: calc(16px * 1.3 * var(--heading-3-scale, 1) * var(--heading-scale, 1)) !important; color: var(--heading-3-color, inherit) !important; }
+    .cm-heading-4 { font-size: calc(16px * 1.1 * var(--heading-4-scale, 1) * var(--heading-scale, 1)) !important; color: var(--heading-4-color, inherit) !important; }
+    .cm-heading-5 { font-size: calc(16px * 1.0 * var(--heading-5-scale, 1) * var(--heading-scale, 1)) !important; color: var(--heading-5-color, inherit) !important; }
+    .cm-heading-6 { font-size: calc(16px * 0.9 * var(--heading-6-scale, 1) * var(--heading-scale, 1)) !important; color: var(--heading-6-color, inherit) !important; }
+
+    .cm-content .cm-list-item {
+      margin-left: var(--list-left-indent, 24px) !important;
+      margin-bottom: var(--list-item-spacing, 4px) !important;
+      line-height: var(--list-line-height, 1.5) !important;
+    }
+
+    .cm-list-bullet { color: var(--list-bullet-color, currentColor) !important; }
+    .cm-list-number { color: var(--list-number-color, currentColor) !important; }
+
+    .cm-content .cm-bold {
+      font-weight: var(--bold-font-weight, 700) !important;
+      color: var(--bold-color, inherit) !important;
+      font-family: var(--bold-font-family, inherit) !important;
+    }
+    .cm-content .cm-italic {
+      font-style: italic !important;
+      color: var(--italic-color, inherit) !important;
+      font-weight: var(--italic-font-weight, 400) !important;
+      font-family: var(--italic-font-family, inherit) !important;
+    }
+    .cm-content .cm-inline-code {
+      font-family: var(--code-font-family, monospace) !important;
       color: var(--code-color, #ff80ab) !important;
-      background-color: var(--code-bg-color, #212121) !important;
+      background: var(--code-bg-color, #212121) !important;
       padding: var(--code-padding, 2px 4px) !important;
       border-radius: var(--code-border-radius, 4px) !important;
     }
-    .cm-blockquote {
+    .cm-content .cm-codeblock-line {
+      color: var(--code-block-color, #e0e0e0) !important;
+      background: var(--code-block-bg-color, #121212) !important;
+      line-height: var(--code-block-line-height, 1.4) !important;
+      padding-left: var(--code-block-padding, 16px) !important;
+      padding-right: var(--code-block-padding, 16px) !important;
+    }
+    .cm-content .cm-blockquote {
       border-left: var(--blockquote-border-width, 4px) var(--blockquote-border-style, solid) var(--blockquote-border-color, #444444) !important;
-      background-color: var(--blockquote-bg-color, transparent) !important;
+      background: var(--blockquote-bg-color, transparent) !important;
       color: var(--blockquote-text-color, inherit) !important;
-      margin-left: var(--blockquote-left-margin, 0px) !important;
+      margin-left: var(--blockquote-left-indent, 0px) !important;
       padding-left: var(--blockquote-padding, 12px) !important;
     }
     .cm-callout {

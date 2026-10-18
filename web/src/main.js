@@ -131,7 +131,13 @@ class CodeBlockHeaderWidget extends WidgetType {
   toDOM() {
     const header = document.createElement('div');
     header.className = 'cm-codeblock-header';
-    header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 4px 4px 0 0; font-size: 12px; font-weight: bold; font-family: monospace; color: var(--code-block-lang-label-color, #ffffff); user-select: none; border-bottom: 1px solid rgba(255,255,255,0.2);';
+    header.style.cssText =
+      'display:flex;justify-content:space-between;align-items:center;' +
+      'background:var(--code-block-label-bg, rgba(255,255,255,.12));' +
+      'padding:4px 10px;border-radius:var(--code-block-border-radius, 6px) ' +
+      'var(--code-block-border-radius, 6px) 0 0;font-size:12px;font-weight:bold;' +
+      'font-family:monospace;color:var(--code-block-lang-label-color, #fff);' +
+      'user-select:none;border-bottom:1px solid var(--code-block-label-border, rgba(255,255,255,.2));';
 
     const langSpan = document.createElement('span');
     langSpan.textContent = this.lang;
@@ -139,7 +145,12 @@ class CodeBlockHeaderWidget extends WidgetType {
     const copyBtn = document.createElement('button');
     copyBtn.className = 'cm-codeblock-copy-btn';
     copyBtn.textContent = 'COPY';
-    copyBtn.style.cssText = 'background: transparent; border: 1px solid rgba(255,255,255,0.35); color: inherit; border-radius: 3px; padding: 2px 8px; font-size: 11px; cursor: pointer; font-weight: bold;';
+    copyBtn.style.cssText =
+      'background:var(--code-copy-bg, transparent);' +
+      'border:1px solid var(--code-copy-border, rgba(255,255,255,.35));' +
+      'color:var(--code-copy-color, inherit);border-radius:3px;' +
+      'padding:2px 8px;font-size:11px;cursor:pointer;font-weight:bold;';
+
     copyBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -316,9 +327,13 @@ class GFMTableWidget extends WidgetType {
     toolbar.appendChild(delColBtn);
     container.appendChild(toolbar);
 
+    const border =
+      'var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)';
+
     const table = document.createElement('table');
     table.style.cssText =
-      'width: 100%; border-collapse: collapse; color: var(--text-color, #ffffff); font-size: var(--body-font-size, 16px); table-layout: auto;';
+      'width:100%;border-collapse:collapse;color:var(--table-cell-color, var(--text-color, #fff));' +
+      'font-size:16px;table-layout:auto;';
 
     const thead = document.createElement('thead');
     const trHead = document.createElement('tr');
@@ -326,7 +341,11 @@ class GFMTableWidget extends WidgetType {
       const th = document.createElement('th');
       th.contentEditable = 'true';
       th.style.cssText =
-        'border: 1px solid var(--table-border-color, var(--border-color, #444)); padding: 8px 12px; background-color: var(--table-header-bg, rgba(255,255,255,0.12)); font-weight: bold; text-align: left; outline: none; min-width: 60px; color: var(--text-color, #ffffff);';
+        `border:${border};padding:var(--table-cell-padding,8px);` +
+        'background:var(--table-header-bg,rgba(255,255,255,.12));' +
+        'color:var(--table-header-color,var(--text-color,#fff));' +
+        'font-weight:var(--table-header-font-weight,700);' +
+        'text-align:left;outline:none;min-width:60px;';
       th.textContent = hText;
       th.addEventListener('keydown', stopPropagation);
       th.addEventListener('keyup', stopPropagation);
@@ -349,7 +368,10 @@ class GFMTableWidget extends WidgetType {
         const td = document.createElement('td');
         td.contentEditable = 'true';
         td.style.cssText =
-          'border: 1px solid var(--table-border-color, var(--border-color, #444)); padding: 8px 12px; text-align: left; outline: none; min-width: 60px; color: var(--text-color, #ffffff);';
+          `border:${border};padding:var(--table-cell-padding,8px);` +
+          'background:var(--table-cell-bg,transparent);' +
+          'color:var(--table-cell-color,var(--text-color,#fff));' +
+          'text-align:left;outline:none;min-width:60px;';
         td.textContent = cellText;
         td.addEventListener('keydown', stopPropagation);
         td.addEventListener('keyup', stopPropagation);
@@ -404,6 +426,13 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
   buildDecorations(view) {
     const builder = [];
     const paragraphLineStarts = new Set();
+    const lineClasses = new Map();
+
+    const addLineClass = (lineFrom, cls) => {
+      if (!lineClasses.has(lineFrom)) lineClasses.set(lineFrom, new Set());
+      lineClasses.get(lineFrom).add(cls);
+    };
+
     if (currentEditorMode === 'source') {
       return Decoration.none;
     }
@@ -423,7 +452,8 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name.startsWith('ATXHeading')) {
             const level = node.name.replace('ATXHeading', '');
-            builder.push(Decoration.line({ attributes: { class: `cm-heading cm-heading-${level}` } }).range(line.from));
+            addLineClass(line.from, 'cm-heading');
+            addLineClass(line.from, `cm-heading-${level}`);
           }
 
           if (node.name === 'HeaderMark' && !isNodeActive) {
@@ -458,7 +488,6 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.replace({}).range(node.from, node.to));
           }
 
-          // Give CodeMirror real line classes for the paragraph-only settings.
           if (node.name === 'Paragraph') {
             const doc = view.state.doc;
             const first = doc.lineAt(node.from);
@@ -470,17 +499,24 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
               if (paragraphLineStarts.has(paragraphLine.from)) continue;
               paragraphLineStarts.add(paragraphLine.from);
 
-              const classes = ['cm-paragraph'];
-              if (number === first.number) classes.push('cm-paragraph-first');
-              if (number === last.number) classes.push('cm-paragraph-last');
-              builder.push(Decoration.line({
-                attributes: { class: classes.join(' ') }
-              }).range(paragraphLine.from));
+              addLineClass(paragraphLine.from, 'cm-paragraph');
+              if (number === first.number) addLineClass(paragraphLine.from, 'cm-paragraph-first');
+              if (number === last.number) addLineClass(paragraphLine.from, 'cm-paragraph-last');
             }
           }
 
+          if (node.name === 'ListItem') {
+            addLineClass(line.from, 'cm-list-item');
+          }
+
+          if (node.name === 'ListMark') {
+            const markText = view.state.doc.sliceString(node.from, node.to);
+            const cls = /^\d+[\.\)]/.test(markText) ? 'cm-list-number' : 'cm-list-bullet';
+            builder.push(Decoration.mark({ class: cls }).range(node.from, node.to));
+          }
+
           if (node.name === 'Blockquote') {
-            builder.push(Decoration.line({ attributes: { class: 'cm-blockquote' } }).range(line.from));
+            addLineClass(line.from, 'cm-blockquote');
           }
           if (node.name === 'QuoteMark' && !isNodeActive) {
             const end = Math.min(node.to + 1, line.to);
@@ -498,13 +534,18 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'HorizontalRule') {
-            builder.push(Decoration.line({ attributes: { class: 'cm-hr' } }).range(line.from));
+            addLineClass(line.from, 'cm-hr');
             if (!isNodeActive) {
               builder.push(Decoration.replace({}).range(node.from, node.to));
             }
           }
 
           if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+            const startLine = view.state.doc.lineAt(node.from);
+            const endLine = view.state.doc.lineAt(node.to);
+            for (let l = startLine.number; l <= endLine.number; l++) {
+              addLineClass(view.state.doc.line(l).from, 'cm-codeblock-line');
+            }
             if (line.from === node.from) {
               const codeText = view.state.doc.sliceString(node.from, node.to);
               const firstLineText = line.text;
@@ -549,6 +590,12 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
         }
       });
+    }
+
+    for (const [lineFrom, classes] of lineClasses) {
+      builder.push(Decoration.line({
+        attributes: { class: [...classes].join(' ') }
+      }).range(lineFrom));
     }
 
     builder.sort((a, b) => a.from - b.from || a.to - b.to);
