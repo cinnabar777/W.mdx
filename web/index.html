@@ -815,11 +815,14 @@
       text-decoration-line: var(--link-decoration-line, underline) !important;
       text-decoration-style: var(--link-decoration-style, solid) !important;
     }
-    .cm-hr {
+    .cm-content .cm-line.cm-hr {
+      box-sizing: border-box !important;
       border-bottom: var(--hr-thickness, 2px) var(--hr-style, solid) var(--hr-color, #444444) !important;
       width: var(--hr-width, 100%) !important;
-      margin-top: var(--hr-margin-top, 16px) !important;
-      margin-bottom: var(--hr-margin-bottom, 16px) !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+      padding-top: var(--hr-margin-top, 16px) !important;
+      padding-bottom: var(--hr-margin-bottom, 16px) !important;
     }
   </style>
 </head>

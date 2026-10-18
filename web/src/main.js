@@ -614,7 +614,12 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'HorizontalRule') {
             addLineClass(line.from, 'cm-hr');
-            if (!isNodeActive) {
+            const caretIsOnRule =
+              selection.empty &&
+              selection.head >= node.from &&
+              selection.head <= node.to;
+
+            if (!isNodeActive && !caretIsOnRule) {
               builder.push(Decoration.replace({}).range(node.from, node.to));
             }
           }
