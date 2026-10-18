@@ -36,6 +36,8 @@ object PreferenceResetHelper {
             "pref_toolbar_bg_color" -> "#121212"
             "pref_toolbar_icon_color" -> "#FFFFFF"
             "pref_toolbar_active_icon_color" -> "#00E5FF"
+            "pref_toolbar_toggle_bg_color" -> "#00000000"
+            "pref_toolbar_toggle_icon_color" -> "#FFFFFF"
             "pref_heading_underline_color" -> "#FFFFFF"
             "pref_blockquote_line_color" -> "#444444"
             "pref_blockquote_bg_color" -> "#1A1A1A"
@@ -150,6 +152,8 @@ object PreferenceResetHelper {
             key == "pref_toolbar_bg_color" -> "default"
             key == "pref_toolbar_icon_color" -> "default"
             key == "pref_toolbar_active_icon_color" -> "default"
+            key == "pref_toolbar_toggle_bg_color" -> "default"
+            key == "pref_toolbar_toggle_icon_color" -> "default"
             key == "pref_toolbar_height" -> 48
             key == "pref_app_theme" -> "amoled"
             key == "pref_image_mode" -> "picker"

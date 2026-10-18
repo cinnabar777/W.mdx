@@ -614,12 +614,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'HorizontalRule') {
             addLineClass(line.from, 'cm-hr');
-            const caretIsOnRule =
-              selection.empty &&
-              selection.head >= node.from &&
-              selection.head <= node.to;
-
-            if (!isNodeActive && !caretIsOnRule) {
+            if (!isNodeActive) {
               builder.push(Decoration.replace({}).range(node.from, node.to));
             }
           }
@@ -2170,6 +2165,20 @@ window.editorBridge = {
       document.documentElement.style.setProperty(varName, unit && isPlainNumber ? raw + unit : raw);
     };
 
+    // Android ColorPickerDialog stores alpha colors as #AARRGGBB.
+    // CSS 8-digit hex is #RRGGBBAA, so convert ARGB values to rgba() first.
+    const androidArgbToCss = (value) => {
+      if (typeof value !== 'string') return value;
+      const match = /^#([0-9a-f]{8})$/i.exec(value.trim());
+      if (!match) return value;
+
+      const [alpha, red, green, blue] = match[1]
+        .match(/.{2}/g)
+        .map(channel => parseInt(channel, 16));
+
+      return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+    };
+
     if (prefs.pref_app_theme === 'light') {
       document.body.classList.add('light-theme');
     } else {
@@ -2326,6 +2335,14 @@ window.editorBridge = {
     setCssVar('--toolbar-bg', prefs.pref_toolbar_bg_color);
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);
     setCssVar('--toolbar-active-icon-color', prefs.pref_toolbar_active_icon_color);
+    setCssVar(
+      '--toolbar-toggle-bg-color',
+      androidArgbToCss(prefs.pref_toolbar_toggle_bg_color)
+    );
+    setCssVar(
+      '--toolbar-toggle-icon-color',
+      androidArgbToCss(prefs.pref_toolbar_toggle_icon_color)
+    );
     setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
   },
   getMarkdown: function() {
