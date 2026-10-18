@@ -1826,26 +1826,40 @@ window.editorBridge = {
     // Body & Paragraph
     setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');
     setCssVar('--paragraph-line-height', prefs.pref_paragraph_line_height);
-    setCssVar('--paragraph-letter-spacing', prefs.pref_paragraph_letter_spacing, 'px');
-    setCssVar('--paragraph-align', prefs.pref_paragraph_align || prefs.pref_paragraph_justify);
+    setCssVar('--paragraph-letter-spacing', prefs.pref_letter_spacing || prefs.pref_paragraph_letter_spacing, 'px');
+    const alignVal = prefs.pref_justify_paragraph === true ? 'justify' : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify);
+    setCssVar('--paragraph-align', alignVal);
     setCssVar('--paragraph-indent', prefs.pref_paragraph_first_line_indent, 'px');
     setCssVar('--paragraph-margin-top', prefs.pref_paragraph_margin_top, 'px');
     setCssVar('--paragraph-margin-bottom', prefs.pref_paragraph_margin_bottom, 'px');
 
-    // Headings (H1 to H6 individualized)
+    // Headings Global Defaults
+    const globalHeadingScale = prefs.pref_heading_scale_percent ? (prefs.pref_heading_scale_percent / 100.0) : null;
+    const globalHeadingWeight = prefs.pref_font_weight_heading;
+    const globalHeadingAlign = prefs.pref_heading_align;
+    const globalHeadingLineHeight = prefs.pref_heading_line_height;
+    const globalHeadingLetterSpacing = prefs.pref_heading_letter_spacing;
+    const globalHeadingTransform = prefs.pref_heading_text_transform;
+    const globalHeadingUnderlineStyle = prefs.pref_heading_underline_style;
+    const globalHeadingUnderlineThickness = prefs.pref_heading_underline_thickness;
+    const globalHeadingUnderlineColor = prefs.pref_heading_underline_color;
+    const globalHeadingMarginTop = prefs.pref_heading_margin_top;
+    const globalHeadingMarginBottom = prefs.pref_heading_margin_bottom;
+
+    // Headings (H1 to H6 individualized with global fallback)
     for (let i = 1; i <= 6; i++) {
       const pColor = prefs[`pref_heading_${i}_color`];
-      const pScale = prefs[`pref_heading_${i}_scale`] || (prefs[`pref_heading_${i}_font_size`] ? prefs[`pref_heading_${i}_font_size`] / 16.0 : null);
-      const pAlign = prefs[`pref_heading_${i}_align`];
-      const pLineHeight = prefs[`pref_heading_${i}_line_height`];
-      const pLetterSpacing = prefs[`pref_heading_${i}_letter_spacing`];
-      const pTransform = prefs[`pref_heading_${i}_transform`];
-      const pUnderlineStyle = prefs[`pref_heading_${i}_underline_style`];
-      const pUnderlineThickness = prefs[`pref_heading_${i}_underline_thickness`];
-      const pUnderlineColor = prefs[`pref_heading_${i}_underline_color`];
-      const pMarginTop = prefs[`pref_heading_${i}_margin_top`];
-      const pMarginBottom = prefs[`pref_heading_${i}_margin_bottom`];
-      const pWeight = prefs[`pref_heading_${i}_font_weight`];
+      const pScale = prefs[`pref_heading_${i}_scale`] || (prefs[`pref_heading_${i}_font_size`] ? prefs[`pref_heading_${i}_font_size`] / 16.0 : globalHeadingScale);
+      const pAlign = prefs[`pref_heading_${i}_align`] || globalHeadingAlign;
+      const pLineHeight = prefs[`pref_heading_${i}_line_height`] || globalHeadingLineHeight;
+      const pLetterSpacing = prefs[`pref_heading_${i}_letter_spacing`] || globalHeadingLetterSpacing;
+      const pTransform = prefs[`pref_heading_${i}_transform`] || globalHeadingTransform;
+      const pUnderlineStyle = prefs[`pref_heading_${i}_underline_style`] || globalHeadingUnderlineStyle;
+      const pUnderlineThickness = prefs[`pref_heading_${i}_underline_thickness`] || globalHeadingUnderlineThickness;
+      const pUnderlineColor = prefs[`pref_heading_${i}_underline_color`] || globalHeadingUnderlineColor;
+      const pMarginTop = prefs[`pref_heading_${i}_margin_top`] || globalHeadingMarginTop;
+      const pMarginBottom = prefs[`pref_heading_${i}_margin_bottom`] || globalHeadingMarginBottom;
+      const pWeight = prefs[`pref_heading_${i}_font_weight`] || globalHeadingWeight;
 
       setCssVar(`--heading-${i}-color`, pColor);
       setCssVar(`--heading-${i}-scale`, pScale);
@@ -1885,43 +1899,49 @@ window.editorBridge = {
     setCssVar('--list-line-height', prefs.pref_list_line_height);
     setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
     setCssVar('--list-number-color', prefs.pref_list_number_color);
-    setCssVar('--todo-border-color', prefs.pref_todo_unchecked_border_color);
-    setCssVar('--todo-accent-color', prefs.pref_todo_checked_accent_color);
+    setCssVar('--todo-border-color', prefs.pref_todo_unchecked_color || prefs.pref_todo_unchecked_border_color);
+    setCssVar('--todo-accent-color', prefs.pref_todo_checked_color || prefs.pref_todo_checked_accent_color);
     setCssVar('--todo-bg-color', prefs.pref_todo_unchecked_bg_color);
 
-    // Blockquotes
+    // Blockquotes & Callouts
     setCssVar('--blockquote-border-width', prefs.pref_blockquote_line_thickness, 'px');
     setCssVar('--blockquote-border-style', prefs.pref_blockquote_line_style);
     setCssVar('--blockquote-border-color', prefs.pref_blockquote_line_color);
     setCssVar('--blockquote-bg-color', prefs.pref_blockquote_bg_color);
     setCssVar('--blockquote-text-color', prefs.pref_blockquote_text_color);
-    setCssVar('--blockquote-left-margin', prefs.pref_blockquote_left_margin, 'px');
+    setCssVar('--blockquote-left-margin', prefs.pref_blockquote_left_indent || prefs.pref_blockquote_left_margin, 'px');
     setCssVar('--blockquote-padding', prefs.pref_blockquote_padding, 'px');
+
+    setCssVar('--callout-border-width', prefs.pref_callout_line_thickness, 'px');
+    setCssVar('--callout-border-style', prefs.pref_callout_line_style);
+    setCssVar('--callout-border-color', prefs.pref_callout_line_color);
+    setCssVar('--callout-bg-color', prefs.pref_callout_bg_color);
+    setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
 
     // Tables
     setCssVar('--table-border-style', prefs.pref_table_border_style);
-    setCssVar('--table-border-width', prefs.pref_table_border_width, 'px');
+    setCssVar('--table-border-width', prefs.pref_table_border_thickness || prefs.pref_table_border_width, 'px');
     setCssVar('--table-border-color', prefs.pref_table_border_color);
-    setCssVar('--table-header-bg', prefs.pref_table_header_bg);
-    setCssVar('--table-header-color', prefs.pref_table_header_color);
+    setCssVar('--table-header-bg', prefs.pref_table_header_bg_color || prefs.pref_table_header_bg);
+    setCssVar('--table-header-color', prefs.pref_table_header_text_color || prefs.pref_table_header_color);
     setCssVar('--table-header-font-weight', prefs.pref_table_header_font_weight);
-    setCssVar('--table-cell-bg', prefs.pref_table_cell_bg);
-    setCssVar('--table-cell-color', prefs.pref_table_cell_color);
+    setCssVar('--table-cell-bg', prefs.pref_table_cell_bg_color || prefs.pref_table_cell_bg);
+    setCssVar('--table-cell-color', prefs.pref_table_cell_text_color || prefs.pref_table_cell_color);
     setCssVar('--table-cell-padding', prefs.pref_table_cell_padding, 'px');
 
     // Code blocks
     setCssVar('--code-block-color', prefs.pref_code_block_color);
     setCssVar('--code-block-bg-color', prefs.pref_code_block_bg_color);
-    setCssVar('--code-block-label-bg', prefs.pref_code_block_label_bg);
-    setCssVar('--code-block-label-color', prefs.pref_code_block_label_color);
-    setCssVar('--code-block-copy-bg', prefs.pref_code_block_copy_bg);
-    setCssVar('--code-block-copy-color', prefs.pref_code_block_copy_color);
+    setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
+    setCssVar('--code-block-border-radius', prefs.pref_code_block_border_radius, 'px');
+    setCssVar('--code-block-line-height', prefs.pref_code_block_line_height);
+    setCssVar('--code-block-lang-label-color', prefs.pref_code_block_lang_label_color);
 
     // Dividers
     setCssVar('--hr-thickness', prefs.pref_hr_thickness, 'px');
     setCssVar('--hr-style', prefs.pref_hr_style);
     setCssVar('--hr-color', prefs.pref_hr_color);
-    setCssVar('--hr-width', prefs.pref_hr_width, '%');
+    setCssVar('--hr-width', prefs.pref_hr_width_percent || prefs.pref_hr_width, '%');
     setCssVar('--hr-margin-top', prefs.pref_hr_margin_top, 'px');
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 

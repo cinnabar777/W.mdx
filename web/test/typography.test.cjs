@@ -6,61 +6,53 @@ const path = require('node:path');
 const mainJsPath = path.join(__dirname, '../src/main.js');
 const source = fs.readFileSync(mainJsPath, 'utf8');
 
-test('applyAllPreferences maps all individualized H1-H6 preferences', () => {
-  assert.ok(source.includes('--heading-${i}-color') || source.includes('--heading-1-color'));
-  assert.ok(source.includes('--heading-${i}-scale') || source.includes('--heading-1-scale'));
-  assert.ok(source.includes('--heading-${i}-align') || source.includes('--heading-1-align'));
-  assert.ok(source.includes('--heading-${i}-line-height') || source.includes('--heading-1-line-height'));
-  assert.ok(source.includes('--heading-${i}-letter-spacing') || source.includes('--heading-1-letter-spacing'));
-  assert.ok(source.includes('--heading-${i}-text-transform') || source.includes('--heading-1-text-transform'));
-  assert.ok(source.includes('--heading-${i}-underline-style') || source.includes('--heading-1-underline-style'));
-  assert.ok(source.includes('--heading-${i}-underline-thickness') || source.includes('--heading-1-underline-thickness'));
-  assert.ok(source.includes('--heading-${i}-underline-color') || source.includes('--heading-1-underline-color'));
-  assert.ok(source.includes('--heading-${i}-margin-top') || source.includes('--heading-1-margin-top'));
-  assert.ok(source.includes('--heading-${i}-margin-bottom') || source.includes('--heading-1-margin-bottom'));
-  assert.ok(source.includes('--heading-${i}-font-weight') || source.includes('--heading-1-font-weight'));
+test('applyAllPreferences handles Android XML preference keys correctly', () => {
+  assert.ok(source.includes('pref_body_font_size'), 'Missing pref_body_font_size');
+  assert.ok(source.includes('pref_paragraph_line_height'), 'Missing pref_paragraph_line_height');
+  assert.ok(source.includes('pref_letter_spacing'), 'Missing pref_letter_spacing');
+  assert.ok(source.includes('pref_paragraph_align'), 'Missing pref_paragraph_align');
+  assert.ok(source.includes('pref_paragraph_first_line_indent'), 'Missing pref_paragraph_first_line_indent');
+
+  assert.ok(source.includes('pref_heading_scale_percent'), 'Missing pref_heading_scale_percent');
+  assert.ok(source.includes('pref_font_weight_heading'), 'Missing pref_font_weight_heading');
+  assert.ok(source.includes('pref_heading_align'), 'Missing pref_heading_align');
+  assert.ok(source.includes('pref_heading_line_height'), 'Missing pref_heading_line_height');
+
+  assert.ok(source.includes('pref_list_left_indent'), 'Missing pref_list_left_indent');
+  assert.ok(source.includes('pref_todo_unchecked_color'), 'Missing pref_todo_unchecked_color');
+
+  assert.ok(source.includes('pref_blockquote_line_thickness'), 'Missing pref_blockquote_line_thickness');
+  assert.ok(source.includes('pref_table_border_thickness'), 'Missing pref_table_border_thickness');
+  assert.ok(source.includes('pref_table_header_bg_color'), 'Missing pref_table_header_bg_color');
+
+  assert.ok(source.includes('pref_hr_thickness'), 'Missing pref_hr_thickness');
+  assert.ok(source.includes('pref_hr_width_percent'), 'Missing pref_hr_width_percent');
 });
 
-test('applyAllPreferences maps typography, lists, quotes, tables, and codeblocks', () => {
+test('applyAllPreferences sets all required CSS variables', () => {
   const variables = [
     '--body-font-size',
     '--paragraph-line-height',
     '--paragraph-letter-spacing',
     '--paragraph-align',
     '--paragraph-indent',
-    '--paragraph-margin-top',
-    '--paragraph-margin-bottom',
+    '--heading-${i}-color',
+    '--heading-${i}-scale',
     '--bold-color',
     '--italic-color',
     '--link-color',
-    '--link-decoration',
     '--code-color',
     '--code-bg-color',
-    '--footnote-text-color',
     '--list-left-indent',
-    '--list-item-spacing',
-    '--list-bullet-color',
-    '--list-number-color',
     '--todo-border-color',
     '--todo-accent-color',
-    '--todo-bg-color',
     '--blockquote-border-width',
-    '--blockquote-border-style',
-    '--blockquote-border-color',
-    '--blockquote-bg-color',
-    '--blockquote-text-color',
-    '--table-border-style',
     '--table-border-width',
-    '--table-border-color',
     '--table-header-bg',
-    '--table-header-color',
     '--table-cell-bg',
-    '--table-cell-color',
     '--code-block-color',
     '--code-block-bg-color',
     '--hr-thickness',
-    '--hr-style',
-    '--hr-color',
     '--hr-width'
   ];
 

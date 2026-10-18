@@ -530,6 +530,12 @@
     }
     .cm-content .cm-line {
       color: var(--text-color, #ffffff) !important;
+      line-height: var(--paragraph-line-height, 1.6) !important;
+      letter-spacing: var(--paragraph-letter-spacing, normal) !important;
+      text-align: var(--paragraph-align, left) !important;
+      text-indent: var(--paragraph-indent, 0px) !important;
+      margin-top: var(--paragraph-margin-top, 0px) !important;
+      margin-bottom: var(--paragraph-margin-bottom, 0px) !important;
     }
     .cm-heading {
       font-family: var(--heading-font-family), var(--body-font-family), sans-serif !important;
@@ -557,7 +563,13 @@
       border-left: var(--blockquote-border-width, 4px) var(--blockquote-border-style, solid) var(--blockquote-border-color, #444444) !important;
       background-color: var(--blockquote-bg-color, transparent) !important;
       color: var(--blockquote-text-color, inherit) !important;
+      margin-left: var(--blockquote-left-margin, 0px) !important;
       padding-left: var(--blockquote-padding, 12px) !important;
+    }
+    .cm-callout {
+      border-left: var(--callout-border-width, 4px) var(--callout-border-style, solid) var(--callout-border-color, #29b6f6) !important;
+      background-color: var(--callout-bg-color, rgba(41, 182, 246, 0.12)) !important;
+      padding: var(--callout-padding, 12px) !important;
     }
     .cm-link {
       color: var(--link-color, #29b6f6) !important;
@@ -565,6 +577,9 @@
     }
     .cm-hr {
       border-bottom: var(--hr-thickness, 2px) var(--hr-style, solid) var(--hr-color, #444444) !important;
+      width: var(--hr-width, 100%) !important;
+      margin-top: var(--hr-margin-top, 16px) !important;
+      margin-bottom: var(--hr-margin-bottom, 16px) !important;
     }
   </style>
 </head>
