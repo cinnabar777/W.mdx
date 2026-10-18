@@ -1,5 +1,6 @@
 <resources>
-    <string name="app_name">WMdx</string>
+    <string name="app_name">Wmdx</string>
+    <string name="launcher_name">W</string>
     <string name="title_activity_settings">Settings</string>
     <string name="pref_editor_mode_title">Default Editor Mode</string>
     <string name="pref_line_wrap_title">Enable Line Wrap</string>
