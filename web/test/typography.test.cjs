@@ -59,3 +59,30 @@ test('applyAllPreferences sets all required CSS variables', () => {
     assert.ok(source.includes(v), `Missing CSS variable mapping for ${v}`);
   }
 });
+
+const indexHtmlPath = path.join(__dirname, '../index.html');
+const indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
+const paragraphSettingsPath = path.join(
+  __dirname,
+  '../../app/src/main/res/xml/preferences_styling_paragraph.xml'
+);
+const paragraphSettings = fs.readFileSync(paragraphSettingsPath, 'utf8');
+
+test('paragraph and list typography selectors have matching editor line classes', () => {
+  assert.match(source, /tree\.resolveInner\(probe, 1\)/);
+  assert.match(source, /ancestor\.name === 'Paragraph'/);
+  assert.match(source, /ancestor\.name === 'ListItem'/);
+  assert.match(source, /addLineClass\(line\.from, 'cm-paragraph'\)/);
+  assert.match(source, /addLineClass\(line\.from, 'cm-list-item'\)/);
+  assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-first'\)/);
+  assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-last'\)/);
+  assert.match(indexHtml, /\.cm-content \.cm-paragraph:not\(\.cm-list-item\)/);
+  assert.match(indexHtml, /\.cm-content \.cm-list-item/);
+});
+
+test('letter-spacing control is labeled as paragraph-only, not global', () => {
+  assert.match(paragraphSettings, /app:key="pref_letter_spacing"/);
+  assert.match(paragraphSettings, /app:title="Paragraph Letter Spacing \(px\)"/);
+  assert.match(paragraphSettings, /Letter spacing for regular paragraph text only/);
+  assert.doesNotMatch(paragraphSettings, /Global Letter Spacing/);
+});

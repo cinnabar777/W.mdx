@@ -20,8 +20,8 @@
 
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_letter_spacing"
-            app:title="Global Letter Spacing (px)"
-            app:summary="Letter spacing for paragraph text (e.g. 0.5px or 0px)"
+            app:title="Paragraph Letter Spacing (px)"
+            app:summary="Letter spacing for regular paragraph text only (e.g. 0.5px or 0px)"
             app:defaultValue="0px" />
 
         <com.wmdx.markdownapp.ResetPreference

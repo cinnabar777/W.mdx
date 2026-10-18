@@ -508,7 +508,6 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
   buildDecorations(view) {
     const builder = [];
-    const paragraphLineStarts = new Set();
     const lineClasses = new Map();
 
     const addLineClass = (lineFrom, ...classNames) => {
@@ -525,6 +524,56 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
     const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
+    const doc = view.state.doc;
+
+    for (const { from, to } of view.visibleRanges) {
+      const firstVisibleLine = doc.lineAt(from).number;
+      const lastVisibleLine = doc.lineAt(Math.max(from, to - 1)).number;
+
+      for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
+        const line = doc.line(lineNumber);
+        const firstText = /\S/.exec(line.text);
+        const probe = firstText ? line.from + firstText.index : line.from;
+        const resolvedNode = tree.resolveInner(probe, 1);
+
+        let paragraphNode = null;
+        let insideListItem = false;
+        let insideCodeBlock = false;
+        let insideTable = false;
+
+        for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+          if (ancestor.name === 'Paragraph') paragraphNode = ancestor;
+          if (ancestor.name === 'ListItem') insideListItem = true;
+          if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock') {
+            insideCodeBlock = true;
+          }
+          if (ancestor.name === 'Table') insideTable = true;
+        }
+
+        if (insideCodeBlock || insideTable) continue;
+
+        if (insideListItem) {
+          addLineClass(line.from, 'cm-list-item');
+          continue;
+        }
+
+        if (paragraphNode) {
+          addLineClass(line.from, 'cm-paragraph');
+
+          const paragraphFirstLine = doc.lineAt(paragraphNode.from);
+          const paragraphLastLine = doc.lineAt(
+            Math.max(paragraphNode.from, paragraphNode.to - 1)
+          );
+
+          if (line.from === paragraphFirstLine.from) {
+            addLineClass(line.from, 'cm-paragraph-first');
+          }
+          if (line.from === paragraphLastLine.from) {
+            addLineClass(line.from, 'cm-paragraph-last');
+          }
+        }
+      }
+    }
 
     for (const { from, to } of view.visibleRanges) {
       tree.iterate({
