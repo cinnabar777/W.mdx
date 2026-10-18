@@ -34,7 +34,5 @@ test('parsePipeRow and isEscapedPipe handle escaped pipes and outer pipes', () =
   assert.ok(code.includes('export function isEscapedPipe'), 'isEscapedPipe is defined');
   assert.ok(code.includes('export function isTableSeparatorRow'), 'isTableSeparatorRow is defined');
   assert.ok(code.includes('export function getTableColumnWidths'), 'getTableColumnWidths is defined');
-  assert.ok(code.includes('export function structuralRangesForLines'), 'structuralRangesForLines is defined');
-  assert.ok(code.includes('export function changedStructuralRanges'), 'changedStructuralRanges is defined');
   assert.ok(code.includes('class EmptyTableCellWidget'), 'EmptyTableCellWidget is defined');
 });

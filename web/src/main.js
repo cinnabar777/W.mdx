@@ -511,9 +511,11 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
     const paragraphLineStarts = new Set();
     const lineClasses = new Map();
 
-    const addLineClass = (lineFrom, cls) => {
+    const addLineClass = (lineFrom, ...classNames) => {
       if (!lineClasses.has(lineFrom)) lineClasses.set(lineFrom, new Set());
-      lineClasses.get(lineFrom).add(cls);
+      for (const className of classNames) {
+        lineClasses.get(lineFrom).add(className);
+      }
     };
 
     if (currentEditorMode === 'source') {
@@ -1004,156 +1006,6 @@ export const tableNavigationKeymap = keymap.of([
   }
 ]);
 
-export function isQuoteLine(text) {
-  return /^ {0,3}>/.test(text);
-}
-
-export function expandQuoteRun(doc, first, last) {
-  let containsQuote = false;
-  for (let line = first; line <= last; line++) {
-    if (isQuoteLine(doc.line(line).text)) {
-      containsQuote = true;
-      break;
-    }
-  }
-  if (!containsQuote) return { first, last };
-
-  while (first > 1 && isQuoteLine(doc.line(first - 1).text)) first--;
-  while (last < doc.lines && isQuoteLine(doc.line(last + 1).text)) last++;
-  return { first, last };
-}
-
-export function structuralRangesForLines(state, firstLine, lastLine) {
-  const doc = state.doc;
-  if (currentEditorMode === 'source') return [];
-
-  let scanStart = firstLine;
-  while (scanStart > 1 && isQuoteLine(doc.line(scanStart - 1).text)) scanStart--;
-
-  let activeCallout = '';
-  const ranges = [];
-
-  for (let number = scanStart; number <= lastLine; number++) {
-    const line = doc.line(number);
-    const text = line.text;
-    const isQuote = isQuoteLine(text);
-    const calloutMarker = isQuote
-      ? text.match(/^ {0,3}>\s*\[!([A-Za-z]+)\](?:[+-])?/)
-      : null;
-
-    if (!isQuote) {
-      activeCallout = '';
-    } else if (calloutMarker) {
-      activeCallout = calloutMarker[1].toLowerCase();
-    }
-
-    if (number < firstLine || number > lastLine) continue;
-
-    const classes = [];
-    const heading = text.match(/^ {0,3}(#{1,6})(?:[ \t]+|$)/);
-    if (heading) {
-      classes.push('cm-heading', `cm-heading-${heading[1].length}`);
-    }
-
-    if (/^ {0,3}(?:[-+*]|\d+[.)])[ \t]+/.test(text)) {
-      classes.push('cm-list-item');
-    }
-
-    if (isQuote) classes.push('cm-blockquote');
-    if (activeCallout) {
-      classes.push('cm-callout', `cm-callout-${activeCallout}`);
-      if (calloutMarker) classes.push('cm-callout-title');
-    }
-
-    if (classes.length) {
-      ranges.push(
-        Decoration.line({
-          attributes: { class: classes.join(' ') }
-        }).range(line.from)
-      );
-    }
-  }
-
-  return ranges;
-}
-
-export function mergeLineRanges(ranges) {
-  ranges.sort((a, b) => a.first - b.first);
-  const merged = [];
-  for (const range of ranges) {
-    const previous = merged[merged.length - 1];
-    if (previous && range.first <= previous.last + 1) {
-      previous.last = Math.max(previous.last, range.last);
-    } else {
-      merged.push({ first: range.first, last: range.last });
-    }
-  }
-  return merged;
-}
-
-export function changedStructuralRanges(tr) {
-  const oldDoc = tr.startState.doc;
-  const newDoc = tr.state.doc;
-  const ranges = [];
-
-  tr.changes.iterChangedRanges((oldFrom, oldTo, newFrom, newTo) => {
-    let oldFirst = Math.max(1, oldDoc.lineAt(oldFrom).number - 1);
-    let oldLast = Math.min(oldDoc.lines, oldDoc.lineAt(oldTo).number + 1);
-    ({ first: oldFirst, last: oldLast } = expandQuoteRun(oldDoc, oldFirst, oldLast));
-
-    const mappedOldFrom = tr.changes.mapPos(oldDoc.line(oldFirst).from, -1);
-    const mappedOldTo = tr.changes.mapPos(oldDoc.line(oldLast).to, 1);
-    let first = Math.max(
-      1,
-      Math.min(
-        newDoc.lineAt(newFrom).number - 1,
-        newDoc.lineAt(mappedOldFrom).number
-      )
-    );
-    let last = Math.min(
-      newDoc.lines,
-      Math.max(
-        newDoc.lineAt(newTo).number + 1,
-        newDoc.lineAt(mappedOldTo).number
-      )
-    );
-    ({ first, last } = expandQuoteRun(newDoc, first, last));
-    ranges.push({ first, last });
-  });
-
-  return mergeLineRanges(ranges);
-}
-
-export function buildInitialStructuralDecorations(state) {
-  return Decoration.set(
-    structuralRangesForLines(state, 1, state.doc.lines),
-    true
-  );
-}
-
-export const persistentLayoutField = StateField.define({
-  create(state) {
-    return buildInitialStructuralDecorations(state);
-  },
-  update(current, tr) {
-    if (!tr.docChanged) return current;
-
-    let next = current.map(tr.changes);
-    for (const range of changedStructuralRanges(tr)) {
-      const from = tr.state.doc.line(range.first).from;
-      const to = tr.state.doc.line(range.last).to;
-      next = next.update({
-        filterFrom: from,
-        filterTo: to,
-        filter: () => false,
-        add: structuralRangesForLines(tr.state, range.first, range.last),
-        sort: true
-      });
-    }
-    return next;
-  },
-  provide: field => EditorView.decorations.from(field)
-});
 
 
 class CodeMirrorAdapter {
@@ -1227,7 +1079,6 @@ class CodeMirrorAdapter {
           }
         }),
         tableNavigationKeymap,
-        persistentLayoutField,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap
@@ -1905,7 +1756,19 @@ function updateTocActiveSection() {
 
   if (activeRow) {
     activeRow.classList.add('active-section');
-    activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+    const panel = document.querySelector('#toc-panel');
+    if (!panel?.classList.contains('open')) return;
+
+    const containerRect = tocContent.getBoundingClientRect();
+    const rowRect = activeRow.getBoundingClientRect();
+    if (containerRect.height <= 0 || rowRect.height <= 0) return;
+
+    if (rowRect.top < containerRect.top) {
+      tocContent.scrollTop -= containerRect.top - rowRect.top;
+    } else if (rowRect.bottom > containerRect.bottom) {
+      tocContent.scrollTop += rowRect.bottom - containerRect.bottom;
+    }
   }
 }
 

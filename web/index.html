@@ -518,8 +518,16 @@
       background-color: var(--table-header-bg, rgba(255, 255, 255, 0.12)) !important;
       color: var(--table-header-color, var(--text-color)) !important;
     }
-    .cm-table-sep-row {
-      color: var(--table-border-color, #888888) !important;
+    .cm-content .cm-line.cm-table-sep-row {
+      font-size: 0 !important;
+      line-height: 0 !important;
+      height: 0 !important;
+      min-height: 0 !important;
+      max-height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      overflow: hidden !important;
     }
     .cm-table-data-row {
       background-color: var(--table-cell-bg, rgba(255, 255, 255, 0.03)) !important;
