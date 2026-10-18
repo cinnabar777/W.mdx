@@ -196,11 +196,7 @@ class GFMTableWidget extends WidgetType {
     const container = document.createElement('div');
     container.className = 'cm-gfm-table-container';
     container.style.cssText =
-      'overflow-x: auto; margin: 12px 0; border: 1px solid var(--table-border-color, var(--border-color, #444)); border-radius: 6px; position: relative; width: 100%; box-sizing: border-box; background-color: var(--bg-color, #000);';
-
-    const table = document.createElement('table');
-    table.style.cssText =
-      'width: 100%; border-collapse: collapse; color: var(--text-color, #ffffff); font-size: var(--body-font-size, 16px); table-layout: auto;';
+      'overflow-x: auto; margin: 12px 0; border: 1px solid var(--table-border-color, var(--border-color, #444)); border-radius: 6px; position: relative; width: 100%; box-sizing: border-box; background-color: var(--bg-color, #000); padding: 8px;';
 
     const lines = this.tableText
       .split('\n')
@@ -225,6 +221,31 @@ class GFMTableWidget extends WidgetType {
     const headers = parseCells(headerLine);
     const rows = dataLines.map(parseCells);
 
+    const stopPropagation = (e) => {
+      e.stopPropagation();
+    };
+
+    const getDynamicRange = () => {
+      try {
+        const pos = view.posAtDOM(container);
+        const line = view.state.doc.lineAt(pos);
+        let startL = line.number;
+        let endL = line.number;
+        while (startL > 1 && view.state.doc.line(startL - 1).text.trim().startsWith('|')) {
+          startL--;
+        }
+        while (endL < view.state.doc.lines && view.state.doc.line(endL + 1).text.trim().startsWith('|')) {
+          endL++;
+        }
+        return {
+          from: view.state.doc.line(startL).from,
+          to: view.state.doc.line(endL).to
+        };
+      } catch (e) {
+        return { from: this.from, to: this.to };
+      }
+    };
+
     const updateDoc = () => {
       const headerRowStr = '| ' + headers.join(' | ') + ' |';
       const sepRowStr = '| ' + headers.map(() => '---').join(' | ') + ' |';
@@ -232,11 +253,70 @@ class GFMTableWidget extends WidgetType {
 
       const newMarkdown = [headerRowStr, sepRowStr, ...dataRowStrs].join('\n');
       if (newMarkdown !== this.tableText) {
+        const range = getDynamicRange();
         view.dispatch({
-          changes: { from: this.from, to: this.to, insert: newMarkdown }
+          changes: { from: range.from, to: range.to, insert: newMarkdown }
         });
       }
     };
+
+    // Table toolbar controls
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = 'display: flex; gap: 8px; margin-bottom: 8px; font-size: 12px;';
+
+    const btnStyle = 'padding: 3px 8px; background: rgba(255,255,255,0.12); border: 1px solid #555; border-radius: 4px; color: #fff; cursor: pointer;';
+
+    const addRowBtn = document.createElement('button');
+    addRowBtn.textContent = '+ Row';
+    addRowBtn.style.cssText = btnStyle;
+    addRowBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      rows.push(new Array(headers.length).fill(''));
+      updateDoc();
+    });
+
+    const delRowBtn = document.createElement('button');
+    delRowBtn.textContent = '- Row';
+    delRowBtn.style.cssText = btnStyle;
+    delRowBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (rows.length > 1) {
+        rows.pop();
+        updateDoc();
+      }
+    });
+
+    const addColBtn = document.createElement('button');
+    addColBtn.textContent = '+ Col';
+    addColBtn.style.cssText = btnStyle;
+    addColBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      headers.push(`Header ${headers.length + 1}`);
+      rows.forEach(r => r.push(''));
+      updateDoc();
+    });
+
+    const delColBtn = document.createElement('button');
+    delColBtn.textContent = '- Col';
+    delColBtn.style.cssText = btnStyle;
+    delColBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (headers.length > 1) {
+        headers.pop();
+        rows.forEach(r => r.pop());
+        updateDoc();
+      }
+    });
+
+    toolbar.appendChild(addRowBtn);
+    toolbar.appendChild(delRowBtn);
+    toolbar.appendChild(addColBtn);
+    toolbar.appendChild(delColBtn);
+    container.appendChild(toolbar);
+
+    const table = document.createElement('table');
+    table.style.cssText =
+      'width: 100%; border-collapse: collapse; color: var(--text-color, #ffffff); font-size: var(--body-font-size, 16px); table-layout: auto;';
 
     const thead = document.createElement('thead');
     const trHead = document.createElement('tr');
@@ -246,6 +326,8 @@ class GFMTableWidget extends WidgetType {
       th.style.cssText =
         'border: 1px solid var(--table-border-color, var(--border-color, #444)); padding: 8px 12px; background-color: var(--table-header-bg, rgba(255,255,255,0.12)); font-weight: bold; text-align: left; outline: none; min-width: 60px; color: var(--text-color, #ffffff);';
       th.textContent = hText;
+      th.addEventListener('keydown', stopPropagation);
+      th.addEventListener('keyup', stopPropagation);
       th.addEventListener('input', () => {
         headers[colIdx] = th.textContent || '';
       });
@@ -267,6 +349,8 @@ class GFMTableWidget extends WidgetType {
         td.style.cssText =
           'border: 1px solid var(--table-border-color, var(--border-color, #444)); padding: 8px 12px; text-align: left; outline: none; min-width: 60px; color: var(--text-color, #ffffff);';
         td.textContent = cellText;
+        td.addEventListener('keydown', stopPropagation);
+        td.addEventListener('keyup', stopPropagation);
         td.addEventListener('input', () => {
           rows[rowIdx][colIdx] = td.textContent || '';
         });
@@ -1927,6 +2011,142 @@ window.editorBridge = {
     return Promise.resolve();
   }
 };
+
+// --- Obsidian Plugin Polyfill Layer ---
+if (typeof window !== 'undefined') {
+  class Notice {
+    constructor(message, duration = 4000) {
+      console.log('[Obsidian Notice]', message);
+      if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
+        window.AndroidNative.showToast(message);
+      }
+    }
+  }
+
+  class Component {
+    constructor() {
+      this._children = [];
+    }
+    load() {}
+    unload() {}
+    addChild(child) {
+      this._children.push(child);
+      if (child && typeof child.load === 'function') child.load();
+      return child;
+    }
+    removeChild(child) {
+      const idx = this._children.indexOf(child);
+      if (idx !== -1) {
+        this._children.splice(idx, 1);
+        if (child && typeof child.unload === 'function') child.unload();
+      }
+    }
+  }
+
+  class Plugin extends Component {
+    constructor(app, manifest) {
+      super();
+      this.app = app;
+      this.manifest = manifest;
+    }
+
+    addCommand(command) {
+      if (this.app && this.app.commands) {
+        this.app.commands.addCommand(command);
+      }
+    }
+
+    registerView(type, viewCreator) {
+      if (this.app && this.app.workspace) {
+        this.app.workspace.registerView(type, viewCreator);
+      }
+    }
+
+    registerSettingTab(settingTab) {
+      if (this.app && this.app.setting) {
+        this.app.setting.addSettingTab(settingTab);
+      }
+    }
+
+    async loadData() {
+      return {};
+    }
+
+    async saveData(data) {
+      console.log('[Obsidian Plugin] saveData:', data);
+    }
+  }
+
+  class PluginSettingTab {
+    constructor(app, plugin) {
+      this.app = app;
+      this.plugin = plugin;
+      this.containerEl = document.createElement('div');
+    }
+    display() {}
+    hide() {}
+  }
+
+  class Setting {
+    constructor(containerEl) {
+      this.containerEl = containerEl;
+      this.settingEl = document.createElement('div');
+      this.containerEl.appendChild(this.settingEl);
+    }
+    setName(name) { return this; }
+    setDesc(desc) { return this; }
+    addText(cb) { return this; }
+    addToggle(cb) { return this; }
+    addDropdown(cb) { return this; }
+    addButton(cb) { return this; }
+  }
+
+  class TFile {
+    constructor(path) {
+      this.path = path || 'Untitled.md';
+      this.name = path ? path.split('/').pop() : 'Untitled.md';
+      this.basename = this.name.replace(/\.[^/.]+$/, '');
+      this.extension = 'md';
+    }
+  }
+
+  window.obsidian = {
+    Plugin,
+    Component,
+    Notice,
+    PluginSettingTab,
+    Setting,
+    TFile,
+    ItemView: class extends Component {},
+    WorkspaceLeaf: class {},
+    MarkdownView: class {}
+  };
+
+  window.app = window.app || {
+    vault: {
+      read: async () => window.editorBridge ? window.editorBridge.getMarkdown() : '',
+      modify: async (file, data) => {
+        if (window.editorBridge) window.editorBridge.setMarkdown(data);
+      },
+      getAbstractFileByPath: (path) => new TFile(path)
+    },
+    workspace: {
+      activeLeaf: null,
+      registerView: (type, creator) => console.log('[Obsidian] Registered view:', type),
+      on: (event, callback) => {}
+    },
+    commands: {
+      commands: {},
+      addCommand: (cmd) => {
+        console.log('[Obsidian] Registered Command:', cmd.id, cmd.name);
+      }
+    },
+    setting: {
+      settingTabs: [],
+      addSettingTab: (tab) => console.log('[Obsidian] Registered Setting Tab')
+    }
+  };
+}
 
 window.addEventListener('DOMContentLoaded', () => {
   setupFloatingToggle();

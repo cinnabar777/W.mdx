@@ -33,7 +33,7 @@ object AppDiagnostics {
 
     fun report(context: Context): String {
         val webview = if (Build.VERSION.SDK_INT >= 26) android.webkit.WebView.getCurrentWebViewPackage()?.versionName else "unknown"
-        return "CKEditor Android diagnostics (routing-v1)\nAndroid SDK: ${Build.VERSION.SDK_INT}\nWebView: $webview\n" +
+        return "Wmdx Android diagnostics (routing-v1)\nAndroid SDK: ${Build.VERSION.SDK_INT}\nWebView: $webview\n" +
             "Times are milliseconds since boot. No document content or file identifiers recorded.\n\n" +
             context.getSharedPreferences("diagnostic_report", Context.MODE_PRIVATE).getString("events", "")
     }
