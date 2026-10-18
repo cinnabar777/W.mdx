@@ -10,14 +10,14 @@ import java.io.File
 
 object DocumentExporter {
 
-    fun generateCleanHtml(context: Context, ckEditorData: String, documentTitle: String): Pair<String, String?> {
+    fun generateCleanHtml(context: Context, editorData: String, documentTitle: String): Pair<String, String?> {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val includeToc = prefs.getBoolean("pref_export_include_toc", true)
         val tocLevels = prefs.getInt("pref_export_toc_levels", 3)
         val includeCss = prefs.getBoolean("pref_export_include_css", true)
         val cssPlacement = prefs.getString("pref_export_css_placement", "head") ?: "head"
 
-        val (processedBodyHtml, tocHtml) = processHeadingsAndToc(ckEditorData, includeToc, tocLevels)
+        val (processedBodyHtml, tocHtml) = processHeadingsAndToc(editorData, includeToc, tocLevels)
 
         val formattedBodyHtml = formatHtmlPayload(processedBodyHtml)
 

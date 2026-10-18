@@ -705,7 +705,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     targetName.endsWith(".mhtml", ignoreCase = true) ||
                     PreferenceManager.getDefaultSharedPreferences(this).getString("pref_export_format", "html") == "mhtml"
 
-        webView.evaluateJavascript("document.querySelector('.ck-content').innerHTML;") { htmlResult ->
+        webView.evaluateJavascript("document.querySelector('.cm-content')?.innerHTML || document.querySelector('.cm-editor')?.innerHTML || '';") { htmlResult ->
             val htmlPayload = JSONObjectWrapper.unquote(htmlResult)
             val (cleanHtml, _) = DocumentExporter.generateCleanHtml(this, htmlPayload, currentFileName)
 
