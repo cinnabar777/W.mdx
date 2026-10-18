@@ -538,6 +538,18 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
               : selection.from < node.to && selection.to > node.from
           );
 
+          const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
+          const setextHeading = /^SetextHeading([12])$/.exec(node.name);
+          const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
+
+          if (headingLevel) {
+            addLineClass(
+              line.from,
+              'cm-heading',
+              `cm-heading-${headingLevel}`
+            );
+          }
+
           if (node.name === 'HeaderMark' && !isNodeActive) {
             const end = Math.min(node.to + 1, line.to);
             if (end > node.from && end <= line.to) {
@@ -995,6 +1007,51 @@ function navigateTableCell(view, direction) {
   return true;
 }
 
+function isHorizontalRuleLine(state, lineNumber) {
+  const line = state.doc.line(lineNumber);
+  let found = false;
+
+  syntaxTree(state).iterate({
+    from: line.from,
+    to: line.to,
+    enter(node) {
+      if (
+        node.name === 'HorizontalRule' &&
+        node.from >= line.from &&
+        node.to <= line.to
+      ) {
+        found = true;
+      }
+    }
+  });
+
+  return found;
+}
+
+export const horizontalRuleNavigationKeymap = keymap.of([
+  {
+    key: 'ArrowUp',
+    run(view) {
+      const selection = view.state.selection.main;
+      if (!selection.empty) return false;
+
+      const currentLine = view.state.doc.lineAt(selection.head);
+      if (currentLine.number <= 1) return false;
+
+      const previousLineNumber = currentLine.number - 1;
+      if (!isHorizontalRuleLine(view.state, previousLineNumber)) return false;
+
+      const horizontalRuleLine = view.state.doc.line(previousLineNumber);
+      view.dispatch({
+        selection: { anchor: horizontalRuleLine.from },
+        scrollIntoView: false,
+        userEvent: 'select.keyboard'
+      });
+      return true;
+    }
+  }
+]);
+
 export const tableNavigationKeymap = keymap.of([
   {
     key: 'Tab',
@@ -1078,6 +1135,7 @@ class CodeMirrorAdapter {
             updateTocActiveSection();
           }
         }),
+        horizontalRuleNavigationKeymap,
         tableNavigationKeymap,
         keymap.of([
           ...defaultKeymap,

@@ -35,4 +35,5 @@ test('parsePipeRow and isEscapedPipe handle escaped pipes and outer pipes', () =
   assert.ok(code.includes('export function isTableSeparatorRow'), 'isTableSeparatorRow is defined');
   assert.ok(code.includes('export function getTableColumnWidths'), 'getTableColumnWidths is defined');
   assert.ok(code.includes('class EmptyTableCellWidget'), 'EmptyTableCellWidget is defined');
+  assert.ok(code.includes('export const horizontalRuleNavigationKeymap'), 'horizontalRuleNavigationKeymap is exported');
 });
