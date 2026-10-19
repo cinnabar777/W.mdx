@@ -14,7 +14,7 @@ import {
   replaceAll
 } from '@codemirror/search';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
-import { syntaxHighlighting, syntaxTree, HighlightStyle } from '@codemirror/language';
+import { syntaxHighlighting, syntaxTree, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
 
@@ -218,22 +218,58 @@ class CodeBlockHeaderWidget extends WidgetType {
 }
 
 class CalloutTitleWidget extends WidgetType {
-  constructor(title) {
+  constructor(title, foldMarker, isFolded, foldFrom, foldTo) {
     super();
     this.title = title;
+    this.foldMarker = foldMarker; // '+' or '-' or undefined
+    this.isFolded = isFolded;
+    this.foldFrom = foldFrom;
+    this.foldTo = foldTo;
   }
 
   eq(other) {
     return (
       other instanceof CalloutTitleWidget &&
-      other.title === this.title
+      other.title === this.title &&
+      other.foldMarker === this.foldMarker &&
+      other.isFolded === this.isFolded &&
+      other.foldFrom === this.foldFrom &&
+      other.foldTo === this.foldTo
     );
   }
 
-  toDOM() {
+  toDOM(view) {
     const span = document.createElement('span');
-    span.className = 'cm-callout-title-text';
-    span.textContent = this.title;
+    span.className = 'cm-callout-title-container';
+
+    if (this.foldMarker) {
+      const btn = document.createElement('button');
+      btn.className = 'cm-callout-fold-btn';
+      btn.type = 'button';
+      btn.setAttribute('aria-label', this.isFolded ? 'Expand callout' : 'Collapse callout');
+      btn.innerHTML = this.isFolded
+        ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
+        : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.foldFrom != null && this.foldTo != null && this.foldTo > this.foldFrom) {
+          if (this.isFolded) {
+            view.dispatch({ effects: unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
+          } else {
+            view.dispatch({ effects: foldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
+          }
+        }
+      });
+      span.appendChild(btn);
+    }
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'cm-callout-title-text';
+    titleSpan.textContent = this.title;
+    span.appendChild(titleSpan);
+
     return span;
   }
 }
@@ -530,6 +566,7 @@ const customHighlightStyle = HighlightStyle.define([
 
 const livePreviewPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
+    this.initializedFoldLines = new Set();
     this.decorations = this.buildDecorations(view);
   }
 
@@ -644,6 +681,9 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           let curLine = blockStart;
           let inCallout = false;
 
+          let openerLineNum = null;
+          let lastBodyLineNum = null;
+
           while (curLine <= doc.lines && isQuotedLine(curLine)) {
             processedBlockquoteLines.add(curLine);
             const line = doc.line(curLine);
@@ -651,9 +691,11 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
             if (match) {
               inCallout = true;
+              openerLineNum = curLine;
               addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-title');
 
               const type = match[3];
+              const foldMarker = match[4]; // '+' or '-' or undefined
               const customTitle = match[5];
               const markerStart = line.from + match[1].length;
               const markerEnd = markerStart + match[2].length;
@@ -665,18 +707,32 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
               calloutOpenerInfo.set(line.from, {
                 type,
+                foldMarker,
                 customTitle,
                 markerStart,
                 markerEnd,
-                titleStart
+                titleStart,
+                bodyFrom: line.to,
+                bodyTo: line.to
               });
             } else if (inCallout) {
               addLineClass(line.from, 'cm-blockquote', 'cm-callout');
+              lastBodyLineNum = curLine;
             } else {
               addLineClass(line.from, 'cm-blockquote');
             }
 
             curLine++;
+          }
+
+          if (openerLineNum && lastBodyLineNum && lastBodyLineNum > openerLineNum) {
+            const openerLine = doc.line(openerLineNum);
+            const lastBodyLine = doc.line(lastBodyLineNum);
+            const info = calloutOpenerInfo.get(openerLine.from);
+            if (info) {
+              info.bodyFrom = openerLine.to;
+              info.bodyTo = lastBodyLine.to;
+            }
           }
         }
       }
@@ -837,6 +893,8 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
       });
     }
 
+    const activeFolds = foldedRanges(view.state);
+
     for (const [lineFrom, info] of calloutOpenerInfo) {
       const isMarkerActive = !isPureWysiwyg && (
         selection.empty
@@ -844,17 +902,49 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           : selection.from < info.markerEnd && selection.to > info.markerStart
       );
 
+      const hasBody = info.bodyTo > info.bodyFrom;
+
+      if (hasBody && info.foldMarker) {
+        let isCurrentlyFolded = false;
+        activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
+          if (from === info.bodyFrom && to === info.bodyTo) {
+            isCurrentlyFolded = true;
+          }
+        });
+
+        if (info.foldMarker === '-' && !isCurrentlyFolded && !this.initializedFoldLines.has(info.bodyFrom)) {
+          this.initializedFoldLines.add(info.bodyFrom);
+          Promise.resolve().then(() => {
+            view.dispatch({ effects: foldEffect.of({ from: info.bodyFrom, to: info.bodyTo }) });
+          });
+        }
+      }
+
       if (!isMarkerActive) {
         const line = doc.lineAt(lineFrom);
+        let isFolded = false;
+        if (hasBody) {
+          activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
+            if (from === info.bodyFrom && to === info.bodyTo) {
+              isFolded = true;
+            }
+          });
+        }
+
+        const displayTitle = (info.customTitle && info.customTitle.trim().length > 0)
+          ? info.customTitle.trim()
+          : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+
         if (info.titleStart !== null) {
           const replaceTo = line.from + info.titleStart;
           if (replaceTo > info.markerStart) {
-            builder.push(Decoration.replace({}).range(info.markerStart, replaceTo));
+            builder.push(Decoration.replace({
+              widget: new CalloutTitleWidget('', info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
+            }).range(info.markerStart, replaceTo));
           }
         } else {
-          const displayTitle = info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase();
           builder.push(Decoration.replace({
-            widget: new CalloutTitleWidget(displayTitle)
+            widget: new CalloutTitleWidget(displayTitle, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
           }).range(info.markerStart, line.to));
         }
       }
@@ -1259,6 +1349,7 @@ class CodeMirrorAdapter {
         rectangularSelection(),
         crosshairCursor(),
         highlightActiveLine(),
+        codeFolding(),
         cmMarkdown({ extensions: [GFM, GFMTable, GFMStrikethrough, GFMTaskList] }),
         syntaxHighlighting(customHighlightStyle),
         livePreviewPlugin,
@@ -2793,6 +2884,7 @@ window.editorBridge = {
     setCssVar('--callout-border-style', prefs.pref_callout_line_style);
     setCssVar('--callout-border-color', prefs.pref_callout_line_color);
     setCssVar('--callout-bg-color', prefs.pref_callout_bg_color);
+    setCssVar('--callout-text-color', prefs.pref_callout_text_color);
     setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
 
     // Tables

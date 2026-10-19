@@ -45,7 +45,8 @@ test('Callout title calculation retains custom title or capitalizes default type
 test('Callout widget structure and eq implementation', () => {
   assert.ok(mainSource.includes('class CalloutTitleWidget'), 'CalloutTitleWidget exists');
   assert.ok(mainSource.includes('other instanceof CalloutTitleWidget'), 'CalloutTitleWidget has eq check');
-  assert.ok(mainSource.includes("span.className = 'cm-callout-title-text'"), 'CalloutTitleWidget sets class');
+  assert.ok(mainSource.includes("span.className = 'cm-callout-title-container'"), 'CalloutTitleWidget sets container class');
+  assert.ok(mainSource.includes("titleSpan.className = 'cm-callout-title-text'"), 'CalloutTitleWidget sets text class');
 });
 
 test('Callout line classification and marker detection logic in main.js', () => {
@@ -92,10 +93,34 @@ Unquoted Paragraph
   assert.equal(inCode7, true, 'Line 7 literal callout syntax is inside fenced code');
 });
 
-test('Document content immutability across rendering and edits', () => {
-  const originalMd = `> [!note] Test Title
+test('pref_callout_text_color exists, is forwarded/applied, and resets to default', () => {
+  assert.ok(mainSource.includes("'--callout-text-color', prefs.pref_callout_text_color"), 'main.js sets --callout-text-color CSS variable');
+
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.ok(indexHtml.includes('color: var(--callout-text-color, inherit) !important;'), 'index.html applies --callout-text-color to .cm-callout');
+
+  const xmlPrefs = fs.readFileSync(path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_blockquotes.xml'), 'utf8');
+  assert.ok(xmlPrefs.includes('pref_callout_text_color'), 'preferences_styling_blockquotes.xml contains pref_callout_text_color key');
+
+  const resetPrefs = fs.readFileSync(path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'), 'utf8');
+  assert.ok(resetPrefs.includes('"pref_callout_text_color" -> "#FFFFFF"'), 'ResetPreferences contains default color mapping');
+  assert.ok(resetPrefs.includes('key == "pref_callout_text_color" -> "default"'), 'ResetPreferences contains default value mapping');
+});
+
+test('Fold button chevron toggle and accessibility attributes', () => {
+  assert.ok(mainSource.includes('cm-callout-fold-btn'), 'Fold button class exists');
+  assert.ok(mainSource.includes("aria-label', this.isFolded ? 'Expand callout' : 'Collapse callout'"), 'Fold button has accessible expand/collapse label');
+  assert.ok(mainSource.includes('foldEffect.of'), 'Fold button dispatches foldEffect');
+  assert.ok(mainSource.includes('unfoldEffect.of'), 'Fold button dispatches unfoldEffect');
+});
+
+test('Document content immutability across rendering, fold toggles, and edits', () => {
+  const originalMd = `> [!note]+ Expanded Callout
 > Body line 1
 > Body line 2
+
+> [!warning]- Collapsed Callout
+> Warning body line 1
 
 Normal paragraph.
 `;

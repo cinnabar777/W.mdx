@@ -45,6 +45,7 @@ object PreferenceResetHelper {
             "pref_blockquote_text_color" -> "#FFFFFF"
             "pref_callout_line_color" -> "#29B6F6"
             "pref_callout_bg_color" -> "#1A232A"
+            "pref_callout_text_color" -> "#FFFFFF"
             "pref_hr_color" -> "#444444"
             "pref_bold_color" -> "#FFFFFF"
             "pref_italic_color" -> "#FFFFFF"
@@ -134,6 +135,7 @@ object PreferenceResetHelper {
             key == "pref_callout_line_style" -> "solid"
             key == "pref_callout_line_color" -> "default"
             key == "pref_callout_bg_color" -> "default"
+            key == "pref_callout_text_color" -> "default"
             key == "pref_callout_padding" -> 12
             key == "pref_table_border_style" -> "solid"
             key == "pref_table_border_thickness" -> 1

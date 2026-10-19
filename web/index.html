@@ -918,11 +918,39 @@
     .cm-content .cm-callout {
       border-left: var(--callout-border-width, 4px) var(--callout-border-style, solid) var(--callout-border-color, #29b6f6) !important;
       background: var(--callout-bg-color, rgba(41, 182, 246, 0.12)) !important;
+      color: var(--callout-text-color, inherit) !important;
       padding-left: var(--callout-padding, 12px) !important;
     }
 
     .cm-content .cm-callout-title {
       font-weight: 700 !important;
+    }
+
+    .cm-callout-title-container {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      vertical-align: middle !important;
+    }
+
+    .cm-callout-fold-btn {
+      background: transparent !important;
+      border: none !important;
+      padding: 2px !important;
+      margin: 0 !important;
+      cursor: pointer !important;
+      color: inherit !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-radius: 3px !important;
+      opacity: 0.8 !important;
+      line-height: 1 !important;
+    }
+
+    .cm-callout-fold-btn:hover {
+      opacity: 1 !important;
+      background: rgba(255, 255, 255, 0.1) !important;
     }
     .cm-todo-checkbox {
       appearance: none !important;
