@@ -1,6 +1,18 @@
-import { EditorState, Compartment, Transaction } from '@codemirror/state';
+import { EditorState, Compartment, Transaction, StateField } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
+import { WordProcessorTableWidget } from './tableWidget.js';
+import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
+import {
+  search,
+  SearchQuery,
+  setSearchQuery,
+  openSearchPanel,
+  closeSearchPanel,
+  findNext,
+  findPrevious,
+  replaceNext,
+  replaceAll
+} from '@codemirror/search';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, syntaxTree, HighlightStyle } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
@@ -96,11 +108,41 @@ const svgIcons = {
   circlePen: (color) => `<svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="${color}"/></svg>`
 };
 
+class ListMarkerWidget extends WidgetType {
+  constructor(source, isBullet) {
+    super();
+    this.source = source;
+    this.isBullet = isBullet;
+  }
+  eq(other) {
+    return other instanceof ListMarkerWidget &&
+      other.source === this.source &&
+      other.isBullet === this.isBullet;
+  }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = this.isBullet ? 'cm-list-bullet' : 'cm-list-number';
+    span.textContent = this.isBullet ? '•' : this.source;
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  }
+}
+
 class CheckboxWidget extends WidgetType {
-  constructor(checked, pos) {
+  constructor(checked, pos, len) {
     super();
     this.checked = checked;
     this.pos = pos;
+    this.len = len || 3;
+  }
+
+  eq(other) {
+    return (
+      other instanceof CheckboxWidget &&
+      other.checked === this.checked &&
+      other.pos === this.pos &&
+      other.len === this.len
+    );
   }
 
   toDOM(view) {
@@ -110,9 +152,10 @@ class CheckboxWidget extends WidgetType {
     input.className = 'cm-todo-checkbox';
     input.addEventListener('click', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       const newText = this.checked ? '[ ]' : '[x]';
       view.dispatch({
-        changes: { from: this.pos, to: this.pos + 3, insert: newText }
+        changes: { from: this.pos, to: this.pos + this.len, insert: newText }
       });
     });
     return input;
@@ -126,10 +169,24 @@ class CodeBlockHeaderWidget extends WidgetType {
     this.codeText = codeText;
   }
 
+  eq(other) {
+    return (
+      other instanceof CodeBlockHeaderWidget &&
+      other.lang === this.lang &&
+      other.codeText === this.codeText
+    );
+  }
+
   toDOM() {
     const header = document.createElement('div');
     header.className = 'cm-codeblock-header';
-    header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 4px 4px 0 0; font-size: 12px; font-weight: bold; font-family: monospace; color: var(--code-block-lang-label-color, #ffffff); user-select: none; border-bottom: 1px solid rgba(255,255,255,0.2);';
+    header.style.cssText =
+      'display:flex;justify-content:space-between;align-items:center;' +
+      'background:var(--code-block-label-bg, rgba(255,255,255,.12));' +
+      'padding:4px 10px;border-radius:var(--code-block-border-radius, 6px) ' +
+      'var(--code-block-border-radius, 6px) 0 0;font-size:12px;font-weight:bold;' +
+      'font-family:monospace;color:var(--code-block-lang-label-color, #fff);' +
+      'user-select:none;border-bottom:1px solid var(--code-block-label-border, rgba(255,255,255,.2));';
 
     const langSpan = document.createElement('span');
     langSpan.textContent = this.lang;
@@ -137,7 +194,12 @@ class CodeBlockHeaderWidget extends WidgetType {
     const copyBtn = document.createElement('button');
     copyBtn.className = 'cm-codeblock-copy-btn';
     copyBtn.textContent = 'COPY';
-    copyBtn.style.cssText = 'background: transparent; border: 1px solid rgba(255,255,255,0.35); color: inherit; border-radius: 3px; padding: 2px 8px; font-size: 11px; cursor: pointer; font-weight: bold;';
+    copyBtn.style.cssText =
+      'background:var(--code-copy-bg, transparent);' +
+      'border:1px solid var(--code-copy-border, rgba(255,255,255,.35));' +
+      'color:var(--code-copy-color, inherit);border-radius:3px;' +
+      'padding:2px 8px;font-size:11px;cursor:pointer;font-weight:bold;';
+
     copyBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -155,11 +217,40 @@ class CodeBlockHeaderWidget extends WidgetType {
   }
 }
 
+class CalloutTitleWidget extends WidgetType {
+  constructor(title) {
+    super();
+    this.title = title;
+  }
+
+  eq(other) {
+    return (
+      other instanceof CalloutTitleWidget &&
+      other.title === this.title
+    );
+  }
+
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-callout-title-text';
+    span.textContent = this.title;
+    return span;
+  }
+}
+
 class ImagePreviewWidget extends WidgetType {
   constructor(url, alt) {
     super();
     this.url = url;
     this.alt = alt || 'image';
+  }
+
+  eq(other) {
+    return (
+      other instanceof ImagePreviewWidget &&
+      other.url === this.url &&
+      other.alt === this.alt
+    );
   }
 
   toDOM() {
@@ -168,6 +259,44 @@ class ImagePreviewWidget extends WidgetType {
     img.alt = this.alt;
     img.style.cssText = 'max-width: 100%; height: auto; border-radius: 6px; margin: 6px 0; display: block; border: 1px solid var(--border-color, #444);';
     return img;
+  }
+}
+
+class EmptyTableCellWidget extends WidgetType {
+  constructor(widthCh, isHeader, isFirst, isLast) {
+    super();
+    this.widthCh = widthCh;
+    this.isHeader = isHeader;
+    this.isFirst = isFirst;
+    this.isLast = isLast;
+  }
+
+  eq(other) {
+    return (
+      other instanceof EmptyTableCellWidget &&
+      other.widthCh === this.widthCh &&
+      other.isHeader === this.isHeader &&
+      other.isFirst === this.isFirst &&
+      other.isLast === this.isLast
+    );
+  }
+
+  toDOM() {
+    const cell = document.createElement('span');
+    cell.className = [
+      'cm-table-cell',
+      'cm-table-empty-cell',
+      ...(this.isHeader ? ['cm-table-header-cell'] : []),
+      ...(this.isFirst ? ['cm-table-first-cell'] : []),
+      ...(this.isLast ? ['cm-table-last-cell'] : [])
+    ].join(' ');
+    cell.style.width = `${this.widthCh}ch`;
+    cell.setAttribute('aria-hidden', 'true');
+    return cell;
+  }
+
+  ignoreEvent() {
+    return true;
   }
 }
 
@@ -314,9 +443,13 @@ class GFMTableWidget extends WidgetType {
     toolbar.appendChild(delColBtn);
     container.appendChild(toolbar);
 
+    const border =
+      'var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)';
+
     const table = document.createElement('table');
     table.style.cssText =
-      'width: 100%; border-collapse: collapse; color: var(--text-color, #ffffff); font-size: var(--body-font-size, 16px); table-layout: auto;';
+      'width:100%;border-collapse:collapse;color:var(--table-cell-color, var(--text-color, #fff));' +
+      'font-size:16px;table-layout:auto;';
 
     const thead = document.createElement('thead');
     const trHead = document.createElement('tr');
@@ -324,7 +457,11 @@ class GFMTableWidget extends WidgetType {
       const th = document.createElement('th');
       th.contentEditable = 'true';
       th.style.cssText =
-        'border: 1px solid var(--table-border-color, var(--border-color, #444)); padding: 8px 12px; background-color: var(--table-header-bg, rgba(255,255,255,0.12)); font-weight: bold; text-align: left; outline: none; min-width: 60px; color: var(--text-color, #ffffff);';
+        `border:${border};padding:var(--table-cell-padding,8px);` +
+        'background:var(--table-header-bg,rgba(255,255,255,.12));' +
+        'color:var(--table-header-color,var(--text-color,#fff));' +
+        'font-weight:var(--table-header-font-weight,700);' +
+        'text-align:left;outline:none;min-width:60px;';
       th.textContent = hText;
       th.addEventListener('keydown', stopPropagation);
       th.addEventListener('keyup', stopPropagation);
@@ -347,7 +484,10 @@ class GFMTableWidget extends WidgetType {
         const td = document.createElement('td');
         td.contentEditable = 'true';
         td.style.cssText =
-          'border: 1px solid var(--table-border-color, var(--border-color, #444)); padding: 8px 12px; text-align: left; outline: none; min-width: 60px; color: var(--text-color, #ffffff);';
+          `border:${border};padding:var(--table-cell-padding,8px);` +
+          'background:var(--table-cell-bg,transparent);' +
+          'color:var(--table-cell-color,var(--text-color,#fff));' +
+          'text-align:left;outline:none;min-width:60px;';
         td.textContent = cellText;
         td.addEventListener('keydown', stopPropagation);
         td.addEventListener('keyup', stopPropagation);
@@ -369,12 +509,17 @@ class GFMTableWidget extends WidgetType {
 }
 
 const customHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'bold' },
-  { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--italic-color, inherit)' },
-  { tag: tags.strong, fontWeight: 'bold', color: 'var(--bold-color, inherit)' },
+  { tag: tags.heading1, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'var(--heading-1-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading2, color: 'var(--heading-2-color, #ffffff)', fontWeight: 'var(--heading-2-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading3, color: 'var(--heading-3-color, #ffffff)', fontWeight: 'var(--heading-3-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading4, color: 'var(--heading-4-color, #ffffff)', fontWeight: 'var(--heading-4-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading5, color: 'var(--heading-5-color, #ffffff)', fontWeight: 'var(--heading-5-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading6, color: 'var(--heading-6-color, #ffffff)', fontWeight: 'var(--heading-6-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--italic-color, inherit)', fontWeight: 'var(--italic-font-weight, normal)' },
+  { tag: tags.strong, fontWeight: 'var(--bold-font-weight, bold)', color: 'var(--bold-color, inherit)' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
   { tag: tags.link, color: 'var(--link-color, #29b6f6)', textDecoration: 'underline' },
-  { tag: tags.monospace, color: 'var(--code-color, #ff80ab)' },
+  { tag: tags.monospace, color: 'var(--code-color, #ff80ab)', backgroundColor: 'var(--code-bg-color, rgba(255,255,255,0.1))' },
   { tag: tags.meta, color: '#888888' },
   { tag: tags.comment, color: '#888888' },
   { tag: tags.propertyName, color: '#29b6f6' },
@@ -396,6 +541,15 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
   buildDecorations(view) {
     const builder = [];
+    const lineClasses = new Map();
+
+    const addLineClass = (lineFrom, ...classNames) => {
+      if (!lineClasses.has(lineFrom)) lineClasses.set(lineFrom, new Set());
+      for (const className of classNames) {
+        lineClasses.get(lineFrom).add(className);
+      }
+    };
+
     if (currentEditorMode === 'source') {
       return Decoration.none;
     }
@@ -403,6 +557,130 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
     const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
+    const doc = view.state.doc;
+
+    const isQuotedLine = (lineNum) => {
+      if (lineNum < 1 || lineNum > doc.lines) return false;
+      const l = doc.line(lineNum);
+      if (!/^\s*>/.test(l.text)) return false;
+
+      const firstText = /\S/.exec(l.text);
+      const probe = firstText ? l.from + firstText.index : l.from;
+      const resolvedNode = tree.resolveInner(probe, 1);
+
+      for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+        if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock' || ancestor.name === 'Table') {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    const calloutOpenerInfo = new Map();
+    const processedBlockquoteLines = new Set();
+
+    for (const { from, to } of view.visibleRanges) {
+      const firstVisibleLine = doc.lineAt(from).number;
+      const lastVisibleLine = doc.lineAt(Math.max(from, to - 1)).number;
+
+      for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
+        const line = doc.line(lineNumber);
+        const firstText = /\S/.exec(line.text);
+        const probe = firstText ? line.from + firstText.index : line.from;
+        const resolvedNode = tree.resolveInner(probe, 1);
+
+        let paragraphNode = null;
+        let insideListItem = false;
+        let insideCodeBlock = false;
+        let insideTable = false;
+
+        for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+          if (ancestor.name === 'Paragraph') paragraphNode = ancestor;
+          if (ancestor.name === 'ListItem') insideListItem = true;
+          if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock') {
+            insideCodeBlock = true;
+          }
+          if (ancestor.name === 'Table') insideTable = true;
+        }
+
+        if (insideCodeBlock || insideTable) continue;
+
+        if (insideListItem) {
+          addLineClass(line.from, 'cm-list-item');
+          continue;
+        }
+
+        if (paragraphNode) {
+          addLineClass(line.from, 'cm-paragraph');
+
+          const paragraphFirstLine = doc.lineAt(paragraphNode.from);
+          const paragraphLastLine = doc.lineAt(
+            Math.max(paragraphNode.from, paragraphNode.to - 1)
+          );
+
+          if (line.from === paragraphFirstLine.from) {
+            addLineClass(line.from, 'cm-paragraph-first');
+          }
+          if (line.from === paragraphLastLine.from) {
+            addLineClass(line.from, 'cm-paragraph-last');
+          }
+        }
+      }
+    }
+
+    for (const { from, to } of view.visibleRanges) {
+      const firstVisibleLine = doc.lineAt(from).number;
+      const lastVisibleLine = doc.lineAt(Math.max(from, to - 1)).number;
+
+      for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
+        if (processedBlockquoteLines.has(lineNumber)) continue;
+
+        if (isQuotedLine(lineNumber)) {
+          let blockStart = lineNumber;
+          while (blockStart > 1 && isQuotedLine(blockStart - 1)) {
+            blockStart--;
+          }
+
+          let curLine = blockStart;
+          let inCallout = false;
+
+          while (curLine <= doc.lines && isQuotedLine(curLine)) {
+            processedBlockquoteLines.add(curLine);
+            const line = doc.line(curLine);
+            const match = line.text.match(/^(\s*>\s*)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i);
+
+            if (match) {
+              inCallout = true;
+              addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-title');
+
+              const type = match[3];
+              const customTitle = match[5];
+              const markerStart = line.from + match[1].length;
+              const markerEnd = markerStart + match[2].length;
+              let titleStart = null;
+              if (customTitle && customTitle.trim().length > 0) {
+                const idx = line.text.indexOf(customTitle, match[1].length + match[2].length);
+                if (idx !== -1) titleStart = idx;
+              }
+
+              calloutOpenerInfo.set(line.from, {
+                type,
+                customTitle,
+                markerStart,
+                markerEnd,
+                titleStart
+              });
+            } else if (inCallout) {
+              addLineClass(line.from, 'cm-blockquote', 'cm-callout');
+            } else {
+              addLineClass(line.from, 'cm-blockquote');
+            }
+
+            curLine++;
+          }
+        }
+      }
+    }
 
     for (const { from, to } of view.visibleRanges) {
       tree.iterate({
@@ -410,12 +688,22 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
         to,
         enter: (node) => {
           const line = view.state.doc.lineAt(node.from);
-          const cursor = selection.head;
-          const isNodeActive = !isPureWysiwyg && (cursor >= node.from && cursor <= node.to);
+          const isNodeActive = !isPureWysiwyg && (
+            selection.empty
+              ? selection.head >= node.from && selection.head <= node.to
+              : selection.from < node.to && selection.to > node.from
+          );
 
-          if (node.name.startsWith('ATXHeading')) {
-            const level = node.name.replace('ATXHeading', '');
-            builder.push(Decoration.line({ attributes: { class: `cm-heading cm-heading-${level}` } }).range(line.from));
+          const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
+          const setextHeading = /^SetextHeading([12])$/.exec(node.name);
+          const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
+
+          if (headingLevel) {
+            addLineClass(
+              line.from,
+              'cm-heading',
+              `cm-heading-${headingLevel}`
+            );
           }
 
           if (node.name === 'HeaderMark' && !isNodeActive) {
@@ -450,11 +738,27 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.replace({}).range(node.from, node.to));
           }
 
-          if (node.name === 'Blockquote') {
-            builder.push(Decoration.line({ attributes: { class: 'cm-blockquote' } }).range(line.from));
+
+          if (node.name === 'ListMark') {
+            const marker = view.state.doc.sliceString(node.from, node.to);
+            const isBullet = /^[-*+]$/.test(marker.trim());
+            if (!isNodeActive) {
+              builder.push(Decoration.replace({
+                widget: new ListMarkerWidget(marker, isBullet)
+              }).range(node.from, node.to));
+            } else {
+              builder.push(Decoration.mark({
+                class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
+              }).range(node.from, node.to));
+            }
           }
+
           if (node.name === 'QuoteMark' && !isNodeActive) {
-            const end = Math.min(node.to + 1, line.to);
+            let end = Math.min(node.to + 1, line.to);
+            const calloutInfo = calloutOpenerInfo.get(line.from);
+            if (calloutInfo && calloutInfo.markerStart < end) {
+              end = calloutInfo.markerStart;
+            }
             if (end > node.from) {
               builder.push(Decoration.replace({}).range(node.from, end));
             }
@@ -462,21 +766,28 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'TaskMarker') {
             const taskText = view.state.doc.sliceString(node.from, node.to);
-            const isChecked = taskText.includes('[x]') || taskText.includes('[X]');
-            if (!isNodeActive && (node.to - node.from >= 3)) {
-              const replaceFrom = line.text.startsWith('- ') ? line.from : node.from;
-              builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, replaceFrom) }).range(replaceFrom, node.from + 3));
+            const isChecked = taskText.toLowerCase().includes('x');
+            if (!isNodeActive && node.to > node.from) {
+              builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
             }
           }
 
           if (node.name === 'HorizontalRule') {
-            builder.push(Decoration.line({ attributes: { class: 'cm-hr' } }).range(line.from));
+            addLineClass(line.from, 'cm-hr');
             if (!isNodeActive) {
               builder.push(Decoration.replace({}).range(node.from, node.to));
             }
           }
 
           if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+            const startLine = view.state.doc.lineAt(node.from);
+            const endLine = view.state.doc.lineAt(node.to);
+            for (let l = startLine.number; l <= endLine.number; l++) {
+              const codeLine = view.state.doc.line(l);
+              addLineClass(codeLine.from, 'cm-codeblock-line');
+              if (l === startLine.number) addLineClass(codeLine.from, 'cm-codeblock-first');
+              if (l === endLine.number) addLineClass(codeLine.from, 'cm-codeblock-last');
+            }
             if (line.from === node.from) {
               const codeText = view.state.doc.sliceString(node.from, node.to);
               const firstLineText = line.text;
@@ -491,23 +802,26 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'Table') {
-            const tableText = view.state.doc.sliceString(node.from, node.to);
-            const startLine = view.state.doc.lineAt(node.from);
-            const endLine = view.state.doc.lineAt(node.to);
-
-            for (let l = startLine.number; l <= endLine.number; l++) {
-              const lineObj = view.state.doc.line(l);
-              if (l === startLine.number) {
-                builder.push(Decoration.replace({ widget: new GFMTableWidget(tableText, node.from, node.to) }).range(lineObj.from, lineObj.to));
-              } else {
-                builder.push(Decoration.replace({}).range(lineObj.from, lineObj.to));
-              }
-            }
-            return false;
+            // Table rendering in WYSIWYG & Live Preview is handled by tableStateField block widget.
+            // Ignore Table node inner decorations here to avoid decoration conflicts.
+            return;
           }
 
-          if (node.name === 'URL' || node.name === 'Link') {
-            builder.push(Decoration.mark({ class: 'cm-link' }).range(node.from, node.to));
+          if (node.name === 'Link') {
+            const raw = view.state.doc.sliceString(node.from, node.to);
+            const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+            if (match) {
+              const labelFrom = node.from + 1;
+              const labelTo = labelFrom + match[1].length;
+              builder.push(
+                Decoration.mark({ class: 'cm-link' }).range(labelFrom, labelTo)
+              );
+
+              if (!isNodeActive) {
+                builder.push(Decoration.replace({}).range(node.from, labelFrom));
+                builder.push(Decoration.replace({}).range(labelTo, node.to));
+              }
+            }
           }
 
           if (node.name === 'Image') {
@@ -521,6 +835,35 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
         }
       });
+    }
+
+    for (const [lineFrom, info] of calloutOpenerInfo) {
+      const isMarkerActive = !isPureWysiwyg && (
+        selection.empty
+          ? selection.head >= info.markerStart && selection.head <= info.markerEnd
+          : selection.from < info.markerEnd && selection.to > info.markerStart
+      );
+
+      if (!isMarkerActive) {
+        const line = doc.lineAt(lineFrom);
+        if (info.titleStart !== null) {
+          const replaceTo = line.from + info.titleStart;
+          if (replaceTo > info.markerStart) {
+            builder.push(Decoration.replace({}).range(info.markerStart, replaceTo));
+          }
+        } else {
+          const displayTitle = info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase();
+          builder.push(Decoration.replace({
+            widget: new CalloutTitleWidget(displayTitle)
+          }).range(info.markerStart, line.to));
+        }
+      }
+    }
+
+    for (const [lineFrom, classes] of lineClasses) {
+      builder.push(Decoration.line({
+        attributes: { class: [...classes].join(' ') }
+      }).range(lineFrom));
     }
 
     builder.sort((a, b) => a.from - b.from || a.to - b.to);
@@ -630,31 +973,108 @@ function cmOutdentSelection(view, spaces = '  ') {
 }
 
 
+export function isEscapedPipe(text, index) {
+  if (text[index] !== '|') return false;
+  let backslashes = 0;
+  for (let i = index - 1; i >= 0 && text[i] === '\\'; i--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 1;
+}
+
+export function trimCellRange(text, start, end, lineFrom) {
+  const cellStart = start;
+  const cellEnd = end;
+  let contentStart = start;
+  let contentEnd = end;
+
+  while (contentStart < contentEnd && /\s/.test(text[contentStart])) {
+    contentStart++;
+  }
+  while (contentEnd > contentStart && /\s/.test(text[contentEnd - 1])) {
+    contentEnd--;
+  }
+
+  return {
+    start: cellStart,
+    end: cellEnd,
+    from: lineFrom + cellStart,
+    to: lineFrom + cellEnd,
+    contentStart,
+    contentEnd,
+    contentFrom: lineFrom + contentStart,
+    contentTo: lineFrom + contentEnd
+  };
+}
+
+export function parsePipeRow(line) {
+  const text = line.text;
+  const pipeOffsets = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '|' && !isEscapedPipe(text, i)) pipeOffsets.push(i);
+  }
+  if (pipeOffsets.length === 0) return null;
+
+  const hasLeadingPipe = /^\s*\|/.test(text);
+  const hasTrailingPipe = /\|\s*$/.test(text);
+  const firstCellStart = hasLeadingPipe ? pipeOffsets[0] + 1 : 0;
+  const lastCellEnd = hasTrailingPipe
+    ? pipeOffsets[pipeOffsets.length - 1]
+    : text.length;
+
+  const internalPipes = pipeOffsets.filter((offset, i) =>
+    !(hasLeadingPipe && i === 0) &&
+    !(hasTrailingPipe && i === pipeOffsets.length - 1)
+  );
+
+  const cells = [];
+  let cellStart = firstCellStart;
+  for (const pipe of internalPipes) {
+    cells.push(trimCellRange(text, cellStart, pipe, line.from));
+    cellStart = pipe + 1;
+  }
+  if (lastCellEnd >= cellStart) {
+    cells.push(trimCellRange(text, cellStart, lastCellEnd, line.from));
+  }
+
+  return {
+    pipes: pipeOffsets.map(offset => line.from + offset),
+    cells: cells.filter(cell => cell.from <= cell.to)
+  };
+}
+
+export function isTableSeparatorRow(text, parsedCells) {
+  return parsedCells.length > 0 &&
+    parsedCells.every(({ contentStart, contentEnd }) =>
+      /^:?-{3,}:?$/.test(text.slice(contentStart, contentEnd).trim())
+    );
+}
+
+export function getTableColumnWidths(doc, startLine, endLine) {
+  const widths = [];
+  for (let number = startLine; number <= endLine; number++) {
+    const line = doc.line(number);
+    const parsed = parsePipeRow(line);
+    if (!parsed || isTableSeparatorRow(line.text, parsed.cells)) continue;
+
+    parsed.cells.forEach((cell, index) => {
+      const text = doc.sliceString(cell.contentFrom, cell.contentTo);
+      const width = Math.max(8, Math.min(40, Array.from(text).length + 2));
+      widths[index] = Math.max(widths[index] || 8, width);
+    });
+  }
+  return widths;
+}
+
 function parseTableCells(doc, startLineNum, endLineNum) {
   const cells = [];
   for (let lNum = startLineNum; lNum <= endLineNum; lNum++) {
     const line = doc.line(lNum);
-    const text = line.text;
-    const trimmed = text.trim();
-    if (!trimmed.startsWith('|')) continue;
-    // Skip separator row (|---|---|)
-    if (/^\|\s*[:\-]+\s*(\|\s*[:\-]+\s*)+\|?$/.test(trimmed)) continue;
-
-    // Find unescaped pipe positions
-    const pipes = [];
-    for (let i = 0; i < text.length; i++) {
-      if (text[i] === '|' && (i === 0 || text[i - 1] !== '\\')) {
-        pipes.push(line.from + i);
-      }
-    }
-    for (let c = 0; c < pipes.length - 1; c++) {
-      const pStart = pipes[c];
-      const pEnd = pipes[c + 1];
-      let cStart = pStart + 1;
-      while (cStart < pEnd && doc.sliceDoc(cStart, cStart + 1) === ' ') cStart++;
-      let cEnd = pEnd;
-      while (cEnd > cStart && doc.sliceDoc(cEnd - 1, cEnd) === ' ') cEnd--;
-      cells.push({ from: cStart, to: cEnd, lineNum: lNum });
+    const parsed = parsePipeRow(line);
+    if (!parsed) continue;
+    if (isTableSeparatorRow(line.text, parsed.cells)) continue;
+    for (const cell of parsed.cells) {
+      cells.push({ ...cell, lineNum: lNum });
     }
   }
   return cells;
@@ -664,25 +1084,23 @@ function navigateTableCell(view, direction) {
   const state = view.state;
   const pos = state.selection.main.head;
   const line = state.doc.lineAt(pos);
-  const trimmed = line.text.trim();
-  if (!trimmed.startsWith('|')) return false;
+  const parsedLine = parsePipeRow(line);
+  if (!parsedLine) return false;
 
-  // Find table block boundaries
   let startL = line.number;
   let endL = line.number;
   for (let l = line.number; l >= 1; l--) {
-    if (state.doc.line(l).text.trim().startsWith('|')) startL = l;
+    if (parsePipeRow(state.doc.line(l))) startL = l;
     else break;
   }
   for (let l = line.number; l <= state.doc.lines; l++) {
-    if (state.doc.line(l).text.trim().startsWith('|')) endL = l;
+    if (parsePipeRow(state.doc.line(l))) endL = l;
     else break;
   }
 
   const cells = parseTableCells(state.doc, startL, endL);
   if (cells.length === 0) return false;
 
-  // Find current cell index
   let currentIdx = -1;
   for (let i = 0; i < cells.length; i++) {
     if (pos >= cells[i].from - 1 && pos <= cells[i].to + 1) {
@@ -691,39 +1109,119 @@ function navigateTableCell(view, direction) {
     }
   }
 
-  if (currentIdx === -1) {
-    // Find closest
-    let minDist = Infinity;
-    for (let i = 0; i < cells.length; i++) {
-      const dist = Math.abs(pos - cells[i].from);
-      if (dist < minDist) {
-        minDist = dist;
-        currentIdx = i;
-      }
-    }
-  }
+  if (currentIdx === -1) return false;
 
   const targetIdx = currentIdx + direction;
   if (targetIdx < 0) {
-    // Exit table upward
     const prevLinePos = Math.max(0, state.doc.line(startL).from - 1);
     view.dispatch({ selection: { anchor: prevLinePos, head: prevLinePos }, scrollIntoView: true });
     return true;
   }
   if (targetIdx >= cells.length) {
-    // Exit table downward
     const nextLinePos = Math.min(state.doc.length, state.doc.line(endL).to + 1);
     view.dispatch({ selection: { anchor: nextLinePos, head: nextLinePos }, scrollIntoView: true });
     return true;
   }
 
   const targetCell = cells[targetIdx];
+  const targetPos = direction > 0 ? targetCell.from : targetCell.to;
   view.dispatch({
-    selection: { anchor: targetCell.from, head: targetCell.to },
+    selection: { anchor: targetPos, head: targetPos },
     scrollIntoView: true
   });
   return true;
 }
+
+function isHorizontalRuleLine(state, lineNumber) {
+  const line = state.doc.line(lineNumber);
+  let found = false;
+
+  syntaxTree(state).iterate({
+    from: line.from,
+    to: line.to,
+    enter(node) {
+      if (
+        node.name === 'HorizontalRule' &&
+        node.from >= line.from &&
+        node.to <= line.to
+      ) {
+        found = true;
+      }
+    }
+  });
+
+  return found;
+}
+
+function buildTableBlockDecorations(state) {
+  if (currentEditorMode === 'source') return Decoration.none;
+
+  const builder = [];
+  const tree = syntaxTree(state);
+
+  tree.iterate({
+    from: 0,
+    to: state.doc.length,
+    enter: (node) => {
+      if (node.name === 'Table') {
+        const tableText = state.doc.sliceString(node.from, node.to);
+        const widget = new WordProcessorTableWidget(tableText, node.from, node.to);
+
+        builder.push(Decoration.widget({
+          widget,
+          block: true,
+          side: -1
+        }).range(node.from));
+
+        builder.push(Decoration.replace({
+          block: true
+        }).range(node.from, node.to));
+
+        return false;
+      }
+    }
+  });
+
+  builder.sort((a, b) => a.from - b.from || a.to - b.to);
+  return Decoration.set(builder, true);
+}
+
+export const tableStateField = StateField.define({
+  create(state) {
+    return buildTableBlockDecorations(state);
+  },
+  update(current, tr) {
+    if (tr.docChanged) {
+      return buildTableBlockDecorations(tr.state);
+    }
+    return current;
+  },
+  provide: field => EditorView.decorations.from(field)
+});
+
+export const horizontalRuleNavigationKeymap = keymap.of([
+  {
+    key: 'ArrowUp',
+    run(view) {
+      const selection = view.state.selection.main;
+      if (!selection.empty) return false;
+
+      const currentLine = view.state.doc.lineAt(selection.head);
+      if (currentLine.number <= 1) return false;
+
+      const previousLineNumber = currentLine.number - 1;
+      if (!isHorizontalRuleLine(view.state, previousLineNumber)) return false;
+
+      const horizontalRuleLine = view.state.doc.line(previousLineNumber);
+      view.dispatch({
+        selection: { anchor: horizontalRuleLine.from },
+        scrollIntoView: false,
+        userEvent: 'select.keyboard'
+      });
+      return true;
+    }
+  }
+]);
 
 export const tableNavigationKeymap = keymap.of([
   {
@@ -735,6 +1233,7 @@ export const tableNavigationKeymap = keymap.of([
     run: (view) => navigateTableCell(view, -1)
   }
 ]);
+
 
 
 class CodeMirrorAdapter {
@@ -781,13 +1280,27 @@ class CodeMirrorAdapter {
             color: 'var(--text-color, #ffffff) !important'
           },
           '.cm-cursor, .cm-dropCursor': {
-            borderLeft: '2px solid var(--text-color, #ffffff) !important'
+            borderLeft: 'var(--cursor-width, 2px) solid var(--cursor-color, var(--text-color, #ffffff)) !important',
+            animation: 'cm-blink var(--cursor-blink-rate, 0.8s) infinite'
+          },
+          '.cm-selectionBackground, ::selection': {
+            backgroundColor: 'var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)) !important',
+            color: 'var(--selection-highlight-text, inherit) !important'
           },
           '.cm-line': {
             color: 'var(--text-color, #ffffff) !important'
           },
           '&.cm-focused': {
             outline: 'none'
+          }
+        }),
+        search({
+          createPanel: () => {
+            const container = document.querySelector('#custom-search-bar');
+            return {
+              dom: container,
+              top: true
+            };
           }
         }),
         EditorView.updateListener.of(update => {
@@ -807,6 +1320,9 @@ class CodeMirrorAdapter {
             updateTocActiveSection();
           }
         }),
+        tableStateField,
+        horizontalRuleNavigationKeymap,
+        tableNavigationKeymap,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap
@@ -831,7 +1347,8 @@ class CodeMirrorAdapter {
     const currentDoc = this.view.state.doc.toString();
     if (currentDoc !== text) {
       this.view.dispatch({
-        changes: { from: 0, to: currentDoc.length, insert: text || '' }
+        changes: { from: 0, to: currentDoc.length, insert: text || '' },
+        annotations: Transaction.addToHistory.of(false)
       });
     }
     this.revision = 0;
@@ -856,29 +1373,38 @@ class CodeMirrorAdapter {
       if (typeof sel === 'string') {
         sel = JSON.parse(sel);
       }
+      const hasSavedScroll = Number.isFinite(scrollTop) && scrollTop >= 0;
+
       if (sel && typeof sel.head === 'number') {
         const len = this.view.state.doc.length;
         const head = Math.min(Math.max(0, sel.head), len);
         const anchor = Math.min(Math.max(0, sel.anchor !== undefined ? sel.anchor : sel.head), len);
         this.view.dispatch({
           selection: { anchor, head },
-          scrollIntoView: true
+          scrollIntoView: !hasSavedScroll
+        });
+      }
+
+      if (hasSavedScroll) {
+        requestAnimationFrame(() => {
+          if (this.view) this.view.scrollDOM.scrollTop = scrollTop;
         });
       }
     } catch (e) {
       console.error('Error setting CodeMirror selection:', e);
     }
-    if (typeof scrollTop === 'number' && scrollTop >= 0) {
-      this.view.scrollDOM.scrollTop = scrollTop;
-    }
   }
 
   undo() {
-    if (this.view) cmUndo(this.view);
+    if (this.view && typeof undoDepth === 'function' && undoDepth(this.view.state) > 0) {
+      cmUndo(this.view);
+    }
   }
 
   redo() {
-    if (this.view) cmRedo(this.view);
+    if (this.view && typeof redoDepth === 'function' && redoDepth(this.view.state) > 0) {
+      cmRedo(this.view);
+    }
   }
 
   setLineWrap(enabled) {
@@ -960,7 +1486,7 @@ async function setEditorMode(mode) {
 }
 
 function setupGroupedControlBar() {
-  const topContainer = document.querySelector('.ck-editor__top') || document.querySelector('#editor-container');
+  const topContainer = document.querySelector('#editor-container');
   if (!topContainer) return;
 
   let bar = document.querySelector('.grouped-control-bar');
@@ -982,32 +1508,14 @@ function setupGroupedControlBar() {
 
   const undoBtn = bar.querySelector('#grp-btn-undo');
   if (undoBtn) {
-    let holdTimer = null;
-    let didRedo = false;
-
-    undoBtn.addEventListener('pointerdown', () => {
-      didRedo = false;
-      holdTimer = setTimeout(() => {
-        didRedo = true;
-        if (activeAdapter) activeAdapter.redo();
-      }, 500);
-    });
-
-    const clearHold = () => {
-      clearTimeout(holdTimer);
+    undoBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (activeAdapter) activeAdapter.undo();
     };
-
-    undoBtn.addEventListener('pointerup', () => {
-      clearHold();
-      if (!didRedo && activeAdapter) {
-        activeAdapter.undo();
-      }
-    });
-
-    undoBtn.addEventListener('pointercancel', clearHold);
   }
 
-  document.addEventListener('pointerdown', (e) => {
+  document.addEventListener('click', (e) => {
     const strip = document.querySelector('#popup-toolbar-strip');
     const barEl = document.querySelector('.grouped-control-bar');
     if (strip && !strip.classList.contains('hidden')) {
@@ -1270,111 +1778,409 @@ function togglePopupStrip(groupKey, targetBtn, items) {
   strip.classList.remove('hidden');
 }
 
-function initCustomSearchBar() {
+let regexHistory = [];
+try {
+  const saved = localStorage.getItem('wmdx_regex_history_v1');
+  if (saved) regexHistory = JSON.parse(saved);
+} catch (e) {}
+
+function saveRegexPattern(pattern) {
+  if (!pattern || typeof pattern !== 'string') return;
+  const trimmed = pattern.trim();
+  if (!trimmed) return;
+  try {
+    new RegExp(trimmed);
+  } catch (e) {
+    return;
+  }
+  regexHistory = regexHistory.filter(p => p !== trimmed);
+  regexHistory.unshift(trimmed);
+  if (regexHistory.length > 20) regexHistory = regexHistory.slice(0, 20);
+  try {
+    localStorage.setItem('wmdx_regex_history_v1', JSON.stringify(regexHistory));
+  } catch (e) {}
+}
+
+function clearRegexHistory() {
+  regexHistory = [];
+  try {
+    localStorage.removeItem('wmdx_regex_history_v1');
+  } catch (e) {}
+}
+
+function showRegexHistoryPopup(anchorBtn, searchInput) {
+  let popup = document.querySelector('#regex-history-popup');
+  if (popup) popup.remove();
+
+  popup = document.createElement('div');
+  popup.id = 'regex-history-popup';
+  popup.style.cssText = `
+    position: fixed;
+    z-index: 10009;
+    background: var(--findreplace-panel-bg, #222428);
+    border: 1px solid var(--findreplace-panel-border, rgba(255,255,255,0.2));
+    border-radius: 8px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    max-height: 240px;
+    overflow-y: auto;
+    min-width: 180px;
+    color: var(--text-color, #ffffff);
+    font-size: 13px;
+  `;
+
+  if (regexHistory.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.cssText = 'padding: 6px 10px; color: #888; font-style: italic;';
+    emptyMsg.textContent = 'No regex history';
+    popup.appendChild(emptyMsg);
+  } else {
+    regexHistory.forEach(pat => {
+      const item = document.createElement('div');
+      item.className = 'regex-history-item';
+      item.style.cssText = 'padding: 6px 10px; cursor: pointer; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace;';
+      item.textContent = pat;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        searchInput.value = pat;
+        popup.remove();
+        commitSearchQuery();
+      });
+      popup.appendChild(item);
+    });
+
+    const clearBtn = document.createElement('button');
+    clearBtn.style.cssText = 'padding: 4px 8px; margin-top: 4px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #fff; cursor: pointer; font-size: 11px; align-self: flex-end;';
+    clearBtn.textContent = 'Clear history';
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearRegexHistory();
+      popup.remove();
+    });
+    popup.appendChild(clearBtn);
+  }
+
+  document.body.appendChild(popup);
+
+  const rect = anchorBtn.getBoundingClientRect();
+  popup.style.top = `${rect.bottom + 6}px`;
+  popup.style.left = `${Math.max(10, Math.min(rect.left, window.innerWidth - popup.offsetWidth - 10))}px`;
+
+  const closePopup = (e) => {
+    if (!popup.contains(e.target) && e.target !== anchorBtn) {
+      popup.remove();
+      window.removeEventListener('pointerdown', closePopup);
+    }
+  };
+  window.addEventListener('pointerdown', closePopup);
+}
+
+let searchState = {
+  matchCase: false,
+  wholeWords: false,
+  useRegex: false,
+  highlightAll: true
+};
+
+function sanitizeSvg(svgString) {
+  if (!svgString || typeof svgString !== 'string') return null;
+  const trimmed = svgString.trim();
+  if (!trimmed.startsWith('<svg') || !trimmed.endsWith('</svg>')) return null;
+
+  if (/<script/i.test(trimmed) ||
+      /<foreignObject/i.test(trimmed) ||
+      /\son\w+=/i.test(trimmed) ||
+      /javascript:/i.test(trimmed) ||
+      /data:/i.test(trimmed) ||
+      /<embed/i.test(trimmed) ||
+      /<object/i.test(trimmed) ||
+      /<iframe/i.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+let countDebounceTimer = null;
+
+function buildSearchQuery(searchInput, replaceInput) {
+  return new SearchQuery({
+    search: searchInput.value || '',
+    replace: replaceInput.value || '',
+    caseSensitive: searchState.matchCase,
+    wholeWord: searchState.wholeWords,
+    regexp: searchState.useRegex
+  });
+}
+
+function runFindAndCenter(command, view) {
+  if (!view || !command(view)) return false;
+  const { head } = view.state.selection.main;
+  view.dispatch({
+    effects: EditorView.scrollIntoView(head, { y: 'center', yMargin: 20 })
+  });
+  return true;
+}
+
+function commitSearchQuery() {
   const container = document.querySelector('#custom-search-bar');
-  if (!container) return;
+  if (!container || !activeAdapter || !activeAdapter.view) return false;
 
   const searchInput = container.querySelector('#search-input');
   const replaceInput = container.querySelector('#replace-input');
-  const counter = container.querySelector('#search-counter');
+  const view = activeAdapter.view;
+
+  const query = buildSearchQuery(searchInput, replaceInput);
+
+  if (searchState.useRegex && searchInput.value) {
+    saveRegexPattern(searchInput.value);
+  }
+
+  if (!query.search) {
+    clearInlineSearchError();
+    clearMatchCounter();
+    view.dispatch({ effects: setSearchQuery.of(query) });
+    return true;
+  }
+
+  if (!query.valid) {
+    if (searchState.useRegex) {
+      showInlineSearchError('Invalid regular expression');
+    }
+    return false;
+  }
+
+  clearInlineSearchError();
+  view.dispatch({ effects: setSearchQuery.of(query) });
+  updateMatchCounterFromQuery(query, view);
+  return true;
+}
+
+function updateMatchCounterFromQuery(query, view) {
+  if (countDebounceTimer) clearTimeout(countDebounceTimer);
+
+  countDebounceTimer = setTimeout(() => {
+    if (!query || !query.search || !query.valid) {
+      clearMatchCounter();
+      return;
+    }
+
+    const state = view.state;
+    const cursor = query.getCursor(state);
+    const selectionHead = state.selection.main.head;
+
+    let total = 0;
+    let currentMatchIndex = 0;
+    const MAX_COUNT = 10000;
+
+    let match = cursor.next();
+    while (!match.done) {
+      total++;
+      if (match.value.from <= selectionHead && selectionHead <= match.value.to) {
+        currentMatchIndex = total;
+      }
+      if (total >= MAX_COUNT) break;
+      match = cursor.next();
+    }
+
+    const counterEl = document.querySelector('#search-counter');
+    if (counterEl) {
+      if (total === 0) {
+        counterEl.textContent = '0/0';
+      } else if (total >= MAX_COUNT) {
+        counterEl.textContent = `${currentMatchIndex || 1}/10000+`;
+      } else {
+        counterEl.textContent = `${currentMatchIndex || 1}/${total}`;
+      }
+    }
+  }, 80);
+}
+
+function clearMatchCounter() {
+  const counterEl = document.querySelector('#search-counter');
+  if (counterEl) counterEl.textContent = '';
+}
+
+function showInlineSearchError(msg) {
+  const errEl = document.querySelector('#search-error-msg');
+  if (errEl) {
+    errEl.textContent = msg;
+    errEl.classList.remove('hidden');
+  }
+  const counterEl = document.querySelector('#search-counter');
+  if (counterEl) counterEl.textContent = 'Error';
+}
+
+function clearInlineSearchError() {
+  const errEl = document.querySelector('#search-error-msg');
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.classList.add('hidden');
+  }
+}
+
+function attachButtonBehavior(btn, description, onClickAction, isRegexBtn = false) {
+  if (!btn) return;
+  let timer = null;
+  let startX = 0, startY = 0;
+  let triggered = false;
+
+  btn.addEventListener('pointerdown', (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    triggered = false;
+    timer = setTimeout(() => {
+      triggered = true;
+      if (isRegexBtn) {
+        const searchInput = document.querySelector('#search-input');
+        showRegexHistoryPopup(btn, searchInput);
+      } else {
+        if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
+          window.AndroidNative.showToast(description);
+        }
+      }
+    }, 500);
+  });
+
+  btn.addEventListener('pointermove', (e) => {
+    if (timer && Math.hypot(e.clientX - startX, e.clientY - startY) > 10) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  });
+
+  const cancelTimer = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  btn.addEventListener('pointerup', cancelTimer);
+  btn.addEventListener('pointercancel', cancelTimer);
+
+  btn.addEventListener('click', (e) => {
+    if (triggered) {
+      e.preventDefault();
+      e.stopPropagation();
+      triggered = false;
+      return;
+    }
+    onClickAction(e);
+  });
+}
+
+let isSearchBarInitialized = false;
+
+function initCustomSearchBar() {
+  if (isSearchBarInitialized) return;
+  const container = document.querySelector('#custom-search-bar');
+  if (!container) return;
+  isSearchBarInitialized = true;
+
+  const searchInput = container.querySelector('#search-input');
+  const replaceInput = container.querySelector('#replace-input');
+  const btnPrev = container.querySelector('#search-btn-prev');
+  const btnNext = container.querySelector('#search-btn-next');
+  const btnHighlight = container.querySelector('#search-btn-highlight');
+  const btnRegex = container.querySelector('#search-btn-regex');
   const btnClose = container.querySelector('#search-btn-close');
   const btnReplaceOne = container.querySelector('#search-btn-replace-one');
   const btnReplaceAll = container.querySelector('#search-btn-replace-all');
   const btnCase = container.querySelector('#search-btn-case');
   const btnWord = container.querySelector('#search-btn-word');
-  const btnRegex = container.querySelector('#search-btn-regex');
 
-  let searchState = {
-    matchCase: false,
-    wholeWords: false,
-    useRegex: false
-  };
+  searchInput.addEventListener('input', () => commitSearchQuery());
+  replaceInput.addEventListener('input', () => commitSearchQuery());
 
-  const executeSearch = () => {
-    if (!activeAdapter) return;
-    const query = searchInput.value || '';
-    if (!query) {
-      counter.textContent = '';
-      return;
+  attachButtonBehavior(btnPrev, 'Find Previous match in document', () => {
+    if (activeAdapter && activeAdapter.view) {
+      runFindAndCenter(findPrevious, activeAdapter.view);
+      const query = buildSearchQuery(searchInput, replaceInput);
+      updateMatchCounterFromQuery(query, activeAdapter.view);
     }
+  });
 
-    const text = activeAdapter.getMarkdown();
-    try {
-      const flags = searchState.matchCase ? 'g' : 'gi';
-      const searchPattern = searchState.useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const reg = new RegExp(searchPattern, flags);
-      const matches = [...text.matchAll(reg)];
-      counter.textContent = matches.length > 0 ? `1/${matches.length}` : '0/0';
-    } catch (e) {
-      counter.textContent = '0/0';
+  attachButtonBehavior(btnNext, 'Find Next match in document', () => {
+    if (activeAdapter && activeAdapter.view) {
+      runFindAndCenter(findNext, activeAdapter.view);
+      const query = buildSearchQuery(searchInput, replaceInput);
+      updateMatchCounterFromQuery(query, activeAdapter.view);
     }
-  };
+  });
 
-  searchInput.addEventListener('input', executeSearch);
+  attachButtonBehavior(btnHighlight, 'Toggle Highlight All Matches', () => {
+    searchState.highlightAll = !searchState.highlightAll;
+    btnHighlight.classList.toggle('active', searchState.highlightAll);
+    if (searchState.highlightAll) {
+      document.body.classList.remove('cm-search-hide-matches');
+    } else {
+      document.body.classList.add('cm-search-hide-matches');
+    }
+    commitSearchQuery();
+  });
 
-  btnCase.onclick = () => {
-    searchState.matchCase = !searchState.matchCase;
-    btnCase.classList.toggle('active', searchState.matchCase);
-    executeSearch();
-  };
-
-  btnWord.onclick = () => {
-    searchState.wholeWords = !searchState.wholeWords;
-    btnWord.classList.toggle('active', searchState.wholeWords);
-    executeSearch();
-  };
-
-  btnRegex.onclick = () => {
+  attachButtonBehavior(btnRegex, 'Toggle Regular Expression (Hold: History)', () => {
     searchState.useRegex = !searchState.useRegex;
     btnRegex.classList.toggle('active', searchState.useRegex);
-    executeSearch();
-  };
+    commitSearchQuery();
+  }, true);
 
-  btnClose.onclick = () => {
+  attachButtonBehavior(btnClose, 'Close Search bar', () => {
     toggleFindAndReplaceBar(false);
-  };
+  });
 
-  btnReplaceOne.onclick = () => {
-    const query = searchInput.value || '';
-    const rep = replaceInput.value || '';
-    if (query && activeAdapter) {
-      const current = activeAdapter.getMarkdown();
-      const flags = searchState.matchCase ? '' : 'i';
-      const reg = new RegExp(searchState.useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
-      const nextText = current.replace(reg, rep);
-      activeAdapter.setMarkdown(nextText);
-      executeSearch();
+  attachButtonBehavior(btnReplaceOne, 'Replace currently selected match', () => {
+    if (activeAdapter && activeAdapter.view) {
+      replaceNext(activeAdapter.view);
+      commitSearchQuery();
     }
-  };
+  });
 
-  btnReplaceAll.onclick = () => {
-    const query = searchInput.value || '';
-    const rep = replaceInput.value || '';
-    if (query && activeAdapter) {
-      const current = activeAdapter.getMarkdown();
-      const flags = searchState.matchCase ? 'g' : 'gi';
-      const reg = new RegExp(searchState.useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
-      const nextText = current.replaceAll(reg, rep);
-      activeAdapter.setMarkdown(nextText);
-      executeSearch();
+  attachButtonBehavior(btnReplaceAll, 'Replace all occurrences in document', () => {
+    if (activeAdapter && activeAdapter.view) {
+      replaceAll(activeAdapter.view);
+      commitSearchQuery();
     }
-  };
+  });
+
+  attachButtonBehavior(btnCase, 'Toggle Match Case', () => {
+    searchState.matchCase = !searchState.matchCase;
+    btnCase.classList.toggle('active', searchState.matchCase);
+    commitSearchQuery();
+  });
+
+  attachButtonBehavior(btnWord, 'Toggle Match Whole Word', () => {
+    searchState.wholeWords = !searchState.wholeWords;
+    btnWord.classList.toggle('active', searchState.wholeWords);
+    commitSearchQuery();
+  });
 }
 
 function toggleFindAndReplaceBar(forceState) {
-  const container = document.querySelector('#custom-search-bar');
-  if (!container) return;
+  const bar = document.getElementById('custom-search-bar');
+  if (!bar) return;
 
-  const newState = forceState !== undefined ? forceState : container.classList.contains('hidden');
-  if (newState) {
-    container.classList.remove('hidden');
-    const input = container.querySelector('#search-input');
-    if (input) {
-      input.focus();
-      input.select();
-    }
+  const show = forceState ?? bar.classList.contains('hidden');
+  bar.classList.toggle('hidden', !show);
+
+  const view = activeAdapter?.view;
+  if (!view) return;
+
+  if (show) {
+    openSearchPanel(view);
+    requestAnimationFrame(() => {
+      const input = bar.querySelector('#search-input');
+      input?.focus();
+      input?.select();
+      commitSearchQuery();
+    });
   } else {
-    container.classList.add('hidden');
+    // Intentionally do not call closeSearchPanel(view): that detaches
+    // the custom #custom-search-bar element from CodeMirror's panel host.
+    view.focus();
   }
 }
 
@@ -1492,7 +2298,19 @@ function updateTocActiveSection() {
 
   if (activeRow) {
     activeRow.classList.add('active-section');
-    activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+    const panel = document.querySelector('#toc-panel');
+    if (!panel?.classList.contains('open')) return;
+
+    const containerRect = tocContent.getBoundingClientRect();
+    const rowRect = activeRow.getBoundingClientRect();
+    if (containerRect.height <= 0 || rowRect.height <= 0) return;
+
+    if (rowRect.top < containerRect.top) {
+      tocContent.scrollTop -= containerRect.top - rowRect.top;
+    } else if (rowRect.bottom > containerRect.bottom) {
+      tocContent.scrollTop += rowRect.bottom - containerRect.bottom;
+    }
   }
 }
 
@@ -1814,59 +2632,366 @@ window.editorBridge = {
     if (!prefsJson) return;
     const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
 
-    const setCssVar = (varName, val, unit = '') => {
-      if (val !== undefined && val !== null && val !== 'default' && val !== '') {
-        document.documentElement.style.setProperty(varName, val + unit);
-      } else {
+    // Set a CSS custom property; only append a unit to a plain numeric value.
+    const setCssVar = (varName, value, unit = '') => {
+      if (value === undefined || value === null || value === '' || value === 'default') {
         document.documentElement.style.removeProperty(varName);
+        return;
       }
+
+      const raw = String(value).trim();
+      if (!raw || raw === 'default') {
+        document.documentElement.style.removeProperty(varName);
+        return;
+      }
+
+      const isPlainNumber = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(raw);
+      document.documentElement.style.setProperty(varName, unit && isPlainNumber ? raw + unit : raw);
+    };
+
+    // Android ColorPickerDialog stores alpha colors as #AARRGGBB.
+    // CSS 8-digit hex is #RRGGBBAA, so convert ARGB values to rgba() first.
+    const androidArgbToCss = (value) => {
+      if (typeof value !== 'string') return value;
+      const match = /^#([0-9a-f]{8})$/i.exec(value.trim());
+      if (!match) return value;
+
+      const [alpha, red, green, blue] = match[1]
+        .match(/.{2}/g)
+        .map(channel => parseInt(channel, 16));
+
+      return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
     };
 
     if (prefs.pref_app_theme === 'light') {
       document.body.classList.add('light-theme');
-    } else if (prefs.pref_app_theme === 'amoled') {
+    } else {
       document.body.classList.remove('light-theme');
     }
+
     if (prefs.pref_line_wrap === false) {
       document.body.classList.add('no-line-wrap');
     } else if (prefs.pref_line_wrap === true) {
       document.body.classList.remove('no-line-wrap');
     }
-
-    setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');
-    setCssVar('--heading-scale', prefs.pref_heading_scale_percent ? (prefs.pref_heading_scale_percent / 100.0) : null);
-    setCssVar('--bold-font-weight', prefs.pref_font_weight_bold);
-    setCssVar('--italic-font-weight', prefs.pref_font_weight_italic);
-    setCssVar('--heading-font-weight', prefs.pref_font_weight_heading);
-
-    for (let i = 1; i <= 6; i++) {
-      setCssVar(`--heading-${i}-color`, prefs[`pref_heading_${i}_color`]);
+    if (typeof window.editorBridge.setLineWrap === 'function') {
+      window.editorBridge.setLineWrap(prefs.pref_line_wrap !== false);
     }
 
+    // Cursor & Selection
+    setCssVar('--cursor-color', prefs.pref_cursor_color);
+    setCssVar('--cursor-width', prefs.pref_cursor_width, 'px');
+    setCssVar('--cursor-blink-rate', prefs.pref_cursor_blink_rate);
+    setCssVar('--selection-highlight-bg', prefs.pref_selection_highlight_bg_color);
+    setCssVar('--selection-highlight-text', prefs.pref_selection_highlight_text_color);
+
+    // Body & Paragraph
+    setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');
+    setCssVar('--paragraph-line-height', prefs.pref_paragraph_line_height);
+    setCssVar('--paragraph-letter-spacing', prefs.pref_letter_spacing || prefs.pref_paragraph_letter_spacing, 'px');
+    const alignVal = prefs.pref_justify_paragraph === true ? 'justify' : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify);
+    setCssVar('--paragraph-align', alignVal);
+    setCssVar('--paragraph-indent', prefs.pref_paragraph_first_line_indent, 'px');
+    setCssVar('--paragraph-margin-top', prefs.pref_paragraph_margin_top, 'px');
+    setCssVar('--paragraph-margin-bottom', prefs.pref_paragraph_margin_bottom, 'px');
+
+    // Android stores these as shared preferences. Keep the shared multiplier
+    // separate from each level's base size (H1 remains larger than H6).
+    const globalHeadingScale = prefs.pref_heading_scale_percent != null
+      ? Number(prefs.pref_heading_scale_percent) / 100
+      : null;
+    setCssVar('--heading-scale', globalHeadingScale);
+
+    const globalHeadingWeight = prefs.pref_font_weight_heading;
+    const globalHeadingAlign = prefs.pref_heading_align;
+    const globalHeadingLineHeight = prefs.pref_heading_line_height;
+    const globalHeadingLetterSpacing = prefs.pref_heading_letter_spacing;
+    const globalHeadingTransform = prefs.pref_heading_text_transform;
+    const globalHeadingUnderlineStyle = prefs.pref_heading_underline_style;
+    const globalHeadingUnderlineThickness = prefs.pref_heading_underline_thickness;
+    const globalHeadingUnderlineColor = prefs.pref_heading_underline_color;
+    const globalHeadingMarginTop = prefs.pref_heading_margin_top;
+    const globalHeadingMarginBottom = prefs.pref_heading_margin_bottom;
+
+    // Preserve per-level colors and any older per-level values, while falling
+    // back to the actual shared keys shown in preferences_styling_headings.xml.
+    for (let i = 1; i <= 6; i++) {
+      const pColor = prefs['pref_heading_' + i + '_color'];
+      const oldLevelScale = prefs['pref_heading_' + i + '_scale'];
+      const oldLevelFontSize = prefs['pref_heading_' + i + '_font_size'];
+      const pScale = oldLevelScale != null
+        ? oldLevelScale
+        : (oldLevelFontSize != null ? Number(oldLevelFontSize) / 16 : null);
+      const pAlign = prefs['pref_heading_' + i + '_align'] ?? globalHeadingAlign;
+      const pLineHeight = prefs['pref_heading_' + i + '_line_height'] ?? globalHeadingLineHeight;
+      const pLetterSpacing = prefs['pref_heading_' + i + '_letter_spacing'] ?? globalHeadingLetterSpacing;
+      const pTransform = prefs['pref_heading_' + i + '_transform'] ?? globalHeadingTransform;
+      const pUnderlineRaw = prefs['pref_heading_' + i + '_underline_style'] ?? globalHeadingUnderlineStyle;
+      const pUnderlineLine = (pUnderlineRaw && pUnderlineRaw !== 'none') ? 'underline' : 'none';
+      const pUnderlineStyle = (pUnderlineRaw && pUnderlineRaw !== 'none') ? pUnderlineRaw : 'solid';
+      const pUnderlineThickness = prefs['pref_heading_' + i + '_underline_thickness'] ?? globalHeadingUnderlineThickness;
+      const pUnderlineColor = prefs['pref_heading_' + i + '_underline_color'] ?? globalHeadingUnderlineColor;
+      const pMarginTop = prefs['pref_heading_' + i + '_margin_top'] ?? globalHeadingMarginTop;
+      const pMarginBottom = prefs['pref_heading_' + i + '_margin_bottom'] ?? globalHeadingMarginBottom;
+      const pWeight = prefs['pref_heading_' + i + '_font_weight'] ?? globalHeadingWeight;
+
+      setCssVar('--heading-' + i + '-color', pColor);
+      setCssVar('--heading-' + i + '-scale', pScale);
+      setCssVar('--heading-' + i + '-align', pAlign);
+      setCssVar('--heading-' + i + '-line-height', pLineHeight);
+      setCssVar('--heading-' + i + '-letter-spacing', pLetterSpacing, 'px');
+      setCssVar('--heading-' + i + '-text-transform', pTransform);
+      setCssVar('--heading-' + i + '-underline-line', pUnderlineLine);
+      setCssVar('--heading-' + i + '-underline-style', pUnderlineStyle);
+      setCssVar('--heading-' + i + '-underline-thickness', pUnderlineThickness, 'px');
+      setCssVar('--heading-' + i + '-underline-color', pUnderlineColor);
+      setCssVar('--heading-' + i + '-margin-top', pMarginTop, 'px');
+      setCssVar('--heading-' + i + '-margin-bottom', pMarginBottom, 'px');
+      setCssVar('--heading-' + i + '-font-weight', pWeight);
+    }
+
+    // Inline formats
     setCssVar('--bold-color', prefs.pref_bold_color);
+    setCssVar('--bold-font-weight', prefs.pref_font_weight_bold);
     setCssVar('--italic-color', prefs.pref_italic_color);
+    setCssVar('--italic-font-weight', prefs.pref_font_weight_italic);
     setCssVar('--link-color', prefs.pref_link_color);
+    const linkStyle = prefs.pref_link_decoration || 'solid';
+    setCssVar('--link-decoration-line', linkStyle === 'none' ? 'none' : 'underline');
+    setCssVar('--link-decoration-style', linkStyle === 'none' ? 'solid' : linkStyle);
     setCssVar('--code-color', prefs.pref_code_color);
     setCssVar('--code-bg-color', prefs.pref_code_bg_color);
     setCssVar('--code-padding', prefs.pref_code_padding, 'px');
     setCssVar('--code-border-radius', prefs.pref_code_border_radius, 'px');
 
+    // Footnote
+    setCssVar('--footnote-text-color', prefs.pref_footnote_text_color);
+    setCssVar('--footnote-bg-color', prefs.pref_footnote_bg_color);
+    setCssVar('--footnote-ref-color', prefs.pref_footnote_ref_color);
+    setCssVar('--footnote-font-size', prefs.pref_footnote_font_size, 'px');
+
+    // Lists
+    setCssVar('--list-left-indent', prefs.pref_list_left_indent, 'px');
+    setCssVar('--list-item-spacing', prefs.pref_list_item_spacing, 'px');
+    setCssVar('--list-line-height', prefs.pref_list_line_height);
+    setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
+    setCssVar('--list-number-color', prefs.pref_list_number_color);
+    setCssVar('--todo-border-color', prefs.pref_todo_unchecked_color || prefs.pref_todo_unchecked_border_color);
+    setCssVar('--todo-accent-color', prefs.pref_todo_checked_color || prefs.pref_todo_checked_accent_color);
+    setCssVar('--todo-bg-color', prefs.pref_todo_unchecked_bg_color);
+
+    // Blockquotes & Callouts
     setCssVar('--blockquote-border-width', prefs.pref_blockquote_line_thickness, 'px');
     setCssVar('--blockquote-border-style', prefs.pref_blockquote_line_style);
     setCssVar('--blockquote-border-color', prefs.pref_blockquote_line_color);
     setCssVar('--blockquote-bg-color', prefs.pref_blockquote_bg_color);
     setCssVar('--blockquote-text-color', prefs.pref_blockquote_text_color);
+    setCssVar('--blockquote-left-margin', prefs.pref_blockquote_left_indent || prefs.pref_blockquote_left_margin, 'px');
+    setCssVar('--blockquote-padding', prefs.pref_blockquote_padding, 'px');
 
+    setCssVar('--callout-border-width', prefs.pref_callout_line_thickness, 'px');
+    setCssVar('--callout-border-style', prefs.pref_callout_line_style);
+    setCssVar('--callout-border-color', prefs.pref_callout_line_color);
+    setCssVar('--callout-bg-color', prefs.pref_callout_bg_color);
+    setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
+
+    // Tables
+    setCssVar('--table-border-style', prefs.pref_table_border_style);
+    setCssVar('--table-border-width', prefs.pref_table_border_thickness || prefs.pref_table_border_width, 'px');
+    setCssVar('--table-border-color', prefs.pref_table_border_color);
+    setCssVar('--table-header-bg', prefs.pref_table_header_bg_color || prefs.pref_table_header_bg);
+    setCssVar('--table-header-color', prefs.pref_table_header_text_color || prefs.pref_table_header_color);
+    setCssVar('--table-header-font-weight', prefs.pref_table_header_font_weight);
+    setCssVar('--table-cell-bg', prefs.pref_table_cell_bg_color || prefs.pref_table_cell_bg);
+    setCssVar('--table-cell-color', prefs.pref_table_cell_text_color || prefs.pref_table_cell_color);
+    setCssVar('--table-cell-padding', prefs.pref_table_cell_padding, 'px');
+    setCssVar('--table-menu-bg', prefs.pref_table_menu_bg_color);
+    setCssVar('--table-menu-action-bg', prefs.pref_table_menu_action_bg_color);
+    setCssVar('--table-menu-text', prefs.pref_table_menu_text_color);
+    setCssVar('--table-menu-disabled-color', prefs.pref_table_menu_disabled_color);
+    setCssVar('--table-menu-pressed-bg', prefs.pref_table_menu_pressed_bg_color);
+
+    // Code blocks
+    setCssVar('--code-block-color', prefs.pref_code_block_color);
+    setCssVar('--code-block-bg-color', prefs.pref_code_block_bg_color);
+    setCssVar('--code-block-font-size', prefs.pref_code_block_font_size, 'px');
+    setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
+    setCssVar('--code-block-border-radius', prefs.pref_code_block_border_radius, 'px');
+    setCssVar('--code-block-line-height', prefs.pref_code_block_line_height);
+    setCssVar('--code-block-lang-label-color', prefs.pref_code_block_lang_label_color);
+
+    // Dividers
     setCssVar('--hr-thickness', prefs.pref_hr_thickness, 'px');
     setCssVar('--hr-style', prefs.pref_hr_style);
     setCssVar('--hr-color', prefs.pref_hr_color);
+    setCssVar('--hr-width', prefs.pref_hr_width_percent || prefs.pref_hr_width, '%');
+    setCssVar('--hr-margin-top', prefs.pref_hr_margin_top, 'px');
+    setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
+    // Toolbar
     setCssVar('--toolbar-bg', prefs.pref_toolbar_bg_color);
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);
     setCssVar('--toolbar-active-icon-color', prefs.pref_toolbar_active_icon_color);
+    setCssVar(
+      '--toolbar-toggle-bg-color',
+      androidArgbToCss(prefs.pref_toolbar_toggle_bg_color)
+    );
+    setCssVar(
+      '--toolbar-toggle-icon-color',
+      androidArgbToCss(prefs.pref_toolbar_toggle_icon_color)
+    );
     setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
+
+    // Find & Replace Customizations
+    setCssVar('--findreplace-panel-bg', androidArgbToCss(prefs.pref_findreplace_panel_bg));
+    setCssVar('--findreplace-panel-border', androidArgbToCss(prefs.pref_findreplace_panel_border));
+    setCssVar('--findreplace-field-find-bg', androidArgbToCss(prefs.pref_findreplace_field_find_bg));
+    setCssVar('--findreplace-field-find-color', androidArgbToCss(prefs.pref_findreplace_field_find_color));
+    setCssVar('--findreplace-field-find-placeholder', androidArgbToCss(prefs.pref_findreplace_field_find_placeholder));
+    setCssVar('--findreplace-field-find-border', androidArgbToCss(prefs.pref_findreplace_field_find_border));
+    setCssVar('--findreplace-field-find-focus-border', androidArgbToCss(prefs.pref_findreplace_field_find_focus_border));
+    setCssVar('--findreplace-field-find-font-size', prefs.pref_findreplace_field_find_font_size, 'px');
+    setCssVar('--findreplace-field-replace-bg', androidArgbToCss(prefs.pref_findreplace_field_replace_bg));
+    setCssVar('--findreplace-field-replace-color', androidArgbToCss(prefs.pref_findreplace_field_replace_color));
+    setCssVar('--findreplace-field-replace-placeholder', androidArgbToCss(prefs.pref_findreplace_field_replace_placeholder));
+    setCssVar('--findreplace-field-replace-border', androidArgbToCss(prefs.pref_findreplace_field_replace_border));
+    setCssVar('--findreplace-field-replace-focus-border', androidArgbToCss(prefs.pref_findreplace_field_replace_focus_border));
+    setCssVar('--findreplace-field-replace-font-size', prefs.pref_findreplace_field_replace_font_size, 'px');
+    setCssVar('--findreplace-field-height', prefs.pref_findreplace_field_height, 'px');
+    setCssVar('--findreplace-counter-color', androidArgbToCss(prefs.pref_findreplace_counter_color));
+    setCssVar('--findreplace-match-bg', androidArgbToCss(prefs.pref_findreplace_match_bg));
+    setCssVar('--findreplace-current-match-bg', androidArgbToCss(prefs.pref_findreplace_current_match_bg));
+    setCssVar('--findreplace-current-match-color', androidArgbToCss(prefs.pref_findreplace_current_match_color));
+
+    const findreplaceButtons = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
+    findreplaceButtons.forEach(bId => {
+      const bKey = bId.replace(/-/g, '_');
+      setCssVar(`--findreplace-${bId}-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_bg`] || prefs.pref_findreplace_btn_bg));
+      setCssVar(`--findreplace-${bId}-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_color`] || prefs.pref_findreplace_btn_color));
+      setCssVar(`--findreplace-${bId}-active-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_active_bg`] || prefs.pref_findreplace_btn_active_bg));
+      setCssVar(`--findreplace-${bId}-active-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_active_color`] || prefs.pref_findreplace_btn_active_color));
+      setCssVar(`--findreplace-${bId}-pressed-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_pressed_bg`] || prefs.pref_findreplace_btn_pressed_bg));
+      setCssVar(`--findreplace-${bId}-width`, prefs[`pref_findreplace_btn_${bKey}_width`] || prefs.pref_findreplace_btn_width, 'px');
+
+      const customSvg = prefs[`pref_findreplace_btn_${bKey}_svg`];
+      const btnEl = document.querySelector(`#search-btn-${bId}`);
+      if (btnEl) {
+        if (!btnEl.dataset.defaultSvg) {
+          btnEl.dataset.defaultSvg = btnEl.innerHTML;
+        }
+        if (customSvg) {
+          const sanitized = sanitizeSvg(customSvg);
+          if (sanitized) {
+            btnEl.innerHTML = sanitized;
+          } else {
+            btnEl.innerHTML = btnEl.dataset.defaultSvg;
+          }
+        } else {
+          btnEl.innerHTML = btnEl.dataset.defaultSvg;
+        }
+      }
+    });
+
+    const applyFindReplaceButtonLayout = (prefs) => {
+      let rawRow1 = prefs.pref_findreplace_button_row1;
+      let rawRow2 = prefs.pref_findreplace_button_row2;
+      const hiddenRaw = prefs.pref_findreplace_hidden_buttons || '';
+
+      const knownIds = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
+      const defaultRow1 = ['prev', 'next', 'highlight', 'regex', 'close'];
+      const defaultRow2 = ['replace-one', 'replace-all', 'case', 'word'];
+
+      if (!rawRow1 && !rawRow2 && prefs.pref_findreplace_button_order) {
+        const oldOrderStr = String(prefs.pref_findreplace_button_order);
+        const oldItems = oldOrderStr.split(',').map(s => s.trim()).filter(id => knownIds.includes(id));
+        const dedupped = [];
+        oldItems.forEach(id => { if (!dedupped.includes(id)) dedupped.push(id); });
+        rawRow1 = dedupped.slice(0, 5).join(',');
+        rawRow2 = dedupped.slice(5).join(',');
+      }
+
+      const r1Items = (rawRow1 || defaultRow1.join(',')).split(',').map(s => s.trim()).filter(Boolean);
+      const r2Items = (rawRow2 || defaultRow2.join(',')).split(',').map(s => s.trim()).filter(Boolean);
+
+      const row1List = [];
+      const row2List = [];
+      const seen = new Set();
+
+      for (const id of r1Items) {
+        if (knownIds.includes(id) && !seen.has(id)) {
+          row1List.push(id);
+          seen.add(id);
+        }
+      }
+
+      for (const id of r2Items) {
+        if (knownIds.includes(id) && !seen.has(id)) {
+          row2List.push(id);
+          seen.add(id);
+        }
+      }
+
+      for (const id of defaultRow1) {
+        if (!seen.has(id)) {
+          row1List.push(id);
+          seen.add(id);
+        }
+      }
+
+      for (const id of defaultRow2) {
+        if (!seen.has(id)) {
+          row2List.push(id);
+          seen.add(id);
+        }
+      }
+
+      const rawHiddenList = hiddenRaw.split(',').map(s => s.trim()).filter(Boolean);
+      const hiddenSet = new Set(rawHiddenList.filter(id => knownIds.includes(id)));
+
+      const rows = document.querySelectorAll('#custom-search-bar .search-bar-row');
+      if (!rows || rows.length < 2) return;
+
+      const group1 = rows[0].querySelector('.search-icon-group');
+      const group2 = rows[1].querySelector('.search-icon-group');
+      if (!group1 || !group2) return;
+
+      row1List.forEach(id => {
+        const btn = document.querySelector(`#search-btn-${id}`);
+        if (btn) {
+          group1.appendChild(btn);
+          if (hiddenSet.has(id)) {
+            btn.setAttribute('hidden', '');
+          } else {
+            btn.removeAttribute('hidden');
+          }
+        }
+      });
+
+      row2List.forEach(id => {
+        const btn = document.querySelector(`#search-btn-${id}`);
+        if (btn) {
+          group2.appendChild(btn);
+          if (hiddenSet.has(id)) {
+            btn.setAttribute('hidden', '');
+          } else {
+            btn.removeAttribute('hidden');
+          }
+        }
+      });
+
+      const searchBar = document.querySelector('#custom-search-bar');
+      if (searchBar && !searchBar.classList.contains('hidden') && activeAdapter && activeAdapter.view) {
+        commitSearchQuery();
+      }
+    };
+    applyFindReplaceButtonLayout(prefs);
   },
   getMarkdown: function() {
+    // Flush active table cell draft if an overlay editor is open
+    const activeOverlay = document.querySelector('.cm-wp-cell-editor');
+    if (activeOverlay) {
+      activeOverlay.blur();
+    }
     if (pendingMarkdown !== null) return pendingMarkdown;
     if (typeof activeAdapter !== 'undefined' && activeAdapter) return activeAdapter.getMarkdown();
     return '';

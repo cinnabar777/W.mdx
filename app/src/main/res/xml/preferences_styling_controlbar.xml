@@ -21,6 +21,18 @@
             app:summary="Accent color when a toolbar item or popup is active"
             app:defaultValue="default" />
 
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_toggle_bg_color"
+            app:title="Toolbar Toggle Background Color"
+            app:summary="Background color for the floating button that shows or hides the bottom toolbar"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_toggle_icon_color"
+            app:title="Toolbar Toggle Icon Color"
+            app:summary="Icon color for the floating button that shows or hides the bottom toolbar"
+            app:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_toolbar_height"
             app:title="Toolbar Height (dp)"

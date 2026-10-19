@@ -47,6 +47,12 @@
             app:key="pref_styling_page_controlbar"
             app:title="Bottom Control Bar &amp; UI Theme"
             app:summary="Toolbar height, background color, icon color &amp; active selection color" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_cursor"
+            app:title="Cursor &amp; Selection Settings"
+            app:summary="Configure caret color, blink rate, and selection handles" />
+
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

@@ -16,6 +16,15 @@
             app:defaultValue="default" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_code_block_font_size"
+            app:title="Code Block Text Size (px)"
+            app:summary="Font size for code inside fenced code blocks"
+            app:min="8"
+            android:max="32"
+            app:defaultValue="14"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_code_block_padding"
             app:title="Code Block Padding (px)"
             app:summary="Inside padding for code blocks"
