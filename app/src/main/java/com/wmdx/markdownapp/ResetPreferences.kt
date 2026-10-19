@@ -32,6 +32,7 @@ object PreferenceResetHelper {
             "pref_settings_summary_color" -> "#AAAAAA"
             "pref_settings_switch_color" -> "#00E5FF"
             "pref_settings_reset_icon_color" -> "#00E5FF"
+            "pref_settings_reset_inactive_icon_color" -> "#555555"
             "pref_settings_bg_color" -> "#000000"
             "pref_toolbar_bg_color" -> "#121212"
             "pref_toolbar_icon_color" -> "#FFFFFF"
@@ -147,6 +148,9 @@ object PreferenceResetHelper {
             key == "pref_link_color" -> "default"
             key == "pref_code_color" -> "default"
             key == "pref_code_bg_color" -> "default"
+            key == "pref_cursor_color" -> "default"
+            key == "pref_selection_handle_color" -> "default"
+            key == "pref_cursor_blink_rate" -> "0.8s"
             key == "pref_code_block_color" -> "default"
             key == "pref_code_block_bg_color" -> "default"
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"
@@ -163,6 +167,7 @@ object PreferenceResetHelper {
             key == "pref_settings_summary_color" -> "#AAAAAA"
             key == "pref_settings_switch_color" -> "#00E5FF"
             key == "pref_settings_reset_icon_color" -> "#00E5FF"
+            key == "pref_settings_reset_inactive_icon_color" -> "#555555"
             key == "pref_settings_bg_color" -> "#000000"
             key == "pref_hide_status_bar" -> false
             key == "pref_hide_nav_bar" -> false
@@ -394,12 +399,14 @@ object PreferenceResetHelper {
         val summaryColorHex = prefs.getString("pref_settings_summary_color", "#AAAAAA") ?: "#AAAAAA"
         val switchColorHex = prefs.getString("pref_settings_switch_color", "#00E5FF") ?: "#00E5FF"
         val resetIconColorHex = prefs.getString("pref_settings_reset_icon_color", "#00E5FF") ?: "#00E5FF"
+        val resetInactiveColorHex = prefs.getString("pref_settings_reset_inactive_icon_color", "#555555") ?: "#555555"
 
         val catColor = ColorPickerDialog.parseHexColor(catColorHex, android.graphics.Color.parseColor("#00E5FF"))
         val titleColor = ColorPickerDialog.parseHexColor(titleColorHex, android.graphics.Color.WHITE)
         val summaryColor = ColorPickerDialog.parseHexColor(summaryColorHex, android.graphics.Color.parseColor("#AAAAAA"))
         val switchColor = ColorPickerDialog.parseHexColor(switchColorHex, android.graphics.Color.parseColor("#00E5FF"))
         val resetIconColor = ColorPickerDialog.parseHexColor(resetIconColorHex, android.graphics.Color.parseColor("#00E5FF"))
+        val resetInactiveColor = ColorPickerDialog.parseHexColor(resetInactiveColorHex, android.graphics.Color.parseColor("#555555"))
 
         val titleView = holder.findViewById(android.R.id.title) as? android.widget.TextView
         val summaryView = holder.findViewById(android.R.id.summary) as? android.widget.TextView
@@ -423,7 +430,8 @@ object PreferenceResetHelper {
         }
 
         val btnReset = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
-        btnReset?.setColorFilter(resetIconColor)
+        val isModified = isModifiedFromDefault(context, preference.key)
+        btnReset?.setColorFilter(if (isModified) resetIconColor else resetInactiveColor)
 
         val widgetFrame = holder.findViewById(android.R.id.widget_frame) as? ViewGroup
         if (widgetFrame != null) {

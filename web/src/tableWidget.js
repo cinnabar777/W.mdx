@@ -184,12 +184,12 @@ export class WordProcessorTableWidget extends WidgetType {
     };
 
     const showContextMenu = (cellEl, r, c) => {
-      let menu = container.querySelector('.cm-wp-table-context-menu');
-      if (menu) menu.remove();
+      let existingMenu = document.querySelector('.cm-wp-table-context-menu');
+      if (existingMenu) existingMenu.remove();
 
-      menu = document.createElement('div');
+      const menu = document.createElement('div');
       menu.className = 'cm-wp-table-context-menu';
-      menu.style.cssText = 'position: absolute; z-index: 200; background: #222428; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);';
+      menu.style.cssText = 'position: fixed; z-index: 10009; background: #222428; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); max-height: 240px; overflow-y: auto;';
 
       const addBtn = (label, action) => {
         const btn = document.createElement('button');
@@ -222,10 +222,23 @@ export class WordProcessorTableWidget extends WidgetType {
         addBtn('Split Cell', () => this.model.splitCell(r, c));
       }
 
-      container.appendChild(menu);
+      document.body.appendChild(menu);
 
-      menu.style.top = `${cellEl.offsetTop + cellEl.offsetHeight}px`;
-      menu.style.left = `${cellEl.offsetLeft}px`;
+      const cellRect = cellEl.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      const menuHeight = menu.offsetHeight || 180;
+      const menuWidth = menu.offsetWidth || 140;
+
+      let top = cellRect.bottom + 6;
+      if (top + menuHeight > viewportHeight - 10) {
+        top = Math.max(10, cellRect.top - menuHeight - 6);
+      }
+
+      let left = Math.max(10, Math.min(cellRect.left, viewportWidth - menuWidth - 10));
+
+      menu.style.top = `${top}px`;
+      menu.style.left = `${left}px`;
 
       const closeMenu = (e) => {
         if (!menu.contains(e.target)) {
@@ -285,7 +298,10 @@ export class WordProcessorTableWidget extends WidgetType {
       overlay.value = this.model.rows[r][c] || '';
       overlay.style.cssText = `position: absolute; top: ${cellEl.offsetTop}px; left: ${cellEl.offsetLeft}px; width: ${cellEl.offsetWidth}px; height: ${cellEl.offsetHeight}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px;`;
 
+      let isCommitted = false;
       const commitAndClose = (nextNavigation) => {
+        if (isCommitted) return;
+        isCommitted = true;
         this.model.rows[r][c] = overlay.value;
         activeOverlay = null;
         overlay.remove();

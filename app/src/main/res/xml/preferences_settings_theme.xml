@@ -36,6 +36,12 @@
             app:defaultValue="#00E5FF" />
 
         <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_settings_reset_inactive_icon_color"
+            app:title="Reset Icon Inactive Color"
+            app:summary="Tint color for reset buttons when setting is at default (default: #555555)"
+            app:defaultValue="#555555" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_settings_bg_color"
             app:title="Settings Screen Background Color"
             app:summary="Background color for all settings screens (default: #000000)"

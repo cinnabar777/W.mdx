@@ -99,3 +99,15 @@ test('code blocks have a separate font-size preference and CSS variable', () => 
   assert.match(source, /setCssVar\('--code-block-font-size', prefs\.pref_code_block_font_size, 'px'\)/);
   assert.match(indexHtml, /font-size:\s*var\(--code-block-font-size,\s*14px\)\s*!important/);
 });
+
+const cursorSettingsPath = path.join(
+  __dirname,
+  '../../app/src/main/res/xml/preferences_styling_cursor.xml'
+);
+const cursorSettings = fs.readFileSync(cursorSettingsPath, 'utf8');
+
+test('cursor and selection styling page is configured', () => {
+  assert.match(cursorSettings, /app:key="pref_cursor_color"/);
+  assert.match(cursorSettings, /app:key="pref_selection_handle_color"/);
+  assert.match(source, /setCssVar\('--cursor-color', prefs\.pref_cursor_color\)/);
+});

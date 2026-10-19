@@ -692,67 +692,9 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'Table') {
-            const startLine = view.state.doc.lineAt(node.from);
-            const endLine = view.state.doc.lineAt(node.to);
-            const columnWidths = getTableColumnWidths(
-              view.state.doc,
-              startLine.number,
-              endLine.number
-            );
-
-            for (let l = startLine.number; l <= endLine.number; l++) {
-              const lineObj = view.state.doc.line(l);
-              if (lineObj.from < from || lineObj.from > to) continue;
-
-              const parsed = parsePipeRow(lineObj);
-              if (!parsed) continue;
-
-              const isSep = isTableSeparatorRow(lineObj.text, parsed.cells);
-              const isHeader = (l === startLine.number);
-
-              let cls = 'cm-table-row';
-              if (isHeader) cls += ' cm-table-header-row';
-              else if (isSep) cls += ' cm-table-sep-row';
-              else cls += ' cm-table-data-row';
-
-              addLineClass(lineObj.from, cls);
-
-              if (!isSep) {
-                for (let column = 0; column < parsed.cells.length; column++) {
-                  const cell = parsed.cells[column];
-                  const widthCh = columnWidths[column] || 8;
-                  const classes = [
-                    'cm-table-cell',
-                    ...(isHeader ? ['cm-table-header-cell'] : []),
-                    ...(column === 0 ? ['cm-table-first-cell'] : []),
-                    ...(column === parsed.cells.length - 1 ? ['cm-table-last-cell'] : [])
-                  ].join(' ');
-
-                  if (cell.from < cell.to) {
-                    builder.push(Decoration.mark({
-                      class: classes,
-                      attributes: { style: `width:${widthCh}ch;` }
-                    }).range(cell.from, cell.to));
-                  } else {
-                    builder.push(Decoration.widget({
-                      widget: new EmptyTableCellWidget(widthCh, isHeader, column === 0, column === parsed.cells.length - 1),
-                      side: 1
-                    }).range(cell.from));
-                  }
-                }
-              }
-
-              const hideSyntax = currentEditorMode === 'wysiwyg' || currentEditorMode === 'live_preview';
-              if (hideSyntax) {
-                if (isSep) {
-                  builder.push(Decoration.replace({}).range(lineObj.from, lineObj.to));
-                } else {
-                  for (const pipePos of parsed.pipes) {
-                    builder.push(Decoration.replace({}).range(pipePos, pipePos + 1));
-                  }
-                }
-              }
-            }
+            // Table rendering in WYSIWYG & Live Preview is handled by tableStateField block widget.
+            // Ignore Table node inner decorations here to avoid decoration conflicts.
+            return;
           }
 
           if (node.name === 'Link') {
@@ -2290,6 +2232,11 @@ window.editorBridge = {
     if (typeof window.editorBridge.setLineWrap === 'function') {
       window.editorBridge.setLineWrap(prefs.pref_line_wrap !== false);
     }
+
+    // Cursor & Selection
+    setCssVar('--cursor-color', prefs.pref_cursor_color);
+    setCssVar('--selection-handle-color', prefs.pref_selection_handle_color);
+    setCssVar('--cursor-blink-rate', prefs.pref_cursor_blink_rate);
 
     // Body & Paragraph
     setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');

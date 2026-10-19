@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Caret &amp; Selection Styling">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_cursor_color"
+            app:title="Cursor / Caret Color"
+            app:summary="Color of the blinking text insertion cursor"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_selection_handle_color"
+            app:title="Text Selection Drag Handle Color"
+            app:summary="Accent color for text selection drag handles / balloons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_cursor_blink_rate"
+            app:title="Cursor Blink Rate (s)"
+            app:summary="Blink interval in seconds (e.g. 0.8s or 0s to disable blink)"
+            app:defaultValue="0.8s" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

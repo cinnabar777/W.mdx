@@ -45,6 +45,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingCodeFragment -> "Code Blocks Styling"
                 is StylingHrFragment -> "Horizontal Dividers Styling"
                 is StylingControlbarFragment -> "Bottom Control Bar Styling"
+                is StylingCursorFragment -> "Cursor & Selection Settings"
                 is StylingSettingsFragment -> "Styling & Typography"
                 is ExportSettingsFragment -> "HTML & MHTML Export Settings"
                 is HotkeysSettingsFragment -> "Custom Keyboard Shortcuts"
@@ -382,6 +383,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_code" -> StylingCodeFragment()
             "pref_styling_page_hr" -> StylingHrFragment()
             "pref_styling_page_controlbar" -> StylingControlbarFragment()
+            "pref_styling_page_cursor" -> StylingCursorFragment()
             else -> null
         }
         if (targetFragment != null) {
@@ -513,6 +515,12 @@ class StylingHrFragment : StylingSettingsFragment() {
 class StylingControlbarFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_controlbar, rootKey)
+    }
+}
+
+class StylingCursorFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_cursor, rootKey)
     }
 }
 
