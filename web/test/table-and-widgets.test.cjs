@@ -58,6 +58,22 @@ test('TableModel parses, merges, splits, and serializes GFM tables correctly', a
   const reParsed = TableModel.parse(serialized);
   assert.ok(reParsed, 'Re-parsed merged Markdown table successfully');
   assert.equal(reParsed.getRowCount(), 3);
+
+  // Test row and column deletion
+  model.deleteRow(2);
+  assert.equal(model.getRowCount(), 2, 'Row successfully deleted');
+
+  model.deleteCol(2);
+  assert.equal(model.getColCount(), 2, 'Column successfully deleted');
+});
+
+test('WordProcessorTableWidget provides structural context menu items', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+
+  assert.ok(code.includes('Delete Row'), 'Context menu includes Delete Row');
+  assert.ok(code.includes('Delete Column'), 'Context menu includes Delete Column');
+  assert.ok(code.includes('Merge Right'), 'Context menu includes directional Merge');
+  assert.ok(!code.includes("btnEdit.textContent = 'Edit Cell'"), 'Context menu excludes Edit Cell');
 });
 
 test('WordProcessorTableWidget attaches long-press events and applies CSS variables for borders', () => {

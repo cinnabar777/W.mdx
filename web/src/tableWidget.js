@@ -191,16 +191,37 @@ export class WordProcessorTableWidget extends WidgetType {
       menu.className = 'cm-wp-table-context-menu';
       menu.style.cssText = 'position: absolute; z-index: 200; background: #222428; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);';
 
-      const btnEdit = document.createElement('button');
-      btnEdit.textContent = 'Edit Cell';
-      btnEdit.style.cssText = btnStyle;
-      btnEdit.onclick = (e) => {
-        e.stopPropagation();
-        menu.remove();
-        openCellEditor(cellEl, r, c);
+      const addBtn = (label, action) => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.style.cssText = btnStyle;
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          menu.remove();
+          action();
+          renderTableCells();
+          commitTableChange();
+        };
+        menu.appendChild(btn);
       };
 
-      menu.appendChild(btnEdit);
+      if (rowCount > 1) {
+        addBtn('Delete Row', () => this.model.deleteRow(r));
+      }
+      if (colCount > 1) {
+        addBtn('Delete Column', () => this.model.deleteCol(c));
+      }
+
+      if (c < colCount - 1) addBtn('Merge Right', () => this.model.mergeDirection(r, c, 'right'));
+      if (c > 0) addBtn('Merge Left', () => this.model.mergeDirection(r, c, 'left'));
+      if (r < rowCount - 1) addBtn('Merge Down', () => this.model.mergeDirection(r, c, 'down'));
+      if (r > 0) addBtn('Merge Up', () => this.model.mergeDirection(r, c, 'up'));
+
+      const primaryCell = matrix[r][c];
+      if (primaryCell.colSpan > 1 || primaryCell.rowSpan > 1) {
+        addBtn('Split Cell', () => this.model.splitCell(r, c));
+      }
+
       container.appendChild(menu);
 
       menu.style.top = `${cellEl.offsetTop + cellEl.offsetHeight}px`;

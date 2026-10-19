@@ -202,6 +202,36 @@ export class TableModel {
     }
   }
 
+  deleteRow(r) {
+    if (this.rows.length <= 1) return;
+    this.rows.splice(r, 1);
+  }
+
+  deleteCol(c) {
+    if (this.getColCount() <= 1) return;
+    for (let r = 0; r < this.rows.length; r++) {
+      this.rows[r].splice(c, 1);
+    }
+    if (this.alignments.length > c) {
+      this.alignments.splice(c, 1);
+    }
+  }
+
+  mergeDirection(r, c, direction) {
+    let targetR = r;
+    let targetC = c;
+    if (direction === 'right') targetC = c + 1;
+    else if (direction === 'left') targetC = c - 1;
+    else if (direction === 'down') targetR = r + 1;
+    else if (direction === 'up') targetR = r - 1;
+
+    if (targetR < 0 || targetR >= this.getRowCount() || targetC < 0 || targetC >= this.getColCount()) {
+      return;
+    }
+
+    this.mergeRect(r, c, targetR, targetC);
+  }
+
   splitCell(r, c) {
     const matrix = this.getRenderMatrix();
     const cell = matrix[r][c];
