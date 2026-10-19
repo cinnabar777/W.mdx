@@ -414,7 +414,7 @@ export class WordProcessorTableWidget extends WidgetType {
   }
 }
 
-function renderMarkdownInline(text) {
+function renderMarkdownInline(text, searchQuery, isSelectedCell) {
   if (!text) return '';
   let escaped = text
     .replace(/&/g, '&amp;')
@@ -425,6 +425,16 @@ function renderMarkdownInline(text) {
   escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
   escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  if (searchQuery && typeof searchQuery === 'string' && searchQuery.trim().length > 0) {
+    try {
+      const cls = isSelectedCell ? 'cm-searchMatch cm-searchMatch-selected' : 'cm-searchMatch';
+      const safeQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const reg = new RegExp(`(${safeQuery})`, 'gi');
+      escaped = escaped.replace(reg, `<mark class="${cls}">$1</mark>`);
+    } catch (e) {}
+  }
+
   return escaped;
 }
 

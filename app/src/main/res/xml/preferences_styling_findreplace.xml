@@ -2,7 +2,9 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Search Panel Window">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="category_panel"
+        app:title="Search Panel Window">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_findreplace_panel_min_height"
             app:title="Search Panel Min Height (px)"
@@ -25,7 +27,9 @@
             app:defaultValue="default" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Find &amp; Replace Text Fields">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="category_fields"
+        app:title="Find &amp; Replace Text Fields">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_findreplace_field_bg"
             app:title="Field Background Color"
@@ -75,7 +79,9 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Match Counter &amp; Highlighting">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="category_counter"
+        app:title="Match Counter &amp; Highlighting">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_findreplace_counter_color"
             app:title="Match Counter Text Color"
@@ -101,7 +107,9 @@
             app:defaultValue="default" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Search Action Buttons General Styling">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="category_buttons"
+        app:title="Search Action Buttons General Styling">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_findreplace_btn_bg"
             app:title="Button Normal Background"

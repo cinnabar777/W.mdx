@@ -527,8 +527,158 @@ class StylingCursorFragment : StylingSettingsFragment() {
 }
 
 class StylingFindReplaceFragment : StylingSettingsFragment() {
+
+    private var selectedCategoryKey: String = "category_panel"
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_findreplace, rootKey)
+    }
+
+    override fun onViewCreated(view: android.view.View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        setupInteractivePreview()
+        filterCategories()
+    }
+
+    private fun filterCategories() {
+        val catPanel = findPreference<Preference>("category_panel")
+        val catFields = findPreference<Preference>("category_fields")
+        val catCounter = findPreference<Preference>("category_counter")
+        val catButtons = findPreference<Preference>("category_buttons")
+
+        catPanel?.isVisible = (selectedCategoryKey == "category_panel")
+        catFields?.isVisible = (selectedCategoryKey == "category_fields")
+        catCounter?.isVisible = (selectedCategoryKey == "category_counter")
+        catButtons?.isVisible = (selectedCategoryKey == "category_buttons")
+    }
+
+    private fun setupInteractivePreview() {
+        val listView = listView ?: return
+        val parent = listView.parent as? android.view.ViewGroup ?: return
+
+        val context = context ?: return
+        val density = context.resources.displayMetrics.density
+
+        val previewCard = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding((10 * density).toInt(), (10 * density).toInt(), (10 * density).toInt(), (10 * density).toInt())
+            setBackgroundColor(Color.parseColor("#121212"))
+        }
+
+        val row1 = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val findField = android.widget.TextView(context).apply {
+            text = "Find..."
+            textSize = 14f
+            setTextColor(Color.parseColor("#888888"))
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setPadding((8 * density).toInt(), (6 * density).toInt(), (8 * density).toInt(), (6 * density).toInt())
+            layoutParams = android.widget.LinearLayout.LayoutParams(0, (32 * density).toInt(), 1f).apply {
+                marginEnd = (6 * density).toInt()
+            }
+        }
+
+        val counter = android.widget.TextView(context).apply {
+            text = "1/12"
+            textSize = 12f
+            setTextColor(Color.parseColor("#888888"))
+            setPadding((4 * density).toInt(), 0, (4 * density).toInt(), 0)
+        }
+
+        val btnPrev = android.widget.TextView(context).apply { text = "▲"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
+        val btnNext = android.widget.TextView(context).apply { text = "▼"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
+        val btnHighlight = android.widget.TextView(context).apply { text = "≡"; gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); setBackgroundColor(Color.parseColor("#0078D4")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
+        val btnRegex = android.widget.TextView(context).apply { text = ".*"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
+
+        row1.addView(findField)
+        row1.addView(counter)
+        row1.addView(btnPrev)
+        row1.addView(btnNext)
+        row1.addView(btnHighlight)
+        row1.addView(btnRegex)
+
+        val row2 = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (6 * density).toInt() }
+        }
+
+        val replaceField = android.widget.TextView(context).apply {
+            text = "Replace..."
+            textSize = 14f
+            setTextColor(Color.parseColor("#888888"))
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setPadding((8 * density).toInt(), (6 * density).toInt(), (8 * density).toInt(), (6 * density).toInt())
+            layoutParams = android.widget.LinearLayout.LayoutParams(0, (32 * density).toInt(), 1f).apply {
+                marginEnd = (6 * density).toInt()
+            }
+        }
+
+        val btnReplaceOne = android.widget.TextView(context).apply { text = "1➔"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
+        val btnReplaceAll = android.widget.TextView(context).apply { text = "∀➔"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
+        val btnCase = android.widget.TextView(context).apply { text = "Aa"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
+        val btnWord = android.widget.TextView(context).apply { text = "\\b"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
+
+        row2.addView(replaceField)
+        row2.addView(btnReplaceOne)
+        row2.addView(btnReplaceAll)
+        row2.addView(btnCase)
+        row2.addView(btnWord)
+
+        previewCard.addView(row1)
+        previewCard.addView(row2)
+
+        previewCard.setOnClickListener {
+            selectedCategoryKey = "category_panel"
+            filterCategories()
+            ThemedToast.show(context, "Search Panel options selected")
+        }
+
+        findField.setOnClickListener {
+            selectedCategoryKey = "category_fields"
+            filterCategories()
+            ThemedToast.show(context, "Find Field options selected")
+        }
+
+        replaceField.setOnClickListener {
+            selectedCategoryKey = "category_fields"
+            filterCategories()
+            ThemedToast.show(context, "Replace Field options selected")
+        }
+
+        counter.setOnClickListener {
+            selectedCategoryKey = "category_counter"
+            filterCategories()
+            ThemedToast.show(context, "Match Counter options selected")
+        }
+
+        val buttons = listOf(btnPrev, btnNext, btnHighlight, btnRegex, btnReplaceOne, btnReplaceAll, btnCase, btnWord)
+        buttons.forEach { btn ->
+            btn.setOnClickListener {
+                selectedCategoryKey = "category_buttons"
+                filterCategories()
+                ThemedToast.show(context, "Button styling options selected")
+            }
+        }
+
+        if (parent is android.widget.LinearLayout) {
+            parent.addView(previewCard, 0)
+        }
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+        super.onSharedPreferenceChanged(sharedPreferences, key)
+        filterCategories()
     }
 }
 

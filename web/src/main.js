@@ -1172,15 +1172,7 @@ class CodeMirrorAdapter {
             outline: 'none'
           }
         }),
-        search({
-          createPanel: () => {
-            const container = document.querySelector('#custom-search-bar');
-            return {
-              dom: container,
-              top: true
-            };
-          }
-        }),
+        search(),
         EditorView.updateListener.of(update => {
           if (update.docChanged && !this.isProgrammatic) {
             this.revision++;
@@ -1941,9 +1933,13 @@ function attachButtonBehavior(btn, description, onClickAction, isRegexBtn = fals
   });
 }
 
+let isSearchBarInitialized = false;
+
 function initCustomSearchBar() {
+  if (isSearchBarInitialized) return;
   const container = document.querySelector('#custom-search-bar');
   if (!container) return;
+  isSearchBarInitialized = true;
 
   const searchInput = container.querySelector('#search-input');
   const replaceInput = container.querySelector('#replace-input');
@@ -1962,7 +1958,7 @@ function initCustomSearchBar() {
 
   attachButtonBehavior(btnPrev, 'Find Previous match in document', () => {
     if (activeAdapter && activeAdapter.view) {
-      findPrevious(activeAdapter.view);
+      runFindAndCenter(findPrevious, activeAdapter.view);
       const query = buildSearchQuery(searchInput, replaceInput);
       updateMatchCounterFromQuery(query, activeAdapter.view);
     }
@@ -1970,7 +1966,7 @@ function initCustomSearchBar() {
 
   attachButtonBehavior(btnNext, 'Find Next match in document', () => {
     if (activeAdapter && activeAdapter.view) {
-      findNext(activeAdapter.view);
+      runFindAndCenter(findNext, activeAdapter.view);
       const query = buildSearchQuery(searchInput, replaceInput);
       updateMatchCounterFromQuery(query, activeAdapter.view);
     }
@@ -2025,25 +2021,19 @@ function initCustomSearchBar() {
 }
 
 function toggleFindAndReplaceBar(forceState) {
-  const container = document.querySelector('#custom-search-bar');
-  if (!container) return;
-
-  const newState = forceState !== undefined ? forceState : container.classList.contains('hidden');
-  if (newState) {
-    container.classList.remove('hidden');
-    if (activeAdapter && activeAdapter.view) {
-      openSearchPanel(activeAdapter.view);
+  const bar = document.getElementById('custom-search-bar');
+  if (!bar) return;
+  const show = forceState ?? bar.classList.contains('hidden');
+  bar.classList.toggle('hidden', !show);
+  if (show) {
+    requestAnimationFrame(() => {
+      const input = bar.querySelector('#search-input');
+      input?.focus();
+      input?.select();
       commitSearchQuery();
-    }
-    const input = container.querySelector('#search-input');
-    if (input) {
-      input.focus();
-      input.select();
-    }
+    });
   } else {
-    container.classList.add('hidden');
     if (activeAdapter && activeAdapter.view) {
-      closeSearchPanel(activeAdapter.view);
       activeAdapter.view.focus();
     }
   }

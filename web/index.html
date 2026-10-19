@@ -165,12 +165,13 @@
     }
 
     .search-icon-btn {
-      background-color: #1e1e1e !important;
-      color: #aaaaaa !important;
-      border: 1px solid #333333 !important;
+      background-color: var(--findreplace-btn-bg, #1e1e1e) !important;
+      color: var(--findreplace-btn-color, #aaaaaa) !important;
+      border: 1px solid var(--findreplace-field-border, #333333) !important;
       border-radius: 6px !important;
-      height: 32px !important;
-      min-width: 28px !important;
+      height: var(--findreplace-btn-height, 32px) !important;
+      width: var(--findreplace-btn-width, 28px) !important;
+      min-width: var(--findreplace-btn-width, 28px) !important;
       padding: 0 5px !important;
       font-size: 13px !important;
       font-weight: 600 !important;
@@ -182,11 +183,85 @@
       flex-shrink: 0 !important;
     }
 
-    .search-icon-btn.active,
+    .search-icon-btn.active {
+      background-color: var(--findreplace-btn-active-bg, #0078d4) !important;
+      color: var(--findreplace-btn-active-color, #ffffff) !important;
+      border-color: var(--findreplace-btn-active-bg, #0078d4) !important;
+    }
+
     .search-icon-btn:active {
-      background-color: #0078d4 !important;
-      color: #ffffff !important;
-      border-color: #0078d4 !important;
+      background-color: var(--findreplace-btn-pressed-bg, #0078d4) !important;
+    }
+
+    #search-btn-prev {
+      background-color: var(--findreplace-prev-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
+      color: var(--findreplace-prev-color, var(--findreplace-btn-color, #aaaaaa)) !important;
+      width: var(--findreplace-prev-width, var(--findreplace-btn-width, 28px)) !important;
+      height: var(--findreplace-prev-height, var(--findreplace-btn-height, 32px)) !important;
+    }
+    #search-btn-next {
+      background-color: var(--findreplace-next-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
+      color: var(--findreplace-next-color, var(--findreplace-btn-color, #aaaaaa)) !important;
+      width: var(--findreplace-next-width, var(--findreplace-btn-width, 28px)) !important;
+      height: var(--findreplace-next-height, var(--findreplace-btn-height, 32px)) !important;
+    }
+    #search-btn-highlight {
+      background-color: var(--findreplace-highlight-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
+      color: var(--findreplace-highlight-color, var(--findreplace-btn-color, #aaaaaa)) !important;
+      width: var(--findreplace-highlight-width, var(--findreplace-btn-width, 28px)) !important;
+      height: var(--findreplace-highlight-height, var(--findreplace-btn-height, 32px)) !important;
+    }
+    #search-btn-highlight.active {
+      background-color: var(--findreplace-highlight-active-bg, var(--findreplace-btn-active-bg, #0078d4)) !important;
+      color: var(--findreplace-highlight-active-color, var(--findreplace-btn-active-color, #ffffff)) !important;
+    }
+    #search-btn-regex {
+      background-color: var(--findreplace-regex-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
+      color: var(--findreplace-regex-color, var(--findreplace-btn-color, #aaaaaa)) !important;
+      width: var(--findreplace-regex-width, var(--findreplace-btn-width, 28px)) !important;
+      height: var(--findreplace-regex-height, var(--findreplace-btn-height, 32px)) !important;
+    }
+    #search-btn-regex.active {
+      background-color: var(--findreplace-regex-active-bg, var(--findreplace-btn-active-bg, #0078d4)) !important;
+      color: var(--findreplace-regex-active-color, var(--findreplace-btn-active-color, #ffffff)) !important;
+    }
+    #search-btn-close {
+      background-color: var(--findreplace-close-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
+      color: var(--findreplace-close-color, var(--findreplace-btn-color, #aaaaaa)) !important;
+      width: var(--findreplace-close-width, var(--findreplace-btn-width, 28px)) !important;
+      height: var(--findreplace-close-height, var(--findreplace-btn-height, 32px)) !important;
+    }
+    #search-btn-replace-one {
+      background-color: var(--findreplace-replace-one-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
+      color: var(--findreplace-replace-one-color, var(--findreplace-btn-color, #aaaaaa)) !important;
+      width: var(--findreplace-replace-one-width, var(--findreplace-btn-width, 28px)) !important;
+      height: var(--findreplace-replace-one-height, var(--findreplace-btn-height, 32px)) !important;
+    }
+    #search-btn-replace-all {
+      background-color: var(--findreplace-replace-all-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
+      color: var(--findreplace-replace-all-color, var(--findreplace-btn-color, #aaaaaa)) !important;
+      width: var(--findreplace-replace-all-width, var(--findreplace-btn-width, 28px)) !important;
+      height: var(--findreplace-replace-all-height, var(--findreplace-btn-height, 32px)) !important;
+    }
+    #search-btn-case {
+      background-color: var(--findreplace-case-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
+      color: var(--findreplace-case-color, var(--findreplace-btn-color, #aaaaaa)) !important;
+      width: var(--findreplace-case-width, var(--findreplace-btn-width, 28px)) !important;
+      height: var(--findreplace-case-height, var(--findreplace-btn-height, 32px)) !important;
+    }
+    #search-btn-case.active {
+      background-color: var(--findreplace-case-active-bg, var(--findreplace-btn-active-bg, #0078d4)) !important;
+      color: var(--findreplace-case-active-color, var(--findreplace-btn-active-color, #ffffff)) !important;
+    }
+    #search-btn-word {
+      background-color: var(--findreplace-word-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
+      color: var(--findreplace-word-color, var(--findreplace-btn-color, #aaaaaa)) !important;
+      width: var(--findreplace-word-width, var(--findreplace-btn-width, 28px)) !important;
+      height: var(--findreplace-word-height, var(--findreplace-btn-height, 32px)) !important;
+    }
+    #search-btn-word.active {
+      background-color: var(--findreplace-word-active-bg, var(--findreplace-btn-active-bg, #0078d4)) !important;
+      color: var(--findreplace-word-active-color, var(--findreplace-btn-active-color, #ffffff)) !important;
     }
 
     /* CodeMirror Search Match Highlighting */
@@ -196,7 +271,8 @@
     body.cm-search-hide-matches .cm-searchMatch:not(.cm-searchMatch-selected) {
       background-color: transparent !important;
     }
-    .cm-searchMatch.cm-searchMatch-selected {
+    .cm-searchMatch.cm-searchMatch-selected,
+    .cm-searchMatch.cm-searchMatch-selected * {
       background-color: var(--findreplace-current-match-bg, #0078d4) !important;
       color: var(--findreplace-current-match-color, #ffffff) !important;
     }
