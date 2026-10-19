@@ -134,4 +134,19 @@
         <item>file</item>
     </string-array>
 
+    <string-array name="callout_type_entries">
+        <item>Info ([!info])</item>
+        <item>FAQ ([!faq])</item>
+        <item>Question ([!question])</item>
+        <item>Todo ([!todo])</item>
+        <item>Example ([!example])</item>
+    </string-array>
+    <string-array name="callout_type_values">
+        <item>info</item>
+        <item>faq</item>
+        <item>question</item>
+        <item>todo</item>
+        <item>example</item>
+    </string-array>
+
 </resources>

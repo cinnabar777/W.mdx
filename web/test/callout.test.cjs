@@ -116,6 +116,15 @@ test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => 
   assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
 });
 
+test('Callout header settings and type overrides are mapped in main.js', () => {
+  assert.ok(mainSource.includes("'--callout-header-bg-color', prefs.pref_callout_header_bg_color"), 'main.js maps header bg color');
+  assert.ok(mainSource.includes("'--callout-header-title-color', prefs.pref_callout_header_title_color"), 'main.js maps header title color');
+  assert.ok(mainSource.includes("'--callout-header-font-size', prefs.pref_callout_header_font_size"), 'main.js maps header font size');
+  assert.ok(mainSource.includes("'--callout-header-font-weight', prefs.pref_callout_header_font_weight"), 'main.js maps header font weight');
+  assert.ok(mainSource.includes("'--callout-header-padding', prefs.pref_callout_header_padding"), 'main.js maps header padding');
+  assert.ok(mainSource.includes('pref_callout_override_'), 'main.js maps per-type overrides');
+});
+
 test('Nested callout rendering and attributes at depths 1, 2, and 3', () => {
   const nestedMd = `> [!question]+ Can callouts be nested?
 > Outer text.
@@ -127,8 +136,8 @@ test('Nested callout rendering and attributes at depths 1, 2, and 3', () => {
 
   const state = EditorState.create({ doc: nestedMd, extensions: [markdown()] });
   assert.equal(state.doc.toString(), nestedMd, 'Nested document text remains byte-for-byte identical');
-  assert.ok(mainSource.includes("data-callout-type': attrs.type"), 'Line decoration sets data-callout-type attribute');
-  assert.ok(mainSource.includes("data-callout-depth': String(attrs.depth)"), 'Line decoration sets data-callout-depth attribute');
+  assert.ok(mainSource.includes("'data-callout-type': attrs.type"), 'Line decoration sets data-callout-type attribute');
+  assert.ok(mainSource.includes("'data-callout-depth': String(attrs.depth)"), 'Line decoration sets data-callout-depth attribute');
 });
 
 test('Callout fold placeholder is hidden via CSS in index.html', () => {

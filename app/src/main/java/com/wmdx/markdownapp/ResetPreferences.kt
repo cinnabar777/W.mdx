@@ -137,6 +137,13 @@ object PreferenceResetHelper {
             key == "pref_callout_bg_color" -> "default"
             key == "pref_callout_text_color" -> "default"
             key == "pref_callout_padding" -> 12
+            key == "pref_callout_header_bg_color" -> "default"
+            key == "pref_callout_header_title_color" -> "default"
+            key == "pref_callout_header_font_size" -> 16
+            key == "pref_callout_header_font_weight" -> "700"
+            key == "pref_callout_header_padding" -> 4
+            key == "pref_callout_type_selector" -> "info"
+            key.startsWith("pref_callout_override_") -> "default"
             key == "pref_table_border_style" -> "solid"
             key == "pref_table_border_thickness" -> 1
             key == "pref_table_border_color" -> "default"

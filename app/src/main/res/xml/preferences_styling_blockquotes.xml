@@ -90,7 +90,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_callout_text_color"
             app:title="Callout Text Color"
-            app:summary="Text color for callout titles and body"
+            app:summary="Text color for callout body text"
             app:defaultValue="default" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
@@ -101,6 +101,116 @@
             android:max="30"
             app:defaultValue="12"
             app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Callout Shared Header Settings">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_header_bg_color"
+            app:title="Header Background Color"
+            app:summary="Background color for callout title headers"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_header_title_color"
+            app:title="Header Title Text Color"
+            app:summary="Text color for callout title text"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_callout_header_font_size"
+            app:title="Header Title Text Size (px)"
+            app:summary="Font size for callout headers"
+            app:min="10"
+            android:max="32"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_callout_header_font_weight"
+            app:title="Header Font Weight"
+            app:summary="Font weight for callout headers"
+            android:entries="@array/font_weight_entries"
+            android:entryValues="@array/font_weight_values"
+            android:defaultValue="700" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_callout_header_padding"
+            app:title="Header Padding (px)"
+            app:summary="Padding inside callout headers"
+            app:min="0"
+            android:max="20"
+            app:defaultValue="4"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Callout Per-Type Overrides">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_callout_type_selector"
+            app:title="Select Callout Type To Customise"
+            app:summary="Select type to customize header color &amp; accent"
+            android:entries="@array/callout_type_entries"
+            android:entryValues="@array/callout_type_values"
+            android:defaultValue="info" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_info_bg"
+            app:title="Info Header Background"
+            app:summary="Header bg override for [!info]"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_info_color"
+            app:title="Info Header Accent Color"
+            app:summary="Accent &amp; border override for [!info]"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_faq_bg"
+            app:title="FAQ Header Background"
+            app:summary="Header bg override for [!faq]"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_faq_color"
+            app:title="FAQ Header Accent Color"
+            app:summary="Accent &amp; border override for [!faq]"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_question_bg"
+            app:title="Question Header Background"
+            app:summary="Header bg override for [!question]"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_question_color"
+            app:title="Question Header Accent Color"
+            app:summary="Accent &amp; border override for [!question]"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_todo_bg"
+            app:title="Todo Header Background"
+            app:summary="Header bg override for [!todo]"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_todo_color"
+            app:title="Todo Header Accent Color"
+            app:summary="Accent &amp; border override for [!todo]"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_example_bg"
+            app:title="Example Header Background"
+            app:summary="Header bg override for [!example]"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_override_example_color"
+            app:title="Example Header Accent Color"
+            app:summary="Accent &amp; border override for [!example]"
+            app:defaultValue="default" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>
