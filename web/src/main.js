@@ -2771,19 +2771,56 @@ window.editorBridge = {
     });
 
     const applyFindReplaceButtonLayout = (prefs) => {
-      const orderRaw = prefs.pref_findreplace_button_order || 'prev,next,highlight,regex,close,replace-one,replace-all,case,word';
+      let rawRow1 = prefs.pref_findreplace_button_row1;
+      let rawRow2 = prefs.pref_findreplace_button_row2;
       const hiddenRaw = prefs.pref_findreplace_hidden_buttons || '';
 
       const knownIds = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
-      const rawOrderList = orderRaw.split(',').map(s => s.trim()).filter(Boolean);
-      const orderList = [];
-      for (const id of rawOrderList) {
-        if (knownIds.includes(id) && !orderList.includes(id)) {
-          orderList.push(id);
+      const defaultRow1 = ['prev', 'next', 'highlight', 'regex', 'close'];
+      const defaultRow2 = ['replace-one', 'replace-all', 'case', 'word'];
+
+      if (!rawRow1 && !rawRow2 && prefs.pref_findreplace_button_order) {
+        const oldOrderStr = String(prefs.pref_findreplace_button_order);
+        const oldItems = oldOrderStr.split(',').map(s => s.trim()).filter(id => knownIds.includes(id));
+        const dedupped = [];
+        oldItems.forEach(id => { if (!dedupped.includes(id)) dedupped.push(id); });
+        rawRow1 = dedupped.slice(0, 5).join(',');
+        rawRow2 = dedupped.slice(5).join(',');
+      }
+
+      const r1Items = (rawRow1 || defaultRow1.join(',')).split(',').map(s => s.trim()).filter(Boolean);
+      const r2Items = (rawRow2 || defaultRow2.join(',')).split(',').map(s => s.trim()).filter(Boolean);
+
+      const row1List = [];
+      const row2List = [];
+      const seen = new Set();
+
+      for (const id of r1Items) {
+        if (knownIds.includes(id) && !seen.has(id)) {
+          row1List.push(id);
+          seen.add(id);
         }
       }
-      for (const id of knownIds) {
-        if (!orderList.includes(id)) orderList.push(id);
+
+      for (const id of r2Items) {
+        if (knownIds.includes(id) && !seen.has(id)) {
+          row2List.push(id);
+          seen.add(id);
+        }
+      }
+
+      for (const id of defaultRow1) {
+        if (!seen.has(id)) {
+          row1List.push(id);
+          seen.add(id);
+        }
+      }
+
+      for (const id of defaultRow2) {
+        if (!seen.has(id)) {
+          row2List.push(id);
+          seen.add(id);
+        }
       }
 
       const rawHiddenList = hiddenRaw.split(',').map(s => s.trim()).filter(Boolean);
@@ -2796,24 +2833,34 @@ window.editorBridge = {
       const group2 = rows[1].querySelector('.search-icon-group');
       if (!group1 || !group2) return;
 
-      const row1Ids = orderList.slice(0, 5);
-      const row2Ids = orderList.slice(5);
-
-      row1Ids.forEach(id => {
+      row1List.forEach(id => {
         const btn = document.querySelector(`#search-btn-${id}`);
         if (btn) {
           group1.appendChild(btn);
-          btn.style.display = hiddenSet.has(id) ? 'none' : '';
+          if (hiddenSet.has(id)) {
+            btn.setAttribute('hidden', '');
+          } else {
+            btn.removeAttribute('hidden');
+          }
         }
       });
 
-      row2Ids.forEach(id => {
+      row2List.forEach(id => {
         const btn = document.querySelector(`#search-btn-${id}`);
         if (btn) {
           group2.appendChild(btn);
-          btn.style.display = hiddenSet.has(id) ? 'none' : '';
+          if (hiddenSet.has(id)) {
+            btn.setAttribute('hidden', '');
+          } else {
+            btn.removeAttribute('hidden');
+          }
         }
       });
+
+      const searchBar = document.querySelector('#custom-search-bar');
+      if (searchBar && !searchBar.classList.contains('hidden') && activeAdapter && activeAdapter.view) {
+        commitSearchQuery();
+      }
     };
     applyFindReplaceButtonLayout(prefs);
   },

@@ -546,9 +546,15 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     private var selectedCategoryKey: String = "category_panel"
     private var isPreviewAttached: Boolean = false
 
-    private val DEFAULT_BUTTON_ORDER = "prev,next,highlight,regex,close,replace-one,replace-all,case,word"
+    private val DEFAULT_ROW1_ORDER = "prev,next,highlight,regex,close"
+    private val DEFAULT_ROW2_ORDER = "replace-one,replace-all,case,word"
+    private val KNOWN_ROW1_DEFAULTS = listOf("prev", "next", "highlight", "regex", "close")
+    private val KNOWN_ROW2_DEFAULTS = listOf("replace-one", "replace-all", "case", "word")
     private val KNOWN_BUTTON_IDS = listOf("prev", "next", "highlight", "regex", "close", "replace-one", "replace-all", "case", "word")
-    private val PREF_KEY_BUTTON_ORDER = "pref_findreplace_button_order"
+
+    private val PREF_KEY_BUTTON_ROW1 = "pref_findreplace_button_row1"
+    private val PREF_KEY_BUTTON_ROW2 = "pref_findreplace_button_row2"
+    private val PREF_KEY_OLD_ORDER = "pref_findreplace_button_order"
     private val PREF_KEY_HIDDEN_BUTTONS = "pref_findreplace_hidden_buttons"
 
     private val buttonPreferenceSuffix = mapOf(
@@ -592,20 +598,62 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         return true
     }
 
-    private fun parseAndNormalizeOrder(rawOrder: String?): MutableList<String> {
-        val items = rawOrder?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
-        val order = mutableListOf<String>()
-        for (id in items) {
-            if (id in KNOWN_BUTTON_IDS && id !in order) {
-                order.add(id)
+    private fun parseAndNormalizeRows(prefs: SharedPreferences): Pair<MutableList<String>, MutableList<String>> {
+        var rawRow1 = prefs.getString(PREF_KEY_BUTTON_ROW1, null)
+        var rawRow2 = prefs.getString(PREF_KEY_BUTTON_ROW2, null)
+
+        if (rawRow1 == null && rawRow2 == null) {
+            val oldOrderStr = prefs.getString(PREF_KEY_OLD_ORDER, null)
+            if (oldOrderStr != null) {
+                val oldItems = oldOrderStr.split(",").map { it.trim() }.filter { it in KNOWN_BUTTON_IDS }
+                val dedupped = mutableListOf<String>()
+                oldItems.forEach { if (it !in dedupped) dedupped.add(it) }
+                val r1 = dedupped.take(5)
+                val r2 = dedupped.drop(5)
+                rawRow1 = r1.joinToString(",")
+                rawRow2 = r2.joinToString(",")
+                prefs.edit()
+                    .putString(PREF_KEY_BUTTON_ROW1, rawRow1)
+                    .putString(PREF_KEY_BUTTON_ROW2, rawRow2)
+                    .apply()
             }
         }
-        for (id in KNOWN_BUTTON_IDS) {
-            if (id !in order) {
-                order.add(id)
+
+        val r1Items = rawRow1?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+        val r2Items = rawRow2?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+
+        val row1 = mutableListOf<String>()
+        val row2 = mutableListOf<String>()
+        val seen = mutableSetOf<String>()
+
+        for (id in r1Items) {
+            if (id in KNOWN_BUTTON_IDS && id !in seen) {
+                row1.add(id)
+                seen.add(id)
             }
         }
-        return order
+
+        for (id in r2Items) {
+            if (id in KNOWN_BUTTON_IDS && id !in seen) {
+                row2.add(id)
+                seen.add(id)
+            }
+        }
+
+        for (id in KNOWN_ROW1_DEFAULTS) {
+            if (id !in seen) {
+                row1.add(id)
+                seen.add(id)
+            }
+        }
+        for (id in KNOWN_ROW2_DEFAULTS) {
+            if (id !in seen) {
+                row2.add(id)
+                seen.add(id)
+            }
+        }
+
+        return Pair(row1, row2)
     }
 
     private fun parseHiddenButtons(rawHidden: String?): MutableSet<String> {
@@ -787,11 +835,11 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val counterColorHex = prefs.getString("pref_findreplace_counter_color", "default") ?: "default"
         previewCounter?.setTextColor(if (counterColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(counterColorHex, Color.parseColor("#888888")))
 
-        val orderList = parseAndNormalizeOrder(prefs.getString(PREF_KEY_BUTTON_ORDER, DEFAULT_BUTTON_ORDER))
+        val (row1List, row2List) = parseAndNormalizeRows(prefs)
         val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
 
-        val row1Ids = orderList.take(5).filter { it !in hiddenSet }
-        val row2Ids = orderList.drop(5).filter { it !in hiddenSet }
+        val row1Ids = row1List.filter { it !in hiddenSet }
+        val row2Ids = row2List.filter { it !in hiddenSet }
 
         val g1 = row1GroupView
         val g2 = row2GroupView
@@ -1140,43 +1188,45 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             }
         }
 
-        val handleRowDrop = { isRow1: Boolean, event: android.view.DragEvent ->
+        val handleRowDrop = { isRow1Target: Boolean, event: android.view.DragEvent ->
             when (event.action) {
                 android.view.DragEvent.ACTION_DROP -> {
                     val draggedId = event.clipData?.getItemAt(0)?.text?.toString()
                     if (draggedId != null && draggedId in KNOWN_BUTTON_IDS) {
                         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-                        val orderList = parseAndNormalizeOrder(prefs.getString(PREF_KEY_BUTTON_ORDER, DEFAULT_BUTTON_ORDER))
+                        val (row1, row2) = parseAndNormalizeRows(prefs)
                         val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
 
                         hiddenSet.remove(draggedId)
-                        orderList.remove(draggedId)
+                        row1.remove(draggedId)
+                        row2.remove(draggedId)
 
-                        val targetGroup = if (isRow1) row1GroupView else row2GroupView
-                        var targetIndexInRow = targetGroup?.childCount ?: 0
+                        val targetGroup = if (isRow1Target) row1GroupView else row2GroupView
+                        val targetList = if (isRow1Target) row1 else row2
+
+                        var targetIndex = targetGroup?.childCount ?: 0
                         if (targetGroup != null) {
                             for (i in 0 until targetGroup.childCount) {
                                 val child = targetGroup.getChildAt(i)
                                 val childMidX = child.x + child.width / 2f
                                 if (event.x < childMidX) {
-                                    targetIndexInRow = i
+                                    targetIndex = i
                                     break
                                 }
                             }
                         }
 
-                        val baseOffset = if (isRow1) 0 else 5
-                        val globalInsertIndex = Math.min(orderList.size, Math.max(0, baseOffset + targetIndexInRow))
-
-                        orderList.add(globalInsertIndex, draggedId)
+                        val insertIdx = Math.min(targetList.size, Math.max(0, targetIndex))
+                        targetList.add(insertIdx, draggedId)
 
                         prefs.edit()
-                            .putString(PREF_KEY_BUTTON_ORDER, orderList.joinToString(","))
+                            .putString(PREF_KEY_BUTTON_ROW1, row1.joinToString(","))
+                            .putString(PREF_KEY_BUTTON_ROW2, row2.joinToString(","))
                             .putString(PREF_KEY_HIDDEN_BUTTONS, hiddenSet.joinToString(","))
                             .apply()
 
                         refreshFindReplacePreview(prefs)
-                        ThemedToast.show(context, "Reordered $draggedId")
+                        ThemedToast.show(context, "Moved $draggedId")
                     }
                     true
                 }
