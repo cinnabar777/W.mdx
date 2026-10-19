@@ -73,4 +73,36 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Action Menu Styling">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_bg_color"
+            app:title="Menu Surface Color"
+            app:summary="Background color for long-press table action menu"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_action_bg_color"
+            app:title="Action Button Background"
+            app:summary="Background color for menu buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_text_color"
+            app:title="Action Button Text Color"
+            app:summary="Text color for enabled menu action buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_disabled_color"
+            app:title="Disabled Action Text Color"
+            app:summary="Text/icon color for disabled menu actions (e.g. unmerged split)"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_pressed_bg_color"
+            app:title="Pressed / Active State Background"
+            app:summary="Background color when pressing or selecting a menu action"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
 </androidx.preference.PreferenceScreen>

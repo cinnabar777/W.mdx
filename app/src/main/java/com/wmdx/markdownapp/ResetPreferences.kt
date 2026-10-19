@@ -63,6 +63,11 @@ object PreferenceResetHelper {
             "pref_table_header_text_color" -> "#FFFFFF"
             "pref_table_cell_bg_color" -> "#000000"
             "pref_table_cell_text_color" -> "#FFFFFF"
+            "pref_table_menu_bg_color" -> "#222428"
+            "pref_table_menu_action_bg_color" -> "rgba(255,255,255,0.12)"
+            "pref_table_menu_text_color" -> "#FFFFFF"
+            "pref_table_menu_disabled_color" -> "#777777"
+            "pref_table_menu_pressed_bg_color" -> "rgba(0,120,212,0.4)"
             "pref_footnote_text_color" -> "#E0E0E0"
             "pref_footnote_ref_color" -> "#29B6F6"
             "pref_footnote_link_color" -> "#29B6F6"
@@ -128,6 +133,11 @@ object PreferenceResetHelper {
             key == "pref_table_cell_bg_color" -> "default"
             key == "pref_table_cell_text_color" -> "default"
             key == "pref_table_cell_padding" -> 8
+            key == "pref_table_menu_bg_color" -> "default"
+            key == "pref_table_menu_action_bg_color" -> "default"
+            key == "pref_table_menu_text_color" -> "default"
+            key == "pref_table_menu_disabled_color" -> "default"
+            key == "pref_table_menu_pressed_bg_color" -> "default"
             key == "pref_code_block_font_size" -> 14
             key == "pref_code_block_padding" -> 16
             key == "pref_code_block_border_radius" -> 6
@@ -151,6 +161,10 @@ object PreferenceResetHelper {
             key == "pref_cursor_color" -> "default"
             key == "pref_selection_handle_color" -> "default"
             key == "pref_cursor_blink_rate" -> "0.8s"
+            key == "pref_selection_highlight_bg_color" -> "default"
+            key == "pref_selection_highlight_text_color" -> "default"
+            key == "pref_magnifier_size" -> "medium"
+            key == "pref_magnifier_position" -> "above"
             key == "pref_code_block_color" -> "default"
             key == "pref_code_block_bg_color" -> "default"
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"

@@ -20,6 +20,34 @@
             app:title="Cursor Blink Rate (s)"
             app:summary="Blink interval in seconds (e.g. 0.8s or 0s to disable blink)"
             app:defaultValue="0.8s" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_selection_highlight_bg_color"
+            app:title="Selected Text Background Color"
+            app:summary="Highlight background color for selected text range"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_selection_highlight_text_color"
+            app:title="Selected Text Foreground Color"
+            app:summary="Text color for selected text range"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_magnifier_size"
+            app:title="Text Selection Magnifier Size"
+            app:summary="Size of the text selection glass magnifier lens"
+            android:entries="@array/magnifier_size_entries"
+            android:entryValues="@array/magnifier_size_values"
+            android:defaultValue="medium" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_magnifier_position"
+            app:title="Text Selection Magnifier Position"
+            app:summary="Offset position of the glass magnifier lens relative to finger"
+            android:entries="@array/magnifier_position_entries"
+            android:entryValues="@array/magnifier_position_values"
+            android:defaultValue="above" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

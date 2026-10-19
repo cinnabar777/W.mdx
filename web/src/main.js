@@ -1147,7 +1147,12 @@ class CodeMirrorAdapter {
             color: 'var(--text-color, #ffffff) !important'
           },
           '.cm-cursor, .cm-dropCursor': {
-            borderLeft: '2px solid var(--text-color, #ffffff) !important'
+            borderLeft: '2px solid var(--cursor-color, var(--text-color, #ffffff)) !important',
+            animation: 'cm-blink var(--cursor-blink-rate, 0.8s) infinite'
+          },
+          '.cm-selectionBackground, ::selection': {
+            backgroundColor: 'var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)) !important',
+            color: 'var(--selection-highlight-text, inherit) !important'
           },
           '.cm-line': {
             color: 'var(--text-color, #ffffff) !important'
@@ -2237,6 +2242,8 @@ window.editorBridge = {
     setCssVar('--cursor-color', prefs.pref_cursor_color);
     setCssVar('--selection-handle-color', prefs.pref_selection_handle_color);
     setCssVar('--cursor-blink-rate', prefs.pref_cursor_blink_rate);
+    setCssVar('--selection-highlight-bg', prefs.pref_selection_highlight_bg_color);
+    setCssVar('--selection-highlight-text', prefs.pref_selection_highlight_text_color);
 
     // Body & Paragraph
     setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');
@@ -2358,6 +2365,11 @@ window.editorBridge = {
     setCssVar('--table-cell-bg', prefs.pref_table_cell_bg_color || prefs.pref_table_cell_bg);
     setCssVar('--table-cell-color', prefs.pref_table_cell_text_color || prefs.pref_table_cell_color);
     setCssVar('--table-cell-padding', prefs.pref_table_cell_padding, 'px');
+    setCssVar('--table-menu-bg', prefs.pref_table_menu_bg_color);
+    setCssVar('--table-menu-action-bg', prefs.pref_table_menu_action_bg_color);
+    setCssVar('--table-menu-text', prefs.pref_table_menu_text_color);
+    setCssVar('--table-menu-disabled-color', prefs.pref_table_menu_disabled_color);
+    setCssVar('--table-menu-pressed-bg', prefs.pref_table_menu_pressed_bg_color);
 
     // Code blocks
     setCssVar('--code-block-color', prefs.pref_code_block_color);

@@ -189,19 +189,23 @@ export class WordProcessorTableWidget extends WidgetType {
 
       const menu = document.createElement('div');
       menu.className = 'cm-wp-table-context-menu';
-      menu.style.cssText = 'position: fixed; z-index: 10009; background: #222428; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); max-height: 240px; overflow-y: auto;';
+      menu.style.cssText = 'position: fixed; z-index: 10009; background: var(--table-menu-bg, #222428); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); max-height: 240px; overflow-y: auto;';
 
-      const addBtn = (label, action) => {
+      const addBtn = (label, action, isDisabled = false) => {
         const btn = document.createElement('button');
         btn.textContent = label;
-        btn.style.cssText = btnStyle;
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          menu.remove();
-          action();
-          renderTableCells();
-          commitTableChange();
-        };
+        btn.style.cssText = `padding: 4px 10px; background: var(--table-menu-action-bg, rgba(255,255,255,0.12)); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: ${isDisabled ? 'var(--table-menu-disabled-color, #777)' : 'var(--table-menu-text, #fff)'}; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; opacity: ${isDisabled ? '0.5' : '1'};`;
+        if (isDisabled) {
+          btn.disabled = true;
+        } else {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            menu.remove();
+            action();
+            renderTableCells();
+            commitTableChange();
+          };
+        }
         menu.appendChild(btn);
       };
 
@@ -218,9 +222,8 @@ export class WordProcessorTableWidget extends WidgetType {
       if (r > 0) addBtn('Merge Up', () => this.model.mergeDirection(r, c, 'up'));
 
       const primaryCell = matrix[r][c];
-      if (primaryCell.colSpan > 1 || primaryCell.rowSpan > 1) {
-        addBtn('Split Cell', () => this.model.splitCell(r, c));
-      }
+      const isMerged = primaryCell.colSpan > 1 || primaryCell.rowSpan > 1;
+      addBtn('Split Cell', () => this.model.splitCell(r, c), !isMerged);
 
       document.body.appendChild(menu);
 
