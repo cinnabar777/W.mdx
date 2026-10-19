@@ -536,6 +536,7 @@ class StylingCursorFragment : StylingSettingsFragment() {
 class StylingFindReplaceFragment : StylingSettingsFragment() {
 
     private var selectedCategoryKey: String = "category_panel"
+    private var isPreviewAttached: Boolean = false
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_findreplace, rootKey)
@@ -543,7 +544,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
 
     override fun onViewCreated(view: android.view.View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        setupInteractivePreview()
+        setupInteractivePreview(view)
         filterCategories()
     }
 
@@ -553,20 +554,35 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val catCounter = findPreference<Preference>("category_counter")
         val catButtons = findPreference<Preference>("category_buttons")
 
+        if (!isPreviewAttached) {
+            catPanel?.isVisible = true
+            catFields?.isVisible = true
+            catCounter?.isVisible = true
+            catButtons?.isVisible = true
+            return
+        }
+
         catPanel?.isVisible = (selectedCategoryKey == "category_panel")
         catFields?.isVisible = (selectedCategoryKey == "category_fields")
         catCounter?.isVisible = (selectedCategoryKey == "category_counter")
         catButtons?.isVisible = (selectedCategoryKey == "category_buttons")
     }
 
-    private fun setupInteractivePreview() {
+    private fun setupInteractivePreview(fragmentRootView: android.view.View) {
         val listView = listView ?: return
-        val parent = listView.parent as? android.view.ViewGroup ?: return
-
         val context = context ?: return
         val density = context.resources.displayMetrics.density
 
+        val existingCard = fragmentRootView.findViewWithTag<android.view.View>("findreplace_preview_card")
+        if (existingCard != null) {
+            isPreviewAttached = true
+            return
+        }
+
+        val parentView = listView.parent as? android.view.ViewGroup ?: return
+
         val previewCard = android.widget.LinearLayout(context).apply {
+            tag = "findreplace_preview_card"
             orientation = android.widget.LinearLayout.VERTICAL
             setPadding((10 * density).toInt(), (10 * density).toInt(), (10 * density).toInt(), (10 * density).toInt())
             setBackgroundColor(Color.parseColor("#121212"))
@@ -678,8 +694,37 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             }
         }
 
-        if (parent is android.widget.LinearLayout) {
-            parent.addView(previewCard, 0)
+        try {
+            if (parentView is android.widget.LinearLayout) {
+                parentView.addView(previewCard, 0)
+                isPreviewAttached = true
+            } else {
+                val indexInParent = parentView.indexOfChild(listView)
+                parentView.removeView(listView)
+
+                val container = android.widget.LinearLayout(context).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+                    )
+                }
+
+                container.addView(previewCard, android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ))
+
+                container.addView(listView, android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    0, 1f
+                ))
+
+                parentView.addView(container, indexInParent)
+                isPreviewAttached = true
+            }
+        } catch (e: Exception) {
+            isPreviewAttached = false
         }
     }
 

@@ -1785,6 +1785,15 @@ function buildSearchQuery(searchInput, replaceInput) {
   });
 }
 
+function runFindAndCenter(command, view) {
+  if (!view || !command(view)) return false;
+  const { head } = view.state.selection.main;
+  view.dispatch({
+    effects: EditorView.scrollIntoView(head, { y: 'center', yMargin: 20 })
+  });
+  return true;
+}
+
 function commitSearchQuery() {
   const container = document.querySelector('#custom-search-bar');
   if (!container || !activeAdapter || !activeAdapter.view) return false;
