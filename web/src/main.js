@@ -1147,7 +1147,7 @@ class CodeMirrorAdapter {
             color: 'var(--text-color, #ffffff) !important'
           },
           '.cm-cursor, .cm-dropCursor': {
-            borderLeft: '2px solid var(--cursor-color, var(--text-color, #ffffff)) !important',
+            borderLeft: 'var(--cursor-width, 2px) solid var(--cursor-color, var(--text-color, #ffffff)) !important',
             animation: 'cm-blink var(--cursor-blink-rate, 0.8s) infinite'
           },
           '.cm-selectionBackground, ::selection': {
@@ -2240,6 +2240,7 @@ window.editorBridge = {
 
     // Cursor & Selection
     setCssVar('--cursor-color', prefs.pref_cursor_color);
+    setCssVar('--cursor-width', prefs.pref_cursor_width, 'px');
     setCssVar('--selection-handle-color', prefs.pref_selection_handle_color);
     setCssVar('--cursor-blink-rate', prefs.pref_cursor_blink_rate);
     setCssVar('--selection-highlight-bg', prefs.pref_selection_highlight_bg_color);

@@ -9,6 +9,15 @@
             app:summary="Color of the blinking text insertion cursor"
             app:defaultValue="default" />
 
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_cursor_width"
+            app:title="Cursor Thickness (px)"
+            app:summary="Width of the text insertion cursor in pixels"
+            app:min="1"
+            android:max="4"
+            app:defaultValue="2"
+            app:showSeekBarValue="true" />
+
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_selection_handle_color"
             app:title="Text Selection Drag Handle Color"

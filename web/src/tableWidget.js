@@ -205,6 +205,15 @@ export class WordProcessorTableWidget extends WidgetType {
             renderTableCells();
             commitTableChange();
           };
+          btn.addEventListener('pointerdown', () => {
+            btn.style.backgroundColor = 'var(--table-menu-pressed-bg, rgba(0, 120, 212, 0.4))';
+          });
+          btn.addEventListener('pointerup', () => {
+            btn.style.backgroundColor = 'var(--table-menu-action-bg, rgba(255,255,255,0.12))';
+          });
+          btn.addEventListener('pointercancel', () => {
+            btn.style.backgroundColor = 'var(--table-menu-action-bg, rgba(255,255,255,0.12))';
+          });
         }
         menu.appendChild(btn);
       };

@@ -159,6 +159,7 @@ object PreferenceResetHelper {
             key == "pref_code_color" -> "default"
             key == "pref_code_bg_color" -> "default"
             key == "pref_cursor_color" -> "default"
+            key == "pref_cursor_width" -> 2
             key == "pref_selection_handle_color" -> "default"
             key == "pref_cursor_blink_rate" -> "0.8s"
             key == "pref_selection_highlight_bg_color" -> "default"
