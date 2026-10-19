@@ -2241,7 +2241,6 @@ window.editorBridge = {
     // Cursor & Selection
     setCssVar('--cursor-color', prefs.pref_cursor_color);
     setCssVar('--cursor-width', prefs.pref_cursor_width, 'px');
-    setCssVar('--selection-handle-color', prefs.pref_selection_handle_color);
     setCssVar('--cursor-blink-rate', prefs.pref_cursor_blink_rate);
     setCssVar('--selection-highlight-bg', prefs.pref_selection_highlight_bg_color);
     setCssVar('--selection-highlight-text', prefs.pref_selection_highlight_text_color);

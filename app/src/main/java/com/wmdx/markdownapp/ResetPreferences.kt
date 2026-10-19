@@ -160,14 +160,9 @@ object PreferenceResetHelper {
             key == "pref_code_bg_color" -> "default"
             key == "pref_cursor_color" -> "default"
             key == "pref_cursor_width" -> 2
-            key == "pref_selection_handle_color" -> "default"
             key == "pref_cursor_blink_rate" -> "0.8s"
             key == "pref_selection_highlight_bg_color" -> "default"
             key == "pref_selection_highlight_text_color" -> "default"
-            key == "pref_magnifier_size" -> "medium"
-            key == "pref_magnifier_position" -> "above"
-            key == "pref_magnifier_offset_x" -> 0
-            key == "pref_magnifier_offset_y" -> 0
             key == "pref_code_block_color" -> "default"
             key == "pref_code_block_bg_color" -> "default"
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"

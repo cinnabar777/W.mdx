@@ -108,6 +108,8 @@ const cursorSettings = fs.readFileSync(cursorSettingsPath, 'utf8');
 
 test('cursor and selection styling page is configured', () => {
   assert.match(cursorSettings, /app:key="pref_cursor_color"/);
-  assert.match(cursorSettings, /app:key="pref_selection_handle_color"/);
+  assert.match(cursorSettings, /app:key="pref_cursor_width"/);
+  assert.match(cursorSettings, /app:key="pref_selection_highlight_bg_color"/);
   assert.match(source, /setCssVar\('--cursor-color', prefs\.pref_cursor_color\)/);
+  assert.match(source, /setCssVar\('--cursor-width', prefs\.pref_cursor_width, 'px'\)/);
 });

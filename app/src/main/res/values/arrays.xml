@@ -134,25 +134,4 @@
         <item>file</item>
     </string-array>
 
-    <string-array name="magnifier_size_entries">
-        <item>Small Lens</item>
-        <item>Medium Lens (Default)</item>
-        <item>Large Lens</item>
-    </string-array>
-    <string-array name="magnifier_size_values">
-        <item>small</item>
-        <item>medium</item>
-        <item>large</item>
-    </string-array>
-
-    <string-array name="magnifier_position_entries">
-        <item>Above Touch Point (Default)</item>
-        <item>Centered On Touch</item>
-        <item>Side Offset</item>
-    </string-array>
-    <string-array name="magnifier_position_values">
-        <item>above</item>
-        <item>centered</item>
-        <item>side</item>
-    </string-array>
 </resources>

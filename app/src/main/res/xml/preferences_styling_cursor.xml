@@ -18,12 +18,6 @@
             app:defaultValue="2"
             app:showSeekBarValue="true" />
 
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_selection_handle_color"
-            app:title="Text Selection Drag Handle Color"
-            app:summary="Accent color for text selection drag handles / balloons"
-            app:defaultValue="default" />
-
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_cursor_blink_rate"
             app:title="Cursor Blink Rate (s)"
@@ -41,40 +35,6 @@
             app:title="Selected Text Foreground Color"
             app:summary="Text color for selected text range"
             app:defaultValue="default" />
-
-        <com.wmdx.markdownapp.ResetListPreference
-            app:key="pref_magnifier_size"
-            app:title="Text Selection Magnifier Size"
-            app:summary="Size of the text selection glass magnifier lens"
-            android:entries="@array/magnifier_size_entries"
-            android:entryValues="@array/magnifier_size_values"
-            android:defaultValue="medium" />
-
-        <com.wmdx.markdownapp.ResetListPreference
-            app:key="pref_magnifier_position"
-            app:title="Text Selection Magnifier Position"
-            app:summary="Offset position of the glass magnifier lens relative to finger"
-            android:entries="@array/magnifier_position_entries"
-            android:entryValues="@array/magnifier_position_values"
-            android:defaultValue="above" />
-
-        <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_magnifier_offset_x"
-            app:title="Magnifier Horizontal Offset X (dp)"
-            app:summary="Adjust horizontal offset position for selection magnifier lens (-50 to +50 dp)"
-            app:min="-50"
-            android:max="50"
-            app:defaultValue="0"
-            app:showSeekBarValue="true" />
-
-        <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_magnifier_offset_y"
-            app:title="Magnifier Vertical Offset Y (dp)"
-            app:summary="Adjust vertical offset position for selection magnifier lens (-50 to +50 dp)"
-            app:min="-50"
-            android:max="50"
-            app:defaultValue="0"
-            app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>
