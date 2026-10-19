@@ -27,7 +27,8 @@ export class WordProcessorTableWidget extends WidgetType {
   toDOM(view) {
     const container = document.createElement('div');
     container.className = 'cm-wp-table-container';
-    container.style.cssText = 'position: relative; margin: 12px 0; overflow-x: auto; max-width: 100%; border-radius: 6px; box-sizing: border-box;';
+    container.dataset.tableFrom = String(this.from);
+    container.style.cssText = 'position: relative; margin: 12px 0; overflow-x: auto; max-width: 100%; border-radius: 6px; box-sizing: border-box; overflow-anchor: none;';
 
     if (!this.model) {
       container.textContent = this.tableMarkdown;
@@ -131,6 +132,44 @@ export class WordProcessorTableWidget extends WidgetType {
       }
     };
 
+    const runTableAction = (mutate) => {
+      const scroller = view.scrollDOM;
+      const scrollerRect = scroller.getBoundingClientRect();
+      const originalTableTop = container.getBoundingClientRect().top - scrollerRect.top;
+      const saved = {
+        scrollTop: scroller.scrollTop,
+        scrollLeft: scroller.scrollLeft,
+        windowX: window.scrollX,
+        windowY: window.scrollY
+      };
+
+      mutate();
+      renderTableCells();
+      commitTableChange();
+
+      // Wait for CodeMirror to rebuild and measure the replacement block widget.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (window.scrollX !== saved.windowX || window.scrollY !== saved.windowY) {
+          window.scrollTo(saved.windowX, saved.windowY);
+        }
+
+        const selector = '.cm-wp-table-container[data-table-from="' + this.from + '"]';
+        const liveContainer = view.dom.querySelector(selector);
+        if (!liveContainer) {
+          scroller.scrollTop = saved.scrollTop;
+          scroller.scrollLeft = saved.scrollLeft;
+          return;
+        }
+
+        const liveScrollerRect = scroller.getBoundingClientRect();
+        const liveTableTop = liveContainer.getBoundingClientRect().top - liveScrollerRect.top;
+        // Correct browser/CodeMirror scroll shift so this table remains at the
+        // same vertical screen position it had when the action started.
+        scroller.scrollTop = Math.max(0, scroller.scrollTop + liveTableTop - originalTableTop);
+        scroller.scrollLeft = saved.scrollLeft;
+      }));
+    };
+
     let longPressTimer = null;
 
     const attachCellEvents = (cellEl, r, c) => {
@@ -201,9 +240,7 @@ export class WordProcessorTableWidget extends WidgetType {
           btn.onclick = (e) => {
             e.stopPropagation();
             menu.remove();
-            action();
-            renderTableCells();
-            commitTableChange();
+            runTableAction(action);
           };
           btn.addEventListener('pointerdown', () => {
             btn.style.backgroundColor = 'var(--table-menu-pressed-bg, rgba(0, 120, 212, 0.4))';
@@ -317,15 +354,17 @@ export class WordProcessorTableWidget extends WidgetType {
       const commitAndClose = (nextNavigation) => {
         if (isCommitted) return;
         isCommitted = true;
-        this.model.rows[r][c] = overlay.value;
+        const newValue = overlay.value;
         activeOverlay = null;
         overlay.remove();
-        renderTableCells();
-        commitTableChange();
+        runTableAction(() => {
+          this.model.rows[r][c] = newValue;
+        });
 
         if (nextNavigation) {
           requestAnimationFrame(() => {
-            const newContainer = document.querySelector('.cm-wp-table-container');
+            const selector = '.cm-wp-table-container[data-table-from="' + this.from + '"]';
+            const newContainer = view.dom.querySelector(selector) || document.querySelector('.cm-wp-table-container');
             if (newContainer) {
               const { rowDelta, colDelta } = nextNavigation;
               let targetR = r + rowDelta;
@@ -398,17 +437,17 @@ export class WordProcessorTableWidget extends WidgetType {
     btnMerge.addEventListener('click', (e) => {
       e.preventDefault();
       if (!selectedRange) return;
-      this.model.mergeRect(selectedRange.startR, selectedRange.startC, selectedRange.endR, selectedRange.endC);
-      renderTableCells();
-      commitTableChange();
+      runTableAction(() => {
+        this.model.mergeRect(selectedRange.startR, selectedRange.startC, selectedRange.endR, selectedRange.endC);
+      });
     });
 
     btnSplit.addEventListener('click', (e) => {
       e.preventDefault();
       if (!selectedRange) return;
-      this.model.splitCell(selectedRange.startR, selectedRange.startC);
-      renderTableCells();
-      commitTableChange();
+      runTableAction(() => {
+        this.model.splitCell(selectedRange.startR, selectedRange.startC);
+      });
     });
 
     renderTableCells();

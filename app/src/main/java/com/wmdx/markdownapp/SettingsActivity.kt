@@ -631,7 +631,14 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             val customSvg = prefs.getString("pref_findreplace_btn_${suffix}_svg", "") ?: ""
 
             btnView.setBackgroundColor(if (btnBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(btnBgHex, Color.parseColor("#1E1E1E")))
-            btnView.setTextColor(if (btnColorHex == "default") Color.parseColor("#AAAAAA") else ColorPickerDialog.parseHexColor(btnColorHex, Color.parseColor("#AAAAAA")))
+
+            val defaultIconColor = Color.parseColor("#AAAAAA")
+            val iconColor = if (btnColorHex == "default") {
+                defaultIconColor
+            } else {
+                ColorPickerDialog.parseHexColor(btnColorHex, defaultIconColor)
+            }
+            btnView.setTextColor(iconColor)
 
             val originalText = originalButtonTextMap[domId] ?: btnView.text.toString()
             if (customSvg.isNotBlank() && isValidAndSafeSvg(customSvg)) {
@@ -644,6 +651,10 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                     val picture = svg.renderToPicture()
                     val drawable = android.graphics.drawable.PictureDrawable(picture)
                     drawable.setBounds(0, 0, sizePx, sizePx)
+                    drawable.colorFilter = android.graphics.PorterDuffColorFilter(
+                        iconColor,
+                        android.graphics.PorterDuff.Mode.SRC_IN
+                    )
                     btnView.text = ""
                     btnView.setCompoundDrawables(drawable, null, null, null)
                 } catch (e: Exception) {
