@@ -1,0 +1,299 @@
+import { WidgetType } from '@codemirror/view';
+import { TableModel } from './tableModule.js';
+
+export class WordProcessorTableWidget extends WidgetType {
+  constructor(tableMarkdown, from, to) {
+    super();
+    this.tableMarkdown = tableMarkdown;
+    this.from = from;
+    this.to = to;
+    this.model = TableModel.parse(tableMarkdown);
+  }
+
+  eq(other) {
+    return (
+      other instanceof WordProcessorTableWidget &&
+      other.tableMarkdown === this.tableMarkdown &&
+      other.from === this.from &&
+      other.to === this.to
+    );
+  }
+
+  ignoreEvent(event) {
+    // Allow pointer/click events inside widget for cell selection & editing
+    return true;
+  }
+
+  toDOM(view) {
+    const container = document.createElement('div');
+    container.className = 'cm-wp-table-container';
+    container.style.cssText = 'position: relative; margin: 12px 0; overflow-x: auto; max-width: 100%; border-radius: 6px; box-sizing: border-box;';
+
+    if (!this.model) {
+      container.textContent = this.tableMarkdown;
+      return container;
+    }
+
+    const matrix = this.model.getRenderMatrix();
+    const rowCount = this.model.getRowCount();
+    const colCount = this.model.getColCount();
+
+    let selectedRange = null; // { startR, startC, endR, endC }
+    let activeOverlay = null;
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'cm-wp-table-toolbar';
+    toolbar.style.cssText = 'display: flex; gap: 6px; margin-bottom: 8px; font-size: 12px; z-index: 10; user-select: none; flex-wrap: wrap;';
+
+    const btnStyle = 'padding: 4px 10px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #fff; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;';
+
+    const btnMerge = document.createElement('button');
+    btnMerge.textContent = 'Merge Cells';
+    btnMerge.style.cssText = btnStyle;
+    btnMerge.style.display = 'none';
+
+    const btnSplit = document.createElement('button');
+    btnSplit.textContent = 'Split Cell';
+    btnSplit.style.cssText = btnStyle;
+    btnSplit.style.display = 'none';
+
+    toolbar.appendChild(btnMerge);
+    toolbar.appendChild(btnSplit);
+    container.appendChild(toolbar);
+
+    const table = document.createElement('table');
+    table.className = 'cm-wp-table';
+    table.style.cssText = 'width: 100%; border-collapse: collapse; table-layout: auto; color: var(--text-color, #fff); font-size: 15px; border: 1px solid var(--table-border-color, #444);';
+
+    const renderTableCells = () => {
+      table.innerHTML = '';
+
+      const thead = document.createElement('thead');
+      const trHead = document.createElement('tr');
+
+      for (let c = 0; c < colCount; c++) {
+        const cellData = matrix[0][c];
+        if (cellData.isCovered) continue;
+
+        const th = document.createElement('th');
+        th.style.cssText = `border: 1px solid var(--table-border-color, #444); padding: var(--table-cell-padding, 8px); background: var(--table-header-bg, rgba(255,255,255,0.12)); color: var(--table-header-color, var(--text-color, #fff)); font-weight: var(--table-header-font-weight, 700); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer;`;
+        if (cellData.colSpan > 1) th.colSpan = cellData.colSpan;
+        if (cellData.rowSpan > 1) th.rowSpan = cellData.rowSpan;
+        th.dataset.row = '0';
+        th.dataset.col = String(c);
+        th.innerHTML = renderMarkdownInline(cellData.content);
+
+        attachCellEvents(th, 0, c);
+        trHead.appendChild(th);
+      }
+      thead.appendChild(trHead);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      for (let r = 1; r < rowCount; r++) {
+        const tr = document.createElement('tr');
+        for (let c = 0; c < colCount; c++) {
+          const cellData = matrix[r][c];
+          if (cellData.isCovered) continue;
+
+          const td = document.createElement('td');
+          td.style.cssText = `border: 1px solid var(--table-border-color, #444); padding: var(--table-cell-padding, 8px); background: var(--table-cell-bg, transparent); color: var(--table-cell-color, var(--text-color, #fff)); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer;`;
+          if (cellData.colSpan > 1) td.colSpan = cellData.colSpan;
+          if (cellData.rowSpan > 1) td.rowSpan = cellData.rowSpan;
+          td.dataset.row = String(r);
+          td.dataset.col = String(c);
+          td.innerHTML = renderMarkdownInline(cellData.content);
+
+          attachCellEvents(td, r, c);
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+    };
+
+    const commitTableChange = () => {
+      const newMarkdown = this.model.toMarkdown();
+      if (newMarkdown !== this.tableMarkdown) {
+        try {
+          const range = getLiveRange(view, container, this.from, this.to);
+          view.dispatch({
+            changes: { from: range.from, to: range.to, insert: newMarkdown }
+          });
+        } catch (e) {
+          console.error('Failed to commit table change:', e);
+        }
+      }
+    };
+
+    const attachCellEvents = (cellEl, r, c) => {
+      cellEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (selectedRange && selectedRange.startR === r && selectedRange.startC === c && !activeOverlay) {
+          openCellEditor(cellEl, r, c);
+        } else {
+          selectCell(r, c);
+        }
+      });
+    };
+
+    const selectCell = (r, c) => {
+      selectedRange = { startR: r, startC: c, endR: r, endC: c };
+      updateSelectionHighlight();
+    };
+
+    const updateSelectionHighlight = () => {
+      table.querySelectorAll('th, td').forEach(el => {
+        el.style.outline = 'none';
+        el.style.backgroundColor = '';
+      });
+
+      if (!selectedRange) {
+        btnMerge.style.display = 'none';
+        btnSplit.style.display = 'none';
+        return;
+      }
+
+      const { startR, startC, endR, endC } = selectedRange;
+      const minR = Math.min(startR, endR);
+      const maxR = Math.max(startR, endR);
+      const minC = Math.min(startC, endC);
+      const maxC = Math.max(startC, endC);
+
+      const isMultiCell = (minR !== maxR || minC !== maxC);
+      btnMerge.style.display = isMultiCell ? 'inline-flex' : 'none';
+
+      const primaryCell = matrix[minR][minC];
+      const isSplitable = !isMultiCell && (primaryCell.colSpan > 1 || primaryCell.rowSpan > 1);
+      btnSplit.style.display = isSplitable ? 'inline-flex' : 'none';
+
+      for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+          const el = table.querySelector(`[data-row="${r}"][data-col="${c}"]`);
+          if (el) {
+            el.style.outline = '2px solid #0078d4';
+            el.style.backgroundColor = 'rgba(0, 120, 212, 0.2)';
+          }
+        }
+      }
+    };
+
+    const openCellEditor = (cellEl, r, c) => {
+      if (activeOverlay) activeOverlay.remove();
+
+      const overlay = document.createElement('textarea');
+      overlay.className = 'cm-wp-cell-editor';
+      overlay.value = this.model.rows[r][c] || '';
+      overlay.style.cssText = `position: absolute; top: ${cellEl.offsetTop}px; left: ${cellEl.offsetLeft}px; width: ${cellEl.offsetWidth}px; height: ${cellEl.offsetHeight}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px;`;
+
+      const commitAndClose = () => {
+        this.model.rows[r][c] = overlay.value;
+        activeOverlay = null;
+        overlay.remove();
+        renderTableCells();
+        commitTableChange();
+      };
+
+      overlay.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          commitAndClose();
+          navigateCell(r, c, 1, 0);
+        } else if (e.key === 'Tab') {
+          e.preventDefault();
+          commitAndClose();
+          navigateCell(r, c, 0, e.shiftKey ? -1 : 1);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          activeOverlay = null;
+          overlay.remove();
+        }
+      });
+
+      overlay.addEventListener('blur', () => {
+        commitAndClose();
+      });
+
+      table.parentElement.appendChild(overlay);
+      overlay.focus();
+      activeOverlay = overlay;
+    };
+
+    const navigateCell = (r, c, rowDelta, colDelta) => {
+      let targetR = r + rowDelta;
+      let targetC = c + colDelta;
+
+      if (targetC >= colCount) {
+        targetC = 0;
+        targetR++;
+      } else if (targetC < 0) {
+        targetC = colCount - 1;
+        targetR--;
+      }
+
+      if (targetR >= 0 && targetR < rowCount && targetC >= 0 && targetC < colCount) {
+        while (matrix[targetR][targetC].isCovered && targetC < colCount - 1) {
+          targetC++;
+        }
+        selectCell(targetR, targetC);
+        const targetEl = table.querySelector(`[data-row="${targetR}"][data-col="${targetC}"]`);
+        if (targetEl) openCellEditor(targetEl, targetR, targetC);
+      }
+    };
+
+    btnMerge.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!selectedRange) return;
+      this.model.mergeRect(selectedRange.startR, selectedRange.startC, selectedRange.endR, selectedRange.endC);
+      renderTableCells();
+      commitTableChange();
+    });
+
+    btnSplit.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!selectedRange) return;
+      this.model.splitCell(selectedRange.startR, selectedRange.startC);
+      renderTableCells();
+      commitTableChange();
+    });
+
+    renderTableCells();
+    container.appendChild(table);
+    return container;
+  }
+}
+
+function renderMarkdownInline(text) {
+  if (!text) return '';
+  let escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  escaped = escaped.replace(/&lt;br&gt;/gi, '<br>');
+  escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+  return escaped;
+}
+
+function getLiveRange(view, container, fallbackFrom, fallbackTo) {
+  try {
+    const pos = view.posAtDOM(container);
+    const line = view.state.doc.lineAt(pos);
+    let startL = line.number;
+    let endL = line.number;
+    while (startL > 1 && view.state.doc.line(startL - 1).text.trim().startsWith('|')) {
+      startL--;
+    }
+    while (endL < view.state.doc.lines && view.state.doc.line(endL + 1).text.trim().startsWith('|')) {
+      endL++;
+    }
+    return {
+      from: view.state.doc.line(startL).from,
+      to: view.state.doc.line(endL).to
+    };
+  } catch (e) {
+    return { from: fallbackFrom, to: fallbackTo };
+  }
+}

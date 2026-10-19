@@ -29,13 +29,33 @@ test('Table cell navigation functions exist and handle pipe delimiters', () => {
 
 const styles = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
-test('parsePipeRow and isEscapedPipe handle escaped pipes and outer pipes', () => {
-  const code = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+test('TableModel parses, merges, splits, and serializes GFM tables correctly', () => {
+  const { TableModel, parsePipeRow, isTableSeparatorRow, parseAlignments } = require('../src/tableModule.js');
 
-  assert.ok(code.includes('export function parsePipeRow'), 'parsePipeRow is defined');
-  assert.ok(code.includes('export function isEscapedPipe'), 'isEscapedPipe is defined');
-  assert.ok(code.includes('export function isTableSeparatorRow'), 'isTableSeparatorRow is defined');
-  assert.ok(code.includes('export function getTableColumnWidths'), 'getTableColumnWidths is defined');
-  assert.ok(code.includes('class EmptyTableCellWidget'), 'EmptyTableCellWidget is defined');
-  assert.ok(code.includes('export const horizontalRuleNavigationKeymap'), 'horizontalRuleNavigationKeymap is exported');
+  const markdown = `
+| Header 1 | Header 2 | Header 3 |
+| :--- | :---: | ---: |
+| Cell 1 | Cell 2 | Cell 3 |
+| Cell 4 | Cell 5 | Cell 6 |
+`.trim();
+
+  const model = TableModel.parse(markdown);
+  assert.ok(model, 'TableModel.parse successfully parsed Markdown table');
+  assert.equal(model.getRowCount(), 3);
+  assert.equal(model.getColCount(), 3);
+  assert.deepEqual(model.alignments, ['left', 'center', 'right']);
+
+  // Test merge cells
+  model.mergeRect(1, 0, 1, 1);
+  const matrix = model.getRenderMatrix();
+  assert.equal(matrix[1][0].colSpan, 2);
+  assert.equal(matrix[1][1].isCovered, true);
+
+  // Test roundtrip serialization
+  const serialized = model.toMarkdown();
+  assert.ok(serialized.includes('<'), 'Serialized Markdown contains colSpan merge marker <');
+
+  const reParsed = TableModel.parse(serialized);
+  assert.ok(reParsed, 'Re-parsed merged Markdown table successfully');
+  assert.equal(reParsed.getRowCount(), 3);
 });

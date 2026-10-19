@@ -1,5 +1,6 @@
 import { EditorState, Compartment, Transaction, StateField } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
+import { WordProcessorTableWidget } from './tableWidget.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, syntaxTree, HighlightStyle } from '@codemirror/language';
@@ -1077,6 +1078,52 @@ function isHorizontalRuleLine(state, lineNumber) {
   return found;
 }
 
+function buildTableBlockDecorations(state) {
+  if (currentEditorMode === 'source') return Decoration.none;
+
+  const builder = [];
+  const tree = syntaxTree(state);
+
+  tree.iterate({
+    from: 0,
+    to: state.doc.length,
+    enter: (node) => {
+      if (node.name === 'Table') {
+        const tableText = state.doc.sliceString(node.from, node.to);
+        const widget = new WordProcessorTableWidget(tableText, node.from, node.to);
+
+        builder.push(Decoration.widget({
+          widget,
+          block: true,
+          side: -1
+        }).range(node.from));
+
+        builder.push(Decoration.replace({
+          block: true
+        }).range(node.from, node.to));
+
+        return false;
+      }
+    }
+  });
+
+  builder.sort((a, b) => a.from - b.from || a.to - b.to);
+  return Decoration.set(builder, true);
+}
+
+export const tableStateField = StateField.define({
+  create(state) {
+    return buildTableBlockDecorations(state);
+  },
+  update(current, tr) {
+    if (tr.docChanged) {
+      return buildTableBlockDecorations(tr.state);
+    }
+    return current;
+  },
+  provide: field => EditorView.decorations.from(field)
+});
+
 export const horizontalRuleNavigationKeymap = keymap.of([
   {
     key: 'ArrowUp',
@@ -1184,6 +1231,7 @@ class CodeMirrorAdapter {
             updateTocActiveSection();
           }
         }),
+        tableStateField,
         horizontalRuleNavigationKeymap,
         tableNavigationKeymap,
         keymap.of([
@@ -2396,6 +2444,11 @@ window.editorBridge = {
     setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
   },
   getMarkdown: function() {
+    // Flush active table cell draft if an overlay editor is open
+    const activeOverlay = document.querySelector('.cm-wp-cell-editor');
+    if (activeOverlay) {
+      activeOverlay.blur();
+    }
     if (pendingMarkdown !== null) return pendingMarkdown;
     if (typeof activeAdapter !== 'undefined' && activeAdapter) return activeAdapter.getMarkdown();
     return '';
