@@ -202,6 +202,29 @@ export class TableModel {
     }
   }
 
+  insertRow(index) {
+    const at = Math.max(1, Math.min(index, this.rows.length));
+    const newRow = Array(this.getColCount()).fill('');
+    if (at < this.rows.length) {
+      for (let c = 0; c < this.getColCount(); c++) {
+        if (this.rows[at][c] === '^') {
+          newRow[c] = '^';
+        }
+      }
+    }
+    this.rows.splice(at, 0, newRow);
+  }
+
+  insertCol(index) {
+    const at = Math.max(0, Math.min(index, this.getColCount()));
+    const alignment = this.alignments[Math.max(0, at - 1)] || 'left';
+    for (let r = 0; r < this.rows.length; r++) {
+      const val = (at < this.rows[r].length && this.rows[r][at] === '<') ? '<' : '';
+      this.rows[r].splice(at, 0, val);
+    }
+    this.alignments.splice(at, 0, alignment);
+  }
+
   deleteRow(r) {
     if (this.rows.length <= 1) return;
     this.rows.splice(r, 1);

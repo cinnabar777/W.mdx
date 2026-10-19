@@ -70,10 +70,50 @@ test('TableModel parses, merges, splits, and serializes GFM tables correctly', a
 test('WordProcessorTableWidget provides structural context menu items', () => {
   const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
 
+  assert.ok(code.includes('Add Row Below'), 'Context menu includes Add Row Below');
+  assert.ok(code.includes('Add Column Right'), 'Context menu includes Add Column Right');
   assert.ok(code.includes('Delete Row'), 'Context menu includes Delete Row');
   assert.ok(code.includes('Delete Column'), 'Context menu includes Delete Column');
   assert.ok(code.includes('Merge Right'), 'Context menu includes directional Merge');
   assert.ok(!code.includes("btnEdit.textContent = 'Edit Cell'"), 'Context menu excludes Edit Cell');
+});
+
+test('TableModel insertRow and insertCol add empty cells and preserve alignments and merges', async () => {
+  const { TableModel } = await import('../src/tableModule.js');
+
+  const markdown = `
+| Header 1 | Header 2 |
+| :--- | ---: |
+| Cell 1 | Cell 2 |
+`.trim();
+
+  const model = TableModel.parse(markdown);
+  assert.equal(model.getRowCount(), 2);
+  assert.equal(model.getColCount(), 2);
+
+  // Insert row at index 2 (below row 1)
+  model.insertRow(2);
+  assert.equal(model.getRowCount(), 3);
+  assert.equal(model.rows[2][0], '');
+  assert.equal(model.rows[2][1], '');
+
+  // Insert column at index 2 (right of col 1)
+  model.insertCol(2);
+  assert.equal(model.getColCount(), 3);
+  assert.equal(model.alignments[2], 'right'); // Inherited from col 1
+
+  // Test roundtrip serialization
+  const markdownAfter = model.toMarkdown();
+  const reParsed = TableModel.parse(markdownAfter);
+  assert.ok(reParsed);
+  assert.equal(reParsed.getRowCount(), 3);
+  assert.equal(reParsed.getColCount(), 3);
+
+  // Test insertion on merged table
+  model.mergeRect(1, 0, 1, 1); // Merge row 1, cols 0 and 1
+  model.insertRow(2); // Insert below row 1
+  assert.equal(model.getRowCount(), 4);
+  assert.equal(model.rows[2][0], ''); // Inserted row cells start empty
 });
 
 test('WordProcessorTableWidget attaches long-press events and applies CSS variables for borders', () => {

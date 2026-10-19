@@ -563,6 +563,18 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     private var previewReplaceField: android.widget.TextView? = null
     private var previewCounter: android.widget.TextView? = null
     private val previewButtonMap = mutableMapOf<String, android.widget.TextView>()
+    private val originalButtonTextMap = mutableMapOf<String, String>()
+
+    private fun isValidAndSafeSvg(svgStr: String): Boolean {
+        val trimmed = svgStr.trim()
+        val lower = trimmed.lowercase()
+        if (!lower.contains("<svg")) return false
+        val forbidden = listOf("<script", "foreignobject", "javascript:", "data:", "<embed", "<object", "<iframe")
+        if (forbidden.any { lower.contains(it) }) return false
+        val onHandlerRegex = Regex("""\bon[a-z]+\s*=""", RegexOption.IGNORE_CASE)
+        if (onHandlerRegex.containsMatchIn(trimmed)) return false
+        return true
+    }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_findreplace, rootKey)
@@ -616,9 +628,32 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             val suffix = buttonPreferenceSuffix[domId] ?: domId.replace("-", "_")
             val btnBgHex = prefs.getString("pref_findreplace_btn_${suffix}_bg", "default") ?: "default"
             val btnColorHex = prefs.getString("pref_findreplace_btn_${suffix}_color", "default") ?: "default"
+            val customSvg = prefs.getString("pref_findreplace_btn_${suffix}_svg", "") ?: ""
 
             btnView.setBackgroundColor(if (btnBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(btnBgHex, Color.parseColor("#1E1E1E")))
             btnView.setTextColor(if (btnColorHex == "default") Color.parseColor("#AAAAAA") else ColorPickerDialog.parseHexColor(btnColorHex, Color.parseColor("#AAAAAA")))
+
+            val originalText = originalButtonTextMap[domId] ?: btnView.text.toString()
+            if (customSvg.isNotBlank() && isValidAndSafeSvg(customSvg)) {
+                try {
+                    val svg = com.caverock.androidsvg.SVG.getFromString(customSvg)
+                    val density = btnView.context.resources.displayMetrics.density
+                    val sizePx = (18 * density).toInt()
+                    svg.documentWidth = sizePx.toFloat()
+                    svg.documentHeight = sizePx.toFloat()
+                    val picture = svg.renderToPicture()
+                    val drawable = android.graphics.drawable.PictureDrawable(picture)
+                    drawable.setBounds(0, 0, sizePx, sizePx)
+                    btnView.text = ""
+                    btnView.setCompoundDrawables(drawable, null, null, null)
+                } catch (e: Exception) {
+                    btnView.text = originalText
+                    btnView.setCompoundDrawables(null, null, null, null)
+                }
+            } else {
+                btnView.text = originalText
+                btnView.setCompoundDrawables(null, null, null, null)
+            }
         }
     }
 
@@ -747,6 +782,10 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         previewButtonMap["replace-all"] = btnReplaceAll
         previewButtonMap["case"] = btnCase
         previewButtonMap["word"] = btnWord
+
+        previewButtonMap.forEach { (domId, btnView) ->
+            originalButtonTextMap[domId] = btnView.text.toString()
+        }
 
         previewCard.setOnClickListener {
             selectedCategoryKey = "category_panel"

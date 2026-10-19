@@ -218,6 +218,9 @@ export class WordProcessorTableWidget extends WidgetType {
         menu.appendChild(btn);
       };
 
+      addBtn('Add Row Below', () => this.model.insertRow(r + 1));
+      addBtn('Add Column Right', () => this.model.insertCol(c + 1));
+
       if (rowCount > 1) {
         addBtn('Delete Row', () => this.model.deleteRow(r));
       }
