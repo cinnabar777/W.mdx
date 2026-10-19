@@ -2769,6 +2769,53 @@ window.editorBridge = {
         }
       }
     });
+
+    const applyFindReplaceButtonLayout = (prefs) => {
+      const orderRaw = prefs.pref_findreplace_button_order || 'prev,next,highlight,regex,close,replace-one,replace-all,case,word';
+      const hiddenRaw = prefs.pref_findreplace_hidden_buttons || '';
+
+      const knownIds = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
+      const rawOrderList = orderRaw.split(',').map(s => s.trim()).filter(Boolean);
+      const orderList = [];
+      for (const id of rawOrderList) {
+        if (knownIds.includes(id) && !orderList.includes(id)) {
+          orderList.push(id);
+        }
+      }
+      for (const id of knownIds) {
+        if (!orderList.includes(id)) orderList.push(id);
+      }
+
+      const rawHiddenList = hiddenRaw.split(',').map(s => s.trim()).filter(Boolean);
+      const hiddenSet = new Set(rawHiddenList.filter(id => knownIds.includes(id)));
+
+      const rows = document.querySelectorAll('#custom-search-bar .search-bar-row');
+      if (!rows || rows.length < 2) return;
+
+      const group1 = rows[0].querySelector('.search-icon-group');
+      const group2 = rows[1].querySelector('.search-icon-group');
+      if (!group1 || !group2) return;
+
+      const row1Ids = orderList.slice(0, 5);
+      const row2Ids = orderList.slice(5);
+
+      row1Ids.forEach(id => {
+        const btn = document.querySelector(`#search-btn-${id}`);
+        if (btn) {
+          group1.appendChild(btn);
+          btn.style.display = hiddenSet.has(id) ? 'none' : '';
+        }
+      });
+
+      row2Ids.forEach(id => {
+        const btn = document.querySelector(`#search-btn-${id}`);
+        if (btn) {
+          group2.appendChild(btn);
+          btn.style.display = hiddenSet.has(id) ? 'none' : '';
+        }
+      });
+    };
+    applyFindReplaceButtonLayout(prefs);
   },
   getMarkdown: function() {
     // Flush active table cell draft if an overlay editor is open

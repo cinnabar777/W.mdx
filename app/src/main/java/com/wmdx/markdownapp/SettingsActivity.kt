@@ -457,7 +457,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
         }
     }
 
-    private fun getFileName(uri: Uri): String? {
+    protected fun getFileName(uri: Uri): String? {
         val context = context ?: return null
         var result: String? = null
         if (uri.scheme == "content") {
@@ -546,6 +546,11 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     private var selectedCategoryKey: String = "category_panel"
     private var isPreviewAttached: Boolean = false
 
+    private val DEFAULT_BUTTON_ORDER = "prev,next,highlight,regex,close,replace-one,replace-all,case,word"
+    private val KNOWN_BUTTON_IDS = listOf("prev", "next", "highlight", "regex", "close", "replace-one", "replace-all", "case", "word")
+    private val PREF_KEY_BUTTON_ORDER = "pref_findreplace_button_order"
+    private val PREF_KEY_HIDDEN_BUTTONS = "pref_findreplace_hidden_buttons"
+
     private val buttonPreferenceSuffix = mapOf(
         "prev" to "prev",
         "next" to "next",
@@ -558,10 +563,21 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         "word" to "word"
     )
 
+    private var targetSvgPrefKey: String? = null
+
+    private val pickSvgLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { handleSvgPicked(it) }
+    }
+
     private var previewCardView: android.widget.LinearLayout? = null
     private var previewFindField: android.widget.TextView? = null
     private var previewReplaceField: android.widget.TextView? = null
     private var previewCounter: android.widget.TextView? = null
+    private var row1GroupView: android.widget.LinearLayout? = null
+    private var row2GroupView: android.widget.LinearLayout? = null
+    private var hiddenTrayView: android.widget.LinearLayout? = null
+    private var hiddenChipsContainer: android.widget.LinearLayout? = null
+
     private val previewButtonMap = mutableMapOf<String, android.widget.TextView>()
     private val originalButtonTextMap = mutableMapOf<String, String>()
 
@@ -576,8 +592,80 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         return true
     }
 
+    private fun parseAndNormalizeOrder(rawOrder: String?): MutableList<String> {
+        val items = rawOrder?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+        val order = mutableListOf<String>()
+        for (id in items) {
+            if (id in KNOWN_BUTTON_IDS && id !in order) {
+                order.add(id)
+            }
+        }
+        for (id in KNOWN_BUTTON_IDS) {
+            if (id !in order) {
+                order.add(id)
+            }
+        }
+        return order
+    }
+
+    private fun parseHiddenButtons(rawHidden: String?): MutableSet<String> {
+        val items = rawHidden?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+        return items.filter { it in KNOWN_BUTTON_IDS }.toMutableSet()
+    }
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_findreplace, rootKey)
+    }
+
+    override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        val key = preference.key
+        if (key != null && key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg")) {
+            targetSvgPrefKey = key
+            val context = context ?: return super.onPreferenceTreeClick(preference)
+            AlertDialog.Builder(context)
+                .setTitle("Custom SVG Icon")
+                .setItems(arrayOf("Choose SVG File", "Paste SVG Code")) { _, which ->
+                    if (which == 0) {
+                        pickSvgLauncher.launch(arrayOf("image/svg+xml", "text/xml", "application/xml", "*/*"))
+                    } else {
+                        super.onPreferenceTreeClick(preference)
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return true
+        }
+        return super.onPreferenceTreeClick(preference)
+    }
+
+    private fun handleSvgPicked(uri: Uri) {
+        val key = targetSvgPrefKey ?: return
+        val context = context ?: return
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+
+        try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return
+            val bytes = inputStream.use { it.readBytes() }
+            if (bytes.size > 64 * 1024) {
+                ThemedToast.show(context, "SVG file exceeds 64 KB limit")
+                return
+            }
+            val svgStr = String(bytes, Charsets.UTF_8)
+            if (!isValidAndSafeSvg(svgStr)) {
+                ThemedToast.show(context, "Invalid or unsafe SVG file")
+                return
+            }
+            com.caverock.androidsvg.SVG.getFromString(svgStr)
+
+            val fileName = getFileName(uri) ?: "custom.svg"
+            prefs.edit().putString(key, svgStr).apply()
+
+            findPreference<Preference>(key)?.summary = "Custom SVG: $fileName"
+            refreshFindReplacePreview(prefs)
+            ThemedToast.show(context, "Loaded SVG from $fileName")
+        } catch (e: Exception) {
+            ThemedToast.show(context, "Failed to load SVG: ${e.localizedMessage}")
+        }
     }
 
     override fun onViewCreated(view: android.view.View, savedInstanceState: Bundle?) {
@@ -586,7 +674,16 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         filterCategories()
         val ctx = context
         if (ctx != null) {
-            refreshFindReplacePreview(PreferenceManager.getDefaultSharedPreferences(ctx))
+            val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
+            for (id in KNOWN_BUTTON_IDS) {
+                val suffix = buttonPreferenceSuffix[id] ?: id.replace("-", "_")
+                val key = "pref_findreplace_btn_${suffix}_svg"
+                val svgVal = prefs.getString(key, "") ?: ""
+                if (svgVal.isNotBlank()) {
+                    findPreference<Preference>(key)?.summary = "Custom SVG loaded"
+                }
+            }
+            refreshFindReplacePreview(prefs)
         }
     }
 
@@ -624,6 +721,77 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val counterColorHex = prefs.getString("pref_findreplace_counter_color", "default") ?: "default"
         previewCounter?.setTextColor(if (counterColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(counterColorHex, Color.parseColor("#888888")))
 
+        val orderList = parseAndNormalizeOrder(prefs.getString(PREF_KEY_BUTTON_ORDER, DEFAULT_BUTTON_ORDER))
+        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+
+        val visibleIds = orderList.filter { it !in hiddenSet }
+        val row1Ids = visibleIds.take(5)
+        val row2Ids = visibleIds.drop(5)
+
+        val g1 = row1GroupView
+        val g2 = row2GroupView
+        if (g1 != null && g2 != null) {
+            g1.removeAllViews()
+            g2.removeAllViews()
+
+            row1Ids.forEach { id ->
+                val btn = previewButtonMap[id]
+                if (btn != null) {
+                    (btn.parent as? android.view.ViewGroup)?.removeView(btn)
+                    g1.addView(btn)
+                }
+            }
+
+            row2Ids.forEach { id ->
+                val btn = previewButtonMap[id]
+                if (btn != null) {
+                    (btn.parent as? android.view.ViewGroup)?.removeView(btn)
+                    g2.addView(btn)
+                }
+            }
+        }
+
+        // Populate hidden tray chips
+        val chipBox = hiddenChipsContainer
+        val ctx = context
+        if (chipBox != null && ctx != null) {
+            chipBox.removeAllViews()
+            val density = ctx.resources.displayMetrics.density
+            if (hiddenSet.isEmpty()) {
+                val emptyTv = android.widget.TextView(ctx).apply {
+                    text = "(No hidden buttons)"
+                    textSize = 11f
+                    setTextColor(Color.parseColor("#666666"))
+                }
+                chipBox.addView(emptyTv)
+            } else {
+                hiddenSet.forEach { hid ->
+                    val chip = android.widget.TextView(ctx).apply {
+                        text = "+ $hid"
+                        textSize = 12f
+                        setTextColor(Color.WHITE)
+                        setBackgroundColor(Color.parseColor("#0078D4"))
+                        setPadding((8 * density).toInt(), (4 * density).toInt(), (8 * density).toInt(), (4 * density).toInt())
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            marginEnd = (6 * density).toInt()
+                            bottomMargin = (4 * density).toInt()
+                        }
+                        setOnClickListener {
+                            val curHidden = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+                            curHidden.remove(hid)
+                            prefs.edit().putString(PREF_KEY_HIDDEN_BUTTONS, curHidden.joinToString(",")).apply()
+                            refreshFindReplacePreview(prefs)
+                            ThemedToast.show(ctx, "Restored $hid button")
+                        }
+                    }
+                    chipBox.addView(chip)
+                }
+            }
+        }
+
         previewButtonMap.forEach { (domId, btnView) ->
             val suffix = buttonPreferenceSuffix[domId] ?: domId.replace("-", "_")
             val btnBgHex = prefs.getString("pref_findreplace_btn_${suffix}_bg", "default") ?: "default"
@@ -648,13 +816,35 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                     val sizePx = (18 * density).toInt()
                     svg.documentWidth = sizePx.toFloat()
                     svg.documentHeight = sizePx.toFloat()
-                    val picture = svg.renderToPicture()
-                    val drawable = android.graphics.drawable.PictureDrawable(picture)
-                    drawable.setBounds(0, 0, sizePx, sizePx)
-                    drawable.colorFilter = android.graphics.PorterDuffColorFilter(
-                        iconColor,
-                        android.graphics.PorterDuff.Mode.SRC_IN
+
+                    val sourceBitmap = android.graphics.Bitmap.createBitmap(
+                        sizePx,
+                        sizePx,
+                        android.graphics.Bitmap.Config.ARGB_8888
                     )
+                    val sourceCanvas = android.graphics.Canvas(sourceBitmap)
+                    svg.renderToCanvas(sourceCanvas)
+
+                    val tintedBitmap = android.graphics.Bitmap.createBitmap(
+                        sizePx,
+                        sizePx,
+                        android.graphics.Bitmap.Config.ARGB_8888
+                    )
+                    val tintPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        colorFilter = android.graphics.PorterDuffColorFilter(
+                            iconColor,
+                            android.graphics.PorterDuff.Mode.SRC_IN
+                        )
+                    }
+                    android.graphics.Canvas(tintedBitmap).drawBitmap(sourceBitmap, 0f, 0f, tintPaint)
+                    sourceBitmap.recycle()
+
+                    val drawable = android.graphics.drawable.BitmapDrawable(
+                        btnView.resources,
+                        tintedBitmap
+                    ).apply {
+                        setBounds(0, 0, sizePx, sizePx)
+                    }
                     btnView.text = ""
                     btnView.setCompoundDrawables(drawable, null, null, null)
                 } catch (e: Exception) {
@@ -735,19 +925,27 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         }
         previewCounter = counter
 
+        val row1Icons = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        row1GroupView = row1Icons
+
         val btnPrev = android.widget.TextView(context).apply { text = "▲"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnNext = android.widget.TextView(context).apply { text = "▼"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnHighlight = android.widget.TextView(context).apply { text = "≡"; gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); setBackgroundColor(Color.parseColor("#0078D4")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnRegex = android.widget.TextView(context).apply { text = ".*"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnClose = android.widget.TextView(context).apply { text = "✕"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
 
+        row1Icons.addView(btnPrev)
+        row1Icons.addView(btnNext)
+        row1Icons.addView(btnHighlight)
+        row1Icons.addView(btnRegex)
+        row1Icons.addView(btnClose)
+
         row1.addView(findField)
         row1.addView(counter)
-        row1.addView(btnPrev)
-        row1.addView(btnNext)
-        row1.addView(btnHighlight)
-        row1.addView(btnRegex)
-        row1.addView(btnClose)
+        row1.addView(row1Icons)
 
         val row2 = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
@@ -770,19 +968,66 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         }
         previewReplaceField = replaceField
 
+        val row2Icons = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        row2GroupView = row2Icons
+
         val btnReplaceOne = android.widget.TextView(context).apply { text = "1➔"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnReplaceAll = android.widget.TextView(context).apply { text = "∀➔"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnCase = android.widget.TextView(context).apply { text = "Aa"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnWord = android.widget.TextView(context).apply { text = "\\b"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
 
+        row2Icons.addView(btnReplaceOne)
+        row2Icons.addView(btnReplaceAll)
+        row2Icons.addView(btnCase)
+        row2Icons.addView(btnWord)
+
         row2.addView(replaceField)
-        row2.addView(btnReplaceOne)
-        row2.addView(btnReplaceAll)
-        row2.addView(btnCase)
-        row2.addView(btnWord)
+        row2.addView(row2Icons)
+
+        val hiddenTray = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding((8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt())
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (10 * density).toInt() }
+
+            val borderDrawable = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#181818"))
+                setStroke((1 * density).toInt(), Color.parseColor("#333333"), (4 * density).toFloat(), (4 * density).toFloat())
+                cornerRadius = 6 * density
+            }
+            background = borderDrawable
+        }
+        hiddenTrayView = hiddenTray
+
+        val trayLabel = android.widget.TextView(context).apply {
+            text = "Hidden buttons — drag here to remove; tap + to restore"
+            textSize = 11f
+            setTextColor(Color.parseColor("#888888"))
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = (4 * density).toInt() }
+        }
+        hiddenTray.addView(trayLabel)
+
+        val chipsContainer = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        hiddenChipsContainer = chipsContainer
+        hiddenTray.addView(chipsContainer)
 
         previewCard.addView(row1)
         previewCard.addView(row2)
+        previewCard.addView(hiddenTray)
 
         previewButtonMap["prev"] = btnPrev
         previewButtonMap["next"] = btnNext
@@ -796,6 +1041,95 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
 
         previewButtonMap.forEach { (domId, btnView) ->
             originalButtonTextMap[domId] = btnView.text.toString()
+
+            btnView.setOnLongClickListener { v ->
+                val item = android.content.ClipData.Item(domId)
+                val dragData = android.content.ClipData(domId, arrayOf(android.content.ClipDescription.MIMETYPE_TEXT_PLAIN), item)
+                val shadow = android.view.View.DragShadowBuilder(v)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    v.startDragAndDrop(dragData, shadow, domId, 0)
+                } else {
+                    @Suppress("DEPRECATION")
+                    v.startDrag(dragData, shadow, domId, 0)
+                }
+                true
+            }
+        }
+
+        val handleRowDrop = { isRow1: Boolean, event: android.view.DragEvent ->
+            when (event.action) {
+                android.view.DragEvent.ACTION_DROP -> {
+                    val draggedId = event.clipData?.getItemAt(0)?.text?.toString()
+                    if (draggedId != null && draggedId in KNOWN_BUTTON_IDS) {
+                        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+                        val orderList = parseAndNormalizeOrder(prefs.getString(PREF_KEY_BUTTON_ORDER, DEFAULT_BUTTON_ORDER))
+                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+
+                        hiddenSet.remove(draggedId)
+                        orderList.remove(draggedId)
+
+                        val targetIndex = if (isRow1) 0 else Math.min(5, orderList.size)
+                        orderList.add(targetIndex, draggedId)
+
+                        prefs.edit()
+                            .putString(PREF_KEY_BUTTON_ORDER, orderList.joinToString(","))
+                            .putString(PREF_KEY_HIDDEN_BUTTONS, hiddenSet.joinToString(","))
+                            .apply()
+
+                        refreshFindReplacePreview(prefs)
+                        ThemedToast.show(context, "Reordered $draggedId")
+                    }
+                    true
+                }
+                android.view.DragEvent.ACTION_DRAG_STARTED -> true
+                else -> true
+            }
+        }
+
+        row1Icons.setOnDragListener { _, event -> handleRowDrop(true, event) }
+        row2Icons.setOnDragListener { _, event -> handleRowDrop(false, event) }
+
+        hiddenTray.setOnDragListener { _, event ->
+            when (event.action) {
+                android.view.DragEvent.ACTION_DRAG_ENTERED -> {
+                    hiddenTray.setBackgroundColor(Color.parseColor("#220000"))
+                    true
+                }
+                android.view.DragEvent.ACTION_DRAG_EXITED -> {
+                    val borderDrawable = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(Color.parseColor("#181818"))
+                        setStroke((1 * density).toInt(), Color.parseColor("#333333"), (4 * density).toFloat(), (4 * density).toFloat())
+                        cornerRadius = 6 * density
+                    }
+                    hiddenTray.background = borderDrawable
+                    true
+                }
+                android.view.DragEvent.ACTION_DROP -> {
+                    val borderDrawable = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(Color.parseColor("#181818"))
+                        setStroke((1 * density).toInt(), Color.parseColor("#333333"), (4 * density).toFloat(), (4 * density).toFloat())
+                        cornerRadius = 6 * density
+                    }
+                    hiddenTray.background = borderDrawable
+
+                    val draggedId = event.clipData?.getItemAt(0)?.text?.toString()
+                    if (draggedId != null && draggedId in KNOWN_BUTTON_IDS) {
+                        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+                        hiddenSet.add(draggedId)
+
+                        prefs.edit()
+                            .putString(PREF_KEY_HIDDEN_BUTTONS, hiddenSet.joinToString(","))
+                            .apply()
+
+                        refreshFindReplacePreview(prefs)
+                        ThemedToast.show(context, "Hidden $draggedId button")
+                    }
+                    true
+                }
+                android.view.DragEvent.ACTION_DRAG_STARTED -> true
+                else -> true
+            }
         }
 
         previewCard.setOnClickListener {
