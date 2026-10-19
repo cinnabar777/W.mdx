@@ -32,10 +32,13 @@ object PreferenceResetHelper {
             "pref_settings_summary_color" -> "#AAAAAA"
             "pref_settings_switch_color" -> "#00E5FF"
             "pref_settings_reset_icon_color" -> "#00E5FF"
+            "pref_settings_reset_inactive_icon_color" -> "#555555"
             "pref_settings_bg_color" -> "#000000"
             "pref_toolbar_bg_color" -> "#121212"
             "pref_toolbar_icon_color" -> "#FFFFFF"
             "pref_toolbar_active_icon_color" -> "#00E5FF"
+            "pref_toolbar_toggle_bg_color" -> "#00000000"
+            "pref_toolbar_toggle_icon_color" -> "#FFFFFF"
             "pref_heading_underline_color" -> "#FFFFFF"
             "pref_blockquote_line_color" -> "#444444"
             "pref_blockquote_bg_color" -> "#1A1A1A"
@@ -60,10 +63,26 @@ object PreferenceResetHelper {
             "pref_table_header_text_color" -> "#FFFFFF"
             "pref_table_cell_bg_color" -> "#000000"
             "pref_table_cell_text_color" -> "#FFFFFF"
+            "pref_table_menu_bg_color" -> "#222428"
+            "pref_table_menu_action_bg_color" -> "rgba(255,255,255,0.12)"
+            "pref_table_menu_text_color" -> "#FFFFFF"
+            "pref_table_menu_disabled_color" -> "#777777"
+            "pref_table_menu_pressed_bg_color" -> "rgba(0,120,212,0.4)"
             "pref_footnote_text_color" -> "#E0E0E0"
             "pref_footnote_ref_color" -> "#29B6F6"
             "pref_footnote_link_color" -> "#29B6F6"
             "pref_footnote_bg_color" -> "#1A1A1A"
+            "pref_findreplace_panel_bg" -> "#121212"
+            "pref_findreplace_panel_border" -> "#282828"
+            "pref_findreplace_field_find_bg", "pref_findreplace_field_replace_bg" -> "#1E1E1E"
+            "pref_findreplace_field_find_color", "pref_findreplace_field_replace_color" -> "#FFFFFF"
+            "pref_findreplace_field_find_placeholder", "pref_findreplace_field_replace_placeholder" -> "#888888"
+            "pref_findreplace_field_find_border", "pref_findreplace_field_replace_border" -> "#333333"
+            "pref_findreplace_field_find_focus_border", "pref_findreplace_field_replace_focus_border" -> "#0078D4"
+            "pref_findreplace_counter_color" -> "#888888"
+            "pref_findreplace_match_bg" -> "rgba(255, 255, 0, 0.35)"
+            "pref_findreplace_current_match_bg" -> "#0078D4"
+            "pref_findreplace_current_match_color" -> "#FFFFFF"
             else -> {
                 if (key != null && key.startsWith("pref_heading_") && key.endsWith("_color")) {
                     "#FFFFFF"
@@ -125,6 +144,12 @@ object PreferenceResetHelper {
             key == "pref_table_cell_bg_color" -> "default"
             key == "pref_table_cell_text_color" -> "default"
             key == "pref_table_cell_padding" -> 8
+            key == "pref_table_menu_bg_color" -> "default"
+            key == "pref_table_menu_action_bg_color" -> "default"
+            key == "pref_table_menu_text_color" -> "default"
+            key == "pref_table_menu_disabled_color" -> "default"
+            key == "pref_table_menu_pressed_bg_color" -> "default"
+            key == "pref_code_block_font_size" -> 14
             key == "pref_code_block_padding" -> 16
             key == "pref_code_block_border_radius" -> 6
             key == "pref_code_block_line_height" -> "1.4"
@@ -144,12 +169,41 @@ object PreferenceResetHelper {
             key == "pref_link_color" -> "default"
             key == "pref_code_color" -> "default"
             key == "pref_code_bg_color" -> "default"
+            key == "pref_cursor_color" -> "default"
+            key == "pref_cursor_width" -> 2
+            key == "pref_cursor_blink_rate" -> "0.8s"
+            key == "pref_selection_highlight_bg_color" -> "default"
+            key == "pref_selection_highlight_text_color" -> "default"
+            key == "pref_findreplace_panel_bg" -> "default"
+            key == "pref_findreplace_panel_border" -> "default"
+            key == "pref_findreplace_field_find_bg" -> "default"
+            key == "pref_findreplace_field_find_color" -> "default"
+            key == "pref_findreplace_field_find_placeholder" -> "default"
+            key == "pref_findreplace_field_find_border" -> "default"
+            key == "pref_findreplace_field_find_focus_border" -> "default"
+            key == "pref_findreplace_field_find_font_size" -> 14
+            key == "pref_findreplace_field_replace_bg" -> "default"
+            key == "pref_findreplace_field_replace_color" -> "default"
+            key == "pref_findreplace_field_replace_placeholder" -> "default"
+            key == "pref_findreplace_field_replace_border" -> "default"
+            key == "pref_findreplace_field_replace_focus_border" -> "default"
+            key == "pref_findreplace_field_replace_font_size" -> 14
+            key == "pref_findreplace_field_height" -> 32
+            key == "pref_findreplace_counter_color" -> "default"
+            key == "pref_findreplace_match_bg" -> "default"
+            key == "pref_findreplace_current_match_bg" -> "default"
+            key == "pref_findreplace_current_match_color" -> "default"
+            key.startsWith("pref_findreplace_btn_") && key.endsWith("_width") -> 28
+            key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg") -> ""
+            key.startsWith("pref_findreplace_btn_") -> "default"
             key == "pref_code_block_color" -> "default"
             key == "pref_code_block_bg_color" -> "default"
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"
             key == "pref_toolbar_bg_color" -> "default"
             key == "pref_toolbar_icon_color" -> "default"
             key == "pref_toolbar_active_icon_color" -> "default"
+            key == "pref_toolbar_toggle_bg_color" -> "default"
+            key == "pref_toolbar_toggle_icon_color" -> "default"
             key == "pref_toolbar_height" -> 48
             key == "pref_app_theme" -> "amoled"
             key == "pref_image_mode" -> "picker"
@@ -158,7 +212,25 @@ object PreferenceResetHelper {
             key == "pref_settings_summary_color" -> "#AAAAAA"
             key == "pref_settings_switch_color" -> "#00E5FF"
             key == "pref_settings_reset_icon_color" -> "#00E5FF"
+            key == "pref_settings_reset_inactive_icon_color" -> "#555555"
             key == "pref_settings_bg_color" -> "#000000"
+            key == "pref_hide_status_bar" -> false
+            key == "pref_hide_nav_bar" -> false
+            key == "pref_editor_mode" -> "wysiwyg"
+            key == "pref_export_format" -> "html"
+            key == "pref_export_include_css" -> true
+            key == "pref_export_css_placement" -> "head"
+            key == "pref_export_include_toc" -> true
+            key == "pref_export_toc_levels" -> 3
+            key == "pref_hotkey_export" -> "ctrl+shift+e"
+            key == "pref_hotkey_open_with" -> "ctrl+shift+o"
+            key == "pref_hotkey_line_numbers" -> "ctrl+alt+l"
+            key == "pref_hotkey_footnote" -> "ctrl+shift+f"
+            key == "pref_footnote_font_size" -> 14
+            key == "pref_footnote_text_color" -> "default"
+            key == "pref_footnote_ref_color" -> "default"
+            key == "pref_footnote_link_color" -> "default"
+            key == "pref_footnote_bg_color" -> "default"
             key == "pref_auto_save_on_leave" -> true
             key == "pref_hotkey_new" -> "ctrl+n"
             key == "pref_hotkey_open" -> "ctrl+o"
@@ -204,9 +276,16 @@ object PreferenceResetHelper {
         }
     }
 
+    private fun shouldShowResetButton(key: String?): Boolean =
+        key != null &&
+            key != "pref_reset_all_defaults" &&
+            key != "pref_export_backup" &&
+            key != "pref_import_backup" &&
+            !key.startsWith("pref_page_") &&
+            !key.endsWith("_page")
+
     fun isModifiedFromDefault(context: Context, key: String?): Boolean {
-        if (key == null) return false
-        if (key.startsWith("pref_export") || key.startsWith("pref_import") || key == "pref_reset_all_defaults" || key.startsWith("pref_page_") || key.endsWith("_page")) return false
+        if (key == null || !shouldShowResetButton(key)) return false
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 
@@ -228,85 +307,133 @@ object PreferenceResetHelper {
         }
     }
 
+    private const val RESET_CONTROL_ROW_TAG = "reset_control_row"
+
     fun bindResetButton(holder: PreferenceViewHolder, preference: Preference) {
         val context = preference.context
         val key = preference.key
+        val showReset = shouldShowResetButton(key)
 
-        val isExcluded = key == null || key.startsWith("pref_export") || key.startsWith("pref_import") || key == "pref_reset_all_defaults" || key.startsWith("pref_page_") || key.endsWith("_page")
+        var button = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
+        if (!showReset) {
+            button?.visibility = View.INVISIBLE
+            applySettingsTheme(holder, preference)
+            return
+        }
 
-        if (!isExcluded) {
-            val titleView = holder.findViewById(android.R.id.title) as? TextView
-            if (titleView != null && titleView.parent is ViewGroup) {
-                val titleParent = titleView.parent as ViewGroup
-                var btnReset = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
+        val seekBarRow =
+            holder.findViewById(androidx.preference.R.id.seekbar)?.parent as? LinearLayout
+        val widgetFrame =
+            holder.findViewById(android.R.id.widget_frame) as? ViewGroup
+        val targetRow = seekBarRow ?: ensureHorizontalWidgetRow(context, widgetFrame)
 
-                if (btnReset == null) {
-                    btnReset = ImageView(context).apply {
-                        id = R.id.btn_reset_widget
-                        setImageResource(R.drawable.ic_reset)
-                        val paddingPx = (6 * context.resources.displayMetrics.density).toInt()
-                        setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
-                        isClickable = true
-                        isFocusable = true
-                        contentDescription = "Reset"
-                        val typedValue = TypedValue()
-                        context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, typedValue, true)
-                        setBackgroundResource(typedValue.resourceId)
-                    }
+        if (targetRow == null) {
+            android.util.Log.e("PreferenceReset", "No reset slot for preference: $key")
+            button?.visibility = View.INVISIBLE
+            applySettingsTheme(holder, preference)
+            return
+        }
 
-                    val sizePx = (32 * context.resources.displayMetrics.density).toInt()
-                    val marginPx = (4 * context.resources.displayMetrics.density).toInt()
-                    val params = LinearLayout.LayoutParams(sizePx, sizePx).apply {
-                        gravity = Gravity.CENTER_VERTICAL
-                        marginStart = marginPx
-                    }
-
-                    val sliderRow = if (preference is SeekBarPreference) {
-                        holder.findViewById(androidx.preference.R.id.seekbar)?.parent as? LinearLayout
-                    } else null
-                    if (sliderRow != null) {
-                        // Keep the title in place: the summary is positioned relative to its ID.
-                        // The weighted slider gives up space for a full-size reset touch target.
-                        params.width = (48 * context.resources.displayMetrics.density).toInt()
-                        params.height = params.width
-                        sliderRow.addView(btnReset, params)
-                    } else if (titleParent is LinearLayout && titleParent.orientation == LinearLayout.HORIZONTAL) {
-                        titleParent.addView(btnReset, params)
-                    } else {
-                        val containerTag = "title_reset_row_container"
-                        var container = titleParent.findViewWithTag<LinearLayout>(containerTag)
-                        if (container == null) {
-                            val indexInParent = titleParent.indexOfChild(titleView)
-                            titleParent.removeView(titleView)
-                            container = LinearLayout(context).apply {
-                                tag = containerTag
-                                orientation = LinearLayout.HORIZONTAL
-                                gravity = Gravity.CENTER_VERTICAL
-                            }
-                            container.addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f))
-                            container.addView(btnReset, params)
-                            titleParent.addView(container, indexInParent)
-                        }
-                    }
+        if (button == null) button = createResetButton(context)
+        if (button.parent !== targetRow) {
+            (button.parent as? ViewGroup)?.removeView(button)
+            targetRow.addView(
+                button,
+                LinearLayout.LayoutParams(dp(context, 40), dp(context, 40)).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    marginStart = dp(context, 4)
                 }
+            )
+        }
 
-                val isModified = isModifiedFromDefault(context, key)
-                if (isModified) {
-                    btnReset.visibility = View.VISIBLE
-                    btnReset.setOnClickListener {
-                        resetSinglePreference(context, preference)
-                    }
-                } else {
-                    btnReset.visibility = View.GONE
-                }
+        button.visibility = View.VISIBLE
+        val modified = isModifiedFromDefault(context, key)
+        button.isEnabled = modified
+        button.alpha = if (modified) 1f else 0.45f
+        button.setOnClickListener {
+            if (isModifiedFromDefault(context, key)) {
+                resetSinglePreference(context, preference)
             }
-        } else {
-            val btnReset = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
-            btnReset?.visibility = View.GONE
         }
 
         applySettingsTheme(holder, preference)
     }
+
+    private fun ensureHorizontalWidgetRow(
+        context: Context,
+        widgetFrame: ViewGroup?
+    ): LinearLayout? {
+        if (widgetFrame == null) return null
+
+        val existingRow =
+            widgetFrame.findViewWithTag<LinearLayout>(RESET_CONTROL_ROW_TAG)
+        if (existingRow != null) return existingRow
+
+        if (widgetFrame is LinearLayout &&
+            widgetFrame.orientation == LinearLayout.HORIZONTAL
+        ) {
+            return widgetFrame
+        }
+
+        val oldChildren = (0 until widgetFrame.childCount)
+            .map { widgetFrame.getChildAt(it) }
+            .filterNot { it.id == R.id.btn_reset_widget }
+        widgetFrame.removeAllViews()
+
+        val row = LinearLayout(context).apply {
+            tag = RESET_CONTROL_ROW_TAG
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        oldChildren.forEach { child ->
+            (child.parent as? ViewGroup)?.removeView(child)
+            row.addView(
+                child,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        val rowParams = if (widgetFrame is android.widget.FrameLayout) {
+            android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.END or Gravity.CENTER_VERTICAL
+            )
+        } else {
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        widgetFrame.addView(row, rowParams)
+        return row
+    }
+
+    private fun createResetButton(context: Context): ImageView {
+        val padding = dp(context, 7)
+        val typedValue = TypedValue()
+        context.theme.resolveAttribute(
+            android.R.attr.selectableItemBackgroundBorderless,
+            typedValue,
+            true
+        )
+        return ImageView(context).apply {
+            id = R.id.btn_reset_widget
+            setImageResource(R.drawable.ic_reset)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(padding, padding, padding, padding)
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Reset setting to default"
+            setBackgroundResource(typedValue.resourceId)
+        }
+    }
+
+    private fun dp(context: Context, value: Int): Int =
+        (value * context.resources.displayMetrics.density).toInt()
 
     fun applySettingsTheme(holder: PreferenceViewHolder, preference: Preference) {
         val context = preference.context
@@ -317,12 +444,14 @@ object PreferenceResetHelper {
         val summaryColorHex = prefs.getString("pref_settings_summary_color", "#AAAAAA") ?: "#AAAAAA"
         val switchColorHex = prefs.getString("pref_settings_switch_color", "#00E5FF") ?: "#00E5FF"
         val resetIconColorHex = prefs.getString("pref_settings_reset_icon_color", "#00E5FF") ?: "#00E5FF"
+        val resetInactiveColorHex = prefs.getString("pref_settings_reset_inactive_icon_color", "#555555") ?: "#555555"
 
         val catColor = ColorPickerDialog.parseHexColor(catColorHex, android.graphics.Color.parseColor("#00E5FF"))
         val titleColor = ColorPickerDialog.parseHexColor(titleColorHex, android.graphics.Color.WHITE)
         val summaryColor = ColorPickerDialog.parseHexColor(summaryColorHex, android.graphics.Color.parseColor("#AAAAAA"))
         val switchColor = ColorPickerDialog.parseHexColor(switchColorHex, android.graphics.Color.parseColor("#00E5FF"))
         val resetIconColor = ColorPickerDialog.parseHexColor(resetIconColorHex, android.graphics.Color.parseColor("#00E5FF"))
+        val resetInactiveColor = ColorPickerDialog.parseHexColor(resetInactiveColorHex, android.graphics.Color.parseColor("#555555"))
 
         val titleView = holder.findViewById(android.R.id.title) as? android.widget.TextView
         val summaryView = holder.findViewById(android.R.id.summary) as? android.widget.TextView
@@ -346,7 +475,8 @@ object PreferenceResetHelper {
         }
 
         val btnReset = holder.itemView.findViewById<ImageView>(R.id.btn_reset_widget)
-        btnReset?.setColorFilter(resetIconColor)
+        val isModified = isModifiedFromDefault(context, preference.key)
+        btnReset?.setColorFilter(if (isModified) resetIconColor else resetInactiveColor)
 
         val widgetFrame = holder.findViewById(android.R.id.widget_frame) as? ViewGroup
         if (widgetFrame != null) {
@@ -392,7 +522,7 @@ object PreferenceResetHelper {
             if (pref is ResettablePreference) {
                 pref.callNotifyChanged()
             }
-            Toast.makeText(context, "Font reset to default system font", Toast.LENGTH_SHORT).show()
+            ThemedToast.show(context, "Font reset to default system font", Toast.LENGTH_SHORT)
             return
         }
 
@@ -416,7 +546,7 @@ object PreferenceResetHelper {
         if (pref is ResettablePreference) {
             pref.callNotifyChanged()
         }
-        Toast.makeText(context, "Setting reset to default ↺", Toast.LENGTH_SHORT).show()
+        ThemedToast.show(context, "Setting reset to default ↺", Toast.LENGTH_SHORT)
     }
 }
 
@@ -466,18 +596,23 @@ open class ResetColorPickerPreference @JvmOverloads constructor(
 
         val widgetFrame = holder.findViewById(android.R.id.widget_frame) as? ViewGroup
         if (widgetFrame != null) {
+            val previewHost =
+                widgetFrame.findViewWithTag<LinearLayout>("reset_control_row")
+                    ?: widgetFrame as? LinearLayout
+
             val previewTag = "color_picker_preview_circle"
-            var previewCircle = widgetFrame.findViewWithTag<View>(previewTag)
-            if (previewCircle == null) {
+            var previewCircle = previewHost?.findViewWithTag<View>(previewTag)
+            if (previewCircle == null && previewHost != null) {
                 val density = context.resources.displayMetrics.density
                 val sizePx = (24 * density).toInt()
-                previewCircle = View(context).apply {
+                val createdCircle = View(context).apply {
                     tag = previewTag
                     layoutParams = LinearLayout.LayoutParams(sizePx, sizePx).apply {
                         marginEnd = (8 * density).toInt()
                     }
                 }
-                widgetFrame.addView(previewCircle, 0)
+                previewHost.addView(createdCircle, 0)
+                previewCircle = createdCircle
             }
 
             val prefs = PreferenceManager.getDefaultSharedPreferences(context)
@@ -485,7 +620,7 @@ open class ResetColorPickerPreference @JvmOverloads constructor(
             val effectiveHex = if (colorHex == "default") PreferenceResetHelper.getDefaultColorHex(key) else colorHex
             val colorInt = ColorPickerDialog.parseHexColor(effectiveHex, android.graphics.Color.WHITE)
 
-            previewCircle.background = android.graphics.drawable.GradientDrawable().apply {
+            previewCircle?.background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(colorInt)
                 setStroke((1.5 * context.resources.displayMetrics.density).toInt(), android.graphics.Color.parseColor("#888888"))
@@ -501,7 +636,7 @@ open class ResetColorPickerPreference @JvmOverloads constructor(
         ColorPickerDialog(context, effectiveHex) { selectedHex ->
             prefs.edit().putString(key, selectedHex).apply()
             notifyChanged()
-            Toast.makeText(context, "Color set to $selectedHex", Toast.LENGTH_SHORT).show()
+            ThemedToast.show(context, "Color set to $selectedHex", Toast.LENGTH_SHORT)
         }.show()
     }
 

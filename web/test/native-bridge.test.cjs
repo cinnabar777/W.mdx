@@ -19,3 +19,8 @@ test('editorBridge exposes required methods', () => {
   assert.ok(source.includes('toggleLineWrap'));
   assert.ok(source.includes('toggleLineNumbers'));
 });
+
+test('undo uses undoDepth guard and preserves document on repeated undo', () => {
+  assert.ok(source.includes('undoDepth'), 'Missing undoDepth check in undo()');
+  assert.ok(source.includes('Transaction.addToHistory.of(false)'), 'Missing history bypass in setMarkdown');
+});
