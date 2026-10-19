@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Search Panel Window">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_findreplace_panel_min_height"
+            app:title="Search Panel Min Height (px)"
+            app:summary="Minimum vertical height for top search panel"
+            app:min="40"
+            android:max="160"
+            app:defaultValue="72"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_panel_bg"
+            app:title="Panel Background Color"
+            app:summary="Background color for Find &amp; Replace panel"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_panel_border"
+            app:title="Panel Bottom Border Color"
+            app:summary="Separator border color at bottom of panel"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Find &amp; Replace Text Fields">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_field_bg"
+            app:title="Field Background Color"
+            app:summary="Background color for Find/Replace input boxes"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_field_color"
+            app:title="Field Text Color"
+            app:summary="Text color for typed search input text"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_field_placeholder"
+            app:title="Placeholder Text Color"
+            app:summary="Color for 'Find...' and 'Replace...' hints"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_field_border"
+            app:title="Field Border Color"
+            app:summary="Normal border color for text fields"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_field_focus_border"
+            app:title="Focused Field Border Color"
+            app:summary="Active border color when a text field has focus"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_findreplace_field_font_size"
+            app:title="Field Text Size (px)"
+            app:summary="Font size for search inputs"
+            app:min="10"
+            android:max="24"
+            app:defaultValue="14"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_findreplace_field_height"
+            app:title="Field Height (px)"
+            app:summary="Height for input fields"
+            app:min="24"
+            android:max="56"
+            app:defaultValue="32"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Match Counter &amp; Highlighting">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_counter_color"
+            app:title="Match Counter Text Color"
+            app:summary="Color for '1/12' match counter text"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_match_bg"
+            app:title="All-Matches Highlight Color"
+            app:summary="Highlight background color for all non-selected search matches"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_current_match_bg"
+            app:title="Active Match Highlight Color"
+            app:summary="Highlight background color for currently active selected match"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_current_match_color"
+            app:title="Active Match Text Color"
+            app:summary="Text color for currently active selected match"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Search Action Buttons General Styling">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_btn_bg"
+            app:title="Button Normal Background"
+            app:summary="Default background color for search bar icon buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_btn_color"
+            app:title="Button Normal Icon Color"
+            app:summary="Default icon/text color for search bar buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_btn_active_bg"
+            app:title="Button Active Background"
+            app:summary="Background color when a toggle button is active (e.g. Regex / Match Case ON)"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_btn_active_color"
+            app:title="Button Active Icon Color"
+            app:summary="Icon color when a toggle button is active"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_findreplace_btn_pressed_bg"
+            app:title="Button Pressed State Background"
+            app:summary="Background tint when pressing a search button"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_findreplace_btn_width"
+            app:title="Button Width (px)"
+            app:summary="Target width for search action buttons"
+            app:min="20"
+            android:max="64"
+            app:defaultValue="28"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_findreplace_btn_height"
+            app:title="Button Height (px)"
+            app:summary="Target height for search action buttons"
+            app:min="20"
+            android:max="56"
+            app:defaultValue="32"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

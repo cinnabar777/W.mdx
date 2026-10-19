@@ -72,6 +72,22 @@ object PreferenceResetHelper {
             "pref_footnote_ref_color" -> "#29B6F6"
             "pref_footnote_link_color" -> "#29B6F6"
             "pref_footnote_bg_color" -> "#1A1A1A"
+            "pref_findreplace_panel_bg" -> "#121212"
+            "pref_findreplace_panel_border" -> "#282828"
+            "pref_findreplace_field_border" -> "#333333"
+            "pref_findreplace_field_focus_border" -> "#0078D4"
+            "pref_findreplace_field_bg" -> "#1E1E1E"
+            "pref_findreplace_field_color" -> "#FFFFFF"
+            "pref_findreplace_field_placeholder" -> "#888888"
+            "pref_findreplace_counter_color" -> "#888888"
+            "pref_findreplace_match_bg" -> "rgba(255, 255, 0, 0.35)"
+            "pref_findreplace_current_match_bg" -> "#0078D4"
+            "pref_findreplace_current_match_color" -> "#FFFFFF"
+            "pref_findreplace_btn_bg" -> "#1E1E1E"
+            "pref_findreplace_btn_color" -> "#AAAAAA"
+            "pref_findreplace_btn_active_bg" -> "#0078D4"
+            "pref_findreplace_btn_active_color" -> "#FFFFFF"
+            "pref_findreplace_btn_pressed_bg" -> "#0078D4"
             else -> {
                 if (key != null && key.startsWith("pref_heading_") && key.endsWith("_color")) {
                     "#FFFFFF"
@@ -163,6 +179,27 @@ object PreferenceResetHelper {
             key == "pref_cursor_blink_rate" -> "0.8s"
             key == "pref_selection_highlight_bg_color" -> "default"
             key == "pref_selection_highlight_text_color" -> "default"
+            key == "pref_findreplace_panel_min_height" -> 72
+            key == "pref_findreplace_panel_bg" -> "default"
+            key == "pref_findreplace_panel_border" -> "default"
+            key == "pref_findreplace_field_border" -> "default"
+            key == "pref_findreplace_field_focus_border" -> "default"
+            key == "pref_findreplace_field_bg" -> "default"
+            key == "pref_findreplace_field_color" -> "default"
+            key == "pref_findreplace_field_placeholder" -> "default"
+            key == "pref_findreplace_field_font_size" -> 14
+            key == "pref_findreplace_field_height" -> 32
+            key == "pref_findreplace_counter_color" -> "default"
+            key == "pref_findreplace_match_bg" -> "default"
+            key == "pref_findreplace_current_match_bg" -> "default"
+            key == "pref_findreplace_current_match_color" -> "default"
+            key == "pref_findreplace_btn_bg" -> "default"
+            key == "pref_findreplace_btn_color" -> "default"
+            key == "pref_findreplace_btn_active_bg" -> "default"
+            key == "pref_findreplace_btn_active_color" -> "default"
+            key == "pref_findreplace_btn_pressed_bg" -> "default"
+            key == "pref_findreplace_btn_width" -> 28
+            key == "pref_findreplace_btn_height" -> 32
             key == "pref_code_block_color" -> "default"
             key == "pref_code_block_bg_color" -> "default"
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"
@@ -489,7 +526,7 @@ object PreferenceResetHelper {
             if (pref is ResettablePreference) {
                 pref.callNotifyChanged()
             }
-            Toast.makeText(context, "Font reset to default system font", Toast.LENGTH_SHORT).show()
+            ThemedToast.show(context, "Font reset to default system font", Toast.LENGTH_SHORT)
             return
         }
 
@@ -513,7 +550,7 @@ object PreferenceResetHelper {
         if (pref is ResettablePreference) {
             pref.callNotifyChanged()
         }
-        Toast.makeText(context, "Setting reset to default ↺", Toast.LENGTH_SHORT).show()
+        ThemedToast.show(context, "Setting reset to default ↺", Toast.LENGTH_SHORT)
     }
 }
 
@@ -603,7 +640,7 @@ open class ResetColorPickerPreference @JvmOverloads constructor(
         ColorPickerDialog(context, effectiveHex) { selectedHex ->
             prefs.edit().putString(key, selectedHex).apply()
             notifyChanged()
-            Toast.makeText(context, "Color set to $selectedHex", Toast.LENGTH_SHORT).show()
+            ThemedToast.show(context, "Color set to $selectedHex", Toast.LENGTH_SHORT)
         }.show()
     }
 

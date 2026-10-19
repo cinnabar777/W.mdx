@@ -52,6 +52,11 @@
             app:key="pref_styling_page_cursor"
             app:title="Cursor &amp; Selection Settings"
             app:summary="Configure caret color, blink rate, and selection handles" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_findreplace"
+            app:title="Find &amp; Replace"
+            app:summary="Customize search window colors, text fields, counter &amp; icon buttons" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

@@ -46,6 +46,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingHrFragment -> "Horizontal Dividers Styling"
                 is StylingControlbarFragment -> "Bottom Control Bar Styling"
                 is StylingCursorFragment -> "Cursor & Selection Settings"
+                is StylingFindReplaceFragment -> "Find & Replace Settings"
                 is StylingSettingsFragment -> "Styling & Typography"
                 is ExportSettingsFragment -> "HTML & MHTML Export Settings"
                 is HotkeysSettingsFragment -> "Custom Keyboard Shortcuts"
@@ -236,7 +237,7 @@ class SettingsFragment : BaseSettingsFragment() {
 
                 preferenceScreen.removeAll()
                 onCreatePreferences(null, null)
-                Toast.makeText(context, "All settings restored to defaults ↺", Toast.LENGTH_LONG).show()
+                ThemedToast.show(context, "All settings restored to defaults ↺", Toast.LENGTH_LONG)
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -283,9 +284,9 @@ class SettingsFragment : BaseSettingsFragment() {
                     }
                 }
             }
-            Toast.makeText(context, "Settings & fonts exported to ZIP!", Toast.LENGTH_LONG).show()
+            ThemedToast.show(context, "Settings & fonts exported to ZIP!", Toast.LENGTH_LONG)
         } catch (e: Exception) {
-            Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            ThemedToast.show(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG)
         }
     }
 
@@ -330,9 +331,9 @@ class SettingsFragment : BaseSettingsFragment() {
                     }
                 }
             }
-            Toast.makeText(context, "Settings & fonts restored from ZIP!", Toast.LENGTH_LONG).show()
+            ThemedToast.show(context, "Settings & fonts restored from ZIP!", Toast.LENGTH_LONG)
         } catch (e: Exception) {
-            Toast.makeText(context, "Import failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            ThemedToast.show(context, "Import failed: ${e.localizedMessage}", Toast.LENGTH_LONG)
         }
     }
 }
@@ -384,6 +385,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_hr" -> StylingHrFragment()
             "pref_styling_page_controlbar" -> StylingControlbarFragment()
             "pref_styling_page_cursor" -> StylingCursorFragment()
+            "pref_styling_page_findreplace" -> StylingFindReplaceFragment()
             else -> null
         }
         if (targetFragment != null) {
@@ -434,9 +436,9 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
 
             val pref: Preference? = findPreference(targetKey)
             updateFontPrefSummary(pref, targetKey)
-            Toast.makeText(context, "Font saved successfully: $fileName", Toast.LENGTH_SHORT).show()
+            ThemedToast.show(context, "Font saved successfully: $fileName", Toast.LENGTH_SHORT)
         } catch (e: Exception) {
-            Toast.makeText(context, "Failed to load font: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            ThemedToast.show(context, "Failed to load font: ${e.localizedMessage}", Toast.LENGTH_LONG)
         }
     }
 
@@ -521,6 +523,12 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 class StylingCursorFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_cursor, rootKey)
+    }
+}
+
+class StylingFindReplaceFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_findreplace, rootKey)
     }
 }
 

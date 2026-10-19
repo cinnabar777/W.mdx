@@ -2,6 +2,17 @@ import { EditorState, Compartment, Transaction, StateField } from '@codemirror/s
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { WordProcessorTableWidget } from './tableWidget.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
+import {
+  search,
+  SearchQuery,
+  setSearchQuery,
+  openSearchPanel,
+  closeSearchPanel,
+  findNext,
+  findPrevious,
+  replaceNext,
+  replaceAll
+} from '@codemirror/search';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, syntaxTree, HighlightStyle } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
@@ -1161,6 +1172,15 @@ class CodeMirrorAdapter {
             outline: 'none'
           }
         }),
+        search({
+          createPanel: () => {
+            const container = document.querySelector('#custom-search-bar');
+            return {
+              dom: container,
+              top: true
+            };
+          }
+        }),
         EditorView.updateListener.of(update => {
           if (update.docChanged && !this.isProgrammatic) {
             this.revision++;
@@ -1636,95 +1656,372 @@ function togglePopupStrip(groupKey, targetBtn, items) {
   strip.classList.remove('hidden');
 }
 
+let regexHistory = [];
+try {
+  const saved = localStorage.getItem('wmdx_regex_history_v1');
+  if (saved) regexHistory = JSON.parse(saved);
+} catch (e) {}
+
+function saveRegexPattern(pattern) {
+  if (!pattern || typeof pattern !== 'string') return;
+  const trimmed = pattern.trim();
+  if (!trimmed) return;
+  try {
+    new RegExp(trimmed);
+  } catch (e) {
+    return;
+  }
+  regexHistory = regexHistory.filter(p => p !== trimmed);
+  regexHistory.unshift(trimmed);
+  if (regexHistory.length > 20) regexHistory = regexHistory.slice(0, 20);
+  try {
+    localStorage.setItem('wmdx_regex_history_v1', JSON.stringify(regexHistory));
+  } catch (e) {}
+}
+
+function clearRegexHistory() {
+  regexHistory = [];
+  try {
+    localStorage.removeItem('wmdx_regex_history_v1');
+  } catch (e) {}
+}
+
+function showRegexHistoryPopup(anchorBtn, searchInput) {
+  let popup = document.querySelector('#regex-history-popup');
+  if (popup) popup.remove();
+
+  popup = document.createElement('div');
+  popup.id = 'regex-history-popup';
+  popup.style.cssText = `
+    position: fixed;
+    z-index: 10009;
+    background: var(--findreplace-panel-bg, #222428);
+    border: 1px solid var(--findreplace-panel-border, rgba(255,255,255,0.2));
+    border-radius: 8px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    max-height: 240px;
+    overflow-y: auto;
+    min-width: 180px;
+    color: var(--text-color, #ffffff);
+    font-size: 13px;
+  `;
+
+  if (regexHistory.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.cssText = 'padding: 6px 10px; color: #888; font-style: italic;';
+    emptyMsg.textContent = 'No regex history';
+    popup.appendChild(emptyMsg);
+  } else {
+    regexHistory.forEach(pat => {
+      const item = document.createElement('div');
+      item.className = 'regex-history-item';
+      item.style.cssText = 'padding: 6px 10px; cursor: pointer; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace;';
+      item.textContent = pat;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        searchInput.value = pat;
+        popup.remove();
+        commitSearchQuery();
+      });
+      popup.appendChild(item);
+    });
+
+    const clearBtn = document.createElement('button');
+    clearBtn.style.cssText = 'padding: 4px 8px; margin-top: 4px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #fff; cursor: pointer; font-size: 11px; align-self: flex-end;';
+    clearBtn.textContent = 'Clear history';
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearRegexHistory();
+      popup.remove();
+    });
+    popup.appendChild(clearBtn);
+  }
+
+  document.body.appendChild(popup);
+
+  const rect = anchorBtn.getBoundingClientRect();
+  popup.style.top = `${rect.bottom + 6}px`;
+  popup.style.left = `${Math.max(10, Math.min(rect.left, window.innerWidth - popup.offsetWidth - 10))}px`;
+
+  const closePopup = (e) => {
+    if (!popup.contains(e.target) && e.target !== anchorBtn) {
+      popup.remove();
+      window.removeEventListener('pointerdown', closePopup);
+    }
+  };
+  window.addEventListener('pointerdown', closePopup);
+}
+
+let searchState = {
+  matchCase: false,
+  wholeWords: false,
+  useRegex: false,
+  highlightAll: true
+};
+
+function sanitizeSvg(svgString) {
+  if (!svgString || typeof svgString !== 'string') return null;
+  const trimmed = svgString.trim();
+  if (!trimmed.startsWith('<svg') || !trimmed.endsWith('</svg>')) return null;
+
+  if (/<script/i.test(trimmed) ||
+      /<foreignObject/i.test(trimmed) ||
+      /\son\w+=/i.test(trimmed) ||
+      /javascript:/i.test(trimmed) ||
+      /data:/i.test(trimmed) ||
+      /<embed/i.test(trimmed) ||
+      /<object/i.test(trimmed) ||
+      /<iframe/i.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+let countDebounceTimer = null;
+
+function buildSearchQuery(searchInput, replaceInput) {
+  return new SearchQuery({
+    search: searchInput.value || '',
+    replace: replaceInput.value || '',
+    caseSensitive: searchState.matchCase,
+    wholeWord: searchState.wholeWords,
+    regexp: searchState.useRegex
+  });
+}
+
+function commitSearchQuery() {
+  const container = document.querySelector('#custom-search-bar');
+  if (!container || !activeAdapter || !activeAdapter.view) return false;
+
+  const searchInput = container.querySelector('#search-input');
+  const replaceInput = container.querySelector('#replace-input');
+  const view = activeAdapter.view;
+
+  const query = buildSearchQuery(searchInput, replaceInput);
+
+  if (searchState.useRegex && searchInput.value) {
+    saveRegexPattern(searchInput.value);
+  }
+
+  if (!query.search) {
+    clearInlineSearchError();
+    clearMatchCounter();
+    view.dispatch({ effects: setSearchQuery.of(query) });
+    return true;
+  }
+
+  if (!query.valid) {
+    if (searchState.useRegex) {
+      showInlineSearchError('Invalid regular expression');
+    }
+    return false;
+  }
+
+  clearInlineSearchError();
+  view.dispatch({ effects: setSearchQuery.of(query) });
+  updateMatchCounterFromQuery(query, view);
+  return true;
+}
+
+function updateMatchCounterFromQuery(query, view) {
+  if (countDebounceTimer) clearTimeout(countDebounceTimer);
+
+  countDebounceTimer = setTimeout(() => {
+    if (!query || !query.search || !query.valid) {
+      clearMatchCounter();
+      return;
+    }
+
+    const state = view.state;
+    const cursor = query.getCursor(state);
+    const selectionHead = state.selection.main.head;
+
+    let total = 0;
+    let currentMatchIndex = 0;
+    const MAX_COUNT = 10000;
+
+    let match = cursor.next();
+    while (!match.done) {
+      total++;
+      if (match.value.from <= selectionHead && selectionHead <= match.value.to) {
+        currentMatchIndex = total;
+      }
+      if (total >= MAX_COUNT) break;
+      match = cursor.next();
+    }
+
+    const counterEl = document.querySelector('#search-counter');
+    if (counterEl) {
+      if (total === 0) {
+        counterEl.textContent = '0/0';
+      } else if (total >= MAX_COUNT) {
+        counterEl.textContent = `${currentMatchIndex || 1}/10000+`;
+      } else {
+        counterEl.textContent = `${currentMatchIndex || 1}/${total}`;
+      }
+    }
+  }, 80);
+}
+
+function clearMatchCounter() {
+  const counterEl = document.querySelector('#search-counter');
+  if (counterEl) counterEl.textContent = '';
+}
+
+function showInlineSearchError(msg) {
+  const errEl = document.querySelector('#search-error-msg');
+  if (errEl) {
+    errEl.textContent = msg;
+    errEl.classList.remove('hidden');
+  }
+  const counterEl = document.querySelector('#search-counter');
+  if (counterEl) counterEl.textContent = 'Error';
+}
+
+function clearInlineSearchError() {
+  const errEl = document.querySelector('#search-error-msg');
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.classList.add('hidden');
+  }
+}
+
+function attachButtonBehavior(btn, description, onClickAction, isRegexBtn = false) {
+  if (!btn) return;
+  let timer = null;
+  let startX = 0, startY = 0;
+  let triggered = false;
+
+  btn.addEventListener('pointerdown', (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    triggered = false;
+    timer = setTimeout(() => {
+      triggered = true;
+      if (isRegexBtn) {
+        const searchInput = document.querySelector('#search-input');
+        showRegexHistoryPopup(btn, searchInput);
+      } else {
+        if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
+          window.AndroidNative.showToast(description);
+        }
+      }
+    }, 500);
+  });
+
+  btn.addEventListener('pointermove', (e) => {
+    if (timer && Math.hypot(e.clientX - startX, e.clientY - startY) > 10) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  });
+
+  const cancelTimer = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  btn.addEventListener('pointerup', cancelTimer);
+  btn.addEventListener('pointercancel', cancelTimer);
+
+  btn.addEventListener('click', (e) => {
+    if (triggered) {
+      e.preventDefault();
+      e.stopPropagation();
+      triggered = false;
+      return;
+    }
+    onClickAction(e);
+  });
+}
+
 function initCustomSearchBar() {
   const container = document.querySelector('#custom-search-bar');
   if (!container) return;
 
   const searchInput = container.querySelector('#search-input');
   const replaceInput = container.querySelector('#replace-input');
-  const counter = container.querySelector('#search-counter');
+  const btnPrev = container.querySelector('#search-btn-prev');
+  const btnNext = container.querySelector('#search-btn-next');
+  const btnHighlight = container.querySelector('#search-btn-highlight');
+  const btnRegex = container.querySelector('#search-btn-regex');
   const btnClose = container.querySelector('#search-btn-close');
   const btnReplaceOne = container.querySelector('#search-btn-replace-one');
   const btnReplaceAll = container.querySelector('#search-btn-replace-all');
   const btnCase = container.querySelector('#search-btn-case');
   const btnWord = container.querySelector('#search-btn-word');
-  const btnRegex = container.querySelector('#search-btn-regex');
 
-  let searchState = {
-    matchCase: false,
-    wholeWords: false,
-    useRegex: false
-  };
+  searchInput.addEventListener('input', () => commitSearchQuery());
+  replaceInput.addEventListener('input', () => commitSearchQuery());
 
-  const executeSearch = () => {
-    if (!activeAdapter) return;
-    const query = searchInput.value || '';
-    if (!query) {
-      counter.textContent = '';
-      return;
+  attachButtonBehavior(btnPrev, 'Find Previous match in document', () => {
+    if (activeAdapter && activeAdapter.view) {
+      findPrevious(activeAdapter.view);
+      const query = buildSearchQuery(searchInput, replaceInput);
+      updateMatchCounterFromQuery(query, activeAdapter.view);
     }
+  });
 
-    const text = activeAdapter.getMarkdown();
-    try {
-      const flags = searchState.matchCase ? 'g' : 'gi';
-      const searchPattern = searchState.useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const reg = new RegExp(searchPattern, flags);
-      const matches = [...text.matchAll(reg)];
-      counter.textContent = matches.length > 0 ? `1/${matches.length}` : '0/0';
-    } catch (e) {
-      counter.textContent = '0/0';
+  attachButtonBehavior(btnNext, 'Find Next match in document', () => {
+    if (activeAdapter && activeAdapter.view) {
+      findNext(activeAdapter.view);
+      const query = buildSearchQuery(searchInput, replaceInput);
+      updateMatchCounterFromQuery(query, activeAdapter.view);
     }
-  };
+  });
 
-  searchInput.addEventListener('input', executeSearch);
+  attachButtonBehavior(btnHighlight, 'Toggle Highlight All Matches', () => {
+    searchState.highlightAll = !searchState.highlightAll;
+    btnHighlight.classList.toggle('active', searchState.highlightAll);
+    if (searchState.highlightAll) {
+      document.body.classList.remove('cm-search-hide-matches');
+    } else {
+      document.body.classList.add('cm-search-hide-matches');
+    }
+    commitSearchQuery();
+  });
 
-  btnCase.onclick = () => {
-    searchState.matchCase = !searchState.matchCase;
-    btnCase.classList.toggle('active', searchState.matchCase);
-    executeSearch();
-  };
-
-  btnWord.onclick = () => {
-    searchState.wholeWords = !searchState.wholeWords;
-    btnWord.classList.toggle('active', searchState.wholeWords);
-    executeSearch();
-  };
-
-  btnRegex.onclick = () => {
+  attachButtonBehavior(btnRegex, 'Toggle Regular Expression (Hold: History)', () => {
     searchState.useRegex = !searchState.useRegex;
     btnRegex.classList.toggle('active', searchState.useRegex);
-    executeSearch();
-  };
+    commitSearchQuery();
+  }, true);
 
-  btnClose.onclick = () => {
+  attachButtonBehavior(btnClose, 'Close Search bar', () => {
     toggleFindAndReplaceBar(false);
-  };
+  });
 
-  btnReplaceOne.onclick = () => {
-    const query = searchInput.value || '';
-    const rep = replaceInput.value || '';
-    if (query && activeAdapter) {
-      const current = activeAdapter.getMarkdown();
-      const flags = searchState.matchCase ? '' : 'i';
-      const reg = new RegExp(searchState.useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
-      const nextText = current.replace(reg, rep);
-      activeAdapter.setMarkdown(nextText);
-      executeSearch();
+  attachButtonBehavior(btnReplaceOne, 'Replace currently selected match', () => {
+    if (activeAdapter && activeAdapter.view) {
+      replaceNext(activeAdapter.view);
+      commitSearchQuery();
     }
-  };
+  });
 
-  btnReplaceAll.onclick = () => {
-    const query = searchInput.value || '';
-    const rep = replaceInput.value || '';
-    if (query && activeAdapter) {
-      const current = activeAdapter.getMarkdown();
-      const flags = searchState.matchCase ? 'g' : 'gi';
-      const reg = new RegExp(searchState.useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
-      const nextText = current.replaceAll(reg, rep);
-      activeAdapter.setMarkdown(nextText);
-      executeSearch();
+  attachButtonBehavior(btnReplaceAll, 'Replace all occurrences in document', () => {
+    if (activeAdapter && activeAdapter.view) {
+      replaceAll(activeAdapter.view);
+      commitSearchQuery();
     }
-  };
+  });
+
+  attachButtonBehavior(btnCase, 'Toggle Match Case', () => {
+    searchState.matchCase = !searchState.matchCase;
+    btnCase.classList.toggle('active', searchState.matchCase);
+    commitSearchQuery();
+  });
+
+  attachButtonBehavior(btnWord, 'Toggle Match Whole Word', () => {
+    searchState.wholeWords = !searchState.wholeWords;
+    btnWord.classList.toggle('active', searchState.wholeWords);
+    commitSearchQuery();
+  });
 }
 
 function toggleFindAndReplaceBar(forceState) {
@@ -1734,6 +2031,10 @@ function toggleFindAndReplaceBar(forceState) {
   const newState = forceState !== undefined ? forceState : container.classList.contains('hidden');
   if (newState) {
     container.classList.remove('hidden');
+    if (activeAdapter && activeAdapter.view) {
+      openSearchPanel(activeAdapter.view);
+      commitSearchQuery();
+    }
     const input = container.querySelector('#search-input');
     if (input) {
       input.focus();
@@ -1741,6 +2042,10 @@ function toggleFindAndReplaceBar(forceState) {
     }
   } else {
     container.classList.add('hidden');
+    if (activeAdapter && activeAdapter.view) {
+      closeSearchPanel(activeAdapter.view);
+      activeAdapter.view.focus();
+    }
   }
 }
 
@@ -2401,6 +2706,43 @@ window.editorBridge = {
       androidArgbToCss(prefs.pref_toolbar_toggle_icon_color)
     );
     setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
+
+    // Find & Replace Customizations
+    setCssVar('--findreplace-panel-min-height', prefs.pref_findreplace_panel_min_height, 'px');
+    setCssVar('--findreplace-panel-bg', androidArgbToCss(prefs.pref_findreplace_panel_bg));
+    setCssVar('--findreplace-panel-border', androidArgbToCss(prefs.pref_findreplace_panel_border));
+    setCssVar('--findreplace-field-border', androidArgbToCss(prefs.pref_findreplace_field_border));
+    setCssVar('--findreplace-field-focus-border', androidArgbToCss(prefs.pref_findreplace_field_focus_border));
+    setCssVar('--findreplace-field-bg', androidArgbToCss(prefs.pref_findreplace_field_bg));
+    setCssVar('--findreplace-field-color', androidArgbToCss(prefs.pref_findreplace_field_color));
+    setCssVar('--findreplace-field-placeholder', androidArgbToCss(prefs.pref_findreplace_field_placeholder));
+    setCssVar('--findreplace-field-font-size', prefs.pref_findreplace_field_font_size, 'px');
+    setCssVar('--findreplace-field-height', prefs.pref_findreplace_field_height, 'px');
+    setCssVar('--findreplace-counter-color', androidArgbToCss(prefs.pref_findreplace_counter_color));
+    setCssVar('--findreplace-match-bg', androidArgbToCss(prefs.pref_findreplace_match_bg));
+    setCssVar('--findreplace-current-match-bg', androidArgbToCss(prefs.pref_findreplace_current_match_bg));
+    setCssVar('--findreplace-current-match-color', androidArgbToCss(prefs.pref_findreplace_current_match_color));
+
+    const findreplaceButtons = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
+    findreplaceButtons.forEach(bId => {
+      setCssVar(`--findreplace-${bId}-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_bg`]));
+      setCssVar(`--findreplace-${bId}-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_color`]));
+      setCssVar(`--findreplace-${bId}-active-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_active_bg`]));
+      setCssVar(`--findreplace-${bId}-active-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_active_color`]));
+      setCssVar(`--findreplace-${bId}-pressed-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_pressed_bg`]));
+      setCssVar(`--findreplace-${bId}-disabled-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_disabled_color`]));
+      setCssVar(`--findreplace-${bId}-width`, prefs[`pref_findreplace_btn_${bId}_width`], 'px');
+      setCssVar(`--findreplace-${bId}-height`, prefs[`pref_findreplace_btn_${bId}_height`], 'px');
+
+      const customSvg = prefs[`pref_findreplace_btn_${bId}_svg`];
+      if (customSvg) {
+        const sanitized = sanitizeSvg(customSvg);
+        if (sanitized) {
+          const btnEl = document.querySelector(`#search-btn-${bId}`);
+          if (btnEl) btnEl.innerHTML = sanitized;
+        }
+      }
+    });
   },
   getMarkdown: function() {
     // Flush active table cell draft if an overlay editor is open
