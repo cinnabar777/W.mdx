@@ -107,24 +107,32 @@ test('pref_callout_text_color exists, is forwarded/applied, and resets to defaul
   assert.ok(resetPrefs.includes('key == "pref_callout_text_color" -> "default"'), 'ResetPreferences contains default value mapping');
 });
 
-test('Fold button chevron toggle and accessibility attributes', () => {
-  assert.ok(mainSource.includes('cm-callout-fold-btn'), 'Fold button class exists');
-  assert.ok(mainSource.includes("aria-label', this.isFolded ? 'Expand callout' : 'Collapse callout'"), 'Fold button has accessible expand/collapse label');
-  assert.ok(mainSource.includes('foldEffect.of'), 'Fold button dispatches foldEffect');
-  assert.ok(mainSource.includes('unfoldEffect.of'), 'Fold button dispatches unfoldEffect');
+test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => {
+  assert.ok(mainSource.includes('calloutTypeIcons'), 'calloutTypeIcons map exists');
+  assert.ok(mainSource.includes('cm-callout-icon'), 'cm-callout-icon class exists');
+  assert.ok(mainSource.includes('cm-callout-title-container'), 'Title container class exists');
+  assert.ok(mainSource.includes("aria-label', `${this.isFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Title container has accessible expand/collapse label');
+  assert.ok(mainSource.includes('foldEffect.of'), 'Title container dispatches foldEffect');
+  assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
 });
 
-test('Document content immutability across rendering, fold toggles, and edits', () => {
-  const originalMd = `> [!note]+ Expanded Callout
-> Body line 1
-> Body line 2
-
-> [!warning]- Collapsed Callout
-> Warning body line 1
-
-Normal paragraph.
+test('Nested callout rendering and attributes at depths 1, 2, and 3', () => {
+  const nestedMd = `> [!question]+ Can callouts be nested?
+> Outer text.
+> > [!todo]- Yes, they can.
+> > Child text.
+> > > [!example] Multiple levels
+> > > Nested text.
 `;
 
-  const state = EditorState.create({ doc: originalMd, extensions: [markdown()] });
-  assert.equal(state.doc.toString(), originalMd, 'Document text remains byte-for-byte identical');
+  const state = EditorState.create({ doc: nestedMd, extensions: [markdown()] });
+  assert.equal(state.doc.toString(), nestedMd, 'Nested document text remains byte-for-byte identical');
+  assert.ok(mainSource.includes("data-callout-type': attrs.type"), 'Line decoration sets data-callout-type attribute');
+  assert.ok(mainSource.includes("data-callout-depth': String(attrs.depth)"), 'Line decoration sets data-callout-depth attribute');
+});
+
+test('Callout fold placeholder is hidden via CSS in index.html', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.ok(indexHtml.includes('.cm-content .cm-callout .cm-foldPlaceholder'), 'Callout fold placeholder selector exists');
+  assert.ok(indexHtml.includes('display: none !important;'), 'Callout fold placeholder is hidden');
 });

@@ -916,10 +916,52 @@
       padding-left: var(--blockquote-padding, 12px) !important;
     }
     .cm-content .cm-callout {
-      border-left: var(--callout-border-width, 4px) var(--callout-border-style, solid) var(--callout-border-color, #29b6f6) !important;
-      background: var(--callout-bg-color, rgba(41, 182, 246, 0.12)) !important;
+      border-left: var(--callout-border-width, 4px) var(--callout-border-style, solid) var(--callout-border-color, var(--callout-type-border, #29b6f6)) !important;
+      background: var(--callout-bg-color, var(--callout-type-bg, rgba(41, 182, 246, 0.12))) !important;
       color: var(--callout-text-color, inherit) !important;
       padding-left: var(--callout-padding, 12px) !important;
+      margin-top: 4px !important;
+      margin-bottom: 4px !important;
+    }
+
+    .cm-content .cm-callout[data-callout-depth="2"] {
+      margin-left: 12px !important;
+    }
+
+    .cm-content .cm-callout[data-callout-depth="3"] {
+      margin-left: 24px !important;
+    }
+
+    /* Per-type color palette defaults */
+    .cm-content .cm-callout[data-callout-type="info"] {
+      --callout-type-border: #29b6f6;
+      --callout-type-bg: rgba(41, 182, 246, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="question"],
+    .cm-content .cm-callout[data-callout-type="faq"] {
+      --callout-type-border: #ff9800;
+      --callout-type-bg: rgba(255, 152, 0, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="todo"] {
+      --callout-type-border: #00bcd4;
+      --callout-type-bg: rgba(0, 188, 212, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="example"] {
+      --callout-type-border: #ab47bc;
+      --callout-type-bg: rgba(171, 71, 188, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="tip"] {
+      --callout-type-border: #66bb6a;
+      --callout-type-bg: rgba(102, 187, 106, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="warning"] {
+      --callout-type-border: #ffa726;
+      --callout-type-bg: rgba(255, 167, 38, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="important"],
+    .cm-content .cm-callout[data-callout-type="danger"] {
+      --callout-type-border: #ef5350;
+      --callout-type-bg: rgba(239, 83, 80, 0.12);
     }
 
     .cm-content .cm-callout-title {
@@ -931,6 +973,19 @@
       align-items: center !important;
       gap: 6px !important;
       vertical-align: middle !important;
+      user-select: none !important;
+    }
+
+    .cm-callout-title-container.is-foldable {
+      cursor: pointer !important;
+    }
+
+    .cm-callout-icon {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      flex-shrink: 0 !important;
+      color: inherit !important;
     }
 
     .cm-callout-fold-btn {
@@ -938,7 +993,6 @@
       border: none !important;
       padding: 2px !important;
       margin: 0 !important;
-      cursor: pointer !important;
       color: inherit !important;
       display: inline-flex !important;
       align-items: center !important;
@@ -948,9 +1002,8 @@
       line-height: 1 !important;
     }
 
-    .cm-callout-fold-btn:hover {
-      opacity: 1 !important;
-      background: rgba(255, 255, 255, 0.1) !important;
+    .cm-content .cm-callout .cm-foldPlaceholder {
+      display: none !important;
     }
     .cm-todo-checkbox {
       appearance: none !important;

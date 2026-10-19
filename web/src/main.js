@@ -217,10 +217,24 @@ class CodeBlockHeaderWidget extends WidgetType {
   }
 }
 
+const calloutTypeIcons = {
+  info: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  question: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  faq: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  todo: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 11 12 14 22 4"/></svg>`,
+  example: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
+  note: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
+  tip: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A7 7 0 1 1 15.5 14.5A7 7 0 0 1 8.5 14.5z"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`,
+  warning: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  important: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  danger: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
+};
+
 class CalloutTitleWidget extends WidgetType {
-  constructor(title, foldMarker, isFolded, foldFrom, foldTo) {
+  constructor(title, type, foldMarker, isFolded, foldFrom, foldTo) {
     super();
     this.title = title;
+    this.type = (type || 'note').toLowerCase();
     this.foldMarker = foldMarker; // '+' or '-' or undefined
     this.isFolded = isFolded;
     this.foldFrom = foldFrom;
@@ -231,6 +245,7 @@ class CalloutTitleWidget extends WidgetType {
     return (
       other instanceof CalloutTitleWidget &&
       other.title === this.title &&
+      other.type === this.type &&
       other.foldMarker === this.foldMarker &&
       other.isFolded === this.isFolded &&
       other.foldFrom === this.foldFrom &&
@@ -240,18 +255,38 @@ class CalloutTitleWidget extends WidgetType {
 
   toDOM(view) {
     const span = document.createElement('span');
-    span.className = 'cm-callout-title-container';
+    span.className = 'cm-callout-title-container' + (this.foldMarker ? ' is-foldable' : '');
+    if (this.foldMarker) {
+      span.setAttribute('role', 'button');
+      span.setAttribute('tabindex', '0');
+      span.setAttribute('aria-expanded', this.isFolded ? 'false' : 'true');
+      span.setAttribute('aria-label', `${this.isFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
+    }
+
+    const iconSvg = calloutTypeIcons[this.type] || calloutTypeIcons.info;
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'cm-callout-icon';
+    iconSpan.innerHTML = iconSvg;
+    span.appendChild(iconSpan);
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'cm-callout-title-text';
+    titleSpan.textContent = this.title;
+    span.appendChild(titleSpan);
 
     if (this.foldMarker) {
       const btn = document.createElement('button');
       btn.className = 'cm-callout-fold-btn';
       btn.type = 'button';
-      btn.setAttribute('aria-label', this.isFolded ? 'Expand callout' : 'Collapse callout');
+      btn.tabIndex = -1;
+      btn.setAttribute('aria-hidden', 'true');
       btn.innerHTML = this.isFolded
         ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
         : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 
-      btn.addEventListener('click', (e) => {
+      span.appendChild(btn);
+
+      const toggleFold = (e) => {
         e.preventDefault();
         e.stopPropagation();
         if (this.foldFrom != null && this.foldTo != null && this.foldTo > this.foldFrom) {
@@ -261,14 +296,15 @@ class CalloutTitleWidget extends WidgetType {
             view.dispatch({ effects: foldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
           }
         }
-      });
-      span.appendChild(btn);
-    }
+      };
 
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'cm-callout-title-text';
-    titleSpan.textContent = this.title;
-    span.appendChild(titleSpan);
+      span.addEventListener('click', toggleFold);
+      span.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          toggleFold(e);
+        }
+      });
+    }
 
     return span;
   }
@@ -596,10 +632,11 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
     const doc = view.state.doc;
 
-    const isQuotedLine = (lineNum) => {
-      if (lineNum < 1 || lineNum > doc.lines) return false;
+    const getQuotedLineInfo = (lineNum) => {
+      if (lineNum < 1 || lineNum > doc.lines) return null;
       const l = doc.line(lineNum);
-      if (!/^\s*>/.test(l.text)) return false;
+      const match = l.text.match(/^(\s*(?:>\s*)+)/);
+      if (!match) return null;
 
       const firstText = /\S/.exec(l.text);
       const probe = firstText ? l.from + firstText.index : l.from;
@@ -607,14 +644,20 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
       for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
         if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock' || ancestor.name === 'Table') {
-          return false;
+          return null;
         }
       }
-      return true;
+
+      const quotePrefix = match[1];
+      const depth = (quotePrefix.match(/>/g) || []).length;
+      return { line: l, quotePrefix, depth };
     };
+
+    const isQuotedLine = (lineNum) => getQuotedLineInfo(lineNum) !== null;
 
     const calloutOpenerInfo = new Map();
     const processedBlockquoteLines = new Set();
+    const calloutLineAttributes = new Map(); // lineFrom -> { type, depth }
 
     for (const { from, to } of view.visibleRanges) {
       const firstVisibleLine = doc.lineAt(from).number;
@@ -684,17 +727,23 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           let openerLineNum = null;
           let lastBodyLineNum = null;
 
+          const activeCalloutsStack = []; // [{ depth, type, openerLineNum, lastBodyLineNum }]
+
           while (curLine <= doc.lines && isQuotedLine(curLine)) {
             processedBlockquoteLines.add(curLine);
-            const line = doc.line(curLine);
-            const match = line.text.match(/^(\s*>\s*)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i);
+            const lineInfo = getQuotedLineInfo(curLine);
+            const line = lineInfo.line;
+            const currentDepth = lineInfo.depth;
+
+            // Unwind stack if current line depth is shallow
+            while (activeCalloutsStack.length > 0 && activeCalloutsStack[activeCalloutsStack.length - 1].depth > currentDepth) {
+              activeCalloutsStack.pop();
+            }
+
+            const match = line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i);
 
             if (match) {
-              inCallout = true;
-              openerLineNum = curLine;
-              addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-title');
-
-              const type = match[3];
+              const type = match[3].toLowerCase();
               const foldMarker = match[4]; // '+' or '-' or undefined
               const customTitle = match[5];
               const markerStart = line.from + match[1].length;
@@ -705,19 +754,44 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
                 if (idx !== -1) titleStart = idx;
               }
 
-              calloutOpenerInfo.set(line.from, {
+              const calloutObj = {
+                depth: currentDepth,
                 type,
-                foldMarker,
-                customTitle,
-                markerStart,
-                markerEnd,
-                titleStart,
-                bodyFrom: line.to,
-                bodyTo: line.to
-              });
-            } else if (inCallout) {
+                openerLineNum: curLine,
+                lastBodyLineNum: curLine,
+                info: {
+                  type,
+                  depth: currentDepth,
+                  foldMarker,
+                  customTitle,
+                  markerStart,
+                  markerEnd,
+                  titleStart,
+                  bodyFrom: line.to,
+                  bodyTo: line.to
+                }
+              };
+
+              activeCalloutsStack.push(calloutObj);
+              calloutOpenerInfo.set(line.from, calloutObj.info);
+
+              addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-title');
+              calloutLineAttributes.set(line.from, { type, depth: currentDepth });
+            } else if (activeCalloutsStack.length > 0) {
+              const currentCallout = activeCalloutsStack[activeCalloutsStack.length - 1];
+              currentCallout.lastBodyLineNum = curLine;
+              currentCallout.info.bodyTo = line.to;
+
+              // Update all callouts on the stack whose depth <= currentDepth
+              for (const calloutObj of activeCalloutsStack) {
+                if (calloutObj.depth <= currentDepth) {
+                  calloutObj.lastBodyLineNum = curLine;
+                  calloutObj.info.bodyTo = line.to;
+                }
+              }
+
               addLineClass(line.from, 'cm-blockquote', 'cm-callout');
-              lastBodyLineNum = curLine;
+              calloutLineAttributes.set(line.from, { type: currentCallout.type, depth: currentCallout.depth });
             } else {
               addLineClass(line.from, 'cm-blockquote');
             }
@@ -810,13 +884,15 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'QuoteMark' && !isNodeActive) {
-            let end = Math.min(node.to + 1, line.to);
-            const calloutInfo = calloutOpenerInfo.get(line.from);
-            if (calloutInfo && calloutInfo.markerStart < end) {
-              end = calloutInfo.markerStart;
-            }
-            if (end > node.from) {
-              builder.push(Decoration.replace({}).range(node.from, end));
+            let isCalloutLine = calloutLineAttributes.has(line.from);
+            if (isCalloutLine) {
+              // Hide QuoteMark on callout lines in rendered mode
+              builder.push(Decoration.replace({}).range(node.from, node.to));
+            } else {
+              let end = Math.min(node.to + 1, line.to);
+              if (end > node.from) {
+                builder.push(Decoration.replace({}).range(node.from, end));
+              }
             }
           }
 
@@ -935,19 +1011,19 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           ? info.customTitle.trim()
           : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
 
-        if (info.titleStart !== null) {
-          const replaceTo = line.from + info.titleStart;
-          if (replaceTo > info.markerStart) {
-            builder.push(Decoration.replace({
-              widget: new CalloutTitleWidget('', info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
-            }).range(info.markerStart, replaceTo));
-          }
-        } else {
-          builder.push(Decoration.replace({
-            widget: new CalloutTitleWidget(displayTitle, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
-          }).range(info.markerStart, line.to));
-        }
+        builder.push(Decoration.replace({
+          widget: new CalloutTitleWidget(displayTitle, info.type, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
+        }).range(info.markerStart, line.to));
       }
+    }
+
+    for (const [lineFrom, attrs] of calloutLineAttributes) {
+      builder.push(Decoration.line({
+        attributes: {
+          'data-callout-type': attrs.type,
+          'data-callout-depth': String(attrs.depth)
+        }
+      }).range(lineFrom));
     }
 
     for (const [lineFrom, classes] of lineClasses) {
