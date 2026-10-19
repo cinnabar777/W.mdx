@@ -1172,7 +1172,15 @@ class CodeMirrorAdapter {
             outline: 'none'
           }
         }),
-        search(),
+        search({
+          createPanel: () => {
+            const container = document.querySelector('#custom-search-bar');
+            return {
+              dom: container,
+              top: true
+            };
+          }
+        }),
         EditorView.updateListener.of(update => {
           if (update.docChanged && !this.isProgrammatic) {
             this.revision++;
@@ -2032,9 +2040,15 @@ function initCustomSearchBar() {
 function toggleFindAndReplaceBar(forceState) {
   const bar = document.getElementById('custom-search-bar');
   if (!bar) return;
+
   const show = forceState ?? bar.classList.contains('hidden');
   bar.classList.toggle('hidden', !show);
+
+  const view = activeAdapter?.view;
+  if (!view) return;
+
   if (show) {
+    openSearchPanel(view);
     requestAnimationFrame(() => {
       const input = bar.querySelector('#search-input');
       input?.focus();
@@ -2042,9 +2056,9 @@ function toggleFindAndReplaceBar(forceState) {
       commitSearchQuery();
     });
   } else {
-    if (activeAdapter && activeAdapter.view) {
-      activeAdapter.view.focus();
-    }
+    // Intentionally do not call closeSearchPanel(view): that detaches
+    // the custom #custom-search-bar element from CodeMirror's panel host.
+    view.focus();
   }
 }
 

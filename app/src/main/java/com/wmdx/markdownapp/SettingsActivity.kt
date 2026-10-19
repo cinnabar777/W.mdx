@@ -132,6 +132,11 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
         preferenceScreen?.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
     }
 
+    protected open fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) = Unit
+
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key != null) {
             val pref = findPreference<Preference>(key)
@@ -148,6 +153,9 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                     v.setBackgroundColor(bgColor)
                     listView?.setBackgroundColor(bgColor)
                 }
+            }
+            if (sharedPreferences != null) {
+                onSettingPreferenceChanged(sharedPreferences, key)
             }
         }
     }
@@ -538,6 +546,24 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     private var selectedCategoryKey: String = "category_panel"
     private var isPreviewAttached: Boolean = false
 
+    private val buttonPreferenceSuffix = mapOf(
+        "prev" to "prev",
+        "next" to "next",
+        "highlight" to "highlight",
+        "regex" to "regex",
+        "close" to "close",
+        "replace-one" to "replace_one",
+        "replace-all" to "replace_all",
+        "case" to "case",
+        "word" to "word"
+    )
+
+    private var previewCardView: android.widget.LinearLayout? = null
+    private var previewFindField: android.widget.TextView? = null
+    private var previewReplaceField: android.widget.TextView? = null
+    private var previewCounter: android.widget.TextView? = null
+    private val previewButtonMap = mutableMapOf<String, android.widget.TextView>()
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_findreplace, rootKey)
     }
@@ -546,6 +572,54 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         super.onViewCreated(view, savedInstanceState)
         setupInteractivePreview(view)
         filterCategories()
+        val ctx = context
+        if (ctx != null) {
+            refreshFindReplacePreview(PreferenceManager.getDefaultSharedPreferences(ctx))
+        }
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (key.startsWith("pref_findreplace_")) {
+            refreshFindReplacePreview(sharedPreferences)
+        }
+    }
+
+    private fun refreshFindReplacePreview(prefs: SharedPreferences) {
+        val card = previewCardView ?: return
+        val panelBgHex = prefs.getString("pref_findreplace_panel_bg", "default") ?: "default"
+        val panelBg = if (panelBgHex == "default") Color.parseColor("#121212") else ColorPickerDialog.parseHexColor(panelBgHex, Color.parseColor("#121212"))
+        card.setBackgroundColor(panelBg)
+
+        val findBgHex = prefs.getString("pref_findreplace_field_find_bg", "default") ?: "default"
+        val findColorHex = prefs.getString("pref_findreplace_field_find_color", "default") ?: "default"
+
+        previewFindField?.apply {
+            setBackgroundColor(if (findBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(findBgHex, Color.parseColor("#1E1E1E")))
+            setTextColor(if (findColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(findColorHex, Color.parseColor("#888888")))
+        }
+
+        val replaceBgHex = prefs.getString("pref_findreplace_field_replace_bg", "default") ?: "default"
+        val replaceColorHex = prefs.getString("pref_findreplace_field_replace_color", "default") ?: "default"
+
+        previewReplaceField?.apply {
+            setBackgroundColor(if (replaceBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(replaceBgHex, Color.parseColor("#1E1E1E")))
+            setTextColor(if (replaceColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(replaceColorHex, Color.parseColor("#888888")))
+        }
+
+        val counterColorHex = prefs.getString("pref_findreplace_counter_color", "default") ?: "default"
+        previewCounter?.setTextColor(if (counterColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(counterColorHex, Color.parseColor("#888888")))
+
+        previewButtonMap.forEach { (domId, btnView) ->
+            val suffix = buttonPreferenceSuffix[domId] ?: domId.replace("-", "_")
+            val btnBgHex = prefs.getString("pref_findreplace_btn_${suffix}_bg", "default") ?: "default"
+            val btnColorHex = prefs.getString("pref_findreplace_btn_${suffix}_color", "default") ?: "default"
+
+            btnView.setBackgroundColor(if (btnBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(btnBgHex, Color.parseColor("#1E1E1E")))
+            btnView.setTextColor(if (btnColorHex == "default") Color.parseColor("#AAAAAA") else ColorPickerDialog.parseHexColor(btnColorHex, Color.parseColor("#AAAAAA")))
+        }
     }
 
     private fun filterCategories() {
@@ -584,6 +658,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             setPadding((10 * density).toInt(), (10 * density).toInt(), (10 * density).toInt(), (10 * density).toInt())
             setBackgroundColor(Color.parseColor("#121212"))
         }
+        previewCardView = previewCard
 
         val row1 = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
@@ -604,6 +679,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 marginEnd = (6 * density).toInt()
             }
         }
+        previewFindField = findField
 
         val counter = android.widget.TextView(context).apply {
             text = "1/12"
@@ -611,6 +687,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             setTextColor(Color.parseColor("#888888"))
             setPadding((4 * density).toInt(), 0, (4 * density).toInt(), 0)
         }
+        previewCounter = counter
 
         val btnPrev = android.widget.TextView(context).apply { text = "▲"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnNext = android.widget.TextView(context).apply { text = "▼"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
@@ -645,6 +722,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 marginEnd = (6 * density).toInt()
             }
         }
+        previewReplaceField = replaceField
 
         val btnReplaceOne = android.widget.TextView(context).apply { text = "1➔"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnReplaceAll = android.widget.TextView(context).apply { text = "∀➔"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
@@ -659,6 +737,16 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
 
         previewCard.addView(row1)
         previewCard.addView(row2)
+
+        previewButtonMap["prev"] = btnPrev
+        previewButtonMap["next"] = btnNext
+        previewButtonMap["highlight"] = btnHighlight
+        previewButtonMap["regex"] = btnRegex
+        previewButtonMap["close"] = btnClose
+        previewButtonMap["replace-one"] = btnReplaceOne
+        previewButtonMap["replace-all"] = btnReplaceAll
+        previewButtonMap["case"] = btnCase
+        previewButtonMap["word"] = btnWord
 
         previewCard.setOnClickListener {
             selectedCategoryKey = "category_panel"
@@ -736,11 +824,6 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         } catch (e: Exception) {
             isPreviewAttached = false
         }
-    }
-
-    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        super.onSharedPreferenceChanged(sharedPreferences, key)
-        filterCategories()
     }
 }
 
