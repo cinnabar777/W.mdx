@@ -57,42 +57,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun showCustomToast(message: String) {
         runOnUiThread {
-            try {
-                currentToast?.cancel()
-            } catch (e: Exception) {}
-
-            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-            val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
-
-            val textView = android.widget.TextView(this).apply {
-                text = message
-                textSize = 14f
-                setPadding(
-                    (16 * resources.displayMetrics.density).toInt(),
-                    (10 * resources.displayMetrics.density).toInt(),
-                    (16 * resources.displayMetrics.density).toInt(),
-                    (10 * resources.displayMetrics.density).toInt()
-                )
-                gravity = android.view.Gravity.CENTER
-
-                val bgDrawable = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = 20 * resources.displayMetrics.density
-                    if (isLightTheme) {
-                        setColor(Color.parseColor("#E0E0E0"))
-                    } else {
-                        setColor(Color.parseColor("#282828"))
-                    }
-                }
-                background = bgDrawable
-                setTextColor(if (isLightTheme) Color.parseColor("#111111") else Color.parseColor("#FFFFFF"))
-            }
-
-            val toast = Toast(this).apply {
-                duration = Toast.LENGTH_SHORT
-                view = textView
-            }
-            currentToast = toast
-            toast.show()
+            ThemedToast.show(this, message)
         }
     }
 
@@ -655,7 +620,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } catch (e: Exception) {
             WindowRegistry.register(this, currentFileUri)
             AppDiagnostics.record(this, "file_load_error", "category=${e.javaClass.simpleName}")
-            Toast.makeText(this, "Failed to open file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            ThemedToast.show(this, "Failed to open file: ${e.localizedMessage}", Toast.LENGTH_LONG)
         }
     }
 
@@ -710,12 +675,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val (cleanHtml, _) = DocumentExporter.generateCleanHtml(this, htmlPayload, currentFileName)
 
             if (isMht) {
-                Toast.makeText(this, "Generating MHTML archive...", Toast.LENGTH_SHORT).show()
+                ThemedToast.show(this, "Generating MHTML archive...", Toast.LENGTH_SHORT)
                 DocumentExporter.exportToMht(this, cleanHtml, targetUri) { success, errorMsg ->
                     if (success) {
-                        Toast.makeText(this, "MHTML archive exported successfully!", Toast.LENGTH_SHORT).show()
+                        ThemedToast.show(this, "MHTML archive exported successfully!", Toast.LENGTH_SHORT)
                     } else {
-                        Toast.makeText(this, "Export failed: $errorMsg", Toast.LENGTH_LONG).show()
+                        ThemedToast.show(this, "Export failed: $errorMsg", Toast.LENGTH_LONG)
                     }
                 }
             } else {
@@ -725,9 +690,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         writer.write(cleanHtml)
                         writer.flush()
                     }
-                    Toast.makeText(this, "HTML document exported successfully!", Toast.LENGTH_SHORT).show()
+                    ThemedToast.show(this, "HTML document exported successfully!", Toast.LENGTH_SHORT)
                 } catch (e: Exception) {
-                    Toast.makeText(this, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    ThemedToast.show(this, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG)
                 }
             }
         }
@@ -774,11 +739,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 updateTitle()
                 val saveMs = android.os.SystemClock.elapsedRealtime() - saveStarted
                 AppDiagnostics.record(this, "save_done", "status=success mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length} ms=$saveMs")
-                Toast.makeText(this, "File saved successfully", Toast.LENGTH_SHORT).show()
+                ThemedToast.show(this, "File saved successfully", Toast.LENGTH_SHORT)
             } catch (e: Exception) {
                 val saveMs = android.os.SystemClock.elapsedRealtime() - saveStarted
                 AppDiagnostics.record(this, "save_done", "status=failure category=${e.javaClass.simpleName} ms=$saveMs")
-                Toast.makeText(this, "Failed to save file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                ThemedToast.show(this, "Failed to save file: ${e.localizedMessage}", Toast.LENGTH_LONG)
             }
         }
     }
@@ -840,7 +805,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Failed to insert image: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            ThemedToast.show(this, "Failed to insert image: ${e.localizedMessage}", Toast.LENGTH_LONG)
         }
     }
 

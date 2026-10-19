@@ -36,7 +36,7 @@ class DocumentDispatchActivity : Activity() {
             startActivity(target)
         } catch (error: Exception) {
             AppDiagnostics.record(this, "dispatch_error", error.javaClass.simpleName)
-            android.widget.Toast.makeText(this, "Could not open this file", android.widget.Toast.LENGTH_LONG).show()
+            ThemedToast.show(this, "Could not open this file", android.widget.Toast.LENGTH_LONG)
         } finally {
             finish()
         }

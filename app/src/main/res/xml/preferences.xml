@@ -14,6 +14,11 @@
             app:summary="Fonts, weights, sizes, heading colors, line thickness &amp; element colors" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_findreplace"
+            app:title="Find &amp; Replace Appearance"
+            app:summary="Customize search window colors, text fields, counter &amp; icon buttons" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_hotkeys"
             app:title="Custom Keyboard Shortcuts"
             app:summary="Configure hotkeys for actions, formatting, headings &amp; highlighter markers" />
