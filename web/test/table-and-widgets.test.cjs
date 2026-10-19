@@ -29,8 +29,8 @@ test('Table cell navigation functions exist and handle pipe delimiters', () => {
 
 const styles = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
-test('TableModel parses, merges, splits, and serializes GFM tables correctly', () => {
-  const { TableModel, parsePipeRow, isTableSeparatorRow, parseAlignments } = require('../src/tableModule.js');
+test('TableModel parses, merges, splits, and serializes GFM tables correctly', async () => {
+  const { TableModel, parsePipeRow, isTableSeparatorRow, parseAlignments } = await import('../src/tableModule.js');
 
   const markdown = `
 | Header 1 | Header 2 | Header 3 |
@@ -58,4 +58,13 @@ test('TableModel parses, merges, splits, and serializes GFM tables correctly', (
   const reParsed = TableModel.parse(serialized);
   assert.ok(reParsed, 'Re-parsed merged Markdown table successfully');
   assert.equal(reParsed.getRowCount(), 3);
+});
+
+test('WordProcessorTableWidget attaches long-press events and applies CSS variables for borders', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+
+  assert.ok(code.includes('longPressTimer = setTimeout'), 'Long press timer is implemented');
+  assert.ok(code.includes('cancelLongPress'), 'Long press cancellation listener is implemented');
+  assert.ok(code.includes('showContextMenu'), 'Context menu overlay is implemented');
+  assert.ok(code.includes('var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)'), 'Table CSS variables for width and style are used');
 });
