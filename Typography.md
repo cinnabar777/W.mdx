@@ -44,15 +44,15 @@ Callouts skipped: as far as I can see are not functional yet — no toolbar key,
 -----------
 # TABLES
 
-1. Table boarder style: 
-2. Table boarder thickness: 
-3. Table boarder color: 
-4. Header row background: 
-5. Header text color: 
-6. Header text font weight: 
-7. Cell background color: 
-8. Cell text color: 
-9. Cell padding: 
+1. Table boarder style: fixed 🎉
+2. Table boarder thickness: fixed 🎉
+3. Table boarder color: fixed 🎉
+4. Header row background: fixed 🎉
+5. Header text color: fixed 🎉
+6. Header text font weight: fixed 🎉
+7. Cell background color:  fixed 🎉
+8. Cell text color: fixed 🎉
+9. Cell padding: fixed 🎉
 
 # CODEBLOCK STYLING
 
@@ -87,5 +87,4 @@ All work.
 # ADDITIONS 
 
 1. Color for inactive reset icon. 
-2. Setting for cursor: Color for cursor, blink rate, color for drag balloon, 
-3.
+2. Setting for cursor: Color for cursor, blink rate, color for drag balloon,
