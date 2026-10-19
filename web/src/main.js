@@ -2707,15 +2707,20 @@ window.editorBridge = {
     setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
 
     // Find & Replace Customizations
-    setCssVar('--findreplace-panel-min-height', prefs.pref_findreplace_panel_min_height, 'px');
     setCssVar('--findreplace-panel-bg', androidArgbToCss(prefs.pref_findreplace_panel_bg));
     setCssVar('--findreplace-panel-border', androidArgbToCss(prefs.pref_findreplace_panel_border));
-    setCssVar('--findreplace-field-border', androidArgbToCss(prefs.pref_findreplace_field_border));
-    setCssVar('--findreplace-field-focus-border', androidArgbToCss(prefs.pref_findreplace_field_focus_border));
-    setCssVar('--findreplace-field-bg', androidArgbToCss(prefs.pref_findreplace_field_bg));
-    setCssVar('--findreplace-field-color', androidArgbToCss(prefs.pref_findreplace_field_color));
-    setCssVar('--findreplace-field-placeholder', androidArgbToCss(prefs.pref_findreplace_field_placeholder));
-    setCssVar('--findreplace-field-font-size', prefs.pref_findreplace_field_font_size, 'px');
+    setCssVar('--findreplace-field-find-bg', androidArgbToCss(prefs.pref_findreplace_field_find_bg));
+    setCssVar('--findreplace-field-find-color', androidArgbToCss(prefs.pref_findreplace_field_find_color));
+    setCssVar('--findreplace-field-find-placeholder', androidArgbToCss(prefs.pref_findreplace_field_find_placeholder));
+    setCssVar('--findreplace-field-find-border', androidArgbToCss(prefs.pref_findreplace_field_find_border));
+    setCssVar('--findreplace-field-find-focus-border', androidArgbToCss(prefs.pref_findreplace_field_find_focus_border));
+    setCssVar('--findreplace-field-find-font-size', prefs.pref_findreplace_field_find_font_size, 'px');
+    setCssVar('--findreplace-field-replace-bg', androidArgbToCss(prefs.pref_findreplace_field_replace_bg));
+    setCssVar('--findreplace-field-replace-color', androidArgbToCss(prefs.pref_findreplace_field_replace_color));
+    setCssVar('--findreplace-field-replace-placeholder', androidArgbToCss(prefs.pref_findreplace_field_replace_placeholder));
+    setCssVar('--findreplace-field-replace-border', androidArgbToCss(prefs.pref_findreplace_field_replace_border));
+    setCssVar('--findreplace-field-replace-focus-border', androidArgbToCss(prefs.pref_findreplace_field_replace_focus_border));
+    setCssVar('--findreplace-field-replace-font-size', prefs.pref_findreplace_field_replace_font_size, 'px');
     setCssVar('--findreplace-field-height', prefs.pref_findreplace_field_height, 'px');
     setCssVar('--findreplace-counter-color', androidArgbToCss(prefs.pref_findreplace_counter_color));
     setCssVar('--findreplace-match-bg', androidArgbToCss(prefs.pref_findreplace_match_bg));
@@ -2724,21 +2729,29 @@ window.editorBridge = {
 
     const findreplaceButtons = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
     findreplaceButtons.forEach(bId => {
-      setCssVar(`--findreplace-${bId}-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_bg`]));
-      setCssVar(`--findreplace-${bId}-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_color`]));
-      setCssVar(`--findreplace-${bId}-active-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_active_bg`]));
-      setCssVar(`--findreplace-${bId}-active-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_active_color`]));
-      setCssVar(`--findreplace-${bId}-pressed-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_pressed_bg`]));
-      setCssVar(`--findreplace-${bId}-disabled-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bId}_disabled_color`]));
-      setCssVar(`--findreplace-${bId}-width`, prefs[`pref_findreplace_btn_${bId}_width`], 'px');
-      setCssVar(`--findreplace-${bId}-height`, prefs[`pref_findreplace_btn_${bId}_height`], 'px');
+      const bKey = bId.replace(/-/g, '_');
+      setCssVar(`--findreplace-${bId}-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_bg`] || prefs.pref_findreplace_btn_bg));
+      setCssVar(`--findreplace-${bId}-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_color`] || prefs.pref_findreplace_btn_color));
+      setCssVar(`--findreplace-${bId}-active-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_active_bg`] || prefs.pref_findreplace_btn_active_bg));
+      setCssVar(`--findreplace-${bId}-active-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_active_color`] || prefs.pref_findreplace_btn_active_color));
+      setCssVar(`--findreplace-${bId}-pressed-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_pressed_bg`] || prefs.pref_findreplace_btn_pressed_bg));
+      setCssVar(`--findreplace-${bId}-width`, prefs[`pref_findreplace_btn_${bKey}_width`] || prefs.pref_findreplace_btn_width, 'px');
 
-      const customSvg = prefs[`pref_findreplace_btn_${bId}_svg`];
-      if (customSvg) {
-        const sanitized = sanitizeSvg(customSvg);
-        if (sanitized) {
-          const btnEl = document.querySelector(`#search-btn-${bId}`);
-          if (btnEl) btnEl.innerHTML = sanitized;
+      const customSvg = prefs[`pref_findreplace_btn_${bKey}_svg`];
+      const btnEl = document.querySelector(`#search-btn-${bId}`);
+      if (btnEl) {
+        if (!btnEl.dataset.defaultSvg) {
+          btnEl.dataset.defaultSvg = btnEl.innerHTML;
+        }
+        if (customSvg) {
+          const sanitized = sanitizeSvg(customSvg);
+          if (sanitized) {
+            btnEl.innerHTML = sanitized;
+          } else {
+            btnEl.innerHTML = btnEl.dataset.defaultSvg;
+          }
+        } else {
+          btnEl.innerHTML = btnEl.dataset.defaultSvg;
         }
       }
     });

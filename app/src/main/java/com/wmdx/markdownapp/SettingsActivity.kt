@@ -549,23 +549,20 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     }
 
     private fun filterCategories() {
-        val catPanel = findPreference<Preference>("category_panel")
-        val catFields = findPreference<Preference>("category_fields")
-        val catCounter = findPreference<Preference>("category_counter")
-        val catButtons = findPreference<Preference>("category_buttons")
-
+        val screen = preferenceScreen ?: return
         if (!isPreviewAttached) {
-            catPanel?.isVisible = true
-            catFields?.isVisible = true
-            catCounter?.isVisible = true
-            catButtons?.isVisible = true
+            for (i in 0 until screen.preferenceCount) {
+                screen.getPreference(i).isVisible = true
+            }
             return
         }
 
-        catPanel?.isVisible = (selectedCategoryKey == "category_panel")
-        catFields?.isVisible = (selectedCategoryKey == "category_fields")
-        catCounter?.isVisible = (selectedCategoryKey == "category_counter")
-        catButtons?.isVisible = (selectedCategoryKey == "category_buttons")
+        for (i in 0 until screen.preferenceCount) {
+            val pref = screen.getPreference(i)
+            if (pref.key != null && pref.key.startsWith("category_")) {
+                pref.isVisible = (pref.key == selectedCategoryKey)
+            }
+        }
     }
 
     private fun setupInteractivePreview(fragmentRootView: android.view.View) {
@@ -619,6 +616,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val btnNext = android.widget.TextView(context).apply { text = "▼"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnHighlight = android.widget.TextView(context).apply { text = "≡"; gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); setBackgroundColor(Color.parseColor("#0078D4")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
         val btnRegex = android.widget.TextView(context).apply { text = ".*"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
+        val btnClose = android.widget.TextView(context).apply { text = "✕"; gravity = android.view.Gravity.CENTER; setTextColor(Color.parseColor("#AAAAAA")); setBackgroundColor(Color.parseColor("#1E1E1E")); layoutParams = android.widget.LinearLayout.LayoutParams((28 * density).toInt(), (32 * density).toInt()).apply { marginStart = (3 * density).toInt() } }
 
         row1.addView(findField)
         row1.addView(counter)
@@ -626,6 +624,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         row1.addView(btnNext)
         row1.addView(btnHighlight)
         row1.addView(btnRegex)
+        row1.addView(btnClose)
 
         val row2 = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
@@ -668,13 +667,13 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         }
 
         findField.setOnClickListener {
-            selectedCategoryKey = "category_fields"
+            selectedCategoryKey = "category_field_find"
             filterCategories()
             ThemedToast.show(context, "Find Field options selected")
         }
 
         replaceField.setOnClickListener {
-            selectedCategoryKey = "category_fields"
+            selectedCategoryKey = "category_field_replace"
             filterCategories()
             ThemedToast.show(context, "Replace Field options selected")
         }
@@ -685,12 +684,23 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             ThemedToast.show(context, "Match Counter options selected")
         }
 
-        val buttons = listOf(btnPrev, btnNext, btnHighlight, btnRegex, btnReplaceOne, btnReplaceAll, btnCase, btnWord)
-        buttons.forEach { btn ->
+        val buttonCategoryMap = mapOf(
+            btnPrev to "category_btn_prev",
+            btnNext to "category_btn_next",
+            btnHighlight to "category_btn_highlight",
+            btnRegex to "category_btn_regex",
+            btnClose to "category_btn_close",
+            btnReplaceOne to "category_btn_replace_one",
+            btnReplaceAll to "category_btn_replace_all",
+            btnCase to "category_btn_case",
+            btnWord to "category_btn_word"
+        )
+
+        buttonCategoryMap.forEach { (btn, catKey) ->
             btn.setOnClickListener {
-                selectedCategoryKey = "category_buttons"
+                selectedCategoryKey = catKey
                 filterCategories()
-                ThemedToast.show(context, "Button styling options selected")
+                ThemedToast.show(context, "Button options selected")
             }
         }
 

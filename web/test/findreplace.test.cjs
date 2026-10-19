@@ -25,7 +25,7 @@ test('regex history and sanitization functions are present in main.js', () => {
 
 test('applyAllPreferences maps --findreplace CSS variables', () => {
   assert.ok(source.includes("--findreplace-panel-bg"), 'Missing --findreplace-panel-bg mapping');
-  assert.ok(source.includes("--findreplace-field-border"), 'Missing --findreplace-field-border mapping');
+  assert.ok(source.includes("--findreplace-field-find-border"), 'Missing --findreplace-field-find-border mapping');
   assert.ok(source.includes("--findreplace-counter-color"), 'Missing --findreplace-counter-color mapping');
   assert.ok(source.includes("--findreplace-match-bg"), 'Missing --findreplace-match-bg mapping');
   assert.ok(source.includes("--findreplace-current-match-bg"), 'Missing --findreplace-current-match-bg mapping');

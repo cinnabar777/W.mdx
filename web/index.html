@@ -116,23 +116,41 @@
     .search-input {
       flex: 1 1 auto !important;
       min-width: 0 !important;
-      background-color: var(--findreplace-field-bg, #1e1e1e) !important;
-      color: var(--findreplace-field-color, #ffffff) !important;
-      border: 1px solid var(--findreplace-field-border, #333333) !important;
       border-radius: 6px !important;
       padding: 4px 8px !important;
-      font-size: var(--findreplace-field-font-size, 14px) !important;
       height: var(--findreplace-field-height, 32px) !important;
       outline: none !important;
       box-sizing: border-box !important;
     }
 
-    .search-input:focus {
-      border-color: var(--findreplace-field-focus-border, #0078d4) !important;
+    #search-input {
+      background-color: var(--findreplace-field-find-bg, var(--findreplace-field-bg, #1e1e1e)) !important;
+      color: var(--findreplace-field-find-color, var(--findreplace-field-color, #ffffff)) !important;
+      border: 1px solid var(--findreplace-field-find-border, var(--findreplace-field-border, #333333)) !important;
+      font-size: var(--findreplace-field-find-font-size, var(--findreplace-field-font-size, 14px)) !important;
     }
 
-    .search-input::placeholder {
-      color: var(--findreplace-field-placeholder, #888888) !important;
+    #search-input:focus {
+      border-color: var(--findreplace-field-find-focus-border, #0078d4) !important;
+    }
+
+    #search-input::placeholder {
+      color: var(--findreplace-field-find-placeholder, #888888) !important;
+    }
+
+    #replace-input {
+      background-color: var(--findreplace-field-replace-bg, var(--findreplace-field-bg, #1e1e1e)) !important;
+      color: var(--findreplace-field-replace-color, var(--findreplace-field-color, #ffffff)) !important;
+      border: 1px solid var(--findreplace-field-replace-border, var(--findreplace-field-border, #333333)) !important;
+      font-size: var(--findreplace-field-replace-font-size, var(--findreplace-field-font-size, 14px)) !important;
+    }
+
+    #replace-input:focus {
+      border-color: var(--findreplace-field-replace-focus-border, #0078d4) !important;
+    }
+
+    #replace-input::placeholder {
+      color: var(--findreplace-field-replace-placeholder, #888888) !important;
     }
 
     .search-counter {
