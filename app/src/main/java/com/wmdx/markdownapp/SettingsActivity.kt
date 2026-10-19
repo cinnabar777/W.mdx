@@ -189,6 +189,13 @@ class SettingsFragment : BaseSettingsFragment() {
                     .commit()
                 return true
             }
+            "pref_page_findreplace" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, StylingFindReplaceFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
             "pref_page_export", "pref_export_page" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, ExportSettingsFragment())
