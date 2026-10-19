@@ -166,6 +166,8 @@ object PreferenceResetHelper {
             key == "pref_selection_highlight_text_color" -> "default"
             key == "pref_magnifier_size" -> "medium"
             key == "pref_magnifier_position" -> "above"
+            key == "pref_magnifier_offset_x" -> 0
+            key == "pref_magnifier_offset_y" -> 0
             key == "pref_code_block_color" -> "default"
             key == "pref_code_block_bg_color" -> "default"
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"

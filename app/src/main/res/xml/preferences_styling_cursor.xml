@@ -57,6 +57,24 @@
             android:entries="@array/magnifier_position_entries"
             android:entryValues="@array/magnifier_position_values"
             android:defaultValue="above" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_magnifier_offset_x"
+            app:title="Magnifier Horizontal Offset X (dp)"
+            app:summary="Adjust horizontal offset position for selection magnifier lens (-50 to +50 dp)"
+            app:min="-50"
+            android:max="50"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_magnifier_offset_y"
+            app:title="Magnifier Vertical Offset Y (dp)"
+            app:summary="Adjust vertical offset position for selection magnifier lens (-50 to +50 dp)"
+            app:min="-50"
+            android:max="50"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>
