@@ -158,8 +158,17 @@
       color: var(--findreplace-counter-color, #888888) !important;
       white-space: nowrap !important;
       text-align: center !important;
-      flex-shrink: 0 !important;
+      flex: 0 0 auto !important;
+      min-width: max-content !important;
       padding: 0 2px !important;
+    }
+
+    #custom-search-bar .search-icon-btn[hidden] {
+      display: none !important;
+    }
+
+    .search-icon-group:empty {
+      display: none !important;
     }
 
     .search-error-msg {

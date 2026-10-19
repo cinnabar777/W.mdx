@@ -576,7 +576,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     private var row1GroupView: android.widget.LinearLayout? = null
     private var row2GroupView: android.widget.LinearLayout? = null
     private var hiddenTrayView: android.widget.LinearLayout? = null
-    private var hiddenChipsContainer: android.widget.LinearLayout? = null
+    private var hiddenChipsContainer: android.view.View? = null
 
     private val previewButtonMap = mutableMapOf<String, android.widget.TextView>()
     private val originalButtonTextMap = mutableMapOf<String, String>()
@@ -620,22 +620,88 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         val key = preference.key
         if (key != null && key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg")) {
-            targetSvgPrefKey = key
-            val context = context ?: return super.onPreferenceTreeClick(preference)
-            AlertDialog.Builder(context)
-                .setTitle("Custom SVG Icon")
-                .setItems(arrayOf("Choose SVG File", "Paste SVG Code")) { _, which ->
-                    if (which == 0) {
-                        pickSvgLauncher.launch(arrayOf("image/svg+xml", "text/xml", "application/xml", "*/*"))
-                    } else {
-                        super.onPreferenceTreeClick(preference)
-                    }
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
+            showSvgSourceChooser(key)
             return true
         }
         return super.onPreferenceTreeClick(preference)
+    }
+
+    override fun onDisplayPreferenceDialog(preference: Preference) {
+        val key = preference.key
+        if (key != null && key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg")) {
+            showSvgSourceChooser(key)
+            return
+        }
+        super.onDisplayPreferenceDialog(preference)
+    }
+
+    private fun showSvgSourceChooser(key: String) {
+        targetSvgPrefKey = key
+        val context = context ?: return
+        AlertDialog.Builder(context)
+            .setTitle("Custom SVG Icon")
+            .setItems(arrayOf("Choose SVG File", "Paste SVG Code")) { _, which ->
+                if (which == 0) {
+                    pickSvgLauncher.launch(arrayOf("image/svg+xml", "text/xml", "application/xml", "*/*"))
+                } else {
+                    showPasteSvgDialog(key)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showPasteSvgDialog(key: String) {
+        val context = context ?: return
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val currentSvg = prefs.getString(key, "") ?: ""
+
+        val input = android.widget.EditText(context).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setLines(6)
+            setText(currentSvg)
+            setSelection(text.length)
+        }
+
+        val container = android.widget.FrameLayout(context).apply {
+            val density = context.resources.displayMetrics.density
+            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+            addView(input)
+        }
+
+        AlertDialog.Builder(context)
+            .setTitle("Paste SVG Code")
+            .setView(container)
+            .setPositiveButton("Save") { _, _ ->
+                val newSvg = input.text.toString().trim()
+                if (newSvg.isNotBlank()) {
+                    if (newSvg.toByteArray(Charsets.UTF_8).size > 64 * 1024) {
+                        ThemedToast.show(context, "SVG code exceeds 64 KB limit")
+                        return@setPositiveButton
+                    }
+                    if (!isValidAndSafeSvg(newSvg)) {
+                        ThemedToast.show(context, "Invalid or unsafe SVG code")
+                        return@setPositiveButton
+                    }
+                    try {
+                        com.caverock.androidsvg.SVG.getFromString(newSvg)
+                    } catch (e: Exception) {
+                        ThemedToast.show(context, "Cannot parse SVG code")
+                        return@setPositiveButton
+                    }
+                }
+                prefs.edit().putString(key, newSvg).apply()
+                val pref = findPreference<Preference>(key)
+                if (newSvg.isNotBlank()) {
+                    pref?.summary = "Custom SVG code saved"
+                } else {
+                    pref?.summary = "Choose an SVG file or paste SVG code"
+                }
+                refreshFindReplacePreview(prefs)
+                ThemedToast.show(context, if (newSvg.isNotBlank()) "Custom SVG updated" else "Custom SVG cleared")
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun handleSvgPicked(uri: Uri) {
@@ -724,9 +790,8 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val orderList = parseAndNormalizeOrder(prefs.getString(PREF_KEY_BUTTON_ORDER, DEFAULT_BUTTON_ORDER))
         val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
 
-        val visibleIds = orderList.filter { it !in hiddenSet }
-        val row1Ids = visibleIds.take(5)
-        val row2Ids = visibleIds.drop(5)
+        val row1Ids = orderList.take(5).filter { it !in hiddenSet }
+        val row2Ids = orderList.drop(5).filter { it !in hiddenSet }
 
         val g1 = row1GroupView
         val g2 = row2GroupView
@@ -752,7 +817,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         }
 
         // Populate hidden tray chips
-        val chipBox = hiddenChipsContainer
+        val chipBox = hiddenChipsContainer as? android.widget.GridLayout
         val ctx = context
         if (chipBox != null && ctx != null) {
             chipBox.removeAllViews()
@@ -766,18 +831,29 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 chipBox.addView(emptyTv)
             } else {
                 hiddenSet.forEach { hid ->
+                    val labelText = when (hid) {
+                        "prev" -> "▲ Prev"
+                        "next" -> "▼ Next"
+                        "highlight" -> "≡ Highlight"
+                        "regex" -> ".* Regex"
+                        "close" -> "✕ Close"
+                        "replace-one" -> "1➔ Replace 1"
+                        "replace-all" -> "∀➔ Replace All"
+                        "case" -> "Aa Case"
+                        "word" -> "\\b Word"
+                        else -> hid
+                    }
                     val chip = android.widget.TextView(ctx).apply {
-                        text = "+ $hid"
-                        textSize = 12f
+                        text = "+ $labelText"
+                        textSize = 11f
                         setTextColor(Color.WHITE)
                         setBackgroundColor(Color.parseColor("#0078D4"))
-                        setPadding((8 * density).toInt(), (4 * density).toInt(), (8 * density).toInt(), (4 * density).toInt())
-                        layoutParams = android.widget.LinearLayout.LayoutParams(
-                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            marginEnd = (6 * density).toInt()
-                            bottomMargin = (4 * density).toInt()
+                        setPadding((6 * density).toInt(), (4 * density).toInt(), (6 * density).toInt(), (4 * density).toInt())
+                        gravity = android.view.Gravity.CENTER
+                        layoutParams = android.widget.GridLayout.LayoutParams().apply {
+                            width = 0
+                            columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                            setMargins((3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt())
                         }
                         setOnClickListener {
                             val curHidden = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
@@ -1015,15 +1091,23 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         }
         hiddenTray.addView(trayLabel)
 
-        val chipsContainer = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
+        val chipsScroll = android.widget.ScrollView(context).apply {
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                (120 * density).toInt()
+            )
+        }
+
+        val chipsContainer = android.widget.GridLayout(context).apply {
+            columnCount = 3
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
             )
         }
         hiddenChipsContainer = chipsContainer
-        hiddenTray.addView(chipsContainer)
+        chipsScroll.addView(chipsContainer)
+        hiddenTray.addView(chipsScroll)
 
         previewCard.addView(row1)
         previewCard.addView(row2)
@@ -1068,8 +1152,23 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                         hiddenSet.remove(draggedId)
                         orderList.remove(draggedId)
 
-                        val targetIndex = if (isRow1) 0 else Math.min(5, orderList.size)
-                        orderList.add(targetIndex, draggedId)
+                        val targetGroup = if (isRow1) row1GroupView else row2GroupView
+                        var targetIndexInRow = targetGroup?.childCount ?: 0
+                        if (targetGroup != null) {
+                            for (i in 0 until targetGroup.childCount) {
+                                val child = targetGroup.getChildAt(i)
+                                val childMidX = child.x + child.width / 2f
+                                if (event.x < childMidX) {
+                                    targetIndexInRow = i
+                                    break
+                                }
+                            }
+                        }
+
+                        val baseOffset = if (isRow1) 0 else 5
+                        val globalInsertIndex = Math.min(orderList.size, Math.max(0, baseOffset + targetIndexInRow))
+
+                        orderList.add(globalInsertIndex, draggedId)
 
                         prefs.edit()
                             .putString(PREF_KEY_BUTTON_ORDER, orderList.joinToString(","))

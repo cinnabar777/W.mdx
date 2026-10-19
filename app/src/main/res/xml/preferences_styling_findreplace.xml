@@ -147,7 +147,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_prev_color" app:title="Icon Color" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_prev_pressed_bg" app:title="Pressed State Background" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetSeekBarPreference app:key="pref_findreplace_btn_prev_width" app:title="Button Width (px)" app:min="20" android:max="64" app:defaultValue="28" app:showSeekBarValue="true" />
-        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_prev_svg" app:title="Custom SVG Icon" app:summary="Paste custom SVG XML string" app:defaultValue="" />
+        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_prev_svg" app:title="Custom SVG Icon" app:summary="Choose an SVG file or paste SVG code" app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:key="category_btn_next" app:title="Find Next Button">
@@ -155,7 +155,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_next_color" app:title="Icon Color" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_next_pressed_bg" app:title="Pressed State Background" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetSeekBarPreference app:key="pref_findreplace_btn_next_width" app:title="Button Width (px)" app:min="20" android:max="64" app:defaultValue="28" app:showSeekBarValue="true" />
-        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_next_svg" app:title="Custom SVG Icon" app:summary="Paste custom SVG XML string" app:defaultValue="" />
+        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_next_svg" app:title="Custom SVG Icon" app:summary="Choose an SVG file or paste SVG code" app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:key="category_btn_highlight" app:title="Highlight All Button">
@@ -165,7 +165,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_highlight_active_color" app:title="Active State Icon Color" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_highlight_pressed_bg" app:title="Pressed State Background" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetSeekBarPreference app:key="pref_findreplace_btn_highlight_width" app:title="Button Width (px)" app:min="20" android:max="64" app:defaultValue="28" app:showSeekBarValue="true" />
-        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_highlight_svg" app:title="Custom SVG Icon" app:summary="Paste custom SVG XML string" app:defaultValue="" />
+        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_highlight_svg" app:title="Custom SVG Icon" app:summary="Choose an SVG file or paste SVG code" app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:key="category_btn_regex" app:title="Regular Expression Button">
@@ -175,7 +175,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_regex_active_color" app:title="Active State Icon Color" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_regex_pressed_bg" app:title="Pressed State Background" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetSeekBarPreference app:key="pref_findreplace_btn_regex_width" app:title="Button Width (px)" app:min="20" android:max="64" app:defaultValue="28" app:showSeekBarValue="true" />
-        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_regex_svg" app:title="Custom SVG Icon" app:summary="Paste custom SVG XML string" app:defaultValue="" />
+        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_regex_svg" app:title="Custom SVG Icon" app:summary="Choose an SVG file or paste SVG code" app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:key="category_btn_close" app:title="Close Button">
@@ -183,7 +183,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_close_color" app:title="Icon Color" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_close_pressed_bg" app:title="Pressed State Background" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetSeekBarPreference app:key="pref_findreplace_btn_close_width" app:title="Button Width (px)" app:min="20" android:max="64" app:defaultValue="28" app:showSeekBarValue="true" />
-        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_close_svg" app:title="Custom SVG Icon" app:summary="Paste custom SVG XML string" app:defaultValue="" />
+        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_close_svg" app:title="Custom SVG Icon" app:summary="Choose an SVG file or paste SVG code" app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:key="category_btn_replace_one" app:title="Replace One Button">
@@ -191,7 +191,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_replace_one_color" app:title="Icon Color" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_replace_one_pressed_bg" app:title="Pressed State Background" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetSeekBarPreference app:key="pref_findreplace_btn_replace_one_width" app:title="Button Width (px)" app:min="20" android:max="64" app:defaultValue="28" app:showSeekBarValue="true" />
-        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_replace_one_svg" app:title="Custom SVG Icon" app:summary="Paste custom SVG XML string" app:defaultValue="" />
+        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_replace_one_svg" app:title="Custom SVG Icon" app:summary="Choose an SVG file or paste SVG code" app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:key="category_btn_replace_all" app:title="Replace All Button">
@@ -199,7 +199,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_replace_all_color" app:title="Icon Color" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_replace_all_pressed_bg" app:title="Pressed State Background" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetSeekBarPreference app:key="pref_findreplace_btn_replace_all_width" app:title="Button Width (px)" app:min="20" android:max="64" app:defaultValue="28" app:showSeekBarValue="true" />
-        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_replace_all_svg" app:title="Custom SVG Icon" app:summary="Paste custom SVG XML string" app:defaultValue="" />
+        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_replace_all_svg" app:title="Custom SVG Icon" app:summary="Choose an SVG file or paste SVG code" app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:key="category_btn_case" app:title="Match Case Button">
@@ -209,7 +209,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_case_active_color" app:title="Active State Icon Color" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_case_pressed_bg" app:title="Pressed State Background" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetSeekBarPreference app:key="pref_findreplace_btn_case_width" app:title="Button Width (px)" app:min="20" android:max="64" app:defaultValue="28" app:showSeekBarValue="true" />
-        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_case_svg" app:title="Custom SVG Icon" app:summary="Paste custom SVG XML string" app:defaultValue="" />
+        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_case_svg" app:title="Custom SVG Icon" app:summary="Choose an SVG file or paste SVG code" app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:key="category_btn_word" app:title="Match Whole Word Button">
@@ -219,7 +219,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_word_active_color" app:title="Active State Icon Color" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetColorPickerPreference app:key="pref_findreplace_btn_word_pressed_bg" app:title="Pressed State Background" app:defaultValue="default" />
         <com.wmdx.markdownapp.ResetSeekBarPreference app:key="pref_findreplace_btn_word_width" app:title="Button Width (px)" app:min="20" android:max="64" app:defaultValue="28" app:showSeekBarValue="true" />
-        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_word_svg" app:title="Custom SVG Icon" app:summary="Paste custom SVG XML string" app:defaultValue="" />
+        <com.wmdx.markdownapp.ResetEditTextPreference app:key="pref_findreplace_btn_word_svg" app:title="Custom SVG Icon" app:summary="Choose an SVG file or paste SVG code" app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>
