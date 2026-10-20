@@ -760,7 +760,12 @@ const customHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: '#ff4081', fontWeight: 'bold' }
 ]);
 
-const livePreviewPlugin = ViewPlugin.fromClass(class {
+export { EditorState } from '@codemirror/state';
+export { EditorView } from '@codemirror/view';
+export { cursorLineDown, cursorLineUp } from '@codemirror/commands';
+export { markdown } from '@codemirror/lang-markdown';
+
+export const livePreviewPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
     this.initializedFoldLines = new Set();
     this.decorations = this.buildDecorations(view);
@@ -1118,9 +1123,8 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'HorizontalRule') {
             addLineClass(line.from, 'cm-hr');
-            const caretIsOnRule = selection.empty && selection.head >= node.from && selection.head <= node.to;
-            if (!isNodeActive && !caretIsOnRule) {
-              builder.push(Decoration.replace({}).range(node.from, node.to));
+            if (!isNodeActive) {
+              builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(node.from, node.to));
             }
           }
 
@@ -1227,12 +1231,14 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
 
         const displayTitle = (info.customTitle && info.customTitle.trim().length > 0)
-          ? info.customTitle.trim()
+          ? ''
           : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+
+        const replaceEnd = (info.customTitle && info.customTitle.trim().length > 0) ? info.markerEnd : line.to;
 
         builder.push(Decoration.replace({
           widget: new CalloutTitleWidget(displayTitle, info.type, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
-        }).range(info.markerStart, line.to));
+        }).range(info.markerStart, replaceEnd));
       }
     }
 
