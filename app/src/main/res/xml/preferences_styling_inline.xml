@@ -60,6 +60,15 @@
             android:entries="@array/underline_style_entries"
             android:entryValues="@array/underline_style_values"
             android:defaultValue="solid" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_link_underline_thickness"
+            app:title="Link Underline Thickness (px)"
+            app:summary="Underline thickness for hyperlink text (1-4 px)"
+            app:min="1"
+            android:max="4"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Footnote Styling">

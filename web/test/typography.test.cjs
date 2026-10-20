@@ -148,3 +148,22 @@ test('Wikilinks rendering and refined link styling rules in main.js and index.ht
   assert.ok(indexHtml.includes('text-decoration-skip-ink: auto !important;'), 'index.html includes text-decoration-skip-ink');
   assert.ok(indexHtml.includes('cursor: pointer !important;'), 'index.html includes cursor pointer');
 });
+
+test('Link underline thickness and dialog insertion helpers in main.js and XML preferences', () => {
+  const inlineSettingsPath = path.join(
+    __dirname,
+    '../../app/src/main/res/xml/preferences_styling_inline.xml'
+  );
+  const inlineSettings = fs.readFileSync(inlineSettingsPath, 'utf8');
+
+  assert.match(inlineSettings, /app:key="pref_link_underline_thickness"/);
+  assert.match(source, /pref_link_underline_thickness/);
+  assert.match(source, /--link-decoration-thickness/);
+  assert.match(indexHtml, /text-decoration-thickness:\s*var\(--link-decoration-thickness,\s*1px\)\s*!important/);
+
+  assert.match(source, /export function cleanHeadingText/);
+  assert.match(source, /export function scrollToHeading/);
+  assert.match(source, /export function getDocumentHeadings/);
+  assert.match(source, /export function openLinkInsertionDialog/);
+  assert.match(source, /export function openCalloutInsertionDialog/);
+});

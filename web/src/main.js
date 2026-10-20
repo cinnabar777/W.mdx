@@ -45,6 +45,7 @@ let customHotkeys = {
   link: 'ctrl+k',
   footnote: 'ctrl+shift+f',
   blockQuote: 'ctrl+shift+q',
+  callout: 'ctrl+alt+q',
   codeBlock: 'ctrl+shift+c',
   bulletedList: 'ctrl+shift+8',
   numberedList: 'ctrl+shift+7',
@@ -318,20 +319,78 @@ class CalloutTitleWidget extends WidgetType {
   }
 }
 
+export function cleanHeadingText(rawText) {
+  return rawText
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
+export function scrollToHeading(view, targetHeading) {
+  if (!view || !targetHeading) return false;
+  const targetClean = cleanHeadingText(targetHeading).toLowerCase();
+  const doc = view.state.doc;
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    if (/^#{1,6}\s+/.test(line.text.trim())) {
+      const lineClean = cleanHeadingText(line.text).toLowerCase();
+      if (lineClean === targetClean) {
+        view.dispatch({
+          selection: { anchor: line.from, head: line.from },
+          scrollIntoView: true
+        });
+        view.focus();
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 class WikilinkWidget extends WidgetType {
-  constructor(label) {
+  constructor(label, target) {
     super();
     this.label = label;
+    this.target = target;
   }
 
   eq(other) {
-    return other instanceof WikilinkWidget && other.label === this.label;
+    return (
+      other instanceof WikilinkWidget &&
+      other.label === this.label &&
+      other.target === this.target
+    );
   }
 
-  toDOM() {
+  toDOM(view) {
     const span = document.createElement('span');
     span.className = 'cm-link cm-wikilink';
     span.textContent = this.label;
+
+    if (this.target) {
+      span.setAttribute('role', 'link');
+      span.setAttribute('tabindex', '0');
+      span.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.target.startsWith('#')) {
+          scrollToHeading(view, this.target.slice(1));
+        }
+      });
+      span.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (this.target.startsWith('#')) {
+            scrollToHeading(view, this.target.slice(1));
+          }
+        }
+      });
+    }
+
     return span;
   }
 }
@@ -731,7 +790,9 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           const matchEnd = matchStart + wikilinkMatch[0].length;
           const target = wikilinkMatch[1];
           const alias = wikilinkMatch[2];
-          const displayLabel = (alias !== undefined && alias.trim().length > 0) ? alias : target;
+          const displayLabel = (alias !== undefined && alias.trim().length > 0)
+            ? alias
+            : (target.startsWith('#') ? target.slice(1) : target);
 
           let labelStart, labelEnd;
           if (alias !== undefined) {
@@ -744,7 +805,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (!isLineActive) {
             builder.push(Decoration.replace({
-              widget: new WikilinkWidget(displayLabel)
+              widget: new WikilinkWidget(displayLabel, target)
             }).range(matchStart, matchEnd));
           } else if (labelEnd > labelStart) {
             builder.push(Decoration.mark({ class: 'cm-link cm-wikilink' }).range(labelStart, labelEnd));
@@ -1817,6 +1878,7 @@ function setupGroupedControlBar() {
       togglePopupStrip('insert', insertBtn, [
         { icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
         { icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
+        { icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { icon: svgIcons.inlineCode, title: 'Inline Code', action: () => execCmd('code') },
         { icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
         { icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
@@ -1843,6 +1905,224 @@ function setupGroupedControlBar() {
       ]);
     };
   }
+}
+
+export function getDocumentHeadings(doc) {
+  const headings = [];
+  if (!doc) return headings;
+  for (let i = 1; i <= doc.lines; i++) {
+    const lineText = doc.line(i).text.trim();
+    if (/^#{1,6}\s+/.test(lineText)) {
+      headings.push(cleanHeadingText(lineText));
+    }
+  }
+  return headings;
+}
+
+export function openLinkInsertionDialog() {
+  if (!activeAdapter || !activeAdapter.view) return;
+  const view = activeAdapter.view;
+  const sel = view.state.selection.main;
+  const selectedText = view.state.doc.sliceString(sel.from, sel.to);
+
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  const headings = getDocumentHeadings(view.state.doc);
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Insert Link</h3>
+    <div class="modal-field-group">
+      <label class="modal-label">Link Kind</label>
+      <select id="modal-link-kind" class="modal-select">
+        <option value="web">Web URL</option>
+        <option value="heading">Heading in this document</option>
+      </select>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" id="modal-label-text">Display Text</label>
+      <input type="text" id="modal-link-text" class="modal-input" placeholder="Text to display" value="${selectedText.replace(/"/g, '&quot;')}" />
+    </div>
+    <div class="modal-field-group" id="group-web-url">
+      <label class="modal-label">Web URL</label>
+      <input type="text" id="modal-link-url" class="modal-input" placeholder="https://" value="https://" />
+    </div>
+    <div class="modal-field-group hidden" id="group-heading-picker" style="display:none;">
+      <label class="modal-label">Target Heading</label>
+      <select id="modal-heading-select" class="modal-select">
+        ${headings.length > 0
+          ? headings.map(h => `<option value="${h.replace(/"/g, '&quot;')}">${h}</option>`).join('')
+          : '<option value="">(No headings found in document)</option>'}
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-btn-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm">Insert</button>
+    </div>
+  `;
+
+  const kindSelect = dialog.querySelector('#modal-link-kind');
+  const groupWeb = dialog.querySelector('#group-web-url');
+  const groupHeading = dialog.querySelector('#group-heading-picker');
+  const labelText = dialog.querySelector('#modal-label-text');
+  const textInput = dialog.querySelector('#modal-link-text');
+  const urlInput = dialog.querySelector('#modal-link-url');
+  const headingSelect = dialog.querySelector('#modal-heading-select');
+  const btnCancel = dialog.querySelector('#modal-btn-cancel');
+  const btnConfirm = dialog.querySelector('#modal-btn-confirm');
+
+  kindSelect.addEventListener('change', () => {
+    if (kindSelect.value === 'web') {
+      groupWeb.style.display = 'flex';
+      groupHeading.style.display = 'none';
+      labelText.textContent = 'Display Text';
+    } else {
+      groupWeb.style.display = 'none';
+      groupHeading.style.display = 'flex';
+      labelText.textContent = 'Link Alias (Optional)';
+    }
+  });
+
+  const closeModal = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+  };
+
+  btnCancel.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+    view.focus();
+  });
+
+  btnConfirm.addEventListener('click', (e) => {
+    e.preventDefault();
+    const kind = kindSelect.value;
+    const displayText = textInput.value.trim();
+    let replacement = '';
+
+    if (kind === 'web') {
+      const url = urlInput.value.trim() || 'https://';
+      const label = displayText || url;
+      replacement = `[${label}](${url})`;
+    } else {
+      const targetHeading = headingSelect.value;
+      if (!targetHeading) {
+        closeModal();
+        view.focus();
+        return;
+      }
+      if (displayText) {
+        replacement = `[[#${targetHeading}|${displayText}]]`;
+      } else {
+        replacement = `[[#${targetHeading}]]`;
+      }
+    }
+
+    view.dispatch({
+      changes: { from: sel.from, to: sel.to, insert: replacement },
+      selection: { anchor: sel.from + replacement.length, head: sel.from + replacement.length }
+    });
+
+    closeModal();
+    view.focus();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => {
+    textInput.focus();
+  });
+}
+
+export function openCalloutInsertionDialog() {
+  if (!activeAdapter || !activeAdapter.view) return;
+  const view = activeAdapter.view;
+  const sel = view.state.selection.main;
+  const selectedText = view.state.doc.sliceString(sel.from, sel.to);
+
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  const supportedTypes = ['note', 'info', 'tip', 'warning', 'important', 'danger', 'question', 'faq', 'todo', 'example'];
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Insert Callout</h3>
+    <div class="modal-field-group">
+      <label class="modal-label">Callout Type</label>
+      <select id="modal-callout-type" class="modal-select">
+        ${supportedTypes.map(t => `<option value="${t}">${t.toUpperCase()}</option>`).join('')}
+      </select>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label">Custom Title (Optional)</label>
+      <input type="text" id="modal-callout-title" class="modal-input" placeholder="Default type name" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label">Fold State</label>
+      <select id="modal-callout-fold" class="modal-select">
+        <option value="">Not foldable</option>
+        <option value="+">Expanded (+)</option>
+        <option value="-">Collapsed (-)</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-btn-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm">Insert</button>
+    </div>
+  `;
+
+  const typeSelect = dialog.querySelector('#modal-callout-type');
+  const titleInput = dialog.querySelector('#modal-callout-title');
+  const foldSelect = dialog.querySelector('#modal-callout-fold');
+  const btnCancel = dialog.querySelector('#modal-btn-cancel');
+  const btnConfirm = dialog.querySelector('#modal-btn-confirm');
+
+  const closeModal = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+  };
+
+  btnCancel.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+    view.focus();
+  });
+
+  btnConfirm.addEventListener('click', (e) => {
+    e.preventDefault();
+    const type = typeSelect.value || 'note';
+    const fold = foldSelect.value;
+    const title = titleInput.value.trim();
+
+    let opener = `> [!${type}${fold}]`;
+    if (title) opener += ` ${title}`;
+
+    let replacement = '';
+    let caretOffset = 0;
+
+    if (selectedText.length > 0) {
+      const quotedBody = selectedText.split('\n').map(l => `> ${l}`).join('\n');
+      replacement = `${opener}\n${quotedBody}\n`;
+      caretOffset = replacement.length;
+    } else {
+      replacement = `${opener}\n> `;
+      caretOffset = replacement.length;
+    }
+
+    view.dispatch({
+      changes: { from: sel.from, to: sel.to, insert: replacement },
+      selection: { anchor: sel.from + caretOffset, head: sel.from + caretOffset }
+    });
+
+    closeModal();
+    view.focus();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => {
+    titleInput.focus();
+  });
 }
 
 function showTableGridPickerModal() {
@@ -1944,7 +2224,8 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'outdent') cmOutdentSelection(view, '  ');
     else if (cmdName === 'horizontalLine') cmWrapSelection(view, '\n---\n', '');
     else if (cmdName === 'InsertFootnote') cmWrapSelection(view, '[^1]', '\n[^1]: footnote text');
-    else if (cmdName === 'link') cmWrapSelection(view, '[', '](https://)');
+    else if (cmdName === 'link') openLinkInsertionDialog();
+    else if (cmdName === 'callout') openCalloutInsertionDialog();
     else if (cmdName === 'insertTable') cmWrapSelection(view, '\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '');
     else if (cmdName === 'heading') {
       const val = options ? options.value : '';
@@ -2817,6 +3098,7 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.strikethrough)) { e.preventDefault(); execCmd('strikethrough'); }
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.callout)) { e.preventDefault(); execCmd('callout'); }
     else if (parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.codeBlock)) { e.preventDefault(); execCmd('codeBlock'); }
     else if (parseAndMatchHotkey(e, customHotkeys.bulletedList)) { e.preventDefault(); execCmd('bulletedList'); }
@@ -2848,6 +3130,12 @@ function setupKeyboardShortcuts() {
 
 // Global JS Bridge exposure
 window.editorBridge = {
+  openLinkInsertionDialog: function() {
+    openLinkInsertionDialog();
+  },
+  openCalloutInsertionDialog: function() {
+    openCalloutInsertionDialog();
+  },
   setEditorMode: function(mode) {
     return setEditorMode(mode);
   },
@@ -2985,6 +3273,7 @@ window.editorBridge = {
     const linkStyle = prefs.pref_link_decoration || 'solid';
     setCssVar('--link-decoration-line', linkStyle === 'none' ? 'none' : 'underline');
     setCssVar('--link-decoration-style', linkStyle === 'none' ? 'solid' : linkStyle);
+    setCssVar('--link-decoration-thickness', prefs.pref_link_underline_thickness, 'px');
     setCssVar('--code-color', prefs.pref_code_color);
     setCssVar('--code-bg-color', prefs.pref_code_bg_color);
     setCssVar('--code-padding', prefs.pref_code_padding, 'px');

@@ -936,71 +936,41 @@
     .cm-content .cm-callout[data-callout-type="info"] {
       --callout-type-border: #29b6f6;
       --callout-type-bg: rgba(41, 182, 246, 0.12);
-    }
-    .cm-content .cm-callout[data-callout-type="info"]:has([style*="--callout-type-info-header-bg"]) {
-      --callout-type-header-bg: var(--callout-type-info-header-bg);
-    }
-    .cm-content .cm-callout[data-callout-type="info"]:has([style*="--callout-type-info-header-title-color"]) {
-      --callout-type-header-title-color: var(--callout-type-info-header-title-color);
-    }
-    .cm-content .cm-callout[data-callout-type="info"]:has([style*="--callout-type-info-header-accent-color"]) {
-      --callout-type-header-accent-color: var(--callout-type-info-header-accent-color);
+      --callout-type-header-bg: var(--callout-type-info-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-title-color: var(--callout-type-info-header-title-color, var(--callout-header-title-color, inherit));
+      --callout-type-header-accent-color: var(--callout-type-info-header-accent-color, var(--callout-header-accent-color, transparent));
     }
 
     .cm-content .cm-callout[data-callout-type="faq"] {
       --callout-type-border: #ff9800;
       --callout-type-bg: rgba(255, 152, 0, 0.12);
-    }
-    .cm-content .cm-callout[data-callout-type="faq"]:has([style*="--callout-type-faq-header-bg"]) {
-      --callout-type-header-bg: var(--callout-type-faq-header-bg);
-    }
-    .cm-content .cm-callout[data-callout-type="faq"]:has([style*="--callout-type-faq-header-title-color"]) {
-      --callout-type-header-title-color: var(--callout-type-faq-header-title-color);
-    }
-    .cm-content .cm-callout[data-callout-type="faq"]:has([style*="--callout-type-faq-header-accent-color"]) {
-      --callout-type-header-accent-color: var(--callout-type-faq-header-accent-color);
+      --callout-type-header-bg: var(--callout-type-faq-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-title-color: var(--callout-type-faq-header-title-color, var(--callout-header-title-color, inherit));
+      --callout-type-header-accent-color: var(--callout-type-faq-header-accent-color, var(--callout-header-accent-color, transparent));
     }
 
     .cm-content .cm-callout[data-callout-type="question"] {
       --callout-type-border: #ff9800;
       --callout-type-bg: rgba(255, 152, 0, 0.12);
-    }
-    .cm-content .cm-callout[data-callout-type="question"]:has([style*="--callout-type-question-header-bg"]) {
-      --callout-type-header-bg: var(--callout-type-question-header-bg);
-    }
-    .cm-content .cm-callout[data-callout-type="question"]:has([style*="--callout-type-question-header-title-color"]) {
-      --callout-type-header-title-color: var(--callout-type-question-header-title-color);
-    }
-    .cm-content .cm-callout[data-callout-type="question"]:has([style*="--callout-type-question-header-accent-color"]) {
-      --callout-type-header-accent-color: var(--callout-type-question-header-accent-color);
+      --callout-type-header-bg: var(--callout-type-question-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-title-color: var(--callout-type-question-header-title-color, var(--callout-header-title-color, inherit));
+      --callout-type-header-accent-color: var(--callout-type-question-header-accent-color, var(--callout-header-accent-color, transparent));
     }
 
     .cm-content .cm-callout[data-callout-type="todo"] {
       --callout-type-border: #00bcd4;
       --callout-type-bg: rgba(0, 188, 212, 0.12);
-    }
-    .cm-content .cm-callout[data-callout-type="todo"]:has([style*="--callout-type-todo-header-bg"]) {
-      --callout-type-header-bg: var(--callout-type-todo-header-bg);
-    }
-    .cm-content .cm-callout[data-callout-type="todo"]:has([style*="--callout-type-todo-header-title-color"]) {
-      --callout-type-header-title-color: var(--callout-type-todo-header-title-color);
-    }
-    .cm-content .cm-callout[data-callout-type="todo"]:has([style*="--callout-type-todo-header-accent-color"]) {
-      --callout-type-header-accent-color: var(--callout-type-todo-header-accent-color);
+      --callout-type-header-bg: var(--callout-type-todo-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-title-color: var(--callout-type-todo-header-title-color, var(--callout-header-title-color, inherit));
+      --callout-type-header-accent-color: var(--callout-type-todo-header-accent-color, var(--callout-header-accent-color, transparent));
     }
 
     .cm-content .cm-callout[data-callout-type="example"] {
       --callout-type-border: #ab47bc;
       --callout-type-bg: rgba(171, 71, 188, 0.12);
-    }
-    .cm-content .cm-callout[data-callout-type="example"]:has([style*="--callout-type-example-header-bg"]) {
-      --callout-type-header-bg: var(--callout-type-example-header-bg);
-    }
-    .cm-content .cm-callout[data-callout-type="example"]:has([style*="--callout-type-example-header-title-color"]) {
-      --callout-type-header-title-color: var(--callout-type-example-header-title-color);
-    }
-    .cm-content .cm-callout[data-callout-type="example"]:has([style*="--callout-type-example-header-accent-color"]) {
-      --callout-type-header-accent-color: var(--callout-type-example-header-accent-color);
+      --callout-type-header-bg: var(--callout-type-example-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-title-color: var(--callout-type-example-header-title-color, var(--callout-header-title-color, inherit));
+      --callout-type-header-accent-color: var(--callout-type-example-header-accent-color, var(--callout-header-accent-color, transparent));
     }
     .cm-content .cm-callout[data-callout-type="tip"] {
       --callout-type-border: #66bb6a;
@@ -1102,6 +1072,7 @@
       color: var(--link-color, #29b6f6) !important;
       text-decoration-line: var(--link-decoration-line, underline) !important;
       text-decoration-style: var(--link-decoration-style, solid) !important;
+      text-decoration-thickness: var(--link-decoration-thickness, 1px) !important;
       text-underline-offset: 3px !important;
       text-decoration-skip-ink: auto !important;
       cursor: pointer !important;
@@ -1119,6 +1090,109 @@
       margin-bottom: 0 !important;
       padding-top: var(--hr-margin-top, 16px) !important;
       padding-bottom: var(--hr-margin-bottom, 16px) !important;
+    }
+
+    /* In-App Themed Insertion Dialog Modal Overlay */
+    #editor-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(0, 0, 0, 0.6);
+      z-index: 10015;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s ease, visibility 0.2s ease;
+    }
+
+    #editor-modal-overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    #editor-modal-dialog {
+      background-color: var(--toolbar-bg, #1a1a1a);
+      color: var(--text-color, #ffffff);
+      border: 1px solid var(--border-color, #444444);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+      padding: 18px;
+      box-sizing: border-box;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .modal-title {
+      font-size: 17px;
+      font-weight: bold;
+      margin: 0;
+    }
+
+    .modal-field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .modal-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-color, #ffffff);
+      opacity: 0.85;
+    }
+
+    .modal-input,
+    .modal-select {
+      background-color: var(--bg-color, #000000);
+      color: var(--text-color, #ffffff);
+      border: 1px solid var(--border-color, #444444);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 14px;
+      outline: none;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    .modal-input:focus,
+    .modal-select:focus {
+      border-color: #0078d4;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .modal-btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+
+    .modal-btn-cancel {
+      background-color: transparent;
+      color: var(--text-color, #ffffff);
+      border: 1px solid var(--border-color, #444444);
+    }
+
+    .modal-btn-confirm {
+      background-color: #0078d4;
+      color: #ffffff;
     }
   </style>
 </head>
@@ -1164,6 +1238,9 @@
     </div>
   </div>
   <button id="floating-toggle-btn" class="floating-toggle-btn" title="Toggle Toolbar">⟨</button>
+  <div id="editor-modal-overlay">
+    <div id="editor-modal-dialog"></div>
+  </div>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

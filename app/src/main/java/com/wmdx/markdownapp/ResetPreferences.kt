@@ -118,6 +118,7 @@ object PreferenceResetHelper {
             key == "pref_paragraph_margin_top" -> 0
             key == "pref_paragraph_margin_bottom" -> 8
             key == "pref_link_decoration" -> "solid"
+            key == "pref_link_underline_thickness" -> 1
             key == "pref_code_padding" -> 4
             key == "pref_code_border_radius" -> 4
             key == "pref_list_left_indent" -> 24
@@ -263,6 +264,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_code" -> "ctrl+e"
             key == "pref_hotkey_link" -> "ctrl+k"
             key == "pref_hotkey_blockQuote" -> "ctrl+shift+q"
+            key == "pref_hotkey_callout" -> "ctrl+alt+q"
             key == "pref_hotkey_codeBlock" -> "ctrl+shift+c"
             key == "pref_hotkey_bulletedList" -> "ctrl+shift+8"
             key == "pref_hotkey_numberedList" -> "ctrl+shift+7"
