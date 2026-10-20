@@ -1,4 +1,4 @@
-# Jules handoff: separate keyboard and finger-scroll diagnostics
+# Jules handoff: correlate keyboard repeats with scroll movement
 
 ## Target
 
@@ -8,52 +8,60 @@
 
 Use the active branch. Do not switch branches, reset, cherry-pick, or replace newer work. If it has advanced, preserve its current state and make only this diagnostics change.
 
-## Findings from the routing-v3 Android report
+## Test facts
 
-- The 23 recorded `ArrowUp` events move the caret one document line at a time from line 16 to line 1. There are no `ArrowDown` records in this report.
-- During those upward moves, `scrollTop` decreases by about 28 px per keypress while the caret stays at about 5 px from the viewport top. The report shows the viewport following the caret; it does not show skipped document lines in this segment.
-- The only scroll record has `pointerType:"unknown"`, `maxTravel:0`, a duration of 52,563 ms, and only 12 samples from its first 2.5 seconds. Its `before` and `after` snapshots cover line 345 to line 1 and different scroll heights. It cannot tell whether a finger swipe or keyboard-driven scrolling caused the change.
+- The user confirms the reported interactions were keyboard navigation, including long-press repeats; they were not finger-scroll tests.
+- The routing-v3 report contains 23 `ArrowUp` records and no `ArrowDown` records. In the recorded list section, each Up event moves one document line, from line 16 through line 1.
+- Each arrow record says `repeat:false`, even though the user used long-press repeat.
+- While moving upward, `scrollTop` decreases about 28 px per keypress while the caret remains about 5 px from the viewport top.
+- One `scroll` record has `pointerType:"unknown"`, `maxTravel:0`, and a duration of 52,563 ms. It contains only the first 12 samples from about 2.5 seconds and ends at line 1, although it began at line 345. The user confirms this test activity was keyboard navigation, so do not interpret that record as a finger swipe.
 
-The current implementation explains this ambiguity: `setupNavigationDiagnostics()` uses one `activeGesture` object both for pointer gestures and standalone `scroll` events. Every scroll event without an active pointer creates or updates that same object, including scroll events caused by ArrowUp/ArrowDown. `sampleThrottled()` stops storing data after the first 12 samples, and `onScroll()` listens only to the CodeMirror scroller and `window`.
+## Code cause to correct
 
-## Implement exactly this diagnostics-only change
+In `web/src/main.js`, `setupNavigationDiagnostics()` uses one `activeGesture` for pointer activity and all standalone scroll events. Arrow-generated scroll events can therefore create or extend a scroll record unrelated to any one arrow event. The first 12 samples are kept and later ones discarded, so a long record preserves its start but loses its end. The arrow records use `event.repeat` alone, which does not reflect the user's observed long-press repeats.
 
-### 1. Separate pointer gestures from scroll bursts
+## Implement this diagnostics-only change
 
-In `web/src/main.js` within `setupNavigationDiagnostics(view)`:
+### 1. Group arrow keydowns into physical key presses
 
-- Replace the shared `activeGesture` state with separate `activePointerGesture` and `activeScrollBurst` state. Never create a pointer gesture from a scroll event.
-- Keep the existing ArrowUp/ArrowDown snapshots and keymaps unchanged. Each arrow record must include monotonic `startElapsedMs` and `endElapsedMs` from `performance.now()`.
-- When a scroll event occurs within 250 ms of an arrow keydown, classify its source as `keyboard` and attach the related arrow record ID. Record the per-arrow scroll before/after values already present in the arrow snapshots. Do not merge that scroll into an unattributed finger-scroll record.
-- For a pointer gesture, begin only on `pointerdown` and end on its matching `pointerup` or `pointercancel`. Preserve the original `pointerType` and pointer coordinates. Classify as `tap` only when pointer travel is at most 8 CSS px and no editor/page scroll target moved more than 1 CSS px; otherwise classify it as a `scroll` with source `pointer`.
-- Scroll events with neither an active pointer gesture nor a recent arrow keydown are source `unattributed`. Do not label them as touch or infer a pointer type.
-- Finalize pointer and unattributed scroll records independently after their own 300 ms idle period. A new pointer gesture must not overwrite or finalize a separate pending scroll burst.
-- Add `startElapsedMs` and `endElapsedMs` to each finalized interaction. Use the same `performance.now()` clock for both values. Preserve the unique interaction ID assigned at its start so records can be correlated even if they are emitted in a different order.
+In `setupNavigationDiagnostics(view)`:
 
-### 2. Keep useful samples from long scrolls
+- Keep one unique `pressId` for each ArrowUp or ArrowDown press, starting when the first keydown arrives and ending at the matching keyup.
+- For every arrow keydown, continue recording its own before/after editor snapshot and unique event ID.
+- Add `pressId`, `keydownIndex`, `eventElapsedMs`, and `reportedRepeat` to each arrow record. Increment `keydownIndex` for every same-direction keydown received before keyup.
+- Set the record's `repeat` to `event.repeat || keydownIndex > 1`; also retain `reportedRepeat` separately so Android/WebView behavior can be seen directly.
+- Capture ArrowUp/ArrowDown `keyup` in capture phase. Emit a bounded key-press summary with `pressId`, direction, start/end elapsed milliseconds, duration, total keydown count, and whether any keydown reported `event.repeat:true`.
+- If focus leaves the editor before keyup, close the press on blur and mark it `endedByBlur:true`; do not leave a press open across editor sessions.
+- Use `performance.now()` consistently for elapsed times. Do not infer a repeated press from multiple key presses that each received a keyup.
 
-- Continue sampling no more than once every 50 ms.
-- Keep at most 12 samples per record, but retain the first sample and the newest 11 samples. When older middle samples are dropped, include `totalSampleCount` and `droppedSampleCount`.
-- Each scroll sample must include elapsed time, `source`, `target`, editor `scrollTop`/`scrollHeight`/`clientHeight`, page `window.scrollY`, pointer coordinates or null, selection anchor/head/head line, caret client Y, and editor viewport top/bottom.
-- Listen for `scroll` on `view.scrollDOM`, each scrollable ancestor between the editor and the document, and the page. Label targets only as `editor`, `ancestor1`, `ancestor2`, or `page`; never record selectors or DOM class names.
-- For `page` events, record `window.scrollY` as the page scroll position. Do not fill a page-scroll field with the CodeMirror scroller's `scrollTop`.
+### 2. Attach keyboard-driven scroll samples to the arrow press
 
-### 3. Update the allowlisted serializer and Android validation
+- Arrow records already include before/after editor scroll values. Add `scrollDeltaTop` and `scrollDeltaLeft`, calculated from those snapshots.
+- During an active arrow press, collect scroll samples into that `pressId` record. Also associate scroll events occurring within 150 ms after an arrow keydown with the most recent matching arrow event.
+- Take a final scroll snapshot on the next animation frame and a second snapshot 50 ms later, so the trace includes delayed WebView scrolling after the key event.
+- Do not create or extend an `unattributed` scroll burst while an arrow press is active or within the 150 ms association window. Never combine multiple arrow presses into one 52-second scroll record.
+- Preserve pointer gestures as a separate path. A pointer gesture must start with a matching pointerdown; a scroll event alone must never be labeled as a tap or as a touch gesture.
+- For scrolling outside both a pointer gesture and the arrow association window, keep a separate `unattributed` scroll trace. Bound it to at most 2 seconds per record and start a new record if scrolling continues.
 
-Update `web/src/navigationDiagnostics.js` to allow only the new source, target, timing, and sample-count fields in addition to the current bounded navigation record fields. Enforce the 12-sample rolling cap and 8,192-character record limit in the serializer.
+### 3. Preserve both early and late samples
 
-In `MainActivity.kt` and `AppDiagnostics.kt`, validate the new fields and allowed values before storing a record. Keep the existing 24-record local buffer and `routing-v3` report version. Do not store arbitrary fields or exceed the existing per-record size limit.
+- Sample no more than once every 50 ms.
+- Keep at most 12 samples per record: retain the first sample and the newest 11. Track `totalSampleCount` and `droppedSampleCount`.
+- Each sample must include elapsed time, `pressId` or null, source (`arrow`, `pointer`, or `unattributed`), target, editor scroll top/height/client height, page `window.scrollY`, selection anchor/head/head line, caret client Y, and editor viewport top/bottom.
+- For page scroll events, record `window.scrollY`; do not report the editor scroller's `scrollTop` as the page position.
 
-### 4. Tests
+### 4. Update allowlists, native validation, and tests
 
-Update `web/test/navigation-diagnostics.test.cjs` to cover:
+Update `web/src/navigationDiagnostics.js`, `MainActivity.kt`, and `AppDiagnostics.kt` to allowlist and validate the new press, timing, repeat-source, scroll-delta, and sample-count fields. Keep the existing 24-record local bound, 8,192-character per-record limit, bounded line previews, and `routing-v3` version. Do not add uploads.
 
-- An arrow-generated scroll is tagged `keyboard` and references its arrow ID, not a pointer gesture.
-- A pointer gesture retains its pointer type and is `tap` only under both the travel and scroll thresholds.
-- An unattributed scroll remains distinct from a pointer gesture.
-- A record with more than 12 samples preserves the first and newest 11, and reports correct total/dropped counts.
-- Start/end elapsed times use valid finite numbers and unknown fields are omitted.
-- Serialized records remain at or below 8,192 characters.
+Update `web/test/navigation-diagnostics.test.cjs` to verify:
+
+- Multiple same-direction keydowns before keyup share one `pressId` and get increasing `keydownIndex`, even if each has `reportedRepeat:false`.
+- Separate keydown/keyup pairs do not get inferred as repeats.
+- Keyup closes the press with a finite duration; blur closure is marked.
+- Arrow-driven scroll samples are attached to the matching press and are not emitted as an unrelated 52-second scroll burst.
+- More than 12 samples retain the first and newest 11 with correct counts.
+- Unknown fields are dropped and serialized output remains at or below 8,192 characters.
 
 ## Strict boundaries
 
@@ -65,7 +73,7 @@ Only these files may change:
 - `app/src/main/java/com/wmdx/markdownapp/MainActivity.kt`
 - `app/src/main/java/com/wmdx/markdownapp/AppDiagnostics.kt`
 
-Do not change caret movement, keymaps, focus, scrolling, CSS, decorations, or list/table/callout behavior. Do not edit the Markdown stress-test file, `web/test_sources/rendered_navigation.spec.cjs`, `web/build_tests.cjs`, workflows, package manifests, or dependencies. Do not delete or broadly rewrite existing code.
+Do not change caret movement, keymaps, focus behavior, scrolling, CSS, decorations, or list/table/callout behavior. Do not edit the Markdown stress-test file, `web/test_sources/rendered_navigation.spec.cjs`, `web/build_tests.cjs`, workflows, package manifests, or dependencies. Do not delete or broadly rewrite existing code.
 
 ## Verify
 
@@ -76,4 +84,4 @@ node --test web/test/*.test.cjs
 node web/build.cjs
 ```
 
-Then run the repository's existing Android debug build workflow once. This change is only to make the next diagnostic report distinguish input sources; do not claim it fixes the visible jumping.
+Then run the repository's existing Android debug build workflow once. This change makes long-press and keyboard-driven scrolling measurable; do not claim it fixes the visible jumping.
