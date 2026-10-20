@@ -1101,7 +1101,8 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'HorizontalRule') {
             addLineClass(line.from, 'cm-hr');
-            if (!isNodeActive) {
+            const caretIsOnRule = selection.empty && selection.head >= node.from && selection.head <= node.to;
+            if (!isNodeActive && !caretIsOnRule) {
               builder.push(Decoration.replace({}).range(node.from, node.to));
             }
           }
@@ -1562,54 +1563,6 @@ export const tableStateField = StateField.define({
   provide: field => EditorView.decorations.from(field)
 });
 
-export const horizontalRuleNavigationKeymap = keymap.of([
-  {
-    key: 'ArrowUp',
-    run(view) {
-      const selection = view.state.selection.main;
-      if (!selection.empty) return false;
-
-      const currentLine = view.state.doc.lineAt(selection.head);
-      if (currentLine.number <= 1) return false;
-
-      const previousLineNumber = currentLine.number - 1;
-      if (isHorizontalRuleLine(view.state, previousLineNumber)) {
-        const horizontalRuleLine = view.state.doc.line(previousLineNumber);
-        view.dispatch({
-          selection: { anchor: horizontalRuleLine.from },
-          scrollIntoView: false,
-          userEvent: 'select.keyboard'
-        });
-        ensureCaretVisibleMinimal(view, horizontalRuleLine.from);
-        return true;
-      }
-      return false;
-    }
-  },
-  {
-    key: 'ArrowDown',
-    run(view) {
-      const selection = view.state.selection.main;
-      if (!selection.empty) return false;
-
-      const currentLine = view.state.doc.lineAt(selection.head);
-      if (currentLine.number >= view.state.doc.lines) return false;
-
-      const nextLineNumber = currentLine.number + 1;
-      if (isHorizontalRuleLine(view.state, nextLineNumber)) {
-        const horizontalRuleLine = view.state.doc.line(nextLineNumber);
-        view.dispatch({
-          selection: { anchor: horizontalRuleLine.from },
-          scrollIntoView: false,
-          userEvent: 'select.keyboard'
-        });
-        ensureCaretVisibleMinimal(view, horizontalRuleLine.from);
-        return true;
-      }
-      return false;
-    }
-  }
-]);
 
 export const tableNavigationKeymap = keymap.of([
   {
@@ -1710,7 +1663,6 @@ class CodeMirrorAdapter {
           }
         }),
         tableStateField,
-        horizontalRuleNavigationKeymap,
         tableNavigationKeymap,
         keymap.of([
           ...defaultKeymap,
