@@ -4016,21 +4016,49 @@ function getBlockCategory(view, pos) {
   return 'other';
 }
 
-function getSnapshot(view, pos) {
-  if (!view || pos == null) return null;
+function getSnapshot(view) {
+  if (!view || !view.state) return null;
   try {
-    const line = view.state.doc.lineAt(pos);
-    const coords = view.coordsAtPos(pos);
+    const sel = view.state.selection.main;
+    const anchor = sel.anchor;
+    const head = sel.head;
+    const collapsed = sel.empty;
+
+    const anchorLineObj = view.state.doc.lineAt(anchor);
+    const headLineObj = view.state.doc.lineAt(head);
+
+    const anchorCoords = view.coordsAtPos(anchor);
+    const headCoords = view.coordsAtPos(head);
+
+    const viewRect = view.dom ? view.dom.getBoundingClientRect() : null;
     const scroller = view.scrollDOM;
+
     return {
-      anchor: view.state.selection.main.anchor,
-      head: view.state.selection.main.head,
-      line: line.number,
-      column: pos - line.from + 1,
-      x: coords ? coords.left : null,
-      y: coords ? coords.top : null,
+      anchor,
+      head,
+      collapsed,
+      anchorLine: anchorLineObj.number,
+      anchorColumn: anchor - anchorLineObj.from + 1,
+      headLine: headLineObj.number,
+      headColumn: head - headLineObj.from + 1,
+      anchorBlock: getBlockCategory(view, anchor),
+      headBlock: getBlockCategory(view, head),
+      anchorLineText: anchorLineObj.text,
+      headLineText: headLineObj.text,
+      anchorClientTop: anchorCoords ? anchorCoords.top : null,
+      anchorClientBottom: anchorCoords ? anchorCoords.bottom : null,
+      headClientTop: headCoords ? headCoords.top : null,
+      headClientBottom: headCoords ? headCoords.bottom : null,
+      viewTop: viewRect ? viewRect.top : null,
+      viewBottom: viewRect ? viewRect.bottom : null,
+      viewWidth: viewRect ? viewRect.width : null,
+      viewHeight: viewRect ? viewRect.height : null,
       scrollTop: scroller ? scroller.scrollTop : null,
-      scrollLeft: scroller ? scroller.scrollLeft : null
+      scrollLeft: scroller ? scroller.scrollLeft : null,
+      scrollHeight: scroller ? scroller.scrollHeight : null,
+      clientHeight: scroller ? scroller.clientHeight : null,
+      windowScrollY: typeof window !== 'undefined' ? window.scrollY : null,
+      windowInnerHeight: typeof window !== 'undefined' ? window.innerHeight : null
     };
   } catch (e) {
     return null;
@@ -4041,22 +4069,20 @@ export function setupNavigationDiagnostics(view) {
   if (!view || !view.dom) return;
 
   const dom = view.dom;
+  const scroller = view.scrollDOM;
 
+  // Keydown listener for ArrowUp / ArrowDown
   dom.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 
     const traceId = nextTraceId++;
     const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
     const isRepeat = Boolean(e.repeat);
-    const head = view.state.selection.main.head;
-    const beforeSnap = getSnapshot(view, head);
-    const blockBefore = getBlockCategory(view, head);
+    const beforeSnap = getSnapshot(view);
 
     requestAnimationFrame(() => {
-      if (!view) return;
-      const newHead = view.state.selection.main.head;
-      const afterSnap = getSnapshot(view, newHead);
-      const blockAfter = getBlockCategory(view, newHead);
+      if (!view || !view.state) return;
+      const afterSnap = getSnapshot(view);
       const selChanged = (beforeSnap && afterSnap)
         ? (beforeSnap.anchor !== afterSnap.anchor || beforeSnap.head !== afterSnap.head)
         : false;
@@ -4068,8 +4094,6 @@ export function setupNavigationDiagnostics(view) {
         repeat: isRepeat,
         before: beforeSnap,
         after: afterSnap,
-        blockBefore,
-        blockAfter,
         selectionChanged: selChanged
       };
 
@@ -4080,43 +4104,207 @@ export function setupNavigationDiagnostics(view) {
     });
   }, true);
 
-  dom.addEventListener('pointerdown', (e) => {
-    const traceId = nextTraceId++;
-    const px = e.clientX;
-    const py = e.clientY;
-    const head = view.state.selection.main.head;
-    const beforeSnap = getSnapshot(view, head);
-    const blockBefore = getBlockCategory(view, head);
+  // Passive gesture and scroll recorder
+  let activeGesture = null;
 
-    requestAnimationFrame(() => {
-      if (!view) return;
-      const newHead = view.state.selection.main.head;
-      const afterSnap = getSnapshot(view, newHead);
-      const blockAfter = getBlockCategory(view, newHead);
-      const selChanged = (beforeSnap && afterSnap)
-        ? (beforeSnap.anchor !== afterSnap.anchor || beforeSnap.head !== afterSnap.head)
-        : false;
+  const getScrollTargetLabel = (el) => {
+    if (!el) return 'page';
+    if (el === scroller) return 'editor';
+    if (el === document.body || el === document.documentElement || el === window) return 'page';
+    if (scroller && scroller.contains(el)) return 'editor';
+    return 'ancestor1';
+  };
 
-      const record = {
-        id: traceId,
-        kind: 'tap',
-        direction: 'none',
-        repeat: false,
-        before: beforeSnap,
-        after: afterSnap,
-        blockBefore,
-        blockAfter,
+  const createSample = (targetLabel, px, py) => {
+    try {
+      const targetEl = (targetLabel === 'editor' && scroller) ? scroller : null;
+      const head = view.state.selection.main.head;
+      const headLineObj = view.state.doc.lineAt(head);
+      const headCoords = view.coordsAtPos(head);
+      const viewRect = dom.getBoundingClientRect();
+
+      return {
+        elapsedMs: activeGesture ? Math.round(performance.now() - activeGesture.startTime) : 0,
+        target: targetLabel,
+        scrollTop: targetEl ? targetEl.scrollTop : (scroller ? scroller.scrollTop : null),
+        scrollLeft: targetEl ? targetEl.scrollLeft : (scroller ? scroller.scrollLeft : null),
+        scrollHeight: scroller ? scroller.scrollHeight : null,
+        clientHeight: scroller ? scroller.clientHeight : null,
         pointerX: px,
         pointerY: py,
-        selectionChanged: selChanged
+        anchor: view.state.selection.main.anchor,
+        head,
+        headLine: headLineObj.number,
+        headClientTop: headCoords ? headCoords.top : null,
+        viewTop: viewRect ? viewRect.top : null,
+        viewBottom: viewRect ? viewRect.bottom : null
       };
+    } catch (e) {
+      return null;
+    }
+  };
 
-      const serialized = serializeNavigationTraceRecord(record);
-      if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
-        window.AndroidNative.reportNavigationTrace(serialized);
-      }
-    });
+  const sampleThrottled = (targetLabel, px, py) => {
+    if (!activeGesture) return;
+    const now = performance.now();
+    if (now - activeGesture.lastSampleTime < 50) return;
+    if (activeGesture.scrollSamples.length >= 12) return;
+
+    activeGesture.lastSampleTime = now;
+    const sample = createSample(targetLabel, px, py);
+    if (sample) {
+      activeGesture.scrollSamples.push(sample);
+    }
+  };
+
+  let gestureIdleTimer = null;
+
+  const finalizeGesture = () => {
+    if (!activeGesture) return;
+    clearTimeout(gestureIdleTimer);
+    gestureIdleTimer = null;
+
+    const g = activeGesture;
+    activeGesture = null;
+
+    const duration = Math.round(performance.now() - g.startTime);
+    const afterSnap = getSnapshot(view);
+    const selChanged = (g.beforeSnap && afterSnap)
+      ? (g.beforeSnap.anchor !== afterSnap.anchor || g.beforeSnap.head !== afterSnap.head)
+      : false;
+
+    let initialScrollTop = g.beforeSnap ? g.beforeSnap.scrollTop : 0;
+    let finalScrollTop = afterSnap ? afterSnap.scrollTop : 0;
+    let scrollMoved = (initialScrollTop !== null && finalScrollTop !== null)
+      ? Math.abs(finalScrollTop - initialScrollTop) > 1
+      : false;
+
+    let isTap = (g.maxTravel <= 8) && !scrollMoved;
+    const kind = isTap ? 'tap' : 'scroll';
+
+    const record = {
+      id: g.id,
+      kind,
+      direction: 'none',
+      repeat: false,
+      pointerType: g.pointerType,
+      duration,
+      pointerStartX: g.startX,
+      pointerStartY: g.startY,
+      pointerEndX: g.currentX,
+      pointerEndY: g.currentY,
+      maxTravel: g.maxTravel,
+      canceled: g.canceled,
+      selectionChanged: selChanged,
+      before: g.beforeSnap,
+      after: afterSnap,
+      scrollSamples: g.scrollSamples
+    };
+
+    const serialized = serializeNavigationTraceRecord(record);
+    if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
+      window.AndroidNative.reportNavigationTrace(serialized);
+    }
+  };
+
+  const resetGestureIdleTimer = () => {
+    clearTimeout(gestureIdleTimer);
+    gestureIdleTimer = setTimeout(() => {
+      finalizeGesture();
+    }, 300);
+  };
+
+  dom.addEventListener('pointerdown', (e) => {
+    if (activeGesture) {
+      finalizeGesture();
+    }
+
+    const traceId = nextTraceId++;
+    const pType = e.pointerType || 'touch';
+    const px = e.clientX;
+    const py = e.clientY;
+    const beforeSnap = getSnapshot(view);
+
+    activeGesture = {
+      id: traceId,
+      pointerId: e.pointerId,
+      pointerType: pType,
+      startX: px,
+      startY: py,
+      currentX: px,
+      currentY: py,
+      maxTravel: 0,
+      startTime: performance.now(),
+      lastSampleTime: performance.now(),
+      beforeSnap,
+      scrollSamples: [],
+      canceled: false
+    };
+
+    resetGestureIdleTimer();
   }, true);
+
+  window.addEventListener('pointermove', (e) => {
+    if (!activeGesture || activeGesture.pointerId !== e.pointerId) return;
+    activeGesture.currentX = e.clientX;
+    activeGesture.currentY = e.clientY;
+    const travel = Math.hypot(e.clientX - activeGesture.startX, e.clientY - activeGesture.startY);
+    if (travel > activeGesture.maxTravel) {
+      activeGesture.maxTravel = travel;
+    }
+    sampleThrottled('editor', e.clientX, e.clientY);
+    resetGestureIdleTimer();
+  }, true);
+
+  window.addEventListener('pointerup', (e) => {
+    if (!activeGesture || activeGesture.pointerId !== e.pointerId) return;
+    activeGesture.currentX = e.clientX;
+    activeGesture.currentY = e.clientY;
+    const travel = Math.hypot(e.clientX - activeGesture.startX, e.clientY - activeGesture.startY);
+    if (travel > activeGesture.maxTravel) {
+      activeGesture.maxTravel = travel;
+    }
+    sampleThrottled('editor', e.clientX, e.clientY);
+    setTimeout(() => finalizeGesture(), 50);
+  }, true);
+
+  window.addEventListener('pointercancel', (e) => {
+    if (!activeGesture || activeGesture.pointerId !== e.pointerId) return;
+    activeGesture.canceled = true;
+    setTimeout(() => finalizeGesture(), 50);
+  }, true);
+
+  const onScroll = (e) => {
+    const targetLabel = getScrollTargetLabel(e.target);
+    if (!activeGesture) {
+      // Standalone scroll without pointer
+      const traceId = nextTraceId++;
+      const beforeSnap = getSnapshot(view);
+      activeGesture = {
+        id: traceId,
+        pointerId: -1,
+        pointerType: 'unknown',
+        startX: null,
+        startY: null,
+        currentX: null,
+        currentY: null,
+        maxTravel: 0,
+        startTime: performance.now(),
+        lastSampleTime: 0,
+        beforeSnap,
+        scrollSamples: [],
+        canceled: false
+      };
+    }
+
+    sampleThrottled(targetLabel, activeGesture.currentX, activeGesture.currentY);
+    resetGestureIdleTimer();
+  };
+
+  if (scroller) {
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
 }
 
 window.addEventListener('DOMContentLoaded', () => {

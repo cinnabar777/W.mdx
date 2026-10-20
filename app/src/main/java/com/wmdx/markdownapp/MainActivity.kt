@@ -933,7 +933,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun reportNavigationTrace(jsonRecord: String?) {
-            if (jsonRecord != null && jsonRecord.length <= 4000) {
+            if (jsonRecord != null && jsonRecord.length <= 8192) {
                 AppDiagnostics.recordNavigationTrace(this@MainActivity, jsonRecord)
             }
         }

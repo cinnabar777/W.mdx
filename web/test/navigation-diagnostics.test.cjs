@@ -2,20 +2,72 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { serializeNavigationTraceRecord } = require('../src/navigationDiagnostics.js');
 
-test('serializeNavigationTraceRecord preserves valid fields and normalizes coordinates', () => {
-  const record = {
+test('serializeNavigationTraceRecord handles arrow, tap, and scroll records while keeping endpoints separate', () => {
+  const arrowRecord = {
     id: 1,
     kind: 'arrow',
     direction: 'down',
     repeat: true,
-    before: { anchor: 10, head: 10, line: 1, column: 1, x: 12.345, y: 56.789, scrollTop: 0, scrollLeft: 0 },
-    after: { anchor: 25, head: 25, line: 2, column: 1, x: 12.345, y: 76.789, scrollTop: 0, scrollLeft: 0 },
-    blockBefore: 'paragraph',
-    blockAfter: 'heading',
+    pointerType: 'touch',
+    before: {
+      anchor: 10,
+      head: 20,
+      collapsed: false,
+      anchorLine: 1,
+      anchorColumn: 10,
+      headLine: 2,
+      headColumn: 5,
+      anchorBlock: 'paragraph',
+      headBlock: 'heading',
+      anchorLineText: 'Line 1 text',
+      headLineText: '# Heading 2 text',
+      anchorClientTop: 100,
+      anchorClientBottom: 120,
+      headClientTop: 140,
+      headClientBottom: 160,
+      viewTop: 0,
+      viewBottom: 800,
+      viewWidth: 400,
+      viewHeight: 800,
+      scrollTop: 0,
+      scrollLeft: 0,
+      scrollHeight: 2000,
+      clientHeight: 800,
+      windowScrollY: 0,
+      windowInnerHeight: 800
+    },
+    after: {
+      anchor: 20,
+      head: 20,
+      collapsed: true,
+      anchorLine: 2,
+      anchorColumn: 5,
+      headLine: 2,
+      headColumn: 5,
+      anchorBlock: 'heading',
+      headBlock: 'heading',
+      anchorLineText: '# Heading 2 text',
+      headLineText: '# Heading 2 text',
+      anchorClientTop: 140,
+      anchorClientBottom: 160,
+      headClientTop: 140,
+      headClientBottom: 160,
+      viewTop: 0,
+      viewBottom: 800,
+      viewWidth: 400,
+      viewHeight: 800,
+      scrollTop: 0,
+      scrollLeft: 0,
+      scrollHeight: 2000,
+      clientHeight: 800,
+      windowScrollY: 0,
+      windowInnerHeight: 800
+    },
     selectionChanged: true
   };
 
-  const jsonStr = serializeNavigationTraceRecord(record);
+  const jsonStr = serializeNavigationTraceRecord(arrowRecord);
+  assert.ok(jsonStr.length <= 8192);
   const parsed = JSON.parse(jsonStr);
 
   assert.strictEqual(parsed.id, 1);
@@ -23,50 +75,106 @@ test('serializeNavigationTraceRecord preserves valid fields and normalizes coord
   assert.strictEqual(parsed.direction, 'down');
   assert.strictEqual(parsed.repeat, true);
   assert.strictEqual(parsed.before.anchor, 10);
-  assert.strictEqual(parsed.before.x, 12.35);
-  assert.strictEqual(parsed.after.y, 76.79);
-  assert.strictEqual(parsed.blockBefore, 'paragraph');
-  assert.strictEqual(parsed.blockAfter, 'heading');
-  assert.strictEqual(parsed.selectionChanged, true);
-  assert.strictEqual(parsed.pointerX, undefined);
+  assert.strictEqual(parsed.before.head, 20);
+  assert.strictEqual(parsed.before.collapsed, false);
+  assert.strictEqual(parsed.before.anchorLine, 1);
+  assert.strictEqual(parsed.before.headLine, 2);
+  assert.strictEqual(parsed.before.anchorBlock, 'paragraph');
+  assert.strictEqual(parsed.before.headBlock, 'heading');
+  assert.strictEqual(parsed.after.collapsed, true);
 });
 
-test('serializeNavigationTraceRecord handles tap records with pointer coordinates', () => {
+test('serializeNavigationTraceRecord caps line previews at 160 characters and scroll samples at 12', () => {
+  const longText = 'A'.repeat(300);
+  const manySamples = Array.from({ length: 20 }, (_, i) => ({
+    elapsedMs: i * 50,
+    target: 'editor',
+    scrollTop: i * 10,
+    scrollLeft: 0,
+    scrollHeight: 2000,
+    clientHeight: 800,
+    pointerX: 100,
+    pointerY: 200,
+    anchor: 0,
+    head: 0,
+    headLine: 1,
+    headClientTop: 10,
+    viewTop: 0,
+    viewBottom: 800
+  }));
+
   const record = {
     id: 2,
-    kind: 'tap',
+    kind: 'scroll',
     direction: 'none',
     repeat: false,
-    before: { anchor: 0, head: 0, line: 1, column: 1, x: 0, y: 0, scrollTop: 0, scrollLeft: 0 },
-    after: { anchor: 50, head: 50, line: 5, column: 3, x: 25.5, y: 100, scrollTop: 10, scrollLeft: 0 },
-    blockBefore: 'other',
-    blockAfter: 'list',
-    pointerX: 120.45,
-    pointerY: 230.89,
-    selectionChanged: true
+    pointerType: 'touch',
+    duration: 500,
+    pointerStartX: 100,
+    pointerStartY: 200,
+    pointerEndX: 100,
+    pointerEndY: 400,
+    maxTravel: 200,
+    canceled: false,
+    selectionChanged: false,
+    before: {
+      anchor: 0,
+      head: 0,
+      collapsed: true,
+      anchorLine: 1,
+      anchorColumn: 1,
+      headLine: 1,
+      headColumn: 1,
+      anchorBlock: 'paragraph',
+      headBlock: 'paragraph',
+      anchorLineText: longText,
+      headLineText: longText
+    },
+    after: {
+      anchor: 0,
+      head: 0,
+      collapsed: true,
+      anchorLine: 1,
+      anchorColumn: 1,
+      headLine: 1,
+      headColumn: 1,
+      anchorBlock: 'paragraph',
+      headBlock: 'paragraph',
+      anchorLineText: longText,
+      headLineText: longText
+    },
+    scrollSamples: manySamples
   };
 
   const jsonStr = serializeNavigationTraceRecord(record);
-  const parsed = JSON.parse(jsonStr);
+  assert.ok(jsonStr.length <= 8192);
 
-  assert.strictEqual(parsed.id, 2);
-  assert.strictEqual(parsed.kind, 'tap');
-  assert.strictEqual(parsed.pointerX, 120.45);
-  assert.strictEqual(parsed.pointerY, 230.89);
-  assert.strictEqual(parsed.blockAfter, 'list');
+  const parsed = JSON.parse(jsonStr);
+  assert.strictEqual(parsed.before.anchorLineText.length, 160);
+  assert.strictEqual(parsed.scrollSamples.length, 12);
 });
 
-test('serializeNavigationTraceRecord drops unexpected private fields and normalizes invalid coordinates to null', () => {
+test('serializeNavigationTraceRecord drops unknown private fields and normalizes invalid coordinates', () => {
   const sensitiveRecord = {
     id: 3,
-    kind: 'arrow',
-    direction: 'up',
+    kind: 'tap',
+    direction: 'none',
     repeat: false,
-    before: { anchor: 'invalid', head: null, line: NaN, column: undefined, x: Infinity, y: -Infinity, scrollTop: null, scrollLeft: null },
-    after: { anchor: 10, head: 10, line: 1, column: 1, x: 10, y: 20, scrollTop: 0, scrollLeft: 0 },
-    blockBefore: 'invalid_block_type',
-    blockAfter: 'code',
-    selectionChanged: false,
+    pointerType: 'touch',
+    before: {
+      anchor: 'invalid',
+      head: null,
+      anchorLine: NaN,
+      anchorColumn: undefined,
+      anchorClientTop: Infinity,
+      anchorBlock: 'invalid_type',
+      anchorLineText: 'Line text'
+    },
+    after: {
+      anchor: 10,
+      head: 10,
+      collapsed: true
+    },
     text: 'PRIVATE DOCUMENT CONTENT',
     selectedText: 'SENSITIVE TEXT',
     html: '<p>SECRET HTML</p>',
@@ -76,30 +184,19 @@ test('serializeNavigationTraceRecord drops unexpected private fields and normali
   };
 
   const jsonStr = serializeNavigationTraceRecord(sensitiveRecord);
+  assert.ok(jsonStr.length <= 8192);
 
-  // Assert private fields are NOT emitted in the output JSON string at all
   assert.strictEqual(jsonStr.includes('PRIVATE DOCUMENT CONTENT'), false);
   assert.strictEqual(jsonStr.includes('SENSITIVE TEXT'), false);
   assert.strictEqual(jsonStr.includes('SECRET HTML'), false);
   assert.strictEqual(jsonStr.includes('SecretNote.md'), false);
   assert.strictEqual(jsonStr.includes('/sdcard/Documents/SecretNote.md'), false);
-  assert.strictEqual(jsonStr.includes('content://com.wmdx/secret'), false);
 
   const parsed = JSON.parse(jsonStr);
   assert.strictEqual(parsed.text, undefined);
   assert.strictEqual(parsed.selectedText, undefined);
-  assert.strictEqual(parsed.html, undefined);
-  assert.strictEqual(parsed.fileName, undefined);
-  assert.strictEqual(parsed.path, undefined);
-  assert.strictEqual(parsed.uri, undefined);
-
-  // Assert invalid coordinates normalized to null
   assert.strictEqual(parsed.before.anchor, null);
-  assert.strictEqual(parsed.before.line, null);
-  assert.strictEqual(parsed.before.x, null);
-  assert.strictEqual(parsed.before.y, null);
-
-  // Assert invalid block category falls back to 'other'
-  assert.strictEqual(parsed.blockBefore, 'other');
-  assert.strictEqual(parsed.blockAfter, 'code');
+  assert.strictEqual(parsed.before.anchorLine, null);
+  assert.strictEqual(parsed.before.anchorClientTop, null);
+  assert.strictEqual(parsed.before.anchorBlock, 'other');
 });

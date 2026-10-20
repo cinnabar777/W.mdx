@@ -3,8 +3,9 @@ package com.wmdx.markdownapp
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
+import org.json.JSONObject
 
-/** Bounded metadata only: no document text, filenames, paths, or URI strings. */
+/** Bounded metadata only: no full document text, filenames, paths, or URI strings. */
 object AppDiagnostics {
     fun show(context: Context) {
         val text = report(context)
@@ -32,10 +33,18 @@ object AppDiagnostics {
     }
 
     @Synchronized fun recordNavigationTrace(context: Context, jsonRecord: String) {
-        if (jsonRecord.isBlank() || jsonRecord.length > 4000) return
-        val prefs = context.getSharedPreferences("diagnostic_report", Context.MODE_PRIVATE)
-        val traces = (prefs.getString("nav_traces", "") ?: "").lineSequence().filter { it.isNotEmpty() }.toList()
-        prefs.edit().putString("nav_traces", (traces.takeLast(23) + jsonRecord).joinToString("\n")).apply()
+        if (jsonRecord.isBlank() || jsonRecord.length > 8192) return
+        try {
+            val json = JSONObject(jsonRecord)
+            val kind = json.optString("kind", "")
+            if (kind != "arrow" && kind != "tap" && kind != "scroll") return
+
+            val prefs = context.getSharedPreferences("diagnostic_report", Context.MODE_PRIVATE)
+            val traces = (prefs.getString("nav_traces", "") ?: "").lineSequence().filter { it.isNotEmpty() }.toList()
+            prefs.edit().putString("nav_traces", (traces.takeLast(23) + jsonRecord).joinToString("\n")).apply()
+        } catch (e: Exception) {
+            // Ignore malformed trace payloads
+        }
     }
 
     fun report(context: Context): String {
@@ -48,8 +57,8 @@ object AppDiagnostics {
             "\n\nNavigation trace (last 24):\n$navTraces"
         } else ""
 
-        return "Wmdx Android diagnostics (routing-v2)\nAndroid SDK: ${Build.VERSION.SDK_INT}\nWebView: $webview\n" +
-            "Times are milliseconds since boot. No document content or file identifiers recorded.\n\n" +
+        return "Wmdx Android diagnostics (routing-v3)\nAndroid SDK: ${Build.VERSION.SDK_INT}\nWebView: $webview\n" +
+            "Times are milliseconds since boot. Includes selection line previews (up to 160 chars) and scroll/caret geometry. No full file content or paths recorded.\n\n" +
             events + navSection
     }
 }
