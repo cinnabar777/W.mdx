@@ -129,6 +129,7 @@ test('Nested callout rendering and attributes at depths 1, 2, and 3', () => {
   assert.equal(state.doc.toString(), nestedMd, 'Nested document text remains byte-for-byte identical');
   assert.ok(mainSource.includes("data-callout-type': attrs.type"), 'Line decoration sets data-callout-type attribute');
   assert.ok(mainSource.includes("data-callout-depth': String(attrs.depth)"), 'Line decoration sets data-callout-depth attribute');
+  assert.ok(mainSource.includes('ancestor.info.bodyTo = line.to'), 'Ancestor bodyTo extended across 3-level callout depths');
 });
 
 test('Callout fold placeholder is hidden via CSS in index.html', () => {
@@ -163,7 +164,7 @@ test('Shared callout header controls and per-type override preferences are defin
   // Check CSS Variable Mapping in main.js
   assert.ok(mainSource.includes("'--callout-header-bg', prefs.pref_callout_header_bg_color"), 'main.js sets --callout-header-bg');
   assert.ok(mainSource.includes("'--callout-header-title-color', prefs.pref_callout_header_title_color"), 'main.js sets --callout-header-title-color');
-  assert.ok(mainSource.includes("'--callout-header-title-size', prefs.pref_callout_header_title_size"), 'main.js sets --callout-header-title-size');
+  assert.ok(mainSource.includes("setCssVar('--callout-header-title-size'"), 'main.js sets --callout-header-title-size');
   assert.ok(mainSource.includes("'--callout-header-font-family', prefs.pref_callout_header_font_family"), 'main.js sets --callout-header-font-family');
   assert.ok(mainSource.includes("'--callout-header-font-weight', prefs.pref_callout_header_font_weight"), 'main.js sets --callout-header-font-weight');
   assert.ok(mainSource.includes("'--callout-header-padding', prefs.pref_callout_header_padding"), 'main.js sets --callout-header-padding');

@@ -725,11 +725,10 @@
 
     .cm-hidden-syntax {
       font-size: 0px !important;
+      line-height: 0 !important;
       opacity: 0 !important;
       display: inline !important;
       user-select: none !important;
-      width: 0px !important;
-      height: 0px !important;
       pointer-events: none !important;
     }
 
@@ -1013,13 +1012,10 @@
       gap: 6px !important;
       vertical-align: middle !important;
       user-select: none !important;
-      background-color: var(--callout-type-header-bg, var(--callout-header-bg, transparent)) !important;
-      color: var(--callout-type-header-title-color, var(--callout-header-title-color, inherit)) !important;
-      font-size: var(--callout-header-title-size, inherit) !important;
-      font-family: var(--callout-header-font-family, inherit) !important;
-      font-weight: var(--callout-header-font-weight, 700) !important;
-      padding: var(--callout-header-padding, 0px) !important;
-      border-left: var(--callout-header-accent-thickness, 0px) solid var(--callout-type-header-accent-color, var(--callout-header-accent-color, transparent)) !important;
+      color: inherit !important;
+      font-size: inherit !important;
+      font-family: inherit !important;
+      font-weight: inherit !important;
     }
 
     .cm-callout-title-container.is-foldable {

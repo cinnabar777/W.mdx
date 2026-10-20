@@ -353,7 +353,7 @@ export function scrollToPositionUpperMiddle(view, pos) {
     selection: { anchor: pos, head: pos }
   });
 
-  requestAnimationFrame(() => {
+  const performScroll = () => {
     try {
       const coords = view.coordsAtPos(pos);
       const scroller = view.scrollDOM;
@@ -370,6 +370,11 @@ export function scrollToPositionUpperMiddle(view, pos) {
     } catch (e) {
       view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
     }
+  };
+
+  requestAnimationFrame(() => {
+    performScroll();
+    setTimeout(performScroll, 50);
   });
 
   view.focus();
@@ -814,7 +819,6 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         if (insideListItem) {
           addLineClass(line.from, 'cm-list-item');
-          continue;
         }
 
         const isLineActive = !isPureWysiwyg && (
@@ -852,6 +856,10 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           } else if (labelEnd > labelStart) {
             builder.push(Decoration.mark({ class: 'cm-link cm-wikilink' }).range(labelStart, labelEnd));
           }
+        }
+
+        if (insideListItem) {
+          continue;
         }
 
         if (paragraphNode) {
@@ -938,14 +946,18 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
               activeCalloutsStack.push(calloutObj);
               calloutOpenerInfo.set(line.from, calloutObj.info);
 
+              // Update bodyTo for all ancestor callouts on stack
+              for (const ancestor of activeCalloutsStack) {
+                if (ancestor !== calloutObj) {
+                  ancestor.lastBodyLineNum = curLine;
+                  ancestor.info.bodyTo = line.to;
+                }
+              }
+
               addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-title');
               calloutLineAttributes.set(line.from, { type, depth: currentDepth });
             } else if (activeCalloutsStack.length > 0) {
-              const currentCallout = activeCalloutsStack[activeCalloutsStack.length - 1];
-              currentCallout.lastBodyLineNum = curLine;
-              currentCallout.info.bodyTo = line.to;
-
-              // Update all callouts on the stack whose depth <= currentDepth
+              // Update all callouts on stack whose depth <= currentDepth
               for (const calloutObj of activeCalloutsStack) {
                 if (calloutObj.depth <= currentDepth) {
                   calloutObj.lastBodyLineNum = curLine;
@@ -953,6 +965,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
                 }
               }
 
+              const currentCallout = activeCalloutsStack[activeCalloutsStack.length - 1];
               addLineClass(line.from, 'cm-blockquote', 'cm-callout');
               calloutLineAttributes.set(line.from, { type: currentCallout.type, depth: currentCallout.depth });
             } else {
@@ -3357,7 +3370,12 @@ window.editorBridge = {
     // Callout Shared Header
     setCssVar('--callout-header-bg', prefs.pref_callout_header_bg_color);
     setCssVar('--callout-header-title-color', prefs.pref_callout_header_title_color);
-    setCssVar('--callout-header-title-size', prefs.pref_callout_header_title_size, 'px');
+    const titleSizeVal = prefs.pref_callout_header_title_size;
+    if (titleSizeVal == null || titleSizeVal == 0 || titleSizeVal === '0' || titleSizeVal === 'default') {
+      document.documentElement.style.removeProperty('--callout-header-title-size');
+    } else {
+      setCssVar('--callout-header-title-size', titleSizeVal, 'px');
+    }
     setCssVar('--callout-header-font-family', prefs.pref_callout_header_font_family);
     setCssVar('--callout-header-font-weight', prefs.pref_callout_header_font_weight);
     setCssVar('--callout-header-padding', prefs.pref_callout_header_padding, 'px');
