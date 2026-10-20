@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.util.Base64
 import android.view.Menu
 import android.view.MenuItem
+import android.view.KeyEvent
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -128,6 +129,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         // All new opens go through DocumentDispatchActivity. A task brought to
         // the foreground must not replay its old URI or shared text.
         AppDiagnostics.record(this, "window_refocused")
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val handled = super.dispatchKeyEvent(event)
+        if (isEditorReady) {
+            AppDiagnostics.recordNativeKeyEvent(this, event, handled)
+        }
+        return handled
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -301,9 +310,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(this@MainActivity, "web_page_ready")
                 progressBar.visibility = View.GONE
             }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: android.webkit.WebResourceError?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "web_main_frame_error",
+                        "code=${error?.errorCode} description=${error?.description}"
+                    )
+                }
+                super.onReceivedError(view, request, error)
+            }
+
+            override fun onRenderProcessGone(
+                view: WebView?,
+                detail: android.webkit.RenderProcessGoneDetail?
+            ): Boolean {
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "webview_render_process_gone",
+                    "didCrash=${detail?.didCrash()} priority=${detail?.rendererPriorityAtExit()}"
+                )
+                return super.onRenderProcessGone(view, detail)
+            }
         }
 
         webView.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                if (consoleMessage?.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "web_console_error",
+                        "line=${consoleMessage.lineNumber()} message=${consoleMessage.message()}"
+                    )
+                }
+                return super.onConsoleMessage(consoleMessage)
+            }
+
             override fun onJsPrompt(
                 view: WebView?,
                 url: String?,
@@ -933,9 +980,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun reportNavigationTrace(jsonRecord: String?) {
-            if (jsonRecord != null && jsonRecord.length <= 8192) {
+            if (jsonRecord != null && jsonRecord.length <= 16 * 1024) {
                 AppDiagnostics.recordNavigationTrace(this@MainActivity, jsonRecord)
             }
+        }
+
+        @JavascriptInterface
+        fun reportNavigationTraceBatch(jsonBatch: String?) {
+            if (jsonBatch != null) {
+                AppDiagnostics.recordNavigationTraceBatch(this@MainActivity, jsonBatch)
+            }
+        }
+
+        @JavascriptInterface
+        fun captureDiagnosticSnapshot(reason: String?) {
+            AppDiagnostics.captureWindowSnapshot(this@MainActivity, webView, reason ?: "webview-request")
         }
 
         @JavascriptInterface
@@ -943,8 +1002,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             runOnUiThread {
                 val activeMode = mode ?: currentEditorMode
                 currentEditorMode = activeMode
-                AppDiagnostics.record(this@MainActivity, "editor_ready", "mode=$activeMode")
                 val wasReady = isEditorReady
+                if (!wasReady) {
+                    AppDiagnostics.startNavigationCapture(this@MainActivity)
+                }
+                AppDiagnostics.record(this@MainActivity, "editor_ready", "mode=$activeMode")
                 isEditorReady = true
                 if (!wasReady) {
                     applyPluginPreferences()
