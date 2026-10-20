@@ -770,6 +770,7 @@ export { markdown } from '@codemirror/lang-markdown';
 export const livePreviewPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
     this.initializedFoldLines = new Set();
+    this.hiddenSyntaxRanges = Decoration.none;
     this.decorations = this.buildDecorations(view);
   }
 
@@ -780,19 +781,25 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   }
 
   buildDecorations(view) {
+    const previousHiddenSyntaxRanges = this.hiddenSyntaxRanges;
+    this.hiddenSyntaxRanges = Decoration.none;
     try {
       return this._buildDecorationsInternal(view);
     } catch (e) {
       window.AndroidNative?.reportDiagnostic?.('decoration_error', 0);
+      this.hiddenSyntaxRanges = previousHiddenSyntaxRanges;
       return this.decorations || Decoration.none;
     }
   }
 
   _buildDecorationsInternal(view) {
     const builder = [];
+    const hiddenSyntaxRanges = [];
     const hideSyntax = (from, to) => {
       if (to > from) {
-        builder.push(Decoration.replace({}).range(from, to));
+        const range = Decoration.replace({}).range(from, to);
+        builder.push(range);
+        hiddenSyntaxRanges.push(range);
       }
     };
     const lineClasses = new Map();
@@ -1130,8 +1137,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'HorizontalRule') {
             addLineClass(line.from, 'cm-hr');
-            if (!isNodeActive) {
-              hideSyntax(node.from, node.to);
+            if (!isNodeActive && node.to > node.from) {
+              builder.push(Decoration.replace({}).range(node.from, node.to));
             }
           }
 
@@ -1267,11 +1274,20 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     // Filter and sanitize decoration ranges against document length
     const validBuilder = builder.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
     validBuilder.sort((a, b) => a.from - b.from || a.to - b.to);
+    const validHiddenSyntaxRanges = hiddenSyntaxRanges.filter(
+      d => 0 <= d.from && d.from <= d.to && d.to <= doc.length
+    );
+    validHiddenSyntaxRanges.sort((a, b) => a.from - b.from || a.to - b.to);
+    this.hiddenSyntaxRanges = Decoration.set(validHiddenSyntaxRanges, true);
     return Decoration.set(validBuilder, true);
   }
 }, {
   decorations: v => v.decorations
 });
+
+export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
+  view => view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges ?? Decoration.none
+);
 
 function cmToggleLinePrefix(view, prefix) {
   if (!view) return;
@@ -1586,6 +1602,24 @@ function buildTableBlockDecorations(state) {
   return Decoration.set(builder, true);
 }
 
+export function updateTableDocumentSelection(view) {
+  if (!view || !view.dom) return;
+
+  const ranges = view.state.selection.ranges;
+  for (const table of view.dom.querySelectorAll(
+    '.cm-wp-table-container[data-table-from][data-table-to]'
+  )) {
+    const from = Number(table.dataset.tableFrom);
+    const to = Number(table.dataset.tableTo);
+    const selected =
+      Number.isFinite(from) &&
+      Number.isFinite(to) &&
+      ranges.some(range => !range.empty && range.from < to && range.to > from);
+
+    table.classList.toggle('cm-document-selection', selected);
+  }
+}
+
 export const tableStateField = StateField.define({
   create(state) {
     return buildTableBlockDecorations(state);
@@ -1641,6 +1675,7 @@ class CodeMirrorAdapter {
         cmMarkdown({ extensions: [GFM, GFMTable, GFMStrikethrough, GFMTaskList] }),
         syntaxHighlighting(customHighlightStyle),
         livePreviewPlugin,
+        hiddenSyntaxAtomicRanges,
         this.lineWrapCompartment.of(isLineWrapEnabled ? EditorView.lineWrapping : []),
         this.lineNumbersCompartment.of(this.showLineNumbers ? lineNumbers() : []),
         EditorView.theme({
@@ -1665,6 +1700,10 @@ class CodeMirrorAdapter {
           '.cm-selectionBackground, ::selection': {
             backgroundColor: 'var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)) !important',
             color: 'var(--selection-highlight-text, inherit) !important'
+          },
+          '.cm-selectionLayer': {
+            zIndex: 1,
+            pointerEvents: 'none'
           },
           '.cm-line': {
             color: 'var(--text-color, #ffffff) !important'
@@ -1695,6 +1734,9 @@ class CodeMirrorAdapter {
             const state = this.getSelectionState();
             window.AndroidNative.onSelectionChanged(JSON.stringify(state));
           }
+          if (update.selectionSet || update.docChanged || update.viewportChanged) {
+            updateTableDocumentSelection(update.view);
+          }
           if ((update.selectionSet || update.docChanged) && typeof updateTocActiveSection === 'function') {
             updateTocActiveSection();
           }
@@ -1713,6 +1755,7 @@ class CodeMirrorAdapter {
       parent: containerEl
     });
 
+    updateTableDocumentSelection(this.view);
     setupNavigationDiagnostics(this.view);
 
     setupGroupedControlBar();
