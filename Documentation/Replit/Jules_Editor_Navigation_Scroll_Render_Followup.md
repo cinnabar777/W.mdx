@@ -11,8 +11,21 @@ Work on the latest W.mdx branch containing the latest tested build. Preserve the
 ## Required investigation and fixes
 
 - Trace CodeMirror vertical movement and the WYSIWYG block/decorations for paragraphs, empty paragraphs, wrapped visual rows, lists, callouts, headings, and embeds. Ensure Up/Down moves predictably through every valid caret stop without skipping intervening content. Preserve preferred horizontal position across wrapped lines and preserve blank paragraphs in the document. Do not rewrite/normalize content or change Home/End behavior as a workaround.
-- This behavior worked correctly in an earlier build. Inspect the current repository history and the previously verified working branch/commit to find that implementation, compare its movement/keymap/position-mapping logic with the current version, and restore or adapt the proven fix rather than inventing a new movement model. Do not transplant editor-specific code blindly; verify it against the current CodeMirror WYSIWYG representation.
-- Historical comparison points: the user reported Up-arrow navigation was working after builds around commits `40fc54abfe24b0c165a54899a1c6c185df6eef49` and `790d67d44a9df29c1a40b80ad7531a2305b9af44`. Commit `40fc54a` itself adds only a special case for moving onto a horizontal-rule line; it is not the general fix. A later relevant commit, `fbe086ebb64b66c1385b6e2e0724bb6b7e1d0034`, adds paragraph/list line classification in `livePreviewPlugin`. Compare the known-good behavior with code after that point, including selection and decoration changes, and identify the exact regression before changing navigation again. Do not simply add another ArrowUp override.
+- The user verified that Up-arrow navigation worked in an earlier build. Do not ask Jules to locate that build, switch branches, or search repository history; the relevant source changes are identified below. Apply and compare these specific changes within the current Jules branch.
+- The last known-good reference is commit `790d67d44a9df29c1a40b80ad7531a2305b9af44`. In its `livePreviewPlugin`, horizontal-rule syntax is not replaced while the caret is on that rule:
+  ```js
+  const caretIsOnRule =
+    selection.empty &&
+    selection.head >= node.from &&
+    selection.head <= node.to;
+
+  if (!isNodeActive && !caretIsOnRule) {
+    builder.push(Decoration.replace({}).range(node.from, node.to));
+  }
+  ```
+  A later commit, `7569940a8e00cd8277597d069fff96c0b6e78b09`, removes this guard. Restore that exact guard for the horizontal-rule case, but do not treat it as the full fix: it only explains horizontal-rule caret behavior.
+- The next relevant change is commit `fbe086ebb64b66c1385b6e2e0724bb6b7e1d0034`. It adds a visible-line prepass in `livePreviewPlugin.buildDecorations()` that resolves the syntax tree at each line's first non-space character and adds `cm-paragraph`, `cm-paragraph-first`, `cm-paragraph-last`, and `cm-list-item` line classes. On the current Jules branch, isolate whether that prepass or its line classes alter visual row geometry or vertical movement. Preserve the needed typography styling; do not blindly delete the feature.
+- Compare the current vertical-movement behavior to the verified-good behavior around `790d67d`, then apply the narrow fix in the current branch. Do not add another general ArrowUp override or replace CodeMirror's movement model without proving the cause.
 - Trace every scroll trigger from selection/transactions, CodeMirror scroll requests, DOM scrollIntoView, WebView, and Android focus/IME adjustments. Record bounded before/after scroll position, caret rectangle, visual-row geometry, viewport size, and trigger so the source of jumps is clear. If the issue is whole-logical-line visibility, use the actual caret/visual wrapped-row rectangle and the smallest scroll delta needed; do not pin the line end to the viewport bottom. Avoid competing scroll adjustments and preserve the viewport anchor during reflow and keyboard show/hide.
 - Reproduce the blank rendering while scrolling through long content and nested callouts. Check WebView renderer loss, JavaScript/CodeMirror errors, editor-root removal or zero-height layout, decoration/widget lifecycle, and resize/reflow callbacks. Distinguish a renderer failure from a present-but-not-painted editor. Add only bounded, privacy-safe diagnostics; never log document text, filenames, or URIs. Fix the cause without discarding edits or repeatedly reloading the document. If recovery is necessary, preserve the latest document and selection.
 
