@@ -1,101 +1,123 @@
-# Jules handoff: add editor navigation diagnostics only
+# Jules handoff: improve caret and scroll diagnostics only
 
 ## Target
 
 - Repository: `https://github.com/cinnabar777/W.mdx`
 - Branch: `feature/callout-header-styling-17404924448172990300`
-- Last inspected branch head: `671b359c0b2580739f01906b0c9c2f5979589e8e`
+- Latest branch head verified for this handoff: `a47e5257d8514c99f9aa137aa3b75e13d82e0520`
 
-Use the active branch. Do not switch branches, cherry-pick, or reset it. If it has advanced, keep its current state and apply only this diagnostics change.
+Use the active branch. Do not switch branches, reset, cherry-pick, or replace newer work. If the branch has advanced, keep its current state and apply only this diagnostics change.
 
-## User's latest APK observations
+## What the latest Android report proves
 
-- Around the `ALIAS` heading in the Markdown cheat sheet, navigation sometimes jumps back to `LINKS`; the editor sometimes goes blank there.
-- Up navigation is highly inconsistent around headings and block content.
-- A link at the end of a paragraph can pull the caret to the beginning of the link.
-- The Android report only records app/window lifecycle events. It does not record caret movement or layout geometry.
-- The APK reports that it read 13,826 characters / 662 lines. The checked-in `Documentation/Markdown.md` at the inspected branch head is 13,504 characters / 636 lines. Treat these as different file snapshots. Do not rewrite or edit the stress-test Markdown file.
+The `routing-v2` report contains 24 records, IDs 1913–1936, and every one is labeled `kind:"tap"`. It contains no `kind:"arrow"` record and no scroll-event record.
 
-The current checked-in file has balanced code fences around its `ALIAS` section; there is no obvious unclosed fence there. This does not rule out an editor bug.
+The snapshots repeatedly show `anchor:13826, head:0, line:1, column:1` with `selectionChanged:false`. This is a non-collapsed selection, but the current trace does not report whether the selection is collapsed or give separate line/column and block information for both endpoints.
 
-## Existing code locations
+The current tap listener emits a tap record on `pointerdown`, before it knows whether the user is tapping or dragging to scroll. Its `x`/`y` fields describe `coordsAtPos(head)`—not the pointer. The caret Y values are far above the viewport at high scroll positions, while the report does not identify the coordinate frame or log pointer movement, pointer-up, or scroll events. The report therefore cannot distinguish a tap from a touch-scroll gesture or show whether the caret, editor layout, or scroll container jumped.
 
-- `app/src/main/java/com/wmdx/markdownapp/AppDiagnostics.kt` stores generic Android diagnostic events. Each event detail is truncated to 80 characters; the generic buffer retains 100 lines.
-- `app/src/main/java/com/wmdx/markdownapp/MainActivity.kt` exposes `AndroidNative.reportDiagnostic(event, detail)` to the WebView.
-- `web/src/main.js` already has an `EditorView.updateListener` that sees selection changes. It currently sends selection state to the native bridge, but does not log arrow/tap movement or coordinates.
-- `web/src/main.js` reports JavaScript errors and rejected promises, but those reports do not include editor navigation state.
+## Current code to extend
 
-## Implement exactly this diagnostics-only change
+- `web/src/main.js`: `setupNavigationDiagnostics(view)` currently logs `keydown` for arrows and `pointerdown` as a tap, then takes one post-event animation-frame snapshot.
+- `web/src/navigationDiagnostics.js`: `serializeNavigationTraceRecord()` currently whitelists the small arrow/tap schema.
+- `app/src/main/java/com/wmdx/markdownapp/MainActivity.kt`: `reportNavigationTrace()` currently accepts strings up to 4,000 characters.
+- `app/src/main/java/com/wmdx/markdownapp/AppDiagnostics.kt`: `recordNavigationTrace()` stores 24 JSON strings and labels the report `routing-v2`.
 
-### 1. Add a testable JavaScript trace serializer
+## Implement this diagnostics-only change
 
-Create `web/src/navigationDiagnostics.js` with an exported `serializeNavigationTraceRecord(record)` function. It must return compact JSON containing only these fields:
+### 1. Correct caret snapshots
 
-- `id` — increasing numeric trace ID
-- `kind` — `arrow` or `tap`
-- `direction` — `up`, `down`, or `none`
-- `repeat` — boolean
-- `before` and `after` — each contains only numeric `anchor`, `head`, `line`, `column`, `x`, `y`, `scrollTop`, and `scrollLeft`
-- `blockBefore` and `blockAfter` — one of `heading`, `list`, `callout`, `code`, `table`, `paragraph`, or `other`
-- `pointerX` and `pointerY` — numeric values for tap records; omit for arrow records
-- `selectionChanged` — boolean
+In `web/src/main.js`, make every snapshot record the selection endpoints independently:
 
-Drop unknown fields. Never include document text, selected text, HTML, file names, paths, URIs, or arbitrary DOM class names. If a coordinate cannot be read, serialize it as `null`. Do not add a dependency.
+- `anchor`, `head`, `collapsed`
+- `anchorLine`, `anchorColumn`, `headLine`, `headColumn`
+- `anchorBlock`, `headBlock`, classified only as `heading`, `list`, `callout`, `code`, `table`, `paragraph`, or `other`
+- `anchorLineText`, `headLineText`, each truncated to 160 characters
+- `anchorClientTop`, `anchorClientBottom`, `headClientTop`, `headClientBottom`, from `view.coordsAtPos()` in viewport/client coordinates
+- `viewTop`, `viewBottom`, `viewWidth`, `viewHeight`
+- editor `scrollTop`, `scrollLeft`, `scrollHeight`, `clientHeight`
+- `windowScrollY`, `windowInnerHeight`
 
-### 2. Capture before/after movement in the existing editor
+For each endpoint, calculate its own line and column from that endpoint's position. Do not derive the line/category for both endpoints from `head`. Use `null` when a position has no geometry or a call throws. Keep coordinate names explicit; never reuse caret coordinates as pointer coordinates.
 
-In `web/src/main.js`, install passive diagnostic listeners on the active `EditorView` only:
+The short line previews are approved for this troubleshooting report. Do not include the full document, full selection, filenames, paths, URIs, or arbitrary DOM class names.
 
-- On capture-phase `keydown`, handle only `ArrowUp` and `ArrowDown`. Record a pre-movement snapshot, including the selection anchor/head, document line and column, `view.coordsAtPos(head)`, and `view.scrollDOM.scrollTop/scrollLeft`.
-- On editor-content `pointerdown`, record the pointer coordinates, pre-selection, and `view.posAtCoords({x, y})`.
-- Record the corresponding post-movement snapshot on the next animation frame, after CodeMirror has processed the event. Correlate each before/after pair with its own increasing ID; do not use one shared pending slot that can overwrite repeated key events.
-- Determine block categories using only the fixed whitelist above. If classification fails, use `other`.
-- Keep these listeners observational only: never call `preventDefault`, change the selection, alter scrolling, or intercept/replace the existing keymaps.
-- Skip records if there is no active editor view. Guard geometry calls that return `null` or throw.
+### 2. Keep arrow-key records and make each record reliable
 
-### 3. Store and export a bounded local trace
+Keep the existing capture-phase `ArrowUp`/`ArrowDown` listener and existing keymaps unchanged. For each keydown, including repeats:
 
-In `MainActivity.kt`, add a WebView bridge method alongside `reportDiagnostic` to accept the serialized trace record. Validate the payload length and schema before storing it; do not persist arbitrary strings or unknown keys.
+- Allocate a unique increasing ID and capture the complete snapshot before CodeMirror processes the key.
+- Capture the after snapshot on the next animation frame.
+- Preserve direction and `event.repeat`.
+- Keep each event's before/after pair in its own closure; do not reuse a single pending record.
 
-In `AppDiagnostics.kt`:
+Do not prevent default, dispatch a selection, change focus, or change scrolling.
 
-- Keep navigation records in a separate bounded local buffer so ordinary lifecycle events cannot evict them and the existing 80-character detail limit cannot truncate them.
-- Retain only the latest 24 complete before/after records.
-- Add a `Navigation trace (last 24)` section to the existing diagnostic report.
-- Change the report version from `routing-v1` to `routing-v2`.
-- Keep trace data on-device; include it in the report only when the user uses the existing Copy or Share action. Do not add network uploads.
+### 3. Record touch-scroll gestures instead of calling every pointerdown a tap
 
-### 4. Add one focused test
+Replace the current immediate `pointerdown`-as-tap logic with a passive gesture recorder:
 
-Create `web/test/navigation-diagnostics.test.cjs` using the existing `node:test` setup. Test that `serializeNavigationTraceRecord`:
+- On `pointerdown` inside `view.dom`, start a pending gesture with a unique ID, pointer type (`touch`, `mouse`, `pen`, or `unknown`), start coordinates/time, and a before snapshot. Do not emit it as a tap yet.
+- Track matching `pointermove`, `pointerup`, and `pointercancel` at `window` capture phase. Only track a pointer whose down event began inside this editor. Record the maximum pointer travel and final pointer coordinates/time.
+- Listen passively for `scroll` on `view.scrollDOM`, each scrollable ancestor between the editor and the document, and the page. Label targets only as `editor`, `ancestor1`, `ancestor2`, or `page`; do not log selectors or class names.
+- While a gesture is active, sample scroll and caret state no more than once every 50 ms, retaining at most 12 samples per gesture. Each sample must include elapsed milliseconds, target label, that target's scroll top/left, editor scroll height/client height, pointer coordinates, selection anchor/head/head line, caret client Y, and editor viewport top/bottom.
+- Finalize on pointer-up/cancel, or after 300 ms with no pointer/scroll activity. Label it `tap` only if maximum pointer travel is at most 8 CSS pixels and no scroll target moved more than 1 CSS pixel; otherwise label it `scroll`.
+- Also capture scroll activity with no active pointer (for example programmatic or native-driven scrolling). Coalesce it into one `scroll` record after 300 ms idle, with initial/final snapshots and at most 12 time-spaced samples.
+- Use a `ResizeObserver` on `view.dom` and `view.scrollDOM`. If their dimensions change during an active gesture/scroll record, add the before/after dimensions to that record. Do not change dimensions or scrolling.
+- On each finalized `tap`, `scroll`, or `arrow` record, send exactly one serialized record through the existing Android bridge.
 
-- preserves valid fields and normalizes invalid coordinates to `null`;
-- drops unexpected fields, including `text`, `selectedText`, `html`, `fileName`, `path`, and `uri`;
-- does not emit any of those private values in the serialized result.
+All event listeners are observational and passive. Do not intercept touch, pointer, scroll, or keyboard behavior.
 
-Do not add browser automation or modify any rendered-navigation test.
+### 4. Update the bounded serializer and native report
+
+Update `web/src/navigationDiagnostics.js` to whitelist the schema above, plus:
+
+- Record-level `id`, `kind` (`arrow`, `tap`, or `scroll`), `direction`, `repeat`, `pointerType`, duration, pointer start/end coordinates, maximum travel, cancellation status, and `selectionChanged`.
+- A maximum of 12 scroll samples, each restricted to the fields specified above.
+- A maximum of 160 characters for each line preview.
+
+Drop unknown fields. Enforce the caps in the serializer, not only at the call site. Keep each serialized record at or below 8,192 characters.
+
+In `MainActivity.kt` and `AppDiagnostics.kt`:
+
+- Raise the bridge input limit to 8,192 characters.
+- Parse and validate the JSON before storing it; reject malformed JSON, unknown kinds, oversized samples/previews, and unknown fields. Store only the validated/canonical record.
+- Keep the latest 24 complete records in the existing separate navigation buffer.
+- Change the report version from `routing-v2` to `routing-v3`.
+- Update the report note: it now contains bounded anchor/head line previews (up to 160 characters each) and scroll/caret geometry. Keep the trace local and include it only through the existing Copy/Share actions. Do not add network uploads.
+
+### 5. Focused tests
+
+Update `web/test/navigation-diagnostics.test.cjs` to verify:
+
+- Arrow, tap, and scroll records preserve valid fields.
+- Each endpoint's fields remain separate.
+- Unknown fields—including full document text, full selection, filename, path, URI, and DOM class—are dropped.
+- Line previews are capped at 160 characters and scroll samples at 12.
+- Invalid coordinates normalize to `null`.
+- Serialized output does not exceed 8,192 characters.
+
+Do not add browser automation for this diagnostics-only change.
 
 ## Strict boundaries
 
 Only these files may change:
 
-- `web/src/main.js`
-- `web/src/navigationDiagnostics.js` (new)
-- `web/test/navigation-diagnostics.test.cjs` (new)
+- `web/src/main.js` (diagnostic helpers and `setupNavigationDiagnostics` only)
+- `web/src/navigationDiagnostics.js`
+- `web/test/navigation-diagnostics.test.cjs`
 - `app/src/main/java/com/wmdx/markdownapp/MainActivity.kt`
 - `app/src/main/java/com/wmdx/markdownapp/AppDiagnostics.kt`
 
-Do not change cursor behavior, keymaps, scrolling, CSS, decorations, list/table/callout behavior, or the Markdown stress-test file. Do not edit `web/test_sources/rendered_navigation.spec.cjs`, `web/build_tests.cjs`, workflows, package manifests, or add dependencies. Do not remove or rewrite existing code.
+Do not change cursor behavior, keymaps, focus, scrolling, CSS, decorations, list/table/callout behavior, or the Markdown stress-test file. Do not edit `web/test_sources/rendered_navigation.spec.cjs`, `web/build_tests.cjs`, workflows, package manifests, or dependencies. Do not delete, replace, or broadly rewrite existing code.
 
-## Verify once
+## Verify
 
-Run:
+Run once:
 
 ```sh
 node --test web/test/*.test.cjs
 node web/build.cjs
 ```
 
-Then run the repository's existing Android debug build workflow once. If a check fails, report the exact failure and stop; do not expand scope or repeatedly run an unchanged failing check.
-
-This handoff adds observability only. Do not claim it fixes navigation or make a navigation fix in the same change.
+Then run the repository's existing Android debug build workflow once. This handoff adds observability only; do not claim it fixes the navigation or scrolling behavior.
