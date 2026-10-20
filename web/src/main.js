@@ -1156,12 +1156,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               const firstLineText = line.text;
               const langMatch = firstLineText.match(/^```(\w+)/);
               const lang = langMatch ? langMatch[1] : 'Plain text';
-              builder.push(Decoration.widget({ widget: new CodeBlockHeaderWidget(lang, codeText), side: -1 }).range(line.from));
+              const headerWidget = new CodeBlockHeaderWidget(lang, codeText);
+
               if (!isNodeActive) {
-                const fenceEnd = Math.min(line.from + (langMatch ? langMatch[0].length : 3), line.to);
-                if (fenceEnd > line.from) {
-                  hideSyntax(line.from, fenceEnd);
-                }
+                builder.push(
+                  Decoration.replace({ widget: headerWidget }).range(line.from, line.to)
+                );
+              } else {
+                builder.push(
+                  Decoration.widget({ widget: headerWidget, side: -1 }).range(line.from)
+                );
               }
             }
           }
@@ -1653,10 +1657,21 @@ function renderedVisualRows(view) {
     .filter(element => element.classList?.contains('cm-line'));
 
   for (const line of lineElements) {
-    const range = line.ownerDocument.createRange();
-    range.selectNodeContents(line);
-    const fragments = Array.from(range.getClientRects())
-      .filter(rect => rect.height > 0);
+    const ownerDocument = line.ownerDocument;
+    const showText = ownerDocument.defaultView.NodeFilter.SHOW_TEXT;
+    const walker = ownerDocument.createTreeWalker(line, showText);
+    const fragments = [];
+    let textNode;
+
+    while ((textNode = walker.nextNode())) {
+      if (textNode.parentElement?.closest('.cm-codeblock-header')) continue;
+
+      const textRange = ownerDocument.createRange();
+      textRange.selectNodeContents(textNode);
+      fragments.push(
+        ...Array.from(textRange.getClientRects()).filter(rect => rect.height > 0)
+      );
+    }
 
     const addFragment = rect => {
       let row = rows.find(candidate => {
@@ -1685,7 +1700,7 @@ function renderedVisualRows(view) {
 
     if (fragments.length) {
       for (const rect of fragments) addFragment(rect);
-    } else {
+    } else if (!line.querySelector('.cm-codeblock-header')) {
       // Empty Markdown lines and fully hidden syntax still occupy a visual row.
       const rect = line.getBoundingClientRect();
       if (rect.height > 0) addFragment(rect);
@@ -1718,9 +1733,21 @@ function leaveHiddenSyntax(view, position, direction) {
 
 function positionOnRenderedRow(view, row, goalX, direction) {
   const direct = view.posAtCoords({ x: goalX, y: row.center });
+  const directLine = direct == null
+    ? null
+    : renderedLineForPosition(view, direct, direction);
+  const directCoords = direct == null
+    ? null
+    : view.coordsAtPos(direct, direction);
+  const directCenter = directCoords
+    ? (directCoords.top + directCoords.bottom) / 2
+    : NaN;
+
   if (
     direct != null &&
-    renderedLineForPosition(view, direct, direction) === row.element
+    directLine === row.element &&
+    directCenter >= row.top - 2 &&
+    directCenter <= row.bottom + 2
   ) {
     return direct;
   }

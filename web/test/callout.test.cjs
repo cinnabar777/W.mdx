@@ -216,3 +216,10 @@ test('Callout type icon overrides are sanitized and fall back to defaults for in
   assert.equal(sanitizeIcon('<script>alert(1)</script>'), 'default', 'Arbitrary text/script is sanitized to default');
   assert.equal(sanitizeIcon('invalid_icon_name'), 'default', 'Unknown icon name falls back to default');
 });
+
+test('CodeBlockHeaderWidget rendering, replacement decoration, and copy button logic', () => {
+  assert.ok(mainSource.includes('class CodeBlockHeaderWidget'), 'CodeBlockHeaderWidget exists');
+  assert.ok(mainSource.includes('Decoration.replace({ widget: headerWidget }).range(line.from, line.to)'), 'Inactive code block replaces line with headerWidget');
+  assert.ok(mainSource.includes('Decoration.widget({ widget: headerWidget, side: -1 }).range(line.from)'), 'Active code block inserts headerWidget at line start');
+  assert.ok(mainSource.includes("copyBtn.className = 'cm-codeblock-copy-btn'"), 'CodeBlockHeaderWidget sets COPY button class');
+});
