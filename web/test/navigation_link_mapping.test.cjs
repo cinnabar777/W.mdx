@@ -65,23 +65,11 @@ test('Markdown cheat sheet regression fixture loads and parses headings, code bl
   assert.ok(cheatSheetText.includes('> [!info] header'));
 });
 
-test('Hidden syntax CSS rule in index.html does not force line-height: 0', () => {
-  const indexPath = path.join(__dirname, '../index.html');
-  const indexHtml = fs.readFileSync(indexPath, 'utf8');
-
-  const hiddenSyntaxMatch = indexHtml.match(/\.cm-hidden-syntax\s*\{([^}]+)\}/);
-  assert.ok(hiddenSyntaxMatch, '.cm-hidden-syntax rule should exist in index.html');
-
-  const cssBody = hiddenSyntaxMatch[1];
-  assert.strictEqual(cssBody.includes('line-height: 0'), false, '.cm-hidden-syntax must not set line-height: 0');
-  assert.ok(cssBody.includes('font-size: 0px'), '.cm-hidden-syntax should keep font-size: 0px');
-});
-
-test('main.js contains link syntax mark decorations and selection snapshot handling', () => {
+test('main.js contains hideSyntax replacement decorations and selection snapshot handling', () => {
   const mainJsPath = path.join(__dirname, '../src/main.js');
   const mainJs = fs.readFileSync(mainJsPath, 'utf8');
 
   assert.ok(mainJs.includes('selectionSnapshot = {'), 'openLinkInsertionDialog must snapshot selection');
-  assert.ok(mainJs.includes("Decoration.mark({ class: 'cm-hidden-syntax' })"), 'Links should use cm-hidden-syntax marks');
+  assert.ok(mainJs.includes('hideSyntax(node.from'), 'Links should use hideSyntax replacements');
   assert.ok(mainJs.includes('commitModel'), 'openLinkInsertionDialog must commit table cell changes via commitModel');
 });
