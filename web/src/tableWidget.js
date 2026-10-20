@@ -132,6 +132,21 @@ export class WordProcessorTableWidget extends WidgetType {
       }
     };
 
+    this.commitModel = (targetView, newModel) => {
+      const v = targetView || view;
+      if (newModel) this.model = newModel;
+      const newMarkdown = this.model.toMarkdown();
+      try {
+        const liveContainer = v.dom.querySelector(`.cm-wp-table-container[data-table-from="${this.from}"]`) || container;
+        const range = getLiveRange(v, liveContainer, this.from, this.to);
+        v.dispatch({
+          changes: { from: range.from, to: range.to, insert: newMarkdown }
+        });
+      } catch (e) {
+        console.error('Failed to commit model change:', e);
+      }
+    };
+
     const runTableAction = (mutate) => {
       const scroller = view.scrollDOM;
       const scrollerRect = scroller.getBoundingClientRect();
@@ -403,7 +418,28 @@ export class WordProcessorTableWidget extends WidgetType {
         }
       });
 
+      overlay._cellMeta = { widget: this, model: this.model, row: r, col: c, container };
+
+      const updateCellSnap = () => {
+        window._lastActiveCellSelection = {
+          widget: this,
+          model: this.model,
+          row: r,
+          col: c,
+          selStart: overlay.selectionStart ?? 0,
+          selEnd: overlay.selectionEnd ?? 0,
+          cellValue: overlay.value || '',
+          selectedText: (overlay.value || '').substring(overlay.selectionStart ?? 0, overlay.selectionEnd ?? 0),
+          timestamp: Date.now()
+        };
+      };
+
+      overlay.addEventListener('keyup', updateCellSnap);
+      overlay.addEventListener('mouseup', updateCellSnap);
+      overlay.addEventListener('touchend', updateCellSnap);
+      overlay.addEventListener('select', updateCellSnap);
       overlay.addEventListener('blur', () => {
+        updateCellSnap();
         commitAndClose();
       });
 

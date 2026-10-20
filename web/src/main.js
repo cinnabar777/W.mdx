@@ -325,7 +325,8 @@ class CalloutTitleWidget extends WidgetType {
         }
       };
 
-      span.addEventListener('click', toggleFold);
+      btn.addEventListener('click', toggleFold);
+      iconSpan.addEventListener('click', toggleFold);
       span.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           toggleFold(e);
@@ -334,6 +335,13 @@ class CalloutTitleWidget extends WidgetType {
     }
 
     return span;
+  }
+
+  ignoreEvent(event) {
+    if (event.type === 'click' || event.type === 'pointerdown') {
+      return !!event.target.closest('.cm-callout-fold-btn, .cm-callout-icon');
+    }
+    return true;
   }
 }
 
@@ -765,6 +773,15 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
   }
 
   buildDecorations(view) {
+    try {
+      return this._buildDecorationsInternal(view);
+    } catch (e) {
+      window.AndroidNative?.reportDiagnostic?.('decoration_error', 0);
+      return this.decorations || Decoration.none;
+    }
+  }
+
+  _buildDecorationsInternal(view) {
     const builder = [];
     const lineClasses = new Map();
 
@@ -1121,10 +1138,12 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
               const firstLineText = line.text;
               const langMatch = firstLineText.match(/^```(\w+)/);
               const lang = langMatch ? langMatch[1] : 'Plain text';
+              builder.push(Decoration.widget({ widget: new CodeBlockHeaderWidget(lang, codeText), side: -1 }).range(line.from));
               if (!isNodeActive) {
-                builder.push(Decoration.replace({ widget: new CodeBlockHeaderWidget(lang, codeText) }).range(line.from, line.to));
-              } else {
-                builder.push(Decoration.widget({ widget: new CodeBlockHeaderWidget(lang, codeText), side: -1 }).range(line.from));
+                const fenceEnd = Math.min(line.from + (langMatch ? langMatch[0].length : 3), line.to);
+                if (fenceEnd > line.from) {
+                  builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(line.from, fenceEnd));
+                }
               }
             }
           }
@@ -1135,7 +1154,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             return;
           }
 
-          if (node.name === 'Link') {
+          if (node.name === 'Link' || node.name === 'URL') {
             const raw = view.state.doc.sliceString(node.from, node.to);
             const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
             if (match) {
@@ -1146,8 +1165,12 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
               );
 
               if (!isNodeActive) {
-                builder.push(Decoration.replace({}).range(node.from, labelFrom));
-                builder.push(Decoration.replace({}).range(labelTo, node.to));
+                if (labelFrom > node.from) {
+                  builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(node.from, labelFrom));
+                }
+                if (node.to > labelTo) {
+                  builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(labelTo, node.to));
+                }
               }
             }
           }
@@ -1980,9 +2003,51 @@ export function getDocumentHeadings(doc) {
 export function openLinkInsertionDialog() {
   if (!activeAdapter || !activeAdapter.view) return;
   const view = activeAdapter.view;
-  const sel = view.state.selection.main;
-  const selectedText = view.state.doc.sliceString(sel.from, sel.to);
 
+  let selectionSnapshot = null;
+  const activeOverlay = document.querySelector('.cm-wp-cell-editor');
+
+  if (activeOverlay && activeOverlay._cellMeta) {
+    const meta = activeOverlay._cellMeta;
+    const selStart = activeOverlay.selectionStart ?? 0;
+    const selEnd = activeOverlay.selectionEnd ?? 0;
+    const cellVal = activeOverlay.value || '';
+    selectionSnapshot = {
+      type: 'table-cell',
+      widget: meta.widget,
+      model: meta.model,
+      row: meta.row,
+      col: meta.col,
+      selStart,
+      selEnd,
+      cellVal,
+      selectedText: cellVal.substring(selStart, selEnd)
+    };
+  } else if (window._lastActiveCellSelection && (Date.now() - window._lastActiveCellSelection.timestamp < 3000)) {
+    const snap = window._lastActiveCellSelection;
+    selectionSnapshot = {
+      type: 'table-cell',
+      widget: snap.widget,
+      model: snap.model,
+      row: snap.row,
+      col: snap.col,
+      selStart: snap.selStart,
+      selEnd: snap.selEnd,
+      cellVal: snap.cellValue,
+      selectedText: snap.selectedText
+    };
+  } else {
+    const sel = view.state.selection.main;
+    const selectedText = view.state.doc.sliceString(sel.from, sel.to);
+    selectionSnapshot = {
+      type: 'editor',
+      from: sel.from,
+      to: sel.to,
+      selectedText
+    };
+  }
+
+  const selectedText = selectionSnapshot ? selectionSnapshot.selectedText : '';
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog) return;
@@ -2049,6 +2114,7 @@ export function openLinkInsertionDialog() {
 
   btnCancel.addEventListener('click', (e) => {
     e.preventDefault();
+    window._lastActiveCellSelection = null;
     closeModal();
     view.focus();
   });
@@ -2066,6 +2132,7 @@ export function openLinkInsertionDialog() {
     } else {
       const targetHeading = headingSelect.value;
       if (!targetHeading) {
+        window._lastActiveCellSelection = null;
         closeModal();
         view.focus();
         return;
@@ -2077,10 +2144,38 @@ export function openLinkInsertionDialog() {
       }
     }
 
-    view.dispatch({
-      changes: { from: sel.from, to: sel.to, insert: replacement },
-      selection: { anchor: sel.from + replacement.length, head: sel.from + replacement.length }
-    });
+    if (selectionSnapshot && selectionSnapshot.type === 'table-cell') {
+      const snap = selectionSnapshot;
+      const model = snap.model;
+      const r = snap.row;
+      const c = snap.col;
+      const currentVal = (model.rows[r] && model.rows[r][c] !== undefined) ? model.rows[r][c] : (snap.cellVal || '');
+      const start = Math.min(snap.selStart, currentVal.length);
+      const end = Math.min(snap.selEnd, currentVal.length);
+      const newVal = currentVal.substring(0, start) + replacement + currentVal.substring(end);
+
+      if (model.rows[r]) {
+        model.rows[r][c] = newVal;
+      }
+
+      if (snap.widget && typeof snap.widget.commitModel === 'function') {
+        snap.widget.commitModel(view, model);
+      } else {
+        const sel = view.state.selection.main;
+        view.dispatch({
+          changes: { from: sel.from, to: sel.to, insert: replacement },
+          selection: { anchor: sel.from + replacement.length, head: sel.from + replacement.length }
+        });
+      }
+      window._lastActiveCellSelection = null;
+    } else {
+      const from = selectionSnapshot ? selectionSnapshot.from : view.state.selection.main.from;
+      const to = selectionSnapshot ? selectionSnapshot.to : view.state.selection.main.to;
+      view.dispatch({
+        changes: { from, to, insert: replacement },
+        selection: { anchor: from + replacement.length, head: from + replacement.length }
+      });
+    }
 
     closeModal();
     view.focus();
