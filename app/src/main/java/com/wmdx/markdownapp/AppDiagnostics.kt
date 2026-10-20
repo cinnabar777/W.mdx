@@ -37,7 +37,7 @@ object AppDiagnostics {
         try {
             val json = JSONObject(jsonRecord)
             val kind = json.optString("kind", "")
-            if (kind != "arrow" && kind != "tap" && kind != "scroll") return
+            if (kind != "arrow" && kind != "arrow_press" && kind != "tap" && kind != "scroll") return
 
             val prefs = context.getSharedPreferences("diagnostic_report", Context.MODE_PRIVATE)
             val traces = (prefs.getString("nav_traces", "") ?: "").lineSequence().filter { it.isNotEmpty() }.toList()

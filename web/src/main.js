@@ -4071,41 +4071,167 @@ export function setupNavigationDiagnostics(view) {
   const dom = view.dom;
   const scroller = view.scrollDOM;
 
-  // Keydown listener for ArrowUp / ArrowDown
+  let activeArrowPress = null;
+  let lastArrowEventTime = 0;
+  let lastArrowPressId = null;
+
+  const reportTrace = (record) => {
+    const serialized = serializeNavigationTraceRecord(record);
+    if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
+      window.AndroidNative.reportNavigationTrace(serialized);
+    }
+  };
+
+  const addSampleToContainer = (container, sampleObj) => {
+    if (!container) return;
+    const now = performance.now();
+    if (now - (container.lastSampleTime || 0) < 50) return;
+
+    container.lastSampleTime = now;
+    container.totalSampleCount = (container.totalSampleCount || 0) + 1;
+
+    if (!container.scrollSamples) {
+      container.scrollSamples = [];
+    }
+
+    if (container.scrollSamples.length < 12) {
+      container.scrollSamples.push(sampleObj);
+    } else {
+      container.droppedSampleCount = (container.droppedSampleCount || 0) + 1;
+      container.scrollSamples = [container.scrollSamples[0], ...container.scrollSamples.slice(2), sampleObj];
+    }
+  };
+
+  const closeActiveArrowPress = (endedByBlur = false) => {
+    if (!activeArrowPress) return;
+    const press = activeArrowPress;
+    activeArrowPress = null;
+
+    const duration = Math.round(performance.now() - press.startTime);
+    const afterSnap = getSnapshot(view);
+
+    const record = {
+      id: nextTraceId++,
+      pressId: press.pressId,
+      kind: 'arrow_press',
+      source: 'arrow',
+      direction: press.direction,
+      duration,
+      keydownCount: press.keydownCount,
+      hadReportedRepeat: press.hadReportedRepeat,
+      endedByBlur: Boolean(endedByBlur),
+      before: press.beforeSnap,
+      after: afterSnap,
+      scrollSamples: press.scrollSamples,
+      totalSampleCount: press.totalSampleCount,
+      droppedSampleCount: press.droppedSampleCount
+    };
+
+    reportTrace(record);
+  };
+
+  // Capture phase keydown for ArrowUp / ArrowDown
   dom.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 
-    const traceId = nextTraceId++;
     const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
-    const isRepeat = Boolean(e.repeat);
+    const reportedRepeat = Boolean(e.repeat);
+
+    if (!activeArrowPress || activeArrowPress.direction !== direction) {
+      if (activeArrowPress) {
+        closeActiveArrowPress(false);
+      }
+      activeArrowPress = {
+        pressId: nextTraceId++,
+        direction,
+        startTime: performance.now(),
+        keydownCount: 0,
+        hadReportedRepeat: false,
+        beforeSnap: getSnapshot(view),
+        scrollSamples: [],
+        totalSampleCount: 0,
+        droppedSampleCount: 0,
+        lastSampleTime: 0
+      };
+    }
+
+    activeArrowPress.keydownCount++;
+    if (reportedRepeat) {
+      activeArrowPress.hadReportedRepeat = true;
+    }
+
+    const press = activeArrowPress;
+    const keydownIndex = press.keydownCount;
+    const isEffectiveRepeat = reportedRepeat || keydownIndex > 1;
+    const eventElapsedMs = Math.round(performance.now() - press.startTime);
+    const eventTraceId = nextTraceId++;
+
     const beforeSnap = getSnapshot(view);
+    lastArrowEventTime = performance.now();
+    lastArrowPressId = press.pressId;
 
     requestAnimationFrame(() => {
       if (!view || !view.state) return;
-      const afterSnap = getSnapshot(view);
-      const selChanged = (beforeSnap && afterSnap)
-        ? (beforeSnap.anchor !== afterSnap.anchor || beforeSnap.head !== afterSnap.head)
-        : false;
+      let afterSnap = getSnapshot(view);
 
-      const record = {
-        id: traceId,
-        kind: 'arrow',
-        direction,
-        repeat: isRepeat,
-        before: beforeSnap,
-        after: afterSnap,
-        selectionChanged: selChanged
-      };
+      setTimeout(() => {
+        if (!view || !view.state) return;
+        const afterSnap50 = getSnapshot(view);
+        if (afterSnap50) afterSnap = afterSnap50;
 
-      const serialized = serializeNavigationTraceRecord(record);
-      if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
-        window.AndroidNative.reportNavigationTrace(serialized);
-      }
+        const deltaTop = (beforeSnap && afterSnap && beforeSnap.scrollTop !== null && afterSnap.scrollTop !== null)
+          ? Math.round((afterSnap.scrollTop - beforeSnap.scrollTop) * 100) / 100
+          : null;
+        const deltaLeft = (beforeSnap && afterSnap && beforeSnap.scrollLeft !== null && afterSnap.scrollLeft !== null)
+          ? Math.round((afterSnap.scrollLeft - beforeSnap.scrollLeft) * 100) / 100
+          : null;
+
+        const selChanged = (beforeSnap && afterSnap)
+          ? (beforeSnap.anchor !== afterSnap.anchor || beforeSnap.head !== afterSnap.head)
+          : false;
+
+        const record = {
+          id: eventTraceId,
+          pressId: press.pressId,
+          kind: 'arrow',
+          source: 'arrow',
+          direction,
+          repeat: isEffectiveRepeat,
+          reportedRepeat,
+          keydownIndex,
+          eventElapsedMs,
+          scrollDeltaTop: deltaTop,
+          scrollDeltaLeft: deltaLeft,
+          selectionChanged: selChanged,
+          before: beforeSnap,
+          after: afterSnap
+        };
+
+        reportTrace(record);
+      }, 50);
     });
   }, true);
 
-  // Passive gesture and scroll recorder
-  let activeGesture = null;
+  // Keyup for ArrowUp / ArrowDown
+  dom.addEventListener('keyup', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
+    if (activeArrowPress && activeArrowPress.direction === direction) {
+      closeActiveArrowPress(false);
+    }
+  }, true);
+
+  // Blur event closes active press
+  window.addEventListener('blur', () => {
+    if (activeArrowPress) {
+      closeActiveArrowPress(true);
+    }
+  });
+
+  // Passive pointer gesture & scroll recorder
+  let activePointerGesture = null;
+  let unattributedScrollRecord = null;
+  let unattributedScrollTimer = null;
 
   const getScrollTargetLabel = (el) => {
     if (!el) return 'page';
@@ -4115,23 +4241,29 @@ export function setupNavigationDiagnostics(view) {
     return 'ancestor1';
   };
 
-  const createSample = (targetLabel, px, py) => {
+  const createSample = (targetLabel, px, py, source, pressId) => {
     try {
+      const isPageTarget = (targetLabel === 'page');
       const targetEl = (targetLabel === 'editor' && scroller) ? scroller : null;
       const head = view.state.selection.main.head;
       const headLineObj = view.state.doc.lineAt(head);
       const headCoords = view.coordsAtPos(head);
       const viewRect = dom.getBoundingClientRect();
+      const startTime = activePointerGesture ? activePointerGesture.startTime
+        : (activeArrowPress ? activeArrowPress.startTime
+        : (unattributedScrollRecord ? unattributedScrollRecord.startTime : performance.now()));
 
       return {
-        elapsedMs: activeGesture ? Math.round(performance.now() - activeGesture.startTime) : 0,
+        elapsedMs: Math.round(performance.now() - startTime),
+        pressId: pressId ?? null,
+        source: source || 'unattributed',
         target: targetLabel,
-        scrollTop: targetEl ? targetEl.scrollTop : (scroller ? scroller.scrollTop : null),
+        scrollTop: isPageTarget ? (typeof window !== 'undefined' ? window.scrollY : null) : (targetEl ? targetEl.scrollTop : (scroller ? scroller.scrollTop : null)),
         scrollLeft: targetEl ? targetEl.scrollLeft : (scroller ? scroller.scrollLeft : null),
         scrollHeight: scroller ? scroller.scrollHeight : null,
         clientHeight: scroller ? scroller.clientHeight : null,
-        pointerX: px,
-        pointerY: py,
+        pointerX: px ?? null,
+        pointerY: py ?? null,
         anchor: view.state.selection.main.anchor,
         head,
         headLine: headLineObj.number,
@@ -4144,28 +4276,49 @@ export function setupNavigationDiagnostics(view) {
     }
   };
 
-  const sampleThrottled = (targetLabel, px, py) => {
-    if (!activeGesture) return;
-    const now = performance.now();
-    if (now - activeGesture.lastSampleTime < 50) return;
-    if (activeGesture.scrollSamples.length >= 12) return;
+  const finalizeUnattributedScroll = () => {
+    if (!unattributedScrollRecord) return;
+    clearTimeout(unattributedScrollTimer);
+    unattributedScrollTimer = null;
 
-    activeGesture.lastSampleTime = now;
-    const sample = createSample(targetLabel, px, py);
-    if (sample) {
-      activeGesture.scrollSamples.push(sample);
-    }
+    const u = unattributedScrollRecord;
+    unattributedScrollRecord = null;
+
+    const duration = Math.round(performance.now() - u.startTime);
+    const afterSnap = getSnapshot(view);
+    const selChanged = (u.beforeSnap && afterSnap)
+      ? (u.beforeSnap.anchor !== afterSnap.anchor || u.beforeSnap.head !== afterSnap.head)
+      : false;
+
+    const record = {
+      id: u.id,
+      kind: 'scroll',
+      source: 'unattributed',
+      direction: 'none',
+      repeat: false,
+      pointerType: 'unknown',
+      duration,
+      canceled: false,
+      selectionChanged: selChanged,
+      before: u.beforeSnap,
+      after: afterSnap,
+      scrollSamples: u.scrollSamples,
+      totalSampleCount: u.totalSampleCount,
+      droppedSampleCount: u.droppedSampleCount
+    };
+
+    reportTrace(record);
   };
 
-  let gestureIdleTimer = null;
+  let pointerGestureTimer = null;
 
-  const finalizeGesture = () => {
-    if (!activeGesture) return;
-    clearTimeout(gestureIdleTimer);
-    gestureIdleTimer = null;
+  const finalizePointerGesture = () => {
+    if (!activePointerGesture) return;
+    clearTimeout(pointerGestureTimer);
+    pointerGestureTimer = null;
 
-    const g = activeGesture;
-    activeGesture = null;
+    const g = activePointerGesture;
+    activePointerGesture = null;
 
     const duration = Math.round(performance.now() - g.startTime);
     const afterSnap = getSnapshot(view);
@@ -4185,6 +4338,7 @@ export function setupNavigationDiagnostics(view) {
     const record = {
       id: g.id,
       kind,
+      source: 'pointer',
       direction: 'none',
       repeat: false,
       pointerType: g.pointerType,
@@ -4198,25 +4352,17 @@ export function setupNavigationDiagnostics(view) {
       selectionChanged: selChanged,
       before: g.beforeSnap,
       after: afterSnap,
-      scrollSamples: g.scrollSamples
+      scrollSamples: g.scrollSamples,
+      totalSampleCount: g.totalSampleCount,
+      droppedSampleCount: g.droppedSampleCount
     };
 
-    const serialized = serializeNavigationTraceRecord(record);
-    if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
-      window.AndroidNative.reportNavigationTrace(serialized);
-    }
-  };
-
-  const resetGestureIdleTimer = () => {
-    clearTimeout(gestureIdleTimer);
-    gestureIdleTimer = setTimeout(() => {
-      finalizeGesture();
-    }, 300);
+    reportTrace(record);
   };
 
   dom.addEventListener('pointerdown', (e) => {
-    if (activeGesture) {
-      finalizeGesture();
+    if (activePointerGesture) {
+      finalizePointerGesture();
     }
 
     const traceId = nextTraceId++;
@@ -4225,7 +4371,7 @@ export function setupNavigationDiagnostics(view) {
     const py = e.clientY;
     const beforeSnap = getSnapshot(view);
 
-    activeGesture = {
+    activePointerGesture = {
       id: traceId,
       pointerId: e.pointerId,
       pointerType: pType,
@@ -4238,67 +4384,98 @@ export function setupNavigationDiagnostics(view) {
       lastSampleTime: performance.now(),
       beforeSnap,
       scrollSamples: [],
+      totalSampleCount: 0,
+      droppedSampleCount: 0,
       canceled: false
     };
 
-    resetGestureIdleTimer();
+    clearTimeout(pointerGestureTimer);
+    pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
   }, true);
 
   window.addEventListener('pointermove', (e) => {
-    if (!activeGesture || activeGesture.pointerId !== e.pointerId) return;
-    activeGesture.currentX = e.clientX;
-    activeGesture.currentY = e.clientY;
-    const travel = Math.hypot(e.clientX - activeGesture.startX, e.clientY - activeGesture.startY);
-    if (travel > activeGesture.maxTravel) {
-      activeGesture.maxTravel = travel;
+    if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
+    activePointerGesture.currentX = e.clientX;
+    activePointerGesture.currentY = e.clientY;
+    const travel = Math.hypot(e.clientX - activePointerGesture.startX, e.clientY - activePointerGesture.startY);
+    if (travel > activePointerGesture.maxTravel) {
+      activePointerGesture.maxTravel = travel;
     }
-    sampleThrottled('editor', e.clientX, e.clientY);
-    resetGestureIdleTimer();
+    const sample = createSample('editor', e.clientX, e.clientY, 'pointer', null);
+    if (sample) addSampleToContainer(activePointerGesture, sample);
+
+    clearTimeout(pointerGestureTimer);
+    pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
   }, true);
 
   window.addEventListener('pointerup', (e) => {
-    if (!activeGesture || activeGesture.pointerId !== e.pointerId) return;
-    activeGesture.currentX = e.clientX;
-    activeGesture.currentY = e.clientY;
-    const travel = Math.hypot(e.clientX - activeGesture.startX, e.clientY - activeGesture.startY);
-    if (travel > activeGesture.maxTravel) {
-      activeGesture.maxTravel = travel;
+    if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
+    activePointerGesture.currentX = e.clientX;
+    activePointerGesture.currentY = e.clientY;
+    const travel = Math.hypot(e.clientX - activePointerGesture.startX, e.clientY - activePointerGesture.startY);
+    if (travel > activePointerGesture.maxTravel) {
+      activePointerGesture.maxTravel = travel;
     }
-    sampleThrottled('editor', e.clientX, e.clientY);
-    setTimeout(() => finalizeGesture(), 50);
+    const sample = createSample('editor', e.clientX, e.clientY, 'pointer', null);
+    if (sample) addSampleToContainer(activePointerGesture, sample);
+    setTimeout(() => finalizePointerGesture(), 50);
   }, true);
 
   window.addEventListener('pointercancel', (e) => {
-    if (!activeGesture || activeGesture.pointerId !== e.pointerId) return;
-    activeGesture.canceled = true;
-    setTimeout(() => finalizeGesture(), 50);
+    if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
+    activePointerGesture.canceled = true;
+    setTimeout(() => finalizePointerGesture(), 50);
   }, true);
 
+  // Passive scroll handler
   const onScroll = (e) => {
     const targetLabel = getScrollTargetLabel(e.target);
-    if (!activeGesture) {
-      // Standalone scroll without pointer
-      const traceId = nextTraceId++;
-      const beforeSnap = getSnapshot(view);
-      activeGesture = {
-        id: traceId,
-        pointerId: -1,
-        pointerType: 'unknown',
-        startX: null,
-        startY: null,
-        currentX: null,
-        currentY: null,
-        maxTravel: 0,
-        startTime: performance.now(),
+    const now = performance.now();
+
+    // 1. Is there an active arrow press OR within 150 ms of recent arrow event?
+    const inArrowWindow = (activeArrowPress != null) || (now - lastArrowEventTime < 150);
+    if (inArrowWindow) {
+      const targetContainer = activeArrowPress || {
         lastSampleTime: 0,
-        beforeSnap,
         scrollSamples: [],
-        canceled: false
+        totalSampleCount: 0,
+        droppedSampleCount: 0
+      };
+      const sample = createSample(targetLabel, null, null, 'arrow', lastArrowPressId);
+      if (sample) addSampleToContainer(activeArrowPress || targetContainer, sample);
+      return;
+    }
+
+    // 2. Is there an active pointer gesture?
+    if (activePointerGesture) {
+      const sample = createSample(targetLabel, activePointerGesture.currentX, activePointerGesture.currentY, 'pointer', null);
+      if (sample) addSampleToContainer(activePointerGesture, sample);
+      clearTimeout(pointerGestureTimer);
+      pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
+      return;
+    }
+
+    // 3. Otherwise unattributed scroll
+    if (!unattributedScrollRecord || (now - unattributedScrollRecord.startTime >= 2000)) {
+      if (unattributedScrollRecord) {
+        finalizeUnattributedScroll();
+      }
+      unattributedScrollRecord = {
+        id: nextTraceId++,
+        startTime: now,
+        lastSampleTime: 0,
+        beforeSnap: getSnapshot(view),
+        scrollSamples: [],
+        totalSampleCount: 0,
+        droppedSampleCount: 0
       };
     }
 
-    sampleThrottled(targetLabel, activeGesture.currentX, activeGesture.currentY);
-    resetGestureIdleTimer();
+    const sample = createSample(targetLabel, null, null, 'unattributed', null);
+    if (sample) addSampleToContainer(unattributedScrollRecord, sample);
+
+    clearTimeout(unattributedScrollTimer);
+    unattributedScrollTimer = setTimeout(() => finalizeUnattributedScroll(), 300);
   };
 
   if (scroller) {
