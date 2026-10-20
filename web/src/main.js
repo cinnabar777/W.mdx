@@ -347,6 +347,26 @@ export function cleanHeadingText(rawText) {
     .trim();
 }
 
+export function ensureCaretVisibleMinimal(view, pos) {
+  if (!view || pos == null) return false;
+  try {
+    const coords = view.coordsAtPos(pos);
+    const scroller = view.scrollDOM;
+    if (coords && scroller) {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const topPadding = 48; // Account for top search bar / header area
+      const bottomPadding = 48; // Account for bottom control bar
+
+      if (coords.top < scrollerRect.top + topPadding) {
+        scroller.scrollTop -= (scrollerRect.top + topPadding - coords.top + 10);
+      } else if (coords.bottom > scrollerRect.bottom - bottomPadding) {
+        scroller.scrollTop += (coords.bottom - (scrollerRect.bottom - bottomPadding) + 10);
+      }
+    }
+  } catch (e) {}
+  return true;
+}
+
 export function scrollToPositionUpperMiddle(view, pos) {
   if (!view || pos == null) return false;
   view.dispatch({
@@ -1207,8 +1227,10 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
       }).range(lineFrom));
     }
 
-    builder.sort((a, b) => a.from - b.from || a.to - b.to);
-    return Decoration.set(builder, true);
+    // Filter and sanitize decoration ranges against document length
+    const validBuilder = builder.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
+    validBuilder.sort((a, b) => a.from - b.from || a.to - b.to);
+    return Decoration.set(validBuilder, true);
   }
 }, {
   decorations: v => v.decorations
