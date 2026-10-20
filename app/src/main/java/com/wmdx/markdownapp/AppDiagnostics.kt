@@ -31,10 +31,25 @@ object AppDiagnostics {
         prefs.edit().putString("events", (lines.takeLast(99) + entry).joinToString("\n")).apply()
     }
 
+    @Synchronized fun recordNavigationTrace(context: Context, jsonRecord: String) {
+        if (jsonRecord.isBlank() || jsonRecord.length > 4000) return
+        val prefs = context.getSharedPreferences("diagnostic_report", Context.MODE_PRIVATE)
+        val traces = (prefs.getString("nav_traces", "") ?: "").lineSequence().filter { it.isNotEmpty() }.toList()
+        prefs.edit().putString("nav_traces", (traces.takeLast(23) + jsonRecord).joinToString("\n")).apply()
+    }
+
     fun report(context: Context): String {
         val webview = if (Build.VERSION.SDK_INT >= 26) android.webkit.WebView.getCurrentWebViewPackage()?.versionName else "unknown"
-        return "Wmdx Android diagnostics (routing-v1)\nAndroid SDK: ${Build.VERSION.SDK_INT}\nWebView: $webview\n" +
+        val prefs = context.getSharedPreferences("diagnostic_report", Context.MODE_PRIVATE)
+        val events = prefs.getString("events", "") ?: ""
+        val navTraces = prefs.getString("nav_traces", "") ?: ""
+
+        val navSection = if (navTraces.isNotBlank()) {
+            "\n\nNavigation trace (last 24):\n$navTraces"
+        } else ""
+
+        return "Wmdx Android diagnostics (routing-v2)\nAndroid SDK: ${Build.VERSION.SDK_INT}\nWebView: $webview\n" +
             "Times are milliseconds since boot. No document content or file identifiers recorded.\n\n" +
-            context.getSharedPreferences("diagnostic_report", Context.MODE_PRIVATE).getString("events", "")
+            events + navSection
     }
 }

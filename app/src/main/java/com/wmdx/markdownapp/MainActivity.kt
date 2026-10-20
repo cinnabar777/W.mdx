@@ -932,6 +932,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun reportNavigationTrace(jsonRecord: String?) {
+            if (jsonRecord != null && jsonRecord.length <= 4000) {
+                AppDiagnostics.recordNavigationTrace(this@MainActivity, jsonRecord)
+            }
+        }
+
+        @JavascriptInterface
         fun onEditorReady(mode: String? = null) {
             runOnUiThread {
                 val activeMode = mode ?: currentEditorMode

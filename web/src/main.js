@@ -1,6 +1,7 @@
 import { EditorState, Compartment, Transaction, StateField } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { WordProcessorTableWidget } from './tableWidget.js';
+import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -1704,6 +1705,8 @@ class CodeMirrorAdapter {
       state: startState,
       parent: containerEl
     });
+
+    setupNavigationDiagnostics(this.view);
 
     setupGroupedControlBar();
     initCustomSearchBar();
@@ -3976,6 +3979,144 @@ if (typeof window !== 'undefined') {
       addSettingTab: (tab) => console.log('[Obsidian] Registered Setting Tab')
     }
   };
+}
+
+let nextTraceId = 1;
+
+function getBlockCategory(view, pos) {
+  if (!view || pos == null || pos < 0 || pos > view.state.doc.length) return 'other';
+  try {
+    const line = view.state.doc.lineAt(pos);
+    const tree = syntaxTree(view.state);
+    const node = tree.resolveInner(pos, 1);
+
+    for (let cur = node; cur; cur = cur.parent) {
+      const name = cur.name;
+      if (name.startsWith('ATXHeading') || name.startsWith('SetextHeading') || name === 'HeaderMark') {
+        return 'heading';
+      }
+      if (name === 'ListItem' || name === 'ListMark' || name === 'TaskMarker') {
+        return 'list';
+      }
+      if (name === 'FencedCode' || name === 'CodeBlock' || name === 'CodeText') {
+        return 'code';
+      }
+      if (name === 'Table' || name === 'TableCell') {
+        return 'table';
+      }
+      if (name === 'Paragraph') {
+        return 'paragraph';
+      }
+    }
+
+    if (line.text.trim().startsWith('>')) {
+      return 'callout';
+    }
+  } catch (e) {}
+  return 'other';
+}
+
+function getSnapshot(view, pos) {
+  if (!view || pos == null) return null;
+  try {
+    const line = view.state.doc.lineAt(pos);
+    const coords = view.coordsAtPos(pos);
+    const scroller = view.scrollDOM;
+    return {
+      anchor: view.state.selection.main.anchor,
+      head: view.state.selection.main.head,
+      line: line.number,
+      column: pos - line.from + 1,
+      x: coords ? coords.left : null,
+      y: coords ? coords.top : null,
+      scrollTop: scroller ? scroller.scrollTop : null,
+      scrollLeft: scroller ? scroller.scrollLeft : null
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+export function setupNavigationDiagnostics(view) {
+  if (!view || !view.dom) return;
+
+  const dom = view.dom;
+
+  dom.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+    const traceId = nextTraceId++;
+    const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
+    const isRepeat = Boolean(e.repeat);
+    const head = view.state.selection.main.head;
+    const beforeSnap = getSnapshot(view, head);
+    const blockBefore = getBlockCategory(view, head);
+
+    requestAnimationFrame(() => {
+      if (!view) return;
+      const newHead = view.state.selection.main.head;
+      const afterSnap = getSnapshot(view, newHead);
+      const blockAfter = getBlockCategory(view, newHead);
+      const selChanged = (beforeSnap && afterSnap)
+        ? (beforeSnap.anchor !== afterSnap.anchor || beforeSnap.head !== afterSnap.head)
+        : false;
+
+      const record = {
+        id: traceId,
+        kind: 'arrow',
+        direction,
+        repeat: isRepeat,
+        before: beforeSnap,
+        after: afterSnap,
+        blockBefore,
+        blockAfter,
+        selectionChanged: selChanged
+      };
+
+      const serialized = serializeNavigationTraceRecord(record);
+      if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
+        window.AndroidNative.reportNavigationTrace(serialized);
+      }
+    });
+  }, true);
+
+  dom.addEventListener('pointerdown', (e) => {
+    const traceId = nextTraceId++;
+    const px = e.clientX;
+    const py = e.clientY;
+    const head = view.state.selection.main.head;
+    const beforeSnap = getSnapshot(view, head);
+    const blockBefore = getBlockCategory(view, head);
+
+    requestAnimationFrame(() => {
+      if (!view) return;
+      const newHead = view.state.selection.main.head;
+      const afterSnap = getSnapshot(view, newHead);
+      const blockAfter = getBlockCategory(view, newHead);
+      const selChanged = (beforeSnap && afterSnap)
+        ? (beforeSnap.anchor !== afterSnap.anchor || beforeSnap.head !== afterSnap.head)
+        : false;
+
+      const record = {
+        id: traceId,
+        kind: 'tap',
+        direction: 'none',
+        repeat: false,
+        before: beforeSnap,
+        after: afterSnap,
+        blockBefore,
+        blockAfter,
+        pointerX: px,
+        pointerY: py,
+        selectionChanged: selChanged
+      };
+
+      const serialized = serializeNavigationTraceRecord(record);
+      if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
+        window.AndroidNative.reportNavigationTrace(serialized);
+      }
+    });
+  }, true);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
