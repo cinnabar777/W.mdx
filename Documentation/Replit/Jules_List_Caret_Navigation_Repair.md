@@ -16,6 +16,10 @@ The latest APK is improved overall, especially Down navigation, but caret moveme
 - List-item sections remain the main trouble area; the document’s layout also becomes visibly wrong around a list section.
 - Tables are skipped/jumped over too. The user is unsure whether this is expected; do not change table behavior in this patch.
 
+## Android diagnostics report
+
+The supplied report is `routing-v1` from Android SDK 37 / WebView 154.0.8037.126.0. It shows the editor reached `editor_ready` and read the stress-test file successfully (13,826 characters, 662 lines; 65–72 ms). It contains lifecycle and window focus/pause/resume events only; it does not record caret moves, selections, scroll positions, rendered coordinates, or editor errors. It provides no evidence for the navigation root cause. Do not infer that the focus changes caused the jumps.
+
 ## Make only this implementation change
 
 In `web/index.html`, locate the existing `.cm-content .cm-list-item` CSS rule. Keep every declaration in that rule unchanged except for the following:
@@ -52,6 +56,7 @@ test('list-item spacing is included in the CodeMirror line box', () => {
 ```
 
 This is a source-level guard for the CSS change. It does **not** prove rendered Android caret navigation is fixed.
+The CSS adjustment is a narrow hypothesis based on the visible list-layout problem, not a confirmed root-cause fix.
 
 ## Verification
 
