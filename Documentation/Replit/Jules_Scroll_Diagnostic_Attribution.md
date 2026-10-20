@@ -1,4 +1,4 @@
-# Jules handoff: correlate keyboard repeats with scroll movement
+# Jules handoff: diagnose scroll and caret jumps from mixed-input traces
 
 ## Target
 
@@ -10,44 +10,44 @@ Use the active branch. Do not switch branches, reset, cherry-pick, or replace ne
 
 ## Test facts
 
-- The user confirms the reported interactions were keyboard navigation, including long-press repeats; they were not finger-scroll tests.
-- The routing-v3 report contains 23 `ArrowUp` records and no `ArrowDown` records. In the recorded list section, each Up event moves one document line, from line 16 through line 1.
-- Each arrow record says `repeat:false`, even though the user used long-press repeat.
-- While moving upward, `scrollTop` decreases about 28 px per keypress while the caret remains about 5 px from the viewport top.
-- One `scroll` record has `pointerType:"unknown"`, `maxTravel:0`, and a duration of 52,563 ms. It contains only the first 12 samples from about 2.5 seconds and ends at line 1, although it began at line 345. The user confirms this test activity was keyboard navigation, so do not interpret that record as a finger swipe.
+- The user confirms this APK test mixed several interactions: scrolling the document multiple times, single taps on Up and Down through the document, and one text-highlighting attempt.
+- The attached routing-v3 report's `Navigation trace (last 24)` contains 24 records, all `kind:"scroll"`; it contains no ArrowUp or ArrowDown records. The report therefore cannot show whether the individual arrow presses moved the caret correctly or caused scroll jumps.
+- Thirteen of the 24 records have `pointerType:"touch"`; the rest are `pointerType:"unknown"`. This is consistent with the confirmed document-scrolling part of the test, but the report does not reliably attribute every scroll burst to its input.
+- Three scroll records show large position and content-height changes: record 2542 moves `scrollTop` by about +2,216 px while `scrollHeight` grows by about 3,356 px; record 2550 moves `scrollTop` by about -4,927 px while `scrollHeight` shrinks by about 3,119 px; record 2536 also moves about -1,133 px. These are evidence of large viewport/content-geometry changes during scrolling, not proof of their cause.
+- Record 2548 changes the caret from document line 1 to line 486 during a touch event, but the logged selection is collapsed (`anchor === head`). It does not preserve evidence of a highlighted range.
+- The user's earlier report that upward navigation feels worse remains a user observation, but this attached trace does not contain arrow-key events with which to verify or diagnose it.
 
 ## Code cause to correct
 
-In `web/src/main.js`, `setupNavigationDiagnostics()` uses one `activeGesture` for pointer activity and all standalone scroll events. Arrow-generated scroll events can therefore create or extend a scroll record unrelated to any one arrow event. The first 12 samples are kept and later ones discarded, so a long record preserves its start but loses its end. The arrow records use `event.repeat` alone, which does not reflect the user's observed long-press repeats.
+In `web/src/main.js`, `setupNavigationDiagnostics()` does not provide enough input attribution for this mixed test: the latest 24-record trace contains scroll records but no arrow-key records, and scroll bursts can remain `unattributed`. It also shares an `activeGesture` between pointer and standalone scroll activity. The current sample bound can lose the end of a long burst. Do not assume that an unattributed scroll came from a key, touch, or selection; log the input event and its timing so the next APK report can distinguish them.
 
 ## Implement this diagnostics-only change
 
-### 1. Group arrow keydowns into physical key presses
+### 1. Record each input source separately
 
 In `setupNavigationDiagnostics(view)`:
 
-- Keep one unique `pressId` for each ArrowUp or ArrowDown press, starting when the first keydown arrives and ending at the matching keyup.
-- For every arrow keydown, continue recording its own before/after editor snapshot and unique event ID.
-- Add `pressId`, `keydownIndex`, `eventElapsedMs`, and `reportedRepeat` to each arrow record. Increment `keydownIndex` for every same-direction keydown received before keyup.
-- Set the record's `repeat` to `event.repeat || keydownIndex > 1`; also retain `reportedRepeat` separately so Android/WebView behavior can be seen directly.
-- Capture ArrowUp/ArrowDown `keyup` in capture phase. Emit a bounded key-press summary with `pressId`, direction, start/end elapsed milliseconds, duration, total keydown count, and whether any keydown reported `event.repeat:true`.
+- Add a diagnostic record for every ArrowUp/ArrowDown `keydown` and matching `keyup`, with a unique event ID, direction, timestamp, `event.repeat`, and before/after selection and geometry snapshots. The test used single taps, so do not assume long-press repetition.
+- Give each physical arrow-key hold a unique `pressId`; include `keydownIndex` to distinguish repeated keydowns during the same hold. Set `repeat` to `event.repeat || keydownIndex > 1`, and retain the original `event.repeat` value separately.
+- Capture each arrow `keyup` in capture phase. Emit a bounded press summary with direction, start/end times, duration, keydown count, and whether any event reported `event.repeat:true`.
 - If focus leaves the editor before keyup, close the press on blur and mark it `endedByBlur:true`; do not leave a press open across editor sessions.
-- Use `performance.now()` consistently for elapsed times. Do not infer a repeated press from multiple key presses that each received a keyup.
+- Record pointerdown/up/cancel separately from scroll events. A pointer gesture must start with a matching pointerdown; a scroll event alone must never be labeled as a tap or touch gesture.
+- Record selection changes, including both anchor and head positions and whether the selection is collapsed. Do not log document text or paths. This lets a later report distinguish a caret tap from a text highlight without retaining selected content.
+- Use `performance.now()` consistently for elapsed times.
 
-### 2. Attach keyboard-driven scroll samples to the arrow press
+### 2. Attribute scroll changes without mixing input sources
 
-- Arrow records already include before/after editor scroll values. Add `scrollDeltaTop` and `scrollDeltaLeft`, calculated from those snapshots.
-- During an active arrow press, collect scroll samples into that `pressId` record. Also associate scroll events occurring within 150 ms after an arrow keydown with the most recent matching arrow event.
-- Take a final scroll snapshot on the next animation frame and a second snapshot 50 ms later, so the trace includes delayed WebView scrolling after the key event.
-- Do not create or extend an `unattributed` scroll burst while an arrow press is active or within the 150 ms association window. Never combine multiple arrow presses into one 52-second scroll record.
-- Preserve pointer gestures as a separate path. A pointer gesture must start with a matching pointerdown; a scroll event alone must never be labeled as a tap or as a touch gesture.
-- For scrolling outside both a pointer gesture and the arrow association window, keep a separate `unattributed` scroll trace. Bound it to at most 2 seconds per record and start a new record if scrolling continues.
+- Add `scrollDeltaTop` and `scrollDeltaLeft` to every arrow record, calculated from before/after snapshots.
+- While an arrow press is active, associate scroll samples with its `pressId`; also associate delayed samples within 150 ms of a keydown with the most recent matching arrow event. Do not merge unrelated pointer scrolling into an arrow record.
+- Take a final scroll snapshot on the next animation frame and another 50 ms later to capture delayed WebView movement after a key event or pointer interaction.
+- Keep pointer-associated and unattributed scroll records separate from arrow records. For scrolling outside an active pointer gesture and the arrow association window, keep a separate `unattributed` trace. Bound each scroll burst to at most 2 seconds and start another record if scrolling continues.
+- Each scroll sample must record both `scrollTop` and `scrollHeight`; this report showed large changes in both during the same bursts. Do not infer a cause from geometry alone.
 
 ### 3. Preserve both early and late samples
 
 - Sample no more than once every 50 ms.
-- Keep at most 12 samples per record: retain the first sample and the newest 11. Track `totalSampleCount` and `droppedSampleCount`.
-- Each sample must include elapsed time, `pressId` or null, source (`arrow`, `pointer`, or `unattributed`), target, editor scroll top/height/client height, page `window.scrollY`, selection anchor/head/head line, caret client Y, and editor viewport top/bottom.
+- Keep at most 12 samples per record: retain the first sample and newest 11. Track `totalSampleCount` and `droppedSampleCount`.
+- Each sample must include elapsed time, `pressId` or null, source (`arrow`, `pointer`, or `unattributed`), target, editor `scrollTop`, `scrollHeight`, and `clientHeight`, page `window.scrollY`, selection anchor/head/head line and collapsed status, caret client Y, and editor viewport top/bottom.
 - For page scroll events, record `window.scrollY`; do not report the editor scroller's `scrollTop` as the page position.
 
 ### 4. Update allowlists, native validation, and tests
@@ -56,10 +56,13 @@ Update `web/src/navigationDiagnostics.js`, `MainActivity.kt`, and `AppDiagnostic
 
 Update `web/test/navigation-diagnostics.test.cjs` to verify:
 
+- Single-tap ArrowUp and ArrowDown presses each produce a keydown/keyup record and are not inferred as repeats.
 - Multiple same-direction keydowns before keyup share one `pressId` and get increasing `keydownIndex`, even if each has `reportedRepeat:false`.
-- Separate keydown/keyup pairs do not get inferred as repeats.
 - Keyup closes the press with a finite duration; blur closure is marked.
-- Arrow-driven scroll samples are attached to the matching press and are not emitted as an unrelated 52-second scroll burst.
+- Arrow-driven scroll samples are attached to the matching press; touch scrolling remains a separate pointer-associated record.
+- Pointer selection changes record anchor, head, and collapsed status without retaining selected document text.
+- A scroll event without a matching pointer or recent arrow event remains explicitly `unattributed`.
+- Large scroll-position or content-height changes are retained in the samples without being silently relabeled as key or touch activity.
 - More than 12 samples retain the first and newest 11 with correct counts.
 - Unknown fields are dropped and serialized output remains at or below 8,192 characters.
 
