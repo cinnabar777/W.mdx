@@ -1630,8 +1630,8 @@ function scheduleNextMeasuredVerticalMove(view, queue) {
     read: measuredView =>
       measuredView.coordsAtPos(measuredView.state.selection.main.head),
 
-    // Run the built-in visual-row command only after that measurement.
-    write: measuredView => {
+    // CodeMirror's write signature is (measure, view), not (view, measure).
+    write: (_measure, measuredView) => {
       if (!measuredView.dom.isConnected) {
         queue.length = 0;
         pendingVerticalMoves.delete(measuredView);
