@@ -1,49 +1,77 @@
-# Jules handoff: Polish Markdown and Obsidian link appearance
+# Jules handoff: Links, heading anchors, and callout insertion
 
 ## Base and guardrails
 
-- Start from the current `main`.
-- Keep this a visual/rendering pass for Markdown links and Obsidian-style wikilinks. Do not change link destinations, file resolution, document text, or navigation behavior unless an existing link action must be preserved.
-- Preserve Source mode and Live Preview behavior: raw link syntax is visible in Source mode and while its source line is actively edited; rendered modes show readable link text.
-- Do not modify callouts, tables, toolbars, Find & Replace, or unrelated typography.
+- Start from the current `main` and preserve its existing callout rendering, nesting, per-type icons/styles, header settings, and fold behavior.
+- Keep Markdown source byte-for-byte unchanged except for explicit insertion/editing requested by the user.
+- Do not modify tables, Find & Replace, unrelated toolbar layout, or other typography.
+- Use a themed in-app dialog, not `window.prompt`, browser alerts, or an Android-native prompt that loses editor selection/focus.
 
-## Current implementation to preserve
+## 1. Make same-document heading wikilinks work
 
-- `app/src/main/res/xml/preferences_styling_inline.xml` already has **Link Color** (`pref_link_color`) and **Link Text Decoration** (`pref_link_decoration`). Do not duplicate or remove these settings.
-- `web/src/main.js` applies those preferences as `--link-color`, `--link-decoration-line`, and `--link-decoration-style`.
-- `web/index.html` currently styles `.cm-content .cm-link` with those variables. Keep the existing preference values authoritative.
-- The live-preview renderer currently handles parsed CommonMark `[label](URL)` links, styles the label, and hides the surrounding syntax when not actively editing that line.
-- The Markdown guide documents Obsidian wikilinks (`[[File]]`, `[[#Heading]]`, `[[File#Heading]]`, and `[[target|alias]]`), but current `main.js` has no wikilink-specific renderer. Add that missing visual path without replacing the Markdown parser or changing saved content.
+The important syntax is `[[#BOLD|Link]]`: it targets the `BOLD` heading in the current document and displays `Link`.
 
-## Goal
+- Add production-path parsing/rendering for `[[#Heading]]` and `[[#Heading|Alias]]` in Live Preview and WYSIWYG.
+- Render the alias when present; otherwise render a readable heading label. Hide `[[`, the target syntax, `|`, and `]]` in rendered mode. Preserve and reveal the exact raw syntax on the active editing line and in Source mode.
+- Apply the existing `.cm-link` styling and `pref_link_color` / `pref_link_decoration` settings to the visible link label.
+- Activating a rendered same-document heading link must find the matching Markdown heading and scroll it into view. Match the visible heading text case-insensitively after removing the Markdown heading prefix and inline formatting syntax. If headings are duplicated, use the first matching heading in document order. If no target matches, keep the link visible and fail safely without changing the document.
+- Do not implement cross-file wikilink resolution in this patch. Do not treat `![[...]]` embeds as heading links.
 
-Make rendered Markdown links and wikilinks look intentional and polished in dark and light themes, without turning inline prose into buttons or pills. Use one coherent visual treatment for both kinds of links by default.
+## 2. Replace raw link insertion with a link dialog
 
-## Required changes
+Currently `execCmd('link')` wraps the selection as `[selection](https://)`. Replace that behavior with one theme-aware, phone-usable dialog, invoked by both the Insert Link toolbar item and the existing `Ctrl+K` shortcut.
 
-1. Refine `.cm-content .cm-link` styling in `web/index.html` using the existing theme-aware `--link-color`; never hard-code a color that overrides the user's Link Color setting.
-2. Add a subtle underline treatment with a small text underline offset, restrained thickness, and ink-aware rendering where supported. Preserve the user's selected `pref_link_decoration` style, including `none`.
-3. Keep link typography aligned with surrounding text. Do not add a pill background, icon, extra padding, forced font family, or layout-changing font size/weight.
-4. Render these Obsidian wikilink forms in Live Preview/WYSIWYG without changing the document text:
-   - `[[Target]]` — display the readable target text.
-   - `[[Target|Alias]]` — display `Alias` while retaining the full source syntax for editing/saving.
-   - `[[#Heading]]` and `[[File#Heading]]` — display a readable label, removing the wiki delimiters; preserve the target and heading text exactly in source.
-5. Apply the same `.cm-link` style and existing link color/decoration preferences to rendered wikilinks. Do not add duplicate settings or an internal/external color matrix in this pass.
-6. Preserve the meaning of `![[...]]` embeds: do not consume or render an embed as an ordinary text link.
-7. Check both dark and light themes for readable contrast. Any optional active/touch feedback must be subtle, theme-aware, and must not move text or interfere with selection.
+Dialog requirements:
 
-## Scope boundary
+- Preserve the current editor selection while the dialog is open. Prefill the display-text/alias field with selected text; if there is no selection, provide a clear empty field.
+- Provide a link-kind selector for **Web URL** and **Heading in this document**.
+- Web URL mode: display text plus URL; insert `[display text](URL)`.
+- Heading mode: display alias plus a picker populated from headings in the current document; insert `[[#Heading|Alias]]`, or `[[#Heading]]` if the alias is empty.
+- On Insert, restore editor focus and place the cursor after the inserted link. Cancel leaves the document and selection unchanged.
+- Style the dialog from the app's current dark/light theme. Keep it usable with the Android keyboard and small screens.
+- If invoked while editing a rendered link, prefill the dialog from that link when feasible; otherwise leave existing text untouched and insert a new link safely.
 
-This task adds correct visual rendering/styling of wikilink syntax. Do not invent file/heading navigation or claim that a wikilink opens its target unless the current app already has a verified action for it. Preserve any existing click behavior. Keep resolution/navigation as a separate task if it is not already implemented.
+## 3. Add link underline thickness
+
+- Add `Link Underline Thickness (px)` to the existing **Hyperlinks** section in `app/src/main/res/xml/preferences_styling_inline.xml`.
+- Use the existing resettable slider convention. Use a 1–4 px range, step 1, default 1 px, and a stable key such as `pref_link_underline_thickness`.
+- Wire reset/default handling in `ResetPreferences.kt`, preference forwarding in the existing native-to-web settings path, and `--link-decoration-thickness` in `web/src/main.js` / `web/index.html`.
+- Apply thickness only when the underline is enabled. Preserve all existing line-style and color behavior, including decoration set to `none`.
+
+## 4. Add Callout to the toolbar and keyboard shortcuts
+
+- Add **Insert Callout** to the existing Insert popup group in the bottom toolbar. Reuse an existing callout type icon (prefer the existing info icon) and set a clear accessible title/tooltip. Do not add a new toolbar row or rearrange unrelated items.
+- Add a customizable **Insert Callout Shortcut** in `app/src/main/res/xml/preferences_hotkeys.xml` using key `pref_hotkey_callout` and map it through the existing hotkey settings path to `customHotkeys.callout`.
+- Use `Ctrl+Alt+Q` as the default shortcut; verify it does not collide with any existing default. Both toolbar and shortcut must open the same callout insertion dialog.
+
+## 5. Reuse the insertion dialog for callouts
+
+The callout dialog is part of this task and should reuse the same themed dialog shell as link insertion.
+
+- Provide a callout type picker for the existing supported types: `note`, `info`, `tip`, `warning`, `important`, `danger`, `question`, `faq`, `todo`, and `example`.
+- Provide an optional title and initial fold state: **Not foldable**, **Expanded (+)**, or **Collapsed (-)**.
+- If text is selected, insert it as the callout body, prefixing each selected line with `> ` while preserving its text. If nothing is selected, insert the opener and a quoted blank body line, then place the caret in the body.
+- Use the existing syntax and fold behavior; do not create a second callout renderer or change callout styling/settings.
+- Cancel must leave the source and selection unchanged.
+
+## Implementation locations to inspect
+
+- `web/src/main.js` — `customHotkeys`, `execCmd('link')`, toolbar Insert popup, heading/link decorations, callout rendering and insertion.
+- `web/index.html` — link decoration CSS and themed dialog styles.
+- `app/src/main/res/xml/preferences_hotkeys.xml` — customizable callout shortcut.
+- `app/src/main/res/xml/preferences_styling_inline.xml` — underline thickness setting.
+- `app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt` and the existing native-to-web preference bridge — reset/default and value forwarding.
 
 ## Tests and build checks
 
-Add or update focused tests against the production decoration/parser path. Verify:
+Add tests against the production implementation for:
 
-- CommonMark links show only the label in rendered modes; source syntax is revealed while editing and remains raw in Source mode.
-- `[[Target]]`, `[[#Heading]]`, `[[File#Heading]]`, and `[[Target|Alias]]` render readable labels with the same configured link style.
-- `pref_link_color` and every supported `pref_link_decoration` value, including `none`, still apply/reset correctly.
-- `![[...]]` embeds are unaffected and saved Markdown remains byte-for-byte unchanged by rendering.
-- Dark and light theme CSS follows existing theme/link variables.
+- Heading wikilinks with and without aliases resolve and scroll correctly; matching is case-insensitive, duplicate behavior is deterministic, and missing targets fail safely.
+- Source mode and active-line syntax reveal preserve the exact original wikilink text; embeds remain unaffected.
+- Link dialog preserves selection on cancel and inserts correct URL/heading syntax on confirm.
+- Link underline thickness is resettable and affects visible underlines without overriding color/style or `none`.
+- Callout is present in the toolbar and configurable shortcut; both open the same dialog.
+- Callout dialog inserts selected or blank body correctly and emits the requested type/title/fold marker without changing other source.
+- Existing callout, link, and editor tests continue to pass.
 
-Run `npm test`, `npm run build`, and the Android debug build. Fix regressions caused by this patch only.
+Run `npm test`, `npm run build`, and the Android debug build. Fix failures caused by this patch only.
