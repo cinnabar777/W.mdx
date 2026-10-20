@@ -257,13 +257,23 @@ class CalloutTitleWidget extends WidgetType {
   }
 
   toDOM(view) {
+    const activeFolds = foldedRanges(view.state);
+    let currentlyFolded = false;
+    if (this.foldFrom != null && this.foldTo != null && this.foldTo > this.foldFrom) {
+      activeFolds.between(this.foldFrom, this.foldTo, (from, to) => {
+        if (from === this.foldFrom && to === this.foldTo) {
+          currentlyFolded = true;
+        }
+      });
+    }
+
     const span = document.createElement('span');
     span.className = 'cm-callout-title-container' + (this.foldMarker ? ' is-foldable' : '');
     if (this.foldMarker) {
       span.setAttribute('role', 'button');
       span.setAttribute('tabindex', '0');
-      span.setAttribute('aria-expanded', this.isFolded ? 'false' : 'true');
-      span.setAttribute('aria-label', `${this.isFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
+      span.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
+      span.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
     }
 
     const iconOverride = calloutTypeIconOverrides[this.type];
@@ -289,7 +299,7 @@ class CalloutTitleWidget extends WidgetType {
       btn.type = 'button';
       btn.tabIndex = -1;
       btn.setAttribute('aria-hidden', 'true');
-      btn.innerHTML = this.isFolded
+      btn.innerHTML = currentlyFolded
         ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
         : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 
@@ -299,7 +309,15 @@ class CalloutTitleWidget extends WidgetType {
         e.preventDefault();
         e.stopPropagation();
         if (this.foldFrom != null && this.foldTo != null && this.foldTo > this.foldFrom) {
-          if (this.isFolded) {
+          const liveFolds = foldedRanges(view.state);
+          let isFoldedNow = false;
+          liveFolds.between(this.foldFrom, this.foldTo, (from, to) => {
+            if (from === this.foldFrom && to === this.foldTo) {
+              isFoldedNow = true;
+            }
+          });
+
+          if (isFoldedNow) {
             view.dispatch({ effects: unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
           } else {
             view.dispatch({ effects: foldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
@@ -329,6 +347,35 @@ export function cleanHeadingText(rawText) {
     .trim();
 }
 
+export function scrollToPositionUpperMiddle(view, pos) {
+  if (!view || pos == null) return false;
+  view.dispatch({
+    selection: { anchor: pos, head: pos }
+  });
+
+  requestAnimationFrame(() => {
+    try {
+      const coords = view.coordsAtPos(pos);
+      const scroller = view.scrollDOM;
+      if (coords && scroller) {
+        const scrollerRect = scroller.getBoundingClientRect();
+        const currentTop = scroller.scrollTop;
+        const targetOffset = coords.top - scrollerRect.top + currentTop;
+        const desiredTop = targetOffset - (scrollerRect.height * 0.30);
+
+        if (Math.abs(currentTop - desiredTop) > 20) {
+          scroller.scrollTop = Math.max(0, desiredTop);
+        }
+      }
+    } catch (e) {
+      view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
+    }
+  });
+
+  view.focus();
+  return true;
+}
+
 export function scrollToHeading(view, targetHeading) {
   if (!view || !targetHeading) return false;
   const targetClean = cleanHeadingText(targetHeading).toLowerCase();
@@ -338,12 +385,7 @@ export function scrollToHeading(view, targetHeading) {
     if (/^#{1,6}\s+/.test(line.text.trim())) {
       const lineClean = cleanHeadingText(line.text).toLowerCase();
       if (lineClean === targetClean) {
-        view.dispatch({
-          selection: { anchor: line.from, head: line.from },
-          scrollIntoView: true
-        });
-        view.focus();
-        return true;
+        return scrollToPositionUpperMiddle(view, line.from);
       }
     }
   }
@@ -959,7 +1001,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'HeaderMark' && !isNodeActive) {
             const end = Math.min(node.to + 1, line.to);
             if (end > node.from && end <= line.to) {
-              builder.push(Decoration.replace({}).range(node.from, end));
+              builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(node.from, end));
             }
           }
 
@@ -967,7 +1009,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.mark({ class: 'cm-bold' }).range(node.from, node.to));
           }
           if (node.name === 'EmphasisMark' && !isNodeActive) {
-            builder.push(Decoration.replace({}).range(node.from, node.to));
+            builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(node.from, node.to));
           }
 
           if (node.name === 'Emphasis') {
@@ -978,14 +1020,14 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.mark({ class: 'cm-strikethrough' }).range(node.from, node.to));
           }
           if (node.name === 'StrikethroughMark' && !isNodeActive) {
-            builder.push(Decoration.replace({}).range(node.from, node.to));
+            builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(node.from, node.to));
           }
 
           if (node.name === 'InlineCode') {
             builder.push(Decoration.mark({ class: 'cm-inline-code' }).range(node.from, node.to));
           }
           if (node.name === 'CodeMark' && !isNodeActive) {
-            builder.push(Decoration.replace({}).range(node.from, node.to));
+            builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(node.from, node.to));
           }
 
 
@@ -1007,11 +1049,11 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             let isCalloutLine = calloutLineAttributes.has(line.from);
             if (isCalloutLine) {
               // Hide QuoteMark on callout lines in rendered mode
-              builder.push(Decoration.replace({}).range(node.from, node.to));
+              builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(node.from, node.to));
             } else {
               let end = Math.min(node.to + 1, line.to);
               if (end > node.from) {
-                builder.push(Decoration.replace({}).range(node.from, end));
+                builder.push(Decoration.mark({ class: 'cm-hidden-syntax' }).range(node.from, end));
               }
             }
           }
@@ -1666,10 +1708,14 @@ class CodeMirrorAdapter {
         const len = this.view.state.doc.length;
         const head = Math.min(Math.max(0, sel.head), len);
         const anchor = Math.min(Math.max(0, sel.anchor !== undefined ? sel.anchor : sel.head), len);
-        this.view.dispatch({
-          selection: { anchor, head },
-          scrollIntoView: !hasSavedScroll
-        });
+
+        if (!hasSavedScroll) {
+          scrollToPositionUpperMiddle(this.view, head);
+        } else {
+          this.view.dispatch({
+            selection: { anchor, head }
+          });
+        }
       }
 
       if (hasSavedScroll) {
@@ -2952,10 +2998,7 @@ function setupTocGestureAndPanel() {
         if (item.lineIndex !== undefined && activeAdapter && activeAdapter.view) {
           try {
             const line = activeAdapter.view.state.doc.line(item.lineIndex + 1);
-            activeAdapter.view.dispatch({
-              selection: { anchor: line.from, head: line.from },
-              scrollIntoView: true
-            });
+            scrollToPositionUpperMiddle(activeAdapter.view, line.from);
           } catch (e) {}
         }
       };

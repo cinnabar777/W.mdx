@@ -723,6 +723,16 @@
       color: var(--text-color, #ffffff) !important;
     }
 
+    .cm-hidden-syntax {
+      font-size: 0px !important;
+      opacity: 0 !important;
+      display: inline !important;
+      user-select: none !important;
+      width: 0px !important;
+      height: 0px !important;
+      pointer-events: none !important;
+    }
+
     /* Paragraph settings apply only to Markdown Paragraph nodes that are NOT list items. */
     .cm-content .cm-paragraph:not(.cm-list-item) {
       font-size: var(--body-font-size, 16px) !important;
@@ -920,8 +930,9 @@
       background: var(--callout-bg-color, var(--callout-type-bg, rgba(41, 182, 246, 0.12))) !important;
       color: var(--callout-text-color, inherit) !important;
       padding-left: var(--callout-padding, 12px) !important;
-      margin-top: 4px !important;
-      margin-bottom: 4px !important;
+      margin-top: 0px !important;
+      margin-bottom: 0px !important;
+      box-sizing: border-box !important;
     }
 
     .cm-content .cm-callout[data-callout-depth="2"] {

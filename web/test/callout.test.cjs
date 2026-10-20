@@ -111,7 +111,7 @@ test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => 
   assert.ok(mainSource.includes('calloutTypeIcons'), 'calloutTypeIcons map exists');
   assert.ok(mainSource.includes('cm-callout-icon'), 'cm-callout-icon class exists');
   assert.ok(mainSource.includes('cm-callout-title-container'), 'Title container class exists');
-  assert.ok(mainSource.includes("aria-label', `${this.isFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Title container has accessible expand/collapse label');
+  assert.ok(mainSource.includes("aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Title container has accessible expand/collapse label');
   assert.ok(mainSource.includes('foldEffect.of'), 'Title container dispatches foldEffect');
   assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
 });
