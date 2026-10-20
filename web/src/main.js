@@ -2,6 +2,7 @@ import { EditorState, Compartment, Transaction, StateField } from '@codemirror/s
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { WordProcessorTableWidget } from './tableWidget.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
+import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -4521,6 +4522,7 @@ export function setupNavigationDiagnostics(view) {
     scroller.addEventListener('scroll', onScroll, { passive: true });
   }
   window.addEventListener('scroll', onScroll, { passive: true });
+  setupFullNavigationCapture(view);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
