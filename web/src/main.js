@@ -3,7 +3,17 @@ import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, r
 import { WordProcessorTableWidget } from './tableWidget.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
-import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  undo as cmUndo,
+  redo as cmRedo,
+  undoDepth,
+  redoDepth,
+  cursorLineDown,
+  cursorLineUp
+} from '@codemirror/commands';
 import {
   search,
   SearchQuery,
@@ -1606,6 +1616,69 @@ export const tableNavigationKeymap = keymap.of([
   }
 ]);
 
+const pendingVerticalMoves = new WeakMap();
+
+function scheduleNextMeasuredVerticalMove(view, queue) {
+  if (!view.dom.isConnected) {
+    queue.length = 0;
+    pendingVerticalMoves.delete(view);
+    return;
+  }
+
+  view.requestMeasure({
+    // Read the current caret geometry during CodeMirror's measurement cycle.
+    read: measuredView =>
+      measuredView.coordsAtPos(measuredView.state.selection.main.head),
+
+    // Run the built-in visual-row command only after that measurement.
+    write: measuredView => {
+      if (!measuredView.dom.isConnected) {
+        queue.length = 0;
+        pendingVerticalMoves.delete(measuredView);
+        return;
+      }
+
+      const move = queue.shift();
+      if (move) move(measuredView);
+
+      if (queue.length) {
+        requestAnimationFrame(() =>
+          scheduleNextMeasuredVerticalMove(measuredView, queue)
+        );
+      } else {
+        pendingVerticalMoves.delete(measuredView);
+      }
+    }
+  });
+}
+
+function enqueueMeasuredVerticalMove(view, move) {
+  let queue = pendingVerticalMoves.get(view);
+  if (!queue) {
+    queue = [];
+    pendingVerticalMoves.set(view, queue);
+  }
+
+  queue.push(move);
+  if (queue.length === 1) {
+    scheduleNextMeasuredVerticalMove(view, queue);
+  }
+
+  // The key is handled now; the movement runs after the measurement cycle.
+  return true;
+}
+
+const measuredVerticalNavigationKeymap = keymap.of([
+  {
+    key: 'ArrowUp',
+    run: view => enqueueMeasuredVerticalMove(view, cursorLineUp)
+  },
+  {
+    key: 'ArrowDown',
+    run: view => enqueueMeasuredVerticalMove(view, cursorLineDown)
+  }
+]);
+
 
 
 class CodeMirrorAdapter {
@@ -1695,6 +1768,7 @@ class CodeMirrorAdapter {
         }),
         tableStateField,
         tableNavigationKeymap,
+        measuredVerticalNavigationKeymap,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap
