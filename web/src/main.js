@@ -1573,15 +1573,40 @@ export const horizontalRuleNavigationKeymap = keymap.of([
       if (currentLine.number <= 1) return false;
 
       const previousLineNumber = currentLine.number - 1;
-      if (!isHorizontalRuleLine(view.state, previousLineNumber)) return false;
+      if (isHorizontalRuleLine(view.state, previousLineNumber)) {
+        const horizontalRuleLine = view.state.doc.line(previousLineNumber);
+        view.dispatch({
+          selection: { anchor: horizontalRuleLine.from },
+          scrollIntoView: false,
+          userEvent: 'select.keyboard'
+        });
+        ensureCaretVisibleMinimal(view, horizontalRuleLine.from);
+        return true;
+      }
+      return false;
+    }
+  },
+  {
+    key: 'ArrowDown',
+    run(view) {
+      const selection = view.state.selection.main;
+      if (!selection.empty) return false;
 
-      const horizontalRuleLine = view.state.doc.line(previousLineNumber);
-      view.dispatch({
-        selection: { anchor: horizontalRuleLine.from },
-        scrollIntoView: false,
-        userEvent: 'select.keyboard'
-      });
-      return true;
+      const currentLine = view.state.doc.lineAt(selection.head);
+      if (currentLine.number >= view.state.doc.lines) return false;
+
+      const nextLineNumber = currentLine.number + 1;
+      if (isHorizontalRuleLine(view.state, nextLineNumber)) {
+        const horizontalRuleLine = view.state.doc.line(nextLineNumber);
+        view.dispatch({
+          selection: { anchor: horizontalRuleLine.from },
+          scrollIntoView: false,
+          userEvent: 'select.keyboard'
+        });
+        ensureCaretVisibleMinimal(view, horizontalRuleLine.from);
+        return true;
+      }
+      return false;
     }
   }
 ]);
