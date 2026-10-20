@@ -1138,7 +1138,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'HorizontalRule') {
             addLineClass(line.from, 'cm-hr');
             if (!isNodeActive && node.to > node.from) {
-              builder.push(Decoration.replace({}).range(node.from, node.to));
+              hideSyntax(node.from, node.to);
             }
           }
 
@@ -1645,6 +1645,190 @@ export const tableNavigationKeymap = keymap.of([
   }
 ]);
 
+const renderedVerticalGoals = new WeakMap();
+
+function renderedVisualRows(view) {
+  const rows = [];
+  const lineElements = Array.from(view.contentDOM.children)
+    .filter(element => element.classList?.contains('cm-line'));
+
+  for (const line of lineElements) {
+    const range = line.ownerDocument.createRange();
+    range.selectNodeContents(line);
+    const fragments = Array.from(range.getClientRects())
+      .filter(rect => rect.height > 0);
+
+    const addFragment = rect => {
+      let row = rows.find(candidate => {
+        if (candidate.element !== line) return false;
+        const overlap = Math.min(candidate.bottom, rect.bottom) -
+          Math.max(candidate.top, rect.top);
+        return overlap > 0 ||
+          Math.abs(candidate.center - (rect.top + rect.bottom) / 2) <= 1;
+      });
+
+      if (!row) {
+        row = {
+          element: line,
+          top: rect.top,
+          bottom: rect.bottom,
+          center: (rect.top + rect.bottom) / 2
+        };
+        rows.push(row);
+        return;
+      }
+
+      row.top = Math.min(row.top, rect.top);
+      row.bottom = Math.max(row.bottom, rect.bottom);
+      row.center = (row.top + row.bottom) / 2;
+    };
+
+    if (fragments.length) {
+      for (const rect of fragments) addFragment(rect);
+    } else {
+      // Empty Markdown lines and fully hidden syntax still occupy a visual row.
+      const rect = line.getBoundingClientRect();
+      if (rect.height > 0) addFragment(rect);
+    }
+  }
+
+  return rows.sort((a, b) => a.center - b.center);
+}
+
+function renderedLineForPosition(view, position, side) {
+  const located = view.domAtPos(position, side);
+  const element = located.node?.nodeType === 1
+    ? located.node
+    : located.node?.parentElement;
+  return element?.closest?.('.cm-line') || null;
+}
+
+function leaveHiddenSyntax(view, position, direction) {
+  const ranges = view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
+  if (!ranges || position >= view.state.doc.length) return position;
+
+  let result = position;
+  ranges.between(position, position + 1, (from, to) => {
+    if (from <= position && position < to) {
+      result = direction > 0 ? to : from;
+    }
+  });
+  return result;
+}
+
+function positionOnRenderedRow(view, row, goalX, direction) {
+  const direct = view.posAtCoords({ x: goalX, y: row.center });
+  if (
+    direct != null &&
+    renderedLineForPosition(view, direct, direction) === row.element
+  ) {
+    return direct;
+  }
+
+  // Android WebView can map a point over hidden Markdown delimiters to a
+  // different source line. Search only this rendered row's source line and
+  // choose the caret position whose measured x is nearest the saved goal.
+  const lineStart = view.posAtDOM(row.element, 0);
+  const line = view.state.doc.lineAt(lineStart);
+  let bestPosition = null;
+  let bestDistance = Infinity;
+
+  for (let position = line.from; position <= line.to; position++) {
+    const coords = view.coordsAtPos(position, direction);
+    if (!coords) continue;
+
+    const center = (coords.top + coords.bottom) / 2;
+    if (center < row.top - 2 || center > row.bottom + 2) continue;
+
+    const distance = Math.abs(coords.left - goalX);
+    if (distance < bestDistance) {
+      bestPosition = position;
+      bestDistance = distance;
+    }
+  }
+
+  return bestPosition;
+}
+
+export function moveByRenderedRow(view, direction, extendSelection = false) {
+  if (!view.dom.isConnected || view.state.selection.ranges.length !== 1) {
+    return false;
+  }
+
+  const range = view.state.selection.main;
+  const start = extendSelection || range.empty
+    ? range.head
+    : direction < 0 ? range.from : range.to;
+  const caret = view.coordsAtPos(start);
+  if (!caret) return false;
+
+  const rows = renderedVisualRows(view);
+  const currentLine = renderedLineForPosition(view, start, direction);
+  if (!currentLine || !rows.length) return false;
+
+  const caretCenter = (caret.top + caret.bottom) / 2;
+  let currentIndex = -1;
+  let nearestDistance = Infinity;
+  for (let index = 0; index < rows.length; index++) {
+    if (rows[index].element !== currentLine) continue;
+    const distance = Math.abs(rows[index].center - caretCenter);
+    if (distance < nearestDistance) {
+      currentIndex = index;
+      nearestDistance = distance;
+    }
+  }
+  if (currentIndex < 0) return false;
+
+  const previousGoal = renderedVerticalGoals.get(view);
+  const preserveGoal = range.empty && previousGoal?.head === start;
+  const goalX = preserveGoal ? previousGoal.x : caret.left;
+  const targetRow = rows[currentIndex + direction];
+  if (!targetRow) return false;
+
+  let target = positionOnRenderedRow(view, targetRow, goalX, direction);
+  if (target == null) return false;
+  target = leaveHiddenSyntax(view, target, direction);
+
+  // Do not dispatch if the browser mapped the target point to a different row.
+  const mappedLine = renderedLineForPosition(view, target, direction);
+  if (mappedLine && mappedLine !== targetRow.element) return false;
+
+  const selection = extendSelection
+    ? { anchor: range.anchor, head: target }
+    : { anchor: target, head: target };
+  view.dispatch({
+    selection,
+    scrollIntoView: true,
+    userEvent: extendSelection ? 'select' : 'move'
+  });
+
+  renderedVerticalGoals.set(view, {
+    x: goalX,
+    head: view.state.selection.main.head
+  });
+  return true;
+}
+
+export const renderedRowNavigationKeymap = keymap.of([
+  {
+    key: 'ArrowUp',
+    run: view => moveByRenderedRow(view, -1),
+    shift: view => moveByRenderedRow(view, -1, true)
+  },
+  {
+    key: 'ArrowDown',
+    run: view => moveByRenderedRow(view, 1),
+    shift: view => moveByRenderedRow(view, 1, true)
+  }
+]);
+
+export const resetRenderedVerticalGoal = EditorView.domEventHandlers({
+  pointerdown(_event, view) {
+    renderedVerticalGoals.delete(view);
+    return false;
+  }
+});
+
 
 
 
@@ -1743,6 +1927,8 @@ class CodeMirrorAdapter {
         }),
         tableStateField,
         tableNavigationKeymap,
+        renderedRowNavigationKeymap,
+        resetRenderedVerticalGoal,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap
