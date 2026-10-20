@@ -8,14 +8,19 @@ fs.mkdirSync(distDir, { recursive: true });
 
 console.log('Bundling test files with esbuild...');
 
-esbuild.buildSync({
-  entryPoints: [path.join(webDir, 'test_sources/rendered_navigation.spec.cjs')],
-  bundle: true,
-  format: 'cjs',
-  platform: 'node',
-  target: 'node18',
-  external: ['jsdom', 'node:*'],
-  outfile: path.join(distDir, 'rendered_navigation.test.cjs')
-});
+for (const [source, output] of [
+  ['rendered_navigation.spec.cjs', 'rendered_navigation.test.cjs'],
+  ['navigation_capture.spec.cjs', 'navigation_capture.test.cjs']
+]) {
+  esbuild.buildSync({
+    entryPoints: [path.join(webDir, 'test_sources', source)],
+    bundle: true,
+    format: 'cjs',
+    platform: 'node',
+    target: 'node18',
+    external: ['jsdom', 'node:*'],
+    outfile: path.join(distDir, output)
+  });
+}
 
 console.log('Test bundling complete!');
