@@ -936,19 +936,37 @@
     .cm-content .cm-callout[data-callout-type="info"] {
       --callout-type-border: #29b6f6;
       --callout-type-bg: rgba(41, 182, 246, 0.12);
+      --callout-type-header-bg: var(--callout-type-info-header-bg);
+      --callout-type-header-title-color: var(--callout-type-info-header-title-color);
+      --callout-type-header-accent-color: var(--callout-type-info-header-accent-color);
     }
-    .cm-content .cm-callout[data-callout-type="question"],
     .cm-content .cm-callout[data-callout-type="faq"] {
       --callout-type-border: #ff9800;
       --callout-type-bg: rgba(255, 152, 0, 0.12);
+      --callout-type-header-bg: var(--callout-type-faq-header-bg);
+      --callout-type-header-title-color: var(--callout-type-faq-header-title-color);
+      --callout-type-header-accent-color: var(--callout-type-faq-header-accent-color);
+    }
+    .cm-content .cm-callout[data-callout-type="question"] {
+      --callout-type-border: #ff9800;
+      --callout-type-bg: rgba(255, 152, 0, 0.12);
+      --callout-type-header-bg: var(--callout-type-question-header-bg);
+      --callout-type-header-title-color: var(--callout-type-question-header-title-color);
+      --callout-type-header-accent-color: var(--callout-type-question-header-accent-color);
     }
     .cm-content .cm-callout[data-callout-type="todo"] {
       --callout-type-border: #00bcd4;
       --callout-type-bg: rgba(0, 188, 212, 0.12);
+      --callout-type-header-bg: var(--callout-type-todo-header-bg);
+      --callout-type-header-title-color: var(--callout-type-todo-header-title-color);
+      --callout-type-header-accent-color: var(--callout-type-todo-header-accent-color);
     }
     .cm-content .cm-callout[data-callout-type="example"] {
       --callout-type-border: #ab47bc;
       --callout-type-bg: rgba(171, 71, 188, 0.12);
+      --callout-type-header-bg: var(--callout-type-example-header-bg);
+      --callout-type-header-title-color: var(--callout-type-example-header-title-color);
+      --callout-type-header-accent-color: var(--callout-type-example-header-accent-color);
     }
     .cm-content .cm-callout[data-callout-type="tip"] {
       --callout-type-border: #66bb6a;
@@ -965,7 +983,13 @@
     }
 
     .cm-content .cm-callout-title {
-      font-weight: 700 !important;
+      font-weight: var(--callout-header-font-weight, 700) !important;
+      background-color: var(--callout-type-header-bg, var(--callout-header-bg, transparent)) !important;
+      color: var(--callout-type-header-title-color, var(--callout-header-title-color, inherit)) !important;
+      font-size: var(--callout-header-title-size, inherit) !important;
+      font-family: var(--callout-header-font-family, inherit) !important;
+      padding: var(--callout-header-padding, 0px) !important;
+      border-left: var(--callout-header-accent-thickness, 0px) solid var(--callout-type-header-accent-color, var(--callout-header-accent-color, transparent)) !important;
     }
 
     .cm-callout-title-container {
@@ -974,6 +998,13 @@
       gap: 6px !important;
       vertical-align: middle !important;
       user-select: none !important;
+      background-color: var(--callout-type-header-bg, var(--callout-header-bg, transparent)) !important;
+      color: var(--callout-type-header-title-color, var(--callout-header-title-color, inherit)) !important;
+      font-size: var(--callout-header-title-size, inherit) !important;
+      font-family: var(--callout-header-font-family, inherit) !important;
+      font-weight: var(--callout-header-font-weight, 700) !important;
+      padding: var(--callout-header-padding, 0px) !important;
+      border-left: var(--callout-header-accent-thickness, 0px) solid var(--callout-type-header-accent-color, var(--callout-header-accent-color, transparent)) !important;
     }
 
     .cm-callout-title-container.is-foldable {

@@ -369,6 +369,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val fontBoldData = loadFontDataUri(prefs.getString("pref_font_file_bold_path", null))
         val fontItalicData = loadFontDataUri(prefs.getString("pref_font_file_italic_path", null))
         val fontCodeData = loadFontDataUri(prefs.getString("pref_font_file_code_path", null))
+        val fontCalloutHeaderData = loadFontDataUri(prefs.getString("pref_font_file_callout_header_path", null))
 
         val bodyFontSize = prefs.getInt("pref_body_font_size", 16)
         val headingScalePercent = prefs.getInt("pref_heading_scale_percent", 100)
@@ -390,9 +391,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedBoldFont = JSONObjectWrapper.quote(fontBoldData)
         val escapedItalicFont = JSONObjectWrapper.quote(fontItalicData)
         val escapedCodeFont = JSONObjectWrapper.quote(fontCodeData)
+        val escapedCalloutHeaderFont = JSONObjectWrapper.quote(fontCalloutHeaderData)
 
         webView.evaluateJavascript(
-            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading); }",
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont); }",
             null
         )
 
