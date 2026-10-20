@@ -230,6 +230,8 @@ const calloutTypeIcons = {
   danger: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
 };
 
+let calloutTypeIconOverrides = {};
+
 class CalloutTitleWidget extends WidgetType {
   constructor(title, type, foldMarker, isFolded, foldFrom, foldTo) {
     super();
@@ -263,7 +265,13 @@ class CalloutTitleWidget extends WidgetType {
       span.setAttribute('aria-label', `${this.isFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
     }
 
-    const iconSvg = calloutTypeIcons[this.type] || calloutTypeIcons.info;
+    const iconOverride = calloutTypeIconOverrides[this.type];
+    const allowedIcons = ['info', 'question', 'faq', 'todo', 'example', 'note', 'tip', 'warning', 'important', 'danger'];
+    const activeIconKey = (iconOverride && iconOverride !== 'default' && allowedIcons.includes(iconOverride))
+      ? iconOverride
+      : this.type;
+    const iconSvg = calloutTypeIcons[activeIconKey] || calloutTypeIcons.info;
+
     const iconSpan = document.createElement('span');
     iconSpan.className = 'cm-callout-icon';
     iconSpan.innerHTML = iconSvg;
@@ -2961,6 +2969,33 @@ window.editorBridge = {
     setCssVar('--callout-text-color', prefs.pref_callout_text_color);
     setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
 
+    // Callout Shared Header
+    setCssVar('--callout-header-bg', prefs.pref_callout_header_bg_color);
+    setCssVar('--callout-header-title-color', prefs.pref_callout_header_title_color);
+    setCssVar('--callout-header-title-size', prefs.pref_callout_header_title_size, 'px');
+    setCssVar('--callout-header-font-family', prefs.pref_callout_header_font_family);
+    setCssVar('--callout-header-font-weight', prefs.pref_callout_header_font_weight);
+    setCssVar('--callout-header-padding', prefs.pref_callout_header_padding, 'px');
+    setCssVar('--callout-header-accent-color', prefs.pref_callout_header_accent_color);
+    setCssVar('--callout-header-accent-thickness', prefs.pref_callout_header_accent_thickness, 'px');
+
+    // Callout Per-Type Overrides
+    const calloutOverrideTypes = ['info', 'faq', 'question', 'todo', 'example'];
+    const allowedCalloutIcons = ['info', 'question', 'faq', 'todo', 'example', 'note', 'tip', 'warning', 'important', 'danger'];
+
+    calloutOverrideTypes.forEach(t => {
+      setCssVar(`--callout-type-${t}-header-bg`, prefs[`pref_callout_type_${t}_bg_color`]);
+      setCssVar(`--callout-type-${t}-header-title-color`, prefs[`pref_callout_type_${t}_title_color`]);
+      setCssVar(`--callout-type-${t}-header-accent-color`, prefs[`pref_callout_type_${t}_accent_color`]);
+
+      const rawIcon = prefs[`pref_callout_type_${t}_icon`];
+      if (rawIcon && rawIcon !== 'default' && allowedCalloutIcons.includes(rawIcon)) {
+        calloutTypeIconOverrides[t] = rawIcon;
+      } else {
+        delete calloutTypeIconOverrides[t];
+      }
+    });
+
     // Tables
     setCssVar('--table-border-style', prefs.pref_table_border_style);
     setCssVar('--table-border-width', prefs.pref_table_border_thickness || prefs.pref_table_border_width, 'px');
@@ -3234,7 +3269,7 @@ window.editorBridge = {
       titleEl.textContent = title;
     }
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading) {
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData) {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -3295,6 +3330,7 @@ window.editorBridge = {
     applyFontCategory('Bold', fontBoldData, '--bold-font-family');
     applyFontCategory('Italic', fontItalicData, '--italic-font-family');
     applyFontCategory('Code', fontCodeData, '--code-font-family');
+    applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family');
 
     styleEl.innerHTML = fontCss;
   },

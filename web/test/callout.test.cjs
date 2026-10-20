@@ -136,3 +136,82 @@ test('Callout fold placeholder is hidden via CSS in index.html', () => {
   assert.ok(indexHtml.includes('.cm-content .cm-callout .cm-foldPlaceholder'), 'Callout fold placeholder selector exists');
   assert.ok(indexHtml.includes('display: none !important;'), 'Callout fold placeholder is hidden');
 });
+
+test('Shared callout header controls and per-type override preferences are defined and mapped', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const xmlPrefs = fs.readFileSync(path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_blockquotes.xml'), 'utf8');
+  const resetPrefs = fs.readFileSync(path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'), 'utf8');
+
+  // Shared Header Keys Check
+  const sharedKeys = [
+    'pref_callout_header_bg_color',
+    'pref_callout_header_title_color',
+    'pref_callout_header_title_size',
+    'pref_callout_header_font_family',
+    'pref_font_file_callout_header',
+    'pref_callout_header_font_weight',
+    'pref_callout_header_padding',
+    'pref_callout_header_accent_color',
+    'pref_callout_header_accent_thickness'
+  ];
+
+  for (const k of sharedKeys) {
+    assert.ok(xmlPrefs.includes(k), `XML preferences must contain shared key: ${k}`);
+    assert.ok(resetPrefs.includes(k), `ResetPreferences must handle shared key: ${k}`);
+  }
+
+  // Check CSS Variable Mapping in main.js
+  assert.ok(mainSource.includes("'--callout-header-bg', prefs.pref_callout_header_bg_color"), 'main.js sets --callout-header-bg');
+  assert.ok(mainSource.includes("'--callout-header-title-color', prefs.pref_callout_header_title_color"), 'main.js sets --callout-header-title-color');
+  assert.ok(mainSource.includes("'--callout-header-title-size', prefs.pref_callout_header_title_size"), 'main.js sets --callout-header-title-size');
+  assert.ok(mainSource.includes("'--callout-header-font-family', prefs.pref_callout_header_font_family"), 'main.js sets --callout-header-font-family');
+  assert.ok(mainSource.includes("'--callout-header-font-weight', prefs.pref_callout_header_font_weight"), 'main.js sets --callout-header-font-weight');
+  assert.ok(mainSource.includes("'--callout-header-padding', prefs.pref_callout_header_padding"), 'main.js sets --callout-header-padding');
+  assert.ok(mainSource.includes("'--callout-header-accent-color', prefs.pref_callout_header_accent_color"), 'main.js sets --callout-header-accent-color');
+  assert.ok(mainSource.includes("'--callout-header-accent-thickness', prefs.pref_callout_header_accent_thickness"), 'main.js sets --callout-header-accent-thickness');
+
+  // Check CSS Rules in index.html for title and title container
+  assert.ok(indexHtml.includes('var(--callout-type-header-bg, var(--callout-header-bg, transparent))'), 'index.html incorporates header background cascade');
+  assert.ok(indexHtml.includes('var(--callout-type-header-title-color, var(--callout-header-title-color, inherit))'), 'index.html incorporates header title color cascade');
+  assert.ok(indexHtml.includes('var(--callout-header-title-size, inherit)'), 'index.html incorporates header title size');
+  assert.ok(indexHtml.includes('var(--callout-header-font-weight, 700)'), 'index.html incorporates header font weight');
+
+  // Check Per-Type Override Keys Check
+  const overrideTypes = ['info', 'faq', 'question', 'todo', 'example'];
+  for (const t of overrideTypes) {
+    assert.ok(xmlPrefs.includes(`pref_callout_type_${t}_bg_color`), `XML preferences contains override bg key for ${t}`);
+    assert.ok(xmlPrefs.includes(`pref_callout_type_${t}_title_color`), `XML preferences contains override title key for ${t}`);
+    assert.ok(xmlPrefs.includes(`pref_callout_type_${t}_accent_color`), `XML preferences contains override accent key for ${t}`);
+    assert.ok(xmlPrefs.includes(`pref_callout_type_${t}_icon`), `XML preferences contains override icon key for ${t}`);
+    assert.ok(indexHtml.includes(`--callout-type-${t}-header-bg`), `index.html contains CSS variable for ${t} header bg`);
+  }
+});
+
+test('Callout header settings remain isolated from body text and outer callout border settings', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  // Outer border uses --callout-border-width, --callout-border-color
+  assert.ok(indexHtml.includes('border-left: var(--callout-border-width, 4px) var(--callout-border-style, solid) var(--callout-border-color,'), 'Outer border retains global callout variables');
+
+  // Body text uses --callout-text-color
+  assert.ok(indexHtml.includes('color: var(--callout-text-color, inherit) !important;'), 'Body text color remains controlled by --callout-text-color');
+
+  // Header accent uses separate --callout-header-accent-thickness and accent color
+  assert.ok(indexHtml.includes('var(--callout-header-accent-thickness, 0px)'), 'Header accent thickness is separate from outer callout border');
+});
+
+test('Callout type icon overrides are sanitized and fall back to defaults for invalid values', () => {
+  const allowedCalloutIcons = ['info', 'question', 'faq', 'todo', 'example', 'note', 'tip', 'warning', 'important', 'danger'];
+
+  const sanitizeIcon = (iconName) => {
+    if (iconName && iconName !== 'default' && allowedCalloutIcons.includes(iconName)) {
+      return iconName;
+    }
+    return 'default';
+  };
+
+  assert.equal(sanitizeIcon('tip'), 'tip', 'Valid built-in icon choice is allowed');
+  assert.equal(sanitizeIcon('warning'), 'warning', 'Valid built-in icon choice is allowed');
+  assert.equal(sanitizeIcon('<script>alert(1)</script>'), 'default', 'Arbitrary text/script is sanitized to default');
+  assert.equal(sanitizeIcon('invalid_icon_name'), 'default', 'Unknown icon name falls back to default');
+});

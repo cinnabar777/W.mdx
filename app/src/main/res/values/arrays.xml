@@ -134,4 +134,63 @@
         <item>file</item>
     </string-array>
 
+    <string-array name="callout_type_entries">
+        <item>Info</item>
+        <item>FAQ</item>
+        <item>Question</item>
+        <item>Todo</item>
+        <item>Example</item>
+    </string-array>
+    <string-array name="callout_type_values">
+        <item>info</item>
+        <item>faq</item>
+        <item>question</item>
+        <item>todo</item>
+        <item>example</item>
+    </string-array>
+
+    <string-array name="callout_icon_entries">
+        <item>Default (Type Built-in)</item>
+        <item>Info (i)</item>
+        <item>Question (?)</item>
+        <item>FAQ (?)</item>
+        <item>Todo (✓)</item>
+        <item>Example (≡)</item>
+        <item>Note (📝)</item>
+        <item>Tip (💡)</item>
+        <item>Warning (⚠️)</item>
+        <item>Important (ℹ️)</item>
+        <item>Danger (🛑)</item>
+    </string-array>
+    <string-array name="callout_icon_values">
+        <item>default</item>
+        <item>info</item>
+        <item>question</item>
+        <item>faq</item>
+        <item>todo</item>
+        <item>example</item>
+        <item>note</item>
+        <item>tip</item>
+        <item>warning</item>
+        <item>important</item>
+        <item>danger</item>
+    </string-array>
+
+    <string-array name="font_family_entries">
+        <item>Default / Inherit</item>
+        <item>Sans-Serif</item>
+        <item>Serif</item>
+        <item>Monospace</item>
+        <item>Cursive</item>
+        <item>System UI</item>
+    </string-array>
+    <string-array name="font_family_values">
+        <item>default</item>
+        <item>sans-serif</item>
+        <item>serif</item>
+        <item>monospace</item>
+        <item>cursive</item>
+        <item>system-ui</item>
+    </string-array>
+
 </resources>

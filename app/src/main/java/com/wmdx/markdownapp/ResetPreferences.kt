@@ -46,6 +46,9 @@ object PreferenceResetHelper {
             "pref_callout_line_color" -> "#29B6F6"
             "pref_callout_bg_color" -> "#1A232A"
             "pref_callout_text_color" -> "#FFFFFF"
+            "pref_callout_header_bg_color" -> "#1A232A"
+            "pref_callout_header_title_color" -> "#FFFFFF"
+            "pref_callout_header_accent_color" -> "#29B6F6"
             "pref_hr_color" -> "#444444"
             "pref_bold_color" -> "#FFFFFF"
             "pref_italic_color" -> "#FFFFFF"
@@ -137,6 +140,17 @@ object PreferenceResetHelper {
             key == "pref_callout_bg_color" -> "default"
             key == "pref_callout_text_color" -> "default"
             key == "pref_callout_padding" -> 12
+            key == "pref_callout_header_bg_color" -> "default"
+            key == "pref_callout_header_title_color" -> "default"
+            key == "pref_callout_header_title_size" -> 0
+            key == "pref_callout_header_font_family" -> "default"
+            key == "pref_callout_header_font_weight" -> 700
+            key == "pref_callout_header_padding" -> 0
+            key == "pref_callout_header_accent_color" -> "default"
+            key == "pref_callout_header_accent_thickness" -> 0
+            key == "pref_font_file_callout_header" -> null
+            key == "pref_callout_type_selector" -> "info"
+            key.startsWith("pref_callout_type_") -> "default"
             key == "pref_table_border_style" -> "solid"
             key == "pref_table_border_thickness" -> 1
             key == "pref_table_border_color" -> "default"

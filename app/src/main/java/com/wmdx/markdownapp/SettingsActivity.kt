@@ -368,7 +368,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_font_file_heading",
             "pref_font_file_bold",
             "pref_font_file_italic",
-            "pref_font_file_code"
+            "pref_font_file_code",
+            "pref_font_file_callout_header"
         )
 
         for (key in fontKeys) {
@@ -506,8 +507,179 @@ class StylingListsFragment : StylingSettingsFragment() {
 }
 
 class StylingBlockquotesFragment : StylingSettingsFragment() {
+    private var previewContainer: android.widget.LinearLayout? = null
+    private val previewTitleViews = mutableMapOf<String, android.widget.TextView>()
+    private val previewCardViews = mutableMapOf<String, android.widget.LinearLayout>()
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_blockquotes, rootKey)
+    }
+
+    override fun onViewCreated(view: android.view.View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        setupCalloutPreview(view)
+        updateTypeOverrideVisibility()
+        val ctx = context
+        if (ctx != null) {
+            refreshCalloutPreview(PreferenceManager.getDefaultSharedPreferences(ctx))
+        }
+    }
+
+    override fun onSettingPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {
+        super.onSettingPreferenceChanged(sharedPreferences, key)
+        if (key == "pref_callout_type_selector") {
+            updateTypeOverrideVisibility()
+        }
+        if (key.startsWith("pref_callout_")) {
+            refreshCalloutPreview(sharedPreferences)
+        }
+    }
+
+    private fun updateTypeOverrideVisibility() {
+        val ctx = context ?: return
+        val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
+        val selectedType = prefs.getString("pref_callout_type_selector", "info") ?: "info"
+
+        val supportedTypes = listOf("info", "faq", "question", "todo", "example")
+        for (t in supportedTypes) {
+            val isSelected = (t == selectedType)
+            findPreference<Preference>("pref_callout_type_${t}_bg_color")?.isVisible = isSelected
+            findPreference<Preference>("pref_callout_type_${t}_title_color")?.isVisible = isSelected
+            findPreference<Preference>("pref_callout_type_${t}_accent_color")?.isVisible = isSelected
+            findPreference<Preference>("pref_callout_type_${t}_icon")?.isVisible = isSelected
+        }
+    }
+
+    private fun setupCalloutPreview(fragmentRootView: android.view.View) {
+        val listView = listView ?: return
+        val ctx = context ?: return
+        val density = ctx.resources.displayMetrics.density
+
+        if (fragmentRootView.findViewWithTag<android.view.View>("callout_preview_card") != null) return
+
+        val parentView = listView.parent as? android.view.ViewGroup ?: return
+
+        val previewCard = android.widget.LinearLayout(ctx).apply {
+            tag = "callout_preview_card"
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding((10 * density).toInt(), (10 * density).toInt(), (10 * density).toInt(), (10 * density).toInt())
+            setBackgroundColor(Color.parseColor("#121212"))
+        }
+        previewContainer = previewCard
+
+        val previewLabel = android.widget.TextView(ctx).apply {
+            text = "Callout Live Preview"
+            textSize = 12f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.parseColor("#00E5FF"))
+            setPadding(0, 0, 0, (6 * density).toInt())
+        }
+        previewCard.addView(previewLabel)
+
+        val supportedTypes = listOf("info", "faq", "question", "todo", "example")
+        val typeLabels = mapOf(
+            "info" to "ℹ Info Callout Header",
+            "faq" to "❓ FAQ Callout Header",
+            "question" to "❓ Question Callout Header",
+            "todo" to "☑ Todo Callout Header",
+            "example" to "≡ Example Callout Header"
+        )
+
+        for (t in supportedTypes) {
+            val box = android.widget.LinearLayout(ctx).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding((8 * density).toInt(), (6 * density).toInt(), (8 * density).toInt(), (6 * density).toInt())
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = (6 * density).toInt() }
+            }
+
+            val titleTv = android.widget.TextView(ctx).apply {
+                text = typeLabels[t] ?: t
+                textSize = 14f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+
+            box.addView(titleTv)
+            previewCard.addView(box)
+
+            previewCardViews[t] = box
+            previewTitleViews[t] = titleTv
+        }
+
+        try {
+            if (parentView is android.widget.LinearLayout) {
+                parentView.addView(previewCard, 0)
+            } else {
+                val indexInParent = parentView.indexOfChild(listView)
+                parentView.removeView(listView)
+
+                val container = android.widget.LinearLayout(ctx).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+                    )
+                }
+
+                container.addView(previewCard, android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ))
+
+                container.addView(listView, android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    0, 1f
+                ))
+
+                parentView.addView(container, indexInParent)
+            }
+        } catch (e: Exception) {}
+    }
+
+    private fun refreshCalloutPreview(prefs: SharedPreferences) {
+        val supportedTypes = listOf("info", "faq", "question", "todo", "example")
+
+        val sharedHeaderBgHex = prefs.getString("pref_callout_header_bg_color", "default") ?: "default"
+        val sharedHeaderTitleHex = prefs.getString("pref_callout_header_title_color", "default") ?: "default"
+        val sharedHeaderAccentHex = prefs.getString("pref_callout_header_accent_color", "default") ?: "default"
+
+        val defaultBorders = mapOf(
+            "info" to Color.parseColor("#29B6F6"),
+            "faq" to Color.parseColor("#FF9800"),
+            "question" to Color.parseColor("#FF9800"),
+            "todo" to Color.parseColor("#00BCD4"),
+            "example" to Color.parseColor("#AB47BC")
+        )
+
+        for (t in supportedTypes) {
+            val box = previewCardViews[t] ?: continue
+            val titleTv = previewTitleViews[t] ?: continue
+
+            val typeBgHex = prefs.getString("pref_callout_type_${t}_bg_color", "default") ?: "default"
+            val typeTitleHex = prefs.getString("pref_callout_type_${t}_title_color", "default") ?: "default"
+            val typeAccentHex = prefs.getString("pref_callout_type_${t}_accent_color", "default") ?: "default"
+
+            val effectiveBgHex = if (typeBgHex != "default") typeBgHex else sharedHeaderBgHex
+            val effectiveTitleHex = if (typeTitleHex != "default") typeTitleHex else sharedHeaderTitleHex
+            val effectiveAccentHex = if (typeAccentHex != "default") typeAccentHex else sharedHeaderAccentHex
+
+            val bgColor = if (effectiveBgHex == "default") Color.parseColor("#1A232A") else ColorPickerDialog.parseHexColor(effectiveBgHex, Color.parseColor("#1A232A"))
+            val titleColor = if (effectiveTitleHex == "default") Color.WHITE else ColorPickerDialog.parseHexColor(effectiveTitleHex, Color.WHITE)
+            val accentColor = if (effectiveAccentHex == "default") (defaultBorders[t] ?: Color.parseColor("#29B6F6")) else ColorPickerDialog.parseHexColor(effectiveAccentHex, defaultBorders[t] ?: Color.parseColor("#29B6F6"))
+
+            box.setBackgroundColor(bgColor)
+            titleTv.setTextColor(titleColor)
+
+            val density = box.context.resources.displayMetrics.density
+            val borderDrawable = android.graphics.drawable.GradientDrawable().apply {
+                setColor(bgColor)
+                setStroke((3 * density).toInt(), accentColor)
+                cornerRadius = 4 * density
+            }
+            box.background = borderDrawable
+        }
     }
 }
 
