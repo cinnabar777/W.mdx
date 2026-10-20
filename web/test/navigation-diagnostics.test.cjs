@@ -123,3 +123,29 @@ test('serializeNavigationTraceRecord drops unexpected private fields and keeps J
   assert.strictEqual(parsed.text, undefined);
   assert.strictEqual(parsed.before.anchorLineText.length, 160);
 });
+
+test('selection trace retains numeric highlight range but never selected text', () => {
+  const record = {
+    id: 99,
+    kind: 'selection',
+    source: 'pointer',
+    direction: 'none',
+    repeat: false,
+    pointerType: 'touch',
+    selectionChanged: true,
+    before: { anchor: 40, head: 40, collapsed: true },
+    after: { anchor: 40, head: 72, collapsed: false },
+    selectedText: 'must not be serialized'
+  };
+
+  const jsonStr = serializeNavigationTraceRecord(record);
+  const parsed = JSON.parse(jsonStr);
+  assert.ok(jsonStr.length <= 8192);
+  assert.strictEqual(parsed.kind, 'selection');
+  assert.strictEqual(parsed.before.collapsed, true);
+  assert.strictEqual(parsed.after.anchor, 40);
+  assert.strictEqual(parsed.after.head, 72);
+  assert.strictEqual(parsed.after.collapsed, false);
+  assert.strictEqual(parsed.selectedText, undefined);
+  assert.strictEqual(jsonStr.includes('must not be serialized'), false);
+});

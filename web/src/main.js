@@ -4312,6 +4312,45 @@ export function setupNavigationDiagnostics(view) {
 
   let pointerGestureTimer = null;
 
+  let lastSelectionSnapshot = getSnapshot(view);
+  let selectionChangeTimer = null;
+
+  document.addEventListener('selectionchange', () => {
+    if (!view.hasFocus) return;
+
+    clearTimeout(selectionChangeTimer);
+    selectionChangeTimer = setTimeout(() => {
+      if (!view.hasFocus || !view.state) return;
+
+      const after = getSnapshot(view);
+      if (!after) return;
+      const before = lastSelectionSnapshot;
+      lastSelectionSnapshot = after;
+
+      if (after.collapsed) return;
+      if (before && before.anchor === after.anchor && before.head === after.head) return;
+
+      const source = activePointerGesture
+        ? 'pointer'
+        : (activeArrowPress ? 'arrow' : 'unattributed');
+      reportTrace({
+        id: nextTraceId++,
+        pressId: activeArrowPress
+          ? activeArrowPress.pressId
+          : (activePointerGesture ? activePointerGesture.id : null),
+        kind: 'selection',
+        source,
+        direction: activeArrowPress ? activeArrowPress.direction : 'none',
+        repeat: false,
+        pointerType: activePointerGesture ? activePointerGesture.pointerType : 'unknown',
+        duration: 0,
+        selectionChanged: true,
+        before,
+        after
+      });
+    }, 80);
+  });
+
   const finalizePointerGesture = () => {
     if (!activePointerGesture) return;
     clearTimeout(pointerGestureTimer);

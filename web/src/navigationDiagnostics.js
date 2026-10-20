@@ -1,5 +1,5 @@
 const ALLOWED_BLOCKS = new Set(['heading', 'list', 'callout', 'code', 'table', 'paragraph', 'other']);
-const ALLOWED_KINDS = new Set(['arrow', 'arrow_press', 'tap', 'scroll']);
+const ALLOWED_KINDS = new Set(['arrow', 'arrow_press', 'tap', 'scroll', 'selection']);
 const ALLOWED_SOURCES = new Set(['arrow', 'pointer', 'unattributed']);
 const ALLOWED_DIRECTIONS = new Set(['up', 'down', 'none']);
 const ALLOWED_POINTER_TYPES = new Set(['touch', 'mouse', 'pen', 'unknown']);
