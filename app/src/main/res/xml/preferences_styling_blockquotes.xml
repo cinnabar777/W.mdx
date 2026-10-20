@@ -87,6 +87,12 @@
             app:summary="Tap to select background tint color or default"
             app:defaultValue="default" />
 
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_text_color"
+            app:title="Callout Text Color"
+            app:summary="Text color for callout titles and body"
+            app:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_callout_padding"
             app:title="Callout Inside Padding (px)"
