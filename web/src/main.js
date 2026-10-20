@@ -318,6 +318,24 @@ class CalloutTitleWidget extends WidgetType {
   }
 }
 
+class WikilinkWidget extends WidgetType {
+  constructor(label) {
+    super();
+    this.label = label;
+  }
+
+  eq(other) {
+    return other instanceof WikilinkWidget && other.label === this.label;
+  }
+
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-link cm-wikilink';
+    span.textContent = this.label;
+    return span;
+  }
+}
+
 class ImagePreviewWidget extends WidgetType {
   constructor(url, alt) {
     super();
@@ -696,6 +714,41 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
         if (insideListItem) {
           addLineClass(line.from, 'cm-list-item');
           continue;
+        }
+
+        const isLineActive = !isPureWysiwyg && (
+          selection.empty
+            ? selection.head >= line.from && selection.head <= line.to
+            : selection.from < line.to && selection.to > line.from
+        );
+
+        const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+        let wikilinkMatch;
+        while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+          if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
+
+          const matchStart = line.from + wikilinkMatch.index;
+          const matchEnd = matchStart + wikilinkMatch[0].length;
+          const target = wikilinkMatch[1];
+          const alias = wikilinkMatch[2];
+          const displayLabel = (alias !== undefined && alias.trim().length > 0) ? alias : target;
+
+          let labelStart, labelEnd;
+          if (alias !== undefined) {
+            labelStart = matchStart + 2 + target.length + 1;
+            labelEnd = matchEnd - 2;
+          } else {
+            labelStart = matchStart + 2;
+            labelEnd = matchEnd - 2;
+          }
+
+          if (!isLineActive) {
+            builder.push(Decoration.replace({
+              widget: new WikilinkWidget(displayLabel)
+            }).range(matchStart, matchEnd));
+          } else if (labelEnd > labelStart) {
+            builder.push(Decoration.mark({ class: 'cm-link cm-wikilink' }).range(labelStart, labelEnd));
+          }
         }
 
         if (paragraphNode) {

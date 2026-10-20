@@ -936,36 +936,70 @@
     .cm-content .cm-callout[data-callout-type="info"] {
       --callout-type-border: #29b6f6;
       --callout-type-bg: rgba(41, 182, 246, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="info"]:has([style*="--callout-type-info-header-bg"]) {
       --callout-type-header-bg: var(--callout-type-info-header-bg);
+    }
+    .cm-content .cm-callout[data-callout-type="info"]:has([style*="--callout-type-info-header-title-color"]) {
       --callout-type-header-title-color: var(--callout-type-info-header-title-color);
+    }
+    .cm-content .cm-callout[data-callout-type="info"]:has([style*="--callout-type-info-header-accent-color"]) {
       --callout-type-header-accent-color: var(--callout-type-info-header-accent-color);
     }
+
     .cm-content .cm-callout[data-callout-type="faq"] {
       --callout-type-border: #ff9800;
       --callout-type-bg: rgba(255, 152, 0, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="faq"]:has([style*="--callout-type-faq-header-bg"]) {
       --callout-type-header-bg: var(--callout-type-faq-header-bg);
+    }
+    .cm-content .cm-callout[data-callout-type="faq"]:has([style*="--callout-type-faq-header-title-color"]) {
       --callout-type-header-title-color: var(--callout-type-faq-header-title-color);
+    }
+    .cm-content .cm-callout[data-callout-type="faq"]:has([style*="--callout-type-faq-header-accent-color"]) {
       --callout-type-header-accent-color: var(--callout-type-faq-header-accent-color);
     }
+
     .cm-content .cm-callout[data-callout-type="question"] {
       --callout-type-border: #ff9800;
       --callout-type-bg: rgba(255, 152, 0, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="question"]:has([style*="--callout-type-question-header-bg"]) {
       --callout-type-header-bg: var(--callout-type-question-header-bg);
+    }
+    .cm-content .cm-callout[data-callout-type="question"]:has([style*="--callout-type-question-header-title-color"]) {
       --callout-type-header-title-color: var(--callout-type-question-header-title-color);
+    }
+    .cm-content .cm-callout[data-callout-type="question"]:has([style*="--callout-type-question-header-accent-color"]) {
       --callout-type-header-accent-color: var(--callout-type-question-header-accent-color);
     }
+
     .cm-content .cm-callout[data-callout-type="todo"] {
       --callout-type-border: #00bcd4;
       --callout-type-bg: rgba(0, 188, 212, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="todo"]:has([style*="--callout-type-todo-header-bg"]) {
       --callout-type-header-bg: var(--callout-type-todo-header-bg);
+    }
+    .cm-content .cm-callout[data-callout-type="todo"]:has([style*="--callout-type-todo-header-title-color"]) {
       --callout-type-header-title-color: var(--callout-type-todo-header-title-color);
+    }
+    .cm-content .cm-callout[data-callout-type="todo"]:has([style*="--callout-type-todo-header-accent-color"]) {
       --callout-type-header-accent-color: var(--callout-type-todo-header-accent-color);
     }
+
     .cm-content .cm-callout[data-callout-type="example"] {
       --callout-type-border: #ab47bc;
       --callout-type-bg: rgba(171, 71, 188, 0.12);
+    }
+    .cm-content .cm-callout[data-callout-type="example"]:has([style*="--callout-type-example-header-bg"]) {
       --callout-type-header-bg: var(--callout-type-example-header-bg);
+    }
+    .cm-content .cm-callout[data-callout-type="example"]:has([style*="--callout-type-example-header-title-color"]) {
       --callout-type-header-title-color: var(--callout-type-example-header-title-color);
+    }
+    .cm-content .cm-callout[data-callout-type="example"]:has([style*="--callout-type-example-header-accent-color"]) {
       --callout-type-header-accent-color: var(--callout-type-example-header-accent-color);
     }
     .cm-content .cm-callout[data-callout-type="tip"] {
@@ -1068,6 +1102,14 @@
       color: var(--link-color, #29b6f6) !important;
       text-decoration-line: var(--link-decoration-line, underline) !important;
       text-decoration-style: var(--link-decoration-style, solid) !important;
+      text-underline-offset: 3px !important;
+      text-decoration-skip-ink: auto !important;
+      cursor: pointer !important;
+      transition: opacity 0.15s ease !important;
+    }
+
+    .cm-content .cm-link:active {
+      opacity: 0.75 !important;
     }
     .cm-content .cm-line.cm-hr {
       box-sizing: border-box !important;

@@ -113,3 +113,38 @@ test('cursor and selection styling page is configured', () => {
   assert.match(source, /setCssVar\('--cursor-color', prefs\.pref_cursor_color\)/);
   assert.match(source, /setCssVar\('--cursor-width', prefs\.pref_cursor_width, 'px'\)/);
 });
+
+test('Wikilinks rendering and refined link styling rules in main.js and index.html', () => {
+  // Regex pattern test for wikilinks
+  const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+
+  const testCases = [
+    { input: '[[Target]]', target: 'Target', alias: undefined },
+    { input: '[[Target|Alias]]', target: 'Target', alias: 'Alias' },
+    { input: '[[#Heading]]', target: '#Heading', alias: undefined },
+    { input: '[[File#Heading]]', target: 'File#Heading', alias: undefined },
+    { input: '[[File#Heading|Custom Alias]]', target: 'File#Heading', alias: 'Custom Alias' }
+  ];
+
+  for (const tc of testCases) {
+    wikilinkRegex.lastIndex = 0;
+    const match = wikilinkRegex.exec(tc.input);
+    assert.ok(match, `Failed to match wikilink: ${tc.input}`);
+    assert.equal(match[1], tc.target, `Target mismatch for ${tc.input}`);
+    assert.equal(match[2], tc.alias, `Alias mismatch for ${tc.input}`);
+  }
+
+  // Embed exclusion check
+  const embedInput = '![[EmbedImage.png]]';
+  wikilinkRegex.lastIndex = 0;
+  const embedMatch = wikilinkRegex.exec(embedInput);
+  assert.equal(embedMatch, null, '![[...]] embeds must not be matched as text wikilinks');
+
+  // Verify main.js contains wikilink decoration
+  assert.ok(source.includes('cm-wikilink'), 'main.js applies cm-wikilink decoration class');
+
+  // Verify index.html contains link refinements
+  assert.ok(indexHtml.includes('text-underline-offset: 3px !important;'), 'index.html includes text-underline-offset');
+  assert.ok(indexHtml.includes('text-decoration-skip-ink: auto !important;'), 'index.html includes text-decoration-skip-ink');
+  assert.ok(indexHtml.includes('cursor: pointer !important;'), 'index.html includes cursor pointer');
+});
