@@ -233,3 +233,10 @@ test('wysiwygCodeBlockField, coordsForTargetRow, and selection paint styling', (
   assert.ok(mainSource.includes("'.cm-selectionLayer': {\n            zIndex: 2,"), 'Selection layer has zIndex 2');
   assert.ok(indexHtml.includes('.cm-wp-table-container.cm-document-selection .cm-wp-table th'), 'index.html has gradient overlay rule for selected tables');
 });
+
+test('persistentLayoutField StateField and persistentLayoutClasses filtering in main.js', () => {
+  assert.ok(mainSource.includes('export function buildPersistentLayoutDecorations'), 'buildPersistentLayoutDecorations function exists');
+  assert.ok(mainSource.includes('export const persistentLayoutField = StateField.define'), 'persistentLayoutField StateField exists');
+  assert.ok(mainSource.includes('const persistentLayoutClasses = new Set(['), 'persistentLayoutClasses Set exists');
+  assert.ok(mainSource.includes('!persistentLayoutClasses.has(className)'), 'persistentLayoutClasses is filtered in WYSIWYG mode');
+});

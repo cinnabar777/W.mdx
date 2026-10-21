@@ -1272,10 +1272,34 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }).range(lineFrom));
     }
 
+    const persistentLayoutClasses = new Set([
+      'cm-paragraph',
+      'cm-paragraph-first',
+      'cm-paragraph-last',
+      'cm-list-item',
+      'cm-heading',
+      'cm-heading-1',
+      'cm-heading-2',
+      'cm-heading-3',
+      'cm-heading-4',
+      'cm-heading-5',
+      'cm-heading-6',
+      'cm-blockquote',
+      'cm-hr'
+    ]);
+
     for (const [lineFrom, classes] of lineClasses) {
-      builder.push(Decoration.line({
-        attributes: { class: [...classes].join(' ') }
-      }).range(lineFrom));
+      const remaining = [...classes].filter(className =>
+        currentEditorMode !== 'wysiwyg' ||
+        !persistentLayoutClasses.has(className)
+      );
+      if (!remaining.length) continue;
+
+      builder.push(
+        Decoration.line({
+          attributes: { class: remaining.join(' ') }
+        }).range(lineFrom)
+      );
     }
 
     // Filter and sanitize decoration ranges against document length
@@ -1683,6 +1707,102 @@ const wysiwygCodeBlockField = StateField.define({
   provide: field => EditorView.decorations.from(field)
 });
 
+export function buildPersistentLayoutDecorations(state) {
+  if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+
+  const { doc } = state;
+  const tree = syntaxTree(state);
+  const classesByLine = new Map();
+
+  const addClass = (lineNumber, className) => {
+    if (!classesByLine.has(lineNumber)) {
+      classesByLine.set(lineNumber, new Set());
+    }
+    classesByLine.get(lineNumber).add(className);
+  };
+
+  for (let number = 1; number <= doc.lines; number++) {
+    const line = doc.line(number);
+    const firstText = /\S/.exec(line.text);
+    const probe = firstText ? line.from + firstText.index : line.from;
+    const resolved = tree.resolveInner(probe, 1);
+
+    let paragraphNode = null;
+    let insideListItem = false;
+    let insideCodeBlock = false;
+    let insideTable = false;
+    let insideBlockquote = false;
+    let headingLevel = null;
+    let isHorizontalRule = false;
+
+    for (let node = resolved; node; node = node.parent) {
+      if (node.name === 'Paragraph') paragraphNode = node;
+      if (node.name === 'ListItem') insideListItem = true;
+      if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+        insideCodeBlock = true;
+      }
+      if (node.name === 'Table') insideTable = true;
+      if (node.name === 'Blockquote') insideBlockquote = true;
+      if (node.name === 'HorizontalRule') isHorizontalRule = true;
+
+      const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
+      const setextHeading = /^SetextHeading([12])$/.exec(node.name);
+      headingLevel = headingLevel ?? atxHeading?.[1] ?? setextHeading?.[1] ?? null;
+    }
+
+    // These blocks already have their own full-document decoration fields.
+    if (insideTable || insideCodeBlock) continue;
+
+    if (headingLevel) {
+      addClass(number, 'cm-heading');
+      addClass(number, `cm-heading-${headingLevel}`);
+    }
+    if (insideBlockquote) addClass(number, 'cm-blockquote');
+    if (isHorizontalRule) addClass(number, 'cm-hr');
+
+    if (insideListItem) {
+      addClass(number, 'cm-list-item');
+      continue;
+    }
+
+    if (paragraphNode) {
+      addClass(number, 'cm-paragraph');
+      if (line.from === doc.lineAt(paragraphNode.from).from) {
+        addClass(number, 'cm-paragraph-first');
+      }
+      if (
+        line.from ===
+        doc.lineAt(Math.max(paragraphNode.from, paragraphNode.to - 1)).from
+      ) {
+        addClass(number, 'cm-paragraph-last');
+      }
+    }
+  }
+
+  const ranges = [];
+  for (const [lineNumber, classes] of classesByLine) {
+    ranges.push(
+      Decoration.line({
+        attributes: { class: [...classes].join(' ') }
+      }).range(doc.line(lineNumber).from)
+    );
+  }
+
+  ranges.sort((a, b) => a.from - b.from);
+  return Decoration.set(ranges, true);
+}
+
+export const persistentLayoutField = StateField.define({
+  create(state) {
+    return buildPersistentLayoutDecorations(state);
+  },
+  update(current, tr) {
+    if (!tr.docChanged) return current;
+    return buildPersistentLayoutDecorations(tr.state);
+  },
+  provide: field => EditorView.decorations.from(field)
+});
+
 export const tableStateField = StateField.define({
   create(state) {
     return buildTableBlockDecorations(state);
@@ -2017,6 +2137,7 @@ class CodeMirrorAdapter {
         }),
         tableStateField,
         wysiwygCodeBlockField,
+        persistentLayoutField,
         tableNavigationKeymap,
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
