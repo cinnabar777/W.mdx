@@ -2,6 +2,7 @@ import { EditorState, Compartment, Transaction, StateField, StateEffect } from '
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
+import { withScrollSnapshot } from './scrollSnapshot.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -170,11 +171,16 @@ export const heightMapRefreshEffect = StateEffect.define();
 
 const deferViewCallback = createDeferredViewCallback();
 
+function dispatchWithScrollSnapshot(view, effects) {
+  view.dispatch({ effects: withScrollSnapshot(view, effects) });
+}
+
 function scheduleHeightMapRefresh(view) {
   deferViewCallback(view, activeView => {
-    activeView.dispatch({
-      effects: heightMapRefreshEffect.of(null)
-    });
+    dispatchWithScrollSnapshot(
+      activeView,
+      heightMapRefreshEffect.of(null)
+    );
   });
 }
 
@@ -2186,9 +2192,10 @@ function premeasureTableHeights(view) {
   });
 
   if (measuredCount) {
-    view.dispatch({
-      effects: tableHeightEstimatesChanged.of(measuredCount)
-    });
+    dispatchWithScrollSnapshot(
+      view,
+      tableHeightEstimatesChanged.of(measuredCount)
+    );
     view.requestMeasure();
   }
 }
@@ -2547,10 +2554,11 @@ class CodeMirrorAdapter {
     this.isProgrammatic = false;
   }
 
-  async init(containerEl, initialMarkdown = '') {
+  async init(containerEl, initialMarkdown = '', modeSnapshot = null) {
     containerEl.innerHTML = '';
     const startState = EditorState.create({
       doc: initialMarkdown || '',
+      selection: modeSnapshot?.selection,
       extensions: [
         highlightSpecialChars(),
         history(),
@@ -2645,7 +2653,8 @@ class CodeMirrorAdapter {
 
     this.view = new EditorView({
       state: startState,
-      parent: containerEl
+      parent: containerEl,
+      scrollTo: modeSnapshot?.scroll
     });
 
     premeasureTableHeights(this.view);
@@ -2678,7 +2687,10 @@ class CodeMirrorAdapter {
 
         this.lastTableContentWidth = currentWidth;
         premeasureTableHeights(this.view);
-        this.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
+        dispatchWithScrollSnapshot(
+          this.view,
+          heightMapRefreshEffect.of(null)
+        );
       });
     });
     this.tableContentWidthObserver.observe(this.view.contentDOM);
@@ -2816,6 +2828,14 @@ async function setEditorMode(mode) {
   const targetMode = (mode === 'live_preview' || mode === 'source') ? mode : 'wysiwyg';
 
   const existingText = activeAdapter ? activeAdapter.getMarkdown() : (pendingMarkdown || '');
+
+  const modeSnapshot = activeAdapter?.view
+    ? {
+        selection: activeAdapter.view.state.selection,
+        scroll: activeAdapter.view.scrollSnapshot()
+      }
+    : null;
+
   if (activeAdapter) {
     activeAdapter.destroy();
     activeAdapter = null;
@@ -2836,7 +2856,7 @@ async function setEditorMode(mode) {
 
   const adapter = new CodeMirrorAdapter();
   const containerEl = document.querySelector('#editor');
-  await adapter.init(containerEl, existingText);
+  await adapter.init(containerEl, existingText, modeSnapshot);
   activeAdapter = adapter;
 
   if (window.AndroidNative && typeof window.AndroidNative.onEditorReady === 'function') {
@@ -4678,9 +4698,10 @@ window.editorBridge = {
     applyFindReplaceButtonLayout(prefs);
 
     if (activeAdapter && activeAdapter.view) {
-      activeAdapter.view.dispatch({
-        effects: typographySettingsEffect.of(Date.now())
-      });
+      dispatchWithScrollSnapshot(
+        activeAdapter.view,
+        typographySettingsEffect.of(Date.now())
+      );
       premeasureTableHeights(activeAdapter.view);
       activeAdapter.view.requestMeasure();
     }

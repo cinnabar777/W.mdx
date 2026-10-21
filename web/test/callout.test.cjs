@@ -245,7 +245,7 @@ test('typographySettingsEffect, no viewportMargin, and ImagePreviewWidget estima
   assert.ok(mainSource.includes('export const typographySettingsEffect = StateEffect.define()'), 'typographySettingsEffect is defined');
   assert.equal(mainSource.includes('viewportMargin: Infinity'), false, 'CodeMirrorAdapter.init must not pass viewportMargin: Infinity');
   assert.ok(mainSource.includes('imageAspectCache'), 'imageAspectCache Map is defined');
-  assert.ok(mainSource.includes('effects: typographySettingsEffect.of(Date.now())'), 'typographySettingsEffect is dispatched on preference changes');
+  assert.ok(mainSource.includes('typographySettingsEffect.of(Date.now())'), 'typographySettingsEffect is dispatched on preference changes');
 });
 
 test('Regression check: WysiwygSpacingWidget is not referenced in main.js', () => {
