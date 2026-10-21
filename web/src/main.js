@@ -1,7 +1,6 @@
 import { EditorState, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
-import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -166,18 +165,6 @@ class CheckboxWidget extends WidgetType {
   }
 }
 
-export const heightMapRefreshEffect = StateEffect.define();
-
-const deferViewCallback = createDeferredViewCallback();
-
-function scheduleHeightMapRefresh(view) {
-  deferViewCallback(view, activeView => {
-    activeView.dispatch({
-      effects: heightMapRefreshEffect.of(null)
-    });
-  });
-}
-
 const measuredWidgetHeights = new Map();
 const MAX_MEASURED_WIDGET_HEIGHTS = 256;
 
@@ -206,7 +193,6 @@ function rememberWidgetHeight(view, key, element) {
       if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
         measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
       }
-      scheduleHeightMapRefresh(view);
     }
   });
 }
@@ -222,10 +208,30 @@ function activeContentWidth() {
 }
 
 function activeTypographySignature() {
-  const el = document.querySelector('.cm-editor > .cm-scroller > .cm-content');
-  if (!el) return 'default';
-  const style = getComputedStyle(el);
-  return `${style.font}|${style.lineHeight}`;
+  const element = document.querySelector(
+    '.cm-editor > .cm-scroller > .cm-content'
+  );
+  if (!element) return 'default';
+
+  const style = getComputedStyle(element);
+  const customProperties = [];
+  for (let index = 0; index < style.length; index++) {
+    const property = style.item(index);
+    if (property.startsWith('--')) customProperties.push(property);
+  }
+  customProperties.sort();
+
+  return JSON.stringify({
+    font: style.font,
+    lineHeight: style.lineHeight,
+    letterSpacing: style.letterSpacing,
+    width: style.width,
+    devicePixelRatio: window.devicePixelRatio || 1,
+    customProperties: customProperties.map(property => [
+      property,
+      style.getPropertyValue(property).trim()
+    ])
+  });
 }
 
 class CodeBlockHeaderWidget extends WidgetType {
@@ -601,6 +607,11 @@ class ImagePreviewWidget extends WidgetType {
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
         const aspect = img.naturalWidth / img.naturalHeight;
         imageAspectCache.set(this.url, aspect);
+        const renderedHeight = Math.ceil(img.getBoundingClientRect().height);
+        if (renderedHeight > 0) {
+          wrapper.style.minHeight = `${renderedHeight}px`;
+        }
+        view.requestMeasure();
         rememberWidgetHeight(view, this.heightKey, wrapper);
       }
     };
@@ -613,6 +624,8 @@ class ImagePreviewWidget extends WidgetType {
       fallbackBox.style.cssText = 'padding: 12px 16px; border: 1px dashed var(--border-color, #666); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text-color, #888); font-size: 13px; font-style: italic;';
       fallbackBox.textContent = `[Image: ${this.alt || 'failed to load'}]`;
       wrapper.appendChild(fallbackBox);
+      wrapper.style.minHeight = '0px';
+      view.requestMeasure();
       rememberWidgetHeight(view, this.heightKey, wrapper);
     };
 
@@ -1839,10 +1852,7 @@ const wysiwygCodeBlockField = StateField.define({
     return buildWysiwygCodeBlockDecorations(state);
   },
   update(current, tr) {
-    const refreshHeight = tr.effects.some(effect =>
-      effect.is(heightMapRefreshEffect)
-    );
-    if (!tr.docChanged && !refreshHeight) return current;
+    if (!tr.docChanged) return current;
     return buildWysiwygCodeBlockDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
@@ -2129,15 +2139,12 @@ function buildHeightMapValue(state) {
 export const heightMapField = StateField.define({
   create: buildHeightMapValue,
   update(current, tr) {
-    const refresh = tr.effects.some(effect =>
-      effect.is(heightMapRefreshEffect) ||
+    const typographyChanged = tr.effects.some(effect =>
       effect.is(typographySettingsEffect)
     );
-    if (!tr.docChanged && !refresh) return current;
+    if (!tr.docChanged && !typographyChanged) return current;
     return buildHeightMapValue(tr.state);
-  },
-  provide: field =>
-    EditorView.decorations.from(field, value => value.decorations)
+  }
 });
 
 function premeasureTableHeights(view) {
@@ -2651,7 +2658,6 @@ class CodeMirrorAdapter {
 
         this.lastTableContentWidth = currentWidth;
         premeasureTableHeights(this.view);
-        this.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
       });
     });
     this.tableContentWidthObserver.observe(this.view.contentDOM);
