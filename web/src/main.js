@@ -2215,13 +2215,32 @@ class CodeMirrorAdapter {
     this.lastTableContentWidth = Math.round(
       this.view.contentDOM.getBoundingClientRect().width
     );
+    this.tableWidthMeasureFrame = null;
     this.tableContentWidthObserver = new ResizeObserver(() => {
       if (!this.view) return;
-      const width = Math.round(this.view.contentDOM.getBoundingClientRect().width);
-      if (width > 0 && width !== this.lastTableContentWidth) {
-        this.lastTableContentWidth = width;
-        premeasureTableHeights(this.view);
+      const observedWidth = Math.round(
+        this.view.contentDOM.getBoundingClientRect().width
+      );
+      if (
+        observedWidth <= 0 ||
+        observedWidth === this.lastTableContentWidth ||
+        this.tableWidthMeasureFrame !== null
+      ) {
+        return;
       }
+
+      this.tableWidthMeasureFrame = requestAnimationFrame(() => {
+        this.tableWidthMeasureFrame = null;
+        if (!this.view || !this.view.dom.isConnected) return;
+
+        const currentWidth = Math.round(
+          this.view.contentDOM.getBoundingClientRect().width
+        );
+        if (currentWidth <= 0 || currentWidth === this.lastTableContentWidth) return;
+
+        this.lastTableContentWidth = currentWidth;
+        premeasureTableHeights(this.view);
+      });
     });
     this.tableContentWidthObserver.observe(this.view.contentDOM);
 
@@ -2343,6 +2362,10 @@ class CodeMirrorAdapter {
   destroy() {
     this.tableContentWidthObserver?.disconnect();
     this.tableContentWidthObserver = null;
+    if (this.tableWidthMeasureFrame !== null) {
+      cancelAnimationFrame(this.tableWidthMeasureFrame);
+      this.tableWidthMeasureFrame = null;
+    }
     if (this.view) {
       this.view.destroy();
       this.view = null;

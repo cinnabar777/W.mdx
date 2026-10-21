@@ -5,6 +5,7 @@ import { TableModel } from './tableModule.js';
 export const tableHeightEstimatesChanged = StateEffect.define();
 
 const tableHeightCache = new Map();
+const tableResizeObserverState = new WeakMap();
 
 const TABLE_HEIGHT_STYLE_PROPERTIES = [
   '--table-cell-padding',
@@ -588,20 +589,66 @@ export class WordProcessorTableWidget extends WidgetType {
     container.appendChild(table);
 
     if (!measurementOnly && typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => {
-        const height = measuredOuterHeight(container);
+      const resizeState = {
+        observer: null,
+        frameId: null
+      };
+
+      resizeState.observer = new ResizeObserver(() => {
         const key = tableHeightCacheKey(this.tableMarkdown, view.contentDOM);
-        const previous = key ? tableHeightCache.get(key) : null;
-        if (key && height > 0 && (previous == null || Math.abs(previous - height) > 1)) {
-          tableHeightCache.set(key, height);
+        const observedHeight = measuredOuterHeight(container);
+        const cachedHeight = key ? tableHeightCache.get(key) : null;
+
+        if (
+          !key ||
+          !(observedHeight > 0) ||
+          (cachedHeight != null && Math.abs(cachedHeight - observedHeight) <= 1) ||
+          resizeState.frameId !== null
+        ) {
+          return;
+        }
+
+        resizeState.frameId = requestAnimationFrame(() => {
+          resizeState.frameId = null;
+          if (!container.isConnected || !view.dom.isConnected) return;
+
+          const latestKey = tableHeightCacheKey(this.tableMarkdown, view.contentDOM);
+          const latestHeight = measuredOuterHeight(container);
+          const latestCachedHeight = latestKey ? tableHeightCache.get(latestKey) : null;
+          if (
+            !latestKey ||
+            !(latestHeight > 0) ||
+            (latestCachedHeight != null && Math.abs(latestCachedHeight - latestHeight) <= 1)
+          ) {
+            return;
+          }
+
+          tableHeightCache.set(latestKey, latestHeight);
+          if (tableHeightCache.size > 100) {
+            tableHeightCache.delete(tableHeightCache.keys().next().value);
+          }
+
           view.dispatch({ effects: tableHeightEstimatesChanged.of(null) });
           view.requestMeasure();
-        }
+        });
       });
-      observer.observe(container);
+
+      tableResizeObserverState.set(container, resizeState);
+      resizeState.observer.observe(container);
     }
 
     return container;
+  }
+
+  destroy(dom) {
+    const resizeState = tableResizeObserverState.get(dom);
+    if (!resizeState) return;
+
+    resizeState.observer.disconnect();
+    if (resizeState.frameId !== null) {
+      cancelAnimationFrame(resizeState.frameId);
+    }
+    tableResizeObserverState.delete(dom);
   }
 }
 

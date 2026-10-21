@@ -147,3 +147,17 @@ test('Table pre-measurement, caching, and style updates in tableWidget.js and ma
   assert.ok(mainCode.includes('this.tableContentWidthObserver = new ResizeObserver'), 'ResizeObserver tracks contentDOM width');
   assert.ok(mainCode.includes('premeasureTableHeights(activeAdapter.view)'), 'applyAllPreferences invokes premeasureTableHeights');
 });
+
+test('Deferred ResizeObserver updates and cleanup in tableWidget.js and main.js', () => {
+  const tableWidgetCode = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const mainCode = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+
+  assert.ok(tableWidgetCode.includes('tableResizeObserverState = new WeakMap()'), 'tableResizeObserverState defined');
+  assert.ok(tableWidgetCode.includes('requestAnimationFrame(() => {'), 'Table ResizeObserver callback defers with requestAnimationFrame');
+  assert.ok(tableWidgetCode.includes('destroy(dom) {'), 'WordProcessorTableWidget implements destroy(dom)');
+  assert.ok(tableWidgetCode.includes('resizeState.observer.disconnect()'), 'destroy disconnects ResizeObserver');
+  assert.ok(tableWidgetCode.includes('cancelAnimationFrame(resizeState.frameId)'), 'destroy cancels pending animation frame');
+
+  assert.ok(mainCode.includes('this.tableWidthMeasureFrame = requestAnimationFrame'), 'Content width ResizeObserver defers with requestAnimationFrame');
+  assert.ok(mainCode.includes('cancelAnimationFrame(this.tableWidthMeasureFrame)'), 'CodeMirrorAdapter.destroy cancels pending tableWidthMeasureFrame');
+});
