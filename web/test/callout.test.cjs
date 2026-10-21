@@ -223,3 +223,13 @@ test('CodeBlockHeaderWidget rendering, replacement decoration, and copy button l
   assert.ok(mainSource.includes('Decoration.widget({ widget: headerWidget, side: -1 }).range(line.from)'), 'Active code block inserts headerWidget at line start');
   assert.ok(mainSource.includes("copyBtn.className = 'cm-codeblock-copy-btn'"), 'CodeBlockHeaderWidget sets COPY button class');
 });
+
+test('wysiwygCodeBlockField, coordsForTargetRow, and selection paint styling', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.ok(mainSource.includes('const wysiwygCodeBlockField = StateField.define'), 'wysiwygCodeBlockField StateField is defined');
+  assert.ok(mainSource.includes('buildWysiwygCodeBlockDecorations'), 'buildWysiwygCodeBlockDecorations function is defined');
+  assert.ok(mainSource.includes('coordsForTargetRow'), 'coordsForTargetRow helper evaluates dual side affinities');
+  assert.ok(mainSource.includes("'.cm-selectionLayer': {\n            zIndex: 2,"), 'Selection layer has zIndex 2');
+  assert.ok(indexHtml.includes('.cm-wp-table-container.cm-document-selection .cm-wp-table th'), 'index.html has gradient overlay rule for selected tables');
+});

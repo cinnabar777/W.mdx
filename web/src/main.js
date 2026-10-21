@@ -1143,6 +1143,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+            if (currentEditorMode === 'wysiwyg') {
+              return;
+            }
             const startLine = view.state.doc.lineAt(node.from);
             const endLine = view.state.doc.lineAt(node.to);
             for (let l = startLine.number; l <= endLine.number; l++) {
@@ -1624,6 +1627,62 @@ export function updateTableDocumentSelection(view) {
   }
 }
 
+function buildWysiwygCodeBlockDecorations(state) {
+  if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+
+  const doc = state.doc;
+  const builder = [];
+
+  syntaxTree(state).iterate({
+    from: 0,
+    to: doc.length,
+    enter(node) {
+      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') return;
+
+      const firstLine = doc.lineAt(node.from);
+      const lastLine = doc.lineAt(node.to);
+
+      for (let number = firstLine.number; number <= lastLine.number; number++) {
+        const line = doc.line(number);
+        const classes = ['cm-codeblock-line'];
+        if (number === firstLine.number) classes.push('cm-codeblock-first');
+        if (number === lastLine.number) classes.push('cm-codeblock-last');
+        builder.push(
+          Decoration.line({
+            attributes: { class: classes.join(' ') }
+          }).range(line.from)
+        );
+      }
+
+      if (firstLine.from === node.from) {
+        const codeText = doc.sliceString(node.from, node.to);
+        const langMatch = firstLine.text.match(/^```(\w+)/);
+        const lang = langMatch ? langMatch[1] : 'Plain text';
+        const headerWidget = new CodeBlockHeaderWidget(lang, codeText);
+        builder.push(
+          Decoration.replace({ widget: headerWidget }).range(firstLine.from, firstLine.to)
+        );
+      }
+
+      return false;
+    }
+  });
+
+  builder.sort((a, b) => a.from - b.from || a.to - b.to);
+  return Decoration.set(builder, true);
+}
+
+const wysiwygCodeBlockField = StateField.define({
+  create(state) {
+    return buildWysiwygCodeBlockDecorations(state);
+  },
+  update(current, tr) {
+    if (!tr.docChanged) return current;
+    return buildWysiwygCodeBlockDecorations(tr.state);
+  },
+  provide: field => EditorView.decorations.from(field)
+});
+
 export const tableStateField = StateField.define({
   create(state) {
     return buildTableBlockDecorations(state);
@@ -1732,22 +1791,30 @@ function leaveHiddenSyntax(view, position, direction) {
 }
 
 function positionOnRenderedRow(view, row, goalX, direction) {
+  const coordsForTargetRow = position => {
+    const matches = [];
+    for (const side of [-1, 1]) {
+      const coords = view.coordsAtPos(position, side);
+      if (!coords) continue;
+
+      const center = (coords.top + coords.bottom) / 2;
+      if (center >= row.top - 2 && center <= row.bottom + 2) {
+        matches.push(coords);
+      }
+    }
+    return matches;
+  };
+
   const direct = view.posAtCoords({ x: goalX, y: row.center });
   const directLine = direct == null
     ? null
     : renderedLineForPosition(view, direct, direction);
-  const directCoords = direct == null
-    ? null
-    : view.coordsAtPos(direct, direction);
-  const directCenter = directCoords
-    ? (directCoords.top + directCoords.bottom) / 2
-    : NaN;
+  const directRowCoords = direct == null ? [] : coordsForTargetRow(direct);
 
   if (
     direct != null &&
     directLine === row.element &&
-    directCenter >= row.top - 2 &&
-    directCenter <= row.bottom + 2
+    directRowCoords.length > 0
   ) {
     return direct;
   }
@@ -1761,16 +1828,12 @@ function positionOnRenderedRow(view, row, goalX, direction) {
   let bestDistance = Infinity;
 
   for (let position = line.from; position <= line.to; position++) {
-    const coords = view.coordsAtPos(position, direction);
-    if (!coords) continue;
-
-    const center = (coords.top + coords.bottom) / 2;
-    if (center < row.top - 2 || center > row.bottom + 2) continue;
-
-    const distance = Math.abs(coords.left - goalX);
-    if (distance < bestDistance) {
-      bestPosition = position;
-      bestDistance = distance;
+    for (const coords of coordsForTargetRow(position)) {
+      const distance = Math.abs(coords.left - goalX);
+      if (distance < bestDistance) {
+        bestPosition = position;
+        bestDistance = distance;
+      }
     }
   }
 
@@ -1913,7 +1976,7 @@ class CodeMirrorAdapter {
             color: 'var(--selection-highlight-text, inherit) !important'
           },
           '.cm-selectionLayer': {
-            zIndex: 1,
+            zIndex: 2,
             pointerEvents: 'none'
           },
           '.cm-line': {
@@ -1953,6 +2016,7 @@ class CodeMirrorAdapter {
           }
         }),
         tableStateField,
+        wysiwygCodeBlockField,
         tableNavigationKeymap,
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,

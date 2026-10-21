@@ -693,6 +693,14 @@
       color: var(--table-cell-color, var(--text-color, #ffffff));
     }
 
+    .cm-wp-table-container.cm-document-selection .cm-wp-table th,
+    .cm-wp-table-container.cm-document-selection .cm-wp-table td {
+      background-image: linear-gradient(
+        var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)),
+        var(--selection-highlight-bg, rgba(0, 120, 212, 0.4))
+      ) !important;
+    }
+
     .cm-wp-cell-editor {
       position: absolute;
       box-sizing: border-box;
