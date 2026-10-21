@@ -1,6 +1,47 @@
 import { WidgetType } from '@codemirror/view';
 import { TableModel } from './tableModule.js';
 
+const tableHeightCache = new Map();
+
+function estimateAvailableWidth() {
+  if (typeof window !== 'undefined' && window.innerWidth) {
+    return Math.max(280, window.innerWidth - 32);
+  }
+  return 360;
+}
+
+function estimateTableHeight(model, availableWidth = 360) {
+  if (!model) return 60;
+  const rowCount = model.getRowCount();
+  const colCount = model.getColCount();
+  const matrix = model.getRenderMatrix();
+
+  let estimatedTotal = 24 + 32; // container margins + toolbar
+  const colWidth = Math.max(60, Math.floor(availableWidth / Math.max(1, colCount)));
+
+  for (let r = 0; r < rowCount; r++) {
+    let maxLinesInRow = 1;
+    for (let c = 0; c < colCount; c++) {
+      const cell = matrix[r]?.[c];
+      if (!cell || cell.isCovered) continue;
+      const contentLen = cell.content ? cell.content.length : 0;
+      const charsPerLine = Math.max(4, Math.floor(colWidth / 9));
+      const cellLines = Math.max(1, Math.ceil(contentLen / charsPerLine));
+      if (cellLines > maxLinesInRow) maxLinesInRow = cellLines;
+    }
+    const padding = 16;
+    const lineHeight = 20;
+    estimatedTotal += (maxLinesInRow * lineHeight) + padding + 2;
+  }
+
+  return Math.max(50, Math.round(estimatedTotal));
+}
+
+function cachedTableHeight(markdown, availableWidth = 360) {
+  const key = `${availableWidth}:${markdown}`;
+  return tableHeightCache.get(key) || null;
+}
+
 export class WordProcessorTableWidget extends WidgetType {
   constructor(tableMarkdown, from, to) {
     super();
@@ -8,6 +49,13 @@ export class WordProcessorTableWidget extends WidgetType {
     this.from = from;
     this.to = to;
     this.model = TableModel.parse(tableMarkdown);
+  }
+
+  get estimatedHeight() {
+    const width = estimateAvailableWidth();
+    const cached = cachedTableHeight(this.tableMarkdown, width);
+    if (cached != null) return cached;
+    return estimateTableHeight(this.model, width);
   }
 
   eq(other) {
@@ -488,6 +536,25 @@ export class WordProcessorTableWidget extends WidgetType {
 
     renderTableCells();
     container.appendChild(table);
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const height = entry.contentRect.height || container.offsetHeight;
+          if (height > 0) {
+            const width = estimateAvailableWidth();
+            const key = `${width}:${this.tableMarkdown}`;
+            tableHeightCache.set(key, Math.round(height));
+            if (tableHeightCache.size > 100) {
+              const firstKey = tableHeightCache.keys().next().value;
+              tableHeightCache.delete(firstKey);
+            }
+          }
+        }
+      });
+      observer.observe(container);
+    }
+
     return container;
   }
 }

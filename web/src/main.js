@@ -472,11 +472,47 @@ class WikilinkWidget extends WidgetType {
   }
 }
 
+class WysiwygSpacingWidget extends WidgetType {
+  constructor(height, key) {
+    super();
+    this.height = Math.max(0, Number(height) || 0);
+    this.key = key;
+  }
+
+  get estimatedHeight() {
+    return this.height;
+  }
+
+  eq(other) {
+    return (
+      other instanceof WysiwygSpacingWidget &&
+      other.height === this.height &&
+      other.key === this.key
+    );
+  }
+
+  toDOM() {
+    const element = document.createElement('div');
+    element.className = 'cm-wysiwyg-spacing';
+    element.style.height = `${this.height}px`;
+    element.setAttribute('aria-hidden', 'true');
+    return element;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
 class ImagePreviewWidget extends WidgetType {
   constructor(url, alt) {
     super();
     this.url = url;
     this.alt = alt || 'image';
+  }
+
+  get estimatedHeight() {
+    return 200;
   }
 
   eq(other) {
@@ -1781,11 +1817,22 @@ export function buildPersistentLayoutDecorations(state) {
 
   const ranges = [];
   for (const [lineNumber, classes] of classesByLine) {
+    const lineObj = doc.line(lineNumber);
     ranges.push(
       Decoration.line({
         attributes: { class: [...classes].join(' ') }
-      }).range(doc.line(lineNumber).from)
+      }).range(lineObj.from)
     );
+
+    if (classes.has('cm-paragraph-first') && lineNumber > 1) {
+      ranges.push(
+        Decoration.widget({
+          widget: new WysiwygSpacingWidget(12, `p-top-${lineNumber}`),
+          block: true,
+          side: -1
+        }).range(lineObj.from)
+      );
+    }
   }
 
   ranges.sort((a, b) => a.from - b.from);
