@@ -1,6 +1,7 @@
 import { EditorState, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
+import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -167,6 +168,16 @@ class CheckboxWidget extends WidgetType {
 
 export const heightMapRefreshEffect = StateEffect.define();
 
+const deferViewCallback = createDeferredViewCallback();
+
+function scheduleHeightMapRefresh(view) {
+  deferViewCallback(view, activeView => {
+    activeView.dispatch({
+      effects: heightMapRefreshEffect.of(null)
+    });
+  });
+}
+
 const measuredWidgetHeights = new Map();
 const MAX_MEASURED_WIDGET_HEIGHTS = 256;
 
@@ -195,7 +206,7 @@ function rememberWidgetHeight(view, key, element) {
       if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
         measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
       }
-      view.dispatch({ effects: heightMapRefreshEffect.of(null) });
+      scheduleHeightMapRefresh(view);
     }
   });
 }
