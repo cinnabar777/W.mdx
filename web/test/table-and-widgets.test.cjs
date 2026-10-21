@@ -162,15 +162,16 @@ test('Deferred ResizeObserver updates and cleanup in tableWidget.js and main.js'
   assert.ok(mainCode.includes('cancelAnimationFrame(this.tableWidthMeasureFrame)'), 'CodeMirrorAdapter.destroy cancels pending tableWidthMeasureFrame');
 });
 
-test('height map remains atomic-only and preview owns visual decorations', () => {
+test('heightMapField provides WYSIWYG decorations and measured height caching', () => {
   const mainCode = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
 
+  assert.ok(mainCode.includes('export const heightMapRefreshEffect = StateEffect.define()'));
   assert.ok(mainCode.includes('export const heightMapField = StateField.define'));
+  assert.ok(mainCode.includes('EditorView.decorations.from(field, value => value.decorations)'));
   assert.ok(mainCode.includes('view.state.field(heightMapField).hiddenSyntaxRanges'));
-  assert.ok(mainCode.includes('view.plugin(livePreviewPlugin)'));
-  assert.ok(mainCode.includes('for (const { from, to } of view.visibleRanges)'));
-  assert.ok(!mainCode.includes('EditorView.decorations.from(field, value => value.decorations)'));
-  assert.ok(!mainCode.includes('heightMapRefreshEffect'));
-  assert.ok(mainCode.includes('customProperties.push(property)'));
+  assert.ok(mainCode.includes('scheduleHeightMapRefresh(view)'));
+  assert.ok(mainCode.includes('createDeferredViewCallback'));
+  assert.ok(mainCode.includes('measuredWidgetHeights = new Map()'));
   assert.ok(mainCode.includes('cm-image-error-fallback'));
+  assert.ok(mainCode.includes('customProperties.push(property)'));
 });

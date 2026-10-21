@@ -1,6 +1,7 @@
 import { EditorState, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
+import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -165,6 +166,18 @@ class CheckboxWidget extends WidgetType {
   }
 }
 
+export const heightMapRefreshEffect = StateEffect.define();
+
+const deferViewCallback = createDeferredViewCallback();
+
+function scheduleHeightMapRefresh(view) {
+  deferViewCallback(view, activeView => {
+    activeView.dispatch({
+      effects: heightMapRefreshEffect.of(null)
+    });
+  });
+}
+
 const measuredWidgetHeights = new Map();
 const MAX_MEASURED_WIDGET_HEIGHTS = 256;
 
@@ -193,6 +206,7 @@ function rememberWidgetHeight(view, key, element) {
       if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
         measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
       }
+      scheduleHeightMapRefresh(view);
     }
   });
 }
@@ -1852,7 +1866,10 @@ const wysiwygCodeBlockField = StateField.define({
     return buildWysiwygCodeBlockDecorations(state);
   },
   update(current, tr) {
-    if (!tr.docChanged) return current;
+    const refreshHeight = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect)
+    );
+    if (!tr.docChanged && !refreshHeight) return current;
     return buildWysiwygCodeBlockDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
@@ -2139,12 +2156,15 @@ function buildHeightMapValue(state) {
 export const heightMapField = StateField.define({
   create: buildHeightMapValue,
   update(current, tr) {
-    const typographyChanged = tr.effects.some(effect =>
+    const refresh = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect) ||
       effect.is(typographySettingsEffect)
     );
-    if (!tr.docChanged && !typographyChanged) return current;
+    if (!tr.docChanged && !refresh) return current;
     return buildHeightMapValue(tr.state);
-  }
+  },
+  provide: field =>
+    EditorView.decorations.from(field, value => value.decorations)
 });
 
 function premeasureTableHeights(view) {
@@ -2658,6 +2678,7 @@ class CodeMirrorAdapter {
 
         this.lastTableContentWidth = currentWidth;
         premeasureTableHeights(this.view);
+        this.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
       });
     });
     this.tableContentWidthObserver.observe(this.view.contentDOM);
