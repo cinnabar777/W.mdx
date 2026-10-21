@@ -474,38 +474,6 @@ class WikilinkWidget extends WidgetType {
 
 export const typographySettingsEffect = StateEffect.define();
 
-class WysiwygHeightEstimateWidget extends WidgetType {
-  constructor(height, key) {
-    super();
-    this.height = Math.max(0, Number(height) || 0);
-    this.key = key;
-  }
-
-  get estimatedHeight() {
-    return this.height;
-  }
-
-  eq(other) {
-    return (
-      other instanceof WysiwygHeightEstimateWidget &&
-      other.height === this.height &&
-      other.key === this.key
-    );
-  }
-
-  toDOM() {
-    const element = document.createElement('div');
-    element.className = 'cm-wysiwyg-height-estimate';
-    element.style.cssText =
-      'height:0;margin:0;padding:0;border:0;overflow:hidden;';
-    element.setAttribute('aria-hidden', 'true');
-    return element;
-  }
-
-  ignoreEvent() {
-    return true;
-  }
-}
 
 const imageAspectCache = new Map();
 
@@ -2210,7 +2178,8 @@ class CodeMirrorAdapter {
 
     this.view = new EditorView({
       state: startState,
-      parent: containerEl
+      parent: containerEl,
+      viewportMargin: Infinity
     });
 
     updateTableDocumentSelection(this.view);
