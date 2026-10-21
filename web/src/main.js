@@ -165,22 +165,83 @@ class CheckboxWidget extends WidgetType {
   }
 }
 
+export const heightMapRefreshEffect = StateEffect.define();
+
+const measuredWidgetHeights = new Map();
+const MAX_MEASURED_WIDGET_HEIGHTS = 256;
+
+function measuredWidgetHeightKey(kind, contentKey, width, styleSignature) {
+  const stableWidth = Math.round(Math.max(0, Number(width) || 0) * 10) / 10;
+  return JSON.stringify([kind, contentKey, stableWidth, styleSignature]);
+}
+
+function estimatedWidgetHeight(key, fallback) {
+  const measured = measuredWidgetHeights.get(key);
+  return Number.isFinite(measured) && measured > 0 ? measured : fallback;
+}
+
+function rememberWidgetHeight(view, key, element) {
+  if (!view || !element) return;
+  view.requestMeasure({
+    read: () => element.isConnected
+      ? element.getBoundingClientRect().height
+      : null,
+    write: height => {
+      if (!Number.isFinite(height) || height <= 0) return;
+      const previous = measuredWidgetHeights.get(key);
+      if (previous !== undefined && Math.abs(previous - height) < 1) return;
+
+      measuredWidgetHeights.set(key, height);
+      if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
+        measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
+      }
+      view.dispatch({ effects: heightMapRefreshEffect.of(null) });
+    }
+  });
+}
+
+function activeContentWidth() {
+  const el = document.querySelector('.cm-editor > .cm-scroller > .cm-content');
+  const w = el?.getBoundingClientRect().width;
+  if (w && w > 0) return w;
+  if (typeof window !== 'undefined' && window.innerWidth) {
+    return Math.max(280, window.innerWidth - 32);
+  }
+  return 360;
+}
+
+function activeTypographySignature() {
+  const el = document.querySelector('.cm-editor > .cm-scroller > .cm-content');
+  if (!el) return 'default';
+  const style = getComputedStyle(el);
+  return `${style.font}|${style.lineHeight}`;
+}
+
 class CodeBlockHeaderWidget extends WidgetType {
   constructor(lang, codeText) {
     super();
     this.lang = lang || 'Plain text';
     this.codeText = codeText;
+    const width = activeContentWidth();
+    const sig = activeTypographySignature();
+    this.heightKey = measuredWidgetHeightKey('codeblock-header', `${this.lang}:${this.codeText.length}`, width, sig);
+    this.heightEstimate = estimatedWidgetHeight(this.heightKey, 28);
+  }
+
+  get estimatedHeight() {
+    return this.heightEstimate;
   }
 
   eq(other) {
     return (
       other instanceof CodeBlockHeaderWidget &&
       other.lang === this.lang &&
-      other.codeText === this.codeText
+      other.codeText === this.codeText &&
+      other.heightEstimate === this.heightEstimate
     );
   }
 
-  toDOM() {
+  toDOM(view) {
     const header = document.createElement('div');
     header.className = 'cm-codeblock-header';
     header.style.cssText =
@@ -216,6 +277,8 @@ class CodeBlockHeaderWidget extends WidgetType {
 
     header.appendChild(langSpan);
     header.appendChild(copyBtn);
+
+    rememberWidgetHeight(view, this.heightKey, header);
     return header;
   }
 }
@@ -244,6 +307,14 @@ class CalloutTitleWidget extends WidgetType {
     this.isFolded = isFolded;
     this.foldFrom = foldFrom;
     this.foldTo = foldTo;
+    const width = activeContentWidth();
+    const sig = activeTypographySignature();
+    this.heightKey = measuredWidgetHeightKey('callout-title', `${this.type}:${this.title}`, width, sig);
+    this.heightEstimate = estimatedWidgetHeight(this.heightKey, 32);
+  }
+
+  get estimatedHeight() {
+    return this.heightEstimate;
   }
 
   eq(other) {
@@ -254,7 +325,8 @@ class CalloutTitleWidget extends WidgetType {
       other.foldMarker === this.foldMarker &&
       other.isFolded === this.isFolded &&
       other.foldFrom === this.foldFrom &&
-      other.foldTo === this.foldTo
+      other.foldTo === this.foldTo &&
+      other.heightEstimate === this.heightEstimate
     );
   }
 
@@ -336,6 +408,7 @@ class CalloutTitleWidget extends WidgetType {
       });
     }
 
+    rememberWidgetHeight(view, this.heightKey, span);
     return span;
   }
 
@@ -482,42 +555,59 @@ class ImagePreviewWidget extends WidgetType {
     super();
     this.url = url;
     this.alt = alt || 'image';
+    const width = activeContentWidth();
+    const sig = activeTypographySignature();
+    this.heightKey = measuredWidgetHeightKey('image-preview', `${this.url}`, width, sig);
+    const aspect = imageAspectCache.get(this.url);
+    const fallbackHeight = aspect ? Math.round(width / aspect) : 180;
+    this.heightEstimate = estimatedWidgetHeight(this.heightKey, fallbackHeight);
   }
 
   get estimatedHeight() {
-    const aspect = imageAspectCache.get(this.url);
-    if (aspect) {
-      const width = typeof window !== 'undefined' && window.innerWidth ? Math.min(600, window.innerWidth - 32) : 360;
-      return Math.round(width / aspect);
-    }
-    return 180;
+    return this.heightEstimate;
   }
 
   eq(other) {
     return (
       other instanceof ImagePreviewWidget &&
       other.url === this.url &&
-      other.alt === this.alt
+      other.alt === this.alt &&
+      other.heightEstimate === this.heightEstimate
     );
   }
 
   toDOM(view) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cm-image-preview-wrapper';
+    wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 6px 0; display: block; box-sizing: border-box;`;
+
     const img = document.createElement('img');
     img.src = this.url;
     img.alt = this.alt;
-    img.style.cssText = 'max-width: 100%; height: auto; border-radius: 6px; margin: 6px 0; display: block; border: 1px solid var(--border-color, #444);';
+    img.style.cssText = 'max-width: 100%; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);';
 
     img.onload = () => {
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
         const aspect = img.naturalWidth / img.naturalHeight;
         imageAspectCache.set(this.url, aspect);
-        if (view && typeof view.requestMeasure === 'function') {
-          view.requestMeasure();
-        }
+        rememberWidgetHeight(view, this.heightKey, wrapper);
       }
     };
 
-    return img;
+    img.onerror = () => {
+      imageAspectCache.delete(this.url);
+      wrapper.innerHTML = '';
+      const fallbackBox = document.createElement('div');
+      fallbackBox.className = 'cm-image-error-fallback';
+      fallbackBox.style.cssText = 'padding: 12px 16px; border: 1px dashed var(--border-color, #666); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text-color, #888); font-size: 13px; font-style: italic;';
+      fallbackBox.textContent = `[Image: ${this.alt || 'failed to load'}]`;
+      wrapper.appendChild(fallbackBox);
+      rememberWidgetHeight(view, this.heightKey, wrapper);
+    };
+
+    wrapper.appendChild(img);
+    rememberWidgetHeight(view, this.heightKey, wrapper);
+    return wrapper;
   }
 }
 
@@ -932,9 +1022,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (!isLineActive) {
-            builder.push(Decoration.replace({
-              widget: new WikilinkWidget(displayLabel, target)
-            }).range(matchStart, matchEnd));
+            if (!isPureWysiwyg) {
+              builder.push(Decoration.replace({
+                widget: new WikilinkWidget(displayLabel, target)
+              }).range(matchStart, matchEnd));
+            }
           } else if (labelEnd > labelStart) {
             builder.push(Decoration.mark({ class: 'cm-link cm-wikilink' }).range(labelStart, labelEnd));
           }
@@ -1094,9 +1186,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'HeaderMark' && !isNodeActive) {
-            const end = Math.min(node.to + 1, line.to);
-            if (end > node.from && end <= line.to) {
-              hideSyntax(node.from, end);
+            if (!isPureWysiwyg) {
+              const end = Math.min(node.to + 1, line.to);
+              if (end > node.from && end <= line.to) {
+                hideSyntax(node.from, end);
+              }
             }
           }
 
@@ -1104,7 +1198,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.mark({ class: 'cm-bold' }).range(node.from, node.to));
           }
           if (node.name === 'EmphasisMark' && !isNodeActive) {
-            hideSyntax(node.from, node.to);
+            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
 
           if (node.name === 'Emphasis') {
@@ -1115,14 +1209,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.mark({ class: 'cm-strikethrough' }).range(node.from, node.to));
           }
           if (node.name === 'StrikethroughMark' && !isNodeActive) {
-            hideSyntax(node.from, node.to);
+            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
 
           if (node.name === 'InlineCode') {
             builder.push(Decoration.mark({ class: 'cm-inline-code' }).range(node.from, node.to));
           }
           if (node.name === 'CodeMark' && !isNodeActive) {
-            hideSyntax(node.from, node.to);
+            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
 
 
@@ -1130,9 +1224,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             const marker = view.state.doc.sliceString(node.from, node.to);
             const isBullet = /^[-*+]$/.test(marker.trim());
             if (!isNodeActive) {
-              builder.push(Decoration.replace({
-                widget: new ListMarkerWidget(marker, isBullet)
-              }).range(node.from, node.to));
+              if (!isPureWysiwyg) {
+                builder.push(Decoration.replace({
+                  widget: new ListMarkerWidget(marker, isBullet)
+                }).range(node.from, node.to));
+              }
             } else {
               builder.push(Decoration.mark({
                 class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
@@ -1141,14 +1237,15 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'QuoteMark' && !isNodeActive) {
-            let isCalloutLine = calloutLineAttributes.has(line.from);
-            if (isCalloutLine) {
-              // Hide QuoteMark on callout lines in rendered mode
-              hideSyntax(node.from, node.to);
-            } else {
-              let end = Math.min(node.to + 1, line.to);
-              if (end > node.from) {
-                hideSyntax(node.from, end);
+            if (!isPureWysiwyg) {
+              let isCalloutLine = calloutLineAttributes.has(line.from);
+              if (isCalloutLine) {
+                hideSyntax(node.from, node.to);
+              } else {
+                let end = Math.min(node.to + 1, line.to);
+                if (end > node.from) {
+                  hideSyntax(node.from, end);
+                }
               }
             }
           }
@@ -1157,14 +1254,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             const taskText = view.state.doc.sliceString(node.from, node.to);
             const isChecked = taskText.toLowerCase().includes('x');
             if (!isNodeActive && node.to > node.from) {
-              builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+              if (!isPureWysiwyg) {
+                builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+              }
             }
           }
 
           if (node.name === 'HorizontalRule') {
             addLineClass(line.from, 'cm-hr');
             if (!isNodeActive && node.to > node.from) {
-              hideSyntax(node.from, node.to);
+              if (!isPureWysiwyg) hideSyntax(node.from, node.to);
             }
           }
 
@@ -1215,7 +1314,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                 Decoration.mark({ class: 'cm-link' }).range(labelFrom, labelTo)
               );
 
-              if (!isNodeActive) {
+              if (!isNodeActive && !isPureWysiwyg) {
                 if (labelFrom > node.from) {
                   hideSyntax(node.from, labelFrom);
                 }
@@ -1229,7 +1328,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'Image') {
             const imgText = view.state.doc.sliceString(node.from, node.to);
             const match = imgText.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-            if (match && !isNodeActive) {
+            if (match && !isNodeActive && !isPureWysiwyg) {
               const alt = match[1];
               const url = match[2];
               builder.push(Decoration.replace({ widget: new ImagePreviewWidget(url, alt) }).range(node.from, node.to));
@@ -1266,7 +1365,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
       }
 
-      if (!isMarkerActive) {
+      if (!isMarkerActive && !isPureWysiwyg) {
         const line = doc.lineAt(lineFrom);
         let isFolded = false;
         if (hasBody) {
@@ -1343,7 +1442,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 });
 
 export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
-  view => view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges ?? Decoration.none
+  view => (currentEditorMode === 'wysiwyg'
+    ? view.state.field(heightMapField).hiddenSyntaxRanges
+    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges) ?? Decoration.none
 );
 
 function cmToggleLinePrefix(view, prefix) {
@@ -1727,10 +1828,305 @@ const wysiwygCodeBlockField = StateField.define({
     return buildWysiwygCodeBlockDecorations(state);
   },
   update(current, tr) {
-    if (!tr.docChanged) return current;
+    const refreshHeight = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect)
+    );
+    if (!tr.docChanged && !refreshHeight) return current;
     return buildWysiwygCodeBlockDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
+});
+
+function buildHeightMapValue(state) {
+  if (currentEditorMode !== 'wysiwyg') {
+    return {
+      decorations: Decoration.none,
+      hiddenSyntaxRanges: Decoration.none
+    };
+  }
+
+  const doc = state.doc;
+  const tree = syntaxTree(state);
+  const replacements = [];
+  const hiddenSyntaxRanges = [];
+
+  const hideSyntax = (from, to) => {
+    if (to > from) {
+      const range = Decoration.replace({}).range(from, to);
+      replacements.push(range);
+      hiddenSyntaxRanges.push(range);
+    }
+  };
+
+  const calloutOpenerInfo = new Map();
+  const processedBlockquoteLines = new Set();
+
+  const getQuotedLineInfo = (lineNum) => {
+    if (lineNum < 1 || lineNum > doc.lines) return null;
+    const l = doc.line(lineNum);
+    const match = l.text.match(/^(\s*(?:>\s*)+)/);
+    if (!match) return null;
+
+    const firstText = /\S/.exec(l.text);
+    const probe = firstText ? l.from + firstText.index : l.from;
+    const resolvedNode = tree.resolveInner(probe, 1);
+
+    for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock' || ancestor.name === 'Table') {
+        return null;
+      }
+    }
+
+    const quotePrefix = match[1];
+    const depth = (quotePrefix.match(/>/g) || []).length;
+    return { line: l, quotePrefix, depth };
+  };
+
+  const isQuotedLine = (lineNum) => getQuotedLineInfo(lineNum) !== null;
+
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+    const line = doc.line(lineNumber);
+    const firstText = /\S/.exec(line.text);
+    const probe = firstText ? line.from + firstText.index : line.from;
+    const resolvedNode = tree.resolveInner(probe, 1);
+
+    let insideCodeBlock = false;
+    let insideTable = false;
+
+    for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock') insideCodeBlock = true;
+      if (ancestor.name === 'Table') insideTable = true;
+    }
+
+    if (insideCodeBlock || insideTable) continue;
+
+    const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+    let wikilinkMatch;
+    while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+      if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
+
+      const matchStart = line.from + wikilinkMatch.index;
+      const matchEnd = matchStart + wikilinkMatch[0].length;
+      const target = wikilinkMatch[1];
+      const alias = wikilinkMatch[2];
+      const displayLabel = (alias !== undefined && alias.trim().length > 0)
+        ? alias
+        : (target.startsWith('#') ? target.slice(1) : target);
+
+      replacements.push(Decoration.replace({
+        widget: new WikilinkWidget(displayLabel, target)
+      }).range(matchStart, matchEnd));
+    }
+  }
+
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+    if (processedBlockquoteLines.has(lineNumber)) continue;
+
+    if (isQuotedLine(lineNumber)) {
+      let blockStart = lineNumber;
+      while (blockStart > 1 && isQuotedLine(blockStart - 1)) {
+        blockStart--;
+      }
+
+      let curLine = blockStart;
+      const activeCalloutsStack = [];
+
+      while (curLine <= doc.lines && isQuotedLine(curLine)) {
+        processedBlockquoteLines.add(curLine);
+        const lineInfo = getQuotedLineInfo(curLine);
+        const line = lineInfo.line;
+        const currentDepth = lineInfo.depth;
+
+        while (activeCalloutsStack.length > 0 && activeCalloutsStack[activeCalloutsStack.length - 1].depth > currentDepth) {
+          activeCalloutsStack.pop();
+        }
+
+        const match = line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i);
+
+        if (match) {
+          const type = match[3].toLowerCase();
+          const foldMarker = match[4];
+          const customTitle = match[5];
+          const markerStart = line.from + match[1].length;
+          const markerEnd = markerStart + match[2].length;
+          let titleStart = null;
+          if (customTitle && customTitle.trim().length > 0) {
+            const idx = line.text.indexOf(customTitle, match[1].length + match[2].length);
+            if (idx !== -1) titleStart = idx;
+          }
+
+          const calloutObj = {
+            depth: currentDepth,
+            type,
+            openerLineNum: curLine,
+            lastBodyLineNum: curLine,
+            info: {
+              type,
+              depth: currentDepth,
+              foldMarker,
+              customTitle,
+              markerStart,
+              markerEnd,
+              titleStart,
+              bodyFrom: line.to,
+              bodyTo: line.to
+            }
+          };
+
+          activeCalloutsStack.push(calloutObj);
+          calloutOpenerInfo.set(line.from, calloutObj.info);
+
+          for (const ancestor of activeCalloutsStack) {
+            if (ancestor !== calloutObj) {
+              ancestor.lastBodyLineNum = curLine;
+              ancestor.info.bodyTo = line.to;
+            }
+          }
+        } else if (activeCalloutsStack.length > 0) {
+          for (const calloutObj of activeCalloutsStack) {
+            if (calloutObj.depth <= currentDepth) {
+              calloutObj.lastBodyLineNum = curLine;
+              calloutObj.info.bodyTo = line.to;
+            }
+          }
+        }
+
+        curLine++;
+      }
+    }
+  }
+
+  tree.iterate({
+    from: 0,
+    to: doc.length,
+    enter: (node) => {
+      const line = doc.lineAt(node.from);
+
+      if (node.name === 'HeaderMark') {
+        const end = Math.min(node.to + 1, line.to);
+        if (end > node.from && end <= line.to) {
+          hideSyntax(node.from, end);
+        }
+      }
+
+      if (node.name === 'EmphasisMark') {
+        hideSyntax(node.from, node.to);
+      }
+
+      if (node.name === 'StrikethroughMark') {
+        hideSyntax(node.from, node.to);
+      }
+
+      if (node.name === 'CodeMark') {
+        hideSyntax(node.from, node.to);
+      }
+
+      if (node.name === 'ListMark') {
+        const marker = doc.sliceString(node.from, node.to);
+        const isBullet = /^[-*+]$/.test(marker.trim());
+        replacements.push(Decoration.replace({
+          widget: new ListMarkerWidget(marker, isBullet)
+        }).range(node.from, node.to));
+      }
+
+      if (node.name === 'QuoteMark') {
+        hideSyntax(node.from, node.to);
+      }
+
+      if (node.name === 'TaskMarker') {
+        const taskText = doc.sliceString(node.from, node.to);
+        const isChecked = taskText.toLowerCase().includes('x');
+        if (node.to > node.from) {
+          replacements.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+        }
+      }
+
+      if (node.name === 'HorizontalRule') {
+        if (node.to > node.from) {
+          hideSyntax(node.from, node.to);
+        }
+      }
+
+      if (node.name === 'Table' || node.name === 'FencedCode' || node.name === 'CodeBlock') {
+        return false;
+      }
+
+      if (node.name === 'Link' || node.name === 'URL') {
+        const raw = doc.sliceString(node.from, node.to);
+        const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (match) {
+          const labelFrom = node.from + 1;
+          const labelTo = labelFrom + match[1].length;
+          if (labelFrom > node.from) {
+            hideSyntax(node.from, labelFrom);
+          }
+          if (node.to > labelTo) {
+            hideSyntax(labelTo, node.to);
+          }
+        }
+      }
+
+      if (node.name === 'Image') {
+        const imgText = doc.sliceString(node.from, node.to);
+        const match = imgText.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+        if (match) {
+          const alt = match[1];
+          const url = match[2];
+          replacements.push(Decoration.replace({ widget: new ImagePreviewWidget(url, alt) }).range(node.from, node.to));
+        }
+      }
+    }
+  });
+
+  const activeFolds = foldedRanges(state);
+
+  for (const [lineFrom, info] of calloutOpenerInfo) {
+    const hasBody = info.bodyTo > info.bodyFrom;
+    const line = doc.lineAt(lineFrom);
+    let isFolded = false;
+    if (hasBody) {
+      activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
+        if (from === info.bodyFrom && to === info.bodyTo) {
+          isFolded = true;
+        }
+      });
+    }
+
+    const displayTitle = (info.customTitle && info.customTitle.trim().length > 0)
+      ? ''
+      : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+
+    const replaceEnd = (info.customTitle && info.customTitle.trim().length > 0) ? info.markerEnd : line.to;
+
+    replacements.push(Decoration.replace({
+      widget: new CalloutTitleWidget(displayTitle, info.type, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
+    }).range(info.markerStart, replaceEnd));
+  }
+
+  const validReplacements = replacements.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
+  validReplacements.sort((a, b) => a.from - b.from || a.to - b.to);
+
+  const validHiddenSyntax = hiddenSyntaxRanges.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
+  validHiddenSyntax.sort((a, b) => a.from - b.from || a.to - b.to);
+
+  return {
+    decorations: Decoration.set(validReplacements, true),
+    hiddenSyntaxRanges: Decoration.set(validHiddenSyntax, true)
+  };
+}
+
+export const heightMapField = StateField.define({
+  create: buildHeightMapValue,
+  update(current, tr) {
+    const refresh = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect) ||
+      effect.is(typographySettingsEffect)
+    );
+    if (!tr.docChanged && !refresh) return current;
+    return buildHeightMapValue(tr.state);
+  },
+  provide: field =>
+    EditorView.decorations.from(field, value => value.decorations)
 });
 
 function premeasureTableHeights(view) {
@@ -1956,7 +2352,9 @@ function renderedLineForPosition(view, position, side) {
 }
 
 function leaveHiddenSyntax(view, position, direction) {
-  const ranges = view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
+  const ranges = currentEditorMode === 'wysiwyg'
+    ? view.state.field(heightMapField).hiddenSyntaxRanges
+    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
   if (!ranges || position >= view.state.doc.length) return position;
 
   let result = position;
@@ -2196,6 +2594,7 @@ class CodeMirrorAdapter {
         tableStateField,
         wysiwygCodeBlockField,
         persistentLayoutField,
+        heightMapField,
         tableNavigationKeymap,
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
@@ -2241,6 +2640,7 @@ class CodeMirrorAdapter {
 
         this.lastTableContentWidth = currentWidth;
         premeasureTableHeights(this.view);
+        this.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
       });
     });
     this.tableContentWidthObserver.observe(this.view.contentDOM);

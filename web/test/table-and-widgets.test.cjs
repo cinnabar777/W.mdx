@@ -161,3 +161,17 @@ test('Deferred ResizeObserver updates and cleanup in tableWidget.js and main.js'
   assert.ok(mainCode.includes('this.tableWidthMeasureFrame = requestAnimationFrame'), 'Content width ResizeObserver defers with requestAnimationFrame');
   assert.ok(mainCode.includes('cancelAnimationFrame(this.tableWidthMeasureFrame)'), 'CodeMirrorAdapter.destroy cancels pending tableWidthMeasureFrame');
 });
+
+test('heightMapField StateField and measured widget height caching in main.js', () => {
+  const mainCode = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+
+  assert.ok(mainCode.includes('export const heightMapRefreshEffect = StateEffect.define()'), 'heightMapRefreshEffect defined');
+  assert.ok(mainCode.includes('export const heightMapField = StateField.define'), 'heightMapField defined');
+  assert.ok(mainCode.includes('rememberWidgetHeight(view,'), 'rememberWidgetHeight helper implemented');
+  assert.ok(mainCode.includes('measuredWidgetHeights = new Map()'), 'measuredWidgetHeights Map cache defined');
+
+  // Check CodeBlockHeaderWidget, ImagePreviewWidget, CalloutTitleWidget estimate/measurement properties
+  assert.ok(mainCode.includes('measuredWidgetHeightKey'), 'measuredWidgetHeightKey helper defined');
+  assert.ok(mainCode.includes('cm-image-error-fallback'), 'ImagePreviewWidget includes onerror fallback box');
+  assert.ok(mainCode.includes('heightMapField,'), 'heightMapField added to CodeMirrorAdapter.init extensions');
+});
