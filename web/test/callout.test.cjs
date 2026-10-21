@@ -241,9 +241,9 @@ test('persistentLayoutField StateField and persistentLayoutClasses filtering in 
   assert.ok(mainSource.includes('!persistentLayoutClasses.has(className)'), 'persistentLayoutClasses is filtered in WYSIWYG mode');
 });
 
-test('typographySettingsEffect, viewportMargin, and ImagePreviewWidget estimatedHeight', () => {
+test('typographySettingsEffect, no viewportMargin, and ImagePreviewWidget estimatedHeight', () => {
   assert.ok(mainSource.includes('export const typographySettingsEffect = StateEffect.define()'), 'typographySettingsEffect is defined');
-  assert.ok(mainSource.includes('viewportMargin: Infinity'), 'CodeMirrorAdapter.init configures viewportMargin: Infinity');
+  assert.equal(mainSource.includes('viewportMargin: Infinity'), false, 'CodeMirrorAdapter.init must not pass viewportMargin: Infinity');
   assert.ok(mainSource.includes('imageAspectCache'), 'imageAspectCache Map is defined');
   assert.ok(mainSource.includes('effects: typographySettingsEffect.of(Date.now())'), 'typographySettingsEffect is dispatched on preference changes');
 });

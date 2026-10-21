@@ -1,6 +1,6 @@
 import { EditorState, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
-import { WordProcessorTableWidget } from './tableWidget.js';
+import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -1732,6 +1732,32 @@ const wysiwygCodeBlockField = StateField.define({
   provide: field => EditorView.decorations.from(field)
 });
 
+function premeasureTableHeights(view) {
+  if (!(view.contentDOM.getBoundingClientRect().width > 0)) return;
+  const decorations = view.state.field(tableStateField);
+  let measuredCount = 0;
+  const visited = new Set();
+
+  decorations.between(0, view.state.doc.length, (_from, _to, decoration) => {
+    const widget = decoration.spec.widget;
+    if (!(widget instanceof WordProcessorTableWidget) || visited.has(widget)) return;
+    visited.add(widget);
+    try {
+      measureTableWidgetHeight(widget, view);
+      measuredCount++;
+    } catch (error) {
+      console.error('table_height_measure_failed', error);
+    }
+  });
+
+  if (measuredCount) {
+    view.dispatch({
+      effects: tableHeightEstimatesChanged.of(measuredCount)
+    });
+    view.requestMeasure();
+  }
+}
+
 export function buildPersistentLayoutDecorations(state) {
   if (currentEditorMode !== 'wysiwyg') return Decoration.none;
 
@@ -1836,7 +1862,10 @@ export const tableStateField = StateField.define({
     return buildTableBlockDecorations(state);
   },
   update(current, tr) {
-    if (tr.docChanged) {
+    if (
+      tr.docChanged ||
+      tr.effects.some(effect => effect.is(tableHeightEstimatesChanged))
+    ) {
       return buildTableBlockDecorations(tr.state);
     }
     return current;
@@ -2178,9 +2207,23 @@ class CodeMirrorAdapter {
 
     this.view = new EditorView({
       state: startState,
-      parent: containerEl,
-      viewportMargin: Infinity
+      parent: containerEl
     });
+
+    premeasureTableHeights(this.view);
+
+    this.lastTableContentWidth = Math.round(
+      this.view.contentDOM.getBoundingClientRect().width
+    );
+    this.tableContentWidthObserver = new ResizeObserver(() => {
+      if (!this.view) return;
+      const width = Math.round(this.view.contentDOM.getBoundingClientRect().width);
+      if (width > 0 && width !== this.lastTableContentWidth) {
+        this.lastTableContentWidth = width;
+        premeasureTableHeights(this.view);
+      }
+    });
+    this.tableContentWidthObserver.observe(this.view.contentDOM);
 
     updateTableDocumentSelection(this.view);
     setupNavigationDiagnostics(this.view);
@@ -2298,6 +2341,8 @@ class CodeMirrorAdapter {
   }
 
   destroy() {
+    this.tableContentWidthObserver?.disconnect();
+    this.tableContentWidthObserver = null;
     if (this.view) {
       this.view.destroy();
       this.view = null;
@@ -4174,6 +4219,7 @@ window.editorBridge = {
       activeAdapter.view.dispatch({
         effects: typographySettingsEffect.of(Date.now())
       });
+      premeasureTableHeights(activeAdapter.view);
       activeAdapter.view.requestMeasure();
     }
   },

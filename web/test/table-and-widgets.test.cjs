@@ -124,3 +124,26 @@ test('WordProcessorTableWidget attaches long-press events and applies CSS variab
   assert.ok(code.includes('showContextMenu'), 'Context menu overlay is implemented');
   assert.ok(code.includes('var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)'), 'Table CSS variables for width and style are used');
 });
+
+test('Table widget exports tableHeightEstimatesChanged and measureTableWidgetHeight', async () => {
+  const tableWidgetModule = await import('../src/tableWidget.js');
+  assert.ok(tableWidgetModule.tableHeightEstimatesChanged, 'tableHeightEstimatesChanged StateEffect is exported');
+  assert.ok(typeof tableWidgetModule.measureTableWidgetHeight === 'function', 'measureTableWidgetHeight function is exported');
+});
+
+test('Table pre-measurement, caching, and style updates in tableWidget.js and main.js', () => {
+  const tableWidgetCode = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const mainCode = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+
+  assert.ok(tableWidgetCode.includes('TABLE_HEIGHT_STYLE_PROPERTIES'), 'TABLE_HEIGHT_STYLE_PROPERTIES array defined');
+  assert.ok(tableWidgetCode.includes('tableHeightCacheKey'), 'tableHeightCacheKey helper implemented');
+  assert.ok(tableWidgetCode.includes('cachedTableHeight'), 'cachedTableHeight helper implemented');
+  assert.ok(tableWidgetCode.includes('measuredOuterHeight'), 'measuredOuterHeight helper implemented');
+  assert.ok(tableWidgetCode.includes('options.measurementOnly === true'), 'toDOM accepts measurementOnly option');
+  assert.ok(tableWidgetCode.includes('measureTableWidgetHeight'), 'measureTableWidgetHeight exported');
+
+  assert.ok(mainCode.includes('premeasureTableHeights'), 'premeasureTableHeights helper in main.js');
+  assert.ok(mainCode.includes('tableHeightEstimatesChanged'), 'tableHeightEstimatesChanged imported and dispatched');
+  assert.ok(mainCode.includes('this.tableContentWidthObserver = new ResizeObserver'), 'ResizeObserver tracks contentDOM width');
+  assert.ok(mainCode.includes('premeasureTableHeights(activeAdapter.view)'), 'applyAllPreferences invokes premeasureTableHeights');
+});
