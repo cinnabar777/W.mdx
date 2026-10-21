@@ -41,6 +41,18 @@ test('mode switches capture before destroy and pass both values to the new view'
   assert.ok(capture >= 0 && capture < destroy, 'snapshot is captured before destroying the old adapter');
   assert.ok(init > destroy, 'the new adapter receives the saved state');
 
-  assert.match(source, /selection: modeSnapshot\?\.selection/);
   assert.match(source, /scrollTo: modeSnapshot\?\.scroll/);
+  assert.match(source, /mapSelectionOutsideHiddenSyntax/);
+  assert.match(source, /currentEditorMode === 'wysiwyg'/);
+});
+
+test('scroll persistence bridges to AndroidNative.onScrollChanged on scrollDOM events', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+
+  assert.match(source, /persistScrollPosition\(\)/);
+  assert.match(source, /queueScrollPositionSave\(\)/);
+  assert.match(source, /bridge\.onScrollChanged/);
+  assert.match(source, /this\.view\.scrollDOM\.addEventListener\(\s*'scroll'/);
+  assert.match(source, /this\.view\.scrollDOM\.removeEventListener\(\s*'scroll'/);
+  assert.match(source, /setSelectionState: function/);
 });

@@ -3,6 +3,7 @@ import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, r
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
+import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -2552,13 +2553,43 @@ class CodeMirrorAdapter {
     this.showLineNumbers = false;
     this.revision = 0;
     this.isProgrammatic = false;
+    this.scrollPersistTimer = null;
+    this.scrollPersistHandler = null;
+    this.visibilityPersistHandler = null;
+    this.pageHidePersistHandler = null;
+  }
+
+  persistScrollPosition() {
+    if (this.scrollPersistTimer !== null) {
+      clearTimeout(this.scrollPersistTimer);
+      this.scrollPersistTimer = null;
+    }
+    if (!this.view || this.isProgrammatic) return;
+
+    const bridge = window.AndroidNative;
+    if (typeof bridge?.onScrollChanged !== 'function') return;
+
+    bridge.onScrollChanged(
+      Math.max(0, Math.round(this.view.scrollDOM.scrollTop))
+    );
+  }
+
+  queueScrollPositionSave() {
+    if (!this.view || this.isProgrammatic) return;
+    if (this.scrollPersistTimer !== null) {
+      clearTimeout(this.scrollPersistTimer);
+    }
+
+    this.scrollPersistTimer = setTimeout(() => {
+      this.scrollPersistTimer = null;
+      this.persistScrollPosition();
+    }, 250);
   }
 
   async init(containerEl, initialMarkdown = '', modeSnapshot = null) {
     containerEl.innerHTML = '';
-    const startState = EditorState.create({
+    let startState = EditorState.create({
       doc: initialMarkdown || '',
-      selection: modeSnapshot?.selection,
       extensions: [
         highlightSpecialChars(),
         history(),
@@ -2651,11 +2682,47 @@ class CodeMirrorAdapter {
       ]
     });
 
+    if (modeSnapshot?.selection) {
+      let selection = modeSnapshot.selection;
+
+      if (currentEditorMode === 'wysiwyg') {
+        const hiddenRanges = [];
+        const hiddenSyntax = startState.field(heightMapField).hiddenSyntaxRanges;
+        hiddenSyntax.between(0, startState.doc.length, (from, to) => {
+          hiddenRanges.push({ from, to });
+        });
+        selection = mapSelectionOutsideHiddenSyntax(
+          selection,
+          hiddenRanges,
+          startState.doc.length
+        );
+      }
+
+      startState = startState.update({ selection }).state;
+    }
+
     this.view = new EditorView({
       state: startState,
       parent: containerEl,
       scrollTo: modeSnapshot?.scroll
     });
+
+    this.scrollPersistHandler = () => this.queueScrollPositionSave();
+    this.visibilityPersistHandler = () => {
+      if (document.visibilityState === 'hidden') this.persistScrollPosition();
+    };
+    this.pageHidePersistHandler = () => this.persistScrollPosition();
+
+    this.view.scrollDOM.addEventListener(
+      'scroll',
+      this.scrollPersistHandler,
+      { passive: true }
+    );
+    document.addEventListener(
+      'visibilitychange',
+      this.visibilityPersistHandler
+    );
+    window.addEventListener('pagehide', this.pageHidePersistHandler);
 
     premeasureTableHeights(this.view);
 
@@ -2811,6 +2878,24 @@ class CodeMirrorAdapter {
   }
 
   destroy() {
+    this.persistScrollPosition();
+
+    if (this.view && this.scrollPersistHandler) {
+      this.view.scrollDOM.removeEventListener(
+        'scroll',
+        this.scrollPersistHandler
+      );
+    }
+    if (this.visibilityPersistHandler) {
+      document.removeEventListener(
+        'visibilitychange',
+        this.visibilityPersistHandler
+      );
+    }
+    if (this.pageHidePersistHandler) {
+      window.removeEventListener('pagehide', this.pageHidePersistHandler);
+    }
+
     this.tableContentWidthObserver?.disconnect();
     this.tableContentWidthObserver = null;
     if (this.tableWidthMeasureFrame !== null) {
