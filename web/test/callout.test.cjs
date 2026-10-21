@@ -252,3 +252,9 @@ test('Regression check: WysiwygSpacingWidget is not referenced in main.js', () =
   assert.equal(mainSource.includes('WysiwygSpacingWidget'), false, 'WysiwygSpacingWidget must not be referenced in main.js');
   assert.ok(mainSource.includes('buildPersistentLayoutDecorations'), 'buildPersistentLayoutDecorations exists in main.js');
 });
+
+test('MainActivity.kt guards setHotkeys with window.editorBridge function check', () => {
+  const mainActivityPath = path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  const mainActivitySource = fs.readFileSync(mainActivityPath, 'utf8');
+  assert.ok(mainActivitySource.includes('if (window.editorBridge && typeof window.editorBridge.setHotkeys === \'function\')'), 'MainActivity.kt guards setHotkeys call');
+});

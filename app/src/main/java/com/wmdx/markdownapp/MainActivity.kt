@@ -491,7 +491,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         )
         val hotkeysJson = org.json.JSONObject(hotkeys).toString()
         val escapedHotkeys = JSONObjectWrapper.quote(hotkeysJson)
-        webView.evaluateJavascript("window.editorBridge.setHotkeys($escapedHotkeys);", null)
+        webView.evaluateJavascript("if (window.editorBridge && typeof window.editorBridge.setHotkeys === 'function') { window.editorBridge.setHotkeys($escapedHotkeys); }", null)
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
