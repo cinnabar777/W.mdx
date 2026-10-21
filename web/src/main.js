@@ -1,4 +1,4 @@
-import { EditorState, Compartment, Transaction, StateField } from '@codemirror/state';
+import { EditorState, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { WordProcessorTableWidget } from './tableWidget.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
@@ -1844,16 +1844,6 @@ export function buildPersistentLayoutDecorations(state) {
         attributes: { class: [...classes].join(' ') }
       }).range(lineObj.from)
     );
-
-    if (classes.has('cm-paragraph-first') && lineNumber > 1) {
-      ranges.push(
-        Decoration.widget({
-          widget: new WysiwygSpacingWidget(12, `p-top-${lineNumber}`),
-          block: true,
-          side: -1
-        }).range(lineObj.from)
-      );
-    }
   }
 
   ranges.sort((a, b) => a.from - b.from);

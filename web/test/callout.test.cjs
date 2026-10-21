@@ -247,3 +247,8 @@ test('typographySettingsEffect, WysiwygHeightEstimateWidget, and ImagePreviewWid
   assert.ok(mainSource.includes('imageAspectCache'), 'imageAspectCache Map is defined');
   assert.ok(mainSource.includes('effects: typographySettingsEffect.of(Date.now())'), 'typographySettingsEffect is dispatched on preference changes');
 });
+
+test('Regression check: WysiwygSpacingWidget is not referenced in main.js', () => {
+  assert.equal(mainSource.includes('WysiwygSpacingWidget'), false, 'WysiwygSpacingWidget must not be referenced in main.js');
+  assert.ok(mainSource.includes('buildPersistentLayoutDecorations'), 'buildPersistentLayoutDecorations exists in main.js');
+});
