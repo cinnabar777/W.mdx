@@ -742,10 +742,12 @@
     }
     .cm-content .cm-paragraph-first:not(.cm-list-item) {
       text-indent: var(--paragraph-indent, 0px) !important;
-      margin-top: var(--paragraph-margin-top, 0px) !important;
+      margin-top: 0 !important;
+      padding-top: var(--paragraph-margin-top, 0px) !important;
     }
     .cm-content .cm-paragraph-last:not(.cm-list-item) {
-      margin-bottom: var(--paragraph-margin-bottom, 8px) !important;
+      margin-bottom: 0 !important;
+      padding-bottom: var(--paragraph-margin-bottom, 8px) !important;
     }
 
     .cm-content .cm-heading {
