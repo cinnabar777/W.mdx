@@ -240,3 +240,10 @@ test('persistentLayoutField StateField and persistentLayoutClasses filtering in 
   assert.ok(mainSource.includes('const persistentLayoutClasses = new Set(['), 'persistentLayoutClasses Set exists');
   assert.ok(mainSource.includes('!persistentLayoutClasses.has(className)'), 'persistentLayoutClasses is filtered in WYSIWYG mode');
 });
+
+test('typographySettingsEffect, WysiwygHeightEstimateWidget, and ImagePreviewWidget estimatedHeight', () => {
+  assert.ok(mainSource.includes('export const typographySettingsEffect = StateEffect.define()'), 'typographySettingsEffect is defined');
+  assert.ok(mainSource.includes('class WysiwygHeightEstimateWidget extends WidgetType'), 'WysiwygHeightEstimateWidget is defined');
+  assert.ok(mainSource.includes('imageAspectCache'), 'imageAspectCache Map is defined');
+  assert.ok(mainSource.includes('effects: typographySettingsEffect.of(Date.now())'), 'typographySettingsEffect is dispatched on preference changes');
+});

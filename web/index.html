@@ -732,27 +732,20 @@
     }
 
 
-    /* Consistent .cm-line geometry prevents virtualization height shifts during scrolling */
-    .cm-content .cm-line {
-      line-height: var(--paragraph-line-height, 1.6) !important;
-      margin-top: 0 !important;
-      margin-bottom: 0 !important;
-      padding-top: 0 !important;
-      padding-bottom: 0 !important;
-    }
-
     /* Paragraph settings apply only to Markdown Paragraph nodes that are NOT list items. */
     .cm-content .cm-paragraph:not(.cm-list-item) {
       font-size: var(--body-font-size, 16px) !important;
       font-family: var(--body-font-family, inherit) !important;
       text-align: var(--paragraph-align, left) !important;
       letter-spacing: var(--paragraph-letter-spacing, 0px) !important;
+      line-height: var(--paragraph-line-height, 1.6) !important;
     }
     .cm-content .cm-paragraph-first:not(.cm-list-item) {
       text-indent: var(--paragraph-indent, 0px) !important;
+      margin-top: var(--paragraph-margin-top, 0px) !important;
     }
     .cm-content .cm-paragraph-last:not(.cm-list-item) {
-      /* Vertical paragraph spacing handled by WysiwygSpacingWidget block decorations */
+      margin-bottom: var(--paragraph-margin-bottom, 8px) !important;
     }
 
     .cm-content .cm-heading {

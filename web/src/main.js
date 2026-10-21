@@ -472,7 +472,9 @@ class WikilinkWidget extends WidgetType {
   }
 }
 
-class WysiwygSpacingWidget extends WidgetType {
+export const typographySettingsEffect = StateEffect.define();
+
+class WysiwygHeightEstimateWidget extends WidgetType {
   constructor(height, key) {
     super();
     this.height = Math.max(0, Number(height) || 0);
@@ -485,7 +487,7 @@ class WysiwygSpacingWidget extends WidgetType {
 
   eq(other) {
     return (
-      other instanceof WysiwygSpacingWidget &&
+      other instanceof WysiwygHeightEstimateWidget &&
       other.height === this.height &&
       other.key === this.key
     );
@@ -493,8 +495,9 @@ class WysiwygSpacingWidget extends WidgetType {
 
   toDOM() {
     const element = document.createElement('div');
-    element.className = 'cm-wysiwyg-spacing';
-    element.style.height = `${this.height}px`;
+    element.className = 'cm-wysiwyg-height-estimate';
+    element.style.cssText =
+      'height:0;margin:0;padding:0;border:0;overflow:hidden;';
     element.setAttribute('aria-hidden', 'true');
     return element;
   }
@@ -504,6 +507,8 @@ class WysiwygSpacingWidget extends WidgetType {
   }
 }
 
+const imageAspectCache = new Map();
+
 class ImagePreviewWidget extends WidgetType {
   constructor(url, alt) {
     super();
@@ -512,7 +517,12 @@ class ImagePreviewWidget extends WidgetType {
   }
 
   get estimatedHeight() {
-    return 200;
+    const aspect = imageAspectCache.get(this.url);
+    if (aspect) {
+      const width = typeof window !== 'undefined' && window.innerWidth ? Math.min(600, window.innerWidth - 32) : 360;
+      return Math.round(width / aspect);
+    }
+    return 180;
   }
 
   eq(other) {
@@ -523,11 +533,22 @@ class ImagePreviewWidget extends WidgetType {
     );
   }
 
-  toDOM() {
+  toDOM(view) {
     const img = document.createElement('img');
     img.src = this.url;
     img.alt = this.alt;
     img.style.cssText = 'max-width: 100%; height: auto; border-radius: 6px; margin: 6px 0; display: block; border: 1px solid var(--border-color, #444);';
+
+    img.onload = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        const aspect = img.naturalWidth / img.naturalHeight;
+        imageAspectCache.set(this.url, aspect);
+        if (view && typeof view.requestMeasure === 'function') {
+          view.requestMeasure();
+        }
+      }
+    };
+
     return img;
   }
 }
@@ -1844,8 +1865,10 @@ export const persistentLayoutField = StateField.define({
     return buildPersistentLayoutDecorations(state);
   },
   update(current, tr) {
-    if (!tr.docChanged) return current;
-    return buildPersistentLayoutDecorations(tr.state);
+    if (tr.docChanged || tr.effects.some(e => e.is(typographySettingsEffect))) {
+      return buildPersistentLayoutDecorations(tr.state);
+    }
+    return current;
   },
   provide: field => EditorView.decorations.from(field)
 });
@@ -4187,6 +4210,13 @@ window.editorBridge = {
       }
     };
     applyFindReplaceButtonLayout(prefs);
+
+    if (activeAdapter && activeAdapter.view) {
+      activeAdapter.view.dispatch({
+        effects: typographySettingsEffect.of(Date.now())
+      });
+      activeAdapter.view.requestMeasure();
+    }
   },
   getMarkdown: function() {
     // Flush active table cell draft if an overlay editor is open
