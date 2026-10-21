@@ -1,4 +1,4 @@
-import { EditorState, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
+import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
@@ -19,7 +19,7 @@ import {
   replaceAll
 } from '@codemirror/search';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
-import { syntaxHighlighting, syntaxTree, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
+import { syntaxHighlighting, syntaxTree, forceParsing, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
 
@@ -935,7 +935,15 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   }
 
   update(update) {
-    if (update.docChanged || update.viewportChanged || update.selectionSet) {
+    const needsRefresh =
+      update.docChanged ||
+      update.viewportChanged ||
+      update.selectionSet ||
+      update.transactions.some((transaction) =>
+        transaction.effects.some((effect) => effect.is(heightMapRefreshEffect))
+      );
+
+    if (needsRefresh) {
       this.decorations = this.buildDecorations(update.view);
     }
   }
@@ -2557,6 +2565,84 @@ class CodeMirrorAdapter {
     this.scrollPersistHandler = null;
     this.visibilityPersistHandler = null;
     this.pageHidePersistHandler = null;
+    this.syntaxRefreshFrame = null;
+    this.syntaxRefreshAttempts = 0;
+    this.syntaxRefreshComplete = false;
+    this.pendingRestorePosition = null;
+  }
+
+  scheduleSyntaxRefresh() {
+    const view = this.view;
+    if (!view) return;
+
+    if (this.syntaxRefreshFrame !== null) {
+      cancelAnimationFrame(this.syntaxRefreshFrame);
+      this.syntaxRefreshFrame = null;
+    }
+    this.syntaxRefreshAttempts = 0;
+    this.syntaxRefreshComplete = false;
+
+    const refresh = () => {
+      if (this.view !== view || !view.dom.isConnected) return;
+
+      if (currentEditorMode === 'source') {
+        this.syntaxRefreshComplete = true;
+        this.syntaxRefreshFrame = null;
+        this.scheduleRestoredPosition();
+        return;
+      }
+
+      const parsed = forceParsing(view, view.state.doc.length, 8);
+      if (parsed) {
+        dispatchWithScrollSnapshot(
+          view,
+          heightMapRefreshEffect.of(null)
+        );
+        this.syntaxRefreshComplete = true;
+        this.syntaxRefreshFrame = null;
+        this.scheduleRestoredPosition();
+        return;
+      }
+
+      this.syntaxRefreshAttempts += 1;
+      if (this.syntaxRefreshAttempts >= 120) {
+        window.AndroidNative?.reportDiagnostic?.(
+          'syntax_parse_timeout',
+          this.syntaxRefreshAttempts
+        );
+        dispatchWithScrollSnapshot(
+          view,
+          heightMapRefreshEffect.of(null)
+        );
+        this.syntaxRefreshComplete = true;
+        this.syntaxRefreshFrame = null;
+        this.scheduleRestoredPosition();
+        return;
+      }
+
+      this.syntaxRefreshFrame = requestAnimationFrame(refresh);
+    };
+
+    this.syntaxRefreshFrame = requestAnimationFrame(refresh);
+  }
+
+  scheduleRestoredPosition() {
+    const view = this.view;
+    const position = this.pendingRestorePosition;
+    if (!view || position == null || !this.syntaxRefreshComplete) return;
+
+    this.pendingRestorePosition = null;
+    requestAnimationFrame(() => {
+      if (this.view !== view || !view.dom.isConnected) return;
+
+      const coords = view.coordsAtPos(position);
+      const scroller = view.scrollDOM;
+      if (!coords || !scroller) return;
+
+      const rect = scroller.getBoundingClientRect();
+      const documentY = coords.top - rect.top + scroller.scrollTop;
+      scroller.scrollTop = Math.max(0, documentY - rect.height * 0.30);
+    });
   }
 
   persistScrollPosition() {
@@ -2769,6 +2855,8 @@ class CodeMirrorAdapter {
     initCustomSearchBar();
     setupFastScrollbar();
     setupTocGestureAndPanel();
+
+    this.scheduleSyntaxRefresh();
   }
 
   setMarkdown(text) {
@@ -2780,6 +2868,7 @@ class CodeMirrorAdapter {
         changes: { from: 0, to: currentDoc.length, insert: text || '' },
         annotations: Transaction.addToHistory.of(false)
       });
+      this.scheduleSyntaxRefresh();
     }
     this.revision = 0;
     setTimeout(() => { this.isProgrammatic = false; }, 20);
@@ -2803,26 +2892,37 @@ class CodeMirrorAdapter {
       if (typeof sel === 'string') {
         sel = JSON.parse(sel);
       }
-      const hasSavedScroll = Number.isFinite(scrollTop) && scrollTop >= 0;
+      const hasSavedSelection = sel && typeof sel.head === 'number';
 
-      if (sel && typeof sel.head === 'number') {
+      if (hasSavedSelection) {
         const len = this.view.state.doc.length;
         const head = Math.min(Math.max(0, sel.head), len);
         const anchor = Math.min(Math.max(0, sel.anchor !== undefined ? sel.anchor : sel.head), len);
+        let selection = EditorSelection.range(anchor, head);
 
-        if (!hasSavedScroll) {
-          scrollToPositionUpperMiddle(this.view, head);
-        } else {
-          this.view.dispatch({
-            selection: { anchor, head }
+        if (currentEditorMode === 'wysiwyg') {
+          const hiddenRanges = [];
+          const hiddenSyntax = this.view.state.field(heightMapField).hiddenSyntaxRanges;
+          hiddenSyntax.between(0, len, (from, to) => {
+            hiddenRanges.push({ from, to });
           });
+          selection = mapSelectionOutsideHiddenSyntax(
+            selection,
+            hiddenRanges,
+            len
+          );
         }
-      }
 
-      if (hasSavedScroll) {
+        this.view.dispatch({ selection });
+        this.pendingRestorePosition = selection.main.head;
+      } else if (Number.isFinite(scrollTop) && scrollTop >= 0) {
         requestAnimationFrame(() => {
           if (this.view) this.view.scrollDOM.scrollTop = scrollTop;
         });
+      }
+
+      if (this.syntaxRefreshComplete) {
+        this.scheduleRestoredPosition();
       }
     } catch (e) {
       console.error('Error setting CodeMirror selection:', e);
@@ -2879,6 +2979,11 @@ class CodeMirrorAdapter {
 
   destroy() {
     this.persistScrollPosition();
+
+    if (this.syntaxRefreshFrame !== null) {
+      cancelAnimationFrame(this.syntaxRefreshFrame);
+      this.syntaxRefreshFrame = null;
+    }
 
     if (this.view && this.scrollPersistHandler) {
       this.view.scrollDOM.removeEventListener(
