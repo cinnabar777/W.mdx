@@ -16,7 +16,7 @@ import {
   replaceAll
 } from '@codemirror/search';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
-import { syntaxHighlighting, syntaxTree, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
+import { syntaxHighlighting, syntaxTree, ensureSyntaxTree, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
 
@@ -800,7 +800,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   }
 
   update(update) {
-    if (update.docChanged || update.viewportChanged || update.selectionSet) {
+    const isWysiwyg = currentEditorMode === 'wysiwyg';
+    if (
+      update.docChanged ||
+      update.selectionSet ||
+      (!isWysiwyg && update.viewportChanged)
+    ) {
       this.decorations = this.buildDecorations(update.view);
     }
   }
@@ -840,10 +845,20 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       return Decoration.none;
     }
 
-    const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
     const doc = view.state.doc;
+    const tree = isPureWysiwyg
+      ? ensureSyntaxTree(view.state, doc.length, 250)
+      : syntaxTree(view.state);
+
+    if (!tree) {
+      throw new Error('Could not parse the complete document for WYSIWYG rendering');
+    }
+
+    const decorationRanges = isPureWysiwyg
+      ? [{ from: 0, to: doc.length }]
+      : view.visibleRanges;
 
     const getQuotedLineInfo = (lineNum) => {
       if (lineNum < 1 || lineNum > doc.lines) return null;
@@ -872,7 +887,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const processedBlockquoteLines = new Set();
     const calloutLineAttributes = new Map(); // lineFrom -> { type, depth }
 
-    for (const { from, to } of view.visibleRanges) {
+    for (const { from, to } of decorationRanges) {
       const firstVisibleLine = doc.lineAt(from).number;
       const lastVisibleLine = doc.lineAt(Math.max(from, to - 1)).number;
 
@@ -1068,7 +1083,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
       }
     }
-    for (const { from, to } of view.visibleRanges) {
+    for (const { from, to } of decorationRanges) {
       tree.iterate({
         from,
         to,
