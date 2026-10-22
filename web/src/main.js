@@ -214,7 +214,7 @@ function rememberWidgetHeight(view, key, element) {
       if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
         measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
       }
-      scheduleHeightMapRefresh(view);
+      view.requestMeasure();
     }
   });
 }
