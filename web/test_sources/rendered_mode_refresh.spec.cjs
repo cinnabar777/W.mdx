@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
+const { computeWysiwygViewportMargin } = require('../src/viewportMargin.js');
 
 const dom = new JSDOM('<!DOCTYPE html><html><body><div id="editor-container"><div id="editor"></div></div></body></html>', { pretendToBeVisual: true, url: 'https://wmdx.test/' });
 global.window = dom.window;
@@ -45,6 +46,10 @@ Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetHeight', {
 Object.defineProperty(dom.window.HTMLElement.prototype, 'clientHeight', {
   get() { return 200; }
 });
+Object.defineProperty(dom.window.HTMLElement.prototype, 'scrollHeight', {
+  get() { return this._scrollHeight || 2000; },
+  set(val) { this._scrollHeight = val; }
+});
 Object.defineProperty(dom.window.HTMLElement.prototype, 'scrollTop', {
   get() { return this._scrollTop || 0; },
   set(val) { this._scrollTop = val; }
@@ -54,12 +59,12 @@ const RangeProto = dom.window.document.createRange().constructor.prototype;
 RangeProto.getClientRects = function() {
   const lineIdx = getLineIndex(this.startContainer);
   const top = lineIdx * 20;
-  return [{ top, bottom: top + 19.9, left: 0, right: 500, width: 500, height: 19.9, x: 0, y: top }];
+  return [{ top, bottom: top + 19.9, left: 0, right: 390, width: 390, height: 19.9, x: 0, y: top }];
 };
 RangeProto.getBoundingClientRect = function() {
   const lineIdx = getLineIndex(this.startContainer);
   const top = lineIdx * 20;
-  return { top, bottom: top + 19.9, left: 0, right: 500, width: 500, height: 19.9, x: 0, y: top };
+  return { top, bottom: top + 19.9, left: 0, right: 390, width: 390, height: 19.9, x: 0, y: top };
 };
 
 require('../src/main.js');
@@ -71,8 +76,10 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
   const mostlyPlainDoc = Array.from({ length: 672 }, (_, index) => {
     if (index % 80 === 0) return `## Section ${index / 80 + 1}`;
     if (index % 35 === 0) return 'A paragraph with **bold** and _italic_ text.';
-    return `Plain text paragraph ${index + 1} with ordinary words.`;
+    return `Plain text paragraph ${index + 1} with ordinary words and soft wrapping across lines.`;
   }).join('\n');
+
+  assert.equal(computeWysiwygViewportMargin(390), 1560, 'Overscan helper returns four viewport heights');
 
   async function assertModeRestore(markdownText, label, targetScroll = 400) {
     window.editorBridge.setMarkdown(markdownText);
@@ -97,6 +104,44 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
     }
   }
 
+  function performBoundedScrollSweep(docText, label) {
+    window.editorBridge.setMarkdown(docText);
+    const scroller = document.querySelector('#editor .cm-scroller');
+    if (!scroller) return;
+
+    const viewportHeight = 390;
+    const stepIncrement = Math.floor(viewportHeight * 0.75);
+    const maxScroll = Math.max(0, scroller.scrollHeight - viewportHeight);
+    const stepCount = Math.min(20, Math.ceil(maxScroll / stepIncrement) + 2);
+
+    let currentReq = 0;
+    for (let step = 0; step < stepCount; step++) {
+      scroller.scrollTop = currentReq;
+      const actualScroll = scroller.scrollTop;
+      const delta = Math.abs(actualScroll - currentReq);
+      assert.ok(
+        delta <= 32,
+        `${label}: top-to-bottom step ${step} delta ${delta} exceeds 32px threshold (req: ${currentReq}, actual: ${actualScroll})`
+      );
+
+      if (currentReq >= maxScroll) break;
+      currentReq = Math.min(maxScroll, currentReq + stepIncrement);
+    }
+
+    for (let step = 0; step < stepCount; step++) {
+      scroller.scrollTop = currentReq;
+      const actualScroll = scroller.scrollTop;
+      const delta = Math.abs(actualScroll - currentReq);
+      assert.ok(
+        delta <= 32,
+        `${label}: bottom-to-top step ${step} delta ${delta} exceeds 32px threshold (req: ${currentReq}, actual: ${actualScroll})`
+      );
+
+      if (currentReq <= 0) break;
+      currentReq = Math.max(0, currentReq - stepIncrement);
+    }
+  }
+
   // 1. Verify WYSIWYG heading rendering
   await window.editorBridge.setEditorMode('wysiwyg');
   window.editorBridge.setMarkdown(stressDoc);
@@ -113,9 +158,12 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
   await assertModeRestore(mostlyPlainDoc, 'mostly plain-text document', 400);
   await assertModeRestore(mostlyPlainDoc, 'zero scroll document', 0);
 
+  // 4. Bounded scroll sweep checks
+  performBoundedScrollSweep(mostlyPlainDoc, 'mostly plain-text document');
+  performBoundedScrollSweep(stressDoc, 'Markdown cheat sheet');
+
   // Clean up
   if (window.editorBridge && typeof window.editorBridge.destroy === 'function') {
     window.editorBridge.destroy();
   }
-  process.exit(0);
 });
