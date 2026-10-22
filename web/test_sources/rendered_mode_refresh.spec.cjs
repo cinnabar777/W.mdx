@@ -5,7 +5,18 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { computeWysiwygViewportMargin } = require('../src/viewportMargin.js');
 
-const dom = new JSDOM('<!DOCTYPE html><html><body><div id="editor-container"><div id="editor"></div></div></body></html>', { pretendToBeVisual: true, url: 'https://wmdx.test/' });
+const dom = new JSDOM('<!DOCTYPE html><html><body><div id="editor-container"><div id="editor"></div></div></body></html>', {
+  pretendToBeVisual: true,
+  url: 'https://wmdx.test/',
+  beforeParse(window) {
+    window.AndroidNative = {
+      onHostReady: () => {},
+      onEditorReady: () => {},
+      reportDiagnostic: () => {}
+    };
+  }
+});
+
 global.window = dom.window;
 global.document = dom.window.document;
 global.navigator = dom.window.navigator;
@@ -89,6 +100,13 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
       await window.editorBridge.setEditorMode(mode);
 
       const scroller = document.querySelector('#editor .cm-scroller');
+      const expectedAnchor = mode === 'wysiwyg' ? 'none' : 'auto';
+      assert.equal(
+        scroller ? scroller.style.overflowAnchor : '',
+        expectedAnchor,
+        `scroller overflowAnchor style is ${expectedAnchor} in ${mode}`
+      );
+
       if (targetScroll > 0) {
         assert.ok(
           scroller !== null,
@@ -166,4 +184,5 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
   if (window.editorBridge && typeof window.editorBridge.destroy === 'function') {
     window.editorBridge.destroy();
   }
+  dom.window.close();
 });

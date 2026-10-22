@@ -2685,6 +2685,9 @@ class CodeMirrorAdapter {
       this.scrollPersistTimer = null;
       this.persistScrollPosition();
     }, 250);
+    if (this.scrollPersistTimer && typeof this.scrollPersistTimer.unref === 'function') {
+      this.scrollPersistTimer.unref();
+    }
   }
 
   async init(containerEl, initialMarkdown = '', modeSnapshot = null) {
@@ -2814,6 +2817,8 @@ class CodeMirrorAdapter {
       viewportMargin
     });
 
+    this.view.scrollDOM.style.overflowAnchor =
+      currentEditorMode === 'wysiwyg' ? 'none' : 'auto';
 
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
     this.visibilityPersistHandler = () => {
@@ -2871,7 +2876,7 @@ class CodeMirrorAdapter {
     this.tableContentWidthObserver.observe(this.view.contentDOM);
 
     updateTableDocumentSelection(this.view);
-    setupNavigationDiagnostics(this.view);
+    this.navigationDiagnosticsCleanup = setupNavigationDiagnostics(this.view);
 
     setupGroupedControlBar();
     initCustomSearchBar();
@@ -2893,7 +2898,8 @@ class CodeMirrorAdapter {
       this.scheduleSyntaxRefresh();
     }
     this.revision = 0;
-    setTimeout(() => { this.isProgrammatic = false; }, 20);
+    const timer = setTimeout(() => { this.isProgrammatic = false; }, 20);
+    if (timer && typeof timer.unref === 'function') timer.unref();
   }
 
   getMarkdown() {
@@ -2980,6 +2986,11 @@ class CodeMirrorAdapter {
       cancelAnimationFrame(this.tableWidthMeasureFrame);
       this.tableWidthMeasureFrame = null;
     }
+    if (typeof this.navigationDiagnosticsCleanup === 'function') {
+      this.navigationDiagnosticsCleanup();
+      this.navigationDiagnosticsCleanup = null;
+    }
+
     if (this.view) {
       this.view.destroy();
       this.view = null;
@@ -5700,6 +5711,9 @@ export function setupNavigationDiagnostics(view) {
 
     clearTimeout(unattributedScrollTimer);
     unattributedScrollTimer = setTimeout(() => finalizeUnattributedScroll(), 300);
+    if (unattributedScrollTimer && typeof unattributedScrollTimer.unref === 'function') {
+      unattributedScrollTimer.unref();
+    }
   };
 
   if (scroller) {
@@ -5707,6 +5721,11 @@ export function setupNavigationDiagnostics(view) {
   }
   window.addEventListener('scroll', onScroll, { passive: true });
   setupFullNavigationCapture(view);
+
+  return () => {
+    if (scroller) scroller.removeEventListener('scroll', onScroll);
+    window.removeEventListener('scroll', onScroll);
+  };
 }
 
 window.addEventListener('DOMContentLoaded', () => {
