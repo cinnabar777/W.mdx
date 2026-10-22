@@ -84,6 +84,24 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Margins &amp; Spacing">
         <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_heading_margin_left"
+            app:title="Heading Left Margin (px)"
+            app:summary="Additional space between the document gutter and headings"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_heading_margin_right"
+            app:title="Heading Right Margin (px)"
+            app:summary="Additional space between headings and the document boundary"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_heading_margin_top"
             app:title="Top Margin (px)"
             app:summary="Spacing above heading elements"

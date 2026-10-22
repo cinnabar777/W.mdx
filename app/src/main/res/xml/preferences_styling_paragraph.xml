@@ -57,6 +57,24 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Margins &amp; Wrapping">
         <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_body_margin_left"
+            app:title="Body Left Margin (px)"
+            app:summary="Space between document edge and paragraph body text"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_body_margin_right"
+            app:title="Body Right Margin (px)"
+            app:summary="Space between document edge and paragraph body text"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_paragraph_margin_top"
             app:title="Top Margin (px)"
             app:summary="Spacing above paragraph elements"

@@ -5,11 +5,20 @@
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="List Spacing &amp; Indentation">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_list_left_indent"
-            app:title="List Left Indent (px)"
+            app:title="List Left Margin (px)"
             app:summary="Left margin / padding for lists"
-            app:min="10"
-            android:max="60"
+            app:min="0"
+            android:max="80"
             app:defaultValue="24"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_list_right_margin"
+            app:title="List Right Margin (px)"
+            app:summary="Right margin for lists"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="0"
             app:showSeekBarValue="true" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
