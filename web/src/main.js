@@ -2833,13 +2833,13 @@ class CodeMirrorAdapter {
     premeasureTableHeights(this.view);
 
     this.lastTableContentWidth = Math.round(
-      containerEl.getBoundingClientRect().width
+      this.view.contentDOM.getBoundingClientRect().width
     );
     this.tableWidthMeasureFrame = null;
     this.tableContentWidthObserver = new ResizeObserver(() => {
       if (!this.view) return;
       const observedWidth = Math.round(
-        containerEl.getBoundingClientRect().width
+        this.view.contentDOM.getBoundingClientRect().width
       );
       if (
         observedWidth <= 0 ||
@@ -2854,7 +2854,7 @@ class CodeMirrorAdapter {
         if (!this.view || !this.view.dom.isConnected) return;
 
         const currentWidth = Math.round(
-          containerEl.getBoundingClientRect().width
+          this.view.contentDOM.getBoundingClientRect().width
         );
         if (currentWidth <= 0 || currentWidth === this.lastTableContentWidth) return;
 
@@ -2866,7 +2866,7 @@ class CodeMirrorAdapter {
         );
       });
     });
-    this.tableContentWidthObserver.observe(containerEl);
+    this.tableContentWidthObserver.observe(this.view.contentDOM);
 
     updateTableDocumentSelection(this.view);
     setupNavigationDiagnostics(this.view);
