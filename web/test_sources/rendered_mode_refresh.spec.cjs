@@ -94,6 +94,15 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
           `${label}: zero scroll position remains at top in ${mode}`
         );
       }
+
+      if (scroller) {
+        const expectedAnchor = mode === 'wysiwyg' ? 'none' : 'auto';
+        assert.equal(
+          scroller.style.overflowAnchor,
+          expectedAnchor,
+          `scroller overflowAnchor is '${expectedAnchor}' in ${mode}`
+        );
+      }
     }
   }
 
