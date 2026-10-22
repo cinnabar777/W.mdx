@@ -121,7 +121,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         })
 
         AppDiagnostics.record(this, "window_created")
-        handleIntent(intent)
+        handleIntent(intent, isRestoration = savedInstanceState != null)
+    }
+
+    override fun onDestroy() {
+        if (isFinishing && !isChangingConfigurations) {
+            WindowRegistry.unregister(this)
+        }
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -182,7 +189,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun handleIntent(intent: android.content.Intent?) {
+    private fun handleIntent(intent: android.content.Intent?, isRestoration: Boolean = false) {
         if (intent == null) return
 
         if (intent.getBooleanExtra("is_new_document", false)) {
@@ -196,7 +203,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return
         }
 
-        val data: Uri? = if (WindowRegistry.hasState(this, taskId)) WindowRegistry.current(this, taskId) else intent.data
+        val routeChecked = intent.getBooleanExtra("window_route_checked", false)
+        val registeredUri = if (WindowRegistry.hasState(this, taskId)) WindowRegistry.current(this, taskId) else null
+        val resolvedUriString = WindowPolicy.resolveDocumentUri(
+            restoringActivity = isRestoration,
+            hasRegisteredState = WindowRegistry.hasState(this, taskId),
+            registeredUri = registeredUri?.normalizeScheme()?.toString(),
+            incomingUri = intent.data?.normalizeScheme()?.toString()
+        )
+        val data: Uri? = resolvedUriString?.let(Uri::parse)
+
+        AppDiagnostics.record(this, "handle_intent_uri",
+            "incoming=${WindowPolicy.fingerprintUri(intent.data?.normalizeScheme()?.toString())} registered=${WindowPolicy.fingerprintUri(registeredUri?.normalizeScheme()?.toString())} restoring=$isRestoration selected=${WindowPolicy.fingerprintUri(resolvedUriString)} skipFocus=$routeChecked")
 
         if (data != null) {
             if (currentFileUri == data) {
@@ -205,7 +223,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
             WindowRegistry.register(this, data)
             if (isEditorReady) {
-                openFile(data)
+                openFile(data, skipExistingWindowFocus = routeChecked)
             } else {
                 pendingOpenUri = data
             }
@@ -581,7 +599,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun openFile(uri: Uri, rememberHistory: Boolean = true, forceReload: Boolean = false) {
+    private fun openFile(uri: Uri, rememberHistory: Boolean = true, forceReload: Boolean = false, skipExistingWindowFocus: Boolean = false) {
         if (!isEditorReady) {
             pendingOpenUri = uri
             return
@@ -589,7 +607,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (!forceReload && currentFileUri == uri && !isDirty) return
-        if (WindowRegistry.focus(this, uri, excludeTask = taskId)) return
+        if (!skipExistingWindowFocus && WindowRegistry.focus(this, uri, excludeTask = taskId)) return
         if (rememberHistory && currentFileUri != null) {
             documentHistoryStack.push(currentFileUri)
         }

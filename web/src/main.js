@@ -1230,7 +1230,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           const setextHeading = /^SetextHeading([12])$/.exec(node.name);
           const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
 
-          if (headingLevel) {
+          if (headingLevel && !isPureWysiwyg) {
             addLineClass(
               line.from,
               'cm-heading',
@@ -2054,6 +2054,21 @@ function buildHeightMapValue(state) {
     to: doc.length,
     enter: (node) => {
       const line = doc.lineAt(node.from);
+
+      const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
+      const setextHeading = /^SetextHeading([12])$/.exec(node.name);
+      const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
+
+      if (headingLevel) {
+        const headingLine = doc.lineAt(node.from);
+        replacements.push(
+          Decoration.line({
+            attributes: {
+              class: `cm-heading cm-heading-${headingLevel}`
+            }
+          }).range(headingLine.from)
+        );
+      }
 
       if (node.name === 'HeaderMark') {
         const end = Math.min(node.to + 1, line.to);
@@ -4483,6 +4498,12 @@ function setupKeyboardShortcuts() {
 
 // Global JS Bridge exposure
 window.editorBridge = {
+  destroy: function() {
+    if (activeAdapter) {
+      activeAdapter.destroy();
+      activeAdapter = null;
+    }
+  },
   openLinkInsertionDialog: function() {
     openLinkInsertionDialog();
   },
