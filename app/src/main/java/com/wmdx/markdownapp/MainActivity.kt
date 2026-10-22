@@ -696,12 +696,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val key = "doc_$fileName"
-        val savedSelection = prefs.getString("cursor_sel_$key", null)
         val savedScroll = prefs.getInt("cursor_scroll_$key", 0)
-        if (savedSelection != null || savedScroll > 0) {
-            val escapedSelection = JSONObjectWrapper.quote(savedSelection ?: "")
-            webView.evaluateJavascript("window.editorBridge.setSelectionState($escapedSelection, $savedScroll);", null)
-        }
+        webView.evaluateJavascript("window.editorBridge.setScrollPosition($savedScroll);", null)
     }
 
     private fun handleSaveFile() {
@@ -1071,12 +1067,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun onSelectionChanged(selectionJson: String) {
-            val fileName = currentFileName
-            if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
-            if (selectionJson.isEmpty() || selectionJson == "{\"path\":[],\"offset\":0}" || selectionJson == "{}") return
-            val key = "doc_$fileName"
-            val prefs = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
-            prefs.edit().putString("cursor_sel_$key", selectionJson).apply()
+            // Live selection updates are not persisted as return scroll position
         }
 
         @JavascriptInterface

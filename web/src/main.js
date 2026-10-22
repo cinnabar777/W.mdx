@@ -2584,7 +2584,7 @@ class CodeMirrorAdapter {
     this.syntaxRefreshFrame = null;
     this.syntaxRefreshAttempts = 0;
     this.syntaxRefreshComplete = false;
-    this.pendingRestorePosition = null;
+    this.pendingRestoreScrollTop = null;
   }
 
   scheduleSyntaxRefresh() {
@@ -2604,7 +2604,7 @@ class CodeMirrorAdapter {
       if (currentEditorMode === 'source') {
         this.syntaxRefreshComplete = true;
         this.syntaxRefreshFrame = null;
-        this.scheduleRestoredPosition();
+        this.scheduleRestoredScrollTop();
         return;
       }
 
@@ -2616,7 +2616,7 @@ class CodeMirrorAdapter {
         );
         this.syntaxRefreshComplete = true;
         this.syntaxRefreshFrame = null;
-        this.scheduleRestoredPosition();
+        this.scheduleRestoredScrollTop();
         return;
       }
 
@@ -2632,7 +2632,7 @@ class CodeMirrorAdapter {
         );
         this.syntaxRefreshComplete = true;
         this.syntaxRefreshFrame = null;
-        this.scheduleRestoredPosition();
+        this.scheduleRestoredScrollTop();
         return;
       }
 
@@ -2642,43 +2642,22 @@ class CodeMirrorAdapter {
     this.syntaxRefreshFrame = requestAnimationFrame(refresh);
   }
 
-  scheduleRestoredPosition() {
+  setScrollPosition(scrollTop) {
+    if (!Number.isFinite(scrollTop) || scrollTop < 0) return;
+    this.pendingRestoreScrollTop = scrollTop;
+    if (this.syntaxRefreshComplete) this.scheduleRestoredScrollTop();
+  }
+
+  scheduleRestoredScrollTop() {
     const view = this.view;
-    const position = this.pendingRestorePosition;
-    if (!view || position == null || !this.syntaxRefreshComplete) return;
+    const scrollTop = this.pendingRestoreScrollTop;
+    if (!view || scrollTop == null || !this.syntaxRefreshComplete) return;
 
-    const restore = (attempt = 0) => {
+    this.pendingRestoreScrollTop = null;
+    requestAnimationFrame(() => {
       if (this.view !== view || !view.dom.isConnected) return;
-      const scroller = view.scrollDOM;
-      if (!scroller) return;
-
-      const coords = view.coordsAtPos(position);
-      if (coords) {
-        this.pendingRestorePosition = null;
-        const rect = scroller.getBoundingClientRect();
-        const documentY = coords.top - rect.top + scroller.scrollTop;
-        scroller.scrollTop = Math.max(0, documentY - rect.height * 0.30);
-        return;
-      }
-
-      if (attempt < 2) {
-        view.dispatch({
-          effects: EditorView.scrollIntoView(position, { y: 'center' })
-        });
-        requestAnimationFrame(() => restore(attempt + 1));
-        return;
-      }
-
-      const block = view.lineBlockAt(position);
-      this.pendingRestorePosition = null;
-      const fallbackY = block.top + view.documentPadding.top;
-      scroller.scrollTop = Math.max(
-        0,
-        fallbackY - scroller.clientHeight * 0.30
-      );
-    };
-
-    requestAnimationFrame(() => restore());
+      view.scrollDOM.scrollTop = scrollTop;
+    });
   }
 
   persistScrollPosition() {
@@ -2779,10 +2758,6 @@ class CodeMirrorAdapter {
               window.AndroidNative.onContentChanged(null, this.revision);
             }
           }
-          if (update.selectionSet && !this.isProgrammatic && window.AndroidNative && typeof window.AndroidNative.onSelectionChanged === 'function') {
-            const state = this.getSelectionState();
-            window.AndroidNative.onSelectionChanged(JSON.stringify(state));
-          }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             updateTableDocumentSelection(update.view);
           }
@@ -2839,9 +2814,6 @@ class CodeMirrorAdapter {
       viewportMargin
     });
 
-    this.pendingRestorePosition = modeSnapshot?.selection
-      ? this.view.state.selection.main.head
-      : null;
 
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
     this.visibilityPersistHandler = () => {
@@ -2929,55 +2901,6 @@ class CodeMirrorAdapter {
     return this.view.state.doc.toString();
   }
 
-  getSelectionState() {
-    if (!this.view) return { path: [], offset: 0, head: 0, anchor: 0 };
-    const sel = this.view.state.selection.main;
-    return { path: [], offset: sel.head, head: sel.head, anchor: sel.anchor };
-  }
-
-  setSelectionState(stateJson, scrollTop) {
-    if (!this.view) return;
-    try {
-      let sel = typeof stateJson === 'string' ? JSON.parse(stateJson) : stateJson;
-      if (typeof sel === 'string') {
-        sel = JSON.parse(sel);
-      }
-      const hasSavedSelection = sel && typeof sel.head === 'number';
-
-      if (hasSavedSelection) {
-        const len = this.view.state.doc.length;
-        const head = Math.min(Math.max(0, sel.head), len);
-        const anchor = Math.min(Math.max(0, sel.anchor !== undefined ? sel.anchor : sel.head), len);
-        let selection = EditorSelection.range(anchor, head);
-
-        if (currentEditorMode === 'wysiwyg') {
-          const hiddenRanges = [];
-          const hiddenSyntax = this.view.state.field(heightMapField).hiddenSyntaxRanges;
-          hiddenSyntax.between(0, len, (from, to) => {
-            hiddenRanges.push({ from, to });
-          });
-          selection = mapSelectionOutsideHiddenSyntax(
-            selection,
-            hiddenRanges,
-            len
-          );
-        }
-
-        this.view.dispatch({ selection });
-        this.pendingRestorePosition = selection.main.head;
-      } else if (Number.isFinite(scrollTop) && scrollTop >= 0) {
-        requestAnimationFrame(() => {
-          if (this.view) this.view.scrollDOM.scrollTop = scrollTop;
-        });
-      }
-
-      if (this.syntaxRefreshComplete) {
-        this.scheduleRestoredPosition();
-      }
-    } catch (e) {
-      console.error('Error setting CodeMirror selection:', e);
-    }
-  }
 
   undo() {
     if (this.view && typeof undoDepth === 'function' && undoDepth(this.view.state) > 0) {
@@ -4538,6 +4461,9 @@ window.editorBridge = {
       activeAdapter.destroy();
       activeAdapter = null;
     }
+  },
+  setScrollPosition: function(scrollTop) {
+    if (activeAdapter) activeAdapter.setScrollPosition(scrollTop);
   },
   openLinkInsertionDialog: function() {
     openLinkInsertionDialog();

@@ -54,5 +54,5 @@ test('scroll persistence bridges to AndroidNative.onScrollChanged on scrollDOM e
   assert.match(source, /bridge\.onScrollChanged/);
   assert.match(source, /this\.view\.scrollDOM\.addEventListener\(\s*'scroll'/);
   assert.match(source, /this\.view\.scrollDOM\.removeEventListener\(\s*'scroll'/);
-  assert.match(source, /setSelectionState: function/);
+  assert.match(source, /setScrollPosition: function/);
 });
