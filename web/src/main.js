@@ -1,5 +1,6 @@
 import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
+import { computeWysiwygViewportMargin } from './viewportMargin.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
@@ -2646,18 +2647,38 @@ class CodeMirrorAdapter {
     const position = this.pendingRestorePosition;
     if (!view || position == null || !this.syntaxRefreshComplete) return;
 
-    this.pendingRestorePosition = null;
-    requestAnimationFrame(() => {
+    const restore = (attempt = 0) => {
       if (this.view !== view || !view.dom.isConnected) return;
+      const scroller = view.scrollDOM;
+      if (!scroller) return;
 
       const coords = view.coordsAtPos(position);
-      const scroller = view.scrollDOM;
-      if (!coords || !scroller) return;
+      if (coords) {
+        this.pendingRestorePosition = null;
+        const rect = scroller.getBoundingClientRect();
+        const documentY = coords.top - rect.top + scroller.scrollTop;
+        scroller.scrollTop = Math.max(0, documentY - rect.height * 0.30);
+        return;
+      }
 
-      const rect = scroller.getBoundingClientRect();
-      const documentY = coords.top - rect.top + scroller.scrollTop;
-      scroller.scrollTop = Math.max(0, documentY - rect.height * 0.30);
-    });
+      if (attempt < 2) {
+        view.dispatch({
+          effects: EditorView.scrollIntoView(position, { y: 'center' })
+        });
+        requestAnimationFrame(() => restore(attempt + 1));
+        return;
+      }
+
+      const block = view.lineBlockAt(position);
+      this.pendingRestorePosition = null;
+      const fallbackY = block.top + view.documentPadding.top;
+      scroller.scrollTop = Math.max(
+        0,
+        fallbackY - scroller.clientHeight * 0.30
+      );
+    };
+
+    requestAnimationFrame(() => restore());
   }
 
   persistScrollPosition() {
@@ -2802,11 +2823,25 @@ class CodeMirrorAdapter {
       startState = startState.update({ selection }).state;
     }
 
+    const viewportHeight = Math.max(
+      containerEl.clientHeight || 0,
+      window.visualViewport?.height || 0,
+      window.innerHeight || 0
+    );
+    const viewportMargin = currentEditorMode === 'wysiwyg'
+      ? computeWysiwygViewportMargin(viewportHeight)
+      : 1000;
+
     this.view = new EditorView({
       state: startState,
       parent: containerEl,
-      scrollTo: modeSnapshot?.scroll
+      scrollTo: modeSnapshot?.scroll,
+      viewportMargin
     });
+
+    this.pendingRestorePosition = modeSnapshot?.selection
+      ? this.view.state.selection.main.head
+      : null;
 
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
     this.visibilityPersistHandler = () => {

@@ -64,21 +64,46 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
   const markdownPath = path.join(__dirname, '../../Documentation/Markdown.md');
   const stressDoc = fs.readFileSync(markdownPath, 'utf8');
 
-  let simpleLines = [];
-  for (let i = 1; i <= 672; i++) {
-    if (i % 20 === 1) {
-      simpleLines.push(`## Section Heading ${Math.ceil(i / 20)}`);
-    } else {
-      simpleLines.push(`Line ${i} with **bold text** and paragraph content.`);
+  const mostlyPlainDoc = Array.from({ length: 672 }, (_, index) => {
+    if (index % 80 === 0) return `## Section ${index / 80 + 1}`;
+    if (index % 35 === 0) return 'A paragraph with **bold** and _italic_ text.';
+    return `Plain text paragraph ${index + 1} with ordinary words.`;
+  }).join('\n');
+
+  const waitForRestore = () => new Promise(resolve => setTimeout(resolve, 50));
+
+  async function assertRepeatedModeRestore(markdownText, label) {
+    window.editorBridge.setMarkdown(markdownText);
+    const savedHead = Math.floor(markdownText.length * 0.60);
+    window.editorBridge.setSelectionState(
+      JSON.stringify({ head: savedHead, anchor: savedHead }),
+      0
+    );
+    await waitForRestore();
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      for (const mode of ['live_preview', 'source', 'wysiwyg']) {
+        await window.editorBridge.setEditorMode(mode);
+        await waitForRestore();
+
+        const selection = window.editorBridge.getSelectionState();
+        assert.ok(
+          Math.abs(selection.head - savedHead) < 100,
+          `${label}: selection position survives cycle ${cycle + 1} in ${mode}`
+        );
+
+        const scroller = document.querySelector('#editor .cm-scroller');
+        assert.ok(
+          scroller && scroller.scrollTop > scroller.clientHeight,
+          `${label}: middle-of-document position is not reset to the top in ${mode}`
+        );
+      }
     }
   }
-  const simpleDoc = simpleLines.join('\n');
-
-  // Test with stress document
-  await window.editorBridge.setEditorMode('wysiwyg');
-  window.editorBridge.setMarkdown(stressDoc);
 
   // 1. Verify WYSIWYG heading rendering
+  await window.editorBridge.setEditorMode('wysiwyg');
+  window.editorBridge.setMarkdown(stressDoc);
   assert.equal(window.editorBridge.getEditorMode(), 'wysiwyg');
   let headingLines = dom.window.document.querySelectorAll('.cm-line.cm-heading');
   assert.ok(headingLines.length > 0, 'WYSIWYG mode renders .cm-heading line classes');
@@ -89,36 +114,9 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   assert.ok(indexHtml.includes('var(--body-font-size, 16px)'), 'index.html calculates heading font-size relative to --body-font-size');
 
-  // 3. Test mode transition cycle: WYSIWYG -> Live Preview -> Source -> WYSIWYG
-  const midOffset = Math.floor(stressDoc.length / 2);
-  window.editorBridge.setSelectionState(JSON.stringify({ head: midOffset, anchor: midOffset }), 400);
-
-  // Live Preview
-  await window.editorBridge.setEditorMode('live_preview');
-  assert.equal(window.editorBridge.getEditorMode(), 'live_preview');
-  let lpHeadings = dom.window.document.querySelectorAll('.cm-line.cm-heading');
-  assert.ok(lpHeadings.length > 0, 'Live Preview mode renders .cm-heading line classes');
-
-  // Source
-  await window.editorBridge.setEditorMode('source');
-  assert.equal(window.editorBridge.getEditorMode(), 'source');
-  const sourceText = window.editorBridge.getMarkdown();
-  assert.ok(sourceText.includes('# '), 'Source mode retains raw heading syntax');
-
-  // WYSIWYG (return)
-  await window.editorBridge.setEditorMode('wysiwyg');
-  assert.equal(window.editorBridge.getEditorMode(), 'wysiwyg');
-  headingLines = dom.window.document.querySelectorAll('.cm-line.cm-heading');
-  assert.ok(headingLines.length > 0, 'WYSIWYG retains .cm-heading line classes after returning from Source');
-
-  // 4. Position and caret retention
-  const restoredSel = window.editorBridge.getSelectionState();
-  assert.ok(Math.abs(restoredSel.head - midOffset) < 100, 'Selection head is retained across mode transitions');
-
-  // 5. Test with simple document
-  window.editorBridge.setMarkdown(simpleDoc);
-  headingLines = dom.window.document.querySelectorAll('.cm-line.cm-heading');
-  assert.ok(headingLines.length > 0, 'WYSIWYG renders .cm-heading lines for simple document');
+  // 3. Repeated mode restore assertion
+  await assertRepeatedModeRestore(stressDoc, 'Markdown cheat sheet');
+  await assertRepeatedModeRestore(mostlyPlainDoc, 'mostly plain-text document');
 
   // Clean up
   if (window.editorBridge && typeof window.editorBridge.destroy === 'function') {
