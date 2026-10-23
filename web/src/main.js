@@ -433,7 +433,8 @@ class CodeBlockHeaderWidget extends WidgetType {
       'padding:4px 10px;border-radius:var(--code-block-border-radius, 6px) ' +
       'var(--code-block-border-radius, 6px) 0 0;font-size:12px;font-weight:bold;' +
       'font-family:monospace;color:var(--code-block-lang-label-color, #fff);' +
-      'user-select:none;border-bottom:1px solid var(--code-block-label-border, rgba(255,255,255,.2));';
+      'user-select:none;border:1px solid var(--code-block-border-color, rgba(255,255,255,.2));' +
+      'border-bottom-width:1px;';
 
     const langSpan = document.createElement('span');
     langSpan.textContent = this.lang;
@@ -443,7 +444,7 @@ class CodeBlockHeaderWidget extends WidgetType {
     copyBtn.textContent = 'COPY';
     copyBtn.style.cssText =
       'background:var(--code-copy-bg, transparent);' +
-      'border:1px solid var(--code-copy-border, rgba(255,255,255,.35));' +
+      'border:1px solid var(--code-block-border-color, rgba(255,255,255,.35));' +
       'color:var(--code-copy-color, inherit);border-radius:3px;' +
       'padding:2px 8px;font-size:11px;cursor:pointer;font-weight:bold;';
 
@@ -1189,6 +1190,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         if (insideListItem) {
           addLineClass(line.from, 'cm-list-item');
+          if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
+            addLineClass(line.from, 'cm-todo-list-item');
+          }
         }
 
         const isLineActive = !isPureWysiwyg && (
@@ -1362,6 +1366,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     for (const lineFrom of calloutLineAttributes.keys()) {
       const line = doc.lineAt(lineFrom);
       const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
+      const hasTaskMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text);
       const classes = lineClasses.get(lineFrom);
       if (classes) {
         if (hasListMarker) {
@@ -1371,6 +1376,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           classes.delete('cm-list-item');
           classes.delete('cm-callout-list-item');
         }
+        if (hasTaskMarker) classes.add('cm-todo-list-item');
+        else classes.delete('cm-todo-list-item');
       }
     }
 
@@ -1498,6 +1505,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               addLineClass(codeLine.from, 'cm-codeblock-line');
               if (l === startLine.number) addLineClass(codeLine.from, 'cm-codeblock-first');
               if (l === endLine.number) addLineClass(codeLine.from, 'cm-codeblock-last');
+              const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(codeLine.text);
+              if (codeLine.to > codeLine.from && !isFenceLine) {
+                builder.push(
+                  Decoration.mark({ class: 'cm-codeblock-text' })
+                    .range(codeLine.from, codeLine.to)
+                );
+              }
             }
             if (line.from === node.from) {
               const codeText = view.state.doc.sliceString(node.from, node.to);
@@ -2023,6 +2037,13 @@ function buildWysiwygCodeBlockDecorations(state) {
             attributes: { class: classes.join(' ') }
           }).range(line.from)
         );
+        const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(line.text);
+        if (line.to > line.from && !isFenceLine) {
+          builder.push(
+            Decoration.mark({ class: 'cm-codeblock-text' })
+              .range(line.from, line.to)
+          );
+        }
       }
 
       if (firstLine.from === node.from) {
@@ -2043,15 +2064,87 @@ function buildWysiwygCodeBlockDecorations(state) {
   return Decoration.set(builder, true);
 }
 
+function rangeTouchesSyntaxNode(state, from, to, nodeNames) {
+  if (!state || !nodeNames.size) return false;
+  const { doc } = state;
+  const start = Math.max(0, Math.min(from, doc.length));
+  const end = Math.max(start, Math.min(to, doc.length));
+  const tree = syntaxTree(state);
+  let found = false;
+
+  tree.iterate({
+    from: start,
+    to: Math.max(start + 1, end),
+    enter(node) {
+      if (nodeNames.has(node.name)) {
+        found = true;
+        return false;
+      }
+    }
+  });
+
+  if (found) return true;
+  for (const position of [start, Math.max(start, end - 1)]) {
+    for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+      if (nodeNames.has(node.name)) return true;
+    }
+  }
+  return false;
+}
+
+function transactionTouchesStructure(tr, {
+  nodeNames = [],
+  markerPattern = /[\n`~|>#*+\-[\]{}]/
+} = {}) {
+  if (!tr.docChanged) return false;
+  const names = new Set(nodeNames);
+  let structural = false;
+
+  tr.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+    if (structural) return;
+    const oldDoc = tr.startState.doc;
+    const newDoc = tr.state.doc;
+    const oldFrom = Math.max(0, Math.min(fromA, oldDoc.length));
+    const oldTo = Math.max(oldFrom, Math.min(toA, oldDoc.length));
+    const newFrom = Math.max(0, Math.min(fromB, newDoc.length));
+    const newTo = Math.max(newFrom, Math.min(toB, newDoc.length));
+    const oldText = oldDoc.sliceString(oldFrom, oldTo);
+    const newText = newDoc.sliceString(newFrom, newTo);
+
+    if (
+      markerPattern.test(oldText) ||
+      markerPattern.test(newText) ||
+      oldDoc.lineAt(oldFrom).from === oldFrom ||
+      newDoc.lineAt(newFrom).from === newFrom ||
+      rangeTouchesSyntaxNode(tr.startState, oldFrom, oldTo, names) ||
+      rangeTouchesSyntaxNode(tr.state, newFrom, newTo, names)
+    ) {
+      structural = true;
+    }
+  });
+
+  return structural;
+}
+
 const wysiwygCodeBlockField = StateField.define({
   create(state) {
     return buildWysiwygCodeBlockDecorations(state);
   },
   update(current, tr) {
-    const refreshHeight = tr.effects.some(effect =>
-      effect.is(heightMapRefreshEffect)
+    const refresh = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect) || effect.is(typographySettingsEffect)
     );
-    if (!tr.docChanged && !refreshHeight) return current;
+    if (!tr.docChanged && !refresh) return current;
+    if (
+      tr.docChanged &&
+      !refresh &&
+      !transactionTouchesStructure(tr, {
+        nodeNames: ['FencedCode', 'CodeBlock'],
+        markerPattern: /[\n`~]/
+      })
+    ) {
+      return current.map(tr.changes);
+    }
     return buildWysiwygCodeBlockDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
@@ -2365,6 +2458,24 @@ export const heightMapField = StateField.define({
       effect.is(typographySettingsEffect)
     );
     if (!tr.docChanged && !refresh) return current;
+    if (
+      tr.docChanged &&
+      !refresh &&
+      !transactionTouchesStructure(tr, {
+        nodeNames: [
+          'ATXHeading1', 'ATXHeading2', 'ATXHeading3',
+          'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
+          'SetextHeading1', 'SetextHeading2', 'ListItem',
+          'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
+          'HorizontalRule', 'TaskMarker', 'Link', 'Image'
+        ]
+      })
+    ) {
+      return {
+        decorations: current.decorations.map(tr.changes),
+        hiddenSyntaxRanges: current.hiddenSyntaxRanges.map(tr.changes)
+      };
+    }
     return buildHeightMapValue(tr.state);
   },
   provide: field =>
@@ -2507,10 +2618,16 @@ export function buildPersistentLayoutDecorations(state) {
         addClass(number, 'cm-list-item');
         addClass(number, 'cm-callout-list-item');
       }
+      if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
+        addClass(number, 'cm-todo-list-item');
+      }
       continue;
     }
     if (insideListItem) {
       addClass(number, 'cm-list-item');
+      if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
+        addClass(number, 'cm-todo-list-item');
+      }
       continue;
     }
 
@@ -2556,10 +2673,27 @@ export const persistentLayoutField = StateField.define({
     return buildPersistentLayoutDecorations(state);
   },
   update(current, tr) {
-    if (tr.docChanged || tr.effects.some(e => e.is(typographySettingsEffect))) {
-      return buildPersistentLayoutDecorations(tr.state);
+    const refresh = tr.effects.some(effect =>
+      effect.is(typographySettingsEffect) ||
+      effect.is(heightMapRefreshEffect)
+    );
+    if (!tr.docChanged && !refresh) return current;
+    if (
+      tr.docChanged &&
+      !refresh &&
+      !transactionTouchesStructure(tr, {
+        nodeNames: [
+          'ATXHeading1', 'ATXHeading2', 'ATXHeading3',
+          'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
+          'SetextHeading1', 'SetextHeading2', 'ListItem',
+          'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
+          'HorizontalRule'
+        ]
+      })
+    ) {
+      return current.map(tr.changes);
     }
-    return current;
+    return buildPersistentLayoutDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
 });
@@ -2569,13 +2703,23 @@ export const tableStateField = StateField.define({
     return buildTableBlockDecorations(state);
   },
   update(current, tr) {
+    const refresh = tr.effects.some(effect =>
+      effect.is(tableHeightEstimatesChanged) ||
+      effect.is(heightMapRefreshEffect) ||
+      effect.is(typographySettingsEffect)
+    );
+    if (!tr.docChanged && !refresh) return current;
     if (
-      tr.docChanged ||
-      tr.effects.some(effect => effect.is(tableHeightEstimatesChanged))
+      tr.docChanged &&
+      !refresh &&
+      !transactionTouchesStructure(tr, {
+        nodeNames: ['Table'],
+        markerPattern: /[\n|]/
+      })
     ) {
-      return buildTableBlockDecorations(tr.state);
+      return current.map(tr.changes);
     }
-    return current;
+    return buildTableBlockDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
 });
@@ -4779,6 +4923,10 @@ window.editorBridge = {
       'list-wrap-under-text',
       prefs.pref_list_wrap_under_text === true
     );
+    document.body.classList.toggle(
+      'todo-hide-extra-bullet',
+      prefs.pref_todo_hide_extra_bullet === true
+    );
     if (typeof window.editorBridge.setLineWrap === 'function') {
       window.editorBridge.setLineWrap(prefs.pref_line_wrap !== false);
     }
@@ -4807,52 +4955,61 @@ window.editorBridge = {
       : null;
     setCssVar('--heading-scale', globalHeadingScale);
 
-    const globalHeadingWeight = prefs.pref_font_weight_heading;
-    const globalHeadingAlign = prefs.pref_heading_align;
-    const globalHeadingLineHeight = prefs.pref_heading_line_height;
-    const globalHeadingLetterSpacing = prefs.pref_heading_letter_spacing;
-    const globalHeadingTransform = prefs.pref_heading_text_transform;
-    const globalHeadingUnderlineStyle = prefs.pref_heading_underline_style;
-    const globalHeadingUnderlineThickness = prefs.pref_heading_underline_thickness;
-    const globalHeadingUnderlineColor = prefs.pref_heading_underline_color;
-    const globalHeadingMarginTop = prefs.pref_heading_margin_top;
-    const globalHeadingMarginBottom = prefs.pref_heading_margin_bottom;
+    setCssVar('--heading-color', androidArgbToCss(prefs.pref_heading_color));
+    setCssVar('--heading-font-weight', prefs.pref_font_weight_heading);
+    setCssVar('--heading-align', prefs.pref_heading_align);
+    setCssVar('--heading-line-height', prefs.pref_heading_line_height);
+    setCssVar('--heading-letter-spacing', prefs.pref_heading_letter_spacing, 'px');
+    setCssVar('--heading-word-spacing', prefs.pref_heading_word_spacing, 'px');
+    setCssVar('--heading-text-transform', prefs.pref_heading_text_transform);
+    const globalUnderlineStyle = prefs.pref_heading_underline_style;
+    setCssVar(
+      '--heading-underline-line',
+      globalUnderlineStyle && globalUnderlineStyle !== 'none' ? 'underline' : 'none'
+    );
+    setCssVar(
+      '--heading-underline-style',
+      globalUnderlineStyle && globalUnderlineStyle !== 'none' ? globalUnderlineStyle : 'solid'
+    );
+    setCssVar('--heading-underline-thickness', prefs.pref_heading_underline_thickness, 'px');
+    setCssVar('--heading-underline-color', androidArgbToCss(prefs.pref_heading_underline_color));
+    setCssVar('--heading-margin-top', prefs.pref_heading_margin_top, 'px');
+    setCssVar('--heading-margin-bottom', prefs.pref_heading_margin_bottom, 'px');
 
-    // Preserve per-level colors and any older per-level values, while falling
-    // back to the actual shared keys shown in preferences_styling_headings.xml.
+    // A per-level value is an override, not a multiplier. Removing that
+    // preference removes its CSS variable so the global setting takes over.
     for (let i = 1; i <= 6; i++) {
-      const pColor = prefs['pref_heading_' + i + '_color'];
+      const key = `pref_heading_${i}_`;
+      const pColor = prefs[key + 'color'];
+      const levelScalePercent = prefs[key + 'scale_percent'];
       const oldLevelScale = prefs['pref_heading_' + i + '_scale'];
       const oldLevelFontSize = prefs['pref_heading_' + i + '_font_size'];
-      const pScale = oldLevelScale != null
-        ? oldLevelScale
-        : (oldLevelFontSize != null ? Number(oldLevelFontSize) / 16 : null);
-      const pAlign = prefs['pref_heading_' + i + '_align'] ?? globalHeadingAlign;
-      const pLineHeight = prefs['pref_heading_' + i + '_line_height'] ?? globalHeadingLineHeight;
-      const pLetterSpacing = prefs['pref_heading_' + i + '_letter_spacing'] ?? globalHeadingLetterSpacing;
-      const pTransform = prefs['pref_heading_' + i + '_transform'] ?? globalHeadingTransform;
-      const pUnderlineRaw = prefs['pref_heading_' + i + '_underline_style'] ?? globalHeadingUnderlineStyle;
-      const pUnderlineLine = (pUnderlineRaw && pUnderlineRaw !== 'none') ? 'underline' : 'none';
-      const pUnderlineStyle = (pUnderlineRaw && pUnderlineRaw !== 'none') ? pUnderlineRaw : 'solid';
-      const pUnderlineThickness = prefs['pref_heading_' + i + '_underline_thickness'] ?? globalHeadingUnderlineThickness;
-      const pUnderlineColor = prefs['pref_heading_' + i + '_underline_color'] ?? globalHeadingUnderlineColor;
-      const pMarginTop = prefs['pref_heading_' + i + '_margin_top'] ?? globalHeadingMarginTop;
-      const pMarginBottom = prefs['pref_heading_' + i + '_margin_bottom'] ?? globalHeadingMarginBottom;
-      const pWeight = prefs['pref_heading_' + i + '_font_weight'] ?? globalHeadingWeight;
+      const pScale = levelScalePercent != null
+        ? Number(levelScalePercent) / 100
+        : (oldLevelScale != null
+          ? oldLevelScale
+          : (oldLevelFontSize != null ? Number(oldLevelFontSize) / 16 : null));
+      const pTransform =
+        prefs[key + 'text_transform'] ?? prefs[key + 'transform'];
+      const pUnderlineRaw = prefs[key + 'underline_style'];
+      const pUnderlineEnabled = pUnderlineRaw && pUnderlineRaw !== 'none';
 
-      setCssVar('--heading-' + i + '-color', pColor);
+      setCssVar('--heading-' + i + '-color', androidArgbToCss(pColor));
       setCssVar('--heading-' + i + '-scale', pScale);
-      setCssVar('--heading-' + i + '-align', pAlign);
-      setCssVar('--heading-' + i + '-line-height', pLineHeight);
-      setCssVar('--heading-' + i + '-letter-spacing', pLetterSpacing, 'px');
+      setCssVar('--heading-' + i + '-align', prefs[key + 'align']);
+      setCssVar('--heading-' + i + '-line-height', prefs[key + 'line_height']);
+      setCssVar('--heading-' + i + '-letter-spacing', prefs[key + 'letter_spacing'], 'px');
+      setCssVar('--heading-' + i + '-word-spacing', prefs[key + 'word_spacing'], 'px');
       setCssVar('--heading-' + i + '-text-transform', pTransform);
-      setCssVar('--heading-' + i + '-underline-line', pUnderlineLine);
-      setCssVar('--heading-' + i + '-underline-style', pUnderlineStyle);
-      setCssVar('--heading-' + i + '-underline-thickness', pUnderlineThickness, 'px');
-      setCssVar('--heading-' + i + '-underline-color', pUnderlineColor);
-      setCssVar('--heading-' + i + '-margin-top', pMarginTop, 'px');
-      setCssVar('--heading-' + i + '-margin-bottom', pMarginBottom, 'px');
-      setCssVar('--heading-' + i + '-font-weight', pWeight);
+      setCssVar('--heading-' + i + '-underline-line', pUnderlineRaw == null ? null : (pUnderlineEnabled ? 'underline' : 'none'));
+      setCssVar('--heading-' + i + '-underline-style', pUnderlineRaw == null ? null : (pUnderlineEnabled ? pUnderlineRaw : 'solid'));
+      setCssVar('--heading-' + i + '-underline-thickness', prefs[key + 'underline_thickness'], 'px');
+      setCssVar('--heading-' + i + '-underline-color', androidArgbToCss(prefs[key + 'underline_color']));
+      setCssVar('--heading-' + i + '-margin-left', prefs[key + 'margin_left'], 'px');
+      setCssVar('--heading-' + i + '-margin-right', prefs[key + 'margin_right'], 'px');
+      setCssVar('--heading-' + i + '-margin-top', prefs[key + 'margin_top'], 'px');
+      setCssVar('--heading-' + i + '-margin-bottom', prefs[key + 'margin_bottom'], 'px');
+      setCssVar('--heading-' + i + '-font-weight', prefs[key + 'font_weight']);
     }
 
     // Inline formats
@@ -4890,9 +5047,9 @@ window.editorBridge = {
     setCssVar('--list-line-height', prefs.pref_list_line_height);
     setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
     setCssVar('--list-number-color', prefs.pref_list_number_color);
-    setCssVar('--todo-border-color', prefs.pref_todo_unchecked_color || prefs.pref_todo_unchecked_border_color);
-    setCssVar('--todo-accent-color', prefs.pref_todo_checked_color || prefs.pref_todo_checked_accent_color);
-    setCssVar('--todo-bg-color', prefs.pref_todo_unchecked_bg_color);
+    setCssVar('--todo-border-color', androidArgbToCss(prefs.pref_todo_unchecked_color || prefs.pref_todo_unchecked_border_color));
+    setCssVar('--todo-accent-color', androidArgbToCss(prefs.pref_todo_checked_color || prefs.pref_todo_checked_accent_color));
+    setCssVar('--todo-bg-color', androidArgbToCss(prefs.pref_todo_unchecked_bg_color));
 
     // Blockquotes & Callouts
     setCssVar('--blockquote-border-width', prefs.pref_blockquote_line_thickness, 'px');
@@ -4968,8 +5125,13 @@ window.editorBridge = {
     setCssVar('--table-menu-pressed-bg', prefs.pref_table_menu_pressed_bg_color);
 
     // Code blocks
-    setCssVar('--code-block-color', prefs.pref_code_block_color);
-    setCssVar('--code-block-bg-color', prefs.pref_code_block_bg_color);
+    setCssVar('--code-block-color', androidArgbToCss(prefs.pref_code_block_color));
+    setCssVar('--code-block-bg-color', androidArgbToCss(prefs.pref_code_block_bg_color));
+    setCssVar('--code-block-text-bg-color', androidArgbToCss(prefs.pref_code_block_text_bg_color));
+    setCssVar('--code-block-label-bg', androidArgbToCss(prefs.pref_code_block_label_bg_color));
+    setCssVar('--code-block-border-color', androidArgbToCss(prefs.pref_code_block_border_color));
+    setCssVar('--code-copy-bg', androidArgbToCss(prefs.pref_code_block_copy_bg_color));
+    setCssVar('--code-copy-color', androidArgbToCss(prefs.pref_code_block_copy_text_color));
     setCssVar('--code-block-font-size', prefs.pref_code_block_font_size, 'px');
     setCssVar('--code-block-margin-left', prefs.pref_code_block_margin_left ?? 0, 'px');
     setCssVar('--code-block-margin-right', prefs.pref_code_block_margin_right ?? 0, 'px');

@@ -362,10 +362,17 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling, rootKey)
+        addHeadingLevelPreferences()
 
         val fontKeys = listOf(
             "pref_font_file_body",
             "pref_font_file_heading",
+            "pref_font_file_heading_1",
+            "pref_font_file_heading_2",
+            "pref_font_file_heading_3",
+            "pref_font_file_heading_4",
+            "pref_font_file_heading_5",
+            "pref_font_file_heading_6",
             "pref_font_file_bold",
             "pref_font_file_italic",
             "pref_font_file_code",
@@ -381,6 +388,187 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 true
             }
         }
+    }
+
+    private fun addHeadingLevelPreferences() {
+        val context = requireContext()
+        val screen = preferenceScreen
+        val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
+        val globalScale = sharedPreferences.getInt("pref_heading_scale_percent", 100)
+        val levelScalePreferences = mutableListOf<androidx.preference.SeekBarPreference>()
+
+        fun addResetPreference(
+            key: String,
+            title: String,
+            summary: String,
+            defaultValue: Any? = null
+        ): Preference {
+            return ResetPreference(context).apply {
+                this.key = key
+                this.title = title
+                this.summary = summary
+                if (defaultValue != null) setDefaultValue(defaultValue)
+                isVisible = false
+            }
+        }
+
+        fun addLevel(level: Int) {
+            val prefix = "pref_heading_${level}_"
+            val controls = mutableListOf<Preference>()
+            val header = Preference(context).apply {
+                key = "pref_heading_${level}_settings_toggle"
+                title = "H$level"
+                summary = "Tap to show H$level settings"
+            }
+            screen.addPreference(header)
+
+            val scale = ResetSeekBarPreference(context).apply {
+                key = prefix + "scale_percent"
+                title = "Heading Size Scale (%)"
+                summary = "Overrides the global scale; reset to inherit the current global value"
+                min = 50
+                max = 200
+                setDefaultValue(globalScale)
+                showSeekBarValue = true
+                isVisible = false
+            }
+            controls.add(scale)
+            levelScalePreferences.add(scale)
+
+            val weight = ResetSeekBarPreference(context).apply {
+                key = prefix + "font_weight"
+                title = "Headings Font Weight"
+                summary = "Font weight for this heading level (100–900)"
+                min = 100
+                max = 900
+                setDefaultValue(700)
+                showSeekBarValue = true
+                isVisible = false
+            }
+            controls.add(weight)
+
+            controls.add(addResetPreference(
+                "pref_font_file_heading_$level",
+                "Heading Font File",
+                "Tap to pick a font file (.ttf, .otf, .woff, .woff2)"
+            ))
+            controls.add(ResetColorPickerPreference(context).apply {
+                key = prefix + "color"
+                title = "Heading Color"
+                summary = "Override the global heading color for H$level"
+                setDefaultValue("default")
+                isVisible = false
+            })
+            controls.add(ResetListPreference(context).apply {
+                key = prefix + "align"
+                title = "Heading Text Alignment"
+                summary = "Align this heading level"
+                entries = resources.getTextArray(R.array.align_entries)
+                entryValues = resources.getTextArray(R.array.align_values)
+                setDefaultValue("default")
+                isVisible = false
+            })
+            controls.add(ResetEditTextPreference(context).apply {
+                key = prefix + "line_height"
+                title = "Heading Line Height"
+                summary = "Line-height multiplier for H$level"
+                setDefaultValue("1.2")
+                isVisible = false
+            })
+            controls.add(ResetEditTextPreference(context).apply {
+                key = prefix + "letter_spacing"
+                title = "Heading Letter Spacing (px)"
+                summary = "Space between letters in H$level"
+                setDefaultValue("0px")
+                isVisible = false
+            })
+            controls.add(ResetEditTextPreference(context).apply {
+                key = prefix + "word_spacing"
+                title = "Heading Word Spacing (px)"
+                summary = "Space between words in H$level"
+                setDefaultValue("0px")
+                isVisible = false
+            })
+            controls.add(ResetListPreference(context).apply {
+                key = prefix + "text_transform"
+                title = "Heading Text Transform"
+                summary = "Capitalization transform for H$level"
+                entries = resources.getTextArray(R.array.text_transform_entries)
+                entryValues = resources.getTextArray(R.array.text_transform_values)
+                setDefaultValue("none")
+                isVisible = false
+            })
+            controls.add(ResetListPreference(context).apply {
+                key = prefix + "underline_style"
+                title = "Underline Style"
+                summary = "Text decoration for H$level"
+                entries = resources.getTextArray(R.array.underline_style_entries)
+                entryValues = resources.getTextArray(R.array.underline_style_values)
+                setDefaultValue("none")
+                isVisible = false
+            })
+            controls.add(ResetSeekBarPreference(context).apply {
+                key = prefix + "underline_thickness"
+                title = "Underline Thickness (px)"
+                summary = "Underline thickness for H$level"
+                min = 1
+                max = 10
+                setDefaultValue(2)
+                showSeekBarValue = true
+                isVisible = false
+            })
+            controls.add(ResetColorPickerPreference(context).apply {
+                key = prefix + "underline_color"
+                title = "Underline Color"
+                summary = "Override the global underline color for H$level"
+                setDefaultValue("default")
+                isVisible = false
+            })
+            for ((key, title, summary, max) in listOf(
+                Quadruple("margin_left", "Heading Left Margin (px)", "Space before H$level", 80),
+                Quadruple("margin_right", "Heading Right Margin (px)", "Space after H$level", 80),
+                Quadruple("margin_top", "Top Margin (px)", "Space above H$level", 50),
+                Quadruple("margin_bottom", "Bottom Margin (px)", "Space below H$level", 50)
+            )) {
+                controls.add(ResetSeekBarPreference(context).apply {
+                    this.key = prefix + key
+                    this.title = title
+                    this.summary = summary
+                    min = 0
+                    this.max = max
+                    setDefaultValue(if (key == "margin_top") 16 else if (key == "margin_bottom") 8 else 0)
+                    showSeekBarValue = true
+                    isVisible = false
+                })
+            }
+
+            controls.forEach(screen::addPreference)
+            header.summary = "Tap to show H$level settings"
+            header.setOnPreferenceClickListener {
+                val expanded = controls.firstOrNull()?.isVisible != true
+                controls.forEach { it.isVisible = expanded }
+                header.summary = if (expanded) {
+                    "Tap to hide H$level settings"
+                } else {
+                    "Tap to show H$level settings"
+                }
+                true
+            }
+        }
+
+        for (level in 1..6) addLevel(level)
+
+        findPreference<androidx.preference.SeekBarPreference>("pref_heading_scale_percent")
+            ?.setOnPreferenceChangeListener { _, newValue ->
+                val updatedScale = (newValue as? Int) ?: globalScale
+                for (preference in levelScalePreferences) {
+                    if (!sharedPreferences.contains(preference.key)) {
+                        preference.setDefaultValue(updatedScale)
+                        preference.value = updatedScale
+                    }
+                }
+                true
+            }
     }
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
