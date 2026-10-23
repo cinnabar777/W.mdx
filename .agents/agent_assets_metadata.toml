@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "ZYgH0shi05rbks-qQ_GbH"
+uri = "file://Documentation/Replit/Jules_Combined_Typography_Scroll_Repair_2026-10-23.md"
+type = "text"
+title = "Jules handoff: typography and scroll repair"
+description = "Combined, branch-specific work order for the open Typography.md checklist and remaining scroll/lifecycle defects."
+logical_id = "d08ca854-6f6d-4ad9-b3cb-b98d42133c85"
+content_hash = "sha256:f3967fd6dbb81d4985d1b6d8654d81bf9a5022bd461a821996c0f05acd90056f"
+size = 12086
+mtime_ms = 1792775992895
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:e9e5e322-8ffc-42f3-99e5-0ca74633ef17/d08ca854-6f6d-4ad9-b3cb-b98d42133c85/1b070992-541c-40f7-91fc-8f1d6e168e00"
+storage_version_token = "1792776024552802"
+content_type = "text/markdown"
