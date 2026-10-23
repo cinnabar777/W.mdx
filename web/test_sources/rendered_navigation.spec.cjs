@@ -5,7 +5,10 @@ const { JSDOM } = require('jsdom');
 const dom = new JSDOM('<!DOCTYPE html><html><body><div id="editor"></div></body></html>', { pretendToBeVisual: true });
 global.window = dom.window;
 global.document = dom.window.document;
-global.navigator = dom.window.navigator;
+Object.defineProperty(global, 'navigator', {
+  configurable: true,
+  value: dom.window.navigator
+});
 global.MutationObserver = dom.window.MutationObserver;
 global.Window = dom.window.constructor;
 global.Node = dom.window.Node;

@@ -30,6 +30,15 @@ test('Callout regex pattern logic matches types and optional fold markers', () =
   }
 });
 
+test('Markdown cheat sheet keeps the first callout body inside its quoted block', () => {
+  const markdownPath = path.join(__dirname, '../../Documentation/Markdown.md');
+  const markdown = fs.readFileSync(markdownPath, 'utf8');
+  assert.match(
+    markdown,
+    /> \[!info\] header\n> The type identifier determines how the callout looks and feels\./
+  );
+});
+
 test('Callout title calculation retains custom title or capitalizes default type', () => {
   const getDisplayTitle = (type, customTitle) => {
     if (customTitle && customTitle.trim().length > 0) return customTitle.trim();
@@ -53,6 +62,16 @@ test('Callout line classification and marker detection logic in main.js', () => 
   assert.ok(mainSource.includes('cm-callout'), 'Main JS assigns cm-callout line class');
   assert.ok(mainSource.includes('cm-callout-title'), 'Main JS assigns cm-callout-title line class');
   assert.ok(mainSource.includes('cm-blockquote'), 'Main JS retains cm-blockquote line class');
+});
+
+test('callout quote syntax hides its separator space so wrapped text aligns', () => {
+  const quoteMarkBranch = mainSource.match(
+    /if \(node\.name === 'QuoteMark' && !isNodeActive\) \{([\s\S]*?)\n          \}/
+  );
+  assert.ok(quoteMarkBranch, 'QuoteMark decoration branch exists');
+  assert.match(quoteMarkBranch[1], /const end = Math\.min\(node\.to \+ 1, line\.to\)/);
+  assert.match(quoteMarkBranch[1], /hideSyntax\(node\.from, end\)/);
+  assert.doesNotMatch(quoteMarkBranch[1], /isCalloutLine/);
 });
 
 test('Callout parsing excludes code blocks and stops at unquoted lines', () => {

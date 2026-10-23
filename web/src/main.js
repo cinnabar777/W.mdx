@@ -186,6 +186,150 @@ function scheduleHeightMapRefresh(view) {
   });
 }
 
+const listMarkerMeasurementKey = {};
+
+function measureListMarkerGutter(line, marker) {
+  const lineRect = line.getBoundingClientRect();
+  if (!lineRect.width) return null;
+
+  const ownerDocument = line.ownerDocument;
+  const textBlock = line.querySelector('.cm-list-block-text');
+  if (textBlock) {
+    const textRect = Array.from(textBlock.getClientRects()).find(
+      candidate => candidate.width > 0 && candidate.height > 0
+    ) || textBlock.getBoundingClientRect();
+    if (textRect.width > 0 && textRect.height > 0) {
+      return Math.max(0, textRect.left - lineRect.left);
+    }
+  }
+
+  const showText = ownerDocument.defaultView.NodeFilter.SHOW_TEXT;
+  const walker = ownerDocument.createTreeWalker(line, showText);
+  let textNode;
+
+  while ((textNode = walker.nextNode())) {
+    if (textNode.parentElement?.closest(
+      '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-hidden-syntax'
+    )) {
+      continue;
+    }
+
+    for (let offset = 0; offset < textNode.nodeValue.length; offset++) {
+      const range = ownerDocument.createRange();
+      range.setStart(textNode, offset);
+      range.setEnd(textNode, offset + 1);
+      const rect = Array.from(range.getClientRects()).find(
+        candidate => candidate.width > 0 && candidate.height > 0
+      );
+      if (rect) {
+        return Math.max(0, rect.left - lineRect.left);
+      }
+    }
+  }
+
+  const markerRect = marker.getBoundingClientRect();
+  const markerStyle = ownerDocument.defaultView.getComputedStyle(marker);
+  const markerGap = Number.parseFloat(markerStyle.marginRight) || 4;
+  return Math.max(0, markerRect.right - lineRect.left + markerGap);
+}
+
+function listItemTextRange(tree, doc, line, markerEnd) {
+  let from = markerEnd;
+  tree.iterate({
+    from: markerEnd,
+    to: line.to,
+    enter: node => {
+      if (node.name === 'TaskMarker') from = Math.max(from, node.to);
+    }
+  });
+  while (from < line.to && /[ \t]/.test(doc.sliceString(from, from + 1))) {
+    from++;
+  }
+  return from < line.to ? { from, to: line.to } : null;
+}
+
+function scheduleListMarkerMeasurements(view, force = false) {
+  if (
+    !view ||
+    !view.dom?.isConnected ||
+    !document.body.classList.contains('list-wrap-under-text')
+  ) {
+    return;
+  }
+
+  view.requestMeasure({
+    key: listMarkerMeasurementKey,
+    read: () => {
+      const lines = Array.from(
+        view.contentDOM.querySelectorAll('.cm-line.cm-list-item')
+      );
+
+      const measurements = [];
+      for (const line of lines) {
+        if (
+          !force &&
+          line.style.getPropertyValue('--list-marker-gutter')
+        ) {
+          continue;
+        }
+
+        const marker = line.querySelector(
+          '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox'
+        );
+        if (!marker) {
+          measurements.push({ line });
+          continue;
+        }
+
+        const gutter = measureListMarkerGutter(line, marker);
+        if (Number.isFinite(gutter) && gutter > 0) {
+          measurements.push({ line, gutter });
+        } else {
+          measurements.push({ line });
+        }
+      }
+      return { enabled: true, measurements };
+    },
+    write: result => {
+      if (!result) return;
+      for (const { line, gutter } of result.measurements) {
+        if (!line.isConnected || !view.contentDOM.contains(line)) continue;
+        if (result.enabled && Number.isFinite(gutter) && gutter > 0) {
+          line.style.setProperty('--list-marker-gutter', `${gutter}px`);
+        } else {
+          line.style.removeProperty('--list-marker-gutter');
+        }
+      }
+    }
+  });
+}
+
+const listMarkerMeasurementPlugin = ViewPlugin.fromClass(class {
+  constructor(view) {
+    scheduleListMarkerMeasurements(view, true);
+  }
+
+  update(update) {
+    const typographyChanged = update.transactions.some(transaction =>
+      transaction.effects.some(effect =>
+        effect.is(typographySettingsEffect) ||
+        effect.is(heightMapRefreshEffect)
+      )
+    );
+    if (
+      update.docChanged ||
+      update.viewportChanged ||
+      update.geometryChanged ||
+      typographyChanged
+    ) {
+      scheduleListMarkerMeasurements(
+        update.view,
+        update.docChanged || typographyChanged
+      );
+    }
+  }
+}, {});
+
 const measuredWidgetHeights = new Map();
 const MAX_MEASURED_WIDGET_HEIGHTS = 256;
 
@@ -1194,7 +1338,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               }
 
               const currentCallout = activeCalloutsStack[activeCalloutsStack.length - 1];
-              addLineClass(line.from, 'cm-blockquote', 'cm-callout');
+              addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-body');
               calloutLineAttributes.set(line.from, { type: currentCallout.type, depth: currentCallout.depth });
             } else {
               addLineClass(line.from, 'cm-blockquote');
@@ -1215,6 +1359,21 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
       }
     }
+    for (const lineFrom of calloutLineAttributes.keys()) {
+      const line = doc.lineAt(lineFrom);
+      const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
+      const classes = lineClasses.get(lineFrom);
+      if (classes) {
+        if (hasListMarker) {
+          classes.add('cm-list-item');
+          classes.add('cm-callout-list-item');
+        } else {
+          classes.delete('cm-list-item');
+          classes.delete('cm-callout-list-item');
+        }
+      }
+    }
+
     for (const { from, to } of decorationRanges) {
       tree.iterate({
         from,
@@ -1288,18 +1447,25 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                 class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
               }).range(node.from, node.to));
             }
+            if (!isPureWysiwyg) {
+              const textRange = listItemTextRange(tree, doc, line, node.to);
+              if (textRange) {
+                builder.push(
+                  Decoration.mark({ class: 'cm-list-block-text' })
+                    .range(textRange.from, textRange.to)
+                );
+              }
+            }
           }
 
           if (node.name === 'QuoteMark' && !isNodeActive) {
             if (!isPureWysiwyg) {
-              let isCalloutLine = calloutLineAttributes.has(line.from);
-              if (isCalloutLine) {
-                hideSyntax(node.from, node.to);
-              } else {
-                let end = Math.min(node.to + 1, line.to);
-                if (end > node.from) {
-                  hideSyntax(node.from, end);
-                }
+              // Hide the quote marker and its separator together. Leaving the
+              // separator visible shifts the first callout line relative to
+              // wrapped lines, regardless of the user's font settings.
+              const end = Math.min(node.to + 1, line.to);
+              if (end > node.from) {
+                hideSyntax(node.from, end);
               }
             }
           }
@@ -2096,6 +2262,13 @@ function buildHeightMapValue(state) {
         replacements.push(Decoration.replace({
           widget: new ListMarkerWidget(marker, isBullet)
         }).range(node.from, node.to));
+        const textRange = listItemTextRange(tree, doc, line, node.to);
+        if (textRange) {
+          replacements.push(
+            Decoration.mark({ class: 'cm-list-block-text' })
+              .range(textRange.from, textRange.to)
+          );
+        }
       }
 
       if (node.name === 'QuoteMark') {
@@ -2231,6 +2404,8 @@ export function buildPersistentLayoutDecorations(state) {
   const { doc } = state;
   const tree = syntaxTree(state);
   const classesByLine = new Map();
+  const calloutAttributesByLine = new Map();
+  const activeCallouts = [];
 
   const addClass = (lineNumber, className) => {
     if (!classesByLine.has(lineNumber)) {
@@ -2271,13 +2446,69 @@ export function buildPersistentLayoutDecorations(state) {
     // These blocks already have their own full-document decoration fields.
     if (insideTable || insideCodeBlock) continue;
 
+    let calloutInfo = null;
+    const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
+    if (!insideBlockquote || !quotePrefix) {
+      activeCallouts.length = 0;
+    } else {
+      const depth = (quotePrefix[1].match(/>/g) || []).length;
+      while (
+        activeCallouts.length > 0 &&
+        activeCallouts[activeCallouts.length - 1].depth > depth
+      ) {
+        activeCallouts.pop();
+      }
+
+      const opener = line.text.match(
+        /^(\s*(?:>\s*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i
+      );
+      if (opener) {
+        calloutInfo = {
+          type: opener[2].toLowerCase(),
+          depth,
+          isTitle: true
+        };
+        activeCallouts.push(calloutInfo);
+      } else {
+        const currentCallout = activeCallouts[activeCallouts.length - 1];
+        if (currentCallout && currentCallout.depth <= depth) {
+          calloutInfo = {
+            type: currentCallout.type,
+            depth: currentCallout.depth,
+            isTitle: false
+          };
+        }
+      }
+    }
+
     if (headingLevel) {
       addClass(number, 'cm-heading');
       addClass(number, `cm-heading-${headingLevel}`);
     }
-    if (insideBlockquote) addClass(number, 'cm-blockquote');
+    if (calloutInfo) {
+      addClass(number, 'cm-callout');
+      if (calloutInfo.isTitle) {
+        addClass(number, 'cm-callout-title');
+      } else {
+        addClass(number, 'cm-callout-body');
+      }
+      calloutAttributesByLine.set(number, {
+        type: calloutInfo.type,
+        depth: calloutInfo.depth
+      });
+    } else if (insideBlockquote) {
+      addClass(number, 'cm-blockquote');
+    }
     if (isHorizontalRule) addClass(number, 'cm-hr');
 
+    const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
+    if (calloutInfo) {
+      if (hasListMarker) {
+        addClass(number, 'cm-list-item');
+        addClass(number, 'cm-callout-list-item');
+      }
+      continue;
+    }
     if (insideListItem) {
       addClass(number, 'cm-list-item');
       continue;
@@ -2300,9 +2531,18 @@ export function buildPersistentLayoutDecorations(state) {
   const ranges = [];
   for (const [lineNumber, classes] of classesByLine) {
     const lineObj = doc.line(lineNumber);
+    const calloutAttributes = calloutAttributesByLine.get(lineNumber);
     ranges.push(
       Decoration.line({
-        attributes: { class: [...classes].join(' ') }
+        attributes: {
+          class: [...classes].join(' '),
+          ...(calloutAttributes
+            ? {
+                'data-callout-type': calloutAttributes.type,
+                'data-callout-depth': String(calloutAttributes.depth)
+              }
+            : {})
+        }
       }).range(lineObj.from)
     );
   }
@@ -2706,6 +2946,7 @@ class CodeMirrorAdapter {
         cmMarkdown({ extensions: [GFM, GFMTable, GFMStrikethrough, GFMTaskList] }),
         syntaxHighlighting(customHighlightStyle),
         livePreviewPlugin,
+        listMarkerMeasurementPlugin,
         hiddenSyntaxAtomicRanges,
         this.lineWrapCompartment.of(isLineWrapEnabled ? EditorView.lineWrapping : []),
         this.lineNumbersCompartment.of(this.showLineNumbers ? lineNumbers() : []),
@@ -4534,6 +4775,10 @@ window.editorBridge = {
     } else if (prefs.pref_line_wrap === true) {
       document.body.classList.remove('no-line-wrap');
     }
+    document.body.classList.toggle(
+      'list-wrap-under-text',
+      prefs.pref_list_wrap_under_text === true
+    );
     if (typeof window.editorBridge.setLineWrap === 'function') {
       window.editorBridge.setLineWrap(prefs.pref_line_wrap !== false);
     }
@@ -4631,12 +4876,16 @@ window.editorBridge = {
     setCssVar('--footnote-ref-color', prefs.pref_footnote_ref_color);
     setCssVar('--footnote-font-size', prefs.pref_footnote_font_size, 'px');
 
+    // Body & Headings Margins
+    setCssVar('--body-margin-left', prefs.pref_body_margin_left ?? 16, 'px');
+    setCssVar('--body-margin-right', prefs.pref_body_margin_right ?? 16, 'px');
+    setCssVar('--heading-margin-left', prefs.pref_heading_margin_left ?? 0, 'px');
+    setCssVar('--heading-margin-right', prefs.pref_heading_margin_right ?? 0, 'px');
+
     // Lists
-    document.body.classList.toggle(
-      'list-wrap-under-text',
-      prefs.pref_list_wrap_under_text === true
-    );
     setCssVar('--list-left-indent', prefs.pref_list_left_indent, 'px');
+    setCssVar('--list-margin-right', prefs.pref_list_right_margin ?? 0, 'px');
+    setCssVar('--list-marker-gutter', '24px');
     setCssVar('--list-item-spacing', prefs.pref_list_item_spacing, 'px');
     setCssVar('--list-line-height', prefs.pref_list_line_height);
     setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
@@ -4651,7 +4900,12 @@ window.editorBridge = {
     setCssVar('--blockquote-border-color', prefs.pref_blockquote_line_color);
     setCssVar('--blockquote-bg-color', prefs.pref_blockquote_bg_color);
     setCssVar('--blockquote-text-color', prefs.pref_blockquote_text_color);
-    setCssVar('--blockquote-left-margin', prefs.pref_blockquote_left_indent || prefs.pref_blockquote_left_margin, 'px');
+    setCssVar(
+      '--blockquote-left-margin',
+      prefs.pref_blockquote_left_indent ?? prefs.pref_blockquote_left_margin ?? 0,
+      'px'
+    );
+    setCssVar('--blockquote-right-margin', prefs.pref_blockquote_right_margin ?? 0, 'px');
     setCssVar('--blockquote-padding', prefs.pref_blockquote_padding, 'px');
 
     setCssVar('--callout-border-width', prefs.pref_callout_line_thickness, 'px');
@@ -4659,6 +4913,8 @@ window.editorBridge = {
     setCssVar('--callout-border-color', prefs.pref_callout_line_color);
     setCssVar('--callout-bg-color', prefs.pref_callout_bg_color);
     setCssVar('--callout-text-color', prefs.pref_callout_text_color);
+    setCssVar('--callout-margin-left', prefs.pref_callout_margin_left ?? 0, 'px');
+    setCssVar('--callout-margin-right', prefs.pref_callout_margin_right ?? 0, 'px');
     setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
 
     // Callout Shared Header
@@ -4694,6 +4950,8 @@ window.editorBridge = {
     });
 
     // Tables
+    setCssVar('--table-margin-left', prefs.pref_table_margin_left ?? 0, 'px');
+    setCssVar('--table-margin-right', prefs.pref_table_margin_right ?? 0, 'px');
     setCssVar('--table-border-style', prefs.pref_table_border_style);
     setCssVar('--table-border-width', prefs.pref_table_border_thickness || prefs.pref_table_border_width, 'px');
     setCssVar('--table-border-color', prefs.pref_table_border_color);
@@ -4713,6 +4971,8 @@ window.editorBridge = {
     setCssVar('--code-block-color', prefs.pref_code_block_color);
     setCssVar('--code-block-bg-color', prefs.pref_code_block_bg_color);
     setCssVar('--code-block-font-size', prefs.pref_code_block_font_size, 'px');
+    setCssVar('--code-block-margin-left', prefs.pref_code_block_margin_left ?? 0, 'px');
+    setCssVar('--code-block-margin-right', prefs.pref_code_block_margin_right ?? 0, 'px');
     setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
     setCssVar('--code-block-border-radius', prefs.pref_code_block_border_radius, 'px');
     setCssVar('--code-block-line-height', prefs.pref_code_block_line_height);
@@ -4721,6 +4981,10 @@ window.editorBridge = {
     // Dividers
     setCssVar('--hr-margin-left', prefs.pref_hr_margin_left ?? 0, '%');
     setCssVar('--hr-margin-right', prefs.pref_hr_margin_right ?? 0, '%');
+    document.body.classList.toggle(
+      'hr-centered',
+      prefs.pref_hr_centered === true
+    );
     setCssVar('--hr-thickness', prefs.pref_hr_thickness, 'px');
     setCssVar('--hr-style', prefs.pref_hr_style);
     setCssVar('--hr-color', prefs.pref_hr_color);
