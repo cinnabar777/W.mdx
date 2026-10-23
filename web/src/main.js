@@ -551,16 +551,15 @@ class CalloutTitleWidget extends WidgetType {
     span.appendChild(titleSpan);
 
     if (this.foldMarker) {
-      const btn = document.createElement('button');
-      btn.className = 'cm-callout-fold-btn';
-      btn.type = 'button';
-      btn.tabIndex = -1;
-      btn.setAttribute('aria-hidden', 'true');
-      btn.innerHTML = currentlyFolded
-        ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
-        : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
-
-      span.appendChild(btn);
+      if (currentlyFolded) {
+        const btn = document.createElement('button');
+        btn.className = 'cm-callout-fold-btn';
+        btn.type = 'button';
+        btn.tabIndex = -1;
+        btn.setAttribute('aria-hidden', 'true');
+        btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+        span.appendChild(btn);
+      }
 
       const toggleFold = (e) => {
         e.preventDefault();
