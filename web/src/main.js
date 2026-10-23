@@ -4439,6 +4439,11 @@ function setupTocGestureAndPanel() {
     overlay.classList.remove('open');
   };
 
+  if (window.editorBridge) {
+    window.editorBridge.openTocPanel = openToc;
+    window.editorBridge.closeTocPanel = closeToc;
+  }
+
   overlay.onclick = closeToc;
 
   if (globalToggleBtn) {
