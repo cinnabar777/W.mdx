@@ -1,5 +1,3 @@
-
-
 # Typography
 
 # HEADINGS
@@ -10,20 +8,16 @@ All heading settings need to be individualized for each heading, not just global
 
 # PARAGRAPH & BODY TYPOGRAPHY
 
-1. Body text size: works but affects codeblock. 
-2. Paragraph letter spacing: fixed
-3. Body paragraph font: fixed.  
-4. Top margin: fixed. 
+1. --- 
 
 ----------
 # INLINE FORMATS
 
-1. Hyperlinks link decoration: **NOT** working. Links are formatted now — there needs to be a popup when adding links in WYSIWYG view because the code stays hidden thus can't really enter a url. 
-2. Footnote font size: NOT working.
-3. Footnote text color: NOT working.
-4. Footnote reference color: NOT working.
-5. Footnote back link color: NOT working.
-6. Footnote section background: NOT working.
+1. Footnote font size: NOT working.
+2. Footnote text color: NOT working.
+3. Footnote reference color: NOT working.
+4. Footnote back link color: NOT working.
+5. Footnote section background: NOT working.
 
 **footnotes: each setting does not have a reset icon. I think that footnotes are not really functioning properly, probably need a plugin.**
 
@@ -31,78 +25,56 @@ All heading settings need to be individualized for each heading, not just global
 
 # LISTS
 
-Checkbox: need a background color for unchecked, option to hide the bullet in front of a box or proper syntax ` [ ] `, option to color the check mark. 
+1. Checkbox: 
+    1. need option to hide the bullet in front of a box or proper syntax ` [ ] `, 
+    2. option to color the check mark. 
 
-List now indents whole paragraph but the first line is indebted further, remaining lines are flush with bullet. 
-
-Lists bullets are now styled. 
 
 -------------
 
 # BLOCK QUOTES
 
-Callouts skipped: as far as I can see are not functional yet — no toolbar key, no shortcut setting.
+1. Callouts: styled however text alignment is not block — align vertically on the left side, the wrapped lines go further to the left than the first row text. Callouts should format like lists which now have a "style as block" setting. There is a branch Jules is working on this but has had problems. 
 
 -----------
 # TABLES
 
-1. Table boarder style: fixed 🎉
-2. Table boarder thickness: fixed 🎉
-3. Table boarder color: fixed 🎉
-4. Header row background: fixed 🎉
-5. Header text color: fixed 🎉
-6. Header text font weight: fixed 🎉
-7. Cell background color:  fixed 🎉
-8. Cell text color: fixed 🎉
-9. Cell padding: fixed 🎉
+1. ---
+
+___
 
 # CODEBLOCK STYLING
 
-**codeblock needs text background color added**
-
-Bug with the language and copy label: does not appear until cursor is in the codeblock itself.
-
-Language and copy label need styling added to typography: background color, text color, copy background and text colors, boarder colors, etc. Not working at all now. 
+1. **codeblock needs text background color added** — the current background color does not color the background of the text. 
+2. The language and copy label need styling added to typography: background color, text color, copy background and text colors, boarder colors, etc.
 
 -----------
 
 # HORIZONTAL DIVIDERS
 
-1. Line width: fixed — **needs to be centered or a offset**. 
+1. ---
 
 ------------------
 
 # bottom control bar 
 
-All work. 
+1. Will work on in old session. 
 
 -------
 
 # BUGS & ISSUES 
 
 1. Bottom control/toolbar toggle needs color settings for toggle. 
-2. **Text selection**: fixed 
-3. **Text navigation**: fixed. 
-4. **Reset icon**: fixed. Some are misaligned, seems like on sliders. 
-5. Keyboard undo does not work with table. 
-6. Page jumps when 
+2. **Reset icon**: fixed. Some are misaligned, seems like on sliders mostly. 
 
+___
+
+# TEXT SELECTION 
+
+1. selection-endpoint work — the highlighting indents at the first line as if it is not selecting the same as the other lines and the end looks like it is selecting extra. Ask for images. 
+
+___
 
 # ADDITIONS 
 
-1. Color for inactive reset icon. 
-2. Setting for cursor: Color for cursor, blink rate, color for drag balloon,
-
-
-
-
-Defer selection-color and selection-endpoint work
-
-
-
-
-
-
-
-
-
+1.
