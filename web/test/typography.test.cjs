@@ -113,3 +113,153 @@ test('cursor and selection styling page is configured', () => {
   assert.match(source, /setCssVar\('--cursor-color', prefs\.pref_cursor_color\)/);
   assert.match(source, /setCssVar\('--cursor-width', prefs\.pref_cursor_width, 'px'\)/);
 });
+
+test('Wikilinks rendering and refined link styling rules in main.js and index.html', () => {
+  // Regex pattern test for wikilinks
+  const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+
+  const testCases = [
+    { input: '[[Target]]', target: 'Target', alias: undefined },
+    { input: '[[Target|Alias]]', target: 'Target', alias: 'Alias' },
+    { input: '[[#Heading]]', target: '#Heading', alias: undefined },
+    { input: '[[File#Heading]]', target: 'File#Heading', alias: undefined },
+    { input: '[[File#Heading|Custom Alias]]', target: 'File#Heading', alias: 'Custom Alias' }
+  ];
+
+  for (const tc of testCases) {
+    wikilinkRegex.lastIndex = 0;
+    const match = wikilinkRegex.exec(tc.input);
+    assert.ok(match, `Failed to match wikilink: ${tc.input}`);
+    assert.equal(match[1], tc.target, `Target mismatch for ${tc.input}`);
+    assert.equal(match[2], tc.alias, `Alias mismatch for ${tc.input}`);
+  }
+
+  // Embed exclusion check
+  const embedInput = '![[EmbedImage.png]]';
+  wikilinkRegex.lastIndex = 0;
+  const embedMatch = wikilinkRegex.exec(embedInput);
+  assert.equal(embedMatch, null, '![[...]] embeds must not be matched as text wikilinks');
+
+  // Verify main.js contains wikilink decoration
+  assert.ok(source.includes('cm-wikilink'), 'main.js applies cm-wikilink decoration class');
+
+  // Verify index.html contains link refinements
+  assert.ok(indexHtml.includes('text-underline-offset: 3px !important;'), 'index.html includes text-underline-offset');
+  assert.ok(indexHtml.includes('text-decoration-skip-ink: auto !important;'), 'index.html includes text-decoration-skip-ink');
+  assert.ok(indexHtml.includes('cursor: pointer !important;'), 'index.html includes cursor pointer');
+});
+
+test('Link underline thickness and dialog insertion helpers in main.js and XML preferences', () => {
+  const inlineSettingsPath = path.join(
+    __dirname,
+    '../../app/src/main/res/xml/preferences_styling_inline.xml'
+  );
+  const inlineSettings = fs.readFileSync(inlineSettingsPath, 'utf8');
+
+  assert.match(inlineSettings, /app:key="pref_link_underline_thickness"/);
+  assert.match(source, /pref_link_underline_thickness/);
+  assert.match(source, /--link-decoration-thickness/);
+  assert.match(indexHtml, /text-decoration-thickness:\s*var\(--link-decoration-thickness,\s*1px\)\s*!important/);
+
+  assert.match(source, /export function cleanHeadingText/);
+  assert.match(source, /export function scrollToHeading/);
+  assert.match(source, /export function getDocumentHeadings/);
+  assert.match(source, /export function openLinkInsertionDialog/);
+  assert.match(source, /export function openCalloutInsertionDialog/);
+});
+
+test('Heading links inside lists and upper-middle scroll helper', () => {
+  assert.match(source, /if \(insideListItem\) \{\s*addLineClass\(line\.from, 'cm-list-item'\);\s*\}/);
+  assert.match(source, /export function scrollToPositionUpperMiddle/);
+});
+
+test('Margin preferences and CSS variable mappings are defined for all block elements', () => {
+  const resetPrefs = fs.readFileSync(path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'), 'utf8');
+
+  const marginKeys = [
+    { key: 'pref_body_margin_left', default: 16 },
+    { key: 'pref_body_margin_right', default: 16 },
+    { key: 'pref_heading_margin_left', default: 0 },
+    { key: 'pref_heading_margin_right', default: 0 },
+    { key: 'pref_list_left_indent', default: 24 },
+    { key: 'pref_list_right_margin', default: 0 },
+    { key: 'pref_code_block_margin_left', default: 0 },
+    { key: 'pref_code_block_margin_right', default: 0 },
+    { key: 'pref_blockquote_left_indent', default: 0 },
+    { key: 'pref_blockquote_right_margin', default: 0 },
+    { key: 'pref_callout_margin_left', default: 0 },
+    { key: 'pref_callout_margin_right', default: 0 },
+    { key: 'pref_table_margin_left', default: 0 },
+    { key: 'pref_table_margin_right', default: 0 },
+    { key: 'pref_hr_margin_left', default: 0 },
+    { key: 'pref_hr_margin_right', default: 0 },
+    { key: 'pref_hr_centered', default: false },
+    { key: 'pref_list_wrap_under_text', default: false }
+  ];
+
+  for (const m of marginKeys) {
+    assert.ok(resetPrefs.includes(`key == "${m.key}" -> ${m.default}`), `ResetPreferences must set default for ${m.key}`);
+  }
+
+  // CSS Variable mappings in main.js
+  assert.ok(source.includes("'--body-margin-left', prefs.pref_body_margin_left ?? 16, 'px'"));
+  assert.ok(source.includes("'--body-margin-right', prefs.pref_body_margin_right ?? 16, 'px'"));
+  assert.ok(source.includes("'--heading-margin-left', prefs.pref_heading_margin_left ?? 0, 'px'"));
+  assert.ok(source.includes("'--heading-margin-right', prefs.pref_heading_margin_right ?? 0, 'px'"));
+  assert.ok(source.includes("'--list-margin-right', prefs.pref_list_right_margin ?? 0, 'px'"));
+  assert.ok(source.includes("'--code-block-margin-left', prefs.pref_code_block_margin_left ?? 0, 'px'"));
+  assert.ok(source.includes("'--code-block-margin-right', prefs.pref_code_block_margin_right ?? 0, 'px'"));
+  assert.ok(source.includes("'--blockquote-right-margin', prefs.pref_blockquote_right_margin ?? 0, 'px'"));
+  assert.ok(source.includes("'--callout-margin-left', prefs.pref_callout_margin_left ?? 0, 'px'"));
+  assert.ok(source.includes("'--callout-margin-right', prefs.pref_callout_margin_right ?? 0, 'px'"));
+  assert.ok(source.includes("'--table-margin-left', prefs.pref_table_margin_left ?? 0, 'px'"));
+  assert.ok(source.includes("'--table-margin-right', prefs.pref_table_margin_right ?? 0, 'px'"));
+  assert.ok(source.includes("'--hr-margin-left', prefs.pref_hr_margin_left ?? 0, '%'"));
+  assert.ok(source.includes("'--hr-margin-right', prefs.pref_hr_margin_right ?? 0, '%'"));
+  assert.ok(source.includes("prefs.pref_hr_centered === true"));
+  assert.ok(source.includes("prefs.pref_list_wrap_under_text === true"));
+  assert.match(source, /scheduleListMarkerMeasurements\(\s*update\.view,/);
+
+  // CSS rules in index.html
+  assert.ok(indexHtml.includes('padding: 12px var(--body-margin-right, 16px) 12px var(--body-margin-left, 16px) !important;'));
+  assert.ok(indexHtml.includes('margin-left: var(--heading-margin-left, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-right: var(--heading-margin-right, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-right: var(--list-margin-right, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-left: var(--code-block-margin-left, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-right: var(--code-block-margin-right, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-left: var(--blockquote-left-margin, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-right: var(--blockquote-right-margin, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-left: var(--callout-margin-left, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-right: var(--callout-margin-right, 0px) !important;'));
+  assert.ok(indexHtml.includes('.cm-content .cm-blockquote:not(.cm-callout)'));
+  assert.ok(indexHtml.includes('.cm-content .cm-paragraph-first.cm-callout'));
+  assert.ok(indexHtml.includes('body.list-wrap-under-text .cm-content .cm-line.cm-list-item'));
+  assert.ok(indexHtml.includes('.cm-list-block-text'));
+  assert.ok(indexHtml.includes('display: flex !important;'));
+  assert.ok(indexHtml.includes('align-items: flex-start !important;'));
+  assert.ok(indexHtml.includes('flex: 1 1 0% !important;'));
+  assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout:not(.cm-list-item)'));
+  assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-body:not(.cm-callout-list-item)'));
+  assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-list-item'));
+  assert.ok(indexHtml.includes('text-indent: 0 !important;'));
+  assert.ok(indexHtml.includes('body.hr-centered .cm-content .cm-line.cm-hr'));
+  assert.ok(indexHtml.includes('margin-left: var(--table-margin-left, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-right: var(--table-margin-right, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-left: calc(var(--callout-margin-left, 0px) + 12px) !important;'));
+  assert.ok(indexHtml.includes('margin-left: calc(var(--callout-margin-left, 0px) + 24px) !important;'));
+  assert.ok(indexHtml.includes('max-width: calc(100% - var(--hr-margin-left, 0%) - var(--hr-margin-right, 0%)) !important;'));
+
+  const hrPreferences = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_hr.xml'),
+    'utf8'
+  );
+  assert.match(hrPreferences, /app:key="pref_hr_margin_left"[\s\S]*?android:max="50"/);
+  assert.match(hrPreferences, /app:key="pref_hr_margin_right"[\s\S]*?android:max="50"/);
+  assert.match(hrPreferences, /app:key="pref_hr_centered"[\s\S]*?android:defaultValue="false"/);
+
+  const listPreferences = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_lists.xml'),
+    'utf8'
+  );
+  assert.match(listPreferences, /app:key="pref_list_wrap_under_text"[\s\S]*?android:defaultValue="false"/);
+});

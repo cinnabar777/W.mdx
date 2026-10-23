@@ -252,8 +252,7 @@ lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 ### CALLOUTS
 
 > [!info] header
-
-The type identifier determines how the callout looks and feels.
+> The type identifier determines how the callout looks and feels.
 
 Example:
 

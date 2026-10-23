@@ -30,6 +30,15 @@ test('Callout regex pattern logic matches types and optional fold markers', () =
   }
 });
 
+test('Markdown cheat sheet keeps the first callout body inside its quoted block', () => {
+  const markdownPath = path.join(__dirname, '../../Documentation/Markdown.md');
+  const markdown = fs.readFileSync(markdownPath, 'utf8');
+  assert.match(
+    markdown,
+    /> \[!info\] header\n> The type identifier determines how the callout looks and feels\./
+  );
+});
+
 test('Callout title calculation retains custom title or capitalizes default type', () => {
   const getDisplayTitle = (type, customTitle) => {
     if (customTitle && customTitle.trim().length > 0) return customTitle.trim();
@@ -53,6 +62,16 @@ test('Callout line classification and marker detection logic in main.js', () => 
   assert.ok(mainSource.includes('cm-callout'), 'Main JS assigns cm-callout line class');
   assert.ok(mainSource.includes('cm-callout-title'), 'Main JS assigns cm-callout-title line class');
   assert.ok(mainSource.includes('cm-blockquote'), 'Main JS retains cm-blockquote line class');
+});
+
+test('callout quote syntax hides its separator space so wrapped text aligns', () => {
+  const quoteMarkBranch = mainSource.match(
+    /if \(node\.name === 'QuoteMark' && !isNodeActive\) \{([\s\S]*?)\n          \}/
+  );
+  assert.ok(quoteMarkBranch, 'QuoteMark decoration branch exists');
+  assert.match(quoteMarkBranch[1], /const end = Math\.min\(node\.to \+ 1, line\.to\)/);
+  assert.match(quoteMarkBranch[1], /hideSyntax\(node\.from, end\)/);
+  assert.doesNotMatch(quoteMarkBranch[1], /isCalloutLine/);
 });
 
 test('Callout parsing excludes code blocks and stops at unquoted lines', () => {
@@ -111,7 +130,7 @@ test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => 
   assert.ok(mainSource.includes('calloutTypeIcons'), 'calloutTypeIcons map exists');
   assert.ok(mainSource.includes('cm-callout-icon'), 'cm-callout-icon class exists');
   assert.ok(mainSource.includes('cm-callout-title-container'), 'Title container class exists');
-  assert.ok(mainSource.includes("aria-label', `${this.isFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Title container has accessible expand/collapse label');
+  assert.ok(mainSource.includes("aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Title container has accessible expand/collapse label');
   assert.ok(mainSource.includes('foldEffect.of'), 'Title container dispatches foldEffect');
   assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
 });
@@ -129,6 +148,7 @@ test('Nested callout rendering and attributes at depths 1, 2, and 3', () => {
   assert.equal(state.doc.toString(), nestedMd, 'Nested document text remains byte-for-byte identical');
   assert.ok(mainSource.includes("data-callout-type': attrs.type"), 'Line decoration sets data-callout-type attribute');
   assert.ok(mainSource.includes("data-callout-depth': String(attrs.depth)"), 'Line decoration sets data-callout-depth attribute');
+  assert.ok(mainSource.includes('ancestor.info.bodyTo = line.to'), 'Ancestor bodyTo extended across 3-level callout depths');
 });
 
 test('Callout fold placeholder is hidden via CSS in index.html', () => {
@@ -163,7 +183,7 @@ test('Shared callout header controls and per-type override preferences are defin
   // Check CSS Variable Mapping in main.js
   assert.ok(mainSource.includes("'--callout-header-bg', prefs.pref_callout_header_bg_color"), 'main.js sets --callout-header-bg');
   assert.ok(mainSource.includes("'--callout-header-title-color', prefs.pref_callout_header_title_color"), 'main.js sets --callout-header-title-color');
-  assert.ok(mainSource.includes("'--callout-header-title-size', prefs.pref_callout_header_title_size"), 'main.js sets --callout-header-title-size');
+  assert.ok(mainSource.includes("setCssVar('--callout-header-title-size'"), 'main.js sets --callout-header-title-size');
   assert.ok(mainSource.includes("'--callout-header-font-family', prefs.pref_callout_header_font_family"), 'main.js sets --callout-header-font-family');
   assert.ok(mainSource.includes("'--callout-header-font-weight', prefs.pref_callout_header_font_weight"), 'main.js sets --callout-header-font-weight');
   assert.ok(mainSource.includes("'--callout-header-padding', prefs.pref_callout_header_padding"), 'main.js sets --callout-header-padding');
@@ -214,4 +234,46 @@ test('Callout type icon overrides are sanitized and fall back to defaults for in
   assert.equal(sanitizeIcon('warning'), 'warning', 'Valid built-in icon choice is allowed');
   assert.equal(sanitizeIcon('<script>alert(1)</script>'), 'default', 'Arbitrary text/script is sanitized to default');
   assert.equal(sanitizeIcon('invalid_icon_name'), 'default', 'Unknown icon name falls back to default');
+});
+
+test('CodeBlockHeaderWidget rendering, replacement decoration, and copy button logic', () => {
+  assert.ok(mainSource.includes('class CodeBlockHeaderWidget'), 'CodeBlockHeaderWidget exists');
+  assert.ok(mainSource.includes('Decoration.replace({ widget: headerWidget }).range(line.from, line.to)'), 'Inactive code block replaces line with headerWidget');
+  assert.ok(mainSource.includes('Decoration.widget({ widget: headerWidget, side: -1 }).range(line.from)'), 'Active code block inserts headerWidget at line start');
+  assert.ok(mainSource.includes("copyBtn.className = 'cm-codeblock-copy-btn'"), 'CodeBlockHeaderWidget sets COPY button class');
+});
+
+test('wysiwygCodeBlockField, coordsForTargetRow, and selection paint styling', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.ok(mainSource.includes('const wysiwygCodeBlockField = StateField.define'), 'wysiwygCodeBlockField StateField is defined');
+  assert.ok(mainSource.includes('buildWysiwygCodeBlockDecorations'), 'buildWysiwygCodeBlockDecorations function is defined');
+  assert.ok(mainSource.includes('coordsForTargetRow'), 'coordsForTargetRow helper evaluates dual side affinities');
+  assert.ok(mainSource.includes("'.cm-selectionLayer': {\n            zIndex: 2,"), 'Selection layer has zIndex 2');
+  assert.ok(indexHtml.includes('.cm-wp-table-container.cm-document-selection .cm-wp-table th'), 'index.html has gradient overlay rule for selected tables');
+});
+
+test('persistentLayoutField StateField and persistentLayoutClasses filtering in main.js', () => {
+  assert.ok(mainSource.includes('export function buildPersistentLayoutDecorations'), 'buildPersistentLayoutDecorations function exists');
+  assert.ok(mainSource.includes('export const persistentLayoutField = StateField.define'), 'persistentLayoutField StateField exists');
+  assert.ok(mainSource.includes('const persistentLayoutClasses = new Set(['), 'persistentLayoutClasses Set exists');
+  assert.ok(mainSource.includes('!persistentLayoutClasses.has(className)'), 'persistentLayoutClasses is filtered in WYSIWYG mode');
+});
+
+test('typographySettingsEffect, no viewportMargin, and ImagePreviewWidget estimatedHeight', () => {
+  assert.ok(mainSource.includes('export const typographySettingsEffect = StateEffect.define()'), 'typographySettingsEffect is defined');
+  assert.equal(mainSource.includes('viewportMargin: Infinity'), false, 'CodeMirrorAdapter.init must not pass viewportMargin: Infinity');
+  assert.ok(mainSource.includes('imageAspectCache'), 'imageAspectCache Map is defined');
+  assert.ok(mainSource.includes('typographySettingsEffect.of(Date.now())'), 'typographySettingsEffect is dispatched on preference changes');
+});
+
+test('Regression check: WysiwygSpacingWidget is not referenced in main.js', () => {
+  assert.equal(mainSource.includes('WysiwygSpacingWidget'), false, 'WysiwygSpacingWidget must not be referenced in main.js');
+  assert.ok(mainSource.includes('buildPersistentLayoutDecorations'), 'buildPersistentLayoutDecorations exists in main.js');
+});
+
+test('MainActivity.kt guards setHotkeys with window.editorBridge function check', () => {
+  const mainActivityPath = path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  const mainActivitySource = fs.readFileSync(mainActivityPath, 'utf8');
+  assert.ok(mainActivitySource.includes('if (window.editorBridge && typeof window.editorBridge.setHotkeys === \'function\')'), 'MainActivity.kt guards setHotkeys call');
 });

@@ -27,6 +27,30 @@
             app:defaultValue="default" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_hr_margin_left"
+            app:title="Horizontal Rule Left Margin (%)"
+            app:summary="Left-side space as a percentage of available width"
+            app:min="0"
+            android:max="50"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_hr_margin_right"
+            app:title="Horizontal Rule Right Margin (%)"
+            app:summary="Right-side space as a percentage of available width"
+            app:min="0"
+            android:max="50"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_hr_centered"
+            app:title="Center Horizontal Rule"
+            app:summary="Center the line within the available document width"
+            android:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_hr_width_percent"
             app:title="Line Width (%)"
             app:summary="Width percentage relative to document width"

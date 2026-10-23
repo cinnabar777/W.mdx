@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.util.Base64
 import android.view.Menu
 import android.view.MenuItem
+import android.view.KeyEvent
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -120,7 +121,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         })
 
         AppDiagnostics.record(this, "window_created")
-        handleIntent(intent)
+        handleIntent(intent, isRestoration = savedInstanceState != null)
+    }
+
+    override fun onDestroy() {
+        if (isFinishing && !isChangingConfigurations) {
+            WindowRegistry.unregister(this)
+        }
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -128,6 +136,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         // All new opens go through DocumentDispatchActivity. A task brought to
         // the foreground must not replay its old URI or shared text.
         AppDiagnostics.record(this, "window_refocused")
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val handled = super.dispatchKeyEvent(event)
+        if (isEditorReady) {
+            AppDiagnostics.recordNativeKeyEvent(this, event, handled)
+        }
+        return handled
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -173,7 +189,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun handleIntent(intent: android.content.Intent?) {
+    private fun handleIntent(intent: android.content.Intent?, isRestoration: Boolean = false) {
         if (intent == null) return
 
         if (intent.getBooleanExtra("is_new_document", false)) {
@@ -187,7 +203,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return
         }
 
-        val data: Uri? = if (WindowRegistry.hasState(this, taskId)) WindowRegistry.current(this, taskId) else intent.data
+        val routeChecked = intent.getBooleanExtra("window_route_checked", false)
+        val registeredUri = if (WindowRegistry.hasState(this, taskId)) WindowRegistry.current(this, taskId) else null
+        val resolvedUriString = WindowPolicy.resolveDocumentUri(
+            restoringActivity = isRestoration,
+            hasRegisteredState = WindowRegistry.hasState(this, taskId),
+            registeredUri = registeredUri?.normalizeScheme()?.toString(),
+            incomingUri = intent.data?.normalizeScheme()?.toString()
+        )
+        val data: Uri? = resolvedUriString?.let(Uri::parse)
+
+        AppDiagnostics.record(this, "handle_intent_uri",
+            "incoming=${WindowPolicy.fingerprintUri(intent.data?.normalizeScheme()?.toString())} registered=${WindowPolicy.fingerprintUri(registeredUri?.normalizeScheme()?.toString())} restoring=$isRestoration selected=${WindowPolicy.fingerprintUri(resolvedUriString)} skipFocus=$routeChecked")
 
         if (data != null) {
             if (currentFileUri == data) {
@@ -196,7 +223,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
             WindowRegistry.register(this, data)
             if (isEditorReady) {
-                openFile(data)
+                openFile(data, skipExistingWindowFocus = routeChecked)
             } else {
                 pendingOpenUri = data
             }
@@ -301,9 +328,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(this@MainActivity, "web_page_ready")
                 progressBar.visibility = View.GONE
             }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: android.webkit.WebResourceError?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "web_main_frame_error",
+                        "code=${error?.errorCode} description=${error?.description}"
+                    )
+                }
+                super.onReceivedError(view, request, error)
+            }
+
+            override fun onRenderProcessGone(
+                view: WebView?,
+                detail: android.webkit.RenderProcessGoneDetail?
+            ): Boolean {
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "webview_render_process_gone",
+                    "didCrash=${detail?.didCrash()} priority=${detail?.rendererPriorityAtExit()}"
+                )
+                return super.onRenderProcessGone(view, detail)
+            }
         }
 
         webView.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                if (consoleMessage?.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "web_console_error",
+                        "line=${consoleMessage.lineNumber()} message=${consoleMessage.message()}"
+                    )
+                }
+                return super.onConsoleMessage(consoleMessage)
+            }
+
             override fun onJsPrompt(
                 view: WebView?,
                 url: String?,
@@ -444,7 +509,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         )
         val hotkeysJson = org.json.JSONObject(hotkeys).toString()
         val escapedHotkeys = JSONObjectWrapper.quote(hotkeysJson)
-        webView.evaluateJavascript("window.editorBridge.setHotkeys($escapedHotkeys);", null)
+        webView.evaluateJavascript("if (window.editorBridge && typeof window.editorBridge.setHotkeys === 'function') { window.editorBridge.setHotkeys($escapedHotkeys); }", null)
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -534,7 +599,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun openFile(uri: Uri, rememberHistory: Boolean = true, forceReload: Boolean = false) {
+    private fun openFile(uri: Uri, rememberHistory: Boolean = true, forceReload: Boolean = false, skipExistingWindowFocus: Boolean = false) {
         if (!isEditorReady) {
             pendingOpenUri = uri
             return
@@ -542,7 +607,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (!forceReload && currentFileUri == uri && !isDirty) return
-        if (WindowRegistry.focus(this, uri, excludeTask = taskId)) return
+        if (!skipExistingWindowFocus && WindowRegistry.focus(this, uri, excludeTask = taskId)) return
         if (rememberHistory && currentFileUri != null) {
             documentHistoryStack.push(currentFileUri)
         }
@@ -631,12 +696,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val key = "doc_$fileName"
-        val savedSelection = prefs.getString("cursor_sel_$key", null)
         val savedScroll = prefs.getInt("cursor_scroll_$key", 0)
-        if (savedSelection != null || savedScroll > 0) {
-            val escapedSelection = JSONObjectWrapper.quote(savedSelection ?: "")
-            webView.evaluateJavascript("window.editorBridge.setSelectionState($escapedSelection, $savedScroll);", null)
-        }
+        webView.evaluateJavascript("window.editorBridge.setScrollPosition($savedScroll);", null)
     }
 
     private fun handleSaveFile() {
@@ -932,12 +993,34 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun reportNavigationTrace(jsonRecord: String?) {
+            if (jsonRecord != null && jsonRecord.length <= 16 * 1024) {
+                AppDiagnostics.recordNavigationTrace(this@MainActivity, jsonRecord)
+            }
+        }
+
+        @JavascriptInterface
+        fun reportNavigationTraceBatch(jsonBatch: String?) {
+            if (jsonBatch != null) {
+                AppDiagnostics.recordNavigationTraceBatch(this@MainActivity, jsonBatch)
+            }
+        }
+
+        @JavascriptInterface
+        fun captureDiagnosticSnapshot(reason: String?) {
+            AppDiagnostics.captureWindowSnapshot(this@MainActivity, webView, reason ?: "webview-request")
+        }
+
+        @JavascriptInterface
         fun onEditorReady(mode: String? = null) {
             runOnUiThread {
                 val activeMode = mode ?: currentEditorMode
                 currentEditorMode = activeMode
-                AppDiagnostics.record(this@MainActivity, "editor_ready", "mode=$activeMode")
                 val wasReady = isEditorReady
+                if (!wasReady) {
+                    AppDiagnostics.startNavigationCapture(this@MainActivity)
+                }
+                AppDiagnostics.record(this@MainActivity, "editor_ready", "mode=$activeMode")
                 isEditorReady = true
                 if (!wasReady) {
                     applyPluginPreferences()
@@ -984,12 +1067,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun onSelectionChanged(selectionJson: String) {
-            val fileName = currentFileName
-            if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
-            if (selectionJson.isEmpty() || selectionJson == "{\"path\":[],\"offset\":0}" || selectionJson == "{}") return
-            val key = "doc_$fileName"
-            val prefs = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
-            prefs.edit().putString("cursor_sel_$key", selectionJson).apply()
+            // Live selection updates are not persisted as return scroll position
         }
 
         @JavascriptInterface

@@ -1,6 +1,12 @@
-import { EditorState, Compartment, Transaction, StateField } from '@codemirror/state';
+import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
-import { WordProcessorTableWidget } from './tableWidget.js';
+import { computeWysiwygViewportMargin } from './viewportMargin.js';
+import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
+import { createDeferredViewCallback } from './deferredViewCallback.js';
+import { withScrollSnapshot } from './scrollSnapshot.js';
+import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
+import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
+import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -14,7 +20,7 @@ import {
   replaceAll
 } from '@codemirror/search';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
-import { syntaxHighlighting, syntaxTree, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
+import { syntaxHighlighting, syntaxTree, forceParsing, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
 
@@ -45,6 +51,7 @@ let customHotkeys = {
   link: 'ctrl+k',
   footnote: 'ctrl+shift+f',
   blockQuote: 'ctrl+shift+q',
+  callout: 'ctrl+alt+q',
   codeBlock: 'ctrl+shift+c',
   bulletedList: 'ctrl+shift+8',
   numberedList: 'ctrl+shift+7',
@@ -162,22 +169,262 @@ class CheckboxWidget extends WidgetType {
   }
 }
 
+export const heightMapRefreshEffect = StateEffect.define();
+
+const deferViewCallback = createDeferredViewCallback();
+
+function dispatchWithScrollSnapshot(view, effects) {
+  view.dispatch({ effects: withScrollSnapshot(view, effects) });
+}
+
+function scheduleHeightMapRefresh(view) {
+  deferViewCallback(view, activeView => {
+    dispatchWithScrollSnapshot(
+      activeView,
+      heightMapRefreshEffect.of(null)
+    );
+  });
+}
+
+const listMarkerMeasurementKey = {};
+
+function measureListMarkerGutter(line, marker) {
+  const lineRect = line.getBoundingClientRect();
+  if (!lineRect.width) return null;
+
+  const ownerDocument = line.ownerDocument;
+  const textBlock = line.querySelector('.cm-list-block-text');
+  if (textBlock) {
+    const textRect = Array.from(textBlock.getClientRects()).find(
+      candidate => candidate.width > 0 && candidate.height > 0
+    ) || textBlock.getBoundingClientRect();
+    if (textRect.width > 0 && textRect.height > 0) {
+      return Math.max(0, textRect.left - lineRect.left);
+    }
+  }
+
+  const showText = ownerDocument.defaultView.NodeFilter.SHOW_TEXT;
+  const walker = ownerDocument.createTreeWalker(line, showText);
+  let textNode;
+
+  while ((textNode = walker.nextNode())) {
+    if (textNode.parentElement?.closest(
+      '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-hidden-syntax'
+    )) {
+      continue;
+    }
+
+    for (let offset = 0; offset < textNode.nodeValue.length; offset++) {
+      const range = ownerDocument.createRange();
+      range.setStart(textNode, offset);
+      range.setEnd(textNode, offset + 1);
+      const rect = Array.from(range.getClientRects()).find(
+        candidate => candidate.width > 0 && candidate.height > 0
+      );
+      if (rect) {
+        return Math.max(0, rect.left - lineRect.left);
+      }
+    }
+  }
+
+  const markerRect = marker.getBoundingClientRect();
+  const markerStyle = ownerDocument.defaultView.getComputedStyle(marker);
+  const markerGap = Number.parseFloat(markerStyle.marginRight) || 4;
+  return Math.max(0, markerRect.right - lineRect.left + markerGap);
+}
+
+function listItemTextRange(tree, doc, line, markerEnd) {
+  let from = markerEnd;
+  tree.iterate({
+    from: markerEnd,
+    to: line.to,
+    enter: node => {
+      if (node.name === 'TaskMarker') from = Math.max(from, node.to);
+    }
+  });
+  while (from < line.to && /[ \t]/.test(doc.sliceString(from, from + 1))) {
+    from++;
+  }
+  return from < line.to ? { from, to: line.to } : null;
+}
+
+function scheduleListMarkerMeasurements(view, force = false) {
+  if (
+    !view ||
+    !view.dom?.isConnected ||
+    !document.body.classList.contains('list-wrap-under-text')
+  ) {
+    return;
+  }
+
+  view.requestMeasure({
+    key: listMarkerMeasurementKey,
+    read: () => {
+      const lines = Array.from(
+        view.contentDOM.querySelectorAll('.cm-line.cm-list-item')
+      );
+
+      const measurements = [];
+      for (const line of lines) {
+        if (
+          !force &&
+          line.style.getPropertyValue('--list-marker-gutter')
+        ) {
+          continue;
+        }
+
+        const marker = line.querySelector(
+          '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox'
+        );
+        if (!marker) {
+          measurements.push({ line });
+          continue;
+        }
+
+        const gutter = measureListMarkerGutter(line, marker);
+        if (Number.isFinite(gutter) && gutter > 0) {
+          measurements.push({ line, gutter });
+        } else {
+          measurements.push({ line });
+        }
+      }
+      return { enabled: true, measurements };
+    },
+    write: result => {
+      if (!result) return;
+      for (const { line, gutter } of result.measurements) {
+        if (!line.isConnected || !view.contentDOM.contains(line)) continue;
+        if (result.enabled && Number.isFinite(gutter) && gutter > 0) {
+          line.style.setProperty('--list-marker-gutter', `${gutter}px`);
+        } else {
+          line.style.removeProperty('--list-marker-gutter');
+        }
+      }
+    }
+  });
+}
+
+const listMarkerMeasurementPlugin = ViewPlugin.fromClass(class {
+  constructor(view) {
+    scheduleListMarkerMeasurements(view, true);
+  }
+
+  update(update) {
+    const typographyChanged = update.transactions.some(transaction =>
+      transaction.effects.some(effect =>
+        effect.is(typographySettingsEffect) ||
+        effect.is(heightMapRefreshEffect)
+      )
+    );
+    if (
+      update.docChanged ||
+      update.viewportChanged ||
+      update.geometryChanged ||
+      typographyChanged
+    ) {
+      scheduleListMarkerMeasurements(
+        update.view,
+        update.docChanged || typographyChanged
+      );
+    }
+  }
+}, {});
+
+const measuredWidgetHeights = new Map();
+const MAX_MEASURED_WIDGET_HEIGHTS = 256;
+
+function measuredWidgetHeightKey(kind, contentKey, width, styleSignature) {
+  const stableWidth = Math.round(Math.max(0, Number(width) || 0) * 10) / 10;
+  return JSON.stringify([kind, contentKey, stableWidth, styleSignature]);
+}
+
+function estimatedWidgetHeight(key, fallback) {
+  const measured = measuredWidgetHeights.get(key);
+  return Number.isFinite(measured) && measured > 0 ? measured : fallback;
+}
+
+function rememberWidgetHeight(view, key, element) {
+  if (!view || !element) return;
+  view.requestMeasure({
+    read: () => element.isConnected
+      ? element.getBoundingClientRect().height
+      : null,
+    write: height => {
+      if (!Number.isFinite(height) || height <= 0) return;
+      const previous = measuredWidgetHeights.get(key);
+      if (previous !== undefined && Math.abs(previous - height) < 1) return;
+
+      measuredWidgetHeights.set(key, height);
+      if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
+        measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
+      }
+      scheduleHeightMapRefresh(view);
+    }
+  });
+}
+
+function activeContentWidth() {
+  const el = document.querySelector('.cm-editor > .cm-scroller > .cm-content');
+  const w = el?.getBoundingClientRect().width;
+  if (w && w > 0) return w;
+  if (typeof window !== 'undefined' && window.innerWidth) {
+    return Math.max(280, window.innerWidth - 32);
+  }
+  return 360;
+}
+
+function activeTypographySignature() {
+  const element = document.querySelector(
+    '.cm-editor > .cm-scroller > .cm-content'
+  );
+  if (!element) return 'default';
+
+  const style = getComputedStyle(element);
+  const customProperties = [];
+  for (let index = 0; index < style.length; index++) {
+    const property = style.item(index);
+    if (property.startsWith('--')) customProperties.push(property);
+  }
+  customProperties.sort();
+
+  return JSON.stringify({
+    font: style.font,
+    lineHeight: style.lineHeight,
+    letterSpacing: style.letterSpacing,
+    width: style.width,
+    devicePixelRatio: window.devicePixelRatio || 1,
+    customProperties: customProperties.map(property => [
+      property,
+      style.getPropertyValue(property).trim()
+    ])
+  });
+}
+
 class CodeBlockHeaderWidget extends WidgetType {
   constructor(lang, codeText) {
     super();
     this.lang = lang || 'Plain text';
     this.codeText = codeText;
+    const width = activeContentWidth();
+    const sig = activeTypographySignature();
+    this.heightKey = measuredWidgetHeightKey('codeblock-header', `${this.lang}:${this.codeText.length}`, width, sig);
+    this.heightEstimate = estimatedWidgetHeight(this.heightKey, 28);
+  }
+
+  get estimatedHeight() {
+    return this.heightEstimate;
   }
 
   eq(other) {
     return (
       other instanceof CodeBlockHeaderWidget &&
       other.lang === this.lang &&
-      other.codeText === this.codeText
+      other.codeText === this.codeText &&
+      other.heightEstimate === this.heightEstimate
     );
   }
 
-  toDOM() {
+  toDOM(view) {
     const header = document.createElement('div');
     header.className = 'cm-codeblock-header';
     header.style.cssText =
@@ -213,6 +460,8 @@ class CodeBlockHeaderWidget extends WidgetType {
 
     header.appendChild(langSpan);
     header.appendChild(copyBtn);
+
+    rememberWidgetHeight(view, this.heightKey, header);
     return header;
   }
 }
@@ -241,6 +490,14 @@ class CalloutTitleWidget extends WidgetType {
     this.isFolded = isFolded;
     this.foldFrom = foldFrom;
     this.foldTo = foldTo;
+    const width = activeContentWidth();
+    const sig = activeTypographySignature();
+    this.heightKey = measuredWidgetHeightKey('callout-title', `${this.type}:${this.title}`, width, sig);
+    this.heightEstimate = estimatedWidgetHeight(this.heightKey, 32);
+  }
+
+  get estimatedHeight() {
+    return this.heightEstimate;
   }
 
   eq(other) {
@@ -251,18 +508,29 @@ class CalloutTitleWidget extends WidgetType {
       other.foldMarker === this.foldMarker &&
       other.isFolded === this.isFolded &&
       other.foldFrom === this.foldFrom &&
-      other.foldTo === this.foldTo
+      other.foldTo === this.foldTo &&
+      other.heightEstimate === this.heightEstimate
     );
   }
 
   toDOM(view) {
+    const activeFolds = foldedRanges(view.state);
+    let currentlyFolded = false;
+    if (this.foldFrom != null && this.foldTo != null && this.foldTo > this.foldFrom) {
+      activeFolds.between(this.foldFrom, this.foldTo, (from, to) => {
+        if (from === this.foldFrom && to === this.foldTo) {
+          currentlyFolded = true;
+        }
+      });
+    }
+
     const span = document.createElement('span');
     span.className = 'cm-callout-title-container' + (this.foldMarker ? ' is-foldable' : '');
     if (this.foldMarker) {
       span.setAttribute('role', 'button');
       span.setAttribute('tabindex', '0');
-      span.setAttribute('aria-expanded', this.isFolded ? 'false' : 'true');
-      span.setAttribute('aria-label', `${this.isFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
+      span.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
+      span.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
     }
 
     const iconOverride = calloutTypeIconOverrides[this.type];
@@ -288,7 +556,7 @@ class CalloutTitleWidget extends WidgetType {
       btn.type = 'button';
       btn.tabIndex = -1;
       btn.setAttribute('aria-hidden', 'true');
-      btn.innerHTML = this.isFolded
+      btn.innerHTML = currentlyFolded
         ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
         : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 
@@ -298,7 +566,15 @@ class CalloutTitleWidget extends WidgetType {
         e.preventDefault();
         e.stopPropagation();
         if (this.foldFrom != null && this.foldTo != null && this.foldTo > this.foldFrom) {
-          if (this.isFolded) {
+          const liveFolds = foldedRanges(view.state);
+          let isFoldedNow = false;
+          liveFolds.between(this.foldFrom, this.foldTo, (from, to) => {
+            if (from === this.foldFrom && to === this.foldTo) {
+              isFoldedNow = true;
+            }
+          });
+
+          if (isFoldedNow) {
             view.dispatch({ effects: unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
           } else {
             view.dispatch({ effects: foldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
@@ -306,10 +582,144 @@ class CalloutTitleWidget extends WidgetType {
         }
       };
 
-      span.addEventListener('click', toggleFold);
+      btn.addEventListener('click', toggleFold);
+      iconSpan.addEventListener('click', toggleFold);
       span.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           toggleFold(e);
+        }
+      });
+    }
+
+    rememberWidgetHeight(view, this.heightKey, span);
+    return span;
+  }
+
+  ignoreEvent(event) {
+    if (event.type === 'click' || event.type === 'pointerdown') {
+      return !!event.target.closest('.cm-callout-fold-btn, .cm-callout-icon');
+    }
+    return true;
+  }
+}
+
+export function cleanHeadingText(rawText) {
+  return rawText
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
+export function ensureCaretVisibleMinimal(view, pos) {
+  if (!view || pos == null) return false;
+  try {
+    const coords = view.coordsAtPos(pos);
+    const scroller = view.scrollDOM;
+    if (coords && scroller) {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const topPadding = 48; // Account for top search bar / header area
+      const bottomPadding = 48; // Account for bottom control bar
+
+      if (coords.top < scrollerRect.top + topPadding) {
+        scroller.scrollTop -= (scrollerRect.top + topPadding - coords.top + 10);
+      } else if (coords.bottom > scrollerRect.bottom - bottomPadding) {
+        scroller.scrollTop += (coords.bottom - (scrollerRect.bottom - bottomPadding) + 10);
+      }
+    }
+  } catch (e) {}
+  return true;
+}
+
+export function scrollToPositionUpperMiddle(view, pos) {
+  if (!view || pos == null) return false;
+  view.dispatch({
+    selection: { anchor: pos, head: pos }
+  });
+
+  const performScroll = () => {
+    try {
+      const coords = view.coordsAtPos(pos);
+      const scroller = view.scrollDOM;
+      if (coords && scroller) {
+        const scrollerRect = scroller.getBoundingClientRect();
+        const currentTop = scroller.scrollTop;
+        const targetOffset = coords.top - scrollerRect.top + currentTop;
+        const desiredTop = targetOffset - (scrollerRect.height * 0.30);
+
+        if (Math.abs(currentTop - desiredTop) > 20) {
+          scroller.scrollTop = Math.max(0, desiredTop);
+        }
+      }
+    } catch (e) {
+      view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
+    }
+  };
+
+  requestAnimationFrame(() => {
+    performScroll();
+    setTimeout(performScroll, 50);
+  });
+
+  view.focus();
+  return true;
+}
+
+export function scrollToHeading(view, targetHeading) {
+  if (!view || !targetHeading) return false;
+  const targetClean = cleanHeadingText(targetHeading).toLowerCase();
+  const doc = view.state.doc;
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i);
+    if (/^#{1,6}\s+/.test(line.text.trim())) {
+      const lineClean = cleanHeadingText(line.text).toLowerCase();
+      if (lineClean === targetClean) {
+        return scrollToPositionUpperMiddle(view, line.from);
+      }
+    }
+  }
+  return false;
+}
+
+class WikilinkWidget extends WidgetType {
+  constructor(label, target) {
+    super();
+    this.label = label;
+    this.target = target;
+  }
+
+  eq(other) {
+    return (
+      other instanceof WikilinkWidget &&
+      other.label === this.label &&
+      other.target === this.target
+    );
+  }
+
+  toDOM(view) {
+    const span = document.createElement('span');
+    span.className = 'cm-link cm-wikilink';
+    span.textContent = this.label;
+
+    if (this.target) {
+      span.setAttribute('role', 'link');
+      span.setAttribute('tabindex', '0');
+      span.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.target.startsWith('#')) {
+          scrollToHeading(view, this.target.slice(1));
+        }
+      });
+      span.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (this.target.startsWith('#')) {
+            scrollToHeading(view, this.target.slice(1));
+          }
         }
       });
     }
@@ -318,27 +728,76 @@ class CalloutTitleWidget extends WidgetType {
   }
 }
 
+export const typographySettingsEffect = StateEffect.define();
+
+
+const imageAspectCache = new Map();
+
 class ImagePreviewWidget extends WidgetType {
   constructor(url, alt) {
     super();
     this.url = url;
     this.alt = alt || 'image';
+    const width = activeContentWidth();
+    const sig = activeTypographySignature();
+    this.heightKey = measuredWidgetHeightKey('image-preview', `${this.url}`, width, sig);
+    const aspect = imageAspectCache.get(this.url);
+    const fallbackHeight = aspect ? Math.round(width / aspect) : 180;
+    this.heightEstimate = estimatedWidgetHeight(this.heightKey, fallbackHeight);
+  }
+
+  get estimatedHeight() {
+    return this.heightEstimate;
   }
 
   eq(other) {
     return (
       other instanceof ImagePreviewWidget &&
       other.url === this.url &&
-      other.alt === this.alt
+      other.alt === this.alt &&
+      other.heightEstimate === this.heightEstimate
     );
   }
 
-  toDOM() {
+  toDOM(view) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cm-image-preview-wrapper';
+    wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 6px 0; display: block; box-sizing: border-box;`;
+
     const img = document.createElement('img');
     img.src = this.url;
     img.alt = this.alt;
-    img.style.cssText = 'max-width: 100%; height: auto; border-radius: 6px; margin: 6px 0; display: block; border: 1px solid var(--border-color, #444);';
-    return img;
+    img.style.cssText = 'max-width: 100%; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);';
+
+    img.onload = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        const aspect = img.naturalWidth / img.naturalHeight;
+        imageAspectCache.set(this.url, aspect);
+        const renderedHeight = Math.ceil(img.getBoundingClientRect().height);
+        if (renderedHeight > 0) {
+          wrapper.style.minHeight = `${renderedHeight}px`;
+        }
+        view.requestMeasure();
+        rememberWidgetHeight(view, this.heightKey, wrapper);
+      }
+    };
+
+    img.onerror = () => {
+      imageAspectCache.delete(this.url);
+      wrapper.innerHTML = '';
+      const fallbackBox = document.createElement('div');
+      fallbackBox.className = 'cm-image-error-fallback';
+      fallbackBox.style.cssText = 'padding: 12px 16px; border: 1px dashed var(--border-color, #666); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text-color, #888); font-size: 13px; font-style: italic;';
+      fallbackBox.textContent = `[Image: ${this.alt || 'failed to load'}]`;
+      wrapper.appendChild(fallbackBox);
+      wrapper.style.minHeight = '0px';
+      view.requestMeasure();
+      rememberWidgetHeight(view, this.heightKey, wrapper);
+    };
+
+    wrapper.appendChild(img);
+    rememberWidgetHeight(view, this.heightKey, wrapper);
+    return wrapper;
   }
 }
 
@@ -608,20 +1067,54 @@ const customHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: '#ff4081', fontWeight: 'bold' }
 ]);
 
-const livePreviewPlugin = ViewPlugin.fromClass(class {
+export { EditorState } from '@codemirror/state';
+export { EditorView } from '@codemirror/view';
+export { cursorLineDown, cursorLineUp } from '@codemirror/commands';
+export { markdown } from '@codemirror/lang-markdown';
+
+export const livePreviewPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
     this.initializedFoldLines = new Set();
+    this.hiddenSyntaxRanges = Decoration.none;
     this.decorations = this.buildDecorations(view);
   }
 
   update(update) {
-    if (update.docChanged || update.viewportChanged || update.selectionSet) {
+    const needsRefresh =
+      update.docChanged ||
+      update.viewportChanged ||
+      update.selectionSet ||
+      update.transactions.some((transaction) =>
+        transaction.effects.some((effect) => effect.is(heightMapRefreshEffect))
+      );
+
+    if (needsRefresh) {
       this.decorations = this.buildDecorations(update.view);
     }
   }
 
   buildDecorations(view) {
+    const previousHiddenSyntaxRanges = this.hiddenSyntaxRanges;
+    this.hiddenSyntaxRanges = Decoration.none;
+    try {
+      return this._buildDecorationsInternal(view);
+    } catch (e) {
+      window.AndroidNative?.reportDiagnostic?.('decoration_error', 0);
+      this.hiddenSyntaxRanges = previousHiddenSyntaxRanges;
+      return this.decorations || Decoration.none;
+    }
+  }
+
+  _buildDecorationsInternal(view) {
     const builder = [];
+    const hiddenSyntaxRanges = [];
+    const hideSyntax = (from, to) => {
+      if (to > from) {
+        const range = Decoration.replace({}).range(from, to);
+        builder.push(range);
+        hiddenSyntaxRanges.push(range);
+      }
+    };
     const lineClasses = new Map();
 
     const addLineClass = (lineFrom, ...classNames) => {
@@ -639,6 +1132,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
     const selection = view.state.selection.main;
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
     const doc = view.state.doc;
+    const decorationRanges = view.visibleRanges;
 
     const getQuotedLineInfo = (lineNum) => {
       if (lineNum < 1 || lineNum > doc.lines) return null;
@@ -667,7 +1161,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
     const processedBlockquoteLines = new Set();
     const calloutLineAttributes = new Map(); // lineFrom -> { type, depth }
 
-    for (const { from, to } of view.visibleRanges) {
+    for (const { from, to } of decorationRanges) {
       const firstVisibleLine = doc.lineAt(from).number;
       const lastVisibleLine = doc.lineAt(Math.max(from, to - 1)).number;
 
@@ -695,6 +1189,48 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         if (insideListItem) {
           addLineClass(line.from, 'cm-list-item');
+        }
+
+        const isLineActive = !isPureWysiwyg && (
+          selection.empty
+            ? selection.head >= line.from && selection.head <= line.to
+            : selection.from < line.to && selection.to > line.from
+        );
+
+        const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+        let wikilinkMatch;
+        while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+          if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
+
+          const matchStart = line.from + wikilinkMatch.index;
+          const matchEnd = matchStart + wikilinkMatch[0].length;
+          const target = wikilinkMatch[1];
+          const alias = wikilinkMatch[2];
+          const displayLabel = (alias !== undefined && alias.trim().length > 0)
+            ? alias
+            : (target.startsWith('#') ? target.slice(1) : target);
+
+          let labelStart, labelEnd;
+          if (alias !== undefined) {
+            labelStart = matchStart + 2 + target.length + 1;
+            labelEnd = matchEnd - 2;
+          } else {
+            labelStart = matchStart + 2;
+            labelEnd = matchEnd - 2;
+          }
+
+          if (!isLineActive) {
+            if (!isPureWysiwyg) {
+              builder.push(Decoration.replace({
+                widget: new WikilinkWidget(displayLabel, target)
+              }).range(matchStart, matchEnd));
+            }
+          } else if (labelEnd > labelStart) {
+            builder.push(Decoration.mark({ class: 'cm-link cm-wikilink' }).range(labelStart, labelEnd));
+          }
+        }
+
+        if (insideListItem) {
           continue;
         }
 
@@ -782,14 +1318,18 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
               activeCalloutsStack.push(calloutObj);
               calloutOpenerInfo.set(line.from, calloutObj.info);
 
+              // Update bodyTo for all ancestor callouts on stack
+              for (const ancestor of activeCalloutsStack) {
+                if (ancestor !== calloutObj) {
+                  ancestor.lastBodyLineNum = curLine;
+                  ancestor.info.bodyTo = line.to;
+                }
+              }
+
               addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-title');
               calloutLineAttributes.set(line.from, { type, depth: currentDepth });
             } else if (activeCalloutsStack.length > 0) {
-              const currentCallout = activeCalloutsStack[activeCalloutsStack.length - 1];
-              currentCallout.lastBodyLineNum = curLine;
-              currentCallout.info.bodyTo = line.to;
-
-              // Update all callouts on the stack whose depth <= currentDepth
+              // Update all callouts on stack whose depth <= currentDepth
               for (const calloutObj of activeCalloutsStack) {
                 if (calloutObj.depth <= currentDepth) {
                   calloutObj.lastBodyLineNum = curLine;
@@ -797,7 +1337,8 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
                 }
               }
 
-              addLineClass(line.from, 'cm-blockquote', 'cm-callout');
+              const currentCallout = activeCalloutsStack[activeCalloutsStack.length - 1];
+              addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-body');
               calloutLineAttributes.set(line.from, { type: currentCallout.type, depth: currentCallout.depth });
             } else {
               addLineClass(line.from, 'cm-blockquote');
@@ -818,7 +1359,22 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
       }
     }
-    for (const { from, to } of view.visibleRanges) {
+    for (const lineFrom of calloutLineAttributes.keys()) {
+      const line = doc.lineAt(lineFrom);
+      const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
+      const classes = lineClasses.get(lineFrom);
+      if (classes) {
+        if (hasListMarker) {
+          classes.add('cm-list-item');
+          classes.add('cm-callout-list-item');
+        } else {
+          classes.delete('cm-list-item');
+          classes.delete('cm-callout-list-item');
+        }
+      }
+    }
+
+    for (const { from, to } of decorationRanges) {
       tree.iterate({
         from,
         to,
@@ -834,7 +1390,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           const setextHeading = /^SetextHeading([12])$/.exec(node.name);
           const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
 
-          if (headingLevel) {
+          if (headingLevel && !isPureWysiwyg) {
             addLineClass(
               line.from,
               'cm-heading',
@@ -843,9 +1399,11 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'HeaderMark' && !isNodeActive) {
-            const end = Math.min(node.to + 1, line.to);
-            if (end > node.from && end <= line.to) {
-              builder.push(Decoration.replace({}).range(node.from, end));
+            if (!isPureWysiwyg) {
+              const end = Math.min(node.to + 1, line.to);
+              if (end > node.from && end <= line.to) {
+                hideSyntax(node.from, end);
+              }
             }
           }
 
@@ -853,7 +1411,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.mark({ class: 'cm-bold' }).range(node.from, node.to));
           }
           if (node.name === 'EmphasisMark' && !isNodeActive) {
-            builder.push(Decoration.replace({}).range(node.from, node.to));
+            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
 
           if (node.name === 'Emphasis') {
@@ -864,14 +1422,14 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.mark({ class: 'cm-strikethrough' }).range(node.from, node.to));
           }
           if (node.name === 'StrikethroughMark' && !isNodeActive) {
-            builder.push(Decoration.replace({}).range(node.from, node.to));
+            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
 
           if (node.name === 'InlineCode') {
             builder.push(Decoration.mark({ class: 'cm-inline-code' }).range(node.from, node.to));
           }
           if (node.name === 'CodeMark' && !isNodeActive) {
-            builder.push(Decoration.replace({}).range(node.from, node.to));
+            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
 
 
@@ -879,25 +1437,35 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             const marker = view.state.doc.sliceString(node.from, node.to);
             const isBullet = /^[-*+]$/.test(marker.trim());
             if (!isNodeActive) {
-              builder.push(Decoration.replace({
-                widget: new ListMarkerWidget(marker, isBullet)
-              }).range(node.from, node.to));
+              if (!isPureWysiwyg) {
+                builder.push(Decoration.replace({
+                  widget: new ListMarkerWidget(marker, isBullet)
+                }).range(node.from, node.to));
+              }
             } else {
               builder.push(Decoration.mark({
                 class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
               }).range(node.from, node.to));
             }
+            if (!isPureWysiwyg) {
+              const textRange = listItemTextRange(tree, doc, line, node.to);
+              if (textRange) {
+                builder.push(
+                  Decoration.mark({ class: 'cm-list-block-text' })
+                    .range(textRange.from, textRange.to)
+                );
+              }
+            }
           }
 
           if (node.name === 'QuoteMark' && !isNodeActive) {
-            let isCalloutLine = calloutLineAttributes.has(line.from);
-            if (isCalloutLine) {
-              // Hide QuoteMark on callout lines in rendered mode
-              builder.push(Decoration.replace({}).range(node.from, node.to));
-            } else {
-              let end = Math.min(node.to + 1, line.to);
+            if (!isPureWysiwyg) {
+              // Hide the quote marker and its separator together. Leaving the
+              // separator visible shifts the first callout line relative to
+              // wrapped lines, regardless of the user's font settings.
+              const end = Math.min(node.to + 1, line.to);
               if (end > node.from) {
-                builder.push(Decoration.replace({}).range(node.from, end));
+                hideSyntax(node.from, end);
               }
             }
           }
@@ -906,18 +1474,23 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             const taskText = view.state.doc.sliceString(node.from, node.to);
             const isChecked = taskText.toLowerCase().includes('x');
             if (!isNodeActive && node.to > node.from) {
-              builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+              if (!isPureWysiwyg) {
+                builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+              }
             }
           }
 
           if (node.name === 'HorizontalRule') {
             addLineClass(line.from, 'cm-hr');
-            if (!isNodeActive) {
-              builder.push(Decoration.replace({}).range(node.from, node.to));
+            if (!isNodeActive && node.to > node.from) {
+              if (!isPureWysiwyg) hideSyntax(node.from, node.to);
             }
           }
 
           if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+            if (currentEditorMode === 'wysiwyg') {
+              return;
+            }
             const startLine = view.state.doc.lineAt(node.from);
             const endLine = view.state.doc.lineAt(node.to);
             for (let l = startLine.number; l <= endLine.number; l++) {
@@ -931,10 +1504,16 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
               const firstLineText = line.text;
               const langMatch = firstLineText.match(/^```(\w+)/);
               const lang = langMatch ? langMatch[1] : 'Plain text';
+              const headerWidget = new CodeBlockHeaderWidget(lang, codeText);
+
               if (!isNodeActive) {
-                builder.push(Decoration.replace({ widget: new CodeBlockHeaderWidget(lang, codeText) }).range(line.from, line.to));
+                builder.push(
+                  Decoration.replace({ widget: headerWidget }).range(line.from, line.to)
+                );
               } else {
-                builder.push(Decoration.widget({ widget: new CodeBlockHeaderWidget(lang, codeText), side: -1 }).range(line.from));
+                builder.push(
+                  Decoration.widget({ widget: headerWidget, side: -1 }).range(line.from)
+                );
               }
             }
           }
@@ -945,7 +1524,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
             return;
           }
 
-          if (node.name === 'Link') {
+          if (node.name === 'Link' || node.name === 'URL') {
             const raw = view.state.doc.sliceString(node.from, node.to);
             const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
             if (match) {
@@ -955,9 +1534,13 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
                 Decoration.mark({ class: 'cm-link' }).range(labelFrom, labelTo)
               );
 
-              if (!isNodeActive) {
-                builder.push(Decoration.replace({}).range(node.from, labelFrom));
-                builder.push(Decoration.replace({}).range(labelTo, node.to));
+              if (!isNodeActive && !isPureWysiwyg) {
+                if (labelFrom > node.from) {
+                  hideSyntax(node.from, labelFrom);
+                }
+                if (node.to > labelTo) {
+                  hideSyntax(labelTo, node.to);
+                }
               }
             }
           }
@@ -965,7 +1548,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'Image') {
             const imgText = view.state.doc.sliceString(node.from, node.to);
             const match = imgText.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-            if (match && !isNodeActive) {
+            if (match && !isNodeActive && !isPureWysiwyg) {
               const alt = match[1];
               const url = match[2];
               builder.push(Decoration.replace({ widget: new ImagePreviewWidget(url, alt) }).range(node.from, node.to));
@@ -1002,7 +1585,7 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
       }
 
-      if (!isMarkerActive) {
+      if (!isMarkerActive && !isPureWysiwyg) {
         const line = doc.lineAt(lineFrom);
         let isFolded = false;
         if (hasBody) {
@@ -1014,12 +1597,14 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
 
         const displayTitle = (info.customTitle && info.customTitle.trim().length > 0)
-          ? info.customTitle.trim()
+          ? ''
           : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+
+        const replaceEnd = (info.customTitle && info.customTitle.trim().length > 0) ? info.markerEnd : line.to;
 
         builder.push(Decoration.replace({
           widget: new CalloutTitleWidget(displayTitle, info.type, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
-        }).range(info.markerStart, line.to));
+        }).range(info.markerStart, replaceEnd));
       }
     }
 
@@ -1032,18 +1617,55 @@ const livePreviewPlugin = ViewPlugin.fromClass(class {
       }).range(lineFrom));
     }
 
+    const persistentLayoutClasses = new Set([
+      'cm-paragraph',
+      'cm-paragraph-first',
+      'cm-paragraph-last',
+      'cm-list-item',
+      'cm-heading',
+      'cm-heading-1',
+      'cm-heading-2',
+      'cm-heading-3',
+      'cm-heading-4',
+      'cm-heading-5',
+      'cm-heading-6',
+      'cm-blockquote',
+      'cm-hr'
+    ]);
+
     for (const [lineFrom, classes] of lineClasses) {
-      builder.push(Decoration.line({
-        attributes: { class: [...classes].join(' ') }
-      }).range(lineFrom));
+      const remaining = [...classes].filter(className =>
+        currentEditorMode !== 'wysiwyg' ||
+        !persistentLayoutClasses.has(className)
+      );
+      if (!remaining.length) continue;
+
+      builder.push(
+        Decoration.line({
+          attributes: { class: remaining.join(' ') }
+        }).range(lineFrom)
+      );
     }
 
-    builder.sort((a, b) => a.from - b.from || a.to - b.to);
-    return Decoration.set(builder, true);
+    // Filter and sanitize decoration ranges against document length
+    const validBuilder = builder.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
+    validBuilder.sort((a, b) => a.from - b.from || a.to - b.to);
+    const validHiddenSyntaxRanges = hiddenSyntaxRanges.filter(
+      d => 0 <= d.from && d.from <= d.to && d.to <= doc.length
+    );
+    validHiddenSyntaxRanges.sort((a, b) => a.from - b.from || a.to - b.to);
+    this.hiddenSyntaxRanges = Decoration.set(validHiddenSyntaxRanges, true);
+    return Decoration.set(validBuilder, true);
   }
 }, {
   decorations: v => v.decorations
 });
+
+export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
+  view => (currentEditorMode === 'wysiwyg'
+    ? view.state.field(heightMapField).hiddenSyntaxRanges
+    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges) ?? Decoration.none
+);
 
 function cmToggleLinePrefix(view, prefix) {
   if (!view) return;
@@ -1358,12 +1980,599 @@ function buildTableBlockDecorations(state) {
   return Decoration.set(builder, true);
 }
 
+export function updateTableDocumentSelection(view) {
+  if (!view || !view.dom) return;
+
+  const ranges = view.state.selection.ranges;
+  for (const table of view.dom.querySelectorAll(
+    '.cm-wp-table-container[data-table-from][data-table-to]'
+  )) {
+    const from = Number(table.dataset.tableFrom);
+    const to = Number(table.dataset.tableTo);
+    const selected =
+      Number.isFinite(from) &&
+      Number.isFinite(to) &&
+      ranges.some(range => !range.empty && range.from < to && range.to > from);
+
+    table.classList.toggle('cm-document-selection', selected);
+  }
+}
+
+function buildWysiwygCodeBlockDecorations(state) {
+  if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+
+  const doc = state.doc;
+  const builder = [];
+
+  syntaxTree(state).iterate({
+    from: 0,
+    to: doc.length,
+    enter(node) {
+      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') return;
+
+      const firstLine = doc.lineAt(node.from);
+      const lastLine = doc.lineAt(node.to);
+
+      for (let number = firstLine.number; number <= lastLine.number; number++) {
+        const line = doc.line(number);
+        const classes = ['cm-codeblock-line'];
+        if (number === firstLine.number) classes.push('cm-codeblock-first');
+        if (number === lastLine.number) classes.push('cm-codeblock-last');
+        builder.push(
+          Decoration.line({
+            attributes: { class: classes.join(' ') }
+          }).range(line.from)
+        );
+      }
+
+      if (firstLine.from === node.from) {
+        const codeText = doc.sliceString(node.from, node.to);
+        const langMatch = firstLine.text.match(/^```(\w+)/);
+        const lang = langMatch ? langMatch[1] : 'Plain text';
+        const headerWidget = new CodeBlockHeaderWidget(lang, codeText);
+        builder.push(
+          Decoration.replace({ widget: headerWidget }).range(firstLine.from, firstLine.to)
+        );
+      }
+
+      return false;
+    }
+  });
+
+  builder.sort((a, b) => a.from - b.from || a.to - b.to);
+  return Decoration.set(builder, true);
+}
+
+const wysiwygCodeBlockField = StateField.define({
+  create(state) {
+    return buildWysiwygCodeBlockDecorations(state);
+  },
+  update(current, tr) {
+    const refreshHeight = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect)
+    );
+    if (!tr.docChanged && !refreshHeight) return current;
+    return buildWysiwygCodeBlockDecorations(tr.state);
+  },
+  provide: field => EditorView.decorations.from(field)
+});
+
+function buildHeightMapValue(state) {
+  if (currentEditorMode !== 'wysiwyg') {
+    return {
+      decorations: Decoration.none,
+      hiddenSyntaxRanges: Decoration.none
+    };
+  }
+
+  const doc = state.doc;
+  const tree = syntaxTree(state);
+  const replacements = [];
+  const hiddenSyntaxRanges = [];
+
+  const hideSyntax = (from, to) => {
+    if (to > from) {
+      const range = Decoration.replace({}).range(from, to);
+      replacements.push(range);
+      hiddenSyntaxRanges.push(range);
+    }
+  };
+
+  const calloutOpenerInfo = new Map();
+  const processedBlockquoteLines = new Set();
+
+  const getQuotedLineInfo = (lineNum) => {
+    if (lineNum < 1 || lineNum > doc.lines) return null;
+    const l = doc.line(lineNum);
+    const match = l.text.match(/^(\s*(?:>\s*)+)/);
+    if (!match) return null;
+
+    const firstText = /\S/.exec(l.text);
+    const probe = firstText ? l.from + firstText.index : l.from;
+    const resolvedNode = tree.resolveInner(probe, 1);
+
+    for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock' || ancestor.name === 'Table') {
+        return null;
+      }
+    }
+
+    const quotePrefix = match[1];
+    const depth = (quotePrefix.match(/>/g) || []).length;
+    return { line: l, quotePrefix, depth };
+  };
+
+  const isQuotedLine = (lineNum) => getQuotedLineInfo(lineNum) !== null;
+
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+    const line = doc.line(lineNumber);
+    const firstText = /\S/.exec(line.text);
+    const probe = firstText ? line.from + firstText.index : line.from;
+    const resolvedNode = tree.resolveInner(probe, 1);
+
+    let insideCodeBlock = false;
+    let insideTable = false;
+
+    for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock') insideCodeBlock = true;
+      if (ancestor.name === 'Table') insideTable = true;
+    }
+
+    if (insideCodeBlock || insideTable) continue;
+
+    const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+    let wikilinkMatch;
+    while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+      if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
+
+      const matchStart = line.from + wikilinkMatch.index;
+      const matchEnd = matchStart + wikilinkMatch[0].length;
+      const target = wikilinkMatch[1];
+      const alias = wikilinkMatch[2];
+      const displayLabel = (alias !== undefined && alias.trim().length > 0)
+        ? alias
+        : (target.startsWith('#') ? target.slice(1) : target);
+
+      replacements.push(Decoration.replace({
+        widget: new WikilinkWidget(displayLabel, target)
+      }).range(matchStart, matchEnd));
+    }
+  }
+
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+    if (processedBlockquoteLines.has(lineNumber)) continue;
+
+    if (isQuotedLine(lineNumber)) {
+      let blockStart = lineNumber;
+      while (blockStart > 1 && isQuotedLine(blockStart - 1)) {
+        blockStart--;
+      }
+
+      let curLine = blockStart;
+      const activeCalloutsStack = [];
+
+      while (curLine <= doc.lines && isQuotedLine(curLine)) {
+        processedBlockquoteLines.add(curLine);
+        const lineInfo = getQuotedLineInfo(curLine);
+        const line = lineInfo.line;
+        const currentDepth = lineInfo.depth;
+
+        while (activeCalloutsStack.length > 0 && activeCalloutsStack[activeCalloutsStack.length - 1].depth > currentDepth) {
+          activeCalloutsStack.pop();
+        }
+
+        const match = line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i);
+
+        if (match) {
+          const type = match[3].toLowerCase();
+          const foldMarker = match[4];
+          const customTitle = match[5];
+          const markerStart = line.from + match[1].length;
+          const markerEnd = markerStart + match[2].length;
+          let titleStart = null;
+          if (customTitle && customTitle.trim().length > 0) {
+            const idx = line.text.indexOf(customTitle, match[1].length + match[2].length);
+            if (idx !== -1) titleStart = idx;
+          }
+
+          const calloutObj = {
+            depth: currentDepth,
+            type,
+            openerLineNum: curLine,
+            lastBodyLineNum: curLine,
+            info: {
+              type,
+              depth: currentDepth,
+              foldMarker,
+              customTitle,
+              markerStart,
+              markerEnd,
+              titleStart,
+              bodyFrom: line.to,
+              bodyTo: line.to
+            }
+          };
+
+          activeCalloutsStack.push(calloutObj);
+          calloutOpenerInfo.set(line.from, calloutObj.info);
+
+          for (const ancestor of activeCalloutsStack) {
+            if (ancestor !== calloutObj) {
+              ancestor.lastBodyLineNum = curLine;
+              ancestor.info.bodyTo = line.to;
+            }
+          }
+        } else if (activeCalloutsStack.length > 0) {
+          for (const calloutObj of activeCalloutsStack) {
+            if (calloutObj.depth <= currentDepth) {
+              calloutObj.lastBodyLineNum = curLine;
+              calloutObj.info.bodyTo = line.to;
+            }
+          }
+        }
+
+        curLine++;
+      }
+    }
+  }
+
+  tree.iterate({
+    from: 0,
+    to: doc.length,
+    enter: (node) => {
+      const line = doc.lineAt(node.from);
+
+      const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
+      const setextHeading = /^SetextHeading([12])$/.exec(node.name);
+      const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
+
+      if (headingLevel) {
+        const headingLine = doc.lineAt(node.from);
+        replacements.push(
+          Decoration.line({
+            attributes: {
+              class: `cm-heading cm-heading-${headingLevel}`
+            }
+          }).range(headingLine.from)
+        );
+      }
+
+      if (node.name === 'HeaderMark') {
+        const end = Math.min(node.to + 1, line.to);
+        if (end > node.from && end <= line.to) {
+          hideSyntax(node.from, end);
+        }
+      }
+
+      if (node.name === 'EmphasisMark') {
+        hideSyntax(node.from, node.to);
+      }
+
+      if (node.name === 'StrikethroughMark') {
+        hideSyntax(node.from, node.to);
+      }
+
+      if (node.name === 'CodeMark') {
+        hideSyntax(node.from, node.to);
+      }
+
+      if (node.name === 'ListMark') {
+        const marker = doc.sliceString(node.from, node.to);
+        const isBullet = /^[-*+]$/.test(marker.trim());
+        replacements.push(Decoration.replace({
+          widget: new ListMarkerWidget(marker, isBullet)
+        }).range(node.from, node.to));
+        const textRange = listItemTextRange(tree, doc, line, node.to);
+        if (textRange) {
+          replacements.push(
+            Decoration.mark({ class: 'cm-list-block-text' })
+              .range(textRange.from, textRange.to)
+          );
+        }
+      }
+
+      if (node.name === 'QuoteMark') {
+        hideSyntax(node.from, node.to);
+      }
+
+      if (node.name === 'TaskMarker') {
+        const taskText = doc.sliceString(node.from, node.to);
+        const isChecked = taskText.toLowerCase().includes('x');
+        if (node.to > node.from) {
+          replacements.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+        }
+      }
+
+      if (node.name === 'HorizontalRule') {
+        if (node.to > node.from) {
+          hideSyntax(node.from, node.to);
+        }
+      }
+
+      if (node.name === 'Table' || node.name === 'FencedCode' || node.name === 'CodeBlock') {
+        return false;
+      }
+
+      if (node.name === 'Link' || node.name === 'URL') {
+        const raw = doc.sliceString(node.from, node.to);
+        const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (match) {
+          const labelFrom = node.from + 1;
+          const labelTo = labelFrom + match[1].length;
+          if (labelFrom > node.from) {
+            hideSyntax(node.from, labelFrom);
+          }
+          if (node.to > labelTo) {
+            hideSyntax(labelTo, node.to);
+          }
+        }
+      }
+
+      if (node.name === 'Image') {
+        const imgText = doc.sliceString(node.from, node.to);
+        const match = imgText.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+        if (match) {
+          const alt = match[1];
+          const url = match[2];
+          replacements.push(Decoration.replace({ widget: new ImagePreviewWidget(url, alt) }).range(node.from, node.to));
+        }
+      }
+    }
+  });
+
+  const activeFolds = foldedRanges(state);
+
+  for (const [lineFrom, info] of calloutOpenerInfo) {
+    const hasBody = info.bodyTo > info.bodyFrom;
+    const line = doc.lineAt(lineFrom);
+    let isFolded = false;
+    if (hasBody) {
+      activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
+        if (from === info.bodyFrom && to === info.bodyTo) {
+          isFolded = true;
+        }
+      });
+    }
+
+    const displayTitle = (info.customTitle && info.customTitle.trim().length > 0)
+      ? ''
+      : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+
+    const replaceEnd = (info.customTitle && info.customTitle.trim().length > 0) ? info.markerEnd : line.to;
+
+    replacements.push(Decoration.replace({
+      widget: new CalloutTitleWidget(displayTitle, info.type, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
+    }).range(info.markerStart, replaceEnd));
+  }
+
+  const validReplacements = replacements.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
+  validReplacements.sort((a, b) => a.from - b.from || a.to - b.to);
+
+  const validHiddenSyntax = hiddenSyntaxRanges.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
+  validHiddenSyntax.sort((a, b) => a.from - b.from || a.to - b.to);
+
+  return {
+    decorations: Decoration.set(validReplacements, true),
+    hiddenSyntaxRanges: Decoration.set(validHiddenSyntax, true)
+  };
+}
+
+export const heightMapField = StateField.define({
+  create: buildHeightMapValue,
+  update(current, tr) {
+    const refresh = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect) ||
+      effect.is(typographySettingsEffect)
+    );
+    if (!tr.docChanged && !refresh) return current;
+    return buildHeightMapValue(tr.state);
+  },
+  provide: field =>
+    EditorView.decorations.from(field, value => value.decorations)
+});
+
+function premeasureTableHeights(view) {
+  if (!(view.contentDOM.getBoundingClientRect().width > 0)) return;
+  const decorations = view.state.field(tableStateField);
+  let measuredCount = 0;
+  const visited = new Set();
+
+  decorations.between(0, view.state.doc.length, (_from, _to, decoration) => {
+    const widget = decoration.spec.widget;
+    if (!(widget instanceof WordProcessorTableWidget) || visited.has(widget)) return;
+    visited.add(widget);
+    try {
+      measureTableWidgetHeight(widget, view);
+      measuredCount++;
+    } catch (error) {
+      console.error('table_height_measure_failed', error);
+    }
+  });
+
+  if (measuredCount) {
+    dispatchWithScrollSnapshot(
+      view,
+      tableHeightEstimatesChanged.of(measuredCount)
+    );
+    view.requestMeasure();
+  }
+}
+
+export function buildPersistentLayoutDecorations(state) {
+  if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+
+  const { doc } = state;
+  const tree = syntaxTree(state);
+  const classesByLine = new Map();
+  const calloutAttributesByLine = new Map();
+  const activeCallouts = [];
+
+  const addClass = (lineNumber, className) => {
+    if (!classesByLine.has(lineNumber)) {
+      classesByLine.set(lineNumber, new Set());
+    }
+    classesByLine.get(lineNumber).add(className);
+  };
+
+  for (let number = 1; number <= doc.lines; number++) {
+    const line = doc.line(number);
+    const firstText = /\S/.exec(line.text);
+    const probe = firstText ? line.from + firstText.index : line.from;
+    const resolved = tree.resolveInner(probe, 1);
+
+    let paragraphNode = null;
+    let insideListItem = false;
+    let insideCodeBlock = false;
+    let insideTable = false;
+    let insideBlockquote = false;
+    let headingLevel = null;
+    let isHorizontalRule = false;
+
+    for (let node = resolved; node; node = node.parent) {
+      if (node.name === 'Paragraph') paragraphNode = node;
+      if (node.name === 'ListItem') insideListItem = true;
+      if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+        insideCodeBlock = true;
+      }
+      if (node.name === 'Table') insideTable = true;
+      if (node.name === 'Blockquote') insideBlockquote = true;
+      if (node.name === 'HorizontalRule') isHorizontalRule = true;
+
+      const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
+      const setextHeading = /^SetextHeading([12])$/.exec(node.name);
+      headingLevel = headingLevel ?? atxHeading?.[1] ?? setextHeading?.[1] ?? null;
+    }
+
+    // These blocks already have their own full-document decoration fields.
+    if (insideTable || insideCodeBlock) continue;
+
+    let calloutInfo = null;
+    const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
+    if (!insideBlockquote || !quotePrefix) {
+      activeCallouts.length = 0;
+    } else {
+      const depth = (quotePrefix[1].match(/>/g) || []).length;
+      while (
+        activeCallouts.length > 0 &&
+        activeCallouts[activeCallouts.length - 1].depth > depth
+      ) {
+        activeCallouts.pop();
+      }
+
+      const opener = line.text.match(
+        /^(\s*(?:>\s*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i
+      );
+      if (opener) {
+        calloutInfo = {
+          type: opener[2].toLowerCase(),
+          depth,
+          isTitle: true
+        };
+        activeCallouts.push(calloutInfo);
+      } else {
+        const currentCallout = activeCallouts[activeCallouts.length - 1];
+        if (currentCallout && currentCallout.depth <= depth) {
+          calloutInfo = {
+            type: currentCallout.type,
+            depth: currentCallout.depth,
+            isTitle: false
+          };
+        }
+      }
+    }
+
+    if (headingLevel) {
+      addClass(number, 'cm-heading');
+      addClass(number, `cm-heading-${headingLevel}`);
+    }
+    if (calloutInfo) {
+      addClass(number, 'cm-callout');
+      if (calloutInfo.isTitle) {
+        addClass(number, 'cm-callout-title');
+      } else {
+        addClass(number, 'cm-callout-body');
+      }
+      calloutAttributesByLine.set(number, {
+        type: calloutInfo.type,
+        depth: calloutInfo.depth
+      });
+    } else if (insideBlockquote) {
+      addClass(number, 'cm-blockquote');
+    }
+    if (isHorizontalRule) addClass(number, 'cm-hr');
+
+    const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
+    if (calloutInfo) {
+      if (hasListMarker) {
+        addClass(number, 'cm-list-item');
+        addClass(number, 'cm-callout-list-item');
+      }
+      continue;
+    }
+    if (insideListItem) {
+      addClass(number, 'cm-list-item');
+      continue;
+    }
+
+    if (paragraphNode) {
+      addClass(number, 'cm-paragraph');
+      if (line.from === doc.lineAt(paragraphNode.from).from) {
+        addClass(number, 'cm-paragraph-first');
+      }
+      if (
+        line.from ===
+        doc.lineAt(Math.max(paragraphNode.from, paragraphNode.to - 1)).from
+      ) {
+        addClass(number, 'cm-paragraph-last');
+      }
+    }
+  }
+
+  const ranges = [];
+  for (const [lineNumber, classes] of classesByLine) {
+    const lineObj = doc.line(lineNumber);
+    const calloutAttributes = calloutAttributesByLine.get(lineNumber);
+    ranges.push(
+      Decoration.line({
+        attributes: {
+          class: [...classes].join(' '),
+          ...(calloutAttributes
+            ? {
+                'data-callout-type': calloutAttributes.type,
+                'data-callout-depth': String(calloutAttributes.depth)
+              }
+            : {})
+        }
+      }).range(lineObj.from)
+    );
+  }
+
+  ranges.sort((a, b) => a.from - b.from);
+  return Decoration.set(ranges, true);
+}
+
+export const persistentLayoutField = StateField.define({
+  create(state) {
+    return buildPersistentLayoutDecorations(state);
+  },
+  update(current, tr) {
+    if (tr.docChanged || tr.effects.some(e => e.is(typographySettingsEffect))) {
+      return buildPersistentLayoutDecorations(tr.state);
+    }
+    return current;
+  },
+  provide: field => EditorView.decorations.from(field)
+});
+
 export const tableStateField = StateField.define({
   create(state) {
     return buildTableBlockDecorations(state);
   },
   update(current, tr) {
-    if (tr.docChanged) {
+    if (
+      tr.docChanged ||
+      tr.effects.some(effect => effect.is(tableHeightEstimatesChanged))
+    ) {
       return buildTableBlockDecorations(tr.state);
     }
     return current;
@@ -1371,29 +2580,6 @@ export const tableStateField = StateField.define({
   provide: field => EditorView.decorations.from(field)
 });
 
-export const horizontalRuleNavigationKeymap = keymap.of([
-  {
-    key: 'ArrowUp',
-    run(view) {
-      const selection = view.state.selection.main;
-      if (!selection.empty) return false;
-
-      const currentLine = view.state.doc.lineAt(selection.head);
-      if (currentLine.number <= 1) return false;
-
-      const previousLineNumber = currentLine.number - 1;
-      if (!isHorizontalRuleLine(view.state, previousLineNumber)) return false;
-
-      const horizontalRuleLine = view.state.doc.line(previousLineNumber);
-      view.dispatch({
-        selection: { anchor: horizontalRuleLine.from },
-        scrollIntoView: false,
-        userEvent: 'select.keyboard'
-      });
-      return true;
-    }
-  }
-]);
 
 export const tableNavigationKeymap = keymap.of([
   {
@@ -1406,6 +2592,220 @@ export const tableNavigationKeymap = keymap.of([
   }
 ]);
 
+const renderedVerticalGoals = new WeakMap();
+
+function renderedVisualRows(view) {
+  const rows = [];
+  const lineElements = Array.from(view.contentDOM.children)
+    .filter(element => element.classList?.contains('cm-line'));
+
+  for (const line of lineElements) {
+    const ownerDocument = line.ownerDocument;
+    const showText = ownerDocument.defaultView.NodeFilter.SHOW_TEXT;
+    const walker = ownerDocument.createTreeWalker(line, showText);
+    const fragments = [];
+    let textNode;
+
+    while ((textNode = walker.nextNode())) {
+      if (textNode.parentElement?.closest('.cm-codeblock-header')) continue;
+
+      const textRange = ownerDocument.createRange();
+      textRange.selectNodeContents(textNode);
+      fragments.push(
+        ...Array.from(textRange.getClientRects()).filter(rect => rect.height > 0)
+      );
+    }
+
+    const addFragment = rect => {
+      let row = rows.find(candidate => {
+        if (candidate.element !== line) return false;
+        const overlap = Math.min(candidate.bottom, rect.bottom) -
+          Math.max(candidate.top, rect.top);
+        return overlap > 0 ||
+          Math.abs(candidate.center - (rect.top + rect.bottom) / 2) <= 1;
+      });
+
+      if (!row) {
+        row = {
+          element: line,
+          top: rect.top,
+          bottom: rect.bottom,
+          center: (rect.top + rect.bottom) / 2
+        };
+        rows.push(row);
+        return;
+      }
+
+      row.top = Math.min(row.top, rect.top);
+      row.bottom = Math.max(row.bottom, rect.bottom);
+      row.center = (row.top + row.bottom) / 2;
+    };
+
+    if (fragments.length) {
+      for (const rect of fragments) addFragment(rect);
+    } else if (!line.querySelector('.cm-codeblock-header')) {
+      // Empty Markdown lines and fully hidden syntax still occupy a visual row.
+      const rect = line.getBoundingClientRect();
+      if (rect.height > 0) addFragment(rect);
+    }
+  }
+
+  return rows.sort((a, b) => a.center - b.center);
+}
+
+function renderedLineForPosition(view, position, side) {
+  const located = view.domAtPos(position, side);
+  const element = located.node?.nodeType === 1
+    ? located.node
+    : located.node?.parentElement;
+  return element?.closest?.('.cm-line') || null;
+}
+
+function leaveHiddenSyntax(view, position, direction) {
+  const ranges = currentEditorMode === 'wysiwyg'
+    ? view.state.field(heightMapField).hiddenSyntaxRanges
+    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
+  if (!ranges || position >= view.state.doc.length) return position;
+
+  let result = position;
+  ranges.between(position, position + 1, (from, to) => {
+    if (from <= position && position < to) {
+      result = direction > 0 ? to : from;
+    }
+  });
+  return result;
+}
+
+function positionOnRenderedRow(view, row, goalX, direction) {
+  const coordsForTargetRow = position => {
+    const matches = [];
+    for (const side of [-1, 1]) {
+      const coords = view.coordsAtPos(position, side);
+      if (!coords) continue;
+
+      const center = (coords.top + coords.bottom) / 2;
+      if (center >= row.top - 2 && center <= row.bottom + 2) {
+        matches.push(coords);
+      }
+    }
+    return matches;
+  };
+
+  const direct = view.posAtCoords({ x: goalX, y: row.center });
+  const directLine = direct == null
+    ? null
+    : renderedLineForPosition(view, direct, direction);
+  const directRowCoords = direct == null ? [] : coordsForTargetRow(direct);
+
+  if (
+    direct != null &&
+    directLine === row.element &&
+    directRowCoords.length > 0
+  ) {
+    return direct;
+  }
+
+  // Android WebView can map a point over hidden Markdown delimiters to a
+  // different source line. Search only this rendered row's source line and
+  // choose the caret position whose measured x is nearest the saved goal.
+  const lineStart = view.posAtDOM(row.element, 0);
+  const line = view.state.doc.lineAt(lineStart);
+  let bestPosition = null;
+  let bestDistance = Infinity;
+
+  for (let position = line.from; position <= line.to; position++) {
+    for (const coords of coordsForTargetRow(position)) {
+      const distance = Math.abs(coords.left - goalX);
+      if (distance < bestDistance) {
+        bestPosition = position;
+        bestDistance = distance;
+      }
+    }
+  }
+
+  return bestPosition;
+}
+
+export function moveByRenderedRow(view, direction, extendSelection = false) {
+  if (!view.dom.isConnected || view.state.selection.ranges.length !== 1) {
+    return false;
+  }
+
+  const range = view.state.selection.main;
+  const start = extendSelection || range.empty
+    ? range.head
+    : direction < 0 ? range.from : range.to;
+  const caret = view.coordsAtPos(start);
+  if (!caret) return false;
+
+  const rows = renderedVisualRows(view);
+  const currentLine = renderedLineForPosition(view, start, direction);
+  if (!currentLine || !rows.length) return false;
+
+  const caretCenter = (caret.top + caret.bottom) / 2;
+  let currentIndex = -1;
+  let nearestDistance = Infinity;
+  for (let index = 0; index < rows.length; index++) {
+    if (rows[index].element !== currentLine) continue;
+    const distance = Math.abs(rows[index].center - caretCenter);
+    if (distance < nearestDistance) {
+      currentIndex = index;
+      nearestDistance = distance;
+    }
+  }
+  if (currentIndex < 0) return false;
+
+  const previousGoal = renderedVerticalGoals.get(view);
+  const preserveGoal = range.empty && previousGoal?.head === start;
+  const goalX = preserveGoal ? previousGoal.x : caret.left;
+  const targetRow = rows[currentIndex + direction];
+  if (!targetRow) return false;
+
+  let target = positionOnRenderedRow(view, targetRow, goalX, direction);
+  if (target == null) return false;
+  target = leaveHiddenSyntax(view, target, direction);
+
+  // Do not dispatch if the browser mapped the target point to a different row.
+  const mappedLine = renderedLineForPosition(view, target, direction);
+  if (mappedLine && mappedLine !== targetRow.element) return false;
+
+  const selection = extendSelection
+    ? { anchor: range.anchor, head: target }
+    : { anchor: target, head: target };
+  view.dispatch({
+    selection,
+    scrollIntoView: true,
+    userEvent: extendSelection ? 'select' : 'move'
+  });
+
+  renderedVerticalGoals.set(view, {
+    x: goalX,
+    head: view.state.selection.main.head
+  });
+  return true;
+}
+
+export const renderedRowNavigationKeymap = keymap.of([
+  {
+    key: 'ArrowUp',
+    run: view => moveByRenderedRow(view, -1),
+    shift: view => moveByRenderedRow(view, -1, true)
+  },
+  {
+    key: 'ArrowDown',
+    run: view => moveByRenderedRow(view, 1),
+    shift: view => moveByRenderedRow(view, 1, true)
+  }
+]);
+
+export const resetRenderedVerticalGoal = EditorView.domEventHandlers({
+  pointerdown(_event, view) {
+    renderedVerticalGoals.delete(view);
+    return false;
+  }
+});
+
+
 
 
 class CodeMirrorAdapter {
@@ -1417,11 +2817,122 @@ class CodeMirrorAdapter {
     this.showLineNumbers = false;
     this.revision = 0;
     this.isProgrammatic = false;
+    this.scrollPersistTimer = null;
+    this.scrollPersistHandler = null;
+    this.visibilityPersistHandler = null;
+    this.pageHidePersistHandler = null;
+    this.syntaxRefreshFrame = null;
+    this.syntaxRefreshAttempts = 0;
+    this.syntaxRefreshComplete = false;
+    this.pendingRestoreScrollTop = null;
   }
 
-  async init(containerEl, initialMarkdown = '') {
+  scheduleSyntaxRefresh() {
+    const view = this.view;
+    if (!view) return;
+
+    if (this.syntaxRefreshFrame !== null) {
+      cancelAnimationFrame(this.syntaxRefreshFrame);
+      this.syntaxRefreshFrame = null;
+    }
+    this.syntaxRefreshAttempts = 0;
+    this.syntaxRefreshComplete = false;
+
+    const refresh = () => {
+      if (this.view !== view || !view.dom.isConnected) return;
+
+      if (currentEditorMode === 'source') {
+        this.syntaxRefreshComplete = true;
+        this.syntaxRefreshFrame = null;
+        this.scheduleRestoredScrollTop();
+        return;
+      }
+
+      const parsed = forceParsing(view, view.state.doc.length, 8);
+      if (parsed) {
+        dispatchWithScrollSnapshot(
+          view,
+          heightMapRefreshEffect.of(null)
+        );
+        this.syntaxRefreshComplete = true;
+        this.syntaxRefreshFrame = null;
+        this.scheduleRestoredScrollTop();
+        return;
+      }
+
+      this.syntaxRefreshAttempts += 1;
+      if (this.syntaxRefreshAttempts >= 120) {
+        window.AndroidNative?.reportDiagnostic?.(
+          'syntax_parse_timeout',
+          this.syntaxRefreshAttempts
+        );
+        dispatchWithScrollSnapshot(
+          view,
+          heightMapRefreshEffect.of(null)
+        );
+        this.syntaxRefreshComplete = true;
+        this.syntaxRefreshFrame = null;
+        this.scheduleRestoredScrollTop();
+        return;
+      }
+
+      this.syntaxRefreshFrame = requestAnimationFrame(refresh);
+    };
+
+    this.syntaxRefreshFrame = requestAnimationFrame(refresh);
+  }
+
+  setScrollPosition(scrollTop) {
+    if (!Number.isFinite(scrollTop) || scrollTop < 0) return;
+    this.pendingRestoreScrollTop = scrollTop;
+    if (this.syntaxRefreshComplete) this.scheduleRestoredScrollTop();
+  }
+
+  scheduleRestoredScrollTop() {
+    const view = this.view;
+    const scrollTop = this.pendingRestoreScrollTop;
+    if (!view || scrollTop == null || !this.syntaxRefreshComplete) return;
+
+    this.pendingRestoreScrollTop = null;
+    requestAnimationFrame(() => {
+      if (this.view !== view || !view.dom.isConnected) return;
+      view.scrollDOM.scrollTop = scrollTop;
+    });
+  }
+
+  persistScrollPosition() {
+    if (this.scrollPersistTimer !== null) {
+      clearTimeout(this.scrollPersistTimer);
+      this.scrollPersistTimer = null;
+    }
+    if (!this.view || this.isProgrammatic) return;
+
+    const bridge = window.AndroidNative;
+    if (typeof bridge?.onScrollChanged !== 'function') return;
+
+    bridge.onScrollChanged(
+      Math.max(0, Math.round(this.view.scrollDOM.scrollTop))
+    );
+  }
+
+  queueScrollPositionSave() {
+    if (!this.view || this.isProgrammatic) return;
+    if (this.scrollPersistTimer !== null) {
+      clearTimeout(this.scrollPersistTimer);
+    }
+
+    this.scrollPersistTimer = setTimeout(() => {
+      this.scrollPersistTimer = null;
+      this.persistScrollPosition();
+    }, 250);
+    if (this.scrollPersistTimer && typeof this.scrollPersistTimer.unref === 'function') {
+      this.scrollPersistTimer.unref();
+    }
+  }
+
+  async init(containerEl, initialMarkdown = '', modeSnapshot = null) {
     containerEl.innerHTML = '';
-    const startState = EditorState.create({
+    let startState = EditorState.create({
       doc: initialMarkdown || '',
       extensions: [
         highlightSpecialChars(),
@@ -1435,6 +2946,8 @@ class CodeMirrorAdapter {
         cmMarkdown({ extensions: [GFM, GFMTable, GFMStrikethrough, GFMTaskList] }),
         syntaxHighlighting(customHighlightStyle),
         livePreviewPlugin,
+        listMarkerMeasurementPlugin,
+        hiddenSyntaxAtomicRanges,
         this.lineWrapCompartment.of(isLineWrapEnabled ? EditorView.lineWrapping : []),
         this.lineNumbersCompartment.of(this.showLineNumbers ? lineNumbers() : []),
         EditorView.theme({
@@ -1459,6 +2972,10 @@ class CodeMirrorAdapter {
           '.cm-selectionBackground, ::selection': {
             backgroundColor: 'var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)) !important',
             color: 'var(--selection-highlight-text, inherit) !important'
+          },
+          '.cm-selectionLayer': {
+            zIndex: 2,
+            pointerEvents: 'none'
           },
           '.cm-line': {
             color: 'var(--text-color, #ffffff) !important'
@@ -1485,17 +3002,20 @@ class CodeMirrorAdapter {
               window.AndroidNative.onContentChanged(null, this.revision);
             }
           }
-          if (update.selectionSet && !this.isProgrammatic && window.AndroidNative && typeof window.AndroidNative.onSelectionChanged === 'function') {
-            const state = this.getSelectionState();
-            window.AndroidNative.onSelectionChanged(JSON.stringify(state));
+          if (update.selectionSet || update.docChanged || update.viewportChanged) {
+            updateTableDocumentSelection(update.view);
           }
           if ((update.selectionSet || update.docChanged) && typeof updateTocActiveSection === 'function') {
             updateTocActiveSection();
           }
         }),
         tableStateField,
-        horizontalRuleNavigationKeymap,
+        wysiwygCodeBlockField,
+        persistentLayoutField,
+        heightMapField,
         tableNavigationKeymap,
+        renderedRowNavigationKeymap,
+        resetRenderedVerticalGoal,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap
@@ -1503,15 +3023,108 @@ class CodeMirrorAdapter {
       ]
     });
 
+    if (modeSnapshot?.selection) {
+      let selection = modeSnapshot.selection;
+
+      if (currentEditorMode === 'wysiwyg') {
+        const hiddenRanges = [];
+        const hiddenSyntax = startState.field(heightMapField).hiddenSyntaxRanges;
+        hiddenSyntax.between(0, startState.doc.length, (from, to) => {
+          hiddenRanges.push({ from, to });
+        });
+        selection = mapSelectionOutsideHiddenSyntax(
+          selection,
+          hiddenRanges,
+          startState.doc.length
+        );
+      }
+
+      startState = startState.update({ selection }).state;
+    }
+
+    const viewportHeight = Math.max(
+      containerEl.clientHeight || 0,
+      window.visualViewport?.height || 0,
+      window.innerHeight || 0
+    );
+    const viewportMargin = currentEditorMode === 'wysiwyg'
+      ? computeWysiwygViewportMargin(viewportHeight)
+      : 1000;
+
     this.view = new EditorView({
       state: startState,
-      parent: containerEl
+      parent: containerEl,
+      scrollTo: modeSnapshot?.scroll,
+      viewportMargin
     });
+
+    this.view.scrollDOM.style.overflowAnchor =
+      currentEditorMode === 'wysiwyg' ? 'none' : 'auto';
+
+    this.scrollPersistHandler = () => this.queueScrollPositionSave();
+    this.visibilityPersistHandler = () => {
+      if (document.visibilityState === 'hidden') this.persistScrollPosition();
+    };
+    this.pageHidePersistHandler = () => this.persistScrollPosition();
+
+    this.view.scrollDOM.addEventListener(
+      'scroll',
+      this.scrollPersistHandler,
+      { passive: true }
+    );
+    document.addEventListener(
+      'visibilitychange',
+      this.visibilityPersistHandler
+    );
+    window.addEventListener('pagehide', this.pageHidePersistHandler);
+
+    premeasureTableHeights(this.view);
+
+    this.lastTableContentWidth = Math.round(
+      this.view.contentDOM.getBoundingClientRect().width
+    );
+    this.tableWidthMeasureFrame = null;
+    this.tableContentWidthObserver = new ResizeObserver(() => {
+      if (!this.view) return;
+      const observedWidth = Math.round(
+        this.view.contentDOM.getBoundingClientRect().width
+      );
+      if (
+        observedWidth <= 0 ||
+        observedWidth === this.lastTableContentWidth ||
+        this.tableWidthMeasureFrame !== null
+      ) {
+        return;
+      }
+
+      this.tableWidthMeasureFrame = requestAnimationFrame(() => {
+        this.tableWidthMeasureFrame = null;
+        if (!this.view || !this.view.dom.isConnected) return;
+
+        const currentWidth = Math.round(
+          this.view.contentDOM.getBoundingClientRect().width
+        );
+        if (currentWidth <= 0 || currentWidth === this.lastTableContentWidth) return;
+
+        this.lastTableContentWidth = currentWidth;
+        premeasureTableHeights(this.view);
+        dispatchWithScrollSnapshot(
+          this.view,
+          heightMapRefreshEffect.of(null)
+        );
+      });
+    });
+    this.tableContentWidthObserver.observe(this.view.contentDOM);
+
+    updateTableDocumentSelection(this.view);
+    this.navigationDiagnosticsCleanup = setupNavigationDiagnostics(this.view);
 
     setupGroupedControlBar();
     initCustomSearchBar();
     setupFastScrollbar();
     setupTocGestureAndPanel();
+
+    this.scheduleSyntaxRefresh();
   }
 
   setMarkdown(text) {
@@ -1523,9 +3136,11 @@ class CodeMirrorAdapter {
         changes: { from: 0, to: currentDoc.length, insert: text || '' },
         annotations: Transaction.addToHistory.of(false)
       });
+      this.scheduleSyntaxRefresh();
     }
     this.revision = 0;
-    setTimeout(() => { this.isProgrammatic = false; }, 20);
+    const timer = setTimeout(() => { this.isProgrammatic = false; }, 20);
+    if (timer && typeof timer.unref === 'function') timer.unref();
   }
 
   getMarkdown() {
@@ -1533,40 +3148,6 @@ class CodeMirrorAdapter {
     return this.view.state.doc.toString();
   }
 
-  getSelectionState() {
-    if (!this.view) return { path: [], offset: 0, head: 0, anchor: 0 };
-    const sel = this.view.state.selection.main;
-    return { path: [], offset: sel.head, head: sel.head, anchor: sel.anchor };
-  }
-
-  setSelectionState(stateJson, scrollTop) {
-    if (!this.view) return;
-    try {
-      let sel = typeof stateJson === 'string' ? JSON.parse(stateJson) : stateJson;
-      if (typeof sel === 'string') {
-        sel = JSON.parse(sel);
-      }
-      const hasSavedScroll = Number.isFinite(scrollTop) && scrollTop >= 0;
-
-      if (sel && typeof sel.head === 'number') {
-        const len = this.view.state.doc.length;
-        const head = Math.min(Math.max(0, sel.head), len);
-        const anchor = Math.min(Math.max(0, sel.anchor !== undefined ? sel.anchor : sel.head), len);
-        this.view.dispatch({
-          selection: { anchor, head },
-          scrollIntoView: !hasSavedScroll
-        });
-      }
-
-      if (hasSavedScroll) {
-        requestAnimationFrame(() => {
-          if (this.view) this.view.scrollDOM.scrollTop = scrollTop;
-        });
-      }
-    } catch (e) {
-      console.error('Error setting CodeMirror selection:', e);
-    }
-  }
 
   undo() {
     if (this.view && typeof undoDepth === 'function' && undoDepth(this.view.state) > 0) {
@@ -1617,6 +3198,40 @@ class CodeMirrorAdapter {
   }
 
   destroy() {
+    this.persistScrollPosition();
+
+    if (this.syntaxRefreshFrame !== null) {
+      cancelAnimationFrame(this.syntaxRefreshFrame);
+      this.syntaxRefreshFrame = null;
+    }
+
+    if (this.view && this.scrollPersistHandler) {
+      this.view.scrollDOM.removeEventListener(
+        'scroll',
+        this.scrollPersistHandler
+      );
+    }
+    if (this.visibilityPersistHandler) {
+      document.removeEventListener(
+        'visibilitychange',
+        this.visibilityPersistHandler
+      );
+    }
+    if (this.pageHidePersistHandler) {
+      window.removeEventListener('pagehide', this.pageHidePersistHandler);
+    }
+
+    this.tableContentWidthObserver?.disconnect();
+    this.tableContentWidthObserver = null;
+    if (this.tableWidthMeasureFrame !== null) {
+      cancelAnimationFrame(this.tableWidthMeasureFrame);
+      this.tableWidthMeasureFrame = null;
+    }
+    if (typeof this.navigationDiagnosticsCleanup === 'function') {
+      this.navigationDiagnosticsCleanup();
+      this.navigationDiagnosticsCleanup = null;
+    }
+
     if (this.view) {
       this.view.destroy();
       this.view = null;
@@ -1628,6 +3243,14 @@ async function setEditorMode(mode) {
   const targetMode = (mode === 'live_preview' || mode === 'source') ? mode : 'wysiwyg';
 
   const existingText = activeAdapter ? activeAdapter.getMarkdown() : (pendingMarkdown || '');
+
+  const modeSnapshot = activeAdapter?.view
+    ? {
+        selection: activeAdapter.view.state.selection,
+        scroll: activeAdapter.view.scrollSnapshot()
+      }
+    : null;
+
   if (activeAdapter) {
     activeAdapter.destroy();
     activeAdapter = null;
@@ -1648,7 +3271,7 @@ async function setEditorMode(mode) {
 
   const adapter = new CodeMirrorAdapter();
   const containerEl = document.querySelector('#editor');
-  await adapter.init(containerEl, existingText);
+  await adapter.init(containerEl, existingText, modeSnapshot);
   activeAdapter = adapter;
 
   if (window.AndroidNative && typeof window.AndroidNative.onEditorReady === 'function') {
@@ -1764,6 +3387,7 @@ function setupGroupedControlBar() {
       togglePopupStrip('insert', insertBtn, [
         { icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
         { icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
+        { icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { icon: svgIcons.inlineCode, title: 'Inline Code', action: () => execCmd('code') },
         { icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
         { icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
@@ -1790,6 +3414,296 @@ function setupGroupedControlBar() {
       ]);
     };
   }
+}
+
+export function getDocumentHeadings(doc) {
+  const headings = [];
+  if (!doc) return headings;
+  for (let i = 1; i <= doc.lines; i++) {
+    const lineText = doc.line(i).text.trim();
+    if (/^#{1,6}\s+/.test(lineText)) {
+      headings.push(cleanHeadingText(lineText));
+    }
+  }
+  return headings;
+}
+
+export function openLinkInsertionDialog() {
+  if (!activeAdapter || !activeAdapter.view) return;
+  const view = activeAdapter.view;
+
+  let selectionSnapshot = null;
+  const activeOverlay = document.querySelector('.cm-wp-cell-editor');
+
+  if (activeOverlay && activeOverlay._cellMeta) {
+    const meta = activeOverlay._cellMeta;
+    const selStart = activeOverlay.selectionStart ?? 0;
+    const selEnd = activeOverlay.selectionEnd ?? 0;
+    const cellVal = activeOverlay.value || '';
+    selectionSnapshot = {
+      type: 'table-cell',
+      widget: meta.widget,
+      model: meta.model,
+      row: meta.row,
+      col: meta.col,
+      selStart,
+      selEnd,
+      cellVal,
+      selectedText: cellVal.substring(selStart, selEnd)
+    };
+  } else if (window._lastActiveCellSelection && (Date.now() - window._lastActiveCellSelection.timestamp < 3000)) {
+    const snap = window._lastActiveCellSelection;
+    selectionSnapshot = {
+      type: 'table-cell',
+      widget: snap.widget,
+      model: snap.model,
+      row: snap.row,
+      col: snap.col,
+      selStart: snap.selStart,
+      selEnd: snap.selEnd,
+      cellVal: snap.cellValue,
+      selectedText: snap.selectedText
+    };
+  } else {
+    const sel = view.state.selection.main;
+    const selectedText = view.state.doc.sliceString(sel.from, sel.to);
+    selectionSnapshot = {
+      type: 'editor',
+      from: sel.from,
+      to: sel.to,
+      selectedText
+    };
+  }
+
+  const selectedText = selectionSnapshot ? selectionSnapshot.selectedText : '';
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  const headings = getDocumentHeadings(view.state.doc);
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Insert Link</h3>
+    <div class="modal-field-group">
+      <label class="modal-label">Link Kind</label>
+      <select id="modal-link-kind" class="modal-select">
+        <option value="web">Web URL</option>
+        <option value="heading">Heading in this document</option>
+      </select>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" id="modal-label-text">Display Text</label>
+      <input type="text" id="modal-link-text" class="modal-input" placeholder="Text to display" value="${selectedText.replace(/"/g, '&quot;')}" />
+    </div>
+    <div class="modal-field-group" id="group-web-url">
+      <label class="modal-label">Web URL</label>
+      <input type="text" id="modal-link-url" class="modal-input" placeholder="https://" value="https://" />
+    </div>
+    <div class="modal-field-group hidden" id="group-heading-picker" style="display:none;">
+      <label class="modal-label">Target Heading</label>
+      <select id="modal-heading-select" class="modal-select">
+        ${headings.length > 0
+          ? headings.map(h => `<option value="${h.replace(/"/g, '&quot;')}">${h}</option>`).join('')
+          : '<option value="">(No headings found in document)</option>'}
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-btn-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm">Insert</button>
+    </div>
+  `;
+
+  const kindSelect = dialog.querySelector('#modal-link-kind');
+  const groupWeb = dialog.querySelector('#group-web-url');
+  const groupHeading = dialog.querySelector('#group-heading-picker');
+  const labelText = dialog.querySelector('#modal-label-text');
+  const textInput = dialog.querySelector('#modal-link-text');
+  const urlInput = dialog.querySelector('#modal-link-url');
+  const headingSelect = dialog.querySelector('#modal-heading-select');
+  const btnCancel = dialog.querySelector('#modal-btn-cancel');
+  const btnConfirm = dialog.querySelector('#modal-btn-confirm');
+
+  kindSelect.addEventListener('change', () => {
+    if (kindSelect.value === 'web') {
+      groupWeb.style.display = 'flex';
+      groupHeading.style.display = 'none';
+      labelText.textContent = 'Display Text';
+    } else {
+      groupWeb.style.display = 'none';
+      groupHeading.style.display = 'flex';
+      labelText.textContent = 'Link Alias (Optional)';
+    }
+  });
+
+  const closeModal = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+  };
+
+  btnCancel.addEventListener('click', (e) => {
+    e.preventDefault();
+    window._lastActiveCellSelection = null;
+    closeModal();
+    view.focus();
+  });
+
+  btnConfirm.addEventListener('click', (e) => {
+    e.preventDefault();
+    const kind = kindSelect.value;
+    const displayText = textInput.value.trim();
+    let replacement = '';
+
+    if (kind === 'web') {
+      const url = urlInput.value.trim() || 'https://';
+      const label = displayText || url;
+      replacement = `[${label}](${url})`;
+    } else {
+      const targetHeading = headingSelect.value;
+      if (!targetHeading) {
+        window._lastActiveCellSelection = null;
+        closeModal();
+        view.focus();
+        return;
+      }
+      if (displayText) {
+        replacement = `[[#${targetHeading}|${displayText}]]`;
+      } else {
+        replacement = `[[#${targetHeading}]]`;
+      }
+    }
+
+    if (selectionSnapshot && selectionSnapshot.type === 'table-cell') {
+      const snap = selectionSnapshot;
+      const model = snap.model;
+      const r = snap.row;
+      const c = snap.col;
+      const currentVal = (model.rows[r] && model.rows[r][c] !== undefined) ? model.rows[r][c] : (snap.cellVal || '');
+      const start = Math.min(snap.selStart, currentVal.length);
+      const end = Math.min(snap.selEnd, currentVal.length);
+      const newVal = currentVal.substring(0, start) + replacement + currentVal.substring(end);
+
+      if (model.rows[r]) {
+        model.rows[r][c] = newVal;
+      }
+
+      if (snap.widget && typeof snap.widget.commitModel === 'function') {
+        snap.widget.commitModel(view, model);
+      } else {
+        const sel = view.state.selection.main;
+        view.dispatch({
+          changes: { from: sel.from, to: sel.to, insert: replacement },
+          selection: { anchor: sel.from + replacement.length, head: sel.from + replacement.length }
+        });
+      }
+      window._lastActiveCellSelection = null;
+    } else {
+      const from = selectionSnapshot ? selectionSnapshot.from : view.state.selection.main.from;
+      const to = selectionSnapshot ? selectionSnapshot.to : view.state.selection.main.to;
+      view.dispatch({
+        changes: { from, to, insert: replacement },
+        selection: { anchor: from + replacement.length, head: from + replacement.length }
+      });
+    }
+
+    closeModal();
+    view.focus();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => {
+    textInput.focus();
+  });
+}
+
+export function openCalloutInsertionDialog() {
+  if (!activeAdapter || !activeAdapter.view) return;
+  const view = activeAdapter.view;
+  const sel = view.state.selection.main;
+  const selectedText = view.state.doc.sliceString(sel.from, sel.to);
+
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  const supportedTypes = ['note', 'info', 'tip', 'warning', 'important', 'danger', 'question', 'faq', 'todo', 'example'];
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Insert Callout</h3>
+    <div class="modal-field-group">
+      <label class="modal-label">Callout Type</label>
+      <select id="modal-callout-type" class="modal-select">
+        ${supportedTypes.map(t => `<option value="${t}">${t.toUpperCase()}</option>`).join('')}
+      </select>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label">Custom Title (Optional)</label>
+      <input type="text" id="modal-callout-title" class="modal-input" placeholder="Default type name" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label">Fold State</label>
+      <select id="modal-callout-fold" class="modal-select">
+        <option value="">Not foldable</option>
+        <option value="+">Expanded (+)</option>
+        <option value="-">Collapsed (-)</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-btn-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm">Insert</button>
+    </div>
+  `;
+
+  const typeSelect = dialog.querySelector('#modal-callout-type');
+  const titleInput = dialog.querySelector('#modal-callout-title');
+  const foldSelect = dialog.querySelector('#modal-callout-fold');
+  const btnCancel = dialog.querySelector('#modal-btn-cancel');
+  const btnConfirm = dialog.querySelector('#modal-btn-confirm');
+
+  const closeModal = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+  };
+
+  btnCancel.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+    view.focus();
+  });
+
+  btnConfirm.addEventListener('click', (e) => {
+    e.preventDefault();
+    const type = typeSelect.value || 'note';
+    const fold = foldSelect.value;
+    const title = titleInput.value.trim();
+
+    let opener = `> [!${type}${fold}]`;
+    if (title) opener += ` ${title}`;
+
+    let replacement = '';
+    let caretOffset = 0;
+
+    if (selectedText.length > 0) {
+      const quotedBody = selectedText.split('\n').map(l => `> ${l}`).join('\n');
+      replacement = `${opener}\n${quotedBody}\n`;
+      caretOffset = replacement.length;
+    } else {
+      replacement = `${opener}\n> `;
+      caretOffset = replacement.length;
+    }
+
+    view.dispatch({
+      changes: { from: sel.from, to: sel.to, insert: replacement },
+      selection: { anchor: sel.from + caretOffset, head: sel.from + caretOffset }
+    });
+
+    closeModal();
+    view.focus();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => {
+    titleInput.focus();
+  });
 }
 
 function showTableGridPickerModal() {
@@ -1891,7 +3805,8 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'outdent') cmOutdentSelection(view, '  ');
     else if (cmdName === 'horizontalLine') cmWrapSelection(view, '\n---\n', '');
     else if (cmdName === 'InsertFootnote') cmWrapSelection(view, '[^1]', '\n[^1]: footnote text');
-    else if (cmdName === 'link') cmWrapSelection(view, '[', '](https://)');
+    else if (cmdName === 'link') openLinkInsertionDialog();
+    else if (cmdName === 'callout') openCalloutInsertionDialog();
     else if (cmdName === 'insertTable') cmWrapSelection(view, '\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '');
     else if (cmdName === 'heading') {
       const val = options ? options.value : '';
@@ -2618,10 +4533,7 @@ function setupTocGestureAndPanel() {
         if (item.lineIndex !== undefined && activeAdapter && activeAdapter.view) {
           try {
             const line = activeAdapter.view.state.doc.line(item.lineIndex + 1);
-            activeAdapter.view.dispatch({
-              selection: { anchor: line.from, head: line.from },
-              scrollIntoView: true
-            });
+            scrollToPositionUpperMiddle(activeAdapter.view, line.from);
           } catch (e) {}
         }
       };
@@ -2764,6 +4676,7 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.strikethrough)) { e.preventDefault(); execCmd('strikethrough'); }
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.callout)) { e.preventDefault(); execCmd('callout'); }
     else if (parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.codeBlock)) { e.preventDefault(); execCmd('codeBlock'); }
     else if (parseAndMatchHotkey(e, customHotkeys.bulletedList)) { e.preventDefault(); execCmd('bulletedList'); }
@@ -2795,6 +4708,21 @@ function setupKeyboardShortcuts() {
 
 // Global JS Bridge exposure
 window.editorBridge = {
+  destroy: function() {
+    if (activeAdapter) {
+      activeAdapter.destroy();
+      activeAdapter = null;
+    }
+  },
+  setScrollPosition: function(scrollTop) {
+    if (activeAdapter) activeAdapter.setScrollPosition(scrollTop);
+  },
+  openLinkInsertionDialog: function() {
+    openLinkInsertionDialog();
+  },
+  openCalloutInsertionDialog: function() {
+    openCalloutInsertionDialog();
+  },
   setEditorMode: function(mode) {
     return setEditorMode(mode);
   },
@@ -2847,6 +4775,10 @@ window.editorBridge = {
     } else if (prefs.pref_line_wrap === true) {
       document.body.classList.remove('no-line-wrap');
     }
+    document.body.classList.toggle(
+      'list-wrap-under-text',
+      prefs.pref_list_wrap_under_text === true
+    );
     if (typeof window.editorBridge.setLineWrap === 'function') {
       window.editorBridge.setLineWrap(prefs.pref_line_wrap !== false);
     }
@@ -2932,6 +4864,7 @@ window.editorBridge = {
     const linkStyle = prefs.pref_link_decoration || 'solid';
     setCssVar('--link-decoration-line', linkStyle === 'none' ? 'none' : 'underline');
     setCssVar('--link-decoration-style', linkStyle === 'none' ? 'solid' : linkStyle);
+    setCssVar('--link-decoration-thickness', prefs.pref_link_underline_thickness, 'px');
     setCssVar('--code-color', prefs.pref_code_color);
     setCssVar('--code-bg-color', prefs.pref_code_bg_color);
     setCssVar('--code-padding', prefs.pref_code_padding, 'px');
@@ -2943,8 +4876,16 @@ window.editorBridge = {
     setCssVar('--footnote-ref-color', prefs.pref_footnote_ref_color);
     setCssVar('--footnote-font-size', prefs.pref_footnote_font_size, 'px');
 
+    // Body & Headings Margins
+    setCssVar('--body-margin-left', prefs.pref_body_margin_left ?? 16, 'px');
+    setCssVar('--body-margin-right', prefs.pref_body_margin_right ?? 16, 'px');
+    setCssVar('--heading-margin-left', prefs.pref_heading_margin_left ?? 0, 'px');
+    setCssVar('--heading-margin-right', prefs.pref_heading_margin_right ?? 0, 'px');
+
     // Lists
     setCssVar('--list-left-indent', prefs.pref_list_left_indent, 'px');
+    setCssVar('--list-margin-right', prefs.pref_list_right_margin ?? 0, 'px');
+    setCssVar('--list-marker-gutter', '24px');
     setCssVar('--list-item-spacing', prefs.pref_list_item_spacing, 'px');
     setCssVar('--list-line-height', prefs.pref_list_line_height);
     setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
@@ -2959,7 +4900,12 @@ window.editorBridge = {
     setCssVar('--blockquote-border-color', prefs.pref_blockquote_line_color);
     setCssVar('--blockquote-bg-color', prefs.pref_blockquote_bg_color);
     setCssVar('--blockquote-text-color', prefs.pref_blockquote_text_color);
-    setCssVar('--blockquote-left-margin', prefs.pref_blockquote_left_indent || prefs.pref_blockquote_left_margin, 'px');
+    setCssVar(
+      '--blockquote-left-margin',
+      prefs.pref_blockquote_left_indent ?? prefs.pref_blockquote_left_margin ?? 0,
+      'px'
+    );
+    setCssVar('--blockquote-right-margin', prefs.pref_blockquote_right_margin ?? 0, 'px');
     setCssVar('--blockquote-padding', prefs.pref_blockquote_padding, 'px');
 
     setCssVar('--callout-border-width', prefs.pref_callout_line_thickness, 'px');
@@ -2967,12 +4913,19 @@ window.editorBridge = {
     setCssVar('--callout-border-color', prefs.pref_callout_line_color);
     setCssVar('--callout-bg-color', prefs.pref_callout_bg_color);
     setCssVar('--callout-text-color', prefs.pref_callout_text_color);
+    setCssVar('--callout-margin-left', prefs.pref_callout_margin_left ?? 0, 'px');
+    setCssVar('--callout-margin-right', prefs.pref_callout_margin_right ?? 0, 'px');
     setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
 
     // Callout Shared Header
     setCssVar('--callout-header-bg', prefs.pref_callout_header_bg_color);
     setCssVar('--callout-header-title-color', prefs.pref_callout_header_title_color);
-    setCssVar('--callout-header-title-size', prefs.pref_callout_header_title_size, 'px');
+    const titleSizeVal = prefs.pref_callout_header_title_size;
+    if (titleSizeVal == null || titleSizeVal == 0 || titleSizeVal === '0' || titleSizeVal === 'default') {
+      document.documentElement.style.removeProperty('--callout-header-title-size');
+    } else {
+      setCssVar('--callout-header-title-size', titleSizeVal, 'px');
+    }
     setCssVar('--callout-header-font-family', prefs.pref_callout_header_font_family);
     setCssVar('--callout-header-font-weight', prefs.pref_callout_header_font_weight);
     setCssVar('--callout-header-padding', prefs.pref_callout_header_padding, 'px');
@@ -2997,6 +4950,8 @@ window.editorBridge = {
     });
 
     // Tables
+    setCssVar('--table-margin-left', prefs.pref_table_margin_left ?? 0, 'px');
+    setCssVar('--table-margin-right', prefs.pref_table_margin_right ?? 0, 'px');
     setCssVar('--table-border-style', prefs.pref_table_border_style);
     setCssVar('--table-border-width', prefs.pref_table_border_thickness || prefs.pref_table_border_width, 'px');
     setCssVar('--table-border-color', prefs.pref_table_border_color);
@@ -3016,12 +4971,20 @@ window.editorBridge = {
     setCssVar('--code-block-color', prefs.pref_code_block_color);
     setCssVar('--code-block-bg-color', prefs.pref_code_block_bg_color);
     setCssVar('--code-block-font-size', prefs.pref_code_block_font_size, 'px');
+    setCssVar('--code-block-margin-left', prefs.pref_code_block_margin_left ?? 0, 'px');
+    setCssVar('--code-block-margin-right', prefs.pref_code_block_margin_right ?? 0, 'px');
     setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
     setCssVar('--code-block-border-radius', prefs.pref_code_block_border_radius, 'px');
     setCssVar('--code-block-line-height', prefs.pref_code_block_line_height);
     setCssVar('--code-block-lang-label-color', prefs.pref_code_block_lang_label_color);
 
     // Dividers
+    setCssVar('--hr-margin-left', prefs.pref_hr_margin_left ?? 0, '%');
+    setCssVar('--hr-margin-right', prefs.pref_hr_margin_right ?? 0, '%');
+    document.body.classList.toggle(
+      'hr-centered',
+      prefs.pref_hr_centered === true
+    );
     setCssVar('--hr-thickness', prefs.pref_hr_thickness, 'px');
     setCssVar('--hr-style', prefs.pref_hr_style);
     setCssVar('--hr-color', prefs.pref_hr_color);
@@ -3186,6 +5149,15 @@ window.editorBridge = {
       }
     };
     applyFindReplaceButtonLayout(prefs);
+
+    if (activeAdapter && activeAdapter.view) {
+      dispatchWithScrollSnapshot(
+        activeAdapter.view,
+        typographySettingsEffect.of(Date.now())
+      );
+      premeasureTableHeights(activeAdapter.view);
+      activeAdapter.view.requestMeasure();
+    }
   },
   getMarkdown: function() {
     // Flush active table cell draft if an overlay editor is open
@@ -3472,6 +5444,557 @@ if (typeof window !== 'undefined') {
       settingTabs: [],
       addSettingTab: (tab) => console.log('[Obsidian] Registered Setting Tab')
     }
+  };
+}
+
+let nextTraceId = 1;
+
+function getBlockCategory(view, pos) {
+  if (!view || pos == null || pos < 0 || pos > view.state.doc.length) return 'other';
+  try {
+    const line = view.state.doc.lineAt(pos);
+    const tree = syntaxTree(view.state);
+    const node = tree.resolveInner(pos, 1);
+
+    for (let cur = node; cur; cur = cur.parent) {
+      const name = cur.name;
+      if (name.startsWith('ATXHeading') || name.startsWith('SetextHeading') || name === 'HeaderMark') {
+        return 'heading';
+      }
+      if (name === 'ListItem' || name === 'ListMark' || name === 'TaskMarker') {
+        return 'list';
+      }
+      if (name === 'FencedCode' || name === 'CodeBlock' || name === 'CodeText') {
+        return 'code';
+      }
+      if (name === 'Table' || name === 'TableCell') {
+        return 'table';
+      }
+      if (name === 'Paragraph') {
+        return 'paragraph';
+      }
+    }
+
+    if (line.text.trim().startsWith('>')) {
+      return 'callout';
+    }
+  } catch (e) {}
+  return 'other';
+}
+
+function getSnapshot(view) {
+  if (!view || !view.state) return null;
+  try {
+    const sel = view.state.selection.main;
+    const anchor = sel.anchor;
+    const head = sel.head;
+    const collapsed = sel.empty;
+
+    const anchorLineObj = view.state.doc.lineAt(anchor);
+    const headLineObj = view.state.doc.lineAt(head);
+
+    const anchorCoords = view.coordsAtPos(anchor);
+    const headCoords = view.coordsAtPos(head);
+
+    const viewRect = view.dom ? view.dom.getBoundingClientRect() : null;
+    const scroller = view.scrollDOM;
+
+    return {
+      anchor,
+      head,
+      collapsed,
+      anchorLine: anchorLineObj.number,
+      anchorColumn: anchor - anchorLineObj.from + 1,
+      headLine: headLineObj.number,
+      headColumn: head - headLineObj.from + 1,
+      anchorBlock: getBlockCategory(view, anchor),
+      headBlock: getBlockCategory(view, head),
+      anchorLineText: anchorLineObj.text,
+      headLineText: headLineObj.text,
+      anchorClientTop: anchorCoords ? anchorCoords.top : null,
+      anchorClientBottom: anchorCoords ? anchorCoords.bottom : null,
+      headClientTop: headCoords ? headCoords.top : null,
+      headClientBottom: headCoords ? headCoords.bottom : null,
+      viewTop: viewRect ? viewRect.top : null,
+      viewBottom: viewRect ? viewRect.bottom : null,
+      viewWidth: viewRect ? viewRect.width : null,
+      viewHeight: viewRect ? viewRect.height : null,
+      scrollTop: scroller ? scroller.scrollTop : null,
+      scrollLeft: scroller ? scroller.scrollLeft : null,
+      scrollHeight: scroller ? scroller.scrollHeight : null,
+      clientHeight: scroller ? scroller.clientHeight : null,
+      windowScrollY: typeof window !== 'undefined' ? window.scrollY : null,
+      windowInnerHeight: typeof window !== 'undefined' ? window.innerHeight : null
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+export function setupNavigationDiagnostics(view) {
+  if (!view || !view.dom) return;
+
+  const dom = view.dom;
+  const scroller = view.scrollDOM;
+
+  let activeArrowPress = null;
+  let lastArrowEventTime = 0;
+  let lastArrowPressId = null;
+
+  const reportTrace = (record) => {
+    const serialized = serializeNavigationTraceRecord(record);
+    if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
+      window.AndroidNative.reportNavigationTrace(serialized);
+    }
+  };
+
+  const addSampleToContainer = (container, sampleObj) => {
+    if (!container) return;
+    const now = performance.now();
+    if (now - (container.lastSampleTime || 0) < 50) return;
+
+    container.lastSampleTime = now;
+    container.totalSampleCount = (container.totalSampleCount || 0) + 1;
+
+    if (!container.scrollSamples) {
+      container.scrollSamples = [];
+    }
+
+    if (container.scrollSamples.length < 12) {
+      container.scrollSamples.push(sampleObj);
+    } else {
+      container.droppedSampleCount = (container.droppedSampleCount || 0) + 1;
+      container.scrollSamples = [container.scrollSamples[0], ...container.scrollSamples.slice(2), sampleObj];
+    }
+  };
+
+  const closeActiveArrowPress = (endedByBlur = false) => {
+    if (!activeArrowPress) return;
+    const press = activeArrowPress;
+    activeArrowPress = null;
+
+    const duration = Math.round(performance.now() - press.startTime);
+    const afterSnap = getSnapshot(view);
+
+    const record = {
+      id: nextTraceId++,
+      pressId: press.pressId,
+      kind: 'arrow_press',
+      source: 'arrow',
+      direction: press.direction,
+      duration,
+      keydownCount: press.keydownCount,
+      hadReportedRepeat: press.hadReportedRepeat,
+      endedByBlur: Boolean(endedByBlur),
+      before: press.beforeSnap,
+      after: afterSnap,
+      scrollSamples: press.scrollSamples,
+      totalSampleCount: press.totalSampleCount,
+      droppedSampleCount: press.droppedSampleCount
+    };
+
+    reportTrace(record);
+  };
+
+  // Capture phase keydown for ArrowUp / ArrowDown
+  dom.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+    const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
+    const reportedRepeat = Boolean(e.repeat);
+
+    if (!activeArrowPress || activeArrowPress.direction !== direction) {
+      if (activeArrowPress) {
+        closeActiveArrowPress(false);
+      }
+      activeArrowPress = {
+        pressId: nextTraceId++,
+        direction,
+        startTime: performance.now(),
+        keydownCount: 0,
+        hadReportedRepeat: false,
+        beforeSnap: getSnapshot(view),
+        scrollSamples: [],
+        totalSampleCount: 0,
+        droppedSampleCount: 0,
+        lastSampleTime: 0
+      };
+    }
+
+    activeArrowPress.keydownCount++;
+    if (reportedRepeat) {
+      activeArrowPress.hadReportedRepeat = true;
+    }
+
+    const press = activeArrowPress;
+    const keydownIndex = press.keydownCount;
+    const isEffectiveRepeat = reportedRepeat || keydownIndex > 1;
+    const eventElapsedMs = Math.round(performance.now() - press.startTime);
+    const eventTraceId = nextTraceId++;
+
+    const beforeSnap = getSnapshot(view);
+    lastArrowEventTime = performance.now();
+    lastArrowPressId = press.pressId;
+
+    requestAnimationFrame(() => {
+      if (!view || !view.state) return;
+      let afterSnap = getSnapshot(view);
+
+      setTimeout(() => {
+        if (!view || !view.state) return;
+        const afterSnap50 = getSnapshot(view);
+        if (afterSnap50) afterSnap = afterSnap50;
+
+        const deltaTop = (beforeSnap && afterSnap && beforeSnap.scrollTop !== null && afterSnap.scrollTop !== null)
+          ? Math.round((afterSnap.scrollTop - beforeSnap.scrollTop) * 100) / 100
+          : null;
+        const deltaLeft = (beforeSnap && afterSnap && beforeSnap.scrollLeft !== null && afterSnap.scrollLeft !== null)
+          ? Math.round((afterSnap.scrollLeft - beforeSnap.scrollLeft) * 100) / 100
+          : null;
+
+        const selChanged = (beforeSnap && afterSnap)
+          ? (beforeSnap.anchor !== afterSnap.anchor || beforeSnap.head !== afterSnap.head)
+          : false;
+
+        const record = {
+          id: eventTraceId,
+          pressId: press.pressId,
+          kind: 'arrow',
+          source: 'arrow',
+          direction,
+          repeat: isEffectiveRepeat,
+          reportedRepeat,
+          keydownIndex,
+          eventElapsedMs,
+          scrollDeltaTop: deltaTop,
+          scrollDeltaLeft: deltaLeft,
+          selectionChanged: selChanged,
+          before: beforeSnap,
+          after: afterSnap
+        };
+
+        reportTrace(record);
+      }, 50);
+    });
+  }, true);
+
+  // Keyup for ArrowUp / ArrowDown
+  dom.addEventListener('keyup', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
+    if (activeArrowPress && activeArrowPress.direction === direction) {
+      closeActiveArrowPress(false);
+    }
+  }, true);
+
+  // Blur event closes active press
+  window.addEventListener('blur', () => {
+    if (activeArrowPress) {
+      closeActiveArrowPress(true);
+    }
+  });
+
+  // Passive pointer gesture & scroll recorder
+  let activePointerGesture = null;
+  let unattributedScrollRecord = null;
+  let unattributedScrollTimer = null;
+
+  const getScrollTargetLabel = (el) => {
+    if (!el) return 'page';
+    if (el === scroller) return 'editor';
+    if (el === document.body || el === document.documentElement || el === window) return 'page';
+    if (scroller && scroller.contains(el)) return 'editor';
+    return 'ancestor1';
+  };
+
+  const createSample = (targetLabel, px, py, source, pressId) => {
+    try {
+      const isPageTarget = (targetLabel === 'page');
+      const targetEl = (targetLabel === 'editor' && scroller) ? scroller : null;
+      const head = view.state.selection.main.head;
+      const headLineObj = view.state.doc.lineAt(head);
+      const headCoords = view.coordsAtPos(head);
+      const viewRect = dom.getBoundingClientRect();
+      const startTime = activePointerGesture ? activePointerGesture.startTime
+        : (activeArrowPress ? activeArrowPress.startTime
+        : (unattributedScrollRecord ? unattributedScrollRecord.startTime : performance.now()));
+
+      return {
+        elapsedMs: Math.round(performance.now() - startTime),
+        pressId: pressId ?? null,
+        source: source || 'unattributed',
+        target: targetLabel,
+        scrollTop: isPageTarget ? (typeof window !== 'undefined' ? window.scrollY : null) : (targetEl ? targetEl.scrollTop : (scroller ? scroller.scrollTop : null)),
+        scrollLeft: targetEl ? targetEl.scrollLeft : (scroller ? scroller.scrollLeft : null),
+        scrollHeight: scroller ? scroller.scrollHeight : null,
+        clientHeight: scroller ? scroller.clientHeight : null,
+        pointerX: px ?? null,
+        pointerY: py ?? null,
+        anchor: view.state.selection.main.anchor,
+        head,
+        headLine: headLineObj.number,
+        headClientTop: headCoords ? headCoords.top : null,
+        viewTop: viewRect ? viewRect.top : null,
+        viewBottom: viewRect ? viewRect.bottom : null
+      };
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const finalizeUnattributedScroll = () => {
+    if (!unattributedScrollRecord) return;
+    clearTimeout(unattributedScrollTimer);
+    unattributedScrollTimer = null;
+
+    const u = unattributedScrollRecord;
+    unattributedScrollRecord = null;
+
+    const duration = Math.round(performance.now() - u.startTime);
+    const afterSnap = getSnapshot(view);
+    const selChanged = (u.beforeSnap && afterSnap)
+      ? (u.beforeSnap.anchor !== afterSnap.anchor || u.beforeSnap.head !== afterSnap.head)
+      : false;
+
+    const record = {
+      id: u.id,
+      kind: 'scroll',
+      source: 'unattributed',
+      direction: 'none',
+      repeat: false,
+      pointerType: 'unknown',
+      duration,
+      canceled: false,
+      selectionChanged: selChanged,
+      before: u.beforeSnap,
+      after: afterSnap,
+      scrollSamples: u.scrollSamples,
+      totalSampleCount: u.totalSampleCount,
+      droppedSampleCount: u.droppedSampleCount
+    };
+
+    reportTrace(record);
+  };
+
+  let pointerGestureTimer = null;
+
+  let lastSelectionSnapshot = getSnapshot(view);
+  let selectionChangeTimer = null;
+
+  document.addEventListener('selectionchange', () => {
+    if (!view.hasFocus) return;
+
+    clearTimeout(selectionChangeTimer);
+    selectionChangeTimer = setTimeout(() => {
+      if (!view.hasFocus || !view.state) return;
+
+      const after = getSnapshot(view);
+      if (!after) return;
+      const before = lastSelectionSnapshot;
+      lastSelectionSnapshot = after;
+
+      if (after.collapsed) return;
+      if (before && before.anchor === after.anchor && before.head === after.head) return;
+
+      const source = activePointerGesture
+        ? 'pointer'
+        : (activeArrowPress ? 'arrow' : 'unattributed');
+      reportTrace({
+        id: nextTraceId++,
+        pressId: activeArrowPress
+          ? activeArrowPress.pressId
+          : (activePointerGesture ? activePointerGesture.id : null),
+        kind: 'selection',
+        source,
+        direction: activeArrowPress ? activeArrowPress.direction : 'none',
+        repeat: false,
+        pointerType: activePointerGesture ? activePointerGesture.pointerType : 'unknown',
+        duration: 0,
+        selectionChanged: true,
+        before,
+        after
+      });
+    }, 80);
+  });
+
+  const finalizePointerGesture = () => {
+    if (!activePointerGesture) return;
+    clearTimeout(pointerGestureTimer);
+    pointerGestureTimer = null;
+
+    const g = activePointerGesture;
+    activePointerGesture = null;
+
+    const duration = Math.round(performance.now() - g.startTime);
+    const afterSnap = getSnapshot(view);
+    const selChanged = (g.beforeSnap && afterSnap)
+      ? (g.beforeSnap.anchor !== afterSnap.anchor || g.beforeSnap.head !== afterSnap.head)
+      : false;
+
+    let initialScrollTop = g.beforeSnap ? g.beforeSnap.scrollTop : 0;
+    let finalScrollTop = afterSnap ? afterSnap.scrollTop : 0;
+    let scrollMoved = (initialScrollTop !== null && finalScrollTop !== null)
+      ? Math.abs(finalScrollTop - initialScrollTop) > 1
+      : false;
+
+    let isTap = (g.maxTravel <= 8) && !scrollMoved;
+    const kind = isTap ? 'tap' : 'scroll';
+
+    const record = {
+      id: g.id,
+      kind,
+      source: 'pointer',
+      direction: 'none',
+      repeat: false,
+      pointerType: g.pointerType,
+      duration,
+      pointerStartX: g.startX,
+      pointerStartY: g.startY,
+      pointerEndX: g.currentX,
+      pointerEndY: g.currentY,
+      maxTravel: g.maxTravel,
+      canceled: g.canceled,
+      selectionChanged: selChanged,
+      before: g.beforeSnap,
+      after: afterSnap,
+      scrollSamples: g.scrollSamples,
+      totalSampleCount: g.totalSampleCount,
+      droppedSampleCount: g.droppedSampleCount
+    };
+
+    reportTrace(record);
+  };
+
+  dom.addEventListener('pointerdown', (e) => {
+    if (activePointerGesture) {
+      finalizePointerGesture();
+    }
+
+    const traceId = nextTraceId++;
+    const pType = e.pointerType || 'touch';
+    const px = e.clientX;
+    const py = e.clientY;
+    const beforeSnap = getSnapshot(view);
+
+    activePointerGesture = {
+      id: traceId,
+      pointerId: e.pointerId,
+      pointerType: pType,
+      startX: px,
+      startY: py,
+      currentX: px,
+      currentY: py,
+      maxTravel: 0,
+      startTime: performance.now(),
+      lastSampleTime: performance.now(),
+      beforeSnap,
+      scrollSamples: [],
+      totalSampleCount: 0,
+      droppedSampleCount: 0,
+      canceled: false
+    };
+
+    clearTimeout(pointerGestureTimer);
+    pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
+  }, true);
+
+  window.addEventListener('pointermove', (e) => {
+    if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
+    activePointerGesture.currentX = e.clientX;
+    activePointerGesture.currentY = e.clientY;
+    const travel = Math.hypot(e.clientX - activePointerGesture.startX, e.clientY - activePointerGesture.startY);
+    if (travel > activePointerGesture.maxTravel) {
+      activePointerGesture.maxTravel = travel;
+    }
+    const sample = createSample('editor', e.clientX, e.clientY, 'pointer', null);
+    if (sample) addSampleToContainer(activePointerGesture, sample);
+
+    clearTimeout(pointerGestureTimer);
+    pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
+  }, true);
+
+  window.addEventListener('pointerup', (e) => {
+    if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
+    activePointerGesture.currentX = e.clientX;
+    activePointerGesture.currentY = e.clientY;
+    const travel = Math.hypot(e.clientX - activePointerGesture.startX, e.clientY - activePointerGesture.startY);
+    if (travel > activePointerGesture.maxTravel) {
+      activePointerGesture.maxTravel = travel;
+    }
+    const sample = createSample('editor', e.clientX, e.clientY, 'pointer', null);
+    if (sample) addSampleToContainer(activePointerGesture, sample);
+    setTimeout(() => finalizePointerGesture(), 50);
+  }, true);
+
+  window.addEventListener('pointercancel', (e) => {
+    if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
+    activePointerGesture.canceled = true;
+    setTimeout(() => finalizePointerGesture(), 50);
+  }, true);
+
+  // Passive scroll handler
+  const onScroll = (e) => {
+    const targetLabel = getScrollTargetLabel(e.target);
+    const now = performance.now();
+
+    // 1. Is there an active arrow press OR within 150 ms of recent arrow event?
+    const inArrowWindow = (activeArrowPress != null) || (now - lastArrowEventTime < 150);
+    if (inArrowWindow) {
+      const targetContainer = activeArrowPress || {
+        lastSampleTime: 0,
+        scrollSamples: [],
+        totalSampleCount: 0,
+        droppedSampleCount: 0
+      };
+      const sample = createSample(targetLabel, null, null, 'arrow', lastArrowPressId);
+      if (sample) addSampleToContainer(activeArrowPress || targetContainer, sample);
+      return;
+    }
+
+    // 2. Is there an active pointer gesture?
+    if (activePointerGesture) {
+      const sample = createSample(targetLabel, activePointerGesture.currentX, activePointerGesture.currentY, 'pointer', null);
+      if (sample) addSampleToContainer(activePointerGesture, sample);
+      clearTimeout(pointerGestureTimer);
+      pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
+      return;
+    }
+
+    // 3. Otherwise unattributed scroll
+    if (!unattributedScrollRecord || (now - unattributedScrollRecord.startTime >= 2000)) {
+      if (unattributedScrollRecord) {
+        finalizeUnattributedScroll();
+      }
+      unattributedScrollRecord = {
+        id: nextTraceId++,
+        startTime: now,
+        lastSampleTime: 0,
+        beforeSnap: getSnapshot(view),
+        scrollSamples: [],
+        totalSampleCount: 0,
+        droppedSampleCount: 0
+      };
+    }
+
+    const sample = createSample(targetLabel, null, null, 'unattributed', null);
+    if (sample) addSampleToContainer(unattributedScrollRecord, sample);
+
+    clearTimeout(unattributedScrollTimer);
+    unattributedScrollTimer = setTimeout(() => finalizeUnattributedScroll(), 300);
+    if (unattributedScrollTimer && typeof unattributedScrollTimer.unref === 'function') {
+      unattributedScrollTimer.unref();
+    }
+  };
+
+  if (scroller) {
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  setupFullNavigationCapture(view);
+
+  return () => {
+    if (scroller) scroller.removeEventListener('scroll', onScroll);
+    window.removeEventListener('scroll', onScroll);
   };
 }
 

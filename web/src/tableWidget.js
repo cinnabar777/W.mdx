@@ -1,5 +1,87 @@
 import { WidgetType } from '@codemirror/view';
+import { StateEffect } from '@codemirror/state';
 import { TableModel } from './tableModule.js';
+
+export const tableHeightEstimatesChanged = StateEffect.define();
+
+const tableHeightCache = new Map();
+const tableResizeObserverState = new WeakMap();
+
+const TABLE_HEIGHT_STYLE_PROPERTIES = [
+  '--table-cell-padding',
+  '--table-border-width',
+  '--table-border-style',
+  '--table-header-bg',
+  '--table-header-color',
+  '--table-header-font-weight',
+  '--table-cell-bg',
+  '--table-cell-color',
+  '--text-color'
+];
+
+function activeEditorContent() {
+  return document.querySelector('.cm-editor > .cm-scroller > .cm-content');
+}
+
+function tableHeightCacheKey(markdown, contentElement) {
+  if (!contentElement) return null;
+  const style = getComputedStyle(contentElement);
+  const width = contentElement.getBoundingClientRect().width;
+  const signature = [
+    ...TABLE_HEIGHT_STYLE_PROPERTIES.map(
+      property => `${property}:${style.getPropertyValue(property).trim()}`
+    ),
+    `font:${style.font}`,
+    `line-height:${style.lineHeight}`
+  ].join(';');
+  return `${Math.round(width)}|${signature}|${markdown}`;
+}
+
+function cachedTableHeight(markdown, contentElement = activeEditorContent()) {
+  const key = tableHeightCacheKey(markdown, contentElement);
+  return key ? (tableHeightCache.get(key) ?? null) : null;
+}
+
+function measuredOuterHeight(element) {
+  const style = getComputedStyle(element);
+  const marginTop = parseFloat(style.marginTop) || 0;
+  const marginBottom = parseFloat(style.marginBottom) || 0;
+  return Math.ceil(element.getBoundingClientRect().height + marginTop + marginBottom);
+}
+
+function estimateAvailableWidth() {
+  if (typeof window !== 'undefined' && window.innerWidth) {
+    return Math.max(280, window.innerWidth - 32);
+  }
+  return 360;
+}
+
+function estimateTableHeight(model, availableWidth = 360) {
+  if (!model) return 60;
+  const rowCount = model.getRowCount();
+  const colCount = model.getColCount();
+  const matrix = model.getRenderMatrix();
+
+  let estimatedTotal = 24 + 32; // container margins + toolbar
+  const colWidth = Math.max(60, Math.floor(availableWidth / Math.max(1, colCount)));
+
+  for (let r = 0; r < rowCount; r++) {
+    let maxLinesInRow = 1;
+    for (let c = 0; c < colCount; c++) {
+      const cell = matrix[r]?.[c];
+      if (!cell || cell.isCovered) continue;
+      const contentLen = cell.content ? cell.content.length : 0;
+      const charsPerLine = Math.max(4, Math.floor(colWidth / 9));
+      const cellLines = Math.max(1, Math.ceil(contentLen / charsPerLine));
+      if (cellLines > maxLinesInRow) maxLinesInRow = cellLines;
+    }
+    const padding = 16;
+    const lineHeight = 20;
+    estimatedTotal += (maxLinesInRow * lineHeight) + padding + 2;
+  }
+
+  return Math.max(50, Math.round(estimatedTotal));
+}
 
 export class WordProcessorTableWidget extends WidgetType {
   constructor(tableMarkdown, from, to) {
@@ -8,6 +90,17 @@ export class WordProcessorTableWidget extends WidgetType {
     this.from = from;
     this.to = to;
     this.model = TableModel.parse(tableMarkdown);
+    const content = activeEditorContent();
+    this.heightEstimate =
+      cachedTableHeight(this.tableMarkdown, content) ??
+      estimateTableHeight(
+        this.model,
+        content?.getBoundingClientRect().width || estimateAvailableWidth()
+      );
+  }
+
+  get estimatedHeight() {
+    return this.heightEstimate;
   }
 
   eq(other) {
@@ -15,7 +108,8 @@ export class WordProcessorTableWidget extends WidgetType {
       other instanceof WordProcessorTableWidget &&
       other.tableMarkdown === this.tableMarkdown &&
       other.from === this.from &&
-      other.to === this.to
+      other.to === this.to &&
+      other.heightEstimate === this.heightEstimate
     );
   }
 
@@ -24,7 +118,8 @@ export class WordProcessorTableWidget extends WidgetType {
     return true;
   }
 
-  toDOM(view) {
+  toDOM(view, options = {}) {
+    const measurementOnly = options.measurementOnly === true;
     const container = document.createElement('div');
     container.className = 'cm-wp-table-container';
     container.dataset.tableFrom = String(this.from);
@@ -89,7 +184,7 @@ export class WordProcessorTableWidget extends WidgetType {
         th.dataset.col = String(c);
         th.innerHTML = renderMarkdownInline(cellData.content);
 
-        attachCellEvents(th, 0, c);
+        if (!measurementOnly) attachCellEvents(th, 0, c);
         trHead.appendChild(th);
       }
       thead.appendChild(trHead);
@@ -110,7 +205,7 @@ export class WordProcessorTableWidget extends WidgetType {
           td.dataset.col = String(c);
           td.innerHTML = renderMarkdownInline(cellData.content);
 
-          attachCellEvents(td, r, c);
+          if (!measurementOnly) attachCellEvents(td, r, c);
           tr.appendChild(td);
         }
         tbody.appendChild(tr);
@@ -131,6 +226,23 @@ export class WordProcessorTableWidget extends WidgetType {
         }
       }
     };
+
+    if (!measurementOnly) {
+      this.commitModel = (targetView, newModel) => {
+        const v = targetView || view;
+        if (newModel) this.model = newModel;
+        const newMarkdown = this.model.toMarkdown();
+        try {
+          const liveContainer = v.dom.querySelector(`.cm-wp-table-container[data-table-from="${this.from}"]`) || container;
+          const range = getLiveRange(v, liveContainer, this.from, this.to);
+          v.dispatch({
+            changes: { from: range.from, to: range.to, insert: newMarkdown }
+          });
+        } catch (e) {
+          console.error('Failed to commit model change:', e);
+        }
+      };
+    }
 
     const runTableAction = (mutate) => {
       const scroller = view.scrollDOM;
@@ -403,7 +515,28 @@ export class WordProcessorTableWidget extends WidgetType {
         }
       });
 
+      overlay._cellMeta = { widget: this, model: this.model, row: r, col: c, container };
+
+      const updateCellSnap = () => {
+        window._lastActiveCellSelection = {
+          widget: this,
+          model: this.model,
+          row: r,
+          col: c,
+          selStart: overlay.selectionStart ?? 0,
+          selEnd: overlay.selectionEnd ?? 0,
+          cellValue: overlay.value || '',
+          selectedText: (overlay.value || '').substring(overlay.selectionStart ?? 0, overlay.selectionEnd ?? 0),
+          timestamp: Date.now()
+        };
+      };
+
+      overlay.addEventListener('keyup', updateCellSnap);
+      overlay.addEventListener('mouseup', updateCellSnap);
+      overlay.addEventListener('touchend', updateCellSnap);
+      overlay.addEventListener('select', updateCellSnap);
       overlay.addEventListener('blur', () => {
+        updateCellSnap();
         commitAndClose();
       });
 
@@ -434,25 +567,131 @@ export class WordProcessorTableWidget extends WidgetType {
       }
     };
 
-    btnMerge.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (!selectedRange) return;
-      runTableAction(() => {
-        this.model.mergeRect(selectedRange.startR, selectedRange.startC, selectedRange.endR, selectedRange.endC);
+    if (!measurementOnly) {
+      btnMerge.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!selectedRange) return;
+        runTableAction(() => {
+          this.model.mergeRect(selectedRange.startR, selectedRange.startC, selectedRange.endR, selectedRange.endC);
+        });
       });
-    });
 
-    btnSplit.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (!selectedRange) return;
-      runTableAction(() => {
-        this.model.splitCell(selectedRange.startR, selectedRange.startC);
+      btnSplit.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!selectedRange) return;
+        runTableAction(() => {
+          this.model.splitCell(selectedRange.startR, selectedRange.startC);
+        });
       });
-    });
+    }
 
     renderTableCells();
     container.appendChild(table);
+
+    if (!measurementOnly && typeof ResizeObserver !== 'undefined') {
+      const resizeState = {
+        observer: null,
+        frameId: null
+      };
+
+      resizeState.observer = new ResizeObserver(() => {
+        const key = tableHeightCacheKey(this.tableMarkdown, view.contentDOM);
+        const observedHeight = measuredOuterHeight(container);
+        const cachedHeight = key ? tableHeightCache.get(key) : null;
+
+        if (
+          !key ||
+          !(observedHeight > 0) ||
+          (cachedHeight != null && Math.abs(cachedHeight - observedHeight) <= 1) ||
+          resizeState.frameId !== null
+        ) {
+          return;
+        }
+
+        resizeState.frameId = requestAnimationFrame(() => {
+          resizeState.frameId = null;
+          if (!container.isConnected || !view.dom.isConnected) return;
+
+          const latestKey = tableHeightCacheKey(this.tableMarkdown, view.contentDOM);
+          const latestHeight = measuredOuterHeight(container);
+          const latestCachedHeight = latestKey ? tableHeightCache.get(latestKey) : null;
+          if (
+            !latestKey ||
+            !(latestHeight > 0) ||
+            (latestCachedHeight != null && Math.abs(latestCachedHeight - latestHeight) <= 1)
+          ) {
+            return;
+          }
+
+          tableHeightCache.set(latestKey, latestHeight);
+          if (tableHeightCache.size > 100) {
+            tableHeightCache.delete(tableHeightCache.keys().next().value);
+          }
+
+          view.dispatch({ effects: tableHeightEstimatesChanged.of(null) });
+          view.requestMeasure();
+        });
+      });
+
+      tableResizeObserverState.set(container, resizeState);
+      resizeState.observer.observe(container);
+    }
+
     return container;
+  }
+
+  destroy(dom) {
+    const resizeState = tableResizeObserverState.get(dom);
+    if (!resizeState) return;
+
+    resizeState.observer.disconnect();
+    if (resizeState.frameId !== null) {
+      cancelAnimationFrame(resizeState.frameId);
+    }
+    tableResizeObserverState.delete(dom);
+  }
+}
+
+export function measureTableWidgetHeight(widget, view) {
+  const width = view.contentDOM.getBoundingClientRect().width;
+  if (!(width > 0)) {
+    throw new Error('Cannot measure table with zero editor content width');
+  }
+
+  const host = document.createElement('div');
+  host.className = view.dom.className;
+  host.style.cssText =
+    `position:fixed;left:-10000px;top:0;width:${view.dom.clientWidth}px;` +
+    'height:auto;max-height:none;overflow:visible;visibility:hidden;' +
+    'pointer-events:none;z-index:-1;';
+  const scroller = document.createElement('div');
+  scroller.className = view.scrollDOM.className;
+  scroller.style.cssText = 'height:auto;max-height:none;overflow:visible;';
+  const content = document.createElement('div');
+  content.className = view.contentDOM.className;
+  content.style.width = `${width}px`;
+  content.style.height = 'auto';
+  content.style.minHeight = '0';
+  scroller.appendChild(content);
+  host.appendChild(scroller);
+  view.dom.appendChild(host);
+
+  try {
+    const tableDOM = widget.toDOM(view, { measurementOnly: true });
+    content.appendChild(tableDOM);
+    const height = measuredOuterHeight(tableDOM);
+    if (!(height > 0)) {
+      throw new Error('Measured table height is not positive');
+    }
+    const key = tableHeightCacheKey(widget.tableMarkdown, view.contentDOM);
+    if (!key) throw new Error('Cannot build table height cache key');
+    tableHeightCache.set(key, height);
+    if (tableHeightCache.size > 100) {
+      tableHeightCache.delete(tableHeightCache.keys().next().value);
+    }
+    return height;
+  } finally {
+    host.remove();
   }
 }
 

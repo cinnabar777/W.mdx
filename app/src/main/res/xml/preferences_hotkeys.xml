@@ -112,6 +112,11 @@
             app:defaultValue="ctrl+shift+q" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_callout"
+            app:title="Insert Callout Shortcut"
+            app:defaultValue="ctrl+alt+q" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_codeBlock"
             app:title="Code Block Shortcut"
             app:defaultValue="ctrl+shift+c" />

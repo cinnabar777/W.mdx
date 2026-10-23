@@ -118,9 +118,16 @@ object PreferenceResetHelper {
             key == "pref_paragraph_margin_top" -> 0
             key == "pref_paragraph_margin_bottom" -> 8
             key == "pref_link_decoration" -> "solid"
+            key == "pref_link_underline_thickness" -> 1
             key == "pref_code_padding" -> 4
             key == "pref_code_border_radius" -> 4
+            key == "pref_body_margin_left" -> 16
+            key == "pref_body_margin_right" -> 16
+            key == "pref_heading_margin_left" -> 0
+            key == "pref_heading_margin_right" -> 0
             key == "pref_list_left_indent" -> 24
+            key == "pref_list_right_margin" -> 0
+            key == "pref_list_wrap_under_text" -> false
             key == "pref_list_item_spacing" -> 4
             key == "pref_list_line_height" -> "1.5"
             key == "pref_list_bullet_color" -> "default"
@@ -133,12 +140,15 @@ object PreferenceResetHelper {
             key == "pref_blockquote_bg_color" -> "default"
             key == "pref_blockquote_text_color" -> "default"
             key == "pref_blockquote_left_indent" -> 0
+            key == "pref_blockquote_right_margin" -> 0
             key == "pref_blockquote_padding" -> 12
             key == "pref_callout_line_thickness" -> 4
             key == "pref_callout_line_style" -> "solid"
             key == "pref_callout_line_color" -> "default"
             key == "pref_callout_bg_color" -> "default"
             key == "pref_callout_text_color" -> "default"
+            key == "pref_callout_margin_left" -> 0
+            key == "pref_callout_margin_right" -> 0
             key == "pref_callout_padding" -> 12
             key == "pref_callout_header_bg_color" -> "default"
             key == "pref_callout_header_title_color" -> "default"
@@ -151,6 +161,8 @@ object PreferenceResetHelper {
             key == "pref_font_file_callout_header" -> null
             key == "pref_callout_type_selector" -> "info"
             key.startsWith("pref_callout_type_") -> "default"
+            key == "pref_table_margin_left" -> 0
+            key == "pref_table_margin_right" -> 0
             key == "pref_table_border_style" -> "solid"
             key == "pref_table_border_thickness" -> 1
             key == "pref_table_border_color" -> "default"
@@ -165,6 +177,8 @@ object PreferenceResetHelper {
             key == "pref_table_menu_text_color" -> "default"
             key == "pref_table_menu_disabled_color" -> "default"
             key == "pref_table_menu_pressed_bg_color" -> "default"
+            key == "pref_code_block_margin_left" -> 0
+            key == "pref_code_block_margin_right" -> 0
             key == "pref_code_block_font_size" -> 14
             key == "pref_code_block_padding" -> 16
             key == "pref_code_block_border_radius" -> 6
@@ -173,6 +187,9 @@ object PreferenceResetHelper {
             key == "pref_hr_thickness" -> 2
             key == "pref_hr_style" -> "solid"
             key == "pref_hr_color" -> "default"
+            key == "pref_hr_margin_left" -> 0
+            key == "pref_hr_margin_right" -> 0
+            key == "pref_hr_centered" -> false
             key == "pref_hr_width_percent" -> 100
             key == "pref_hr_margin_top" -> 16
             key == "pref_hr_margin_bottom" -> 16
@@ -263,6 +280,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_code" -> "ctrl+e"
             key == "pref_hotkey_link" -> "ctrl+k"
             key == "pref_hotkey_blockQuote" -> "ctrl+shift+q"
+            key == "pref_hotkey_callout" -> "ctrl+alt+q"
             key == "pref_hotkey_codeBlock" -> "ctrl+shift+c"
             key == "pref_hotkey_bulletedList" -> "ctrl+shift+8"
             key == "pref_hotkey_numberedList" -> "ctrl+shift+7"
