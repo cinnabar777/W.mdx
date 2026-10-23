@@ -1463,7 +1463,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               // Hide the quote marker and its separator together. Leaving the
               // separator visible shifts the first callout line relative to
               // wrapped lines, regardless of the user's font settings.
-              const end = Math.min(node.to + 1, line.to);
+              let end = node.to;
+              while (end < line.to && /\s/.test(view.state.doc.sliceString(end, end + 1))) {
+                end++;
+              }
               if (end > node.from) {
                 hideSyntax(node.from, end);
               }
@@ -2282,7 +2285,12 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'QuoteMark') {
-        hideSyntax(node.from, node.to);
+        const line = doc.lineAt(node.from);
+        let end = node.to;
+        while (end < line.to && /\s/.test(doc.sliceString(end, end + 1))) {
+          end++;
+        }
+        hideSyntax(node.from, end);
       }
 
       if (node.name === 'TaskMarker') {

@@ -69,7 +69,7 @@ test('callout quote syntax hides its separator space when unfocused and applies 
     /if \(node\.name === 'QuoteMark'\) \{([\s\S]*?)\n          \}/
   );
   assert.ok(quoteMarkBranch, 'QuoteMark decoration branch exists');
-  assert.match(quoteMarkBranch[1], /const end = Math\.min\(node\.to \+ 1, line\.to\)/);
+  assert.match(quoteMarkBranch[1], /while \(end < line\.to && /);
   assert.match(quoteMarkBranch[1], /hideSyntax\(node\.from, end\)/);
   assert.match(quoteMarkBranch[1], /cm-callout-quote-active/);
 
