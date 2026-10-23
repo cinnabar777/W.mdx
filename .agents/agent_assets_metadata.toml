@@ -28,3 +28,17 @@ mtime_ms = 1792781153963
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:e9e5e322-8ffc-42f3-99e5-0ca74633ef17/7847eeca-7297-47a7-bf66-8f57e4e7738d/d6a90f1f-2df5-438f-b3c6-e7e078568da1"
 storage_version_token = "1792781472014988"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "DKQDasTj4xR8RUXaLLZOS"
+uri = "file://Documentation/Replit/Jules_Handoff_Code_Patches_2026-10-23.md"
+type = "text"
+title = "Jules handoff — code patches"
+description = "The corrected, scoped Markdown handoff with exact keys, code snippets, file limits, and verification requirements."
+logical_id = "01e63f1f-242c-40e5-9d98-436863c86249"
+content_hash = "sha256:4e947bbb7a243b34bc66acf8fecbf532c3bf55f75d4833da80af38f89b3ad22d"
+size = 21146
+mtime_ms = 1792783900959
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:e9e5e322-8ffc-42f3-99e5-0ca74633ef17/01e63f1f-242c-40e5-9d98-436863c86249/a040d88c-9ea5-4ca8-b7b4-9fc0d34326fd"
+storage_version_token = "1792783930219753"
+content_type = "text/markdown"

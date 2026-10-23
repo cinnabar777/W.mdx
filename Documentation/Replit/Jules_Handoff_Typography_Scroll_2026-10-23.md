@@ -1,4 +1,6 @@
-# Jules handoff: repair the scroll patch and implement the agreed typography behavior
+# SUPERSEDED — Do not send this draft to Jules
+
+This prose draft is replaced by `Documentation/Replit/Jules_Handoff_Code_Patches_2026-10-23.md`.
 
 ## Scope confirmed with the user
 
