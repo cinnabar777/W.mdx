@@ -42,3 +42,17 @@ mtime_ms = 1792783900959
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:e9e5e322-8ffc-42f3-99e5-0ca74633ef17/01e63f1f-242c-40e5-9d98-436863c86249/a040d88c-9ea5-4ca8-b7b4-9fc0d34326fd"
 storage_version_token = "1792783930219753"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "O3b4nQlOg4EzuczJJ8Mvh"
+uri = "file://Documentation/Replit/Jules_Handoff_Scroll_Lifecycle_Corrections_2026-10-23.md"
+type = "text"
+title = "Jules handoff — scroll and lifecycle corrections"
+description = "A scoped Markdown handoff with exact state-field, callback-cleanup, and test requirements. Heading settings are explicitly excluded."
+logical_id = "30b474eb-d3bc-4d19-bdd6-91e844743545"
+content_hash = "sha256:2343443c1ac23a55896eb367ef801b08fdf8c93fa8c4d090de164216232a46a7"
+size = 13435
+mtime_ms = 1792794934035
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:e9e5e322-8ffc-42f3-99e5-0ca74633ef17/30b474eb-d3bc-4d19-bdd6-91e844743545/8a287caf-6a0d-4b89-af37-4487514471c4"
+storage_version_token = "1792794954143706"
+content_type = "text/markdown"
