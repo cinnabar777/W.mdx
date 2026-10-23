@@ -981,6 +981,11 @@
       padding-left: var(--callout-padding, 12px) !important;
       text-indent: 0 !important;
     }
+    .cm-content .cm-line.cm-callout.cm-callout-quote-active,
+    .cm-content .cm-line.cm-blockquote.cm-callout-quote-active {
+      padding-left: calc(var(--callout-padding, 12px) + var(--quote-prefix-ch, 2ch)) !important;
+      text-indent: calc(-1 * var(--quote-prefix-ch, 2ch)) !important;
+    }
     .cm-content .cm-line.cm-callout-list-item {
       margin-left: calc(var(--callout-margin-left, 0px) + var(--list-left-indent, 24px)) !important;
       margin-right: var(--callout-margin-right, 0px) !important;

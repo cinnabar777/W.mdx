@@ -64,14 +64,18 @@ test('Callout line classification and marker detection logic in main.js', () => 
   assert.ok(mainSource.includes('cm-blockquote'), 'Main JS retains cm-blockquote line class');
 });
 
-test('callout quote syntax hides its separator space so wrapped text aligns', () => {
+test('callout quote syntax hides its separator space when unfocused and applies hanging indent when focused', () => {
   const quoteMarkBranch = mainSource.match(
-    /if \(node\.name === 'QuoteMark' && !isNodeActive\) \{([\s\S]*?)\n          \}/
+    /if \(node\.name === 'QuoteMark'\) \{([\s\S]*?)\n          \}/
   );
   assert.ok(quoteMarkBranch, 'QuoteMark decoration branch exists');
   assert.match(quoteMarkBranch[1], /const end = Math\.min\(node\.to \+ 1, line\.to\)/);
   assert.match(quoteMarkBranch[1], /hideSyntax\(node\.from, end\)/);
-  assert.doesNotMatch(quoteMarkBranch[1], /isCalloutLine/);
+  assert.match(quoteMarkBranch[1], /cm-callout-quote-active/);
+
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.ok(indexHtml.includes('.cm-callout-quote-active'), 'index.html contains cm-callout-quote-active selector');
+  assert.ok(indexHtml.includes('var(--quote-prefix-ch, 2ch)'), 'index.html calculates hanging indent offset');
 });
 
 test('Callout parsing excludes code blocks and stops at unquoted lines', () => {

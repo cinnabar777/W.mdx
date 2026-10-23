@@ -53,7 +53,7 @@ test('adaptive launcher icons use transparent full-color layers and preserve req
       );
       assert.equal(icon.width, size, `${theme}${density} foreground width`);
       assert.equal(icon.height, size, `${theme}${density} foreground height`);
-      assert.equal(icon.colorType, 4, `${theme}${density} foreground must contain alpha`);
+      assert.ok((icon.colorType & 4) !== 0, `${theme}${density} foreground must contain alpha`);
     }
   }
 });

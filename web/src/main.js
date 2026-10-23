@@ -1458,8 +1458,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             }
           }
 
-          if (node.name === 'QuoteMark' && !isNodeActive) {
-            if (!isPureWysiwyg) {
+          if (node.name === 'QuoteMark') {
+            if (!isNodeActive && !isPureWysiwyg) {
               // Hide the quote marker and its separator together. Leaving the
               // separator visible shifts the first callout line relative to
               // wrapped lines, regardless of the user's font settings.
@@ -1467,6 +1467,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               if (end > node.from) {
                 hideSyntax(node.from, end);
               }
+            } else if (isNodeActive && !isPureWysiwyg) {
+              const prefixLen = (node.to - node.from) + (line.to > node.to ? 1 : 0);
+              builder.push(
+                Decoration.line({
+                  attributes: {
+                    class: 'cm-callout-quote-active',
+                    style: `--quote-prefix-ch: ${prefixLen}ch`
+                  }
+                }).range(line.from)
+              );
             }
           }
 
