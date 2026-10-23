@@ -140,7 +140,7 @@ Here `<n>` is `1` through `6`. Reuse existing per-level keys for color, alignmen
 - Show the effective global value in an unset per-level control; the reset icon is inactive until an override exists.
 - Per-level color unset/inherit falls back to the new global `pref_heading_color`; an explicit H1–H6 color overrides it.
 - Keep H1–H6’s existing base-size hierarchy. The per-level scale overrides the global scale for that level; it does not multiply on top of the global scale.
-- Add `pref_font_file_heading_1` through `pref_font_file_heading_6` to `StylingSettingsFragment`’s font-picker key list. Load each corresponding `*_path` in `MainActivity.kt`, pass its data URI through the existing font-settings bridge, and apply it with `--heading-<n>-font-family`. An unset level font falls back to the global heading font.
+- Add `pref_font_file_heading_1` through `pref_font_file_heading_6` to `StylingSettingsFragment`’s `fontKeys` list. In `MainActivity.kt`, load each `pref_font_file_heading_<n>_path` with `loadFontDataUri()` and add six matching optional data-URI arguments to the existing `setFontSettings()` bridge call. In `web/src/main.js`, register each font with the existing `applyFontCategory()` helper and `--heading-<n>-font-family`. An unset level font falls back to the global heading font.
 
 In `web/src/main.js` and `web/index.html`, wire effective values to `--heading-<n>-*` variables and apply the matching CSS property to `.cm-heading-<n>`. Add `word-spacing` separately from `letter-spacing`. Add per-level left/right margins as well as the existing top/bottom overrides. Keep heading anchors, ToC behavior, and the H1–H6 base-size ratios unchanged.
 
@@ -155,13 +155,13 @@ On Save:
 1. Generate the next unused numeric ID, accounting for existing references/definitions.
 2. Insert `[^n]` at the current cursor without replacing surrounding text.
 3. Append `[^n]: <entered note text>` after existing footnote definitions at the end of the document, with correct blank-line separation.
-4. Close the popup and leave the editor at the reference.
+4. Close the popup without changing any other document text.
 
-Cancel must make no document change. Preserve Markdown source syntax. Render references, definitions as a footnote section at the document end, and a return/back-link in WYSIWYG using the current Lezer/Markdown stack. Do not add a parser dependency or replace the renderer.
+Cancel must make no document change. Preserve Markdown source syntax. Render references, definitions as a footnote section at the document end, and a return/back-link in WYSIWYG using the current Lezer/Markdown stack where feasible. If a parser/plugin dependency is technically necessary, document the exact need and package before adding it; do not replace the renderer.
 
 The existing XML already uses resettable controls for `pref_footnote_font_size`, `pref_footnote_text_color`, `pref_footnote_ref_color`, `pref_footnote_link_color`, and `pref_footnote_bg_color`. Do not add duplicate reset icons or keys. Ensure every reset icon is visible and usable; fix the existing binding if any is missing. Ensure the controls visibly style rendered note text, reference, back-link, and section background; verify each reset returns to its current default.
 
-Test multiple references to one definition, cancel/no-change, successive unique IDs, missing/duplicate definitions, backlinks, source syntax preservation, and reopening a saved document.
+Test multiple references to one definition, cancel/no-change, successive unique IDs, backlinks, source syntax preservation, and reopening a saved document. Missing or duplicate definitions must be handled deterministically without breaking rendering.
 
 ## 4. Lists and checkboxes
 
