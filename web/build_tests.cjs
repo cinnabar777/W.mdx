@@ -12,7 +12,8 @@ for (const [source, output] of [
   ['rendered_navigation.spec.cjs', 'rendered_navigation.test.cjs'],
   ['navigation_capture.spec.cjs', 'navigation_capture.test.cjs'],
   ['rendered_mode_refresh.spec.cjs', 'rendered_mode_refresh.test.cjs'],
-  ['rendered_typography_margins.spec.cjs', 'rendered_typography_margins.test.cjs']
+  ['rendered_typography_margins.spec.cjs', 'rendered_typography_margins.test.cjs'],
+  ['editor_lifecycle_incremental.spec.cjs', 'editor_lifecycle_incremental.test.cjs']
 ]) {
   esbuild.buildSync({
     entryPoints: [path.join(webDir, 'test_sources', source)],

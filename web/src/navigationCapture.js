@@ -381,8 +381,9 @@ export function setupFullNavigationCapture(view) {
     });
     if (Number.isFinite(currentTop)) previousScrollTops.set(scrollKey, currentTop);
 
-    if (Math.abs(deltaTop || 0) >= 300) requestWindowSnapshot('large-scroll-delta', true);
-    else requestWindowSnapshot('scroll-active');
+    if (Math.abs(deltaTop || 0) >= 300) {
+      requestWindowSnapshot('large-scroll-delta', true);
+    }
 
     if (scrollEndTimer) win.clearTimeout(scrollEndTimer);
     scrollEndTimer = win.setTimeout(() => {

@@ -2048,27 +2048,91 @@ const wysiwygCodeBlockField = StateField.define({
     return buildWysiwygCodeBlockDecorations(state);
   },
   update(current, tr) {
+    if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+
     const refreshHeight = tr.effects.some(effect =>
       effect.is(heightMapRefreshEffect)
     );
-    if (!tr.docChanged && !refreshHeight) return current;
+    if (!tr.docChanged) return current;
+    if (refreshHeight || current === Decoration.none) {
+      return buildWysiwygCodeBlockDecorations(tr.state);
+    }
+
+    let intersectsCodeOrFence = false;
+    let minFrom = tr.state.doc.length;
+    let maxTo = 0;
+
+    tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+      const insText = inserted.toString();
+      const delText = tr.startState.doc.sliceString(fromA, toA);
+      if (
+        insText.includes('```') || insText.includes('~~~') ||
+        delText.includes('```') || delText.includes('~~~')
+      ) {
+        intersectsCodeOrFence = true;
+      }
+      minFrom = Math.min(minFrom, fromB);
+      maxTo = Math.max(maxTo, toB);
+    });
+
+    if (minFrom > maxTo) return current;
+
+    const mapped = current.map(tr.changes);
+
+    let touchesCode = false;
+    const treeState = syntaxTree(tr.state);
+    treeState.iterate({
+      from: Math.max(0, minFrom - 2),
+      to: Math.min(tr.state.doc.length, maxTo + 2),
+      enter(node) {
+        if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+          touchesCode = true;
+          return false;
+        }
+      }
+    });
+
+    if (!touchesCode) {
+      const treeStart = syntaxTree(tr.startState);
+      treeStart.iterate({
+        from: Math.max(0, minFrom - 2),
+        to: Math.min(tr.startState.doc.length, maxTo + 2),
+        enter(node) {
+          if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+            touchesCode = true;
+            return false;
+          }
+        }
+      });
+    }
+
+    if (!intersectsCodeOrFence && !touchesCode) {
+      return mapped;
+    }
+
     return buildWysiwygCodeBlockDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
 });
 
-function buildHeightMapValue(state) {
+function buildHeightMapValue(state, startLineNum = 1, endLineNum = null) {
+  const doc = state.doc;
+  const actualEndLine = endLineNum ?? doc.lines;
+  const isFullDoc = (startLineNum === 1 && actualEndLine === doc.lines);
+
   if (currentEditorMode !== 'wysiwyg') {
     return {
-      decorations: Decoration.none,
-      hiddenSyntaxRanges: Decoration.none
+      decorations: isFullDoc ? Decoration.none : [],
+      hiddenSyntaxRanges: isFullDoc ? Decoration.none : []
     };
   }
 
-  const doc = state.doc;
   const tree = syntaxTree(state);
   const replacements = [];
   const hiddenSyntaxRanges = [];
+
+  let startLine = Math.max(1, startLineNum);
+  let endLine = Math.min(doc.lines, actualEndLine);
 
   const hideSyntax = (from, to) => {
     if (to > from) {
@@ -2104,7 +2168,7 @@ function buildHeightMapValue(state) {
 
   const isQuotedLine = (lineNum) => getQuotedLineInfo(lineNum) !== null;
 
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+  for (let lineNumber = startLine; lineNumber <= endLine; lineNumber++) {
     const line = doc.line(lineNumber);
     const firstText = /\S/.exec(line.text);
     const probe = firstText ? line.from + firstText.index : line.from;
@@ -2139,7 +2203,7 @@ function buildHeightMapValue(state) {
     }
   }
 
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+  for (let lineNumber = startLine; lineNumber <= endLine; lineNumber++) {
     if (processedBlockquoteLines.has(lineNumber)) continue;
 
     if (isQuotedLine(lineNumber)) {
@@ -2216,9 +2280,12 @@ function buildHeightMapValue(state) {
     }
   }
 
+  const iterateFrom = doc.line(startLine).from;
+  const iterateTo = doc.line(endLine).to;
+
   tree.iterate({
-    from: 0,
-    to: doc.length,
+    from: iterateFrom,
+    to: iterateTo,
     enter: (node) => {
       const line = doc.lineAt(node.from);
 
@@ -2351,21 +2418,106 @@ function buildHeightMapValue(state) {
   const validHiddenSyntax = hiddenSyntaxRanges.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
   validHiddenSyntax.sort((a, b) => a.from - b.from || a.to - b.to);
 
+  if (isFullDoc) {
+    return {
+      decorations: Decoration.set(validReplacements, true),
+      hiddenSyntaxRanges: Decoration.set(validHiddenSyntax, true)
+    };
+  }
+
   return {
-    decorations: Decoration.set(validReplacements, true),
-    hiddenSyntaxRanges: Decoration.set(validHiddenSyntax, true)
+    decorations: validReplacements,
+    hiddenSyntaxRanges: validHiddenSyntax
   };
 }
 
 export const heightMapField = StateField.define({
   create: buildHeightMapValue,
   update(current, tr) {
+    if (currentEditorMode !== 'wysiwyg') {
+      return {
+        decorations: Decoration.none,
+        hiddenSyntaxRanges: Decoration.none
+      };
+    }
+
     const refresh = tr.effects.some(effect =>
       effect.is(heightMapRefreshEffect) ||
       effect.is(typographySettingsEffect)
     );
-    if (!tr.docChanged && !refresh) return current;
-    return buildHeightMapValue(tr.state);
+
+    if (refresh || !current || !current.decorations) {
+      return buildHeightMapValue(tr.state);
+    }
+
+    if (!tr.docChanged) return current;
+
+    let minFrom = tr.state.doc.length;
+    let maxTo = 0;
+    tr.changes.iterChanges((fromA, toA, fromB, toB) => {
+      minFrom = Math.min(minFrom, fromB);
+      maxTo = Math.max(maxTo, toB);
+    });
+
+    if (minFrom > maxTo) return current;
+
+    const doc = tr.state.doc;
+    let lineFromNum = doc.lineAt(Math.min(minFrom, doc.length)).number;
+    let lineToNum = doc.lineAt(Math.min(maxTo, doc.length)).number;
+
+    const tree = syntaxTree(tr.state);
+    for (const pos of [minFrom, maxTo]) {
+      const probePos = Math.min(pos, doc.length);
+      const resolved = tree.resolveInner(probePos, 1);
+      for (let node = resolved; node; node = node.parent) {
+        if (
+          node.name === 'Paragraph' ||
+          node.name === 'ListItem' ||
+          node.name === 'Blockquote' ||
+          node.name === 'Callout' ||
+          node.name === 'FencedCode' ||
+          node.name === 'CodeBlock' ||
+          node.name === 'Table' ||
+          node.name === 'Link' ||
+          node.name === 'Image' ||
+          node.name.startsWith('ATXHeading') ||
+          node.name.startsWith('SetextHeading')
+        ) {
+          lineFromNum = Math.min(lineFromNum, doc.lineAt(node.from).number);
+          lineToNum = Math.max(lineToNum, doc.lineAt(node.to).number);
+        }
+      }
+    }
+
+    lineFromNum = Math.max(1, lineFromNum - 1);
+    lineToNum = Math.min(doc.lines, lineToNum + 1);
+
+    if (lineFromNum === 1 && lineToNum === doc.lines) {
+      return buildHeightMapValue(tr.state);
+    }
+
+    const rangeFrom = doc.line(lineFromNum).from;
+    const rangeTo = doc.line(lineToNum).to;
+
+    const mappedDecos = current.decorations.map(tr.changes);
+    const mappedHidden = current.hiddenSyntaxRanges.map(tr.changes);
+
+    const partial = buildHeightMapValue(tr.state, lineFromNum, lineToNum);
+
+    return {
+      decorations: mappedDecos.update({
+        filterFrom: rangeFrom,
+        filterTo: rangeTo,
+        filter: (from) => from < rangeFrom || from > rangeTo,
+        add: partial.decorations
+      }),
+      hiddenSyntaxRanges: mappedHidden.update({
+        filterFrom: rangeFrom,
+        filterTo: rangeTo,
+        filter: (from) => from < rangeFrom || from > rangeTo,
+        add: partial.hiddenSyntaxRanges
+      })
+    };
   },
   provide: field =>
     EditorView.decorations.from(field, value => value.decorations)
@@ -2398,10 +2550,13 @@ function premeasureTableHeights(view) {
   }
 }
 
-export function buildPersistentLayoutDecorations(state) {
-  if (currentEditorMode !== 'wysiwyg') return Decoration.none;
-
+export function buildPersistentLayoutDecorations(state, startLineNum = 1, endLineNum = null) {
   const { doc } = state;
+  const actualEndLine = endLineNum ?? doc.lines;
+  const isFullDoc = (startLineNum === 1 && actualEndLine === doc.lines);
+
+  if (currentEditorMode !== 'wysiwyg') return isFullDoc ? Decoration.none : [];
+
   const tree = syntaxTree(state);
   const classesByLine = new Map();
   const calloutAttributesByLine = new Map();
@@ -2414,7 +2569,45 @@ export function buildPersistentLayoutDecorations(state) {
     classesByLine.get(lineNumber).add(className);
   };
 
-  for (let number = 1; number <= doc.lines; number++) {
+  let startLine = Math.max(1, startLineNum);
+  let endLine = Math.min(doc.lines, actualEndLine);
+
+  if (startLine > 1) {
+    let blockStart = startLine;
+    while (blockStart > 1 && /^(\s*(?:>\s*)+)/.test(doc.line(blockStart - 1).text)) {
+      blockStart--;
+    }
+    if (blockStart < startLine) {
+      for (let number = blockStart; number < startLine; number++) {
+        const line = doc.line(number);
+        const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
+        if (!quotePrefix) {
+          activeCallouts.length = 0;
+        } else {
+          const depth = (quotePrefix[1].match(/>/g) || []).length;
+          while (
+            activeCallouts.length > 0 &&
+            activeCallouts[activeCallouts.length - 1].depth > depth
+          ) {
+            activeCallouts.pop();
+          }
+
+          const opener = line.text.match(
+            /^(\s*(?:>\s*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i
+          );
+          if (opener) {
+            activeCallouts.push({
+              type: opener[2].toLowerCase(),
+              depth,
+              isTitle: true
+            });
+          }
+        }
+      }
+    }
+  }
+
+  for (let number = startLine; number <= endLine; number++) {
     const line = doc.line(number);
     const firstText = /\S/.exec(line.text);
     const probe = firstText ? line.from + firstText.index : line.from;
@@ -2548,7 +2741,10 @@ export function buildPersistentLayoutDecorations(state) {
   }
 
   ranges.sort((a, b) => a.from - b.from);
-  return Decoration.set(ranges, true);
+  if (isFullDoc) {
+    return Decoration.set(ranges, true);
+  }
+  return ranges;
 }
 
 export const persistentLayoutField = StateField.define({
@@ -2556,10 +2752,70 @@ export const persistentLayoutField = StateField.define({
     return buildPersistentLayoutDecorations(state);
   },
   update(current, tr) {
-    if (tr.docChanged || tr.effects.some(e => e.is(typographySettingsEffect))) {
+    if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+
+    const isTypo = tr.effects.some(e => e.is(typographySettingsEffect));
+    if (isTypo || current === Decoration.none) {
       return buildPersistentLayoutDecorations(tr.state);
     }
-    return current;
+
+    if (!tr.docChanged) return current;
+
+    let minFrom = tr.state.doc.length;
+    let maxTo = 0;
+    tr.changes.iterChanges((fromA, toA, fromB, toB) => {
+      minFrom = Math.min(minFrom, fromB);
+      maxTo = Math.max(maxTo, toB);
+    });
+
+    if (minFrom > maxTo) return current;
+
+    const doc = tr.state.doc;
+    let lineFromNum = doc.lineAt(Math.min(minFrom, doc.length)).number;
+    let lineToNum = doc.lineAt(Math.min(maxTo, doc.length)).number;
+
+    const tree = syntaxTree(tr.state);
+    for (const pos of [minFrom, maxTo]) {
+      const probePos = Math.min(pos, doc.length);
+      const resolved = tree.resolveInner(probePos, 1);
+      for (let node = resolved; node; node = node.parent) {
+        if (
+          node.name === 'Paragraph' ||
+          node.name === 'ListItem' ||
+          node.name === 'Blockquote' ||
+          node.name === 'Callout' ||
+          node.name === 'FencedCode' ||
+          node.name === 'CodeBlock' ||
+          node.name === 'Table' ||
+          node.name === 'HorizontalRule' ||
+          node.name.startsWith('ATXHeading') ||
+          node.name.startsWith('SetextHeading')
+        ) {
+          lineFromNum = Math.min(lineFromNum, doc.lineAt(node.from).number);
+          lineToNum = Math.max(lineToNum, doc.lineAt(node.to).number);
+        }
+      }
+    }
+
+    lineFromNum = Math.max(1, lineFromNum - 1);
+    lineToNum = Math.min(doc.lines, lineToNum + 1);
+
+    if (lineFromNum === 1 && lineToNum === doc.lines) {
+      return buildPersistentLayoutDecorations(tr.state);
+    }
+
+    const rangeFrom = doc.line(lineFromNum).from;
+    const rangeTo = doc.line(lineToNum).to;
+
+    const mapped = current.map(tr.changes);
+    const partial = buildPersistentLayoutDecorations(tr.state, lineFromNum, lineToNum);
+
+    return mapped.update({
+      filterFrom: rangeFrom,
+      filterTo: rangeTo,
+      filter: (from) => from < rangeFrom || from > rangeTo,
+      add: partial
+    });
   },
   provide: field => EditorView.decorations.from(field)
 });
@@ -2569,13 +2825,67 @@ export const tableStateField = StateField.define({
     return buildTableBlockDecorations(state);
   },
   update(current, tr) {
+    if (currentEditorMode === 'source') return Decoration.none;
+
     if (
-      tr.docChanged ||
-      tr.effects.some(effect => effect.is(tableHeightEstimatesChanged))
+      tr.effects.some(effect => effect.is(tableHeightEstimatesChanged)) ||
+      current === Decoration.none
     ) {
       return buildTableBlockDecorations(tr.state);
     }
-    return current;
+
+    if (!tr.docChanged) return current;
+
+    let intersectsTableOrPipe = false;
+    let minFrom = tr.state.doc.length;
+    let maxTo = 0;
+
+    tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+      const insText = inserted.toString();
+      const delText = tr.startState.doc.sliceString(fromA, toA);
+      if (insText.includes('|') || delText.includes('|')) {
+        intersectsTableOrPipe = true;
+      }
+      minFrom = Math.min(minFrom, fromB);
+      maxTo = Math.max(maxTo, toB);
+    });
+
+    if (minFrom > maxTo) return current;
+
+    const mapped = current.map(tr.changes);
+
+    let touchesTable = false;
+    const treeState = syntaxTree(tr.state);
+    treeState.iterate({
+      from: Math.max(0, minFrom - 2),
+      to: Math.min(tr.state.doc.length, maxTo + 2),
+      enter(node) {
+        if (node.name === 'Table') {
+          touchesTable = true;
+          return false;
+        }
+      }
+    });
+
+    if (!touchesTable) {
+      const treeStart = syntaxTree(tr.startState);
+      treeStart.iterate({
+        from: Math.max(0, minFrom - 2),
+        to: Math.min(tr.startState.doc.length, maxTo + 2),
+        enter(node) {
+          if (node.name === 'Table') {
+            touchesTable = true;
+            return false;
+          }
+        }
+      });
+    }
+
+    if (!intersectsTableOrPipe && !touchesTable) {
+      return mapped;
+    }
+
+    return buildTableBlockDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
 });
@@ -3232,6 +3542,11 @@ class CodeMirrorAdapter {
       this.navigationDiagnosticsCleanup = null;
     }
 
+    if (activeFastScrollbarDisposer) {
+      activeFastScrollbarDisposer();
+      activeFastScrollbarDisposer = null;
+    }
+
     if (this.view) {
       this.view.destroy();
       this.view = null;
@@ -3281,6 +3596,8 @@ async function setEditorMode(mode) {
   return activeAdapter;
 }
 
+let groupedControlBarClickInitialized = false;
+
 function setupGroupedControlBar() {
   const topContainer = document.querySelector('#editor-container');
   if (!topContainer) return;
@@ -3311,15 +3628,18 @@ function setupGroupedControlBar() {
     };
   }
 
-  document.addEventListener('click', (e) => {
-    const strip = document.querySelector('#popup-toolbar-strip');
-    const barEl = document.querySelector('.grouped-control-bar');
-    if (strip && !strip.classList.contains('hidden')) {
-      if (!strip.contains(e.target) && (!barEl || !barEl.contains(e.target))) {
-        hidePopupStrip();
+  if (!groupedControlBarClickInitialized) {
+    groupedControlBarClickInitialized = true;
+    document.addEventListener('click', (e) => {
+      const strip = document.querySelector('#popup-toolbar-strip');
+      const barEl = document.querySelector('.grouped-control-bar');
+      if (strip && !strip.classList.contains('hidden')) {
+        if (!strip.contains(e.target) && (!barEl || !barEl.contains(e.target))) {
+          hidePopupStrip();
+        }
       }
-    }
-  });
+    });
+  }
 
   const headingBtn = bar.querySelector('#grp-btn-heading');
   if (headingBtn) {
@@ -4272,7 +4592,14 @@ function toggleFindAndReplaceBar(forceState) {
   }
 }
 
+let activeFastScrollbarDisposer = null;
+
 function setupFastScrollbar() {
+  if (activeFastScrollbarDisposer) {
+    activeFastScrollbarDisposer();
+    activeFastScrollbarDisposer = null;
+  }
+
   const mainArea = document.querySelector('.cm-scroller');
   const track = document.querySelector('#fast-scrollbar-track');
   const thumb = document.querySelector('#fast-scrollbar-thumb');
@@ -4300,7 +4627,7 @@ function setupFastScrollbar() {
     thumb.style.top = `${scrollRatio * availableTrack}px`;
   };
 
-  mainArea.addEventListener('scroll', () => {
+  const onScroll = () => {
     if (isDragging) return;
 
     const now = Date.now();
@@ -4322,18 +4649,18 @@ function setupFastScrollbar() {
         }
       }, 1200);
     }
-  }, { passive: true });
+  };
 
-  thumb.addEventListener('pointerdown', (e) => {
+  const onPointerDown = (e) => {
     isDragging = true;
     dragStartY = e.clientY;
     dragStartScrollTop = mainArea.scrollTop;
     thumb.setPointerCapture(e.pointerId);
     track.classList.add('visible');
     clearTimeout(hideTimer);
-  });
+  };
 
-  thumb.addEventListener('pointermove', (e) => {
+  const onPointerMove = (e) => {
     if (!isDragging) return;
     const deltaY = e.clientY - dragStartY;
 
@@ -4350,7 +4677,7 @@ function setupFastScrollbar() {
       mainArea.scrollTop = Math.min(maxScroll, Math.max(0, dragStartScrollTop + scrollDelta));
       updateThumbPosition();
     }
-  });
+  };
 
   const stopDrag = () => {
     if (isDragging) {
@@ -4362,8 +4689,20 @@ function setupFastScrollbar() {
     }
   };
 
+  mainArea.addEventListener('scroll', onScroll, { passive: true });
+  thumb.addEventListener('pointerdown', onPointerDown);
+  thumb.addEventListener('pointermove', onPointerMove);
   thumb.addEventListener('pointerup', stopDrag);
   thumb.addEventListener('pointercancel', stopDrag);
+
+  activeFastScrollbarDisposer = () => {
+    clearTimeout(hideTimer);
+    mainArea.removeEventListener('scroll', onScroll);
+    thumb.removeEventListener('pointerdown', onPointerDown);
+    thumb.removeEventListener('pointermove', onPointerMove);
+    thumb.removeEventListener('pointerup', stopDrag);
+    thumb.removeEventListener('pointercancel', stopDrag);
+  };
 }
 
 function updateTocActiveSection() {
@@ -4401,6 +4740,8 @@ function updateTocActiveSection() {
     }
   }
 }
+
+let tocGestureInitialized = false;
 
 function setupTocGestureAndPanel() {
   const panel = document.querySelector('#toc-panel');
@@ -4441,6 +4782,9 @@ function setupTocGestureAndPanel() {
       });
     };
   }
+
+  if (tocGestureInitialized) return;
+  tocGestureInitialized = true;
 
   let touchStartX = 0;
   let touchStartY = 0;
@@ -4708,6 +5052,7 @@ function setupKeyboardShortcuts() {
 
 // Global JS Bridge exposure
 window.editorBridge = {
+  get activeAdapter() { return activeAdapter; },
   destroy: function() {
     if (activeAdapter) {
       activeAdapter.destroy();
@@ -5532,7 +5877,7 @@ function getSnapshot(view) {
 }
 
 export function setupNavigationDiagnostics(view) {
-  if (!view || !view.dom) return;
+  if (!view || !view.dom) return () => {};
 
   const dom = view.dom;
   const scroller = view.scrollDOM;
@@ -5540,8 +5885,12 @@ export function setupNavigationDiagnostics(view) {
   let activeArrowPress = null;
   let lastArrowEventTime = 0;
   let lastArrowPressId = null;
+  let disposed = false;
+
+  const fullCaptureDisposer = setupFullNavigationCapture(view);
 
   const reportTrace = (record) => {
+    if (disposed) return;
     const serialized = serializeNavigationTraceRecord(record);
     if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
       window.AndroidNative.reportNavigationTrace(serialized);
@@ -5597,7 +5946,7 @@ export function setupNavigationDiagnostics(view) {
   };
 
   // Capture phase keydown for ArrowUp / ArrowDown
-  dom.addEventListener('keydown', (e) => {
+  const onKeyDown = (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 
     const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
@@ -5637,11 +5986,11 @@ export function setupNavigationDiagnostics(view) {
     lastArrowPressId = press.pressId;
 
     requestAnimationFrame(() => {
-      if (!view || !view.state) return;
+      if (disposed || !view || !view.state) return;
       let afterSnap = getSnapshot(view);
 
       setTimeout(() => {
-        if (!view || !view.state) return;
+        if (disposed || !view || !view.state) return;
         const afterSnap50 = getSnapshot(view);
         if (afterSnap50) afterSnap = afterSnap50;
 
@@ -5676,23 +6025,29 @@ export function setupNavigationDiagnostics(view) {
         reportTrace(record);
       }, 50);
     });
-  }, true);
+  };
+
+  dom.addEventListener('keydown', onKeyDown, true);
 
   // Keyup for ArrowUp / ArrowDown
-  dom.addEventListener('keyup', (e) => {
+  const onKeyUp = (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
     if (activeArrowPress && activeArrowPress.direction === direction) {
       closeActiveArrowPress(false);
     }
-  }, true);
+  };
+
+  dom.addEventListener('keyup', onKeyUp, true);
 
   // Blur event closes active press
-  window.addEventListener('blur', () => {
+  const onBlur = () => {
     if (activeArrowPress) {
       closeActiveArrowPress(true);
     }
-  });
+  };
+
+  window.addEventListener('blur', onBlur);
 
   // Passive pointer gesture & scroll recorder
   let activePointerGesture = null;
@@ -5781,12 +6136,12 @@ export function setupNavigationDiagnostics(view) {
   let lastSelectionSnapshot = getSnapshot(view);
   let selectionChangeTimer = null;
 
-  document.addEventListener('selectionchange', () => {
-    if (!view.hasFocus) return;
+  const onSelectionChange = () => {
+    if (disposed || !view.hasFocus) return;
 
     clearTimeout(selectionChangeTimer);
     selectionChangeTimer = setTimeout(() => {
-      if (!view.hasFocus || !view.state) return;
+      if (disposed || !view.hasFocus || !view.state) return;
 
       const after = getSnapshot(view);
       if (!after) return;
@@ -5815,7 +6170,9 @@ export function setupNavigationDiagnostics(view) {
         after
       });
     }, 80);
-  });
+  };
+
+  document.addEventListener('selectionchange', onSelectionChange);
 
   const finalizePointerGesture = () => {
     if (!activePointerGesture) return;
@@ -5865,7 +6222,7 @@ export function setupNavigationDiagnostics(view) {
     reportTrace(record);
   };
 
-  dom.addEventListener('pointerdown', (e) => {
+  const onPointerDown = (e) => {
     if (activePointerGesture) {
       finalizePointerGesture();
     }
@@ -5896,9 +6253,9 @@ export function setupNavigationDiagnostics(view) {
 
     clearTimeout(pointerGestureTimer);
     pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
-  }, true);
+  };
 
-  window.addEventListener('pointermove', (e) => {
+  const onPointerMove = (e) => {
     if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
     activePointerGesture.currentX = e.clientX;
     activePointerGesture.currentY = e.clientY;
@@ -5911,9 +6268,9 @@ export function setupNavigationDiagnostics(view) {
 
     clearTimeout(pointerGestureTimer);
     pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
-  }, true);
+  };
 
-  window.addEventListener('pointerup', (e) => {
+  const onPointerUp = (e) => {
     if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
     activePointerGesture.currentX = e.clientX;
     activePointerGesture.currentY = e.clientY;
@@ -5924,13 +6281,18 @@ export function setupNavigationDiagnostics(view) {
     const sample = createSample('editor', e.clientX, e.clientY, 'pointer', null);
     if (sample) addSampleToContainer(activePointerGesture, sample);
     setTimeout(() => finalizePointerGesture(), 50);
-  }, true);
+  };
 
-  window.addEventListener('pointercancel', (e) => {
+  const onPointerCancel = (e) => {
     if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
     activePointerGesture.canceled = true;
     setTimeout(() => finalizePointerGesture(), 50);
-  }, true);
+  };
+
+  dom.addEventListener('pointerdown', onPointerDown, true);
+  window.addEventListener('pointermove', onPointerMove, true);
+  window.addEventListener('pointerup', onPointerUp, true);
+  window.addEventListener('pointercancel', onPointerCancel, true);
 
   // Passive scroll handler
   const onScroll = (e) => {
@@ -5990,11 +6352,31 @@ export function setupNavigationDiagnostics(view) {
     scroller.addEventListener('scroll', onScroll, { passive: true });
   }
   window.addEventListener('scroll', onScroll, { passive: true });
-  setupFullNavigationCapture(view);
 
   return () => {
+    if (disposed) return;
+    disposed = true;
+
+    clearTimeout(selectionChangeTimer);
+    clearTimeout(pointerGestureTimer);
+    clearTimeout(unattributedScrollTimer);
+
+    dom.removeEventListener('keydown', onKeyDown, true);
+    dom.removeEventListener('keyup', onKeyUp, true);
+    window.removeEventListener('blur', onBlur);
+    document.removeEventListener('selectionchange', onSelectionChange);
+
+    dom.removeEventListener('pointerdown', onPointerDown, true);
+    window.removeEventListener('pointermove', onPointerMove, true);
+    window.removeEventListener('pointerup', onPointerUp, true);
+    window.removeEventListener('pointercancel', onPointerCancel, true);
+
     if (scroller) scroller.removeEventListener('scroll', onScroll);
     window.removeEventListener('scroll', onScroll);
+
+    if (typeof fullCaptureDisposer === 'function') {
+      fullCaptureDisposer();
+    }
   };
 }
 
