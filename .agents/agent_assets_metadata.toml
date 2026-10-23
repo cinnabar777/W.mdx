@@ -14,3 +14,17 @@ mtime_ms = 1792775992895
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:e9e5e322-8ffc-42f3-99e5-0ca74633ef17/d08ca854-6f6d-4ad9-b3cb-b98d42133c85/1b070992-541c-40f7-91fc-8f1d6e168e00"
 storage_version_token = "1792776024552802"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "iyIb_v0nPobqUZNwetr8s"
+uri = "file://Documentation/Replit/Jules_Handoff_Typography_Scroll_2026-10-23.md"
+type = "text"
+title = "Jules handoff — typography and scrolling"
+description = "The code-level handoff as a single Markdown document."
+logical_id = "7847eeca-7297-47a7-bf66-8f57e4e7738d"
+content_hash = "sha256:bd4532cac7e60567cd217caac3952091268d50c726ea4466b9ce13255246db80"
+size = 18460
+mtime_ms = 1792781153963
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:e9e5e322-8ffc-42f3-99e5-0ca74633ef17/7847eeca-7297-47a7-bf66-8f57e4e7738d/d6a90f1f-2df5-438f-b3c6-e7e078568da1"
+storage_version_token = "1792781472014988"
+content_type = "text/markdown"
