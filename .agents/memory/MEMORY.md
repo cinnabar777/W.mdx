@@ -1,0 +1,1 @@
+- [Per-heading typography settings](per-heading-typography.md) — each H1–H6 section stays collapsed until opened and mirrors Global Headings controls, with per-level overrides.
