@@ -2,3 +2,4 @@
 - [Checkbox bullet visibility](checkbox-settings.md) — checkbox settings should let users choose whether task items show an extra bullet before the checkbox.
 - [Code-block colors](codeblock-colors.md) — distinguish the tight background behind code text from the full code-block background and header/copy-button styling.
 - [Callout heading alignment](callout-heading-alignment.md) — keep the icon in its own gutter and align wrapped heading lines under the heading text, always.
+- [Reset icon alignment](reset-icon-alignment.md) — place reset icons in one far-right column, with slider values immediately before them.
