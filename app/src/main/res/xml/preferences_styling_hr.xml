@@ -28,19 +28,19 @@
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_hr_margin_left"
-            app:title="Horizontal Rule Left Margin (px)"
+            app:title="Horizontal Rule Left Margin (%)"
             app:summary="Space between document edge and horizontal dividers"
             app:min="0"
-            android:max="80"
+            android:max="50"
             app:defaultValue="0"
             app:showSeekBarValue="true" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_hr_margin_right"
-            app:title="Horizontal Rule Right Margin (px)"
+            app:title="Horizontal Rule Right Margin (%)"
             app:summary="Space between document edge and horizontal dividers"
             app:min="0"
-            android:max="80"
+            android:max="50"
             app:defaultValue="0"
             app:showSeekBarValue="true" />
 

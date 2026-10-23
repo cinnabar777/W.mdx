@@ -25,24 +25,6 @@
             app:showSeekBarValue="true" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_code_block_margin_left"
-            app:title="Code Block Left Margin (px)"
-            app:summary="Space between document edge and code blocks"
-            app:min="0"
-            android:max="80"
-            app:defaultValue="0"
-            app:showSeekBarValue="true" />
-
-        <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_code_block_margin_right"
-            app:title="Code Block Right Margin (px)"
-            app:summary="Space between document edge and code blocks"
-            app:min="0"
-            android:max="80"
-            app:defaultValue="0"
-            app:showSeekBarValue="true" />
-
-        <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_code_block_padding"
             app:title="Code Block Padding (px)"
             app:summary="Inside padding for code blocks"

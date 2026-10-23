@@ -2,26 +2,6 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Margins">
-        <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_table_margin_left"
-            app:title="Table Left Margin (px)"
-            app:summary="Space between document edge and tables"
-            app:min="0"
-            android:max="80"
-            app:defaultValue="0"
-            app:showSeekBarValue="true" />
-
-        <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_table_margin_right"
-            app:title="Table Right Margin (px)"
-            app:summary="Space between document edge and tables"
-            app:min="0"
-            android:max="80"
-            app:defaultValue="0"
-            app:showSeekBarValue="true" />
-    </com.wmdx.markdownapp.ResetPreferenceCategory>
-
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Borders">
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_table_border_style"

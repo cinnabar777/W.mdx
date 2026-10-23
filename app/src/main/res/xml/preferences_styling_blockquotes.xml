@@ -43,16 +43,7 @@
             app:title="Block Quote Left Margin (px)"
             app:summary="Left margin offset for block quotes"
             app:min="0"
-            android:max="80"
-            app:defaultValue="0"
-            app:showSeekBarValue="true" />
-
-        <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_blockquote_right_margin"
-            app:title="Block Quote Right Margin (px)"
-            app:summary="Right margin offset for block quotes"
-            app:min="0"
-            android:max="80"
+            android:max="40"
             app:defaultValue="0"
             app:showSeekBarValue="true" />
 
@@ -101,24 +92,6 @@
             app:title="Callout Text Color"
             app:summary="Text color for callout body"
             app:defaultValue="default" />
-
-        <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_callout_margin_left"
-            app:title="Callout Left Margin (px)"
-            app:summary="Left margin offset for callouts"
-            app:min="0"
-            android:max="80"
-            app:defaultValue="0"
-            app:showSeekBarValue="true" />
-
-        <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_callout_margin_right"
-            app:title="Callout Right Margin (px)"
-            app:summary="Right margin offset for callouts"
-            app:min="0"
-            android:max="80"
-            app:defaultValue="0"
-            app:showSeekBarValue="true" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_callout_padding"

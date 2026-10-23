@@ -21,6 +21,12 @@
             app:defaultValue="0"
             app:showSeekBarValue="true" />
 
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_list_wrap_under_text"
+            app:title="Wrap Lines Under List Text"
+            app:summary="Align continuation lines after the bullet, number, or checkbox"
+            android:defaultValue="false" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_list_item_spacing"
             app:title="List Item Vertical Spacing (px)"

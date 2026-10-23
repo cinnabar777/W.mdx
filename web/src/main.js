@@ -4631,15 +4631,12 @@ window.editorBridge = {
     setCssVar('--footnote-ref-color', prefs.pref_footnote_ref_color);
     setCssVar('--footnote-font-size', prefs.pref_footnote_font_size, 'px');
 
-    // Body & Headings Margins
-    setCssVar('--body-margin-left', prefs.pref_body_margin_left ?? 16, 'px');
-    setCssVar('--body-margin-right', prefs.pref_body_margin_right ?? 16, 'px');
-    setCssVar('--heading-margin-left', prefs.pref_heading_margin_left ?? 0, 'px');
-    setCssVar('--heading-margin-right', prefs.pref_heading_margin_right ?? 0, 'px');
-
     // Lists
+    document.body.classList.toggle(
+      'list-wrap-under-text',
+      prefs.pref_list_wrap_under_text === true
+    );
     setCssVar('--list-left-indent', prefs.pref_list_left_indent, 'px');
-    setCssVar('--list-margin-right', prefs.pref_list_right_margin ?? 0, 'px');
     setCssVar('--list-item-spacing', prefs.pref_list_item_spacing, 'px');
     setCssVar('--list-line-height', prefs.pref_list_line_height);
     setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
@@ -4654,12 +4651,7 @@ window.editorBridge = {
     setCssVar('--blockquote-border-color', prefs.pref_blockquote_line_color);
     setCssVar('--blockquote-bg-color', prefs.pref_blockquote_bg_color);
     setCssVar('--blockquote-text-color', prefs.pref_blockquote_text_color);
-    setCssVar(
-      '--blockquote-left-margin',
-      prefs.pref_blockquote_left_indent ?? prefs.pref_blockquote_left_margin ?? 0,
-      'px'
-    );
-    setCssVar('--blockquote-right-margin', prefs.pref_blockquote_right_margin ?? 0, 'px');
+    setCssVar('--blockquote-left-margin', prefs.pref_blockquote_left_indent || prefs.pref_blockquote_left_margin, 'px');
     setCssVar('--blockquote-padding', prefs.pref_blockquote_padding, 'px');
 
     setCssVar('--callout-border-width', prefs.pref_callout_line_thickness, 'px');
@@ -4667,8 +4659,6 @@ window.editorBridge = {
     setCssVar('--callout-border-color', prefs.pref_callout_line_color);
     setCssVar('--callout-bg-color', prefs.pref_callout_bg_color);
     setCssVar('--callout-text-color', prefs.pref_callout_text_color);
-    setCssVar('--callout-margin-left', prefs.pref_callout_margin_left ?? 0, 'px');
-    setCssVar('--callout-margin-right', prefs.pref_callout_margin_right ?? 0, 'px');
     setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
 
     // Callout Shared Header
@@ -4704,8 +4694,6 @@ window.editorBridge = {
     });
 
     // Tables
-    setCssVar('--table-margin-left', prefs.pref_table_margin_left ?? 0, 'px');
-    setCssVar('--table-margin-right', prefs.pref_table_margin_right ?? 0, 'px');
     setCssVar('--table-border-style', prefs.pref_table_border_style);
     setCssVar('--table-border-width', prefs.pref_table_border_thickness || prefs.pref_table_border_width, 'px');
     setCssVar('--table-border-color', prefs.pref_table_border_color);
@@ -4725,16 +4713,14 @@ window.editorBridge = {
     setCssVar('--code-block-color', prefs.pref_code_block_color);
     setCssVar('--code-block-bg-color', prefs.pref_code_block_bg_color);
     setCssVar('--code-block-font-size', prefs.pref_code_block_font_size, 'px');
-    setCssVar('--code-block-margin-left', prefs.pref_code_block_margin_left ?? 0, 'px');
-    setCssVar('--code-block-margin-right', prefs.pref_code_block_margin_right ?? 0, 'px');
     setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
     setCssVar('--code-block-border-radius', prefs.pref_code_block_border_radius, 'px');
     setCssVar('--code-block-line-height', prefs.pref_code_block_line_height);
     setCssVar('--code-block-lang-label-color', prefs.pref_code_block_lang_label_color);
 
     // Dividers
-    setCssVar('--hr-margin-left', prefs.pref_hr_margin_left ?? 0, 'px');
-    setCssVar('--hr-margin-right', prefs.pref_hr_margin_right ?? 0, 'px');
+    setCssVar('--hr-margin-left', prefs.pref_hr_margin_left ?? 0, '%');
+    setCssVar('--hr-margin-right', prefs.pref_hr_margin_right ?? 0, '%');
     setCssVar('--hr-thickness', prefs.pref_hr_thickness, 'px');
     setCssVar('--hr-style', prefs.pref_hr_style);
     setCssVar('--hr-color', prefs.pref_hr_color);
