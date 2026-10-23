@@ -3,7 +3,7 @@ name: Per-heading typography settings
 description: User-defined behavior for global and per-level heading typography controls.
 ---
 
-Each heading level (H1–H6) must have a collapsed section that expands to show its individual settings, keeping the settings page manageable. Every control in Global Headings should have an identical control for each individual heading unless there is a functional reason it cannot work at that level. Per-heading values override the global setting; otherwise the global value applies.
+Each heading level (H1–H6) must have a collapsed section that expands to show its individual settings, keeping the settings page manageable. Every control in Global Headings should have an identical control for each individual heading unless there is a functional reason it cannot work at that level. Per-heading values override the global setting; otherwise the global value applies. Tapping a per-heading reset icon clears only that override so the level resumes inheriting the current global value, not a fixed factory default.
 
 Add a global default heading color to Global Headings; each H1–H6 color overrides that default when set.
 

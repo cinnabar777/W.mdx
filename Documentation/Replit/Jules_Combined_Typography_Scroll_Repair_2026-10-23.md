@@ -1,4 +1,8 @@
-# Jules handoff: finish typography backlog and stabilize the editor scroll patch
+# SUPERSEDED — do not send this handoff to Jules
+
+This draft included items the user later excluded and did not reflect the agreed settings behavior. Use [Jules_Handoff_Typography_Scroll_2026-10-23.md](Jules_Handoff_Typography_Scroll_2026-10-23.md) instead.
+
+The original draft is retained below for archive history only.
 
 ## Branch and baseline
 
