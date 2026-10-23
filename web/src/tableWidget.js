@@ -11,12 +11,7 @@ const TABLE_HEIGHT_STYLE_PROPERTIES = [
   '--table-cell-padding',
   '--table-border-width',
   '--table-border-style',
-  '--table-header-bg',
-  '--table-header-color',
-  '--table-header-font-weight',
-  '--table-cell-bg',
-  '--table-cell-color',
-  '--text-color'
+  '--table-header-font-weight'
 ];
 
 function activeEditorContent() {
@@ -628,7 +623,12 @@ export class WordProcessorTableWidget extends WidgetType {
             tableHeightCache.delete(tableHeightCache.keys().next().value);
           }
 
-          view.dispatch({ effects: tableHeightEstimatesChanged.of(null) });
+          view.dispatch({
+            effects: [
+              tableHeightEstimatesChanged.of(null),
+              view.scrollSnapshot()
+            ]
+          });
           view.requestMeasure();
         });
       });

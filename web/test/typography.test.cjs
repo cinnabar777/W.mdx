@@ -169,7 +169,7 @@ test('Link underline thickness and dialog insertion helpers in main.js and XML p
 });
 
 test('Heading links inside lists and upper-middle scroll helper', () => {
-  assert.match(source, /if \(insideListItem\) \{\s*addLineClass\(line\.from, 'cm-list-item'\);\s*\}/);
+  assert.match(source, /if \(insideListItem\) \{\s*addLineClass\(line\.from, 'cm-list-item'\);/);
   assert.match(source, /export function scrollToPositionUpperMiddle/);
 });
 

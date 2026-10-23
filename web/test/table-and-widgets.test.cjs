@@ -157,6 +157,10 @@ test('Deferred ResizeObserver updates and cleanup in tableWidget.js and main.js'
   assert.ok(tableWidgetCode.includes('destroy(dom) {'), 'WordProcessorTableWidget implements destroy(dom)');
   assert.ok(tableWidgetCode.includes('resizeState.observer.disconnect()'), 'destroy disconnects ResizeObserver');
   assert.ok(tableWidgetCode.includes('cancelAnimationFrame(resizeState.frameId)'), 'destroy cancels pending animation frame');
+  assert.match(
+    tableWidgetCode,
+    /effects:\s*\[\s*tableHeightEstimatesChanged\.of\(null\),\s*view\.scrollSnapshot\(\)\s*\]/
+  );
 
   assert.ok(mainCode.includes('this.tableWidthMeasureFrame = requestAnimationFrame'), 'Content width ResizeObserver defers with requestAnimationFrame');
   assert.ok(mainCode.includes('cancelAnimationFrame(this.tableWidthMeasureFrame)'), 'CodeMirrorAdapter.destroy cancels pending tableWidthMeasureFrame');

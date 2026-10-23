@@ -463,8 +463,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 key = prefix + "align"
                 title = "Heading Text Alignment"
                 summary = "Align this heading level"
-                entries = resources.getTextArray(R.array.align_entries)
-                entryValues = resources.getTextArray(R.array.align_values)
+                entries = context.resources.getTextArray(R.array.align_entries)
+                entryValues = context.resources.getTextArray(R.array.align_values)
                 setDefaultValue("default")
                 isVisible = false
             })
@@ -493,8 +493,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 key = prefix + "text_transform"
                 title = "Heading Text Transform"
                 summary = "Capitalization transform for H$level"
-                entries = resources.getTextArray(R.array.text_transform_entries)
-                entryValues = resources.getTextArray(R.array.text_transform_values)
+                entries = context.resources.getTextArray(R.array.text_transform_entries)
+                entryValues = context.resources.getTextArray(R.array.text_transform_values)
                 setDefaultValue("none")
                 isVisible = false
             })
@@ -502,8 +502,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 key = prefix + "underline_style"
                 title = "Underline Style"
                 summary = "Text decoration for H$level"
-                entries = resources.getTextArray(R.array.underline_style_entries)
-                entryValues = resources.getTextArray(R.array.underline_style_values)
+                entries = context.resources.getTextArray(R.array.underline_style_entries)
+                entryValues = context.resources.getTextArray(R.array.underline_style_values)
                 setDefaultValue("none")
                 isVisible = false
             })
@@ -524,25 +524,26 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 setDefaultValue("default")
                 isVisible = false
             })
-            for ((key, title, summary, max) in listOf(
-                Quadruple("margin_left", "Heading Left Margin (px)", "Space before H$level", 80),
-                Quadruple("margin_right", "Heading Right Margin (px)", "Space after H$level", 80),
-                Quadruple("margin_top", "Top Margin (px)", "Space above H$level", 50),
-                Quadruple("margin_bottom", "Bottom Margin (px)", "Space below H$level", 50)
+            for ((descriptor, maxValue) in listOf(
+                Triple("margin_left", "Heading Left Margin (px)", "Space before H$level") to 80,
+                Triple("margin_right", "Heading Right Margin (px)", "Space after H$level") to 80,
+                Triple("margin_top", "Top Margin (px)", "Space above H$level") to 50,
+                Triple("margin_bottom", "Bottom Margin (px)", "Space below H$level") to 50
             )) {
+                val (key, title, summary) = descriptor
                 controls.add(ResetSeekBarPreference(context).apply {
                     this.key = prefix + key
                     this.title = title
                     this.summary = summary
                     min = 0
-                    this.max = max
+                    this.max = maxValue
                     setDefaultValue(if (key == "margin_top") 16 else if (key == "margin_bottom") 8 else 0)
                     showSeekBarValue = true
                     isVisible = false
                 })
             }
 
-            controls.forEach(screen::addPreference)
+            controls.forEach { screen.addPreference(it) }
             header.summary = "Tap to show H$level settings"
             header.setOnPreferenceClickListener {
                 val expanded = controls.firstOrNull()?.isVisible != true

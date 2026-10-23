@@ -1049,12 +1049,12 @@ class GFMTableWidget extends WidgetType {
 }
 
 const customHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading1, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'var(--heading-1-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading2, color: 'var(--heading-2-color, #ffffff)', fontWeight: 'var(--heading-2-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading3, color: 'var(--heading-3-color, #ffffff)', fontWeight: 'var(--heading-3-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading4, color: 'var(--heading-4-color, #ffffff)', fontWeight: 'var(--heading-4-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading5, color: 'var(--heading-5-color, #ffffff)', fontWeight: 'var(--heading-5-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading6, color: 'var(--heading-6-color, #ffffff)', fontWeight: 'var(--heading-6-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading1, color: 'var(--heading-1-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-1-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading2, color: 'var(--heading-2-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-2-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading3, color: 'var(--heading-3-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-3-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading4, color: 'var(--heading-4-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-4-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading5, color: 'var(--heading-5-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-5-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading6, color: 'var(--heading-6-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-6-font-weight, var(--heading-font-weight, bold))' },
   { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--italic-color, inherit)', fontWeight: 'var(--italic-font-weight, normal)' },
   { tag: tags.strong, fontWeight: 'var(--bold-font-weight, bold)', color: 'var(--bold-color, inherit)' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
@@ -2072,16 +2072,19 @@ function rangeTouchesSyntaxNode(state, from, to, nodeNames) {
   const tree = syntaxTree(state);
   let found = false;
 
-  tree.iterate({
-    from: start,
-    to: Math.max(start + 1, end),
-    enter(node) {
-      if (nodeNames.has(node.name)) {
-        found = true;
-        return false;
+  const iterateTo = Math.min(doc.length, Math.max(start + 1, end));
+  if (iterateTo > start) {
+    tree.iterate({
+      from: start,
+      to: iterateTo,
+      enter(node) {
+        if (nodeNames.has(node.name)) {
+          found = true;
+          return false;
+        }
       }
-    }
-  });
+    });
+  }
 
   if (found) return true;
   for (const position of [start, Math.max(start, end - 1)]) {
@@ -3263,10 +3266,10 @@ class CodeMirrorAdapter {
     updateTableDocumentSelection(this.view);
     this.navigationDiagnosticsCleanup = setupNavigationDiagnostics(this.view);
 
-    setupGroupedControlBar();
+        setupGroupedControlBar();
     initCustomSearchBar();
-    setupFastScrollbar();
-    setupTocGestureAndPanel();
+    this.fastScrollbarCleanup = setupFastScrollbar();
+    this.tocGestureCleanup = setupTocGestureAndPanel();
 
     this.scheduleSyntaxRefresh();
   }
@@ -3374,6 +3377,12 @@ class CodeMirrorAdapter {
     if (typeof this.navigationDiagnosticsCleanup === 'function') {
       this.navigationDiagnosticsCleanup();
       this.navigationDiagnosticsCleanup = null;
+    }
+    for (const cleanupKey of ['fastScrollbarCleanup', 'tocGestureCleanup']) {
+      if (typeof this[cleanupKey] === 'function') {
+        this[cleanupKey]();
+        this[cleanupKey] = null;
+      }
     }
 
     if (this.view) {
@@ -3558,6 +3567,7 @@ function setupGroupedControlBar() {
       ]);
     };
   }
+
 }
 
 export function getDocumentHeadings(doc) {
@@ -4420,14 +4430,16 @@ function setupFastScrollbar() {
   const mainArea = document.querySelector('.cm-scroller');
   const track = document.querySelector('#fast-scrollbar-track');
   const thumb = document.querySelector('#fast-scrollbar-thumb');
-  if (!mainArea || !track || !thumb) return;
+  if (!mainArea || !track || !thumb) return () => {};
 
   let lastScrollTop = mainArea.scrollTop;
   let lastScrollTime = Date.now();
   let hideTimer = null;
   let isDragging = false;
+  let dragPointerId = null;
   let dragStartY = 0;
   let dragStartScrollTop = 0;
+  let thumbUpdateFrame = null;
 
   const updateThumbPosition = () => {
     const scrollHeight = mainArea.scrollHeight;
@@ -4444,7 +4456,15 @@ function setupFastScrollbar() {
     thumb.style.top = `${scrollRatio * availableTrack}px`;
   };
 
-  mainArea.addEventListener('scroll', () => {
+  const scheduleThumbPosition = () => {
+    if (thumbUpdateFrame !== null) return;
+    thumbUpdateFrame = requestAnimationFrame(() => {
+      thumbUpdateFrame = null;
+      if (mainArea.isConnected) updateThumbPosition();
+    });
+  };
+
+  const onScroll = () => {
     if (isDragging) return;
 
     const now = Date.now();
@@ -4456,29 +4476,34 @@ function setupFastScrollbar() {
     lastScrollTime = now;
 
     if (velocity > 4.5 || dy > 250) {
-      updateThumbPosition();
+      scheduleThumbPosition();
       track.classList.add('visible');
 
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => {
+        hideTimer = null;
         if (!isDragging) {
           track.classList.remove('visible');
         }
       }, 1200);
     }
-  }, { passive: true });
+  };
+  mainArea.addEventListener('scroll', onScroll, { passive: true });
 
-  thumb.addEventListener('pointerdown', (e) => {
+  const onPointerDown = (e) => {
     isDragging = true;
+    dragPointerId = e.pointerId;
     dragStartY = e.clientY;
     dragStartScrollTop = mainArea.scrollTop;
-    thumb.setPointerCapture(e.pointerId);
+    thumb.setPointerCapture?.(e.pointerId);
     track.classList.add('visible');
     clearTimeout(hideTimer);
-  });
+    hideTimer = null;
+  };
+  thumb.addEventListener('pointerdown', onPointerDown);
 
-  thumb.addEventListener('pointermove', (e) => {
-    if (!isDragging) return;
+  const onPointerMove = (e) => {
+    if (!isDragging || (dragPointerId !== null && e.pointerId !== dragPointerId)) return;
     const deltaY = e.clientY - dragStartY;
 
     const trackHeight = track.clientHeight || window.innerHeight;
@@ -4494,13 +4519,17 @@ function setupFastScrollbar() {
       mainArea.scrollTop = Math.min(maxScroll, Math.max(0, dragStartScrollTop + scrollDelta));
       updateThumbPosition();
     }
-  });
+  };
+  thumb.addEventListener('pointermove', onPointerMove);
 
-  const stopDrag = () => {
+  const stopDrag = (event) => {
+    if (event && dragPointerId !== null && event.pointerId !== dragPointerId) return;
     if (isDragging) {
       isDragging = false;
+      dragPointerId = null;
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => {
+        hideTimer = null;
         track.classList.remove('visible');
       }, 1200);
     }
@@ -4508,6 +4537,30 @@ function setupFastScrollbar() {
 
   thumb.addEventListener('pointerup', stopDrag);
   thumb.addEventListener('pointercancel', stopDrag);
+
+  return () => {
+    mainArea.removeEventListener('scroll', onScroll);
+    thumb.removeEventListener('pointerdown', onPointerDown);
+    thumb.removeEventListener('pointermove', onPointerMove);
+    thumb.removeEventListener('pointerup', stopDrag);
+    thumb.removeEventListener('pointercancel', stopDrag);
+    clearTimeout(hideTimer);
+    hideTimer = null;
+    if (thumbUpdateFrame !== null) {
+      cancelAnimationFrame(thumbUpdateFrame);
+      thumbUpdateFrame = null;
+    }
+    if (dragPointerId !== null && thumb.hasPointerCapture?.(dragPointerId)) {
+      try {
+        thumb.releasePointerCapture(dragPointerId);
+      } catch (_) {
+        // The pointer may have been released by the browser already.
+      }
+    }
+    dragPointerId = null;
+    isDragging = false;
+    track.classList.remove('visible');
+  };
 }
 
 function updateTocActiveSection() {
@@ -4547,11 +4600,12 @@ function updateTocActiveSection() {
 }
 
 function setupTocGestureAndPanel() {
+  const win = document.defaultView || window;
   const panel = document.querySelector('#toc-panel');
   const overlay = document.querySelector('#toc-overlay');
   const tocContent = document.querySelector('#toc-content');
   const globalToggleBtn = document.querySelector('#toc-global-toggle');
-  if (!panel || !overlay) return;
+  if (!panel || !overlay) return () => {};
 
   let isAllCollapsed = false;
 
@@ -4568,8 +4622,9 @@ function setupTocGestureAndPanel() {
 
   overlay.onclick = closeToc;
 
+  let globalToggleHandler = null;
   if (globalToggleBtn) {
-    globalToggleBtn.onclick = () => {
+    globalToggleHandler = () => {
       isAllCollapsed = !isAllCollapsed;
       const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
       itemRows.forEach(row => {
@@ -4584,13 +4639,14 @@ function setupTocGestureAndPanel() {
         }
       });
     };
+    globalToggleBtn.onclick = globalToggleHandler;
   }
 
   let touchStartX = 0;
   let touchStartY = 0;
   let isSwiping = false;
 
-  window.addEventListener('touchstart', (e) => {
+  const onTouchStart = (e) => {
     const popupStrip = document.querySelector('#popup-toolbar-strip');
     if (popupStrip && popupStrip.contains(e.target)) {
       isSwiping = false;
@@ -4601,9 +4657,9 @@ function setupTocGestureAndPanel() {
       touchStartY = e.touches[0].clientY;
       isSwiping = true;
     }
-  }, { passive: true });
+  };
 
-  window.addEventListener('touchend', (e) => {
+  const onTouchEnd = (e) => {
     if (!isSwiping || e.changedTouches.length !== 1) return;
     isSwiping = false;
     const deltaX = e.changedTouches[0].clientX - touchStartX;
@@ -4611,7 +4667,7 @@ function setupTocGestureAndPanel() {
 
     const isSelectionActive = window.getSelection() && window.getSelection().toString().length > 0;
     if (!isSelectionActive && Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
-      const screenWidth = window.innerWidth;
+      const screenWidth = win.innerWidth;
       const isRightEdgeTouch = touchStartX >= (screenWidth * 0.80);
 
       if (deltaX < 0 && !panel.classList.contains('open') && isRightEdgeTouch) {
@@ -4620,7 +4676,10 @@ function setupTocGestureAndPanel() {
         closeToc();
       }
     }
-  }, { passive: true });
+  };
+  const touchListenerOptions = { passive: true };
+  win.addEventListener('touchstart', onTouchStart, touchListenerOptions);
+  win.addEventListener('touchend', onTouchEnd, touchListenerOptions);
 
   function buildTocTree() {
     if (!tocContent || !activeAdapter) return;
@@ -4687,6 +4746,16 @@ function setupTocGestureAndPanel() {
 
     updateTocActiveSection();
   }
+
+  return () => {
+    win.removeEventListener('touchstart', onTouchStart, touchListenerOptions);
+    win.removeEventListener('touchend', onTouchEnd, touchListenerOptions);
+    if (overlay.onclick === closeToc) overlay.onclick = null;
+    if (globalToggleBtn && globalToggleBtn.onclick === globalToggleHandler) {
+      globalToggleBtn.onclick = null;
+    }
+    isSwiping = false;
+  };
 }
 
 function openWithOtherEngine() {
@@ -5138,7 +5207,7 @@ window.editorBridge = {
     setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
     setCssVar('--code-block-border-radius', prefs.pref_code_block_border_radius, 'px');
     setCssVar('--code-block-line-height', prefs.pref_code_block_line_height);
-    setCssVar('--code-block-lang-label-color', prefs.pref_code_block_lang_label_color);
+    setCssVar('--code-block-lang-label-color', androidArgbToCss(prefs.pref_code_block_lang_label_color));
 
     // Dividers
     setCssVar('--hr-margin-left', prefs.pref_hr_margin_left ?? 0, '%');
@@ -5403,7 +5472,7 @@ window.editorBridge = {
       titleEl.textContent = title;
     }
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData) {
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson) {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -5465,6 +5534,19 @@ window.editorBridge = {
     applyFontCategory('Italic', fontItalicData, '--italic-font-family');
     applyFontCategory('Code', fontCodeData, '--code-font-family');
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family');
+    let headingLevelFonts = [];
+    try {
+      headingLevelFonts = JSON.parse(fontHeadingLevelsDataJson || '[]');
+    } catch (error) {
+      console.error('invalid_heading_font_settings', error);
+    }
+    for (let level = 1; level <= 6; level++) {
+      applyFontCategory(
+        `Heading${level}`,
+        headingLevelFonts[level - 1],
+        `--heading-${level}-font-family`
+      );
+    }
 
     styleEl.innerHTML = fontCss;
   },
@@ -5698,22 +5780,64 @@ export function setupNavigationDiagnostics(view) {
 
   const dom = view.dom;
   const scroller = view.scrollDOM;
+  const doc = dom.ownerDocument;
+  const win = doc.defaultView || window;
+  let disposed = false;
+  const listeners = [];
+  const pendingTimers = new Set();
+  const pendingFrames = new Set();
+  const addListener = (target, type, handler, options) => {
+    target.addEventListener(type, handler, options);
+    listeners.push([target, type, handler, options]);
+  };
+  const scheduleTimeout = (callback, delay) => {
+    let timerId;
+    timerId = win.setTimeout(() => {
+      pendingTimers.delete(timerId);
+      if (!disposed) callback();
+    }, delay);
+    pendingTimers.add(timerId);
+    return timerId;
+  };
+  const clearTrackedTimeout = (timerId) => {
+    if (timerId == null) return;
+    win.clearTimeout(timerId);
+    pendingTimers.delete(timerId);
+  };
+  const scheduleFrame = (callback) => {
+    if (typeof win.requestAnimationFrame !== 'function') {
+      return scheduleTimeout(callback, 16);
+    }
+    let frameId;
+    frameId = win.requestAnimationFrame(() => {
+      pendingFrames.delete(frameId);
+      if (!disposed) callback();
+    });
+    pendingFrames.add(frameId);
+    return frameId;
+  };
+  const cleanupFullNavigationCapture = setupFullNavigationCapture(view);
 
   let activeArrowPress = null;
   let lastArrowEventTime = 0;
   let lastArrowPressId = null;
 
   const reportTrace = (record) => {
+    if (disposed) return;
     const serialized = serializeNavigationTraceRecord(record);
-    if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
-      window.AndroidNative.reportNavigationTrace(serialized);
+    if (win.AndroidNative && typeof win.AndroidNative.reportNavigationTrace === 'function') {
+      win.AndroidNative.reportNavigationTrace(serialized);
     }
   };
 
-  const addSampleToContainer = (container, sampleObj) => {
+  const addSampleToContainer = (container, sampleFactory) => {
     if (!container) return;
-    const now = performance.now();
+    const now = win.performance.now();
     if (now - (container.lastSampleTime || 0) < 50) return;
+    const sampleObj = typeof sampleFactory === 'function'
+      ? sampleFactory()
+      : sampleFactory;
+    if (!sampleObj) return;
 
     container.lastSampleTime = now;
     container.totalSampleCount = (container.totalSampleCount || 0) + 1;
@@ -5759,7 +5883,7 @@ export function setupNavigationDiagnostics(view) {
   };
 
   // Capture phase keydown for ArrowUp / ArrowDown
-  dom.addEventListener('keydown', (e) => {
+  const onKeyDown = (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 
     const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
@@ -5798,11 +5922,11 @@ export function setupNavigationDiagnostics(view) {
     lastArrowEventTime = performance.now();
     lastArrowPressId = press.pressId;
 
-    requestAnimationFrame(() => {
+    scheduleFrame(() => {
       if (!view || !view.state) return;
       let afterSnap = getSnapshot(view);
 
-      setTimeout(() => {
+      scheduleTimeout(() => {
         if (!view || !view.state) return;
         const afterSnap50 = getSnapshot(view);
         if (afterSnap50) afterSnap = afterSnap50;
@@ -5838,23 +5962,26 @@ export function setupNavigationDiagnostics(view) {
         reportTrace(record);
       }, 50);
     });
-  }, true);
+  };
+  addListener(dom, 'keydown', onKeyDown, true);
 
   // Keyup for ArrowUp / ArrowDown
-  dom.addEventListener('keyup', (e) => {
+  const onKeyUp = (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
     if (activeArrowPress && activeArrowPress.direction === direction) {
       closeActiveArrowPress(false);
     }
-  }, true);
+  };
+  addListener(dom, 'keyup', onKeyUp, true);
 
   // Blur event closes active press
-  window.addEventListener('blur', () => {
+  const onWindowBlur = () => {
     if (activeArrowPress) {
       closeActiveArrowPress(true);
     }
-  });
+  };
+  addListener(win, 'blur', onWindowBlur);
 
   // Passive pointer gesture & scroll recorder
   let activePointerGesture = null;
@@ -5906,7 +6033,7 @@ export function setupNavigationDiagnostics(view) {
 
   const finalizeUnattributedScroll = () => {
     if (!unattributedScrollRecord) return;
-    clearTimeout(unattributedScrollTimer);
+    clearTrackedTimeout(unattributedScrollTimer);
     unattributedScrollTimer = null;
 
     const u = unattributedScrollRecord;
@@ -5943,11 +6070,11 @@ export function setupNavigationDiagnostics(view) {
   let lastSelectionSnapshot = getSnapshot(view);
   let selectionChangeTimer = null;
 
-  document.addEventListener('selectionchange', () => {
+  const onSelectionChange = () => {
     if (!view.hasFocus) return;
 
-    clearTimeout(selectionChangeTimer);
-    selectionChangeTimer = setTimeout(() => {
+    clearTrackedTimeout(selectionChangeTimer);
+    selectionChangeTimer = scheduleTimeout(() => {
       if (!view.hasFocus || !view.state) return;
 
       const after = getSnapshot(view);
@@ -5977,11 +6104,12 @@ export function setupNavigationDiagnostics(view) {
         after
       });
     }, 80);
-  });
+  };
+  addListener(doc, 'selectionchange', onSelectionChange);
 
   const finalizePointerGesture = () => {
     if (!activePointerGesture) return;
-    clearTimeout(pointerGestureTimer);
+    clearTrackedTimeout(pointerGestureTimer);
     pointerGestureTimer = null;
 
     const g = activePointerGesture;
@@ -6027,7 +6155,7 @@ export function setupNavigationDiagnostics(view) {
     reportTrace(record);
   };
 
-  dom.addEventListener('pointerdown', (e) => {
+  const onPointerDown = (e) => {
     if (activePointerGesture) {
       finalizePointerGesture();
     }
@@ -6056,11 +6184,12 @@ export function setupNavigationDiagnostics(view) {
       canceled: false
     };
 
-    clearTimeout(pointerGestureTimer);
-    pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
-  }, true);
+    clearTrackedTimeout(pointerGestureTimer);
+    pointerGestureTimer = scheduleTimeout(() => finalizePointerGesture(), 300);
+  };
+  addListener(dom, 'pointerdown', onPointerDown, true);
 
-  window.addEventListener('pointermove', (e) => {
+  const onPointerMove = (e) => {
     if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
     activePointerGesture.currentX = e.clientX;
     activePointerGesture.currentY = e.clientY;
@@ -6068,14 +6197,17 @@ export function setupNavigationDiagnostics(view) {
     if (travel > activePointerGesture.maxTravel) {
       activePointerGesture.maxTravel = travel;
     }
-    const sample = createSample('editor', e.clientX, e.clientY, 'pointer', null);
-    if (sample) addSampleToContainer(activePointerGesture, sample);
+    addSampleToContainer(
+      activePointerGesture,
+      () => createSample('editor', e.clientX, e.clientY, 'pointer', null)
+    );
 
-    clearTimeout(pointerGestureTimer);
-    pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
-  }, true);
+    clearTrackedTimeout(pointerGestureTimer);
+    pointerGestureTimer = scheduleTimeout(() => finalizePointerGesture(), 300);
+  };
+  addListener(win, 'pointermove', onPointerMove, true);
 
-  window.addEventListener('pointerup', (e) => {
+  const onPointerUp = (e) => {
     if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
     activePointerGesture.currentX = e.clientX;
     activePointerGesture.currentY = e.clientY;
@@ -6083,16 +6215,20 @@ export function setupNavigationDiagnostics(view) {
     if (travel > activePointerGesture.maxTravel) {
       activePointerGesture.maxTravel = travel;
     }
-    const sample = createSample('editor', e.clientX, e.clientY, 'pointer', null);
-    if (sample) addSampleToContainer(activePointerGesture, sample);
-    setTimeout(() => finalizePointerGesture(), 50);
-  }, true);
+    addSampleToContainer(
+      activePointerGesture,
+      () => createSample('editor', e.clientX, e.clientY, 'pointer', null)
+    );
+    scheduleTimeout(() => finalizePointerGesture(), 50);
+  };
+  addListener(win, 'pointerup', onPointerUp, true);
 
-  window.addEventListener('pointercancel', (e) => {
+  const onPointerCancel = (e) => {
     if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
     activePointerGesture.canceled = true;
-    setTimeout(() => finalizePointerGesture(), 50);
-  }, true);
+    scheduleTimeout(() => finalizePointerGesture(), 50);
+  };
+  addListener(win, 'pointercancel', onPointerCancel, true);
 
   // Passive scroll handler
   const onScroll = (e) => {
@@ -6108,17 +6244,27 @@ export function setupNavigationDiagnostics(view) {
         totalSampleCount: 0,
         droppedSampleCount: 0
       };
-      const sample = createSample(targetLabel, null, null, 'arrow', lastArrowPressId);
-      if (sample) addSampleToContainer(activeArrowPress || targetContainer, sample);
+      addSampleToContainer(
+        activeArrowPress || targetContainer,
+        () => createSample(targetLabel, null, null, 'arrow', lastArrowPressId)
+      );
       return;
     }
 
     // 2. Is there an active pointer gesture?
     if (activePointerGesture) {
-      const sample = createSample(targetLabel, activePointerGesture.currentX, activePointerGesture.currentY, 'pointer', null);
-      if (sample) addSampleToContainer(activePointerGesture, sample);
-      clearTimeout(pointerGestureTimer);
-      pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
+      addSampleToContainer(
+        activePointerGesture,
+        () => createSample(
+          targetLabel,
+          activePointerGesture.currentX,
+          activePointerGesture.currentY,
+          'pointer',
+          null
+        )
+      );
+      clearTrackedTimeout(pointerGestureTimer);
+      pointerGestureTimer = scheduleTimeout(() => finalizePointerGesture(), 300);
       return;
     }
 
@@ -6138,25 +6284,36 @@ export function setupNavigationDiagnostics(view) {
       };
     }
 
-    const sample = createSample(targetLabel, null, null, 'unattributed', null);
-    if (sample) addSampleToContainer(unattributedScrollRecord, sample);
+    addSampleToContainer(
+      unattributedScrollRecord,
+      () => createSample(targetLabel, null, null, 'unattributed', null)
+    );
 
-    clearTimeout(unattributedScrollTimer);
-    unattributedScrollTimer = setTimeout(() => finalizeUnattributedScroll(), 300);
+    clearTrackedTimeout(unattributedScrollTimer);
+    unattributedScrollTimer = scheduleTimeout(() => finalizeUnattributedScroll(), 300);
     if (unattributedScrollTimer && typeof unattributedScrollTimer.unref === 'function') {
       unattributedScrollTimer.unref();
     }
   };
 
-  if (scroller) {
-    scroller.addEventListener('scroll', onScroll, { passive: true });
-  }
-  window.addEventListener('scroll', onScroll, { passive: true });
-  setupFullNavigationCapture(view);
+  if (scroller) addListener(scroller, 'scroll', onScroll, { passive: true });
+  addListener(win, 'scroll', onScroll, { passive: true });
 
   return () => {
-    if (scroller) scroller.removeEventListener('scroll', onScroll);
-    window.removeEventListener('scroll', onScroll);
+    if (disposed) return;
+    disposed = true;
+    for (const [target, type, handler, options] of listeners) {
+      target.removeEventListener(type, handler, options);
+    }
+    listeners.length = 0;
+    for (const timerId of pendingTimers) win.clearTimeout(timerId);
+    pendingTimers.clear();
+    for (const frameId of pendingFrames) win.cancelAnimationFrame?.(frameId);
+    pendingFrames.clear();
+    activeArrowPress = null;
+    activePointerGesture = null;
+    unattributedScrollRecord = null;
+    cleanupFullNavigationCapture?.();
   };
 }
 
