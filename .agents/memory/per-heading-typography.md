@@ -5,6 +5,8 @@ description: User-defined behavior for global and per-level heading typography c
 
 Each heading level (H1–H6) must have a collapsed section that expands to show its individual settings, keeping the settings page manageable. Every control in Global Headings should have an identical control for each individual heading unless there is a functional reason it cannot work at that level. Per-heading values override the global setting; otherwise the global value applies.
 
+Add a global default heading color to Global Headings; each H1–H6 color overrides that default when set.
+
 Add word spacing as a Global Headings control and provide the same control per heading. Word spacing means CSS `word-spacing`, the distance between words, not letter spacing.
 
 **Why:** the user specified these requirements to prevent inferred settings or arbitrary UI changes.
