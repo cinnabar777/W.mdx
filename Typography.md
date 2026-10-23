@@ -1,3 +1,5 @@
+
+
 # Typography
 
 # HEADINGS
@@ -82,9 +84,25 @@ All work.
 2. **Text selection**: fixed 
 3. **Text navigation**: fixed. 
 4. **Reset icon**: fixed. Some are misaligned, seems like on sliders. 
+5. Keyboard undo does not work with table. 
+6. Page jumps when 
 
 
 # ADDITIONS 
 
 1. Color for inactive reset icon. 
 2. Setting for cursor: Color for cursor, blink rate, color for drag balloon,
+
+
+
+
+Defer selection-color and selection-endpoint work
+
+
+
+
+
+
+
+
+
