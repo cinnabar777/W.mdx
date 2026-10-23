@@ -412,9 +412,9 @@ object PreferenceResetHelper {
             width = ViewGroup.LayoutParams.MATCH_PARENT
         }
 
-        val seekBar = holder.findViewById<android.widget.SeekBar>(
+        val seekBar = holder.findViewById(
             androidx.preference.R.id.seekbar
-        )
+        ) as? android.widget.SeekBar
         if (seekBar?.parent === targetRow) {
             (seekBar.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
                 params.width = 0
@@ -436,9 +436,9 @@ object PreferenceResetHelper {
         }
 
         button.visibility = View.VISIBLE
-        val seekBarValue = holder.findViewById<TextView>(
+        val seekBarValue = holder.findViewById(
             androidx.preference.R.id.seekbar_value
-        )
+        ) as? TextView
         if (seekBarValue?.parent === targetRow) {
             targetRow.removeView(button)
             targetRow.removeView(seekBarValue)
