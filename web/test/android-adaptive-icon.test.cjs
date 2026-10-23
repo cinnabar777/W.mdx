@@ -27,7 +27,7 @@ test('adaptive launcher icons use transparent full-color layers and preserve req
     const xml = fs.readFileSync(path.join(resDir, 'mipmap-anydpi-v26', name), 'utf8');
     assert.match(xml, /<background android:drawable="@color\/ic_launcher_background"/);
     assert.match(xml, /<foreground android:drawable="@drawable\/ic_launcher_foreground"/);
-    assert.doesNotMatch(xml, /<monochrome\b/);
+    assert.match(xml, /<monochrome android:drawable="@drawable\/ic_launcher_monochrome"/);
   }
 
   assert.match(
