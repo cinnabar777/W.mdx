@@ -408,9 +408,6 @@ object PreferenceResetHelper {
 
         targetRow.orientation = LinearLayout.HORIZONTAL
         targetRow.gravity = Gravity.CENTER_VERTICAL
-        targetRow.layoutParams = targetRow.layoutParams?.apply {
-            width = ViewGroup.LayoutParams.MATCH_PARENT
-        }
 
         val seekBar = holder.findViewById(
             androidx.preference.R.id.seekbar
@@ -485,9 +482,6 @@ object PreferenceResetHelper {
         if (widgetFrame is LinearLayout &&
             widgetFrame.orientation == LinearLayout.HORIZONTAL
         ) {
-            widgetFrame.layoutParams = widgetFrame.layoutParams?.apply {
-                width = ViewGroup.LayoutParams.MATCH_PARENT
-            }
             return widgetFrame
         }
 
@@ -514,13 +508,13 @@ object PreferenceResetHelper {
 
         val rowParams = if (widgetFrame is android.widget.FrameLayout) {
             android.widget.FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 Gravity.END or Gravity.CENTER_VERTICAL
             )
         } else {
             ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
