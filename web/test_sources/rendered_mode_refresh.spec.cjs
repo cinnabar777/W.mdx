@@ -103,10 +103,11 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
       await window.editorBridge.setEditorMode(mode);
 
       const scroller = document.querySelector('#editor .cm-scroller');
+      const expectedAnchor = mode === 'wysiwyg' ? 'none' : 'auto';
       assert.equal(
         scroller ? scroller.style.overflowAnchor : '',
-        '',
-        `scroller keeps the browser's default scroll anchoring in ${mode}`
+        expectedAnchor,
+        `scroller overflowAnchor style is ${expectedAnchor} in ${mode}`
       );
 
       if (targetScroll > 0) {
