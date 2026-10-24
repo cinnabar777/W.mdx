@@ -163,6 +163,9 @@ test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => 
   assert.ok(mainSource.includes("aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Title container has accessible expand/collapse label');
   assert.ok(mainSource.includes('foldEffect.of'), 'Title container dispatches foldEffect');
   assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
+  assert.match(mainSource, /foldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Folding refreshes the title widget so the arrow reflects the folded state');
+  assert.match(mainSource, /unfoldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Unfolding refreshes the title widget so the arrow reflects the expanded state');
+  assert.match(mainSource, /foldEffect\.of\(\{ from: info\.bodyFrom, to: info\.bodyTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Callouts that start collapsed also refresh their initial arrow state');
 });
 
 test('Nested callout rendering and attributes at depths 1, 2, and 3', () => {
