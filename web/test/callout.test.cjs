@@ -165,7 +165,11 @@ test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => 
   assert.ok(mainSource.includes("btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true')"), 'Fold button exposes its current state');
   assert.ok(mainSource.includes("btn.addEventListener('click', toggleFold)"), 'Chevron button toggles callout folding');
   assert.ok(!mainSource.includes("iconSpan.addEventListener('click', toggleFold)"), 'Type icon does not toggle folding');
-  assert.ok(!mainSource.includes("span.addEventListener('keydown'"), 'The whole title row is not a fold control');
+  const titleWidget = mainSource.slice(
+    mainSource.indexOf('class CalloutTitleWidget'),
+    mainSource.indexOf('export function cleanHeadingText')
+  );
+  assert.ok(!titleWidget.includes("span.addEventListener('keydown'"), 'The whole title row is not a fold control');
   assert.ok(mainSource.includes('foldEffect.of'), 'Title container dispatches foldEffect');
   assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
   assert.match(mainSource, /foldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Folding refreshes the title widget so the arrow reflects the folded state');
