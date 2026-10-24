@@ -380,6 +380,8 @@ class SettingsFragment : BaseSettingsFragment() {
 }
 
 class StorageAccessSettingsFragment : BaseSettingsFragment() {
+    private val locallyRevokedFolderUrisKey = "locally_revoked_storage_folder_uris"
+
     private val addFolderLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             handleFolderSelection(result.resultCode, result.data)
@@ -460,11 +462,27 @@ class StorageAccessSettingsFragment : BaseSettingsFragment() {
         ) ?: return
         category.removeAll()
 
-        val folders = context.contentResolver.persistedUriPermissions
+        val persistedPermissions = context.contentResolver.persistedUriPermissions
+        val preferences =
+            androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+        val locallyRevokedUris = preferences
+            .getStringSet(locallyRevokedFolderUrisKey, emptySet())
+            .orEmpty()
+            .toMutableSet()
+        val currentlyPersistedUris = persistedPermissions.map { it.uri.toString() }.toSet()
+        val clearedRevocations = locallyRevokedUris.removeAll { it !in currentlyPersistedUris }
+        if (clearedRevocations) {
+            preferences.edit()
+                .putStringSet(locallyRevokedFolderUrisKey, locallyRevokedUris)
+                .apply()
+        }
+
+        val folders = persistedPermissions
             .filter {
                 it.isReadPermission &&
                     it.isWritePermission &&
-                    android.provider.DocumentsContract.isTreeUri(it.uri)
+                    android.provider.DocumentsContract.isTreeUri(it.uri) &&
+                    it.uri.toString() !in locallyRevokedUris
             }
             .map { it to getFolderDisplayName(context, it.uri) }
             .sortedBy { it.second.lowercase() }
@@ -539,6 +557,20 @@ class StorageAccessSettingsFragment : BaseSettingsFragment() {
                         readWriteFlags
                     )
                 }.isSuccess
+                if (removed) {
+                    val preferences =
+                        androidx.preference.PreferenceManager.getDefaultSharedPreferences(
+                            requireContext()
+                        )
+                    val locallyRevokedUris = preferences
+                        .getStringSet(locallyRevokedFolderUrisKey, emptySet())
+                        .orEmpty()
+                        .toMutableSet()
+                    locallyRevokedUris.add(folderUri.toString())
+                    preferences.edit()
+                        .putStringSet(locallyRevokedFolderUrisKey, locallyRevokedUris)
+                        .apply()
+                }
                 refreshAuthorizedFolders()
                 if (removed) {
                     ThemedToast.show(requireContext(), "Folder access removed", Toast.LENGTH_SHORT)
