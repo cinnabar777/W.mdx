@@ -419,6 +419,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun applyThemeAndFullscreenPreferences() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        PreferenceResetHelper.migratePersistedHeadingDefaults(prefs)
         applySystemBarDimming()
 
         val jsonObject = org.json.JSONObject()
@@ -431,6 +432,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         val fontBodyData = loadFontDataUri(prefs.getString("pref_font_file_body_path", null))
         val fontHeadingData = loadFontDataUri(prefs.getString("pref_font_file_heading_path", null))
+        val fontHeadingLevelsData = (1..6).map { level ->
+            loadFontDataUri(prefs.getString("pref_font_file_heading_${level}_path", null))
+        }
+        val escapedHeadingLevelsData = JSONObjectWrapper.quote(
+            org.json.JSONArray(fontHeadingLevelsData).toString()
+        )
         val fontBoldData = loadFontDataUri(prefs.getString("pref_font_file_bold_path", null))
         val fontItalicData = loadFontDataUri(prefs.getString("pref_font_file_italic_path", null))
         val fontCodeData = loadFontDataUri(prefs.getString("pref_font_file_code_path", null))
@@ -459,7 +466,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedCalloutHeaderFont = JSONObjectWrapper.quote(fontCalloutHeaderData)
 
         webView.evaluateJavascript(
-            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont); }",
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData); }",
             null
         )
 

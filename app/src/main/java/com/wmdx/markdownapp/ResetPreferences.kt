@@ -24,6 +24,8 @@ interface ResettablePreference {
 }
 
 object PreferenceResetHelper {
+    private const val HEADING_OVERRIDE_DEFAULTS_MIGRATED =
+        "pref_heading_override_defaults_migrated_v1"
 
     fun getDefaultColorHex(key: String?): String {
         return when (key) {
@@ -58,10 +60,17 @@ object PreferenceResetHelper {
             "pref_code_block_color" -> "#E0E0E0"
             "pref_code_block_bg_color" -> "#121212"
             "pref_code_block_lang_label_color" -> "#AAAAAA"
+            "pref_code_block_text_bg_color" -> "#00000000"
+            "pref_code_block_label_bg_color" -> "#1FFFFFFF"
+            "pref_code_block_copy_bg_color" -> "#00000000"
+            "pref_code_block_copy_text_color" -> "#FFFFFFFF"
+            "pref_code_block_border_color" -> "#33FFFFFF"
+            "pref_heading_color" -> "#FFFFFF"
             "pref_list_bullet_color" -> "#00E5FF"
             "pref_list_number_color" -> "#00E5FF"
             "pref_todo_unchecked_color" -> "#888888"
             "pref_todo_checked_color" -> "#00E5FF"
+            "pref_todo_checkmark_color" -> "#111111"
             "pref_table_border_color" -> "#444444"
             "pref_table_header_bg_color" -> "#252525"
             "pref_table_header_text_color" -> "#FFFFFF"
@@ -99,8 +108,11 @@ object PreferenceResetHelper {
 
     fun getDefaultValue(key: String): Any? {
         return when {
+            getPerHeadingOverrideDefault(key) != null -> getPerHeadingOverrideDefault(key)
             key == "pref_body_font_size" -> 16
             key == "pref_heading_scale_percent" -> 100
+            key == "pref_heading_color" -> "default"
+            key == "pref_heading_word_spacing" -> "0px"
             key == "pref_font_weight_bold" -> 700
             key == "pref_font_weight_italic" -> 400
             key == "pref_font_weight_heading" -> 700
@@ -134,6 +146,8 @@ object PreferenceResetHelper {
             key == "pref_list_number_color" -> "default"
             key == "pref_todo_unchecked_color" -> "default"
             key == "pref_todo_checked_color" -> "default"
+            key == "pref_todo_checkmark_color" -> "default"
+            key == "pref_todo_hide_extra_bullet" -> false
             key == "pref_blockquote_line_thickness" -> 4
             key == "pref_blockquote_line_style" -> "solid"
             key == "pref_blockquote_line_color" -> "default"
@@ -231,6 +245,11 @@ object PreferenceResetHelper {
             key.startsWith("pref_findreplace_btn_") -> "default"
             key == "pref_code_block_color" -> "default"
             key == "pref_code_block_bg_color" -> "default"
+            key == "pref_code_block_text_bg_color" -> "default"
+            key == "pref_code_block_label_bg_color" -> "default"
+            key == "pref_code_block_copy_bg_color" -> "default"
+            key == "pref_code_block_copy_text_color" -> "default"
+            key == "pref_code_block_border_color" -> "default"
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"
             key == "pref_toolbar_bg_color" -> "default"
             key == "pref_toolbar_icon_color" -> "default"
@@ -310,6 +329,92 @@ object PreferenceResetHelper {
         }
     }
 
+    private fun getPerHeadingOverrideDefault(key: String): Any? {
+        val match = Regex("^pref_heading_[1-6]_(.+)$").matchEntire(key) ?: return null
+        return when (match.groupValues[1]) {
+            "scale_percent" -> 100
+            "font_weight" -> 700
+            "color", "underline_color" -> "default"
+            "align" -> "default"
+            "line_height" -> "1.2"
+            "letter_spacing", "word_spacing" -> "0px"
+            "text_transform" -> "none"
+            "underline_style" -> "none"
+            "underline_thickness" -> 2
+            "margin_left", "margin_right" -> 0
+            "margin_top" -> 16
+            "margin_bottom" -> 8
+            else -> null
+        }
+    }
+
+    fun getHeadingOverrideInheritedValue(
+        prefs: android.content.SharedPreferences,
+        key: String
+    ): Any? {
+        val match = Regex("^pref_heading_[1-6]_(.+)$").matchEntire(key) ?: return null
+        val globalKey = when (match.groupValues[1]) {
+            "scale_percent" -> "pref_heading_scale_percent"
+            "font_weight" -> "pref_font_weight_heading"
+            "color" -> "pref_heading_color"
+            "align" -> "pref_heading_align"
+            "line_height" -> "pref_heading_line_height"
+            "letter_spacing" -> "pref_heading_letter_spacing"
+            "word_spacing" -> "pref_heading_word_spacing"
+            "text_transform" -> "pref_heading_text_transform"
+            "underline_style" -> "pref_heading_underline_style"
+            "underline_thickness" -> "pref_heading_underline_thickness"
+            "underline_color" -> "pref_heading_underline_color"
+            "margin_left" -> "pref_heading_margin_left"
+            "margin_right" -> "pref_heading_margin_right"
+            "margin_top" -> "pref_heading_margin_top"
+            "margin_bottom" -> "pref_heading_margin_bottom"
+            else -> return null
+        }
+
+        return when (val defaultValue = getDefaultValue(globalKey)) {
+            is Int -> prefs.getInt(globalKey, defaultValue)
+            is String -> prefs.getString(globalKey, defaultValue) ?: defaultValue
+            is Boolean -> prefs.getBoolean(globalKey, defaultValue)
+            else -> null
+        }
+    }
+
+    /**
+     * Older heading controls persisted their displayed default values as if
+     * they were user-selected overrides. Remove only values that still match
+     * either the original heading default or the current global value so those
+     * levels inherit again. Values that differ from both are preserved.
+     */
+    fun migratePersistedHeadingDefaults(prefs: android.content.SharedPreferences) {
+        if (prefs.getBoolean(HEADING_OVERRIDE_DEFAULTS_MIGRATED, false)) return
+
+        val editor = prefs.edit()
+        for ((key, storedValue) in prefs.all) {
+            if (!Regex("^pref_heading_[1-6]_(?!settings_toggle$).+").matches(key)) {
+                continue
+            }
+
+            val originalDefault = getPerHeadingOverrideDefault(key) ?: continue
+            val currentInheritedValue = getHeadingOverrideInheritedValue(prefs, key)
+            if (
+                preferenceValuesMatch(storedValue, originalDefault) ||
+                preferenceValuesMatch(storedValue, currentInheritedValue)
+            ) {
+                editor.remove(key)
+            }
+        }
+        editor.putBoolean(HEADING_OVERRIDE_DEFAULTS_MIGRATED, true).apply()
+    }
+
+    private fun preferenceValuesMatch(storedValue: Any?, expectedValue: Any?): Boolean =
+        when (expectedValue) {
+            is Int -> storedValue is Int && storedValue == expectedValue
+            is Boolean -> storedValue is Boolean && storedValue == expectedValue
+            is String -> storedValue is String && storedValue == expectedValue
+            else -> false
+        }
+
     private fun shouldShowResetButton(key: String?): Boolean =
         key != null &&
             key != "pref_reset_all_defaults" &&
@@ -322,6 +427,10 @@ object PreferenceResetHelper {
         if (key == null || !shouldShowResetButton(key)) return false
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+
+        if (Regex("^pref_heading_[1-6]_(?!settings_toggle$).+").matches(key)) {
+            return prefs.contains(key)
+        }
 
         if (key.startsWith("pref_font_file_")) {
             val fontPath = prefs.getString("${key}_path", null)
@@ -368,6 +477,31 @@ object PreferenceResetHelper {
             return
         }
 
+        targetRow.orientation = LinearLayout.HORIZONTAL
+        targetRow.gravity = Gravity.CENTER_VERTICAL
+        if (seekBarRow != null) {
+            // AndroidX's seekbar widget layout adds 16dp of trailing padding
+            // inside this row. The preference item already supplies the shared
+            // trailing inset used by other reset controls.
+            seekBarRow.setPaddingRelative(
+                seekBarRow.paddingStart,
+                seekBarRow.paddingTop,
+                0,
+                seekBarRow.paddingBottom
+            )
+        }
+
+        val seekBar = holder.findViewById(
+            androidx.preference.R.id.seekbar
+        ) as? android.widget.SeekBar
+        if (seekBar?.parent === targetRow) {
+            (seekBar.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+                params.width = 0
+                params.weight = 1f
+                seekBar.layoutParams = params
+            }
+        }
+
         if (button == null) button = createResetButton(context)
         if (button.parent !== targetRow) {
             (button.parent as? ViewGroup)?.removeView(button)
@@ -381,6 +515,30 @@ object PreferenceResetHelper {
         }
 
         button.visibility = View.VISIBLE
+        val seekBarValue = holder.findViewById(
+            androidx.preference.R.id.seekbar_value
+        ) as? TextView
+        if (seekBarValue?.parent === targetRow) {
+            targetRow.removeView(button)
+            targetRow.removeView(seekBarValue)
+            targetRow.addView(
+                seekBarValue,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    marginStart = dp(context, 4)
+                }
+            )
+            targetRow.addView(
+                button,
+                LinearLayout.LayoutParams(dp(context, 40), dp(context, 40)).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    marginStart = dp(context, 4)
+                }
+            )
+        }
         val modified = isModifiedFromDefault(context, key)
         button.isEnabled = modified
         button.alpha = if (modified) 1f else 0.45f
@@ -560,12 +718,29 @@ object PreferenceResetHelper {
             return
         }
 
+        val isHeadingOverride =
+            Regex("^pref_heading_[1-6]_(?!settings_toggle$).+").matches(key)
+        val inheritedHeadingValue = if (isHeadingOverride) {
+            getHeadingOverrideInheritedValue(prefs, key)
+        } else {
+            null
+        }
+
         prefs.edit().remove(key).apply()
 
-        val defVal = getDefaultValue(key)
+        val defVal = if (isHeadingOverride) {
+            inheritedHeadingValue ?: getDefaultValue(key)
+        } else {
+            getDefaultValue(key)
+        }
+        if (isHeadingOverride && defVal != null) {
+            pref.setDefaultValue(defVal)
+        }
         when (pref) {
             is SeekBarPreference -> {
-                if (defVal is Int) pref.value = defVal
+                if (defVal is Int) {
+                    pref.value = defVal
+                }
             }
             is EditTextPreference -> {
                 if (defVal is String) pref.text = defVal
@@ -576,6 +751,11 @@ object PreferenceResetHelper {
             is SwitchPreferenceCompat -> {
                 if (defVal is Boolean) pref.isChecked = defVal
             }
+        }
+        // Setters above may persist their value. For a heading override, the
+        // value shown by the control is inherited; its key must remain absent.
+        if (isHeadingOverride) {
+            prefs.edit().remove(key).apply()
         }
         if (pref is ResettablePreference) {
             pref.callNotifyChanged()
@@ -687,6 +867,15 @@ open class ResetSeekBarPreference : SeekBarPreference, ResettablePreference {
 
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
+        // Match the shared custom preference row's trailing inset so this
+        // fixed-width reset control lines up with the other preference types.
+        val density = context.resources.displayMetrics.density
+        holder.itemView.setPadding(
+            (4 * density).toInt(),
+            holder.itemView.paddingTop,
+            (8 * density).toInt(),
+            holder.itemView.paddingBottom
+        )
         PreferenceResetHelper.bindResetButton(holder, this)
     }
     override fun callNotifyChanged() {

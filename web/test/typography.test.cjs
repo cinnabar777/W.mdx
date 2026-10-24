@@ -5,6 +5,14 @@ const path = require('node:path');
 
 const mainJsPath = path.join(__dirname, '../src/main.js');
 const source = fs.readFileSync(mainJsPath, 'utf8');
+const settingsSource = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
+  'utf8'
+);
+const resetSource = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
+  'utf8'
+);
 
 test('applyAllPreferences handles Android XML preference keys correctly', () => {
   assert.ok(source.includes('pref_body_font_size'), 'Missing pref_body_font_size');
@@ -20,6 +28,7 @@ test('applyAllPreferences handles Android XML preference keys correctly', () => 
 
   assert.ok(source.includes('pref_list_left_indent'), 'Missing pref_list_left_indent');
   assert.ok(source.includes('pref_todo_unchecked_color'), 'Missing pref_todo_unchecked_color');
+  assert.ok(source.includes('pref_todo_checkmark_color'), 'Missing pref_todo_checkmark_color');
 
   assert.ok(source.includes('pref_blockquote_line_thickness'), 'Missing pref_blockquote_line_thickness');
   assert.ok(source.includes('pref_table_border_thickness'), 'Missing pref_table_border_thickness');
@@ -45,6 +54,7 @@ test('applyAllPreferences sets all required CSS variables', () => {
     '--list-left-indent',
     '--todo-border-color',
     '--todo-accent-color',
+    '--todo-checkmark-color',
     '--blockquote-border-width',
     '--table-border-width',
     '--table-header-bg',
@@ -58,6 +68,89 @@ test('applyAllPreferences sets all required CSS variables', () => {
   for (const v of variables) {
     assert.ok(source.includes(v), `Missing CSS variable mapping for ${v}`);
   }
+});
+
+test('checked todo check mark has an independent color with the current dark default', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const listPreferences = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_lists.xml'),
+    'utf8'
+  );
+
+  assert.ok(
+    indexHtml.includes('border: solid var(--todo-checkmark-color, #111111) !important;'),
+    'The checked-box glyph uses its independent color variable and preserves the current default'
+  );
+  assert.ok(
+    listPreferences.includes('app:key="pref_todo_checkmark_color"'),
+    'The check mark color is available as a separate settings control'
+  );
+  assert.ok(
+    resetSource.includes('"pref_todo_checkmark_color" -> "#111111"'),
+    'Resetting the new color setting preserves the current dark check mark'
+  );
+});
+
+test('each heading-level rule outranks the global heading rule', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.ok(indexHtml.includes('.cm-content .cm-heading {'), 'The global heading rule remains in place');
+  for (let level = 1; level <= 6; level++) {
+    assert.ok(
+      indexHtml.includes(`.cm-content .cm-line.cm-heading-${level} {`),
+      `H${level} uses a more specific selector than the global heading rule`
+    );
+  }
+});
+
+test('per-heading reset clears the override and inherits the matching global heading value', () => {
+  const inheritedMappings = [
+    ['scale_percent', 'pref_heading_scale_percent'],
+    ['font_weight', 'pref_font_weight_heading'],
+    ['color', 'pref_heading_color'],
+    ['align', 'pref_heading_align'],
+    ['line_height', 'pref_heading_line_height'],
+    ['letter_spacing', 'pref_heading_letter_spacing'],
+    ['word_spacing', 'pref_heading_word_spacing'],
+    ['text_transform', 'pref_heading_text_transform'],
+    ['underline_style', 'pref_heading_underline_style'],
+    ['underline_thickness', 'pref_heading_underline_thickness'],
+    ['underline_color', 'pref_heading_underline_color'],
+    ['margin_left', 'pref_heading_margin_left'],
+    ['margin_right', 'pref_heading_margin_right'],
+    ['margin_top', 'pref_heading_margin_top'],
+    ['margin_bottom', 'pref_heading_margin_bottom']
+  ];
+
+  for (const [suffix, globalKey] of inheritedMappings) {
+    assert.ok(
+      resetSource.includes(`"${suffix}" -> "${globalKey}"`),
+      `Heading ${suffix} must inherit ${globalKey}`
+    );
+  }
+
+  assert.match(resetSource, /if \(isHeadingOverride\) \{\s*prefs\.edit\(\)\.remove\(key\)\.apply\(\)/);
+  assert.ok(settingsSource.includes('applyCustomLayouts(screen)'), 'Dynamic H1–H6 settings use the same compact row layout');
+  assert.ok(settingsSource.includes('sharedPreferences.edit().remove(preference.key).apply()'), 'Inherited H-level scale values do not persist as overrides');
+});
+
+test('untouched per-heading defaults are migrated and are not saved as overrides', () => {
+  assert.ok(
+    resetSource.includes('fun migratePersistedHeadingDefaults'),
+    'Existing generated heading defaults are cleaned up once'
+  );
+  assert.ok(
+    resetSource.includes('pref_heading_override_defaults_migrated_v1'),
+    'Heading-default migration runs only once'
+  );
+  assert.ok(
+    settingsSource.includes('val hadStoredOverride = key != null && sharedPreferences.contains(key)'),
+    'The settings screen distinguishes existing user values from generated defaults'
+  );
+  assert.ok(
+    settingsSource.includes('generatedHeadingDefaults.forEach { remove(it) }'),
+    'Newly generated heading defaults are removed after preference initialization'
+  );
 });
 
 const indexHtmlPath = path.join(__dirname, '../index.html');
@@ -169,7 +262,7 @@ test('Link underline thickness and dialog insertion helpers in main.js and XML p
 });
 
 test('Heading links inside lists and upper-middle scroll helper', () => {
-  assert.match(source, /if \(insideListItem\) \{\s*addLineClass\(line\.from, 'cm-list-item'\);\s*\}/);
+  assert.match(source, /if \(insideListItem\) \{\s*addLineClass\(line\.from, 'cm-list-item'\);/);
   assert.match(source, /export function scrollToPositionUpperMiddle/);
 });
 
@@ -245,8 +338,8 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(indexHtml.includes('body.hr-centered .cm-content .cm-line.cm-hr'));
   assert.ok(indexHtml.includes('margin-left: var(--table-margin-left, 0px) !important;'));
   assert.ok(indexHtml.includes('margin-right: var(--table-margin-right, 0px) !important;'));
-  assert.ok(indexHtml.includes('margin-left: calc(var(--callout-margin-left, 0px) + 12px) !important;'));
-  assert.ok(indexHtml.includes('margin-left: calc(var(--callout-margin-left, 0px) + 24px) !important;'));
+  assert.ok(indexHtml.includes('var(--callout-depth-offset, 0px)'));
+  assert.ok(indexHtml.includes('var(--callout-depth-offset, 0px) + var(--list-left-indent, 24px)'));
   assert.ok(indexHtml.includes('max-width: calc(100% - var(--hr-margin-left, 0%) - var(--hr-margin-right, 0%)) !important;'));
 
   const hrPreferences = fs.readFileSync(

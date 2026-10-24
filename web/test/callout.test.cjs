@@ -58,6 +58,37 @@ test('Callout widget structure and eq implementation', () => {
   assert.ok(mainSource.includes("titleSpan.className = 'cm-callout-title-text'"), 'CalloutTitleWidget sets text class');
 });
 
+test('callout title wraps after its icon and keeps a unified rounded card background', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[\s\S]*?display:\s*flex[\s\S]*?position:\s*relative/);
+  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*inline-flex[\s\S]*?position:\s*static/);
+  assert.match(indexHtml, /\.cm-callout-icon\s*\{[\s\S]*?position:\s*static[\s\S]*?flex:\s*0 0 16px/);
+  assert.match(indexHtml, /\.cm-callout-title-text\s*\{[\s\S]*?flex:\s*1 1 auto/);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[\s\S]*?position:\s*absolute/);
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title\s*\{[\s\S]*?border-top-left-radius/);
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-body:not\(:has\(\+ \.cm-line\.cm-callout-body\)\)/);
+  assert.match(indexHtml, /--callout-type-header-bg:[\s\S]*?var\(--callout-bg-color/);
+});
+
+test('language label color is scoped to the language text, separate from COPY', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.ok(mainSource.includes("langSpan.className = 'cm-codeblock-lang-label'"));
+  assert.match(indexHtml, /\.cm-codeblock-lang-label\s*\{[\s\S]*?var\(--code-block-lang-label-color/);
+  assert.match(indexHtml, /\.cm-codeblock-copy-btn\s*\{[\s\S]*?var\(--code-copy-color, #fff\)/);
+  const headerRule = indexHtml.match(/\.cm-codeblock-header\s*\{([\s\S]*?)\n    \}/);
+  assert.ok(headerRule, 'Code-block header CSS rule exists');
+  assert.doesNotMatch(headerRule[1], /code-block-lang-label-color/);
+});
+
+test('code text background is applied to the text mark, not substituted for the whole block background', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const textMarkRule = indexHtml.match(/\.cm-content \.cm-codeblock-line \.cm-codeblock-text\s*\{([\s\S]*?)\n    \}/);
+  assert.ok(textMarkRule, 'Code text mark CSS rule exists');
+  assert.match(textMarkRule[1], /background-color:\s*var\(--code-block-text-bg-color, transparent\)/);
+  assert.match(textMarkRule[1], /box-decoration-break:\s*clone/);
+  assert.ok(mainSource.includes("Decoration.mark({ class: 'cm-codeblock-text' })"));
+});
+
 test('Callout line classification and marker detection logic in main.js', () => {
   assert.ok(mainSource.includes('cm-callout'), 'Main JS assigns cm-callout line class');
   assert.ok(mainSource.includes('cm-callout-title'), 'Main JS assigns cm-callout-title line class');
@@ -130,9 +161,20 @@ test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => 
   assert.ok(mainSource.includes('calloutTypeIcons'), 'calloutTypeIcons map exists');
   assert.ok(mainSource.includes('cm-callout-icon'), 'cm-callout-icon class exists');
   assert.ok(mainSource.includes('cm-callout-title-container'), 'Title container class exists');
-  assert.ok(mainSource.includes("aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Title container has accessible expand/collapse label');
+  assert.ok(mainSource.includes("btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Fold button has an accessible expand/collapse label');
+  assert.ok(mainSource.includes("btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true')"), 'Fold button exposes its current state');
+  assert.ok(mainSource.includes("btn.addEventListener('click', toggleFold)"), 'Chevron button toggles callout folding');
+  assert.ok(!mainSource.includes("iconSpan.addEventListener('click', toggleFold)"), 'Type icon does not toggle folding');
+  const titleWidget = mainSource.slice(
+    mainSource.indexOf('class CalloutTitleWidget'),
+    mainSource.indexOf('export function cleanHeadingText')
+  );
+  assert.ok(!titleWidget.includes("span.addEventListener('keydown'"), 'The whole title row is not a fold control');
   assert.ok(mainSource.includes('foldEffect.of'), 'Title container dispatches foldEffect');
   assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
+  assert.match(mainSource, /foldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Folding refreshes the title widget so the arrow reflects the folded state');
+  assert.match(mainSource, /unfoldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Unfolding refreshes the title widget so the arrow reflects the expanded state');
+  assert.match(mainSource, /foldEffect\.of\(\{ from: info\.bodyFrom, to: info\.bodyTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Callouts that start collapsed also refresh their initial arrow state');
 });
 
 test('Nested callout rendering and attributes at depths 1, 2, and 3', () => {
@@ -191,7 +233,7 @@ test('Shared callout header controls and per-type override preferences are defin
   assert.ok(mainSource.includes("'--callout-header-accent-thickness', prefs.pref_callout_header_accent_thickness"), 'main.js sets --callout-header-accent-thickness');
 
   // Check CSS Rules in index.html for title and title container
-  assert.ok(indexHtml.includes('var(--callout-type-header-bg, var(--callout-header-bg, transparent))'), 'index.html incorporates header background cascade');
+  assert.ok(indexHtml.includes('var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))'), 'index.html falls back from header color to the callout background');
   assert.ok(indexHtml.includes('var(--callout-type-header-title-color, var(--callout-header-title-color, inherit))'), 'index.html incorporates header title color cascade');
   assert.ok(indexHtml.includes('var(--callout-header-title-size, inherit)'), 'index.html incorporates header title size');
   assert.ok(indexHtml.includes('var(--callout-header-font-weight, 700)'), 'index.html incorporates header font weight');
@@ -241,6 +283,82 @@ test('CodeBlockHeaderWidget rendering, replacement decoration, and copy button l
   assert.ok(mainSource.includes('Decoration.replace({ widget: headerWidget }).range(line.from, line.to)'), 'Inactive code block replaces line with headerWidget');
   assert.ok(mainSource.includes('Decoration.widget({ widget: headerWidget, side: -1 }).range(line.from)'), 'Active code block inserts headerWidget at line start');
   assert.ok(mainSource.includes("copyBtn.className = 'cm-codeblock-copy-btn'"), 'CodeBlockHeaderWidget sets COPY button class');
+});
+
+test('code block text and language colors use independent selectors', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.ok(
+    indexHtml.includes('.cm-content .cm-codeblock-line span:not(.cm-codeblock-lang-label)'),
+    'General code text styling does not override the language label color'
+  );
+  assert.match(
+    indexHtml,
+    /\.cm-codeblock-lang-label\s*\{[^}]*color:\s*var\(--code-block-lang-label-color,\s*#fff\)\s*!important;/s,
+    'The language label uses its own text color setting'
+  );
+  assert.match(
+    indexHtml,
+    /\.cm-codeblock-copy-btn\s*\{[^}]*color:\s*var\(--code-copy-color,\s*#fff\)\s*!important;/s,
+    'The COPY button uses its separate text color setting'
+  );
+  assert.ok(
+    indexHtml.includes('.cm-content .cm-codeblock-line .cm-codeblock-text'),
+    'The text background applies to the marked code text inside each code line'
+  );
+  assert.match(
+    indexHtml,
+    /\.cm-content \.cm-codeblock-line \.cm-codeblock-text \*\s*\{[^}]*background:\s*transparent\s*!important/s,
+    'Syntax token backgrounds cannot cover the text background inside a fenced code block'
+  );
+  assert.ok(
+    indexHtml.includes('background-color: var(--code-block-text-bg-color, transparent) !important;'),
+    'The code-text background uses its dedicated setting'
+  );
+  assert.ok(
+    mainSource.includes("setCssVar('--code-block-lang-label-color', androidArgbToCss(prefs.pref_code_block_lang_label_color))"),
+    'The language label setting reaches its dedicated CSS variable'
+  );
+  assert.ok(
+    mainSource.includes("setCssVar('--code-block-text-bg-color', androidArgbToCss(prefs.pref_code_block_text_bg_color))"),
+    'The code-text background setting reaches its dedicated CSS variable'
+  );
+});
+
+test('callout title layout and editing behavior match each view', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.ok(mainSource.includes("const displayTitle = customTitle ||"), 'Callouts without custom titles keep their generated label');
+  assert.ok(mainSource.includes("const widgetEnd = titleIsInSource ? info.titleStart : line.to"), 'For custom titles, only the marker and separator are replaced');
+  assert.ok(mainSource.includes('}).range(info.markerStart, widgetEnd)'), 'The marker widget does not replace custom title text');
+  assert.ok(mainSource.includes('.range(info.titleStart, line.to)'), 'Custom title text remains in the document and receives a text mark');
+  assert.ok(mainSource.includes('if (!this.titleIsInSource)'), 'Only generated labels are rendered inside the widget');
+  assert.ok(
+    mainSource.includes('const isMarkerActive = !isPureWysiwyg && (') &&
+      mainSource.includes('selection.head >= info.markerStart && selection.head <= info.markerEnd') &&
+      mainSource.includes('selection.from < info.markerEnd && selection.to > info.markerStart'),
+    'Live Preview checks whether the selection touches the callout marker itself'
+  );
+  assert.ok(mainSource.includes('if (!isMarkerActive && !isPureWysiwyg)'), 'Live Preview renders the callout unless its marker syntax is active');
+  assert.ok(!mainSource.includes('isTitleActive'), 'Moving the cursor into the title does not reveal syntax');
+  assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG replaces the marker while leaving the title editable');
+  assert.ok(
+    mainSource.includes("if (currentEditorMode === 'source') {\n      return Decoration.none;"),
+    'Source view leaves the callout Markdown visible'
+  );
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-title-text\s*\{[^}]*flex:\s*1 1 auto\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*absolute\s*!important/s);
+  assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-list-item\[data-callout-depth\]/, 'Nested callout list items retain list indentation');
+  assert.ok(mainSource.includes('style: `--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`'), 'Preview lines calculate indentation from nesting depth');
+  assert.ok(mainSource.includes('style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`'), 'WYSIWYG lines calculate indentation from nesting depth');
+  assert.ok(
+    indexHtml.includes('border-left: max(var(--callout-header-accent-thickness, 0px), var(--callout-border-width, 4px))'),
+    'The existing callout border styling remains unchanged'
+  );
 });
 
 test('wysiwygCodeBlockField, coordsForTargetRow, and selection paint styling', () => {

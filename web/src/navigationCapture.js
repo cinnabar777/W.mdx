@@ -208,13 +208,43 @@ export function setupFullNavigationCapture(view) {
   let flushTimer = null;
   let scrollEndTimer = null;
   let lastScrollSnapshotAt = -Infinity;
+  let lastScrollRecordAt = -Infinity;
   const previousScrollTops = new WeakMap();
   const activePointerIds = new Set();
+  const pendingFrames = new Set();
+  const pendingTimeouts = new Set();
   let disposed = false;
 
   const now = () => Math.round(win.performance?.now?.() ?? Date.now());
   const bridge = () => win.AndroidNative;
   const isEditorTarget = (target) => target === editor || editor.contains(target);
+  const scheduleFrame = (callback) => {
+    if (typeof win.requestAnimationFrame === 'function') {
+      let frameId;
+      frameId = win.requestAnimationFrame(() => {
+        pendingFrames.delete(frameId);
+        if (!disposed) callback();
+      });
+      pendingFrames.add(frameId);
+      return frameId;
+    }
+    let timeoutId;
+    timeoutId = win.setTimeout(() => {
+      pendingTimeouts.delete(timeoutId);
+      if (!disposed) callback();
+    }, 16);
+    pendingTimeouts.add(timeoutId);
+    return timeoutId;
+  };
+  const scheduleTimeout = (callback, delay) => {
+    let timeoutId;
+    timeoutId = win.setTimeout(() => {
+      pendingTimeouts.delete(timeoutId);
+      if (!disposed) callback();
+    }, delay);
+    pendingTimeouts.add(timeoutId);
+    return timeoutId;
+  };
 
   const flush = () => {
     if (disposed || !queue.length) return;
@@ -250,6 +280,7 @@ export function setupFullNavigationCapture(view) {
   };
 
   const enqueue = (kind, data = {}) => {
+    if (disposed) return null;
     const record = {
       schema: 1,
       seq: ++sequence,
@@ -266,6 +297,7 @@ export function setupFullNavigationCapture(view) {
   };
 
   const requestWindowSnapshot = (reason, urgent = false) => {
+    if (disposed) return;
     const at = now();
     const minimumInterval = urgent ? 300 : SCROLL_SNAPSHOT_INTERVAL_MS;
     if (at - lastScrollSnapshotAt < minimumInterval) return;
@@ -295,8 +327,7 @@ export function setupFullNavigationCapture(view) {
     });
     if (phase === 'down' && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
       const before = captureNavigationState(view, win);
-      const raf = win.requestAnimationFrame || ((callback) => win.setTimeout(callback, 16));
-      raf(() => {
+      scheduleFrame(() => {
         const afterRaf = captureNavigationState(view, win);
         enqueue('key_result', { eventId, phase: 'animation_frame', before, after: afterRaf });
         const beforeLine = before.selection?.headLine;
@@ -307,7 +338,7 @@ export function setupFullNavigationCapture(view) {
         if (delta != null && Math.abs(delta) > 1) {
           requestWindowSnapshot(`arrow-line-jump-${delta}`, true);
         }
-        win.setTimeout(() => {
+        scheduleTimeout(() => {
           enqueue('key_result', {
             eventId,
             phase: '50ms',
@@ -370,22 +401,26 @@ export function setupFullNavigationCapture(view) {
     const targetScrollHeight = Number.isFinite(targetElement?.scrollHeight)
       ? targetElement.scrollHeight
       : null;
-    enqueue('scroll', {
-      target: target === win || target === doc ? 'page' : describeElement(target),
-      scrollTop: round(currentTop),
-      deltaTop: round(deltaTop),
-      scrollLeft: round(targetElement?.scrollLeft),
-      scrollHeight: targetScrollHeight,
-      clientHeight: targetElement?.clientHeight ?? null,
-      trusted: Boolean(event.isTrusted)
-    });
+    const at = now();
+    if (at - lastScrollRecordAt >= 50) {
+      lastScrollRecordAt = at;
+      enqueue('scroll', {
+        target: target === win || target === doc ? 'page' : describeElement(target),
+        scrollTop: round(currentTop),
+        deltaTop: round(deltaTop),
+        scrollLeft: round(targetElement?.scrollLeft),
+        scrollHeight: targetScrollHeight,
+        clientHeight: targetElement?.clientHeight ?? null,
+        trusted: Boolean(event.isTrusted)
+      });
+    }
     if (Number.isFinite(currentTop)) previousScrollTops.set(scrollKey, currentTop);
 
     if (Math.abs(deltaTop || 0) >= 300) requestWindowSnapshot('large-scroll-delta', true);
-    else requestWindowSnapshot('scroll-active');
 
     if (scrollEndTimer) win.clearTimeout(scrollEndTimer);
     scrollEndTimer = win.setTimeout(() => {
+      scrollEndTimer = null;
       enqueue('scroll_idle');
       requestWindowSnapshot('scroll-idle');
     }, 250);
@@ -518,8 +553,7 @@ export function setupFullNavigationCapture(view) {
       }
       if (mutationScheduled) return;
       mutationScheduled = true;
-      const raf = win.requestAnimationFrame || ((callback) => win.setTimeout(callback, 16));
-      raf(() => {
+      scheduleFrame(() => {
         mutationScheduled = false;
         enqueue('dom_mutation_batch', {
           counts: pendingMutationCounts,
@@ -553,6 +587,14 @@ export function setupFullNavigationCapture(view) {
     disposed = true;
     if (flushTimer) win.clearTimeout(flushTimer);
     if (scrollEndTimer) win.clearTimeout(scrollEndTimer);
+    for (const frameId of pendingFrames) {
+      win.cancelAnimationFrame?.(frameId);
+    }
+    pendingFrames.clear();
+    for (const timeoutId of pendingTimeouts) {
+      win.clearTimeout(timeoutId);
+    }
+    pendingTimeouts.clear();
     resizeObserver?.disconnect();
     mutationObserver?.disconnect();
     win.removeEventListener('keydown', onKeyDown, true);
@@ -575,8 +617,12 @@ export function setupFullNavigationCapture(view) {
     win.visualViewport?.removeEventListener('scroll', onViewport);
     win.removeEventListener('error', onError, true);
     win.removeEventListener('unhandledrejection', onUnhandledRejection);
+    win.removeEventListener('pagehide', onPageHide);
+    activePointerIds.clear();
+    queue = [];
   };
 
-  win.addEventListener('pagehide', flush, { once: true });
+  const onPageHide = () => flush();
+  win.addEventListener('pagehide', onPageHide);
   return dispose;
 }

@@ -3,6 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Heading Font &amp; Scale">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_heading_color"
+            app:title="Default Heading Color"
+            app:summary="Default color for all heading levels; each H1–H6 color can override it"
+            app:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_heading_scale_percent"
             app:title="Heading Size Scale (%)"
@@ -46,6 +52,12 @@
             app:key="pref_heading_letter_spacing"
             app:title="Heading Letter Spacing (px)"
             app:summary="Letter spacing for headings (e.g. 0px or 1px)"
+            app:defaultValue="0px" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_heading_word_spacing"
+            app:title="Heading Word Spacing (px)"
+            app:summary="Space between words in headings, not between letters"
             app:defaultValue="0px" />
 
         <com.wmdx.markdownapp.ResetListPreference
@@ -118,44 +130,6 @@
             android:max="50"
             app:defaultValue="8"
             app:showSeekBarValue="true" />
-    </com.wmdx.markdownapp.ResetPreferenceCategory>
-
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Heading Colors 1–6">
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_heading_1_color"
-            app:title="Heading 1 Color"
-            app:summary="Tap to select color or default"
-            app:defaultValue="default" />
-
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_heading_2_color"
-            app:title="Heading 2 Color"
-            app:summary="Tap to select color or default"
-            app:defaultValue="default" />
-
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_heading_3_color"
-            app:title="Heading 3 Color"
-            app:summary="Tap to select color or default"
-            app:defaultValue="default" />
-
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_heading_4_color"
-            app:title="Heading 4 Color"
-            app:summary="Tap to select color or default"
-            app:defaultValue="default" />
-
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_heading_5_color"
-            app:title="Heading 5 Color"
-            app:summary="Tap to select color or default"
-            app:defaultValue="default" />
-
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_heading_6_color"
-            app:title="Heading 6 Color"
-            app:summary="Tap to select color or default"
-            app:defaultValue="default" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

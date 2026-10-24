@@ -125,6 +125,35 @@ test('WordProcessorTableWidget attaches long-press events and applies CSS variab
   assert.ok(code.includes('var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)'), 'Table CSS variables for width and style are used');
 });
 
+test('wide rendered tables keep their content width inside a viewport-bounded horizontal scroller', () => {
+  const tableWidgetCode = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.match(
+    tableWidgetCode,
+    /overflow-x:\s*auto;[^']*max-width:\s*100%/,
+    'Each rendered table has its own width-constrained horizontal scroll container'
+  );
+  assert.match(
+    tableWidgetCode,
+    /width:\s*max-content;\s*min-width:\s*100%/,
+    'The rendered table can overflow when its content is wider than the viewport'
+  );
+  assert.match(
+    indexHtml,
+    /\.cm-wp-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%/s,
+    'The shared table styling preserves intrinsic width while filling narrow tables'
+  );
+  assert.ok(
+    indexHtml.includes('contain: inline-size;'),
+    'The table scroller prevents intrinsic table width from widening the editor content'
+  );
+  assert.ok(
+    indexHtml.includes('calc(100vw - 32px - var(--table-margin-left, 0px) - var(--table-margin-right, 0px))'),
+    'The table scroller is capped to the viewport content width even if editor content expands'
+  );
+});
+
 test('Table widget exports tableHeightEstimatesChanged and measureTableWidgetHeight', async () => {
   const tableWidgetModule = await import('../src/tableWidget.js');
   assert.ok(tableWidgetModule.tableHeightEstimatesChanged, 'tableHeightEstimatesChanged StateEffect is exported');
@@ -157,6 +186,10 @@ test('Deferred ResizeObserver updates and cleanup in tableWidget.js and main.js'
   assert.ok(tableWidgetCode.includes('destroy(dom) {'), 'WordProcessorTableWidget implements destroy(dom)');
   assert.ok(tableWidgetCode.includes('resizeState.observer.disconnect()'), 'destroy disconnects ResizeObserver');
   assert.ok(tableWidgetCode.includes('cancelAnimationFrame(resizeState.frameId)'), 'destroy cancels pending animation frame');
+  assert.match(
+    tableWidgetCode,
+    /effects:\s*\[\s*tableHeightEstimatesChanged\.of\(null\),\s*view\.scrollSnapshot\(\)\s*\]/
+  );
 
   assert.ok(mainCode.includes('this.tableWidthMeasureFrame = requestAnimationFrame'), 'Content width ResizeObserver defers with requestAnimationFrame');
   assert.ok(mainCode.includes('cancelAnimationFrame(this.tableWidthMeasureFrame)'), 'CodeMirrorAdapter.destroy cancels pending tableWidthMeasureFrame');

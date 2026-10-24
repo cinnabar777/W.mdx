@@ -427,6 +427,27 @@
       color: #ffffff !important;
     }
 
+    /* CodeMirror draws selections behind text; these opaque code surfaces need
+       the native selection paint restored for the selected characters only. */
+    .cm-editor .cm-content .cm-inline-code::selection,
+    .cm-editor .cm-content .cm-inline-code *::selection,
+    .cm-editor .cm-content .cm-codeblock-line::selection,
+    .cm-editor .cm-content .cm-codeblock-line *::selection {
+      background-color: var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)) !important;
+      color: var(--selection-highlight-text, inherit) !important;
+    }
+
+    /* Keep CodeMirror's cursor layer, but avoid its full-line trailing fill.
+       Use native text selection paint for the main range instead. */
+    .cm-editor .cm-selectionLayer .cm-selectionBackground {
+      background-color: transparent !important;
+    }
+    .cm-editor .cm-content .cm-line::selection,
+    .cm-editor .cm-content .cm-line *::selection {
+      background-color: var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)) !important;
+      color: var(--selection-highlight-text, inherit) !important;
+    }
+
     /* Active Toolbar Icon Accent Color */
     .grouped-key-btn.active svg,
     .popup-strip-btn.active svg {
@@ -667,6 +688,7 @@
       overflow-x: auto;
       max-width: 100%;
       box-sizing: border-box;
+      contain: inline-size;
     }
 
     .cm-content .cm-wp-table-container,
@@ -674,12 +696,17 @@
       width: 100% !important;
       margin-left: var(--table-margin-left, 0px) !important;
       margin-right: var(--table-margin-right, 0px) !important;
-      max-width: calc(100% - var(--table-margin-left, 0px) - var(--table-margin-right, 0px)) !important;
+      max-width: min(
+        calc(100% - var(--table-margin-left, 0px) - var(--table-margin-right, 0px)),
+        calc(100vw - 32px - var(--table-margin-left, 0px) - var(--table-margin-right, 0px))
+      ) !important;
+      min-width: 0 !important;
       box-sizing: border-box !important;
     }
 
     .cm-wp-table {
-      width: 100%;
+      width: max-content;
+      min-width: 100%;
       border-collapse: collapse;
       table-layout: auto;
       color: var(--table-cell-color, var(--text-color, #ffffff));
@@ -759,10 +786,16 @@
 
     .cm-content .cm-heading {
       font-family: var(--heading-font-family, inherit) !important;
+      color: var(--heading-color, inherit) !important;
       text-align: var(--heading-align, inherit) !important;
       line-height: var(--heading-line-height, 1.2) !important;
       letter-spacing: var(--heading-letter-spacing, 0px) !important;
+      word-spacing: var(--heading-word-spacing, 0px) !important;
       text-transform: var(--heading-text-transform, none) !important;
+      text-decoration-line: var(--heading-underline-line, none) !important;
+      text-decoration-style: var(--heading-underline-style, solid) !important;
+      text-decoration-thickness: var(--heading-underline-thickness, 2px) !important;
+      text-decoration-color: var(--heading-underline-color, currentColor) !important;
       margin-top: 0 !important;
       margin-bottom: 0 !important;
       margin-left: var(--heading-margin-left, 0px) !important;
@@ -772,104 +805,128 @@
       font-weight: var(--heading-font-weight, 700) !important;
     }
 
-    .cm-heading-1 {
-      font-size: calc(var(--body-font-size, 16px) * 1.8 * var(--heading-1-scale, 1) * var(--heading-scale, 1)) !important;
-      color: var(--heading-1-color, inherit) !important;
+    .cm-content .cm-line.cm-heading-1 {
+      font-size: calc(var(--body-font-size, 16px) * 1.8 * var(--heading-1-scale, var(--heading-scale, 1))) !important;
+      font-family: var(--heading-1-font-family, var(--heading-font-family, inherit)) !important;
+      color: var(--heading-1-color, var(--heading-color, inherit)) !important;
       text-align: var(--heading-1-align, var(--heading-align, inherit)) !important;
       line-height: var(--heading-1-line-height, var(--heading-line-height, 1.2)) !important;
       letter-spacing: var(--heading-1-letter-spacing, var(--heading-letter-spacing, 0px)) !important;
+      word-spacing: var(--heading-1-word-spacing, var(--heading-word-spacing, 0px)) !important;
       text-transform: var(--heading-1-text-transform, var(--heading-text-transform, none)) !important;
-      text-decoration-line: var(--heading-1-underline-line, none) !important;
-      text-decoration-style: var(--heading-1-underline-style, solid) !important;
-      text-decoration-thickness: var(--heading-1-underline-thickness, 2px) !important;
-      text-decoration-color: var(--heading-1-underline-color, currentColor) !important;
+      text-decoration-line: var(--heading-1-underline-line, var(--heading-underline-line, none)) !important;
+      text-decoration-style: var(--heading-1-underline-style, var(--heading-underline-style, solid)) !important;
+      text-decoration-thickness: var(--heading-1-underline-thickness, var(--heading-underline-thickness, 2px)) !important;
+      text-decoration-color: var(--heading-1-underline-color, var(--heading-underline-color, currentColor)) !important;
       margin-top: 0 !important;
       margin-bottom: 0 !important;
+      margin-left: var(--heading-1-margin-left, var(--heading-margin-left, 0px)) !important;
+      margin-right: var(--heading-1-margin-right, var(--heading-margin-right, 0px)) !important;
       padding-top: var(--heading-1-margin-top, var(--heading-margin-top, 16px)) !important;
       padding-bottom: var(--heading-1-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-1-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-2 {
-      font-size: calc(var(--body-font-size, 16px) * 1.5 * var(--heading-2-scale, 1) * var(--heading-scale, 1)) !important;
-      color: var(--heading-2-color, inherit) !important;
+    .cm-content .cm-line.cm-heading-2 {
+      font-size: calc(var(--body-font-size, 16px) * 1.5 * var(--heading-2-scale, var(--heading-scale, 1))) !important;
+      font-family: var(--heading-2-font-family, var(--heading-font-family, inherit)) !important;
+      color: var(--heading-2-color, var(--heading-color, inherit)) !important;
       text-align: var(--heading-2-align, var(--heading-align, inherit)) !important;
       line-height: var(--heading-2-line-height, var(--heading-line-height, 1.2)) !important;
       letter-spacing: var(--heading-2-letter-spacing, var(--heading-letter-spacing, 0px)) !important;
+      word-spacing: var(--heading-2-word-spacing, var(--heading-word-spacing, 0px)) !important;
       text-transform: var(--heading-2-text-transform, var(--heading-text-transform, none)) !important;
-      text-decoration-line: var(--heading-2-underline-line, none) !important;
-      text-decoration-style: var(--heading-2-underline-style, solid) !important;
-      text-decoration-thickness: var(--heading-2-underline-thickness, 2px) !important;
-      text-decoration-color: var(--heading-2-underline-color, currentColor) !important;
+      text-decoration-line: var(--heading-2-underline-line, var(--heading-underline-line, none)) !important;
+      text-decoration-style: var(--heading-2-underline-style, var(--heading-underline-style, solid)) !important;
+      text-decoration-thickness: var(--heading-2-underline-thickness, var(--heading-underline-thickness, 2px)) !important;
+      text-decoration-color: var(--heading-2-underline-color, var(--heading-underline-color, currentColor)) !important;
       margin-top: 0 !important;
       margin-bottom: 0 !important;
+      margin-left: var(--heading-2-margin-left, var(--heading-margin-left, 0px)) !important;
+      margin-right: var(--heading-2-margin-right, var(--heading-margin-right, 0px)) !important;
       padding-top: var(--heading-2-margin-top, var(--heading-margin-top, 16px)) !important;
       padding-bottom: var(--heading-2-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-2-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-3 {
-      font-size: calc(var(--body-font-size, 16px) * 1.3 * var(--heading-3-scale, 1) * var(--heading-scale, 1)) !important;
-      color: var(--heading-3-color, inherit) !important;
+    .cm-content .cm-line.cm-heading-3 {
+      font-size: calc(var(--body-font-size, 16px) * 1.3 * var(--heading-3-scale, var(--heading-scale, 1))) !important;
+      font-family: var(--heading-3-font-family, var(--heading-font-family, inherit)) !important;
+      color: var(--heading-3-color, var(--heading-color, inherit)) !important;
       text-align: var(--heading-3-align, var(--heading-align, inherit)) !important;
       line-height: var(--heading-3-line-height, var(--heading-line-height, 1.2)) !important;
       letter-spacing: var(--heading-3-letter-spacing, var(--heading-letter-spacing, 0px)) !important;
+      word-spacing: var(--heading-3-word-spacing, var(--heading-word-spacing, 0px)) !important;
       text-transform: var(--heading-3-text-transform, var(--heading-text-transform, none)) !important;
-      text-decoration-line: var(--heading-3-underline-line, none) !important;
-      text-decoration-style: var(--heading-3-underline-style, solid) !important;
-      text-decoration-thickness: var(--heading-3-underline-thickness, 2px) !important;
-      text-decoration-color: var(--heading-3-underline-color, currentColor) !important;
+      text-decoration-line: var(--heading-3-underline-line, var(--heading-underline-line, none)) !important;
+      text-decoration-style: var(--heading-3-underline-style, var(--heading-underline-style, solid)) !important;
+      text-decoration-thickness: var(--heading-3-underline-thickness, var(--heading-underline-thickness, 2px)) !important;
+      text-decoration-color: var(--heading-3-underline-color, var(--heading-underline-color, currentColor)) !important;
       margin-top: 0 !important;
       margin-bottom: 0 !important;
+      margin-left: var(--heading-3-margin-left, var(--heading-margin-left, 0px)) !important;
+      margin-right: var(--heading-3-margin-right, var(--heading-margin-right, 0px)) !important;
       padding-top: var(--heading-3-margin-top, var(--heading-margin-top, 16px)) !important;
       padding-bottom: var(--heading-3-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-3-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-4 {
-      font-size: calc(var(--body-font-size, 16px) * 1.1 * var(--heading-4-scale, 1) * var(--heading-scale, 1)) !important;
-      color: var(--heading-4-color, inherit) !important;
+    .cm-content .cm-line.cm-heading-4 {
+      font-size: calc(var(--body-font-size, 16px) * 1.1 * var(--heading-4-scale, var(--heading-scale, 1))) !important;
+      font-family: var(--heading-4-font-family, var(--heading-font-family, inherit)) !important;
+      color: var(--heading-4-color, var(--heading-color, inherit)) !important;
       text-align: var(--heading-4-align, var(--heading-align, inherit)) !important;
       line-height: var(--heading-4-line-height, var(--heading-line-height, 1.2)) !important;
       letter-spacing: var(--heading-4-letter-spacing, var(--heading-letter-spacing, 0px)) !important;
+      word-spacing: var(--heading-4-word-spacing, var(--heading-word-spacing, 0px)) !important;
       text-transform: var(--heading-4-text-transform, var(--heading-text-transform, none)) !important;
-      text-decoration-line: var(--heading-4-underline-line, none) !important;
-      text-decoration-style: var(--heading-4-underline-style, solid) !important;
-      text-decoration-thickness: var(--heading-4-underline-thickness, 2px) !important;
-      text-decoration-color: var(--heading-4-underline-color, currentColor) !important;
+      text-decoration-line: var(--heading-4-underline-line, var(--heading-underline-line, none)) !important;
+      text-decoration-style: var(--heading-4-underline-style, var(--heading-underline-style, solid)) !important;
+      text-decoration-thickness: var(--heading-4-underline-thickness, var(--heading-underline-thickness, 2px)) !important;
+      text-decoration-color: var(--heading-4-underline-color, var(--heading-underline-color, currentColor)) !important;
       margin-top: 0 !important;
       margin-bottom: 0 !important;
+      margin-left: var(--heading-4-margin-left, var(--heading-margin-left, 0px)) !important;
+      margin-right: var(--heading-4-margin-right, var(--heading-margin-right, 0px)) !important;
       padding-top: var(--heading-4-margin-top, var(--heading-margin-top, 16px)) !important;
       padding-bottom: var(--heading-4-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-4-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-5 {
-      font-size: calc(var(--body-font-size, 16px) * 1.0 * var(--heading-5-scale, 1) * var(--heading-scale, 1)) !important;
-      color: var(--heading-5-color, inherit) !important;
+    .cm-content .cm-line.cm-heading-5 {
+      font-size: calc(var(--body-font-size, 16px) * 1.0 * var(--heading-5-scale, var(--heading-scale, 1))) !important;
+      font-family: var(--heading-5-font-family, var(--heading-font-family, inherit)) !important;
+      color: var(--heading-5-color, var(--heading-color, inherit)) !important;
       text-align: var(--heading-5-align, var(--heading-align, inherit)) !important;
       line-height: var(--heading-5-line-height, var(--heading-line-height, 1.2)) !important;
       letter-spacing: var(--heading-5-letter-spacing, var(--heading-letter-spacing, 0px)) !important;
+      word-spacing: var(--heading-5-word-spacing, var(--heading-word-spacing, 0px)) !important;
       text-transform: var(--heading-5-text-transform, var(--heading-text-transform, none)) !important;
-      text-decoration-line: var(--heading-5-underline-line, none) !important;
-      text-decoration-style: var(--heading-5-underline-style, solid) !important;
-      text-decoration-thickness: var(--heading-5-underline-thickness, 2px) !important;
-      text-decoration-color: var(--heading-5-underline-color, currentColor) !important;
+      text-decoration-line: var(--heading-5-underline-line, var(--heading-underline-line, none)) !important;
+      text-decoration-style: var(--heading-5-underline-style, var(--heading-underline-style, solid)) !important;
+      text-decoration-thickness: var(--heading-5-underline-thickness, var(--heading-underline-thickness, 2px)) !important;
+      text-decoration-color: var(--heading-5-underline-color, var(--heading-underline-color, currentColor)) !important;
       margin-top: 0 !important;
       margin-bottom: 0 !important;
+      margin-left: var(--heading-5-margin-left, var(--heading-margin-left, 0px)) !important;
+      margin-right: var(--heading-5-margin-right, var(--heading-margin-right, 0px)) !important;
       padding-top: var(--heading-5-margin-top, var(--heading-margin-top, 16px)) !important;
       padding-bottom: var(--heading-5-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-5-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-6 {
-      font-size: calc(var(--body-font-size, 16px) * 0.9 * var(--heading-6-scale, 1) * var(--heading-scale, 1)) !important;
-      color: var(--heading-6-color, inherit) !important;
+    .cm-content .cm-line.cm-heading-6 {
+      font-size: calc(var(--body-font-size, 16px) * 0.9 * var(--heading-6-scale, var(--heading-scale, 1))) !important;
+      font-family: var(--heading-6-font-family, var(--heading-font-family, inherit)) !important;
+      color: var(--heading-6-color, var(--heading-color, inherit)) !important;
       text-align: var(--heading-6-align, var(--heading-align, inherit)) !important;
       line-height: var(--heading-6-line-height, var(--heading-line-height, 1.2)) !important;
       letter-spacing: var(--heading-6-letter-spacing, var(--heading-letter-spacing, 0px)) !important;
+      word-spacing: var(--heading-6-word-spacing, var(--heading-word-spacing, 0px)) !important;
       text-transform: var(--heading-6-text-transform, var(--heading-text-transform, none)) !important;
-      text-decoration-line: var(--heading-6-underline-line, none) !important;
-      text-decoration-style: var(--heading-6-underline-style, solid) !important;
-      text-decoration-thickness: var(--heading-6-underline-thickness, 2px) !important;
-      text-decoration-color: var(--heading-6-underline-color, currentColor) !important;
+      text-decoration-line: var(--heading-6-underline-line, var(--heading-underline-line, none)) !important;
+      text-decoration-style: var(--heading-6-underline-style, var(--heading-underline-style, solid)) !important;
+      text-decoration-thickness: var(--heading-6-underline-thickness, var(--heading-underline-thickness, 2px)) !important;
+      text-decoration-color: var(--heading-6-underline-color, var(--heading-underline-color, currentColor)) !important;
       margin-top: 0 !important;
       margin-bottom: 0 !important;
+      margin-left: var(--heading-6-margin-left, var(--heading-margin-left, 0px)) !important;
+      margin-right: var(--heading-6-margin-right, var(--heading-margin-right, 0px)) !important;
       padding-top: var(--heading-6-margin-top, var(--heading-margin-top, 16px)) !important;
       padding-bottom: var(--heading-6-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-6-font-weight, var(--heading-font-weight, 700)) !important;
@@ -910,6 +967,9 @@
 
     .cm-list-bullet { color: var(--list-bullet-color, currentColor) !important; }
     .cm-list-number { color: var(--list-number-color, currentColor) !important; }
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item > .cm-list-bullet {
+      display: none !important;
+    }
 
     .cm-content .cm-bold {
       font-weight: var(--bold-font-weight, 700) !important;
@@ -939,18 +999,52 @@
       margin-right: var(--code-block-margin-right, 0px) !important;
       padding-left: var(--code-block-padding, 16px) !important;
       padding-right: var(--code-block-padding, 16px) !important;
+      border-left: 1px solid var(--code-block-border-color, transparent) !important;
+      border-right: 1px solid var(--code-block-border-color, transparent) !important;
     }
-    .cm-content .cm-codeblock-line span {
+    .cm-content .cm-codeblock-line span:not(.cm-codeblock-lang-label) {
       color: var(--code-block-color, #e0e0e0) !important;
       font-size: var(--code-block-font-size, 14px) !important;
+    }
+    .cm-content .cm-codeblock-line .cm-codeblock-text * {
+      background: transparent !important;
+    }
+    .cm-content .cm-codeblock-line .cm-codeblock-text .cm-inline-code {
+      padding: 0 !important;
+      border-radius: 0 !important;
+    }
+    .cm-content .cm-codeblock-line .cm-codeblock-text {
+      background-color: var(--code-block-text-bg-color, transparent) !important;
+      display: inline !important;
+      -webkit-box-decoration-break: clone !important;
+      box-decoration-break: clone !important;
     }
     .cm-content .cm-codeblock-first {
       border-top-left-radius: var(--code-block-border-radius, 6px) !important;
       border-top-right-radius: var(--code-block-border-radius, 6px) !important;
+      border-top: 1px solid var(--code-block-border-color, transparent) !important;
     }
     .cm-content .cm-codeblock-last {
       border-bottom-left-radius: var(--code-block-border-radius, 6px) !important;
       border-bottom-right-radius: var(--code-block-border-radius, 6px) !important;
+      border-bottom: 1px solid var(--code-block-border-color, transparent) !important;
+    }
+    .cm-codeblock-header {
+      box-sizing: border-box !important;
+      background: var(--code-block-label-bg, rgba(255,255,255,.12)) !important;
+      border-color: var(--code-block-border-color, rgba(255,255,255,.2)) !important;
+      border-style: solid !important;
+      border-width: 1px !important;
+      border-radius: var(--code-block-border-radius, 6px)
+        var(--code-block-border-radius, 6px) 0 0 !important;
+    }
+    .cm-codeblock-lang-label {
+      color: var(--code-block-lang-label-color, #fff) !important;
+    }
+    .cm-codeblock-copy-btn {
+      background: var(--code-copy-bg, transparent) !important;
+      color: var(--code-copy-color, #fff) !important;
+      border-color: var(--code-block-border-color, rgba(255,255,255,.35)) !important;
     }
     .cm-content .cm-blockquote:not(.cm-callout) {
       border-left: var(--blockquote-border-width, 4px) var(--blockquote-border-style, solid) var(--blockquote-border-color, #444444) !important;
@@ -974,11 +1068,13 @@
     .cm-content .cm-line.cm-callout:not(.cm-list-item) {
       margin-left: var(--callout-margin-left, 0px) !important;
       margin-right: var(--callout-margin-right, 0px) !important;
+      padding-right: var(--callout-padding, 12px) !important;
     }
     .cm-content .cm-line.cm-callout-body:not(.cm-callout-list-item) {
       margin-left: var(--callout-margin-left, 0px) !important;
       margin-right: var(--callout-margin-right, 0px) !important;
       padding-left: var(--callout-padding, 12px) !important;
+      padding-right: var(--callout-padding, 12px) !important;
       text-indent: 0 !important;
     }
     .cm-content .cm-line.cm-callout-list-item {
@@ -993,53 +1089,55 @@
       text-indent: 0 !important;
     }
 
-    .cm-content .cm-callout[data-callout-depth="2"] {
-      margin-left: calc(var(--callout-margin-left, 0px) + 12px) !important;
+    .cm-content .cm-line.cm-callout[data-callout-depth]:not(.cm-callout-list-item) {
+      margin-left: calc(var(--callout-margin-left, 0px) + var(--callout-depth-offset, 0px)) !important;
+      margin-right: var(--callout-margin-right, 0px) !important;
     }
 
-    .cm-content .cm-callout[data-callout-depth="3"] {
-      margin-left: calc(var(--callout-margin-left, 0px) + 24px) !important;
+    .cm-content .cm-line.cm-callout-list-item[data-callout-depth] {
+      margin-left: calc(var(--callout-margin-left, 0px) + var(--callout-depth-offset, 0px) + var(--list-left-indent, 24px)) !important;
+      margin-right: var(--callout-margin-right, 0px) !important;
     }
 
     /* Per-type color palette defaults */
     .cm-content .cm-callout[data-callout-type="info"] {
       --callout-type-border: #29b6f6;
       --callout-type-bg: rgba(41, 182, 246, 0.12);
-      --callout-type-header-bg: var(--callout-type-info-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-info-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-info-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-info-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-info-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
 
     .cm-content .cm-callout[data-callout-type="faq"] {
       --callout-type-border: #ff9800;
       --callout-type-bg: rgba(255, 152, 0, 0.12);
-      --callout-type-header-bg: var(--callout-type-faq-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-faq-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-faq-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-faq-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-faq-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
 
     .cm-content .cm-callout[data-callout-type="question"] {
       --callout-type-border: #ff9800;
       --callout-type-bg: rgba(255, 152, 0, 0.12);
-      --callout-type-header-bg: var(--callout-type-question-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-question-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-question-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-question-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-question-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
 
     .cm-content .cm-callout[data-callout-type="todo"] {
       --callout-type-border: #00bcd4;
       --callout-type-bg: rgba(0, 188, 212, 0.12);
-      --callout-type-header-bg: var(--callout-type-todo-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-todo-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-todo-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-todo-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-todo-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
 
     .cm-content .cm-callout[data-callout-type="example"] {
       --callout-type-border: #ab47bc;
       --callout-type-bg: rgba(171, 71, 188, 0.12);
-      --callout-type-header-bg: var(--callout-type-example-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-example-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-example-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-example-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-example-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
     .cm-content .cm-callout[data-callout-type="tip"] {
       --callout-type-border: #66bb6a;
@@ -1057,19 +1155,44 @@
 
     .cm-content .cm-callout-title {
       font-weight: var(--callout-header-font-weight, 700) !important;
-      background-color: var(--callout-type-header-bg, var(--callout-header-bg, transparent)) !important;
+      background-color: var(--callout-type-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))) !important;
       color: var(--callout-type-header-title-color, var(--callout-header-title-color, inherit)) !important;
       font-size: var(--callout-header-title-size, inherit) !important;
       font-family: var(--callout-header-font-family, inherit) !important;
-      padding: var(--callout-header-padding, 0px) !important;
-      border-left: var(--callout-header-accent-thickness, 0px) solid var(--callout-type-header-accent-color, var(--callout-header-accent-color, transparent)) !important;
+      padding: var(--callout-header-padding, 0px) var(--callout-padding, 12px) !important;
+      border-left: max(var(--callout-header-accent-thickness, 0px), var(--callout-border-width, 4px)) solid var(--callout-type-header-accent-color, var(--callout-border-color, var(--callout-type-border, #29b6f6))) !important;
+    }
+
+    .cm-content .cm-line.cm-callout-title {
+      border-top-left-radius: 8px !important;
+      border-top-right-radius: 8px !important;
+    }
+
+    .cm-content .cm-line.cm-callout-title-rendered {
+      display: flex !important;
+      align-items: flex-start !important;
+      flex-wrap: nowrap !important;
+      position: relative !important;
+      box-sizing: border-box !important;
+    }
+
+    .cm-content .cm-line.cm-callout-title:not(:has(+ .cm-line.cm-callout-body)) {
+      border-radius: 8px !important;
+    }
+
+    .cm-content .cm-line.cm-callout-body:not(:has(+ .cm-line.cm-callout-body)) {
+      border-bottom-left-radius: 8px !important;
+      border-bottom-right-radius: 8px !important;
     }
 
     .cm-callout-title-container {
       display: inline-flex !important;
-      align-items: center !important;
-      gap: 6px !important;
-      vertical-align: middle !important;
+      align-items: flex-start !important;
+      position: static !important;
+      flex: 0 0 auto !important;
+      width: auto !important;
+      min-height: 18px !important;
+      box-sizing: border-box !important;
       user-select: none !important;
       color: inherit !important;
       font-size: inherit !important;
@@ -1077,19 +1200,49 @@
       font-weight: inherit !important;
     }
 
-    .cm-callout-title-container.is-foldable {
-      cursor: pointer !important;
+    .cm-callout-title-container:not(.has-source-title) {
+      display: flex !important;
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+      width: 100% !important;
     }
 
     .cm-callout-icon {
       display: inline-flex !important;
+      position: static !important;
+      flex: 0 0 16px !important;
+      width: 16px !important;
+      height: 18px !important;
+      margin-right: 8px !important;
       align-items: center !important;
       justify-content: center !important;
-      flex-shrink: 0 !important;
+      align-self: start !important;
       color: inherit !important;
     }
 
+    .cm-callout-title-text {
+      display: block !important;
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+      overflow-wrap: anywhere !important;
+      white-space: normal !important;
+    }
+
+    .cm-content .cm-line.cm-callout-title-rendered > .cm-callout-title-text.is-source {
+      display: block !important;
+      flex: 1 1 0% !important;
+      min-width: 0 !important;
+    }
+
+    .cm-content .cm-line.cm-callout-title-rendered > .cm-callout-title-text.is-source.is-foldable {
+      padding-right: 24px !important;
+    }
+
     .cm-callout-fold-btn {
+      position: absolute !important;
+      top: var(--callout-header-padding, 0px) !important;
+      right: var(--callout-padding, 12px) !important;
+      z-index: 1 !important;
       background: transparent !important;
       border: none !important;
       padding: 2px !important;
@@ -1101,6 +1254,7 @@
       border-radius: 3px !important;
       opacity: 0.8 !important;
       line-height: 1 !important;
+      cursor: pointer !important;
     }
 
     .cm-content .cm-callout .cm-foldPlaceholder {
@@ -1130,7 +1284,7 @@
       top: 1px !important;
       width: 4px !important;
       height: 8px !important;
-      border: solid #111111 !important;
+      border: solid var(--todo-checkmark-color, #111111) !important;
       border-width: 0 2px 2px 0 !important;
       transform: rotate(45deg) !important;
     }

@@ -58,6 +58,12 @@
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Todo List Checkboxes">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_todo_hide_extra_bullet"
+            app:title="Hide Bullet Before Checkbox"
+            app:summary="Hide the extra list bullet before each task checkbox"
+            android:defaultValue="false" />
+
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_todo_unchecked_color"
             app:title="Unchecked Box Border Color"
@@ -68,6 +74,12 @@
             app:key="pref_todo_checked_color"
             app:title="Checked Box Accent Color"
             app:summary="Fill color when todo checkbox is checked"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_todo_checkmark_color"
+            app:title="Checkbox Check Mark Color"
+            app:summary="Color of the check mark in checked todo boxes"
             app:defaultValue="default" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 

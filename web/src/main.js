@@ -1,11 +1,20 @@
 import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
-import { computeWysiwygViewportMargin } from './viewportMargin.js';
+import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
 import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
+import {
+  recordDecorationBuild,
+  recordHeightMapRefresh,
+  recordListMarkerRead,
+  recordListMarkerWrite,
+  recordWidgetHeightCacheUpdate,
+  recordWidgetHeightRead,
+  takeRenderLayoutMetrics
+} from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
@@ -178,7 +187,10 @@ function dispatchWithScrollSnapshot(view, effects) {
 }
 
 function scheduleHeightMapRefresh(view) {
+  const mode = currentEditorMode;
+  recordHeightMapRefresh(mode, 'scheduled');
   deferViewCallback(view, activeView => {
+    recordHeightMapRefresh(mode, 'dispatched');
     dispatchWithScrollSnapshot(
       activeView,
       heightMapRefreshEffect.of(null)
@@ -257,6 +269,7 @@ function scheduleListMarkerMeasurements(view, force = false) {
     return;
   }
 
+  const measurementMode = currentEditorMode;
   view.requestMeasure({
     key: listMarkerMeasurementKey,
     read: () => {
@@ -288,18 +301,37 @@ function scheduleListMarkerMeasurements(view, force = false) {
           measurements.push({ line });
         }
       }
+      recordListMarkerRead(measurementMode, lines.length, measurements.length);
       return { enabled: true, measurements };
     },
     write: result => {
       if (!result) return;
+      let changedCount = 0;
+      let totalDeltaPx = 0;
+      let maxDeltaPx = 0;
       for (const { line, gutter } of result.measurements) {
         if (!line.isConnected || !view.contentDOM.contains(line)) continue;
         if (result.enabled && Number.isFinite(gutter) && gutter > 0) {
-          line.style.setProperty('--list-marker-gutter', `${gutter}px`);
+          const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
+          const nextValue = `${gutter}px`;
+          if (line.style.getPropertyValue('--list-marker-gutter') !== nextValue) {
+            const delta = Math.abs(gutter - previous);
+            changedCount++;
+            totalDeltaPx += delta;
+            maxDeltaPx = Math.max(maxDeltaPx, delta);
+          }
+          line.style.setProperty('--list-marker-gutter', nextValue);
         } else {
+          const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
+          if (line.style.getPropertyValue('--list-marker-gutter')) {
+            changedCount++;
+            totalDeltaPx += previous;
+            maxDeltaPx = Math.max(maxDeltaPx, previous);
+          }
           line.style.removeProperty('--list-marker-gutter');
         }
       }
+      recordListMarkerWrite(measurementMode, changedCount, totalDeltaPx, maxDeltaPx);
     }
   });
 }
@@ -343,22 +375,37 @@ function estimatedWidgetHeight(key, fallback) {
   return Number.isFinite(measured) && measured > 0 ? measured : fallback;
 }
 
-function rememberWidgetHeight(view, key, element) {
+function rememberWidgetHeight(view, key, element, kind, estimatedHeight) {
   if (!view || !element) return;
+  const measurementMode = currentEditorMode;
   view.requestMeasure({
-    read: () => element.isConnected
-      ? element.getBoundingClientRect().height
-      : null,
+    read: () => {
+      if (!element.isConnected) return null;
+      const height = element.getBoundingClientRect().height;
+      recordWidgetHeightRead(measurementMode, kind, height);
+      return height;
+    },
     write: height => {
       if (!Number.isFinite(height) || height <= 0) return;
       const previous = measuredWidgetHeights.get(key);
       if (previous !== undefined && Math.abs(previous - height) < 1) return;
+      const shouldRefreshHeightMap = shouldRefreshHeightMapForWidget(
+        previous,
+        height,
+        estimatedHeight
+      );
 
+      recordWidgetHeightCacheUpdate(
+        measurementMode,
+        kind,
+        previous ?? estimatedHeight,
+        height
+      );
       measuredWidgetHeights.set(key, height);
       if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
         measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
       }
-      scheduleHeightMapRefresh(view);
+      if (shouldRefreshHeightMap) scheduleHeightMapRefresh(view);
     }
   });
 }
@@ -407,7 +454,12 @@ class CodeBlockHeaderWidget extends WidgetType {
     this.codeText = codeText;
     const width = activeContentWidth();
     const sig = activeTypographySignature();
-    this.heightKey = measuredWidgetHeightKey('codeblock-header', `${this.lang}:${this.codeText.length}`, width, sig);
+    this.heightKey = measuredWidgetHeightKey(
+      'codeblock-header',
+      `${this.lang}:${this.codeText.length}`,
+      width,
+      sig
+    );
     this.heightEstimate = estimatedWidgetHeight(this.heightKey, 28);
   }
 
@@ -432,10 +484,12 @@ class CodeBlockHeaderWidget extends WidgetType {
       'background:var(--code-block-label-bg, rgba(255,255,255,.12));' +
       'padding:4px 10px;border-radius:var(--code-block-border-radius, 6px) ' +
       'var(--code-block-border-radius, 6px) 0 0;font-size:12px;font-weight:bold;' +
-      'font-family:monospace;color:var(--code-block-lang-label-color, #fff);' +
-      'user-select:none;border-bottom:1px solid var(--code-block-label-border, rgba(255,255,255,.2));';
+      'font-family:monospace;' +
+      'user-select:none;border:1px solid var(--code-block-border-color, rgba(255,255,255,.2));' +
+      'border-bottom-width:1px;';
 
     const langSpan = document.createElement('span');
+    langSpan.className = 'cm-codeblock-lang-label';
     langSpan.textContent = this.lang;
 
     const copyBtn = document.createElement('button');
@@ -443,8 +497,8 @@ class CodeBlockHeaderWidget extends WidgetType {
     copyBtn.textContent = 'COPY';
     copyBtn.style.cssText =
       'background:var(--code-copy-bg, transparent);' +
-      'border:1px solid var(--code-copy-border, rgba(255,255,255,.35));' +
-      'color:var(--code-copy-color, inherit);border-radius:3px;' +
+      'border:1px solid var(--code-block-border-color, rgba(255,255,255,.35));' +
+      'color:var(--code-copy-color, #fff);border-radius:3px;' +
       'padding:2px 8px;font-size:11px;cursor:pointer;font-weight:bold;';
 
     copyBtn.addEventListener('click', (e) => {
@@ -461,7 +515,7 @@ class CodeBlockHeaderWidget extends WidgetType {
     header.appendChild(langSpan);
     header.appendChild(copyBtn);
 
-    rememberWidgetHeight(view, this.heightKey, header);
+    rememberWidgetHeight(view, this.heightKey, header, 'code_header', this.heightEstimate);
     return header;
   }
 }
@@ -481,8 +535,15 @@ const calloutTypeIcons = {
 
 let calloutTypeIconOverrides = {};
 
+function getCalloutTitleStart(line, match) {
+  const customTitle = match[5];
+  if (!customTitle || !customTitle.trim()) return null;
+  const index = line.text.indexOf(customTitle, match[1].length + match[2].length);
+  return index < 0 ? null : line.from + index;
+}
+
 class CalloutTitleWidget extends WidgetType {
-  constructor(title, type, foldMarker, isFolded, foldFrom, foldTo) {
+  constructor(title, type, foldMarker, isFolded, foldFrom, foldTo, titleIsInSource = false) {
     super();
     this.title = title;
     this.type = (type || 'note').toLowerCase();
@@ -490,6 +551,7 @@ class CalloutTitleWidget extends WidgetType {
     this.isFolded = isFolded;
     this.foldFrom = foldFrom;
     this.foldTo = foldTo;
+    this.titleIsInSource = titleIsInSource;
     const width = activeContentWidth();
     const sig = activeTypographySignature();
     this.heightKey = measuredWidgetHeightKey('callout-title', `${this.type}:${this.title}`, width, sig);
@@ -509,6 +571,7 @@ class CalloutTitleWidget extends WidgetType {
       other.isFolded === this.isFolded &&
       other.foldFrom === this.foldFrom &&
       other.foldTo === this.foldTo &&
+      other.titleIsInSource === this.titleIsInSource &&
       other.heightEstimate === this.heightEstimate
     );
   }
@@ -525,13 +588,9 @@ class CalloutTitleWidget extends WidgetType {
     }
 
     const span = document.createElement('span');
-    span.className = 'cm-callout-title-container' + (this.foldMarker ? ' is-foldable' : '');
-    if (this.foldMarker) {
-      span.setAttribute('role', 'button');
-      span.setAttribute('tabindex', '0');
-      span.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
-      span.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
-    }
+    span.className = 'cm-callout-title-container' +
+      (this.foldMarker ? ' is-foldable' : '') +
+      (this.titleIsInSource ? ' has-source-title' : '');
 
     const iconOverride = calloutTypeIconOverrides[this.type];
     const allowedIcons = ['info', 'question', 'faq', 'todo', 'example', 'note', 'tip', 'warning', 'important', 'danger'];
@@ -542,20 +601,24 @@ class CalloutTitleWidget extends WidgetType {
 
     const iconSpan = document.createElement('span');
     iconSpan.className = 'cm-callout-icon';
+    iconSpan.setAttribute('aria-hidden', 'true');
     iconSpan.innerHTML = iconSvg;
     span.appendChild(iconSpan);
 
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'cm-callout-title-text';
-    titleSpan.textContent = this.title;
-    span.appendChild(titleSpan);
+    if (!this.titleIsInSource) {
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'cm-callout-title-text';
+      titleSpan.textContent = this.title;
+      span.appendChild(titleSpan);
+    }
 
     if (this.foldMarker) {
       const btn = document.createElement('button');
       btn.className = 'cm-callout-fold-btn';
       btn.type = 'button';
-      btn.tabIndex = -1;
-      btn.setAttribute('aria-hidden', 'true');
+      btn.tabIndex = 0;
+      btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
+      btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
       btn.innerHTML = currentlyFolded
         ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
         : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
@@ -575,23 +638,27 @@ class CalloutTitleWidget extends WidgetType {
           });
 
           if (isFoldedNow) {
-            view.dispatch({ effects: unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
+            view.dispatch({
+              effects: [
+                unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }),
+                heightMapRefreshEffect.of(null)
+              ]
+            });
           } else {
-            view.dispatch({ effects: foldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
+            view.dispatch({
+              effects: [
+                foldEffect.of({ from: this.foldFrom, to: this.foldTo }),
+                heightMapRefreshEffect.of(null)
+              ]
+            });
           }
         }
       };
 
       btn.addEventListener('click', toggleFold);
-      iconSpan.addEventListener('click', toggleFold);
-      span.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          toggleFold(e);
-        }
-      });
     }
 
-    rememberWidgetHeight(view, this.heightKey, span);
+    rememberWidgetHeight(view, this.heightKey, span, 'callout_title', this.heightEstimate);
     return span;
   }
 
@@ -778,7 +845,7 @@ class ImagePreviewWidget extends WidgetType {
           wrapper.style.minHeight = `${renderedHeight}px`;
         }
         view.requestMeasure();
-        rememberWidgetHeight(view, this.heightKey, wrapper);
+        rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
       }
     };
 
@@ -792,11 +859,11 @@ class ImagePreviewWidget extends WidgetType {
       wrapper.appendChild(fallbackBox);
       wrapper.style.minHeight = '0px';
       view.requestMeasure();
-      rememberWidgetHeight(view, this.heightKey, wrapper);
+      rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     };
 
     wrapper.appendChild(img);
-    rememberWidgetHeight(view, this.heightKey, wrapper);
+    rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     return wrapper;
   }
 }
@@ -1048,12 +1115,12 @@ class GFMTableWidget extends WidgetType {
 }
 
 const customHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading1, color: 'var(--heading-1-color, #ffffff)', fontWeight: 'var(--heading-1-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading2, color: 'var(--heading-2-color, #ffffff)', fontWeight: 'var(--heading-2-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading3, color: 'var(--heading-3-color, #ffffff)', fontWeight: 'var(--heading-3-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading4, color: 'var(--heading-4-color, #ffffff)', fontWeight: 'var(--heading-4-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading5, color: 'var(--heading-5-color, #ffffff)', fontWeight: 'var(--heading-5-font-weight, var(--heading-font-weight, bold))' },
-  { tag: tags.heading6, color: 'var(--heading-6-color, #ffffff)', fontWeight: 'var(--heading-6-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading1, color: 'var(--heading-1-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-1-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading2, color: 'var(--heading-2-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-2-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading3, color: 'var(--heading-3-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-3-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading4, color: 'var(--heading-4-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-4-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading5, color: 'var(--heading-5-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-5-font-weight, var(--heading-font-weight, bold))' },
+  { tag: tags.heading6, color: 'var(--heading-6-color, var(--heading-color, #ffffff))', fontWeight: 'var(--heading-6-font-weight, var(--heading-font-weight, bold))' },
   { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--italic-color, inherit)', fontWeight: 'var(--italic-font-weight, normal)' },
   { tag: tags.strong, fontWeight: 'var(--bold-font-weight, bold)', color: 'var(--bold-color, inherit)' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
@@ -1094,6 +1161,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   }
 
   buildDecorations(view) {
+    recordDecorationBuild(currentEditorMode, 'live_preview_plugin');
     const previousHiddenSyntaxRanges = this.hiddenSyntaxRanges;
     this.hiddenSyntaxRanges = Decoration.none;
     try {
@@ -1189,6 +1257,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         if (insideListItem) {
           addLineClass(line.from, 'cm-list-item');
+          if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
+            addLineClass(line.from, 'cm-todo-list-item');
+          }
         }
 
         const isLineActive = !isPureWysiwyg && (
@@ -1291,11 +1362,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               const customTitle = match[5];
               const markerStart = line.from + match[1].length;
               const markerEnd = markerStart + match[2].length;
-              let titleStart = null;
-              if (customTitle && customTitle.trim().length > 0) {
-                const idx = line.text.indexOf(customTitle, match[1].length + match[2].length);
-                if (idx !== -1) titleStart = idx;
-              }
+              const titleStart = getCalloutTitleStart(line, match);
 
               const calloutObj = {
                 depth: currentDepth,
@@ -1362,6 +1429,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     for (const lineFrom of calloutLineAttributes.keys()) {
       const line = doc.lineAt(lineFrom);
       const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
+      const hasTaskMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text);
       const classes = lineClasses.get(lineFrom);
       if (classes) {
         if (hasListMarker) {
@@ -1371,6 +1439,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           classes.delete('cm-list-item');
           classes.delete('cm-callout-list-item');
         }
+        if (hasTaskMarker) classes.add('cm-todo-list-item');
+        else classes.delete('cm-todo-list-item');
       }
     }
 
@@ -1498,6 +1568,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               addLineClass(codeLine.from, 'cm-codeblock-line');
               if (l === startLine.number) addLineClass(codeLine.from, 'cm-codeblock-first');
               if (l === endLine.number) addLineClass(codeLine.from, 'cm-codeblock-last');
+              const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(codeLine.text);
+              if (codeLine.to > codeLine.from && !isFenceLine) {
+                builder.push(
+                  Decoration.mark({ class: 'cm-codeblock-text' })
+                    .range(codeLine.from, codeLine.to)
+                );
+              }
             }
             if (line.from === node.from) {
               const codeText = view.state.doc.sliceString(node.from, node.to);
@@ -1561,6 +1638,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const activeFolds = foldedRanges(view.state);
 
     for (const [lineFrom, info] of calloutOpenerInfo) {
+      const line = doc.lineAt(lineFrom);
+      const customTitle = info.customTitle?.trim() || '';
       const isMarkerActive = !isPureWysiwyg && (
         selection.empty
           ? selection.head >= info.markerStart && selection.head <= info.markerEnd
@@ -1580,13 +1659,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         if (info.foldMarker === '-' && !isCurrentlyFolded && !this.initializedFoldLines.has(info.bodyFrom)) {
           this.initializedFoldLines.add(info.bodyFrom);
           Promise.resolve().then(() => {
-            view.dispatch({ effects: foldEffect.of({ from: info.bodyFrom, to: info.bodyTo }) });
+            view.dispatch({
+              effects: [
+                foldEffect.of({ from: info.bodyFrom, to: info.bodyTo }),
+                heightMapRefreshEffect.of(null)
+              ]
+            });
           });
         }
       }
 
       if (!isMarkerActive && !isPureWysiwyg) {
-        const line = doc.lineAt(lineFrom);
         let isFolded = false;
         if (hasBody) {
           activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
@@ -1596,15 +1679,29 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           });
         }
 
-        const displayTitle = (info.customTitle && info.customTitle.trim().length > 0)
-          ? ''
-          : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
-
-        const replaceEnd = (info.customTitle && info.customTitle.trim().length > 0) ? info.markerEnd : line.to;
+        const displayTitle = customTitle ||
+          (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+        const titleIsInSource = info.titleStart != null;
+        const widgetEnd = titleIsInSource ? info.titleStart : line.to;
 
         builder.push(Decoration.replace({
-          widget: new CalloutTitleWidget(displayTitle, info.type, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
-        }).range(info.markerStart, replaceEnd));
+          widget: new CalloutTitleWidget(
+            displayTitle,
+            info.type,
+            info.foldMarker,
+            isFolded,
+            info.bodyFrom,
+            info.bodyTo,
+            titleIsInSource
+          )
+        }).range(info.markerStart, widgetEnd));
+
+        if (titleIsInSource) {
+          builder.push(Decoration.mark({
+            class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`
+          }).range(info.titleStart, line.to));
+        }
+        lineClasses.get(lineFrom)?.add('cm-callout-title-rendered');
       }
     }
 
@@ -1612,7 +1709,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       builder.push(Decoration.line({
         attributes: {
           'data-callout-type': attrs.type,
-          'data-callout-depth': String(attrs.depth)
+          'data-callout-depth': String(attrs.depth),
+          style: `--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`
         }
       }).range(lineFrom));
     }
@@ -1635,7 +1733,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
     for (const [lineFrom, classes] of lineClasses) {
       const remaining = [...classes].filter(className =>
-        currentEditorMode !== 'wysiwyg' ||
+        currentEditorMode === 'source' ||
         !persistentLayoutClasses.has(className)
       );
       if (!remaining.length) continue;
@@ -2000,6 +2098,7 @@ export function updateTableDocumentSelection(view) {
 
 function buildWysiwygCodeBlockDecorations(state) {
   if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+  recordDecorationBuild(currentEditorMode, 'wysiwyg_code_blocks');
 
   const doc = state.doc;
   const builder = [];
@@ -2023,6 +2122,23 @@ function buildWysiwygCodeBlockDecorations(state) {
             attributes: { class: classes.join(' ') }
           }).range(line.from)
         );
+        const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(line.text);
+        if (line.to > line.from && !isFenceLine) {
+          builder.push(
+            Decoration.mark({ class: 'cm-codeblock-text' })
+              .range(line.from, line.to)
+          );
+        }
+        if (
+          isFenceLine &&
+          number === lastLine.number &&
+          number > firstLine.number &&
+          line.to > line.from
+        ) {
+          // The opening fence is replaced by the language header below.
+          // Hide the closing fence too so WYSIWYG never exposes Markdown syntax.
+          builder.push(Decoration.replace({}).range(line.from, line.to));
+        }
       }
 
       if (firstLine.from === node.from) {
@@ -2043,15 +2159,90 @@ function buildWysiwygCodeBlockDecorations(state) {
   return Decoration.set(builder, true);
 }
 
+function rangeTouchesSyntaxNode(state, from, to, nodeNames) {
+  if (!state || !nodeNames.size) return false;
+  const { doc } = state;
+  const start = Math.max(0, Math.min(from, doc.length));
+  const end = Math.max(start, Math.min(to, doc.length));
+  const tree = syntaxTree(state);
+  let found = false;
+
+  const iterateTo = Math.min(doc.length, Math.max(start + 1, end));
+  if (iterateTo > start) {
+    tree.iterate({
+      from: start,
+      to: iterateTo,
+      enter(node) {
+        if (nodeNames.has(node.name)) {
+          found = true;
+          return false;
+        }
+      }
+    });
+  }
+
+  if (found) return true;
+  for (const position of [start, Math.max(start, end - 1)]) {
+    for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+      if (nodeNames.has(node.name)) return true;
+    }
+  }
+  return false;
+}
+
+function transactionTouchesStructure(tr, {
+  nodeNames = [],
+  markerPattern = /[\n`~|>#*+\-[\]{}]/
+} = {}) {
+  if (!tr.docChanged) return false;
+  const names = new Set(nodeNames);
+  let structural = false;
+
+  tr.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+    if (structural) return;
+    const oldDoc = tr.startState.doc;
+    const newDoc = tr.state.doc;
+    const oldFrom = Math.max(0, Math.min(fromA, oldDoc.length));
+    const oldTo = Math.max(oldFrom, Math.min(toA, oldDoc.length));
+    const newFrom = Math.max(0, Math.min(fromB, newDoc.length));
+    const newTo = Math.max(newFrom, Math.min(toB, newDoc.length));
+    const oldText = oldDoc.sliceString(oldFrom, oldTo);
+    const newText = newDoc.sliceString(newFrom, newTo);
+
+    if (
+      markerPattern.test(oldText) ||
+      markerPattern.test(newText) ||
+      oldDoc.lineAt(oldFrom).from === oldFrom ||
+      newDoc.lineAt(newFrom).from === newFrom ||
+      rangeTouchesSyntaxNode(tr.startState, oldFrom, oldTo, names) ||
+      rangeTouchesSyntaxNode(tr.state, newFrom, newTo, names)
+    ) {
+      structural = true;
+    }
+  });
+
+  return structural;
+}
+
 const wysiwygCodeBlockField = StateField.define({
   create(state) {
     return buildWysiwygCodeBlockDecorations(state);
   },
   update(current, tr) {
-    const refreshHeight = tr.effects.some(effect =>
-      effect.is(heightMapRefreshEffect)
+    const refresh = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect) || effect.is(typographySettingsEffect)
     );
-    if (!tr.docChanged && !refreshHeight) return current;
+    if (!tr.docChanged && !refresh) return current;
+    if (
+      tr.docChanged &&
+      !refresh &&
+      !transactionTouchesStructure(tr, {
+        nodeNames: ['FencedCode', 'CodeBlock'],
+        markerPattern: /[\n`~]/
+      })
+    ) {
+      return current.map(tr.changes);
+    }
     return buildWysiwygCodeBlockDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
@@ -2064,6 +2255,7 @@ function buildHeightMapValue(state) {
       hiddenSyntaxRanges: Decoration.none
     };
   }
+  recordHeightMapRefresh(currentEditorMode, 'rebuilt');
 
   const doc = state.doc;
   const tree = syntaxTree(state);
@@ -2169,11 +2361,7 @@ function buildHeightMapValue(state) {
           const customTitle = match[5];
           const markerStart = line.from + match[1].length;
           const markerEnd = markerStart + match[2].length;
-          let titleStart = null;
-          if (customTitle && customTitle.trim().length > 0) {
-            const idx = line.text.indexOf(customTitle, match[1].length + match[2].length);
-            if (idx !== -1) titleStart = idx;
-          }
+          const titleStart = getCalloutTitleStart(line, match);
 
           const calloutObj = {
             depth: currentDepth,
@@ -2272,7 +2460,7 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'QuoteMark') {
-        hideSyntax(node.from, node.to);
+        hideSyntax(node.from, Math.min(node.to + 1, line.to));
       }
 
       if (node.name === 'TaskMarker') {
@@ -2325,6 +2513,7 @@ function buildHeightMapValue(state) {
   for (const [lineFrom, info] of calloutOpenerInfo) {
     const hasBody = info.bodyTo > info.bodyFrom;
     const line = doc.lineAt(lineFrom);
+    const customTitle = info.customTitle?.trim() || '';
     let isFolded = false;
     if (hasBody) {
       activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
@@ -2334,15 +2523,28 @@ function buildHeightMapValue(state) {
       });
     }
 
-    const displayTitle = (info.customTitle && info.customTitle.trim().length > 0)
-      ? ''
-      : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
-
-    const replaceEnd = (info.customTitle && info.customTitle.trim().length > 0) ? info.markerEnd : line.to;
+    const displayTitle = customTitle ||
+      (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+    const titleIsInSource = info.titleStart != null;
+    const widgetEnd = titleIsInSource ? info.titleStart : line.to;
 
     replacements.push(Decoration.replace({
-      widget: new CalloutTitleWidget(displayTitle, info.type, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
-    }).range(info.markerStart, replaceEnd));
+      widget: new CalloutTitleWidget(
+        displayTitle,
+        info.type,
+        info.foldMarker,
+        isFolded,
+        info.bodyFrom,
+        info.bodyTo,
+        titleIsInSource
+      )
+    }).range(info.markerStart, widgetEnd));
+
+    if (titleIsInSource) {
+      replacements.push(Decoration.mark({
+        class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`
+      }).range(info.titleStart, line.to));
+    }
   }
 
   const validReplacements = replacements.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
@@ -2365,6 +2567,24 @@ export const heightMapField = StateField.define({
       effect.is(typographySettingsEffect)
     );
     if (!tr.docChanged && !refresh) return current;
+    if (
+      tr.docChanged &&
+      !refresh &&
+      !transactionTouchesStructure(tr, {
+        nodeNames: [
+          'ATXHeading1', 'ATXHeading2', 'ATXHeading3',
+          'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
+          'SetextHeading1', 'SetextHeading2', 'ListItem',
+          'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
+          'HorizontalRule', 'TaskMarker', 'Link', 'Image'
+        ]
+      })
+    ) {
+      return {
+        decorations: current.decorations.map(tr.changes),
+        hiddenSyntaxRanges: current.hiddenSyntaxRanges.map(tr.changes)
+      };
+    }
     return buildHeightMapValue(tr.state);
   },
   provide: field =>
@@ -2399,7 +2619,7 @@ function premeasureTableHeights(view) {
 }
 
 export function buildPersistentLayoutDecorations(state) {
-  if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+  if (currentEditorMode === 'source') return Decoration.none;
 
   const { doc } = state;
   const tree = syntaxTree(state);
@@ -2489,6 +2709,7 @@ export function buildPersistentLayoutDecorations(state) {
       addClass(number, 'cm-callout');
       if (calloutInfo.isTitle) {
         addClass(number, 'cm-callout-title');
+        addClass(number, 'cm-callout-title-rendered');
       } else {
         addClass(number, 'cm-callout-body');
       }
@@ -2507,10 +2728,16 @@ export function buildPersistentLayoutDecorations(state) {
         addClass(number, 'cm-list-item');
         addClass(number, 'cm-callout-list-item');
       }
+      if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
+        addClass(number, 'cm-todo-list-item');
+      }
       continue;
     }
     if (insideListItem) {
       addClass(number, 'cm-list-item');
+      if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
+        addClass(number, 'cm-todo-list-item');
+      }
       continue;
     }
 
@@ -2539,7 +2766,8 @@ export function buildPersistentLayoutDecorations(state) {
           ...(calloutAttributes
             ? {
                 'data-callout-type': calloutAttributes.type,
-                'data-callout-depth': String(calloutAttributes.depth)
+                'data-callout-depth': String(calloutAttributes.depth),
+                style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
               }
             : {})
         }
@@ -2556,10 +2784,27 @@ export const persistentLayoutField = StateField.define({
     return buildPersistentLayoutDecorations(state);
   },
   update(current, tr) {
-    if (tr.docChanged || tr.effects.some(e => e.is(typographySettingsEffect))) {
-      return buildPersistentLayoutDecorations(tr.state);
+    const refresh = tr.effects.some(effect =>
+      effect.is(typographySettingsEffect) ||
+      effect.is(heightMapRefreshEffect)
+    );
+    if (!tr.docChanged && !refresh) return current;
+    if (
+      tr.docChanged &&
+      !refresh &&
+      !transactionTouchesStructure(tr, {
+        nodeNames: [
+          'ATXHeading1', 'ATXHeading2', 'ATXHeading3',
+          'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
+          'SetextHeading1', 'SetextHeading2', 'ListItem',
+          'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
+          'HorizontalRule'
+        ]
+      })
+    ) {
+      return current.map(tr.changes);
     }
-    return current;
+    return buildPersistentLayoutDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
 });
@@ -2569,13 +2814,23 @@ export const tableStateField = StateField.define({
     return buildTableBlockDecorations(state);
   },
   update(current, tr) {
+    const refresh = tr.effects.some(effect =>
+      effect.is(tableHeightEstimatesChanged) ||
+      effect.is(heightMapRefreshEffect) ||
+      effect.is(typographySettingsEffect)
+    );
+    if (!tr.docChanged && !refresh) return current;
     if (
-      tr.docChanged ||
-      tr.effects.some(effect => effect.is(tableHeightEstimatesChanged))
+      tr.docChanged &&
+      !refresh &&
+      !transactionTouchesStructure(tr, {
+        nodeNames: ['Table'],
+        markerPattern: /[\n|]/
+      })
     ) {
-      return buildTableBlockDecorations(tr.state);
+      return current.map(tr.changes);
     }
-    return current;
+    return buildTableBlockDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
 });
@@ -3042,24 +3297,13 @@ class CodeMirrorAdapter {
       startState = startState.update({ selection }).state;
     }
 
-    const viewportHeight = Math.max(
-      containerEl.clientHeight || 0,
-      window.visualViewport?.height || 0,
-      window.innerHeight || 0
-    );
-    const viewportMargin = currentEditorMode === 'wysiwyg'
-      ? computeWysiwygViewportMargin(viewportHeight)
-      : 1000;
-
     this.view = new EditorView({
       state: startState,
       parent: containerEl,
-      scrollTo: modeSnapshot?.scroll,
-      viewportMargin
+      scrollTo: modeSnapshot?.scroll
     });
 
-    this.view.scrollDOM.style.overflowAnchor =
-      currentEditorMode === 'wysiwyg' ? 'none' : 'auto';
+    this.view.scrollDOM.style.overflowAnchor = 'auto';
 
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
     this.visibilityPersistHandler = () => {
@@ -3119,10 +3363,10 @@ class CodeMirrorAdapter {
     updateTableDocumentSelection(this.view);
     this.navigationDiagnosticsCleanup = setupNavigationDiagnostics(this.view);
 
-    setupGroupedControlBar();
+        setupGroupedControlBar();
     initCustomSearchBar();
-    setupFastScrollbar();
-    setupTocGestureAndPanel();
+    this.fastScrollbarCleanup = setupFastScrollbar();
+    this.tocGestureCleanup = setupTocGestureAndPanel();
 
     this.scheduleSyntaxRefresh();
   }
@@ -3230,6 +3474,12 @@ class CodeMirrorAdapter {
     if (typeof this.navigationDiagnosticsCleanup === 'function') {
       this.navigationDiagnosticsCleanup();
       this.navigationDiagnosticsCleanup = null;
+    }
+    for (const cleanupKey of ['fastScrollbarCleanup', 'tocGestureCleanup']) {
+      if (typeof this[cleanupKey] === 'function') {
+        this[cleanupKey]();
+        this[cleanupKey] = null;
+      }
     }
 
     if (this.view) {
@@ -3414,6 +3664,7 @@ function setupGroupedControlBar() {
       ]);
     };
   }
+
 }
 
 export function getDocumentHeadings(doc) {
@@ -4276,14 +4527,16 @@ function setupFastScrollbar() {
   const mainArea = document.querySelector('.cm-scroller');
   const track = document.querySelector('#fast-scrollbar-track');
   const thumb = document.querySelector('#fast-scrollbar-thumb');
-  if (!mainArea || !track || !thumb) return;
+  if (!mainArea || !track || !thumb) return () => {};
 
   let lastScrollTop = mainArea.scrollTop;
   let lastScrollTime = Date.now();
   let hideTimer = null;
   let isDragging = false;
+  let dragPointerId = null;
   let dragStartY = 0;
   let dragStartScrollTop = 0;
+  let thumbUpdateFrame = null;
 
   const updateThumbPosition = () => {
     const scrollHeight = mainArea.scrollHeight;
@@ -4300,7 +4553,15 @@ function setupFastScrollbar() {
     thumb.style.top = `${scrollRatio * availableTrack}px`;
   };
 
-  mainArea.addEventListener('scroll', () => {
+  const scheduleThumbPosition = () => {
+    if (thumbUpdateFrame !== null) return;
+    thumbUpdateFrame = requestAnimationFrame(() => {
+      thumbUpdateFrame = null;
+      if (mainArea.isConnected) updateThumbPosition();
+    });
+  };
+
+  const onScroll = () => {
     if (isDragging) return;
 
     const now = Date.now();
@@ -4312,29 +4573,34 @@ function setupFastScrollbar() {
     lastScrollTime = now;
 
     if (velocity > 4.5 || dy > 250) {
-      updateThumbPosition();
+      scheduleThumbPosition();
       track.classList.add('visible');
 
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => {
+        hideTimer = null;
         if (!isDragging) {
           track.classList.remove('visible');
         }
       }, 1200);
     }
-  }, { passive: true });
+  };
+  mainArea.addEventListener('scroll', onScroll, { passive: true });
 
-  thumb.addEventListener('pointerdown', (e) => {
+  const onPointerDown = (e) => {
     isDragging = true;
+    dragPointerId = e.pointerId;
     dragStartY = e.clientY;
     dragStartScrollTop = mainArea.scrollTop;
-    thumb.setPointerCapture(e.pointerId);
+    thumb.setPointerCapture?.(e.pointerId);
     track.classList.add('visible');
     clearTimeout(hideTimer);
-  });
+    hideTimer = null;
+  };
+  thumb.addEventListener('pointerdown', onPointerDown);
 
-  thumb.addEventListener('pointermove', (e) => {
-    if (!isDragging) return;
+  const onPointerMove = (e) => {
+    if (!isDragging || (dragPointerId !== null && e.pointerId !== dragPointerId)) return;
     const deltaY = e.clientY - dragStartY;
 
     const trackHeight = track.clientHeight || window.innerHeight;
@@ -4350,13 +4616,17 @@ function setupFastScrollbar() {
       mainArea.scrollTop = Math.min(maxScroll, Math.max(0, dragStartScrollTop + scrollDelta));
       updateThumbPosition();
     }
-  });
+  };
+  thumb.addEventListener('pointermove', onPointerMove);
 
-  const stopDrag = () => {
+  const stopDrag = (event) => {
+    if (event && dragPointerId !== null && event.pointerId !== dragPointerId) return;
     if (isDragging) {
       isDragging = false;
+      dragPointerId = null;
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => {
+        hideTimer = null;
         track.classList.remove('visible');
       }, 1200);
     }
@@ -4364,6 +4634,30 @@ function setupFastScrollbar() {
 
   thumb.addEventListener('pointerup', stopDrag);
   thumb.addEventListener('pointercancel', stopDrag);
+
+  return () => {
+    mainArea.removeEventListener('scroll', onScroll);
+    thumb.removeEventListener('pointerdown', onPointerDown);
+    thumb.removeEventListener('pointermove', onPointerMove);
+    thumb.removeEventListener('pointerup', stopDrag);
+    thumb.removeEventListener('pointercancel', stopDrag);
+    clearTimeout(hideTimer);
+    hideTimer = null;
+    if (thumbUpdateFrame !== null) {
+      cancelAnimationFrame(thumbUpdateFrame);
+      thumbUpdateFrame = null;
+    }
+    if (dragPointerId !== null && thumb.hasPointerCapture?.(dragPointerId)) {
+      try {
+        thumb.releasePointerCapture(dragPointerId);
+      } catch (_) {
+        // The pointer may have been released by the browser already.
+      }
+    }
+    dragPointerId = null;
+    isDragging = false;
+    track.classList.remove('visible');
+  };
 }
 
 function updateTocActiveSection() {
@@ -4403,11 +4697,12 @@ function updateTocActiveSection() {
 }
 
 function setupTocGestureAndPanel() {
+  const win = document.defaultView || window;
   const panel = document.querySelector('#toc-panel');
   const overlay = document.querySelector('#toc-overlay');
   const tocContent = document.querySelector('#toc-content');
   const globalToggleBtn = document.querySelector('#toc-global-toggle');
-  if (!panel || !overlay) return;
+  if (!panel || !overlay) return () => {};
 
   let isAllCollapsed = false;
 
@@ -4424,8 +4719,9 @@ function setupTocGestureAndPanel() {
 
   overlay.onclick = closeToc;
 
+  let globalToggleHandler = null;
   if (globalToggleBtn) {
-    globalToggleBtn.onclick = () => {
+    globalToggleHandler = () => {
       isAllCollapsed = !isAllCollapsed;
       const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
       itemRows.forEach(row => {
@@ -4440,13 +4736,14 @@ function setupTocGestureAndPanel() {
         }
       });
     };
+    globalToggleBtn.onclick = globalToggleHandler;
   }
 
   let touchStartX = 0;
   let touchStartY = 0;
   let isSwiping = false;
 
-  window.addEventListener('touchstart', (e) => {
+  const onTouchStart = (e) => {
     const popupStrip = document.querySelector('#popup-toolbar-strip');
     if (popupStrip && popupStrip.contains(e.target)) {
       isSwiping = false;
@@ -4457,9 +4754,9 @@ function setupTocGestureAndPanel() {
       touchStartY = e.touches[0].clientY;
       isSwiping = true;
     }
-  }, { passive: true });
+  };
 
-  window.addEventListener('touchend', (e) => {
+  const onTouchEnd = (e) => {
     if (!isSwiping || e.changedTouches.length !== 1) return;
     isSwiping = false;
     const deltaX = e.changedTouches[0].clientX - touchStartX;
@@ -4467,7 +4764,7 @@ function setupTocGestureAndPanel() {
 
     const isSelectionActive = window.getSelection() && window.getSelection().toString().length > 0;
     if (!isSelectionActive && Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
-      const screenWidth = window.innerWidth;
+      const screenWidth = win.innerWidth;
       const isRightEdgeTouch = touchStartX >= (screenWidth * 0.80);
 
       if (deltaX < 0 && !panel.classList.contains('open') && isRightEdgeTouch) {
@@ -4476,7 +4773,10 @@ function setupTocGestureAndPanel() {
         closeToc();
       }
     }
-  }, { passive: true });
+  };
+  const touchListenerOptions = { passive: true };
+  win.addEventListener('touchstart', onTouchStart, touchListenerOptions);
+  win.addEventListener('touchend', onTouchEnd, touchListenerOptions);
 
   function buildTocTree() {
     if (!tocContent || !activeAdapter) return;
@@ -4543,6 +4843,16 @@ function setupTocGestureAndPanel() {
 
     updateTocActiveSection();
   }
+
+  return () => {
+    win.removeEventListener('touchstart', onTouchStart, touchListenerOptions);
+    win.removeEventListener('touchend', onTouchEnd, touchListenerOptions);
+    if (overlay.onclick === closeToc) overlay.onclick = null;
+    if (globalToggleBtn && globalToggleBtn.onclick === globalToggleHandler) {
+      globalToggleBtn.onclick = null;
+    }
+    isSwiping = false;
+  };
 }
 
 function openWithOtherEngine() {
@@ -4779,6 +5089,10 @@ window.editorBridge = {
       'list-wrap-under-text',
       prefs.pref_list_wrap_under_text === true
     );
+    document.body.classList.toggle(
+      'todo-hide-extra-bullet',
+      prefs.pref_todo_hide_extra_bullet === true
+    );
     if (typeof window.editorBridge.setLineWrap === 'function') {
       window.editorBridge.setLineWrap(prefs.pref_line_wrap !== false);
     }
@@ -4807,52 +5121,61 @@ window.editorBridge = {
       : null;
     setCssVar('--heading-scale', globalHeadingScale);
 
-    const globalHeadingWeight = prefs.pref_font_weight_heading;
-    const globalHeadingAlign = prefs.pref_heading_align;
-    const globalHeadingLineHeight = prefs.pref_heading_line_height;
-    const globalHeadingLetterSpacing = prefs.pref_heading_letter_spacing;
-    const globalHeadingTransform = prefs.pref_heading_text_transform;
-    const globalHeadingUnderlineStyle = prefs.pref_heading_underline_style;
-    const globalHeadingUnderlineThickness = prefs.pref_heading_underline_thickness;
-    const globalHeadingUnderlineColor = prefs.pref_heading_underline_color;
-    const globalHeadingMarginTop = prefs.pref_heading_margin_top;
-    const globalHeadingMarginBottom = prefs.pref_heading_margin_bottom;
+    setCssVar('--heading-color', androidArgbToCss(prefs.pref_heading_color));
+    setCssVar('--heading-font-weight', prefs.pref_font_weight_heading);
+    setCssVar('--heading-align', prefs.pref_heading_align);
+    setCssVar('--heading-line-height', prefs.pref_heading_line_height);
+    setCssVar('--heading-letter-spacing', prefs.pref_heading_letter_spacing, 'px');
+    setCssVar('--heading-word-spacing', prefs.pref_heading_word_spacing, 'px');
+    setCssVar('--heading-text-transform', prefs.pref_heading_text_transform);
+    const globalUnderlineStyle = prefs.pref_heading_underline_style;
+    setCssVar(
+      '--heading-underline-line',
+      globalUnderlineStyle && globalUnderlineStyle !== 'none' ? 'underline' : 'none'
+    );
+    setCssVar(
+      '--heading-underline-style',
+      globalUnderlineStyle && globalUnderlineStyle !== 'none' ? globalUnderlineStyle : 'solid'
+    );
+    setCssVar('--heading-underline-thickness', prefs.pref_heading_underline_thickness, 'px');
+    setCssVar('--heading-underline-color', androidArgbToCss(prefs.pref_heading_underline_color));
+    setCssVar('--heading-margin-top', prefs.pref_heading_margin_top, 'px');
+    setCssVar('--heading-margin-bottom', prefs.pref_heading_margin_bottom, 'px');
 
-    // Preserve per-level colors and any older per-level values, while falling
-    // back to the actual shared keys shown in preferences_styling_headings.xml.
+    // A per-level value is an override, not a multiplier. Removing that
+    // preference removes its CSS variable so the global setting takes over.
     for (let i = 1; i <= 6; i++) {
-      const pColor = prefs['pref_heading_' + i + '_color'];
+      const key = `pref_heading_${i}_`;
+      const pColor = prefs[key + 'color'];
+      const levelScalePercent = prefs[key + 'scale_percent'];
       const oldLevelScale = prefs['pref_heading_' + i + '_scale'];
       const oldLevelFontSize = prefs['pref_heading_' + i + '_font_size'];
-      const pScale = oldLevelScale != null
-        ? oldLevelScale
-        : (oldLevelFontSize != null ? Number(oldLevelFontSize) / 16 : null);
-      const pAlign = prefs['pref_heading_' + i + '_align'] ?? globalHeadingAlign;
-      const pLineHeight = prefs['pref_heading_' + i + '_line_height'] ?? globalHeadingLineHeight;
-      const pLetterSpacing = prefs['pref_heading_' + i + '_letter_spacing'] ?? globalHeadingLetterSpacing;
-      const pTransform = prefs['pref_heading_' + i + '_transform'] ?? globalHeadingTransform;
-      const pUnderlineRaw = prefs['pref_heading_' + i + '_underline_style'] ?? globalHeadingUnderlineStyle;
-      const pUnderlineLine = (pUnderlineRaw && pUnderlineRaw !== 'none') ? 'underline' : 'none';
-      const pUnderlineStyle = (pUnderlineRaw && pUnderlineRaw !== 'none') ? pUnderlineRaw : 'solid';
-      const pUnderlineThickness = prefs['pref_heading_' + i + '_underline_thickness'] ?? globalHeadingUnderlineThickness;
-      const pUnderlineColor = prefs['pref_heading_' + i + '_underline_color'] ?? globalHeadingUnderlineColor;
-      const pMarginTop = prefs['pref_heading_' + i + '_margin_top'] ?? globalHeadingMarginTop;
-      const pMarginBottom = prefs['pref_heading_' + i + '_margin_bottom'] ?? globalHeadingMarginBottom;
-      const pWeight = prefs['pref_heading_' + i + '_font_weight'] ?? globalHeadingWeight;
+      const pScale = levelScalePercent != null
+        ? Number(levelScalePercent) / 100
+        : (oldLevelScale != null
+          ? oldLevelScale
+          : (oldLevelFontSize != null ? Number(oldLevelFontSize) / 16 : null));
+      const pTransform =
+        prefs[key + 'text_transform'] ?? prefs[key + 'transform'];
+      const pUnderlineRaw = prefs[key + 'underline_style'];
+      const pUnderlineEnabled = pUnderlineRaw && pUnderlineRaw !== 'none';
 
-      setCssVar('--heading-' + i + '-color', pColor);
+      setCssVar('--heading-' + i + '-color', androidArgbToCss(pColor));
       setCssVar('--heading-' + i + '-scale', pScale);
-      setCssVar('--heading-' + i + '-align', pAlign);
-      setCssVar('--heading-' + i + '-line-height', pLineHeight);
-      setCssVar('--heading-' + i + '-letter-spacing', pLetterSpacing, 'px');
+      setCssVar('--heading-' + i + '-align', prefs[key + 'align']);
+      setCssVar('--heading-' + i + '-line-height', prefs[key + 'line_height']);
+      setCssVar('--heading-' + i + '-letter-spacing', prefs[key + 'letter_spacing'], 'px');
+      setCssVar('--heading-' + i + '-word-spacing', prefs[key + 'word_spacing'], 'px');
       setCssVar('--heading-' + i + '-text-transform', pTransform);
-      setCssVar('--heading-' + i + '-underline-line', pUnderlineLine);
-      setCssVar('--heading-' + i + '-underline-style', pUnderlineStyle);
-      setCssVar('--heading-' + i + '-underline-thickness', pUnderlineThickness, 'px');
-      setCssVar('--heading-' + i + '-underline-color', pUnderlineColor);
-      setCssVar('--heading-' + i + '-margin-top', pMarginTop, 'px');
-      setCssVar('--heading-' + i + '-margin-bottom', pMarginBottom, 'px');
-      setCssVar('--heading-' + i + '-font-weight', pWeight);
+      setCssVar('--heading-' + i + '-underline-line', pUnderlineRaw == null ? null : (pUnderlineEnabled ? 'underline' : 'none'));
+      setCssVar('--heading-' + i + '-underline-style', pUnderlineRaw == null ? null : (pUnderlineEnabled ? pUnderlineRaw : 'solid'));
+      setCssVar('--heading-' + i + '-underline-thickness', prefs[key + 'underline_thickness'], 'px');
+      setCssVar('--heading-' + i + '-underline-color', androidArgbToCss(prefs[key + 'underline_color']));
+      setCssVar('--heading-' + i + '-margin-left', prefs[key + 'margin_left'], 'px');
+      setCssVar('--heading-' + i + '-margin-right', prefs[key + 'margin_right'], 'px');
+      setCssVar('--heading-' + i + '-margin-top', prefs[key + 'margin_top'], 'px');
+      setCssVar('--heading-' + i + '-margin-bottom', prefs[key + 'margin_bottom'], 'px');
+      setCssVar('--heading-' + i + '-font-weight', prefs[key + 'font_weight']);
     }
 
     // Inline formats
@@ -4890,9 +5213,10 @@ window.editorBridge = {
     setCssVar('--list-line-height', prefs.pref_list_line_height);
     setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
     setCssVar('--list-number-color', prefs.pref_list_number_color);
-    setCssVar('--todo-border-color', prefs.pref_todo_unchecked_color || prefs.pref_todo_unchecked_border_color);
-    setCssVar('--todo-accent-color', prefs.pref_todo_checked_color || prefs.pref_todo_checked_accent_color);
-    setCssVar('--todo-bg-color', prefs.pref_todo_unchecked_bg_color);
+    setCssVar('--todo-border-color', androidArgbToCss(prefs.pref_todo_unchecked_color || prefs.pref_todo_unchecked_border_color));
+    setCssVar('--todo-accent-color', androidArgbToCss(prefs.pref_todo_checked_color || prefs.pref_todo_checked_accent_color));
+    setCssVar('--todo-checkmark-color', androidArgbToCss(prefs.pref_todo_checkmark_color));
+    setCssVar('--todo-bg-color', androidArgbToCss(prefs.pref_todo_unchecked_bg_color));
 
     // Blockquotes & Callouts
     setCssVar('--blockquote-border-width', prefs.pref_blockquote_line_thickness, 'px');
@@ -4968,15 +5292,20 @@ window.editorBridge = {
     setCssVar('--table-menu-pressed-bg', prefs.pref_table_menu_pressed_bg_color);
 
     // Code blocks
-    setCssVar('--code-block-color', prefs.pref_code_block_color);
-    setCssVar('--code-block-bg-color', prefs.pref_code_block_bg_color);
+    setCssVar('--code-block-color', androidArgbToCss(prefs.pref_code_block_color));
+    setCssVar('--code-block-bg-color', androidArgbToCss(prefs.pref_code_block_bg_color));
+    setCssVar('--code-block-text-bg-color', androidArgbToCss(prefs.pref_code_block_text_bg_color));
+    setCssVar('--code-block-label-bg', androidArgbToCss(prefs.pref_code_block_label_bg_color));
+    setCssVar('--code-block-border-color', androidArgbToCss(prefs.pref_code_block_border_color));
+    setCssVar('--code-copy-bg', androidArgbToCss(prefs.pref_code_block_copy_bg_color));
+    setCssVar('--code-copy-color', androidArgbToCss(prefs.pref_code_block_copy_text_color));
     setCssVar('--code-block-font-size', prefs.pref_code_block_font_size, 'px');
     setCssVar('--code-block-margin-left', prefs.pref_code_block_margin_left ?? 0, 'px');
     setCssVar('--code-block-margin-right', prefs.pref_code_block_margin_right ?? 0, 'px');
     setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
     setCssVar('--code-block-border-radius', prefs.pref_code_block_border_radius, 'px');
     setCssVar('--code-block-line-height', prefs.pref_code_block_line_height);
-    setCssVar('--code-block-lang-label-color', prefs.pref_code_block_lang_label_color);
+    setCssVar('--code-block-lang-label-color', androidArgbToCss(prefs.pref_code_block_lang_label_color));
 
     // Dividers
     setCssVar('--hr-margin-left', prefs.pref_hr_margin_left ?? 0, '%');
@@ -5241,7 +5570,7 @@ window.editorBridge = {
       titleEl.textContent = title;
     }
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData) {
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson) {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -5303,6 +5632,19 @@ window.editorBridge = {
     applyFontCategory('Italic', fontItalicData, '--italic-font-family');
     applyFontCategory('Code', fontCodeData, '--code-font-family');
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family');
+    let headingLevelFonts = [];
+    try {
+      headingLevelFonts = JSON.parse(fontHeadingLevelsDataJson || '[]');
+    } catch (error) {
+      console.error('invalid_heading_font_settings', error);
+    }
+    for (let level = 1; level <= 6; level++) {
+      applyFontCategory(
+        `Heading${level}`,
+        headingLevelFonts[level - 1],
+        `--heading-${level}-font-family`
+      );
+    }
 
     styleEl.innerHTML = fontCss;
   },
@@ -5536,22 +5878,75 @@ export function setupNavigationDiagnostics(view) {
 
   const dom = view.dom;
   const scroller = view.scrollDOM;
+  const diagnosticMode = currentEditorMode;
+  const doc = dom.ownerDocument;
+  const win = doc.defaultView || window;
+  let disposed = false;
+  const listeners = [];
+  const pendingTimers = new Set();
+  const pendingFrames = new Set();
+  const addListener = (target, type, handler, options) => {
+    target.addEventListener(type, handler, options);
+    listeners.push([target, type, handler, options]);
+  };
+  const scheduleTimeout = (callback, delay) => {
+    let timerId;
+    timerId = win.setTimeout(() => {
+      pendingTimers.delete(timerId);
+      if (!disposed) callback();
+    }, delay);
+    pendingTimers.add(timerId);
+    return timerId;
+  };
+  const clearTrackedTimeout = (timerId) => {
+    if (timerId == null) return;
+    win.clearTimeout(timerId);
+    pendingTimers.delete(timerId);
+  };
+  const scheduleFrame = (callback) => {
+    if (typeof win.requestAnimationFrame !== 'function') {
+      return scheduleTimeout(callback, 16);
+    }
+    let frameId;
+    frameId = win.requestAnimationFrame(() => {
+      pendingFrames.delete(frameId);
+      if (!disposed) callback();
+    });
+    pendingFrames.add(frameId);
+    return frameId;
+  };
+  const cleanupFullNavigationCapture = setupFullNavigationCapture(view);
 
   let activeArrowPress = null;
   let lastArrowEventTime = 0;
   let lastArrowPressId = null;
 
   const reportTrace = (record) => {
+    if (disposed) return;
     const serialized = serializeNavigationTraceRecord(record);
-    if (window.AndroidNative && typeof window.AndroidNative.reportNavigationTrace === 'function') {
-      window.AndroidNative.reportNavigationTrace(serialized);
+    if (win.AndroidNative && typeof win.AndroidNative.reportNavigationTrace === 'function') {
+      win.AndroidNative.reportNavigationTrace(serialized);
     }
   };
+  const flushRenderLayoutMetrics = () => {
+    if (typeof win.AndroidNative?.reportNavigationTrace !== 'function') return;
+    const metrics = takeRenderLayoutMetrics(diagnosticMode);
+    if (metrics) win.AndroidNative.reportNavigationTrace(JSON.stringify(metrics));
+  };
+  const handleDocumentVisibilityChange = () => {
+    if (doc.visibilityState === 'hidden') flushRenderLayoutMetrics();
+  };
+  addListener(doc, 'visibilitychange', handleDocumentVisibilityChange);
+  addListener(win, 'pagehide', flushRenderLayoutMetrics);
 
-  const addSampleToContainer = (container, sampleObj) => {
+  const addSampleToContainer = (container, sampleFactory) => {
     if (!container) return;
-    const now = performance.now();
+    const now = win.performance.now();
     if (now - (container.lastSampleTime || 0) < 50) return;
+    const sampleObj = typeof sampleFactory === 'function'
+      ? sampleFactory()
+      : sampleFactory;
+    if (!sampleObj) return;
 
     container.lastSampleTime = now;
     container.totalSampleCount = (container.totalSampleCount || 0) + 1;
@@ -5594,10 +5989,11 @@ export function setupNavigationDiagnostics(view) {
     };
 
     reportTrace(record);
+    flushRenderLayoutMetrics();
   };
 
   // Capture phase keydown for ArrowUp / ArrowDown
-  dom.addEventListener('keydown', (e) => {
+  const onKeyDown = (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 
     const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
@@ -5636,11 +6032,11 @@ export function setupNavigationDiagnostics(view) {
     lastArrowEventTime = performance.now();
     lastArrowPressId = press.pressId;
 
-    requestAnimationFrame(() => {
+    scheduleFrame(() => {
       if (!view || !view.state) return;
       let afterSnap = getSnapshot(view);
 
-      setTimeout(() => {
+      scheduleTimeout(() => {
         if (!view || !view.state) return;
         const afterSnap50 = getSnapshot(view);
         if (afterSnap50) afterSnap = afterSnap50;
@@ -5676,23 +6072,26 @@ export function setupNavigationDiagnostics(view) {
         reportTrace(record);
       }, 50);
     });
-  }, true);
+  };
+  addListener(dom, 'keydown', onKeyDown, true);
 
   // Keyup for ArrowUp / ArrowDown
-  dom.addEventListener('keyup', (e) => {
+  const onKeyUp = (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     const direction = (e.key === 'ArrowUp') ? 'up' : 'down';
     if (activeArrowPress && activeArrowPress.direction === direction) {
       closeActiveArrowPress(false);
     }
-  }, true);
+  };
+  addListener(dom, 'keyup', onKeyUp, true);
 
   // Blur event closes active press
-  window.addEventListener('blur', () => {
+  const onWindowBlur = () => {
     if (activeArrowPress) {
       closeActiveArrowPress(true);
     }
-  });
+  };
+  addListener(win, 'blur', onWindowBlur);
 
   // Passive pointer gesture & scroll recorder
   let activePointerGesture = null;
@@ -5744,7 +6143,7 @@ export function setupNavigationDiagnostics(view) {
 
   const finalizeUnattributedScroll = () => {
     if (!unattributedScrollRecord) return;
-    clearTimeout(unattributedScrollTimer);
+    clearTrackedTimeout(unattributedScrollTimer);
     unattributedScrollTimer = null;
 
     const u = unattributedScrollRecord;
@@ -5774,6 +6173,7 @@ export function setupNavigationDiagnostics(view) {
     };
 
     reportTrace(record);
+    flushRenderLayoutMetrics();
   };
 
   let pointerGestureTimer = null;
@@ -5781,11 +6181,11 @@ export function setupNavigationDiagnostics(view) {
   let lastSelectionSnapshot = getSnapshot(view);
   let selectionChangeTimer = null;
 
-  document.addEventListener('selectionchange', () => {
+  const onSelectionChange = () => {
     if (!view.hasFocus) return;
 
-    clearTimeout(selectionChangeTimer);
-    selectionChangeTimer = setTimeout(() => {
+    clearTrackedTimeout(selectionChangeTimer);
+    selectionChangeTimer = scheduleTimeout(() => {
       if (!view.hasFocus || !view.state) return;
 
       const after = getSnapshot(view);
@@ -5815,11 +6215,12 @@ export function setupNavigationDiagnostics(view) {
         after
       });
     }, 80);
-  });
+  };
+  addListener(doc, 'selectionchange', onSelectionChange);
 
   const finalizePointerGesture = () => {
     if (!activePointerGesture) return;
-    clearTimeout(pointerGestureTimer);
+    clearTrackedTimeout(pointerGestureTimer);
     pointerGestureTimer = null;
 
     const g = activePointerGesture;
@@ -5863,9 +6264,10 @@ export function setupNavigationDiagnostics(view) {
     };
 
     reportTrace(record);
+    flushRenderLayoutMetrics();
   };
 
-  dom.addEventListener('pointerdown', (e) => {
+  const onPointerDown = (e) => {
     if (activePointerGesture) {
       finalizePointerGesture();
     }
@@ -5894,11 +6296,12 @@ export function setupNavigationDiagnostics(view) {
       canceled: false
     };
 
-    clearTimeout(pointerGestureTimer);
-    pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
-  }, true);
+    clearTrackedTimeout(pointerGestureTimer);
+    pointerGestureTimer = scheduleTimeout(() => finalizePointerGesture(), 300);
+  };
+  addListener(dom, 'pointerdown', onPointerDown, true);
 
-  window.addEventListener('pointermove', (e) => {
+  const onPointerMove = (e) => {
     if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
     activePointerGesture.currentX = e.clientX;
     activePointerGesture.currentY = e.clientY;
@@ -5906,14 +6309,17 @@ export function setupNavigationDiagnostics(view) {
     if (travel > activePointerGesture.maxTravel) {
       activePointerGesture.maxTravel = travel;
     }
-    const sample = createSample('editor', e.clientX, e.clientY, 'pointer', null);
-    if (sample) addSampleToContainer(activePointerGesture, sample);
+    addSampleToContainer(
+      activePointerGesture,
+      () => createSample('editor', e.clientX, e.clientY, 'pointer', null)
+    );
 
-    clearTimeout(pointerGestureTimer);
-    pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
-  }, true);
+    clearTrackedTimeout(pointerGestureTimer);
+    pointerGestureTimer = scheduleTimeout(() => finalizePointerGesture(), 300);
+  };
+  addListener(win, 'pointermove', onPointerMove, true);
 
-  window.addEventListener('pointerup', (e) => {
+  const onPointerUp = (e) => {
     if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
     activePointerGesture.currentX = e.clientX;
     activePointerGesture.currentY = e.clientY;
@@ -5921,16 +6327,20 @@ export function setupNavigationDiagnostics(view) {
     if (travel > activePointerGesture.maxTravel) {
       activePointerGesture.maxTravel = travel;
     }
-    const sample = createSample('editor', e.clientX, e.clientY, 'pointer', null);
-    if (sample) addSampleToContainer(activePointerGesture, sample);
-    setTimeout(() => finalizePointerGesture(), 50);
-  }, true);
+    addSampleToContainer(
+      activePointerGesture,
+      () => createSample('editor', e.clientX, e.clientY, 'pointer', null)
+    );
+    scheduleTimeout(() => finalizePointerGesture(), 50);
+  };
+  addListener(win, 'pointerup', onPointerUp, true);
 
-  window.addEventListener('pointercancel', (e) => {
+  const onPointerCancel = (e) => {
     if (!activePointerGesture || activePointerGesture.pointerId !== e.pointerId) return;
     activePointerGesture.canceled = true;
-    setTimeout(() => finalizePointerGesture(), 50);
-  }, true);
+    scheduleTimeout(() => finalizePointerGesture(), 50);
+  };
+  addListener(win, 'pointercancel', onPointerCancel, true);
 
   // Passive scroll handler
   const onScroll = (e) => {
@@ -5946,17 +6356,27 @@ export function setupNavigationDiagnostics(view) {
         totalSampleCount: 0,
         droppedSampleCount: 0
       };
-      const sample = createSample(targetLabel, null, null, 'arrow', lastArrowPressId);
-      if (sample) addSampleToContainer(activeArrowPress || targetContainer, sample);
+      addSampleToContainer(
+        activeArrowPress || targetContainer,
+        () => createSample(targetLabel, null, null, 'arrow', lastArrowPressId)
+      );
       return;
     }
 
     // 2. Is there an active pointer gesture?
     if (activePointerGesture) {
-      const sample = createSample(targetLabel, activePointerGesture.currentX, activePointerGesture.currentY, 'pointer', null);
-      if (sample) addSampleToContainer(activePointerGesture, sample);
-      clearTimeout(pointerGestureTimer);
-      pointerGestureTimer = setTimeout(() => finalizePointerGesture(), 300);
+      addSampleToContainer(
+        activePointerGesture,
+        () => createSample(
+          targetLabel,
+          activePointerGesture.currentX,
+          activePointerGesture.currentY,
+          'pointer',
+          null
+        )
+      );
+      clearTrackedTimeout(pointerGestureTimer);
+      pointerGestureTimer = scheduleTimeout(() => finalizePointerGesture(), 300);
       return;
     }
 
@@ -5976,25 +6396,37 @@ export function setupNavigationDiagnostics(view) {
       };
     }
 
-    const sample = createSample(targetLabel, null, null, 'unattributed', null);
-    if (sample) addSampleToContainer(unattributedScrollRecord, sample);
+    addSampleToContainer(
+      unattributedScrollRecord,
+      () => createSample(targetLabel, null, null, 'unattributed', null)
+    );
 
-    clearTimeout(unattributedScrollTimer);
-    unattributedScrollTimer = setTimeout(() => finalizeUnattributedScroll(), 300);
+    clearTrackedTimeout(unattributedScrollTimer);
+    unattributedScrollTimer = scheduleTimeout(() => finalizeUnattributedScroll(), 300);
     if (unattributedScrollTimer && typeof unattributedScrollTimer.unref === 'function') {
       unattributedScrollTimer.unref();
     }
   };
 
-  if (scroller) {
-    scroller.addEventListener('scroll', onScroll, { passive: true });
-  }
-  window.addEventListener('scroll', onScroll, { passive: true });
-  setupFullNavigationCapture(view);
+  if (scroller) addListener(scroller, 'scroll', onScroll, { passive: true });
+  addListener(win, 'scroll', onScroll, { passive: true });
 
   return () => {
-    if (scroller) scroller.removeEventListener('scroll', onScroll);
-    window.removeEventListener('scroll', onScroll);
+    if (disposed) return;
+    flushRenderLayoutMetrics();
+    disposed = true;
+    for (const [target, type, handler, options] of listeners) {
+      target.removeEventListener(type, handler, options);
+    }
+    listeners.length = 0;
+    for (const timerId of pendingTimers) win.clearTimeout(timerId);
+    pendingTimers.clear();
+    for (const frameId of pendingFrames) win.cancelAnimationFrame?.(frameId);
+    pendingFrames.clear();
+    activeArrowPress = null;
+    activePointerGesture = null;
+    unattributedScrollRecord = null;
+    cleanupFullNavigationCapture?.();
   };
 }
 
