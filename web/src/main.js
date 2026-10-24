@@ -5667,6 +5667,9 @@ window.editorBridge = {
     setCssVar('--toc-panel-bg-color', androidArgbToCss(prefs.pref_toc_panel_bg_color));
     setCssVar('--toc-panel-bg-opacity', prefs.pref_toc_panel_bg_opacity ?? 100, '%');
     setCssVar('--toc-panel-border-color', androidArgbToCss(prefs.pref_toc_panel_border_color));
+    setCssVar('--toc-history-bg-color', androidArgbToCss(prefs.pref_toc_history_bg_color));
+    setCssVar('--toc-history-border-color', androidArgbToCss(prefs.pref_toc_history_border_color));
+    setCssVar('--toc-history-icon-color', androidArgbToCss(prefs.pref_toc_history_icon_color));
     const tocOverlayDim = Number(prefs.pref_toc_overlay_dim ?? 50);
     setCssVar('--toc-overlay-dim', Math.max(0, Math.min(90, tocOverlayDim)) / 100);
     setCssVar('--toc-font-size', prefs.pref_toc_font_size ?? 16, 'px');

@@ -104,6 +104,9 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     pref_toc_text_color: '#AABBCC',
     pref_toc_active_text_color: '#DDEEFF',
     pref_toc_active_bg_color: '#223344',
+    pref_toc_history_bg_color: '#101010',
+    pref_toc_history_border_color: '#202020',
+    pref_toc_history_icon_color: '#303030',
     pref_toc_toggle_bg_color: '#123456',
     pref_toc_toggle_icon_color: '#ABCDEF',
     pref_toc_toggle_active_bg_color: '#654321',
@@ -132,6 +135,9 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   assert.equal(rootStyles.getPropertyValue('--toc-panel-bg-opacity'), '72%');
   assert.equal(rootStyles.getPropertyValue('--toc-font-size'), '18px');
   assert.equal(rootStyles.getPropertyValue('--toc-font-weight'), '650');
+  assert.equal(rootStyles.getPropertyValue('--toc-history-bg-color'), '#101010');
+  assert.equal(rootStyles.getPropertyValue('--toc-history-border-color'), '#202020');
+  assert.equal(rootStyles.getPropertyValue('--toc-history-icon-color'), '#303030');
   assert.equal(rootStyles.getPropertyValue('--toc-toggle-bg-color'), '#123456');
   assert.equal(rootStyles.getPropertyValue('--toc-toggle-icon-color'), '#ABCDEF');
   assert.equal(rootStyles.getPropertyValue('--toc-toggle-active-bg-color'), '#654321');
