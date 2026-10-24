@@ -8,3 +8,9 @@ Before making a fix when the symptom or intended behavior is unclear, inspect th
 **Why:** The user explicitly asked to collaborate after assumptions led to settings changes that did not match what they wanted, and clarified that they are not a software engineer. A style value can reach the intended element and still be visually hidden by a nested layer.
 
 **How to apply:** For ambiguous UI or settings reports, inspect the affected screen/code first; if the evidence does not identify one narrow user-visible behavior, ask about that behavior in chat. Verify rendered results at the relevant viewport and test important interactions before claiming success; source matches or computed styles alone are insufficient.
+
+For settings reset controls, reserve one consistent fixed-width slot at the far right across control types. It is acceptable for the setting control area to be slightly narrower to keep reset icons aligned.
+
+**Why:** The user explicitly confirmed this layout after previous reset icons shifted between slider and non-slider rows.
+
+**How to apply:** Keep each reset icon in the same trailing column; do not position it immediately after a variable-width control.
