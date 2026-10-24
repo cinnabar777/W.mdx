@@ -60,18 +60,11 @@ test('document rename requests only selected-folder access before offering Save 
   assert.ok(!mainActivitySource.includes('MANAGE_EXTERNAL_STORAGE'));
 });
 
-test('document rename supports exact-file access when Android blocks folder selection', () => {
-  assert.ok(mainActivitySource.includes('Intent.ACTION_OPEN_DOCUMENT'));
-  assert.ok(mainActivitySource.includes('EXTRA_INITIAL_URI, uri'));
-  assert.ok(mainActivitySource.includes('handleRenameFileSelection(result.resultCode, result.data)'));
-  assert.ok(mainActivitySource.includes('isSameDocumentSelection(request.uri, selectedUri)'));
-  assert.ok(mainActivitySource.includes('offerFolderFallback = true'));
-  assert.ok(mainActivitySource.includes('queryRenameDocumentMetadata'));
-  const handlerStart = mainActivitySource.indexOf('private fun handleRenameFileSelection(');
-  const handlerEnd = mainActivitySource.indexOf('private data class RenameDocumentMetadata', handlerStart);
-  const handler = mainActivitySource.slice(handlerStart, handlerEnd);
-  assert.ok(!handler.includes('hasWriteUriPermission(selectedUri)'));
-  assert.ok(handler.includes('The picker did not return a file.'));
+test('rename uses folder access or Save As, without the crash-prone per-file picker', () => {
+  assert.ok(!mainActivitySource.includes('renameFileAccessLauncher'));
+  assert.ok(!mainActivitySource.includes('handleRenameFileSelection'));
+  assert.ok(!mainActivitySource.includes('launchRenameFilePicker'));
+  assert.ok(!mainActivitySource.includes('Grant File Access'));
   assert.ok(mainActivitySource.includes('Android blocks selecting the Downloads folder itself'));
 });
 
@@ -83,18 +76,19 @@ test('users can save and manage folder access from the main settings page', () =
   assert.ok(settingsActivitySource.includes('ACTION_OPEN_DOCUMENT_TREE'));
   assert.ok(settingsActivitySource.includes('takePersistableUriPermission'));
   assert.ok(settingsActivitySource.includes('releasePersistableUriPermission'));
+  assert.ok(settingsActivitySource.includes('locallyRevokedFolderUrisKey'));
+  assert.ok(settingsActivitySource.includes('it.uri.toString() !in locallyRevokedUris'));
   assert.ok(mainActivitySource.includes('resolveRenameTargetInTree(permission.uri, documentUri)'));
   assert.ok(storageSettingsXml.includes('Downloads folder itself'));
 });
 
-test('rename access dialog renders file, folder, and Save As buttons alongside its explanation', () => {
+test('rename access dialog offers folder access and Save As alongside its explanation', () => {
   const start = mainActivitySource.indexOf('private fun showRenameAccessOptions(');
   const end = mainActivitySource.indexOf('private fun remapDocumentNavigationHistory(', start);
   const dialog = mainActivitySource.slice(start, end);
 
   assert.ok(dialog.includes('.setMessage('));
-  assert.ok(dialog.includes('.setPositiveButton("Grant File Access")'));
-  assert.ok(dialog.includes('.setNeutralButton("Choose Folder")'));
+  assert.ok(dialog.includes('.setPositiveButton("Choose Folder")'));
   assert.ok(dialog.includes('.setNegativeButton("Save As")'));
   assert.ok(!dialog.includes('.setItems('), 'a message and item list hide one another in Android AlertDialogs');
 });

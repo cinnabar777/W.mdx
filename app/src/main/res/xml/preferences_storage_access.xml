@@ -20,7 +20,7 @@
     <androidx.preference.Preference
         app:key="pref_storage_downloads_note"
         app:title="Downloads folder"
-        app:summary="Android 11 and newer does not allow selecting the Downloads folder itself. You can select a subfolder, or grant access to an individual file when renaming."
+        app:summary="Android 11 and newer does not allow selecting the Downloads folder itself. You can select a subfolder or use Save As."
         app:selectable="false" />
 
 </androidx.preference.PreferenceScreen>

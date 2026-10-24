@@ -89,11 +89,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             handleRenameFolderSelection(result.resultCode, result.data)
         }
 
-    private val renameFileAccessLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            handleRenameFileSelection(result.resultCode, result.data)
-        }
-
     private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         if (uri != null) {
             pendingRenameFallbackName = null
@@ -514,33 +509,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         renameFolderLauncher.launch(intent)
     }
 
-    private fun launchRenameFilePicker(uri: Uri, targetName: String) {
-        pendingRenamePermissionRequest = RenameAccessRequest(uri, targetName)
-        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(android.content.Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-            addFlags(
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-            )
-            if (uri.scheme == "content" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, uri)
-            }
-        }
-        try {
-            renameFileAccessLauncher.launch(intent)
-        } catch (_: Exception) {
-            pendingRenamePermissionRequest = null
-            updateTitle()
-            ThemedToast.show(
-                this,
-                "Android could not open the file picker. Try choosing a folder instead.",
-                Toast.LENGTH_LONG
-            )
-        }
-    }
-
     private fun handleRenameFolderSelection(
         resultCode: Int,
         resultIntent: android.content.Intent?
@@ -594,122 +562,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return
         }
         renameCurrentDocument(request.targetName, treeScopedDocumentUri)
-    }
-
-    private fun handleRenameFileSelection(
-        resultCode: Int,
-        resultIntent: android.content.Intent?
-    ) {
-        val request = pendingRenamePermissionRequest
-        if (request == null) {
-            updateTitle()
-            ThemedToast.show(
-                this,
-                "The rename request expired. Try again.",
-                Toast.LENGTH_LONG
-            )
-            return
-        }
-        pendingRenamePermissionRequest = null
-        val selectedIntent = resultIntent
-        if (resultCode != android.app.Activity.RESULT_OK || selectedIntent == null) {
-            updateTitle()
-            ThemedToast.show(this, "No file access was granted.", Toast.LENGTH_SHORT)
-            return
-        }
-        val selectedUri = selectedIntent.data
-        if (selectedUri == null) {
-            updateTitle()
-            ThemedToast.show(this, "The picker did not return a file.", Toast.LENGTH_LONG)
-            return
-        }
-
-        val grantedFlags = selectedIntent.flags
-        val readFlag = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-        if ((grantedFlags and readFlag) == 0) {
-            showRenameAccessOptions(
-                request,
-                "Android did not grant access to the selected file."
-            )
-            return
-        }
-
-        persistDocumentUriPermission(selectedUri, grantedFlags)
-        if (!isSameDocumentSelection(request.uri, selectedUri)) {
-            showRenameAccessOptions(
-                request,
-                "The selected file could not be matched to the open document. Select the same file or choose its containing folder."
-            )
-            return
-        }
-
-        renameCurrentDocument(
-            request.targetName,
-            selectedUri,
-            offerFolderFallback = true
-        )
-    }
-
-    private data class RenameDocumentMetadata(
-        val displayName: String,
-        val size: Long?
-    )
-
-    private fun isSameDocumentSelection(first: Uri, second: Uri): Boolean {
-        if (isSameDocumentUri(first, second)) return true
-        if (!first.authority.isNullOrBlank() && first.authority == second.authority) return false
-
-        val firstMetadata = queryRenameDocumentMetadata(first) ?: return false
-        val secondMetadata = queryRenameDocumentMetadata(second) ?: return false
-        return firstMetadata.displayName == secondMetadata.displayName &&
-            firstMetadata.displayName == currentFileName &&
-            firstMetadata.size != null &&
-            firstMetadata.size == secondMetadata.size
-    }
-
-    private fun queryRenameDocumentMetadata(uri: Uri): RenameDocumentMetadata? {
-        if (uri.scheme == "file") {
-            val file = uri.path?.let { java.io.File(it) } ?: return null
-            if (!file.isFile) return null
-            return RenameDocumentMetadata(file.name, file.length())
-        }
-
-        return runCatching {
-            contentResolver.query(
-                uri,
-                arrayOf(
-                    android.provider.OpenableColumns.DISPLAY_NAME,
-                    android.provider.OpenableColumns.SIZE
-                ),
-                null,
-                null,
-                null
-            )?.use { cursor ->
-                if (!cursor.moveToFirst()) return@use null
-                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIndex < 0) return@use null
-                val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                RenameDocumentMetadata(
-                    displayName = cursor.getString(nameIndex),
-                    size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
-                        cursor.getLong(sizeIndex)
-                    } else {
-                        null
-                    }
-                )
-            }
-        }.getOrNull()
-    }
-
-    private fun isSameDocumentUri(first: Uri, second: Uri): Boolean {
-        if (first == second) return true
-        if (first.authority.isNullOrBlank() || first.authority != second.authority) return false
-        return runCatching {
-            android.provider.DocumentsContract.isDocumentUri(this, first) &&
-                android.provider.DocumentsContract.isDocumentUri(this, second) &&
-                android.provider.DocumentsContract.getDocumentId(first) ==
-                android.provider.DocumentsContract.getDocumentId(second)
-        }.getOrDefault(false)
     }
 
     private fun resolveRenameTargetInTree(treeUri: Uri, sourceUri: Uri): Uri? {
@@ -829,19 +681,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     ) {
         updateTitle()
         val downloadsNote = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            " On Android 11 and later, Android blocks selecting the Downloads folder itself; choose the current file to grant access only to that file."
+            " On Android 11 and later, Android blocks selecting the Downloads folder itself. Choose an allowed subfolder or save a copy."
         } else {
             ""
         }
         AlertDialog.Builder(this)
             .setTitle("Choose access for renaming")
             .setMessage(
-                "$message Grant access to just the current file or to its containing folder. A copy can be saved if the provider does not support renaming.$downloadsNote"
+                "$message Choose access to the containing folder, or save a copy if the provider does not support renaming.$downloadsNote"
             )
-            .setPositiveButton("Grant File Access") { _, _ ->
-                launchRenameFilePicker(request.uri, request.targetName)
-            }
-            .setNeutralButton("Choose Folder") { _, _ ->
+            .setPositiveButton("Choose Folder") { _, _ ->
                 launchRenameFolderPicker(request.uri, request.targetName)
             }
             .setNegativeButton("Save As") { _, _ ->
@@ -1336,8 +1185,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun renameCurrentDocument(
         requestedName: String,
-        renameUri: Uri? = null,
-        offerFolderFallback: Boolean = false
+        renameUri: Uri? = null
     ) {
         val targetName = renamedDocumentFileName(requestedName, currentFileName)
         if (targetName == null) {
@@ -1372,14 +1220,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         if (renamedUri == null) {
             if (renameUri != null) {
-                if (offerFolderFallback) {
-                    showRenameAccessOptions(
-                        RenameAccessRequest(oldUri, targetName),
-                        "Android could not rename with access to only this file. Try granting access to its containing folder, or save a copy."
-                    )
-                } else {
-                    offerSaveAsRenameFallback(targetName)
-                }
+                offerSaveAsRenameFallback(targetName)
                 return
             }
             val persistedFolderUri = findPersistedFolderDocumentUri(oldUri)
