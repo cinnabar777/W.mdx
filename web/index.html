@@ -778,7 +778,7 @@
       font-weight: var(--heading-font-weight, 700) !important;
     }
 
-    .cm-heading-1 {
+    .cm-content .cm-line.cm-heading-1 {
       font-size: calc(var(--body-font-size, 16px) * 1.8 * var(--heading-1-scale, var(--heading-scale, 1))) !important;
       font-family: var(--heading-1-font-family, var(--heading-font-family, inherit)) !important;
       color: var(--heading-1-color, var(--heading-color, inherit)) !important;
@@ -799,7 +799,7 @@
       padding-bottom: var(--heading-1-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-1-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-2 {
+    .cm-content .cm-line.cm-heading-2 {
       font-size: calc(var(--body-font-size, 16px) * 1.5 * var(--heading-2-scale, var(--heading-scale, 1))) !important;
       font-family: var(--heading-2-font-family, var(--heading-font-family, inherit)) !important;
       color: var(--heading-2-color, var(--heading-color, inherit)) !important;
@@ -820,7 +820,7 @@
       padding-bottom: var(--heading-2-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-2-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-3 {
+    .cm-content .cm-line.cm-heading-3 {
       font-size: calc(var(--body-font-size, 16px) * 1.3 * var(--heading-3-scale, var(--heading-scale, 1))) !important;
       font-family: var(--heading-3-font-family, var(--heading-font-family, inherit)) !important;
       color: var(--heading-3-color, var(--heading-color, inherit)) !important;
@@ -841,7 +841,7 @@
       padding-bottom: var(--heading-3-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-3-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-4 {
+    .cm-content .cm-line.cm-heading-4 {
       font-size: calc(var(--body-font-size, 16px) * 1.1 * var(--heading-4-scale, var(--heading-scale, 1))) !important;
       font-family: var(--heading-4-font-family, var(--heading-font-family, inherit)) !important;
       color: var(--heading-4-color, var(--heading-color, inherit)) !important;
@@ -862,7 +862,7 @@
       padding-bottom: var(--heading-4-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-4-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-5 {
+    .cm-content .cm-line.cm-heading-5 {
       font-size: calc(var(--body-font-size, 16px) * 1.0 * var(--heading-5-scale, var(--heading-scale, 1))) !important;
       font-family: var(--heading-5-font-family, var(--heading-font-family, inherit)) !important;
       color: var(--heading-5-color, var(--heading-color, inherit)) !important;
@@ -883,7 +883,7 @@
       padding-bottom: var(--heading-5-margin-bottom, var(--heading-margin-bottom, 8px)) !important;
       font-weight: var(--heading-5-font-weight, var(--heading-font-weight, 700)) !important;
     }
-    .cm-heading-6 {
+    .cm-content .cm-line.cm-heading-6 {
       font-size: calc(var(--body-font-size, 16px) * 0.9 * var(--heading-6-scale, var(--heading-scale, 1))) !important;
       font-family: var(--heading-6-font-family, var(--heading-font-family, inherit)) !important;
       color: var(--heading-6-color, var(--heading-color, inherit)) !important;
@@ -979,6 +979,13 @@
       color: var(--code-block-color, #e0e0e0) !important;
       font-size: var(--code-block-font-size, 14px) !important;
     }
+    .cm-content .cm-codeblock-line .cm-codeblock-text * {
+      background: transparent !important;
+    }
+    .cm-content .cm-codeblock-line .cm-codeblock-text .cm-inline-code {
+      padding: 0 !important;
+      border-radius: 0 !important;
+    }
     .cm-content .cm-codeblock-line .cm-codeblock-text {
       background-color: var(--code-block-text-bg-color, transparent) !important;
       display: inline !important;
@@ -1055,12 +1062,14 @@
       text-indent: 0 !important;
     }
 
-    .cm-content .cm-callout[data-callout-depth="2"] {
-      margin-left: calc(var(--callout-margin-left, 0px) + 12px) !important;
+    .cm-content .cm-line.cm-callout[data-callout-depth]:not(.cm-callout-list-item) {
+      margin-left: calc(var(--callout-margin-left, 0px) + var(--callout-depth-offset, 0px)) !important;
+      margin-right: var(--callout-margin-right, 0px) !important;
     }
 
-    .cm-content .cm-callout[data-callout-depth="3"] {
-      margin-left: calc(var(--callout-margin-left, 0px) + 24px) !important;
+    .cm-content .cm-line.cm-callout-list-item[data-callout-depth] {
+      margin-left: calc(var(--callout-margin-left, 0px) + var(--callout-depth-offset, 0px) + var(--list-left-indent, 24px)) !important;
+      margin-right: var(--callout-margin-right, 0px) !important;
     }
 
     /* Per-type color palette defaults */

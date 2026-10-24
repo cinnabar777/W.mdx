@@ -280,9 +280,24 @@ test('code block text and language colors use independent selectors', () => {
     indexHtml.includes('.cm-content .cm-codeblock-line span:not(.cm-codeblock-lang-label)'),
     'General code text styling does not override the language label color'
   );
+  assert.match(
+    indexHtml,
+    /\.cm-codeblock-lang-label\s*\{[^}]*color:\s*var\(--code-block-lang-label-color,\s*#fff\)\s*!important;/s,
+    'The language label uses its own text color setting'
+  );
+  assert.match(
+    indexHtml,
+    /\.cm-codeblock-copy-btn\s*\{[^}]*color:\s*var\(--code-copy-color,\s*#fff\)\s*!important;/s,
+    'The COPY button uses its separate text color setting'
+  );
   assert.ok(
     indexHtml.includes('.cm-content .cm-codeblock-line .cm-codeblock-text'),
     'The text background applies to the marked code text inside each code line'
+  );
+  assert.match(
+    indexHtml,
+    /\.cm-content \.cm-codeblock-line \.cm-codeblock-text \*\s*\{[^}]*background:\s*transparent\s*!important/s,
+    'Syntax token backgrounds cannot cover the text background inside a fenced code block'
   );
   assert.ok(
     indexHtml.includes('background-color: var(--code-block-text-bg-color, transparent) !important;'),
@@ -292,15 +307,39 @@ test('code block text and language colors use independent selectors', () => {
     mainSource.includes("setCssVar('--code-block-lang-label-color', androidArgbToCss(prefs.pref_code_block_lang_label_color))"),
     'The language label setting reaches its dedicated CSS variable'
   );
+  assert.ok(
+    mainSource.includes("setCssVar('--code-block-text-bg-color', androidArgbToCss(prefs.pref_code_block_text_bg_color))"),
+    'The code-text background setting reaches its dedicated CSS variable'
+  );
 });
 
 test('callout title keeps its icon, wrapping title, and fold control on one header row', () => {
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
+  assert.ok(mainSource.includes("const displayTitle = customTitle ||"), 'Custom titles are placed inside the title widget');
+  assert.ok(mainSource.includes("}).range(info.markerStart, line.to)"), 'The rendered title widget replaces the full custom-title source range');
+  assert.ok(mainSource.includes('titleSpan.textContent = this.title'), 'The widget renders the complete custom title beside the icon');
+  assert.equal(
+    (mainSource.match(/titleStart = line\.from \+ idx/g) || []).length,
+    2,
+    'Both rendering modes store custom title positions as absolute document offsets'
+  );
+  assert.ok(
+    mainSource.includes('selection: EditorSelection.cursor(titleEnd)') &&
+      mainSource.includes('effects: heightMapRefreshEffect.of(null)'),
+    'Tapping a custom title returns the caret to its editable source and refreshes its hidden syntax'
+  );
+  assert.ok(mainSource.includes('!isMarkerActive && !isTitleActive && !isPureWysiwyg'), 'Live Preview leaves the source editable while the title is active');
+  assert.ok(mainSource.includes('if (!isTitleActive) {'), 'WYSIWYG leaves the source editable while the title is active');
   assert.match(indexHtml, /\.cm-callout-title-container\s*\{[^}]*display:\s*flex\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[^}]*flex:\s*1 1 auto\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*static\s*!important/s);
+  assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-list-item\[data-callout-depth\]/, 'Nested callout list items retain list indentation');
+  assert.ok(mainSource.includes('style: `--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`'), 'Preview lines calculate indentation from nesting depth');
+  assert.ok(mainSource.includes('style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`'), 'WYSIWYG lines calculate indentation from nesting depth');
   assert.ok(
     indexHtml.includes('border-left: max(var(--callout-header-accent-thickness, 0px), var(--callout-border-width, 4px))'),
     'The existing callout border styling remains unchanged'
