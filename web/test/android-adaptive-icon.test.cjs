@@ -32,7 +32,7 @@ test('adaptive launcher icons use transparent full-color layers and preserve req
 
   assert.match(
     fs.readFileSync(path.join(resDir, 'values/colors.xml'), 'utf8'),
-    /<color name="ic_launcher_background">#E5E5E5<\/color>/
+    /<color name="ic_launcher_background">#C3C3C3<\/color>/
   );
   assert.match(
     fs.readFileSync(path.join(resDir, 'values-night/colors.xml'), 'utf8'),
