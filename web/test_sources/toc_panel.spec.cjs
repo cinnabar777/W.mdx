@@ -104,6 +104,10 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     pref_toc_text_color: '#AABBCC',
     pref_toc_active_text_color: '#DDEEFF',
     pref_toc_active_bg_color: '#223344',
+    pref_toc_toggle_bg_color: '#123456',
+    pref_toc_toggle_icon_color: '#ABCDEF',
+    pref_toc_toggle_active_bg_color: '#654321',
+    pref_toc_toggle_active_icon_color: '#FEDCBA',
     pref_toc_overlay_dim: 40,
     pref_toc_row_spacing: 6,
     pref_toc_indent_spacing: 10,
@@ -128,6 +132,10 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   assert.equal(rootStyles.getPropertyValue('--toc-panel-bg-opacity'), '72%');
   assert.equal(rootStyles.getPropertyValue('--toc-font-size'), '18px');
   assert.equal(rootStyles.getPropertyValue('--toc-font-weight'), '650');
+  assert.equal(rootStyles.getPropertyValue('--toc-toggle-bg-color'), '#123456');
+  assert.equal(rootStyles.getPropertyValue('--toc-toggle-icon-color'), '#ABCDEF');
+  assert.equal(rootStyles.getPropertyValue('--toc-toggle-active-bg-color'), '#654321');
+  assert.equal(rootStyles.getPropertyValue('--toc-toggle-active-icon-color'), '#FEDCBA');
   assert.equal(rootStyles.getPropertyValue('--toc-overlay-dim'), '0.4');
   assert.equal(rootStyles.getPropertyValue('--toc-level-3-indent'), '28px');
   assert.equal(rootStyles.getPropertyValue('--toc-text-white-space'), 'normal');
@@ -149,6 +157,9 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
 
   const firstHeadingToggle = contents.querySelector('.toc-item.level-1 .toc-toggle');
   firstHeadingToggle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  assert.equal(firstHeadingToggle.textContent, '+');
+  assert.equal(firstHeadingToggle.classList.contains('is-collapsed'), true);
+  assert.equal(firstHeadingToggle.getAttribute('aria-pressed'), 'true');
   assert.equal(contents.querySelectorAll('.toc-item')[1].style.display, 'none');
 
   window.editorBridge.setMarkdown([
@@ -253,6 +264,13 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   );
 
   document.querySelector('#toc-history-forward').click();
+  const childToggle = contents.querySelector('.toc-item.level-2 .toc-toggle');
+  document.querySelector('#toc-global-toggle').click();
+  assert.equal(childToggle.textContent, '+');
+  assert.equal(childToggle.classList.contains('is-collapsed'), true);
+  assert.equal(childToggle.getAttribute('aria-pressed'), 'true');
+  document.querySelector('#toc-global-toggle').click();
+  assert.equal(childToggle.classList.contains('is-collapsed'), false);
 
   document.querySelector('#toc-settings-button').click();
   assert.deepEqual(

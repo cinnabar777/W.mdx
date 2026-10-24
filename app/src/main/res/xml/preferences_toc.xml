@@ -119,4 +119,30 @@
             app:defaultValue="12"
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Heading Fold Controls">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_toggle_bg_color"
+            app:title="Fold Control Background Color"
+            app:summary="Background color behind the plus and minus controls"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_toggle_icon_color"
+            app:title="Fold Control Icon Color"
+            app:summary="Color of the plus and minus symbols"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_toggle_active_bg_color"
+            app:title="Collapsed Control Background Color"
+            app:summary="Background color when a heading is collapsed"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_toggle_active_icon_color"
+            app:title="Collapsed Control Icon Color"
+            app:summary="Plus and minus color when a heading is collapsed"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
 </androidx.preference.PreferenceScreen>

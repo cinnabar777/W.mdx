@@ -5030,20 +5030,25 @@ function setupTocGestureAndPanel() {
 
       const toggleSpan = document.createElement('span');
       toggleSpan.className = 'toc-toggle';
-      toggleSpan.textContent = collapsedHeadingKeys.has(itemKeys[index]) ? '+' : '-';
+      const initiallyCollapsed = collapsedHeadingKeys.has(itemKeys[index]);
+      toggleSpan.textContent = initiallyCollapsed ? '+' : '-';
+      toggleSpan.classList.toggle('is-collapsed', initiallyCollapsed);
+      toggleSpan.setAttribute('aria-pressed', String(initiallyCollapsed));
       toggleSpan.onclick = (e) => {
         e.stopPropagation();
-        const isCollapsed = toggleSpan.textContent === '+';
-        toggleSpan.textContent = isCollapsed ? '-' : '+';
-        if (isCollapsed) {
-          collapsedHeadingKeys.delete(itemKeys[index]);
-        } else {
+        const nextCollapsed = !collapsedHeadingKeys.has(itemKeys[index]);
+        toggleSpan.textContent = nextCollapsed ? '+' : '-';
+        toggleSpan.classList.toggle('is-collapsed', nextCollapsed);
+        toggleSpan.setAttribute('aria-pressed', String(nextCollapsed));
+        if (nextCollapsed) {
           collapsedHeadingKeys.add(itemKeys[index]);
+        } else {
+          collapsedHeadingKeys.delete(itemKeys[index]);
         }
 
         let sibling = itemRow.nextElementSibling;
         while (sibling && (parseInt(sibling.dataset.level, 10) || 1) > item.level) {
-          sibling.style.display = isCollapsed ? 'flex' : 'none';
+          sibling.style.display = nextCollapsed ? 'none' : 'flex';
           sibling = sibling.nextElementSibling;
         }
       };
@@ -5082,7 +5087,12 @@ function setupTocGestureAndPanel() {
         const level = parseInt(row.dataset.level, 10) || 1;
         const toggle = row.querySelector('.toc-toggle');
         row.style.display = level > 1 ? 'none' : 'flex';
-        if (toggle) toggle.textContent = level > 1 ? '+' : '-';
+        if (toggle) {
+          const isCollapsed = level > 1;
+          toggle.textContent = isCollapsed ? '+' : '-';
+          toggle.classList.toggle('is-collapsed', isCollapsed);
+          toggle.setAttribute('aria-pressed', String(isCollapsed));
+        }
       });
       return;
     }
@@ -5091,7 +5101,10 @@ function setupTocGestureAndPanel() {
       row.style.display = 'flex';
       const toggle = row.querySelector('.toc-toggle');
       if (toggle) {
-        toggle.textContent = collapsedHeadingKeys.has(row.dataset.headingKey) ? '+' : '-';
+        const isCollapsed = collapsedHeadingKeys.has(row.dataset.headingKey);
+        toggle.textContent = isCollapsed ? '+' : '-';
+        toggle.classList.toggle('is-collapsed', isCollapsed);
+        toggle.setAttribute('aria-pressed', String(isCollapsed));
       }
     });
 
@@ -5661,6 +5674,10 @@ window.editorBridge = {
     setCssVar('--toc-text-color', androidArgbToCss(prefs.pref_toc_text_color));
     setCssVar('--toc-active-text-color', androidArgbToCss(prefs.pref_toc_active_text_color));
     setCssVar('--toc-active-bg-color', androidArgbToCss(prefs.pref_toc_active_bg_color));
+    setCssVar('--toc-toggle-bg-color', androidArgbToCss(prefs.pref_toc_toggle_bg_color));
+    setCssVar('--toc-toggle-icon-color', androidArgbToCss(prefs.pref_toc_toggle_icon_color));
+    setCssVar('--toc-toggle-active-bg-color', androidArgbToCss(prefs.pref_toc_toggle_active_bg_color));
+    setCssVar('--toc-toggle-active-icon-color', androidArgbToCss(prefs.pref_toc_toggle_active_icon_color));
     setCssVar('--toc-row-spacing', prefs.pref_toc_row_spacing ?? 4, 'px');
     const tocIndentSpacing = Number(prefs.pref_toc_indent_spacing ?? 12);
     for (let level = 1; level <= 6; level++) {

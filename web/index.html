@@ -646,10 +646,22 @@
       font-weight: bold;
       margin-right: 8px;
       border-radius: 4px;
-      background-color: rgba(255, 255, 255, 0.15);
+      background-color: var(--toc-toggle-bg-color, rgba(255, 255, 255, 0.15));
+      color: var(--toc-toggle-icon-color, var(--toc-text-color, var(--text-color)));
       font-size: 24px;
       flex-shrink: 0;
       user-select: none;
+    }
+
+    .toc-toggle.is-collapsed {
+      background-color: var(
+        --toc-toggle-active-bg-color,
+        var(--toc-toggle-bg-color, rgba(255, 255, 255, 0.15))
+      );
+      color: var(
+        --toc-toggle-active-icon-color,
+        var(--toc-toggle-icon-color, var(--toc-text-color, var(--text-color)))
+      );
     }
 
     .toc-text {

@@ -46,6 +46,8 @@ object PreferenceResetHelper {
             "pref_toc_text_color" -> "#FFFFFF"
             "pref_toc_active_text_color" -> "#FFFF00"
             "pref_toc_active_bg_color" -> "#00000000"
+            "pref_toc_toggle_bg_color", "pref_toc_toggle_active_bg_color" -> "#26FFFFFF"
+            "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> "#FFFFFF"
             "pref_heading_underline_color" -> "#FFFFFF"
             "pref_blockquote_line_color" -> "#444444"
             "pref_blockquote_bg_color" -> "#1A1A1A"
@@ -129,6 +131,16 @@ object PreferenceResetHelper {
                 if (isLightTheme) "#E0E0E0" else "#444444"
             "pref_toc_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> {
+                val tocTextColor = prefs.getString("pref_toc_text_color", "default")
+                if (!tocTextColor.isNullOrBlank() && tocTextColor != "default") {
+                    tocTextColor
+                } else if (isLightTheme) {
+                    "#111111"
+                } else {
+                    "#FFFFFF"
+                }
+            }
             else -> getDefaultColorHex(key)
         }
     }
@@ -296,6 +308,10 @@ object PreferenceResetHelper {
             key == "pref_toc_text_color" -> "default"
             key == "pref_toc_active_text_color" -> "#FFFF00"
             key == "pref_toc_active_bg_color" -> "default"
+            key == "pref_toc_toggle_bg_color" -> "default"
+            key == "pref_toc_toggle_icon_color" -> "default"
+            key == "pref_toc_toggle_active_bg_color" -> "default"
+            key == "pref_toc_toggle_active_icon_color" -> "default"
             key == "pref_toc_text_overflow" -> "truncate"
             key == "pref_toc_row_spacing" -> 4
             key == "pref_toc_indent_spacing" -> 12
