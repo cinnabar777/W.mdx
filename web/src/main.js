@@ -36,6 +36,7 @@ import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as 
 
 let activeAdapter = null;
 let refreshOpenTocPanel = null;
+let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
 let isProgrammaticChange = false;
 let pendingMarkdown = null;
@@ -4807,6 +4808,9 @@ function updateTocActiveSection() {
   });
 
   if (activeRow) {
+    if (typeof revealActiveTocHeading === 'function') {
+      revealActiveTocHeading(activeRow);
+    }
     activeRow.classList.add('active-section');
 
     const panel = document.querySelector('#toc-panel');
@@ -4839,6 +4843,15 @@ function setupTocGestureAndPanel() {
   let isAllCollapsed = false;
   const collapsedHeadingKeys = new Set();
   let pendingRefreshTimer = null;
+  const hasDescendantHeading = (rows, rowIndex) => {
+    const level = parseInt(rows[rowIndex]?.dataset.level, 10) || 1;
+    for (let childIndex = rowIndex + 1; childIndex < rows.length; childIndex++) {
+      const childLevel = parseInt(rows[childIndex].dataset.level, 10) || 1;
+      if (childLevel <= level) break;
+      return true;
+    }
+    return false;
+  };
 
   const cancelDocumentNameEdit = () => {
     if (!documentNameInput) return;
@@ -5036,6 +5049,23 @@ function setupTocGestureAndPanel() {
       toggleSpan.setAttribute('aria-pressed', String(initiallyCollapsed));
       toggleSpan.onclick = (e) => {
         e.stopPropagation();
+        if (isAllCollapsed) {
+          const rows = Array.from(tocContent.querySelectorAll('.toc-item'));
+          const clickedIndex = rows.indexOf(itemRow);
+          isAllCollapsed = false;
+          collapsedHeadingKeys.clear();
+          rows.forEach((row, rowIndex) => {
+            if (
+              rowIndex !== clickedIndex &&
+              hasDescendantHeading(rows, rowIndex)
+            ) {
+              collapsedHeadingKeys.add(row.dataset.headingKey);
+            }
+          });
+          applyTocCollapseState();
+          return;
+        }
+
         const nextCollapsed = !collapsedHeadingKeys.has(itemKeys[index]);
         toggleSpan.textContent = nextCollapsed ? '+' : '-';
         toggleSpan.classList.toggle('is-collapsed', nextCollapsed);
@@ -5081,15 +5111,6 @@ function setupTocGestureAndPanel() {
   function applyTocCollapseState() {
     if (!tocContent) return;
     const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
-    const hasDescendantHeading = (rowIndex) => {
-      const level = parseInt(itemRows[rowIndex].dataset.level, 10) || 1;
-      for (let childIndex = rowIndex + 1; childIndex < itemRows.length; childIndex++) {
-        const childLevel = parseInt(itemRows[childIndex].dataset.level, 10) || 1;
-        if (childLevel <= level) break;
-        return true;
-      }
-      return false;
-    };
 
     if (isAllCollapsed) {
       itemRows.forEach((row, rowIndex) => {
@@ -5097,7 +5118,7 @@ function setupTocGestureAndPanel() {
         const toggle = row.querySelector('.toc-toggle');
         row.style.display = level > 1 ? 'none' : 'flex';
         if (toggle) {
-          const isCollapsed = level > 1 || hasDescendantHeading(rowIndex);
+          const isCollapsed = level > 1 || hasDescendantHeading(itemRows, rowIndex);
           toggle.textContent = isCollapsed ? '+' : '-';
           toggle.classList.toggle('is-collapsed', isCollapsed);
           toggle.setAttribute('aria-pressed', String(isCollapsed));
@@ -5128,6 +5149,53 @@ function setupTocGestureAndPanel() {
     });
   }
 
+  const revealActiveHeadingInToc = (activeRow) => {
+    if (!tocContent || !activeRow) return;
+    const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
+    const activeIndex = itemRows.indexOf(activeRow);
+    if (activeIndex < 0) return;
+
+    const ancestorStack = [];
+    for (let rowIndex = 0; rowIndex < activeIndex; rowIndex++) {
+      const level = parseInt(itemRows[rowIndex].dataset.level, 10) || 1;
+      while (
+        ancestorStack.length &&
+        (parseInt(itemRows[ancestorStack[ancestorStack.length - 1]].dataset.level, 10) || 1) >= level
+      ) {
+        ancestorStack.pop();
+      }
+      ancestorStack.push(rowIndex);
+    }
+    const activeLevel = parseInt(activeRow.dataset.level, 10) || 1;
+    while (
+      ancestorStack.length &&
+      (parseInt(itemRows[ancestorStack[ancestorStack.length - 1]].dataset.level, 10) || 1) >= activeLevel
+    ) {
+      ancestorStack.pop();
+    }
+    const ancestorIndexes = new Set(ancestorStack);
+
+    if (isAllCollapsed) {
+      isAllCollapsed = false;
+      collapsedHeadingKeys.clear();
+      itemRows.forEach((row, rowIndex) => {
+        if (
+          !ancestorIndexes.has(rowIndex) &&
+          hasDescendantHeading(itemRows, rowIndex)
+        ) {
+          collapsedHeadingKeys.add(row.dataset.headingKey);
+        }
+      });
+    } else {
+      ancestorIndexes.forEach(rowIndex => {
+        collapsedHeadingKeys.delete(itemRows[rowIndex].dataset.headingKey);
+      });
+    }
+
+    applyTocCollapseState();
+  };
+  revealActiveTocHeading = revealActiveHeadingInToc;
+
   const scheduleOpenPanelRefresh = () => {
     if (!panel.classList.contains('open')) return false;
     if (pendingRefreshTimer !== null) win.clearTimeout(pendingRefreshTimer);
@@ -5148,6 +5216,9 @@ function setupTocGestureAndPanel() {
     }
     if (refreshOpenTocPanel === scheduleOpenPanelRefresh) {
       refreshOpenTocPanel = null;
+    }
+    if (revealActiveTocHeading === revealActiveHeadingInToc) {
+      revealActiveTocHeading = null;
     }
     if (overlay.onclick === closeToc) overlay.onclick = null;
     if (documentNameInput) {

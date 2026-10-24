@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
+const { EditorView } = require('@codemirror/view');
 
 const nativeActions = [];
 const renameRequests = [];
@@ -89,7 +90,9 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     '```',
     '',
     'Setext section',
-    '--------------'
+    '--------------',
+    '',
+    '## Current location'
   ].join('\n'));
   window.editorBridge.setDocumentTitle('Guide.md', 'doc-1');
   window.editorBridge.setDocumentHistoryState(false, false);
@@ -159,7 +162,7 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   assert.equal(keyboardHideCalls, 1, 'opening the panel hides the software keyboard');
   assert.equal(document.querySelector('#toc-document-name').value, 'Guide.md');
   const titles = () => Array.from(contents.querySelectorAll('.toc-text'), item => item.textContent);
-  assert.deepEqual(titles(), ['Overview', 'First child', 'Setext section']);
+  assert.deepEqual(titles(), ['Overview', 'First child', 'Setext section', 'Current location']);
 
   const firstHeadingToggle = contents.querySelector('.toc-item.level-1 .toc-toggle');
   firstHeadingToggle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
@@ -180,11 +183,16 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     '```',
     '',
     'Setext section',
-    '--------------'
+    '--------------',
+    '',
+    '## Current location'
   ].join('\n'));
   await new Promise(resolve => setTimeout(resolve, 150));
 
-  assert.deepEqual(titles(), ['Overview', 'First child', 'Added child', 'Setext section']);
+  assert.deepEqual(
+    titles(),
+    ['Overview', 'First child', 'Added child', 'Setext section', 'Current location']
+  );
   assert.equal(
     contents.querySelectorAll('.toc-item')[2].style.display,
     'none',
@@ -216,6 +224,39 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
 
   const parentToggle = contents.querySelector('.toc-item.level-1 .toc-toggle');
   parentToggle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  document.querySelector('#toc-global-toggle').click();
+  assert.equal(parentToggle.textContent, '+', 'global collapse marks the visible parent as collapsed');
+  assert.equal(
+    contents.querySelectorAll('.toc-item')[1].style.display,
+    'none',
+    'global collapse hides child headings'
+  );
+  parentToggle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  assert.equal(parentToggle.textContent, '-', 'one tap on + unfolds the parent');
+  assert.equal(
+    contents.querySelectorAll('.toc-item')[1].style.display,
+    'flex',
+    'one tap on + reveals the child heading'
+  );
+
+  document.querySelector('#toc-global-toggle').click();
+  assert.equal(
+    contents.querySelectorAll('.toc-item')[4].style.display,
+    'none',
+    'global collapse hides the current nested heading'
+  );
+  const editorView = EditorView.findFromDOM(document.querySelector('.cm-content'));
+  assert.ok(editorView, 'the editor view is available to move the cursor in the test');
+  editorView.dispatch({
+    selection: { anchor: editorView.state.doc.length }
+  });
+  await new Promise(resolve => setTimeout(resolve, 150));
+  assert.notEqual(
+    contents.querySelectorAll('.toc-item')[4].style.display,
+    'none',
+    'the TOC automatically reveals the current heading when its ancestors were collapsed'
+  );
+
   contents.querySelectorAll('.toc-item')[1].dispatchEvent(
     new dom.window.Event('click', { bubbles: true })
   );
