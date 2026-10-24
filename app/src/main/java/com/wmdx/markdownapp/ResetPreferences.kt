@@ -477,6 +477,17 @@ object PreferenceResetHelper {
 
         targetRow.orientation = LinearLayout.HORIZONTAL
         targetRow.gravity = Gravity.CENTER_VERTICAL
+        if (seekBarRow != null) {
+            // SeekBarPreference's built-in row has its own trailing inset.
+            // The item view already provides the shared 8dp inset, so keeping
+            // both would leave slider reset buttons farther left than others.
+            targetRow.setPaddingRelative(
+                targetRow.paddingStart,
+                targetRow.paddingTop,
+                0,
+                targetRow.paddingBottom
+            )
+        }
 
         val seekBar = holder.findViewById(
             androidx.preference.R.id.seekbar
