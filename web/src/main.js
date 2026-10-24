@@ -5579,7 +5579,7 @@ window.editorBridge = {
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
     // Toolbar
-    setCssVar('--toolbar-bg', prefs.pref_toolbar_bg_color);
+    setCssVar('--toolbar-bg', androidArgbToCss(prefs.pref_toolbar_bg_color));
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);
     setCssVar('--toolbar-active-icon-color', prefs.pref_toolbar_active_icon_color);
     setCssVar(

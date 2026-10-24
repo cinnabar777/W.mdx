@@ -80,12 +80,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     uri != null &&
                     uri == renameRequest.uri
                 ) {
-                    val grantedFlags = resultIntent.flags
+                    val grantedFlags = resultIntent?.flags ?: 0
                     persistDocumentUriPermission(uri, grantedFlags)
                     if (hasWriteUriPermission(uri)) {
                         renameCurrentDocument(renameRequest.targetName)
                     } else {
-                        launchRenameSaveAs(renameRequest.targetName)
+                        offerSaveAsRenameFallback(renameRequest.targetName)
                     }
                 } else {
                     updateTitle()
@@ -104,7 +104,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 openFile(
                     uri,
                     forceReload = true,
-                    permissionFlags = resultIntent.flags
+                    permissionFlags = resultIntent?.flags ?: 0
                 )
             }
         }
@@ -509,8 +509,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 if (!cursor.moveToFirst() || flagsColumn < 0) {
                     null
                 } else {
-                    cursor.getLong(flagsColumn).toInt() and
-                        android.provider.DocumentsContract.Document.FLAG_SUPPORTS_RENAME != 0
+                    (
+                        cursor.getLong(flagsColumn).toInt() and
+                            android.provider.DocumentsContract.Document.FLAG_SUPPORTS_RENAME
+                    ) != 0
                 }
             }
         }.getOrNull()

@@ -93,8 +93,9 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   ].join('\n'));
   window.editorBridge.setDocumentTitle('Guide.md', 'doc-1');
   window.editorBridge.setDocumentHistoryState(false, false);
-  window.editorBridge.applyAllPreferences({
+  const tocPreferences = {
     pref_toc_panel_width: 78,
+    pref_toolbar_bg_color: '#80112233',
     pref_toc_panel_bg_color: '#112233',
     pref_toc_panel_bg_opacity: 72,
     pref_toc_font_size: 18,
@@ -106,9 +107,23 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     pref_toc_row_spacing: 6,
     pref_toc_indent_spacing: 10,
     pref_toc_text_overflow: 'wrap'
+  };
+  window.editorBridge.applyAllPreferences({
+    ...tocPreferences,
+    pref_toc_panel_width: 100
   });
+  assert.equal(
+    document.documentElement.style.getPropertyValue('--toc-panel-width'),
+    '90vw',
+    'saved widths from older versions are capped at 90% of the viewport'
+  );
+  window.editorBridge.applyAllPreferences(tocPreferences);
   const rootStyles = document.documentElement.style;
   assert.equal(rootStyles.getPropertyValue('--toc-panel-width'), '78vw');
+  assert.match(
+    rootStyles.getPropertyValue('--toolbar-bg'),
+    /^rgba\(17, 34, 51, 0\.5019/
+  );
   assert.equal(rootStyles.getPropertyValue('--toc-panel-bg-opacity'), '72%');
   assert.equal(rootStyles.getPropertyValue('--toc-font-size'), '18px');
   assert.equal(rootStyles.getPropertyValue('--toc-font-weight'), '650');
