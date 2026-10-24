@@ -854,15 +854,15 @@ open class ResetSeekBarPreference : SeekBarPreference, ResettablePreference {
 
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
-        if (Regex("^pref_heading_[1-6]_(?!settings_toggle$).+").matches(key ?: "")) {
-            val density = context.resources.displayMetrics.density
-            holder.itemView.setPadding(
-                (4 * density).toInt(),
-                holder.itemView.paddingTop,
-                (8 * density).toInt(),
-                holder.itemView.paddingBottom
-            )
-        }
+        // Match the shared custom preference row's trailing inset so this
+        // fixed-width reset control lines up with the other preference types.
+        val density = context.resources.displayMetrics.density
+        holder.itemView.setPadding(
+            (4 * density).toInt(),
+            holder.itemView.paddingTop,
+            (8 * density).toInt(),
+            holder.itemView.paddingBottom
+        )
         PreferenceResetHelper.bindResetButton(holder, this)
     }
     override fun callNotifyChanged() {
