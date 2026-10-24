@@ -271,7 +271,10 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
 
   document.querySelector('#toc-history-forward').click();
   const childToggle = contents.querySelector('.toc-item.level-2 .toc-toggle');
+  const rootToggle = contents.querySelector('.toc-item.level-1 .toc-toggle');
   document.querySelector('#toc-global-toggle').click();
+  assert.equal(rootToggle.textContent, '+');
+  assert.equal(rootToggle.classList.contains('is-collapsed'), true);
   assert.equal(childToggle.textContent, '+');
   assert.equal(childToggle.classList.contains('is-collapsed'), true);
   assert.equal(childToggle.getAttribute('aria-pressed'), 'true');

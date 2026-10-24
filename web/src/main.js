@@ -5081,14 +5081,23 @@ function setupTocGestureAndPanel() {
   function applyTocCollapseState() {
     if (!tocContent) return;
     const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
+    const hasDescendantHeading = (rowIndex) => {
+      const level = parseInt(itemRows[rowIndex].dataset.level, 10) || 1;
+      for (let childIndex = rowIndex + 1; childIndex < itemRows.length; childIndex++) {
+        const childLevel = parseInt(itemRows[childIndex].dataset.level, 10) || 1;
+        if (childLevel <= level) break;
+        return true;
+      }
+      return false;
+    };
 
     if (isAllCollapsed) {
-      itemRows.forEach(row => {
+      itemRows.forEach((row, rowIndex) => {
         const level = parseInt(row.dataset.level, 10) || 1;
         const toggle = row.querySelector('.toc-toggle');
         row.style.display = level > 1 ? 'none' : 'flex';
         if (toggle) {
-          const isCollapsed = level > 1;
+          const isCollapsed = level > 1 || hasDescendantHeading(rowIndex);
           toggle.textContent = isCollapsed ? '+' : '-';
           toggle.classList.toggle('is-collapsed', isCollapsed);
           toggle.setAttribute('aria-pressed', String(isCollapsed));

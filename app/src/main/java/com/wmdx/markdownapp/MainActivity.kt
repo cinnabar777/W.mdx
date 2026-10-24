@@ -499,6 +499,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             addFlags(
                 android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PREFIX_URI_PERMISSION or
                     android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
             )
             val initialFolder = runCatching {
