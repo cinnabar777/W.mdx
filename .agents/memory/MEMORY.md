@@ -1,2 +1,3 @@
 - [Collaborative code fixes](collaborative-code-fixes.md) — clarify the observed symptom and scope before uncertain UI/settings fixes; avoid speculative changes.
 - [Android heading preference inheritance](android-heading-preferences.md) — AndroidX can persist displayed defaults; keep inherited heading values out of saved overrides.
+- [Branch-tip comparisons](branch-tip-comparisons.md) — compare branch contents directly; merge-base diffs can mislabel already-ported code as missing.
