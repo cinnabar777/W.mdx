@@ -786,15 +786,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .setMessage(
                 "$message Grant access to just the current file or to its containing folder. A copy can be saved if the provider does not support renaming.$downloadsNote"
             )
-            .setItems(arrayOf("Grant access to this file", "Choose containing folder", "Save As")) { _, which ->
-                when (which) {
-                    0 -> launchRenameFilePicker(request.uri, request.targetName)
-                    1 -> launchRenameFolderPicker(request.uri, request.targetName)
-                    2 -> launchRenameSaveAs(request.targetName)
-                }
+            .setPositiveButton("Grant File Access") { _, _ ->
+                launchRenameFilePicker(request.uri, request.targetName)
             }
-            .setNegativeButton("Cancel") { _, _ ->
+            .setNeutralButton("Choose Folder") { _, _ ->
+                launchRenameFolderPicker(request.uri, request.targetName)
+            }
+            .setNegativeButton("Save As") { _, _ ->
                 updateTitle()
+                launchRenameSaveAs(request.targetName)
             }
             .setOnCancelListener { updateTitle() }
             .show()

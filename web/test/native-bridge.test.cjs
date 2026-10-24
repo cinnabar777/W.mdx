@@ -53,6 +53,17 @@ test('document rename supports exact-file access when Android blocks folder sele
   assert.ok(mainActivitySource.includes('handleRenameFileSelection(result.resultCode, result.data)'));
   assert.ok(mainActivitySource.includes('isSameDocumentUri(request.uri, selectedUri)'));
   assert.ok(mainActivitySource.includes('renameCurrentDocument(request.targetName, selectedUri)'));
-  assert.ok(mainActivitySource.includes('Grant access to this file'));
   assert.ok(mainActivitySource.includes('Android blocks selecting the Downloads folder itself'));
+});
+
+test('rename access dialog renders file, folder, and Save As buttons alongside its explanation', () => {
+  const start = mainActivitySource.indexOf('private fun showRenameAccessOptions(');
+  const end = mainActivitySource.indexOf('private fun remapDocumentNavigationHistory(', start);
+  const dialog = mainActivitySource.slice(start, end);
+
+  assert.ok(dialog.includes('.setMessage('));
+  assert.ok(dialog.includes('.setPositiveButton("Grant File Access")'));
+  assert.ok(dialog.includes('.setNeutralButton("Choose Folder")'));
+  assert.ok(dialog.includes('.setNegativeButton("Save As")'));
+  assert.ok(!dialog.includes('.setItems('), 'a message and item list hide one another in Android AlertDialogs');
 });
