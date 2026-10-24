@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 test('TOC headings use Markdown structure and ignore fenced code', async () => {
   const { extractTocHeadings } = await import('../src/tocHeadings.js');
@@ -40,4 +42,26 @@ test('TOC heading extraction handles empty text and CRLF line endings', async ()
   assert.deepEqual(extractTocHeadings('Text\r\n===\r\n'), [
     { level: 1, title: 'Text', lineIndex: 0 }
   ]);
+});
+
+test('TOC expansion controls are adjustable and reset to the H2, one-level defaults', () => {
+  const preferencesXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_toc.xml'),
+    'utf8'
+  );
+  const resetPreferences = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
+    'utf8'
+  );
+
+  assert.match(
+    preferencesXml,
+    /app:key="pref_toc_default_level"[\s\S]*?app:min="1"[\s\S]*?android:max="6"[\s\S]*?app:defaultValue="2"/
+  );
+  assert.match(
+    preferencesXml,
+    /app:key="pref_toc_expand_levels_per_tap"[\s\S]*?app:min="1"[\s\S]*?android:max="5"[\s\S]*?app:defaultValue="1"/
+  );
+  assert.match(resetPreferences, /key == "pref_toc_default_level" -> 2/);
+  assert.match(resetPreferences, /key == "pref_toc_expand_levels_per_tap" -> 1/);
 });

@@ -1,5 +1,6 @@
 - [Collaborative code fixes](collaborative-code-fixes.md) — clarify the observed symptom and scope before uncertain UI/settings fixes; avoid speculative changes.
-- [Folder-scoped file access](folder-scoped-file-access.md) — request storage access only to folders the user explicitly chooses; never request broad device-wide access.
+- [Folder-scoped file access](folder-scoped-file-access.md) — retry file operations through a user-selected folder, never broad device-wide access.
+- [TOC panel behavior](toc-panel-behavior.md) — follow the visible heading, start through H2, and keep only the active path expanded.
 - [Color picker alpha](color-picker-alpha.md) — choosing a hue or saturation/value updates RGB while preserving the current opacity, including 00.
 - [Android heading preference inheritance](android-heading-preferences.md) — AndroidX can persist displayed defaults; keep inherited heading values out of saved overrides.
 - [SeekBar reset alignment](seekbar-reset-alignment.md) — AndroidX’s inner end padding, not margins, misaligned reset icons; clearing it was confirmed to fix alignment.
