@@ -64,8 +64,14 @@ test('document rename supports exact-file access when Android blocks folder sele
   assert.ok(mainActivitySource.includes('Intent.ACTION_OPEN_DOCUMENT'));
   assert.ok(mainActivitySource.includes('EXTRA_INITIAL_URI, uri'));
   assert.ok(mainActivitySource.includes('handleRenameFileSelection(result.resultCode, result.data)'));
-  assert.ok(mainActivitySource.includes('isSameDocumentUri(request.uri, selectedUri)'));
-  assert.ok(mainActivitySource.includes('renameCurrentDocument(request.targetName, selectedUri)'));
+  assert.ok(mainActivitySource.includes('isSameDocumentSelection(request.uri, selectedUri)'));
+  assert.ok(mainActivitySource.includes('offerFolderFallback = true'));
+  assert.ok(mainActivitySource.includes('queryRenameDocumentMetadata'));
+  const handlerStart = mainActivitySource.indexOf('private fun handleRenameFileSelection(');
+  const handlerEnd = mainActivitySource.indexOf('private data class RenameDocumentMetadata', handlerStart);
+  const handler = mainActivitySource.slice(handlerStart, handlerEnd);
+  assert.ok(!handler.includes('hasWriteUriPermission(selectedUri)'));
+  assert.ok(handler.includes('The picker did not return a file.'));
   assert.ok(mainActivitySource.includes('Android blocks selecting the Downloads folder itself'));
 });
 
