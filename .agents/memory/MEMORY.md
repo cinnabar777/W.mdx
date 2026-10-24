@@ -1,3 +1,4 @@
 - [Collaborative code fixes](collaborative-code-fixes.md) — clarify the observed symptom and scope before uncertain UI/settings fixes; avoid speculative changes.
+- [Rendered-editor scrolling](rendered-editor-scrolling.md) — Mobile jumps are concentrated in the rich Markdown cheat sheet and correlate with CodeMirror virtual spacer changes.
 - [Android heading preference inheritance](android-heading-preferences.md) — AndroidX can persist displayed defaults; keep inherited heading values out of saved overrides.
 - [SeekBar reset alignment](seekbar-reset-alignment.md) — AndroidX’s inner end padding, not margins, misaligned reset icons; clearing it was confirmed to fix alignment.
