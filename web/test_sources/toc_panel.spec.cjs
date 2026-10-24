@@ -201,6 +201,11 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     ['Overview', 'First child', 'Second child', 'Setext section', 'Current location', 'Final leaf'],
     'opening the TOC shows through H2 while keeping deeper sections collapsed'
   );
+  assert.equal(
+    rowFor('Overview').classList.contains('active-section'),
+    true,
+    'the first heading is active when the document opens at its top'
+  );
 
   const firstChildToggle = rowFor('First child').querySelector('.toc-toggle');
   assert.equal(firstChildToggle.textContent, '+');
@@ -334,7 +339,18 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     top: 0, bottom: 600, left: 0, right: 390, width: 390, height: 600
   });
   let visiblePosition = editorView.state.selection.main.head;
-  editorView.posAtCoords = () => visiblePosition;
+  let activeSampleY = null;
+  let enforceThirtyPercentBoundary = false;
+  const previousHeadingPosition = editorView.state.doc.lineAt(
+    editorView.state.doc.toString().indexOf('Current location')
+  ).from;
+  editorView.posAtCoords = ({ y }) => {
+    activeSampleY = y;
+    if (enforceThirtyPercentBoundary && y < 186) {
+      return previousHeadingPosition;
+    }
+    return visiblePosition;
+  };
   const moveViewportToHeading = async (title, rowTop) => {
     const row = rowFor(title);
     row.getBoundingClientRect = () => ({
@@ -347,6 +363,7 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     });
     const line = editorView.state.doc.toString().indexOf(title);
     visiblePosition = editorView.state.doc.lineAt(line).from;
+    scrollDOM.scrollTop = 200;
     editorView.dispatch({ selection: { anchor: 0 } });
     scrollDOM.dispatchEvent(new dom.window.Event('scroll'));
     await new Promise(resolve => setTimeout(resolve, 20));
@@ -358,12 +375,14 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     'scrolling into a deep heading expands its parent path'
   );
   assert.equal(contents.scrollTop, 400, 'the active heading is centered in the overflowing TOC');
+  enforceThirtyPercentBoundary = true;
   await moveViewportToHeading('Final leaf', 80);
   assert.equal(
     rowFor('Final leaf').classList.contains('active-section'),
     true,
-    'the highlighted heading follows the visible viewport, not the text cursor'
+    'the heading positioned at 30% of the viewport is the active heading'
   );
+  assert.equal(activeSampleY, 188, 'the active sample point matches the 30% heading landing position');
   assert.equal(
     rowFor('Grandchild').style.display,
     'none',
@@ -380,6 +399,7 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
       top: 0, bottom: 600, left: 0, right: 390, width: 390, height: 600
     });
     modeView.posAtCoords = () => finalHeadingPosition;
+    modeView.scrollDOM.scrollTop = 200;
     modeView.scrollDOM.dispatchEvent(new dom.window.Event('scroll'));
     await new Promise(resolve => setTimeout(resolve, 150));
     assert.equal(

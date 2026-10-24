@@ -89,6 +89,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             handleRenameFolderSelection(result.resultCode, result.data)
         }
 
+    private val renameFileAccessLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            handleRenameFileSelection(result.resultCode, result.data)
+        }
+
     private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         if (uri != null) {
             pendingRenameFallbackName = null
@@ -524,25 +529,49 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         renameFolderLauncher.launch(intent)
     }
 
+    private fun launchRenameFilePicker(uri: Uri, targetName: String) {
+        pendingRenamePermissionRequest = RenameAccessRequest(uri, targetName)
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+            if (uri.scheme == "content" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, uri)
+            }
+        }
+        renameFileAccessLauncher.launch(intent)
+    }
+
     private fun handleRenameFolderSelection(
         resultCode: Int,
         resultIntent: android.content.Intent?
     ) {
         val request = pendingRenamePermissionRequest ?: return
         pendingRenamePermissionRequest = null
-        val treeUri = resultIntent?.data
-        if (resultCode != android.app.Activity.RESULT_OK || treeUri == null) {
+        val selectedIntent = resultIntent
+        if (resultCode != android.app.Activity.RESULT_OK || selectedIntent == null) {
             updateTitle()
+            showRenameAccessOptions(request, "No folder access was selected.")
+            return
+        }
+        val treeUri = selectedIntent.data
+        if (treeUri == null) {
+            updateTitle()
+            showRenameAccessOptions(request, "No folder access was selected.")
             return
         }
 
-        val grantedFlags = resultIntent.flags
+        val grantedFlags = selectedIntent.flags
         val readWriteFlags =
             android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                 android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         val persistableFlags = grantedFlags and readWriteFlags
         if (persistableFlags != readWriteFlags) {
-            showRenameFolderSelectionError(
+            showRenameAccessOptions(
                 request,
                 "Android did not grant write access to that folder."
             )
@@ -553,7 +582,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             it.uri == treeUri && it.isReadPermission && it.isWritePermission
         }
         if (!hasPersistedTreeWritePermission) {
-            showRenameFolderSelectionError(
+            showRenameAccessOptions(
                 request,
                 "Android did not allow the folder permission to be saved for later."
             )
@@ -563,13 +592,72 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val treeScopedDocumentUri = resolveRenameTargetInTree(treeUri, request.uri)
         if (treeScopedDocumentUri == null) {
             releasePersistedTreePermission(treeUri, persistableFlags)
-            showRenameFolderSelectionError(
+            showRenameAccessOptions(
                 request,
                 "Select the folder that contains the currently open file. For files in a subfolder, choose that subfolder."
             )
             return
         }
         renameCurrentDocument(request.targetName, treeScopedDocumentUri)
+    }
+
+    private fun handleRenameFileSelection(
+        resultCode: Int,
+        resultIntent: android.content.Intent?
+    ) {
+        val request = pendingRenamePermissionRequest ?: return
+        pendingRenamePermissionRequest = null
+        val selectedIntent = resultIntent
+        if (resultCode != android.app.Activity.RESULT_OK || selectedIntent == null) {
+            updateTitle()
+            return
+        }
+        val selectedUri = selectedIntent.data
+        if (selectedUri == null) {
+            updateTitle()
+            return
+        }
+
+        val grantedFlags = selectedIntent.flags
+        val readWriteFlags =
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        if ((grantedFlags and readWriteFlags) != readWriteFlags) {
+            showRenameAccessOptions(
+                request,
+                "Android did not grant write access to the selected file."
+            )
+            return
+        }
+
+        persistDocumentUriPermission(selectedUri, grantedFlags)
+        if (!hasWriteUriPermission(selectedUri)) {
+            showRenameAccessOptions(
+                request,
+                "Android did not grant permission to modify the selected file."
+            )
+            return
+        }
+        if (!isSameDocumentUri(request.uri, selectedUri)) {
+            showRenameAccessOptions(
+                request,
+                "Select the exact file that is currently open."
+            )
+            return
+        }
+
+        renameCurrentDocument(request.targetName, selectedUri)
+    }
+
+    private fun isSameDocumentUri(first: Uri, second: Uri): Boolean {
+        if (first == second) return true
+        if (first.authority.isNullOrBlank() || first.authority != second.authority) return false
+        return runCatching {
+            android.provider.DocumentsContract.isDocumentUri(this, first) &&
+                android.provider.DocumentsContract.isDocumentUri(this, second) &&
+                android.provider.DocumentsContract.getDocumentId(first) ==
+                android.provider.DocumentsContract.getDocumentId(second)
+        }.getOrDefault(false)
     }
 
     private fun resolveRenameTargetInTree(treeUri: Uri, sourceUri: Uri): Uri? {
@@ -683,23 +771,32 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun showRenameFolderSelectionError(
+    private fun showRenameAccessOptions(
         request: RenameAccessRequest,
         message: String
     ) {
         updateTitle()
+        val downloadsNote = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            " On Android 11 and later, Android blocks selecting the Downloads folder itself; choose the current file to grant access only to that file."
+        } else {
+            ""
+        }
         AlertDialog.Builder(this)
-            .setTitle("Folder access not granted")
-            .setMessage("$message You can choose the folder again or save a copy instead.")
-            .setPositiveButton("Choose Folder") { _, _ ->
-                launchRenameFolderPicker(request.uri, request.targetName)
-            }
-            .setNeutralButton("Save As") { _, _ ->
-                launchRenameSaveAs(request.targetName)
+            .setTitle("Choose access for renaming")
+            .setMessage(
+                "$message Grant access to just the current file or to its containing folder. A copy can be saved if the provider does not support renaming.$downloadsNote"
+            )
+            .setItems(arrayOf("Grant access to this file", "Choose containing folder", "Save As")) { _, which ->
+                when (which) {
+                    0 -> launchRenameFilePicker(request.uri, request.targetName)
+                    1 -> launchRenameFolderPicker(request.uri, request.targetName)
+                    2 -> launchRenameSaveAs(request.targetName)
+                }
             }
             .setNegativeButton("Cancel") { _, _ ->
                 updateTitle()
             }
+            .setOnCancelListener { updateTitle() }
             .show()
     }
 
@@ -1179,25 +1276,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun offerRenamePermissionRecovery(uri: Uri, targetName: String) {
-        updateTitle()
-        AlertDialog.Builder(this)
-            .setTitle("Folder access needed")
-            .setMessage(
-                "This storage provider needs permission to the folder containing this document before it will rename the file. Choose that folder only; the app will not request device-wide file access. If renaming is still unsupported, you can save a copy instead."
-            )
-            .setPositiveButton("Choose Folder") { _, _ ->
-                launchRenameFolderPicker(uri, targetName)
-            }
-            .setNeutralButton("Save As") { _, _ ->
-                launchRenameSaveAs(targetName)
-            }
-            .setNegativeButton("Cancel") { _, _ ->
-                updateTitle()
-            }
-            .setOnCancelListener {
-                updateTitle()
-            }
-            .show()
+        showRenameAccessOptions(
+            RenameAccessRequest(uri, targetName),
+            "This storage provider needs permission before it will rename the file."
+        )
     }
 
     private fun renameCurrentDocument(requestedName: String, renameUri: Uri? = null) {
