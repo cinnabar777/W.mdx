@@ -593,9 +593,19 @@ class CalloutTitleWidget extends WidgetType {
           });
 
           if (isFoldedNow) {
-            view.dispatch({ effects: unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
+            view.dispatch({
+              effects: [
+                unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }),
+                heightMapRefreshEffect.of(null)
+              ]
+            });
           } else {
-            view.dispatch({ effects: foldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
+            view.dispatch({
+              effects: [
+                foldEffect.of({ from: this.foldFrom, to: this.foldTo }),
+                heightMapRefreshEffect.of(null)
+              ]
+            });
           }
         }
       };
@@ -1618,7 +1628,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         if (info.foldMarker === '-' && !isCurrentlyFolded && !this.initializedFoldLines.has(info.bodyFrom)) {
           this.initializedFoldLines.add(info.bodyFrom);
           Promise.resolve().then(() => {
-            view.dispatch({ effects: foldEffect.of({ from: info.bodyFrom, to: info.bodyTo }) });
+            view.dispatch({
+              effects: [
+                foldEffect.of({ from: info.bodyFrom, to: info.bodyTo }),
+                heightMapRefreshEffect.of(null)
+              ]
+            });
           });
         }
       }
