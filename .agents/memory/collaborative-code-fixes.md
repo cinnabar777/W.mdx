@@ -14,3 +14,9 @@ For settings reset controls, reserve one consistent fixed-width slot at the far 
 **Why:** The user explicitly confirmed this layout after previous reset icons shifted between slider and non-slider rows.
 
 **How to apply:** Keep each reset icon in the same trailing column; do not position it immediately after a variable-width control. For slider rows, inspect and remove the built-in inner trailing margin while preserving the shared outer inset, then verify on a device screenshot.
+
+For text selection, CodeMirror's custom `drawSelection` layer can fill the remaining line width after a selected line break, so the visible blue area may extend beyond the exact copied characters. Keep inline-code and code-block backgrounds visible underneath selection; only the selected text should receive the highlight.
+
+**Why:** The user reported that copied text was correct even though the selection overlay appeared indented and overran the final line.
+
+**How to apply:** Distinguish clipboard range from selection paint. If the full-width overlay is unwanted, preserve CodeMirror's cursor layer while making its selection rectangles transparent and restoring scoped native `::selection` styling; verify on the target device.

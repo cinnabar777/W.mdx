@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Paragraph &amp; Body Typography">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_body_font_size"
+            app:title="Body Text Size (px)"
+            app:summary="Font size for regular paragraph text"
+            app:min="12"
+            android:max="32"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_paragraph_line_height"
+            app:title="Paragraph Line Height"
+            app:summary="Line height multiplier (e.g. 1.6 or default)"
+            app:defaultValue="1.6" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_letter_spacing"
+            app:title="Paragraph Letter Spacing (px)"
+            app:summary="Letter spacing for regular paragraph text only (e.g. 0.5px or 0px)"
+            app:defaultValue="0px" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_font_file_body"
+            app:title="Body / Paragraph Font File"
+            app:summary="Tap to pick a font file (.ttf, .otf, .woff, .woff2)" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Alignment &amp; Indentation">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_paragraph_align"
+            app:title="Paragraph Text Alignment"
+            app:summary="Align paragraph text (left, center, right, justify)"
+            android:entries="@array/align_entries"
+            android:entryValues="@array/align_values"
+            android:defaultValue="left" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_paragraph_first_line_indent"
+            app:title="First-Line Indent (px)"
+            app:summary="Indent for first line of each paragraph"
+            app:min="0"
+            android:max="40"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_justify_paragraph"
+            app:title="Justify Paragraph Text Only"
+            app:summary="Align paragraph text to both left and right margins"
+            android:defaultValue="false" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Margins &amp; Wrapping">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_body_margin_left"
+            app:title="Body Left Margin (px)"
+            app:summary="Space between document edge and paragraph body text"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_body_margin_right"
+            app:title="Body Right Margin (px)"
+            app:summary="Space between document edge and paragraph body text"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_paragraph_margin_top"
+            app:title="Top Margin (px)"
+            app:summary="Spacing above paragraph elements"
+            app:min="0"
+            android:max="30"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_paragraph_margin_bottom"
+            app:title="Bottom Margin (px)"
+            app:summary="Spacing below paragraph elements"
+            app:min="0"
+            android:max="30"
+            app:defaultValue="8"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_line_wrap"
+            app:title="Enable Line Wrap"
+            app:summary="When disabled, lines will not wrap and horizontally scroll"
+            android:defaultValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

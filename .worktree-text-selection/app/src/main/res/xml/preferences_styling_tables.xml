@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Margins">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_table_margin_left"
+            app:title="Table Left Margin (px)"
+            app:summary="Space between document edge and tables"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_table_margin_right"
+            app:title="Table Right Margin (px)"
+            app:summary="Space between document edge and tables"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Borders">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_table_border_style"
+            app:title="Table Border Style"
+            app:summary="Border style for tables and cells"
+            android:entries="@array/border_style_entries"
+            android:entryValues="@array/border_style_values"
+            android:defaultValue="solid" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_table_border_thickness"
+            app:title="Table Border Thickness (px)"
+            app:summary="Border thickness for table cells"
+            app:min="1"
+            android:max="10"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_border_color"
+            app:title="Table Border Color"
+            app:summary="Tap to select border color or default"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Header Row">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_header_bg_color"
+            app:title="Header Row Background Color"
+            app:summary="Background color for table header cells"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_header_text_color"
+            app:title="Header Text Color"
+            app:summary="Text color for table header cells"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_table_header_font_weight"
+            app:title="Header Text Font Weight"
+            app:summary="Font weight for table header text (100-900)"
+            app:min="100"
+            android:max="900"
+            app:defaultValue="700"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Cells &amp; Padding">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_cell_bg_color"
+            app:title="Cell Background Color"
+            app:summary="Background color for regular table cells"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_cell_text_color"
+            app:title="Cell Text Color"
+            app:summary="Text color for regular table cells"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_table_cell_padding"
+            app:title="Cell Padding (px)"
+            app:summary="Padding inside table cells"
+            app:min="2"
+            android:max="20"
+            app:defaultValue="8"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Action Menu Styling">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_bg_color"
+            app:title="Menu Surface Color"
+            app:summary="Background color for long-press table action menu"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_action_bg_color"
+            app:title="Action Button Background"
+            app:summary="Background color for menu buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_text_color"
+            app:title="Action Button Text Color"
+            app:summary="Text color for enabled menu action buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_disabled_color"
+            app:title="Disabled Action Text Color"
+            app:summary="Text/icon color for disabled menu actions (e.g. unmerged split)"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_table_menu_pressed_bg_color"
+            app:title="Pressed / Active State Background"
+            app:summary="Background color when pressing or selecting a menu action"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

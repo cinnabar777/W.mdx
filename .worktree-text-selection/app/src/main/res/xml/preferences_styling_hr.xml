@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Horizontal Dividers Settings">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_hr_thickness"
+            app:title="Line Thickness (px)"
+            app:summary="Thickness of horizontal dividers"
+            android:defaultValue="2"
+            app:min="1"
+            android:max="20"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_hr_style"
+            app:title="Line Style"
+            app:summary="Border style for horizontal dividers"
+            android:entries="@array/border_style_entries"
+            android:entryValues="@array/border_style_values"
+            android:defaultValue="solid" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_hr_color"
+            app:title="Line Color"
+            app:summary="Color of horizontal dividers"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_hr_margin_left"
+            app:title="Horizontal Rule Left Margin (%)"
+            app:summary="Left-side space as a percentage of available width"
+            app:min="0"
+            android:max="50"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_hr_margin_right"
+            app:title="Horizontal Rule Right Margin (%)"
+            app:summary="Right-side space as a percentage of available width"
+            app:min="0"
+            android:max="50"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_hr_centered"
+            app:title="Center Horizontal Rule"
+            app:summary="Center the line within the available document width"
+            android:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_hr_width_percent"
+            app:title="Line Width (%)"
+            app:summary="Width percentage relative to document width"
+            android:defaultValue="100"
+            app:min="10"
+            android:max="100"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_hr_margin_top"
+            app:title="Top Margin (px)"
+            app:summary="Spacing above horizontal dividers"
+            android:defaultValue="16"
+            app:min="0"
+            android:max="40"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_hr_margin_bottom"
+            app:title="Bottom Margin (px)"
+            app:summary="Spacing below horizontal dividers"
+            android:defaultValue="16"
+            app:min="0"
+            android:max="40"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

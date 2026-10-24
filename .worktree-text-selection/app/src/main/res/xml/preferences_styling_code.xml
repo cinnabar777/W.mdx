@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Code Block Styling">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_color"
+            app:title="Code Block Text Color"
+            app:summary="Tap to select text color for code blocks or default"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_bg_color"
+            app:title="Code Block Background Color"
+            app:summary="Tap to select background color for code blocks or default"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_code_block_font_size"
+            app:title="Code Block Text Size (px)"
+            app:summary="Font size for code inside fenced code blocks"
+            app:min="8"
+            android:max="32"
+            app:defaultValue="14"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_code_block_margin_left"
+            app:title="Code Block Left Margin (px)"
+            app:summary="Space between document edge and code blocks"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_code_block_margin_right"
+            app:title="Code Block Right Margin (px)"
+            app:summary="Space between document edge and code blocks"
+            app:min="0"
+            android:max="80"
+            app:defaultValue="0"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_code_block_padding"
+            app:title="Code Block Padding (px)"
+            app:summary="Inside padding for code blocks"
+            app:min="8"
+            android:max="32"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_code_block_border_radius"
+            app:title="Code Block Border Radius (px)"
+            app:summary="Corner radius for code blocks"
+            app:min="0"
+            android:max="16"
+            app:defaultValue="6"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_code_block_line_height"
+            app:title="Code Block Line Height"
+            app:summary="Line height multiplier for code blocks (e.g. 1.4 or default)"
+            app:defaultValue="1.4" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_lang_label_color"
+            app:title="Language Label Text Color"
+            app:summary="Text color for the top-left language label"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_text_bg_color"
+            app:title="Code Text Background Color"
+            app:summary="Background directly behind code text, separate from the full block"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_label_bg_color"
+            app:title="Language Label Background Color"
+            app:summary="Background behind the language label and copy button"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_copy_bg_color"
+            app:title="Copy Button Background Color"
+            app:summary="Background color for the code copy button"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_copy_text_color"
+            app:title="Copy Button Text Color"
+            app:summary="Text color for the code copy button"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_code_block_border_color"
+            app:title="Code Block Border Color"
+            app:summary="One shared border color for the code block, label, and copy button"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>
