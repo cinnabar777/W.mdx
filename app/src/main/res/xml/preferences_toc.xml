@@ -43,6 +43,26 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Navigation">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_default_level"
+            app:title="Default Visible Heading Level"
+            app:summary="Show headings through this level when a document opens"
+            app:min="1"
+            android:max="6"
+            app:defaultValue="2"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_expand_levels_per_tap"
+            app:title="Levels to Expand per Tap"
+            app:summary="How many deeper heading levels each plus control reveals"
+            app:min="1"
+            android:max="5"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC History Arrows">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_toc_history_bg_color"
@@ -104,7 +124,7 @@
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_toc_active_text_color"
             app:title="Active Heading Color"
-            app:summary="Text color for the heading at the current cursor position"
+            app:summary="Text color for the heading currently in view"
             app:defaultValue="#FFFF00" />
 
         <com.wmdx.markdownapp.ResetColorPickerPreference

@@ -321,6 +321,8 @@ object PreferenceResetHelper {
             key == "pref_toolbar_height" -> 48
             key == "pref_app_theme" -> "amoled"
             key == "pref_toc_panel_width" -> 80
+            key == "pref_toc_default_level" -> 2
+            key == "pref_toc_expand_levels_per_tap" -> 1
             key == "pref_toc_hide_file_extension" -> false
             key == "pref_toc_panel_bg_color" -> "default"
             key == "pref_toc_panel_bg_opacity" -> 100

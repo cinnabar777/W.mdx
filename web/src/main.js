@@ -745,6 +745,16 @@ export function scrollToPositionUpperMiddle(view, pos, options = {}) {
 const tocNavigationByDocument = new Map();
 let activeTocDocumentKey = 'untitled';
 let tocDocumentHistoryState = { canGoBack: false, canGoForward: false };
+let tocDefaultHeadingLevel = 2;
+let tocExpandLevelsPerTap = 1;
+const tocExpansionState = {
+  documentKey: 'untitled',
+  collapsedHeadingKeys: new Set(),
+  isAllCollapsed: false,
+  initialized: false,
+  activeHeadingKey: null,
+  centerOnNextUpdate: false
+};
 
 function getTocNavigationHistory() {
   if (!tocNavigationByDocument.has(activeTocDocumentKey)) {
@@ -774,7 +784,17 @@ function updateTocHistoryButtons() {
 }
 
 function setActiveTocDocumentKey(key) {
-  activeTocDocumentKey = key || 'untitled';
+  const nextKey = key || 'untitled';
+  if (nextKey !== activeTocDocumentKey) {
+    activeTocDocumentKey = nextKey;
+    tocExpansionState.documentKey = nextKey;
+    tocExpansionState.collapsedHeadingKeys.clear();
+    tocExpansionState.isAllCollapsed = false;
+    tocExpansionState.initialized = false;
+    tocExpansionState.activeHeadingKey = null;
+    tocExpansionState.centerOnNextUpdate = true;
+    refreshOpenTocPanel?.();
+  }
   updateTocHistoryButtons();
 }
 
@@ -3433,7 +3453,6 @@ class CodeMirrorAdapter {
     });
 
     this.view.scrollDOM.style.overflowAnchor = 'auto';
-
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
     this.visibilityPersistHandler = () => {
       if (document.visibilityState === 'hidden') this.persistScrollPosition();
@@ -3495,7 +3514,7 @@ class CodeMirrorAdapter {
         setupGroupedControlBar();
     initCustomSearchBar();
     this.fastScrollbarCleanup = setupFastScrollbar();
-    this.tocGestureCleanup = setupTocGestureAndPanel();
+    this.tocGestureCleanup = setupTocGestureAndPanel(this.view.scrollDOM);
 
     this.scheduleSyntaxRefresh();
   }
@@ -3652,6 +3671,15 @@ async function setEditorMode(mode) {
   const containerEl = document.querySelector('#editor');
   await adapter.init(containerEl, existingText, modeSnapshot);
   activeAdapter = adapter;
+
+  if (document.querySelector('#toc-panel')?.classList.contains('open')) {
+    tocExpansionState.centerOnNextUpdate = true;
+    updateTocActiveSection();
+    refreshOpenTocPanel?.();
+    requestAnimationFrame(() => {
+      if (activeAdapter === adapter) updateTocActiveSection();
+    });
+  }
 
   if (window.AndroidNative && typeof window.AndroidNative.onEditorReady === 'function') {
     window.AndroidNative.onEditorReady(targetMode);
@@ -4791,10 +4819,33 @@ function setupFastScrollbar() {
 
 function updateTocActiveSection() {
   const tocContent = document.querySelector('#toc-content');
-  if (!tocContent || !activeAdapter || !activeAdapter.view) return;
+  const panel = document.querySelector('#toc-panel');
+  if (
+    !tocContent ||
+    !panel?.classList.contains('open') ||
+    !activeAdapter ||
+    !activeAdapter.view
+  ) {
+    return;
+  }
 
-  const sel = activeAdapter.view.state.selection.main;
-  const currentLine = activeAdapter.view.state.doc.lineAt(sel.head).number - 1;
+  const view = activeAdapter.view;
+  const doc = view.state.doc;
+  const scrollRect = view.scrollDOM.getBoundingClientRect();
+  let activePosition = null;
+  if (scrollRect.height > 0 && typeof view.posAtCoords === 'function') {
+    const anchorY = scrollRect.top + Math.min(scrollRect.height * 0.32, 160);
+    const anchorX = scrollRect.left + Math.min(scrollRect.width * 0.12, 24);
+    try {
+      activePosition = view.posAtCoords({ x: anchorX, y: anchorY }, false);
+    } catch (_) {
+      activePosition = null;
+    }
+  }
+  if (!Number.isFinite(activePosition)) {
+    activePosition = view.state.selection.main.head;
+  }
+  const currentLine = doc.lineAt(activePosition).number - 1;
 
   const rows = Array.from(tocContent.querySelectorAll('.toc-item'));
   let activeRow = null;
@@ -4808,27 +4859,35 @@ function updateTocActiveSection() {
   });
 
   if (activeRow) {
+    let activeHeadingChanged = activeRow.dataset.headingKey !== tocExpansionState.activeHeadingKey;
     if (typeof revealActiveTocHeading === 'function') {
-      revealActiveTocHeading(activeRow);
+      activeHeadingChanged = revealActiveTocHeading(activeRow) || activeHeadingChanged;
     }
     activeRow.classList.add('active-section');
 
-    const panel = document.querySelector('#toc-panel');
-    if (!panel?.classList.contains('open')) return;
-
-    const containerRect = tocContent.getBoundingClientRect();
-    const rowRect = activeRow.getBoundingClientRect();
-    if (containerRect.height <= 0 || rowRect.height <= 0) return;
-
-    if (rowRect.top < containerRect.top) {
-      tocContent.scrollTop -= containerRect.top - rowRect.top;
-    } else if (rowRect.bottom > containerRect.bottom) {
-      tocContent.scrollTop += rowRect.bottom - containerRect.bottom;
+    if (activeHeadingChanged || tocExpansionState.centerOnNextUpdate) {
+      const containerRect = tocContent.getBoundingClientRect();
+      const rowRect = activeRow.getBoundingClientRect();
+      if (containerRect.height > 0 && rowRect.height > 0 && tocContent.clientHeight > 0) {
+        const rowCenter = tocContent.scrollTop +
+          rowRect.top -
+          containerRect.top +
+          rowRect.height / 2;
+        const maxScrollTop = Math.max(
+          0,
+          tocContent.scrollHeight - tocContent.clientHeight
+        );
+        tocContent.scrollTop = Math.max(
+          0,
+          Math.min(maxScrollTop, rowCenter - tocContent.clientHeight / 2)
+        );
+      }
     }
+    tocExpansionState.centerOnNextUpdate = false;
   }
 }
 
-function setupTocGestureAndPanel() {
+function setupTocGestureAndPanel(scrollDOM) {
   const win = document.defaultView || window;
   const panel = document.querySelector('#toc-panel');
   const overlay = document.querySelector('#toc-overlay');
@@ -4840,9 +4899,18 @@ function setupTocGestureAndPanel() {
   const historyForwardButton = document.querySelector('#toc-history-forward');
   if (!panel || !overlay) return () => {};
 
-  let isAllCollapsed = false;
-  const collapsedHeadingKeys = new Set();
   let pendingRefreshTimer = null;
+  let tocScrollFrame = null;
+  const tocScrollHandler = () => {
+    if (!panel.classList.contains('open') || tocScrollFrame !== null) return;
+    tocScrollFrame = requestAnimationFrame(() => {
+      tocScrollFrame = null;
+      if (activeAdapter?.view?.scrollDOM === scrollDOM) {
+        updateTocActiveSection();
+      }
+    });
+  };
+  scrollDOM?.addEventListener('scroll', tocScrollHandler, { passive: true });
   const hasDescendantHeading = (rows, rowIndex) => {
     const level = parseInt(rows[rowIndex]?.dataset.level, 10) || 1;
     for (let childIndex = rowIndex + 1; childIndex < rows.length; childIndex++) {
@@ -4895,9 +4963,10 @@ function setupTocGestureAndPanel() {
     if (window.AndroidNative && typeof window.AndroidNative.hideKeyboard === 'function') {
       window.AndroidNative.hideKeyboard();
     }
-    buildTocTree();
     panel.classList.add('open');
     overlay.classList.add('open');
+    tocExpansionState.centerOnNextUpdate = true;
+    buildTocTree();
     updateTocHistoryButtons();
   };
 
@@ -4964,8 +5033,10 @@ function setupTocGestureAndPanel() {
   let globalToggleHandler = null;
   if (globalToggleBtn) {
     globalToggleHandler = () => {
-      isAllCollapsed = !isAllCollapsed;
-      if (!isAllCollapsed) collapsedHeadingKeys.clear();
+      tocExpansionState.isAllCollapsed = !tocExpansionState.isAllCollapsed;
+      if (!tocExpansionState.isAllCollapsed) {
+        tocExpansionState.collapsedHeadingKeys.clear();
+      }
       applyTocCollapseState();
     };
     globalToggleBtn.onclick = globalToggleHandler;
@@ -5017,7 +5088,9 @@ function setupTocGestureAndPanel() {
     const items = extractTocHeadings(activeAdapter.getMarkdown());
 
     if (items.length === 0) {
-      collapsedHeadingKeys.clear();
+      tocExpansionState.collapsedHeadingKeys.clear();
+      tocExpansionState.initialized = false;
+      tocExpansionState.activeHeadingKey = null;
       tocContent.innerHTML = '<div style="padding:16px;color:#888;font-size:14px;">No headings in document.</div>';
       return;
     }
@@ -5030,8 +5103,21 @@ function setupTocGestureAndPanel() {
       return JSON.stringify([item.level, item.title, occurrence]);
     });
     const validKeys = new Set(itemKeys);
-    for (const key of collapsedHeadingKeys) {
-      if (!validKeys.has(key)) collapsedHeadingKeys.delete(key);
+    for (const key of tocExpansionState.collapsedHeadingKeys) {
+      if (!validKeys.has(key)) tocExpansionState.collapsedHeadingKeys.delete(key);
+    }
+    if (!tocExpansionState.initialized) {
+      tocExpansionState.collapsedHeadingKeys.clear();
+      items.forEach((item, index) => {
+        const hasChildren =
+          index + 1 < items.length &&
+          items[index + 1].level > item.level;
+        if (hasChildren && item.level >= tocDefaultHeadingLevel) {
+          tocExpansionState.collapsedHeadingKeys.add(itemKeys[index]);
+        }
+      });
+      tocExpansionState.isAllCollapsed = false;
+      tocExpansionState.initialized = true;
     }
 
     items.forEach((item, index) => {
@@ -5043,44 +5129,53 @@ function setupTocGestureAndPanel() {
 
       const toggleSpan = document.createElement('span');
       toggleSpan.className = 'toc-toggle';
-      const initiallyCollapsed = collapsedHeadingKeys.has(itemKeys[index]);
+      const itemHasChildren =
+        index + 1 < items.length &&
+        items[index + 1].level > item.level;
+      const initiallyCollapsed =
+        tocExpansionState.collapsedHeadingKeys.has(itemKeys[index]);
       toggleSpan.textContent = initiallyCollapsed ? '+' : '-';
       toggleSpan.classList.toggle('is-collapsed', initiallyCollapsed);
       toggleSpan.setAttribute('aria-pressed', String(initiallyCollapsed));
+      toggleSpan.setAttribute('aria-disabled', String(!itemHasChildren));
       toggleSpan.onclick = (e) => {
         e.stopPropagation();
-        if (isAllCollapsed) {
-          const rows = Array.from(tocContent.querySelectorAll('.toc-item'));
-          const clickedIndex = rows.indexOf(itemRow);
-          isAllCollapsed = false;
-          collapsedHeadingKeys.clear();
-          rows.forEach((row, rowIndex) => {
-            if (
-              rowIndex !== clickedIndex &&
-              hasDescendantHeading(rows, rowIndex)
-            ) {
-              collapsedHeadingKeys.add(row.dataset.headingKey);
-            }
-          });
-          applyTocCollapseState();
+        const rows = Array.from(tocContent.querySelectorAll('.toc-item'));
+        const clickedIndex = rows.indexOf(itemRow);
+        if (clickedIndex < 0 || !itemHasChildren) {
           return;
         }
 
-        const nextCollapsed = !collapsedHeadingKeys.has(itemKeys[index]);
-        toggleSpan.textContent = nextCollapsed ? '+' : '-';
-        toggleSpan.classList.toggle('is-collapsed', nextCollapsed);
-        toggleSpan.setAttribute('aria-pressed', String(nextCollapsed));
-        if (nextCollapsed) {
-          collapsedHeadingKeys.add(itemKeys[index]);
-        } else {
-          collapsedHeadingKeys.delete(itemKeys[index]);
+        if (tocExpansionState.isAllCollapsed) {
+          tocExpansionState.isAllCollapsed = false;
+          tocExpansionState.collapsedHeadingKeys.clear();
+          rows.forEach((row, rowIndex) => {
+            if (hasDescendantHeading(rows, rowIndex)) {
+              tocExpansionState.collapsedHeadingKeys.add(row.dataset.headingKey);
+            }
+          });
         }
 
-        let sibling = itemRow.nextElementSibling;
-        while (sibling && (parseInt(sibling.dataset.level, 10) || 1) > item.level) {
-          sibling.style.display = nextCollapsed ? 'none' : 'flex';
-          sibling = sibling.nextElementSibling;
+        const isCurrentlyCollapsed =
+          tocExpansionState.collapsedHeadingKeys.has(itemKeys[index]);
+        if (isCurrentlyCollapsed) {
+          tocExpansionState.collapsedHeadingKeys.delete(itemKeys[index]);
+          const expandThroughLevel = item.level + tocExpandLevelsPerTap;
+          for (let childIndex = clickedIndex + 1; childIndex < rows.length; childIndex++) {
+            const child = rows[childIndex];
+            const childLevel = parseInt(child.dataset.level, 10) || 1;
+            if (childLevel <= item.level) break;
+            if (!hasDescendantHeading(rows, childIndex)) continue;
+            if (childLevel >= expandThroughLevel) {
+              tocExpansionState.collapsedHeadingKeys.add(child.dataset.headingKey);
+            } else {
+              tocExpansionState.collapsedHeadingKeys.delete(child.dataset.headingKey);
+            }
+          }
+        } else {
+          tocExpansionState.collapsedHeadingKeys.add(itemKeys[index]);
         }
+        applyTocCollapseState();
       };
 
       const textSpan = document.createElement('span');
@@ -5112,16 +5207,24 @@ function setupTocGestureAndPanel() {
     if (!tocContent) return;
     const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
 
-    if (isAllCollapsed) {
+    itemRows.forEach((row, rowIndex) => {
+      if (!hasDescendantHeading(itemRows, rowIndex)) {
+        tocExpansionState.collapsedHeadingKeys.delete(row.dataset.headingKey);
+      }
+    });
+
+    if (tocExpansionState.isAllCollapsed) {
       itemRows.forEach((row, rowIndex) => {
         const level = parseInt(row.dataset.level, 10) || 1;
         const toggle = row.querySelector('.toc-toggle');
+        const hasChildren = hasDescendantHeading(itemRows, rowIndex);
         row.style.display = level > 1 ? 'none' : 'flex';
         if (toggle) {
-          const isCollapsed = level > 1 || hasDescendantHeading(itemRows, rowIndex);
-          toggle.textContent = isCollapsed ? '+' : '-';
+          const isCollapsed = hasChildren;
+          toggle.textContent = hasChildren && isCollapsed ? '+' : '-';
           toggle.classList.toggle('is-collapsed', isCollapsed);
           toggle.setAttribute('aria-pressed', String(isCollapsed));
+          toggle.setAttribute('aria-disabled', String(!hasChildren));
         }
       });
       return;
@@ -5131,15 +5234,19 @@ function setupTocGestureAndPanel() {
       row.style.display = 'flex';
       const toggle = row.querySelector('.toc-toggle');
       if (toggle) {
-        const isCollapsed = collapsedHeadingKeys.has(row.dataset.headingKey);
-        toggle.textContent = isCollapsed ? '+' : '-';
+        const isCollapsed =
+          tocExpansionState.collapsedHeadingKeys.has(row.dataset.headingKey);
+        const rowIndex = itemRows.indexOf(row);
+        const hasChildren = hasDescendantHeading(itemRows, rowIndex);
+        toggle.textContent = hasChildren && isCollapsed ? '+' : '-';
         toggle.classList.toggle('is-collapsed', isCollapsed);
         toggle.setAttribute('aria-pressed', String(isCollapsed));
+        toggle.setAttribute('aria-disabled', String(!hasChildren));
       }
     });
 
     itemRows.forEach((row, index) => {
-      if (!collapsedHeadingKeys.has(row.dataset.headingKey)) return;
+      if (!tocExpansionState.collapsedHeadingKeys.has(row.dataset.headingKey)) return;
       const level = parseInt(row.dataset.level, 10) || 1;
       for (let childIndex = index + 1; childIndex < itemRows.length; childIndex++) {
         const child = itemRows[childIndex];
@@ -5154,45 +5261,43 @@ function setupTocGestureAndPanel() {
     const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
     const activeIndex = itemRows.indexOf(activeRow);
     if (activeIndex < 0) return;
+    const activeKey = activeRow.dataset.headingKey;
+    if (activeKey === tocExpansionState.activeHeadingKey) return false;
 
-    const ancestorStack = [];
-    for (let rowIndex = 0; rowIndex < activeIndex; rowIndex++) {
-      const level = parseInt(itemRows[rowIndex].dataset.level, 10) || 1;
-      while (
-        ancestorStack.length &&
-        (parseInt(itemRows[ancestorStack[ancestorStack.length - 1]].dataset.level, 10) || 1) >= level
-      ) {
-        ancestorStack.pop();
+    tocExpansionState.activeHeadingKey = activeKey;
+    tocExpansionState.isAllCollapsed = false;
+    tocExpansionState.collapsedHeadingKeys.clear();
+
+    const expandedKeys = new Set();
+    itemRows.forEach((row, rowIndex) => {
+      const level = parseInt(row.dataset.level, 10) || 1;
+      if (level < tocDefaultHeadingLevel && hasDescendantHeading(itemRows, rowIndex)) {
+        expandedKeys.add(row.dataset.headingKey);
       }
-      ancestorStack.push(rowIndex);
-    }
-    const activeLevel = parseInt(activeRow.dataset.level, 10) || 1;
-    while (
-      ancestorStack.length &&
-      (parseInt(itemRows[ancestorStack[ancestorStack.length - 1]].dataset.level, 10) || 1) >= activeLevel
-    ) {
-      ancestorStack.pop();
-    }
-    const ancestorIndexes = new Set(ancestorStack);
+    });
 
-    if (isAllCollapsed) {
-      isAllCollapsed = false;
-      collapsedHeadingKeys.clear();
-      itemRows.forEach((row, rowIndex) => {
-        if (
-          !ancestorIndexes.has(rowIndex) &&
-          hasDescendantHeading(itemRows, rowIndex)
-        ) {
-          collapsedHeadingKeys.add(row.dataset.headingKey);
-        }
-      });
-    } else {
-      ancestorIndexes.forEach(rowIndex => {
-        collapsedHeadingKeys.delete(itemRows[rowIndex].dataset.headingKey);
-      });
+    let parentLevel = parseInt(activeRow.dataset.level, 10) || 1;
+    for (let rowIndex = activeIndex - 1; rowIndex >= 0; rowIndex--) {
+      const level = parseInt(itemRows[rowIndex].dataset.level, 10) || 1;
+      if (level < parentLevel) {
+        expandedKeys.add(itemRows[rowIndex].dataset.headingKey);
+        parentLevel = level;
+      }
+    }
+    if (hasDescendantHeading(itemRows, activeIndex)) {
+      expandedKeys.add(activeKey);
     }
 
+    itemRows.forEach((row, rowIndex) => {
+      if (
+        hasDescendantHeading(itemRows, rowIndex) &&
+        !expandedKeys.has(row.dataset.headingKey)
+      ) {
+        tocExpansionState.collapsedHeadingKeys.add(row.dataset.headingKey);
+      }
+    });
     applyTocCollapseState();
+    return true;
   };
   revealActiveTocHeading = revealActiveHeadingInToc;
 
@@ -5214,6 +5319,11 @@ function setupTocGestureAndPanel() {
       win.clearTimeout(pendingRefreshTimer);
       pendingRefreshTimer = null;
     }
+    if (tocScrollFrame !== null) {
+      cancelAnimationFrame(tocScrollFrame);
+      tocScrollFrame = null;
+    }
+    scrollDOM?.removeEventListener('scroll', tocScrollHandler);
     if (refreshOpenTocPanel === scheduleOpenPanelRefresh) {
       refreshOpenTocPanel = null;
     }
@@ -5742,6 +5852,24 @@ window.editorBridge = {
     // Table of contents panel appearance
     const tocPanelWidth = Number(prefs.pref_toc_panel_width ?? 80);
     setCssVar('--toc-panel-width', Math.max(50, Math.min(90, tocPanelWidth)), 'vw');
+    const nextTocDefaultHeadingLevel = Math.max(
+      1,
+      Math.min(6, Number(prefs.pref_toc_default_level ?? 2) || 2)
+    );
+    const nextTocExpandLevelsPerTap = Math.max(
+      1,
+      Math.min(5, Number(prefs.pref_toc_expand_levels_per_tap ?? 1) || 1)
+    );
+    if (nextTocDefaultHeadingLevel !== tocDefaultHeadingLevel) {
+      tocDefaultHeadingLevel = nextTocDefaultHeadingLevel;
+      tocExpansionState.collapsedHeadingKeys.clear();
+      tocExpansionState.initialized = false;
+      tocExpansionState.activeHeadingKey = null;
+      tocExpansionState.centerOnNextUpdate = true;
+      updateTocActiveSection();
+      refreshOpenTocPanel?.();
+    }
+    tocExpandLevelsPerTap = nextTocExpandLevelsPerTap;
     tocHideFileExtension = prefs.pref_toc_hide_file_extension === true;
     refreshTocDocumentNameField();
     setCssVar('--toc-panel-bg-color', androidArgbToCss(prefs.pref_toc_panel_bg_color));
@@ -6038,7 +6166,10 @@ window.editorBridge = {
       newHistory.forward.push(...oldHistory.forward);
     }
     tocNavigationByDocument.delete(oldKey);
-    if (activeTocDocumentKey === oldKey) activeTocDocumentKey = newKey;
+    if (activeTocDocumentKey === oldKey) {
+      activeTocDocumentKey = newKey;
+      tocExpansionState.documentKey = newKey;
+    }
     updateTocHistoryButtons();
   },
   setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData) {

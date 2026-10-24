@@ -85,6 +85,12 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     '',
     '## First child',
     '',
+    '### Grandchild',
+    '',
+    '#### Great-grandchild',
+    '',
+    '## Second child',
+    '',
     '```md',
     '# Not a heading',
     '```',
@@ -92,12 +98,23 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     'Setext section',
     '--------------',
     '',
-    '## Current location'
+    '### Setext child',
+    '',
+    '## Current location',
+    '',
+    '### Current child',
+    '',
+    '## Final leaf'
   ].join('\n'));
   window.editorBridge.setDocumentTitle('Guide.md', 'doc-1');
   window.editorBridge.setDocumentHistoryState(false, false);
+  const editorView = EditorView.findFromDOM(document.querySelector('.cm-content'));
+  assert.ok(editorView, 'the editor view is available to set the initial viewport');
+  editorView.dispatch({ selection: { anchor: 0 } });
   const tocPreferences = {
     pref_toc_panel_width: 78,
+    pref_toc_default_level: 2,
+    pref_toc_expand_levels_per_tap: 1,
     pref_toc_hide_file_extension: false,
     pref_toolbar_bg_color: '#80112233',
     pref_toc_panel_bg_color: '#112233',
@@ -162,7 +179,42 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   assert.equal(keyboardHideCalls, 1, 'opening the panel hides the software keyboard');
   assert.equal(document.querySelector('#toc-document-name').value, 'Guide.md');
   const titles = () => Array.from(contents.querySelectorAll('.toc-text'), item => item.textContent);
-  assert.deepEqual(titles(), ['Overview', 'First child', 'Setext section', 'Current location']);
+  const rowFor = title => Array.from(contents.querySelectorAll('.toc-item'))
+    .find(row => row.querySelector('.toc-text')?.textContent === title);
+  const visibleTitles = () => Array.from(contents.querySelectorAll('.toc-item'))
+    .filter(row => row.style.display !== 'none')
+    .map(row => row.querySelector('.toc-text').textContent);
+  assert.deepEqual(titles(), [
+    'Overview',
+    'First child',
+    'Grandchild',
+    'Great-grandchild',
+    'Second child',
+    'Setext section',
+    'Setext child',
+    'Current location',
+    'Current child',
+    'Final leaf'
+  ]);
+  assert.deepEqual(
+    visibleTitles(),
+    ['Overview', 'First child', 'Second child', 'Setext section', 'Current location', 'Final leaf'],
+    'opening the TOC shows through H2 while keeping deeper sections collapsed'
+  );
+
+  const firstChildToggle = rowFor('First child').querySelector('.toc-toggle');
+  assert.equal(firstChildToggle.textContent, '+');
+  firstChildToggle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  assert.equal(rowFor('Grandchild').style.display, 'flex');
+  assert.equal(rowFor('Great-grandchild').style.display, 'none');
+  rowFor('Grandchild').querySelector('.toc-toggle').dispatchEvent(
+    new dom.window.Event('click', { bubbles: true })
+  );
+  assert.equal(rowFor('Great-grandchild').style.display, 'flex');
+  const leafToggle = rowFor('Final leaf').querySelector('.toc-toggle');
+  leafToggle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  assert.equal(leafToggle.textContent, '-');
+  assert.equal(leafToggle.getAttribute('aria-disabled'), 'true');
 
   const firstHeadingToggle = contents.querySelector('.toc-item.level-1 .toc-toggle');
   firstHeadingToggle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
@@ -176,6 +228,10 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     '',
     '## First child',
     '',
+    '### Grandchild',
+    '',
+    '#### Great-grandchild',
+    '',
     '## Added child',
     '',
     '```md',
@@ -185,16 +241,34 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     'Setext section',
     '--------------',
     '',
-    '## Current location'
+    '### Setext child',
+    '',
+    '## Current location',
+    '',
+    '### Current child',
+    '',
+    '## Final leaf'
   ].join('\n'));
+  editorView.dispatch({ selection: { anchor: 0 } });
   await new Promise(resolve => setTimeout(resolve, 150));
 
   assert.deepEqual(
     titles(),
-    ['Overview', 'First child', 'Added child', 'Setext section', 'Current location']
+    [
+      'Overview',
+      'First child',
+      'Grandchild',
+      'Great-grandchild',
+      'Added child',
+      'Setext section',
+      'Setext child',
+      'Current location',
+      'Current child',
+      'Final leaf'
+    ]
   );
   assert.equal(
-    contents.querySelectorAll('.toc-item')[2].style.display,
+    rowFor('Added child').style.display,
     'none',
     'refresh retains the collapsed parent for newly added child headings'
   );
@@ -238,24 +312,82 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     'flex',
     'one tap on + reveals the child heading'
   );
+  assert.equal(
+    rowFor('Grandchild').style.display,
+    'none',
+    'one tap expands only the next heading level'
+  );
 
   document.querySelector('#toc-global-toggle').click();
   assert.equal(
-    contents.querySelectorAll('.toc-item')[4].style.display,
+    rowFor('First child').style.display,
     'none',
     'global collapse hides the current nested heading'
   );
-  const editorView = EditorView.findFromDOM(document.querySelector('.cm-content'));
-  assert.ok(editorView, 'the editor view is available to move the cursor in the test');
-  editorView.dispatch({
-    selection: { anchor: editorView.state.doc.length }
+  Object.defineProperty(contents, 'clientHeight', { configurable: true, value: 200 });
+  Object.defineProperty(contents, 'scrollHeight', { configurable: true, value: 1000 });
+  contents.getBoundingClientRect = () => ({
+    top: 0, bottom: 200, left: 0, right: 320, width: 320, height: 200
   });
-  await new Promise(resolve => setTimeout(resolve, 150));
-  assert.notEqual(
-    contents.querySelectorAll('.toc-item')[4].style.display,
-    'none',
-    'the TOC automatically reveals the current heading when its ancestors were collapsed'
+  const scrollDOM = editorView.scrollDOM;
+  scrollDOM.getBoundingClientRect = () => ({
+    top: 0, bottom: 600, left: 0, right: 390, width: 390, height: 600
+  });
+  let visiblePosition = editorView.state.selection.main.head;
+  editorView.posAtCoords = () => visiblePosition;
+  const moveViewportToHeading = async (title, rowTop) => {
+    const row = rowFor(title);
+    row.getBoundingClientRect = () => ({
+      top: rowTop,
+      bottom: rowTop + 40,
+      left: 0,
+      right: 320,
+      width: 320,
+      height: 40
+    });
+    const line = editorView.state.doc.toString().indexOf(title);
+    visiblePosition = editorView.state.doc.lineAt(line).from;
+    editorView.dispatch({ selection: { anchor: 0 } });
+    scrollDOM.dispatchEvent(new dom.window.Event('scroll'));
+    await new Promise(resolve => setTimeout(resolve, 20));
+  };
+  await moveViewportToHeading('Great-grandchild', 480);
+  assert.equal(
+    rowFor('Great-grandchild').style.display,
+    'flex',
+    'scrolling into a deep heading expands its parent path'
   );
+  assert.equal(contents.scrollTop, 400, 'the active heading is centered in the overflowing TOC');
+  await moveViewportToHeading('Final leaf', 80);
+  assert.equal(
+    rowFor('Final leaf').classList.contains('active-section'),
+    true,
+    'the highlighted heading follows the visible viewport, not the text cursor'
+  );
+  assert.equal(
+    rowFor('Grandchild').style.display,
+    'none',
+    'leaving a nested section collapses the previous heading path'
+  );
+  for (const mode of ['live_preview', 'source', 'wysiwyg']) {
+    await window.editorBridge.setEditorMode(mode);
+    const modeView = EditorView.findFromDOM(document.querySelector('.cm-content'));
+    assert.ok(modeView, `${mode} creates an editor view`);
+    const finalHeadingPosition = modeView.state.doc.lineAt(
+      modeView.state.doc.toString().indexOf('Final leaf')
+    ).from;
+    modeView.scrollDOM.getBoundingClientRect = () => ({
+      top: 0, bottom: 600, left: 0, right: 390, width: 390, height: 600
+    });
+    modeView.posAtCoords = () => finalHeadingPosition;
+    modeView.scrollDOM.dispatchEvent(new dom.window.Event('scroll'));
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(
+      rowFor('Final leaf').classList.contains('active-section'),
+      true,
+      `${mode} keeps the visible heading synchronized with the TOC`
+    );
+  }
 
   contents.querySelectorAll('.toc-item')[1].dispatchEvent(
     new dom.window.Event('click', { bubbles: true })

@@ -52,6 +52,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var hasCrlf: Boolean = false
     private var latestMarkdownContent: String? = null
     private var pendingOpenUri: Uri? = null
+    private var pendingOpenPermissionFlags: Int? = null
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
     private var currentTextPackSession: TextPackSession? = null
@@ -247,6 +248,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 )
             } else {
                 pendingOpenUri = data
+                pendingOpenPermissionFlags = intent.flags
             }
             return
         }
@@ -558,43 +560,120 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return
         }
 
-        val selectedFolderDocumentId = runCatching {
-            android.provider.DocumentsContract.getTreeDocumentId(treeUri)
-        }.getOrNull()
-        val documentPath = runCatching {
-            android.provider.DocumentsContract.findDocumentPath(contentResolver, request.uri)
-        }.getOrNull()
-        val pathIds = documentPath?.path.orEmpty()
-        val selectedFolderIndex = selectedFolderDocumentId?.let(pathIds::indexOf) ?: -1
-        val documentId = runCatching {
-            android.provider.DocumentsContract.getDocumentId(request.uri)
-        }.getOrNull()
-        if (
-            selectedFolderIndex < 0 ||
-            selectedFolderIndex >= pathIds.lastIndex ||
-            documentId.isNullOrBlank() ||
-            pathIds.lastOrNull() != documentId
-        ) {
+        val treeScopedDocumentUri = resolveRenameTargetInTree(treeUri, request.uri)
+        if (treeScopedDocumentUri == null) {
             releasePersistedTreePermission(treeUri, persistableFlags)
             showRenameFolderSelectionError(
                 request,
-                "Select the folder that contains the currently open file."
-            )
-            return
-        }
-
-        val treeScopedDocumentUri = runCatching {
-            android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
-        }.getOrNull()
-        if (treeScopedDocumentUri == null || !hasWriteUriPermission(treeScopedDocumentUri)) {
-            releasePersistedTreePermission(treeUri, persistableFlags)
-            showRenameFolderSelectionError(
-                request,
-                "Android did not grant rename access to the file through that folder."
+                "Select the folder that contains the currently open file. For files in a subfolder, choose that subfolder."
             )
             return
         }
         renameCurrentDocument(request.targetName, treeScopedDocumentUri)
+    }
+
+    private fun resolveRenameTargetInTree(treeUri: Uri, sourceUri: Uri): Uri? {
+        val documentId = runCatching {
+            if (
+                sourceUri.authority == treeUri.authority &&
+                android.provider.DocumentsContract.isDocumentUri(this, sourceUri)
+            ) {
+                android.provider.DocumentsContract.getDocumentId(sourceUri)
+            } else {
+                null
+            }
+        }.getOrNull()
+
+        if (!documentId.isNullOrBlank()) {
+            val scopedUri = runCatching {
+                android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                    treeUri,
+                    documentId
+                )
+            }.getOrNull() ?: return null
+            val displayName = queryDocumentDisplayName(scopedUri)
+            val treeDocumentId = runCatching {
+                android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+            }.getOrNull()
+            val pathIds = runCatching {
+                android.provider.DocumentsContract.findDocumentPath(contentResolver, scopedUri)
+                    ?.path
+                    .orEmpty()
+            }.getOrNull().orEmpty()
+            val treeId = treeDocumentId?.takeIf { it.isNotBlank() }
+            val isInSelectedTree = if (pathIds.isEmpty()) {
+                displayName == currentFileName
+            } else {
+                pathIds.lastOrNull() == documentId &&
+                    treeId != null &&
+                    treeId in pathIds.dropLast(1)
+            }
+            return scopedUri.takeIf {
+                isInSelectedTree &&
+                    (displayName == null || displayName == currentFileName)
+            }
+        }
+
+        return findDirectChildDocumentUri(treeUri, currentFileName)
+    }
+
+    private fun queryDocumentDisplayName(uri: Uri): String? {
+        return runCatching {
+            contentResolver.query(
+                uri,
+                arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                )
+                if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
+            }
+        }.getOrNull()
+    }
+
+    private fun findDirectChildDocumentUri(treeUri: Uri, displayName: String): Uri? {
+        val treeDocumentId = runCatching {
+            android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+        }.getOrNull() ?: return null
+        val childrenUri = runCatching {
+            android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+                treeUri,
+                treeDocumentId
+            )
+        }.getOrNull() ?: return null
+
+        return runCatching {
+            contentResolver.query(
+                childrenUri,
+                arrayOf(
+                    android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                ),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(
+                    android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID
+                )
+                val nameIndex = cursor.getColumnIndex(
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                )
+                if (idIndex < 0 || nameIndex < 0) return@use null
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(nameIndex) == displayName) {
+                        return@use android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                            treeUri,
+                            cursor.getString(idIndex)
+                        )
+                    }
+                }
+                null
+            }
+        }.getOrNull()
     }
 
     private fun releasePersistedTreePermission(uri: Uri, flags: Int) {
@@ -933,6 +1012,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         persistDocumentUriPermission(uri, permissionFlags)
         if (!isEditorReady) {
             pendingOpenUri = uri
+            pendingOpenPermissionFlags = permissionFlags
             return
         }
 
@@ -1159,8 +1239,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             val persistedFolderUri = findPersistedFolderDocumentUri(oldUri)
             if (persistedFolderUri != null) {
-                renameCurrentDocument(targetName, persistedFolderUri)
-            } else if (android.provider.DocumentsContract.isDocumentUri(this, oldUri)) {
+                val renamedThroughFolder = runCatching {
+                    android.provider.DocumentsContract.renameDocument(
+                        contentResolver,
+                        persistedFolderUri,
+                        targetName
+                    )
+                }.getOrNull()
+                if (renamedThroughFolder != null) {
+                    completeDocumentRename(oldUri, renamedThroughFolder)
+                    return
+                }
+            }
+            if (oldUri.scheme == "content" || oldUri.scheme == "file") {
                 offerRenamePermissionRecovery(oldUri, targetName)
             } else {
                 offerSaveAsRenameFallback(targetName)
@@ -1168,6 +1259,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return
         }
 
+        completeDocumentRename(oldUri, renamedUri)
+    }
+
+    private fun completeDocumentRename(oldUri: Uri, renamedUri: Uri) {
         val oldHistoryKey = oldUri.toString()
         replaceHistoryUri(oldUri, renamedUri)
         persistDocumentUriPermission(renamedUri)
@@ -1496,7 +1591,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 pendingOpenUri?.let { uri ->
                     pendingOpenUri = null
-                    openFile(uri)
+                    val permissionFlags = pendingOpenPermissionFlags
+                    pendingOpenPermissionFlags = null
+                    openFile(uri, permissionFlags = permissionFlags)
                 }
                 pendingSharedText?.let { text ->
                     pendingSharedText = null
