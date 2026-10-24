@@ -1141,6 +1141,14 @@
       border-top-right-radius: 8px !important;
     }
 
+    .cm-content .cm-line.cm-callout-title-rendered {
+      display: flex !important;
+      align-items: flex-start !important;
+      flex-wrap: nowrap !important;
+      position: relative !important;
+      box-sizing: border-box !important;
+    }
+
     .cm-content .cm-line.cm-callout-title:not(:has(+ .cm-line.cm-callout-body)) {
       border-radius: 8px !important;
     }
@@ -1151,10 +1159,11 @@
     }
 
     .cm-callout-title-container {
-      display: flex !important;
+      display: inline-flex !important;
       align-items: flex-start !important;
-      position: relative !important;
-      width: 100% !important;
+      position: static !important;
+      flex: 0 0 auto !important;
+      width: auto !important;
       min-height: 18px !important;
       box-sizing: border-box !important;
       user-select: none !important;
@@ -1164,8 +1173,11 @@
       font-weight: inherit !important;
     }
 
-    .cm-callout-title-container.is-foldable {
-      cursor: pointer !important;
+    .cm-callout-title-container:not(.has-source-title) {
+      display: flex !important;
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+      width: 100% !important;
     }
 
     .cm-callout-icon {
@@ -1189,14 +1201,25 @@
       white-space: normal !important;
     }
 
+    .cm-content .cm-line.cm-callout-title-rendered > .cm-callout-title-text.is-source {
+      display: block !important;
+      flex: 1 1 0% !important;
+      min-width: 0 !important;
+    }
+
+    .cm-content .cm-line.cm-callout-title-rendered > .cm-callout-title-text.is-source.is-foldable {
+      padding-right: 24px !important;
+    }
+
     .cm-callout-fold-btn {
-      position: static !important;
-      flex: 0 0 auto !important;
-      align-self: flex-start !important;
+      position: absolute !important;
+      top: var(--callout-header-padding, 0px) !important;
+      right: var(--callout-padding, 12px) !important;
+      z-index: 1 !important;
       background: transparent !important;
       border: none !important;
       padding: 2px !important;
-      margin: 0 0 0 8px !important;
+      margin: 0 !important;
       color: inherit !important;
       display: inline-flex !important;
       align-items: center !important;
@@ -1204,6 +1227,7 @@
       border-radius: 3px !important;
       opacity: 0.8 !important;
       line-height: 1 !important;
+      cursor: pointer !important;
     }
 
     .cm-content .cm-callout .cm-foldPlaceholder {

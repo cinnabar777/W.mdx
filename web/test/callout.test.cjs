@@ -60,10 +60,11 @@ test('Callout widget structure and eq implementation', () => {
 
 test('callout title wraps after its icon and keeps a unified rounded card background', () => {
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*flex[\s\S]*?position:\s*relative/);
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[\s\S]*?display:\s*flex[\s\S]*?position:\s*relative/);
+  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*inline-flex[\s\S]*?position:\s*static/);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[\s\S]*?position:\s*static[\s\S]*?flex:\s*0 0 16px/);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[\s\S]*?flex:\s*1 1 auto/);
-  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[\s\S]*?position:\s*static/);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[\s\S]*?position:\s*absolute/);
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title\s*\{[\s\S]*?border-top-left-radius/);
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-body:not\(:has\(\+ \.cm-line\.cm-callout-body\)\)/);
   assert.match(indexHtml, /--callout-type-header-bg:[\s\S]*?var\(--callout-bg-color/);
@@ -160,7 +161,11 @@ test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => 
   assert.ok(mainSource.includes('calloutTypeIcons'), 'calloutTypeIcons map exists');
   assert.ok(mainSource.includes('cm-callout-icon'), 'cm-callout-icon class exists');
   assert.ok(mainSource.includes('cm-callout-title-container'), 'Title container class exists');
-  assert.ok(mainSource.includes("aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Title container has accessible expand/collapse label');
+  assert.ok(mainSource.includes("btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Fold button has an accessible expand/collapse label');
+  assert.ok(mainSource.includes("btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true')"), 'Fold button exposes its current state');
+  assert.ok(mainSource.includes("btn.addEventListener('click', toggleFold)"), 'Chevron button toggles callout folding');
+  assert.ok(!mainSource.includes("iconSpan.addEventListener('click', toggleFold)"), 'Type icon does not toggle folding');
+  assert.ok(!mainSource.includes("span.addEventListener('keydown'"), 'The whole title row is not a fold control');
   assert.ok(mainSource.includes('foldEffect.of'), 'Title container dispatches foldEffect');
   assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
   assert.match(mainSource, /foldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Folding refreshes the title widget so the arrow reflects the folded state');
@@ -316,12 +321,14 @@ test('code block text and language colors use independent selectors', () => {
   );
 });
 
-test('callout title layout and syntax visibility match each editing view', () => {
+test('callout title layout and editing behavior match each view', () => {
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
-  assert.ok(mainSource.includes("const displayTitle = customTitle ||"), 'Custom titles are placed inside the title widget');
-  assert.ok(mainSource.includes("}).range(info.markerStart, line.to)"), 'The rendered title widget replaces the full custom-title source range');
-  assert.ok(mainSource.includes('titleSpan.textContent = this.title'), 'The widget renders the complete custom title beside the icon');
+  assert.ok(mainSource.includes("const displayTitle = customTitle ||"), 'Callouts without custom titles keep their generated label');
+  assert.ok(mainSource.includes("const widgetEnd = titleIsInSource ? info.titleStart : line.to"), 'For custom titles, only the marker and separator are replaced');
+  assert.ok(mainSource.includes('}).range(info.markerStart, widgetEnd)'), 'The marker widget does not replace custom title text');
+  assert.ok(mainSource.includes('.range(info.titleStart, line.to)'), 'Custom title text remains in the document and receives a text mark');
+  assert.ok(mainSource.includes('if (!this.titleIsInSource)'), 'Only generated labels are rendered inside the widget');
   assert.ok(
     mainSource.includes('const isMarkerActive = !isPureWysiwyg && (') &&
       mainSource.includes('selection.head >= info.markerStart && selection.head <= info.markerEnd') &&
@@ -330,16 +337,15 @@ test('callout title layout and syntax visibility match each editing view', () =>
   );
   assert.ok(mainSource.includes('if (!isMarkerActive && !isPureWysiwyg)'), 'Live Preview renders the callout unless its marker syntax is active');
   assert.ok(!mainSource.includes('isTitleActive'), 'Moving the cursor into the title does not reveal syntax');
-  assert.ok(!mainSource.includes('titleSpan.addEventListener'), 'Tapping the rendered title does not expose its source syntax');
-  assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG always renders the callout title as a widget');
+  assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG replaces the marker while leaving the title editable');
   assert.ok(
     mainSource.includes("if (currentEditorMode === 'source') {\n      return Decoration.none;"),
     'Source view leaves the callout Markdown visible'
   );
-  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[^}]*display:\s*flex\s*!important/s);
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[^}]*flex:\s*1 1 auto\s*!important/s);
-  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*static\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*absolute\s*!important/s);
   assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-list-item\[data-callout-depth\]/, 'Nested callout list items retain list indentation');
