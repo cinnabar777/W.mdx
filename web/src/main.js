@@ -1,6 +1,7 @@
 import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { computeWysiwygViewportMargin } from './viewportMargin.js';
+import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
@@ -389,6 +390,11 @@ function rememberWidgetHeight(view, key, element, kind, estimatedHeight) {
       if (!Number.isFinite(height) || height <= 0) return;
       const previous = measuredWidgetHeights.get(key);
       if (previous !== undefined && Math.abs(previous - height) < 1) return;
+      const shouldRefreshHeightMap = shouldRefreshHeightMapForWidget(
+        previous,
+        height,
+        estimatedHeight
+      );
 
       recordWidgetHeightCacheUpdate(
         measurementMode,
@@ -400,7 +406,7 @@ function rememberWidgetHeight(view, key, element, kind, estimatedHeight) {
       if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
         measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
       }
-      scheduleHeightMapRefresh(view);
+      if (shouldRefreshHeightMap) scheduleHeightMapRefresh(view);
     }
   });
 }
