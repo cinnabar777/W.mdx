@@ -71,33 +71,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val resultIntent = result.data
             val uri = resultIntent?.data
-            val renameRequest = pendingRenamePermissionRequest
-
-            if (renameRequest != null) {
-                pendingRenamePermissionRequest = null
-                if (
-                    result.resultCode == android.app.Activity.RESULT_OK &&
-                    uri != null &&
-                    uri == renameRequest.uri
-                ) {
-                    val grantedFlags = resultIntent?.flags ?: 0
-                    persistDocumentUriPermission(uri, grantedFlags)
-                    if (hasWriteUriPermission(uri)) {
-                        renameCurrentDocument(renameRequest.targetName)
-                    } else {
-                        offerSaveAsRenameFallback(renameRequest.targetName)
-                    }
-                } else {
-                    updateTitle()
-                    if (result.resultCode == android.app.Activity.RESULT_OK && uri != null) {
-                        ThemedToast.show(
-                            this,
-                            "Rename canceled. Select the currently open file to continue.",
-                            Toast.LENGTH_SHORT
-                        )
-                    }
-                }
-            } else if (
+            if (
                 result.resultCode == android.app.Activity.RESULT_OK &&
                 uri != null
             ) {
@@ -107,6 +81,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     permissionFlags = resultIntent?.flags ?: 0
                 )
             }
+        }
+
+    private val renameFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            handleRenameFolderSelection(result.resultCode, result.data)
         }
 
     private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
@@ -503,6 +482,139 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             }
         }.getOrNull()
+    }
+
+    private fun launchRenameFolderPicker(uri: Uri, targetName: String) {
+        pendingRenamePermissionRequest = RenameAccessRequest(uri, targetName)
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+            val initialFolder = runCatching {
+                val path = android.provider.DocumentsContract.findDocumentPath(contentResolver, uri)
+                val parentDocumentId = path?.path?.dropLast(1)?.lastOrNull()
+                if (parentDocumentId.isNullOrBlank() || uri.authority.isNullOrBlank()) {
+                    null
+                } else {
+                    android.provider.DocumentsContract.buildDocumentUri(
+                        uri.authority!!,
+                        parentDocumentId
+                    )
+                }
+            }.getOrNull()
+            if (initialFolder != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, initialFolder)
+            }
+        }
+        renameFolderLauncher.launch(intent)
+    }
+
+    private fun handleRenameFolderSelection(
+        resultCode: Int,
+        resultIntent: android.content.Intent?
+    ) {
+        val request = pendingRenamePermissionRequest ?: return
+        pendingRenamePermissionRequest = null
+        val treeUri = resultIntent?.data
+        if (resultCode != android.app.Activity.RESULT_OK || treeUri == null) {
+            updateTitle()
+            return
+        }
+
+        val grantedFlags = resultIntent.flags
+        val readWriteFlags =
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        val persistableFlags = grantedFlags and readWriteFlags
+        if ((persistableFlags and android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == 0) {
+            showRenameFolderSelectionError(
+                request,
+                "Android did not grant write access to that folder."
+            )
+            return
+        }
+        persistDocumentUriPermission(treeUri, grantedFlags)
+        val hasPersistedTreeWritePermission = contentResolver.persistedUriPermissions.any {
+            it.uri == treeUri && it.isWritePermission
+        }
+        if (!hasPersistedTreeWritePermission) {
+            showRenameFolderSelectionError(
+                request,
+                "Android did not allow the folder permission to be saved for later."
+            )
+            return
+        }
+
+        val selectedFolderDocumentId = runCatching {
+            android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+        }.getOrNull()
+        val documentPath = runCatching {
+            android.provider.DocumentsContract.findDocumentPath(contentResolver, request.uri)
+        }.getOrNull()
+        val pathIds = documentPath?.path.orEmpty()
+        val selectedFolderIndex = selectedFolderDocumentId?.let(pathIds::indexOf) ?: -1
+        val documentId = runCatching {
+            android.provider.DocumentsContract.getDocumentId(request.uri)
+        }.getOrNull()
+        if (
+            selectedFolderIndex < 0 ||
+            selectedFolderIndex >= pathIds.lastIndex ||
+            documentId.isNullOrBlank() ||
+            pathIds.lastOrNull() != documentId
+        ) {
+            releasePersistedTreePermission(treeUri, persistableFlags)
+            showRenameFolderSelectionError(
+                request,
+                "Select the folder that contains the currently open file."
+            )
+            return
+        }
+
+        val treeScopedDocumentUri = runCatching {
+            android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+        }.getOrNull()
+        if (treeScopedDocumentUri == null || !hasWriteUriPermission(treeScopedDocumentUri)) {
+            showRenameFolderSelectionError(
+                request,
+                "Android did not grant rename access to the file through that folder."
+            )
+            return
+        }
+        if (documentSupportsRename(treeScopedDocumentUri) == false) {
+            offerSaveAsRenameFallback(request.targetName)
+            return
+        }
+
+        renameCurrentDocument(request.targetName, treeScopedDocumentUri)
+    }
+
+    private fun releasePersistedTreePermission(uri: Uri, flags: Int) {
+        if (flags == 0) return
+        runCatching {
+            contentResolver.releasePersistableUriPermission(uri, flags)
+        }
+    }
+
+    private fun showRenameFolderSelectionError(
+        request: RenameAccessRequest,
+        message: String
+    ) {
+        updateTitle()
+        AlertDialog.Builder(this)
+            .setTitle("Folder access not granted")
+            .setMessage("$message You can choose the folder again or save a copy instead.")
+            .setPositiveButton("Choose Folder") { _, _ ->
+                launchRenameFolderPicker(request.uri, request.targetName)
+            }
+            .setNeutralButton("Save As") { _, _ ->
+                launchRenameSaveAs(request.targetName)
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                updateTitle()
+            }
+            .show()
     }
 
     private fun remapDocumentNavigationHistory(oldKey: String, newKey: String) {
