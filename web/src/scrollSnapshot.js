@@ -1,4 +1,4 @@
-export function withScrollSnapshot(view, effects) {
+export function withScrollSnapshot(view, effects, scrollSnapshot = null) {
   const list = Array.isArray(effects) ? effects : [effects];
-  return [...list, view.scrollSnapshot()];
+  return [...list, scrollSnapshot ?? view.scrollSnapshot()];
 }

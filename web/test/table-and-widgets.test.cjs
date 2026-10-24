@@ -173,7 +173,7 @@ test('heightMapField provides WYSIWYG decorations and measured height caching', 
   assert.ok(mainCode.includes('export const heightMapField = StateField.define'));
   assert.ok(mainCode.includes('EditorView.decorations.from(field, value => value.decorations)'));
   assert.ok(mainCode.includes('view.state.field(heightMapField).hiddenSyntaxRanges'));
-  assert.ok(mainCode.includes('scheduleHeightMapRefresh(view)'));
+  assert.ok(mainCode.includes('function scheduleHeightMapRefresh(view, scrollSnapshot = null)'));
   assert.ok(mainCode.includes('createDeferredViewCallback'));
   assert.ok(mainCode.includes('measuredWidgetHeights = new Map()'));
   assert.ok(mainCode.includes('cm-image-error-fallback'));
