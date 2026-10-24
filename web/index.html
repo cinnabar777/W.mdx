@@ -975,12 +975,13 @@
       border-left: 1px solid var(--code-block-border-color, transparent) !important;
       border-right: 1px solid var(--code-block-border-color, transparent) !important;
     }
-    .cm-content .cm-codeblock-line span {
+    .cm-content .cm-codeblock-line span:not(.cm-codeblock-lang-label) {
       color: var(--code-block-color, #e0e0e0) !important;
       font-size: var(--code-block-font-size, 14px) !important;
     }
-    .cm-content .cm-codeblock-text {
+    .cm-content .cm-codeblock-line .cm-codeblock-text {
       background-color: var(--code-block-text-bg-color, transparent) !important;
+      display: inline !important;
       -webkit-box-decoration-break: clone !important;
       box-decoration-break: clone !important;
     }
@@ -1141,12 +1142,12 @@
     }
 
     .cm-callout-title-container {
-      display: block !important;
+      display: flex !important;
+      align-items: flex-start !important;
       position: relative !important;
       width: 100% !important;
       min-height: 18px !important;
       box-sizing: border-box !important;
-      padding-left: 24px !important;
       user-select: none !important;
       color: inherit !important;
       font-size: inherit !important;
@@ -1156,38 +1157,37 @@
 
     .cm-callout-title-container.is-foldable {
       cursor: pointer !important;
-      padding-right: 20px !important;
     }
 
     .cm-callout-icon {
       display: inline-flex !important;
-      position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
+      position: static !important;
+      flex: 0 0 16px !important;
       width: 16px !important;
       height: 18px !important;
+      margin-right: 8px !important;
       align-items: center !important;
       justify-content: center !important;
       align-self: start !important;
-      flex-shrink: 0 !important;
       color: inherit !important;
     }
 
     .cm-callout-title-text {
       display: block !important;
+      flex: 1 1 auto !important;
       min-width: 0 !important;
       overflow-wrap: anywhere !important;
       white-space: normal !important;
     }
 
     .cm-callout-fold-btn {
-      position: absolute !important;
-      top: 0 !important;
-      right: 0 !important;
+      position: static !important;
+      flex: 0 0 auto !important;
+      align-self: flex-start !important;
       background: transparent !important;
       border: none !important;
       padding: 2px !important;
-      margin: 0 !important;
+      margin: 0 0 0 8px !important;
       color: inherit !important;
       display: inline-flex !important;
       align-items: center !important;

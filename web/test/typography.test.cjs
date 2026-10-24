@@ -99,6 +99,25 @@ test('per-heading reset clears the override and inherits the matching global hea
   assert.ok(settingsSource.includes('sharedPreferences.edit().remove(preference.key).apply()'), 'Inherited H-level scale values do not persist as overrides');
 });
 
+test('untouched per-heading defaults are migrated and are not saved as overrides', () => {
+  assert.ok(
+    resetSource.includes('fun migratePersistedHeadingDefaults'),
+    'Existing generated heading defaults are cleaned up once'
+  );
+  assert.ok(
+    resetSource.includes('pref_heading_override_defaults_migrated_v1'),
+    'Heading-default migration runs only once'
+  );
+  assert.ok(
+    settingsSource.includes('val hadStoredOverride = key != null && sharedPreferences.contains(key)'),
+    'The settings screen distinguishes existing user values from generated defaults'
+  );
+  assert.ok(
+    settingsSource.includes('generatedHeadingDefaults.forEach { remove(it) }'),
+    'Newly generated heading defaults are removed after preference initialization'
+  );
+});
+
 const indexHtmlPath = path.join(__dirname, '../index.html');
 const indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
 const paragraphSettingsPath = path.join(

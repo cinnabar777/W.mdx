@@ -557,7 +557,28 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 })
             }
 
-            controls.forEach { screen.addPreference(it) }
+            val generatedHeadingDefaults = mutableListOf<String>()
+            controls.forEach { preference ->
+                val key = preference.key
+                val hadStoredOverride = key != null && sharedPreferences.contains(key)
+                screen.addPreference(preference)
+
+                // SeekBar, list, and edit-text preferences persist their
+                // setDefaultValue() during attachment. A displayed inherited
+                // value must not become a saved H-level override.
+                if (
+                    !hadStoredOverride &&
+                    key != null &&
+                    Regex("^pref_heading_[1-6]_(?!settings_toggle$).+").matches(key)
+                ) {
+                    generatedHeadingDefaults.add(key)
+                }
+            }
+            if (generatedHeadingDefaults.isNotEmpty()) {
+                sharedPreferences.edit().apply {
+                    generatedHeadingDefaults.forEach { remove(it) }
+                }.apply()
+            }
             header.summary = "Tap to show H$level settings"
             header.setOnPreferenceClickListener {
                 val expanded = controls.firstOrNull()?.isVisible != true

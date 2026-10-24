@@ -60,8 +60,10 @@ test('Callout widget structure and eq implementation', () => {
 
 test('callout title wraps after its icon and keeps a unified rounded card background', () => {
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*block[\s\S]*?position:\s*relative[\s\S]*?padding-left:\s*24px/);
-  assert.match(indexHtml, /\.cm-callout-icon\s*\{[\s\S]*?position:\s*absolute/);
+  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*flex[\s\S]*?position:\s*relative/);
+  assert.match(indexHtml, /\.cm-callout-icon\s*\{[\s\S]*?position:\s*static[\s\S]*?flex:\s*0 0 16px/);
+  assert.match(indexHtml, /\.cm-callout-title-text\s*\{[\s\S]*?flex:\s*1 1 auto/);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[\s\S]*?position:\s*static/);
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title\s*\{[\s\S]*?border-top-left-radius/);
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-body:not\(:has\(\+ \.cm-line\.cm-callout-body\)\)/);
   assert.match(indexHtml, /--callout-type-header-bg:[\s\S]*?var\(--callout-bg-color/);
@@ -79,7 +81,7 @@ test('language label color is scoped to the language text, separate from COPY', 
 
 test('code text background is applied to the text mark, not substituted for the whole block background', () => {
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-  const textMarkRule = indexHtml.match(/\.cm-content \.cm-codeblock-text\s*\{([\s\S]*?)\n    \}/);
+  const textMarkRule = indexHtml.match(/\.cm-content \.cm-codeblock-line \.cm-codeblock-text\s*\{([\s\S]*?)\n    \}/);
   assert.ok(textMarkRule, 'Code text mark CSS rule exists');
   assert.match(textMarkRule[1], /background-color:\s*var\(--code-block-text-bg-color, transparent\)/);
   assert.match(textMarkRule[1], /box-decoration-break:\s*clone/);
@@ -269,6 +271,40 @@ test('CodeBlockHeaderWidget rendering, replacement decoration, and copy button l
   assert.ok(mainSource.includes('Decoration.replace({ widget: headerWidget }).range(line.from, line.to)'), 'Inactive code block replaces line with headerWidget');
   assert.ok(mainSource.includes('Decoration.widget({ widget: headerWidget, side: -1 }).range(line.from)'), 'Active code block inserts headerWidget at line start');
   assert.ok(mainSource.includes("copyBtn.className = 'cm-codeblock-copy-btn'"), 'CodeBlockHeaderWidget sets COPY button class');
+});
+
+test('code block text and language colors use independent selectors', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.ok(
+    indexHtml.includes('.cm-content .cm-codeblock-line span:not(.cm-codeblock-lang-label)'),
+    'General code text styling does not override the language label color'
+  );
+  assert.ok(
+    indexHtml.includes('.cm-content .cm-codeblock-line .cm-codeblock-text'),
+    'The text background applies to the marked code text inside each code line'
+  );
+  assert.ok(
+    indexHtml.includes('background-color: var(--code-block-text-bg-color, transparent) !important;'),
+    'The code-text background uses its dedicated setting'
+  );
+  assert.ok(
+    mainSource.includes("setCssVar('--code-block-lang-label-color', androidArgbToCss(prefs.pref_code_block_lang_label_color))"),
+    'The language label setting reaches its dedicated CSS variable'
+  );
+});
+
+test('callout title keeps its icon, wrapping title, and fold control on one header row', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[^}]*display:\s*flex\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-title-text\s*\{[^}]*flex:\s*1 1 auto\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*static\s*!important/s);
+  assert.ok(
+    indexHtml.includes('border-left: max(var(--callout-header-accent-thickness, 0px), var(--callout-border-width, 4px))'),
+    'The existing callout border styling remains unchanged'
+  );
 });
 
 test('wysiwygCodeBlockField, coordsForTargetRow, and selection paint styling', () => {

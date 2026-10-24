@@ -419,6 +419,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun applyThemeAndFullscreenPreferences() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        PreferenceResetHelper.migratePersistedHeadingDefaults(prefs)
         applySystemBarDimming()
 
         val jsonObject = org.json.JSONObject()

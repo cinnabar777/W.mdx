@@ -24,6 +24,8 @@ interface ResettablePreference {
 }
 
 object PreferenceResetHelper {
+    private const val HEADING_OVERRIDE_DEFAULTS_MIGRATED =
+        "pref_heading_override_defaults_migrated_v1"
 
     fun getDefaultColorHex(key: String?): String {
         return when (key) {
@@ -375,6 +377,41 @@ object PreferenceResetHelper {
             else -> null
         }
     }
+
+    /**
+     * Older heading controls persisted their displayed default values as if
+     * they were user-selected overrides. Remove only values that still match
+     * either the original heading default or the current global value so those
+     * levels inherit again. Values that differ from both are preserved.
+     */
+    fun migratePersistedHeadingDefaults(prefs: android.content.SharedPreferences) {
+        if (prefs.getBoolean(HEADING_OVERRIDE_DEFAULTS_MIGRATED, false)) return
+
+        val editor = prefs.edit()
+        for ((key, storedValue) in prefs.all) {
+            if (!Regex("^pref_heading_[1-6]_(?!settings_toggle$).+").matches(key)) {
+                continue
+            }
+
+            val originalDefault = getPerHeadingOverrideDefault(key) ?: continue
+            val currentInheritedValue = getHeadingOverrideInheritedValue(prefs, key)
+            if (
+                preferenceValuesMatch(storedValue, originalDefault) ||
+                preferenceValuesMatch(storedValue, currentInheritedValue)
+            ) {
+                editor.remove(key)
+            }
+        }
+        editor.putBoolean(HEADING_OVERRIDE_DEFAULTS_MIGRATED, true).apply()
+    }
+
+    private fun preferenceValuesMatch(storedValue: Any?, expectedValue: Any?): Boolean =
+        when (expectedValue) {
+            is Int -> storedValue is Int && storedValue == expectedValue
+            is Boolean -> storedValue is Boolean && storedValue == expectedValue
+            is String -> storedValue is String && storedValue == expectedValue
+            else -> false
+        }
 
     private fun shouldShowResetButton(key: String?): Boolean =
         key != null &&
