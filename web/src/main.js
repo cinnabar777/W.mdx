@@ -3303,7 +3303,12 @@ class CodeMirrorAdapter {
       window.visualViewport?.height || 0,
       window.innerHeight || 0
     );
-    const viewportMargin = computeWysiwygViewportMargin(viewportHeight);
+    const viewportMargin = computeWysiwygViewportMargin(
+      viewportHeight,
+      startState.doc.lines,
+      startState.doc.length,
+      currentEditorMode
+    );
 
     this.view = new EditorView({
       state: startState,
