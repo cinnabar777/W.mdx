@@ -429,6 +429,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         return currentFileUri?.toString() ?: "untitled:$taskId:$currentDocumentSessionId"
     }
 
+    private fun persistDocumentUriPermission(uri: Uri) {
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        } catch (_: Exception) {
+            // Some providers grant access only for the current session.
+        }
+    }
+
     private fun remapDocumentNavigationHistory(oldKey: String, newKey: String) {
         if (oldKey == newKey) return
         val escapedOldKey = JSONObjectWrapper.quote(oldKey)
@@ -680,14 +692,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val readStarted = android.os.SystemClock.elapsedRealtime()
 
         try {
-            try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            } catch (e: Exception) {
-                // Ignore if not a persistable document grant
-            }
+            persistDocumentUriPermission(uri)
 
             val fileName = getFileNameFromUri(uri)
 
@@ -874,6 +879,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         val oldHistoryKey = oldUri.toString()
         replaceHistoryUri(oldUri, renamedUri)
+        persistDocumentUriPermission(renamedUri)
         currentFileUri = renamedUri
         currentFileName = getFileNameFromUri(renamedUri)
         PreferenceManager.getDefaultSharedPreferences(this)
@@ -962,6 +968,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }
                 }
 
+                persistDocumentUriPermission(uri)
                 remapDocumentNavigationHistory(oldDocumentKey, uri.toString())
                 currentFileUri = uri
                 currentFileName = targetFileName

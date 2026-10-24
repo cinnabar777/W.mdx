@@ -528,6 +528,7 @@
       background: transparent;
       color: var(--toc-text-color, var(--text-color));
       font: inherit;
+      font-family: var(--toc-font-family, inherit);
       font-size: var(--toc-font-size, 16px);
       font-weight: var(--toc-font-weight, 600);
       text-overflow: ellipsis;
@@ -563,6 +564,7 @@
     .toc-heading-row {
       font-size: 15px;
       font-weight: var(--toc-font-weight, 600);
+      font-family: var(--toc-font-family, inherit);
       color: var(--toc-text-color, var(--text-color));
     }
 
@@ -595,7 +597,7 @@
     }
 
     .toc-item.active-section {
-      background-color: var(--toc-active-bg-color, var(--button-hover));
+      background-color: var(--toc-active-bg-color, transparent);
       color: var(--toc-active-text-color, #ffff00) !important;
       font-weight: var(--toc-font-weight, 600) !important;
     }
@@ -1528,7 +1530,7 @@
   <div id="toc-panel">
     <div class="toc-header">
       <div class="toc-document-name-row">
-        <input id="toc-document-name" type="text" enterkeyhint="done" readonly aria-label="Document name" />
+        <input id="toc-document-name" type="text" enterkeyhint="done" readonly title="Tap to rename the document" aria-label="Document name, tap to rename" />
         <button id="toc-settings-button" class="toc-header-action" title="TOC Panel Settings" aria-label="TOC Panel Settings">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>

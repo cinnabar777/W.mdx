@@ -36,9 +36,10 @@ class SettingsActivity : AppCompatActivity() {
                 .beginTransaction()
                 .replace(R.id.settings_container, initialFragment)
                 .commit()
-            if (directPage == "toc") {
-                supportActionBar?.title = "Table of Contents Panel"
-            }
+        }
+
+        if (intent.getStringExtra("settings_page") == "toc") {
+            supportActionBar?.title = "Table of Contents Panel"
         }
 
         supportFragmentManager.addOnBackStackChangedListener {

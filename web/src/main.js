@@ -4820,10 +4820,8 @@ function setupTocGestureAndPanel() {
     if (!documentNameInput || !documentNameInput.readOnly) return;
     documentNameInput.readOnly = false;
     documentNameInput.dataset.editing = 'true';
-    requestAnimationFrame(() => {
-      documentNameInput.focus();
-      documentNameInput.select();
-    });
+    documentNameInput.focus();
+    documentNameInput.select();
   };
 
   const commitDocumentNameEdit = () => {
