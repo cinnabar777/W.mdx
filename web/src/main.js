@@ -181,34 +181,19 @@ class CheckboxWidget extends WidgetType {
 export const heightMapRefreshEffect = StateEffect.define();
 
 const deferViewCallback = createDeferredViewCallback();
-// Keep the earliest pre-change snapshot while widget height refreshes coalesce.
-const pendingHeightMapScrollSnapshots = new WeakMap();
 
-function dispatchWithScrollSnapshot(view, effects, scrollSnapshot = null) {
-  view.dispatch({
-    effects: withScrollSnapshot(view, effects, scrollSnapshot)
-  });
+function dispatchWithScrollSnapshot(view, effects) {
+  view.dispatch({ effects: withScrollSnapshot(view, effects) });
 }
 
-function scheduleHeightMapRefresh(view, scrollSnapshot = null) {
-  if (
-    scrollSnapshot &&
-    !pendingHeightMapScrollSnapshots.has(view)
-  ) {
-    pendingHeightMapScrollSnapshots.set(view, scrollSnapshot);
-  }
-
+function scheduleHeightMapRefresh(view) {
   const mode = currentEditorMode;
   recordHeightMapRefresh(mode, 'scheduled');
   deferViewCallback(view, activeView => {
-    const preChangeScrollSnapshot =
-      pendingHeightMapScrollSnapshots.get(activeView) ?? null;
-    pendingHeightMapScrollSnapshots.delete(activeView);
     recordHeightMapRefresh(mode, 'dispatched');
     dispatchWithScrollSnapshot(
       activeView,
-      heightMapRefreshEffect.of(null),
-      preChangeScrollSnapshot
+      heightMapRefreshEffect.of(null)
     );
   });
 }
@@ -390,14 +375,7 @@ function estimatedWidgetHeight(key, fallback) {
   return Number.isFinite(measured) && measured > 0 ? measured : fallback;
 }
 
-function rememberWidgetHeight(
-  view,
-  key,
-  element,
-  kind,
-  estimatedHeight,
-  scrollSnapshot = null
-) {
+function rememberWidgetHeight(view, key, element, kind, estimatedHeight) {
   if (!view || !element) return;
   const measurementMode = currentEditorMode;
   view.requestMeasure({
@@ -410,12 +388,7 @@ function rememberWidgetHeight(
     write: height => {
       if (!Number.isFinite(height) || height <= 0) return;
       const previous = measuredWidgetHeights.get(key);
-      if (previous !== undefined && Math.abs(previous - height) < 1) {
-        if (scrollSnapshot) {
-          scheduleHeightMapRefresh(view, scrollSnapshot);
-        }
-        return;
-      }
+      if (previous !== undefined && Math.abs(previous - height) < 1) return;
 
       recordWidgetHeightCacheUpdate(
         measurementMode,
@@ -427,7 +400,7 @@ function rememberWidgetHeight(
       if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
         measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
       }
-      scheduleHeightMapRefresh(view, scrollSnapshot);
+      scheduleHeightMapRefresh(view);
     }
   });
 }
@@ -858,31 +831,15 @@ class ImagePreviewWidget extends WidgetType {
         const aspect = img.naturalWidth / img.naturalHeight;
         imageAspectCache.set(this.url, aspect);
         const renderedHeight = Math.ceil(img.getBoundingClientRect().height);
-        let preChangeScrollSnapshot = null;
         if (renderedHeight > 0) {
-          const nextMinHeight = `${renderedHeight}px`;
-          if (wrapper.style.minHeight !== nextMinHeight) {
-            if (wrapper.isConnected && !view.destroyed) {
-              preChangeScrollSnapshot = view.scrollSnapshot();
-            }
-            wrapper.style.minHeight = nextMinHeight;
-          }
+          wrapper.style.minHeight = `${renderedHeight}px`;
         }
         view.requestMeasure();
-        rememberWidgetHeight(
-          view,
-          this.heightKey,
-          wrapper,
-          'image_preview',
-          this.heightEstimate,
-          preChangeScrollSnapshot
-        );
+        rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
       }
     };
 
     img.onerror = () => {
-      const preChangeScrollSnapshot =
-        wrapper.isConnected && !view.destroyed ? view.scrollSnapshot() : null;
       imageAspectCache.delete(this.url);
       wrapper.innerHTML = '';
       const fallbackBox = document.createElement('div');
@@ -892,14 +849,7 @@ class ImagePreviewWidget extends WidgetType {
       wrapper.appendChild(fallbackBox);
       wrapper.style.minHeight = '0px';
       view.requestMeasure();
-      rememberWidgetHeight(
-        view,
-        this.heightKey,
-        wrapper,
-        'image_preview',
-        this.heightEstimate,
-        preChangeScrollSnapshot
-      );
+      rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     };
 
     wrapper.appendChild(img);
