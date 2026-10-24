@@ -3246,9 +3246,6 @@ class CodeMirrorAdapter {
       viewportMargin
     });
 
-    this.view.scrollDOM.style.overflowAnchor =
-      currentEditorMode === 'wysiwyg' ? 'none' : 'auto';
-
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
     this.visibilityPersistHandler = () => {
       if (document.visibilityState === 'hidden') this.persistScrollPosition();
