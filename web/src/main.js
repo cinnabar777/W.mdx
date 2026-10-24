@@ -4832,9 +4832,17 @@ function updateTocActiveSection() {
   const view = activeAdapter.view;
   const doc = view.state.doc;
   const scrollRect = view.scrollDOM.getBoundingClientRect();
+  const isAtDocumentTop = view.scrollDOM.scrollTop <= 1;
   let activePosition = null;
-  if (scrollRect.height > 0 && typeof view.posAtCoords === 'function') {
-    const anchorY = scrollRect.top + Math.min(scrollRect.height * 0.32, 160);
+  if (
+    !isAtDocumentTop &&
+    scrollRect.height > 0 &&
+    typeof view.posAtCoords === 'function'
+  ) {
+    const anchorY =
+      scrollRect.top +
+      scrollRect.height * 0.30 +
+      Math.min(8, scrollRect.height * 0.02);
     const anchorX = scrollRect.left + Math.min(scrollRect.width * 0.12, 24);
     try {
       activePosition = view.posAtCoords({ x: anchorX, y: anchorY }, false);
@@ -4842,21 +4850,24 @@ function updateTocActiveSection() {
       activePosition = null;
     }
   }
-  if (!Number.isFinite(activePosition)) {
+  if (!isAtDocumentTop && !Number.isFinite(activePosition)) {
     activePosition = view.state.selection.main.head;
   }
-  const currentLine = doc.lineAt(activePosition).number - 1;
 
   const rows = Array.from(tocContent.querySelectorAll('.toc-item'));
   let activeRow = null;
-
-  rows.forEach(row => {
-    row.classList.remove('active-section');
-    const idx = parseInt(row.dataset.lineIndex, 10);
-    if (!isNaN(idx) && currentLine >= idx) {
-      activeRow = row;
-    }
-  });
+  rows.forEach(row => row.classList.remove('active-section'));
+  if (isAtDocumentTop) {
+    activeRow = rows[0] || null;
+  } else {
+    const currentLine = doc.lineAt(activePosition).number - 1;
+    rows.forEach(row => {
+      const idx = parseInt(row.dataset.lineIndex, 10);
+      if (!isNaN(idx) && currentLine >= idx) {
+        activeRow = row;
+      }
+    });
+  }
 
   if (activeRow) {
     let activeHeadingChanged = activeRow.dataset.headingKey !== tocExpansionState.activeHeadingKey;

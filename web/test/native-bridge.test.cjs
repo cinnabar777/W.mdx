@@ -46,3 +46,13 @@ test('document rename requests only selected-folder access before offering Save 
   assert.ok(mainActivitySource.includes('The original file will remain unchanged.'));
   assert.ok(!mainActivitySource.includes('MANAGE_EXTERNAL_STORAGE'));
 });
+
+test('document rename supports exact-file access when Android blocks folder selection', () => {
+  assert.ok(mainActivitySource.includes('Intent.ACTION_OPEN_DOCUMENT'));
+  assert.ok(mainActivitySource.includes('EXTRA_INITIAL_URI, uri'));
+  assert.ok(mainActivitySource.includes('handleRenameFileSelection(result.resultCode, result.data)'));
+  assert.ok(mainActivitySource.includes('isSameDocumentUri(request.uri, selectedUri)'));
+  assert.ok(mainActivitySource.includes('renameCurrentDocument(request.targetName, selectedUri)'));
+  assert.ok(mainActivitySource.includes('Grant access to this file'));
+  assert.ok(mainActivitySource.includes('Android blocks selecting the Downloads folder itself'));
+});
