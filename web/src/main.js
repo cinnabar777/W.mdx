@@ -6,6 +6,15 @@ import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
 import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
+import {
+  recordDecorationBuild,
+  recordHeightMapRefresh,
+  recordListMarkerRead,
+  recordListMarkerWrite,
+  recordWidgetHeightCacheUpdate,
+  recordWidgetHeightRead,
+  takeRenderLayoutMetrics
+} from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
@@ -178,7 +187,10 @@ function dispatchWithScrollSnapshot(view, effects) {
 }
 
 function scheduleHeightMapRefresh(view) {
+  const mode = currentEditorMode;
+  recordHeightMapRefresh(mode, 'scheduled');
   deferViewCallback(view, activeView => {
+    recordHeightMapRefresh(mode, 'dispatched');
     dispatchWithScrollSnapshot(
       activeView,
       heightMapRefreshEffect.of(null)
@@ -257,6 +269,7 @@ function scheduleListMarkerMeasurements(view, force = false) {
     return;
   }
 
+  const measurementMode = currentEditorMode;
   view.requestMeasure({
     key: listMarkerMeasurementKey,
     read: () => {
@@ -288,18 +301,37 @@ function scheduleListMarkerMeasurements(view, force = false) {
           measurements.push({ line });
         }
       }
+      recordListMarkerRead(measurementMode, lines.length, measurements.length);
       return { enabled: true, measurements };
     },
     write: result => {
       if (!result) return;
+      let changedCount = 0;
+      let totalDeltaPx = 0;
+      let maxDeltaPx = 0;
       for (const { line, gutter } of result.measurements) {
         if (!line.isConnected || !view.contentDOM.contains(line)) continue;
         if (result.enabled && Number.isFinite(gutter) && gutter > 0) {
-          line.style.setProperty('--list-marker-gutter', `${gutter}px`);
+          const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
+          const nextValue = `${gutter}px`;
+          if (line.style.getPropertyValue('--list-marker-gutter') !== nextValue) {
+            const delta = Math.abs(gutter - previous);
+            changedCount++;
+            totalDeltaPx += delta;
+            maxDeltaPx = Math.max(maxDeltaPx, delta);
+          }
+          line.style.setProperty('--list-marker-gutter', nextValue);
         } else {
+          const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
+          if (line.style.getPropertyValue('--list-marker-gutter')) {
+            changedCount++;
+            totalDeltaPx += previous;
+            maxDeltaPx = Math.max(maxDeltaPx, previous);
+          }
           line.style.removeProperty('--list-marker-gutter');
         }
       }
+      recordListMarkerWrite(measurementMode, changedCount, totalDeltaPx, maxDeltaPx);
     }
   });
 }
@@ -343,17 +375,27 @@ function estimatedWidgetHeight(key, fallback) {
   return Number.isFinite(measured) && measured > 0 ? measured : fallback;
 }
 
-function rememberWidgetHeight(view, key, element) {
+function rememberWidgetHeight(view, key, element, kind, estimatedHeight) {
   if (!view || !element) return;
+  const measurementMode = currentEditorMode;
   view.requestMeasure({
-    read: () => element.isConnected
-      ? element.getBoundingClientRect().height
-      : null,
+    read: () => {
+      if (!element.isConnected) return null;
+      const height = element.getBoundingClientRect().height;
+      recordWidgetHeightRead(measurementMode, kind, height);
+      return height;
+    },
     write: height => {
       if (!Number.isFinite(height) || height <= 0) return;
       const previous = measuredWidgetHeights.get(key);
       if (previous !== undefined && Math.abs(previous - height) < 1) return;
 
+      recordWidgetHeightCacheUpdate(
+        measurementMode,
+        kind,
+        previous ?? estimatedHeight,
+        height
+      );
       measuredWidgetHeights.set(key, height);
       if (measuredWidgetHeights.size > MAX_MEASURED_WIDGET_HEIGHTS) {
         measuredWidgetHeights.delete(measuredWidgetHeights.keys().next().value);
@@ -463,7 +505,7 @@ class CodeBlockHeaderWidget extends WidgetType {
     header.appendChild(langSpan);
     header.appendChild(copyBtn);
 
-    rememberWidgetHeight(view, this.heightKey, header);
+    rememberWidgetHeight(view, this.heightKey, header, 'code_header', this.heightEstimate);
     return header;
   }
 }
@@ -606,7 +648,7 @@ class CalloutTitleWidget extends WidgetType {
       btn.addEventListener('click', toggleFold);
     }
 
-    rememberWidgetHeight(view, this.heightKey, span);
+    rememberWidgetHeight(view, this.heightKey, span, 'callout_title', this.heightEstimate);
     return span;
   }
 
@@ -793,7 +835,7 @@ class ImagePreviewWidget extends WidgetType {
           wrapper.style.minHeight = `${renderedHeight}px`;
         }
         view.requestMeasure();
-        rememberWidgetHeight(view, this.heightKey, wrapper);
+        rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
       }
     };
 
@@ -807,11 +849,11 @@ class ImagePreviewWidget extends WidgetType {
       wrapper.appendChild(fallbackBox);
       wrapper.style.minHeight = '0px';
       view.requestMeasure();
-      rememberWidgetHeight(view, this.heightKey, wrapper);
+      rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     };
 
     wrapper.appendChild(img);
-    rememberWidgetHeight(view, this.heightKey, wrapper);
+    rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     return wrapper;
   }
 }
@@ -1109,6 +1151,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   }
 
   buildDecorations(view) {
+    recordDecorationBuild(currentEditorMode, 'live_preview_plugin');
     const previousHiddenSyntaxRanges = this.hiddenSyntaxRanges;
     this.hiddenSyntaxRanges = Decoration.none;
     try {
@@ -2045,6 +2088,7 @@ export function updateTableDocumentSelection(view) {
 
 function buildWysiwygCodeBlockDecorations(state) {
   if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+  recordDecorationBuild(currentEditorMode, 'wysiwyg_code_blocks');
 
   const doc = state.doc;
   const builder = [];
@@ -2191,6 +2235,7 @@ function buildHeightMapValue(state) {
       hiddenSyntaxRanges: Decoration.none
     };
   }
+  recordHeightMapRefresh(currentEditorMode, 'rebuilt');
 
   const doc = state.doc;
   const tree = syntaxTree(state);
@@ -5821,6 +5866,7 @@ export function setupNavigationDiagnostics(view) {
 
   const dom = view.dom;
   const scroller = view.scrollDOM;
+  const diagnosticMode = currentEditorMode;
   const doc = dom.ownerDocument;
   const win = doc.defaultView || window;
   let disposed = false;
@@ -5870,6 +5916,16 @@ export function setupNavigationDiagnostics(view) {
       win.AndroidNative.reportNavigationTrace(serialized);
     }
   };
+  const flushRenderLayoutMetrics = () => {
+    if (typeof win.AndroidNative?.reportNavigationTrace !== 'function') return;
+    const metrics = takeRenderLayoutMetrics(diagnosticMode);
+    if (metrics) win.AndroidNative.reportNavigationTrace(JSON.stringify(metrics));
+  };
+  const handleDocumentVisibilityChange = () => {
+    if (doc.visibilityState === 'hidden') flushRenderLayoutMetrics();
+  };
+  addListener(doc, 'visibilitychange', handleDocumentVisibilityChange);
+  addListener(win, 'pagehide', flushRenderLayoutMetrics);
 
   const addSampleToContainer = (container, sampleFactory) => {
     if (!container) return;
@@ -5921,6 +5977,7 @@ export function setupNavigationDiagnostics(view) {
     };
 
     reportTrace(record);
+    flushRenderLayoutMetrics();
   };
 
   // Capture phase keydown for ArrowUp / ArrowDown
@@ -6104,6 +6161,7 @@ export function setupNavigationDiagnostics(view) {
     };
 
     reportTrace(record);
+    flushRenderLayoutMetrics();
   };
 
   let pointerGestureTimer = null;
@@ -6194,6 +6252,7 @@ export function setupNavigationDiagnostics(view) {
     };
 
     reportTrace(record);
+    flushRenderLayoutMetrics();
   };
 
   const onPointerDown = (e) => {
@@ -6342,6 +6401,7 @@ export function setupNavigationDiagnostics(view) {
 
   return () => {
     if (disposed) return;
+    flushRenderLayoutMetrics();
     disposed = true;
     for (const [target, type, handler, options] of listeners) {
       target.removeEventListener(type, handler, options);
