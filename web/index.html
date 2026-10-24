@@ -427,6 +427,16 @@
       color: #ffffff !important;
     }
 
+    /* CodeMirror draws selections behind text; these opaque code surfaces need
+       the native selection paint restored for the selected characters only. */
+    .cm-editor .cm-content .cm-inline-code::selection,
+    .cm-editor .cm-content .cm-inline-code *::selection,
+    .cm-editor .cm-content .cm-codeblock-line::selection,
+    .cm-editor .cm-content .cm-codeblock-line *::selection {
+      background-color: var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)) !important;
+      color: var(--selection-highlight-text, inherit) !important;
+    }
+
     /* Active Toolbar Icon Accent Color */
     .grouped-key-btn.active svg,
     .popup-strip-btn.active svg {
