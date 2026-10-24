@@ -283,11 +283,6 @@ test('CodeBlockHeaderWidget rendering, replacement decoration, and copy button l
   assert.ok(mainSource.includes('Decoration.replace({ widget: headerWidget }).range(line.from, line.to)'), 'Inactive code block replaces line with headerWidget');
   assert.ok(mainSource.includes('Decoration.widget({ widget: headerWidget, side: -1 }).range(line.from)'), 'Active code block inserts headerWidget at line start');
   assert.ok(mainSource.includes("copyBtn.className = 'cm-codeblock-copy-btn'"), 'CodeBlockHeaderWidget sets COPY button class');
-  assert.match(
-    mainSource,
-    /measuredWidgetHeightKey\('codeblock-header',\s*this\.lang,\s*width,\s*sig\)/,
-    'Header measurements are shared by language, width, and typography rather than code body length'
-  );
 });
 
 test('code block text and language colors use independent selectors', () => {

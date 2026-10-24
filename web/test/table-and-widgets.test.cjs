@@ -125,7 +125,7 @@ test('WordProcessorTableWidget attaches long-press events and applies CSS variab
   assert.ok(code.includes('var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)'), 'Table CSS variables for width and style are used');
 });
 
-test('wide rendered tables keep their content width inside an independent horizontal scroller', () => {
+test('wide rendered tables keep their content width inside a viewport-bounded horizontal scroller', () => {
   const tableWidgetCode = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
@@ -143,6 +143,14 @@ test('wide rendered tables keep their content width inside an independent horizo
     indexHtml,
     /\.cm-wp-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%/s,
     'The shared table styling preserves intrinsic width while filling narrow tables'
+  );
+  assert.ok(
+    indexHtml.includes('contain: inline-size;'),
+    'The table scroller prevents intrinsic table width from widening the editor content'
+  );
+  assert.ok(
+    indexHtml.includes('calc(100vw - 32px - var(--table-margin-left, 0px) - var(--table-margin-right, 0px))'),
+    'The table scroller is capped to the viewport content width even if editor content expands'
   );
 });
 

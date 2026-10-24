@@ -688,6 +688,7 @@
       overflow-x: auto;
       max-width: 100%;
       box-sizing: border-box;
+      contain: inline-size;
     }
 
     .cm-content .cm-wp-table-container,
@@ -695,7 +696,11 @@
       width: 100% !important;
       margin-left: var(--table-margin-left, 0px) !important;
       margin-right: var(--table-margin-right, 0px) !important;
-      max-width: calc(100% - var(--table-margin-left, 0px) - var(--table-margin-right, 0px)) !important;
+      max-width: min(
+        calc(100% - var(--table-margin-left, 0px) - var(--table-margin-right, 0px)),
+        calc(100vw - 32px - var(--table-margin-left, 0px) - var(--table-margin-right, 0px))
+      ) !important;
+      min-width: 0 !important;
       box-sizing: border-box !important;
     }
 

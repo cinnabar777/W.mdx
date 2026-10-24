@@ -1,2 +1,3 @@
 - [Collaborative code fixes](collaborative-code-fixes.md) — clarify the observed symptom and scope before uncertain UI/settings fixes; avoid speculative changes.
 - [Android heading preference inheritance](android-heading-preferences.md) — AndroidX can persist displayed defaults; keep inherited heading values out of saved overrides.
+- [SeekBar reset alignment](seekbar-reset-alignment.md) — AndroidX’s inner end padding, not margins, misaligned reset icons; clearing it was confirmed to fix alignment.
