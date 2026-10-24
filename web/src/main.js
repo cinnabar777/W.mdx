@@ -483,8 +483,15 @@ const calloutTypeIcons = {
 
 let calloutTypeIconOverrides = {};
 
+function getCalloutTitleStart(line, match) {
+  const customTitle = match[5];
+  if (!customTitle || !customTitle.trim()) return null;
+  const index = line.text.indexOf(customTitle, match[1].length + match[2].length);
+  return index < 0 ? null : line.from + index;
+}
+
 class CalloutTitleWidget extends WidgetType {
-  constructor(title, type, foldMarker, isFolded, foldFrom, foldTo) {
+  constructor(title, type, foldMarker, isFolded, foldFrom, foldTo, titleIsInSource = false) {
     super();
     this.title = title;
     this.type = (type || 'note').toLowerCase();
@@ -492,6 +499,7 @@ class CalloutTitleWidget extends WidgetType {
     this.isFolded = isFolded;
     this.foldFrom = foldFrom;
     this.foldTo = foldTo;
+    this.titleIsInSource = titleIsInSource;
     const width = activeContentWidth();
     const sig = activeTypographySignature();
     this.heightKey = measuredWidgetHeightKey('callout-title', `${this.type}:${this.title}`, width, sig);
@@ -511,6 +519,7 @@ class CalloutTitleWidget extends WidgetType {
       other.isFolded === this.isFolded &&
       other.foldFrom === this.foldFrom &&
       other.foldTo === this.foldTo &&
+      other.titleIsInSource === this.titleIsInSource &&
       other.heightEstimate === this.heightEstimate
     );
   }
@@ -527,13 +536,9 @@ class CalloutTitleWidget extends WidgetType {
     }
 
     const span = document.createElement('span');
-    span.className = 'cm-callout-title-container' + (this.foldMarker ? ' is-foldable' : '');
-    if (this.foldMarker) {
-      span.setAttribute('role', 'button');
-      span.setAttribute('tabindex', '0');
-      span.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
-      span.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
-    }
+    span.className = 'cm-callout-title-container' +
+      (this.foldMarker ? ' is-foldable' : '') +
+      (this.titleIsInSource ? ' has-source-title' : '');
 
     const iconOverride = calloutTypeIconOverrides[this.type];
     const allowedIcons = ['info', 'question', 'faq', 'todo', 'example', 'note', 'tip', 'warning', 'important', 'danger'];
@@ -544,20 +549,24 @@ class CalloutTitleWidget extends WidgetType {
 
     const iconSpan = document.createElement('span');
     iconSpan.className = 'cm-callout-icon';
+    iconSpan.setAttribute('aria-hidden', 'true');
     iconSpan.innerHTML = iconSvg;
     span.appendChild(iconSpan);
 
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'cm-callout-title-text';
-    titleSpan.textContent = this.title;
-    span.appendChild(titleSpan);
+    if (!this.titleIsInSource) {
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'cm-callout-title-text';
+      titleSpan.textContent = this.title;
+      span.appendChild(titleSpan);
+    }
 
     if (this.foldMarker) {
       const btn = document.createElement('button');
       btn.className = 'cm-callout-fold-btn';
       btn.type = 'button';
-      btn.tabIndex = -1;
-      btn.setAttribute('aria-hidden', 'true');
+      btn.tabIndex = 0;
+      btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
+      btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
       btn.innerHTML = currentlyFolded
         ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
         : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
@@ -595,12 +604,6 @@ class CalloutTitleWidget extends WidgetType {
       };
 
       btn.addEventListener('click', toggleFold);
-      iconSpan.addEventListener('click', toggleFold);
-      span.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          toggleFold(e);
-        }
-      });
     }
 
     rememberWidgetHeight(view, this.heightKey, span);
@@ -1306,6 +1309,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               const customTitle = match[5];
               const markerStart = line.from + match[1].length;
               const markerEnd = markerStart + match[2].length;
+              const titleStart = getCalloutTitleStart(line, match);
 
               const calloutObj = {
                 depth: currentDepth,
@@ -1319,6 +1323,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   customTitle,
                   markerStart,
                   markerEnd,
+                  titleStart,
                   bodyFrom: line.to,
                   bodyTo: line.to
                 }
@@ -1623,6 +1628,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         const displayTitle = customTitle ||
           (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+        const titleIsInSource = info.titleStart != null;
+        const widgetEnd = titleIsInSource ? info.titleStart : line.to;
 
         builder.push(Decoration.replace({
           widget: new CalloutTitleWidget(
@@ -1631,9 +1638,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             info.foldMarker,
             isFolded,
             info.bodyFrom,
-            info.bodyTo
+            info.bodyTo,
+            titleIsInSource
           )
-        }).range(info.markerStart, line.to));
+        }).range(info.markerStart, widgetEnd));
+
+        if (titleIsInSource) {
+          builder.push(Decoration.mark({
+            class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`
+          }).range(info.titleStart, line.to));
+        }
+        lineClasses.get(lineFrom)?.add('cm-callout-title-rendered');
       }
     }
 
@@ -2281,6 +2296,7 @@ function buildHeightMapValue(state) {
           const customTitle = match[5];
           const markerStart = line.from + match[1].length;
           const markerEnd = markerStart + match[2].length;
+          const titleStart = getCalloutTitleStart(line, match);
 
           const calloutObj = {
             depth: currentDepth,
@@ -2294,6 +2310,7 @@ function buildHeightMapValue(state) {
               customTitle,
               markerStart,
               markerEnd,
+              titleStart,
               bodyFrom: line.to,
               bodyTo: line.to
             }
@@ -2443,6 +2460,8 @@ function buildHeightMapValue(state) {
 
     const displayTitle = customTitle ||
       (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+    const titleIsInSource = info.titleStart != null;
+    const widgetEnd = titleIsInSource ? info.titleStart : line.to;
 
     replacements.push(Decoration.replace({
       widget: new CalloutTitleWidget(
@@ -2451,9 +2470,16 @@ function buildHeightMapValue(state) {
         info.foldMarker,
         isFolded,
         info.bodyFrom,
-        info.bodyTo
+        info.bodyTo,
+        titleIsInSource
       )
-    }).range(info.markerStart, line.to));
+    }).range(info.markerStart, widgetEnd));
+
+    if (titleIsInSource) {
+      replacements.push(Decoration.mark({
+        class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`
+      }).range(info.titleStart, line.to));
+    }
   }
 
   const validReplacements = replacements.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
@@ -2618,6 +2644,7 @@ export function buildPersistentLayoutDecorations(state) {
       addClass(number, 'cm-callout');
       if (calloutInfo.isTitle) {
         addClass(number, 'cm-callout-title');
+        addClass(number, 'cm-callout-title-rendered');
       } else {
         addClass(number, 'cm-callout-body');
       }
