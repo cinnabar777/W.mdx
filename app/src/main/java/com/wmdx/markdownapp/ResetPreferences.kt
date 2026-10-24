@@ -477,6 +477,17 @@ object PreferenceResetHelper {
 
         targetRow.orientation = LinearLayout.HORIZONTAL
         targetRow.gravity = Gravity.CENTER_VERTICAL
+        if (seekBarRow != null) {
+            // AndroidX's seekbar content container adds an 8dp end margin.
+            // The preference item already supplies the shared trailing inset.
+            val seekBarContent = seekBarRow.parent as? ViewGroup
+            val contentLayoutParams =
+                seekBarContent?.layoutParams as? ViewGroup.MarginLayoutParams
+            if (contentLayoutParams != null && contentLayoutParams.marginEnd != 0) {
+                contentLayoutParams.marginEnd = 0
+                seekBarContent.layoutParams = contentLayoutParams
+            }
+        }
 
         val seekBar = holder.findViewById(
             androidx.preference.R.id.seekbar
