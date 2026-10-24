@@ -9,8 +9,6 @@
 
 # PARAGRAPH & BODY TYPOGRAPHY
 
-1. --- 
-
 ----------
 # INLINE FORMATS
 
@@ -37,8 +35,6 @@
 -----------
 # TABLES
 
-1. ---
-
 ___
 
 # CODEBLOCK STYLING
@@ -46,8 +42,6 @@ ___
 -----------
 
 # HORIZONTAL DIVIDERS
-
-1. ---
 
 ------------------
 
