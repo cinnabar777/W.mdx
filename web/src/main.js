@@ -2121,6 +2121,16 @@ function buildWysiwygCodeBlockDecorations(state) {
               .range(line.from, line.to)
           );
         }
+        if (
+          isFenceLine &&
+          number === lastLine.number &&
+          number > firstLine.number &&
+          line.to > line.from
+        ) {
+          // The opening fence is replaced by the language header below.
+          // Hide the closing fence too so WYSIWYG never exposes Markdown syntax.
+          builder.push(Decoration.replace({}).range(line.from, line.to));
+        }
       }
 
       if (firstLine.from === node.from) {
