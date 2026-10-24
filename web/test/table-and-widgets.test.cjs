@@ -125,6 +125,27 @@ test('WordProcessorTableWidget attaches long-press events and applies CSS variab
   assert.ok(code.includes('var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)'), 'Table CSS variables for width and style are used');
 });
 
+test('wide rendered tables keep their content width inside an independent horizontal scroller', () => {
+  const tableWidgetCode = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.match(
+    tableWidgetCode,
+    /overflow-x:\s*auto;[^']*max-width:\s*100%/,
+    'Each rendered table has its own width-constrained horizontal scroll container'
+  );
+  assert.match(
+    tableWidgetCode,
+    /width:\s*max-content;\s*min-width:\s*100%/,
+    'The rendered table can overflow when its content is wider than the viewport'
+  );
+  assert.match(
+    indexHtml,
+    /\.cm-wp-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%/s,
+    'The shared table styling preserves intrinsic width while filling narrow tables'
+  );
+});
+
 test('Table widget exports tableHeightEstimatesChanged and measureTableWidgetHeight', async () => {
   const tableWidgetModule = await import('../src/tableWidget.js');
   assert.ok(tableWidgetModule.tableHeightEstimatesChanged, 'tableHeightEstimatesChanged StateEffect is exported');

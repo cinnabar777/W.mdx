@@ -480,18 +480,15 @@ object PreferenceResetHelper {
         targetRow.orientation = LinearLayout.HORIZONTAL
         targetRow.gravity = Gravity.CENTER_VERTICAL
         if (seekBarRow != null) {
-            // AndroidX can inset both the nested seekbar row and its container.
-            // Clear those extra end margins so the reset control uses the same
-            // trailing edge as reset controls in other preference rows.
-            val seekBarContent = seekBarRow.parent as? ViewGroup
-            listOfNotNull(seekBarRow, seekBarContent).forEach { row ->
-                val rowLayoutParams =
-                    row.layoutParams as? ViewGroup.MarginLayoutParams
-                if (rowLayoutParams != null && rowLayoutParams.marginEnd != 0) {
-                    rowLayoutParams.marginEnd = 0
-                    row.layoutParams = rowLayoutParams
-                }
-            }
+            // AndroidX's seekbar widget layout adds 16dp of trailing padding
+            // inside this row. The preference item already supplies the shared
+            // trailing inset used by other reset controls.
+            seekBarRow.setPaddingRelative(
+                seekBarRow.paddingStart,
+                seekBarRow.paddingTop,
+                0,
+                seekBarRow.paddingBottom
+            )
         }
 
         val seekBar = holder.findViewById(
