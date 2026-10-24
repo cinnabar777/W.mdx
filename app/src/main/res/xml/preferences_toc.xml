@@ -5,10 +5,10 @@
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Panel">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_toc_panel_width"
-            app:title="Panel Width (%)"
-            app:summary="Width of the table of contents panel"
+            app:title="Panel Width (% of screen)"
+            app:summary="Width of the table of contents panel, up to 90%"
             app:min="50"
-            android:max="100"
+            android:max="90"
             app:defaultValue="80"
             app:showSeekBarValue="true" />
 

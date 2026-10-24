@@ -56,6 +56,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var currentToast: Toast? = null
     private var currentTextPackSession: TextPackSession? = null
     private var pendingRenameFallbackName: String? = null
+    private data class RenameAccessRequest(val uri: Uri, val targetName: String)
+    private var pendingRenamePermissionRequest: RenameAccessRequest? = null
     private val documentHistoryStack = java.util.ArrayDeque<Uri>()
     private val documentForwardStack = java.util.ArrayDeque<Uri>()
 
@@ -65,9 +67,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private val openDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { openFile(it, forceReload = true) }
-    }
+    private val openDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val resultIntent = result.data
+            val uri = resultIntent?.data
+            val renameRequest = pendingRenamePermissionRequest
+
+            if (renameRequest != null) {
+                pendingRenamePermissionRequest = null
+                if (
+                    result.resultCode == android.app.Activity.RESULT_OK &&
+                    uri != null &&
+                    uri == renameRequest.uri
+                ) {
+                    val grantedFlags = resultIntent.flags
+                    persistDocumentUriPermission(uri, grantedFlags)
+                    if (hasWriteUriPermission(uri)) {
+                        renameCurrentDocument(renameRequest.targetName)
+                    } else {
+                        launchRenameSaveAs(renameRequest.targetName)
+                    }
+                } else {
+                    updateTitle()
+                    if (result.resultCode == android.app.Activity.RESULT_OK && uri != null) {
+                        ThemedToast.show(
+                            this,
+                            "Rename canceled. Select the currently open file to continue.",
+                            Toast.LENGTH_SHORT
+                        )
+                    }
+                }
+            } else if (
+                result.resultCode == android.app.Activity.RESULT_OK &&
+                uri != null
+            ) {
+                openFile(
+                    uri,
+                    forceReload = true,
+                    permissionFlags = resultIntent.flags
+                )
+            }
+        }
 
     private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         if (uri != null) {
@@ -429,16 +469,51 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         return currentFileUri?.toString() ?: "untitled:$taskId:$currentDocumentSessionId"
     }
 
-    private fun persistDocumentUriPermission(uri: Uri) {
+    private fun persistDocumentUriPermission(uri: Uri, grantedFlags: Int? = null) {
+        val readWriteFlags =
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        val flagsToPersist = (grantedFlags ?: readWriteFlags) and readWriteFlags
+        if (flagsToPersist == 0) return
+
         try {
             contentResolver.takePersistableUriPermission(
                 uri,
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                flagsToPersist
             )
         } catch (_: Exception) {
             // Some providers grant access only for the current session.
         }
+    }
+
+    private fun hasWriteUriPermission(uri: Uri): Boolean {
+        return checkUriPermission(
+            uri,
+            android.os.Process.myPid(),
+            android.os.Process.myUid(),
+            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun documentSupportsRename(uri: Uri): Boolean? {
+        return runCatching {
+            contentResolver.query(
+                uri,
+                arrayOf(android.provider.DocumentsContract.Document.COLUMN_FLAGS),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val flagsColumn =
+                    cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_FLAGS)
+                if (!cursor.moveToFirst() || flagsColumn < 0) {
+                    null
+                } else {
+                    cursor.getLong(flagsColumn).toInt() and
+                        android.provider.DocumentsContract.Document.FLAG_SUPPORTS_RENAME != 0
+                }
+            }
+        }.getOrNull()
     }
 
     private fun remapDocumentNavigationHistory(oldKey: String, newKey: String) {
@@ -666,15 +741,49 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         openFile(uri, rememberHistory = false)
     }
 
-    private fun handleOpenFile() {
-        if (isDirty) {
-            showUnsavedChangesDialog { openDocumentLauncher.launch(arrayOf("text/markdown", "text/plain", "application/zip", "application/x-zip-compressed", "*/*")) }
-        } else {
-            openDocumentLauncher.launch(arrayOf("text/markdown", "text/plain", "application/zip", "application/x-zip-compressed", "*/*"))
+    private fun createOpenDocumentIntent(initialUri: Uri? = null): android.content.Intent {
+        val mimeTypes = arrayOf(
+            "text/markdown",
+            "text/plain",
+            "application/zip",
+            "application/x-zip-compressed",
+            "*/*"
+        )
+        return android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(android.content.Intent.EXTRA_MIME_TYPES, mimeTypes)
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+            if (initialUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, initialUri)
+            }
         }
     }
 
-    private fun openFile(uri: Uri, rememberHistory: Boolean = true, forceReload: Boolean = false, skipExistingWindowFocus: Boolean = false) {
+    private fun launchOpenDocumentPicker(initialUri: Uri? = null) {
+        openDocumentLauncher.launch(createOpenDocumentIntent(initialUri))
+    }
+
+    private fun handleOpenFile() {
+        if (isDirty) {
+            showUnsavedChangesDialog { launchOpenDocumentPicker() }
+        } else {
+            launchOpenDocumentPicker()
+        }
+    }
+
+    private fun openFile(
+        uri: Uri,
+        rememberHistory: Boolean = true,
+        forceReload: Boolean = false,
+        skipExistingWindowFocus: Boolean = false,
+        permissionFlags: Int? = null
+    ) {
+        persistDocumentUriPermission(uri, permissionFlags)
         if (!isEditorReady) {
             pendingOpenUri = uri
             return
@@ -692,8 +801,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val readStarted = android.os.SystemClock.elapsedRealtime()
 
         try {
-            persistDocumentUriPermission(uri)
-
             val fileName = getFileNameFromUri(uri)
 
             if (TextPackManager.isTextPackFile(this, uri, fileName)) {
@@ -820,14 +927,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun offerSaveAsRenameFallback(targetName: String) {
         updateTitle()
-        pendingRenameFallbackName = targetName
         AlertDialog.Builder(this)
             .setTitle("Rename not supported")
             .setMessage(
                 "This file location does not allow renaming. Save a copy under the new name instead? The original file will remain unchanged."
             )
             .setPositiveButton("Save As") { _, _ ->
-                createDocumentLauncher.launch(targetName)
+                launchRenameSaveAs(targetName)
             }
             .setNegativeButton("Cancel") { _, _ ->
                 pendingRenameFallbackName = null
@@ -835,6 +941,34 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             .setOnCancelListener {
                 pendingRenameFallbackName = null
+                updateTitle()
+            }
+            .show()
+    }
+
+    private fun launchRenameSaveAs(targetName: String) {
+        pendingRenameFallbackName = targetName
+        createDocumentLauncher.launch(targetName)
+    }
+
+    private fun offerRenamePermissionRecovery(uri: Uri, targetName: String) {
+        updateTitle()
+        AlertDialog.Builder(this)
+            .setTitle("Rename permission needed")
+            .setMessage(
+                "Android has not granted rename access to this file yet. Reopen the same file to request it, or save a copy under the new name. The original will remain unchanged if you choose Save As."
+            )
+            .setPositiveButton("Reopen File") { _, _ ->
+                pendingRenamePermissionRequest = RenameAccessRequest(uri, targetName)
+                launchOpenDocumentPicker(uri)
+            }
+            .setNeutralButton("Save As") { _, _ ->
+                launchRenameSaveAs(targetName)
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                updateTitle()
+            }
+            .setOnCancelListener {
                 updateTitle()
             }
             .show()
@@ -873,7 +1007,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         if (renamedUri == null) {
-            offerSaveAsRenameFallback(targetName)
+            if (
+                !hasWriteUriPermission(oldUri) &&
+                documentSupportsRename(oldUri) != false
+            ) {
+                offerRenamePermissionRecovery(oldUri, targetName)
+            } else {
+                offerSaveAsRenameFallback(targetName)
+            }
             return
         }
 

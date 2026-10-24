@@ -5593,7 +5593,8 @@ window.editorBridge = {
     setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
 
     // Table of contents panel appearance
-    setCssVar('--toc-panel-width', prefs.pref_toc_panel_width ?? 80, 'vw');
+    const tocPanelWidth = Number(prefs.pref_toc_panel_width ?? 80);
+    setCssVar('--toc-panel-width', Math.max(50, Math.min(90, tocPanelWidth)), 'vw');
     setCssVar('--toc-panel-bg-color', androidArgbToCss(prefs.pref_toc_panel_bg_color));
     setCssVar('--toc-panel-bg-opacity', prefs.pref_toc_panel_bg_opacity ?? 100, '%');
     setCssVar('--toc-panel-border-color', androidArgbToCss(prefs.pref_toc_panel_border_color));
