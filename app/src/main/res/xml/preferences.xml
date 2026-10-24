@@ -78,6 +78,10 @@
             app:entryValues="@array/pref_editor_mode_values"
             app:defaultValue="wysiwyg" />
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_storage_access"
+            app:title="File &amp; Folder Access"
+            app:summary="Choose folders once so the app can reuse access for file operations" />
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_diagnostics"
             app:title="Diagnostic report"
             app:summary="Copy or share launch timings and errors; no document content is recorded" />

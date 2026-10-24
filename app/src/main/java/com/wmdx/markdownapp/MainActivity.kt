@@ -470,29 +470,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun findPersistedFolderDocumentUri(documentUri: Uri): Uri? {
-        val documentId = runCatching {
-            android.provider.DocumentsContract.getDocumentId(documentUri)
-        }.getOrNull() ?: return null
-        val pathIds = runCatching {
-            android.provider.DocumentsContract.findDocumentPath(contentResolver, documentUri)
-                ?.path
-                .orEmpty()
-        }.getOrNull().orEmpty()
-        if (pathIds.lastOrNull() != documentId) return null
-
         for (permission in contentResolver.persistedUriPermissions) {
-            if (!permission.isReadPermission || !permission.isWritePermission) continue
-            val folderId = runCatching {
-                android.provider.DocumentsContract.getTreeDocumentId(permission.uri)
-            }.getOrNull() ?: continue
-            val folderIndex = pathIds.indexOf(folderId)
-            if (folderIndex < 0 || folderIndex >= pathIds.lastIndex) continue
-
+            if (
+                !permission.isReadPermission ||
+                !permission.isWritePermission ||
+                !android.provider.DocumentsContract.isTreeUri(permission.uri)
+            ) continue
             val candidate = runCatching {
-                android.provider.DocumentsContract.buildDocumentUriUsingTree(
-                    permission.uri,
-                    documentId
-                )
+                resolveRenameTargetInTree(permission.uri, documentUri)
             }.getOrNull() ?: continue
             if (hasWriteUriPermission(candidate)) {
                 return candidate
@@ -786,15 +771,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .setMessage(
                 "$message Grant access to just the current file or to its containing folder. A copy can be saved if the provider does not support renaming.$downloadsNote"
             )
-            .setItems(arrayOf("Grant access to this file", "Choose containing folder", "Save As")) { _, which ->
-                when (which) {
-                    0 -> launchRenameFilePicker(request.uri, request.targetName)
-                    1 -> launchRenameFolderPicker(request.uri, request.targetName)
-                    2 -> launchRenameSaveAs(request.targetName)
-                }
+            .setPositiveButton("Grant File Access") { _, _ ->
+                launchRenameFilePicker(request.uri, request.targetName)
             }
-            .setNegativeButton("Cancel") { _, _ ->
+            .setNeutralButton("Choose Folder") { _, _ ->
+                launchRenameFolderPicker(request.uri, request.targetName)
+            }
+            .setNegativeButton("Save As") { _, _ ->
                 updateTitle()
+                launchRenameSaveAs(request.targetName)
             }
             .setOnCancelListener { updateTitle() }
             .show()
