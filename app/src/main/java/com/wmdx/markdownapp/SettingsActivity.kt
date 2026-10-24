@@ -362,8 +362,10 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling, rootKey)
-        addHeadingLevelPreferences()
+        configureFontPreferences()
+    }
 
+    protected fun configureFontPreferences() {
         val fontKeys = listOf(
             "pref_font_file_body",
             "pref_font_file_heading",
@@ -390,7 +392,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
         }
     }
 
-    private fun addHeadingLevelPreferences() {
+    protected fun addHeadingLevelPreferences() {
         val context = requireContext()
         val screen = preferenceScreen
         val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
@@ -674,6 +676,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
 class StylingHeadingsFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_headings, rootKey)
+        addHeadingLevelPreferences()
+        configureFontPreferences()
     }
 }
 
