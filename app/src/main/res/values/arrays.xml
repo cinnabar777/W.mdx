@@ -59,6 +59,15 @@
         <item>justify</item>
     </string-array>
 
+    <string-array name="toc_text_overflow_entries">
+        <item>Truncate with ellipsis</item>
+        <item>Wrap onto multiple lines</item>
+    </string-array>
+    <string-array name="toc_text_overflow_values">
+        <item>truncate</item>
+        <item>wrap</item>
+    </string-array>
+
     <string-array name="text_transform_entries">
         <item>None</item>
         <item>Uppercase</item>

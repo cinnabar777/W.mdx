@@ -702,7 +702,7 @@ export function ensureCaretVisibleMinimal(view, pos) {
   return true;
 }
 
-export function scrollToPositionUpperMiddle(view, pos) {
+export function scrollToPositionUpperMiddle(view, pos, options = {}) {
   if (!view || pos == null) return false;
   view.dispatch({
     selection: { anchor: pos, head: pos }
@@ -732,7 +732,98 @@ export function scrollToPositionUpperMiddle(view, pos) {
     setTimeout(performScroll, 50);
   });
 
-  view.focus();
+  if (options.focus !== false) {
+    view.focus();
+  }
+  return true;
+}
+
+const tocNavigationByDocument = new Map();
+let activeTocDocumentKey = 'untitled';
+let tocDocumentHistoryState = { canGoBack: false, canGoForward: false };
+
+function getTocNavigationHistory() {
+  if (!tocNavigationByDocument.has(activeTocDocumentKey)) {
+    tocNavigationByDocument.set(activeTocDocumentKey, { back: [], forward: [] });
+  }
+  return tocNavigationByDocument.get(activeTocDocumentKey);
+}
+
+function captureTocNavigationState(view) {
+  if (!view?.state || !view.scrollDOM) return null;
+  const selection = view.state.selection.main;
+  return {
+    anchor: selection.anchor,
+    head: selection.head,
+    scrollTop: view.scrollDOM.scrollTop
+  };
+}
+
+function updateTocHistoryButtons() {
+  const history = getTocNavigationHistory();
+  const back = document.querySelector('#toc-history-back');
+  const forward = document.querySelector('#toc-history-forward');
+  if (back) back.disabled = history.back.length === 0 && !tocDocumentHistoryState.canGoBack;
+  if (forward) {
+    forward.disabled = history.forward.length === 0 && !tocDocumentHistoryState.canGoForward;
+  }
+}
+
+function setActiveTocDocumentKey(key) {
+  activeTocDocumentKey = key || 'untitled';
+  updateTocHistoryButtons();
+}
+
+function recordTocNavigation(view, targetPos) {
+  const current = captureTocNavigationState(view);
+  if (!current) return false;
+  if (
+    Number.isInteger(targetPos) &&
+    current.anchor === targetPos &&
+    current.head === targetPos
+  ) {
+    return false;
+  }
+
+  const history = getTocNavigationHistory();
+  history.back.push(current);
+  history.forward.length = 0;
+  if (
+    window.AndroidNative &&
+    typeof window.AndroidNative.onInDocumentNavigationOccurred === 'function'
+  ) {
+    window.AndroidNative.onInDocumentNavigationOccurred();
+  }
+  updateTocHistoryButtons();
+  return true;
+}
+
+function restoreTocNavigationState(view, state) {
+  if (!view?.state || !view.scrollDOM || !state) return false;
+  const docLength = view.state.doc.length;
+  const anchor = Math.max(0, Math.min(docLength, state.anchor));
+  const head = Math.max(0, Math.min(docLength, state.head));
+  view.dispatch({ selection: { anchor, head } });
+  requestAnimationFrame(() => {
+    if (!view.scrollDOM) return;
+    view.scrollDOM.scrollTop = Math.max(0, state.scrollTop || 0);
+    updateTocActiveSection();
+  });
+  return true;
+}
+
+function navigateTocHistory(direction) {
+  const history = getTocNavigationHistory();
+  const source = direction === 'back' ? history.back : history.forward;
+  const destination = direction === 'back' ? history.forward : history.back;
+  const view = activeAdapter?.view;
+  if (!source.length || !view) return false;
+
+  const current = captureTocNavigationState(view);
+  const target = source.pop();
+  if (current) destination.push(current);
+  restoreTocNavigationState(view, target);
+  updateTocHistoryButtons();
   return true;
 }
 
@@ -745,6 +836,7 @@ export function scrollToHeading(view, targetHeading) {
     if (/^#{1,6}\s+/.test(line.text.trim())) {
       const lineClean = cleanHeadingText(line.text).toLowerCase();
       if (lineClean === targetClean) {
+        recordTocNavigation(view, line.from);
         return scrollToPositionUpperMiddle(view, line.from);
       }
     }
@@ -4707,24 +4799,125 @@ function setupTocGestureAndPanel() {
   const overlay = document.querySelector('#toc-overlay');
   const tocContent = document.querySelector('#toc-content');
   const globalToggleBtn = document.querySelector('#toc-global-toggle');
+  const documentNameInput = document.querySelector('#toc-document-name');
+  const settingsButton = document.querySelector('#toc-settings-button');
+  const historyBackButton = document.querySelector('#toc-history-back');
+  const historyForwardButton = document.querySelector('#toc-history-forward');
   if (!panel || !overlay) return () => {};
 
   let isAllCollapsed = false;
   const collapsedHeadingKeys = new Set();
   let pendingRefreshTimer = null;
 
+  const cancelDocumentNameEdit = () => {
+    if (!documentNameInput) return;
+    documentNameInput.value = documentNameInput.dataset.committedName || documentNameInput.value;
+    documentNameInput.readOnly = true;
+    delete documentNameInput.dataset.editing;
+  };
+
+  const beginDocumentNameEdit = () => {
+    if (!documentNameInput || !documentNameInput.readOnly) return;
+    documentNameInput.readOnly = false;
+    documentNameInput.dataset.editing = 'true';
+    requestAnimationFrame(() => {
+      documentNameInput.focus();
+      documentNameInput.select();
+    });
+  };
+
+  const commitDocumentNameEdit = () => {
+    if (!documentNameInput || !documentNameInput.dataset.editing) return;
+    const requestedName = documentNameInput.value.trim();
+    const committedName = documentNameInput.dataset.committedName || '';
+    documentNameInput.readOnly = true;
+    delete documentNameInput.dataset.editing;
+    if (!requestedName || requestedName === committedName) {
+      cancelDocumentNameEdit();
+      return;
+    }
+    if (
+      window.AndroidNative &&
+      typeof window.AndroidNative.renameCurrentDocument === 'function'
+    ) {
+      window.AndroidNative.renameCurrentDocument(requestedName);
+    } else {
+      cancelDocumentNameEdit();
+    }
+  };
+
   const openToc = () => {
+    if (activeAdapter?.view?.contentDOM) {
+      activeAdapter.view.contentDOM.blur();
+    }
+    if (window.AndroidNative && typeof window.AndroidNative.hideKeyboard === 'function') {
+      window.AndroidNative.hideKeyboard();
+    }
     buildTocTree();
     panel.classList.add('open');
     overlay.classList.add('open');
+    updateTocHistoryButtons();
   };
 
   const closeToc = () => {
+    if (documentNameInput && !documentNameInput.readOnly) {
+      cancelDocumentNameEdit();
+      documentNameInput.blur();
+    }
     panel.classList.remove('open');
     overlay.classList.remove('open');
   };
 
   overlay.onclick = closeToc;
+  const onDocumentNameClick = () => beginDocumentNameEdit();
+  const onDocumentNameKeyDown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitDocumentNameEdit();
+      documentNameInput?.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelDocumentNameEdit();
+      documentNameInput?.blur();
+    }
+  };
+  const onDocumentNameBlur = () => {
+    if (documentNameInput && !documentNameInput.readOnly) cancelDocumentNameEdit();
+  };
+  if (documentNameInput) {
+    documentNameInput.addEventListener('click', onDocumentNameClick);
+    documentNameInput.addEventListener('keydown', onDocumentNameKeyDown);
+    documentNameInput.addEventListener('blur', onDocumentNameBlur);
+  }
+
+  const onSettingsClick = () => {
+    cancelDocumentNameEdit();
+    documentNameInput?.blur();
+    window.AndroidNative?.hideKeyboard?.();
+    if (window.AndroidNative && typeof window.AndroidNative.onNativeAction === 'function') {
+      window.AndroidNative.onNativeAction('toc_settings');
+    }
+  };
+  const onHistoryBackClick = () => {
+    cancelDocumentNameEdit();
+    documentNameInput?.blur();
+    window.AndroidNative?.hideKeyboard?.();
+    if (!navigateTocHistory('back') && window.AndroidNative) {
+      window.AndroidNative.onNativeAction('history_back');
+    }
+  };
+  const onHistoryForwardClick = () => {
+    cancelDocumentNameEdit();
+    documentNameInput?.blur();
+    window.AndroidNative?.hideKeyboard?.();
+    if (!navigateTocHistory('forward') && window.AndroidNative) {
+      window.AndroidNative.onNativeAction('history_forward');
+    }
+  };
+  if (settingsButton) settingsButton.addEventListener('click', onSettingsClick);
+  if (historyBackButton) historyBackButton.addEventListener('click', onHistoryBackClick);
+  if (historyForwardButton) historyForwardButton.addEventListener('click', onHistoryForwardClick);
+  updateTocHistoryButtons();
 
   let globalToggleHandler = null;
   if (globalToggleBtn) {
@@ -4838,7 +5031,8 @@ function setupTocGestureAndPanel() {
         if (item.lineIndex !== undefined && activeAdapter && activeAdapter.view) {
           try {
             const line = activeAdapter.view.state.doc.line(item.lineIndex + 1);
-            scrollToPositionUpperMiddle(activeAdapter.view, line.from);
+            recordTocNavigation(activeAdapter.view, line.from);
+            scrollToPositionUpperMiddle(activeAdapter.view, line.from, { focus: false });
           } catch (e) {}
         }
       };
@@ -4905,6 +5099,14 @@ function setupTocGestureAndPanel() {
       refreshOpenTocPanel = null;
     }
     if (overlay.onclick === closeToc) overlay.onclick = null;
+    if (documentNameInput) {
+      documentNameInput.removeEventListener('click', onDocumentNameClick);
+      documentNameInput.removeEventListener('keydown', onDocumentNameKeyDown);
+      documentNameInput.removeEventListener('blur', onDocumentNameBlur);
+    }
+    if (settingsButton) settingsButton.removeEventListener('click', onSettingsClick);
+    if (historyBackButton) historyBackButton.removeEventListener('click', onHistoryBackClick);
+    if (historyForwardButton) historyForwardButton.removeEventListener('click', onHistoryForwardClick);
     if (globalToggleBtn && globalToggleBtn.onclick === globalToggleHandler) {
       globalToggleBtn.onclick = null;
     }
@@ -5392,6 +5594,28 @@ window.editorBridge = {
     );
     setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
 
+    // Table of contents panel appearance
+    setCssVar('--toc-panel-width', prefs.pref_toc_panel_width ?? 80, 'vw');
+    setCssVar('--toc-panel-bg-color', androidArgbToCss(prefs.pref_toc_panel_bg_color));
+    setCssVar('--toc-panel-bg-opacity', prefs.pref_toc_panel_bg_opacity ?? 100, '%');
+    setCssVar('--toc-panel-border-color', androidArgbToCss(prefs.pref_toc_panel_border_color));
+    const tocOverlayDim = Number(prefs.pref_toc_overlay_dim ?? 50);
+    setCssVar('--toc-overlay-dim', Math.max(0, Math.min(90, tocOverlayDim)) / 100);
+    setCssVar('--toc-font-size', prefs.pref_toc_font_size ?? 16, 'px');
+    setCssVar('--toc-font-weight', prefs.pref_toc_font_weight ?? 600);
+    setCssVar('--toc-text-color', androidArgbToCss(prefs.pref_toc_text_color));
+    setCssVar('--toc-active-text-color', androidArgbToCss(prefs.pref_toc_active_text_color));
+    setCssVar('--toc-active-bg-color', androidArgbToCss(prefs.pref_toc_active_bg_color));
+    setCssVar('--toc-row-spacing', prefs.pref_toc_row_spacing ?? 4, 'px');
+    const tocIndentSpacing = Number(prefs.pref_toc_indent_spacing ?? 12);
+    for (let level = 1; level <= 6; level++) {
+      setCssVar(`--toc-level-${level}-indent`, 8 + ((level - 1) * tocIndentSpacing), 'px');
+    }
+    const tocWrapHeadings = prefs.pref_toc_text_overflow === 'wrap';
+    setCssVar('--toc-text-white-space', tocWrapHeadings ? 'normal' : 'nowrap');
+    setCssVar('--toc-text-overflow', tocWrapHeadings ? 'clip' : 'ellipsis');
+    setCssVar('--toc-text-overflow-wrap', tocWrapHeadings ? 'anywhere' : 'normal');
+
     // Find & Replace Customizations
     setCssVar('--findreplace-panel-bg', androidArgbToCss(prefs.pref_findreplace_panel_bg));
     setCssVar('--findreplace-panel-border', androidArgbToCss(prefs.pref_findreplace_panel_border));
@@ -5621,13 +5845,43 @@ window.editorBridge = {
       document.body.classList.remove('light-theme');
     }
   },
-  setDocumentTitle: function(title) {
+  setDocumentTitle: function(title, documentKey) {
     const titleEl = document.querySelector('#file-title');
     if (titleEl) {
       titleEl.textContent = title;
     }
+    const nameInput = document.querySelector('#toc-document-name');
+    const displayName = String(title || '').replace(/\s+\*$/, '');
+    if (nameInput) {
+      nameInput.dataset.committedName = displayName;
+      if (!nameInput.dataset.editing) nameInput.value = displayName;
+    }
+    if (documentKey !== undefined && documentKey !== null) {
+      setActiveTocDocumentKey(String(documentKey));
+    }
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson) {
+  setDocumentHistoryState: function(canGoBack, canGoForward) {
+    tocDocumentHistoryState = {
+      canGoBack: Boolean(canGoBack),
+      canGoForward: Boolean(canGoForward)
+    };
+    updateTocHistoryButtons();
+  },
+  remapDocumentHistory: function(oldKey, newKey) {
+    if (!oldKey || !newKey || oldKey === newKey) return;
+    const oldHistory = tocNavigationByDocument.get(oldKey);
+    const newHistory = tocNavigationByDocument.get(newKey);
+    if (oldHistory && !newHistory) {
+      tocNavigationByDocument.set(newKey, oldHistory);
+    } else if (oldHistory && newHistory) {
+      newHistory.back.push(...oldHistory.back);
+      newHistory.forward.push(...oldHistory.forward);
+    }
+    tocNavigationByDocument.delete(oldKey);
+    if (activeTocDocumentKey === oldKey) activeTocDocumentKey = newKey;
+    updateTocHistoryButtons();
+  },
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData) {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -5689,6 +5943,7 @@ window.editorBridge = {
     applyFontCategory('Italic', fontItalicData, '--italic-font-family');
     applyFontCategory('Code', fontCodeData, '--code-font-family');
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family');
+    applyFontCategory('Toc', fontTocData, '--toc-font-family');
     let headingLevelFonts = [];
     try {
       headingLevelFonts = JSON.parse(fontHeadingLevelsDataJson || '[]');

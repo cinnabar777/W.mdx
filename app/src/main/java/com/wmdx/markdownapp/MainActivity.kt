@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             WindowRegistry.register(this, value)
         }
     private var currentFileName: String = "Untitled.md"
+    private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
     private var isDirty: Boolean = false
     private var isEditorReady: Boolean = false
     private var currentEditorMode: String = "rich_text"
@@ -54,7 +55,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
     private var currentTextPackSession: TextPackSession? = null
+    private var pendingRenameFallbackName: String? = null
     private val documentHistoryStack = java.util.ArrayDeque<Uri>()
+    private val documentForwardStack = java.util.ArrayDeque<Uri>()
 
     private fun showCustomToast(message: String) {
         runOnUiThread {
@@ -67,7 +70,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-        uri?.let { saveFileToUri(it) }
+        if (uri != null) {
+            pendingRenameFallbackName = null
+            saveFileToUri(uri)
+        } else if (pendingRenameFallbackName != null) {
+            pendingRenameFallbackName = null
+            updateTitle()
+        }
     }
 
     private val exportDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
@@ -99,6 +108,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         setupWebView()
         savedInstanceState?.getStringArrayList("document_history")?.forEach {
             documentHistoryStack.addLast(Uri.parse(it))
+        }
+        savedInstanceState?.getStringArrayList("document_forward_history")?.forEach {
+            documentForwardStack.addLast(Uri.parse(it))
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -149,6 +161,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putStringArrayList("document_history",
             ArrayList(documentHistoryStack.map { it.toString() }))
+        outState.putStringArrayList("document_forward_history",
+            ArrayList(documentForwardStack.map { it.toString() }))
         super.onSaveInstanceState(outState)
     }
 
@@ -402,7 +416,37 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val dirtyIndicator = if (isDirty) " *" else ""
         val titleText = "$currentFileName$dirtyIndicator"
         val escapedTitle = JSONObjectWrapper.quote(titleText)
-        webView.evaluateJavascript("window.editorBridge.setDocumentTitle($escapedTitle);", null)
+        val escapedDocumentKey = JSONObjectWrapper.quote(currentDocumentHistoryKey())
+        val canGoBack = documentHistoryStack.isNotEmpty()
+        val canGoForward = documentForwardStack.isNotEmpty()
+        webView.evaluateJavascript(
+            "if (window.editorBridge) { window.editorBridge.setDocumentTitle($escapedTitle, $escapedDocumentKey); window.editorBridge.setDocumentHistoryState($canGoBack, $canGoForward); }",
+            null
+        )
+    }
+
+    private fun currentDocumentHistoryKey(): String {
+        return currentFileUri?.toString() ?: "untitled:$taskId:$currentDocumentSessionId"
+    }
+
+    private fun remapDocumentNavigationHistory(oldKey: String, newKey: String) {
+        if (oldKey == newKey) return
+        val escapedOldKey = JSONObjectWrapper.quote(oldKey)
+        val escapedNewKey = JSONObjectWrapper.quote(newKey)
+        webView.evaluateJavascript(
+            "window.editorBridge?.remapDocumentHistory?.($escapedOldKey, $escapedNewKey);",
+            null
+        )
+    }
+
+    private fun replaceHistoryUri(oldUri: Uri, newUri: Uri) {
+        fun replaceIn(stack: java.util.ArrayDeque<Uri>) {
+            val entries = stack.map { if (it == oldUri) newUri else it }
+            stack.clear()
+            entries.forEach { stack.addLast(it) }
+        }
+        replaceIn(documentHistoryStack)
+        replaceIn(documentForwardStack)
     }
 
     private fun saveCurrentStateBeforeSettings() {
@@ -442,6 +486,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val fontItalicData = loadFontDataUri(prefs.getString("pref_font_file_italic_path", null))
         val fontCodeData = loadFontDataUri(prefs.getString("pref_font_file_code_path", null))
         val fontCalloutHeaderData = loadFontDataUri(prefs.getString("pref_font_file_callout_header_path", null))
+        val fontTocData = loadFontDataUri(prefs.getString("pref_font_file_toc_path", null))
 
         val bodyFontSize = prefs.getInt("pref_body_font_size", 16)
         val headingScalePercent = prefs.getInt("pref_heading_scale_percent", 100)
@@ -464,9 +509,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedItalicFont = JSONObjectWrapper.quote(fontItalicData)
         val escapedCodeFont = JSONObjectWrapper.quote(fontCodeData)
         val escapedCalloutHeaderFont = JSONObjectWrapper.quote(fontCalloutHeaderData)
+        val escapedTocFont = JSONObjectWrapper.quote(fontTocData)
 
         webView.evaluateJavascript(
-            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData); }",
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont); }",
             null
         )
 
@@ -573,9 +619,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun createNewDocument() {
-        if (currentFileUri != null) {
-            documentHistoryStack.push(currentFileUri)
-        }
+        currentFileUri?.let { documentHistoryStack.push(it) }
+        documentForwardStack.clear()
+        currentDocumentSessionId = java.util.UUID.randomUUID().toString()
         currentTextPackSession = null
         latestMarkdownContent = ""
         currentFileUri = null
@@ -588,10 +634,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun navigateBackOrFinish() {
         if (documentHistoryStack.isNotEmpty()) {
             val previousUri = documentHistoryStack.pop()
+            currentFileUri?.let { documentForwardStack.push(it) }
             openFileFromHistory(previousUri)
+            updateTitle()
         } else {
             finish()
         }
+    }
+
+    private fun navigateForwardDocument() {
+        if (documentForwardStack.isEmpty()) return
+        val nextUri = documentForwardStack.pop()
+        currentFileUri?.let { documentHistoryStack.push(it) }
+        openFile(nextUri, rememberHistory = false)
+        updateTitle()
     }
 
     private fun openFileFromHistory(uri: Uri) {
@@ -615,8 +671,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (!forceReload && currentFileUri == uri && !isDirty) return
         if (!skipExistingWindowFocus && WindowRegistry.focus(this, uri, excludeTask = taskId)) return
-        if (rememberHistory && currentFileUri != null) {
+        if (rememberHistory && currentFileUri != null && currentFileUri != uri) {
             documentHistoryStack.push(currentFileUri)
+            documentForwardStack.clear()
         }
 
         AppDiagnostics.record(this, "native_read_start")
@@ -726,6 +783,108 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         createDocumentLauncher.launch(defaultName)
     }
 
+    private fun renamedDocumentFileName(requestedName: String, originalName: String): String? {
+        val sanitized = requestedName.trim()
+            .replace('/', '_')
+            .replace('\\', '_')
+            .filterNot { it.isISOControl() }
+            .trimEnd('.')
+        if (sanitized.isBlank()) return null
+        if (currentFileUri == null) return sanitized
+
+        val extension = when {
+            originalName.endsWith(".textpack.zip", ignoreCase = true) -> ".textpack.zip"
+            originalName.endsWith(".textpack", ignoreCase = true) -> ".textpack"
+            else -> {
+                val dot = originalName.lastIndexOf('.')
+                if (dot > 0) originalName.substring(dot) else ""
+            }
+        }
+        if (extension.isEmpty()) return sanitized
+
+        val typedExtension = sanitized.lastIndexOf('.').takeIf { it > 0 }
+        val base = when {
+            sanitized.endsWith(extension, ignoreCase = true) ->
+                sanitized.dropLast(extension.length)
+            typedExtension != null -> sanitized.substring(0, typedExtension)
+            else -> sanitized
+        }.trimEnd('.')
+        if (base.isBlank()) return null
+        return "$base$extension"
+    }
+
+    private fun offerSaveAsRenameFallback(targetName: String) {
+        updateTitle()
+        pendingRenameFallbackName = targetName
+        AlertDialog.Builder(this)
+            .setTitle("Rename not supported")
+            .setMessage(
+                "This file location does not allow renaming. Save a copy under the new name instead? The original file will remain unchanged."
+            )
+            .setPositiveButton("Save As") { _, _ ->
+                createDocumentLauncher.launch(targetName)
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                pendingRenameFallbackName = null
+                updateTitle()
+            }
+            .setOnCancelListener {
+                pendingRenameFallbackName = null
+                updateTitle()
+            }
+            .show()
+    }
+
+    private fun renameCurrentDocument(requestedName: String) {
+        val targetName = renamedDocumentFileName(requestedName, currentFileName)
+        if (targetName == null) {
+            updateTitle()
+            ThemedToast.show(this, "Enter a valid document name", Toast.LENGTH_SHORT)
+            return
+        }
+        if (targetName == currentFileName) {
+            updateTitle()
+            return
+        }
+
+        val oldUri = currentFileUri
+        if (oldUri == null) {
+            currentFileName = targetName
+            updateTitle()
+            ThemedToast.show(this, "Document name updated", Toast.LENGTH_SHORT)
+            return
+        }
+
+        val renamedUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            runCatching {
+                android.provider.DocumentsContract.renameDocument(
+                    contentResolver,
+                    oldUri,
+                    targetName
+                )
+            }.getOrNull()
+        } else {
+            null
+        }
+
+        if (renamedUri == null) {
+            offerSaveAsRenameFallback(targetName)
+            return
+        }
+
+        val oldHistoryKey = oldUri.toString()
+        replaceHistoryUri(oldUri, renamedUri)
+        currentFileUri = renamedUri
+        currentFileName = getFileNameFromUri(renamedUri)
+        PreferenceManager.getDefaultSharedPreferences(this)
+            .edit()
+            .putString("last_opened_uri", renamedUri.toString())
+            .apply()
+        remapDocumentNavigationHistory(oldHistoryKey, renamedUri.toString())
+        updateTitle()
+        ThemedToast.show(this, "Document renamed", Toast.LENGTH_SHORT)
+    }
+
     private fun handleExportDocument() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val format = prefs.getString("pref_export_format", "html") ?: "html"
@@ -769,6 +928,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun saveFileToUri(uri: Uri) {
+        val oldDocumentKey = currentDocumentHistoryKey()
         val saveStarted = android.os.SystemClock.elapsedRealtime()
         AppDiagnostics.record(this, "save_start", "mode=$currentEditorMode rev=$currentRevision")
         webView.evaluateJavascript("window.editorBridge.getMarkdown();") { result ->
@@ -802,6 +962,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }
                 }
 
+                remapDocumentNavigationHistory(oldDocumentKey, uri.toString())
                 currentFileUri = uri
                 currentFileName = targetFileName
                 latestMarkdownContent = markdownText
@@ -1068,13 +1229,61 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "image" -> handleInsertImage()
                     "new_window" -> handleNewWindow()
                     "settings" -> settingsLauncher.launch(android.content.Intent(this@MainActivity, SettingsActivity::class.java))
+                    "toc_settings" -> settingsLauncher.launch(
+                        android.content.Intent(this@MainActivity, SettingsActivity::class.java)
+                            .putExtra("settings_page", "toc")
+                    )
+                    "history_back" -> {
+                        if (documentHistoryStack.isNotEmpty()) {
+                            if (isDirty) {
+                                showUnsavedChangesDialog { navigateBackOrFinish() }
+                            } else {
+                                navigateBackOrFinish()
+                            }
+                        }
+                    }
+                    "history_forward" -> {
+                        if (documentForwardStack.isNotEmpty()) {
+                            if (isDirty) {
+                                showUnsavedChangesDialog { navigateForwardDocument() }
+                            } else {
+                                navigateForwardDocument()
+                            }
+                        }
+                    }
                 }
+            }
+        }
+
+        @JavascriptInterface
+        fun hideKeyboard() {
+            runOnUiThread {
+                val inputMethodManager =
+                    this@MainActivity.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                inputMethodManager.hideSoftInputFromWindow(webView.windowToken, 0)
+            }
+        }
+
+        @JavascriptInterface
+        fun renameCurrentDocument(newName: String) {
+            runOnUiThread {
+                this@MainActivity.renameCurrentDocument(newName)
             }
         }
 
         @JavascriptInterface
         fun onSelectionChanged(selectionJson: String) {
             // Live selection updates are not persisted as return scroll position
+        }
+
+        @JavascriptInterface
+        fun onInDocumentNavigationOccurred() {
+            runOnUiThread {
+                if (documentForwardStack.isNotEmpty()) {
+                    documentForwardStack.clear()
+                    updateTitle()
+                }
+            }
         }
 
         @JavascriptInterface

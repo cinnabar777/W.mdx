@@ -26,10 +26,19 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.title = getString(R.string.settings_title)
 
         if (savedInstanceState == null) {
+            val directPage = intent.getStringExtra("settings_page")
+            val initialFragment = if (directPage == "toc") {
+                TocPanelSettingsFragment()
+            } else {
+                SettingsFragment()
+            }
             supportFragmentManager
                 .beginTransaction()
-                .replace(R.id.settings_container, SettingsFragment())
+                .replace(R.id.settings_container, initialFragment)
                 .commit()
+            if (directPage == "toc") {
+                supportActionBar?.title = "Table of Contents Panel"
+            }
         }
 
         supportFragmentManager.addOnBackStackChangedListener {
@@ -47,6 +56,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingControlbarFragment -> "Bottom Control Bar Styling"
                 is StylingCursorFragment -> "Cursor & Selection Settings"
                 is StylingFindReplaceFragment -> "Find & Replace Settings"
+                is TocPanelSettingsFragment -> "Table of Contents Panel"
                 is StylingSettingsFragment -> "Styling & Typography"
                 is ExportSettingsFragment -> "HTML & MHTML Export Settings"
                 is HotkeysSettingsFragment -> "Custom Keyboard Shortcuts"
@@ -190,6 +200,13 @@ class SettingsFragment : BaseSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         val key = preference.key ?: return super.onPreferenceTreeClick(preference)
         when (key) {
+            "pref_page_toc" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, TocPanelSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
             "pref_page_settings_theme" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, SettingsThemeFragment())
@@ -378,7 +395,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_font_file_bold",
             "pref_font_file_italic",
             "pref_font_file_code",
-            "pref_font_file_callout_header"
+            "pref_font_file_callout_header",
+            "pref_font_file_toc"
         )
 
         for (key in fontKeys) {
@@ -1786,5 +1804,12 @@ class PluginsSettingsFragment : BaseSettingsFragment() {
 class SettingsThemeFragment : BaseSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_settings_theme, rootKey)
+    }
+}
+
+class TocPanelSettingsFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_toc, rootKey)
+        configureFontPreferences()
     }
 }

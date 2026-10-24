@@ -14,6 +14,11 @@
             app:summary="Fonts, weights, sizes, heading colors, line thickness &amp; element colors" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_toc"
+            app:title="Table of Contents Panel"
+            app:summary="Customize the panel, heading list, and navigation controls" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_findreplace"
             app:title="Find &amp; Replace Appearance"
             app:summary="Customize search window colors, text fields, counter &amp; icon buttons" />
