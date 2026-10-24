@@ -316,24 +316,26 @@ test('code block text and language colors use independent selectors', () => {
   );
 });
 
-test('callout title keeps its icon, wrapping title, and fold control on one header row', () => {
+test('callout title layout and syntax visibility match each editing view', () => {
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
   assert.ok(mainSource.includes("const displayTitle = customTitle ||"), 'Custom titles are placed inside the title widget');
   assert.ok(mainSource.includes("}).range(info.markerStart, line.to)"), 'The rendered title widget replaces the full custom-title source range');
   assert.ok(mainSource.includes('titleSpan.textContent = this.title'), 'The widget renders the complete custom title beside the icon');
-  assert.equal(
-    (mainSource.match(/titleStart = line\.from \+ idx/g) || []).length,
-    2,
-    'Both rendering modes store custom title positions as absolute document offsets'
-  );
   assert.ok(
-    mainSource.includes('selection: EditorSelection.cursor(titleEnd)') &&
-      mainSource.includes('effects: heightMapRefreshEffect.of(null)'),
-    'Tapping a custom title returns the caret to its editable source and refreshes its hidden syntax'
+    mainSource.includes('const isMarkerActive = !isPureWysiwyg && (') &&
+      mainSource.includes('selection.head >= info.markerStart && selection.head <= info.markerEnd') &&
+      mainSource.includes('selection.from < info.markerEnd && selection.to > info.markerStart'),
+    'Live Preview checks whether the selection touches the callout marker itself'
   );
-  assert.ok(mainSource.includes('!isMarkerActive && !isTitleActive && !isPureWysiwyg'), 'Live Preview leaves the source editable while the title is active');
-  assert.ok(mainSource.includes('if (!isTitleActive) {'), 'WYSIWYG leaves the source editable while the title is active');
+  assert.ok(mainSource.includes('if (!isMarkerActive && !isPureWysiwyg)'), 'Live Preview renders the callout unless its marker syntax is active');
+  assert.ok(!mainSource.includes('isTitleActive'), 'Moving the cursor into the title does not reveal syntax');
+  assert.ok(!mainSource.includes('titleSpan.addEventListener'), 'Tapping the rendered title does not expose its source syntax');
+  assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG always renders the callout title as a widget');
+  assert.ok(
+    mainSource.includes("if (currentEditorMode === 'source') {\n      return Decoration.none;"),
+    'Source view leaves the callout Markdown visible'
+  );
   assert.match(indexHtml, /\.cm-callout-title-container\s*\{[^}]*display:\s*flex\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[^}]*flex:\s*1 1 auto\s*!important/s);
