@@ -449,7 +449,9 @@ class CodeBlockHeaderWidget extends WidgetType {
     this.codeText = codeText;
     const width = activeContentWidth();
     const sig = activeTypographySignature();
-    this.heightKey = measuredWidgetHeightKey('codeblock-header', `${this.lang}:${this.codeText.length}`, width, sig);
+    // Header height depends on its label and available layout, not body length.
+    // Reuse measurements across same-language blocks to avoid repeated refreshes.
+    this.heightKey = measuredWidgetHeightKey('codeblock-header', this.lang, width, sig);
     this.heightEstimate = estimatedWidgetHeight(this.heightKey, 28);
   }
 
