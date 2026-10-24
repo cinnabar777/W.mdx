@@ -1,8 +1,9 @@
+
+
 # Typography
 
 # HEADINGS
-
-All heading settings need to be individualized for each heading, not just global. A color added to the global headings and a other settings added to each header. Therefore a user can set global setting but override them for one or two headings. 
+ 
 
 ---------------
 
@@ -26,15 +27,12 @@ All heading settings need to be individualized for each heading, not just global
 # LISTS
 
 1. Checkbox: 
-    1. need option to hide the bullet in front of a box or proper syntax ` [ ] `, 
-    2. option to color the check mark. 
+    1. option to color the check mark. 
 
 
 -------------
 
 # BLOCK QUOTES
-
-1. Callouts: styled however text alignment is not block — align vertically on the left side, the wrapped lines go further to the left than the first row text. Callouts should format like lists which now have a "style as block" setting. There is a branch Jules is working on this but has had problems. 
 
 -----------
 # TABLES
@@ -44,9 +42,6 @@ All heading settings need to be individualized for each heading, not just global
 ___
 
 # CODEBLOCK STYLING
-
-1. **codeblock needs text background color added** — the current background color does not color the background of the text. 
-2. The language and copy label need styling added to typography: background color, text color, copy background and text colors, boarder colors, etc.
 
 -----------
 
@@ -77,4 +72,8 @@ ___
 
 # ADDITIONS 
 
-1.
+1. 
+
+
+
+
