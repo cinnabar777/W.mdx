@@ -1680,7 +1680,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
     for (const [lineFrom, classes] of lineClasses) {
       const remaining = [...classes].filter(className =>
-        currentEditorMode !== 'wysiwyg' ||
+        currentEditorMode === 'source' ||
         !persistentLayoutClasses.has(className)
       );
       if (!remaining.length) continue;
@@ -2554,7 +2554,7 @@ function premeasureTableHeights(view) {
 }
 
 export function buildPersistentLayoutDecorations(state) {
-  if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+  if (currentEditorMode === 'source') return Decoration.none;
 
   const { doc } = state;
   const tree = syntaxTree(state);
@@ -3237,9 +3237,7 @@ class CodeMirrorAdapter {
       window.visualViewport?.height || 0,
       window.innerHeight || 0
     );
-    const viewportMargin = currentEditorMode === 'wysiwyg'
-      ? computeWysiwygViewportMargin(viewportHeight)
-      : 1000;
+    const viewportMargin = computeWysiwygViewportMargin(viewportHeight);
 
     this.view = new EditorView({
       state: startState,
