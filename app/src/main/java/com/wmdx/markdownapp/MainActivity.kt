@@ -461,29 +461,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
-    private fun documentSupportsRename(uri: Uri): Boolean? {
-        return runCatching {
-            contentResolver.query(
-                uri,
-                arrayOf(android.provider.DocumentsContract.Document.COLUMN_FLAGS),
-                null,
-                null,
-                null
-            )?.use { cursor ->
-                val flagsColumn =
-                    cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_FLAGS)
-                if (!cursor.moveToFirst() || flagsColumn < 0) {
-                    null
-                } else {
-                    (
-                        cursor.getLong(flagsColumn).toInt() and
-                            android.provider.DocumentsContract.Document.FLAG_SUPPORTS_RENAME
-                    ) != 0
-                }
-            }
-        }.getOrNull()
-    }
-
     private fun findPersistedFolderDocumentUri(documentUri: Uri): Uri? {
         val documentId = runCatching {
             android.provider.DocumentsContract.getDocumentId(documentUri)
@@ -496,7 +473,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (pathIds.lastOrNull() != documentId) return null
 
         for (permission in contentResolver.persistedUriPermissions) {
-            if (!permission.isWritePermission) continue
+            if (!permission.isReadPermission || !permission.isWritePermission) continue
             val folderId = runCatching {
                 android.provider.DocumentsContract.getTreeDocumentId(permission.uri)
             }.getOrNull() ?: continue
@@ -509,7 +486,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     documentId
                 )
             }.getOrNull() ?: continue
-            if (hasWriteUriPermission(candidate) && documentSupportsRename(candidate) != false) {
+            if (hasWriteUriPermission(candidate)) {
                 return candidate
             }
         }
@@ -560,7 +537,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                 android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         val persistableFlags = grantedFlags and readWriteFlags
-        if ((persistableFlags and android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == 0) {
+        if (persistableFlags != readWriteFlags) {
             showRenameFolderSelectionError(
                 request,
                 "Android did not grant write access to that folder."
@@ -569,7 +546,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         persistDocumentUriPermission(treeUri, grantedFlags)
         val hasPersistedTreeWritePermission = contentResolver.persistedUriPermissions.any {
-            it.uri == treeUri && it.isWritePermission
+            it.uri == treeUri && it.isReadPermission && it.isWritePermission
         }
         if (!hasPersistedTreeWritePermission) {
             showRenameFolderSelectionError(
@@ -615,12 +592,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             )
             return
         }
-        if (documentSupportsRename(treeScopedDocumentUri) == false) {
-            releasePersistedTreePermission(treeUri, persistableFlags)
-            offerSaveAsRenameFallback(request.targetName)
-            return
-        }
-
         renameCurrentDocument(request.targetName, treeScopedDocumentUri)
     }
 
@@ -1187,7 +1158,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val persistedFolderUri = findPersistedFolderDocumentUri(oldUri)
             if (persistedFolderUri != null) {
                 renameCurrentDocument(targetName, persistedFolderUri)
-            } else if (documentSupportsRename(oldUri) != false) {
+            } else if (android.provider.DocumentsContract.isDocumentUri(this, oldUri)) {
                 offerRenamePermissionRecovery(oldUri, targetName)
             } else {
                 offerSaveAsRenameFallback(targetName)
