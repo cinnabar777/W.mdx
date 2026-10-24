@@ -437,6 +437,17 @@
       color: var(--selection-highlight-text, inherit) !important;
     }
 
+    /* Keep CodeMirror's cursor layer, but avoid its full-line trailing fill.
+       Use native text selection paint for the main range instead. */
+    .cm-editor .cm-selectionLayer .cm-selectionBackground {
+      background-color: transparent !important;
+    }
+    .cm-editor .cm-content .cm-line::selection,
+    .cm-editor .cm-content .cm-line *::selection {
+      background-color: var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)) !important;
+      color: var(--selection-highlight-text, inherit) !important;
+    }
+
     /* Active Toolbar Icon Accent Color */
     .grouped-key-btn.active svg,
     .popup-strip-btn.active svg {
