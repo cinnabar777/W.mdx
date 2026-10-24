@@ -68,6 +68,18 @@ test('applyAllPreferences sets all required CSS variables', () => {
   }
 });
 
+test('each heading-level rule outranks the global heading rule', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.ok(indexHtml.includes('.cm-content .cm-heading {'), 'The global heading rule remains in place');
+  for (let level = 1; level <= 6; level++) {
+    assert.ok(
+      indexHtml.includes(`.cm-content .cm-line.cm-heading-${level} {`),
+      `H${level} uses a more specific selector than the global heading rule`
+    );
+  }
+});
+
 test('per-heading reset clears the override and inherits the matching global heading value', () => {
   const inheritedMappings = [
     ['scale_percent', 'pref_heading_scale_percent'],
@@ -303,8 +315,8 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(indexHtml.includes('body.hr-centered .cm-content .cm-line.cm-hr'));
   assert.ok(indexHtml.includes('margin-left: var(--table-margin-left, 0px) !important;'));
   assert.ok(indexHtml.includes('margin-right: var(--table-margin-right, 0px) !important;'));
-  assert.ok(indexHtml.includes('margin-left: calc(var(--callout-margin-left, 0px) + 12px) !important;'));
-  assert.ok(indexHtml.includes('margin-left: calc(var(--callout-margin-left, 0px) + 24px) !important;'));
+  assert.ok(indexHtml.includes('var(--callout-depth-offset, 0px)'));
+  assert.ok(indexHtml.includes('var(--callout-depth-offset, 0px) + var(--list-left-indent, 24px)'));
   assert.ok(indexHtml.includes('max-width: calc(100% - var(--hr-margin-left, 0%) - var(--hr-margin-right, 0%)) !important;'));
 
   const hrPreferences = fs.readFileSync(

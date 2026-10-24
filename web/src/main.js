@@ -484,7 +484,7 @@ const calloutTypeIcons = {
 let calloutTypeIconOverrides = {};
 
 class CalloutTitleWidget extends WidgetType {
-  constructor(title, type, foldMarker, isFolded, foldFrom, foldTo) {
+  constructor(title, type, foldMarker, isFolded, foldFrom, foldTo, titleFrom = null, titleTo = null) {
     super();
     this.title = title;
     this.type = (type || 'note').toLowerCase();
@@ -492,6 +492,8 @@ class CalloutTitleWidget extends WidgetType {
     this.isFolded = isFolded;
     this.foldFrom = foldFrom;
     this.foldTo = foldTo;
+    this.titleFrom = titleFrom;
+    this.titleTo = titleTo;
     const width = activeContentWidth();
     const sig = activeTypographySignature();
     this.heightKey = measuredWidgetHeightKey('callout-title', `${this.type}:${this.title}`, width, sig);
@@ -511,6 +513,8 @@ class CalloutTitleWidget extends WidgetType {
       other.isFolded === this.isFolded &&
       other.foldFrom === this.foldFrom &&
       other.foldTo === this.foldTo &&
+      other.titleFrom === this.titleFrom &&
+      other.titleTo === this.titleTo &&
       other.heightEstimate === this.heightEstimate
     );
   }
@@ -550,6 +554,18 @@ class CalloutTitleWidget extends WidgetType {
     const titleSpan = document.createElement('span');
     titleSpan.className = 'cm-callout-title-text';
     titleSpan.textContent = this.title;
+    if (this.titleFrom != null && this.titleTo != null) {
+      titleSpan.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const titleEnd = Math.min(this.titleTo, view.state.doc.length);
+        view.dispatch({
+          selection: EditorSelection.cursor(titleEnd),
+          effects: heightMapRefreshEffect.of(null)
+        });
+        view.focus();
+      });
+    }
     span.appendChild(titleSpan);
 
     if (this.foldMarker) {
@@ -1299,7 +1315,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               let titleStart = null;
               if (customTitle && customTitle.trim().length > 0) {
                 const idx = line.text.indexOf(customTitle, match[1].length + match[2].length);
-                if (idx !== -1) titleStart = idx;
+                if (idx !== -1) titleStart = line.from + idx;
               }
 
               const calloutObj = {
@@ -1576,10 +1592,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const activeFolds = foldedRanges(view.state);
 
     for (const [lineFrom, info] of calloutOpenerInfo) {
+      const line = doc.lineAt(lineFrom);
+      const customTitle = info.customTitle?.trim() || '';
       const isMarkerActive = !isPureWysiwyg && (
         selection.empty
           ? selection.head >= info.markerStart && selection.head <= info.markerEnd
           : selection.from < info.markerEnd && selection.to > info.markerStart
+      );
+      const isTitleActive = customTitle.length > 0 && info.titleStart != null && (
+        selection.empty
+          ? selection.head >= info.titleStart && selection.head <= line.to
+          : selection.from < line.to && selection.to > info.titleStart
       );
 
       const hasBody = info.bodyTo > info.bodyFrom;
@@ -1600,8 +1623,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
       }
 
-      if (!isMarkerActive && !isPureWysiwyg) {
-        const line = doc.lineAt(lineFrom);
+      if (!isMarkerActive && !isTitleActive && !isPureWysiwyg) {
         let isFolded = false;
         if (hasBody) {
           activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
@@ -1611,15 +1633,21 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           });
         }
 
-        const displayTitle = (info.customTitle && info.customTitle.trim().length > 0)
-          ? ''
-          : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
-
-        const replaceEnd = (info.customTitle && info.customTitle.trim().length > 0) ? info.markerEnd : line.to;
+        const displayTitle = customTitle ||
+          (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
 
         builder.push(Decoration.replace({
-          widget: new CalloutTitleWidget(displayTitle, info.type, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
-        }).range(info.markerStart, replaceEnd));
+          widget: new CalloutTitleWidget(
+            displayTitle,
+            info.type,
+            info.foldMarker,
+            isFolded,
+            info.bodyFrom,
+            info.bodyTo,
+            customTitle ? info.titleStart : null,
+            customTitle ? line.to : null
+          )
+        }).range(info.markerStart, line.to));
       }
     }
 
@@ -1627,7 +1655,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       builder.push(Decoration.line({
         attributes: {
           'data-callout-type': attrs.type,
-          'data-callout-depth': String(attrs.depth)
+          'data-callout-depth': String(attrs.depth),
+          style: `--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`
         }
       }).range(lineFrom));
     }
@@ -2269,7 +2298,7 @@ function buildHeightMapValue(state) {
           let titleStart = null;
           if (customTitle && customTitle.trim().length > 0) {
             const idx = line.text.indexOf(customTitle, match[1].length + match[2].length);
-            if (idx !== -1) titleStart = idx;
+            if (idx !== -1) titleStart = line.from + idx;
           }
 
           const calloutObj = {
@@ -2369,7 +2398,7 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'QuoteMark') {
-        hideSyntax(node.from, node.to);
+        hideSyntax(node.from, Math.min(node.to + 1, line.to));
       }
 
       if (node.name === 'TaskMarker') {
@@ -2422,6 +2451,13 @@ function buildHeightMapValue(state) {
   for (const [lineFrom, info] of calloutOpenerInfo) {
     const hasBody = info.bodyTo > info.bodyFrom;
     const line = doc.lineAt(lineFrom);
+    const customTitle = info.customTitle?.trim() || '';
+    const selection = state.selection.main;
+    const isTitleActive = customTitle.length > 0 && info.titleStart != null && (
+      selection.empty
+        ? selection.head >= info.titleStart && selection.head <= line.to
+        : selection.from < line.to && selection.to > info.titleStart
+    );
     let isFolded = false;
     if (hasBody) {
       activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
@@ -2431,15 +2467,23 @@ function buildHeightMapValue(state) {
       });
     }
 
-    const displayTitle = (info.customTitle && info.customTitle.trim().length > 0)
-      ? ''
-      : (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
+    if (!isTitleActive) {
+      const displayTitle = customTitle ||
+        (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
 
-    const replaceEnd = (info.customTitle && info.customTitle.trim().length > 0) ? info.markerEnd : line.to;
-
-    replacements.push(Decoration.replace({
-      widget: new CalloutTitleWidget(displayTitle, info.type, info.foldMarker, isFolded, info.bodyFrom, info.bodyTo)
-    }).range(info.markerStart, replaceEnd));
+      replacements.push(Decoration.replace({
+        widget: new CalloutTitleWidget(
+          displayTitle,
+          info.type,
+          info.foldMarker,
+          isFolded,
+          info.bodyFrom,
+          info.bodyTo,
+          customTitle ? info.titleStart : null,
+          customTitle ? line.to : null
+        )
+      }).range(info.markerStart, line.to));
+    }
   }
 
   const validReplacements = replacements.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
@@ -2660,7 +2704,8 @@ export function buildPersistentLayoutDecorations(state) {
           ...(calloutAttributes
             ? {
                 'data-callout-type': calloutAttributes.type,
-                'data-callout-depth': String(calloutAttributes.depth)
+                'data-callout-depth': String(calloutAttributes.depth),
+                style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
               }
             : {})
         }
