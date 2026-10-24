@@ -5204,6 +5204,7 @@ window.editorBridge = {
     setCssVar('--list-number-color', prefs.pref_list_number_color);
     setCssVar('--todo-border-color', androidArgbToCss(prefs.pref_todo_unchecked_color || prefs.pref_todo_unchecked_border_color));
     setCssVar('--todo-accent-color', androidArgbToCss(prefs.pref_todo_checked_color || prefs.pref_todo_checked_accent_color));
+    setCssVar('--todo-checkmark-color', androidArgbToCss(prefs.pref_todo_checkmark_color));
     setCssVar('--todo-bg-color', androidArgbToCss(prefs.pref_todo_unchecked_bg_color));
 
     // Blockquotes & Callouts

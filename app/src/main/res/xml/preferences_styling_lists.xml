@@ -75,6 +75,12 @@
             app:title="Checked Box Accent Color"
             app:summary="Fill color when todo checkbox is checked"
             app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_todo_checkmark_color"
+            app:title="Checkbox Check Mark Color"
+            app:summary="Color of the check mark in checked todo boxes"
+            app:defaultValue="default" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

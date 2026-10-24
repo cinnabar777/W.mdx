@@ -28,6 +28,7 @@ test('applyAllPreferences handles Android XML preference keys correctly', () => 
 
   assert.ok(source.includes('pref_list_left_indent'), 'Missing pref_list_left_indent');
   assert.ok(source.includes('pref_todo_unchecked_color'), 'Missing pref_todo_unchecked_color');
+  assert.ok(source.includes('pref_todo_checkmark_color'), 'Missing pref_todo_checkmark_color');
 
   assert.ok(source.includes('pref_blockquote_line_thickness'), 'Missing pref_blockquote_line_thickness');
   assert.ok(source.includes('pref_table_border_thickness'), 'Missing pref_table_border_thickness');
@@ -53,6 +54,7 @@ test('applyAllPreferences sets all required CSS variables', () => {
     '--list-left-indent',
     '--todo-border-color',
     '--todo-accent-color',
+    '--todo-checkmark-color',
     '--blockquote-border-width',
     '--table-border-width',
     '--table-header-bg',
@@ -66,6 +68,27 @@ test('applyAllPreferences sets all required CSS variables', () => {
   for (const v of variables) {
     assert.ok(source.includes(v), `Missing CSS variable mapping for ${v}`);
   }
+});
+
+test('checked todo check mark has an independent color with the current dark default', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const listPreferences = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_lists.xml'),
+    'utf8'
+  );
+
+  assert.ok(
+    indexHtml.includes('border: solid var(--todo-checkmark-color, #111111) !important;'),
+    'The checked-box glyph uses its independent color variable and preserves the current default'
+  );
+  assert.ok(
+    listPreferences.includes('app:key="pref_todo_checkmark_color"'),
+    'The check mark color is available as a separate settings control'
+  );
+  assert.ok(
+    resetSource.includes('"pref_todo_checkmark_color" -> "#111111"'),
+    'Resetting the new color setting preserves the current dark check mark'
+  );
 });
 
 test('each heading-level rule outranks the global heading rule', () => {

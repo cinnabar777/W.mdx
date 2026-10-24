@@ -70,6 +70,7 @@ object PreferenceResetHelper {
             "pref_list_number_color" -> "#00E5FF"
             "pref_todo_unchecked_color" -> "#888888"
             "pref_todo_checked_color" -> "#00E5FF"
+            "pref_todo_checkmark_color" -> "#111111"
             "pref_table_border_color" -> "#444444"
             "pref_table_header_bg_color" -> "#252525"
             "pref_table_header_text_color" -> "#FFFFFF"
@@ -145,6 +146,7 @@ object PreferenceResetHelper {
             key == "pref_list_number_color" -> "default"
             key == "pref_todo_unchecked_color" -> "default"
             key == "pref_todo_checked_color" -> "default"
+            key == "pref_todo_checkmark_color" -> "default"
             key == "pref_todo_hide_extra_bullet" -> false
             key == "pref_blockquote_line_thickness" -> 4
             key == "pref_blockquote_line_style" -> "solid"
@@ -478,14 +480,17 @@ object PreferenceResetHelper {
         targetRow.orientation = LinearLayout.HORIZONTAL
         targetRow.gravity = Gravity.CENTER_VERTICAL
         if (seekBarRow != null) {
-            // AndroidX's seekbar content container adds an 8dp end margin.
-            // The preference item already supplies the shared trailing inset.
+            // AndroidX can inset both the nested seekbar row and its container.
+            // Clear those extra end margins so the reset control uses the same
+            // trailing edge as reset controls in other preference rows.
             val seekBarContent = seekBarRow.parent as? ViewGroup
-            val contentLayoutParams =
-                seekBarContent?.layoutParams as? ViewGroup.MarginLayoutParams
-            if (contentLayoutParams != null && contentLayoutParams.marginEnd != 0) {
-                contentLayoutParams.marginEnd = 0
-                seekBarContent.layoutParams = contentLayoutParams
+            listOfNotNull(seekBarRow, seekBarContent).forEach { row ->
+                val rowLayoutParams =
+                    row.layoutParams as? ViewGroup.MarginLayoutParams
+                if (rowLayoutParams != null && rowLayoutParams.marginEnd != 0) {
+                    rowLayoutParams.marginEnd = 0
+                    row.layoutParams = rowLayoutParams
+                }
             }
         }
 
