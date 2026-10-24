@@ -43,6 +43,9 @@ object PreferenceResetHelper {
             "pref_toolbar_toggle_icon_color" -> "#FFFFFF"
             "pref_toc_panel_bg_color" -> "#121212"
             "pref_toc_panel_border_color" -> "#444444"
+            "pref_toc_history_bg_color" -> "#00000000"
+            "pref_toc_history_border_color" -> "#444444"
+            "pref_toc_history_icon_color" -> "#FFFFFF"
             "pref_toc_text_color" -> "#FFFFFF"
             "pref_toc_active_text_color" -> "#FFFF00"
             "pref_toc_active_bg_color" -> "#00000000"
@@ -129,6 +132,26 @@ object PreferenceResetHelper {
             }
             "pref_toc_panel_border_color" ->
                 if (isLightTheme) "#E0E0E0" else "#444444"
+            "pref_toc_history_border_color" -> {
+                val tocBorderColor = prefs.getString("pref_toc_panel_border_color", "default")
+                if (!tocBorderColor.isNullOrBlank() && tocBorderColor != "default") {
+                    tocBorderColor
+                } else if (isLightTheme) {
+                    "#E0E0E0"
+                } else {
+                    "#444444"
+                }
+            }
+            "pref_toc_history_icon_color" -> {
+                val tocTextColor = prefs.getString("pref_toc_text_color", "default")
+                if (!tocTextColor.isNullOrBlank() && tocTextColor != "default") {
+                    tocTextColor
+                } else if (isLightTheme) {
+                    "#111111"
+                } else {
+                    "#FFFFFF"
+                }
+            }
             "pref_toc_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> {
@@ -308,6 +331,9 @@ object PreferenceResetHelper {
             key == "pref_toc_text_color" -> "default"
             key == "pref_toc_active_text_color" -> "#FFFF00"
             key == "pref_toc_active_bg_color" -> "default"
+            key == "pref_toc_history_bg_color" -> "default"
+            key == "pref_toc_history_border_color" -> "default"
+            key == "pref_toc_history_icon_color" -> "default"
             key == "pref_toc_toggle_bg_color" -> "default"
             key == "pref_toc_toggle_icon_color" -> "default"
             key == "pref_toc_toggle_active_bg_color" -> "default"

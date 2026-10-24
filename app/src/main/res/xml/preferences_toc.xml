@@ -43,6 +43,26 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC History Arrows">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_history_bg_color"
+            app:title="Arrow Background Color"
+            app:summary="Background behind the back and forward arrows"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_history_border_color"
+            app:title="Arrow Border Color"
+            app:summary="Border around the back and forward buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_history_icon_color"
+            app:title="Arrow Icon Color"
+            app:summary="Color of the back and forward arrow icons"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Document Name">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_toc_hide_file_extension"

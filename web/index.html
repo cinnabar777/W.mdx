@@ -325,7 +325,7 @@
       display: flex !important;
       align-items: center !important;
       gap: 6px !important;
-      z-index: 10003 !important;
+      z-index: 10004 !important;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
       max-width: 94vw;
       overflow: visible !important;
@@ -379,6 +379,8 @@
 
     /* Bottom 7-Key Grouped Control Bar */
     .grouped-control-bar {
+      position: relative !important;
+      z-index: 10003 !important;
       display: flex !important;
       align-items: center !important;
       justify-content: space-around !important;
@@ -563,6 +565,12 @@
     .toc-history-button:disabled {
       opacity: 0.35;
       cursor: default;
+    }
+
+    .toc-history-button {
+      background: var(--toc-history-bg-color, transparent);
+      border-color: var(--toc-history-border-color, var(--toc-panel-border-color, var(--border-color)));
+      color: var(--toc-history-icon-color, var(--toc-text-color, var(--text-color)));
     }
 
     .toc-navigation-row .toc-history-button {
