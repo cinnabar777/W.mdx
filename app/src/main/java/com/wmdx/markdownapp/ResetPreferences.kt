@@ -344,6 +344,38 @@ object PreferenceResetHelper {
         }
     }
 
+    fun getHeadingOverrideInheritedValue(
+        prefs: android.content.SharedPreferences,
+        key: String
+    ): Any? {
+        val match = Regex("^pref_heading_[1-6]_(.+)$").matchEntire(key) ?: return null
+        val globalKey = when (match.groupValues[1]) {
+            "scale_percent" -> "pref_heading_scale_percent"
+            "font_weight" -> "pref_font_weight_heading"
+            "color" -> "pref_heading_color"
+            "align" -> "pref_heading_align"
+            "line_height" -> "pref_heading_line_height"
+            "letter_spacing" -> "pref_heading_letter_spacing"
+            "word_spacing" -> "pref_heading_word_spacing"
+            "text_transform" -> "pref_heading_text_transform"
+            "underline_style" -> "pref_heading_underline_style"
+            "underline_thickness" -> "pref_heading_underline_thickness"
+            "underline_color" -> "pref_heading_underline_color"
+            "margin_left" -> "pref_heading_margin_left"
+            "margin_right" -> "pref_heading_margin_right"
+            "margin_top" -> "pref_heading_margin_top"
+            "margin_bottom" -> "pref_heading_margin_bottom"
+            else -> return null
+        }
+
+        return when (val defaultValue = getDefaultValue(globalKey)) {
+            is Int -> prefs.getInt(globalKey, defaultValue)
+            is String -> prefs.getString(globalKey, defaultValue) ?: defaultValue
+            is Boolean -> prefs.getBoolean(globalKey, defaultValue)
+            else -> null
+        }
+    }
+
     private fun shouldShowResetButton(key: String?): Boolean =
         key != null &&
             key != "pref_reset_all_defaults" &&
@@ -636,18 +668,27 @@ object PreferenceResetHelper {
             return
         }
 
+        val isHeadingOverride =
+            Regex("^pref_heading_[1-6]_(?!settings_toggle$).+").matches(key)
+        val inheritedHeadingValue = if (isHeadingOverride) {
+            getHeadingOverrideInheritedValue(prefs, key)
+        } else {
+            null
+        }
+
         prefs.edit().remove(key).apply()
 
-        val inheritedHeadingScale = Regex("^pref_heading_[1-6]_scale_percent$").matches(key)
-        val defVal = if (inheritedHeadingScale) {
-            prefs.getInt("pref_heading_scale_percent", 100)
+        val defVal = if (isHeadingOverride) {
+            inheritedHeadingValue ?: getDefaultValue(key)
         } else {
             getDefaultValue(key)
+        }
+        if (isHeadingOverride && defVal != null) {
+            pref.setDefaultValue(defVal)
         }
         when (pref) {
             is SeekBarPreference -> {
                 if (defVal is Int) {
-                    if (inheritedHeadingScale) pref.setDefaultValue(defVal)
                     pref.value = defVal
                 }
             }
@@ -660,6 +701,11 @@ object PreferenceResetHelper {
             is SwitchPreferenceCompat -> {
                 if (defVal is Boolean) pref.isChecked = defVal
             }
+        }
+        // Setters above may persist their value. For a heading override, the
+        // value shown by the control is inherited; its key must remain absent.
+        if (isHeadingOverride) {
+            prefs.edit().remove(key).apply()
         }
         if (pref is ResettablePreference) {
             pref.callNotifyChanged()
@@ -771,6 +817,15 @@ open class ResetSeekBarPreference : SeekBarPreference, ResettablePreference {
 
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
+        if (Regex("^pref_heading_[1-6]_(?!settings_toggle$).+").matches(key ?: "")) {
+            val density = context.resources.displayMetrics.density
+            holder.itemView.setPadding(
+                (4 * density).toInt(),
+                holder.itemView.paddingTop,
+                (8 * density).toInt(),
+                holder.itemView.paddingBottom
+            )
+        }
         PreferenceResetHelper.bindResetButton(holder, this)
     }
     override fun callNotifyChanged() {

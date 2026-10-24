@@ -84,7 +84,7 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
         preferenceScreen?.let { applyCustomLayouts(it) }
     }
 
-    private fun applyCustomLayouts(group: androidx.preference.PreferenceGroup) {
+    protected fun applyCustomLayouts(group: androidx.preference.PreferenceGroup) {
         for (i in 0 until group.preferenceCount) {
             val pref = group.getPreference(i)
             pref.isIconSpaceReserved = false
@@ -417,6 +417,12 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
         fun addLevel(level: Int) {
             val prefix = "pref_heading_${level}_"
             val controls = mutableListOf<Preference>()
+            fun inherited(suffix: String, fallback: Any): Any =
+                PreferenceResetHelper.getHeadingOverrideInheritedValue(
+                    sharedPreferences,
+                    prefix + suffix
+                ) ?: fallback
+
             val header = Preference(context).apply {
                 key = "pref_heading_${level}_settings_toggle"
                 title = "H$level"
@@ -430,7 +436,12 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 summary = "Overrides the global scale; reset to inherit the current global value"
                 min = 50
                 max = 200
-                setDefaultValue(globalScale)
+                setDefaultValue(
+                    PreferenceResetHelper.getHeadingOverrideInheritedValue(
+                        sharedPreferences,
+                        prefix + "scale_percent"
+                    ) ?: globalScale
+                )
                 showSeekBarValue = true
                 isVisible = false
             }
@@ -443,7 +454,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 summary = "Font weight for this heading level (100–900)"
                 min = 100
                 max = 900
-                setDefaultValue(700)
+                setDefaultValue(inherited("font_weight", 700))
                 showSeekBarValue = true
                 isVisible = false
             }
@@ -458,7 +469,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 key = prefix + "color"
                 title = "Heading Color"
                 summary = "Override the global heading color for H$level"
-                setDefaultValue("default")
+                setDefaultValue(inherited("color", "default"))
                 isVisible = false
             })
             controls.add(ResetListPreference(context).apply {
@@ -467,28 +478,28 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 summary = "Align this heading level"
                 entries = context.resources.getTextArray(R.array.align_entries)
                 entryValues = context.resources.getTextArray(R.array.align_values)
-                setDefaultValue("default")
+                setDefaultValue(inherited("align", "default"))
                 isVisible = false
             })
             controls.add(ResetEditTextPreference(context).apply {
                 key = prefix + "line_height"
                 title = "Heading Line Height"
                 summary = "Line-height multiplier for H$level"
-                setDefaultValue("1.2")
+                setDefaultValue(inherited("line_height", "1.2"))
                 isVisible = false
             })
             controls.add(ResetEditTextPreference(context).apply {
                 key = prefix + "letter_spacing"
                 title = "Heading Letter Spacing (px)"
                 summary = "Space between letters in H$level"
-                setDefaultValue("0px")
+                setDefaultValue(inherited("letter_spacing", "0px"))
                 isVisible = false
             })
             controls.add(ResetEditTextPreference(context).apply {
                 key = prefix + "word_spacing"
                 title = "Heading Word Spacing (px)"
                 summary = "Space between words in H$level"
-                setDefaultValue("0px")
+                setDefaultValue(inherited("word_spacing", "0px"))
                 isVisible = false
             })
             controls.add(ResetListPreference(context).apply {
@@ -497,7 +508,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 summary = "Capitalization transform for H$level"
                 entries = context.resources.getTextArray(R.array.text_transform_entries)
                 entryValues = context.resources.getTextArray(R.array.text_transform_values)
-                setDefaultValue("none")
+                setDefaultValue(inherited("text_transform", "none"))
                 isVisible = false
             })
             controls.add(ResetListPreference(context).apply {
@@ -506,7 +517,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 summary = "Text decoration for H$level"
                 entries = context.resources.getTextArray(R.array.underline_style_entries)
                 entryValues = context.resources.getTextArray(R.array.underline_style_values)
-                setDefaultValue("none")
+                setDefaultValue(inherited("underline_style", "none"))
                 isVisible = false
             })
             controls.add(ResetSeekBarPreference(context).apply {
@@ -515,7 +526,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 summary = "Underline thickness for H$level"
                 min = 1
                 max = 10
-                setDefaultValue(2)
+                setDefaultValue(inherited("underline_thickness", 2))
                 showSeekBarValue = true
                 isVisible = false
             })
@@ -523,7 +534,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 key = prefix + "underline_color"
                 title = "Underline Color"
                 summary = "Override the global underline color for H$level"
-                setDefaultValue("default")
+                setDefaultValue(inherited("underline_color", "default"))
                 isVisible = false
             })
             for ((descriptor, maxValue) in listOf(
@@ -539,7 +550,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                     this.summary = summary
                     min = 0
                     this.max = maxValue
-                    setDefaultValue(if (key == "margin_top") 16 else if (key == "margin_bottom") 8 else 0)
+                    val fallback = if (key == "margin_top") 16 else if (key == "margin_bottom") 8 else 0
+                    setDefaultValue(inherited(key, fallback))
                     showSeekBarValue = true
                     isVisible = false
                 })
@@ -561,6 +573,10 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
 
         for (level in 1..6) addLevel(level)
 
+        // These controls are created after setPreferencesFromResource has
+        // applied the settings row layouts. Apply the same layouts to them.
+        applyCustomLayouts(screen)
+
         findPreference<androidx.preference.SeekBarPreference>("pref_heading_scale_percent")
             ?.setOnPreferenceChangeListener { _, newValue ->
                 val updatedScale = (newValue as? Int) ?: globalScale
@@ -568,6 +584,9 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                     if (!sharedPreferences.contains(preference.key)) {
                         preference.setDefaultValue(updatedScale)
                         preference.value = updatedScale
+                        // SeekBarPreference persists its assigned value. This is
+                        // only an inherited display value, not an H-level override.
+                        sharedPreferences.edit().remove(preference.key).apply()
                     }
                 }
                 true

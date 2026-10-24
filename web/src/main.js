@@ -432,11 +432,12 @@ class CodeBlockHeaderWidget extends WidgetType {
       'background:var(--code-block-label-bg, rgba(255,255,255,.12));' +
       'padding:4px 10px;border-radius:var(--code-block-border-radius, 6px) ' +
       'var(--code-block-border-radius, 6px) 0 0;font-size:12px;font-weight:bold;' +
-      'font-family:monospace;color:var(--code-block-lang-label-color, #fff);' +
+      'font-family:monospace;' +
       'user-select:none;border:1px solid var(--code-block-border-color, rgba(255,255,255,.2));' +
       'border-bottom-width:1px;';
 
     const langSpan = document.createElement('span');
+    langSpan.className = 'cm-codeblock-lang-label';
     langSpan.textContent = this.lang;
 
     const copyBtn = document.createElement('button');
@@ -445,7 +446,7 @@ class CodeBlockHeaderWidget extends WidgetType {
     copyBtn.style.cssText =
       'background:var(--code-copy-bg, transparent);' +
       'border:1px solid var(--code-block-border-color, rgba(255,255,255,.35));' +
-      'color:var(--code-copy-color, inherit);border-radius:3px;' +
+      'color:var(--code-copy-color, #fff);border-radius:3px;' +
       'padding:2px 8px;font-size:11px;cursor:pointer;font-weight:bold;';
 
     copyBtn.addEventListener('click', (e) => {

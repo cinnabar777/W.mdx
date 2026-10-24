@@ -5,6 +5,14 @@ const path = require('node:path');
 
 const mainJsPath = path.join(__dirname, '../src/main.js');
 const source = fs.readFileSync(mainJsPath, 'utf8');
+const settingsSource = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
+  'utf8'
+);
+const resetSource = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
+  'utf8'
+);
 
 test('applyAllPreferences handles Android XML preference keys correctly', () => {
   assert.ok(source.includes('pref_body_font_size'), 'Missing pref_body_font_size');
@@ -58,6 +66,37 @@ test('applyAllPreferences sets all required CSS variables', () => {
   for (const v of variables) {
     assert.ok(source.includes(v), `Missing CSS variable mapping for ${v}`);
   }
+});
+
+test('per-heading reset clears the override and inherits the matching global heading value', () => {
+  const inheritedMappings = [
+    ['scale_percent', 'pref_heading_scale_percent'],
+    ['font_weight', 'pref_font_weight_heading'],
+    ['color', 'pref_heading_color'],
+    ['align', 'pref_heading_align'],
+    ['line_height', 'pref_heading_line_height'],
+    ['letter_spacing', 'pref_heading_letter_spacing'],
+    ['word_spacing', 'pref_heading_word_spacing'],
+    ['text_transform', 'pref_heading_text_transform'],
+    ['underline_style', 'pref_heading_underline_style'],
+    ['underline_thickness', 'pref_heading_underline_thickness'],
+    ['underline_color', 'pref_heading_underline_color'],
+    ['margin_left', 'pref_heading_margin_left'],
+    ['margin_right', 'pref_heading_margin_right'],
+    ['margin_top', 'pref_heading_margin_top'],
+    ['margin_bottom', 'pref_heading_margin_bottom']
+  ];
+
+  for (const [suffix, globalKey] of inheritedMappings) {
+    assert.ok(
+      resetSource.includes(`"${suffix}" -> "${globalKey}"`),
+      `Heading ${suffix} must inherit ${globalKey}`
+    );
+  }
+
+  assert.match(resetSource, /if \(isHeadingOverride\) \{\s*prefs\.edit\(\)\.remove\(key\)\.apply\(\)/);
+  assert.ok(settingsSource.includes('applyCustomLayouts(screen)'), 'Dynamic H1–H6 settings use the same compact row layout');
+  assert.ok(settingsSource.includes('sharedPreferences.edit().remove(preference.key).apply()'), 'Inherited H-level scale values do not persist as overrides');
 });
 
 const indexHtmlPath = path.join(__dirname, '../index.html');

@@ -980,7 +980,9 @@
       font-size: var(--code-block-font-size, 14px) !important;
     }
     .cm-content .cm-codeblock-text {
-      background: var(--code-block-text-bg-color, transparent) !important;
+      background-color: var(--code-block-text-bg-color, transparent) !important;
+      -webkit-box-decoration-break: clone !important;
+      box-decoration-break: clone !important;
     }
     .cm-content .cm-codeblock-first {
       border-top-left-radius: var(--code-block-border-radius, 6px) !important;
@@ -995,16 +997,18 @@
     .cm-codeblock-header {
       box-sizing: border-box !important;
       background: var(--code-block-label-bg, rgba(255,255,255,.12)) !important;
-      color: var(--code-block-lang-label-color, #fff) !important;
       border-color: var(--code-block-border-color, rgba(255,255,255,.2)) !important;
       border-style: solid !important;
       border-width: 1px !important;
       border-radius: var(--code-block-border-radius, 6px)
         var(--code-block-border-radius, 6px) 0 0 !important;
     }
+    .cm-codeblock-lang-label {
+      color: var(--code-block-lang-label-color, #fff) !important;
+    }
     .cm-codeblock-copy-btn {
       background: var(--code-copy-bg, transparent) !important;
-      color: var(--code-copy-color, inherit) !important;
+      color: var(--code-copy-color, #fff) !important;
       border-color: var(--code-block-border-color, rgba(255,255,255,.35)) !important;
     }
     .cm-content .cm-blockquote:not(.cm-callout) {
@@ -1029,11 +1033,13 @@
     .cm-content .cm-line.cm-callout:not(.cm-list-item) {
       margin-left: var(--callout-margin-left, 0px) !important;
       margin-right: var(--callout-margin-right, 0px) !important;
+      padding-right: var(--callout-padding, 12px) !important;
     }
     .cm-content .cm-line.cm-callout-body:not(.cm-callout-list-item) {
       margin-left: var(--callout-margin-left, 0px) !important;
       margin-right: var(--callout-margin-right, 0px) !important;
       padding-left: var(--callout-padding, 12px) !important;
+      padding-right: var(--callout-padding, 12px) !important;
       text-indent: 0 !important;
     }
     .cm-content .cm-line.cm-callout-list-item {
@@ -1060,41 +1066,41 @@
     .cm-content .cm-callout[data-callout-type="info"] {
       --callout-type-border: #29b6f6;
       --callout-type-bg: rgba(41, 182, 246, 0.12);
-      --callout-type-header-bg: var(--callout-type-info-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-info-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-info-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-info-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-info-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
 
     .cm-content .cm-callout[data-callout-type="faq"] {
       --callout-type-border: #ff9800;
       --callout-type-bg: rgba(255, 152, 0, 0.12);
-      --callout-type-header-bg: var(--callout-type-faq-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-faq-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-faq-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-faq-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-faq-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
 
     .cm-content .cm-callout[data-callout-type="question"] {
       --callout-type-border: #ff9800;
       --callout-type-bg: rgba(255, 152, 0, 0.12);
-      --callout-type-header-bg: var(--callout-type-question-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-question-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-question-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-question-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-question-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
 
     .cm-content .cm-callout[data-callout-type="todo"] {
       --callout-type-border: #00bcd4;
       --callout-type-bg: rgba(0, 188, 212, 0.12);
-      --callout-type-header-bg: var(--callout-type-todo-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-todo-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-todo-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-todo-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-todo-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
 
     .cm-content .cm-callout[data-callout-type="example"] {
       --callout-type-border: #ab47bc;
       --callout-type-bg: rgba(171, 71, 188, 0.12);
-      --callout-type-header-bg: var(--callout-type-example-header-bg, var(--callout-header-bg, transparent));
+      --callout-type-header-bg: var(--callout-type-example-header-bg, var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))));
       --callout-type-header-title-color: var(--callout-type-example-header-title-color, var(--callout-header-title-color, inherit));
-      --callout-type-header-accent-color: var(--callout-type-example-header-accent-color, var(--callout-header-accent-color, transparent));
+      --callout-type-header-accent-color: var(--callout-type-example-header-accent-color, var(--callout-header-accent-color, var(--callout-border-color, var(--callout-type-border))));
     }
     .cm-content .cm-callout[data-callout-type="tip"] {
       --callout-type-border: #66bb6a;
@@ -1112,22 +1118,35 @@
 
     .cm-content .cm-callout-title {
       font-weight: var(--callout-header-font-weight, 700) !important;
-      background-color: var(--callout-type-header-bg, var(--callout-header-bg, transparent)) !important;
+      background-color: var(--callout-type-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))) !important;
       color: var(--callout-type-header-title-color, var(--callout-header-title-color, inherit)) !important;
       font-size: var(--callout-header-title-size, inherit) !important;
       font-family: var(--callout-header-font-family, inherit) !important;
-      padding: var(--callout-header-padding, 0px) !important;
-      border-left: var(--callout-header-accent-thickness, 0px) solid var(--callout-type-header-accent-color, var(--callout-header-accent-color, transparent)) !important;
+      padding: var(--callout-header-padding, 0px) var(--callout-padding, 12px) !important;
+      border-left: max(var(--callout-header-accent-thickness, 0px), var(--callout-border-width, 4px)) solid var(--callout-type-header-accent-color, var(--callout-border-color, var(--callout-type-border, #29b6f6))) !important;
+    }
+
+    .cm-content .cm-line.cm-callout-title {
+      border-top-left-radius: 8px !important;
+      border-top-right-radius: 8px !important;
+    }
+
+    .cm-content .cm-line.cm-callout-title:not(:has(+ .cm-line.cm-callout-body)) {
+      border-radius: 8px !important;
+    }
+
+    .cm-content .cm-line.cm-callout-body:not(:has(+ .cm-line.cm-callout-body)) {
+      border-bottom-left-radius: 8px !important;
+      border-bottom-right-radius: 8px !important;
     }
 
     .cm-callout-title-container {
-      display: grid !important;
-      grid-template-columns: 20px minmax(0, 1fr) !important;
-      align-items: start !important;
-      gap: 6px !important;
-      vertical-align: top !important;
+      display: block !important;
+      position: relative !important;
       width: 100% !important;
+      min-height: 18px !important;
       box-sizing: border-box !important;
+      padding-left: 24px !important;
       user-select: none !important;
       color: inherit !important;
       font-size: inherit !important;
@@ -1136,13 +1155,17 @@
     }
 
     .cm-callout-title-container.is-foldable {
-      grid-template-columns: 20px minmax(0, 1fr) auto !important;
       cursor: pointer !important;
+      padding-right: 20px !important;
     }
 
     .cm-callout-icon {
       display: inline-flex !important;
-      grid-column: 1 !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 16px !important;
+      height: 18px !important;
       align-items: center !important;
       justify-content: center !important;
       align-self: start !important;
@@ -1151,15 +1174,16 @@
     }
 
     .cm-callout-title-text {
-      grid-column: 2 !important;
+      display: block !important;
       min-width: 0 !important;
       overflow-wrap: anywhere !important;
       white-space: normal !important;
     }
 
     .cm-callout-fold-btn {
-      grid-column: 3 !important;
-      align-self: start !important;
+      position: absolute !important;
+      top: 0 !important;
+      right: 0 !important;
       background: transparent !important;
       border: none !important;
       padding: 2px !important;

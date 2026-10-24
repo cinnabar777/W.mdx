@@ -58,6 +58,34 @@ test('Callout widget structure and eq implementation', () => {
   assert.ok(mainSource.includes("titleSpan.className = 'cm-callout-title-text'"), 'CalloutTitleWidget sets text class');
 });
 
+test('callout title wraps after its icon and keeps a unified rounded card background', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*block[\s\S]*?position:\s*relative[\s\S]*?padding-left:\s*24px/);
+  assert.match(indexHtml, /\.cm-callout-icon\s*\{[\s\S]*?position:\s*absolute/);
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title\s*\{[\s\S]*?border-top-left-radius/);
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-body:not\(:has\(\+ \.cm-line\.cm-callout-body\)\)/);
+  assert.match(indexHtml, /--callout-type-header-bg:[\s\S]*?var\(--callout-bg-color/);
+});
+
+test('language label color is scoped to the language text, separate from COPY', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.ok(mainSource.includes("langSpan.className = 'cm-codeblock-lang-label'"));
+  assert.match(indexHtml, /\.cm-codeblock-lang-label\s*\{[\s\S]*?var\(--code-block-lang-label-color/);
+  assert.match(indexHtml, /\.cm-codeblock-copy-btn\s*\{[\s\S]*?var\(--code-copy-color, #fff\)/);
+  const headerRule = indexHtml.match(/\.cm-codeblock-header\s*\{([\s\S]*?)\n    \}/);
+  assert.ok(headerRule, 'Code-block header CSS rule exists');
+  assert.doesNotMatch(headerRule[1], /code-block-lang-label-color/);
+});
+
+test('code text background is applied to the text mark, not substituted for the whole block background', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const textMarkRule = indexHtml.match(/\.cm-content \.cm-codeblock-text\s*\{([\s\S]*?)\n    \}/);
+  assert.ok(textMarkRule, 'Code text mark CSS rule exists');
+  assert.match(textMarkRule[1], /background-color:\s*var\(--code-block-text-bg-color, transparent\)/);
+  assert.match(textMarkRule[1], /box-decoration-break:\s*clone/);
+  assert.ok(mainSource.includes("Decoration.mark({ class: 'cm-codeblock-text' })"));
+});
+
 test('Callout line classification and marker detection logic in main.js', () => {
   assert.ok(mainSource.includes('cm-callout'), 'Main JS assigns cm-callout line class');
   assert.ok(mainSource.includes('cm-callout-title'), 'Main JS assigns cm-callout-title line class');
@@ -191,7 +219,7 @@ test('Shared callout header controls and per-type override preferences are defin
   assert.ok(mainSource.includes("'--callout-header-accent-thickness', prefs.pref_callout_header_accent_thickness"), 'main.js sets --callout-header-accent-thickness');
 
   // Check CSS Rules in index.html for title and title container
-  assert.ok(indexHtml.includes('var(--callout-type-header-bg, var(--callout-header-bg, transparent))'), 'index.html incorporates header background cascade');
+  assert.ok(indexHtml.includes('var(--callout-header-bg, var(--callout-bg-color, var(--callout-type-bg, transparent))'), 'index.html falls back from header color to the callout background');
   assert.ok(indexHtml.includes('var(--callout-type-header-title-color, var(--callout-header-title-color, inherit))'), 'index.html incorporates header title color cascade');
   assert.ok(indexHtml.includes('var(--callout-header-title-size, inherit)'), 'index.html incorporates header title size');
   assert.ok(indexHtml.includes('var(--callout-header-font-weight, 700)'), 'index.html incorporates header font weight');

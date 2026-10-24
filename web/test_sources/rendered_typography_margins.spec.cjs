@@ -137,7 +137,23 @@ const x = 42;
     pref_hr_margin_left: 24,
     pref_hr_margin_right: 24,
     pref_hr_centered: true,
-    pref_list_wrap_under_text: true
+    pref_list_wrap_under_text: true,
+    pref_font_weight_heading: 500,
+    pref_heading_1_font_weight: 400,
+    pref_heading_1_align: 'center',
+    pref_heading_1_line_height: '1.8',
+    pref_heading_1_letter_spacing: '1.5px',
+    pref_heading_1_word_spacing: '3px',
+    pref_heading_1_text_transform: 'uppercase',
+    pref_heading_1_underline_style: 'solid',
+    pref_heading_1_underline_thickness: 3,
+    pref_heading_1_underline_color: '#00ff00',
+    pref_heading_1_margin_left: 4,
+    pref_heading_1_margin_right: 5,
+    pref_heading_1_margin_top: 6,
+    pref_heading_1_margin_bottom: 7,
+    pref_code_block_text_bg_color: '#CF1414',
+    pref_code_block_lang_label_color: '#123456'
   };
 
   window.editorBridge.applyAllPreferences(JSON.stringify(customPrefs));
@@ -159,12 +175,32 @@ const x = 42;
   assert.equal(rootStyle.getPropertyValue('--table-margin-right'), '12px');
   assert.equal(rootStyle.getPropertyValue('--hr-margin-left'), '24%');
   assert.equal(rootStyle.getPropertyValue('--hr-margin-right'), '24%');
+  assert.equal(rootStyle.getPropertyValue('--heading-font-weight'), '500');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-font-weight'), '400');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-align'), 'center');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-line-height'), '1.8');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-letter-spacing'), '1.5px');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-word-spacing'), '3px');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-text-transform'), 'uppercase');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-underline-line'), 'underline');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-underline-thickness'), '3px');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-underline-color'), '#00ff00');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-margin-left'), '4px');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-margin-right'), '5px');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-margin-top'), '6px');
+  assert.equal(rootStyle.getPropertyValue('--heading-1-margin-bottom'), '7px');
+  assert.equal(rootStyle.getPropertyValue('--code-block-text-bg-color'), '#CF1414');
+  assert.equal(rootStyle.getPropertyValue('--code-block-lang-label-color'), '#123456');
   assert.equal(dom.window.document.body.classList.contains('hr-centered'), true);
   assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
 
   // 2. Confirm blocks exist in rendered DOM
   const codeHeader = dom.window.document.querySelector('.cm-codeblock-header');
   assert.ok(codeHeader !== null, 'Code block header widget is rendered');
+  assert.ok(
+    dom.window.document.querySelector('.cm-codeblock-text'),
+    'WYSIWYG code text receives the text-only background decoration'
+  );
 
   const wpTable = dom.window.document.querySelector('.cm-wp-table-container');
   assert.ok(wpTable !== null, 'WYSIWYG table container is rendered');
