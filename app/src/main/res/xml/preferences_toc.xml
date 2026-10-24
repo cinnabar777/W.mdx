@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Panel">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_panel_width"
+            app:title="Panel Width (% of screen)"
+            app:summary="Width of the table of contents panel, up to 90%"
+            app:min="50"
+            android:max="90"
+            app:defaultValue="80"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_panel_bg_color"
+            app:title="Panel Background Color"
+            app:summary="Background color behind the table of contents"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_panel_bg_opacity"
+            app:title="Panel Background Opacity (%)"
+            app:summary="Opacity of the panel background without fading its text"
+            app:min="10"
+            android:max="100"
+            app:defaultValue="100"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_panel_border_color"
+            app:title="Panel Border Color"
+            app:summary="Color of the panel edge"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_overlay_dim"
+            app:title="Background Dim (%)"
+            app:summary="How strongly the document is dimmed behind the panel"
+            app:min="0"
+            android:max="90"
+            app:defaultValue="50"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Navigation">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_default_level"
+            app:title="Default Visible Heading Level"
+            app:summary="Show headings through this level when a document opens"
+            app:min="1"
+            android:max="6"
+            app:defaultValue="2"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_expand_levels_per_tap"
+            app:title="Levels to Expand per Tap"
+            app:summary="How many deeper heading levels each plus control reveals"
+            app:min="1"
+            android:max="5"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC History Arrows">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_history_bg_color"
+            app:title="Arrow Background Color"
+            app:summary="Background behind the back and forward arrows"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_history_border_color"
+            app:title="Arrow Border Color"
+            app:summary="Border around the back and forward buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_history_icon_color"
+            app:title="Arrow Icon Color"
+            app:summary="Color of the back and forward arrow icons"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Document Name">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_toc_hide_file_extension"
+            app:title="Hide File Extension in Name Field"
+            app:summary="Show only the name while keeping the saved file extension when renamed"
+            app:defaultValue="false" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Text">
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_font_file_toc"
+            app:title="TOC Font File"
+            app:summary="Tap to pick a font file (.ttf, .otf, .woff, .woff2)" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_font_size"
+            app:title="Font Size (px)"
+            app:summary="Text size for TOC headings"
+            app:min="10"
+            android:max="28"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_font_weight"
+            app:title="Font Weight"
+            app:summary="Weight of TOC heading text"
+            app:min="100"
+            android:max="900"
+            app:defaultValue="600"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_text_color"
+            app:title="Text Color"
+            app:summary="Color of TOC headings"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_active_text_color"
+            app:title="Active Heading Color"
+            app:summary="Text color for the heading currently in view"
+            app:defaultValue="#FFFF00" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_active_bg_color"
+            app:title="Active Heading Background"
+            app:summary="Background behind the heading at the current cursor position"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_toc_text_overflow"
+            app:title="Long Heading Text"
+            app:summary="Wrap long headings or keep them on one line"
+            app:entries="@array/toc_text_overflow_entries"
+            app:entryValues="@array/toc_text_overflow_values"
+            app:defaultValue="truncate" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_row_spacing"
+            app:title="Heading Row Spacing (px)"
+            app:summary="Space between TOC heading rows"
+            app:min="0"
+            android:max="20"
+            app:defaultValue="4"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toc_indent_spacing"
+            app:title="Indent Between Heading Levels (px)"
+            app:summary="Additional indentation for each deeper heading level"
+            app:min="0"
+            android:max="32"
+            app:defaultValue="12"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Heading Fold Controls">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_toggle_bg_color"
+            app:title="Fold Control Background Color"
+            app:summary="Background color behind the plus and minus controls"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_toggle_icon_color"
+            app:title="Fold Control Icon Color"
+            app:summary="Color of the plus and minus symbols"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_toggle_active_bg_color"
+            app:title="Collapsed Control Background Color"
+            app:summary="Background color when a heading is collapsed"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_toggle_active_icon_color"
+            app:title="Collapsed Control Icon Color"
+            app:summary="Plus and minus color when a heading is collapsed"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+</androidx.preference.PreferenceScreen>

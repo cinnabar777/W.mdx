@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <androidx.preference.Preference
+        app:key="pref_storage_access_info"
+        app:title="Approve folders once"
+        app:summary="The app can reuse access to folders you select. It will not request access to all files on the device."
+        app:selectable="false" />
+
+    <androidx.preference.PreferenceCategory
+        app:key="pref_storage_authorized_folders"
+        app:title="Approved folders" />
+
+    <androidx.preference.Preference
+        app:key="pref_storage_add_folder"
+        app:title="Add Folder"
+        app:summary="Choose a folder to allow file operations such as renaming" />
+
+    <androidx.preference.Preference
+        app:key="pref_storage_downloads_note"
+        app:title="Downloads folder"
+        app:summary="Android 11 and newer does not allow selecting the Downloads folder itself. You can select a subfolder or use Save As."
+        app:selectable="false" />
+
+</androidx.preference.PreferenceScreen>

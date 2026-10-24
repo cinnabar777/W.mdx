@@ -16,6 +16,7 @@ import {
   takeRenderLayoutMetrics
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
+import { extractTocHeadings } from './tocHeadings.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -34,14 +35,19 @@ import { tags } from '@lezer/highlight';
 import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
 
 let activeAdapter = null;
+let refreshOpenTocPanel = null;
+let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
 let isProgrammaticChange = false;
 let pendingMarkdown = null;
 let isLineWrapEnabled = true;
 let activePopupGroup = null;
+let tocHideFileExtension = false;
 
 let customHotkeys = {
   new: 'ctrl+n',
+  history_back: 'alt+left',
+  history_forward: 'alt+right',
   open: 'ctrl+o',
   save: 'ctrl+s',
   save_as: 'ctrl+shift+s',
@@ -700,7 +706,7 @@ export function ensureCaretVisibleMinimal(view, pos) {
   return true;
 }
 
-export function scrollToPositionUpperMiddle(view, pos) {
+export function scrollToPositionUpperMiddle(view, pos, options = {}) {
   if (!view || pos == null) return false;
   view.dispatch({
     selection: { anchor: pos, head: pos }
@@ -730,7 +736,146 @@ export function scrollToPositionUpperMiddle(view, pos) {
     setTimeout(performScroll, 50);
   });
 
-  view.focus();
+  if (options.focus !== false) {
+    view.focus();
+  }
+  return true;
+}
+
+const tocNavigationByDocument = new Map();
+let activeTocDocumentKey = 'untitled';
+let tocDocumentHistoryState = { canGoBack: false, canGoForward: false };
+let tocDefaultHeadingLevel = 2;
+let tocExpandLevelsPerTap = 1;
+const tocExpansionState = {
+  documentKey: 'untitled',
+  collapsedHeadingKeys: new Set(),
+  isAllCollapsed: false,
+  initialized: false,
+  activeHeadingKey: null,
+  centerOnNextUpdate: false
+};
+
+function getTocNavigationHistory() {
+  if (!tocNavigationByDocument.has(activeTocDocumentKey)) {
+    tocNavigationByDocument.set(activeTocDocumentKey, { back: [], forward: [] });
+  }
+  return tocNavigationByDocument.get(activeTocDocumentKey);
+}
+
+function captureTocNavigationState(view) {
+  if (!view?.state || !view.scrollDOM) return null;
+  const selection = view.state.selection.main;
+  return {
+    anchor: selection.anchor,
+    head: selection.head,
+    scrollTop: view.scrollDOM.scrollTop
+  };
+}
+
+function updateTocHistoryButtons() {
+  const history = getTocNavigationHistory();
+  const back = document.querySelector('#toc-history-back');
+  const forward = document.querySelector('#toc-history-forward');
+  if (back) back.disabled = history.back.length === 0 && !tocDocumentHistoryState.canGoBack;
+  if (forward) {
+    forward.disabled = history.forward.length === 0 && !tocDocumentHistoryState.canGoForward;
+  }
+}
+
+function setActiveTocDocumentKey(key) {
+  const nextKey = key || 'untitled';
+  if (nextKey !== activeTocDocumentKey) {
+    activeTocDocumentKey = nextKey;
+    tocExpansionState.documentKey = nextKey;
+    tocExpansionState.collapsedHeadingKeys.clear();
+    tocExpansionState.isAllCollapsed = false;
+    tocExpansionState.initialized = false;
+    tocExpansionState.activeHeadingKey = null;
+    tocExpansionState.centerOnNextUpdate = true;
+    refreshOpenTocPanel?.();
+  }
+  updateTocHistoryButtons();
+}
+
+function stripTocDocumentExtension(fileName) {
+  const lowerName = fileName.toLowerCase();
+  for (const extension of ['.textpack.zip', '.textpack']) {
+    if (lowerName.endsWith(extension) && fileName.length > extension.length) {
+      return fileName.slice(0, -extension.length);
+    }
+  }
+  const lastDot = fileName.lastIndexOf('.');
+  return lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
+}
+
+function getTocDocumentDisplayName(fileName) {
+  const isUnsavedDocument =
+    activeTocDocumentKey === 'untitled' ||
+    activeTocDocumentKey.startsWith('untitled:');
+  return tocHideFileExtension && !isUnsavedDocument
+    ? stripTocDocumentExtension(fileName)
+    : fileName;
+}
+
+function refreshTocDocumentNameField() {
+  const nameInput = document.querySelector('#toc-document-name');
+  if (!nameInput || nameInput.dataset.fullName === undefined) return;
+  const displayName = getTocDocumentDisplayName(nameInput.dataset.fullName);
+  nameInput.dataset.committedName = displayName;
+  if (!nameInput.dataset.editing) nameInput.value = displayName;
+}
+
+function recordTocNavigation(view, targetPos) {
+  const current = captureTocNavigationState(view);
+  if (!current) return false;
+  if (
+    Number.isInteger(targetPos) &&
+    current.anchor === targetPos &&
+    current.head === targetPos
+  ) {
+    return false;
+  }
+
+  const history = getTocNavigationHistory();
+  history.back.push(current);
+  history.forward.length = 0;
+  if (
+    window.AndroidNative &&
+    typeof window.AndroidNative.onInDocumentNavigationOccurred === 'function'
+  ) {
+    window.AndroidNative.onInDocumentNavigationOccurred();
+  }
+  updateTocHistoryButtons();
+  return true;
+}
+
+function restoreTocNavigationState(view, state) {
+  if (!view?.state || !view.scrollDOM || !state) return false;
+  const docLength = view.state.doc.length;
+  const anchor = Math.max(0, Math.min(docLength, state.anchor));
+  const head = Math.max(0, Math.min(docLength, state.head));
+  view.dispatch({ selection: { anchor, head } });
+  requestAnimationFrame(() => {
+    if (!view.scrollDOM) return;
+    view.scrollDOM.scrollTop = Math.max(0, state.scrollTop || 0);
+    updateTocActiveSection();
+  });
+  return true;
+}
+
+function navigateTocHistory(direction) {
+  const history = getTocNavigationHistory();
+  const source = direction === 'back' ? history.back : history.forward;
+  const destination = direction === 'back' ? history.forward : history.back;
+  const view = activeAdapter?.view;
+  if (!source.length || !view) return false;
+
+  const current = captureTocNavigationState(view);
+  const target = source.pop();
+  if (current) destination.push(current);
+  restoreTocNavigationState(view, target);
+  updateTocHistoryButtons();
   return true;
 }
 
@@ -743,6 +888,7 @@ export function scrollToHeading(view, targetHeading) {
     if (/^#{1,6}\s+/.test(line.text.trim())) {
       const lineClean = cleanHeadingText(line.text).toLowerCase();
       if (lineClean === targetClean) {
+        recordTocNavigation(view, line.from);
         return scrollToPositionUpperMiddle(view, line.from);
       }
     }
@@ -3263,6 +3409,9 @@ class CodeMirrorAdapter {
           if ((update.selectionSet || update.docChanged) && typeof updateTocActiveSection === 'function') {
             updateTocActiveSection();
           }
+          if (update.docChanged && typeof refreshOpenTocPanel === 'function') {
+            refreshOpenTocPanel();
+          }
         }),
         tableStateField,
         wysiwygCodeBlockField,
@@ -3304,7 +3453,6 @@ class CodeMirrorAdapter {
     });
 
     this.view.scrollDOM.style.overflowAnchor = 'auto';
-
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
     this.visibilityPersistHandler = () => {
       if (document.visibilityState === 'hidden') this.persistScrollPosition();
@@ -3366,7 +3514,7 @@ class CodeMirrorAdapter {
         setupGroupedControlBar();
     initCustomSearchBar();
     this.fastScrollbarCleanup = setupFastScrollbar();
-    this.tocGestureCleanup = setupTocGestureAndPanel();
+    this.tocGestureCleanup = setupTocGestureAndPanel(this.view.scrollDOM);
 
     this.scheduleSyntaxRefresh();
   }
@@ -3523,6 +3671,15 @@ async function setEditorMode(mode) {
   const containerEl = document.querySelector('#editor');
   await adapter.init(containerEl, existingText, modeSnapshot);
   activeAdapter = adapter;
+
+  if (document.querySelector('#toc-panel')?.classList.contains('open')) {
+    tocExpansionState.centerOnNextUpdate = true;
+    updateTocActiveSection();
+    refreshOpenTocPanel?.();
+    requestAnimationFrame(() => {
+      if (activeAdapter === adapter) updateTocActiveSection();
+    });
+  }
 
   if (window.AndroidNative && typeof window.AndroidNative.onEditorReady === 'function') {
     window.AndroidNative.onEditorReady(targetMode);
@@ -4662,79 +4819,236 @@ function setupFastScrollbar() {
 
 function updateTocActiveSection() {
   const tocContent = document.querySelector('#toc-content');
-  if (!tocContent || !activeAdapter || !activeAdapter.view) return;
+  const panel = document.querySelector('#toc-panel');
+  if (
+    !tocContent ||
+    !panel?.classList.contains('open') ||
+    !activeAdapter ||
+    !activeAdapter.view
+  ) {
+    return;
+  }
 
-  const sel = activeAdapter.view.state.selection.main;
-  const currentLine = activeAdapter.view.state.doc.lineAt(sel.head).number - 1;
+  const view = activeAdapter.view;
+  const doc = view.state.doc;
+  const scrollRect = view.scrollDOM.getBoundingClientRect();
+  const isAtDocumentTop = view.scrollDOM.scrollTop <= 1;
+  let activePosition = null;
+  if (
+    !isAtDocumentTop &&
+    scrollRect.height > 0 &&
+    typeof view.posAtCoords === 'function'
+  ) {
+    const anchorY =
+      scrollRect.top +
+      scrollRect.height * 0.30 +
+      Math.min(8, scrollRect.height * 0.02);
+    const anchorX = scrollRect.left + Math.min(scrollRect.width * 0.12, 24);
+    try {
+      activePosition = view.posAtCoords({ x: anchorX, y: anchorY }, false);
+    } catch (_) {
+      activePosition = null;
+    }
+  }
+  if (!isAtDocumentTop && !Number.isFinite(activePosition)) {
+    activePosition = view.state.selection.main.head;
+  }
 
   const rows = Array.from(tocContent.querySelectorAll('.toc-item'));
   let activeRow = null;
-
-  rows.forEach(row => {
-    row.classList.remove('active-section');
-    const idx = parseInt(row.dataset.lineIndex, 10);
-    if (!isNaN(idx) && currentLine >= idx) {
-      activeRow = row;
-    }
-  });
+  rows.forEach(row => row.classList.remove('active-section'));
+  if (isAtDocumentTop) {
+    activeRow = rows[0] || null;
+  } else {
+    const currentLine = doc.lineAt(activePosition).number - 1;
+    rows.forEach(row => {
+      const idx = parseInt(row.dataset.lineIndex, 10);
+      if (!isNaN(idx) && currentLine >= idx) {
+        activeRow = row;
+      }
+    });
+  }
 
   if (activeRow) {
+    let activeHeadingChanged = activeRow.dataset.headingKey !== tocExpansionState.activeHeadingKey;
+    if (typeof revealActiveTocHeading === 'function') {
+      activeHeadingChanged = revealActiveTocHeading(activeRow) || activeHeadingChanged;
+    }
     activeRow.classList.add('active-section');
 
-    const panel = document.querySelector('#toc-panel');
-    if (!panel?.classList.contains('open')) return;
-
-    const containerRect = tocContent.getBoundingClientRect();
-    const rowRect = activeRow.getBoundingClientRect();
-    if (containerRect.height <= 0 || rowRect.height <= 0) return;
-
-    if (rowRect.top < containerRect.top) {
-      tocContent.scrollTop -= containerRect.top - rowRect.top;
-    } else if (rowRect.bottom > containerRect.bottom) {
-      tocContent.scrollTop += rowRect.bottom - containerRect.bottom;
+    if (activeHeadingChanged || tocExpansionState.centerOnNextUpdate) {
+      const containerRect = tocContent.getBoundingClientRect();
+      const rowRect = activeRow.getBoundingClientRect();
+      if (containerRect.height > 0 && rowRect.height > 0 && tocContent.clientHeight > 0) {
+        const rowCenter = tocContent.scrollTop +
+          rowRect.top -
+          containerRect.top +
+          rowRect.height / 2;
+        const maxScrollTop = Math.max(
+          0,
+          tocContent.scrollHeight - tocContent.clientHeight
+        );
+        tocContent.scrollTop = Math.max(
+          0,
+          Math.min(maxScrollTop, rowCenter - tocContent.clientHeight / 2)
+        );
+      }
     }
+    tocExpansionState.centerOnNextUpdate = false;
   }
 }
 
-function setupTocGestureAndPanel() {
+function setupTocGestureAndPanel(scrollDOM) {
   const win = document.defaultView || window;
   const panel = document.querySelector('#toc-panel');
   const overlay = document.querySelector('#toc-overlay');
   const tocContent = document.querySelector('#toc-content');
   const globalToggleBtn = document.querySelector('#toc-global-toggle');
+  const documentNameInput = document.querySelector('#toc-document-name');
+  const settingsButton = document.querySelector('#toc-settings-button');
+  const historyBackButton = document.querySelector('#toc-history-back');
+  const historyForwardButton = document.querySelector('#toc-history-forward');
   if (!panel || !overlay) return () => {};
 
-  let isAllCollapsed = false;
+  let pendingRefreshTimer = null;
+  let tocScrollFrame = null;
+  const tocScrollHandler = () => {
+    if (!panel.classList.contains('open') || tocScrollFrame !== null) return;
+    tocScrollFrame = requestAnimationFrame(() => {
+      tocScrollFrame = null;
+      if (activeAdapter?.view?.scrollDOM === scrollDOM) {
+        updateTocActiveSection();
+      }
+    });
+  };
+  scrollDOM?.addEventListener('scroll', tocScrollHandler, { passive: true });
+  const hasDescendantHeading = (rows, rowIndex) => {
+    const level = parseInt(rows[rowIndex]?.dataset.level, 10) || 1;
+    for (let childIndex = rowIndex + 1; childIndex < rows.length; childIndex++) {
+      const childLevel = parseInt(rows[childIndex].dataset.level, 10) || 1;
+      if (childLevel <= level) break;
+      return true;
+    }
+    return false;
+  };
+
+  const cancelDocumentNameEdit = () => {
+    if (!documentNameInput) return;
+    documentNameInput.value = documentNameInput.dataset.committedName || documentNameInput.value;
+    documentNameInput.readOnly = true;
+    delete documentNameInput.dataset.editing;
+  };
+
+  const beginDocumentNameEdit = () => {
+    if (!documentNameInput || !documentNameInput.readOnly) return;
+    documentNameInput.readOnly = false;
+    documentNameInput.dataset.editing = 'true';
+    documentNameInput.focus();
+    documentNameInput.select();
+  };
+
+  const commitDocumentNameEdit = () => {
+    if (!documentNameInput || !documentNameInput.dataset.editing) return;
+    const requestedName = documentNameInput.value.trim();
+    const committedName = documentNameInput.dataset.committedName || '';
+    documentNameInput.readOnly = true;
+    delete documentNameInput.dataset.editing;
+    if (!requestedName || requestedName === committedName) {
+      cancelDocumentNameEdit();
+      return;
+    }
+    if (
+      window.AndroidNative &&
+      typeof window.AndroidNative.renameCurrentDocument === 'function'
+    ) {
+      window.AndroidNative.renameCurrentDocument(requestedName);
+    } else {
+      cancelDocumentNameEdit();
+    }
+  };
 
   const openToc = () => {
-    buildTocTree();
+    if (activeAdapter?.view?.contentDOM) {
+      activeAdapter.view.contentDOM.blur();
+    }
+    if (window.AndroidNative && typeof window.AndroidNative.hideKeyboard === 'function') {
+      window.AndroidNative.hideKeyboard();
+    }
     panel.classList.add('open');
     overlay.classList.add('open');
+    tocExpansionState.centerOnNextUpdate = true;
+    buildTocTree();
+    updateTocHistoryButtons();
   };
 
   const closeToc = () => {
+    if (documentNameInput && !documentNameInput.readOnly) {
+      cancelDocumentNameEdit();
+      documentNameInput.blur();
+    }
     panel.classList.remove('open');
     overlay.classList.remove('open');
   };
 
   overlay.onclick = closeToc;
+  const onDocumentNameClick = () => beginDocumentNameEdit();
+  const onDocumentNameKeyDown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitDocumentNameEdit();
+      documentNameInput?.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelDocumentNameEdit();
+      documentNameInput?.blur();
+    }
+  };
+  const onDocumentNameBlur = () => {
+    if (documentNameInput && !documentNameInput.readOnly) cancelDocumentNameEdit();
+  };
+  if (documentNameInput) {
+    documentNameInput.addEventListener('click', onDocumentNameClick);
+    documentNameInput.addEventListener('keydown', onDocumentNameKeyDown);
+    documentNameInput.addEventListener('blur', onDocumentNameBlur);
+  }
+
+  const onSettingsClick = () => {
+    cancelDocumentNameEdit();
+    documentNameInput?.blur();
+    window.AndroidNative?.hideKeyboard?.();
+    if (window.AndroidNative && typeof window.AndroidNative.onNativeAction === 'function') {
+      window.AndroidNative.onNativeAction('toc_settings');
+    }
+  };
+  const onHistoryBackClick = () => {
+    cancelDocumentNameEdit();
+    documentNameInput?.blur();
+    window.AndroidNative?.hideKeyboard?.();
+    if (!navigateTocHistory('back') && window.AndroidNative) {
+      window.AndroidNative.onNativeAction('history_back');
+    }
+  };
+  const onHistoryForwardClick = () => {
+    cancelDocumentNameEdit();
+    documentNameInput?.blur();
+    window.AndroidNative?.hideKeyboard?.();
+    if (!navigateTocHistory('forward') && window.AndroidNative) {
+      window.AndroidNative.onNativeAction('history_forward');
+    }
+  };
+  if (settingsButton) settingsButton.addEventListener('click', onSettingsClick);
+  if (historyBackButton) historyBackButton.addEventListener('click', onHistoryBackClick);
+  if (historyForwardButton) historyForwardButton.addEventListener('click', onHistoryForwardClick);
+  updateTocHistoryButtons();
 
   let globalToggleHandler = null;
   if (globalToggleBtn) {
     globalToggleHandler = () => {
-      isAllCollapsed = !isAllCollapsed;
-      const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
-      itemRows.forEach(row => {
-        const toggle = row.querySelector('.toc-toggle');
-        const level = parseInt(row.dataset.level, 10) || 1;
-        if (isAllCollapsed) {
-          if (level > 1) row.style.display = 'none';
-          if (toggle) toggle.textContent = '+';
-        } else {
-          row.style.display = 'flex';
-          if (toggle) toggle.textContent = '-';
-        }
-      });
+      tocExpansionState.isAllCollapsed = !tocExpansionState.isAllCollapsed;
+      if (!tocExpansionState.isAllCollapsed) {
+        tocExpansionState.collapsedHeadingKeys.clear();
+      }
+      applyTocCollapseState();
     };
     globalToggleBtn.onclick = globalToggleHandler;
   }
@@ -4782,43 +5096,97 @@ function setupTocGestureAndPanel() {
     if (!tocContent || !activeAdapter) return;
     tocContent.innerHTML = '';
 
-    const items = [];
-    const text = activeAdapter.getMarkdown();
-    const lines = text.split('\n');
-    lines.forEach((line, lineIdx) => {
-      const match = line.match(/^(#{1,6})\s+(.+)$/);
-      if (match) {
-        items.push({
-          level: match[1].length,
-          title: match[2].trim(),
-          lineIndex: lineIdx
-        });
-      }
-    });
+    const items = extractTocHeadings(activeAdapter.getMarkdown());
 
     if (items.length === 0) {
+      tocExpansionState.collapsedHeadingKeys.clear();
+      tocExpansionState.initialized = false;
+      tocExpansionState.activeHeadingKey = null;
       tocContent.innerHTML = '<div style="padding:16px;color:#888;font-size:14px;">No headings in document.</div>';
       return;
     }
 
-    items.forEach((item) => {
+    const occurrences = new Map();
+    const itemKeys = items.map(item => {
+      const baseKey = JSON.stringify([item.level, item.title]);
+      const occurrence = occurrences.get(baseKey) || 0;
+      occurrences.set(baseKey, occurrence + 1);
+      return JSON.stringify([item.level, item.title, occurrence]);
+    });
+    const validKeys = new Set(itemKeys);
+    for (const key of tocExpansionState.collapsedHeadingKeys) {
+      if (!validKeys.has(key)) tocExpansionState.collapsedHeadingKeys.delete(key);
+    }
+    if (!tocExpansionState.initialized) {
+      tocExpansionState.collapsedHeadingKeys.clear();
+      items.forEach((item, index) => {
+        const hasChildren =
+          index + 1 < items.length &&
+          items[index + 1].level > item.level;
+        if (hasChildren && item.level >= tocDefaultHeadingLevel) {
+          tocExpansionState.collapsedHeadingKeys.add(itemKeys[index]);
+        }
+      });
+      tocExpansionState.isAllCollapsed = false;
+      tocExpansionState.initialized = true;
+    }
+
+    items.forEach((item, index) => {
       const itemRow = document.createElement('div');
       itemRow.className = `toc-item level-${item.level}`;
       itemRow.dataset.level = item.level;
       itemRow.dataset.lineIndex = item.lineIndex;
+      itemRow.dataset.headingKey = itemKeys[index];
 
       const toggleSpan = document.createElement('span');
       toggleSpan.className = 'toc-toggle';
-      toggleSpan.textContent = '-';
+      const itemHasChildren =
+        index + 1 < items.length &&
+        items[index + 1].level > item.level;
+      const initiallyCollapsed =
+        tocExpansionState.collapsedHeadingKeys.has(itemKeys[index]);
+      toggleSpan.textContent = initiallyCollapsed ? '+' : '-';
+      toggleSpan.classList.toggle('is-collapsed', initiallyCollapsed);
+      toggleSpan.setAttribute('aria-pressed', String(initiallyCollapsed));
+      toggleSpan.setAttribute('aria-disabled', String(!itemHasChildren));
       toggleSpan.onclick = (e) => {
         e.stopPropagation();
-        const isCollapsed = toggleSpan.textContent === '+';
-        toggleSpan.textContent = isCollapsed ? '-' : '+';
-        let sibling = itemRow.nextElementSibling;
-        while (sibling && parseInt(sibling.dataset.level, 10) > item.level) {
-          sibling.style.display = isCollapsed ? 'flex' : 'none';
-          sibling = sibling.nextElementSibling;
+        const rows = Array.from(tocContent.querySelectorAll('.toc-item'));
+        const clickedIndex = rows.indexOf(itemRow);
+        if (clickedIndex < 0 || !itemHasChildren) {
+          return;
         }
+
+        if (tocExpansionState.isAllCollapsed) {
+          tocExpansionState.isAllCollapsed = false;
+          tocExpansionState.collapsedHeadingKeys.clear();
+          rows.forEach((row, rowIndex) => {
+            if (hasDescendantHeading(rows, rowIndex)) {
+              tocExpansionState.collapsedHeadingKeys.add(row.dataset.headingKey);
+            }
+          });
+        }
+
+        const isCurrentlyCollapsed =
+          tocExpansionState.collapsedHeadingKeys.has(itemKeys[index]);
+        if (isCurrentlyCollapsed) {
+          tocExpansionState.collapsedHeadingKeys.delete(itemKeys[index]);
+          const expandThroughLevel = item.level + tocExpandLevelsPerTap;
+          for (let childIndex = clickedIndex + 1; childIndex < rows.length; childIndex++) {
+            const child = rows[childIndex];
+            const childLevel = parseInt(child.dataset.level, 10) || 1;
+            if (childLevel <= item.level) break;
+            if (!hasDescendantHeading(rows, childIndex)) continue;
+            if (childLevel >= expandThroughLevel) {
+              tocExpansionState.collapsedHeadingKeys.add(child.dataset.headingKey);
+            } else {
+              tocExpansionState.collapsedHeadingKeys.delete(child.dataset.headingKey);
+            }
+          }
+        } else {
+          tocExpansionState.collapsedHeadingKeys.add(itemKeys[index]);
+        }
+        applyTocCollapseState();
       };
 
       const textSpan = document.createElement('span');
@@ -4833,7 +5201,8 @@ function setupTocGestureAndPanel() {
         if (item.lineIndex !== undefined && activeAdapter && activeAdapter.view) {
           try {
             const line = activeAdapter.view.state.doc.line(item.lineIndex + 1);
-            scrollToPositionUpperMiddle(activeAdapter.view, line.from);
+            recordTocNavigation(activeAdapter.view, line.from);
+            scrollToPositionUpperMiddle(activeAdapter.view, line.from, { focus: false });
           } catch (e) {}
         }
       };
@@ -4841,13 +5210,146 @@ function setupTocGestureAndPanel() {
       tocContent.appendChild(itemRow);
     });
 
+    applyTocCollapseState();
     updateTocActiveSection();
   }
+
+  function applyTocCollapseState() {
+    if (!tocContent) return;
+    const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
+
+    itemRows.forEach((row, rowIndex) => {
+      if (!hasDescendantHeading(itemRows, rowIndex)) {
+        tocExpansionState.collapsedHeadingKeys.delete(row.dataset.headingKey);
+      }
+    });
+
+    if (tocExpansionState.isAllCollapsed) {
+      itemRows.forEach((row, rowIndex) => {
+        const level = parseInt(row.dataset.level, 10) || 1;
+        const toggle = row.querySelector('.toc-toggle');
+        const hasChildren = hasDescendantHeading(itemRows, rowIndex);
+        row.style.display = level > 1 ? 'none' : 'flex';
+        if (toggle) {
+          const isCollapsed = hasChildren;
+          toggle.textContent = hasChildren && isCollapsed ? '+' : '-';
+          toggle.classList.toggle('is-collapsed', isCollapsed);
+          toggle.setAttribute('aria-pressed', String(isCollapsed));
+          toggle.setAttribute('aria-disabled', String(!hasChildren));
+        }
+      });
+      return;
+    }
+
+    itemRows.forEach(row => {
+      row.style.display = 'flex';
+      const toggle = row.querySelector('.toc-toggle');
+      if (toggle) {
+        const isCollapsed =
+          tocExpansionState.collapsedHeadingKeys.has(row.dataset.headingKey);
+        const rowIndex = itemRows.indexOf(row);
+        const hasChildren = hasDescendantHeading(itemRows, rowIndex);
+        toggle.textContent = hasChildren && isCollapsed ? '+' : '-';
+        toggle.classList.toggle('is-collapsed', isCollapsed);
+        toggle.setAttribute('aria-pressed', String(isCollapsed));
+        toggle.setAttribute('aria-disabled', String(!hasChildren));
+      }
+    });
+
+    itemRows.forEach((row, index) => {
+      if (!tocExpansionState.collapsedHeadingKeys.has(row.dataset.headingKey)) return;
+      const level = parseInt(row.dataset.level, 10) || 1;
+      for (let childIndex = index + 1; childIndex < itemRows.length; childIndex++) {
+        const child = itemRows[childIndex];
+        if ((parseInt(child.dataset.level, 10) || 1) <= level) break;
+        child.style.display = 'none';
+      }
+    });
+  }
+
+  const revealActiveHeadingInToc = (activeRow) => {
+    if (!tocContent || !activeRow) return;
+    const itemRows = Array.from(tocContent.querySelectorAll('.toc-item'));
+    const activeIndex = itemRows.indexOf(activeRow);
+    if (activeIndex < 0) return;
+    const activeKey = activeRow.dataset.headingKey;
+    if (activeKey === tocExpansionState.activeHeadingKey) return false;
+
+    tocExpansionState.activeHeadingKey = activeKey;
+    tocExpansionState.isAllCollapsed = false;
+    tocExpansionState.collapsedHeadingKeys.clear();
+
+    const expandedKeys = new Set();
+    itemRows.forEach((row, rowIndex) => {
+      const level = parseInt(row.dataset.level, 10) || 1;
+      if (level < tocDefaultHeadingLevel && hasDescendantHeading(itemRows, rowIndex)) {
+        expandedKeys.add(row.dataset.headingKey);
+      }
+    });
+
+    let parentLevel = parseInt(activeRow.dataset.level, 10) || 1;
+    for (let rowIndex = activeIndex - 1; rowIndex >= 0; rowIndex--) {
+      const level = parseInt(itemRows[rowIndex].dataset.level, 10) || 1;
+      if (level < parentLevel) {
+        expandedKeys.add(itemRows[rowIndex].dataset.headingKey);
+        parentLevel = level;
+      }
+    }
+    if (hasDescendantHeading(itemRows, activeIndex)) {
+      expandedKeys.add(activeKey);
+    }
+
+    itemRows.forEach((row, rowIndex) => {
+      if (
+        hasDescendantHeading(itemRows, rowIndex) &&
+        !expandedKeys.has(row.dataset.headingKey)
+      ) {
+        tocExpansionState.collapsedHeadingKeys.add(row.dataset.headingKey);
+      }
+    });
+    applyTocCollapseState();
+    return true;
+  };
+  revealActiveTocHeading = revealActiveHeadingInToc;
+
+  const scheduleOpenPanelRefresh = () => {
+    if (!panel.classList.contains('open')) return false;
+    if (pendingRefreshTimer !== null) win.clearTimeout(pendingRefreshTimer);
+    pendingRefreshTimer = win.setTimeout(() => {
+      pendingRefreshTimer = null;
+      if (panel.classList.contains('open')) buildTocTree();
+    }, 100);
+    return true;
+  };
+  refreshOpenTocPanel = scheduleOpenPanelRefresh;
 
   return () => {
     win.removeEventListener('touchstart', onTouchStart, touchListenerOptions);
     win.removeEventListener('touchend', onTouchEnd, touchListenerOptions);
+    if (pendingRefreshTimer !== null) {
+      win.clearTimeout(pendingRefreshTimer);
+      pendingRefreshTimer = null;
+    }
+    if (tocScrollFrame !== null) {
+      cancelAnimationFrame(tocScrollFrame);
+      tocScrollFrame = null;
+    }
+    scrollDOM?.removeEventListener('scroll', tocScrollHandler);
+    if (refreshOpenTocPanel === scheduleOpenPanelRefresh) {
+      refreshOpenTocPanel = null;
+    }
+    if (revealActiveTocHeading === revealActiveHeadingInToc) {
+      revealActiveTocHeading = null;
+    }
     if (overlay.onclick === closeToc) overlay.onclick = null;
+    if (documentNameInput) {
+      documentNameInput.removeEventListener('click', onDocumentNameClick);
+      documentNameInput.removeEventListener('keydown', onDocumentNameKeyDown);
+      documentNameInput.removeEventListener('blur', onDocumentNameBlur);
+    }
+    if (settingsButton) settingsButton.removeEventListener('click', onSettingsClick);
+    if (historyBackButton) historyBackButton.removeEventListener('click', onHistoryBackClick);
+    if (historyForwardButton) historyForwardButton.removeEventListener('click', onHistoryForwardClick);
     if (globalToggleBtn && globalToggleBtn.onclick === globalToggleHandler) {
       globalToggleBtn.onclick = null;
     }
@@ -4918,6 +5420,8 @@ function matchSingleHotkey(event, shortcutString) {
   if (keyPart === ',' && (keyLower === ',' || codeLower === 'comma')) return true;
   if (keyPart === '.' && (keyLower === '.' || codeLower === 'period')) return true;
   if (keyPart === 'tab' && (keyLower === 'tab' || codeLower === 'tab')) return true;
+  if (keyPart === 'left' && (keyLower === 'arrowleft' || codeLower === 'arrowleft')) return true;
+  if (keyPart === 'right' && (keyLower === 'arrowright' || codeLower === 'arrowright')) return true;
 
   return false;
 }
@@ -4929,6 +5433,27 @@ function parseAndMatchHotkey(event, shortcutString) {
 }
 
 function setupKeyboardShortcuts() {
+  window.addEventListener('keydown', (e) => {
+    if (e.target?.closest?.('input, textarea, select')) return;
+
+    let direction = null;
+    if (parseAndMatchHotkey(e, customHotkeys.history_back)) {
+      direction = 'back';
+    } else if (parseAndMatchHotkey(e, customHotkeys.history_forward)) {
+      direction = 'forward';
+    }
+    if (!direction) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!navigateTocHistory(direction) && window.AndroidNative &&
+        typeof window.AndroidNative.onNativeAction === 'function') {
+      window.AndroidNative.onNativeAction(
+        direction === 'back' ? 'history_back' : 'history_forward'
+      );
+    }
+  }, true);
+
   window.addEventListener('keydown', (e) => {
     const k = (e.key || '').toLowerCase();
     const c = (e.code || '').toLowerCase();
@@ -5322,7 +5847,7 @@ window.editorBridge = {
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
     // Toolbar
-    setCssVar('--toolbar-bg', prefs.pref_toolbar_bg_color);
+    setCssVar('--toolbar-bg', androidArgbToCss(prefs.pref_toolbar_bg_color));
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);
     setCssVar('--toolbar-active-icon-color', prefs.pref_toolbar_active_icon_color);
     setCssVar(
@@ -5334,6 +5859,56 @@ window.editorBridge = {
       androidArgbToCss(prefs.pref_toolbar_toggle_icon_color)
     );
     setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
+
+    // Table of contents panel appearance
+    const tocPanelWidth = Number(prefs.pref_toc_panel_width ?? 80);
+    setCssVar('--toc-panel-width', Math.max(50, Math.min(90, tocPanelWidth)), 'vw');
+    const nextTocDefaultHeadingLevel = Math.max(
+      1,
+      Math.min(6, Number(prefs.pref_toc_default_level ?? 2) || 2)
+    );
+    const nextTocExpandLevelsPerTap = Math.max(
+      1,
+      Math.min(5, Number(prefs.pref_toc_expand_levels_per_tap ?? 1) || 1)
+    );
+    if (nextTocDefaultHeadingLevel !== tocDefaultHeadingLevel) {
+      tocDefaultHeadingLevel = nextTocDefaultHeadingLevel;
+      tocExpansionState.collapsedHeadingKeys.clear();
+      tocExpansionState.initialized = false;
+      tocExpansionState.activeHeadingKey = null;
+      tocExpansionState.centerOnNextUpdate = true;
+      updateTocActiveSection();
+      refreshOpenTocPanel?.();
+    }
+    tocExpandLevelsPerTap = nextTocExpandLevelsPerTap;
+    tocHideFileExtension = prefs.pref_toc_hide_file_extension === true;
+    refreshTocDocumentNameField();
+    setCssVar('--toc-panel-bg-color', androidArgbToCss(prefs.pref_toc_panel_bg_color));
+    setCssVar('--toc-panel-bg-opacity', prefs.pref_toc_panel_bg_opacity ?? 100, '%');
+    setCssVar('--toc-panel-border-color', androidArgbToCss(prefs.pref_toc_panel_border_color));
+    setCssVar('--toc-history-bg-color', androidArgbToCss(prefs.pref_toc_history_bg_color));
+    setCssVar('--toc-history-border-color', androidArgbToCss(prefs.pref_toc_history_border_color));
+    setCssVar('--toc-history-icon-color', androidArgbToCss(prefs.pref_toc_history_icon_color));
+    const tocOverlayDim = Number(prefs.pref_toc_overlay_dim ?? 50);
+    setCssVar('--toc-overlay-dim', Math.max(0, Math.min(90, tocOverlayDim)) / 100);
+    setCssVar('--toc-font-size', prefs.pref_toc_font_size ?? 16, 'px');
+    setCssVar('--toc-font-weight', prefs.pref_toc_font_weight ?? 600);
+    setCssVar('--toc-text-color', androidArgbToCss(prefs.pref_toc_text_color));
+    setCssVar('--toc-active-text-color', androidArgbToCss(prefs.pref_toc_active_text_color));
+    setCssVar('--toc-active-bg-color', androidArgbToCss(prefs.pref_toc_active_bg_color));
+    setCssVar('--toc-toggle-bg-color', androidArgbToCss(prefs.pref_toc_toggle_bg_color));
+    setCssVar('--toc-toggle-icon-color', androidArgbToCss(prefs.pref_toc_toggle_icon_color));
+    setCssVar('--toc-toggle-active-bg-color', androidArgbToCss(prefs.pref_toc_toggle_active_bg_color));
+    setCssVar('--toc-toggle-active-icon-color', androidArgbToCss(prefs.pref_toc_toggle_active_icon_color));
+    setCssVar('--toc-row-spacing', prefs.pref_toc_row_spacing ?? 4, 'px');
+    const tocIndentSpacing = Number(prefs.pref_toc_indent_spacing ?? 12);
+    for (let level = 1; level <= 6; level++) {
+      setCssVar(`--toc-level-${level}-indent`, 8 + ((level - 1) * tocIndentSpacing), 'px');
+    }
+    const tocWrapHeadings = prefs.pref_toc_text_overflow === 'wrap';
+    setCssVar('--toc-text-white-space', tocWrapHeadings ? 'normal' : 'nowrap');
+    setCssVar('--toc-text-overflow', tocWrapHeadings ? 'clip' : 'ellipsis');
+    setCssVar('--toc-text-overflow-wrap', tocWrapHeadings ? 'anywhere' : 'normal');
 
     // Find & Replace Customizations
     setCssVar('--findreplace-panel-bg', androidArgbToCss(prefs.pref_findreplace_panel_bg));
@@ -5564,13 +6139,51 @@ window.editorBridge = {
       document.body.classList.remove('light-theme');
     }
   },
-  setDocumentTitle: function(title) {
+  setDocumentTitle: function(title, documentKey) {
     const titleEl = document.querySelector('#file-title');
     if (titleEl) {
       titleEl.textContent = title;
     }
+    const displayName = String(title || '').replace(/\s+\*$/, '');
+    if (documentKey !== undefined && documentKey !== null) {
+      setActiveTocDocumentKey(String(documentKey));
+    }
+    const nameInput = document.querySelector('#toc-document-name');
+    if (nameInput) {
+      nameInput.dataset.fullName = displayName;
+      refreshTocDocumentNameField();
+    }
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson) {
+  navigateInDocumentHistory: function(direction) {
+    return direction === 'back' || direction === 'forward'
+      ? navigateTocHistory(direction)
+      : false;
+  },
+  setDocumentHistoryState: function(canGoBack, canGoForward) {
+    tocDocumentHistoryState = {
+      canGoBack: Boolean(canGoBack),
+      canGoForward: Boolean(canGoForward)
+    };
+    updateTocHistoryButtons();
+  },
+  remapDocumentHistory: function(oldKey, newKey) {
+    if (!oldKey || !newKey || oldKey === newKey) return;
+    const oldHistory = tocNavigationByDocument.get(oldKey);
+    const newHistory = tocNavigationByDocument.get(newKey);
+    if (oldHistory && !newHistory) {
+      tocNavigationByDocument.set(newKey, oldHistory);
+    } else if (oldHistory && newHistory) {
+      newHistory.back.push(...oldHistory.back);
+      newHistory.forward.push(...oldHistory.forward);
+    }
+    tocNavigationByDocument.delete(oldKey);
+    if (activeTocDocumentKey === oldKey) {
+      activeTocDocumentKey = newKey;
+      tocExpansionState.documentKey = newKey;
+    }
+    updateTocHistoryButtons();
+  },
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData) {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -5632,6 +6245,7 @@ window.editorBridge = {
     applyFontCategory('Italic', fontItalicData, '--italic-font-family');
     applyFontCategory('Code', fontCodeData, '--code-font-family');
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family');
+    applyFontCategory('Toc', fontTocData, '--toc-font-family');
     let headingLevelFonts = [];
     try {
       headingLevelFonts = JSON.parse(fontHeadingLevelsDataJson || '[]');

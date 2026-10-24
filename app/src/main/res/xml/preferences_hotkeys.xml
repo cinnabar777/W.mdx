@@ -4,6 +4,18 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Custom Keyboard Shortcuts (App Actions)">
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_history_back"
+            app:title="History Back Shortcut"
+            app:summary="Navigate back through heading and document history (e.g. alt+left)"
+            app:defaultValue="alt+left" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_history_forward"
+            app:title="History Forward Shortcut"
+            app:summary="Navigate forward through heading and document history (e.g. alt+right)"
+            app:defaultValue="alt+right" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_new"
             app:title="New Document Shortcut"
             app:summary="Key combination (e.g. ctrl+n)"

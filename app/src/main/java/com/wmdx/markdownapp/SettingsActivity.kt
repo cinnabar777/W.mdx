@@ -26,10 +26,20 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.title = getString(R.string.settings_title)
 
         if (savedInstanceState == null) {
+            val directPage = intent.getStringExtra("settings_page")
+            val initialFragment = if (directPage == "toc") {
+                TocPanelSettingsFragment()
+            } else {
+                SettingsFragment()
+            }
             supportFragmentManager
                 .beginTransaction()
-                .replace(R.id.settings_container, SettingsFragment())
+                .replace(R.id.settings_container, initialFragment)
                 .commit()
+        }
+
+        if (intent.getStringExtra("settings_page") == "toc") {
+            supportActionBar?.title = "Table of Contents Panel"
         }
 
         supportFragmentManager.addOnBackStackChangedListener {
@@ -47,6 +57,8 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingControlbarFragment -> "Bottom Control Bar Styling"
                 is StylingCursorFragment -> "Cursor & Selection Settings"
                 is StylingFindReplaceFragment -> "Find & Replace Settings"
+                is TocPanelSettingsFragment -> "Table of Contents Panel"
+                is StorageAccessSettingsFragment -> "File & Folder Access"
                 is StylingSettingsFragment -> "Styling & Typography"
                 is ExportSettingsFragment -> "HTML & MHTML Export Settings"
                 is HotkeysSettingsFragment -> "Custom Keyboard Shortcuts"
@@ -190,6 +202,20 @@ class SettingsFragment : BaseSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         val key = preference.key ?: return super.onPreferenceTreeClick(preference)
         when (key) {
+            "pref_page_toc" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, TocPanelSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_storage_access" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, StorageAccessSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
             "pref_page_settings_theme" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, SettingsThemeFragment())
@@ -353,6 +379,214 @@ class SettingsFragment : BaseSettingsFragment() {
     }
 }
 
+class StorageAccessSettingsFragment : BaseSettingsFragment() {
+    private val locallyRevokedFolderUrisKey = "locally_revoked_storage_folder_uris"
+
+    private val addFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            handleFolderSelection(result.resultCode, result.data)
+        }
+
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_storage_access, rootKey)
+        findPreference<Preference>("pref_storage_add_folder")?.setOnPreferenceClickListener {
+            launchFolderPicker()
+            true
+        }
+        refreshAuthorizedFolders()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshAuthorizedFolders()
+    }
+
+    private fun launchFolderPicker() {
+        val intent = android.content.Intent(
+            android.content.Intent.ACTION_OPEN_DOCUMENT_TREE
+        ).apply {
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PREFIX_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+        }
+        addFolderLauncher.launch(intent)
+    }
+
+    private fun handleFolderSelection(
+        resultCode: Int,
+        resultIntent: android.content.Intent?
+    ) {
+        val selectedIntent = resultIntent
+        if (resultCode != android.app.Activity.RESULT_OK || selectedIntent == null) return
+        val folderUri = selectedIntent.data ?: return
+        val readWriteFlags =
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        val grantedFlags = selectedIntent.flags and readWriteFlags
+        if (grantedFlags != readWriteFlags) {
+            ThemedToast.show(
+                requireContext(),
+                "Android did not grant read and write access to that folder.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+
+        val resolver = requireContext().contentResolver
+        val persisted = runCatching {
+            resolver.takePersistableUriPermission(folderUri, grantedFlags)
+            resolver.persistedUriPermissions.any {
+                it.uri == folderUri && it.isReadPermission && it.isWritePermission
+            }
+        }.getOrDefault(false)
+        if (!persisted) {
+            ThemedToast.show(
+                requireContext(),
+                "Android could not save access to that folder.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+
+        refreshAuthorizedFolders()
+        ThemedToast.show(requireContext(), "Folder access saved", Toast.LENGTH_SHORT)
+    }
+
+    private fun refreshAuthorizedFolders() {
+        val context = context ?: return
+        val category = findPreference<androidx.preference.PreferenceCategory>(
+            "pref_storage_authorized_folders"
+        ) ?: return
+        category.removeAll()
+
+        val persistedPermissions = context.contentResolver.persistedUriPermissions
+        val preferences =
+            androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+        val locallyRevokedUris = preferences
+            .getStringSet(locallyRevokedFolderUrisKey, emptySet())
+            .orEmpty()
+            .toMutableSet()
+        val currentlyPersistedUris = persistedPermissions.map { it.uri.toString() }.toSet()
+        val clearedRevocations = locallyRevokedUris.removeAll { it !in currentlyPersistedUris }
+        if (clearedRevocations) {
+            preferences.edit()
+                .putStringSet(locallyRevokedFolderUrisKey, locallyRevokedUris)
+                .apply()
+        }
+
+        val folders = persistedPermissions
+            .filter {
+                it.isReadPermission &&
+                    it.isWritePermission &&
+                    android.provider.DocumentsContract.isTreeUri(it.uri) &&
+                    it.uri.toString() !in locallyRevokedUris
+            }
+            .map { it to getFolderDisplayName(context, it.uri) }
+            .sortedBy { it.second.lowercase() }
+
+        if (folders.isEmpty()) {
+            category.addPreference(Preference(context).apply {
+                title = "No folders approved"
+                summary = "Use Add Folder to choose a folder once."
+                isSelectable = false
+                isIconSpaceReserved = false
+                layoutResource = R.layout.preference_custom
+            })
+            return
+        }
+
+        folders.forEach { (permission, displayName) ->
+            val folderUri = permission.uri
+            category.addPreference(Preference(context).apply {
+                title = displayName
+                summary = "Tap to remove this saved folder permission"
+                isIconSpaceReserved = false
+                layoutResource = R.layout.preference_custom
+                setOnPreferenceClickListener {
+                    confirmRemoveFolder(folderUri)
+                    true
+                }
+            })
+        }
+    }
+
+    private fun getFolderDisplayName(context: android.content.Context, treeUri: Uri): String {
+        val documentUri = runCatching {
+            android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                treeUri,
+                android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+            )
+        }.getOrNull()
+        val displayName = documentUri?.let { uri ->
+            runCatching {
+                context.contentResolver.query(
+                    uri,
+                    arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(
+                        android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                    )
+                    if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
+                }
+            }.getOrNull()
+        }
+        return displayName
+            ?: treeUri.lastPathSegment?.substringAfterLast(':')?.takeIf { it.isNotBlank() }
+            ?: "Selected folder"
+    }
+
+    private fun confirmRemoveFolder(folderUri: Uri) {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Remove folder access?")
+            .setMessage(
+                "The app will ask again before using this folder for file operations. If the open document relies on this permission to save, saving may also be affected."
+            )
+            .setPositiveButton("Remove Access") { _, _ ->
+                val readWriteFlags =
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                val removed = runCatching {
+                    requireContext().contentResolver.releasePersistableUriPermission(
+                        folderUri,
+                        readWriteFlags
+                    )
+                }.isSuccess
+                if (removed) {
+                    val preferences =
+                        androidx.preference.PreferenceManager.getDefaultSharedPreferences(
+                            requireContext()
+                        )
+                    val locallyRevokedUris = preferences
+                        .getStringSet(locallyRevokedFolderUrisKey, emptySet())
+                        .orEmpty()
+                        .toMutableSet()
+                    locallyRevokedUris.add(folderUri.toString())
+                    preferences.edit()
+                        .putStringSet(locallyRevokedFolderUrisKey, locallyRevokedUris)
+                        .apply()
+                }
+                refreshAuthorizedFolders()
+                if (removed) {
+                    ThemedToast.show(requireContext(), "Folder access removed", Toast.LENGTH_SHORT)
+                } else {
+                    ThemedToast.show(
+                        requireContext(),
+                        "Android could not remove that folder permission.",
+                        Toast.LENGTH_LONG
+                    )
+                }
+            }
+            .setNegativeButton("Keep", null)
+            .show()
+    }
+}
+
 open class StylingSettingsFragment : BaseSettingsFragment() {
     private var activeFontTargetKey: String? = null
 
@@ -378,7 +612,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_font_file_bold",
             "pref_font_file_italic",
             "pref_font_file_code",
-            "pref_font_file_callout_header"
+            "pref_font_file_callout_header",
+            "pref_font_file_toc"
         )
 
         for (key in fontKeys) {
@@ -1786,5 +2021,12 @@ class PluginsSettingsFragment : BaseSettingsFragment() {
 class SettingsThemeFragment : BaseSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_settings_theme, rootKey)
+    }
+}
+
+class TocPanelSettingsFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_toc, rootKey)
+        configureFontPreferences()
     }
 }

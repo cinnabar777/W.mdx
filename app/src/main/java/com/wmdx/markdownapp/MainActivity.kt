@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             WindowRegistry.register(this, value)
         }
     private var currentFileName: String = "Untitled.md"
+    private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
     private var isDirty: Boolean = false
     private var isEditorReady: Boolean = false
     private var currentEditorMode: String = "rich_text"
@@ -51,10 +52,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var hasCrlf: Boolean = false
     private var latestMarkdownContent: String? = null
     private var pendingOpenUri: Uri? = null
+    private var pendingOpenPermissionFlags: Int? = null
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
     private var currentTextPackSession: TextPackSession? = null
+    private var pendingRenameFallbackName: String? = null
+    private data class RenameAccessRequest(val uri: Uri, val targetName: String)
+    private var pendingRenamePermissionRequest: RenameAccessRequest? = null
     private val documentHistoryStack = java.util.ArrayDeque<Uri>()
+    private val documentForwardStack = java.util.ArrayDeque<Uri>()
 
     private fun showCustomToast(message: String) {
         runOnUiThread {
@@ -62,12 +68,35 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private val openDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { openFile(it, forceReload = true) }
-    }
+    private val openDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val resultIntent = result.data
+            val uri = resultIntent?.data
+            if (
+                result.resultCode == android.app.Activity.RESULT_OK &&
+                uri != null
+            ) {
+                openFile(
+                    uri,
+                    forceReload = true,
+                    permissionFlags = resultIntent?.flags ?: 0
+                )
+            }
+        }
+
+    private val renameFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            handleRenameFolderSelection(result.resultCode, result.data)
+        }
 
     private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-        uri?.let { saveFileToUri(it) }
+        if (uri != null) {
+            pendingRenameFallbackName = null
+            saveFileToUri(uri)
+        } else if (pendingRenameFallbackName != null) {
+            pendingRenameFallbackName = null
+            updateTitle()
+        }
     }
 
     private val exportDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
@@ -100,23 +129,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         savedInstanceState?.getStringArrayList("document_history")?.forEach {
             documentHistoryStack.addLast(Uri.parse(it))
         }
+        savedInstanceState?.getStringArrayList("document_forward_history")?.forEach {
+            documentForwardStack.addLast(Uri.parse(it))
+        }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (documentHistoryStack.isNotEmpty()) {
-                    if (isDirty) {
-                        showUnsavedChangesDialog { navigateBackOrFinish() }
-                    } else {
-                        navigateBackOrFinish()
-                    }
-                } else {
-                    if (isDirty) {
-                        showUnsavedChangesDialog { finish() }
-                    } else {
-                        isEnabled = false
-                        onBackPressedDispatcher.onBackPressed()
-                    }
-                }
+                navigateCombinedHistory("back", finishWhenBackUnavailable = true)
             }
         })
 
@@ -149,6 +168,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putStringArrayList("document_history",
             ArrayList(documentHistoryStack.map { it.toString() }))
+        outState.putStringArrayList("document_forward_history",
+            ArrayList(documentForwardStack.map { it.toString() }))
         super.onSaveInstanceState(outState)
     }
 
@@ -177,15 +198,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 insetsController.show(WindowInsetsCompat.Type.navigationBars())
             }
 
-            if (hideStatusBar || hideNavBar) {
-                insetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_LOW_PROFILE
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            )
+            insetsController.systemBarsBehavior =
+                if (hideStatusBar || hideNavBar) {
+                    androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                } else {
+                    androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+                }
         }
     }
 
@@ -223,9 +241,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
             WindowRegistry.register(this, data)
             if (isEditorReady) {
-                openFile(data, skipExistingWindowFocus = routeChecked)
+                openFile(
+                    data,
+                    skipExistingWindowFocus = routeChecked,
+                    permissionFlags = intent.flags
+                )
             } else {
                 pendingOpenUri = data
+                pendingOpenPermissionFlags = intent.flags
             }
             return
         }
@@ -402,7 +425,300 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val dirtyIndicator = if (isDirty) " *" else ""
         val titleText = "$currentFileName$dirtyIndicator"
         val escapedTitle = JSONObjectWrapper.quote(titleText)
-        webView.evaluateJavascript("window.editorBridge.setDocumentTitle($escapedTitle);", null)
+        val escapedDocumentKey = JSONObjectWrapper.quote(currentDocumentHistoryKey())
+        val canGoBack = documentHistoryStack.isNotEmpty()
+        val canGoForward = documentForwardStack.isNotEmpty()
+        webView.evaluateJavascript(
+            "if (window.editorBridge) { window.editorBridge.setDocumentTitle($escapedTitle, $escapedDocumentKey); window.editorBridge.setDocumentHistoryState($canGoBack, $canGoForward); }",
+            null
+        )
+    }
+
+    private fun currentDocumentHistoryKey(): String {
+        return currentFileUri?.toString() ?: "untitled:$taskId:$currentDocumentSessionId"
+    }
+
+    private fun persistDocumentUriPermission(uri: Uri, grantedFlags: Int? = null) {
+        val readWriteFlags =
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        val flagsToPersist = (grantedFlags ?: readWriteFlags) and readWriteFlags
+        if (flagsToPersist == 0) return
+
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                flagsToPersist
+            )
+        } catch (_: Exception) {
+            // Some providers grant access only for the current session.
+        }
+    }
+
+    private fun hasWriteUriPermission(uri: Uri): Boolean {
+        return checkUriPermission(
+            uri,
+            android.os.Process.myPid(),
+            android.os.Process.myUid(),
+            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun findPersistedFolderDocumentUri(documentUri: Uri): Uri? {
+        for (permission in contentResolver.persistedUriPermissions) {
+            if (
+                !permission.isReadPermission ||
+                !permission.isWritePermission ||
+                !android.provider.DocumentsContract.isTreeUri(permission.uri)
+            ) continue
+            val candidate = runCatching {
+                resolveRenameTargetInTree(permission.uri, documentUri)
+            }.getOrNull() ?: continue
+            if (hasWriteUriPermission(candidate)) {
+                return candidate
+            }
+        }
+        return null
+    }
+
+    private fun launchRenameFolderPicker(uri: Uri, targetName: String) {
+        pendingRenamePermissionRequest = RenameAccessRequest(uri, targetName)
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PREFIX_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+            val initialFolder = runCatching {
+                val path = android.provider.DocumentsContract.findDocumentPath(contentResolver, uri)
+                val parentDocumentId = path?.path?.dropLast(1)?.lastOrNull()
+                if (parentDocumentId.isNullOrBlank() || uri.authority.isNullOrBlank()) {
+                    null
+                } else {
+                    android.provider.DocumentsContract.buildDocumentUri(
+                        uri.authority!!,
+                        parentDocumentId
+                    )
+                }
+            }.getOrNull()
+            if (initialFolder != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, initialFolder)
+            }
+        }
+        renameFolderLauncher.launch(intent)
+    }
+
+    private fun handleRenameFolderSelection(
+        resultCode: Int,
+        resultIntent: android.content.Intent?
+    ) {
+        val request = pendingRenamePermissionRequest ?: return
+        pendingRenamePermissionRequest = null
+        val selectedIntent = resultIntent
+        if (resultCode != android.app.Activity.RESULT_OK || selectedIntent == null) {
+            updateTitle()
+            showRenameAccessOptions(request, "No folder access was selected.")
+            return
+        }
+        val treeUri = selectedIntent.data
+        if (treeUri == null) {
+            updateTitle()
+            showRenameAccessOptions(request, "No folder access was selected.")
+            return
+        }
+
+        val grantedFlags = selectedIntent.flags
+        val readWriteFlags =
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        val persistableFlags = grantedFlags and readWriteFlags
+        if (persistableFlags != readWriteFlags) {
+            showRenameAccessOptions(
+                request,
+                "Android did not grant write access to that folder."
+            )
+            return
+        }
+        persistDocumentUriPermission(treeUri, grantedFlags)
+        val hasPersistedTreeWritePermission = contentResolver.persistedUriPermissions.any {
+            it.uri == treeUri && it.isReadPermission && it.isWritePermission
+        }
+        if (!hasPersistedTreeWritePermission) {
+            showRenameAccessOptions(
+                request,
+                "Android did not allow the folder permission to be saved for later."
+            )
+            return
+        }
+
+        val treeScopedDocumentUri = resolveRenameTargetInTree(treeUri, request.uri)
+        if (treeScopedDocumentUri == null) {
+            releasePersistedTreePermission(treeUri, persistableFlags)
+            showRenameAccessOptions(
+                request,
+                "Select the folder that contains the currently open file. For files in a subfolder, choose that subfolder."
+            )
+            return
+        }
+        renameCurrentDocument(request.targetName, treeScopedDocumentUri)
+    }
+
+    private fun resolveRenameTargetInTree(treeUri: Uri, sourceUri: Uri): Uri? {
+        val documentId = runCatching {
+            if (
+                sourceUri.authority == treeUri.authority &&
+                android.provider.DocumentsContract.isDocumentUri(this, sourceUri)
+            ) {
+                android.provider.DocumentsContract.getDocumentId(sourceUri)
+            } else {
+                null
+            }
+        }.getOrNull()
+
+        if (!documentId.isNullOrBlank()) {
+            val scopedUri = runCatching {
+                android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                    treeUri,
+                    documentId
+                )
+            }.getOrNull() ?: return null
+            val displayName = queryDocumentDisplayName(scopedUri)
+            val treeDocumentId = runCatching {
+                android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+            }.getOrNull()
+            val pathIds = runCatching {
+                android.provider.DocumentsContract.findDocumentPath(contentResolver, scopedUri)
+                    ?.path
+                    .orEmpty()
+            }.getOrNull().orEmpty()
+            val treeId = treeDocumentId?.takeIf { it.isNotBlank() }
+            val isInSelectedTree = if (pathIds.isEmpty()) {
+                displayName == currentFileName
+            } else {
+                pathIds.lastOrNull() == documentId &&
+                    treeId != null &&
+                    treeId in pathIds.dropLast(1)
+            }
+            return scopedUri.takeIf {
+                isInSelectedTree &&
+                    (displayName == null || displayName == currentFileName)
+            }
+        }
+
+        return findDirectChildDocumentUri(treeUri, currentFileName)
+    }
+
+    private fun queryDocumentDisplayName(uri: Uri): String? {
+        return runCatching {
+            contentResolver.query(
+                uri,
+                arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                )
+                if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
+            }
+        }.getOrNull()
+    }
+
+    private fun findDirectChildDocumentUri(treeUri: Uri, displayName: String): Uri? {
+        val treeDocumentId = runCatching {
+            android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+        }.getOrNull() ?: return null
+        val childrenUri = runCatching {
+            android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+                treeUri,
+                treeDocumentId
+            )
+        }.getOrNull() ?: return null
+
+        return runCatching {
+            contentResolver.query(
+                childrenUri,
+                arrayOf(
+                    android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                ),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(
+                    android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID
+                )
+                val nameIndex = cursor.getColumnIndex(
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                )
+                if (idIndex < 0 || nameIndex < 0) return@use null
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(nameIndex) == displayName) {
+                        return@use android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                            treeUri,
+                            cursor.getString(idIndex)
+                        )
+                    }
+                }
+                null
+            }
+        }.getOrNull()
+    }
+
+    private fun releasePersistedTreePermission(uri: Uri, flags: Int) {
+        if (flags == 0) return
+        runCatching {
+            contentResolver.releasePersistableUriPermission(uri, flags)
+        }
+    }
+
+    private fun showRenameAccessOptions(
+        request: RenameAccessRequest,
+        message: String
+    ) {
+        updateTitle()
+        val downloadsNote = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            " On Android 11 and later, Android blocks selecting the Downloads folder itself. Choose an allowed subfolder or save a copy."
+        } else {
+            ""
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Choose access for renaming")
+            .setMessage(
+                "$message Choose access to the containing folder, or save a copy if the provider does not support renaming.$downloadsNote"
+            )
+            .setPositiveButton("Choose Folder") { _, _ ->
+                launchRenameFolderPicker(request.uri, request.targetName)
+            }
+            .setNegativeButton("Save As") { _, _ ->
+                updateTitle()
+                launchRenameSaveAs(request.targetName)
+            }
+            .setOnCancelListener { updateTitle() }
+            .show()
+    }
+
+    private fun remapDocumentNavigationHistory(oldKey: String, newKey: String) {
+        if (oldKey == newKey) return
+        val escapedOldKey = JSONObjectWrapper.quote(oldKey)
+        val escapedNewKey = JSONObjectWrapper.quote(newKey)
+        webView.evaluateJavascript(
+            "window.editorBridge?.remapDocumentHistory?.($escapedOldKey, $escapedNewKey);",
+            null
+        )
+    }
+
+    private fun replaceHistoryUri(oldUri: Uri, newUri: Uri) {
+        fun replaceIn(stack: java.util.ArrayDeque<Uri>) {
+            val entries = stack.map { if (it == oldUri) newUri else it }
+            stack.clear()
+            entries.forEach { stack.addLast(it) }
+        }
+        replaceIn(documentHistoryStack)
+        replaceIn(documentForwardStack)
     }
 
     private fun saveCurrentStateBeforeSettings() {
@@ -442,6 +758,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val fontItalicData = loadFontDataUri(prefs.getString("pref_font_file_italic_path", null))
         val fontCodeData = loadFontDataUri(prefs.getString("pref_font_file_code_path", null))
         val fontCalloutHeaderData = loadFontDataUri(prefs.getString("pref_font_file_callout_header_path", null))
+        val fontTocData = loadFontDataUri(prefs.getString("pref_font_file_toc_path", null))
 
         val bodyFontSize = prefs.getInt("pref_body_font_size", 16)
         val headingScalePercent = prefs.getInt("pref_heading_scale_percent", 100)
@@ -464,15 +781,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedItalicFont = JSONObjectWrapper.quote(fontItalicData)
         val escapedCodeFont = JSONObjectWrapper.quote(fontCodeData)
         val escapedCalloutHeaderFont = JSONObjectWrapper.quote(fontCalloutHeaderData)
+        val escapedTocFont = JSONObjectWrapper.quote(fontTocData)
 
         webView.evaluateJavascript(
-            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData); }",
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont); }",
             null
         )
 
         // Read and pass all custom hotkey preferences
         val hotkeys = mapOf(
             "new" to prefs.getString("pref_hotkey_new", "ctrl+n"),
+            "history_back" to prefs.getString("pref_hotkey_history_back", "alt+left"),
+            "history_forward" to prefs.getString("pref_hotkey_history_forward", "alt+right"),
             "open" to prefs.getString("pref_hotkey_open", "ctrl+o"),
             "save" to prefs.getString("pref_hotkey_save", "ctrl+s"),
             "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
@@ -573,9 +893,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun createNewDocument() {
-        if (currentFileUri != null) {
-            documentHistoryStack.push(currentFileUri)
-        }
+        currentFileUri?.let { documentHistoryStack.push(it) }
+        documentForwardStack.clear()
+        currentDocumentSessionId = java.util.UUID.randomUUID().toString()
         currentTextPackSession = null
         latestMarkdownContent = ""
         currentFileUri = null
@@ -588,50 +908,124 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun navigateBackOrFinish() {
         if (documentHistoryStack.isNotEmpty()) {
             val previousUri = documentHistoryStack.pop()
+            currentFileUri?.let { documentForwardStack.push(it) }
             openFileFromHistory(previousUri)
+            updateTitle()
         } else {
             finish()
         }
+    }
+
+    private fun navigateCombinedHistory(
+        direction: String,
+        finishWhenBackUnavailable: Boolean = false
+    ) {
+        val directionJson = JSONObjectWrapper.quote(direction)
+        val script =
+            "(window.editorBridge && typeof window.editorBridge.navigateInDocumentHistory === 'function') " +
+                "? window.editorBridge.navigateInDocumentHistory($directionJson) : false"
+        webView.evaluateJavascript(script) { handled ->
+            if (handled == "true") return@evaluateJavascript
+
+            when {
+                direction == "back" && documentHistoryStack.isNotEmpty() -> {
+                    if (isDirty) {
+                        showUnsavedChangesDialog { navigateBackOrFinish() }
+                    } else {
+                        navigateBackOrFinish()
+                    }
+                }
+                direction == "forward" && documentForwardStack.isNotEmpty() -> {
+                    if (isDirty) {
+                        showUnsavedChangesDialog { navigateForwardDocument() }
+                    } else {
+                        navigateForwardDocument()
+                    }
+                }
+                direction == "back" && finishWhenBackUnavailable -> {
+                    if (isDirty) {
+                        showUnsavedChangesDialog { finish() }
+                    } else {
+                        finish()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun navigateForwardDocument() {
+        if (documentForwardStack.isEmpty()) return
+        val nextUri = documentForwardStack.pop()
+        currentFileUri?.let { documentHistoryStack.push(it) }
+        openFile(nextUri, rememberHistory = false)
+        updateTitle()
     }
 
     private fun openFileFromHistory(uri: Uri) {
         openFile(uri, rememberHistory = false)
     }
 
-    private fun handleOpenFile() {
-        if (isDirty) {
-            showUnsavedChangesDialog { openDocumentLauncher.launch(arrayOf("text/markdown", "text/plain", "application/zip", "application/x-zip-compressed", "*/*")) }
-        } else {
-            openDocumentLauncher.launch(arrayOf("text/markdown", "text/plain", "application/zip", "application/x-zip-compressed", "*/*"))
+    private fun createOpenDocumentIntent(initialUri: Uri? = null): android.content.Intent {
+        val mimeTypes = arrayOf(
+            "text/markdown",
+            "text/plain",
+            "application/zip",
+            "application/x-zip-compressed",
+            "*/*"
+        )
+        return android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(android.content.Intent.EXTRA_MIME_TYPES, mimeTypes)
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+            if (initialUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, initialUri)
+            }
         }
     }
 
-    private fun openFile(uri: Uri, rememberHistory: Boolean = true, forceReload: Boolean = false, skipExistingWindowFocus: Boolean = false) {
+    private fun launchOpenDocumentPicker(initialUri: Uri? = null) {
+        openDocumentLauncher.launch(createOpenDocumentIntent(initialUri))
+    }
+
+    private fun handleOpenFile() {
+        if (isDirty) {
+            showUnsavedChangesDialog { launchOpenDocumentPicker() }
+        } else {
+            launchOpenDocumentPicker()
+        }
+    }
+
+    private fun openFile(
+        uri: Uri,
+        rememberHistory: Boolean = true,
+        forceReload: Boolean = false,
+        skipExistingWindowFocus: Boolean = false,
+        permissionFlags: Int? = null
+    ) {
+        persistDocumentUriPermission(uri, permissionFlags)
         if (!isEditorReady) {
             pendingOpenUri = uri
+            pendingOpenPermissionFlags = permissionFlags
             return
         }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (!forceReload && currentFileUri == uri && !isDirty) return
         if (!skipExistingWindowFocus && WindowRegistry.focus(this, uri, excludeTask = taskId)) return
-        if (rememberHistory && currentFileUri != null) {
+        if (rememberHistory && currentFileUri != null && currentFileUri != uri) {
             documentHistoryStack.push(currentFileUri)
+            documentForwardStack.clear()
         }
 
         AppDiagnostics.record(this, "native_read_start")
         val readStarted = android.os.SystemClock.elapsedRealtime()
 
         try {
-            try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            } catch (e: Exception) {
-                // Ignore if not a persistable document grant
-            }
-
             val fileName = getFileNameFromUri(uri)
 
             if (TextPackManager.isTextPackFile(this, uri, fileName)) {
@@ -726,6 +1120,149 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         createDocumentLauncher.launch(defaultName)
     }
 
+    private fun renamedDocumentFileName(requestedName: String, originalName: String): String? {
+        val sanitized = requestedName.trim()
+            .replace('/', '_')
+            .replace('\\', '_')
+            .filterNot { it.isISOControl() }
+            .trimEnd('.')
+        if (sanitized.isBlank()) return null
+        if (currentFileUri == null) return sanitized
+
+        val extension = when {
+            originalName.endsWith(".textpack.zip", ignoreCase = true) -> ".textpack.zip"
+            originalName.endsWith(".textpack", ignoreCase = true) -> ".textpack"
+            else -> {
+                val dot = originalName.lastIndexOf('.')
+                if (dot > 0) originalName.substring(dot) else ""
+            }
+        }
+        if (extension.isEmpty()) return sanitized
+
+        val typedExtension = sanitized.lastIndexOf('.').takeIf { it > 0 }
+        val base = when {
+            sanitized.endsWith(extension, ignoreCase = true) ->
+                sanitized.dropLast(extension.length)
+            typedExtension != null -> sanitized.substring(0, typedExtension)
+            else -> sanitized
+        }.trimEnd('.')
+        if (base.isBlank()) return null
+        return "$base$extension"
+    }
+
+    private fun offerSaveAsRenameFallback(targetName: String) {
+        updateTitle()
+        AlertDialog.Builder(this)
+            .setTitle("Rename not supported")
+            .setMessage(
+                "This file location does not allow renaming. Save a copy under the new name instead? The original file will remain unchanged."
+            )
+            .setPositiveButton("Save As") { _, _ ->
+                launchRenameSaveAs(targetName)
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                pendingRenameFallbackName = null
+                updateTitle()
+            }
+            .setOnCancelListener {
+                pendingRenameFallbackName = null
+                updateTitle()
+            }
+            .show()
+    }
+
+    private fun launchRenameSaveAs(targetName: String) {
+        pendingRenameFallbackName = targetName
+        createDocumentLauncher.launch(targetName)
+    }
+
+    private fun offerRenamePermissionRecovery(uri: Uri, targetName: String) {
+        showRenameAccessOptions(
+            RenameAccessRequest(uri, targetName),
+            "This storage provider needs permission before it will rename the file."
+        )
+    }
+
+    private fun renameCurrentDocument(
+        requestedName: String,
+        renameUri: Uri? = null
+    ) {
+        val targetName = renamedDocumentFileName(requestedName, currentFileName)
+        if (targetName == null) {
+            updateTitle()
+            ThemedToast.show(this, "Enter a valid document name", Toast.LENGTH_SHORT)
+            return
+        }
+        if (targetName == currentFileName) {
+            updateTitle()
+            return
+        }
+
+        val oldUri = currentFileUri
+        if (oldUri == null) {
+            currentFileName = targetName
+            updateTitle()
+            ThemedToast.show(this, "Document name updated", Toast.LENGTH_SHORT)
+            return
+        }
+
+        val renamedUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            runCatching {
+                android.provider.DocumentsContract.renameDocument(
+                    contentResolver,
+                    renameUri ?: oldUri,
+                    targetName
+                )
+            }.getOrNull()
+        } else {
+            null
+        }
+
+        if (renamedUri == null) {
+            if (renameUri != null) {
+                offerSaveAsRenameFallback(targetName)
+                return
+            }
+            val persistedFolderUri = findPersistedFolderDocumentUri(oldUri)
+            if (persistedFolderUri != null) {
+                val renamedThroughFolder = runCatching {
+                    android.provider.DocumentsContract.renameDocument(
+                        contentResolver,
+                        persistedFolderUri,
+                        targetName
+                    )
+                }.getOrNull()
+                if (renamedThroughFolder != null) {
+                    completeDocumentRename(oldUri, renamedThroughFolder)
+                    return
+                }
+            }
+            if (oldUri.scheme == "content" || oldUri.scheme == "file") {
+                offerRenamePermissionRecovery(oldUri, targetName)
+            } else {
+                offerSaveAsRenameFallback(targetName)
+            }
+            return
+        }
+
+        completeDocumentRename(oldUri, renamedUri)
+    }
+
+    private fun completeDocumentRename(oldUri: Uri, renamedUri: Uri) {
+        val oldHistoryKey = oldUri.toString()
+        replaceHistoryUri(oldUri, renamedUri)
+        persistDocumentUriPermission(renamedUri)
+        currentFileUri = renamedUri
+        currentFileName = getFileNameFromUri(renamedUri)
+        PreferenceManager.getDefaultSharedPreferences(this)
+            .edit()
+            .putString("last_opened_uri", renamedUri.toString())
+            .apply()
+        remapDocumentNavigationHistory(oldHistoryKey, renamedUri.toString())
+        updateTitle()
+        ThemedToast.show(this, "Document renamed", Toast.LENGTH_SHORT)
+    }
+
     private fun handleExportDocument() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val format = prefs.getString("pref_export_format", "html") ?: "html"
@@ -769,6 +1306,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun saveFileToUri(uri: Uri) {
+        val oldDocumentKey = currentDocumentHistoryKey()
         val saveStarted = android.os.SystemClock.elapsedRealtime()
         AppDiagnostics.record(this, "save_start", "mode=$currentEditorMode rev=$currentRevision")
         webView.evaluateJavascript("window.editorBridge.getMarkdown();") { result ->
@@ -802,6 +1340,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }
                 }
 
+                persistDocumentUriPermission(uri)
+                remapDocumentNavigationHistory(oldDocumentKey, uri.toString())
                 currentFileUri = uri
                 currentFileName = targetFileName
                 latestMarkdownContent = markdownText
@@ -1037,7 +1577,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 pendingOpenUri?.let { uri ->
                     pendingOpenUri = null
-                    openFile(uri)
+                    val permissionFlags = pendingOpenPermissionFlags
+                    pendingOpenPermissionFlags = null
+                    openFile(uri, permissionFlags = permissionFlags)
                 }
                 pendingSharedText?.let { text ->
                     pendingSharedText = null
@@ -1068,13 +1610,45 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "image" -> handleInsertImage()
                     "new_window" -> handleNewWindow()
                     "settings" -> settingsLauncher.launch(android.content.Intent(this@MainActivity, SettingsActivity::class.java))
+                    "toc_settings" -> settingsLauncher.launch(
+                        android.content.Intent(this@MainActivity, SettingsActivity::class.java)
+                            .putExtra("settings_page", "toc")
+                    )
+                    "history_back" -> navigateCombinedHistory("back")
+                    "history_forward" -> navigateCombinedHistory("forward")
                 }
+            }
+        }
+
+        @JavascriptInterface
+        fun hideKeyboard() {
+            runOnUiThread {
+                val inputMethodManager =
+                    this@MainActivity.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                inputMethodManager.hideSoftInputFromWindow(webView.windowToken, 0)
+            }
+        }
+
+        @JavascriptInterface
+        fun renameCurrentDocument(newName: String) {
+            runOnUiThread {
+                this@MainActivity.renameCurrentDocument(newName)
             }
         }
 
         @JavascriptInterface
         fun onSelectionChanged(selectionJson: String) {
             // Live selection updates are not persisted as return scroll position
+        }
+
+        @JavascriptInterface
+        fun onInDocumentNavigationOccurred() {
+            runOnUiThread {
+                if (documentForwardStack.isNotEmpty()) {
+                    documentForwardStack.clear()
+                    updateTitle()
+                }
+            }
         }
 
         @JavascriptInterface

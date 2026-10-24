@@ -41,6 +41,16 @@ object PreferenceResetHelper {
             "pref_toolbar_active_icon_color" -> "#00E5FF"
             "pref_toolbar_toggle_bg_color" -> "#00000000"
             "pref_toolbar_toggle_icon_color" -> "#FFFFFF"
+            "pref_toc_panel_bg_color" -> "#121212"
+            "pref_toc_panel_border_color" -> "#444444"
+            "pref_toc_history_bg_color" -> "#00000000"
+            "pref_toc_history_border_color" -> "#444444"
+            "pref_toc_history_icon_color" -> "#FFFFFF"
+            "pref_toc_text_color" -> "#FFFFFF"
+            "pref_toc_active_text_color" -> "#FFFF00"
+            "pref_toc_active_bg_color" -> "#00000000"
+            "pref_toc_toggle_bg_color", "pref_toc_toggle_active_bg_color" -> "#26FFFFFF"
+            "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> "#FFFFFF"
             "pref_heading_underline_color" -> "#FFFFFF"
             "pref_blockquote_line_color" -> "#444444"
             "pref_blockquote_bg_color" -> "#1A1A1A"
@@ -103,6 +113,58 @@ object PreferenceResetHelper {
                     "#FFFFFF"
                 }
             }
+        }
+    }
+
+    fun getDefaultColorHex(context: Context, key: String?): String {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
+        return when (key) {
+            "pref_toc_panel_bg_color" -> {
+                val toolbarColor = prefs.getString("pref_toolbar_bg_color", "default")
+                if (!toolbarColor.isNullOrBlank() && toolbarColor != "default") {
+                    toolbarColor
+                } else if (isLightTheme) {
+                    "#F8F9FA"
+                } else {
+                    "#121212"
+                }
+            }
+            "pref_toc_panel_border_color" ->
+                if (isLightTheme) "#E0E0E0" else "#444444"
+            "pref_toc_history_border_color" -> {
+                val tocBorderColor = prefs.getString("pref_toc_panel_border_color", "default")
+                if (!tocBorderColor.isNullOrBlank() && tocBorderColor != "default") {
+                    tocBorderColor
+                } else if (isLightTheme) {
+                    "#E0E0E0"
+                } else {
+                    "#444444"
+                }
+            }
+            "pref_toc_history_icon_color" -> {
+                val tocTextColor = prefs.getString("pref_toc_text_color", "default")
+                if (!tocTextColor.isNullOrBlank() && tocTextColor != "default") {
+                    tocTextColor
+                } else if (isLightTheme) {
+                    "#111111"
+                } else {
+                    "#FFFFFF"
+                }
+            }
+            "pref_toc_text_color" ->
+                if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> {
+                val tocTextColor = prefs.getString("pref_toc_text_color", "default")
+                if (!tocTextColor.isNullOrBlank() && tocTextColor != "default") {
+                    tocTextColor
+                } else if (isLightTheme) {
+                    "#111111"
+                } else {
+                    "#FFFFFF"
+                }
+            }
+            else -> getDefaultColorHex(key)
         }
     }
 
@@ -258,6 +320,29 @@ object PreferenceResetHelper {
             key == "pref_toolbar_toggle_icon_color" -> "default"
             key == "pref_toolbar_height" -> 48
             key == "pref_app_theme" -> "amoled"
+            key == "pref_toc_panel_width" -> 80
+            key == "pref_toc_default_level" -> 2
+            key == "pref_toc_expand_levels_per_tap" -> 1
+            key == "pref_toc_hide_file_extension" -> false
+            key == "pref_toc_panel_bg_color" -> "default"
+            key == "pref_toc_panel_bg_opacity" -> 100
+            key == "pref_toc_panel_border_color" -> "default"
+            key == "pref_toc_overlay_dim" -> 50
+            key == "pref_toc_font_size" -> 16
+            key == "pref_toc_font_weight" -> 600
+            key == "pref_toc_text_color" -> "default"
+            key == "pref_toc_active_text_color" -> "#FFFF00"
+            key == "pref_toc_active_bg_color" -> "default"
+            key == "pref_toc_history_bg_color" -> "default"
+            key == "pref_toc_history_border_color" -> "default"
+            key == "pref_toc_history_icon_color" -> "default"
+            key == "pref_toc_toggle_bg_color" -> "default"
+            key == "pref_toc_toggle_icon_color" -> "default"
+            key == "pref_toc_toggle_active_bg_color" -> "default"
+            key == "pref_toc_toggle_active_icon_color" -> "default"
+            key == "pref_toc_text_overflow" -> "truncate"
+            key == "pref_toc_row_spacing" -> 4
+            key == "pref_toc_indent_spacing" -> 12
             key == "pref_image_mode" -> "picker"
             key == "pref_settings_category_title_color" -> "#00E5FF"
             key == "pref_settings_title_color" -> "#FFFFFF"
@@ -285,6 +370,8 @@ object PreferenceResetHelper {
             key == "pref_footnote_bg_color" -> "default"
             key == "pref_auto_save_on_leave" -> true
             key == "pref_hotkey_new" -> "ctrl+n"
+            key == "pref_hotkey_history_back" -> "alt+left"
+            key == "pref_hotkey_history_forward" -> "alt+right"
             key == "pref_hotkey_open" -> "ctrl+o"
             key == "pref_hotkey_save" -> "ctrl+s"
             key == "pref_hotkey_save_as" -> "ctrl+shift+s"
@@ -831,7 +918,11 @@ open class ResetColorPickerPreference @JvmOverloads constructor(
 
             val prefs = PreferenceManager.getDefaultSharedPreferences(context)
             val colorHex = prefs.getString(key, "default") ?: "default"
-            val effectiveHex = if (colorHex == "default") PreferenceResetHelper.getDefaultColorHex(key) else colorHex
+            val effectiveHex = if (colorHex == "default") {
+                PreferenceResetHelper.getDefaultColorHex(context, key)
+            } else {
+                colorHex
+            }
             val colorInt = ColorPickerDialog.parseHexColor(effectiveHex, android.graphics.Color.WHITE)
 
             previewCircle?.background = android.graphics.drawable.GradientDrawable().apply {
@@ -845,7 +936,11 @@ open class ResetColorPickerPreference @JvmOverloads constructor(
     override fun onClick() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val currentColor = prefs.getString(key, "default") ?: "default"
-        val effectiveHex = if (currentColor == "default") PreferenceResetHelper.getDefaultColorHex(key) else currentColor
+        val effectiveHex = if (currentColor == "default") {
+            PreferenceResetHelper.getDefaultColorHex(context, key)
+        } else {
+            currentColor
+        }
 
         ColorPickerDialog(context, effectiveHex) { selectedHex ->
             prefs.edit().putString(key, selectedHex).apply()
