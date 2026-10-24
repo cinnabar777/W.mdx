@@ -95,6 +95,7 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   window.editorBridge.setDocumentHistoryState(false, false);
   const tocPreferences = {
     pref_toc_panel_width: 78,
+    pref_toc_hide_file_extension: false,
     pref_toolbar_bg_color: '#80112233',
     pref_toc_panel_bg_color: '#112233',
     pref_toc_panel_bg_opacity: 72,
@@ -174,14 +175,26 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   );
 
   const nameInput = document.querySelector('#toc-document-name');
+  window.editorBridge.applyAllPreferences({
+    ...tocPreferences,
+    pref_toc_hide_file_extension: true
+  });
+  assert.equal(nameInput.value, 'Guide', 'the setting hides a saved file extension');
+  window.editorBridge.setDocumentTitle('Untitled.md', 'untitled:test');
+  assert.equal(nameInput.value, 'Untitled.md', 'the setting does not strip an unsaved document suffix');
+  window.editorBridge.setDocumentTitle('Archive.textpack.zip', 'doc-archive');
+  assert.equal(nameInput.value, 'Archive', 'compound textpack extensions are hidden as one suffix');
+  window.editorBridge.setDocumentTitle('Guide.md', 'doc-1');
+  assert.equal(nameInput.value, 'Guide');
+
   nameInput.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   assert.equal(nameInput.readOnly, false, 'tapping the document name makes it editable');
-  nameInput.value = 'Renamed.md';
+  nameInput.value = 'Renamed';
   nameInput.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
     key: 'Enter',
     bubbles: true
   }));
-  assert.deepEqual(renameRequests, ['Renamed.md'], 'Enter submits the requested document name');
+  assert.deepEqual(renameRequests, ['Renamed'], 'Enter submits the name without its hidden extension');
   assert.equal(nameInput.readOnly, true);
 
   const parentToggle = contents.querySelector('.toc-item.level-1 .toc-toggle');
@@ -203,8 +216,50 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   document.querySelector('#toc-history-forward').click();
   assert.equal(document.querySelector('#toc-history-back').disabled, false);
 
+  document.querySelector('#toc-history-back').click();
+  const forwardShortcut = new dom.window.KeyboardEvent('keydown', {
+    key: 'ArrowRight',
+    altKey: true,
+    bubbles: true,
+    cancelable: true
+  });
+  window.dispatchEvent(forwardShortcut);
+  assert.equal(forwardShortcut.defaultPrevented, true, 'Alt+Right triggers history Forward');
+  assert.equal(document.querySelector('#toc-history-back').disabled, false);
+  assert.equal(document.querySelector('#toc-history-forward').disabled, true);
+
+  const backShortcut = new dom.window.KeyboardEvent('keydown', {
+    key: 'ArrowLeft',
+    altKey: true,
+    bubbles: true,
+    cancelable: true
+  });
+  window.dispatchEvent(backShortcut);
+  assert.equal(backShortcut.defaultPrevented, true, 'Alt+Left triggers history Back');
+  assert.equal(document.querySelector('#toc-history-back').disabled, true);
+  assert.equal(document.querySelector('#toc-history-forward').disabled, false);
+
+  const documentBackShortcut = new dom.window.KeyboardEvent('keydown', {
+    key: 'ArrowLeft',
+    altKey: true,
+    bubbles: true,
+    cancelable: true
+  });
+  window.dispatchEvent(documentBackShortcut);
+  assert.deepEqual(
+    nativeActions,
+    ['history_back'],
+    'history Back falls through to native file history when heading history is empty'
+  );
+
+  document.querySelector('#toc-history-forward').click();
+
   document.querySelector('#toc-settings-button').click();
-  assert.deepEqual(nativeActions, ['toc_settings'], 'the gear opens TOC panel settings');
+  assert.deepEqual(
+    nativeActions,
+    ['history_back', 'toc_settings'],
+    'the gear opens TOC panel settings after history navigation'
+  );
 
   if (window.editorBridge && typeof window.editorBridge.destroy === 'function') {
     window.editorBridge.destroy();

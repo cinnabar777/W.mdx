@@ -41,9 +41,12 @@ let isProgrammaticChange = false;
 let pendingMarkdown = null;
 let isLineWrapEnabled = true;
 let activePopupGroup = null;
+let tocHideFileExtension = false;
 
 let customHotkeys = {
   new: 'ctrl+n',
+  history_back: 'alt+left',
+  history_forward: 'alt+right',
   open: 'ctrl+o',
   save: 'ctrl+s',
   save_as: 'ctrl+shift+s',
@@ -772,6 +775,34 @@ function updateTocHistoryButtons() {
 function setActiveTocDocumentKey(key) {
   activeTocDocumentKey = key || 'untitled';
   updateTocHistoryButtons();
+}
+
+function stripTocDocumentExtension(fileName) {
+  const lowerName = fileName.toLowerCase();
+  for (const extension of ['.textpack.zip', '.textpack']) {
+    if (lowerName.endsWith(extension) && fileName.length > extension.length) {
+      return fileName.slice(0, -extension.length);
+    }
+  }
+  const lastDot = fileName.lastIndexOf('.');
+  return lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
+}
+
+function getTocDocumentDisplayName(fileName) {
+  const isUnsavedDocument =
+    activeTocDocumentKey === 'untitled' ||
+    activeTocDocumentKey.startsWith('untitled:');
+  return tocHideFileExtension && !isUnsavedDocument
+    ? stripTocDocumentExtension(fileName)
+    : fileName;
+}
+
+function refreshTocDocumentNameField() {
+  const nameInput = document.querySelector('#toc-document-name');
+  if (!nameInput || nameInput.dataset.fullName === undefined) return;
+  const displayName = getTocDocumentDisplayName(nameInput.dataset.fullName);
+  nameInput.dataset.committedName = displayName;
+  if (!nameInput.dataset.editing) nameInput.value = displayName;
 }
 
 function recordTocNavigation(view, targetPos) {
@@ -5175,6 +5206,8 @@ function matchSingleHotkey(event, shortcutString) {
   if (keyPart === ',' && (keyLower === ',' || codeLower === 'comma')) return true;
   if (keyPart === '.' && (keyLower === '.' || codeLower === 'period')) return true;
   if (keyPart === 'tab' && (keyLower === 'tab' || codeLower === 'tab')) return true;
+  if (keyPart === 'left' && (keyLower === 'arrowleft' || codeLower === 'arrowleft')) return true;
+  if (keyPart === 'right' && (keyLower === 'arrowright' || codeLower === 'arrowright')) return true;
 
   return false;
 }
@@ -5186,6 +5219,27 @@ function parseAndMatchHotkey(event, shortcutString) {
 }
 
 function setupKeyboardShortcuts() {
+  window.addEventListener('keydown', (e) => {
+    if (e.target?.closest?.('input, textarea, select')) return;
+
+    let direction = null;
+    if (parseAndMatchHotkey(e, customHotkeys.history_back)) {
+      direction = 'back';
+    } else if (parseAndMatchHotkey(e, customHotkeys.history_forward)) {
+      direction = 'forward';
+    }
+    if (!direction) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!navigateTocHistory(direction) && window.AndroidNative &&
+        typeof window.AndroidNative.onNativeAction === 'function') {
+      window.AndroidNative.onNativeAction(
+        direction === 'back' ? 'history_back' : 'history_forward'
+      );
+    }
+  }, true);
+
   window.addEventListener('keydown', (e) => {
     const k = (e.key || '').toLowerCase();
     const c = (e.code || '').toLowerCase();
@@ -5595,6 +5649,8 @@ window.editorBridge = {
     // Table of contents panel appearance
     const tocPanelWidth = Number(prefs.pref_toc_panel_width ?? 80);
     setCssVar('--toc-panel-width', Math.max(50, Math.min(90, tocPanelWidth)), 'vw');
+    tocHideFileExtension = prefs.pref_toc_hide_file_extension === true;
+    refreshTocDocumentNameField();
     setCssVar('--toc-panel-bg-color', androidArgbToCss(prefs.pref_toc_panel_bg_color));
     setCssVar('--toc-panel-bg-opacity', prefs.pref_toc_panel_bg_opacity ?? 100, '%');
     setCssVar('--toc-panel-border-color', androidArgbToCss(prefs.pref_toc_panel_border_color));
@@ -5849,15 +5905,20 @@ window.editorBridge = {
     if (titleEl) {
       titleEl.textContent = title;
     }
-    const nameInput = document.querySelector('#toc-document-name');
     const displayName = String(title || '').replace(/\s+\*$/, '');
-    if (nameInput) {
-      nameInput.dataset.committedName = displayName;
-      if (!nameInput.dataset.editing) nameInput.value = displayName;
-    }
     if (documentKey !== undefined && documentKey !== null) {
       setActiveTocDocumentKey(String(documentKey));
     }
+    const nameInput = document.querySelector('#toc-document-name');
+    if (nameInput) {
+      nameInput.dataset.fullName = displayName;
+      refreshTocDocumentNameField();
+    }
+  },
+  navigateInDocumentHistory: function(direction) {
+    return direction === 'back' || direction === 'forward'
+      ? navigateTocHistory(direction)
+      : false;
   },
   setDocumentHistoryState: function(canGoBack, canGoForward) {
     tocDocumentHistoryState = {

@@ -155,20 +155,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (documentHistoryStack.isNotEmpty()) {
-                    if (isDirty) {
-                        showUnsavedChangesDialog { navigateBackOrFinish() }
-                    } else {
-                        navigateBackOrFinish()
-                    }
-                } else {
-                    if (isDirty) {
-                        showUnsavedChangesDialog { finish() }
-                    } else {
-                        isEnabled = false
-                        onBackPressedDispatcher.onBackPressed()
-                    }
-                }
+                navigateCombinedHistory("back", finishWhenBackUnavailable = true)
             }
         })
 
@@ -608,6 +595,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         // Read and pass all custom hotkey preferences
         val hotkeys = mapOf(
             "new" to prefs.getString("pref_hotkey_new", "ctrl+n"),
+            "history_back" to prefs.getString("pref_hotkey_history_back", "alt+left"),
+            "history_forward" to prefs.getString("pref_hotkey_history_forward", "alt+right"),
             "open" to prefs.getString("pref_hotkey_open", "ctrl+o"),
             "save" to prefs.getString("pref_hotkey_save", "ctrl+s"),
             "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
@@ -728,6 +717,43 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             updateTitle()
         } else {
             finish()
+        }
+    }
+
+    private fun navigateCombinedHistory(
+        direction: String,
+        finishWhenBackUnavailable: Boolean = false
+    ) {
+        val directionJson = JSONObjectWrapper.quote(direction)
+        val script =
+            "(window.editorBridge && typeof window.editorBridge.navigateInDocumentHistory === 'function') " +
+                "? window.editorBridge.navigateInDocumentHistory($directionJson) : false"
+        webView.evaluateJavascript(script) { handled ->
+            if (handled == "true") return@evaluateJavascript
+
+            when {
+                direction == "back" && documentHistoryStack.isNotEmpty() -> {
+                    if (isDirty) {
+                        showUnsavedChangesDialog { navigateBackOrFinish() }
+                    } else {
+                        navigateBackOrFinish()
+                    }
+                }
+                direction == "forward" && documentForwardStack.isNotEmpty() -> {
+                    if (isDirty) {
+                        showUnsavedChangesDialog { navigateForwardDocument() }
+                    } else {
+                        navigateForwardDocument()
+                    }
+                }
+                direction == "back" && finishWhenBackUnavailable -> {
+                    if (isDirty) {
+                        showUnsavedChangesDialog { finish() }
+                    } else {
+                        finish()
+                    }
+                }
+            }
         }
     }
 
@@ -1383,24 +1409,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         android.content.Intent(this@MainActivity, SettingsActivity::class.java)
                             .putExtra("settings_page", "toc")
                     )
-                    "history_back" -> {
-                        if (documentHistoryStack.isNotEmpty()) {
-                            if (isDirty) {
-                                showUnsavedChangesDialog { navigateBackOrFinish() }
-                            } else {
-                                navigateBackOrFinish()
-                            }
-                        }
-                    }
-                    "history_forward" -> {
-                        if (documentForwardStack.isNotEmpty()) {
-                            if (isDirty) {
-                                showUnsavedChangesDialog { navigateForwardDocument() }
-                            } else {
-                                navigateForwardDocument()
-                            }
-                        }
-                    }
+                    "history_back" -> navigateCombinedHistory("back")
+                    "history_forward" -> navigateCombinedHistory("forward")
                 }
             }
         }

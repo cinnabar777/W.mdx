@@ -43,6 +43,14 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Document Name">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_toc_hide_file_extension"
+            app:title="Hide File Extension in Name Field"
+            app:summary="Show only the name while keeping the saved file extension when renamed"
+            app:defaultValue="false" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Text">
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_font_file_toc"

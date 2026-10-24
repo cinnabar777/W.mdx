@@ -286,6 +286,7 @@ object PreferenceResetHelper {
             key == "pref_toolbar_height" -> 48
             key == "pref_app_theme" -> "amoled"
             key == "pref_toc_panel_width" -> 80
+            key == "pref_toc_hide_file_extension" -> false
             key == "pref_toc_panel_bg_color" -> "default"
             key == "pref_toc_panel_bg_opacity" -> 100
             key == "pref_toc_panel_border_color" -> "default"
@@ -325,6 +326,8 @@ object PreferenceResetHelper {
             key == "pref_footnote_bg_color" -> "default"
             key == "pref_auto_save_on_leave" -> true
             key == "pref_hotkey_new" -> "ctrl+n"
+            key == "pref_hotkey_history_back" -> "alt+left"
+            key == "pref_hotkey_history_forward" -> "alt+right"
             key == "pref_hotkey_open" -> "ctrl+o"
             key == "pref_hotkey_save" -> "ctrl+s"
             key == "pref_hotkey_save_as" -> "ctrl+shift+s"
