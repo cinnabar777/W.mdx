@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
-const { computeWysiwygViewportMargin } = require('../src/viewportMargin.js');
 
 const dom = new JSDOM('<!DOCTYPE html><html><body><div id="editor-container"><div id="editor"></div></div></body></html>', {
   pretendToBeVisual: true,
@@ -92,8 +91,6 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
     if (index % 35 === 0) return 'A paragraph with **bold** and _italic_ text.';
     return `Plain text paragraph ${index + 1} with ordinary words and soft wrapping across lines.`;
   }).join('\n');
-
-  assert.equal(computeWysiwygViewportMargin(390), 6000, 'Small viewports use the 6000px minimum margin');
 
   async function assertModeRestore(markdownText, label, targetScroll = 400) {
     window.editorBridge.setMarkdown(markdownText);

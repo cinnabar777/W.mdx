@@ -1,6 +1,5 @@
 import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
-import { computeWysiwygViewportMargin } from './viewportMargin.js';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
@@ -3298,23 +3297,10 @@ class CodeMirrorAdapter {
       startState = startState.update({ selection }).state;
     }
 
-    const viewportHeight = Math.max(
-      containerEl.clientHeight || 0,
-      window.visualViewport?.height || 0,
-      window.innerHeight || 0
-    );
-    const viewportMargin = computeWysiwygViewportMargin(
-      viewportHeight,
-      startState.doc.lines,
-      startState.doc.length,
-      currentEditorMode
-    );
-
     this.view = new EditorView({
       state: startState,
       parent: containerEl,
-      scrollTo: modeSnapshot?.scroll,
-      viewportMargin
+      scrollTo: modeSnapshot?.scroll
     });
 
     this.view.scrollDOM.style.overflowAnchor = 'auto';
