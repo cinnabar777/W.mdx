@@ -855,6 +855,12 @@ function recordTocNavigation(view, targetPos) {
   return true;
 }
 
+function navigateFootnote(view, targetPos) {
+  if (!view || !Number.isInteger(targetPos)) return false;
+  recordTocNavigation(view, targetPos);
+  return scrollToPositionUpperMiddle(view, targetPos, { focus: false });
+}
+
 function restoreTocNavigationState(view, state) {
   if (!view?.state || !view.scrollDOM || !state) return false;
   const docLength = view.state.doc.length;
@@ -1914,7 +1920,8 @@ const footnoteStateField = StateField.define({
   create(state) {
     return buildFootnoteDecorations(state, {
       mode: currentEditorMode,
-      onEdit: definition => openFootnoteInsertionDialog({ definition })
+      onEdit: definition => openFootnoteInsertionDialog({ definition }),
+      onNavigate: navigateFootnote
     });
   },
   update(current, tr) {
@@ -1928,7 +1935,8 @@ const footnoteStateField = StateField.define({
     }
     return buildFootnoteDecorations(tr.state, {
       mode: currentEditorMode,
-      onEdit: definition => openFootnoteInsertionDialog({ definition })
+      onEdit: definition => openFootnoteInsertionDialog({ definition }),
+      onNavigate: navigateFootnote
     });
   },
   provide: field =>

@@ -55,4 +55,11 @@ test('toolbar insertion opens the footnote dialog and all footnote settings reac
   assert.match(source, /setCssVar\('--footnote-font-size'/);
   assert.match(html, /\.cm-footnote-reference/);
   assert.match(html, /\.cm-footnote-definition/);
+
+  const navigationStart = source.indexOf('function navigateFootnote');
+  const navigationEnd = source.indexOf('function restoreTocNavigationState', navigationStart);
+  const navigationFunction = source.slice(navigationStart, navigationEnd);
+  assert.match(navigationFunction, /recordTocNavigation\(view, targetPos\)/);
+  assert.match(navigationFunction, /scrollToPositionUpperMiddle\(view, targetPos/);
+  assert.match(source, /onNavigate: navigateFootnote/);
 });

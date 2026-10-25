@@ -17,6 +17,7 @@ global.MutationObserver = dom.window.MutationObserver;
 global.Node = dom.window.Node;
 global.Element = dom.window.Element;
 global.HTMLElement = dom.window.HTMLElement;
+global.Window = dom.window.constructor;
 global.Range = dom.window.Range;
 global.getComputedStyle = dom.window.getComputedStyle;
 global.requestAnimationFrame = callback => setTimeout(callback, 0);
@@ -43,25 +44,47 @@ test('WYSIWYG renders footnote widgets instead of Markdown syntax', async () => 
       import('../src/footnotes.js')
     ]);
 
+  const navigationTargets = [];
+  const build = state => buildFootnoteDecorations(state, {
+    mode: 'wysiwyg',
+    onNavigate: (_view, position) => navigationTargets.push(position)
+  });
   const footnoteField = StateField.define({
-    create: state => buildFootnoteDecorations(state, { mode: 'wysiwyg' }),
-    update: (_value, transaction) => buildFootnoteDecorations(transaction.state, { mode: 'wysiwyg' }),
+    create: build,
+    update: (_value, transaction) => build(transaction.state),
     provide: field => EditorView.decorations.from(field, value => value.decorations)
   });
+  const markdownText = 'First [^1], then another [^1].\n\n[^1]: Footnote body\n    Continued text';
   const state = EditorState.create({
-    doc: 'A sentence with a note[^1].\n\n[^1]: Footnote body\n    Continued text',
+    doc: markdownText,
     extensions: [markdown(), footnoteField]
   });
   const view = new EditorView({ state, parent: document.querySelector('#mount') });
 
-  assert.ok(document.querySelector('.cm-footnote-reference'));
+  const references = [...document.querySelectorAll('.cm-footnote-reference')];
+  const backlinks = [...document.querySelectorAll('.cm-footnote-backlink')];
+  assert.equal(references.length, 2);
   assert.ok(document.querySelector('.cm-footnote-definition'));
+  assert.equal(backlinks.length, 2, 'each footnote reference gets its own return link');
   assert.equal(
     document.querySelector('.cm-footnote-text').textContent,
     'Footnote body\nContinued text'
   );
   assert.doesNotMatch(document.querySelector('.cm-content').textContent, /\[\^1\]/);
   assert.doesNotMatch(document.querySelector('.cm-content').textContent, /\[\^1\]:/);
+
+  const firstReferencePosition = markdownText.indexOf('[^1]');
+  const secondReferencePosition = markdownText.indexOf('[^1]', firstReferencePosition + 1);
+  const definitionPosition = markdownText.indexOf('[^1]:');
+  references[0].click();
+  backlinks[1].click();
+  backlinks[0].click();
+  assert.deepEqual(navigationTargets, [
+    definitionPosition,
+    secondReferencePosition,
+    firstReferencePosition
+  ]);
+  assert.notEqual(firstReferencePosition, secondReferencePosition);
 
   view.destroy();
   dom.window.close();

@@ -101,23 +101,20 @@ export function formatFootnoteDefinition(label, body) {
   return `[^${label}]: ${lines[0]}${lines.slice(1).map(line => `\n    ${line}`).join('')}`;
 }
 
-function scrollToFootnote(view, selector, label) {
-  const target = [...view.dom.querySelectorAll(selector)]
-    .find(element => element.dataset.footnoteLabel === label);
-  target?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-}
-
 class FootnoteReferenceWidget extends WidgetType {
-  constructor(label, normalizedLabel) {
+  constructor(label, normalizedLabel, targetPosition, onNavigate) {
     super();
     this.label = label;
     this.normalizedLabel = normalizedLabel;
+    this.targetPosition = targetPosition;
+    this.onNavigate = onNavigate;
   }
 
   eq(other) {
     return other instanceof FootnoteReferenceWidget &&
       other.label === this.label &&
-      other.normalizedLabel === this.normalizedLabel;
+      other.normalizedLabel === this.normalizedLabel &&
+      other.targetPosition === this.targetPosition;
   }
 
   toDOM(view) {
@@ -131,7 +128,7 @@ class FootnoteReferenceWidget extends WidgetType {
     reference.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
-      scrollToFootnote(view, '.cm-footnote-definition', this.normalizedLabel);
+      this.onNavigate?.(view, this.targetPosition);
     });
     return reference;
   }
@@ -142,10 +139,12 @@ class FootnoteReferenceWidget extends WidgetType {
 }
 
 class FootnoteDefinitionWidget extends WidgetType {
-  constructor(definition, onEdit) {
+  constructor(definition, references, onEdit, onNavigate) {
     super();
     this.definition = definition;
+    this.references = references;
     this.onEdit = onEdit;
+    this.onNavigate = onNavigate;
   }
 
   eq(other) {
@@ -153,13 +152,16 @@ class FootnoteDefinitionWidget extends WidgetType {
       other.definition.label === this.definition.label &&
       other.definition.body === this.definition.body &&
       other.definition.from === this.definition.from &&
-      other.definition.to === this.definition.to;
+      other.definition.to === this.definition.to &&
+      other.references.length === this.references.length &&
+      other.references.every((reference, index) =>
+        reference.from === this.references[index].from
+      );
   }
 
   toDOM(view) {
     const section = document.createElement('div');
     section.className = 'cm-footnote-definition';
-    section.dataset.footnoteLabel = this.definition.normalizedLabel;
 
     const number = document.createElement('span');
     number.className = 'cm-footnote-number';
@@ -185,17 +187,22 @@ class FootnoteDefinitionWidget extends WidgetType {
     });
     section.appendChild(text);
 
-    const back = document.createElement('button');
-    back.type = 'button';
-    back.className = 'cm-footnote-backlink';
-    back.textContent = '↩';
-    back.setAttribute('aria-label', `Return to footnote reference ${this.definition.label}`);
-    back.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      scrollToFootnote(view, '.cm-footnote-reference', this.definition.normalizedLabel);
+    this.references.forEach((reference, index) => {
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'cm-footnote-backlink';
+      back.textContent = this.references.length > 1 ? `↩${index + 1}` : '↩';
+      back.setAttribute(
+        'aria-label',
+        `Return to reference ${index + 1} for footnote ${this.definition.label}`
+      );
+      back.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.onNavigate?.(view, reference.from);
+      });
+      section.appendChild(back);
     });
-    section.appendChild(back);
     return section;
   }
 
@@ -204,7 +211,7 @@ class FootnoteDefinitionWidget extends WidgetType {
   }
 }
 
-export function buildFootnoteDecorations(state, { mode, onEdit } = {}) {
+export function buildFootnoteDecorations(state, { mode, onEdit, onNavigate } = {}) {
   if (mode === 'source') {
     return {
       decorations: Decoration.none,
@@ -239,12 +246,26 @@ export function buildFootnoteDecorations(state, { mode, onEdit } = {}) {
   );
   const decorations = [];
   const hiddenSyntaxRanges = [];
+  const referencesByLabel = new Map();
+  for (const reference of footnotes.references) {
+    const references = referencesByLabel.get(reference.normalizedLabel) ?? [];
+    references.push(reference);
+    referencesByLabel.set(reference.normalizedLabel, references);
+  }
 
   for (const reference of footnotes.references) {
     if (shouldReveal(reference)) continue;
+    const target = footnotes.definitions.find(
+      definition => definition.normalizedLabel === reference.normalizedLabel
+    );
     decorations.push(
       Decoration.replace({
-        widget: new FootnoteReferenceWidget(reference.label, reference.normalizedLabel)
+        widget: new FootnoteReferenceWidget(
+          reference.label,
+          reference.normalizedLabel,
+          target?.from,
+          onNavigate
+        )
       }).range(reference.from, reference.to)
     );
     hiddenSyntaxRanges.push(Decoration.replace({}).range(reference.from, reference.to));
@@ -254,7 +275,12 @@ export function buildFootnoteDecorations(state, { mode, onEdit } = {}) {
     if (shouldReveal(definition)) continue;
     decorations.push(
       Decoration.widget({
-        widget: new FootnoteDefinitionWidget(definition, onEdit),
+        widget: new FootnoteDefinitionWidget(
+          definition,
+          referencesByLabel.get(definition.normalizedLabel) ?? [],
+          onEdit,
+          onNavigate
+        ),
         block: true,
         side: -1
       }).range(definition.from)
