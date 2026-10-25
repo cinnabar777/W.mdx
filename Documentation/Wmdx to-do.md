@@ -73,34 +73,55 @@ ___
 
 ___
 
-# TOOLBARS \[WIP]:
+
+# TOOLBARS:
 
 
 1. Bottom control/toolbar toggle 
     1. needs color settings for toggle. 
     2. Size needs to be larger when toolbar is closed so it is easier to hit but the size of the toolbar keys when toolbar is open — can this be done? 
 2. See gay toolbar: https://github.com/chaskane/gay-toolbar 
-3. 
+3. Key feature off bottom and floating toolbar: ability to make custom keys — start from nothing, add icon(s), select actions for:
+    1. 4 to 8 directions 
+    2. Tap 
+    3. Double tap 
+    4. Triple tap 
+    5. Long press 
+    6. Background color 
+    7. Icon color 
+    8. How: a "+custom key" button in the bottom right corner off the holding area for all keys. 
+        1. Tap it and it opens a popup dialogue that gives a live view off the key as actions and icons are added — user can select icons from those the app has or paste svg or load svg file. 
+        2. A selection between using the 4 direction swipes or app eight. 
+            1. Fields for each that lists app available actions the app has, with the top a search field. 
+            2. An icon selection for each. 
+                1. Icons take their spot where the swipe is directed.  See image of keyboard that has multi directional keys. 
+        3. Same field as the swipe actions for tap, double, and triple. 
+            1. No icons 
+        4. Long press action field — icon shows in upper left corner of patent key unless 8 direction swipe is selected then it doesn't show.  
+        5. Background color 
+        6. Icon color 
+            1. By default colors are inherited from the main toolbar settings. 
+4. Regular toolbar keys that are already available ought to be customizable just like the custom key. 
 
 ## Discussion:
 
-What we did with the search we are going to do similar for the bottom toolbar and a floating toolbar. 
+What we did with the search we are going to do similar for the bottom toolbar and a floating toolbar. You need to review the find/replace code to see how the live view was done and the icon colors, especially as they were problematic. 
 
-There will be a "live representation" of the toolbar in the settings like we did with the find & replace. 
+There will be a "live representation" of the toolbar in the settings like what was done with the find & replace. 
 
-Each will have a separate page in settings right next to the find & replace, not in typography. Since the floating toolbar cannot have a toggle its settings needs a enable/disable toggle. 
+Each toolbar, bottom & floating,  will have a separate page in settings right next to the find & replace, not in typography. Since the floating toolbar cannot have a toggle, its settings needs a enable/disable toggle. 
 
-Like the find & replace there will be a holding area for all available toolbar keys. Those that are in the toolbar already will not show, like the find & replace. However there is no + on the keys, they are added by drag-n-drop only, and they are the icons not text in this holding area. Furthermore the key icon can be changed in this area by quick double tap — opens your paste/choose dialogue. This makes it so when they add the key to a group or action that the custom icon is used instead of the default, tricky I know. 
+Like the find & replace there will be a holding area for all available toolbar keys. Those that are in the toolbar already will not show, like the find & replace. However there is no + on the keys, they are added by drag-n-drop only, and they are the icons,  not text, in this holding area. Furthermore the key icon can be changed in this area by quick double tap — opens the edit dialogue. 
 
 The big difference is that the toolbars have "groups" and we want to make creating groups a drag-n-drop process just like moving icons around on the android home screen — when a second key is dropped on top of another it creates a group, and more keys can be dropped in. 
 
-Group icons: it takes the icon of the first toolbar key, the custom icon if it was set, but like all keys will have the ability to change it, and the colors of the icon and key background. It will also have the same actions as any key. 
+Group icons: it takes the icon of the first toolbar key, the custom icon if it was set, but like all keys will have the ability to change it, and the colors of the icon and key background, and actions. 
 
-Like the find & replace when an icon is tapped it will show the settings for it. A tap on a group opens the popup and its settings. This gives access to the keys in a group — the toolbar behaves as it normally does. 
+When an key is tapped it will show the settings dialogue for it. A tap on a group key opens the popup and its settings dialogue — it is behind and above the toolbar. This gives access to the keys in a group — the toolbar behaves as it normally does. 
 
 The settings will have the color customization for each key. However it will also have actions: long press, single tap, double tap, triple tap, and swipes — 4 or 8, user choice. Four swipes is up, down, left, right. Eight swipes adds the corners.
 
-Actions: include all toolbar actions, open group, close keyboard, ? What else? 
+Actions: include all toolbar actions, open group, close keyboard, etc, ? What else? 
 
 Complicated 🤯
 
