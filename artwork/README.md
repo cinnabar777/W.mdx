@@ -27,6 +27,9 @@ Standalone fallback PNGs use the same visible scale and colors for APK
 inspectors. A monochrome themed-icon layer is intentionally not supplied:
 it allows launchers to replace these colors with a system accent.
 
+Release resource-path optimization is disabled so APK file browsers can still
+recognize the standard `ic_launcher` resource paths, as they do in debug APKs.
+
 Android launchers still control the final mask, shadows, caching, and any
 user-enabled icon-pack treatment. Day/night resource switching may require
 the launcher to refresh its cached icons.
