@@ -17,3 +17,14 @@ Use downloaded build artifacts to exercise packaging assumptions locally when
 the workspace cannot compile Android. Keep this separate from on-device visual
 verification: a generated icon preview cannot establish that a launcher or
 recent-apps border has been fixed.
+
+For a generic APK icon in the file manager, also check its thumbnail setting.
+In a confirmed case, clearing cache, moving, and renaming the APK did not refresh
+the preview; turning “Show thumbnails” off and back on did.
+
+**Why:** The packaged icon was valid, but the file manager kept showing its
+generic Android icon until its thumbnail display setting was toggled.
+
+**How to apply:** If APK metadata and icon resources are verified but the file
+manager still shows a generic icon, try toggling “Show thumbnails” before
+changing the APK artwork or build configuration.
