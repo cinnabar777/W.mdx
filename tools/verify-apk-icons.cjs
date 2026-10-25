@@ -51,6 +51,19 @@ for (const name of ['mipmap/ic_launcher', 'mipmap/ic_launcher_round', 'drawable/
   }
   for (const file of resource.files) {
     assert.ok(entries.has(file.path), `packaged icon does not exist: ${file.path}`);
+    if (expectedPackage === 'com.wmdx.markdownapp') {
+      const night = file.config.split('-').includes('night');
+      const variant = night ? 'night-' : '';
+      const basename = name === 'mipmap/ic_launcher_round' ? 'ic_launcher_round' :
+        name === 'drawable/ic_launcher_foreground' ? 'ic_launcher_foreground' : 'ic_launcher';
+      const density = file.config.split('-').find(value =>
+        ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'].includes(value));
+      const expectedPath = file.type === 'XML'
+        ? `res/mipmap-${variant}anydpi-v26/${basename}.xml`
+        : `res/${name.startsWith('drawable/') ? 'drawable' : 'mipmap'}-${variant}${density}-v${night ? 8 : 4}/${basename}.png`;
+      assert.equal(file.path, expectedPath,
+        'release resource optimization changed the standard icon filename used by APK browsers');
+    }
     if (file.type === 'XML') {
       const xml = execFileSync(aapt, ['dump', 'xmltree', '--file', file.path, apk], { encoding: 'utf8' });
       assert.match(xml, /E: adaptive-icon\b/, `${name}: expected adaptive-icon root`);

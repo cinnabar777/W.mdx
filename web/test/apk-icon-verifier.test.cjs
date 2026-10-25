@@ -6,39 +6,62 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../../tools/verify-apk-icons.cjs'), 'utf8');
 const configs = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'].flatMap(d => [d, `night-${d}`]);
-const png = 'res/fallback-0.png';
-const adaptive = 'res/BW.xml';
-const round = 'res/0K.xml';
+const adaptive = 'res/mipmap-anydpi-v26/ic_launcher.xml';
+const nightAdaptive = 'res/mipmap-night-anydpi-v26/ic_launcher.xml';
+const round = 'res/mipmap-anydpi-v26/ic_launcher_round.xml';
+const nightRound = 'res/mipmap-night-anydpi-v26/ic_launcher_round.xml';
 const ids = { foreground: '0x7f080091', background: '0x7f06005f' };
 const groups = [
-  ['0x7f0f0000', 'mipmap/ic_launcher', 'fallback', adaptive, 'res/NA.xml'],
-  ['0x7f0f0001', 'mipmap/ic_launcher_round', 'round', round, 'res/NR.xml'],
+  ['0x7f0f0000', 'mipmap/ic_launcher', 'fallback', adaptive, nightAdaptive],
+  ['0x7f0f0001', 'mipmap/ic_launcher_round', 'round', round, nightRound],
   [ids.foreground, 'drawable/ic_launcher_foreground', 'foreground']
 ];
-const allEntries = groups.flatMap(([, , prefix, xml, nightXml]) => [
-  ...configs.map((_, i) => `res/${prefix}-${i}.png`), ...(xml ? [xml, nightXml] : [])
+const rasterPath = (resource, config, index, shortened = false) => {
+  if (shortened) return `res/${resource.split('/')[1]}-${index}.png`;
+  const night = config.split('-').includes('night');
+  const density = config.split('-').find(value =>
+    ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'].includes(value));
+  const [type, name] = resource.split('/');
+  return `res/${type}-${night ? 'night-' : ''}${density}-v${night ? 8 : 4}/${name}.png`;
+};
+const xmlPath = (resource, night, shortened = false) => {
+  if (shortened) return `res/${resource.split('/')[1] === 'ic_launcher' ? 'BW' : '0K'}${night ? 'N' : ''}.xml`;
+  const name = resource.split('/')[1];
+  return `res/mipmap-${night ? 'night-' : ''}anydpi-v26/${name}.xml`;
+};
+const entriesFor = (shortened = false) => groups.flatMap(([, name, , xml, nightXml]) => [
+  ...configs.map((config, i) => rasterPath(name, config, i, shortened)),
+  ...(xml ? [xmlPath(name, false, shortened), xmlPath(name, true, shortened)] : [])
 ]);
-function verify({ entries = allEntries, launcherIcon = adaptive, applicationIcon = adaptive,
+const allEntries = entriesFor();
+const png = rasterPath('mipmap/ic_launcher', 'mdpi', 0);
+function verify({ entries, launcherIcon, applicationIcon, expectedPackage = 'debug', shortenedPaths = false,
   missingFallback = false, wrongForeground = false, missingNightAdaptive = false } = {}) {
+  entries ||= entriesFor(shortenedPaths);
+  const isRelease = expectedPackage === 'release';
+  const packageName = isRelease ? 'com.wmdx.markdownapp' : 'com.wmdx.markdownapp.debug';
+  const appLabel = isRelease ? 'Wmdx' : 'Wmdx-debug';
+  const appIcon = applicationIcon || xmlPath('mipmap/ic_launcher', false, shortenedPaths);
+  const activityIcon = launcherIcon === undefined ? appIcon : launcherIcon;
   const badging = [
-    "package: name='com.wmdx.markdownapp.debug' versionCode='1'",
-    "application-label:'Wmdx-debug'",
-    `application-icon-160:'${png}'`,
-    `application-icon-65534:'${applicationIcon}'`,
-    `launchable-activity: name='com.wmdx.markdownapp.DocumentDispatchActivity' label='Wmdx-debug' icon='${launcherIcon}'`
+    `package: name='${packageName}' versionCode='1'`,
+    `application-label:'${appLabel}'`,
+    `application-icon-160:'${appIcon}'`,
+    `application-icon-65534:'${appIcon}'`,
+    `launchable-activity: name='com.wmdx.markdownapp.DocumentDispatchActivity' label='${appLabel}' icon='${activityIcon}'`
   ].join('\n');
-  const table = groups.map(([id, name, prefix, xml, nightXml]) =>
+  const table = groups.map(([id, name, , xml, nightXml]) =>
     `    resource ${id} ${name}\n` +
     (missingFallback && name === 'mipmap/ic_launcher' ? '' :
-      configs.map((config, i) => `      (${config}) (file) res/${prefix}-${i}.png type=PNG\n`).join('')) +
-    (xml ? `      (anydpi) (file) ${xml} type=XML\n` : '') +
-    (nightXml && !missingNightAdaptive ? `      (night-anydpi) (file) ${nightXml} type=XML\n` : '')
+      configs.map((config, i) => `      (${config}) (file) ${rasterPath(name, config, i, shortenedPaths)} type=PNG\n`).join('')) +
+    (xml ? `      (anydpi) (file) ${xmlPath(name, false, shortenedPaths)} type=XML\n` : '') +
+    (nightXml && !missingNightAdaptive ? `      (night-anydpi) (file) ${xmlPath(name, true, shortenedPaths)} type=XML\n` : '')
   ).join('') + `    resource ${ids.background} color/ic_launcher_background\n      () #ffe5e5e5\n`;
   const xml = `E: adaptive-icon\n  E: background\n    A: drawable(0x01010199)=@${ids.background}\n` +
     `  E: foreground\n    A: drawable(0x01010199)=@${wrongForeground ? '0x7f080099' : ids.foreground}\n`;
   vm.runInNewContext(source, {
     process: {
-      argv: ['node', 'verify-apk-icons.cjs', 'test.apk', 'com.wmdx.markdownapp.debug', 'Wmdx-debug'],
+      argv: ['node', 'verify-apk-icons.cjs', 'test.apk', packageName, appLabel],
       env: { ANDROID_HOME: '/sdk' }
     },
     console: { log() {} },
@@ -53,10 +76,11 @@ function verify({ entries = allEntries, launcherIcon = adaptive, applicationIcon
   });
 }
 
-test('APK verification resolves optimized release paths and legacy configurations through the resource table', () => {
+test('APK verification keeps adaptive and legacy icon paths consistent with Android', () => {
   verify();
-  verify({ launcherIcon: png });
+  assert.throws(() => verify({ launcherIcon: png }), /same icon/);
   verify({ launcherIcon: '' });
+  verify({ expectedPackage: 'release' });
 });
 
 test('APK verification rejects missing fallback artwork and mismatched launcher icons', () => {
@@ -69,4 +93,9 @@ test('APK verification rejects missing fallback artwork and mismatched launcher 
 
 test('APK verification catches legacy night PNGs shadowing default adaptive icons', () => {
   assert.throws(() => verify({ missingNightAdaptive: true }), /missing night adaptive XML/);
+});
+
+test('APK verification catches release resource-name shortening that breaks APK browser previews', () => {
+  assert.throws(() => verify({ expectedPackage: 'release', shortenedPaths: true }),
+    /standard icon filename used by APK browsers/);
 });
