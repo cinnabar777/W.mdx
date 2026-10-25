@@ -279,3 +279,22 @@ test('settings labels avoid redundant settings, styling, and shortcut wording', 
   assert.ok(!mainSettingsXml.includes('Custom Keyboard Shortcuts'));
   assert.ok(!mainSettingsXml.includes('HTML &amp; MHTML Export Settings'));
 });
+
+test('keyboard shortcuts are alphabetized within each existing group', () => {
+  const groups = [...hotkeysXml.matchAll(
+    /<com\.wmdx\.markdownapp\.ResetPreferenceCategory app:title="([^"]+)">([\s\S]*?)<\/com\.wmdx\.markdownapp\.ResetPreferenceCategory>/g
+  )];
+  assert.equal(groups.length, 4, 'All shortcut groups remain present');
+
+  for (const [, groupTitle, groupXml] of groups) {
+    const titles = [...groupXml.matchAll(/app:title="([^"]+)"/g)]
+      .map(([, title]) => title.replace(/&amp;/g, '&'));
+    assert.deepEqual(
+      titles,
+      [...titles].sort((first, second) =>
+        first.localeCompare(second, undefined, { sensitivity: 'base' })
+      ),
+      `${groupTitle} shortcuts are alphabetized without changing group order`
+    );
+  }
+});
