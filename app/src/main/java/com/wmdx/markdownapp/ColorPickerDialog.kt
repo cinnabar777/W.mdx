@@ -16,6 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -284,23 +285,38 @@ class ColorPickerDialog(
     }
 
     override fun onStart() {
-        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         super.onStart()
+        window?.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
     }
 
     private fun showHexKeyboard() {
         val dialogWindow = window ?: return
-        hexEditText.requestFocus()
+        dialogWindow.clearFlags(
+            WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        )
         dialogWindow.setSoftInputMode(
             WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         )
-        hexEditText.post {
-            if (hexEditText.hasFocus()) {
+        hexEditText.showSoftInputOnFocus = true
+        hexEditText.requestFocus()
+        hexEditText.postDelayed({
+            if (isShowing && hexEditText.isAttachedToWindow && hexEditText.hasFocus()) {
+                val inputMethodManager =
+                    context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                inputMethodManager?.restartInput(hexEditText)
+                inputMethodManager?.showSoftInput(
+                    hexEditText,
+                    InputMethodManager.SHOW_IMPLICIT
+                )
                 WindowCompat.getInsetsController(dialogWindow, hexEditText)
                     .show(WindowInsetsCompat.Type.ime())
             }
-        }
+        }, 150)
     }
 
     private fun updateColorFromHSV() {
