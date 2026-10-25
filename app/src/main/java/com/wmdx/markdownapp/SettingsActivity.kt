@@ -49,6 +49,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingHeadingsFragment -> "Headings Styling"
                 is StylingParagraphFragment -> "Paragraph & Body Styling"
                 is StylingInlineFragment -> "Inline Formats Styling"
+                is StylingFootnotesFragment -> "Footnotes Typography"
                 is StylingListsFragment -> "Lists & Todos Styling"
                 is StylingBlockquotesFragment -> "Block Quotes & Callouts Styling"
                 is StylingTablesFragment -> "Tables Styling"
@@ -860,6 +861,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_headings" -> StylingHeadingsFragment()
             "pref_styling_page_paragraph" -> StylingParagraphFragment()
             "pref_styling_page_inline" -> StylingInlineFragment()
+            "pref_styling_page_footnotes" -> StylingFootnotesFragment()
             "pref_styling_page_lists" -> StylingListsFragment()
             "pref_styling_page_blockquotes" -> StylingBlockquotesFragment()
             "pref_styling_page_tables" -> StylingTablesFragment()
@@ -965,6 +967,12 @@ class StylingParagraphFragment : StylingSettingsFragment() {
 class StylingInlineFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_inline, rootKey)
+    }
+}
+
+class StylingFootnotesFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_footnotes, rootKey)
     }
 }
 

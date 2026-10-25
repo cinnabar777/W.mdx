@@ -19,6 +19,11 @@
             app:summary="Colors, font weights, link decorations &amp; inline code padding" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_footnotes"
+            app:title="Footnotes Typography"
+            app:summary="Footnote text size, text and reference colors, return-link color, and background" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_lists"
             app:title="Lists (Bulleted, Numbered, Todo Checkboxes)"
             app:summary="Indentation, list item spacing, bullet colors &amp; todo checkbox colors" />

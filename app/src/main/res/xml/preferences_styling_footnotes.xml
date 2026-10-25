@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Footnote Typography &amp; Colors">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_footnote_font_size"
+            app:title="Footnote Font Size (px)"
+            app:summary="Font size for footnote text"
+            app:min="10"
+            android:max="24"
+            app:defaultValue="14"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_footnote_text_color"
+            app:title="Footnote Text Color"
+            app:summary="Color of the footnote text"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_footnote_ref_color"
+            app:title="Footnote Reference Color"
+            app:summary="Color of the numbered footnote mark and note number"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_footnote_link_color"
+            app:title="Footnote Return-Link Color"
+            app:summary="Color of the link that returns to a footnote reference"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_footnote_bg_color"
+            app:title="Footnote Background Color"
+            app:summary="Background color behind the footnote"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>
