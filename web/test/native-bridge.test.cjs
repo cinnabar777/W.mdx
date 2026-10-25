@@ -119,6 +119,7 @@ test('New Window launches a fresh, separate Android editor task', () => {
 
   assert.ok(handlerStart >= 0, 'Native new-window handler exists');
   assert.match(activityDeclaration, /android:launchMode="standard"/);
+  assert.match(activityDeclaration, /android:documentLaunchMode="always"/);
   assert.match(activityDeclaration, /android:resizeableActivity="true"/);
   assert.match(handler, /data = Uri\.parse\("wmdx:\/\/window\/\$newWindowId"\)/);
   assert.match(handler, /FLAG_ACTIVITY_NEW_TASK/);
@@ -192,4 +193,28 @@ test('typography editor categories are separated into individual navigation page
       `Page filtering does not preserve ${categoryKey} as its own page`
     );
   }
+
+  const orderedPages = [
+    'Headings (H1 – H6)',
+    'Paragraph &amp; Body Text',
+    'Block Quotes',
+    'Bold',
+    'Bottom Control Bar &amp; UI Theme',
+    'Callouts',
+    'Code Blocks',
+    'Cursor &amp; Selection Settings',
+    'Footnotes Typography',
+    'Horizontal Rules / Dividers',
+    'Inline Code',
+    'Italic',
+    'Links',
+    'Lists (Bulleted, Numbered, Todo Checkboxes)',
+    'Tables'
+  ].map(title => navigationXml.indexOf(`app:title="${title}"`));
+  assert.ok(orderedPages.every(index => index >= 0), 'Every expected typography page is present');
+  assert.deepEqual(
+    orderedPages,
+    [...orderedPages].sort((first, second) => first - second),
+    'Headings and body stay first; remaining typography pages are alphabetical'
+  );
 });

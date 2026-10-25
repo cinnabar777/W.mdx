@@ -16,19 +16,23 @@ const tables = read('app/src/main/res/xml/preferences_styling_tables.xml');
 const footnotes = read('app/src/main/res/xml/preferences_styling_footnotes.xml');
 const tableWidget = read('web/src/tableWidget.js');
 
-test('Typography shortcut pages keep their keys and follow the requested order', () => {
+test('Typography pages keep headings and body first, then alphabetical element pages', () => {
   const keys = [...shortcuts.matchAll(/app:key="(pref_styling_page_[^"]+)"/g)]
     .map((match) => match[1]);
   assert.deepEqual(keys, [
     'pref_styling_page_headings',
     'pref_styling_page_paragraph',
     'pref_styling_page_blockquotes',
+    'pref_styling_page_bold',
     'pref_styling_page_controlbar',
+    'pref_styling_page_callouts',
     'pref_styling_page_code',
     'pref_styling_page_cursor',
     'pref_styling_page_footnotes',
     'pref_styling_page_hr',
-    'pref_styling_page_inline',
+    'pref_styling_page_inline_code',
+    'pref_styling_page_italic',
+    'pref_styling_page_links',
     'pref_styling_page_lists',
     'pref_styling_page_tables'
   ]);
