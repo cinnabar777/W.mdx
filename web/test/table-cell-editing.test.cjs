@@ -152,6 +152,28 @@ test('cell switching commits the old cell and selects the tapped cell without lo
   });
 });
 
+test('table toolbar actions are enabled for the selected cell and still edit the table', async () => {
+  const markdown = [
+    '| Name | Value |',
+    '| --- | --- |',
+    '| Alpha | One |',
+    '| Beta | Two |'
+  ].join('\n');
+
+  await withTableEditor(markdown, async ({ dom, container, tapCell, view, flushFrames }) => {
+    const cell = container.querySelector('tbody td[data-row="1"][data-col="0"]');
+    tapCell(cell);
+
+    const actions = dom.window.wmdxTableActions;
+    assert.ok(actions, 'selecting a cell publishes the table toolbar action bridge');
+    assert.equal(actions.isEnabled('insertRowBelow'), true);
+    assert.equal(actions.isEnabled('splitCell'), false);
+    assert.equal(actions.run('insertRowBelow'), true);
+    flushFrames();
+    assert.equal(view.state.doc.toString().split('\n').length, 5, 'the toolbar action inserts a table row');
+  });
+});
+
 test('merged-cell selection survives a widget refresh and its editor uses rendered bounds', async () => {
   const { TableModel } = await import('../src/tableModule.js');
   const model = TableModel.parse([
@@ -211,7 +233,7 @@ test('merged-cell selection survives a widget refresh and its editor uses render
   });
 });
 
-test('long-press still opens the table action menu without also entering the cell', async () => {
+test('long-press opens the horizontal table action menu above the touch point without entering the cell', async () => {
   const markdown = [
     '| Name | Value |',
     '| --- | --- |',
@@ -236,8 +258,8 @@ test('long-press still opens the table action menu without also entering the cel
 
     const menu = document.querySelector('.cm-wp-table-context-menu');
     assert.ok(menu, 'the long-press menu remains open after release');
-    assert.equal(menu.style.top, '458px', 'the menu opens above the long-press point, not below the entire merged-height cell');
-    assert.equal(menu.style.left, '70px', 'the menu is horizontally anchored near the touch point');
+    assert.equal(menu.style.top, '592px', 'the compact menu opens above the long-press point when there is room');
+    assert.equal(menu.style.left, '120px', 'the horizontal menu is anchored near the touch point');
     assert.equal(container.querySelector('.cm-wp-cell-editor'), null, 'the follow-up click does not open the cell editor');
     document.querySelector('.cm-wp-table-context-menu')?.remove();
   });

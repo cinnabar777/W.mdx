@@ -1,6 +1,7 @@
 import { WidgetType } from '@codemirror/view';
 import { StateEffect } from '@codemirror/state';
 import { TableModel } from './tableModule.js';
+import { TABLE_ACTIONS } from './tableActions.js';
 
 export const tableHeightEstimatesChanged = StateEffect.define();
 
@@ -46,6 +47,22 @@ function selectionsForView(view) {
     tableCellSelections.set(view, selections);
   }
   return selections;
+}
+
+function tableActionBridge() {
+  if (typeof window === 'undefined') return null;
+  if (!window.wmdxTableActions) {
+    window.wmdxTableActions = {
+      context: null,
+      isEnabled(actionId) {
+        return Boolean(this.context?.isEnabled(actionId));
+      },
+      run(actionId) {
+        return this.context?.run(actionId) ?? false;
+      }
+    };
+  }
+  return window.wmdxTableActions;
 }
 
 function measuredOuterHeight(element) {
@@ -152,6 +169,9 @@ export class WordProcessorTableWidget extends WidgetType {
       selectedRange = null;
       selections?.delete(this.from);
     }
+    let activeCell = selectedRange
+      ? { r: selectedRange.endR, c: selectedRange.endC }
+      : null;
     let activeOverlay = null;
 
     const toolbar = document.createElement('div');
@@ -300,6 +320,54 @@ export class WordProcessorTableWidget extends WidgetType {
       }));
     };
 
+    const isContextActionEnabled = (actionId, r = activeCell?.r, c = activeCell?.c) => {
+      if (r == null || c == null) return false;
+      const currentRowCount = this.model.getRowCount();
+      const currentColCount = this.model.getColCount();
+      const currentMatrix = this.model.getRenderMatrix();
+      const cell = currentMatrix[r]?.[c];
+      if (!cell || cell.isCovered) return false;
+      if (actionId === 'insertRowBelow' || actionId === 'insertColumnRight') return true;
+      if (actionId === 'deleteRow') return currentRowCount > 1;
+      if (actionId === 'deleteColumn') return currentColCount > 1;
+      if (actionId === 'mergeLeft') return c > 0 && !currentMatrix[r]?.[c - 1]?.isCovered;
+      if (actionId === 'mergeRight') return c < currentColCount - 1 && !currentMatrix[r]?.[c + 1]?.isCovered;
+      if (actionId === 'mergeUp') return r > 0 && !currentMatrix[r - 1]?.[c]?.isCovered;
+      if (actionId === 'mergeDown') return r < currentRowCount - 1 && !currentMatrix[r + 1]?.[c]?.isCovered;
+      if (actionId === 'splitCell') return cell.colSpan > 1 || cell.rowSpan > 1;
+      return false;
+    };
+
+    const runContextAction = (actionId, r = activeCell?.r, c = activeCell?.c) => {
+      if (!isContextActionEnabled(actionId, r, c)) return false;
+      const actions = {
+        insertRowBelow: () => this.model.insertRow(r + 1),
+        insertColumnRight: () => this.model.insertCol(c + 1),
+        deleteRow: () => this.model.deleteRow(r),
+        deleteColumn: () => this.model.deleteCol(c),
+        mergeLeft: () => this.model.mergeDirection(r, c, 'left'),
+        mergeRight: () => this.model.mergeDirection(r, c, 'right'),
+        mergeUp: () => this.model.mergeDirection(r, c, 'up'),
+        mergeDown: () => this.model.mergeDirection(r, c, 'down'),
+        splitCell: () => this.model.splitCell(r, c)
+      };
+      const action = actions[actionId];
+      if (!action) return false;
+      runTableAction(action);
+      return true;
+    };
+
+    const publishActiveCell = () => {
+      const bridge = tableActionBridge();
+      if (!bridge || !activeCell) return;
+      bridge.context = {
+        owner: container,
+        isEnabled: actionId => isContextActionEnabled(actionId),
+        run: actionId => runContextAction(actionId)
+      };
+      window.dispatchEvent(new Event('wmdx-table-context-change'));
+    };
+
     let longPressTimer = null;
     let longPressTriggered = false;
 
@@ -395,94 +463,84 @@ export class WordProcessorTableWidget extends WidgetType {
 
     const showContextMenu = (cellEl, r, c, anchor = null) => {
       let existingMenu = document.querySelector('.cm-wp-table-context-menu');
-      if (existingMenu) existingMenu.remove();
+      if (existingMenu) {
+        if (existingMenu._dismissHandler) {
+          window.removeEventListener('pointerdown', existingMenu._dismissHandler);
+        }
+        existingMenu.remove();
+      }
 
       const menu = document.createElement('div');
       menu.className = 'cm-wp-table-context-menu';
-      menu.style.cssText = 'position: fixed; z-index: 10009; background: var(--table-menu-bg, #222428); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); max-height: 240px; overflow-y: auto;';
+      menu.setAttribute('role', 'toolbar');
+      menu.setAttribute('aria-label', 'Table actions');
+      menu.style.cssText = 'position: fixed; z-index: 10009;';
 
-      const addBtn = (label, action, isDisabled = false) => {
-        const btn = document.createElement('button');
-        btn.textContent = label;
-        btn.style.cssText = `padding: 4px 10px; background: var(--table-menu-action-bg, rgba(255,255,255,0.12)); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: ${isDisabled ? 'var(--table-menu-disabled-color, #777)' : 'var(--table-menu-text, #fff)'}; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; opacity: ${isDisabled ? '0.5' : '1'};`;
-        if (isDisabled) {
-          btn.disabled = true;
-        } else {
-          btn.onclick = (e) => {
-            e.stopPropagation();
-            menu.remove();
-            runTableAction(action);
-          };
-          btn.addEventListener('pointerdown', () => {
-            btn.style.backgroundColor = 'var(--table-menu-pressed-bg, rgba(0, 120, 212, 0.4))';
-          });
-          btn.addEventListener('pointerup', () => {
-            btn.style.backgroundColor = 'var(--table-menu-action-bg, rgba(255,255,255,0.12))';
-          });
-          btn.addEventListener('pointercancel', () => {
-            btn.style.backgroundColor = 'var(--table-menu-action-bg, rgba(255,255,255,0.12))';
-          });
+      let dismissHandler = null;
+      const closeMenu = () => {
+        if (dismissHandler) window.removeEventListener('pointerdown', dismissHandler);
+        menu.remove();
+        if (container._tableContextMenu === menu) {
+          container._tableContextMenu = null;
         }
-        menu.appendChild(btn);
       };
 
-      addBtn('Add Row Below', () => this.model.insertRow(r + 1));
-      addBtn('Add Column Right', () => this.model.insertCol(c + 1));
-
-      if (rowCount > 1) {
-        addBtn('Delete Row', () => this.model.deleteRow(r));
-      }
-      if (colCount > 1) {
-        addBtn('Delete Column', () => this.model.deleteCol(c));
-      }
-
-      if (c < colCount - 1) addBtn('Merge Right', () => this.model.mergeDirection(r, c, 'right'));
-      if (c > 0) addBtn('Merge Left', () => this.model.mergeDirection(r, c, 'left'));
-      if (r < rowCount - 1) addBtn('Merge Down', () => this.model.mergeDirection(r, c, 'down'));
-      if (r > 0) addBtn('Merge Up', () => this.model.mergeDirection(r, c, 'up'));
-
-      const primaryCell = this.model.getRenderMatrix()[r][c];
-      const isMerged = primaryCell.colSpan > 1 || primaryCell.rowSpan > 1;
-      addBtn('Split Cell', () => this.model.splitCell(r, c), !isMerged);
+      TABLE_ACTIONS.forEach(({ id, title, icon }) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cm-wp-table-action';
+        btn.dataset.action = id;
+        btn.title = title;
+        btn.setAttribute('aria-label', title);
+        btn.innerHTML = icon;
+        btn.disabled = !isContextActionEnabled(id, r, c);
+        btn.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (btn.disabled) return;
+          closeMenu();
+          runContextAction(id, r, c);
+        });
+        menu.appendChild(btn);
+      });
 
       document.body.appendChild(menu);
 
       const cellRect = cellEl.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const viewportWidth = window.innerWidth;
-      const menuHeight = menu.offsetHeight || 180;
-      const menuWidth = menu.offsetWidth || 140;
+      const viewport = window.visualViewport;
+      const viewportLeft = viewport?.offsetLeft ?? 0;
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      menu.style.maxWidth = `${Math.max(0, viewportWidth - 16)}px`;
+      const menuHeight = menu.offsetHeight || 48;
+      const menuWidth = menu.offsetWidth || Math.min(viewportWidth - 16, 386);
+      const pointX = Number.isFinite(anchor?.x) ? anchor.x : cellRect.left;
+      const pointY = Number.isFinite(anchor?.y) ? anchor.y : cellRect.bottom;
+      const minLeft = viewportLeft + 8;
+      const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - menuWidth - 8);
+      const left = Math.max(minLeft, Math.min(pointX - 20, maxLeft));
+      const minTop = viewportTop + 8;
+      const maxTop = Math.max(minTop, viewportTop + viewportHeight - menuHeight - 8);
+      let top = pointY - menuHeight - 10;
+      if (top < minTop) top = pointY + 10;
 
-      const anchorX = Number.isFinite(anchor?.x)
-        ? anchor.x
-        : cellRect.left + Math.min(cellRect.width / 2, 120);
-      const anchorY = Number.isFinite(anchor?.y)
-        ? anchor.y
-        : cellRect.top + Math.min(cellRect.height / 2, 40);
-      const aboveTouch = anchorY - menuHeight - 12;
-      let top = aboveTouch >= 10 ? aboveTouch : anchorY + 12;
-      top = Math.max(10, Math.min(top, viewportHeight - menuHeight - 10));
-      const left = Math.max(
-        10,
-        Math.min(anchorX - menuWidth / 2, viewportWidth - menuWidth - 10)
-      );
-
-      menu.style.top = `${top}px`;
+      menu.style.top = `${Math.max(minTop, Math.min(top, maxTop))}px`;
       menu.style.left = `${left}px`;
-
-      const closeMenu = (e) => {
-        if (!menu.contains(e.target)) {
-          menu.remove();
-          window.removeEventListener('pointerdown', closeMenu);
-        }
+      dismissHandler = event => {
+        if (!menu.contains(event.target)) closeMenu();
       };
-      window.addEventListener('pointerdown', closeMenu);
+      menu._dismissHandler = dismissHandler;
+      container._tableContextMenu = menu;
+      window.addEventListener('pointerdown', dismissHandler);
     };
 
     const selectCell = (r, c) => {
+      activeCell = { r, c };
       selectedRange = { startR: r, startC: c, endR: r, endC: c };
       selections?.set(this.from, selectedRange);
       updateSelectionHighlight();
+      publishActiveCell();
     };
 
     const updateSelectionHighlight = () => {
@@ -667,6 +725,7 @@ export class WordProcessorTableWidget extends WidgetType {
 
     renderTableCells();
     container.appendChild(table);
+    if (!measurementOnly && activeCell) publishActiveCell();
 
     if (!measurementOnly && typeof ResizeObserver !== 'undefined') {
       const resizeState = {
@@ -726,6 +785,20 @@ export class WordProcessorTableWidget extends WidgetType {
   }
 
   destroy(dom) {
+    const bridge = tableActionBridge();
+    if (bridge?.context?.owner === dom) {
+      bridge.context = null;
+      window.dispatchEvent(new Event('wmdx-table-context-change'));
+    }
+    const contextMenu = dom._tableContextMenu;
+    if (contextMenu) {
+      if (contextMenu._dismissHandler) {
+        window.removeEventListener('pointerdown', contextMenu._dismissHandler);
+      }
+      contextMenu.remove();
+      dom._tableContextMenu = null;
+    }
+
     const resizeState = tableResizeObserverState.get(dom);
     if (!resizeState) return;
 

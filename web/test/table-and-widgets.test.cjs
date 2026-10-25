@@ -94,13 +94,30 @@ test('TableModel parses, merges, splits, and serializes GFM tables correctly', a
 
 test('WordProcessorTableWidget provides structural context menu items', () => {
   const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const actions = fs.readFileSync(path.join(__dirname, '../src/tableActions.js'), 'utf8');
 
-  assert.ok(code.includes('Add Row Below'), 'Context menu includes Add Row Below');
-  assert.ok(code.includes('Add Column Right'), 'Context menu includes Add Column Right');
-  assert.ok(code.includes('Delete Row'), 'Context menu includes Delete Row');
-  assert.ok(code.includes('Delete Column'), 'Context menu includes Delete Column');
-  assert.ok(code.includes('Merge Right'), 'Context menu includes directional Merge');
+  assert.ok(code.includes('TABLE_ACTIONS.forEach'), 'Context menu renders the shared table actions');
+  assert.ok(code.includes("btn.className = 'cm-wp-table-action'"), 'Context actions use icon buttons');
+  assert.ok(code.includes("btn.setAttribute('aria-label', title)"), 'Icon buttons retain accessible names');
+  assert.ok(actions.includes("title: 'Add Row Below'"), 'Context menu includes Add Row Below');
+  assert.ok(actions.includes("title: 'Add Column Right'"), 'Context menu includes Add Column Right');
+  assert.ok(actions.includes("title: 'Delete Row'"), 'Context menu includes Delete Row');
+  assert.ok(actions.includes("title: 'Delete Column'"), 'Context menu includes Delete Column');
+  assert.ok(actions.includes("title: 'Merge Right'"), 'Context menu includes directional Merge');
   assert.ok(!code.includes("btnEdit.textContent = 'Edit Cell'"), 'Context menu excludes Edit Cell');
+});
+
+test('table action menu stays horizontal and provides scrollable named icon buttons', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const actions = fs.readFileSync(path.join(__dirname, '../src/tableActions.js'), 'utf8');
+
+  assert.match(code, /menu\.setAttribute\('role', 'toolbar'\)/);
+  assert.match(code, /window\.visualViewport/);
+  assert.match(actions, /id: 'mergeUp'[\s\S]*?icon: icon\(/);
+  assert.match(actions, /id: 'splitCell'[\s\S]*?icon: icon\(/);
+  assert.match(html, /\.cm-wp-table-context-menu\s*\{[^}]*flex-flow:\s*row nowrap;[^}]*overflow-x:\s*auto/s);
+  assert.match(html, /\.cm-wp-table-action:disabled/);
 });
 
 test('TableModel insertRow and insertCol add empty cells and preserve alignments and merges', async () => {

@@ -28,6 +28,7 @@ import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocS
 import { toCssFontFamily } from './fontFamilies.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownFormatting.js';
+import { TABLE_ACTIONS } from './tableActions.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -4095,7 +4096,25 @@ function setupGroupedControlBar() {
   if (tableBtn) {
     tableBtn.onclick = (e) => {
       e.stopPropagation();
-      showTableGridPickerModal();
+      togglePopupStrip('table', tableBtn, [
+        {
+          icon: svgIcons.insertTable,
+          title: 'Insert Table',
+          action: () => {
+            hidePopupStrip();
+            showTableGridPickerModal();
+          }
+        },
+        ...TABLE_ACTIONS.map(item => ({
+          icon: item.icon,
+          title: item.title,
+          disabled: !window.wmdxTableActions?.isEnabled(item.id),
+          action: () => {
+            hidePopupStrip();
+            window.wmdxTableActions?.run(item.id);
+          }
+        }))
+      ]);
     };
   }
 

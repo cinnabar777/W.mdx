@@ -30,8 +30,12 @@ test('menu actions use distinct supplied icons for the three save actions and HT
   assert.match(insert, /icon: svgIcons\.footnote, title: 'Insert Footnote'/);
 });
 
-test('table toolbar opens the original insert-table picker', () => {
+test('table toolbar keeps table insertion and exposes the table action icons', () => {
   assert.match(source, /const tableBtn = bar\.querySelector\('#grp-btn-table'\)/);
-  assert.match(source, /tableBtn\.onclick = \(e\) => \{\s*e\.stopPropagation\(\);\s*showTableGridPickerModal\(\);/);
-  assert.doesNotMatch(source, /TABLE_ACTIONS|wmdxTableActions/);
+  assert.match(source, /import \{ TABLE_ACTIONS \} from '\.\/tableActions\.js'/);
+  assert.match(source, /togglePopupStrip\('table', tableBtn, \[/);
+  assert.match(source, /title: 'Insert Table',\s*action: \(\) => \{\s*hidePopupStrip\(\);\s*showTableGridPickerModal\(\);/);
+  assert.match(source, /\.\.\.TABLE_ACTIONS\.map\(item => \(\{/);
+  assert.match(source, /disabled: !window\.wmdxTableActions\?\.isEnabled\(item\.id\)/);
+  assert.match(source, /window\.wmdxTableActions\?\.run\(item\.id\)/);
 });
