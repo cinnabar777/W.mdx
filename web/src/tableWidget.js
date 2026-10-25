@@ -568,10 +568,16 @@ export class WordProcessorTableWidget extends WidgetType {
     const openCellEditor = (cellEl, r, c) => {
       if (activeOverlay) activeOverlay.remove();
 
+      const overlayContainer = table.parentElement;
+      const cellRect = cellEl.getBoundingClientRect();
+      const containerRect = overlayContainer.getBoundingClientRect();
+      const top = cellRect.top - containerRect.top + overlayContainer.scrollTop - overlayContainer.clientTop;
+      const left = cellRect.left - containerRect.left + overlayContainer.scrollLeft - overlayContainer.clientLeft;
+
       const overlay = document.createElement('textarea');
       overlay.className = 'cm-wp-cell-editor';
       overlay.value = this.model.rows[r][c] || '';
-      overlay.style.cssText = `position: absolute; top: ${cellEl.offsetTop}px; left: ${cellEl.offsetLeft}px; width: ${cellEl.offsetWidth}px; height: ${cellEl.offsetHeight}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px; -webkit-user-select: text; user-select: text;`;
+      overlay.style.cssText = `position: absolute; top: ${top}px; left: ${left}px; width: ${cellRect.width}px; height: ${cellRect.height}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px; -webkit-user-select: text; user-select: text;`;
 
       let isCommitted = false;
       const commitAndClose = (nextNavigation) => {
@@ -651,7 +657,7 @@ export class WordProcessorTableWidget extends WidgetType {
         commitAndClose();
       });
 
-      table.parentElement.appendChild(overlay);
+      overlayContainer.appendChild(overlay);
       overlay.focus();
       activeOverlay = overlay;
     };
