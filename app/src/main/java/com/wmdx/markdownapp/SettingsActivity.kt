@@ -1296,9 +1296,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         inflater: android.view.LayoutInflater,
         container: android.view.ViewGroup?,
         savedInstanceState: Bundle?
-    ): android.view.View? {
+    ): android.view.View {
         val preferencesView = super.onCreateView(inflater, container, savedInstanceState)
-            ?: return null
         val context = requireContext()
         val density = context.resources.displayMetrics.density
         val wrapper = android.widget.LinearLayout(context).apply {
