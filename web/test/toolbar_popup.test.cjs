@@ -30,9 +30,8 @@ test('menu actions use distinct supplied icons for the three save actions and HT
   assert.match(insert, /icon: svgIcons\.footnote, title: 'Insert Footnote'/);
 });
 
-test('table toolbar group contains the insert-table control and contextual table action icons', () => {
-  assert.match(source, /togglePopupStrip\('table', tableBtn/);
-  assert.match(source, /icon: svgIcons\.insertTable,\s*title: 'Insert Table'/);
-  assert.match(source, /\.\.\.TABLE_ACTIONS\.map\(item =>/);
-  assert.match(source, /window\.wmdxTableActions\?\.run\(item\.id\)/);
+test('table toolbar opens the original insert-table picker', () => {
+  assert.match(source, /const tableBtn = bar\.querySelector\('#grp-btn-table'\)/);
+  assert.match(source, /tableBtn\.onclick = \(e\) => \{\s*e\.stopPropagation\(\);\s*showTableGridPickerModal\(\);/);
+  assert.doesNotMatch(source, /TABLE_ACTIONS|wmdxTableActions/);
 });

@@ -94,15 +94,12 @@ test('TableModel parses, merges, splits, and serializes GFM tables correctly', a
 
 test('WordProcessorTableWidget provides structural context menu items', () => {
   const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
-  const actions = fs.readFileSync(path.join(__dirname, '../src/tableActions.js'), 'utf8');
 
-  assert.ok(code.includes('TABLE_ACTIONS.forEach'), 'Context menu renders the shared icon action set');
-  assert.ok(code.includes("menu.setAttribute('role', 'toolbar')"), 'Context actions are exposed as a toolbar');
-  assert.ok(actions.includes("title: 'Add Row Below'"), 'Icon actions include Add Row Below');
-  assert.ok(actions.includes("title: 'Add Column Right'"), 'Icon actions include Add Column Right');
-  assert.ok(actions.includes("title: 'Delete Row'"), 'Icon actions include Delete Row');
-  assert.ok(actions.includes("title: 'Delete Column'"), 'Icon actions include Delete Column');
-  assert.ok(actions.includes("title: 'Merge Right'"), 'Icon actions include directional merge controls');
+  assert.ok(code.includes('Add Row Below'), 'Context menu includes Add Row Below');
+  assert.ok(code.includes('Add Column Right'), 'Context menu includes Add Column Right');
+  assert.ok(code.includes('Delete Row'), 'Context menu includes Delete Row');
+  assert.ok(code.includes('Delete Column'), 'Context menu includes Delete Column');
+  assert.ok(code.includes('Merge Right'), 'Context menu includes directional Merge');
   assert.ok(!code.includes("btnEdit.textContent = 'Edit Cell'"), 'Context menu excludes Edit Cell');
 });
 
@@ -148,32 +145,9 @@ test('WordProcessorTableWidget attaches long-press events and applies CSS variab
   const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
 
   assert.ok(code.includes('longPressTimer = setTimeout'), 'Long press timer is implemented');
-  assert.ok(code.includes('suppressClickAfterLongPress = true'), 'A long press does not trigger the following cell click/edit');
   assert.ok(code.includes('cancelLongPress'), 'Long press cancellation listener is implemented');
   assert.ok(code.includes('showContextMenu'), 'Context menu overlay is implemented');
   assert.ok(code.includes('var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)'), 'Table CSS variables for width and style are used');
-});
-
-test('merged-cell actions restore selection to the visible merged cell', async () => {
-  const { TableModel } = await import('../src/tableModule.js');
-  const { resolveVisibleCellCoordinates } = await import('../src/tableWidget.js');
-  const model = TableModel.parse([
-    '| Left | Right |',
-    '| :--- | :--- |',
-    '| First | Second |'
-  ].join('\n'));
-
-  model.mergeRect(1, 0, 1, 1);
-  assert.deepEqual(
-    resolveVisibleCellCoordinates(model.getRenderMatrix(), 1, 1),
-    { r: 1, c: 0 },
-    'A formerly right-hand cell resolves back to the visible spanning cell'
-  );
-  assert.deepEqual(
-    resolveVisibleCellCoordinates(model.getRenderMatrix(), 0, 1),
-    { r: 0, c: 1 },
-    'Unmerged cells retain their own coordinates'
-  );
 });
 
 test('wide rendered tables keep their content width inside a viewport-bounded horizontal scroller', () => {
@@ -203,19 +177,6 @@ test('wide rendered tables keep their content width inside a viewport-bounded ho
     indexHtml.includes('calc(100vw - 32px - var(--table-margin-left, 0px) - var(--table-margin-right, 0px))'),
     'The table scroller is capped to the viewport content width even if editor content expands'
   );
-});
-
-test('table action menu is icon-based, horizontal, and constrained to the visible viewport', () => {
-  const tableWidgetCode = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
-  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-  const actions = fs.readFileSync(path.join(__dirname, '../src/tableActions.js'), 'utf8');
-
-  assert.match(tableWidgetCode, /btn\.innerHTML = icon/);
-  assert.match(tableWidgetCode, /btn\.setAttribute\('aria-label', title\)/);
-  assert.match(tableWidgetCode, /window\.visualViewport/);
-  assert.match(indexHtml, /\.cm-wp-table-context-menu\s*\{[^}]*flex-flow:\s*row nowrap;[^}]*overflow-x:\s*auto;/s);
-  assert.match(indexHtml, /\.cm-wp-table-action:disabled/);
-  assert.equal((actions.match(/id: 'merge(?:Left|Right|Up|Down)'/g) ?? []).length, 4);
 });
 
 test('Table widget exports tableHeightEstimatesChanged and measureTableWidgetHeight', async () => {

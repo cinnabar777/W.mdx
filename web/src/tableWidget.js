@@ -1,45 +1,11 @@
 import { WidgetType } from '@codemirror/view';
 import { StateEffect } from '@codemirror/state';
 import { TableModel } from './tableModule.js';
-import { TABLE_ACTIONS } from './tableActions.js';
 
 export const tableHeightEstimatesChanged = StateEffect.define();
 
 const tableHeightCache = new Map();
 const tableResizeObserverState = new WeakMap();
-
-function tableActionBridge() {
-  if (typeof window === 'undefined') return null;
-  if (!window.wmdxTableActions) {
-    window.wmdxTableActions = {
-      context: null,
-      isEnabled(actionId) {
-        return Boolean(this.context?.isEnabled(actionId));
-      },
-      run(actionId) {
-        return this.context?.run(actionId) ?? false;
-      }
-    };
-  }
-  return window.wmdxTableActions;
-}
-
-export function resolveVisibleCellCoordinates(matrix, row, col) {
-  for (let candidateRow = 0; candidateRow <= row; candidateRow++) {
-    for (let candidateCol = 0; candidateCol <= col; candidateCol++) {
-      const candidate = matrix[candidateRow]?.[candidateCol];
-      if (
-        candidate &&
-        !candidate.isCovered &&
-        candidateRow + (candidate.rowSpan || 1) > row &&
-        candidateCol + (candidate.colSpan || 1) > col
-      ) {
-        return { r: candidateRow, c: candidateCol };
-      }
-    }
-  }
-  return { r: row, c: col };
-}
 
 const TABLE_HEIGHT_STYLE_PROPERTIES = [
   '--table-cell-padding',
@@ -164,7 +130,6 @@ export class WordProcessorTableWidget extends WidgetType {
     const colCount = this.model.getColCount();
 
     let selectedRange = null; // { startR, startC, endR, endC }
-    let activeCell = null;
     let activeOverlay = null;
 
     const toolbar = document.createElement('div');
@@ -191,7 +156,7 @@ export class WordProcessorTableWidget extends WidgetType {
 
     const table = document.createElement('table');
     table.className = 'cm-wp-table';
-    table.style.cssText = `width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))); font-family: var(--table-font-family, var(--body-font-family, inherit)); font-size: var(--table-font-size, 15px); font-weight: var(--table-font-weight, 400); letter-spacing: var(--table-letter-spacing, 0px); line-height: var(--table-line-height, 1.6); hyphens: var(--table-hyphens, none); border: ${borderCss}; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;`;
+    table.style.cssText = `width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))); font-family: var(--table-font-family, var(--body-font-family, inherit)); font-size: var(--table-font-size, 15px); font-weight: var(--table-font-weight, 400); letter-spacing: var(--table-letter-spacing, 0px); line-height: var(--table-line-height, 1.6); hyphens: var(--table-hyphens, none); border: ${borderCss};`;
 
     const renderTableCells = () => {
       table.innerHTML = '';
@@ -207,7 +172,7 @@ export class WordProcessorTableWidget extends WidgetType {
         if (cellData.isCovered) continue;
 
         const th = document.createElement('th');
-        th.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-header-bg, rgba(255,255,255,0.12)); color: var(--table-header-color, var(--text-color, #fff)); font-weight: var(--table-header-font-weight, 700); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation;`;
+        th.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-header-bg, rgba(255,255,255,0.12)); color: var(--table-header-color, var(--text-color, #fff)); font-weight: var(--table-header-font-weight, 700); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer;`;
         if (cellData.colSpan > 1) th.colSpan = cellData.colSpan;
         if (cellData.rowSpan > 1) th.rowSpan = cellData.rowSpan;
         th.dataset.row = '0';
@@ -228,7 +193,7 @@ export class WordProcessorTableWidget extends WidgetType {
           if (cellData.isCovered) continue;
 
           const td = document.createElement('td');
-          td.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-cell-bg, transparent); color: var(--table-cell-color, var(--text-color, #fff)); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation;`;
+          td.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-cell-bg, transparent); color: var(--table-cell-color, var(--text-color, #fff)); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer;`;
           if (cellData.colSpan > 1) td.colSpan = cellData.colSpan;
           if (cellData.rowSpan > 1) td.rowSpan = cellData.rowSpan;
           td.dataset.row = String(r);
@@ -278,7 +243,6 @@ export class WordProcessorTableWidget extends WidgetType {
       const scroller = view.scrollDOM;
       const scrollerRect = scroller.getBoundingClientRect();
       const originalTableTop = container.getBoundingClientRect().top - scrollerRect.top;
-      const selectedCell = activeCell ? { ...activeCell } : null;
       const saved = {
         scrollTop: scroller.scrollTop,
         scrollLeft: scroller.scrollLeft,
@@ -310,88 +274,21 @@ export class WordProcessorTableWidget extends WidgetType {
         // same vertical screen position it had when the action started.
         scroller.scrollTop = Math.max(0, scroller.scrollTop + liveTableTop - originalTableTop);
         scroller.scrollLeft = saved.scrollLeft;
-
-        if (selectedCell) {
-          const row = Math.min(selectedCell.r, this.model.getRowCount() - 1);
-          const col = Math.min(selectedCell.c, this.model.getColCount() - 1);
-          const visibleCell = resolveVisibleCellCoordinates(
-            this.model.getRenderMatrix(),
-            row,
-            col
-          );
-          const targetCell = liveContainer.querySelector(
-            `[data-row="${visibleCell.r}"][data-col="${visibleCell.c}"]`
-          );
-          targetCell?.click();
-        }
       }));
     };
 
-    const isContextActionEnabled = (actionId, r = activeCell?.r, c = activeCell?.c) => {
-      if (r == null || c == null) return false;
-      const currentRowCount = this.model.getRowCount();
-      const currentColCount = this.model.getColCount();
-      const currentMatrix = this.model.getRenderMatrix();
-      const cell = currentMatrix[r]?.[c];
-      if (!cell || cell.isCovered) return false;
-      if (actionId === 'insertRowBelow' || actionId === 'insertColumnRight') return true;
-      if (actionId === 'deleteRow') return currentRowCount > 1;
-      if (actionId === 'deleteColumn') return currentColCount > 1;
-      if (actionId === 'mergeLeft') return c > 0 && !currentMatrix[r]?.[c - 1]?.isCovered;
-      if (actionId === 'mergeRight') return c < currentColCount - 1 && !currentMatrix[r]?.[c + 1]?.isCovered;
-      if (actionId === 'mergeUp') return r > 0 && !currentMatrix[r - 1]?.[c]?.isCovered;
-      if (actionId === 'mergeDown') return r < currentRowCount - 1 && !currentMatrix[r + 1]?.[c]?.isCovered;
-      if (actionId === 'splitCell') return cell.colSpan > 1 || cell.rowSpan > 1;
-      return false;
-    };
-
-    const runContextAction = (actionId, r = activeCell?.r, c = activeCell?.c) => {
-      if (!isContextActionEnabled(actionId, r, c)) return false;
-      const actions = {
-        insertRowBelow: () => this.model.insertRow(r + 1),
-        insertColumnRight: () => this.model.insertCol(c + 1),
-        deleteRow: () => this.model.deleteRow(r),
-        deleteColumn: () => this.model.deleteCol(c),
-        mergeLeft: () => this.model.mergeDirection(r, c, 'left'),
-        mergeRight: () => this.model.mergeDirection(r, c, 'right'),
-        mergeUp: () => this.model.mergeDirection(r, c, 'up'),
-        mergeDown: () => this.model.mergeDirection(r, c, 'down'),
-        splitCell: () => this.model.splitCell(r, c)
-      };
-      const action = actions[actionId];
-      if (!action) return false;
-      runTableAction(action);
-      return true;
-    };
-
-    const publishActiveCell = () => {
-      const bridge = tableActionBridge();
-      if (!bridge) return;
-      bridge.context = {
-        owner: container,
-        isEnabled: actionId => isContextActionEnabled(actionId),
-        run: actionId => runContextAction(actionId)
-      };
-      window.dispatchEvent(new Event('wmdx-table-context-change'));
-    };
-
     let longPressTimer = null;
-    let suppressClickAfterLongPress = false;
 
     const attachCellEvents = (cellEl, r, c) => {
       const startLongPress = (e) => {
         if (activeOverlay) return;
-        e.stopPropagation();
         clearTimeout(longPressTimer);
-        suppressClickAfterLongPress = false;
         const startX = e.clientX || (e.touches && e.touches[0].clientX);
         const startY = e.clientY || (e.touches && e.touches[0].clientY);
 
         longPressTimer = setTimeout(() => {
-          longPressTimer = null;
-          suppressClickAfterLongPress = true;
           selectCell(r, c);
-          showContextMenu(cellEl, r, c, { x: startX, y: startY });
+          showContextMenu(cellEl, r, c);
         }, 500);
 
         const removeListeners = () => {
@@ -420,25 +317,9 @@ export class WordProcessorTableWidget extends WidgetType {
       };
 
       cellEl.addEventListener('pointerdown', startLongPress);
-      cellEl.addEventListener('contextmenu', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        clearTimeout(longPressTimer);
-        suppressClickAfterLongPress = true;
-        if (activeOverlay) return;
-        selectCell(r, c);
-        if (!document.querySelector('.cm-wp-table-context-menu')) {
-          showContextMenu(cellEl, r, c, { x: event.clientX, y: event.clientY });
-        }
-      });
 
       cellEl.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (suppressClickAfterLongPress) {
-          suppressClickAfterLongPress = false;
-          e.preventDefault();
-          return;
-        }
         clearTimeout(longPressTimer);
         if (selectedRange && selectedRange.startR === r && selectedRange.startC === c && !activeOverlay) {
           openCellEditor(cellEl, r, c);
@@ -448,85 +329,88 @@ export class WordProcessorTableWidget extends WidgetType {
       });
     };
 
-    const closeContextMenu = (menu) => {
-      if (!menu) return;
-      if (menu._dismissHandler) {
-        document.removeEventListener('pointerdown', menu._dismissHandler, true);
-      }
-      menu.remove();
-      if (container._tableContextMenu === menu) {
-        container._tableContextMenu = null;
-      }
-    };
-
-    const showContextMenu = (cellEl, r, c, point = null) => {
+    const showContextMenu = (cellEl, r, c) => {
       let existingMenu = document.querySelector('.cm-wp-table-context-menu');
-      if (existingMenu) closeContextMenu(existingMenu);
+      if (existingMenu) existingMenu.remove();
 
       const menu = document.createElement('div');
       menu.className = 'cm-wp-table-context-menu';
-      menu.setAttribute('role', 'toolbar');
-      menu.setAttribute('aria-label', 'Table actions');
+      menu.style.cssText = 'position: fixed; z-index: 10009; background: var(--table-menu-bg, #222428); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); max-height: 240px; overflow-y: auto;';
 
-      TABLE_ACTIONS.forEach(({ id, title, icon }) => {
+      const addBtn = (label, action, isDisabled = false) => {
         const btn = document.createElement('button');
-        const isDisabled = !isContextActionEnabled(id, r, c);
-        btn.type = 'button';
-        btn.className = 'cm-wp-table-action';
-        btn.dataset.action = id;
-        btn.title = title;
-        btn.setAttribute('aria-label', title);
-        btn.innerHTML = icon;
-        btn.disabled = isDisabled;
-        btn.addEventListener('click', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (btn.disabled) return;
-          closeContextMenu(menu);
-          runContextAction(id, r, c);
-        });
+        btn.textContent = label;
+        btn.style.cssText = `padding: 4px 10px; background: var(--table-menu-action-bg, rgba(255,255,255,0.12)); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: ${isDisabled ? 'var(--table-menu-disabled-color, #777)' : 'var(--table-menu-text, #fff)'}; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; opacity: ${isDisabled ? '0.5' : '1'};`;
+        if (isDisabled) {
+          btn.disabled = true;
+        } else {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            menu.remove();
+            runTableAction(action);
+          };
+          btn.addEventListener('pointerdown', () => {
+            btn.style.backgroundColor = 'var(--table-menu-pressed-bg, rgba(0, 120, 212, 0.4))';
+          });
+          btn.addEventListener('pointerup', () => {
+            btn.style.backgroundColor = 'var(--table-menu-action-bg, rgba(255,255,255,0.12))';
+          });
+          btn.addEventListener('pointercancel', () => {
+            btn.style.backgroundColor = 'var(--table-menu-action-bg, rgba(255,255,255,0.12))';
+          });
+        }
         menu.appendChild(btn);
-      });
+      };
+
+      addBtn('Add Row Below', () => this.model.insertRow(r + 1));
+      addBtn('Add Column Right', () => this.model.insertCol(c + 1));
+
+      if (rowCount > 1) {
+        addBtn('Delete Row', () => this.model.deleteRow(r));
+      }
+      if (colCount > 1) {
+        addBtn('Delete Column', () => this.model.deleteCol(c));
+      }
+
+      if (c < colCount - 1) addBtn('Merge Right', () => this.model.mergeDirection(r, c, 'right'));
+      if (c > 0) addBtn('Merge Left', () => this.model.mergeDirection(r, c, 'left'));
+      if (r < rowCount - 1) addBtn('Merge Down', () => this.model.mergeDirection(r, c, 'down'));
+      if (r > 0) addBtn('Merge Up', () => this.model.mergeDirection(r, c, 'up'));
+
+      const primaryCell = matrix[r][c];
+      const isMerged = primaryCell.colSpan > 1 || primaryCell.rowSpan > 1;
+      addBtn('Split Cell', () => this.model.splitCell(r, c), !isMerged);
 
       document.body.appendChild(menu);
+
       const cellRect = cellEl.getBoundingClientRect();
-      const viewport = window.visualViewport;
-      const viewportLeft = viewport?.offsetLeft ?? 0;
-      const viewportTop = viewport?.offsetTop ?? 0;
-      const viewportWidth = viewport?.width ?? window.innerWidth;
-      const viewportHeight = viewport?.height ?? window.innerHeight;
-      const menuHeight = menu.offsetHeight || 48;
-      const menuWidth = menu.offsetWidth || Math.min(viewportWidth - 16, 360);
-      const pointX = Number.isFinite(point?.x) ? point.x : cellRect.left;
-      const pointY = Number.isFinite(point?.y) ? point.y : cellRect.bottom;
-      const minLeft = viewportLeft + 8;
-      const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - menuWidth - 8);
-      const left = Math.max(minLeft, Math.min(pointX - 20, maxLeft));
-      const minTop = viewportTop + 8;
-      const maxTop = Math.max(minTop, viewportTop + viewportHeight - menuHeight - 8);
-      let top = pointY + 10;
-      if (top + menuHeight > viewportTop + viewportHeight - 8) {
-        top = pointY - menuHeight - 10;
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      const menuHeight = menu.offsetHeight || 180;
+      const menuWidth = menu.offsetWidth || 140;
+
+      let top = cellRect.bottom + 6;
+      if (top + menuHeight > viewportHeight - 10) {
+        top = Math.max(10, cellRect.top - menuHeight - 6);
       }
+
+      let left = Math.max(10, Math.min(cellRect.left, viewportWidth - menuWidth - 10));
+
       menu.style.top = `${top}px`;
       menu.style.left = `${left}px`;
 
       const closeMenu = (e) => {
         if (!menu.contains(e.target)) {
-          closeContextMenu(menu);
+          menu.remove();
+          window.removeEventListener('pointerdown', closeMenu);
         }
       };
-      menu._dismissHandler = closeMenu;
-      container._tableContextMenu = menu;
-      menu.style.top = `${Math.max(minTop, Math.min(top, maxTop))}px`;
-      document.addEventListener('pointerdown', closeMenu, true);
+      window.addEventListener('pointerdown', closeMenu);
     };
 
     const selectCell = (r, c) => {
-      activeCell = { r, c };
       selectedRange = { startR: r, startC: c, endR: r, endC: c };
       updateSelectionHighlight();
-      publishActiveCell();
     };
 
     const updateSelectionHighlight = () => {
@@ -568,16 +452,10 @@ export class WordProcessorTableWidget extends WidgetType {
     const openCellEditor = (cellEl, r, c) => {
       if (activeOverlay) activeOverlay.remove();
 
-      const overlayContainer = table.parentElement;
-      const cellRect = cellEl.getBoundingClientRect();
-      const containerRect = overlayContainer.getBoundingClientRect();
-      const top = cellRect.top - containerRect.top + overlayContainer.scrollTop - overlayContainer.clientTop;
-      const left = cellRect.left - containerRect.left + overlayContainer.scrollLeft - overlayContainer.clientLeft;
-
       const overlay = document.createElement('textarea');
       overlay.className = 'cm-wp-cell-editor';
       overlay.value = this.model.rows[r][c] || '';
-      overlay.style.cssText = `position: absolute; top: ${top}px; left: ${left}px; width: ${cellRect.width}px; height: ${cellRect.height}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px; -webkit-user-select: text; user-select: text;`;
+      overlay.style.cssText = `position: absolute; top: ${cellEl.offsetTop}px; left: ${cellEl.offsetLeft}px; width: ${cellEl.offsetWidth}px; height: ${cellEl.offsetHeight}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px;`;
 
       let isCommitted = false;
       const commitAndClose = (nextNavigation) => {
@@ -657,7 +535,7 @@ export class WordProcessorTableWidget extends WidgetType {
         commitAndClose();
       });
 
-      overlayContainer.appendChild(overlay);
+      table.parentElement.appendChild(overlay);
       overlay.focus();
       activeOverlay = overlay;
     };
@@ -763,18 +641,6 @@ export class WordProcessorTableWidget extends WidgetType {
   }
 
   destroy(dom) {
-    const bridge = tableActionBridge();
-    if (bridge?.context?.owner === dom) {
-      bridge.context = null;
-      window.dispatchEvent(new Event('wmdx-table-context-change'));
-    }
-
-    const menu = dom?._tableContextMenu;
-    if (menu?._dismissHandler) {
-      document.removeEventListener('pointerdown', menu._dismissHandler, true);
-    }
-    menu?.remove();
-
     const resizeState = tableResizeObserverState.get(dom);
     if (!resizeState) return;
 
