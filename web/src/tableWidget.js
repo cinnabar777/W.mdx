@@ -380,8 +380,8 @@ export class WordProcessorTableWidget extends WidgetType {
 
     const attachCellEvents = (cellEl, r, c) => {
       const startLongPress = (e) => {
-        if (activeOverlay) return;
         e.stopPropagation();
+        if (activeOverlay) return;
         clearTimeout(longPressTimer);
         suppressClickAfterLongPress = false;
         const startX = e.clientX || (e.touches && e.touches[0].clientX);
@@ -440,11 +440,21 @@ export class WordProcessorTableWidget extends WidgetType {
           return;
         }
         clearTimeout(longPressTimer);
-        if (selectedRange && selectedRange.startR === r && selectedRange.startC === c && !activeOverlay) {
-          openCellEditor(cellEl, r, c);
-        } else {
-          selectCell(r, c);
+        if (activeOverlay) {
+          const current = activeOverlay._cellMeta;
+          if (current?.row === r && current?.col === c) return;
+          const previousOverlay = activeOverlay;
+          previousOverlay._commitAndClose?.();
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            const liveContainer = view.dom.querySelector(
+              `.cm-wp-table-container[data-table-from="${this.from}"]`
+            );
+            liveContainer?.querySelector(`[data-row="${r}"][data-col="${c}"]`)?.click();
+          }));
+          return;
         }
+        selectCell(r, c);
+        openCellEditor(cellEl, r, c);
       });
     };
 
@@ -566,7 +576,7 @@ export class WordProcessorTableWidget extends WidgetType {
     };
 
     const openCellEditor = (cellEl, r, c) => {
-      if (activeOverlay) activeOverlay.remove();
+      if (activeOverlay) activeOverlay._commitAndClose?.();
 
       const overlay = document.createElement('textarea');
       overlay.className = 'cm-wp-cell-editor';
@@ -574,9 +584,14 @@ export class WordProcessorTableWidget extends WidgetType {
       overlay.style.cssText = `position: absolute; top: ${cellEl.offsetTop}px; left: ${cellEl.offsetLeft}px; width: ${cellEl.offsetWidth}px; height: ${cellEl.offsetHeight}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px; -webkit-user-select: text; user-select: text;`;
 
       let isCommitted = false;
+      let outsidePointerDownHandler = null;
       const commitAndClose = (nextNavigation) => {
         if (isCommitted) return;
         isCommitted = true;
+        if (outsidePointerDownHandler) {
+          document.removeEventListener('pointerdown', outsidePointerDownHandler, true);
+          outsidePointerDownHandler = null;
+        }
         const newValue = overlay.value;
         activeOverlay = null;
         overlay.remove();
@@ -621,12 +636,17 @@ export class WordProcessorTableWidget extends WidgetType {
           commitAndClose({ rowDelta: 0, colDelta: e.shiftKey ? -1 : 1 });
         } else if (e.key === 'Escape') {
           e.preventDefault();
+          if (outsidePointerDownHandler) {
+            document.removeEventListener('pointerdown', outsidePointerDownHandler, true);
+            outsidePointerDownHandler = null;
+          }
           activeOverlay = null;
           overlay.remove();
         }
       });
 
       overlay._cellMeta = { widget: this, model: this.model, row: r, col: c, container };
+      overlay._commitAndClose = commitAndClose;
 
       const updateCellSnap = () => {
         window._lastActiveCellSelection = {
@@ -654,6 +674,13 @@ export class WordProcessorTableWidget extends WidgetType {
       table.parentElement.appendChild(overlay);
       overlay.focus();
       activeOverlay = overlay;
+      outsidePointerDownHandler = event => {
+        if (overlay === event.target || overlay.contains(event.target)) return;
+        if (container.contains(event.target)) return;
+        if (event.target?.closest?.('.cm-wp-table-context-menu')) return;
+        commitAndClose();
+      };
+      document.addEventListener('pointerdown', outsidePointerDownHandler, true);
     };
 
     const navigateCell = (r, c, rowDelta, colDelta) => {
