@@ -150,7 +150,7 @@ test('WordProcessorTableWidget attaches long-press events and applies CSS variab
   assert.ok(code.includes('var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)'), 'Table CSS variables for width and style are used');
 });
 
-test('table width uses the pre-horizontal-overflow layout while the wrapper remains viewport constrained', () => {
+test('wide rendered tables keep their content width inside a viewport-bounded horizontal scroller', () => {
   const tableWidgetCode = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
@@ -161,13 +161,13 @@ test('table width uses the pre-horizontal-overflow layout while the wrapper rema
   );
   assert.match(
     tableWidgetCode,
-    /width:\s*100%;[^']*border-collapse/,
-    'The table uses the original full-container width instead of intrinsic max-content width'
+    /width:\s*max-content;\s*min-width:\s*100%/,
+    'The rendered table can overflow when its content is wider than the viewport'
   );
   assert.match(
     indexHtml,
-    /\.cm-wp-table\s*\{[^}]*width:\s*100%;[^}]*border-collapse/s,
-    'The shared table styling uses the original full-container width'
+    /\.cm-wp-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%/s,
+    'The shared table styling preserves intrinsic width while filling narrow tables'
   );
   assert.ok(
     indexHtml.includes('contain: inline-size;'),

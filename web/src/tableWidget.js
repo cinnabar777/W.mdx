@@ -6,6 +6,7 @@ export const tableHeightEstimatesChanged = StateEffect.define();
 
 const tableHeightCache = new Map();
 const tableResizeObserverState = new WeakMap();
+const tableCellSelectors = new WeakMap();
 
 const TABLE_HEIGHT_STYLE_PROPERTIES = [
   '--table-cell-padding',
@@ -156,7 +157,7 @@ export class WordProcessorTableWidget extends WidgetType {
 
     const table = document.createElement('table');
     table.className = 'cm-wp-table';
-    table.style.cssText = `width: 100%; border-collapse: collapse; table-layout: auto; color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))); font-family: var(--table-font-family, var(--body-font-family, inherit)); font-size: var(--table-font-size, 15px); font-weight: var(--table-font-weight, 400); letter-spacing: var(--table-letter-spacing, 0px); line-height: var(--table-line-height, 1.6); hyphens: var(--table-hyphens, none); border: ${borderCss};`;
+    table.style.cssText = `width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))); font-family: var(--table-font-family, var(--body-font-family, inherit)); font-size: var(--table-font-size, 15px); font-weight: var(--table-font-weight, 400); letter-spacing: var(--table-letter-spacing, 0px); line-height: var(--table-line-height, 1.6); hyphens: var(--table-hyphens, none); border: ${borderCss};`;
 
     const renderTableCells = () => {
       table.innerHTML = '';
@@ -278,15 +279,48 @@ export class WordProcessorTableWidget extends WidgetType {
     };
 
     let longPressTimer = null;
+    let longPressTriggered = false;
+
+    const handoffToCell = (row, col, editor = activeOverlay) => {
+      if (!editor) return false;
+      const current = editor._cellMeta;
+      if (current?.row === row && current?.col === col) return false;
+
+      clearTimeout(longPressTimer);
+      editor._commitAndClose?.();
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const liveContainer = view.dom.querySelector(
+          `.cm-wp-table-container[data-table-from="${this.from}"]`
+        );
+        const targetCell = liveContainer?.querySelector(
+          `[data-row="${row}"][data-col="${col}"]`
+        );
+        tableCellSelectors.get(targetCell)?.();
+      }));
+      return true;
+    };
 
     const attachCellEvents = (cellEl, r, c) => {
+      tableCellSelectors.set(cellEl, () => selectCell(r, c));
+
       const startLongPress = (e) => {
-        if (activeOverlay) return;
+        e.stopPropagation();
         clearTimeout(longPressTimer);
+
+        if (activeOverlay) {
+          const current = activeOverlay._cellMeta;
+          if (current?.row === r && current?.col === c) return;
+          e.preventDefault();
+          handoffToCell(r, c);
+          return;
+        }
+
+        longPressTriggered = false;
         const startX = e.clientX || (e.touches && e.touches[0].clientX);
         const startY = e.clientY || (e.touches && e.touches[0].clientY);
 
         longPressTimer = setTimeout(() => {
+          longPressTriggered = true;
           selectCell(r, c);
           showContextMenu(cellEl, r, c);
         }, 500);
@@ -316,12 +350,20 @@ export class WordProcessorTableWidget extends WidgetType {
         window.addEventListener('pointercancel', cancelLongPress, { once: true });
       };
 
-      cellEl.addEventListener('pointerdown', startLongPress);
+      cellEl.addEventListener('pointerdown', startLongPress, true);
 
       cellEl.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (!cellEl.isConnected) return;
+        if (longPressTriggered) {
+          longPressTriggered = false;
+          e.preventDefault();
+          return;
+        }
         clearTimeout(longPressTimer);
-        if (selectedRange && selectedRange.startR === r && selectedRange.startC === c && !activeOverlay) {
+        if (activeOverlay) {
+          if (handoffToCell(r, c)) e.preventDefault();
+        } else if (selectedRange && selectedRange.startR === r && selectedRange.startC === c) {
           openCellEditor(cellEl, r, c);
         } else {
           selectCell(r, c);
@@ -452,10 +494,18 @@ export class WordProcessorTableWidget extends WidgetType {
     const openCellEditor = (cellEl, r, c) => {
       if (activeOverlay) activeOverlay.remove();
 
+      const overlayContainer = container;
+      const cellRect = cellEl.getBoundingClientRect();
+      const containerRect = overlayContainer.getBoundingClientRect();
+      const top = cellRect.top - containerRect.top +
+        overlayContainer.scrollTop - overlayContainer.clientTop;
+      const left = cellRect.left - containerRect.left +
+        overlayContainer.scrollLeft - overlayContainer.clientLeft;
+
       const overlay = document.createElement('textarea');
       overlay.className = 'cm-wp-cell-editor';
       overlay.value = this.model.rows[r][c] || '';
-      overlay.style.cssText = `position: absolute; top: ${cellEl.offsetTop}px; left: ${cellEl.offsetLeft}px; width: ${cellEl.offsetWidth}px; height: ${cellEl.offsetHeight}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px;`;
+      overlay.style.cssText = `position: absolute; top: ${top}px; left: ${left}px; width: ${cellRect.width}px; height: ${cellRect.height}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px;`;
 
       let isCommitted = false;
       const commitAndClose = (nextNavigation) => {
@@ -511,6 +561,7 @@ export class WordProcessorTableWidget extends WidgetType {
       });
 
       overlay._cellMeta = { widget: this, model: this.model, row: r, col: c, container };
+      overlay._commitAndClose = commitAndClose;
 
       const updateCellSnap = () => {
         window._lastActiveCellSelection = {
