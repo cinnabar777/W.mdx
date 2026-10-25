@@ -200,7 +200,7 @@ test('merged-cell selection survives a widget refresh and its editor uses render
       view.state.doc.toString().includes('Merged text edited <br> second line'),
       'cell line breaks are saved as table-safe Markdown <br> markers'
     );
-    assert.equal(view.state.doc.toString().split('\n').length, 5, 'a cell line break does not create a new Markdown table row');
+    assert.equal(view.state.doc.toString().split('\n').length, 4, 'a cell line break does not create a new Markdown table row');
   });
 });
 

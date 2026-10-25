@@ -254,6 +254,7 @@ object AppDiagnostics {
     }
 
     fun report(context: Context): String {
+        if (!BuildConfig.DEBUG) return "Diagnostics are available in debug builds only."
         val webview = if (Build.VERSION.SDK_INT >= 26) {
             android.webkit.WebView.getCurrentWebViewPackage()?.versionName
         } else "unknown"
@@ -292,6 +293,7 @@ object AppDiagnostics {
     }
 
     fun show(context: Context) {
+        if (!BuildConfig.DEBUG) return
         val summary = report(context)
         val captureActive = isNavigationCaptureActive(context)
         android.app.AlertDialog.Builder(context)
@@ -310,6 +312,7 @@ object AppDiagnostics {
     }
 
     private fun shareCapture(context: Context, summary: String) {
+        if (!BuildConfig.DEBUG) return
         val exports = File(context.cacheDir, "diagnostic_exports").apply { mkdirs() }
         val archive = File(exports, "wmdx-diagnostics-${SystemClock.elapsedRealtime()}.zip")
         Thread {

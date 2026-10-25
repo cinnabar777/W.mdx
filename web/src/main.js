@@ -8,8 +8,10 @@ import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import {
   buildFootnoteDecorations,
+  footnoteEditRequiresReparse,
   formatFootnoteDefinition,
-  nextFootnoteLabel
+  nextFootnoteLabel,
+  updateFootnoteDecorationsFromCached
 } from './footnotes.js';
 import {
   recordDecorationBuild,
@@ -2121,17 +2123,32 @@ const footnoteStateField = StateField.define({
   },
   update(current, tr) {
     const refresh = tr.effects.some(effect => effect.is(typographySettingsEffect));
+    const revealRefresh =
+      currentEditorMode === 'live_preview' &&
+      tr.selectionSet &&
+      current.hasFootnotes;
     if (
       !tr.docChanged &&
       !refresh &&
-      !(currentEditorMode === 'live_preview' && tr.selectionSet && current.hasFootnotes)
+      !revealRefresh
     ) {
       return current;
     }
-    return buildFootnoteDecorations(tr.state, {
+    const options = {
       mode: currentEditorMode,
       onEdit: definition => openFootnoteInsertionDialog({ definition }),
       onNavigate: navigateFootnote
+    };
+    if (!refresh && !footnoteEditRequiresReparse(current, tr, currentEditorMode)) {
+      return updateFootnoteDecorationsFromCached(
+        tr.state,
+        current,
+        tr.changes,
+        options
+      );
+    }
+    return buildFootnoteDecorations(tr.state, {
+      ...options
     });
   },
   provide: field =>

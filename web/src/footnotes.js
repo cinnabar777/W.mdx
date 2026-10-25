@@ -2,6 +2,7 @@ import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 
 const CODE_NODE_NAMES = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
+const FOOTNOTE_STRUCTURE_CHARS = /[\[\]^:`~\r\n]/;
 
 function isInsideCode(state, position) {
   const probe = Math.max(0, Math.min(position, state.doc.length));
@@ -211,27 +212,27 @@ class FootnoteDefinitionWidget extends WidgetType {
   }
 }
 
-export function buildFootnoteDecorations(state, { mode, onEdit, onNavigate } = {}) {
+function buildFootnoteDecorationsFromParsed(
+  state,
+  footnotes,
+  { mode, onEdit, onNavigate } = {}
+) {
   if (mode === 'source') {
     return {
       decorations: Decoration.none,
       hiddenSyntaxRanges: Decoration.none,
-      hasFootnotes: false
+      hasFootnotes: false,
+      footnotes: { definitions: [], references: [] }
     };
   }
 
-  const text = state.doc.toString();
-  const footnotes = parseFootnotes(
-    text,
-    position => isInsideCode(state, position),
-    position => isInsideFencedCode(state, position)
-  );
   const hasFootnotes = footnotes.definitions.length > 0 || footnotes.references.length > 0;
   if (!hasFootnotes) {
     return {
       decorations: Decoration.none,
       hiddenSyntaxRanges: Decoration.none,
-      hasFootnotes: false
+      hasFootnotes: false,
+      footnotes
     };
   }
 
@@ -300,6 +301,57 @@ export function buildFootnoteDecorations(state, { mode, onEdit, onNavigate } = {
     hiddenSyntaxRanges: hiddenSyntaxRanges.length
       ? Decoration.set(hiddenSyntaxRanges, true)
       : Decoration.none,
-    hasFootnotes: true
+    hasFootnotes: true,
+    footnotes
   };
+}
+
+export function buildFootnoteDecorations(state, options = {}) {
+  const footnotes = options.mode === 'source'
+    ? { definitions: [], references: [] }
+    : parseFootnotes(
+        state.doc.toString(),
+        position => isInsideCode(state, position),
+        position => isInsideFencedCode(state, position)
+      );
+  return buildFootnoteDecorationsFromParsed(state, footnotes, options);
+}
+
+export function footnoteEditRequiresReparse(current, transaction, mode) {
+  if (!transaction.docChanged || mode === 'source') return false;
+
+  const footnotes = current?.footnotes || { definitions: [], references: [] };
+  const noteRanges = [...footnotes.definitions, ...footnotes.references];
+  let requiresReparse = false;
+
+  transaction.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+    if (requiresReparse) return;
+
+    const oldText = transaction.startState.doc.sliceString(fromA, toA);
+    const newText = transaction.state.doc.sliceString(fromB, toB);
+    if (FOOTNOTE_STRUCTURE_CHARS.test(oldText + newText)) {
+      requiresReparse = true;
+      return;
+    }
+
+    if (noteRanges.some(range => fromA <= range.to && toA >= range.from)) {
+      requiresReparse = true;
+    }
+  });
+
+  return requiresReparse;
+}
+
+export function updateFootnoteDecorationsFromCached(state, current, changes, options = {}) {
+  const currentFootnotes = current?.footnotes || { definitions: [], references: [] };
+  const mapRange = range => ({
+    ...range,
+    from: changes.mapPos(range.from, -1),
+    to: changes.mapPos(range.to, 1)
+  });
+  const footnotes = {
+    definitions: currentFootnotes.definitions.map(mapRange),
+    references: currentFootnotes.references.map(mapRange)
+  };
+  return buildFootnoteDecorationsFromParsed(state, footnotes, options);
 }

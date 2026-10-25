@@ -53,6 +53,53 @@ test('footnote parser ignores references and definitions in code when given synt
   assert.equal(parsed.references[0].label, '1');
 });
 
+test('ordinary edits reuse cached footnote positions; note edits trigger a full parse', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const {
+    buildFootnoteDecorations,
+    footnoteEditRequiresReparse,
+    updateFootnoteDecorationsFromCached
+  } = await import('../src/footnotes.js');
+  const markdown = 'Ordinary body [^1].\n\n[^1]: note\n\nMore body';
+  const state = EditorState.create({ doc: markdown });
+  const options = { mode: 'wysiwyg' };
+  const current = buildFootnoteDecorations(state, options);
+
+  const ordinaryEdit = state.update({
+    changes: { from: markdown.indexOf('Ordinary') + 3, insert: 'x' }
+  });
+  assert.equal(footnoteEditRequiresReparse(current, ordinaryEdit, 'wysiwyg'), false);
+  const mapped = updateFootnoteDecorationsFromCached(
+    ordinaryEdit.state,
+    current,
+    ordinaryEdit.changes,
+    options
+  );
+  assert.equal(
+    mapped.footnotes.references[0].from,
+    current.footnotes.references[0].from + 1,
+    'reference positions shift with ordinary text inserted before them'
+  );
+  assert.equal(
+    mapped.footnotes.definitions[0].from,
+    current.footnotes.definitions[0].from + 1,
+    'definition positions shift with ordinary text inserted before them'
+  );
+
+  const referenceStart = markdown.indexOf('[^1]');
+  const editReference = state.update({
+    changes: { from: referenceStart + 2, to: referenceStart + 3, insert: '2' }
+  });
+  assert.equal(footnoteEditRequiresReparse(current, editReference, 'wysiwyg'), true);
+
+  const plainState = EditorState.create({ doc: 'Plain text' });
+  const noFootnotes = buildFootnoteDecorations(plainState, options);
+  const addReference = plainState.update({
+    changes: { from: 0, insert: '[^new]' }
+  });
+  assert.equal(footnoteEditRequiresReparse(noFootnotes, addReference, 'wysiwyg'), true);
+});
+
 test('footnote labels remain unique and multiline definitions use Markdown continuation indentation', async () => {
   const { formatFootnoteDefinition, nextFootnoteLabel } = await import('../src/footnotes.js');
 

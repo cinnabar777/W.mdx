@@ -238,9 +238,12 @@ class SettingsFragment : BaseSettingsFragment() {
             true
         }
 
-        findPreference<Preference>("pref_page_diagnostics")?.setOnPreferenceClickListener {
-            context?.let { AppDiagnostics.show(it) }
-            true
+        findPreference<Preference>("pref_page_diagnostics")?.apply {
+            isVisible = BuildConfig.DEBUG
+            setOnPreferenceClickListener {
+                context?.let { AppDiagnostics.show(it) }
+                true
+            }
         }
     }
 

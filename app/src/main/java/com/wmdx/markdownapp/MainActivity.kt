@@ -1684,26 +1684,30 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun reportDiagnostic(event: String, detail: String = "") {
-            AppDiagnostics.record(this@MainActivity, event, detail)
+            if (BuildConfig.DEBUG) {
+                AppDiagnostics.record(this@MainActivity, event, detail)
+            }
         }
 
         @JavascriptInterface
         fun reportNavigationTrace(jsonRecord: String?) {
-            if (jsonRecord != null && jsonRecord.length <= 16 * 1024) {
+            if (BuildConfig.DEBUG && jsonRecord != null && jsonRecord.length <= 16 * 1024) {
                 AppDiagnostics.recordNavigationTrace(this@MainActivity, jsonRecord)
             }
         }
 
         @JavascriptInterface
         fun reportNavigationTraceBatch(jsonBatch: String?) {
-            if (jsonBatch != null) {
+            if (BuildConfig.DEBUG && jsonBatch != null) {
                 AppDiagnostics.recordNavigationTraceBatch(this@MainActivity, jsonBatch)
             }
         }
 
         @JavascriptInterface
         fun captureDiagnosticSnapshot(reason: String?) {
-            AppDiagnostics.captureWindowSnapshot(this@MainActivity, webView, reason ?: "webview-request")
+            if (BuildConfig.DEBUG) {
+                AppDiagnostics.captureWindowSnapshot(this@MainActivity, webView, reason ?: "webview-request")
+            }
         }
 
         @JavascriptInterface

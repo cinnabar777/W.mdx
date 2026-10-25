@@ -84,7 +84,7 @@ test('installed device fonts override custom body and heading font files when se
   assert.ok(source.includes('const familyValue = toCssFontFamily(deviceFont)'));
 });
 
-test('detailed navigation capture is explicitly opt-in instead of running during normal editing', () => {
+test('detailed navigation capture is opt-in in debug and disabled in release builds', () => {
   const diagnosticsPath = path.join(
     __dirname,
     '../../app/src/main/java/com/wmdx/markdownapp/AppDiagnostics.kt'
@@ -92,8 +92,13 @@ test('detailed navigation capture is explicitly opt-in instead of running during
   const diagnosticsSource = fs.readFileSync(diagnosticsPath, 'utf8');
   assert.ok(diagnosticsSource.includes('putBoolean("capture_opt_in", true)'));
   assert.ok(diagnosticsSource.includes('prefs.getBoolean("capture_opt_in", false)'));
+  assert.ok(diagnosticsSource.includes('if (!BuildConfig.DEBUG) return'));
+  assert.ok(diagnosticsSource.includes('if (!isNavigationCaptureActive(activity)) return'));
   assert.ok(mainActivitySource.includes('setNavigationDiagnosticsEnabled'));
   assert.ok(mainActivitySource.includes('window.editorBridge?.setNavigationDiagnosticsEnabled?.($captureActive)'));
+  assert.ok(mainActivitySource.includes('if (BuildConfig.DEBUG && jsonRecord != null'));
+  assert.ok(mainActivitySource.includes('if (BuildConfig.DEBUG && jsonBatch != null)'));
+  assert.ok(settingsActivitySource.includes('isVisible = BuildConfig.DEBUG'));
 });
 
 test('document rename requests only selected-folder access before offering Save As', () => {
