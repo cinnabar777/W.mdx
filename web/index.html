@@ -311,142 +311,9 @@
       overflow: hidden;
     }
 
-    /* Floating Rounded Sub-Toolbar Strip */
-    .popup-toolbar-strip {
-      position: fixed;
-      bottom: calc(var(--toolbar-height) + 10px);
-      left: 50%;
-      transform: translateX(-50%);
-      box-sizing: border-box !important;
-      width: calc(100vw - 16px) !important;
-      background-color: #282a2e !important;
-      color: #ffffff !important;
-      border: 1px solid rgba(255, 255, 255, 0.15) !important;
-      border-radius: 14px !important;
-      padding: 6px 10px !important;
-      display: flex !important;
-      flex-wrap: nowrap !important;
-      align-items: center !important;
-      justify-content: flex-start !important;
-      gap: 6px !important;
-      z-index: 10004 !important;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
-      max-width: calc(100vw - 16px) !important;
-      min-width: 0 !important;
-      overflow-x: scroll !important;
-      overflow-y: hidden !important;
-      white-space: nowrap;
-      touch-action: pan-x;
-      overscroll-behavior-x: contain;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      transition: opacity 0.2s ease;
-    }
-
-    .popup-toolbar-strip::-webkit-scrollbar {
-      display: none;
-    }
-
-    body.light-theme .popup-toolbar-strip {
-      background-color: #f0f2f5 !important;
-      color: #111111 !important;
-      border: 1px solid rgba(0, 0, 0, 0.15) !important;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
-    }
-
-    .popup-toolbar-strip.hidden {
-      display: none !important;
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .popup-strip-btn {
-      background: transparent !important;
-      color: var(--toolbar-icon-color) !important;
-      border: none !important;
-      font-size: 15px !important;
-      font-weight: 600 !important;
-      padding: 6px 10px !important;
-      border-radius: 8px !important;
-      cursor: pointer !important;
-      display: inline-flex !important;
-      flex: 0 0 auto !important;
-      align-items: center !important;
-      justify-content: center !important;
-      white-space: nowrap !important;
-      user-select: none !important;
-      gap: 4px !important;
-    }
-
-    .popup-strip-btn svg {
-      stroke: var(--toolbar-icon-color) !important;
-    }
-
-    .popup-strip-btn:active,
-    .popup-strip-btn.active {
-      background-color: rgba(255, 255, 255, 0.2) !important;
-    }
-
-    .popup-strip-btn.active {
-      color: var(--toolbar-active-icon-color, var(--toolbar-icon-color)) !important;
-      outline: 1px solid var(--toolbar-active-icon-color, var(--toolbar-icon-color));
-      outline-offset: -1px;
-    }
-
-    .popup-strip-btn:disabled,
-    .popup-strip-btn.disabled {
-      opacity: 0.4 !important;
-      cursor: not-allowed !important;
-    }
-
     /* Toolbar Toggle Rule: Hide bottom control bar when body.toolbar-hidden is active */
     body.toolbar-hidden .grouped-control-bar {
       display: none !important;
-    }
-
-    /* Bottom 7-Key Grouped Control Bar */
-    .grouped-control-bar {
-      position: relative !important;
-      z-index: 10003 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: space-around !important;
-      height: var(--toolbar-height) !important;
-      padding: 4px !important;
-      box-sizing: border-box !important;
-      background-color: var(--toolbar-bg) !important;
-      border: none !important;
-      border-top: none !important;
-      padding-right: 44px !important; /* Space for corner toggle button */
-    }
-
-    .grouped-key-btn {
-      background: transparent !important;
-      color: var(--toolbar-icon-color) !important;
-      border: none !important;
-      border-radius: 8px !important;
-      height: calc(var(--toolbar-height) - 12px) !important;
-      padding: 0 10px !important;
-      cursor: pointer !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      flex: 1 !important;
-      max-width: 60px !important;
-      user-select: none !important;
-    }
-
-    .grouped-key-btn svg {
-      stroke: var(--toolbar-icon-color) !important;
-    }
-
-    .grouped-key-btn:active,
-    .grouped-key-btn.active {
-      background-color: var(--button-hover) !important;
-    }
-
-    .grouped-key-btn.has-active-syntax {
-      background-color: var(--button-hover) !important;
     }
 
     /* Line Wrap Toggle Rule */
@@ -479,13 +346,6 @@
     .cm-editor .cm-content .cm-line *::selection {
       background-color: var(--selection-highlight-bg, rgba(0, 120, 212, 0.4)) !important;
       color: var(--selection-highlight-text, inherit) !important;
-    }
-
-    /* Active Toolbar Icon Accent Color */
-    .grouped-key-btn.active svg,
-    .grouped-key-btn.has-active-syntax svg,
-    .popup-strip-btn.active svg {
-      stroke: var(--toolbar-active-icon-color, var(--toolbar-icon-color)) !important;
     }
 
     /* Slide-over Table of Contents (TOC) Panel */
@@ -1861,6 +1721,7 @@
       color: #ffffff;
     }
   </style>
+  <link rel="stylesheet" href="./toolbar.css">
 </head>
 <body class="toolbar-hidden">
   <div id="editor-container">

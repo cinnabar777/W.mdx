@@ -1,0 +1,268 @@
+/* Shared by the editor toolbar and its settings preview. */
+.popup-toolbar-strip {
+  position: fixed;
+  bottom: calc(var(--toolbar-height, 48px) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box !important;
+  width: calc(100vw - 16px) !important;
+  background-color: #282a2e !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 14px !important;
+  padding: 6px 10px !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  z-index: 10004 !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+  max-width: calc(100vw - 16px) !important;
+  min-width: 0 !important;
+  overflow-x: scroll !important;
+  overflow-y: hidden !important;
+  white-space: nowrap;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  transition: opacity 0.2s ease;
+}
+
+.popup-toolbar-strip::-webkit-scrollbar {
+  display: none;
+}
+
+body.light-theme .popup-toolbar-strip {
+  background-color: #f0f2f5 !important;
+  color: #111 !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+}
+
+.popup-toolbar-strip.hidden {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.popup-strip-btn {
+  background: transparent !important;
+  color: var(--toolbar-icon-color, #fff) !important;
+  border: none !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+  user-select: none !important;
+  gap: 4px !important;
+}
+
+.popup-strip-btn svg {
+  color: var(--toolbar-icon-color, #fff) !important;
+  stroke: var(--toolbar-icon-color, #fff) !important;
+}
+
+.popup-strip-btn:active,
+.popup-strip-btn.active {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.popup-strip-btn.active {
+  color: var(--toolbar-active-icon-color, var(--toolbar-icon-color, #fff)) !important;
+  outline: 1px solid var(--toolbar-active-icon-color, var(--toolbar-icon-color, #fff));
+  outline-offset: -1px;
+}
+
+.popup-strip-btn:disabled,
+.popup-strip-btn.disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+}
+
+.grouped-control-bar {
+  position: relative !important;
+  z-index: 10003 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-around !important;
+  height: var(--toolbar-height, 48px) !important;
+  padding: var(--toolbar-padding, 4px) !important;
+  box-sizing: border-box !important;
+  background-color: var(--toolbar-bg, #121212) !important;
+  border: none !important;
+  border-top: none !important;
+  padding-right: calc(var(--toolbar-padding, 4px) + 40px) !important;
+}
+
+.grouped-key-btn {
+  background-color: var(--toolbar-key-bg-color, transparent) !important;
+  color: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  height: calc(var(--toolbar-height, 48px) - 12px) !important;
+  padding: 0 10px !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 1 !important;
+  max-width: 60px !important;
+  user-select: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.grouped-key-btn svg {
+  color: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
+  stroke: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
+}
+
+.grouped-key-btn:active,
+.grouped-key-btn.active {
+  background-color: var(--toolbar-key-active-bg-color, var(--button-hover, rgba(255, 255, 255, 0.16))) !important;
+}
+
+.grouped-key-btn.has-active-syntax {
+  background-color: var(--toolbar-key-active-bg-color, var(--button-hover, rgba(255, 255, 255, 0.16))) !important;
+}
+
+.grouped-key-btn.active svg,
+.grouped-key-btn.has-active-syntax svg,
+.popup-strip-btn.active svg {
+  stroke: var(--toolbar-active-icon-color, var(--toolbar-icon-color, #fff)) !important;
+}
+
+/* The settings view adds a tray around the same real toolbar buttons. */
+.toolbar-preview-shell {
+  box-sizing: border-box;
+  padding: 14px;
+  color: var(--toolbar-preview-text, #fff);
+  background: var(--toolbar-preview-surface, #000);
+  font: 14px/1.4 system-ui, sans-serif;
+}
+
+.toolbar-preview-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.toolbar-preview-hint {
+  margin: 0 0 12px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+}
+
+.toolbar-preview-stage {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+}
+
+.toolbar-preview-stage .grouped-control-bar {
+  padding-right: var(--toolbar-padding, 4px) !important;
+}
+
+.toolbar-preview-stage .grouped-key-btn,
+.toolbar-preview-tray .grouped-key-btn {
+  flex: 0 0 44px !important;
+  max-width: 44px !important;
+}
+
+.toolbar-preview-key {
+  touch-action: none;
+  cursor: grab !important;
+}
+
+.toolbar-preview-key.is-selected {
+  outline: 2px solid var(--toolbar-active-icon-color, #00e5ff) !important;
+  outline-offset: -2px;
+}
+
+.toolbar-preview-key.is-dragging {
+  opacity: 0.45 !important;
+}
+
+.toolbar-preview-key.drop-target,
+.toolbar-preview-tray.drop-target {
+  outline: 2px dashed var(--toolbar-active-icon-color, #00e5ff);
+  outline-offset: -2px;
+}
+
+.toolbar-preview-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 54px;
+  margin-top: 10px;
+  padding: 5px;
+  box-sizing: border-box;
+  align-items: center;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+}
+
+.toolbar-preview-tray:empty::before {
+  content: "Hold and drag keys here to remove them from the toolbar";
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 11px;
+  padding: 0 6px;
+}
+
+.toolbar-preview-tray .grouped-key-btn {
+  flex: 0 0 42px !important;
+  max-width: 42px !important;
+}
+
+.toolbar-preview-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.toolbar-preview-options button {
+  min-height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
+.toolbar-preview-options button:disabled {
+  opacity: 0.45;
+}
+
+.toolbar-preview-preserve-colors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+body.light-theme .toolbar-preview-shell {
+  --toolbar-preview-text: #111;
+  --toolbar-preview-surface: #fff;
+}
+
+body.light-theme .toolbar-preview-hint {
+  color: rgba(0, 0, 0, 0.62);
+}
+
+body.light-theme .toolbar-preview-tray {
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .toolbar-preview-tray:empty::before {
+  color: rgba(0, 0, 0, 0.56);
+}

@@ -30,10 +30,25 @@ async function build() {
     sourcemap: false
   });
 
+  await esbuild.build({
+    entryPoints: [path.join(webDir, 'src/toolbarSettingsPreview.js')],
+    bundle: true,
+    outfile: path.join(outDir, 'toolbar-settings.js'),
+    format: 'iife',
+    target: ['es2020', 'chrome80'],
+    minify: false,
+    sourcemap: false
+  });
+
   // Copy index.html into www directory and reference bundle.js
   let htmlContent = fs.readFileSync(path.join(webDir, 'index.html'), 'utf8');
   htmlContent = htmlContent.replace('./src/main.js', './bundle.js');
   fs.writeFileSync(path.join(outDir, 'index.html'), htmlContent);
+  fs.copyFileSync(
+    path.join(webDir, 'toolbar-settings-preview.html'),
+    path.join(outDir, 'toolbar-settings-preview.html')
+  );
+  fs.copyFileSync(path.join(webDir, 'toolbar.css'), path.join(outDir, 'toolbar.css'));
 
   console.log('Web bundle build complete! Assets written to:', outDir);
 }

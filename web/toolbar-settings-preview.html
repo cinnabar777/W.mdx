@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="./toolbar.css">
+  <style>
+    :root {
+      color-scheme: dark;
+      --toolbar-bg: #121212;
+      --toolbar-icon-color: #fff;
+      --toolbar-active-icon-color: #00e5ff;
+      --toolbar-height: 48px;
+      --button-hover: rgba(255, 255, 255, 0.16);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #000;
+      font-family: system-ui, sans-serif;
+    }
+    .toolbar-preview-status {
+      min-height: 16px;
+      padding-top: 5px;
+      color: #70dba2;
+      font-size: 11px;
+    }
+    .toolbar-preview-editor {
+      display: none;
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 8px;
+      background: rgba(255,255,255,.04);
+    }
+    .toolbar-preview-editor.visible { display: block; }
+    .toolbar-preview-editor h2 {
+      margin: 0 0 8px;
+      font-size: 13px;
+    }
+    .toolbar-preview-color-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin: 6px 0;
+      font-size: 12px;
+    }
+    .toolbar-preview-color-row button {
+      width: 40px;
+      height: 32px;
+      border: 1px solid rgba(255,255,255,.3);
+      border-radius: 8px;
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+  <main class="toolbar-preview-shell">
+    <h1 class="toolbar-preview-title">Toolbar preview</h1>
+    <p class="toolbar-preview-hint">Hold a key and drag to reorder it. Drag to the tray to hide it. Tap a key to customize its colors.</p>
+    <div class="toolbar-preview-stage">
+      <div id="toolbar-preview" class="grouped-control-bar" aria-label="Bottom toolbar preview"></div>
+    </div>
+    <div id="toolbar-holding-tray" class="toolbar-preview-tray" aria-label="Hidden toolbar keys"></div>
+    <div id="toolbar-preview-editor" class="toolbar-preview-editor">
+      <h2 id="toolbar-preview-selected-title">Selected key</h2>
+      <div class="toolbar-preview-color-row">
+        <span>Icon color</span>
+        <button id="toolbar-icon-color" type="button" aria-label="Change icon color"></button>
+      </div>
+      <div class="toolbar-preview-color-row">
+        <span>Key background</span>
+        <button id="toolbar-background-color" type="button" aria-label="Change key background color"></button>
+      </div>
+      <div class="toolbar-preview-color-row">
+        <span>Active background</span>
+        <button id="toolbar-active-background-color" type="button" aria-label="Change active key background color"></button>
+      </div>
+      <label class="toolbar-preview-preserve-colors">
+        <input id="toolbar-preserve-svg-colors" type="checkbox">
+        Preserve this custom icon’s original colors
+      </label>
+      <div class="toolbar-preview-options">
+        <button id="toolbar-reset-key-style" type="button">Reset key colors</button>
+        <button id="toolbar-reset-layout" type="button">Restore default layout</button>
+      </div>
+    </div>
+    <div class="toolbar-preview-status" id="toolbar-preview-status" aria-live="polite"></div>
+  </main>
+  <script src="./toolbar-settings.js"></script>
+</body>
+</html>

@@ -182,7 +182,7 @@ test('an empty inline-format pair can be toggled off at the caret', async () => 
 
 test('popup toolbar items expose syntax state and follow editor selection updates', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
-  const styles = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const styles = fs.readFileSync(path.join(__dirname, '../toolbar.css'), 'utf8');
   assert.ok(source.includes('data-toolbar-command'), 'popup controls are keyed by the syntax they edit');
   assert.ok(source.includes('refreshToolbarSyntaxState(update.view)'), 'selection and document changes refresh active controls');
   assert.ok(source.includes('button.setAttribute(\'aria-pressed\', String(active))'), 'active state is accessible');

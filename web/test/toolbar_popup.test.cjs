@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const source = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+const styles = fs.readFileSync(path.join(__dirname, '../toolbar.css'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
 test('menu retains its Settings action and the popup can scroll to the last item', () => {
@@ -11,10 +12,11 @@ test('menu retains its Settings action and the popup can scroll to the last item
     source,
     /title: 'Settings', action: \(\) => window\.AndroidNative && window\.AndroidNative\.onNativeAction\('settings'\)/
   );
-  assert.match(html, /\.popup-toolbar-strip\s*\{[^}]*overflow-x:\s*scroll\s*!important/s);
-  assert.match(html, /\.popup-toolbar-strip\s*\{[^}]*width:\s*calc\(100vw - 16px\)\s*!important/s);
-  assert.match(html, /\.popup-toolbar-strip\s*\{[^}]*max-width:\s*calc\(100vw - 16px\)/s);
-  assert.match(html, /\.popup-strip-btn\s*\{[^}]*flex:\s*0 0 auto\s*!important/s);
+  assert.match(styles, /\.popup-toolbar-strip\s*\{[^}]*overflow-x:\s*scroll\s*!important/s);
+  assert.match(styles, /\.popup-toolbar-strip\s*\{[^}]*width:\s*calc\(100vw - 16px\)\s*!important/s);
+  assert.match(styles, /\.popup-toolbar-strip\s*\{[^}]*max-width:\s*calc\(100vw - 16px\)/s);
+  assert.match(styles, /\.popup-strip-btn\s*\{[^}]*flex:\s*0 0 auto\s*!important/s);
+  assert.match(html, /toolbar\.css/);
   assert.match(source, /strip\.scrollLeft\s*=\s*0/);
 });
 

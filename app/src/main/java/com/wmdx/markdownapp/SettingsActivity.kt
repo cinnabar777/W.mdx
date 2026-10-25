@@ -1269,8 +1269,390 @@ class StylingHrFragment : StylingSettingsFragment() {
 }
 
 class StylingControlbarFragment : StylingSettingsFragment() {
+    companion object {
+        private const val TOOLBAR_CONFIG_KEY = "pref_toolbar_bottom_config"
+        private val TOOLBAR_ITEM_IDS = listOf(
+            "undo", "heading", "lists", "format", "table", "insert", "menu"
+        )
+        private val TOOLBAR_COLOR_PROPERTIES = setOf(
+            "iconColor", "backgroundColor", "activeBackgroundColor"
+        )
+        private const val MAX_TOOLBAR_SVG_BYTES = 64 * 1024
+    }
+
+    private var toolbarPreviewWebView: android.webkit.WebView? = null
+    private var targetToolbarIconId: String? = null
+
+    private val pickToolbarSvgLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { handleToolbarSvgPicked(it) }
+        }
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_controlbar, rootKey)
+    }
+
+    override fun onCreateView(
+        inflater: android.view.LayoutInflater,
+        container: android.view.ViewGroup?,
+        savedInstanceState: Bundle?
+    ): android.view.View? {
+        val preferencesView = super.onCreateView(inflater, container, savedInstanceState)
+            ?: return null
+        val context = requireContext()
+        val density = context.resources.displayMetrics.density
+        val wrapper = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(Color.BLACK)
+        }
+        val preview = android.webkit.WebView(context).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = false
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
+            addJavascriptInterface(ToolbarPreviewBridge(), "ToolbarSettings")
+        }
+        toolbarPreviewWebView = preview
+        val previewHeight = (340 * density).toInt()
+        wrapper.addView(
+            preview,
+            android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                previewHeight
+            )
+        )
+        wrapper.addView(
+            preferencesView,
+            android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        val assetLoader = androidx.webkit.WebViewAssetLoader.Builder()
+            .addPathHandler(
+                "/assets/",
+                androidx.webkit.WebViewAssetLoader.AssetsPathHandler(context)
+            )
+            .build()
+        preview.webViewClient = object : android.webkit.WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: android.webkit.WebView?,
+                request: android.webkit.WebResourceRequest?
+            ): android.webkit.WebResourceResponse? {
+                return request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+            }
+
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                updateToolbarPreview()
+            }
+        }
+        preview.setBackgroundColor(Color.BLACK)
+        preview.loadUrl(
+            "https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html"
+        )
+        return wrapper
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        super.onSettingPreferenceChanged(sharedPreferences, key)
+        if (key.startsWith("pref_toolbar_") || key == "pref_app_theme") {
+            updateToolbarPreview()
+        }
+    }
+
+    override fun onDestroyView() {
+        toolbarPreviewWebView?.apply {
+            stopLoading()
+            removeJavascriptInterface("ToolbarSettings")
+            destroy()
+        }
+        toolbarPreviewWebView = null
+        super.onDestroyView()
+    }
+
+    private fun toolbarSettingsJson(): String {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val payload = org.json.JSONObject()
+        payload.put(
+            TOOLBAR_CONFIG_KEY,
+            prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                ?: defaultToolbarConfigJson()
+        )
+        payload.put("pref_toolbar_bg_color", prefs.getString("pref_toolbar_bg_color", "default"))
+        payload.put("pref_toolbar_icon_color", prefs.getString("pref_toolbar_icon_color", "default"))
+        payload.put(
+            "pref_toolbar_active_icon_color",
+            prefs.getString("pref_toolbar_active_icon_color", "default")
+        )
+        payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
+        payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
+        payload.put("pref_app_theme", prefs.getString("pref_app_theme", "amoled"))
+        return payload.toString()
+    }
+
+    private fun defaultToolbarConfigJson(): String {
+        val defaultOrder = org.json.JSONArray(TOOLBAR_ITEM_IDS)
+        return org.json.JSONObject()
+            .put("version", 1)
+            .put("order", defaultOrder)
+            .put("hidden", org.json.JSONArray())
+            .put("styles", org.json.JSONObject())
+            .toString()
+    }
+
+    private fun updateToolbarPreview() {
+        val preview = toolbarPreviewWebView ?: return
+        val payload = try {
+            org.json.JSONObject.quote(toolbarSettingsJson())
+        } catch (_: Exception) {
+            return
+        }
+        preview.post {
+            preview.evaluateJavascript(
+                "window.applyToolbarSettings && window.applyToolbarSettings($payload);",
+                null
+            )
+        }
+    }
+
+    private fun normalizeToolbarConfigForStorage(raw: String): String {
+        val input = org.json.JSONObject(raw)
+        val hidden = mutableListOf<String>()
+        val rawHidden = input.optJSONArray("hidden") ?: org.json.JSONArray()
+        for (index in 0 until rawHidden.length()) {
+            val id = rawHidden.optString(index)
+            if (id in TOOLBAR_ITEM_IDS && id !in hidden) hidden.add(id)
+        }
+
+        val order = mutableListOf<String>()
+        val rawOrder = input.optJSONArray("order") ?: org.json.JSONArray()
+        for (index in 0 until rawOrder.length()) {
+            val id = rawOrder.optString(index)
+            if (id in TOOLBAR_ITEM_IDS && id !in hidden && id !in order) order.add(id)
+        }
+        for (id in TOOLBAR_ITEM_IDS) {
+            if (id !in order && id !in hidden) order.add(id)
+        }
+        if (order.isEmpty()) {
+            hidden.remove("menu")
+            order.add("menu")
+        }
+
+        val styles = org.json.JSONObject()
+        val rawStyles = input.optJSONObject("styles") ?: org.json.JSONObject()
+        val safeColor = Regex(
+            """^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)|[A-Za-z]{1,20})$"""
+        )
+        for (id in TOOLBAR_ITEM_IDS) {
+            val style = rawStyles.optJSONObject(id) ?: continue
+            val cleanedStyle = org.json.JSONObject()
+            for (property in TOOLBAR_COLOR_PROPERTIES) {
+                val color = style.optString(property, "")
+                if (color.isNotBlank() && safeColor.matches(color.trim())) {
+                    cleanedStyle.put(property, color.trim())
+                }
+            }
+            val customSvg = style.optString("customSvg", "")
+            if (customSvg.isNotBlank() && isSafeToolbarSvg(customSvg)) {
+                cleanedStyle.put("customSvg", customSvg)
+                cleanedStyle.put(
+                    "preserveSvgColors",
+                    style.optBoolean("preserveSvgColors", false)
+                )
+            }
+            if (cleanedStyle.length() > 0) styles.put(id, cleanedStyle)
+        }
+
+        return org.json.JSONObject()
+            .put("version", 1)
+            .put("order", org.json.JSONArray(order))
+            .put("hidden", org.json.JSONArray(hidden))
+            .put("styles", styles)
+            .toString()
+    }
+
+    private fun isSafeToolbarSvg(svg: String): Boolean {
+        if (svg.toByteArray(Charsets.UTF_8).size > MAX_TOOLBAR_SVG_BYTES) return false
+        val trimmed = svg.trim()
+        val lower = trimmed.lowercase()
+        if (!lower.contains("<svg")) return false
+        val forbidden = listOf(
+            "<script", "foreignobject", "javascript:", "data:", "<embed", "<object",
+            "<iframe", "<image", "<style", "url("
+        )
+        if (forbidden.any(lower::contains)) return false
+        if (Regex("""\bon[a-z]+\s*=""", RegexOption.IGNORE_CASE).containsMatchIn(trimmed)) {
+            return false
+        }
+        return try {
+            com.caverock.androidsvg.SVG.getFromString(trimmed)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun saveToolbarConfig(raw: String): Boolean {
+        val normalized = try {
+            normalizeToolbarConfigForStorage(raw)
+        } catch (_: Exception) {
+            return false
+        }
+        PreferenceManager.getDefaultSharedPreferences(requireContext())
+            .edit()
+            .putString(TOOLBAR_CONFIG_KEY, normalized)
+            .apply()
+        updateToolbarPreview()
+        return true
+    }
+
+    private fun updateToolbarStyle(
+        itemId: String,
+        property: String,
+        value: String?
+    ): Boolean {
+        if (itemId !in TOOLBAR_ITEM_IDS) return false
+        if (property !in TOOLBAR_COLOR_PROPERTIES && property != "customSvg") return false
+        return try {
+            val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
+            val current = org.json.JSONObject(
+                prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                    ?: defaultToolbarConfigJson()
+            )
+            val styles = current.optJSONObject("styles") ?: org.json.JSONObject()
+            val style = styles.optJSONObject(itemId) ?: org.json.JSONObject()
+            if (value.isNullOrBlank()) {
+                style.remove(property)
+            } else {
+                style.put(property, value)
+            }
+            if (style.length() == 0) styles.remove(itemId) else styles.put(itemId, style)
+            current.put("styles", styles)
+            saveToolbarConfig(current.toString())
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun showToolbarSvgChooser(itemId: String) {
+        targetToolbarIconId = itemId
+        AlertDialog.Builder(requireContext())
+            .setTitle("Custom toolbar icon")
+            .setItems(arrayOf("Choose SVG file", "Paste SVG code", "Use default icon")) { _, which ->
+                when (which) {
+                    0 -> pickToolbarSvgLauncher.launch(
+                        arrayOf("image/svg+xml", "text/xml", "application/xml", "*/*")
+                    )
+                    1 -> showPasteToolbarSvgDialog()
+                    else -> updateToolbarStyle(itemId, "customSvg", null)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showPasteToolbarSvgDialog() {
+        val input = android.widget.EditText(requireContext()).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setLines(6)
+        }
+        val padding = (16 * resources.displayMetrics.density).toInt()
+        val container = android.widget.FrameLayout(requireContext()).apply {
+            setPadding(padding, padding / 2, padding, padding / 2)
+            addView(input)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("Paste SVG code")
+            .setView(container)
+            .setPositiveButton("Save") { _, _ ->
+                val svg = input.text.toString().trim()
+                val itemId = targetToolbarIconId
+                if (itemId == null || svg.isBlank() || !isSafeToolbarSvg(svg)) {
+                    ThemedToast.show(requireContext(), "Invalid or unsafe SVG icon")
+                } else if (updateToolbarStyle(itemId, "customSvg", svg)) {
+                    ThemedToast.show(requireContext(), "Toolbar icon updated")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun handleToolbarSvgPicked(uri: Uri) {
+        val itemId = targetToolbarIconId ?: return
+        try {
+            val svg = requireContext().contentResolver.openInputStream(uri)?.use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    total += read
+                    if (total > MAX_TOOLBAR_SVG_BYTES) {
+                        throw IllegalArgumentException("SVG file exceeds 64 KB")
+                    }
+                    output.write(buffer, 0, read)
+                }
+                output.toString(Charsets.UTF_8.name())
+            } ?: return
+            if (!isSafeToolbarSvg(svg)) {
+                ThemedToast.show(requireContext(), "Invalid or unsafe SVG icon")
+                return
+            }
+            if (updateToolbarStyle(itemId, "customSvg", svg)) {
+                ThemedToast.show(requireContext(), "Toolbar icon updated")
+            }
+        } catch (error: Exception) {
+            ThemedToast.show(
+                requireContext(),
+                error.message ?: "Could not read the SVG file"
+            )
+        }
+    }
+
+    inner class ToolbarPreviewBridge {
+        @android.webkit.JavascriptInterface
+        fun getBottomToolbarSettings(): String = toolbarSettingsJson()
+
+        @android.webkit.JavascriptInterface
+        fun saveBottomToolbarConfig(raw: String): Boolean = saveToolbarConfig(raw)
+
+        @android.webkit.JavascriptInterface
+        fun pickBottomToolbarColor(itemId: String, property: String) {
+            if (itemId !in TOOLBAR_ITEM_IDS || property !in TOOLBAR_COLOR_PROPERTIES) return
+            activity?.runOnUiThread {
+                val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
+                val config = org.json.JSONObject(
+                    prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                        ?: defaultToolbarConfigJson()
+                )
+                val current = config.optJSONObject("styles")
+                    ?.optJSONObject(itemId)
+                    ?.optString(property)
+                    ?.takeIf { !it.isNullOrBlank() }
+                    ?: when (property) {
+                        "iconColor" -> prefs.getString("pref_toolbar_icon_color", "#FFFFFF")
+                        else -> "#00000000"
+                    }
+                    ?: "#FFFFFF"
+                ColorPickerDialog(requireContext(), current) { selected ->
+                    updateToolbarStyle(itemId, property, selected)
+                }.show()
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun editBottomToolbarIcon(itemId: String) {
+            if (itemId !in TOOLBAR_ITEM_IDS) return
+            activity?.runOnUiThread { showToolbarSvgChooser(itemId) }
+        }
     }
 }
 
