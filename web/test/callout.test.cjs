@@ -143,8 +143,11 @@ Unquoted Paragraph
   assert.equal(inCode7, true, 'Line 7 literal callout syntax is inside fenced code');
 });
 
-test('pref_callout_text_color exists, is forwarded/applied, and resets to default', () => {
-  assert.ok(mainSource.includes("'--callout-text-color', prefs.pref_callout_text_color"), 'main.js sets --callout-text-color CSS variable');
+test('pref_callout_text_color exists, follows body-typography inheritance, and resets to default', () => {
+  assert.match(
+    mainSource,
+    /setCssVar\('--callout-text-color', inheritCalloutTypography\s*\?[\s\S]*?prefs\.pref_callout_text_color\)/
+  );
 
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   assert.ok(indexHtml.includes('color: var(--callout-text-color, inherit) !important;'), 'index.html applies --callout-text-color to .cm-callout');

@@ -1419,12 +1419,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun handleNewWindow() {
+        val newWindowId = java.util.UUID.randomUUID().toString()
         val intent = android.content.Intent(this, MainActivity::class.java).apply {
             action = android.content.Intent.ACTION_MAIN
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT or android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            data = Uri.parse("wmdx://window/$newWindowId")
+            addFlags(
+                android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
+                    android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+            )
             putExtra("is_new_document", true)
         }
-        startActivity(intent)
+        try {
+            startActivity(intent)
+            AppDiagnostics.record(this, "new_window_requested")
+        } catch (error: Exception) {
+            AppDiagnostics.record(this, "new_window_failed", error.javaClass.simpleName)
+            ThemedToast.show(this, "Could not open a new window", Toast.LENGTH_LONG)
+        }
     }
 
 

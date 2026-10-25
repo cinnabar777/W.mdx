@@ -52,6 +52,7 @@ object PreferenceResetHelper {
             "pref_toc_toggle_bg_color", "pref_toc_toggle_active_bg_color" -> "#26FFFFFF"
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> "#FFFFFF"
             "pref_heading_underline_color" -> "#FFFFFF"
+            "pref_body_text_color", "pref_list_text_color" -> "#FFFFFF"
             "pref_blockquote_line_color" -> "#444444"
             "pref_blockquote_bg_color" -> "#1A1A1A"
             "pref_blockquote_text_color" -> "#FFFFFF"
@@ -120,6 +121,8 @@ object PreferenceResetHelper {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
         return when (key) {
+            "pref_body_text_color", "pref_list_text_color" ->
+                if (isLightTheme) "#111111" else "#FFFFFF"
             "pref_toc_panel_bg_color" -> {
                 val toolbarColor = prefs.getString("pref_toolbar_bg_color", "default")
                 if (!toolbarColor.isNullOrBlank() && toolbarColor != "default") {
@@ -172,6 +175,8 @@ object PreferenceResetHelper {
         return when {
             getPerHeadingOverrideDefault(key) != null -> getPerHeadingOverrideDefault(key)
             key == "pref_body_font_size" -> 16
+            key == "pref_body_font_weight" -> 400
+            key == "pref_body_text_color" -> "default"
             key == "pref_heading_scale_percent" -> 100
             key == "pref_heading_color" -> "default"
             key == "pref_heading_word_spacing" -> "0px"
@@ -200,6 +205,14 @@ object PreferenceResetHelper {
             key == "pref_heading_margin_left" -> 0
             key == "pref_heading_margin_right" -> 0
             key == "pref_list_left_indent" -> 24
+            key == "pref_list_inherit_body_typography" -> true
+            key == "pref_list_font_family" -> "default"
+            key == "pref_list_font_weight" -> 400
+            key == "pref_list_font_size" -> 16
+            key == "pref_list_letter_spacing" -> "0px"
+            key == "pref_list_text_color" -> "default"
+            key == "pref_list_text_align" -> "default"
+            key == "pref_list_hyphenate" -> false
             key == "pref_list_right_margin" -> 0
             key == "pref_list_wrap_under_text" -> false
             key == "pref_list_item_spacing" -> 4
@@ -215,6 +228,14 @@ object PreferenceResetHelper {
             key == "pref_blockquote_line_color" -> "default"
             key == "pref_blockquote_bg_color" -> "default"
             key == "pref_blockquote_text_color" -> "default"
+            key == "pref_blockquote_inherit_body_typography" -> true
+            key == "pref_blockquote_font_family" -> "default"
+            key == "pref_blockquote_font_weight" -> 400
+            key == "pref_blockquote_font_size" -> 16
+            key == "pref_blockquote_letter_spacing" -> "0px"
+            key == "pref_blockquote_text_align" -> "default"
+            key == "pref_blockquote_hyphenate" -> false
+            key == "pref_blockquote_line_height" -> "1.6"
             key == "pref_blockquote_left_indent" -> 0
             key == "pref_blockquote_right_margin" -> 0
             key == "pref_blockquote_padding" -> 12
@@ -223,6 +244,14 @@ object PreferenceResetHelper {
             key == "pref_callout_line_color" -> "default"
             key == "pref_callout_bg_color" -> "default"
             key == "pref_callout_text_color" -> "default"
+            key == "pref_callout_inherit_body_typography" -> true
+            key == "pref_callout_font_family" -> "default"
+            key == "pref_callout_font_weight" -> 400
+            key == "pref_callout_font_size" -> 16
+            key == "pref_callout_letter_spacing" -> "0px"
+            key == "pref_callout_text_align" -> "default"
+            key == "pref_callout_hyphenate" -> false
+            key == "pref_callout_line_height" -> "1.6"
             key == "pref_callout_margin_left" -> 0
             key == "pref_callout_margin_right" -> 0
             key == "pref_callout_padding" -> 12
@@ -240,6 +269,13 @@ object PreferenceResetHelper {
             key.startsWith("pref_callout_type_") -> "default"
             key == "pref_table_margin_left" -> 0
             key == "pref_table_margin_right" -> 0
+            key == "pref_table_inherit_body_typography" -> true
+            key == "pref_table_font_family" -> "default"
+            key == "pref_table_font_weight" -> 400
+            key == "pref_table_font_size" -> 15
+            key == "pref_table_letter_spacing" -> "0px"
+            key == "pref_table_hyphenate" -> false
+            key == "pref_table_line_height" -> "1.6"
             key == "pref_table_border_style" -> "solid"
             key == "pref_table_border_thickness" -> 1
             key == "pref_table_border_color" -> "default"
@@ -271,6 +307,7 @@ object PreferenceResetHelper {
             key == "pref_hr_margin_top" -> 16
             key == "pref_hr_margin_bottom" -> 16
             key == "pref_justify_paragraph" -> false
+            key == "pref_paragraph_hyphenate" -> false
             key == "pref_paragraph_line_height" -> "1.6"
             key == "pref_letter_spacing" -> "0px"
             key == "pref_line_wrap" -> true

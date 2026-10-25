@@ -811,10 +811,16 @@
       border-right: 1px solid var(--border-color, #444444) !important;
     }
     .cm-table-row {
-      font-family: monospace !important;
+      font-family: var(--table-font-family, var(--body-font-family, monospace)) !important;
+      font-size: var(--table-font-size, 15px) !important;
+      font-weight: var(--table-font-weight, 400) !important;
+      color: var(--table-cell-color, var(--body-text-color, var(--text-color, #ffffff))) !important;
+      letter-spacing: var(--table-letter-spacing, 0px) !important;
+      line-height: var(--table-line-height, 1.6) !important;
+      hyphens: var(--table-hyphens, none) !important;
     }
     .cm-table-header-row {
-      font-weight: bold !important;
+      font-weight: var(--table-header-font-weight, 700) !important;
       background-color: var(--table-header-bg, rgba(255, 255, 255, 0.12)) !important;
       color: var(--table-header-color, var(--text-color)) !important;
     }
@@ -846,8 +852,13 @@
       min-width: 100%;
       border-collapse: collapse;
       table-layout: auto;
-      color: var(--table-cell-color, var(--text-color, #ffffff));
-      font-size: 15px;
+      color: var(--table-cell-color, var(--body-text-color, var(--text-color, #ffffff)));
+      font-family: var(--table-font-family, var(--body-font-family, inherit));
+      font-size: var(--table-font-size, 15px);
+      font-weight: var(--table-font-weight, 400);
+      letter-spacing: var(--table-letter-spacing, 0px);
+      line-height: var(--table-line-height, 1.6);
+      hyphens: var(--table-hyphens, none);
       border: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444444);
     }
 
@@ -909,9 +920,12 @@
     .cm-content .cm-paragraph:not(.cm-list-item) {
       font-size: var(--body-font-size, 16px) !important;
       font-family: var(--body-font-family, inherit) !important;
+      font-weight: var(--body-font-weight, 400) !important;
+      color: var(--body-text-color, var(--text-color, #ffffff)) !important;
       text-align: var(--paragraph-align, left) !important;
       letter-spacing: var(--paragraph-letter-spacing, 0px) !important;
       line-height: var(--paragraph-line-height, 1.6) !important;
+      hyphens: var(--paragraph-hyphens, none) !important;
     }
     .cm-content .cm-paragraph-first:not(.cm-list-item) {
       text-indent: var(--paragraph-indent, 0px) !important;
@@ -1072,7 +1086,11 @@
     .cm-content .cm-list-item {
       font-size: var(--list-font-size, 16px) !important;
       font-family: var(--list-font-family, inherit) !important;
+      font-weight: var(--list-font-weight, 400) !important;
+      color: var(--list-text-color, var(--body-text-color, var(--text-color, #ffffff))) !important;
+      text-align: var(--list-text-align, var(--paragraph-align, left)) !important;
       letter-spacing: var(--list-letter-spacing, normal) !important;
+      hyphens: var(--list-hyphens, none) !important;
       text-indent: 0 !important;
       margin-top: 0 !important;
       margin-left: var(--list-left-indent, 24px) !important;
@@ -1244,6 +1262,13 @@
       border-left: var(--blockquote-border-width, 4px) var(--blockquote-border-style, solid) var(--blockquote-border-color, #444444) !important;
       background: var(--blockquote-bg-color, transparent) !important;
       color: var(--blockquote-text-color, inherit) !important;
+      font-family: var(--blockquote-font-family, var(--body-font-family, inherit)) !important;
+      font-size: var(--blockquote-font-size, var(--body-font-size, 16px)) !important;
+      font-weight: var(--blockquote-font-weight, var(--body-font-weight, 400)) !important;
+      letter-spacing: var(--blockquote-letter-spacing, var(--paragraph-letter-spacing, 0px)) !important;
+      text-align: var(--blockquote-text-align, var(--paragraph-align, left)) !important;
+      line-height: var(--blockquote-line-height, var(--paragraph-line-height, 1.6)) !important;
+      hyphens: var(--blockquote-hyphens, var(--paragraph-hyphens, none)) !important;
       margin-left: var(--blockquote-left-margin, 0px) !important;
       margin-right: var(--blockquote-right-margin, 0px) !important;
       padding-left: var(--blockquote-padding, 12px) !important;
@@ -1258,6 +1283,15 @@
       margin-top: 0px !important;
       margin-bottom: 0px !important;
       box-sizing: border-box !important;
+    }
+    .cm-content .cm-callout:not(.cm-callout-title) {
+      font-family: var(--callout-font-family, var(--body-font-family, inherit)) !important;
+      font-size: var(--callout-font-size, var(--body-font-size, 16px)) !important;
+      font-weight: var(--callout-font-weight, var(--body-font-weight, 400)) !important;
+      letter-spacing: var(--callout-letter-spacing, var(--paragraph-letter-spacing, 0px)) !important;
+      text-align: var(--callout-text-align, var(--paragraph-align, left)) !important;
+      line-height: var(--callout-line-height, var(--paragraph-line-height, 1.6)) !important;
+      hyphens: var(--callout-hyphens, var(--paragraph-hyphens, none)) !important;
     }
     .cm-content .cm-line.cm-callout:not(.cm-list-item) {
       margin-left: var(--callout-margin-left, 0px) !important;

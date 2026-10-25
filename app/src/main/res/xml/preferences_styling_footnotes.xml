@@ -70,7 +70,8 @@
             app:key="pref_footnote_hyphenate"
             app:title="Hyphenate Footnote Text"
             app:summary="Allow long words to break with automatic hyphens"
-            android:defaultValue="false" />
+            android:defaultValue="false"
+            app:dependency="pref_footnote_inherit_body_typography" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Footnote Mark &amp; Background Colors">

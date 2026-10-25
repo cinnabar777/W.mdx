@@ -2,6 +2,65 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Typography">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_table_inherit_body_typography"
+            app:title="Inherit Paragraph &amp; Body Typography"
+            app:summary="Use the paragraph font, weight, spacing, color, size, hyphenation, and line height in table cells"
+            app:disableDependentsState="true"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_table_font_family"
+            app:title="Table Font Family"
+            app:summary="Font family for table text"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default"
+            app:dependency="pref_table_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_table_font_weight"
+            app:title="Table Font Weight"
+            app:summary="Font weight for table text (100–900)"
+            app:min="100"
+            android:max="900"
+            app:defaultValue="400"
+            app:showSeekBarValue="true"
+            app:dependency="pref_table_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_table_font_size"
+            app:title="Table Font Size (px)"
+            app:summary="Font size for table text"
+            app:min="4"
+            android:max="32"
+            app:defaultValue="15"
+            app:showSeekBarValue="true"
+            app:dependency="pref_table_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_table_letter_spacing"
+            app:title="Table Letter Spacing (px)"
+            app:summary="Space between letters in table text"
+            app:defaultValue="0px"
+            app:dependency="pref_table_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_table_hyphenate"
+            app:title="Hyphenate Table Text"
+            app:summary="Allow long words in table cells to break with automatic hyphens"
+            android:defaultValue="false"
+            app:dependency="pref_table_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_table_line_height"
+            app:title="Table Line Height"
+            app:summary="Line-height multiplier for table text"
+            app:defaultValue="1.6"
+            app:dependency="pref_table_inherit_body_typography" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Margins">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_table_margin_left"
@@ -58,7 +117,8 @@
             app:key="pref_table_header_text_color"
             app:title="Header Text Color"
             app:summary="Text color for table header cells"
-            app:defaultValue="default" />
+            app:defaultValue="default"
+            app:dependency="pref_table_inherit_body_typography" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_table_header_font_weight"
@@ -67,7 +127,8 @@
             app:min="100"
             android:max="900"
             app:defaultValue="700"
-            app:showSeekBarValue="true" />
+            app:showSeekBarValue="true"
+            app:dependency="pref_table_inherit_body_typography" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Cells &amp; Padding">
@@ -81,7 +142,8 @@
             app:key="pref_table_cell_text_color"
             app:title="Cell Text Color"
             app:summary="Text color for regular table cells"
-            app:defaultValue="default" />
+            app:defaultValue="default"
+            app:dependency="pref_table_inherit_body_typography" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_table_cell_padding"

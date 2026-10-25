@@ -18,23 +18,22 @@ ___
 3. Bottom control bar & UI theme: move from typography to main settings page below find & replace and name it "Toolbar: Bottom" 
 4. Settings: cleanup redundant and unnecessary wording — things like "styling & typography settings", "settings" is redundant because it is the settings. 
     1. Custom keyboard shortcuts → remove custom. Remove "shortcut" from all the keyboard shortcuts, again that's the page they are on therefore it is redundant — Jules did a lot of redundant wording that needs to be reduced. Go through and make your best effort to cleanup this in settings.  
-5. Typography:
-    1. Sorting: the typography page needs to be sorted: 
+5. [x] Typography:
+    1. [x] Sorting: the typography page needs to be sorted:
         1. Heading 
         2. Paragraph & body text 
         3. Everything else in alphabetical order. 
-    2. items to add:
-        1. List items, block quote, callouts, footnotes, and maybe others: need to make sure they have setting to customize typography:
-            1. **add** a setting to these types of "sub-elements" to inherit these typography setting from "paragraph & body typography". 
-            2. font
-            3. font weight
-            4. letter spacing
-            5. text color
-            6. text size
-            7. justify
-            8. hyphenate
-            9. line height
-            10. what else? What is missing? 
+    2. [x] Add typography controls to sub-elements:
+        1. [x] Add an option to inherit typography from "Paragraph & Body Text" for lists, block quotes, callouts, footnotes, and tables.
+        2. [x] Font family
+        3. [x] Font weight
+        4. [x] Letter spacing
+        5. [x] Text color
+        6. [x] Text size
+        7. [x] Text alignment, including justify where applicable
+        8. [x] Hyphenation
+        9. [x] Line height
+        10. [x] Tables were included as another text element; table column alignment remains controlled per column.
 6. Bug: Keyboard always shows when returning to app. 
 7. Bug: Keyboard not opening when editing hex in color pallet. 
 8. Cursor seems slow to respond vs obsidian 

@@ -156,7 +156,7 @@ export class WordProcessorTableWidget extends WidgetType {
 
     const table = document.createElement('table');
     table.className = 'cm-wp-table';
-    table.style.cssText = `width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; color: var(--text-color, #fff); font-size: 15px; border: ${borderCss};`;
+    table.style.cssText = `width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))); font-family: var(--table-font-family, var(--body-font-family, inherit)); font-size: var(--table-font-size, 15px); font-weight: var(--table-font-weight, 400); letter-spacing: var(--table-letter-spacing, 0px); line-height: var(--table-line-height, 1.6); hyphens: var(--table-hyphens, none); border: ${borderCss};`;
 
     const renderTableCells = () => {
       table.innerHTML = '';

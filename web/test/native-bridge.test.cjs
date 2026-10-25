@@ -98,9 +98,22 @@ test('rename access dialog offers folder access and Save As alongside its explan
 });
 
 test('native dialogs use the app dark surface and teal accent instead of default purple', () => {
-  assert.match(appThemeXml, /<item name="colorPrimary">#00C9D3<\/item>/);
-  assert.match(appThemeXml, /<item name="colorAccent">#00C9D3<\/item>/);
-  assert.match(appThemeXml, /<item name="android:colorAccent">#00C9D3<\/item>/);
-  assert.match(appThemeXml, /<item name="colorSurface">#202124<\/item>/);
-  assert.match(appThemeXml, /<item name="android:colorBackgroundFloating">#202124<\/item>/);
+  assert.match(appThemeXml, /<item name="colorPrimary">#00E5C8<\/item>/);
+  assert.match(appThemeXml, /<item name="colorAccent">#00E5C8<\/item>/);
+  assert.match(appThemeXml, /<item name="android:colorAccent">#00E5C8<\/item>/);
+  assert.match(appThemeXml, /<item name="colorSurface">#080808<\/item>/);
+  assert.match(appThemeXml, /<item name="android:colorBackgroundFloating">#080808<\/item>/);
+});
+
+test('New Window opens a separate Android document task with a unique identity', () => {
+  const handlerStart = mainActivitySource.indexOf('private fun handleNewWindow()');
+  const handlerEnd = mainActivitySource.indexOf('\n    private ', handlerStart + 1);
+  const handler = mainActivitySource.slice(handlerStart, handlerEnd);
+
+  assert.ok(handlerStart >= 0, 'Native new-window handler exists');
+  assert.match(handler, /data = Uri\.parse\("wmdx:\/\/window\/\$newWindowId"\)/);
+  assert.match(handler, /FLAG_ACTIVITY_NEW_DOCUMENT/);
+  assert.match(handler, /FLAG_ACTIVITY_MULTIPLE_TASK/);
+  assert.match(handler, /putExtra\("is_new_document", true\)/);
+  assert.match(source, /title: 'New Window'[\s\S]*?onNativeAction\('new_window'\)/);
 });

@@ -3885,7 +3885,12 @@ function setupGroupedControlBar() {
         { icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
         { icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
-        { icon: svgIcons.newWindow, title: 'New Window', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('new_window') },
+        { icon: svgIcons.newWindow, title: 'New Window', action: () => {
+          hidePopupStrip();
+          if (window.AndroidNative && typeof window.AndroidNative.onNativeAction === 'function') {
+            window.AndroidNative.onNativeAction('new_window');
+          }
+        } },
         { icon: svgIcons.settings, title: 'Settings', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('settings') }
       ]);
     };
@@ -5809,11 +5814,16 @@ window.editorBridge = {
     setCssVar('--selection-highlight-text', prefs.pref_selection_highlight_text_color);
 
     // Body & Paragraph
+    const paragraphAlignment = prefs.pref_justify_paragraph === true
+      ? 'justify'
+      : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify || 'left');
     setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');
+    setCssVar('--body-font-weight', prefs.pref_body_font_weight ?? 400);
+    setCssVar('--body-text-color', androidArgbToCss(prefs.pref_body_text_color));
     setCssVar('--paragraph-line-height', prefs.pref_paragraph_line_height);
     setCssVar('--paragraph-letter-spacing', prefs.pref_letter_spacing || prefs.pref_paragraph_letter_spacing, 'px');
-    const alignVal = prefs.pref_justify_paragraph === true ? 'justify' : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify);
-    setCssVar('--paragraph-align', alignVal);
+    setCssVar('--paragraph-align', paragraphAlignment);
+    setCssVar('--paragraph-hyphens', prefs.pref_paragraph_hyphenate === true ? 'auto' : 'none');
     setCssVar('--paragraph-indent', prefs.pref_paragraph_first_line_indent, 'px');
     setCssVar('--paragraph-margin-top', prefs.pref_paragraph_margin_top, 'px');
     setCssVar('--paragraph-margin-bottom', prefs.pref_paragraph_margin_bottom, 'px');
@@ -5900,9 +5910,6 @@ window.editorBridge = {
     // Footnote typography inherits paragraph/body values until overrides are enabled.
     const inheritFootnoteTypography =
       prefs.pref_footnote_inherit_body_typography !== false;
-    const paragraphAlignment = prefs.pref_justify_paragraph === true
-      ? 'justify'
-      : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify || 'left');
     setCssVar(
       '--footnote-font-size',
       inheritFootnoteTypography ? 'var(--body-font-size)' : prefs.pref_footnote_font_size,
@@ -5910,7 +5917,9 @@ window.editorBridge = {
     );
     setCssVar(
       '--footnote-font-weight',
-      inheritFootnoteTypography ? 400 : prefs.pref_footnote_font_weight
+      inheritFootnoteTypography
+        ? 'var(--body-font-weight, 400)'
+        : (prefs.pref_footnote_font_weight ?? 400)
     );
     setCssVar(
       '--footnote-letter-spacing',
@@ -5933,10 +5942,15 @@ window.editorBridge = {
     setCssVar(
       '--footnote-text-color',
       inheritFootnoteTypography
-        ? 'var(--text-color)'
+        ? 'var(--body-text-color, var(--text-color, inherit))'
         : androidArgbToCss(prefs.pref_footnote_text_color)
     );
-    setCssVar('--footnote-hyphens', prefs.pref_footnote_hyphenate === true ? 'auto' : 'none');
+    setCssVar(
+      '--footnote-hyphens',
+      inheritFootnoteTypography
+        ? 'var(--paragraph-hyphens, none)'
+        : (prefs.pref_footnote_hyphenate === true ? 'auto' : 'none')
+    );
     setCssVar('--footnote-bg-color', androidArgbToCss(prefs.pref_footnote_bg_color));
     setCssVar('--footnote-ref-color', androidArgbToCss(prefs.pref_footnote_ref_color));
     setCssVar('--footnote-link-color', androidArgbToCss(prefs.pref_footnote_link_color));
@@ -5948,11 +5962,39 @@ window.editorBridge = {
     setCssVar('--heading-margin-right', prefs.pref_heading_margin_right ?? 0, 'px');
 
     // Lists
+    const inheritListTypography = prefs.pref_list_inherit_body_typography !== false;
+    setCssVar('--list-font-family', inheritListTypography
+      ? 'var(--body-font-family, inherit)'
+      : (prefs.pref_list_font_family && prefs.pref_list_font_family !== 'default'
+        ? prefs.pref_list_font_family
+        : 'inherit'));
+    setCssVar('--list-font-size', inheritListTypography
+      ? 'var(--body-font-size, 16px)'
+      : (prefs.pref_list_font_size ?? 16), inheritListTypography ? '' : 'px');
+    setCssVar('--list-font-weight', inheritListTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_list_font_weight ?? 400));
+    setCssVar('--list-letter-spacing', inheritListTypography
+      ? 'var(--paragraph-letter-spacing, 0px)'
+      : (prefs.pref_list_letter_spacing ?? '0px'));
+    setCssVar('--list-text-color', inheritListTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_list_text_color));
+    setCssVar('--list-text-align', inheritListTypography
+      ? 'var(--paragraph-align, left)'
+      : (prefs.pref_list_text_align && prefs.pref_list_text_align !== 'default'
+        ? prefs.pref_list_text_align
+        : 'var(--paragraph-align, left)'));
+    setCssVar('--list-hyphens', inheritListTypography
+      ? 'var(--paragraph-hyphens, none)'
+      : (prefs.pref_list_hyphenate === true ? 'auto' : 'none'));
+    setCssVar('--list-line-height', inheritListTypography
+      ? 'var(--paragraph-line-height, 1.6)'
+      : (prefs.pref_list_line_height ?? '1.5'));
     setCssVar('--list-left-indent', prefs.pref_list_left_indent, 'px');
     setCssVar('--list-margin-right', prefs.pref_list_right_margin ?? 0, 'px');
     setCssVar('--list-marker-gutter', '24px');
     setCssVar('--list-item-spacing', prefs.pref_list_item_spacing, 'px');
-    setCssVar('--list-line-height', prefs.pref_list_line_height);
     setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
     setCssVar('--list-number-color', prefs.pref_list_number_color);
     setCssVar('--todo-border-color', androidArgbToCss(prefs.pref_todo_unchecked_color || prefs.pref_todo_unchecked_border_color));
@@ -5961,11 +6003,40 @@ window.editorBridge = {
     setCssVar('--todo-bg-color', androidArgbToCss(prefs.pref_todo_unchecked_bg_color));
 
     // Blockquotes & Callouts
+    const inheritBlockquoteTypography =
+      prefs.pref_blockquote_inherit_body_typography !== false;
+    setCssVar('--blockquote-font-family', inheritBlockquoteTypography
+      ? 'var(--body-font-family, inherit)'
+      : (prefs.pref_blockquote_font_family && prefs.pref_blockquote_font_family !== 'default'
+        ? prefs.pref_blockquote_font_family
+        : 'inherit'));
+    setCssVar('--blockquote-font-size', inheritBlockquoteTypography
+      ? 'var(--body-font-size, 16px)'
+      : (prefs.pref_blockquote_font_size ?? 16), inheritBlockquoteTypography ? '' : 'px');
+    setCssVar('--blockquote-font-weight', inheritBlockquoteTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_blockquote_font_weight ?? 400));
+    setCssVar('--blockquote-letter-spacing', inheritBlockquoteTypography
+      ? 'var(--paragraph-letter-spacing, 0px)'
+      : (prefs.pref_blockquote_letter_spacing ?? '0px'));
+    setCssVar('--blockquote-text-align', inheritBlockquoteTypography
+      ? 'var(--paragraph-align, left)'
+      : (prefs.pref_blockquote_text_align && prefs.pref_blockquote_text_align !== 'default'
+        ? prefs.pref_blockquote_text_align
+        : 'var(--paragraph-align, left)'));
+    setCssVar('--blockquote-hyphens', inheritBlockquoteTypography
+      ? 'var(--paragraph-hyphens, none)'
+      : (prefs.pref_blockquote_hyphenate === true ? 'auto' : 'none'));
+    setCssVar('--blockquote-line-height', inheritBlockquoteTypography
+      ? 'var(--paragraph-line-height, 1.6)'
+      : (prefs.pref_blockquote_line_height ?? '1.6'));
     setCssVar('--blockquote-border-width', prefs.pref_blockquote_line_thickness, 'px');
     setCssVar('--blockquote-border-style', prefs.pref_blockquote_line_style);
     setCssVar('--blockquote-border-color', prefs.pref_blockquote_line_color);
     setCssVar('--blockquote-bg-color', prefs.pref_blockquote_bg_color);
-    setCssVar('--blockquote-text-color', prefs.pref_blockquote_text_color);
+    setCssVar('--blockquote-text-color', inheritBlockquoteTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_blockquote_text_color));
     setCssVar(
       '--blockquote-left-margin',
       prefs.pref_blockquote_left_indent ?? prefs.pref_blockquote_left_margin ?? 0,
@@ -5974,11 +6045,40 @@ window.editorBridge = {
     setCssVar('--blockquote-right-margin', prefs.pref_blockquote_right_margin ?? 0, 'px');
     setCssVar('--blockquote-padding', prefs.pref_blockquote_padding, 'px');
 
+    const inheritCalloutTypography =
+      prefs.pref_callout_inherit_body_typography !== false;
+    setCssVar('--callout-font-family', inheritCalloutTypography
+      ? 'var(--body-font-family, inherit)'
+      : (prefs.pref_callout_font_family && prefs.pref_callout_font_family !== 'default'
+        ? prefs.pref_callout_font_family
+        : 'inherit'));
+    setCssVar('--callout-font-size', inheritCalloutTypography
+      ? 'var(--body-font-size, 16px)'
+      : (prefs.pref_callout_font_size ?? 16), inheritCalloutTypography ? '' : 'px');
+    setCssVar('--callout-font-weight', inheritCalloutTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_callout_font_weight ?? 400));
+    setCssVar('--callout-letter-spacing', inheritCalloutTypography
+      ? 'var(--paragraph-letter-spacing, 0px)'
+      : (prefs.pref_callout_letter_spacing ?? '0px'));
+    setCssVar('--callout-text-align', inheritCalloutTypography
+      ? 'var(--paragraph-align, left)'
+      : (prefs.pref_callout_text_align && prefs.pref_callout_text_align !== 'default'
+        ? prefs.pref_callout_text_align
+        : 'var(--paragraph-align, left)'));
+    setCssVar('--callout-hyphens', inheritCalloutTypography
+      ? 'var(--paragraph-hyphens, none)'
+      : (prefs.pref_callout_hyphenate === true ? 'auto' : 'none'));
+    setCssVar('--callout-line-height', inheritCalloutTypography
+      ? 'var(--paragraph-line-height, 1.6)'
+      : (prefs.pref_callout_line_height ?? '1.6'));
     setCssVar('--callout-border-width', prefs.pref_callout_line_thickness, 'px');
     setCssVar('--callout-border-style', prefs.pref_callout_line_style);
     setCssVar('--callout-border-color', prefs.pref_callout_line_color);
     setCssVar('--callout-bg-color', prefs.pref_callout_bg_color);
-    setCssVar('--callout-text-color', prefs.pref_callout_text_color);
+    setCssVar('--callout-text-color', inheritCalloutTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_callout_text_color));
     setCssVar('--callout-margin-left', prefs.pref_callout_margin_left ?? 0, 'px');
     setCssVar('--callout-margin-right', prefs.pref_callout_margin_right ?? 0, 'px');
     setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
@@ -6016,16 +6116,44 @@ window.editorBridge = {
     });
 
     // Tables
+    const inheritTableTypography =
+      prefs.pref_table_inherit_body_typography !== false;
+    setCssVar('--table-font-family', inheritTableTypography
+      ? 'var(--body-font-family, inherit)'
+      : (prefs.pref_table_font_family && prefs.pref_table_font_family !== 'default'
+        ? prefs.pref_table_font_family
+        : 'inherit'));
+    setCssVar('--table-font-size', inheritTableTypography
+      ? 'var(--body-font-size, 16px)'
+      : (prefs.pref_table_font_size ?? 15), inheritTableTypography ? '' : 'px');
+    setCssVar('--table-font-weight', inheritTableTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_table_font_weight ?? 400));
+    setCssVar('--table-letter-spacing', inheritTableTypography
+      ? 'var(--paragraph-letter-spacing, 0px)'
+      : (prefs.pref_table_letter_spacing ?? '0px'));
+    setCssVar('--table-line-height', inheritTableTypography
+      ? 'var(--paragraph-line-height, 1.6)'
+      : (prefs.pref_table_line_height ?? '1.6'));
+    setCssVar('--table-hyphens', inheritTableTypography
+      ? 'var(--paragraph-hyphens, none)'
+      : (prefs.pref_table_hyphenate === true ? 'auto' : 'none'));
     setCssVar('--table-margin-left', prefs.pref_table_margin_left ?? 0, 'px');
     setCssVar('--table-margin-right', prefs.pref_table_margin_right ?? 0, 'px');
     setCssVar('--table-border-style', prefs.pref_table_border_style);
     setCssVar('--table-border-width', prefs.pref_table_border_thickness || prefs.pref_table_border_width, 'px');
     setCssVar('--table-border-color', prefs.pref_table_border_color);
     setCssVar('--table-header-bg', prefs.pref_table_header_bg_color || prefs.pref_table_header_bg);
-    setCssVar('--table-header-color', prefs.pref_table_header_text_color || prefs.pref_table_header_color);
-    setCssVar('--table-header-font-weight', prefs.pref_table_header_font_weight);
+    setCssVar('--table-header-color', inheritTableTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_table_header_text_color || prefs.pref_table_header_color));
+    setCssVar('--table-header-font-weight', inheritTableTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_table_header_font_weight ?? 700));
     setCssVar('--table-cell-bg', prefs.pref_table_cell_bg_color || prefs.pref_table_cell_bg);
-    setCssVar('--table-cell-color', prefs.pref_table_cell_text_color || prefs.pref_table_cell_color);
+    setCssVar('--table-cell-color', inheritTableTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_table_cell_text_color || prefs.pref_table_cell_color));
     setCssVar('--table-cell-padding', prefs.pref_table_cell_padding, 'px');
     setCssVar('--table-menu-bg', prefs.pref_table_menu_bg_color);
     setCssVar('--table-menu-action-bg', prefs.pref_table_menu_action_bg_color);
