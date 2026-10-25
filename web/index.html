@@ -317,20 +317,31 @@
       bottom: calc(var(--toolbar-height) + 10px);
       left: 50%;
       transform: translateX(-50%);
+      box-sizing: border-box !important;
       background-color: #282a2e !important;
       color: #ffffff !important;
       border: 1px solid rgba(255, 255, 255, 0.15) !important;
       border-radius: 14px !important;
       padding: 6px 10px !important;
       display: flex !important;
+      flex-wrap: nowrap !important;
       align-items: center !important;
       gap: 6px !important;
       z-index: 10004 !important;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
-      max-width: 94vw;
-      overflow: visible !important;
+      max-width: calc(100vw - 16px) !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
       white-space: nowrap;
+      touch-action: pan-x;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
       transition: opacity 0.2s ease;
+    }
+
+    .popup-toolbar-strip::-webkit-scrollbar {
+      display: none;
     }
 
     body.light-theme .popup-toolbar-strip {
@@ -356,6 +367,7 @@
       border-radius: 8px !important;
       cursor: pointer !important;
       display: inline-flex !important;
+      flex: 0 0 auto !important;
       align-items: center !important;
       justify-content: center !important;
       white-space: nowrap !important;
