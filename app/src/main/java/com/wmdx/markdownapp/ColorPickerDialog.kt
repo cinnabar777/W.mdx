@@ -24,6 +24,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.ViewCompat
 import kotlin.math.roundToInt
 
 class ColorPickerDialog(
@@ -328,7 +329,9 @@ class ColorPickerDialog(
         hexEditText.postDelayed({
             if (isShowing && hexEditText.isAttachedToWindow && hexEditText.hasFocus()) {
                 val insetsController = WindowCompat.getInsetsController(dialogWindow, hexEditText)
-                if (insetsController.isVisible(WindowInsetsCompat.Type.ime())) {
+                if (ViewCompat.getRootWindowInsets(hexEditText)
+                        ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+                ) {
                     hexKeyboardRequestPending = false
                     return@postDelayed
                 }
