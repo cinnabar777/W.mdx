@@ -24,6 +24,7 @@ import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import { toCssFontFamily } from './fontFamilies.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
+import { TABLE_ACTIONS } from './tableActions.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -1034,7 +1035,7 @@ class ImagePreviewWidget extends WidgetType {
       fallbackBox.className = 'cm-image-error-fallback';
       fallbackBox.style.cssText = 'padding: 12px 16px; border: 1px dashed var(--border-color, #666); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text-color, #888); font-size: 13px; font-style: italic;';
       fallbackBox.textContent = `[Image: ${this.alt || 'failed to load'}]`;
-      wrapper.insertBefore(fallbackBox, actions);
+      wrapper.appendChild(fallbackBox);
       wrapper.style.minHeight = '0px';
       view.requestMeasure();
       rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
@@ -1051,6 +1052,7 @@ class ImagePreviewWidget extends WidgetType {
     editButton.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
+      hideActions();
       openImageEditDialog(view, this.from, this.to, this.alt, this.url, this.imageWidth);
     });
     const deleteButton = document.createElement('button');
@@ -1061,18 +1063,53 @@ class ImagePreviewWidget extends WidgetType {
     deleteButton.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
+      hideActions();
       openImageDeleteConfirmation(view, this.from, this.to);
     });
     actions.append(editButton, deleteButton);
 
+    let lastPressPoint = null;
+    const positionActions = () => {
+      if (!actions.isConnected || !lastPressPoint) return;
+      const viewport = window.visualViewport;
+      const viewportLeft = viewport?.offsetLeft ?? 0;
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const width = actions.offsetWidth || 144;
+      const height = actions.offsetHeight || 48;
+      const minLeft = viewportLeft + 8;
+      const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - width - 8);
+      const left = Math.max(minLeft, Math.min(lastPressPoint.x, maxLeft));
+      const minTop = viewportTop + 8;
+      const maxTop = Math.max(minTop, viewportTop + viewportHeight - height - 8);
+      let top = lastPressPoint.y + 12;
+      if (top + height > viewportTop + viewportHeight - 8) {
+        top = lastPressPoint.y - height - 12;
+      }
+      actions.style.left = `${left}px`;
+      actions.style.top = `${Math.max(minTop, Math.min(top, maxTop))}px`;
+    };
+    const showActions = (point) => {
+      lastPressPoint = point && Number.isFinite(point.x) && Number.isFinite(point.y)
+        ? point
+        : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      if (!actions.isConnected) document.body.appendChild(actions);
+      actions.classList.add('visible');
+      positionActions();
+    };
+    const hideActions = () => {
+      actions.classList.remove('visible');
+      actions.remove();
+    };
     const toggleActions = event => {
       event.preventDefault();
       event.stopPropagation();
-      actions.classList.toggle('visible');
-      rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
+      if (actions.classList.contains('visible')) hideActions();
+      else showActions({ x: event.clientX, y: event.clientY });
     };
     let pressTimer = null;
-    let longPressActivatedAt = 0;
+    let suppressNextImageClick = false;
     const clearPressTimer = () => {
       if (pressTimer !== null) {
         clearTimeout(pressTimer);
@@ -1084,12 +1121,12 @@ class ImagePreviewWidget extends WidgetType {
       if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
       const startX = event.clientX;
       const startY = event.clientY;
+      suppressNextImageClick = false;
       clearPressTimer();
       pressTimer = setTimeout(() => {
         pressTimer = null;
-        longPressActivatedAt = Date.now();
-        actions.classList.add('visible');
-        rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
+        suppressNextImageClick = true;
+        showActions({ x: startX, y: startY });
       }, 550);
       wrapper._imagePressStart = { x: startX, y: startY };
     });
@@ -1109,35 +1146,54 @@ class ImagePreviewWidget extends WidgetType {
       wrapper._imagePressStart = null;
     });
     wrapper.addEventListener('click', event => {
-      if (event.target.closest('.cm-image-actions')) return;
-      if (Date.now() - longPressActivatedAt < 900) return;
+      if (suppressNextImageClick) {
+        suppressNextImageClick = false;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       toggleActions(event);
     });
+    wrapper.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextImageClick = true;
+      showActions({ x: event.clientX, y: event.clientY });
+    });
     const dismissActions = event => {
-      if (!wrapper.contains(event.target) && actions.classList.contains('visible')) {
-        actions.classList.remove('visible');
-        rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
+      if (
+        !wrapper.contains(event.target) &&
+        !actions.contains(event.target) &&
+        actions.classList.contains('visible')
+      ) {
+        hideActions();
       }
     };
-    view.dom.addEventListener('pointerdown', dismissActions, true);
+    const repositionActions = () => positionActions();
+    document.addEventListener('pointerdown', dismissActions, true);
+    window.visualViewport?.addEventListener('resize', repositionActions);
     wrapper._imageDismissHandler = dismissActions;
-    wrapper._imageViewDom = view.dom;
+    wrapper._imageRepositionHandler = repositionActions;
     wrapper._clearImagePressTimer = clearPressTimer;
+    wrapper._hideImageActions = hideActions;
 
     if (img.parentNode !== wrapper) wrapper.appendChild(img);
-    wrapper.appendChild(actions);
     rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     return wrapper;
   }
 
   destroy(dom) {
     dom?._clearImagePressTimer?.();
-    if (dom?._imageDismissHandler && dom?._imageViewDom) {
-      dom._imageViewDom.removeEventListener(
+    dom?._hideImageActions?.();
+    if (dom?._imageDismissHandler) {
+      document.removeEventListener(
         'pointerdown',
         dom._imageDismissHandler,
         true
       );
+    }
+    if (dom?._imageRepositionHandler) {
+      window.visualViewport?.removeEventListener('resize', dom._imageRepositionHandler);
     }
   }
 
@@ -4009,7 +4065,25 @@ function setupGroupedControlBar() {
   if (tableBtn) {
     tableBtn.onclick = (e) => {
       e.stopPropagation();
-      showTableGridPickerModal();
+      togglePopupStrip('table', tableBtn, [
+        {
+          icon: svgIcons.insertTable,
+          title: 'Insert Table',
+          action: () => {
+            hidePopupStrip();
+            showTableGridPickerModal();
+          }
+        },
+        ...TABLE_ACTIONS.map(item => ({
+          icon: item.icon,
+          title: item.title,
+          disabled: !window.wmdxTableActions?.isEnabled(item.id),
+          action: () => {
+            hidePopupStrip();
+            window.wmdxTableActions?.run(item.id);
+          }
+        }))
+      ]);
     };
   }
 
@@ -4727,7 +4801,15 @@ function togglePopupStrip(groupKey, targetBtn, items) {
   items.forEach(item => {
     const btn = document.createElement('button');
     btn.className = 'popup-strip-btn';
-    if (item.title) btn.title = item.title;
+    if (item.title) {
+      btn.title = item.title;
+      btn.setAttribute('aria-label', item.title);
+    }
+    if (item.disabled) {
+      btn.disabled = true;
+      btn.setAttribute('aria-disabled', 'true');
+      btn.classList.add('disabled');
+    }
     btn.innerHTML = item.icon || item.title;
     btn.onclick = (e) => {
       e.stopPropagation();

@@ -22,6 +22,10 @@ test('Widget classes implement eq for DOM reuse', () => {
   assert.ok(code.includes('formatMarkdownImage(altInput.value, newUrl, newWidth)'), 'image width is saved with Markdown image syntax');
   assert.ok(code.includes('aria-label\', \'Edit image\''), 'image edit button has an accessible label');
   assert.ok(code.includes('aria-label\', \'Delete image\''), 'image delete button has an accessible label');
+  assert.ok(code.includes("document.body.appendChild(actions)"), 'image actions are portaled outside the tall image flow');
+  assert.ok(code.includes("wrapper.addEventListener('contextmenu'"), 'native long-press context menus are intercepted');
+  assert.ok(code.includes('suppressNextImageClick'), 'a held press cannot immediately toggle its action bar closed');
+  assert.ok(code.includes('window.visualViewport?.addEventListener'), 'image actions are repositioned when the visible viewport changes');
   assert.ok(
     code.includes("return Boolean(event.target?.closest?.('.cm-image-preview-wrapper'))"),
     'image taps are handled by the widget instead of moving the CodeMirror cursor'
@@ -88,12 +92,15 @@ test('TableModel parses, merges, splits, and serializes GFM tables correctly', a
 
 test('WordProcessorTableWidget provides structural context menu items', () => {
   const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const actions = fs.readFileSync(path.join(__dirname, '../src/tableActions.js'), 'utf8');
 
-  assert.ok(code.includes('Add Row Below'), 'Context menu includes Add Row Below');
-  assert.ok(code.includes('Add Column Right'), 'Context menu includes Add Column Right');
-  assert.ok(code.includes('Delete Row'), 'Context menu includes Delete Row');
-  assert.ok(code.includes('Delete Column'), 'Context menu includes Delete Column');
-  assert.ok(code.includes('Merge Right'), 'Context menu includes directional Merge');
+  assert.ok(code.includes('TABLE_ACTIONS.forEach'), 'Context menu renders the shared icon action set');
+  assert.ok(code.includes("menu.setAttribute('role', 'toolbar')"), 'Context actions are exposed as a toolbar');
+  assert.ok(actions.includes("title: 'Add Row Below'"), 'Icon actions include Add Row Below');
+  assert.ok(actions.includes("title: 'Add Column Right'"), 'Icon actions include Add Column Right');
+  assert.ok(actions.includes("title: 'Delete Row'"), 'Icon actions include Delete Row');
+  assert.ok(actions.includes("title: 'Delete Column'"), 'Icon actions include Delete Column');
+  assert.ok(actions.includes("title: 'Merge Right'"), 'Icon actions include directional merge controls');
   assert.ok(!code.includes("btnEdit.textContent = 'Edit Cell'"), 'Context menu excludes Edit Cell');
 });
 
@@ -171,6 +178,19 @@ test('wide rendered tables keep their content width inside a viewport-bounded ho
     indexHtml.includes('calc(100vw - 32px - var(--table-margin-left, 0px) - var(--table-margin-right, 0px))'),
     'The table scroller is capped to the viewport content width even if editor content expands'
   );
+});
+
+test('table action menu is icon-based, horizontal, and constrained to the visible viewport', () => {
+  const tableWidgetCode = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const actions = fs.readFileSync(path.join(__dirname, '../src/tableActions.js'), 'utf8');
+
+  assert.match(tableWidgetCode, /btn\.innerHTML = icon/);
+  assert.match(tableWidgetCode, /btn\.setAttribute\('aria-label', title\)/);
+  assert.match(tableWidgetCode, /window\.visualViewport/);
+  assert.match(indexHtml, /\.cm-wp-table-context-menu\s*\{[^}]*flex-flow:\s*row nowrap;[^}]*overflow-x:\s*auto;/s);
+  assert.match(indexHtml, /\.cm-wp-table-action:disabled/);
+  assert.equal((actions.match(/id: 'merge(?:Left|Right|Up|Down)'/g) ?? []).length, 4);
 });
 
 test('Table widget exports tableHeightEstimatesChanged and measureTableWidgetHeight', async () => {
