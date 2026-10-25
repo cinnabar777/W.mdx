@@ -6,3 +6,4 @@
 - [SeekBar reset alignment](seekbar-reset-alignment.md) — AndroidX’s inner end padding, not margins, misaligned reset icons; clearing it was confirmed to fix alignment.
 - [GitHub workflow writes](github-workflow-writes.md) — this GitHub App rejects workflow-file tree updates with a misleading 404; ordinary file updates and build dispatch work.
 - [APK verification](apk-verification.md) — replay new build checks against real debug and optimized release APKs; previews do not prove installed icon behavior.
+- [Adaptive icon night qualifiers](adaptive-icon-night-qualifiers.md) — match adaptive icon XML to each night-mode resource set; night PNGs can otherwise win and get masked again.
