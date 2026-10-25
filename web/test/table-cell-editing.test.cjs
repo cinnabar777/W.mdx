@@ -174,7 +174,7 @@ test('table toolbar actions are enabled for the selected cell and still edit the
   });
 });
 
-test('selections stay independent across tables and the toolbar follows the most recently tapped table', async () => {
+test('only the active table stays highlighted and leaving the table clears the visible selection', async () => {
   const markdown = [
     '| Name | Value |',
     '| --- | --- |',
@@ -182,11 +182,14 @@ test('selections stay independent across tables and the toolbar follows the most
     '| Beta | Two |'
   ].join('\n');
 
-  await withTableEditor(markdown, async ({ dom, container, tapCell, view, remountWidget }) => {
+  await withTableEditor(markdown, async ({ dom, container, tapCell, view, scroller, remountWidget }) => {
+    scroller.classList.add('cm-content');
     const firstTable = container;
-    tapCell(firstTable.querySelector('tbody td[data-row="1"][data-col="0"]'));
+    const firstCell = firstTable.querySelector('tbody td[data-row="1"][data-col="0"]');
+    tapCell(firstCell);
     const actions = dom.window.wmdxTableActions;
     assert.equal(actions.context.owner, firstTable);
+    assert.ok(firstCell.style.backgroundColor, 'the current cell is highlighted');
 
     const { WordProcessorTableWidget } = await import('../src/tableWidget.js');
     const secondFrom = markdown.length + 10;
@@ -196,9 +199,12 @@ test('selections stay independent across tables and the toolbar follows the most
       secondFrom + markdown.length
     );
     const secondTable = secondWidget.toDOM(view);
-    document.body.appendChild(secondTable);
-    tapCell(secondTable.querySelector('tbody td[data-row="2"][data-col="1"]'));
+    scroller.appendChild(secondTable);
+    const secondCell = secondTable.querySelector('tbody td[data-row="2"][data-col="1"]');
+    tapCell(secondCell);
     assert.equal(actions.context.owner, secondTable, 'tapping another table makes it the toolbar target');
+    assert.equal(firstCell.style.backgroundColor, '', 'the previous table loses its visible highlight');
+    assert.ok(secondCell.style.backgroundColor, 'the newly active table is highlighted');
 
     const remountedFirstTable = remountWidget();
     assert.equal(
@@ -206,10 +212,23 @@ test('selections stay independent across tables and the toolbar follows the most
       secondTable,
       'redrawing the first table does not steal the toolbar target from the last tapped table'
     );
-    assert.ok(
-      remountedFirstTable.querySelector('tbody td[data-row="1"][data-col="0"]').style.backgroundColor,
-      'the first table retains its own selected cell'
-    );
+    const remountedFirstCell = remountedFirstTable.querySelector('tbody td[data-row="1"][data-col="0"]');
+    assert.equal(remountedFirstCell.style.backgroundColor, '', 'an inactive table stays visually unselected');
+
+    const text = document.createElement('p');
+    text.textContent = 'Text outside the table';
+    scroller.appendChild(text);
+    text.dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true }));
+    assert.equal(actions.active, null, 'tapping regular text clears the active table target');
+    assert.equal(actions.context, null, 'table toolbar actions are unavailable after leaving tables');
+    assert.equal(secondCell.style.backgroundColor, '', 'the last table highlight clears when focus leaves it');
+
+    tapCell(remountedFirstCell);
+    assert.equal(actions.active.from, 0, 'tapping a previously selected cell reactivates that table first');
+    assert.ok(remountedFirstCell.style.backgroundColor);
+    assert.equal(remountedFirstTable.querySelector('.cm-wp-cell-editor'), null);
+    tapCell(remountedFirstCell);
+    assert.ok(remountedFirstTable.querySelector('.cm-wp-cell-editor'), 'a second tap enters cell editing');
     secondWidget.destroy(secondTable);
   });
 });

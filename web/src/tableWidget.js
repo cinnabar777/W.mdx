@@ -457,9 +457,15 @@ export class WordProcessorTableWidget extends WidgetType {
           return;
         }
         clearTimeout(longPressTimer);
+        const active = tableActionBridge()?.active;
         if (activeOverlay) {
           if (handoffToCell(r, c)) e.preventDefault();
-        } else if (selectedRange && selectedRange.startR === r && selectedRange.startC === c) {
+        } else if (
+          active?.view === view &&
+          active.from === this.from &&
+          active.r === r &&
+          active.c === c
+        ) {
           openCellEditor(cellEl, r, c);
         } else {
           selectCell(r, c);
@@ -545,10 +551,10 @@ export class WordProcessorTableWidget extends WidgetType {
       activeCell = { r, c };
       selectedRange = { startR: r, startC: c, endR: r, endC: c };
       selections?.set(this.from, selectedRange);
-      updateSelectionHighlight();
       const bridge = tableActionBridge();
       if (bridge) bridge.active = { view, from: this.from, r, c };
       publishActiveCell();
+      updateSelectionHighlight();
     };
 
     const updateSelectionHighlight = () => {
@@ -557,7 +563,11 @@ export class WordProcessorTableWidget extends WidgetType {
         el.style.backgroundColor = '';
       });
 
-      if (!selectedRange) {
+      const bridge = tableActionBridge();
+      const isActiveTable =
+        bridge?.active?.view === view &&
+        bridge.active.from === this.from;
+      if (!selectedRange || !isActiveTable) {
         btnMerge.style.display = 'none';
         btnSplit.style.display = 'none';
         return;
@@ -586,6 +596,32 @@ export class WordProcessorTableWidget extends WidgetType {
         }
       }
     };
+
+    const refreshSelectionHighlight = () => updateSelectionHighlight();
+    const clearActiveSelectionOutsideTables = event => {
+      const target = event.target?.nodeType === 1
+        ? event.target
+        : event.target?.parentElement;
+      if (
+        !target ||
+        !view?.dom?.contains(target) ||
+        !target.closest?.('.cm-content') ||
+        target.closest('.cm-wp-table-container')
+      ) {
+        return;
+      }
+      const bridge = tableActionBridge();
+      if (bridge?.active?.view !== view) return;
+      bridge.active = null;
+      bridge.context = null;
+      window.dispatchEvent(new Event('wmdx-table-context-change'));
+    };
+    if (!measurementOnly && view) {
+      window.addEventListener('wmdx-table-context-change', refreshSelectionHighlight);
+      document.addEventListener('pointerdown', clearActiveSelectionOutsideTables, true);
+      container._tableContextChangeHandler = refreshSelectionHighlight;
+      container._clearActiveSelectionHandler = clearActiveSelectionOutsideTables;
+    }
 
     const openCellEditor = (cellEl, r, c) => {
       if (activeOverlay) activeOverlay.remove();
@@ -793,6 +829,15 @@ export class WordProcessorTableWidget extends WidgetType {
   }
 
   destroy(dom) {
+    if (dom._tableContextChangeHandler) {
+      window.removeEventListener('wmdx-table-context-change', dom._tableContextChangeHandler);
+      dom._tableContextChangeHandler = null;
+    }
+    if (dom._clearActiveSelectionHandler) {
+      document.removeEventListener('pointerdown', dom._clearActiveSelectionHandler, true);
+      dom._clearActiveSelectionHandler = null;
+    }
+
     const bridge = tableActionBridge();
     if (bridge?.context?.owner === dom) {
       bridge.context = null;
