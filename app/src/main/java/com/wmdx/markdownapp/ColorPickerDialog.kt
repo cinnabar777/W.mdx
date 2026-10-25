@@ -15,12 +15,14 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
-import android.view.inputmethod.InputMethodManager
+import android.view.WindowManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import kotlin.math.roundToInt
 
 class ColorPickerDialog(
@@ -179,13 +181,7 @@ class ColorPickerDialog(
             isFocusable = true
             isFocusableInTouchMode = true
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            setOnClickListener {
-                requestFocus()
-                post {
-                    (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-                        ?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
-                }
-            }
+            setOnClickListener { showHexKeyboard() }
         }
         hexAndPreviewLayout.addView(hexEditText)
 
@@ -285,6 +281,26 @@ class ColorPickerDialog(
                 }
             }
         })
+    }
+
+    override fun onStart() {
+        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        super.onStart()
+    }
+
+    private fun showHexKeyboard() {
+        val dialogWindow = window ?: return
+        hexEditText.requestFocus()
+        dialogWindow.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
+        hexEditText.post {
+            if (hexEditText.hasFocus()) {
+                WindowCompat.getInsetsController(dialogWindow, hexEditText)
+                    .show(WindowInsetsCompat.Type.ime())
+            }
+        }
     }
 
     private fun updateColorFromHSV() {
