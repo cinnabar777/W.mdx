@@ -6,15 +6,15 @@ ___
 # To-do: 
 
 1. Hyphenate: add to typography setting wherever there is a setting to enable justify text. 
-2. Separate items in typography: these elements need their own page in typography — Jules lumped many together initially but with all the custom settings it feels to cluttered. 
-    1. Bold 
-    2. Italic 
-    3. Links 
-    4. Inline code 
-    5. Footnotes (separate typography page added)
-    6. Block quotes 
-    7. Callouts 
-    8. Did I miss any that should be separated? 
+2. [x] Separate items in typography: these elements now have their own page in typography.
+    1. [x] Bold
+    2. [x] Italic
+    3. [x] Links
+    4. [x] Inline code
+    5. [x] Footnotes (already had a separate typography page)
+    6. [x] Block quotes
+    7. [x] Callouts
+    8. [x] Other elements already have separate pages; no additional combined typography page was found.
 3. Bottom control bar & UI theme: move from typography to main settings page below find & replace and name it "Toolbar: Bottom" 
 4. Settings: cleanup redundant and unnecessary wording — things like "styling & typography settings", "settings" is redundant because it is the settings. 
     1. Custom keyboard shortcuts → remove custom. Remove "shortcut" from all the keyboard shortcuts, again that's the page they are on therefore it is redundant — Jules did a lot of redundant wording that needs to be reduced. Go through and make your best effort to cleanup this in settings.  

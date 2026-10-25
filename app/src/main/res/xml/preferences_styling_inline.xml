@@ -2,7 +2,9 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Bold Text Styling">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_inline_bold"
+        app:title="Bold Text Styling">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_bold_color"
             app:title="Bold Text Color"
@@ -24,7 +26,9 @@
             app:summary="Tap to pick a font file (.ttf, .otf, .woff, .woff2)" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Italic Text Styling">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_inline_italic"
+        app:title="Italic Text Styling">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_italic_color"
             app:title="Italic Text Color"
@@ -46,7 +50,9 @@
             app:summary="Tap to pick a font file (.ttf, .otf, .woff, .woff2)" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Hyperlinks">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_inline_links"
+        app:title="Hyperlinks">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_link_color"
             app:title="Link Color"
@@ -71,7 +77,9 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Inline Code Styling">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_inline_code"
+        app:title="Inline Code Styling">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_code_color"
             app:title="Inline Code Text Color"

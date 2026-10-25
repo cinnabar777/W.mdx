@@ -27,6 +27,10 @@ const appThemeXml = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/res/values/themes.xml'),
   'utf8'
 );
+const appManifestXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/AndroidManifest.xml'),
+  'utf8'
+);
 
 test('main.js exists and compiles without errors', () => {
   assert.ok(source.length > 0);
@@ -105,15 +109,87 @@ test('native dialogs use the app dark surface and teal accent instead of default
   assert.match(appThemeXml, /<item name="android:colorBackgroundFloating">#080808<\/item>/);
 });
 
-test('New Window opens a separate Android document task with a unique identity', () => {
+test('New Window launches a fresh, separate Android editor task', () => {
   const handlerStart = mainActivitySource.indexOf('private fun handleNewWindow()');
   const handlerEnd = mainActivitySource.indexOf('\n    private ', handlerStart + 1);
   const handler = mainActivitySource.slice(handlerStart, handlerEnd);
+  const activityDeclaration = appManifestXml.match(
+    /<activity\s+android:name="\.MainActivity"[\s\S]*?\/>/
+  )?.[0] ?? '';
 
   assert.ok(handlerStart >= 0, 'Native new-window handler exists');
+  assert.match(activityDeclaration, /android:launchMode="standard"/);
+  assert.match(activityDeclaration, /android:resizeableActivity="true"/);
   assert.match(handler, /data = Uri\.parse\("wmdx:\/\/window\/\$newWindowId"\)/);
+  assert.match(handler, /FLAG_ACTIVITY_NEW_TASK/);
   assert.match(handler, /FLAG_ACTIVITY_NEW_DOCUMENT/);
   assert.match(handler, /FLAG_ACTIVITY_MULTIPLE_TASK/);
   assert.match(handler, /putExtra\("is_new_document", true\)/);
+  assert.match(mainActivitySource, /"new_window"\s*->\s*handleNewWindow\(\)/);
   assert.match(source, /title: 'New Window'[\s\S]*?onNativeAction\('new_window'\)/);
+});
+
+test('typography editor categories are separated into individual navigation pages', () => {
+  const navigationXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling.xml'),
+    'utf8'
+  );
+  const inlineXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_inline.xml'),
+    'utf8'
+  );
+  const blockquoteXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_blockquotes.xml'),
+    'utf8'
+  );
+
+  for (const key of [
+    'pref_styling_page_bold',
+    'pref_styling_page_italic',
+    'pref_styling_page_links',
+    'pref_styling_page_inline_code',
+    'pref_styling_page_blockquotes',
+    'pref_styling_page_callouts',
+    'pref_styling_page_footnotes'
+  ]) {
+    assert.ok(navigationXml.includes(`app:key="${key}"`), `Missing typography page ${key}`);
+    assert.ok(settingsActivitySource.includes(`"${key}"`), `Missing fragment route for ${key}`);
+  }
+
+  for (const key of [
+    'pref_bold_color',
+    'pref_font_weight_bold',
+    'pref_font_file_bold',
+    'pref_italic_color',
+    'pref_font_weight_italic',
+    'pref_font_file_italic',
+    'pref_link_color',
+    'pref_link_decoration',
+    'pref_link_underline_thickness',
+    'pref_code_color',
+    'pref_code_bg_color',
+    'pref_code_padding',
+    'pref_code_border_radius',
+    'pref_font_file_code'
+  ]) {
+    assert.ok(inlineXml.includes(`app:key="${key}"`), `Existing inline setting key changed: ${key}`);
+  }
+
+  for (const categoryKey of [
+    'styling_inline_bold',
+    'styling_inline_italic',
+    'styling_inline_links',
+    'styling_inline_code',
+    'styling_blockquote_typography',
+    'styling_callout_body_typography',
+    'styling_blockquote_settings',
+    'styling_callout_settings',
+    'styling_callout_shared_header',
+    'styling_callout_type_overrides'
+  ]) {
+    assert.ok(
+      settingsActivitySource.includes(`"${categoryKey}"`),
+      `Page filtering does not preserve ${categoryKey} as its own page`
+    );
+  }
 });

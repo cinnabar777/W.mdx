@@ -1425,7 +1425,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             data = Uri.parse("wmdx://window/$newWindowId")
             addFlags(
                 android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
-                    android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+                    android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK
             )
             putExtra("is_new_document", true)
         }

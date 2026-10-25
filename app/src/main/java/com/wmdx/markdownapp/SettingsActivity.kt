@@ -48,10 +48,14 @@ class SettingsActivity : AppCompatActivity() {
                 is SettingsThemeFragment -> "Settings Theme & Custom Colors"
                 is StylingHeadingsFragment -> "Headings Styling"
                 is StylingParagraphFragment -> "Paragraph & Body Styling"
-                is StylingInlineFragment -> "Inline Formats Styling"
+                is StylingBoldFragment -> "Bold Styling"
+                is StylingItalicFragment -> "Italic Styling"
+                is StylingLinksFragment -> "Links Styling"
+                is StylingInlineCodeFragment -> "Inline Code Styling"
                 is StylingFootnotesFragment -> "Footnotes Typography"
                 is StylingListsFragment -> "Lists & Todos Styling"
-                is StylingBlockquotesFragment -> "Block Quotes & Callouts Styling"
+                is StylingBlockquotesFragment -> "Block Quotes Styling"
+                is StylingCalloutsFragment -> "Callouts Styling"
                 is StylingTablesFragment -> "Tables Styling"
                 is StylingCodeFragment -> "Code Blocks Styling"
                 is StylingHrFragment -> "Horizontal Dividers Styling"
@@ -113,6 +117,20 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 if (pref is androidx.preference.PreferenceGroup) {
                     applyCustomLayouts(pref)
                 }
+            }
+        }
+    }
+
+    protected fun keepPreferenceCategories(vararg categoryKeys: String) {
+        val screen = preferenceScreen ?: return
+        val allowedKeys = categoryKeys.toSet()
+        for (index in screen.preferenceCount - 1 downTo 0) {
+            val preference = screen.getPreference(index)
+            if (
+                preference is androidx.preference.PreferenceCategory &&
+                preference.key !in allowedKeys
+            ) {
+                screen.removePreference(preference)
             }
         }
     }
@@ -861,10 +879,14 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
         val targetFragment: PreferenceFragmentCompat? = when (key) {
             "pref_styling_page_headings" -> StylingHeadingsFragment()
             "pref_styling_page_paragraph" -> StylingParagraphFragment()
-            "pref_styling_page_inline" -> StylingInlineFragment()
+            "pref_styling_page_bold" -> StylingBoldFragment()
+            "pref_styling_page_italic" -> StylingItalicFragment()
+            "pref_styling_page_links" -> StylingLinksFragment()
+            "pref_styling_page_inline_code" -> StylingInlineCodeFragment()
             "pref_styling_page_footnotes" -> StylingFootnotesFragment()
             "pref_styling_page_lists" -> StylingListsFragment()
             "pref_styling_page_blockquotes" -> StylingBlockquotesFragment()
+            "pref_styling_page_callouts" -> StylingCalloutsFragment()
             "pref_styling_page_tables" -> StylingTablesFragment()
             "pref_styling_page_code" -> StylingCodeFragment()
             "pref_styling_page_hr" -> StylingHrFragment()
@@ -965,10 +987,29 @@ class StylingParagraphFragment : StylingSettingsFragment() {
     }
 }
 
-class StylingInlineFragment : StylingSettingsFragment() {
+abstract class StylingInlineElementFragment : StylingSettingsFragment() {
+    protected abstract val categoryKey: String
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_inline, rootKey)
+        keepPreferenceCategories(categoryKey)
     }
+}
+
+class StylingBoldFragment : StylingInlineElementFragment() {
+    override val categoryKey = "styling_inline_bold"
+}
+
+class StylingItalicFragment : StylingInlineElementFragment() {
+    override val categoryKey = "styling_inline_italic"
+}
+
+class StylingLinksFragment : StylingInlineElementFragment() {
+    override val categoryKey = "styling_inline_links"
+}
+
+class StylingInlineCodeFragment : StylingInlineElementFragment() {
+    override val categoryKey = "styling_inline_code"
 }
 
 class StylingFootnotesFragment : StylingSettingsFragment() {
@@ -985,12 +1026,25 @@ class StylingListsFragment : StylingSettingsFragment() {
 }
 
 class StylingBlockquotesFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_blockquotes, rootKey)
+        keepPreferenceCategories("styling_blockquote_typography", "styling_blockquote_settings")
+    }
+}
+
+class StylingCalloutsFragment : StylingSettingsFragment() {
     private var previewContainer: android.widget.LinearLayout? = null
     private val previewTitleViews = mutableMapOf<String, android.widget.TextView>()
     private val previewCardViews = mutableMapOf<String, android.widget.LinearLayout>()
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_blockquotes, rootKey)
+        keepPreferenceCategories(
+            "styling_callout_body_typography",
+            "styling_callout_settings",
+            "styling_callout_shared_header",
+            "styling_callout_type_overrides"
+        )
     }
 
     override fun onViewCreated(view: android.view.View, savedInstanceState: Bundle?) {

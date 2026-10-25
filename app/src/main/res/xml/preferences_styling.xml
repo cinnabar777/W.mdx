@@ -15,8 +15,8 @@
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_blockquotes"
-            app:title="Block Quotes &amp; Callouts"
-            app:summary="Typography, borders, colors, background tints &amp; padding" />
+            app:title="Block Quotes"
+            app:summary="Block quote typography, border, background, and spacing" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_controlbar"
@@ -45,8 +45,28 @@
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_inline"
-            app:title="Inline Formats (Bold, Italic, Links, Inline Code)"
-            app:summary="Colors, font weights, link decorations &amp; inline code padding" />
+            app:title="Bold"
+            app:summary="Bold text color, font weight, and custom font" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_callouts"
+            app:title="Callouts"
+            app:summary="Callout typography, borders, colors, and header styles" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_inline_code"
+            app:title="Inline Code"
+            app:summary="Inline code text, background, padding, and font" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_italic"
+            app:title="Italic"
+            app:summary="Italic text color, font weight, and custom font" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_links"
+            app:title="Links"
+            app:summary="Link text color, underline style, and thickness" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_lists"
