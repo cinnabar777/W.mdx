@@ -37,7 +37,7 @@
             app:key="pref_footnote_font_size"
             app:title="Footnote Font Size (px)"
             app:summary="Font size for footnote text"
-            app:min="10"
+            app:min="4"
             android:max="32"
             app:defaultValue="14"
             app:showSeekBarValue="true"

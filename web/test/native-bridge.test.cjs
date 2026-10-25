@@ -23,6 +23,10 @@ const storageSettingsXml = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/res/xml/preferences_storage_access.xml'),
   'utf8'
 );
+const appThemeXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/values/themes.xml'),
+  'utf8'
+);
 
 test('main.js exists and compiles without errors', () => {
   assert.ok(source.length > 0);
@@ -91,4 +95,12 @@ test('rename access dialog offers folder access and Save As alongside its explan
   assert.ok(dialog.includes('.setPositiveButton("Choose Folder")'));
   assert.ok(dialog.includes('.setNegativeButton("Save As")'));
   assert.ok(!dialog.includes('.setItems('), 'a message and item list hide one another in Android AlertDialogs');
+});
+
+test('native dialogs use the app dark surface and teal accent instead of default purple', () => {
+  assert.match(appThemeXml, /<item name="colorPrimary">#00C9D3<\/item>/);
+  assert.match(appThemeXml, /<item name="colorAccent">#00C9D3<\/item>/);
+  assert.match(appThemeXml, /<item name="android:colorAccent">#00C9D3<\/item>/);
+  assert.match(appThemeXml, /<item name="colorSurface">#202124<\/item>/);
+  assert.match(appThemeXml, /<item name="android:colorBackgroundFloating">#202124<\/item>/);
 });

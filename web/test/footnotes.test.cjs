@@ -110,6 +110,11 @@ test('footnote typography has its own page and includes the planned overrides', 
     assert.ok(footnotePreferences.includes(`app:key="${key}"`), `${key} is on the footnote page`);
     assert.ok(!inlinePreferences.includes(`app:key="${key}"`), `${key} is no longer under inline formats`);
   }
+  assert.match(
+    footnotePreferences,
+    /app:key="pref_footnote_font_size"[\s\S]*?app:min="4"/,
+    'footnote font size can be reduced to 4 px'
+  );
   assert.match(footnotePreferences, /app:disableDependentsState="true"/);
   assert.match(settingsActivity, /"pref_styling_page_footnotes" -> StylingFootnotesFragment\(\)/);
   assert.match(settingsActivity, /"pref_font_file_footnote"/);
