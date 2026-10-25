@@ -191,7 +191,7 @@ export class WordProcessorTableWidget extends WidgetType {
 
     const table = document.createElement('table');
     table.className = 'cm-wp-table';
-    table.style.cssText = `width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))); font-family: var(--table-font-family, var(--body-font-family, inherit)); font-size: var(--table-font-size, 15px); font-weight: var(--table-font-weight, 400); letter-spacing: var(--table-letter-spacing, 0px); line-height: var(--table-line-height, 1.6); hyphens: var(--table-hyphens, none); border: ${borderCss};`;
+    table.style.cssText = `width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))); font-family: var(--table-font-family, var(--body-font-family, inherit)); font-size: var(--table-font-size, 15px); font-weight: var(--table-font-weight, 400); letter-spacing: var(--table-letter-spacing, 0px); line-height: var(--table-line-height, 1.6); hyphens: var(--table-hyphens, none); border: ${borderCss}; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;`;
 
     const renderTableCells = () => {
       table.innerHTML = '';
@@ -207,7 +207,7 @@ export class WordProcessorTableWidget extends WidgetType {
         if (cellData.isCovered) continue;
 
         const th = document.createElement('th');
-        th.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-header-bg, rgba(255,255,255,0.12)); color: var(--table-header-color, var(--text-color, #fff)); font-weight: var(--table-header-font-weight, 700); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer;`;
+        th.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-header-bg, rgba(255,255,255,0.12)); color: var(--table-header-color, var(--text-color, #fff)); font-weight: var(--table-header-font-weight, 700); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation;`;
         if (cellData.colSpan > 1) th.colSpan = cellData.colSpan;
         if (cellData.rowSpan > 1) th.rowSpan = cellData.rowSpan;
         th.dataset.row = '0';
@@ -228,7 +228,7 @@ export class WordProcessorTableWidget extends WidgetType {
           if (cellData.isCovered) continue;
 
           const td = document.createElement('td');
-          td.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-cell-bg, transparent); color: var(--table-cell-color, var(--text-color, #fff)); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer;`;
+          td.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-cell-bg, transparent); color: var(--table-cell-color, var(--text-color, #fff)); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation;`;
           if (cellData.colSpan > 1) td.colSpan = cellData.colSpan;
           if (cellData.rowSpan > 1) td.rowSpan = cellData.rowSpan;
           td.dataset.row = String(r);
@@ -381,6 +381,7 @@ export class WordProcessorTableWidget extends WidgetType {
     const attachCellEvents = (cellEl, r, c) => {
       const startLongPress = (e) => {
         if (activeOverlay) return;
+        e.stopPropagation();
         clearTimeout(longPressTimer);
         suppressClickAfterLongPress = false;
         const startX = e.clientX || (e.touches && e.touches[0].clientX);
@@ -419,6 +420,17 @@ export class WordProcessorTableWidget extends WidgetType {
       };
 
       cellEl.addEventListener('pointerdown', startLongPress);
+      cellEl.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        clearTimeout(longPressTimer);
+        suppressClickAfterLongPress = true;
+        if (activeOverlay) return;
+        selectCell(r, c);
+        if (!document.querySelector('.cm-wp-table-context-menu')) {
+          showContextMenu(cellEl, r, c, { x: event.clientX, y: event.clientY });
+        }
+      });
 
       cellEl.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -559,7 +571,7 @@ export class WordProcessorTableWidget extends WidgetType {
       const overlay = document.createElement('textarea');
       overlay.className = 'cm-wp-cell-editor';
       overlay.value = this.model.rows[r][c] || '';
-      overlay.style.cssText = `position: absolute; top: ${cellEl.offsetTop}px; left: ${cellEl.offsetLeft}px; width: ${cellEl.offsetWidth}px; height: ${cellEl.offsetHeight}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px;`;
+      overlay.style.cssText = `position: absolute; top: ${cellEl.offsetTop}px; left: ${cellEl.offsetLeft}px; width: ${cellEl.offsetWidth}px; height: ${cellEl.offsetHeight}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px; -webkit-user-select: text; user-select: text;`;
 
       let isCommitted = false;
       const commitAndClose = (nextNavigation) => {

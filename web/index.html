@@ -387,6 +387,12 @@
       background-color: rgba(255, 255, 255, 0.2) !important;
     }
 
+    .popup-strip-btn.active {
+      color: var(--toolbar-active-icon-color, var(--toolbar-icon-color)) !important;
+      outline: 1px solid var(--toolbar-active-icon-color, var(--toolbar-icon-color));
+      outline-offset: -1px;
+    }
+
     .popup-strip-btn:disabled,
     .popup-strip-btn.disabled {
       opacity: 0.4 !important;
@@ -439,6 +445,10 @@
       background-color: var(--button-hover) !important;
     }
 
+    .grouped-key-btn.has-active-syntax {
+      background-color: var(--button-hover) !important;
+    }
+
     /* Line Wrap Toggle Rule */
     body.no-line-wrap #editor {
       overflow-x: auto !important;
@@ -473,6 +483,7 @@
 
     /* Active Toolbar Icon Accent Color */
     .grouped-key-btn.active svg,
+    .grouped-key-btn.has-active-syntax svg,
     .popup-strip-btn.active svg {
       stroke: var(--toolbar-active-icon-color, var(--toolbar-icon-color)) !important;
     }

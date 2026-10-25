@@ -25,6 +25,7 @@ import { extractTocHeadings } from './tocHeadings.js';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { toCssFontFamily } from './fontFamilies.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
+import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
@@ -3679,6 +3680,9 @@ class CodeMirrorAdapter {
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             updateTableDocumentSelection(update.view);
           }
+          if (update.selectionSet || update.docChanged) {
+            refreshToolbarSyntaxState(update.view);
+          }
           if ((update.selectionSet || update.docChanged) && typeof updateTocActiveSection === 'function') {
             updateTocActiveSection();
           }
@@ -3793,6 +3797,7 @@ class CodeMirrorAdapter {
     );
 
         setupGroupedControlBar();
+    refreshToolbarSyntaxState(this.view);
     initCustomSearchBar();
     this.fastScrollbarCleanup = setupFastScrollbar();
     this.tocGestureCleanup = setupTocGestureAndPanel(this.view.scrollDOM);
@@ -4024,13 +4029,13 @@ function setupGroupedControlBar() {
     headingBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('heading', headingBtn, [
-        { title: 'Paragraph', icon: 'P', action: () => execCmd('heading', { value: 'paragraph' }) },
-        { title: 'Heading 1', icon: 'H1', action: () => execCmd('heading', { value: 'heading1' }) },
-        { title: 'Heading 2', icon: 'H2', action: () => execCmd('heading', { value: 'heading2' }) },
-        { title: 'Heading 3', icon: 'H3', action: () => execCmd('heading', { value: 'heading3' }) },
-        { title: 'Heading 4', icon: 'H4', action: () => execCmd('heading', { value: 'heading4' }) },
-        { title: 'Heading 5', icon: 'H5', action: () => execCmd('heading', { value: 'heading5' }) },
-        { title: 'Heading 6', icon: 'H6', action: () => execCmd('heading', { value: 'heading6' }) },
+        { title: 'Paragraph', icon: 'P', command: 'paragraph', action: () => execCmd('heading', { value: 'paragraph' }) },
+        { title: 'Heading 1', icon: 'H1', command: 'heading1', action: () => execCmd('heading', { value: 'heading1' }) },
+        { title: 'Heading 2', icon: 'H2', command: 'heading2', action: () => execCmd('heading', { value: 'heading2' }) },
+        { title: 'Heading 3', icon: 'H3', command: 'heading3', action: () => execCmd('heading', { value: 'heading3' }) },
+        { title: 'Heading 4', icon: 'H4', command: 'heading4', action: () => execCmd('heading', { value: 'heading4' }) },
+        { title: 'Heading 5', icon: 'H5', command: 'heading5', action: () => execCmd('heading', { value: 'heading5' }) },
+        { title: 'Heading 6', icon: 'H6', command: 'heading6', action: () => execCmd('heading', { value: 'heading6' }) },
         { icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
         { icon: '#', title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
       ]);
@@ -4042,9 +4047,9 @@ function setupGroupedControlBar() {
     listsBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('lists', listsBtn, [
-        { title: 'Bulleted List', icon: svgIcons.bulletedList, action: () => execCmd('bulletedList') },
-        { title: 'Numbered List', icon: svgIcons.numberedList, action: () => execCmd('numberedList') },
-        { title: 'Todo List', icon: svgIcons.todoList, action: () => execCmd('todoList') },
+        { title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
+        { title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', action: () => execCmd('numberedList') },
+        { title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', action: () => execCmd('todoList') },
         { title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
         { title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
       ]);
@@ -4056,16 +4061,16 @@ function setupGroupedControlBar() {
     formatBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('format', formatBtn, [
-        { icon: svgIcons.bold, title: 'Bold', action: () => execCmd('bold') },
-        { icon: svgIcons.italic, title: 'Italic', action: () => execCmd('italic') },
-        { icon: svgIcons.strikethrough, title: 'Strikethrough', action: () => execCmd('strikethrough') },
-        { icon: svgIcons.underline, title: 'Underline', action: () => execCmd('underline') },
-        { icon: svgIcons.squareMarker('#ffe066'), title: 'Yellow Marker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
-        { icon: svgIcons.squareMarker('#a8f087'), title: 'Green Marker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
-        { icon: svgIcons.squareMarker('#ff99c8'), title: 'Pink Marker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
-        { icon: svgIcons.squareMarker('#9bf6ff'), title: 'Blue Marker', action: () => execCmd('highlight', { value: 'blueMarker' }) },
-        { icon: svgIcons.circlePen('#ff595e'), title: 'Red Pen', action: () => execCmd('highlight', { value: 'redPen' }) },
-        { icon: svgIcons.circlePen('#2ec4b6'), title: 'Green Pen', action: () => execCmd('highlight', { value: 'greenPen' }) }
+        { icon: svgIcons.bold, title: 'Bold', command: 'bold', action: () => execCmd('bold') },
+        { icon: svgIcons.italic, title: 'Italic', command: 'italic', action: () => execCmd('italic') },
+        { icon: svgIcons.strikethrough, title: 'Strikethrough', command: 'strikethrough', action: () => execCmd('strikethrough') },
+        { icon: svgIcons.underline, title: 'Underline', command: 'underline', action: () => execCmd('underline') },
+        { icon: svgIcons.squareMarker('#ffe066'), title: 'Yellow Marker', command: 'yellowMarker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
+        { icon: svgIcons.squareMarker('#a8f087'), title: 'Green Marker', command: 'greenMarker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
+        { icon: svgIcons.squareMarker('#ff99c8'), title: 'Pink Marker', command: 'pinkMarker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
+        { icon: svgIcons.squareMarker('#9bf6ff'), title: 'Blue Marker', command: 'blueMarker', action: () => execCmd('highlight', { value: 'blueMarker' }) },
+        { icon: svgIcons.circlePen('#ff595e'), title: 'Red Pen', command: 'redPen', action: () => execCmd('highlight', { value: 'redPen' }) },
+        { icon: svgIcons.circlePen('#2ec4b6'), title: 'Green Pen', command: 'greenPen', action: () => execCmd('highlight', { value: 'greenPen' }) }
       ]);
     };
   }
@@ -4104,7 +4109,7 @@ function setupGroupedControlBar() {
         { icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
         { icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
         { icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
-        { icon: svgIcons.inlineCode, title: 'Inline Code', action: () => execCmd('code') },
+        { icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
         { icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
         { icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
         { icon: svgIcons.horizontalLine, title: 'Insert Line', action: () => execCmd('horizontalLine') },
@@ -4749,12 +4754,15 @@ function insertCustomTable(rows, cols) {
 function execCmd(cmdName, options) {
   if (activeAdapter && activeAdapter.view) {
     const view = activeAdapter.view;
-    if (cmdName === 'bold') cmWrapSelection(view, '**');
-    else if (cmdName === 'italic') cmWrapSelection(view, '*');
-    else if (cmdName === 'strikethrough') cmWrapSelection(view, '~~');
-    else if (cmdName === 'underline') cmWrapSelection(view, '<u>', '</u>');
-    else if (cmdName === 'code') cmWrapSelection(view, '`');
-    else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
+    if (
+      cmdName === 'bold' ||
+      cmdName === 'italic' ||
+      cmdName === 'strikethrough' ||
+      cmdName === 'underline' ||
+      cmdName === 'code'
+    ) {
+      toggleMarkdownFormat(view, cmdName);
+    } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
     else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
     else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
@@ -4777,9 +4785,9 @@ function execCmd(cmdName, options) {
       else if (val === 'heading6') cmToggleLinePrefix(view, '###### ');
     } else if (cmdName === 'highlight') {
       const val = options ? options.value : null;
-      if (val === 'yellowMarker' || val === 'greenMarker' || val === 'pinkMarker' || val === 'blueMarker') cmWrapSelection(view, '==', '==');
-      else if (val === 'redPen') cmWrapSelection(view, '<span style="color:red">', '</span>');
-      else if (val === 'greenPen') cmWrapSelection(view, '<span style="color:green">', '</span>');
+      if (val === 'yellowMarker' || val === 'greenMarker' || val === 'pinkMarker' || val === 'blueMarker' || val === 'redPen' || val === 'greenPen') {
+        toggleMarkdownFormat(view, val);
+      }
     }
   }
 }
@@ -4819,6 +4827,7 @@ function togglePopupStrip(groupKey, targetBtn, items) {
       btn.setAttribute('aria-disabled', 'true');
       btn.classList.add('disabled');
     }
+    if (item.command) btn.dataset.toolbarCommand = item.command;
     btn.innerHTML = item.icon || item.title;
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -4831,6 +4840,62 @@ function togglePopupStrip(groupKey, targetBtn, items) {
 
   strip.classList.remove('hidden');
   strip.scrollLeft = 0;
+  refreshToolbarSyntaxState();
+  const activeCommand = strip.querySelector('.popup-strip-btn.active');
+  if (activeCommand) {
+    const stripRect = strip.getBoundingClientRect();
+    const commandRect = activeCommand.getBoundingClientRect();
+    if (commandRect.left < stripRect.left + 8) {
+      strip.scrollLeft -= stripRect.left + 8 - commandRect.left;
+    } else if (commandRect.right > stripRect.right - 8) {
+      strip.scrollLeft += commandRect.right - stripRect.right + 8;
+    }
+  }
+}
+
+function getToolbarSyntaxState(view) {
+  if (!view?.state) return {};
+  const state = getMarkdownFormattingState(view);
+  const selection = view.state.selection.main;
+  const line = view.state.doc.lineAt(selection.head).text;
+  const heading = /^\s{0,3}(#{1,6})\s+/.exec(line);
+  const todo = /^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+/.test(line);
+  const numbered = /^\s*\d+[.)]\s+/.test(line);
+  const bullet = /^\s*[-*+]\s+/.test(line) && !todo;
+  state.paragraph = !heading && !todo && !numbered && !bullet;
+  for (let level = 1; level <= 6; level++) {
+    state[`heading${level}`] = Number(heading?.[1].length) === level;
+  }
+  state.todoList = todo;
+  state.numberedList = numbered && !todo;
+  state.bulletedList = bullet;
+  return state;
+}
+
+function refreshToolbarSyntaxState(view = activeAdapter?.view) {
+  if (!view?.state || typeof document === 'undefined') return;
+  const state = getToolbarSyntaxState(view);
+  document.querySelectorAll('[data-toolbar-command]').forEach(button => {
+    const active = Boolean(state[button.dataset.toolbarCommand]);
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+
+  const groupStates = {
+    heading: Object.keys(state).some(key => /^heading[1-6]$/.test(key) && state[key]),
+    lists: Boolean(state.bulletedList || state.numberedList || state.todoList),
+    format: Boolean(
+      state.bold || state.italic || state.strikethrough || state.underline ||
+      state.code || state.yellowMarker || state.greenMarker || state.pinkMarker ||
+      state.blueMarker || state.redPen || state.greenPen
+    )
+  };
+  for (const [group, active] of Object.entries(groupStates)) {
+    const button = document.querySelector(`#grp-btn-${group}`);
+    if (!button) continue;
+    button.classList.toggle('has-active-syntax', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
 }
 
 let regexHistory = [];
