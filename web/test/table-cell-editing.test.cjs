@@ -163,7 +163,7 @@ test('merged-cell selection survives a widget refresh and its editor uses render
   model.mergeRect(1, 0, 1, 1);
   const markdown = model.toMarkdown();
 
-  await withTableEditor(markdown, async ({ container, view, tapCell, remountWidget, flushFrames }) => {
+  await withTableEditor(markdown, async ({ dom, container, view, tapCell, remountWidget, flushFrames }) => {
     let mergedCell = container.querySelector('tbody td[colspan="2"]');
     assert.ok(mergedCell, 'the merged table cell is rendered as a spanning cell');
 
@@ -178,16 +178,29 @@ test('merged-cell selection survives a widget refresh and its editor uses render
 
     const cellEditor = currentContainer.querySelector('.cm-wp-cell-editor');
     assert.ok(cellEditor, 'the second tap opens the merged cell editor');
-    assert.equal(cellEditor.value, 'Alpha <br> One');
+    assert.equal(cellEditor.value, 'Alpha\nOne', 'saved Markdown line breaks are shown as editable line breaks');
     assert.equal(cellEditor.style.top, '75px');
     assert.equal(cellEditor.style.left, '110px');
     assert.equal(cellEditor.style.width, '180px');
     assert.equal(cellEditor.style.height, '60px');
 
-    cellEditor.value = 'Merged text edited';
+    const enter = new dom.window.KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true
+    });
+    cellEditor.dispatchEvent(enter);
+    assert.equal(enter.defaultPrevented, false, 'Return inserts a line break instead of closing the cell');
+    assert.equal(cellEditor.isConnected, true, 'Return keeps the text box open in the merged cell');
+
+    cellEditor.value = 'Merged text edited\nsecond line';
     cellEditor.blur();
     flushFrames();
-    assert.ok(view.state.doc.toString().includes('Merged text edited'), 'the merged cell edit is committed to the document');
+    assert.ok(
+      view.state.doc.toString().includes('Merged text edited <br> second line'),
+      'cell line breaks are saved as table-safe Markdown <br> markers'
+    );
+    assert.equal(view.state.doc.toString().split('\n').length, 5, 'a cell line break does not create a new Markdown table row');
   });
 });
 

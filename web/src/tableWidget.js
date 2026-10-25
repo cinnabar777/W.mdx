@@ -534,14 +534,17 @@ export class WordProcessorTableWidget extends WidgetType {
 
       const overlay = document.createElement('textarea');
       overlay.className = 'cm-wp-cell-editor';
-      overlay.value = this.model.rows[r][c] || '';
+      overlay.value = (this.model.rows[r][c] || '')
+        .replace(/\s*<br\s*\/?>\s*/gi, '\n');
       overlay.style.cssText = `position: absolute; top: ${top}px; left: ${left}px; width: ${cellRect.width}px; height: ${cellRect.height}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px;`;
 
       let isCommitted = false;
       const commitAndClose = (nextNavigation) => {
         if (isCommitted) return;
         isCommitted = true;
-        const newValue = overlay.value;
+        const newValue = overlay.value
+          .replace(/\r\n?/g, '\n')
+          .replace(/\n/g, ' <br> ');
         activeOverlay = null;
         overlay.remove();
         runTableAction(() => {
@@ -577,9 +580,10 @@ export class WordProcessorTableWidget extends WidgetType {
       };
 
       overlay.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          commitAndClose({ rowDelta: 1, colDelta: 0 });
+        if (e.key === 'Enter') {
+          // Keep Return inside the cell editor; the textarea inserts a
+          // newline, which is serialized as a Markdown table <br> on commit.
+          e.stopPropagation();
         } else if (e.key === 'Tab') {
           e.preventDefault();
           commitAndClose({ rowDelta: 0, colDelta: e.shiftKey ? -1 : 1 });
