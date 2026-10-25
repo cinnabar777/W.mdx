@@ -68,11 +68,15 @@ test('adaptive launcher icons use transparent full-color layers and preserve req
   assert.match(manifest, /android:icon="@mipmap\/ic_launcher"/);
   assert.match(manifest, /android:roundIcon="@mipmap\/ic_launcher_round"/);
 
-  for (const name of ['ic_launcher.xml', 'ic_launcher_round.xml']) {
-    const xml = fs.readFileSync(path.join(resDir, 'mipmap-anydpi-v26', name), 'utf8');
-    assert.match(xml, /<background android:drawable="@color\/ic_launcher_background"/);
-    assert.match(xml, /<foreground android:drawable="@drawable\/ic_launcher_foreground"/);
-    assert.doesNotMatch(xml, /<monochrome\b/);
+  // Night is matched before density. Without night-anydpi XML, night-specific
+  // legacy PNGs win over default anydpi XML and the launcher wraps a legacy icon.
+  for (const qualifier of ['mipmap-anydpi-v26', 'mipmap-night-anydpi-v26']) {
+    for (const name of ['ic_launcher.xml', 'ic_launcher_round.xml']) {
+      const xml = fs.readFileSync(path.join(resDir, qualifier, name), 'utf8');
+      assert.match(xml, /<background android:drawable="@color\/ic_launcher_background"/);
+      assert.match(xml, /<foreground android:drawable="@drawable\/ic_launcher_foreground"/);
+      assert.doesNotMatch(xml, /<monochrome\b/);
+    }
   }
 
   assert.match(

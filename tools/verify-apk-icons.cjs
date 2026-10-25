@@ -61,7 +61,12 @@ for (const name of ['mipmap/ic_launcher', 'mipmap/ic_launcher_round', 'drawable/
     }
   }
   if (name.startsWith('mipmap/')) {
-    assert.ok(resource.files.some(file => file.type === 'XML'), `${name}: missing adaptive launcher icon`);
+    for (const night of [false, true]) {
+      assert.ok(resource.files.some(file => file.type === 'XML' &&
+        file.config.split('-').includes('anydpi') &&
+        file.config.split('-').includes('night') === night),
+      `${name}: missing ${night ? 'night' : 'default'} adaptive XML; legacy PNGs could override it`);
+    }
   }
 }
 

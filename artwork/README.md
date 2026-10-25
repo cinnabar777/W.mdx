@@ -17,6 +17,11 @@ The adaptive foreground is transparent, with the complete logo centered at
 occupies 75% of the displayed icon and stays inside its 66dp safe circle.
 The background fills Android's mask, not a smaller circular badge.
 
+Both the default and `night` configurations must provide `anydpi-v26` adaptive
+XML for the regular and round launcher icons. Android matches night mode before
+density: otherwise the night-specific legacy PNGs override the default
+adaptive XML and the launcher can wrap the legacy circle in another background.
+
 Light uses a dark mark on `#E5E5E5`; dark uses a light mark on `#171717`.
 Standalone fallback PNGs use the same visible scale and colors for APK
 inspectors. A monochrome themed-icon layer is intentionally not supplied:
