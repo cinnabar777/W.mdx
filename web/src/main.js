@@ -7,6 +7,11 @@ import { withScrollSnapshot } from './scrollSnapshot.js';
 import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import {
+  buildFootnoteDecorations,
+  formatFootnoteDefinition,
+  nextFootnoteLabel
+} from './footnotes.js';
+import {
   recordDecorationBuild,
   recordHeightMapRefresh,
   recordListMarkerRead,
@@ -1905,10 +1910,58 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   decorations: v => v.decorations
 });
 
-export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
-  view => (currentEditorMode === 'wysiwyg'
+const footnoteStateField = StateField.define({
+  create(state) {
+    return buildFootnoteDecorations(state, {
+      mode: currentEditorMode,
+      onEdit: definition => openFootnoteInsertionDialog({ definition })
+    });
+  },
+  update(current, tr) {
+    const refresh = tr.effects.some(effect => effect.is(typographySettingsEffect));
+    if (
+      !tr.docChanged &&
+      !refresh &&
+      !(currentEditorMode === 'live_preview' && tr.selectionSet && current.hasFootnotes)
+    ) {
+      return current;
+    }
+    return buildFootnoteDecorations(tr.state, {
+      mode: currentEditorMode,
+      onEdit: definition => openFootnoteInsertionDialog({ definition })
+    });
+  },
+  provide: field =>
+    EditorView.decorations.from(field, value => value.decorations)
+});
+
+function mergeHiddenSyntaxRanges(docLength, ...sets) {
+  const activeSets = sets.filter(set => set && set !== Decoration.none);
+  if (!activeSets.length) return Decoration.none;
+  if (activeSets.length === 1) return activeSets[0];
+
+  const ranges = [];
+  for (const set of activeSets) {
+    set.between(0, docLength, (from, to) => {
+      if (to > from) ranges.push(Decoration.replace({}).range(from, to));
+    });
+  }
+  if (!ranges.length) return Decoration.none;
+  ranges.sort((a, b) => a.from - b.from || a.to - b.to);
+  return Decoration.set(ranges, true);
+}
+
+function hiddenSyntaxRangesForView(view) {
+  const baseRanges = currentEditorMode === 'wysiwyg'
     ? view.state.field(heightMapField).hiddenSyntaxRanges
-    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges) ?? Decoration.none
+    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
+  const footnoteRanges =
+    view.state.field(footnoteStateField, false)?.hiddenSyntaxRanges ?? Decoration.none;
+  return mergeHiddenSyntaxRanges(view.state.doc.length, baseRanges, footnoteRanges);
+}
+
+export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
+  view => hiddenSyntaxRangesForView(view)
 );
 
 function cmToggleLinePrefix(view, prefix) {
@@ -3063,9 +3116,7 @@ function renderedLineForPosition(view, position, side) {
 }
 
 function leaveHiddenSyntax(view, position, direction) {
-  const ranges = currentEditorMode === 'wysiwyg'
-    ? view.state.field(heightMapField).hiddenSyntaxRanges
-    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
+  const ranges = hiddenSyntaxRangesForView(view);
   if (!ranges || position >= view.state.doc.length) return position;
 
   let result = position;
@@ -3415,6 +3466,7 @@ class CodeMirrorAdapter {
         }),
         tableStateField,
         wysiwygCodeBlockField,
+        footnoteStateField,
         persistentLayoutField,
         heightMapField,
         tableNavigationKeymap,
@@ -3432,7 +3484,11 @@ class CodeMirrorAdapter {
 
       if (currentEditorMode === 'wysiwyg') {
         const hiddenRanges = [];
-        const hiddenSyntax = startState.field(heightMapField).hiddenSyntaxRanges;
+        const hiddenSyntax = mergeHiddenSyntaxRanges(
+          startState.doc.length,
+          startState.field(heightMapField).hiddenSyntaxRanges,
+          startState.field(footnoteStateField, false)?.hiddenSyntaxRanges
+        );
         hiddenSyntax.between(0, startState.doc.length, (from, to) => {
           hiddenRanges.push({ from, to });
         });
@@ -3799,7 +3855,7 @@ function setupGroupedControlBar() {
         { icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
         { icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
         { icon: svgIcons.horizontalLine, title: 'Insert Line', action: () => execCmd('horizontalLine') },
-        { icon: svgIcons.footnote, title: 'Insert Footnote', action: () => execCmd('InsertFootnote') }
+        { icon: svgIcons.footnote, title: 'Insert Footnote', action: () => openFootnoteInsertionDialog() }
       ]);
     };
   }
@@ -4023,6 +4079,109 @@ export function openLinkInsertionDialog() {
   });
 }
 
+export function openFootnoteInsertionDialog(options = {}) {
+  if (!activeAdapter || !activeAdapter.view) return;
+  const view = activeAdapter.view;
+  const definition = options.definition ?? null;
+  const selection = view.state.selection.main;
+  const selectionSnapshot = { from: selection.from, to: selection.to };
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">${definition ? 'Edit Footnote' : 'Insert Footnote'}</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-footnote-text">Footnote text</label>
+      <textarea id="modal-footnote-text" class="modal-input modal-textarea"
+        placeholder="Write the footnote here"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-btn-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm">
+        ${definition ? 'Save' : 'Insert'}
+      </button>
+    </div>
+  `;
+
+  const textInput = dialog.querySelector('#modal-footnote-text');
+  const btnCancel = dialog.querySelector('#modal-btn-cancel');
+  const btnConfirm = dialog.querySelector('#modal-btn-confirm');
+  textInput.value = definition?.body ?? '';
+
+  const closeModal = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+  };
+
+  btnCancel.addEventListener('click', event => {
+    event.preventDefault();
+    closeModal();
+    view.focus();
+  });
+
+  btnConfirm.addEventListener('click', event => {
+    event.preventDefault();
+    const body = textInput.value.trim();
+    if (!body) {
+      textInput.focus();
+      return;
+    }
+
+    if (definition) {
+      const formattedDefinition = formatFootnoteDefinition(definition.label, body);
+      view.dispatch({
+        changes: {
+          from: definition.from,
+          to: definition.to,
+          insert: formattedDefinition
+        },
+        selection: {
+          anchor: definition.from + formattedDefinition.length,
+          head: definition.from + formattedDefinition.length
+        }
+      });
+    } else {
+      const label = nextFootnoteLabel(view.state.doc.toString());
+      const marker = `[^${label}]`;
+      const formattedDefinition = formatFootnoteDefinition(label, body);
+      const docText = view.state.doc.toString();
+      const separatorFor = text => {
+        if (!text) return '\n\n';
+        if (text.endsWith('\n\n')) return '';
+        if (text.endsWith('\n')) return '\n';
+        return '\n\n';
+      };
+      const markerEnd = selectionSnapshot.to + marker.length;
+      const changes = selectionSnapshot.to === view.state.doc.length
+        ? {
+            from: selectionSnapshot.to,
+            insert: marker +
+              separatorFor(docText.slice(0, selectionSnapshot.to) + marker) +
+              formattedDefinition
+          }
+        : [
+            { from: selectionSnapshot.to, insert: marker },
+            {
+              from: view.state.doc.length,
+              insert: separatorFor(docText) + formattedDefinition
+            }
+          ];
+
+      view.dispatch({
+        changes,
+        selection: { anchor: markerEnd, head: markerEnd }
+      });
+    }
+
+    closeModal();
+    view.focus();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => textInput.focus());
+}
+
 export function openCalloutInsertionDialog() {
   if (!activeAdapter || !activeAdapter.view) return;
   const view = activeAdapter.view;
@@ -4212,7 +4371,7 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'indent') cmIndentSelection(view, '  ');
     else if (cmdName === 'outdent') cmOutdentSelection(view, '  ');
     else if (cmdName === 'horizontalLine') cmWrapSelection(view, '\n---\n', '');
-    else if (cmdName === 'InsertFootnote') cmWrapSelection(view, '[^1]', '\n[^1]: footnote text');
+    else if (cmdName === 'InsertFootnote') openFootnoteInsertionDialog();
     else if (cmdName === 'link') openLinkInsertionDialog();
     else if (cmdName === 'callout') openCalloutInsertionDialog();
     else if (cmdName === 'insertTable') cmWrapSelection(view, '\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '');
@@ -5558,6 +5717,9 @@ window.editorBridge = {
   openCalloutInsertionDialog: function() {
     openCalloutInsertionDialog();
   },
+  openFootnoteInsertionDialog: function() {
+    openFootnoteInsertionDialog();
+  },
   setEditorMode: function(mode) {
     return setEditorMode(mode);
   },
@@ -5719,9 +5881,10 @@ window.editorBridge = {
     setCssVar('--code-border-radius', prefs.pref_code_border_radius, 'px');
 
     // Footnote
-    setCssVar('--footnote-text-color', prefs.pref_footnote_text_color);
-    setCssVar('--footnote-bg-color', prefs.pref_footnote_bg_color);
-    setCssVar('--footnote-ref-color', prefs.pref_footnote_ref_color);
+    setCssVar('--footnote-text-color', androidArgbToCss(prefs.pref_footnote_text_color));
+    setCssVar('--footnote-bg-color', androidArgbToCss(prefs.pref_footnote_bg_color));
+    setCssVar('--footnote-ref-color', androidArgbToCss(prefs.pref_footnote_ref_color));
+    setCssVar('--footnote-link-color', androidArgbToCss(prefs.pref_footnote_link_color));
     setCssVar('--footnote-font-size', prefs.pref_footnote_font_size, 'px');
 
     // Body & Headings Margins

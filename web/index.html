@@ -1111,6 +1111,53 @@
       padding: var(--code-padding, 2px 4px) !important;
       border-radius: var(--code-border-radius, 4px) !important;
     }
+    .cm-content .cm-footnote-reference {
+      color: var(--footnote-ref-color, var(--link-color, #29b6f6)) !important;
+      cursor: pointer;
+      font-size: 0.75em;
+      font-weight: 600;
+      line-height: 1;
+      padding-inline: 1px;
+      text-decoration: none;
+      vertical-align: super;
+    }
+    .cm-content .cm-footnote-definition {
+      box-sizing: border-box;
+      display: flex;
+      align-items: baseline;
+      gap: 0.45em;
+      width: fit-content;
+      max-width: 100%;
+      margin: 8px 0;
+      padding: 6px 8px;
+      border-radius: 4px;
+      background-color: var(--footnote-bg-color, transparent);
+      color: var(--footnote-text-color, var(--text-color, inherit));
+      font-size: var(--footnote-font-size, 0.9em);
+    }
+    .cm-content .cm-footnote-number {
+      flex: 0 0 auto;
+      color: var(--footnote-ref-color, var(--link-color, #29b6f6));
+      font-size: 0.85em;
+      font-weight: 600;
+    }
+    .cm-content .cm-footnote-text {
+      min-width: 0;
+      color: var(--footnote-text-color, inherit);
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      cursor: text;
+    }
+    .cm-content .cm-footnote-backlink {
+      flex: 0 0 auto;
+      padding: 0 2px;
+      border: 0;
+      background: transparent;
+      color: var(--footnote-link-color, var(--link-color, #29b6f6));
+      cursor: pointer;
+      font: inherit;
+      line-height: 1;
+    }
     .cm-content .cm-codeblock-line {
       box-sizing: border-box !important;
       color: var(--code-block-color, #e0e0e0) !important;
@@ -1515,6 +1562,14 @@
     .modal-input:focus,
     .modal-select:focus {
       border-color: #0078d4;
+    }
+
+    .modal-textarea {
+      min-height: 96px;
+      max-height: 40vh;
+      resize: vertical;
+      font-family: inherit;
+      line-height: 1.45;
     }
 
     .modal-actions {
