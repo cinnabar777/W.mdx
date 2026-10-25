@@ -7,6 +7,7 @@ export const tableHeightEstimatesChanged = StateEffect.define();
 const tableHeightCache = new Map();
 const tableResizeObserverState = new WeakMap();
 const tableCellSelectors = new WeakMap();
+const tableCellSelections = new WeakMap();
 
 const TABLE_HEIGHT_STYLE_PROPERTIES = [
   '--table-cell-padding',
@@ -36,6 +37,15 @@ function tableHeightCacheKey(markdown, contentElement) {
 function cachedTableHeight(markdown, contentElement = activeEditorContent()) {
   const key = tableHeightCacheKey(markdown, contentElement);
   return key ? (tableHeightCache.get(key) ?? null) : null;
+}
+
+function selectionsForView(view) {
+  let selections = tableCellSelections.get(view);
+  if (!selections) {
+    selections = new Map();
+    tableCellSelections.set(view, selections);
+  }
+  return selections;
 }
 
 function measuredOuterHeight(element) {
@@ -129,8 +139,19 @@ export class WordProcessorTableWidget extends WidgetType {
     const matrix = this.model.getRenderMatrix();
     const rowCount = this.model.getRowCount();
     const colCount = this.model.getColCount();
+    const selections = view ? selectionsForView(view) : null;
 
-    let selectedRange = null; // { startR, startC, endR, endC }
+    let selectedRange = selections?.get(this.from) || null; // { startR, startC, endR, endC }
+    if (
+      selectedRange &&
+      (selectedRange.startR >= rowCount ||
+        selectedRange.startC >= colCount ||
+        selectedRange.endR >= rowCount ||
+        selectedRange.endC >= colCount)
+    ) {
+      selectedRange = null;
+      selections?.delete(this.from);
+    }
     let activeOverlay = null;
 
     const toolbar = document.createElement('div');
@@ -207,6 +228,7 @@ export class WordProcessorTableWidget extends WidgetType {
         tbody.appendChild(tr);
       }
       table.appendChild(tbody);
+      updateSelectionHighlight();
     };
 
     const commitTableChange = () => {
@@ -322,7 +344,7 @@ export class WordProcessorTableWidget extends WidgetType {
         longPressTimer = setTimeout(() => {
           longPressTriggered = true;
           selectCell(r, c);
-          showContextMenu(cellEl, r, c);
+          showContextMenu(cellEl, r, c, { x: startX, y: startY });
         }, 500);
 
         const removeListeners = () => {
@@ -371,7 +393,7 @@ export class WordProcessorTableWidget extends WidgetType {
       });
     };
 
-    const showContextMenu = (cellEl, r, c) => {
+    const showContextMenu = (cellEl, r, c, anchor = null) => {
       let existingMenu = document.querySelector('.cm-wp-table-context-menu');
       if (existingMenu) existingMenu.remove();
 
@@ -419,7 +441,7 @@ export class WordProcessorTableWidget extends WidgetType {
       if (r < rowCount - 1) addBtn('Merge Down', () => this.model.mergeDirection(r, c, 'down'));
       if (r > 0) addBtn('Merge Up', () => this.model.mergeDirection(r, c, 'up'));
 
-      const primaryCell = matrix[r][c];
+      const primaryCell = this.model.getRenderMatrix()[r][c];
       const isMerged = primaryCell.colSpan > 1 || primaryCell.rowSpan > 1;
       addBtn('Split Cell', () => this.model.splitCell(r, c), !isMerged);
 
@@ -431,12 +453,19 @@ export class WordProcessorTableWidget extends WidgetType {
       const menuHeight = menu.offsetHeight || 180;
       const menuWidth = menu.offsetWidth || 140;
 
-      let top = cellRect.bottom + 6;
-      if (top + menuHeight > viewportHeight - 10) {
-        top = Math.max(10, cellRect.top - menuHeight - 6);
-      }
-
-      let left = Math.max(10, Math.min(cellRect.left, viewportWidth - menuWidth - 10));
+      const anchorX = Number.isFinite(anchor?.x)
+        ? anchor.x
+        : cellRect.left + Math.min(cellRect.width / 2, 120);
+      const anchorY = Number.isFinite(anchor?.y)
+        ? anchor.y
+        : cellRect.top + Math.min(cellRect.height / 2, 40);
+      const aboveTouch = anchorY - menuHeight - 12;
+      let top = aboveTouch >= 10 ? aboveTouch : anchorY + 12;
+      top = Math.max(10, Math.min(top, viewportHeight - menuHeight - 10));
+      const left = Math.max(
+        10,
+        Math.min(anchorX - menuWidth / 2, viewportWidth - menuWidth - 10)
+      );
 
       menu.style.top = `${top}px`;
       menu.style.left = `${left}px`;
@@ -452,6 +481,7 @@ export class WordProcessorTableWidget extends WidgetType {
 
     const selectCell = (r, c) => {
       selectedRange = { startR: r, startC: c, endR: r, endC: c };
+      selections?.set(this.from, selectedRange);
       updateSelectionHighlight();
     };
 
@@ -476,7 +506,7 @@ export class WordProcessorTableWidget extends WidgetType {
       const isMultiCell = (minR !== maxR || minC !== maxC);
       btnMerge.style.display = isMultiCell ? 'inline-flex' : 'none';
 
-      const primaryCell = matrix[minR][minC];
+      const primaryCell = this.model.getRenderMatrix()[minR][minC];
       const isSplitable = !isMultiCell && (primaryCell.colSpan > 1 || primaryCell.rowSpan > 1);
       btnSplit.style.display = isSplitable ? 'inline-flex' : 'none';
 
