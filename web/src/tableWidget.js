@@ -544,7 +544,7 @@ export class WordProcessorTableWidget extends WidgetType {
         isCommitted = true;
         const newValue = overlay.value
           .replace(/\r\n?/g, '\n')
-          .replace(/\n/g, ' <br> ');
+          .replace(/\n/g, '<br>');
         activeOverlay = null;
         overlay.remove();
         runTableAction(() => {

@@ -197,8 +197,15 @@ test('merged-cell selection survives a widget refresh and its editor uses render
     cellEditor.blur();
     flushFrames();
     assert.ok(
-      view.state.doc.toString().includes('Merged text edited <br> second line'),
-      'cell line breaks are saved as table-safe Markdown <br> markers'
+      view.state.doc.toString().includes('Merged text edited<br>second line'),
+      'cell line breaks are saved without visible whitespace around the <br> marker'
+    );
+    const renderedMergedCell = view.dom.querySelector('tbody td[colspan="2"]');
+    assert.ok(renderedMergedCell, 'the merged cell remains rendered after saving');
+    assert.equal(
+      renderedMergedCell.innerHTML,
+      'Merged text edited<br>second line',
+      'the saved line starts at the same horizontal position when rendered'
     );
     assert.equal(view.state.doc.toString().split('\n').length, 4, 'a cell line break does not create a new Markdown table row');
   });
