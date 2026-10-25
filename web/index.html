@@ -1631,6 +1631,72 @@
       line-height: 1.45;
     }
 
+    .modal-message {
+      margin: 0;
+      color: var(--text-color, #ffffff);
+      line-height: 1.5;
+    }
+
+    .modal-error {
+      margin: 0;
+      color: #ff8a80;
+      font-size: 13px;
+    }
+
+    .cm-image-actions {
+      display: none;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .cm-image-actions.visible {
+      display: flex;
+    }
+
+    .cm-image-actions button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 36px;
+      padding: 6px 12px;
+      border: 1px solid var(--border-color, #444444);
+      border-radius: 7px;
+      background: var(--toolbar-bg, #121212);
+      color: var(--text-color, #ffffff);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .cm-image-actions button svg {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex: 0 0 auto;
+    }
+
+    .cm-image-actions .cm-image-action-delete,
+    .modal-btn-delete {
+      color: #ff8a80;
+    }
+
+    .modal-btn-delete {
+      padding: 8px 16px;
+      border: 1px solid var(--border-color, #444444);
+      border-radius: 6px;
+      background: var(--toolbar-bg, #121212);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
     .modal-actions {
       display: flex;
       justify-content: flex-end;

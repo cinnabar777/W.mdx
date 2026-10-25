@@ -229,7 +229,7 @@ test('Shared callout header controls and per-type override preferences are defin
   assert.ok(mainSource.includes("'--callout-header-bg', prefs.pref_callout_header_bg_color"), 'main.js sets --callout-header-bg');
   assert.ok(mainSource.includes("'--callout-header-title-color', prefs.pref_callout_header_title_color"), 'main.js sets --callout-header-title-color');
   assert.ok(mainSource.includes("setCssVar('--callout-header-title-size'"), 'main.js sets --callout-header-title-size');
-  assert.ok(mainSource.includes("'--callout-header-font-family', prefs.pref_callout_header_font_family"), 'main.js sets --callout-header-font-family');
+  assert.ok(mainSource.includes("'--callout-header-font-family', toCssFontFamily(prefs.pref_callout_header_font_family)"), 'main.js sets --callout-header-font-family');
   assert.ok(mainSource.includes("'--callout-header-font-weight', prefs.pref_callout_header_font_weight"), 'main.js sets --callout-header-font-weight');
   assert.ok(mainSource.includes("'--callout-header-padding', prefs.pref_callout_header_padding"), 'main.js sets --callout-header-padding');
   assert.ok(mainSource.includes("'--callout-header-accent-color', prefs.pref_callout_header_accent_color"), 'main.js sets --callout-header-accent-color');

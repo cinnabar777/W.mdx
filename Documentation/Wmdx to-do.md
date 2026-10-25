@@ -35,17 +35,16 @@ ___
         8. [x] Hyphenation
         9. [x] Line height
         10. [x] Tables were included as another text element; table column alignment remains controlled per column.
-6. Bug: Keyboard always shows when returning to app. 
+6. Bug: Keyboard always shows when returning to app. Implementation added; needs on-device verification.
 7. Bug: Keyboard not opening when editing hex in color pallet. 
-8. Cursor seems slow to respond vs obsidian 
-9. Delete or edit image: 
-    1. in WYSIWYG without having to select all the code — tap image shows a trash can and an edit pencil. 
-        1. Trash can deletes image 
-        2. Pencil opes dialogue with image properties: url, size, what else? 
-    2. Protect image from accidental deletion. 
-10. Font: 
-    1. make sure fonts are not double loaded. 
-    2. Make sure there is an option to choose from available fonts on the phone when selecting font. 
+8. Cursor seems slow to respond vs obsidian. Normal editing no longer runs detailed navigation capture; font CSS and file data are reused when unchanged. Needs on-device verification.
+9. [x] Delete or edit image in WYSIWYG without selecting its Markdown:
+    1. [x] Tapping an image reveals Edit and Delete actions.
+    2. [x] Edit the image description, location, or width; width uses Obsidian's `|width` syntax and preserves proportions.
+    3. [x] Deletion requires confirmation and removes only the document reference, not the image file.
+10. [x] Font:
+    1. [x] Avoid duplicate custom-font declarations and repeated data reads.
+    2. [x] Choose installed device font families for body and headings; existing element-family choices use the same device font list.
 11. Toolbar keyed toggle on off. 
 12. Linter: https://github.com/platers/obsidian-linter
 13. Footnotes:

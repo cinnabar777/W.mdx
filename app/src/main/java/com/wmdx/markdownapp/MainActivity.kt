@@ -7,10 +7,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Base64
+import android.util.LruCache
 import android.view.Menu
 import android.view.MenuItem
 import android.view.KeyEvent
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -25,6 +27,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.ViewCompat
 import androidx.preference.PreferenceManager
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
@@ -36,6 +39,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
+    private var imeVisibleBeforePause: Boolean? = null
+
+    private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
+    private val fontDataUriCache = object : LruCache<String, CachedFontData>(8 * 1024) {
+        override fun sizeOf(key: String, value: CachedFontData): Int =
+            maxOf(1, value.dataUri.length / 1024)
+    }
 
     private var currentFileUri: Uri? = null
         set(value) {
@@ -117,6 +127,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (isEditorReady) {
             applyPluginPreferences()
             applyThemeAndFullscreenPreferences()
+            val captureActive = AppDiagnostics.isNavigationCaptureActive(this)
+            webView.evaluateJavascript(
+                "window.editorBridge?.setNavigationDiagnosticsEnabled?.($captureActive);",
+                null
+            )
         }
     }
 
@@ -270,11 +285,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (::webView.isInitialized) {
             webView.onResume()
             applyThemeAndFullscreenPreferences()
+            val shouldKeepImeHidden = imeVisibleBeforePause == false
+            imeVisibleBeforePause = null
+            if (shouldKeepImeHidden) {
+                webView.post {
+                    ViewCompat.getWindowInsetsController(webView)
+                        ?.hide(WindowInsetsCompat.Type.ime())
+                    (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                        ?.hideSoftInputFromWindow(webView.windowToken, 0)
+                }
+            }
         }
     }
 
     override fun onPause() {
         AppDiagnostics.record(this, "window_paused")
+        imeVisibleBeforePause = if (::webView.isInitialized) {
+            ViewCompat.getRootWindowInsets(webView)
+                ?.isVisible(WindowInsetsCompat.Type.ime())
+        } else {
+            null
+        }
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
         if (::webView.isInitialized) {
@@ -752,8 +783,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedJson = JSONObjectWrapper.quote(jsonObject.toString())
         webView.evaluateJavascript("if (window.editorBridge && window.editorBridge.applyAllPreferences) { window.editorBridge.applyAllPreferences($escapedJson); }", null)
 
-        val fontBodyData = loadFontDataUri(prefs.getString("pref_font_file_body_path", null))
-        val fontHeadingData = loadFontDataUri(prefs.getString("pref_font_file_heading_path", null))
+        val bodyFontFamily = prefs.getString("pref_body_font_family", "default") ?: "default"
+        val headingFontFamily = prefs.getString("pref_heading_font_family", "default") ?: "default"
+        val fontBodyData = if (bodyFontFamily == "default") {
+            loadFontDataUri(prefs.getString("pref_font_file_body_path", null))
+        } else {
+            null
+        }
+        val fontHeadingData = if (headingFontFamily == "default") {
+            loadFontDataUri(prefs.getString("pref_font_file_heading_path", null))
+        } else {
+            null
+        }
         val fontHeadingLevelsData = (1..6).map { level ->
             loadFontDataUri(prefs.getString("pref_font_file_heading_${level}_path", null))
         }
@@ -796,9 +837,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedCalloutHeaderFont = JSONObjectWrapper.quote(fontCalloutHeaderData)
         val escapedTocFont = JSONObjectWrapper.quote(fontTocData)
         val escapedFootnoteFont = JSONObjectWrapper.quote(fontFootnoteData)
+        val escapedBodyFontFamily = JSONObjectWrapper.quote(bodyFontFamily)
+        val escapedHeadingFontFamily = JSONObjectWrapper.quote(headingFontFamily)
 
         webView.evaluateJavascript(
-            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont, $escapedFootnoteFont); }",
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont, $escapedFootnoteFont, $escapedBodyFontFamily, $escapedHeadingFontFamily); }",
             null
         )
 
@@ -1549,6 +1592,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         return try {
             val file = java.io.File(path)
             if (!file.exists()) return ""
+            val modifiedAt = file.lastModified()
+            val length = file.length()
+            fontDataUriCache.get(path)?.let { cached ->
+                if (cached.modifiedAt == modifiedAt && cached.length == length) {
+                    return cached.dataUri
+                }
+            }
             val bytes = file.readBytes()
             val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
             val mimeType = when {
@@ -1557,7 +1607,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 path.endsWith(".woff", ignoreCase = true) -> "font/woff"
                 else -> "font/ttf"
             }
-            "data:$mimeType;base64,$base64"
+            val dataUri = "data:$mimeType;base64,$base64"
+            fontDataUriCache.put(path, CachedFontData(modifiedAt, length, dataUri))
+            dataUri
         } catch (e: Exception) {
             ""
         }
@@ -1631,14 +1683,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun isNavigationCaptureActive(): Boolean =
+            AppDiagnostics.isNavigationCaptureActive(this@MainActivity)
+
+        @JavascriptInterface
         fun onEditorReady(mode: String? = null) {
             runOnUiThread {
                 val activeMode = mode ?: currentEditorMode
                 currentEditorMode = activeMode
                 val wasReady = isEditorReady
-                if (!wasReady) {
-                    AppDiagnostics.startNavigationCapture(this@MainActivity)
-                }
                 AppDiagnostics.record(this@MainActivity, "editor_ready", "mode=$activeMode")
                 isEditorReady = true
                 if (!wasReady) {

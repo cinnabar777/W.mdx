@@ -48,6 +48,7 @@ object AppDiagnostics {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean("capture_active", true)
+                .putBoolean("capture_opt_in", true)
                 .putString("capture_session", "${System.currentTimeMillis()}-${SystemClock.elapsedRealtime()}")
                 .apply()
             appendRecordLocked(context, JSONObject()
@@ -57,6 +58,20 @@ object AppDiagnostics {
         }
     }
 
+    fun stopNavigationCapture(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("capture_active", false)
+            .putBoolean("capture_opt_in", false)
+            .apply()
+    }
+
+    fun isNavigationCaptureActive(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).let { prefs ->
+            prefs.getBoolean("capture_active", false) &&
+                prefs.getBoolean("capture_opt_in", false)
+        }
+
     @Synchronized fun record(context: Context, event: String, detail: String = "") {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val lines = (prefs.getString("events", "") ?: "").lineSequence().filter { it.isNotEmpty() }.toList()
@@ -64,7 +79,7 @@ object AppDiagnostics {
         val elapsed = SystemClock.elapsedRealtime()
         val entry = "$elapsed task=$task $event ${detail.take(160)}"
         prefs.edit().putString("events", (lines.takeLast(199) + entry).joinToString("\n")).apply()
-        if (prefs.getBoolean("capture_active", false)) {
+        if (isNavigationCaptureActive(context)) {
             appendRecord(context, JSONObject()
                 .put("kind", "native_lifecycle")
                 .put("elapsedMs", elapsed)
@@ -78,8 +93,7 @@ object AppDiagnostics {
         if (jsonRecord.isBlank() || jsonRecord.length > 16 * 1024) return
         try {
             val record = JSONObject(jsonRecord)
-            if (context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getBoolean("capture_active", false)) {
+            if (isNavigationCaptureActive(context)) {
                 appendRecord(context, record)
             }
         } catch (_: Exception) {
@@ -98,8 +112,7 @@ object AppDiagnostics {
                 .put("payloadLength", jsonBatch.length))
             return
         }
-        if (!context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getBoolean("capture_active", false)) return
+        if (!isNavigationCaptureActive(context)) return
 
         try {
             val records = JSONArray(jsonBatch)
@@ -126,8 +139,7 @@ object AppDiagnostics {
     }
 
     fun recordNativeKeyEvent(context: Context, event: KeyEvent, dispatchHandled: Boolean) {
-        if (!context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getBoolean("capture_active", false)) return
+        if (!isNavigationCaptureActive(context)) return
         appendRecord(context, JSONObject()
             .put("kind", "native_key_dispatch")
             .put("elapsedMs", SystemClock.elapsedRealtime())
@@ -265,8 +277,10 @@ object AppDiagnostics {
         }
         val snapshots = snapshotDirectory(context).listFiles()?.filter { it.extension == "jpg" }.orEmpty()
         val session = prefs.getString("capture_session", "unknown") ?: "unknown"
+        val captureState = if (isNavigationCaptureActive(context)) "active" else "stopped"
         return "Wmdx Android diagnostics (routing-v5)\n" +
             "Android SDK: ${Build.VERSION.SDK_INT}\nWebView: $webview\nSession: $session\n" +
+            "Detailed editor capture: $captureState. Start capture, return to the editor, reproduce the issue, then stop and share it.\n" +
             "Full event records: $recordCount (keys/results=$keyCount, pointer/touch=$pointerCount, scroll/wheel=$scrollCount, selections=$selectionCount)\n" +
             "App-window snapshots: ${snapshots.size}\n" +
             "The full local capture contains timestamped input events, caret/selection and rendered-row geometry, scroll/viewport state, DOM changes, lifecycle/errors, and app-window snapshots. It is not uploaded automatically.\n" +
@@ -276,6 +290,7 @@ object AppDiagnostics {
 
     fun show(context: Context) {
         val summary = report(context)
+        val captureActive = isNavigationCaptureActive(context)
         android.app.AlertDialog.Builder(context)
             .setTitle("Diagnostic capture")
             .setMessage(summary)
@@ -284,7 +299,10 @@ object AppDiagnostics {
                 (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                     .setPrimaryClip(android.content.ClipData.newPlainText("Diagnostic summary", summary))
             }
-            .setNegativeButton("Close", null)
+            .setNegativeButton(if (captureActive) "Stop capture" else "Start capture") { _, _ ->
+                if (captureActive) stopNavigationCapture(context)
+                else startNavigationCapture(context)
+            }
             .show()
     }
 

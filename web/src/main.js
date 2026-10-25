@@ -22,6 +22,8 @@ import {
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
+import { toCssFontFamily } from './fontFamilies.js';
+import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -962,15 +964,26 @@ export const typographySettingsEffect = StateEffect.define();
 const imageAspectCache = new Map();
 
 class ImagePreviewWidget extends WidgetType {
-  constructor(url, alt) {
+  constructor(url, alt, from, to, imageWidth = null) {
     super();
     this.url = url;
     this.alt = alt || 'image';
-    const width = activeContentWidth();
+    this.from = from;
+    this.to = to;
+    this.imageWidth = imageWidth;
+    const contentWidth = activeContentWidth();
     const sig = activeTypographySignature();
-    this.heightKey = measuredWidgetHeightKey('image-preview', `${this.url}`, width, sig);
+    this.heightKey = measuredWidgetHeightKey(
+      'image-preview',
+      `${this.url}:${this.imageWidth ?? 'auto'}`,
+      contentWidth,
+      sig
+    );
     const aspect = imageAspectCache.get(this.url);
-    const fallbackHeight = aspect ? Math.round(width / aspect) : 180;
+    const estimatedWidth = this.imageWidth
+      ? Math.min(this.imageWidth, contentWidth)
+      : contentWidth;
+    const fallbackHeight = aspect ? Math.round(estimatedWidth / aspect) : 180;
     this.heightEstimate = estimatedWidgetHeight(this.heightKey, fallbackHeight);
   }
 
@@ -983,6 +996,9 @@ class ImagePreviewWidget extends WidgetType {
       other instanceof ImagePreviewWidget &&
       other.url === this.url &&
       other.alt === this.alt &&
+      other.imageWidth === this.imageWidth &&
+      other.from === this.from &&
+      other.to === this.to &&
       other.heightEstimate === this.heightEstimate
     );
   }
@@ -995,7 +1011,7 @@ class ImagePreviewWidget extends WidgetType {
     const img = document.createElement('img');
     img.src = this.url;
     img.alt = this.alt;
-    img.style.cssText = 'max-width: 100%; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);';
+    img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;
 
     img.onload = () => {
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -1012,20 +1028,81 @@ class ImagePreviewWidget extends WidgetType {
 
     img.onerror = () => {
       imageAspectCache.delete(this.url);
-      wrapper.innerHTML = '';
+      img.remove();
       const fallbackBox = document.createElement('div');
       fallbackBox.className = 'cm-image-error-fallback';
       fallbackBox.style.cssText = 'padding: 12px 16px; border: 1px dashed var(--border-color, #666); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text-color, #888); font-size: 13px; font-style: italic;';
       fallbackBox.textContent = `[Image: ${this.alt || 'failed to load'}]`;
-      wrapper.appendChild(fallbackBox);
+      wrapper.insertBefore(fallbackBox, actions);
       wrapper.style.minHeight = '0px';
       view.requestMeasure();
       rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     };
 
-    wrapper.appendChild(img);
+    const actions = document.createElement('div');
+    actions.className = 'cm-image-actions';
+    actions.setAttribute('aria-label', 'Image actions');
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'cm-image-action-edit';
+    editButton.setAttribute('aria-label', 'Edit image');
+    editButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg><span>Edit</span>';
+    editButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openImageEditDialog(view, this.from, this.to, this.alt, this.url, this.imageWidth);
+    });
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'cm-image-action-delete';
+    deleteButton.setAttribute('aria-label', 'Delete image');
+    deleteButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg><span>Delete</span>';
+    deleteButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openImageDeleteConfirmation(view, this.from, this.to);
+    });
+    actions.append(editButton, deleteButton);
+
+    const toggleActions = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      actions.classList.toggle('visible');
+      rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
+    };
+    img.addEventListener('click', toggleActions);
+    wrapper.addEventListener('click', event => {
+      if (event.target.closest('.cm-image-actions')) return;
+      toggleActions(event);
+    });
+    const dismissActions = event => {
+      if (!wrapper.contains(event.target) && actions.classList.contains('visible')) {
+        actions.classList.remove('visible');
+        rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
+      }
+    };
+    view.dom.addEventListener('pointerdown', dismissActions, true);
+    wrapper._imageDismissHandler = dismissActions;
+    wrapper._imageViewDom = view.dom;
+
+    if (img.parentNode !== wrapper) wrapper.appendChild(img);
+    wrapper.appendChild(actions);
     rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     return wrapper;
+  }
+
+  destroy(dom) {
+    if (dom?._imageDismissHandler && dom?._imageViewDom) {
+      dom._imageViewDom.removeEventListener(
+        'pointerdown',
+        dom._imageDismissHandler,
+        true
+      );
+    }
+  }
+
+  ignoreEvent(event) {
+    return Boolean(event.target?.closest?.('.cm-image-actions'));
   }
 }
 
@@ -1964,9 +2041,13 @@ function mergeHiddenSyntaxRanges(docLength, ...sets) {
 }
 
 function hiddenSyntaxRangesForView(view) {
+  const wysiwygRanges =
+    view.state.field(heightMapField, false)?.hiddenSyntaxRanges;
+  const livePreviewRanges =
+    view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
   const baseRanges = currentEditorMode === 'wysiwyg'
-    ? view.state.field(heightMapField).hiddenSyntaxRanges
-    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
+    ? (wysiwygRanges ?? livePreviewRanges)
+    : (livePreviewRanges ?? wysiwygRanges);
   const footnoteRanges =
     view.state.field(footnoteStateField, false)?.hiddenSyntaxRanges ?? Decoration.none;
   return mergeHiddenSyntaxRanges(view.state.doc.length, baseRanges, footnoteRanges);
@@ -2709,11 +2790,17 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'Image') {
         const imgText = doc.sliceString(node.from, node.to);
-        const match = imgText.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-        if (match) {
-          const alt = match[1];
-          const url = match[2];
-          replacements.push(Decoration.replace({ widget: new ImagePreviewWidget(url, alt) }).range(node.from, node.to));
+        const image = parseMarkdownImage(imgText);
+        if (image) {
+          replacements.push(Decoration.replace({
+            widget: new ImagePreviewWidget(
+              image.url,
+              image.alt,
+              node.from,
+              node.to,
+              image.width ?? null
+            )
+          }).range(node.from, node.to));
         }
       }
     }
@@ -3577,7 +3664,10 @@ class CodeMirrorAdapter {
     this.tableContentWidthObserver.observe(this.view.contentDOM);
 
     updateTableDocumentSelection(this.view);
-    this.navigationDiagnosticsCleanup = setupNavigationDiagnostics(this.view);
+    this.navigationDiagnosticsCleanup = null;
+    this.setNavigationDiagnosticsEnabled(
+      window.AndroidNative?.isNavigationCaptureActive?.() === true
+    );
 
         setupGroupedControlBar();
     initCustomSearchBar();
@@ -3601,6 +3691,16 @@ class CodeMirrorAdapter {
     this.revision = 0;
     const timer = setTimeout(() => { this.isProgrammatic = false; }, 20);
     if (timer && typeof timer.unref === 'function') timer.unref();
+  }
+
+  setNavigationDiagnosticsEnabled(enabled) {
+    if (!this.view) return;
+    if (enabled && !this.navigationDiagnosticsCleanup) {
+      this.navigationDiagnosticsCleanup = setupNavigationDiagnostics(this.view);
+    } else if (!enabled && this.navigationDiagnosticsCleanup) {
+      this.navigationDiagnosticsCleanup();
+      this.navigationDiagnosticsCleanup = null;
+    }
   }
 
   getMarkdown() {
@@ -4198,6 +4298,138 @@ export function openFootnoteInsertionDialog(options = {}) {
 
   overlay.classList.add('open');
   requestAnimationFrame(() => textInput.focus());
+}
+
+function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Image</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-image-alt">Description (alt text)</label>
+      <input id="modal-image-alt" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-image-url">Image location</label>
+      <input id="modal-image-url" class="modal-input" type="text" autocomplete="off" />
+    </div>
+      <div class="modal-field-group">
+        <label class="modal-label" for="modal-image-width">Width in pixels (optional)</label>
+        <input id="modal-image-width" class="modal-input" type="number" min="1" max="10000" step="1" inputmode="numeric" placeholder="Automatic" />
+      </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-image-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-image-save">Save</button>
+    </div>
+  `;
+
+  const altInput = dialog.querySelector('#modal-image-alt');
+  const urlInput = dialog.querySelector('#modal-image-url');
+  const widthInput = dialog.querySelector('#modal-image-width');
+  const error = document.createElement('p');
+  error.className = 'modal-error';
+  error.setAttribute('role', 'alert');
+  error.hidden = true;
+  dialog.querySelector('.modal-actions').before(error);
+  altInput.value = alt;
+  urlInput.value = url;
+  widthInput.value = imageWidth ?? '';
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-image-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-image-save').addEventListener('click', event => {
+    event.preventDefault();
+    const newUrl = urlInput.value.trim();
+    if (!newUrl) {
+      error.textContent = 'Enter an image location before saving.';
+      error.hidden = false;
+      urlInput.focus();
+      return;
+    }
+    const widthText = widthInput.value.trim();
+    const newWidth = widthText === '' ? null : Number(widthText);
+    if (newWidth !== null &&
+      (!Number.isInteger(newWidth) || newWidth < 1 || newWidth > 10000)
+    ) {
+      error.textContent = 'Width must be a whole number from 1 to 10000 pixels.';
+      error.hidden = false;
+      widthInput.focus();
+      return;
+    }
+    if (
+      from < 0 ||
+      to > view.state.doc.length ||
+      from >= to ||
+      !parseMarkdownImage(view.state.doc.sliceString(from, to))
+    ) {
+      error.textContent = 'This image is no longer in the document.';
+      error.hidden = false;
+      return;
+    }
+
+    const markdown = formatMarkdownImage(altInput.value, newUrl, newWidth);
+    view.dispatch({
+      changes: { from, to, insert: markdown },
+      selection: { anchor: from + markdown.length, head: from + markdown.length }
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => altInput.focus());
+}
+
+function openImageDeleteConfirmation(view, from, to) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Delete Image?</h3>
+    <p class="modal-message">
+      This removes the image from the document only. The image file itself will not be deleted.
+    </p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-image-keep">Keep Image</button>
+      <button type="button" class="modal-btn modal-btn-delete" id="modal-image-confirm-delete">Delete</button>
+    </div>
+  `;
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-image-keep').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-image-confirm-delete').addEventListener('click', event => {
+    event.preventDefault();
+    if (
+      from < 0 ||
+      to > view.state.doc.length ||
+      from >= to ||
+      !parseMarkdownImage(view.state.doc.sliceString(from, to))
+    ) {
+      close();
+      return;
+    }
+    view.dispatch({
+      changes: { from, to, insert: '' },
+      selection: { anchor: from, head: from }
+    });
+    close();
+  });
+  overlay.classList.add('open');
 }
 
 export function openCalloutInsertionDialog() {
@@ -5742,6 +5974,9 @@ window.editorBridge = {
   openFootnoteInsertionDialog: function() {
     openFootnoteInsertionDialog();
   },
+  setNavigationDiagnosticsEnabled: function(enabled) {
+    activeAdapter?.setNavigationDiagnosticsEnabled(Boolean(enabled));
+  },
   setEditorMode: function(mode) {
     return setEditorMode(mode);
   },
@@ -5818,6 +6053,7 @@ window.editorBridge = {
       ? 'justify'
       : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify || 'left');
     setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');
+    setCssVar('--body-font-family', toCssFontFamily(prefs.pref_body_font_family));
     setCssVar('--body-font-weight', prefs.pref_body_font_weight ?? 400);
     setCssVar('--body-text-color', androidArgbToCss(prefs.pref_body_text_color));
     setCssVar('--paragraph-line-height', prefs.pref_paragraph_line_height);
@@ -5836,6 +6072,7 @@ window.editorBridge = {
     setCssVar('--heading-scale', globalHeadingScale);
 
     setCssVar('--heading-color', androidArgbToCss(prefs.pref_heading_color));
+    setCssVar('--heading-font-family', toCssFontFamily(prefs.pref_heading_font_family));
     setCssVar('--heading-font-weight', prefs.pref_font_weight_heading);
     setCssVar('--heading-align', prefs.pref_heading_align);
     setCssVar('--heading-line-height', prefs.pref_heading_line_height);
@@ -5966,7 +6203,7 @@ window.editorBridge = {
     setCssVar('--list-font-family', inheritListTypography
       ? 'var(--body-font-family, inherit)'
       : (prefs.pref_list_font_family && prefs.pref_list_font_family !== 'default'
-        ? prefs.pref_list_font_family
+        ? toCssFontFamily(prefs.pref_list_font_family)
         : 'inherit'));
     setCssVar('--list-font-size', inheritListTypography
       ? 'var(--body-font-size, 16px)'
@@ -6008,7 +6245,7 @@ window.editorBridge = {
     setCssVar('--blockquote-font-family', inheritBlockquoteTypography
       ? 'var(--body-font-family, inherit)'
       : (prefs.pref_blockquote_font_family && prefs.pref_blockquote_font_family !== 'default'
-        ? prefs.pref_blockquote_font_family
+        ? toCssFontFamily(prefs.pref_blockquote_font_family)
         : 'inherit'));
     setCssVar('--blockquote-font-size', inheritBlockquoteTypography
       ? 'var(--body-font-size, 16px)'
@@ -6050,7 +6287,7 @@ window.editorBridge = {
     setCssVar('--callout-font-family', inheritCalloutTypography
       ? 'var(--body-font-family, inherit)'
       : (prefs.pref_callout_font_family && prefs.pref_callout_font_family !== 'default'
-        ? prefs.pref_callout_font_family
+        ? toCssFontFamily(prefs.pref_callout_font_family)
         : 'inherit'));
     setCssVar('--callout-font-size', inheritCalloutTypography
       ? 'var(--body-font-size, 16px)'
@@ -6092,7 +6329,7 @@ window.editorBridge = {
     } else {
       setCssVar('--callout-header-title-size', titleSizeVal, 'px');
     }
-    setCssVar('--callout-header-font-family', prefs.pref_callout_header_font_family);
+    setCssVar('--callout-header-font-family', toCssFontFamily(prefs.pref_callout_header_font_family));
     setCssVar('--callout-header-font-weight', prefs.pref_callout_header_font_weight);
     setCssVar('--callout-header-padding', prefs.pref_callout_header_padding, 'px');
     setCssVar('--callout-header-accent-color', prefs.pref_callout_header_accent_color);
@@ -6121,7 +6358,7 @@ window.editorBridge = {
     setCssVar('--table-font-family', inheritTableTypography
       ? 'var(--body-font-family, inherit)'
       : (prefs.pref_table_font_family && prefs.pref_table_font_family !== 'default'
-        ? prefs.pref_table_font_family
+        ? toCssFontFamily(prefs.pref_table_font_family)
         : 'inherit'));
     setCssVar('--table-font-size', inheritTableTypography
       ? 'var(--body-font-size, 16px)'
@@ -6528,7 +6765,7 @@ window.editorBridge = {
     }
     updateTocHistoryButtons();
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData, fontFootnoteData) {
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData, fontFootnoteData, bodyFontFamily = 'default', headingFontFamily = 'default') {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -6566,21 +6803,32 @@ window.editorBridge = {
     }
 
     let fontCss = '';
+    const registeredFontFamilies = new Map();
     const applyFontCategory = (categoryName, fontData, cssVarName) => {
       if (fontData && fontData.length > 10) {
-        const familyName = `CustomFont_${categoryName}`;
-        fontCss += `
-          @font-face {
-            font-family: '${familyName}';
-            src: url('${fontData}');
-          }
-          .cm-content {
-            --custom-${categoryName.toLowerCase()}-font: '${familyName}';
-          }
-        `;
+        let familyName = registeredFontFamilies.get(fontData);
+        if (!familyName) {
+          familyName = `CustomFont_${categoryName}`;
+          registeredFontFamilies.set(fontData, familyName);
+          fontCss += `
+            @font-face {
+              font-family: '${familyName}';
+              src: url('${fontData}');
+            }
+          `;
+        }
+        fontCss += `.cm-content { --custom-${categoryName.toLowerCase()}-font: '${familyName}'; }\n`;
         document.documentElement.style.setProperty(cssVarName, `'${familyName}'`);
       } else {
-        document.documentElement.style.removeProperty(cssVarName);
+        const deviceFont = categoryName === 'Body'
+          ? bodyFontFamily
+          : (categoryName === 'Heading' ? headingFontFamily : 'default');
+        const familyValue = toCssFontFamily(deviceFont);
+        if (familyValue) {
+          document.documentElement.style.setProperty(cssVarName, familyValue);
+        } else {
+          document.documentElement.style.removeProperty(cssVarName);
+        }
       }
     };
 
@@ -6606,7 +6854,9 @@ window.editorBridge = {
       );
     }
 
-    styleEl.innerHTML = fontCss;
+    if (styleEl.textContent !== fontCss) {
+      styleEl.textContent = fontCss;
+    }
   },
   configurePlugins: function() {
     return Promise.resolve();

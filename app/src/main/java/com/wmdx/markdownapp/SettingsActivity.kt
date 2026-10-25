@@ -98,7 +98,33 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
 
     override fun setPreferencesFromResource(preferencesResId: Int, key: String?) {
         super.setPreferencesFromResource(preferencesResId, key)
-        preferenceScreen?.let { applyCustomLayouts(it) }
+        preferenceScreen?.let {
+            applyCustomLayouts(it)
+            configureDeviceFontChoices(it)
+        }
+    }
+
+    private fun configureDeviceFontChoices(group: androidx.preference.PreferenceGroup) {
+        val options = DeviceFontCatalog.options()
+        for (index in 0 until group.preferenceCount) {
+            val preference = group.getPreference(index)
+            if (preference is androidx.preference.PreferenceGroup) {
+                configureDeviceFontChoices(preference)
+            }
+            if (preference !is androidx.preference.ListPreference ||
+                preference.key?.endsWith("_font_family") != true
+            ) {
+                continue
+            }
+
+            val entries = options.toMutableList()
+            val selected = preference.value
+            if (!selected.isNullOrBlank() && entries.none { it.value == selected }) {
+                entries.add(DeviceFontOption("Saved: $selected", selected))
+            }
+            preference.entries = entries.map { it.label }.toTypedArray()
+            preference.entryValues = entries.map { it.value }.toTypedArray()
+        }
     }
 
     protected fun applyCustomLayouts(group: androidx.preference.PreferenceGroup) {

@@ -16,6 +16,12 @@ test('Widget classes implement eq for DOM reuse', () => {
 
   // Check ImagePreviewWidget eq
   assert.ok(code.includes('class ImagePreviewWidget'), 'ImagePreviewWidget exists');
+  assert.ok(code.includes('openImageEditDialog'), 'images can be edited in the WYSIWYG view');
+  assert.ok(code.includes('openImageDeleteConfirmation'), 'image deletion requires confirmation');
+  assert.ok(code.includes('modal-image-width'), 'image editing includes a saved width field');
+  assert.ok(code.includes('formatMarkdownImage(altInput.value, newUrl, newWidth)'), 'image width is saved with Markdown image syntax');
+  assert.ok(code.includes('aria-label\', \'Edit image\''), 'image edit button has an accessible label');
+  assert.ok(code.includes('aria-label\', \'Delete image\''), 'image delete button has an accessible label');
   assert.ok(code.includes('other instanceof ImagePreviewWidget'), 'ImagePreviewWidget has eq check');
 });
 
@@ -201,7 +207,7 @@ test('heightMapField provides WYSIWYG decorations and measured height caching', 
   assert.ok(mainCode.includes('export const heightMapRefreshEffect = StateEffect.define()'));
   assert.ok(mainCode.includes('export const heightMapField = StateField.define'));
   assert.ok(mainCode.includes('EditorView.decorations.from(field, value => value.decorations)'));
-  assert.ok(mainCode.includes('view.state.field(heightMapField).hiddenSyntaxRanges'));
+  assert.ok(mainCode.includes('view.state.field(heightMapField, false)?.hiddenSyntaxRanges'));
   assert.ok(mainCode.includes('scheduleHeightMapRefresh(view)'));
   assert.ok(mainCode.includes('createDeferredViewCallback'));
   assert.ok(mainCode.includes('measuredWidgetHeights = new Map()'));

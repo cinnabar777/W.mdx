@@ -17,6 +17,13 @@ global.HTMLElement = dom.window.HTMLElement;
 global.Range = dom.window.Range;
 global.getComputedStyle = dom.window.getComputedStyle;
 global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+class TestResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+global.ResizeObserver = TestResizeObserver;
+dom.window.ResizeObserver = TestResizeObserver;
 
 Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetHeight', {
   get() { return 20; }

@@ -2,3 +2,4 @@
 - [Android heading preference inheritance](android-heading-preferences.md) — AndroidX can persist displayed defaults; keep inherited heading values out of saved overrides.
 - [SeekBar reset alignment](seekbar-reset-alignment.md) — AndroidX’s inner end padding, not margins, misaligned reset icons; clearing it was confirmed to fix alignment.
 - [Android IME verification](android-ime-verification.md) — successful builds do not verify that a dialog actually opens the keyboard; test soft-input behavior on Android.
+- [Editor diagnostics opt-in](editor-diagnostics-opt-in.md) — detailed input and scroll tracing must be off during ordinary editing to avoid adding cursor latency.

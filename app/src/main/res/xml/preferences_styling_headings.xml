@@ -18,6 +18,14 @@
             app:defaultValue="100"
             app:showSeekBarValue="true" />
 
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_heading_font_family"
+            app:title="Heading Font Family"
+            app:summary="Choose a device font instead of the custom font file"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_font_weight_heading"
             app:title="Headings Font Weight"

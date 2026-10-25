@@ -65,6 +65,33 @@ test('external-open URI permission flags survive until the editor is ready', () 
   assert.ok(mainActivitySource.includes('openFile(uri, permissionFlags = permissionFlags)'));
 });
 
+test('returning to the app keeps the keyboard hidden if it was hidden before backgrounding', () => {
+  assert.ok(mainActivitySource.includes('imeVisibleBeforePause = if (::webView.isInitialized)'));
+  assert.ok(mainActivitySource.includes('.isVisible(WindowInsetsCompat.Type.ime())'));
+  assert.ok(mainActivitySource.includes('val shouldKeepImeHidden = imeVisibleBeforePause == false'));
+  assert.ok(mainActivitySource.includes('?.hide(WindowInsetsCompat.Type.ime())'));
+});
+
+test('installed device fonts override custom body and heading font files when selected', () => {
+  assert.ok(mainActivitySource.includes('if (bodyFontFamily == "default")'));
+  assert.ok(mainActivitySource.includes('if (headingFontFamily == "default")'));
+  assert.ok(settingsActivitySource.includes('DeviceFontCatalog.options()'));
+  assert.ok(settingsActivitySource.includes('preference.key?.endsWith("_font_family")'));
+  assert.ok(source.includes('const familyValue = toCssFontFamily(deviceFont)'));
+});
+
+test('detailed navigation capture is explicitly opt-in instead of running during normal editing', () => {
+  const diagnosticsPath = path.join(
+    __dirname,
+    '../../app/src/main/java/com/wmdx/markdownapp/AppDiagnostics.kt'
+  );
+  const diagnosticsSource = fs.readFileSync(diagnosticsPath, 'utf8');
+  assert.ok(diagnosticsSource.includes('putBoolean("capture_opt_in", true)'));
+  assert.ok(diagnosticsSource.includes('prefs.getBoolean("capture_opt_in", false)'));
+  assert.ok(mainActivitySource.includes('setNavigationDiagnosticsEnabled'));
+  assert.ok(mainActivitySource.includes('window.editorBridge?.setNavigationDiagnosticsEnabled?.($captureActive)'));
+});
+
 test('document rename requests only selected-folder access before offering Save As', () => {
   assert.ok(mainActivitySource.includes('Intent.ACTION_OPEN_DOCUMENT_TREE'));
   assert.ok(mainActivitySource.includes('FLAG_GRANT_PERSISTABLE_URI_PERMISSION'));
