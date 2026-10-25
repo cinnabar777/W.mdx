@@ -56,6 +56,25 @@ tasks.matching { it.name == 'assembleDebug' }.configureEach {
     dependsOn 'testDebugUnitTest'
 }
 
+// Both existing GitHub workflows build through these tasks. Verify the APK
+// after packaging, without adding SDK/unzip requirements to developers' builds.
+tasks.matching { it.name in ['assembleDebug', 'assembleRelease'] }.configureEach { assembleTask ->
+    doLast {
+        if (System.getenv('GITHUB_ACTIONS') == 'true') {
+            def variant = assembleTask.name == 'assembleDebug' ? 'debug' : 'release'
+            def packageId = android.defaultConfig.applicationId + (variant == 'debug' ? '.debug' : '')
+            def appLabel = variant == 'debug' ? 'Wmdx-debug' : 'Wmdx'
+            project.exec {
+                workingDir rootProject.projectDir
+                environment 'ANDROID_HOME', android.sdkDirectory.absolutePath
+                commandLine 'node', 'tools/verify-apk-icons.cjs',
+                    "${project.buildDir}/outputs/apk/${variant}/app-${variant}.apk",
+                    packageId, appLabel
+            }
+        }
+    }
+}
+
 dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'

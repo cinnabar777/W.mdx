@@ -4,3 +4,5 @@
 - [Color picker alpha](color-picker-alpha.md) — choosing a hue or saturation/value updates RGB while preserving the current opacity, including 00.
 - [Android heading preference inheritance](android-heading-preferences.md) — AndroidX can persist displayed defaults; keep inherited heading values out of saved overrides.
 - [SeekBar reset alignment](seekbar-reset-alignment.md) — AndroidX’s inner end padding, not margins, misaligned reset icons; clearing it was confirmed to fix alignment.
+- [GitHub workflow writes](github-workflow-writes.md) — this GitHub App rejects workflow-file tree updates with a misleading 404; ordinary file updates and build dispatch work.
+- [APK verification](apk-verification.md) — replay new build checks against real debug and optimized release APKs; previews do not prove installed icon behavior.
