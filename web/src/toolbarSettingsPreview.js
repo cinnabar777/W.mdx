@@ -192,10 +192,15 @@ function onToolbarKeyClick(id) {
   }
   previousTap = { id, time: now };
   selectedKey = id;
-  openPopupGroup = !isHiddenKey && PREVIEW_GROUP_ITEMS[id]
-    ? (openPopupGroup === id ? null : id)
-    : null;
+  openPopupGroup = isHiddenKey
+    ? null
+    : PREVIEW_GROUP_ITEMS[id]
+      ? (openPopupGroup === id ? null : id)
+      : null;
   selectedPopupItem = null;
+  setStatus(isHiddenKey
+    ? 'Holding-area keys open their settings; drag one back to restore it.'
+    : '');
   render();
 }
 
@@ -234,6 +239,8 @@ function refreshSelectedKeyEditor() {
   if (!editor) return;
   const definition = BOTTOM_TOOLBAR_ITEMS.find(item => item.id === selectedKey);
   editor.classList.toggle('visible', Boolean(definition));
+  editor.classList.toggle('above-group', Boolean(definition && openPopupGroup));
+  editor.setAttribute('aria-hidden', String(!definition));
   if (!definition) return;
   selectedTitle.textContent = definition.title;
 
@@ -458,6 +465,30 @@ document.querySelector('#toolbar-reset-layout')?.addEventListener('click', () =>
   selectedPopupItem = null;
   render();
   saveConfig();
+});
+
+document.querySelector('#toolbar-preview-close-editor')?.addEventListener('click', () => {
+  selectedKey = null;
+  render();
+});
+
+document.addEventListener('click', event => {
+  if (!editor?.classList.contains('visible')) return;
+  const target = event.target;
+  if (
+    editor.contains(target) ||
+    target?.closest?.('.toolbar-preview-key, .toolbar-preview-popup-key')
+  ) {
+    return;
+  }
+  selectedKey = null;
+  render();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || !editor?.classList.contains('visible')) return;
+  selectedKey = null;
+  render();
 });
 
 window.applyToolbarSettings = applySettings;

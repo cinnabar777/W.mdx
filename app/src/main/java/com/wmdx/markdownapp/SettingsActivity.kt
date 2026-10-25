@@ -1317,6 +1317,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             toolbarAppearanceExpanded = !toolbarAppearanceExpanded
             appearanceHeader.isExpanded = toolbarAppearanceExpanded
             toolbarAppearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
+            view?.parent?.requestLayout()
             true
         }
     }
@@ -1326,6 +1327,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         toolbarAppearanceExpanded = false
         toolbarAppearanceHeader?.isExpanded = false
         toolbarAppearancePreferences.forEach { it.isVisible = false }
+        view?.parent?.requestLayout()
     }
 
     override fun onCreateView(
@@ -1335,11 +1337,20 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     ): android.view.View {
         val preferencesView = super.onCreateView(inflater, container, savedInstanceState)
         val context = requireContext()
-        val density = context.resources.displayMetrics.density
         val wrapper = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
         }
+        listView?.apply {
+            isNestedScrollingEnabled = false
+            layoutParams = layoutParams?.apply {
+                height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            }
+        }
+        preferencesView.layoutParams = android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        )
         val preview = android.webkit.WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = false
@@ -1348,20 +1359,19 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             addJavascriptInterface(ToolbarPreviewBridge(), "ToolbarSettings")
         }
         toolbarPreviewWebView = preview
-        val previewHeight = (340 * density).toInt()
         wrapper.addView(
             preferencesView,
             android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
         wrapper.addView(
             preview,
             android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                previewHeight
+                0,
+                1f
             )
         )
 

@@ -28,6 +28,9 @@ test('bottom toolbar preview uses the same renderer, icon source, and toolbar st
   assert.match(settingsSource, /renderBottomToolbarKeys/);
   assert.match(settingsSource, /from '\.\/toolbarIcons\.js'/);
   assert.match(settingsSource, /toolbar-preview-popup/);
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /toolbar-preview-editor-close/);
+  assert.match(html, /position: fixed/);
   assert.match(html, /toolbar-preview-dock/);
   assert.match(html, /toolbar\.css/);
   assert.match(fs.readFileSync(path.join(root, 'web/index.html'), 'utf8'), /toolbar\.css/);
@@ -58,12 +61,21 @@ test('global toolbar settings collapse above a bottom-docked toolbar preview', (
   assert.match(androidSource, /toolbarAppearancePreferences\.forEach \{ it\.isVisible = toolbarAppearanceExpanded \}/);
   assert.match(androidSource, /fun collapseToolbarAppearance\(\)/);
   assert.match(androidSource, /activity\?\.runOnUiThread \{ collapseToolbarAppearanceSettings\(\) \}/);
+  assert.match(androidSource, /isNestedScrollingEnabled = false/);
+  assert.match(
+    androidSource,
+    /preferencesView\.layoutParams = android\.widget\.LinearLayout\.LayoutParams\([\s\S]*?WRAP_CONTENT/
+  );
   const preferencesViewAdd = androidSource.search(/wrapper\.addView\(\s*preferencesView/);
   const previewAdd = androidSource.search(/wrapper\.addView\(\s*preview/);
   assert.ok(
     preferencesViewAdd >= 0 &&
       previewAdd > preferencesViewAdd,
-    'the settings list must be placed above the fixed toolbar preview'
+    'the content-sized settings list must be placed above a preview that uses the remaining space'
+  );
+  assert.match(
+    androidSource.slice(previewAdd, previewAdd + 500),
+    /0,\s*1f/
   );
 });
 

@@ -158,7 +158,7 @@ body.light-theme .popup-toolbar-strip {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 14px;
+  padding: 8px 14px;
   overscroll-behavior: contain;
 }
 
@@ -166,18 +166,6 @@ body.light-theme .popup-toolbar-strip {
   position: relative;
   z-index: 10003;
   flex: 0 0 auto;
-}
-
-.toolbar-preview-title {
-  margin: 0 0 8px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.toolbar-preview-hint {
-  margin: 0 0 12px;
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 12px;
 }
 
 .toolbar-preview-stage {
@@ -224,7 +212,7 @@ body.light-theme .popup-toolbar-strip {
   flex-wrap: wrap;
   gap: 6px;
   min-height: 54px;
-  margin-top: 10px;
+  margin-top: 0;
   padding: 5px;
   box-sizing: border-box;
   align-items: center;
@@ -233,7 +221,7 @@ body.light-theme .popup-toolbar-strip {
 }
 
 .toolbar-preview-tray:empty::before {
-  content: "Hold and drag keys here to remove them from the toolbar";
+  content: "No hidden keys — drag a toolbar key here to hide it";
   color: rgba(255, 255, 255, 0.56);
   font-size: 11px;
   padding: 0 6px;
@@ -276,10 +264,6 @@ body.light-theme .popup-toolbar-strip {
 body.light-theme .toolbar-preview-shell {
   --toolbar-preview-text: #111;
   --toolbar-preview-surface: #fff;
-}
-
-body.light-theme .toolbar-preview-hint {
-  color: rgba(0, 0, 0, 0.62);
 }
 
 body.light-theme .toolbar-preview-tray {

@@ -46,6 +46,14 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     visibleKey.click();
     assert.equal(collapseCalls.length, 1);
     assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('visible'),
+      true
+    );
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('above-group'),
+      false
+    );
+    assert.equal(
       dom.window.document
         .querySelector('#toolbar-preview [data-toolbar-key="undo"]')
         .classList.contains('is-selected'),
@@ -57,6 +65,10 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       .click();
     const popup = dom.window.document.querySelector('#toolbar-preview-popup');
     assert.equal(popup.classList.contains('hidden'), false);
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('above-group'),
+      true
+    );
     assert.deepEqual(
       [...popup.querySelectorAll('[data-preview-popup-item]')].map(button => button.title),
       [
@@ -87,6 +99,10 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
       .click();
     assert.equal(popup.classList.contains('hidden'), true);
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('above-group'),
+      false
+    );
 
     for (const groupKey of ['lists', 'format', 'table', 'insert']) {
       dom.window.document
@@ -112,6 +128,34 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       .click();
     assert.equal(collapseCalls.length, collapseCallsBeforeTray + 2);
     assert.deepEqual(edits, ['heading']);
+
+    dom.window.applyToolbarSettings({
+      pref_toolbar_bottom_config: JSON.stringify({
+        version: 1,
+        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert'],
+        hidden: ['menu'],
+        styles: {}
+      }),
+      pref_toolbar_height: 48,
+      pref_toolbar_padding: 4,
+      pref_app_theme: 'amoled'
+    });
+    dom.window.document
+      .querySelector('#toolbar-holding-tray [data-toolbar-key="menu"]')
+      .click();
+    assert.equal(popup.classList.contains('hidden'), true);
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-editor').getAttribute('aria-hidden'),
+      'false'
+    );
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-selected-title').textContent,
+      'Menu'
+    );
+    assert.match(
+      dom.window.document.querySelector('#toolbar-preview-status').textContent,
+      /Holding-area keys open their settings/
+    );
   } finally {
     dom.window.close();
     if (previousWindow === undefined) delete global.window;
