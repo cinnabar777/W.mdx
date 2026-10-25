@@ -36,6 +36,8 @@ class ColorPickerDialog(
     private var currentSat = 1f
     private var currentVal = 1f
     private var currentAlpha = 255
+    private var hexFieldTouched = false
+    private var hexKeyboardRequestPending = false
 
     private val initialColorInt: Int = parseHexColor(initialColorHex, Color.WHITE)
     private var currentColorInt: Int = initialColorInt
@@ -182,6 +184,19 @@ class ColorPickerDialog(
             isFocusable = true
             isFocusableInTouchMode = true
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setOnTouchListener { view, event ->
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    hexFieldTouched = true
+                } else if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    view.post {
+                        if (view.hasFocus()) showHexKeyboard()
+                    }
+                }
+                false
+            }
+            setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus && hexFieldTouched) showHexKeyboard()
+            }
             setOnClickListener { showHexKeyboard() }
         }
         hexAndPreviewLayout.addView(hexEditText)
@@ -304,19 +319,36 @@ class ColorPickerDialog(
         )
         hexEditText.showSoftInputOnFocus = true
         hexEditText.requestFocus()
+        if (hexKeyboardRequestPending) return
+        hexKeyboardRequestPending = true
+        requestHexKeyboard(dialogWindow, attempt = 0)
+    }
+
+    private fun requestHexKeyboard(dialogWindow: Window, attempt: Int) {
         hexEditText.postDelayed({
             if (isShowing && hexEditText.isAttachedToWindow && hexEditText.hasFocus()) {
+                val insetsController = WindowCompat.getInsetsController(dialogWindow, hexEditText)
+                if (insetsController.isVisible(WindowInsetsCompat.Type.ime())) {
+                    hexKeyboardRequestPending = false
+                    return@postDelayed
+                }
                 val inputMethodManager =
                     context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                inputMethodManager?.restartInput(hexEditText)
+                if (attempt == 0) inputMethodManager?.restartInput(hexEditText)
                 inputMethodManager?.showSoftInput(
                     hexEditText,
                     InputMethodManager.SHOW_IMPLICIT
                 )
-                WindowCompat.getInsetsController(dialogWindow, hexEditText)
-                    .show(WindowInsetsCompat.Type.ime())
+                insetsController.show(WindowInsetsCompat.Type.ime())
+                if (attempt < 3) {
+                    requestHexKeyboard(dialogWindow, attempt + 1)
+                } else {
+                    hexKeyboardRequestPending = false
+                }
+            } else {
+                hexKeyboardRequestPending = false
             }
-        }, 150)
+        }, if (attempt == 0) 150L else 120L)
     }
 
     private fun updateColorFromHSV() {
