@@ -11,7 +11,7 @@ ___
     2. Italic 
     3. Links 
     4. Inline code 
-    5. Footnotes 
+    5. Footnotes (separate typography page added)
     6. Block quotes 
     7. Callouts 
     8. Did I miss any that should be separated? 
@@ -24,7 +24,7 @@ ___
         2. Paragraph & body text 
         3. Everything else in alphabetical order. 
     2. items to add:
-        1. List items, block quote, callouts, and maybe others: need to make sure they have setting to customize typography:
+        1. List items, block quote, callouts, footnotes, and maybe others: need to make sure they have setting to customize typography:
             1. **add** a setting to these types of "sub-elements" to inherit these typography setting from "paragraph & body typography". 
             2. font
             3. font weight

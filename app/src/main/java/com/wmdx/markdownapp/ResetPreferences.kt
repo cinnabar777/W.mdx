@@ -235,6 +235,7 @@ object PreferenceResetHelper {
             key == "pref_callout_header_accent_color" -> "default"
             key == "pref_callout_header_accent_thickness" -> 0
             key == "pref_font_file_callout_header" -> null
+            key == "pref_font_file_footnote" -> null
             key == "pref_callout_type_selector" -> "info"
             key.startsWith("pref_callout_type_") -> "default"
             key == "pref_table_margin_left" -> 0
@@ -363,11 +364,17 @@ object PreferenceResetHelper {
             key == "pref_hotkey_open_with" -> "ctrl+shift+o"
             key == "pref_hotkey_line_numbers" -> "ctrl+alt+l"
             key == "pref_hotkey_footnote" -> "ctrl+shift+f"
+            key == "pref_footnote_inherit_body_typography" -> true
+            key == "pref_footnote_font_weight" -> 400
+            key == "pref_footnote_letter_spacing" -> "0px"
             key == "pref_footnote_font_size" -> 14
             key == "pref_footnote_text_color" -> "default"
             key == "pref_footnote_ref_color" -> "default"
             key == "pref_footnote_link_color" -> "default"
             key == "pref_footnote_bg_color" -> "default"
+            key == "pref_footnote_text_align" -> "default"
+            key == "pref_footnote_line_height" -> "default"
+            key == "pref_footnote_hyphenate" -> false
             key == "pref_auto_save_on_leave" -> true
             key == "pref_hotkey_new" -> "ctrl+n"
             key == "pref_hotkey_history_back" -> "alt+left"

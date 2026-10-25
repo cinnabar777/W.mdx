@@ -5893,12 +5893,49 @@ window.editorBridge = {
     setCssVar('--code-padding', prefs.pref_code_padding, 'px');
     setCssVar('--code-border-radius', prefs.pref_code_border_radius, 'px');
 
-    // Footnote
-    setCssVar('--footnote-text-color', androidArgbToCss(prefs.pref_footnote_text_color));
+    // Footnote typography inherits paragraph/body values until overrides are enabled.
+    const inheritFootnoteTypography =
+      prefs.pref_footnote_inherit_body_typography !== false;
+    const paragraphAlignment = prefs.pref_justify_paragraph === true
+      ? 'justify'
+      : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify || 'left');
+    setCssVar(
+      '--footnote-font-size',
+      inheritFootnoteTypography ? 'var(--body-font-size)' : prefs.pref_footnote_font_size,
+      inheritFootnoteTypography ? '' : 'px'
+    );
+    setCssVar(
+      '--footnote-font-weight',
+      inheritFootnoteTypography ? 400 : prefs.pref_footnote_font_weight
+    );
+    setCssVar(
+      '--footnote-letter-spacing',
+      inheritFootnoteTypography
+        ? 'var(--paragraph-letter-spacing)'
+        : prefs.pref_footnote_letter_spacing
+    );
+    setCssVar(
+      '--footnote-line-height',
+      inheritFootnoteTypography
+        ? 'var(--paragraph-line-height)'
+        : prefs.pref_footnote_line_height
+    );
+    setCssVar(
+      '--footnote-text-align',
+      inheritFootnoteTypography
+        ? paragraphAlignment
+        : prefs.pref_footnote_text_align
+    );
+    setCssVar(
+      '--footnote-text-color',
+      inheritFootnoteTypography
+        ? 'var(--text-color)'
+        : androidArgbToCss(prefs.pref_footnote_text_color)
+    );
+    setCssVar('--footnote-hyphens', prefs.pref_footnote_hyphenate === true ? 'auto' : 'none');
     setCssVar('--footnote-bg-color', androidArgbToCss(prefs.pref_footnote_bg_color));
     setCssVar('--footnote-ref-color', androidArgbToCss(prefs.pref_footnote_ref_color));
     setCssVar('--footnote-link-color', androidArgbToCss(prefs.pref_footnote_link_color));
-    setCssVar('--footnote-font-size', prefs.pref_footnote_font_size, 'px');
 
     // Body & Headings Margins
     setCssVar('--body-margin-left', prefs.pref_body_margin_left ?? 16, 'px');
@@ -6359,7 +6396,7 @@ window.editorBridge = {
     }
     updateTocHistoryButtons();
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData) {
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData, fontFootnoteData) {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -6422,6 +6459,7 @@ window.editorBridge = {
     applyFontCategory('Code', fontCodeData, '--code-font-family');
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family');
     applyFontCategory('Toc', fontTocData, '--toc-font-family');
+    applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family');
     let headingLevelFonts = [];
     try {
       headingLevelFonts = JSON.parse(fontHeadingLevelsDataJson || '[]');

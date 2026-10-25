@@ -614,7 +614,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_font_file_italic",
             "pref_font_file_code",
             "pref_font_file_callout_header",
-            "pref_font_file_toc"
+            "pref_font_file_toc",
+            "pref_font_file_footnote"
         )
 
         for (key in fontKeys) {
@@ -973,6 +974,7 @@ class StylingInlineFragment : StylingSettingsFragment() {
 class StylingFootnotesFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_footnotes, rootKey)
+        configureFontPreferences()
     }
 }
 

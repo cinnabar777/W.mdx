@@ -2,22 +2,78 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Footnote Typography &amp; Colors">
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Footnote Typography">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_footnote_inherit_body_typography"
+            app:title="Inherit Paragraph &amp; Body Typography"
+            app:summary="Use the paragraph and body font, weight, spacing, color, size, alignment, and line height"
+            app:disableDependentsState="true"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_font_file_footnote"
+            app:title="Footnote Font File"
+            app:summary="Tap to pick a font file (.ttf, .otf, .woff, .woff2)"
+            app:dependency="pref_footnote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_footnote_font_weight"
+            app:title="Footnote Font Weight"
+            app:summary="Font weight for footnote text (100–900)"
+            app:min="100"
+            android:max="900"
+            app:defaultValue="400"
+            app:showSeekBarValue="true"
+            app:dependency="pref_footnote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_footnote_letter_spacing"
+            app:title="Footnote Letter Spacing (px)"
+            app:summary="Space between letters (for example, 0px or 0.5px)"
+            app:defaultValue="0px"
+            app:dependency="pref_footnote_inherit_body_typography" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_footnote_font_size"
             app:title="Footnote Font Size (px)"
             app:summary="Font size for footnote text"
             app:min="10"
-            android:max="24"
+            android:max="32"
             app:defaultValue="14"
-            app:showSeekBarValue="true" />
+            app:showSeekBarValue="true"
+            app:dependency="pref_footnote_inherit_body_typography" />
 
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_footnote_text_color"
             app:title="Footnote Text Color"
             app:summary="Color of the footnote text"
-            app:defaultValue="default" />
+            app:defaultValue="default"
+            app:dependency="pref_footnote_inherit_body_typography" />
 
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_footnote_text_align"
+            app:title="Footnote Text Alignment"
+            app:summary="Align footnote text left, center, right, or justify"
+            android:entries="@array/align_entries"
+            android:entryValues="@array/align_values"
+            android:defaultValue="default"
+            app:dependency="pref_footnote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_footnote_line_height"
+            app:title="Footnote Line Height"
+            app:summary="Line-height multiplier, or “default” to inherit"
+            app:defaultValue="default"
+            app:dependency="pref_footnote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_footnote_hyphenate"
+            app:title="Hyphenate Footnote Text"
+            app:summary="Allow long words to break with automatic hyphens"
+            android:defaultValue="false" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Footnote Mark &amp; Background Colors">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_footnote_ref_color"
             app:title="Footnote Reference Color"

@@ -5,6 +5,22 @@ const test = require('node:test');
 
 const source = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+const footnotePreferences = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_footnotes.xml'),
+  'utf8'
+);
+const inlinePreferences = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_inline.xml'),
+  'utf8'
+);
+const settingsActivity = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
+  'utf8'
+);
+const mainActivity = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'),
+  'utf8'
+);
 
 test('footnote parsing handles references, numbered definitions, and continued lines', async () => {
   const { parseFootnotes } = await import('../src/footnotes.js');
@@ -48,13 +64,24 @@ test('toolbar insertion opens the footnote dialog and all footnote settings reac
   assert.match(source, /title: 'Insert Footnote', action: \(\) => openFootnoteInsertionDialog\(\)/);
   assert.match(source, /function openFootnoteInsertionDialog/);
   assert.match(source, /footnoteStateField/);
-  assert.match(source, /setCssVar\('--footnote-text-color', androidArgbToCss/);
+  assert.match(source, /--footnote-text-color/);
   assert.match(source, /setCssVar\('--footnote-bg-color', androidArgbToCss/);
   assert.match(source, /setCssVar\('--footnote-ref-color', androidArgbToCss/);
   assert.match(source, /setCssVar\('--footnote-link-color', androidArgbToCss/);
-  assert.match(source, /setCssVar\('--footnote-font-size'/);
+  assert.match(source, /setCssVar\(\s*'--footnote-font-size'/);
+  assert.match(source, /--footnote-font-weight/);
+  assert.match(source, /--footnote-letter-spacing/);
+  assert.match(source, /--footnote-line-height/);
+  assert.match(source, /--footnote-text-align/);
+  assert.match(source, /--footnote-hyphens/);
   assert.match(html, /\.cm-footnote-reference/);
   assert.match(html, /\.cm-footnote-definition/);
+  assert.match(html, /font-family: var\(--footnote-font-family/);
+  assert.match(html, /font-weight: var\(--footnote-font-weight/);
+  assert.match(html, /letter-spacing: var\(--footnote-letter-spacing/);
+  assert.match(html, /line-height: var\(--footnote-line-height/);
+  assert.match(html, /text-align: var\(--footnote-text-align/);
+  assert.match(html, /hyphens: var\(--footnote-hyphens/);
 
   const navigationStart = source.indexOf('function navigateFootnote');
   const navigationEnd = source.indexOf('function restoreTocNavigationState', navigationStart);
@@ -62,4 +89,30 @@ test('toolbar insertion opens the footnote dialog and all footnote settings reac
   assert.match(navigationFunction, /recordTocNavigation\(view, targetPos\)/);
   assert.match(navigationFunction, /scrollToPositionUpperMiddle\(view, targetPos/);
   assert.match(source, /onNavigate: navigateFootnote/);
+});
+
+test('footnote typography has its own page and includes the planned overrides', () => {
+  const footnoteKeys = [
+    'pref_footnote_inherit_body_typography',
+    'pref_font_file_footnote',
+    'pref_footnote_font_weight',
+    'pref_footnote_letter_spacing',
+    'pref_footnote_font_size',
+    'pref_footnote_text_color',
+    'pref_footnote_text_align',
+    'pref_footnote_line_height',
+    'pref_footnote_hyphenate',
+    'pref_footnote_ref_color',
+    'pref_footnote_link_color',
+    'pref_footnote_bg_color'
+  ];
+  for (const key of footnoteKeys) {
+    assert.ok(footnotePreferences.includes(`app:key="${key}"`), `${key} is on the footnote page`);
+    assert.ok(!inlinePreferences.includes(`app:key="${key}"`), `${key} is no longer under inline formats`);
+  }
+  assert.match(footnotePreferences, /app:disableDependentsState="true"/);
+  assert.match(settingsActivity, /"pref_styling_page_footnotes" -> StylingFootnotesFragment\(\)/);
+  assert.match(settingsActivity, /"pref_font_file_footnote"/);
+  assert.match(mainActivity, /pref_font_file_footnote_path/);
+  assert.match(mainActivity, /pref_footnote_inherit_body_typography/);
 });

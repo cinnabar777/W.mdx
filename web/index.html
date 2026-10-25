@@ -1114,6 +1114,7 @@
     .cm-content .cm-footnote-reference {
       color: var(--footnote-ref-color, var(--link-color, #29b6f6)) !important;
       cursor: pointer;
+      font-family: var(--footnote-font-family, inherit);
       font-size: 0.75em;
       font-weight: 600;
       line-height: 1;
@@ -1133,7 +1134,14 @@
       border-radius: 4px;
       background-color: var(--footnote-bg-color, transparent);
       color: var(--footnote-text-color, var(--text-color, inherit));
-      font-size: var(--footnote-font-size, 0.9em);
+      font-family: var(--footnote-font-family, var(--body-font-family, inherit));
+      font-size: var(--footnote-font-size, var(--body-font-size, 0.9em));
+      font-weight: var(--footnote-font-weight, 400);
+      letter-spacing: var(--footnote-letter-spacing, var(--paragraph-letter-spacing, normal));
+      line-height: var(--footnote-line-height, var(--paragraph-line-height, normal));
+      text-align: var(--footnote-text-align, var(--paragraph-align, left));
+      -webkit-hyphens: var(--footnote-hyphens, none);
+      hyphens: var(--footnote-hyphens, none);
     }
     .cm-content .cm-footnote-number {
       flex: 0 0 auto;
@@ -1142,6 +1150,8 @@
       font-weight: 600;
     }
     .cm-content .cm-footnote-text {
+      display: block;
+      flex: 1 1 auto;
       min-width: 0;
       color: var(--footnote-text-color, inherit);
       overflow-wrap: anywhere;

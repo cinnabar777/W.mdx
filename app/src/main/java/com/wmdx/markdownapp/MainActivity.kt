@@ -765,6 +765,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val fontCodeData = loadFontDataUri(prefs.getString("pref_font_file_code_path", null))
         val fontCalloutHeaderData = loadFontDataUri(prefs.getString("pref_font_file_callout_header_path", null))
         val fontTocData = loadFontDataUri(prefs.getString("pref_font_file_toc_path", null))
+        val fontFootnoteData = if (
+            prefs.getBoolean("pref_footnote_inherit_body_typography", true)
+        ) {
+            null
+        } else {
+            loadFontDataUri(prefs.getString("pref_font_file_footnote_path", null))
+        }
 
         val bodyFontSize = prefs.getInt("pref_body_font_size", 16)
         val headingScalePercent = prefs.getInt("pref_heading_scale_percent", 100)
@@ -788,9 +795,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedCodeFont = JSONObjectWrapper.quote(fontCodeData)
         val escapedCalloutHeaderFont = JSONObjectWrapper.quote(fontCalloutHeaderData)
         val escapedTocFont = JSONObjectWrapper.quote(fontTocData)
+        val escapedFootnoteFont = JSONObjectWrapper.quote(fontFootnoteData)
 
         webView.evaluateJavascript(
-            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont); }",
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont, $escapedFootnoteFont); }",
             null
         )
 
