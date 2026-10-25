@@ -6,17 +6,80 @@ import {
 } from './toolbarConfig.js';
 import { svgIcons } from './toolbarIcons.js';
 import { renderBottomToolbarKeys, toToolbarCssColor } from './toolbarRenderer.js';
+import { TABLE_ACTIONS } from './tableActions.js';
 
 const toolbar = document.querySelector('#toolbar-preview');
 const tray = document.querySelector('#toolbar-holding-tray');
+const popup = document.querySelector('#toolbar-preview-popup');
 const editor = document.querySelector('#toolbar-preview-editor');
 const status = document.querySelector('#toolbar-preview-status');
 const selectedTitle = document.querySelector('#toolbar-preview-selected-title');
 let config = normalizeBottomToolbarConfig(null);
 let selectedKey = null;
+let openPopupGroup = null;
+let selectedPopupItem = null;
 let dragState = null;
 let dragTimer = null;
 let previousTap = { id: null, time: 0 };
+
+const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+const PREVIEW_GROUP_ITEMS = {
+  heading: [
+    { id: 'paragraph', title: 'Paragraph', icon: 'P' },
+    ...Array.from({ length: 6 }, (_, index) => ({
+      id: `heading${index + 1}`,
+      title: `Heading ${index + 1}`,
+      icon: `H${index + 1}`
+    })),
+    { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap },
+    { id: 'line-numbers', title: 'Toggle Line Numbers', icon: '#' }
+  ],
+  lists: [
+    { id: 'bulletedList', title: 'Bulleted List', icon: svgIcons.bulletedList },
+    { id: 'numberedList', title: 'Numbered List', icon: svgIcons.numberedList },
+    { id: 'todoList', title: 'Todo List', icon: svgIcons.todoList },
+    { id: 'indent', title: 'Indent', icon: svgIcons.indent },
+    { id: 'outdent', title: 'Outdent', icon: svgIcons.outdent }
+  ],
+  format: [
+    { id: 'bold', title: 'Bold', icon: svgIcons.bold },
+    { id: 'italic', title: 'Italic', icon: svgIcons.italic },
+    { id: 'strikethrough', title: 'Strikethrough', icon: svgIcons.strikethrough },
+    { id: 'underline', title: 'Underline', icon: svgIcons.underline },
+    { id: 'yellowMarker', title: 'Yellow Marker', icon: svgIcons.squareMarker('#ffe066') },
+    { id: 'greenMarker', title: 'Green Marker', icon: svgIcons.squareMarker('#a8f087') },
+    { id: 'pinkMarker', title: 'Pink Marker', icon: svgIcons.squareMarker('#ff99c8') },
+    { id: 'blueMarker', title: 'Blue Marker', icon: svgIcons.squareMarker('#9bf6ff') },
+    { id: 'redPen', title: 'Red Pen', icon: svgIcons.circlePen('#ff595e') },
+    { id: 'greenPen', title: 'Green Pen', icon: svgIcons.circlePen('#2ec4b6') }
+  ],
+  table: [
+    { id: 'insertTable', title: 'Insert Table', icon: svgIcons.insertTable },
+    ...TABLE_ACTIONS
+  ],
+  insert: [
+    { id: 'image', title: 'Insert Image', icon: svgIcons.image },
+    { id: 'link', title: 'Insert Link', icon: svgIcons.link },
+    { id: 'callout', title: 'Insert Callout', icon: calloutIcon },
+    { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode },
+    { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote },
+    { id: 'codeBlock', title: 'Code Block', icon: svgIcons.codeBlock },
+    { id: 'horizontalLine', title: 'Insert Line', icon: svgIcons.horizontalLine },
+    { id: 'footnote', title: 'Insert Footnote', icon: svgIcons.footnote }
+  ],
+  menu: [
+    { id: 'newFile', title: 'New File', icon: svgIcons.newFile },
+    { id: 'openFile', title: 'Open File', icon: svgIcons.openFile },
+    { id: 'saveFile', title: 'Save File', icon: svgIcons.saveFile },
+    { id: 'saveAsFile', title: 'Save As', icon: svgIcons.saveAsFile },
+    { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack },
+    { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml },
+    { id: 'search', title: 'Find & Replace', icon: svgIcons.search },
+    { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView },
+    { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow },
+    { id: 'settings', title: 'Settings', icon: svgIcons.settings }
+  ]
+};
 
 function setStatus(message) {
   if (status) status.textContent = message;
@@ -60,11 +123,19 @@ function render() {
 
   for (const button of document.querySelectorAll('.toolbar-preview-key')) {
     button.classList.toggle('is-selected', button.dataset.toolbarKey === selectedKey);
+    button.classList.toggle('active', button.dataset.toolbarKey === openPopupGroup);
+    if (PREVIEW_GROUP_ITEMS[button.dataset.toolbarKey]) {
+      button.setAttribute(
+        'aria-expanded',
+        String(button.dataset.toolbarKey === openPopupGroup)
+      );
+    }
     button.addEventListener('pointerdown', event => beginPossibleDrag(event, button), {
       passive: false
     });
   }
   refreshSelectedKeyEditor();
+  renderPopupGroup();
 }
 
 function applySettings(payload) {
@@ -120,7 +191,42 @@ function onToolbarKeyClick(id) {
   }
   previousTap = { id, time: now };
   selectedKey = id;
+  openPopupGroup = !isHiddenKey && PREVIEW_GROUP_ITEMS[id]
+    ? (openPopupGroup === id ? null : id)
+    : null;
+  selectedPopupItem = null;
   render();
+}
+
+function renderPopupGroup() {
+  if (!popup) return;
+  popup.replaceChildren();
+  const items = openPopupGroup ? PREVIEW_GROUP_ITEMS[openPopupGroup] : null;
+  if (!items?.length) {
+    popup.classList.add('hidden');
+    return;
+  }
+
+  for (const item of items) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'popup-strip-btn toolbar-preview-popup-key';
+    button.title = item.title;
+    button.setAttribute('aria-label', item.title);
+    button.setAttribute('aria-pressed', String(item.id === selectedPopupItem));
+    button.dataset.previewPopupItem = item.id;
+    if (item.id === selectedPopupItem) button.classList.add('active');
+    button.innerHTML = item.icon || item.title;
+    button.addEventListener('pointerdown', event => event.preventDefault());
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      selectedPopupItem = item.id === selectedPopupItem ? null : item.id;
+      renderPopupGroup();
+    });
+    popup.appendChild(button);
+  }
+  popup.classList.remove('hidden');
 }
 
 function refreshSelectedKeyEditor() {
@@ -347,6 +453,8 @@ document.querySelector('#toolbar-reset-layout')?.addEventListener('click', () =>
     styles: {}
   };
   selectedKey = null;
+  openPopupGroup = null;
+  selectedPopupItem = null;
   render();
   saveConfig();
 });

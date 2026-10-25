@@ -910,6 +910,31 @@ open class ResetPreferenceCategory @JvmOverloads constructor(
     }
 }
 
+class ExpandablePreference @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = androidx.preference.R.attr.preferenceStyle
+) : Preference(context, attrs, defStyleAttr) {
+    var isExpanded: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyChanged()
+        }
+
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        val chevron = holder.findViewById(R.id.preference_expand_chevron)
+            as? android.widget.TextView ?: return
+        chevron.text = if (isExpanded) "⌄" else "›"
+        chevron.contentDescription = if (isExpanded) {
+            "Collapse settings"
+        } else {
+            "Expand settings"
+        }
+    }
+}
+
 open class ResetPreference @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,

@@ -1271,6 +1271,16 @@ class StylingHrFragment : StylingSettingsFragment() {
 class StylingControlbarFragment : StylingSettingsFragment() {
     companion object {
         private const val TOOLBAR_CONFIG_KEY = "pref_toolbar_bottom_config"
+        private const val TOOLBAR_APPEARANCE_HEADER_KEY = "pref_toolbar_global_settings"
+        private val TOOLBAR_APPEARANCE_PREFERENCE_KEYS = listOf(
+            "pref_toolbar_bg_color",
+            "pref_toolbar_icon_color",
+            "pref_toolbar_active_icon_color",
+            "pref_toolbar_toggle_bg_color",
+            "pref_toolbar_toggle_icon_color",
+            "pref_toolbar_height",
+            "pref_toolbar_padding"
+        )
         private val TOOLBAR_ITEM_IDS = listOf(
             "undo", "heading", "lists", "format", "table", "insert", "menu"
         )
@@ -1282,6 +1292,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
     private var toolbarPreviewWebView: android.webkit.WebView? = null
     private var targetToolbarIconId: String? = null
+    private var toolbarAppearanceExpanded = false
 
     private val pickToolbarSvgLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -1290,6 +1301,21 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_controlbar, rootKey)
+        val appearanceHeader =
+            findPreference<ExpandablePreference>(TOOLBAR_APPEARANCE_HEADER_KEY)
+                ?: return
+        val appearancePreferences = TOOLBAR_APPEARANCE_PREFERENCE_KEYS.mapNotNull {
+            findPreference<Preference>(it)
+        }
+        toolbarAppearanceExpanded = false
+        appearanceHeader.isExpanded = toolbarAppearanceExpanded
+        appearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
+        appearanceHeader.setOnPreferenceClickListener {
+            toolbarAppearanceExpanded = !toolbarAppearanceExpanded
+            appearanceHeader.isExpanded = toolbarAppearanceExpanded
+            appearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
+            true
+        }
     }
 
     override fun onCreateView(
@@ -1314,18 +1340,18 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         toolbarPreviewWebView = preview
         val previewHeight = (340 * density).toInt()
         wrapper.addView(
-            preview,
-            android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                previewHeight
-            )
-        )
-        wrapper.addView(
             preferencesView,
             android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
                 1f
+            )
+        )
+        wrapper.addView(
+            preview,
+            android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                previewHeight
             )
         )
 

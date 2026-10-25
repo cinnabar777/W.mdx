@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { JSDOM } = require('jsdom');
 
-test('toolbar settings preview renders selectable keys and opens the SVG editor on a tray double tap', async () => {
+test('toolbar settings preview renders keys, opens group popups, and supports tray double-tap icon editing', async () => {
   const htmlPath = path.resolve(__dirname, '../toolbar-settings-preview.html');
   const html = fs.readFileSync(htmlPath, 'utf8');
   const dom = new JSDOM(html, { url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html' });
@@ -13,8 +13,8 @@ test('toolbar settings preview renders selectable keys and opens the SVG editor 
   const edits = [];
   const settings = {
     version: 1,
-    order: ['undo', 'menu'],
-    hidden: ['heading', 'lists', 'format', 'table', 'insert'],
+    order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
+    hidden: ['heading'],
     styles: {}
   };
 
@@ -38,7 +38,7 @@ test('toolbar settings preview renders selectable keys and opens the SVG editor 
     assert.deepEqual(
       [...dom.window.document.querySelectorAll('#toolbar-preview [data-toolbar-key]')]
         .map(button => button.dataset.toolbarKey),
-      ['undo', 'menu']
+      ['undo', 'lists', 'format', 'table', 'insert', 'menu']
     );
     const visibleKey = dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]');
     visibleKey.click();
@@ -48,6 +48,57 @@ test('toolbar settings preview renders selectable keys and opens the SVG editor 
         .classList.contains('is-selected'),
       true
     );
+
+    dom.window.document
+      .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
+      .click();
+    const popup = dom.window.document.querySelector('#toolbar-preview-popup');
+    assert.equal(popup.classList.contains('hidden'), false);
+    assert.deepEqual(
+      [...popup.querySelectorAll('[data-preview-popup-item]')].map(button => button.title),
+      [
+        'New File',
+        'Open File',
+        'Save File',
+        'Save As',
+        'Save as Text Pack',
+        'Export HTML / MHTML',
+        'Find & Replace',
+        'Switch View Mode',
+        'New Window',
+        'Settings'
+      ]
+    );
+    assert.equal(
+      dom.window.document
+        .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
+        .getAttribute('aria-expanded'),
+      'true'
+    );
+    popup.querySelector('[data-preview-popup-item="saveFile"]').click();
+    assert.equal(
+      popup.querySelector('[data-preview-popup-item="saveFile"]').getAttribute('aria-pressed'),
+      'true'
+    );
+    dom.window.document
+      .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
+      .click();
+    assert.equal(popup.classList.contains('hidden'), true);
+
+    for (const groupKey of ['lists', 'format', 'table', 'insert']) {
+      dom.window.document
+        .querySelector(`#toolbar-preview [data-toolbar-key="${groupKey}"]`)
+        .click();
+      assert.equal(popup.classList.contains('hidden'), false, `${groupKey} popup should open`);
+      assert.ok(
+        popup.querySelectorAll('[data-preview-popup-item]').length > 0,
+        `${groupKey} popup should contain its actions`
+      );
+      dom.window.document
+        .querySelector(`#toolbar-preview [data-toolbar-key="${groupKey}"]`)
+        .click();
+      assert.equal(popup.classList.contains('hidden'), true, `${groupKey} popup should close`);
+    }
 
     dom.window.document
       .querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]')

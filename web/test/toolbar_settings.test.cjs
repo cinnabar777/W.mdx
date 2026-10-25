@@ -27,6 +27,8 @@ const mainSource = fs.readFileSync(path.join(root, 'web/src/main.js'), 'utf8');
 test('bottom toolbar preview uses the same renderer, icon source, and toolbar stylesheet as the editor', () => {
   assert.match(settingsSource, /renderBottomToolbarKeys/);
   assert.match(settingsSource, /from '\.\/toolbarIcons\.js'/);
+  assert.match(settingsSource, /toolbar-preview-popup/);
+  assert.match(html, /toolbar-preview-dock/);
   assert.match(html, /toolbar\.css/);
   assert.match(fs.readFileSync(path.join(root, 'web/index.html'), 'utf8'), /toolbar\.css/);
   assert.match(sharedCss, /\.grouped-control-bar\s*\{/);
@@ -45,6 +47,22 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(mainSource, /--toolbar-padding/);
   assert.match(preferenceXml, /app:key="pref_toolbar_padding"/);
   assert.match(resetSource, /key == "pref_toolbar_padding" -> 4/);
+});
+
+test('global toolbar settings collapse above a bottom-docked toolbar preview', () => {
+  assert.match(
+    preferenceXml,
+    /ExpandablePreference[\s\S]*?pref_toolbar_global_settings[\s\S]*?preference_expand_chevron/
+  );
+  assert.match(androidSource, /TOOLBAR_APPEARANCE_PREFERENCE_KEYS/);
+  assert.match(androidSource, /appearancePreferences\.forEach \{ it\.isVisible = toolbarAppearanceExpanded \}/);
+  const preferencesViewAdd = androidSource.search(/wrapper\.addView\(\s*preferencesView/);
+  const previewAdd = androidSource.search(/wrapper\.addView\(\s*preview/);
+  assert.ok(
+    preferencesViewAdd >= 0 &&
+      previewAdd > preferencesViewAdd,
+    'the settings list must be placed above the fixed toolbar preview'
+  );
 });
 
 test('runtime toolbar consumes the saved bottom toolbar configuration', () => {
