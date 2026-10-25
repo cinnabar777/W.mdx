@@ -22,6 +22,7 @@ import {
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
+import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { toCssFontFamily } from './fontFamilies.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import { TABLE_ACTIONS } from './tableActions.js';
@@ -1080,12 +1081,20 @@ class ImagePreviewWidget extends WidgetType {
       const height = actions.offsetHeight || 48;
       const minLeft = viewportLeft + 8;
       const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - width - 8);
-      const left = Math.max(minLeft, Math.min(lastPressPoint.x, maxLeft));
+      const centeredLeft = lastPressPoint.x - width / 2;
+      const left = Math.max(minLeft, Math.min(centeredLeft, maxLeft));
       const minTop = viewportTop + 8;
       const maxTop = Math.max(minTop, viewportTop + viewportHeight - height - 8);
-      let top = lastPressPoint.y + 12;
-      if (top + height > viewportTop + viewportHeight - 8) {
-        top = lastPressPoint.y - height - 12;
+      const gap = 14;
+      const aboveTop = lastPressPoint.y - height - gap;
+      const belowTop = lastPressPoint.y + gap;
+      let top;
+      if (aboveTop >= minTop) {
+        top = aboveTop;
+      } else if (belowTop <= maxTop) {
+        top = belowTop;
+      } else {
+        top = Math.max(minTop, Math.min(aboveTop, maxTop));
       }
       actions.style.left = `${left}px`;
       actions.style.top = `${Math.max(minTop, Math.min(top, maxTop))}px`;
@@ -5370,6 +5379,8 @@ function setupFastScrollbar() {
 function updateTocActiveSection() {
   const tocContent = document.querySelector('#toc-content');
   const panel = document.querySelector('#toc-panel');
+  const tocSearchInput = document.querySelector('#toc-search-input');
+  const isSearching = Boolean(tocSearchInput?.value.trim());
   if (
     !tocContent ||
     !panel?.classList.contains('open') ||
@@ -5421,12 +5432,12 @@ function updateTocActiveSection() {
 
   if (activeRow) {
     let activeHeadingChanged = activeRow.dataset.headingKey !== tocExpansionState.activeHeadingKey;
-    if (typeof revealActiveTocHeading === 'function') {
+    if (!isSearching && typeof revealActiveTocHeading === 'function') {
       activeHeadingChanged = revealActiveTocHeading(activeRow) || activeHeadingChanged;
     }
     activeRow.classList.add('active-section');
 
-    if (activeHeadingChanged || tocExpansionState.centerOnNextUpdate) {
+    if (!isSearching && (activeHeadingChanged || tocExpansionState.centerOnNextUpdate)) {
       const containerRect = tocContent.getBoundingClientRect();
       const rowRect = activeRow.getBoundingClientRect();
       if (containerRect.height > 0 && rowRect.height > 0 && tocContent.clientHeight > 0) {
@@ -5458,6 +5469,8 @@ function setupTocGestureAndPanel(scrollDOM) {
   const settingsButton = document.querySelector('#toc-settings-button');
   const historyBackButton = document.querySelector('#toc-history-back');
   const historyForwardButton = document.querySelector('#toc-history-forward');
+  const documentStatsRow = document.querySelector('#toc-document-stats');
+  const tocSearchInput = document.querySelector('#toc-search-input');
   if (!panel || !overlay) return () => {};
 
   let pendingRefreshTimer = null;
@@ -5536,6 +5549,10 @@ function setupTocGestureAndPanel(scrollDOM) {
       cancelDocumentNameEdit();
       documentNameInput.blur();
     }
+    if (document.activeElement === tocSearchInput) {
+      tocSearchInput.blur();
+      window.AndroidNative?.hideKeyboard?.();
+    }
     panel.classList.remove('open');
     overlay.classList.remove('open');
   };
@@ -5560,6 +5577,20 @@ function setupTocGestureAndPanel(scrollDOM) {
     documentNameInput.addEventListener('click', onDocumentNameClick);
     documentNameInput.addEventListener('keydown', onDocumentNameKeyDown);
     documentNameInput.addEventListener('blur', onDocumentNameBlur);
+  }
+  if (tocSearchInput) {
+    tocSearchInput.addEventListener('input', () => {
+      applyTocCollapseState();
+      updateTocActiveSection();
+    });
+    tocSearchInput.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        tocSearchInput.value = '';
+        applyTocCollapseState();
+        updateTocActiveSection();
+      }
+    });
   }
 
   const onSettingsClick = () => {
@@ -5646,7 +5677,17 @@ function setupTocGestureAndPanel(scrollDOM) {
     if (!tocContent || !activeAdapter) return;
     tocContent.innerHTML = '';
 
-    const items = extractTocHeadings(activeAdapter.getMarkdown());
+    const markdown = activeAdapter.getMarkdown();
+    const counts = countDocumentText(markdown);
+    if (documentStatsRow) {
+      documentStatsRow.textContent = '';
+      const words = document.createElement('span');
+      words.textContent = `Words: ${counts.words.toLocaleString()}`;
+      const characters = document.createElement('span');
+      characters.textContent = `Characters: ${counts.characters.toLocaleString()}`;
+      documentStatsRow.append(words, characters);
+    }
+    const items = extractTocHeadings(markdown);
 
     if (items.length === 0) {
       tocExpansionState.collapsedHeadingKeys.clear();
@@ -5741,7 +5782,8 @@ function setupTocGestureAndPanel(scrollDOM) {
 
       const textSpan = document.createElement('span');
       textSpan.className = 'toc-text';
-      textSpan.textContent = item.title;
+      textSpan.dataset.headingTitle = item.title;
+      renderTocHeadingText(textSpan, item.title, tocSearchInput?.value);
 
       itemRow.appendChild(toggleSpan);
       itemRow.appendChild(textSpan);
@@ -5762,6 +5804,64 @@ function setupTocGestureAndPanel(scrollDOM) {
 
     applyTocCollapseState();
     updateTocActiveSection();
+  }
+
+  function renderTocHeadingText(textSpan, title, query) {
+    const ranges = findTocMatchRanges(title, query);
+    if (ranges.length === 0) {
+      textSpan.textContent = title;
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    let offset = 0;
+    ranges.forEach(({ from, to }) => {
+      if (from > offset) fragment.appendChild(document.createTextNode(title.slice(offset, from)));
+      const mark = document.createElement('mark');
+      mark.className = 'toc-search-match';
+      mark.textContent = title.slice(from, to);
+      fragment.appendChild(mark);
+      offset = to;
+    });
+    if (offset < title.length) fragment.appendChild(document.createTextNode(title.slice(offset)));
+    textSpan.replaceChildren(fragment);
+  }
+
+  function applyTocSearchFilter(itemRows) {
+    const query = tocSearchInput?.value.trim() ?? '';
+    tocContent.querySelector('.toc-search-empty')?.remove();
+    if (!query) {
+      itemRows.forEach(row => {
+        row.querySelector('.toc-toggle')?.style.removeProperty('visibility');
+        renderTocHeadingText(
+          row.querySelector('.toc-text'),
+          row.querySelector('.toc-text')?.dataset.headingTitle ?? '',
+          ''
+        );
+      });
+      return;
+    }
+
+    const items = itemRows.map(row => ({
+      level: Number(row.dataset.level) || 1,
+      title: row.querySelector('.toc-text')?.dataset.headingTitle ?? ''
+    }));
+    const { matchingIndexes, visibleIndexes } = getTocSearchState(items, query);
+    itemRows.forEach((row, index) => {
+      row.style.display = visibleIndexes.has(index) ? 'flex' : 'none';
+      const toggle = row.querySelector('.toc-toggle');
+      if (toggle) toggle.style.visibility = 'hidden';
+      if (matchingIndexes.has(index)) {
+        renderTocHeadingText(row.querySelector('.toc-text'), items[index].title, query);
+      } else {
+        renderTocHeadingText(row.querySelector('.toc-text'), items[index].title, '');
+      }
+    });
+    if (matchingIndexes.size === 0 && itemRows.length > 0) {
+      const emptyMessage = document.createElement('div');
+      emptyMessage.className = 'toc-search-empty';
+      emptyMessage.textContent = 'No matching headings.';
+      tocContent.appendChild(emptyMessage);
+    }
   }
 
   function applyTocCollapseState() {
@@ -5788,6 +5888,7 @@ function setupTocGestureAndPanel(scrollDOM) {
           toggle.setAttribute('aria-disabled', String(!hasChildren));
         }
       });
+      applyTocSearchFilter(itemRows);
       return;
     }
 
@@ -5815,6 +5916,7 @@ function setupTocGestureAndPanel(scrollDOM) {
         child.style.display = 'none';
       }
     });
+    applyTocSearchFilter(itemRows);
   }
 
   const revealActiveHeadingInToc = (activeRow) => {
@@ -6618,6 +6720,7 @@ window.editorBridge = {
     setCssVar('--toc-text-color', androidArgbToCss(prefs.pref_toc_text_color));
     setCssVar('--toc-active-text-color', androidArgbToCss(prefs.pref_toc_active_text_color));
     setCssVar('--toc-active-bg-color', androidArgbToCss(prefs.pref_toc_active_bg_color));
+    setCssVar('--toc-search-highlight-bg-color', androidArgbToCss(prefs.pref_toc_search_highlight_bg_color));
     setCssVar('--toc-toggle-bg-color', androidArgbToCss(prefs.pref_toc_toggle_bg_color));
     setCssVar('--toc-toggle-icon-color', androidArgbToCss(prefs.pref_toc_toggle_icon_color));
     setCssVar('--toc-toggle-active-bg-color', androidArgbToCss(prefs.pref_toc_toggle_active_bg_color));

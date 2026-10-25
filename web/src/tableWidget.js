@@ -24,6 +24,23 @@ function tableActionBridge() {
   return window.wmdxTableActions;
 }
 
+export function resolveVisibleCellCoordinates(matrix, row, col) {
+  for (let candidateRow = 0; candidateRow <= row; candidateRow++) {
+    for (let candidateCol = 0; candidateCol <= col; candidateCol++) {
+      const candidate = matrix[candidateRow]?.[candidateCol];
+      if (
+        candidate &&
+        !candidate.isCovered &&
+        candidateRow + (candidate.rowSpan || 1) > row &&
+        candidateCol + (candidate.colSpan || 1) > col
+      ) {
+        return { r: candidateRow, c: candidateCol };
+      }
+    }
+  }
+  return { r: row, c: col };
+}
+
 const TABLE_HEIGHT_STYLE_PROPERTIES = [
   '--table-cell-padding',
   '--table-border-width',
@@ -297,8 +314,13 @@ export class WordProcessorTableWidget extends WidgetType {
         if (selectedCell) {
           const row = Math.min(selectedCell.r, this.model.getRowCount() - 1);
           const col = Math.min(selectedCell.c, this.model.getColCount() - 1);
+          const visibleCell = resolveVisibleCellCoordinates(
+            this.model.getRenderMatrix(),
+            row,
+            col
+          );
           const targetCell = liveContainer.querySelector(
-            `[data-row="${row}"][data-col="${col}"]`
+            `[data-row="${visibleCell.r}"][data-col="${visibleCell.c}"]`
           );
           targetCell?.click();
         }
@@ -354,15 +376,19 @@ export class WordProcessorTableWidget extends WidgetType {
     };
 
     let longPressTimer = null;
+    let suppressClickAfterLongPress = false;
 
     const attachCellEvents = (cellEl, r, c) => {
       const startLongPress = (e) => {
         if (activeOverlay) return;
         clearTimeout(longPressTimer);
+        suppressClickAfterLongPress = false;
         const startX = e.clientX || (e.touches && e.touches[0].clientX);
         const startY = e.clientY || (e.touches && e.touches[0].clientY);
 
         longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          suppressClickAfterLongPress = true;
           selectCell(r, c);
           showContextMenu(cellEl, r, c, { x: startX, y: startY });
         }, 500);
@@ -396,6 +422,11 @@ export class WordProcessorTableWidget extends WidgetType {
 
       cellEl.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (suppressClickAfterLongPress) {
+          suppressClickAfterLongPress = false;
+          e.preventDefault();
+          return;
+        }
         clearTimeout(longPressTimer);
         if (selectedRange && selectedRange.startR === r && selectedRange.startC === c && !activeOverlay) {
           openCellEditor(cellEl, r, c);

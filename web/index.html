@@ -532,7 +532,9 @@
       border-bottom: 1px solid var(--toc-panel-border-color, var(--border-color));
     }
 
+    .toc-document-stats-row,
     .toc-document-name-row,
+    .toc-search-row,
     .toc-navigation-row,
     .toc-heading-row {
       display: flex;
@@ -540,6 +542,40 @@
       justify-content: space-between;
       gap: 8px;
       min-width: 0;
+    }
+
+    .toc-document-stats-row {
+      gap: 12px;
+      color: var(--toc-text-color, var(--text-color));
+      font-family: var(--toc-font-family, inherit);
+      font-size: 12px;
+      font-weight: 400;
+      opacity: 0.82;
+      white-space: nowrap;
+    }
+
+    #toc-search-input {
+      width: 100%;
+      min-width: 0;
+      height: 38px;
+      box-sizing: border-box;
+      padding: 7px 10px;
+      border: 1px solid var(--toc-panel-border-color, var(--border-color));
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--toc-text-color, var(--text-color)) 6%, transparent);
+      color: var(--toc-text-color, var(--text-color));
+      font-family: var(--toc-font-family, inherit);
+      font-size: 14px;
+    }
+
+    #toc-search-input::placeholder {
+      color: var(--toc-text-color, var(--text-color));
+      opacity: 0.58;
+    }
+
+    #toc-search-input:focus {
+      outline: 2px solid color-mix(in srgb, var(--toc-text-color, var(--text-color)) 45%, transparent);
+      outline-offset: 1px;
     }
 
     .toc-navigation-row {
@@ -701,6 +737,20 @@
       min-width: 0;
       font-size: inherit;
       overflow-wrap: var(--toc-text-overflow-wrap, normal);
+    }
+
+    .toc-search-match {
+      padding: 0 1px;
+      border-radius: 2px;
+      background: var(--toc-search-highlight-bg-color, #ffc107);
+      color: #111;
+    }
+
+    .toc-search-empty {
+      padding: 12px;
+      color: var(--toc-text-color, var(--text-color));
+      opacity: 0.7;
+      font-size: 14px;
     }
 
     .toc-global-toggle-btn {
@@ -1835,6 +1885,7 @@
   <div id="toc-overlay"></div>
   <div id="toc-panel">
     <div class="toc-header">
+      <div id="toc-document-stats" class="toc-document-stats-row" aria-live="polite" aria-label="Document word and character count"></div>
       <div class="toc-document-name-row">
         <input id="toc-document-name" type="text" enterkeyhint="done" readonly title="Tap to rename the document" aria-label="Document name, tap to rename" />
         <button id="toc-settings-button" class="toc-header-action" title="TOC Panel Settings" aria-label="TOC Panel Settings">
@@ -1843,6 +1894,9 @@
             <circle cx="12" cy="12" r="3"/>
           </svg>
         </button>
+      </div>
+      <div class="toc-search-row">
+        <input id="toc-search-input" type="search" enterkeyhint="search" autocomplete="off" placeholder="Search headings" aria-label="Search table of contents headings" />
       </div>
       <div class="toc-navigation-row">
         <button id="toc-history-back" class="toc-history-button" title="Back" aria-label="Back">

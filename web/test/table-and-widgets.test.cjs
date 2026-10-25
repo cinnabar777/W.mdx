@@ -26,6 +26,8 @@ test('Widget classes implement eq for DOM reuse', () => {
   assert.ok(code.includes("wrapper.addEventListener('contextmenu'"), 'native long-press context menus are intercepted');
   assert.ok(code.includes('suppressNextImageClick'), 'a held press cannot immediately toggle its action bar closed');
   assert.ok(code.includes('window.visualViewport?.addEventListener'), 'image actions are repositioned when the visible viewport changes');
+  assert.ok(code.includes('const centeredLeft = lastPressPoint.x - width / 2;'), 'image actions are centered away from the touching finger');
+  assert.ok(code.includes('const aboveTop = lastPressPoint.y - height - gap;'), 'image actions prefer a position above the press point');
   assert.ok(
     code.includes("return Boolean(event.target?.closest?.('.cm-image-preview-wrapper'))"),
     'image taps are handled by the widget instead of moving the CodeMirror cursor'
@@ -146,9 +148,32 @@ test('WordProcessorTableWidget attaches long-press events and applies CSS variab
   const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
 
   assert.ok(code.includes('longPressTimer = setTimeout'), 'Long press timer is implemented');
+  assert.ok(code.includes('suppressClickAfterLongPress = true'), 'A long press does not trigger the following cell click/edit');
   assert.ok(code.includes('cancelLongPress'), 'Long press cancellation listener is implemented');
   assert.ok(code.includes('showContextMenu'), 'Context menu overlay is implemented');
   assert.ok(code.includes('var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444)'), 'Table CSS variables for width and style are used');
+});
+
+test('merged-cell actions restore selection to the visible merged cell', async () => {
+  const { TableModel } = await import('../src/tableModule.js');
+  const { resolveVisibleCellCoordinates } = await import('../src/tableWidget.js');
+  const model = TableModel.parse([
+    '| Left | Right |',
+    '| :--- | :--- |',
+    '| First | Second |'
+  ].join('\n'));
+
+  model.mergeRect(1, 0, 1, 1);
+  assert.deepEqual(
+    resolveVisibleCellCoordinates(model.getRenderMatrix(), 1, 1),
+    { r: 1, c: 0 },
+    'A formerly right-hand cell resolves back to the visible spanning cell'
+  );
+  assert.deepEqual(
+    resolveVisibleCellCoordinates(model.getRenderMatrix(), 0, 1),
+    { r: 0, c: 1 },
+    'Unmerged cells retain their own coordinates'
+  );
 });
 
 test('wide rendered tables keep their content width inside a viewport-bounded horizontal scroller', () => {
