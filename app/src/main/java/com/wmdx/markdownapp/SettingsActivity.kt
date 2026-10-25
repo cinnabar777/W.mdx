@@ -1293,6 +1293,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     private var toolbarPreviewWebView: android.webkit.WebView? = null
     private var targetToolbarIconId: String? = null
     private var toolbarAppearanceExpanded = false
+    private var toolbarAppearanceHeader: ExpandablePreference? = null
+    private var toolbarAppearancePreferences: List<Preference> = emptyList()
 
     private val pickToolbarSvgLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -1304,18 +1306,26 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         val appearanceHeader =
             findPreference<ExpandablePreference>(TOOLBAR_APPEARANCE_HEADER_KEY)
                 ?: return
-        val appearancePreferences = TOOLBAR_APPEARANCE_PREFERENCE_KEYS.mapNotNull {
+        toolbarAppearanceHeader = appearanceHeader
+        toolbarAppearancePreferences = TOOLBAR_APPEARANCE_PREFERENCE_KEYS.mapNotNull {
             findPreference<Preference>(it)
         }
         toolbarAppearanceExpanded = false
         appearanceHeader.isExpanded = toolbarAppearanceExpanded
-        appearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
+        toolbarAppearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
         appearanceHeader.setOnPreferenceClickListener {
             toolbarAppearanceExpanded = !toolbarAppearanceExpanded
             appearanceHeader.isExpanded = toolbarAppearanceExpanded
-            appearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
+            toolbarAppearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
             true
         }
+    }
+
+    private fun collapseToolbarAppearanceSettings() {
+        if (!toolbarAppearanceExpanded) return
+        toolbarAppearanceExpanded = false
+        toolbarAppearanceHeader?.isExpanded = false
+        toolbarAppearancePreferences.forEach { it.isVisible = false }
     }
 
     override fun onCreateView(
@@ -1645,6 +1655,11 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     inner class ToolbarPreviewBridge {
         @android.webkit.JavascriptInterface
         fun getBottomToolbarSettings(): String = toolbarSettingsJson()
+
+        @android.webkit.JavascriptInterface
+        fun collapseToolbarAppearance() {
+            activity?.runOnUiThread { collapseToolbarAppearanceSettings() }
+        }
 
         @android.webkit.JavascriptInterface
         fun saveBottomToolbarConfig(raw: String): Boolean = saveToolbarConfig(raw)

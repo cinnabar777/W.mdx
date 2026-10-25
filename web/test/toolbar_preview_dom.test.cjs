@@ -11,6 +11,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
   const previousWindow = global.window;
   const previousDocument = global.document;
   const edits = [];
+  const collapseCalls = [];
   const settings = {
     version: 1,
     order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
@@ -27,7 +28,8 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     }),
     saveBottomToolbarConfig: () => true,
     pickBottomToolbarColor: () => {},
-    editBottomToolbarIcon: id => edits.push(id)
+    editBottomToolbarIcon: id => edits.push(id),
+    collapseToolbarAppearance: () => collapseCalls.push(true)
   };
   global.window = dom.window;
   global.document = dom.window.document;
@@ -42,6 +44,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     );
     const visibleKey = dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]');
     visibleKey.click();
+    assert.equal(collapseCalls.length, 1);
     assert.equal(
       dom.window.document
         .querySelector('#toolbar-preview [data-toolbar-key="undo"]')
@@ -100,12 +103,14 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       assert.equal(popup.classList.contains('hidden'), true, `${groupKey} popup should close`);
     }
 
+    const collapseCallsBeforeTray = collapseCalls.length;
     dom.window.document
       .querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]')
       .click();
     dom.window.document
       .querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]')
       .click();
+    assert.equal(collapseCalls.length, collapseCallsBeforeTray + 2);
     assert.deepEqual(edits, ['heading']);
   } finally {
     dom.window.close();

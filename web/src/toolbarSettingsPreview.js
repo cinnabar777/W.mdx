@@ -182,6 +182,7 @@ function saveConfig() {
 }
 
 function onToolbarKeyClick(id) {
+  window.ToolbarSettings?.collapseToolbarAppearance?.();
   const isHiddenKey = config.hidden.includes(id);
   const now = Date.now();
   if (isHiddenKey && previousTap.id === id && now - previousTap.time <= 400) {

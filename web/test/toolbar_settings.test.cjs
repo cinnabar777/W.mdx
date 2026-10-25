@@ -55,7 +55,9 @@ test('global toolbar settings collapse above a bottom-docked toolbar preview', (
     /ExpandablePreference[\s\S]*?pref_toolbar_global_settings[\s\S]*?preference_expand_chevron/
   );
   assert.match(androidSource, /TOOLBAR_APPEARANCE_PREFERENCE_KEYS/);
-  assert.match(androidSource, /appearancePreferences\.forEach \{ it\.isVisible = toolbarAppearanceExpanded \}/);
+  assert.match(androidSource, /toolbarAppearancePreferences\.forEach \{ it\.isVisible = toolbarAppearanceExpanded \}/);
+  assert.match(androidSource, /fun collapseToolbarAppearance\(\)/);
+  assert.match(androidSource, /activity\?\.runOnUiThread \{ collapseToolbarAppearanceSettings\(\) \}/);
   const preferencesViewAdd = androidSource.search(/wrapper\.addView\(\s*preferencesView/);
   const previewAdd = androidSource.search(/wrapper\.addView\(\s*preview/);
   assert.ok(
