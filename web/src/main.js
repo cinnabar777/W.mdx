@@ -1071,8 +1071,46 @@ class ImagePreviewWidget extends WidgetType {
       actions.classList.toggle('visible');
       rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     };
+    let pressTimer = null;
+    let longPressActivatedAt = 0;
+    const clearPressTimer = () => {
+      if (pressTimer !== null) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+    wrapper.addEventListener('pointerdown', event => {
+      if (event.target.closest('.cm-image-actions')) return;
+      if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      clearPressTimer();
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        longPressActivatedAt = Date.now();
+        actions.classList.add('visible');
+        rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
+      }, 550);
+      wrapper._imagePressStart = { x: startX, y: startY };
+    });
+    wrapper.addEventListener('pointermove', event => {
+      const start = wrapper._imagePressStart;
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) {
+        clearPressTimer();
+        wrapper._imagePressStart = null;
+      }
+    });
+    wrapper.addEventListener('pointerup', () => {
+      clearPressTimer();
+      wrapper._imagePressStart = null;
+    });
+    wrapper.addEventListener('pointercancel', () => {
+      clearPressTimer();
+      wrapper._imagePressStart = null;
+    });
     wrapper.addEventListener('click', event => {
       if (event.target.closest('.cm-image-actions')) return;
+      if (Date.now() - longPressActivatedAt < 900) return;
       toggleActions(event);
     });
     const dismissActions = event => {
@@ -1084,6 +1122,7 @@ class ImagePreviewWidget extends WidgetType {
     view.dom.addEventListener('pointerdown', dismissActions, true);
     wrapper._imageDismissHandler = dismissActions;
     wrapper._imageViewDom = view.dom;
+    wrapper._clearImagePressTimer = clearPressTimer;
 
     if (img.parentNode !== wrapper) wrapper.appendChild(img);
     wrapper.appendChild(actions);
@@ -1092,6 +1131,7 @@ class ImagePreviewWidget extends WidgetType {
   }
 
   destroy(dom) {
+    dom?._clearImagePressTimer?.();
     if (dom?._imageDismissHandler && dom?._imageViewDom) {
       dom._imageViewDom.removeEventListener(
         'pointerdown',
@@ -3359,9 +3399,18 @@ export const renderedRowNavigationKeymap = keymap.of([
 ]);
 
 export const resetRenderedVerticalGoal = EditorView.domEventHandlers({
-  pointerdown(_event, view) {
+  pointerdown(event, view) {
+    if (event.target?.closest?.('.cm-image-preview-wrapper')) return true;
     renderedVerticalGoals.delete(view);
     return false;
+  },
+  click(event) {
+    return Boolean(event.target?.closest?.('.cm-image-preview-wrapper'));
+  },
+  contextmenu(event) {
+    if (!event.target?.closest?.('.cm-image-preview-wrapper')) return false;
+    event.preventDefault();
+    return true;
   }
 });
 

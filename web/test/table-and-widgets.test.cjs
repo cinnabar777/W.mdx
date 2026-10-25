@@ -26,6 +26,11 @@ test('Widget classes implement eq for DOM reuse', () => {
     code.includes("return Boolean(event.target?.closest?.('.cm-image-preview-wrapper'))"),
     'image taps are handled by the widget instead of moving the CodeMirror cursor'
   );
+  assert.ok(code.includes('}, 550);'), 'pressing and holding an image reveals Edit and Delete controls');
+  assert.ok(
+    code.includes("if (event.target?.closest?.('.cm-image-preview-wrapper')) return true;"),
+    'the editor-level pointer handler prevents image taps from placing the text cursor'
+  );
   assert.ok(
     code.includes('image.url,\n                  image.alt,\n                  node.from,\n                  node.to,'),
     'Live Preview image controls receive the source range they edit'
