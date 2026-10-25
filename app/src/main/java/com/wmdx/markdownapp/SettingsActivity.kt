@@ -45,29 +45,29 @@ class SettingsActivity : AppCompatActivity() {
         supportFragmentManager.addOnBackStackChangedListener {
             val currentFragment = supportFragmentManager.findFragmentById(R.id.settings_container)
             supportActionBar?.title = when (currentFragment) {
-                is SettingsThemeFragment -> "Settings Theme & Custom Colors"
-                is StylingHeadingsFragment -> "Headings Styling"
-                is StylingParagraphFragment -> "Paragraph & Body Styling"
-                is StylingBoldFragment -> "Bold Styling"
-                is StylingItalicFragment -> "Italic Styling"
-                is StylingLinksFragment -> "Links Styling"
-                is StylingInlineCodeFragment -> "Inline Code Styling"
-                is StylingFootnotesFragment -> "Footnotes Typography"
-                is StylingListsFragment -> "Lists & Todos Styling"
-                is StylingBlockquotesFragment -> "Block Quotes Styling"
-                is StylingCalloutsFragment -> "Callouts Styling"
-                is StylingTablesFragment -> "Tables Styling"
-                is StylingCodeFragment -> "Code Blocks Styling"
-                is StylingHrFragment -> "Horizontal Dividers Styling"
-                is StylingControlbarFragment -> "Bottom Control Bar Styling"
-                is StylingCursorFragment -> "Cursor & Selection Settings"
-                is StylingFindReplaceFragment -> "Find & Replace Settings"
-                is TocPanelSettingsFragment -> "Table of Contents Panel"
+                is SettingsThemeFragment -> "Settings Appearance"
+                is StylingHeadingsFragment -> "Headings"
+                is StylingParagraphFragment -> "Paragraph & Body"
+                is StylingBoldFragment -> "Bold"
+                is StylingItalicFragment -> "Italic"
+                is StylingLinksFragment -> "Links"
+                is StylingInlineCodeFragment -> "Inline Code"
+                is StylingFootnotesFragment -> "Footnotes"
+                is StylingListsFragment -> "Lists & Todos"
+                is StylingBlockquotesFragment -> "Block Quotes"
+                is StylingCalloutsFragment -> "Callouts"
+                is StylingTablesFragment -> "Tables"
+                is StylingCodeFragment -> "Code Blocks"
+                is StylingHrFragment -> "Horizontal Rules"
+                is StylingControlbarFragment -> "Toolbar: Bottom"
+                is StylingCursorFragment -> "Cursor & Selection"
+                is StylingFindReplaceFragment -> "Find & Replace"
+                is TocPanelSettingsFragment -> "Table of Contents"
                 is StorageAccessSettingsFragment -> "File & Folder Access"
-                is StylingSettingsFragment -> "Styling & Typography"
-                is ExportSettingsFragment -> "HTML & MHTML Export Settings"
-                is HotkeysSettingsFragment -> "Custom Keyboard Shortcuts"
-                is PluginsSettingsFragment -> "Editor Plugins & Tools"
+                is StylingSettingsFragment -> "Typography"
+                is ExportSettingsFragment -> "HTML & MHTML Export"
+                is HotkeysSettingsFragment -> "Keyboard Shortcuts"
+                is PluginsSettingsFragment -> "Plugins & Toolbar"
                 else -> getString(R.string.settings_title)
             }
         }
@@ -245,6 +245,13 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_findreplace" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, StylingFindReplaceFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_bottom_toolbar" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, StylingControlbarFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -890,7 +897,6 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_tables" -> StylingTablesFragment()
             "pref_styling_page_code" -> StylingCodeFragment()
             "pref_styling_page_hr" -> StylingHrFragment()
-            "pref_styling_page_controlbar" -> StylingControlbarFragment()
             "pref_styling_page_cursor" -> StylingCursorFragment()
             "pref_styling_page_findreplace" -> StylingFindReplaceFragment()
             else -> null

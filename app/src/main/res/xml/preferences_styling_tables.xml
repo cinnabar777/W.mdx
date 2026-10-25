@@ -155,7 +155,7 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Action Menu Styling">
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Action Menu">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_table_menu_bg_color"
             app:title="Menu Surface Color"

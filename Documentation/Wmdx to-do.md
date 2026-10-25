@@ -15,9 +15,10 @@ ___
     6. [x] Block quotes
     7. [x] Callouts
     8. [x] Other elements already have separate pages; no additional combined typography page was found.
-3. Bottom control bar & UI theme: move from typography to main settings page below find & replace and name it "Toolbar: Bottom" 
-4. Settings: cleanup redundant and unnecessary wording — things like "styling & typography settings", "settings" is redundant because it is the settings. 
-    1. Custom keyboard shortcuts → remove custom. Remove "shortcut" from all the keyboard shortcuts, again that's the page they are on therefore it is redundant — Jules did a lot of redundant wording that needs to be reduced. Go through and make your best effort to cleanup this in settings.  
+3. [x] Move the bottom toolbar appearance page below Find & Replace in main settings and name it "Toolbar: Bottom".
+4. [x] Clean up redundant wording across settings pages and keyboard shortcut labels.
+    1. [x] Rename "Custom Keyboard Shortcuts" to "Keyboard Shortcuts" and remove "Shortcut" from individual key labels.
+    2. [x] Remove repeated "Settings" and "Styling" wording where the page or section already makes the context clear.
 5. [x] Typography:
     1. [x] Sorting: the typography page needs to be sorted:
         1. Heading 

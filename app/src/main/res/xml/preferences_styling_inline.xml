@@ -4,7 +4,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_inline_bold"
-        app:title="Bold Text Styling">
+        app:title="Bold Text">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_bold_color"
             app:title="Bold Text Color"
@@ -28,7 +28,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_inline_italic"
-        app:title="Italic Text Styling">
+        app:title="Italic Text">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_italic_color"
             app:title="Italic Text Color"
@@ -52,7 +52,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_inline_links"
-        app:title="Hyperlinks">
+        app:title="Links">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_link_color"
             app:title="Link Color"
@@ -79,7 +79,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_inline_code"
-        app:title="Inline Code Styling">
+        app:title="Inline Code">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_code_color"
             app:title="Inline Code Text Color"

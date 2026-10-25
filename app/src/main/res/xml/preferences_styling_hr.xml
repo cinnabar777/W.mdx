@@ -2,7 +2,7 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Horizontal Dividers Settings">
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Line Appearance">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_hr_thickness"
             app:title="Line Thickness (px)"

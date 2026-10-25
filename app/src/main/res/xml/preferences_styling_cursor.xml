@@ -2,7 +2,7 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Caret &amp; Selection Styling">
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Caret &amp; Selection">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_cursor_color"
             app:title="Cursor / Caret Color"

@@ -19,6 +19,6 @@
     <string name="discard">Discard</string>
     <string name="cancel">Cancel</string>
     <string name="save">Save</string>
-    <string name="reset_defaults">Reset All Settings to Default ↺</string>
-    <string name="reset_defaults_confirm">Are you sure you want to reset all editor settings, shortcuts, typography, and colors back to defaults?</string>
+    <string name="reset_defaults">Restore Defaults ↺</string>
+    <string name="reset_defaults_confirm">Restore all editor preferences, key combinations, typography, and colors to their defaults?</string>
 </resources>

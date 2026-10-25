@@ -19,6 +19,14 @@ const mainSettingsXml = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/res/xml/preferences.xml'),
   'utf8'
 );
+const stylingPagesXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_styling.xml'),
+  'utf8'
+);
+const hotkeysXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_hotkeys.xml'),
+  'utf8'
+);
 const storageSettingsXml = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/res/xml/preferences_storage_access.xml'),
   'utf8'
@@ -199,12 +207,11 @@ test('typography editor categories are separated into individual navigation page
     'Paragraph &amp; Body Text',
     'Block Quotes',
     'Bold',
-    'Bottom Control Bar &amp; UI Theme',
     'Callouts',
     'Code Blocks',
-    'Cursor &amp; Selection Settings',
-    'Footnotes Typography',
-    'Horizontal Rules / Dividers',
+    'Cursor &amp; Selection',
+    'Footnotes',
+    'Horizontal Rules',
     'Inline Code',
     'Italic',
     'Links',
@@ -217,4 +224,27 @@ test('typography editor categories are separated into individual navigation page
     [...orderedPages].sort((first, second) => first - second),
     'Headings and body stay first; remaining typography pages are alphabetical'
   );
+});
+
+test('bottom toolbar appearance is in main settings below Find & Replace', () => {
+  const findReplaceIndex = mainSettingsXml.indexOf('app:key="pref_page_findreplace"');
+  const toolbarIndex = mainSettingsXml.indexOf('app:key="pref_page_bottom_toolbar"');
+  const keyboardIndex = mainSettingsXml.indexOf('app:key="pref_page_hotkeys"');
+
+  assert.ok(findReplaceIndex >= 0 && findReplaceIndex < toolbarIndex);
+  assert.ok(toolbarIndex < keyboardIndex);
+  assert.match(mainSettingsXml, /app:key="pref_page_bottom_toolbar"[\s\S]*?app:title="Toolbar: Bottom"/);
+  assert.ok(settingsActivitySource.includes('"pref_page_bottom_toolbar"'));
+  assert.ok(!stylingPagesXml.includes('pref_styling_page_controlbar'));
+  assert.ok(settingsActivitySource.includes('is StylingControlbarFragment -> "Toolbar: Bottom"'));
+});
+
+test('settings labels avoid redundant settings, styling, and shortcut wording', () => {
+  const hotkeyTitles = [...hotkeysXml.matchAll(/app:title="([^"]+)"/g)]
+    .map((match) => match[1]);
+  assert.ok(hotkeyTitles.every((title) => !/shortcut/i.test(title)));
+  assert.ok(!hotkeysXml.includes('Custom Keyboard Shortcuts'));
+  assert.ok(!mainSettingsXml.includes('Styling &amp; Typography Settings'));
+  assert.ok(!mainSettingsXml.includes('Custom Keyboard Shortcuts'));
+  assert.ok(!mainSettingsXml.includes('HTML &amp; MHTML Export Settings'));
 });

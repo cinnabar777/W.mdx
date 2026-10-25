@@ -2,7 +2,7 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Element Styling &amp; Typography Categories">
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Text Elements">
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_headings"
             app:title="Headings (H1 – H6)"
@@ -24,11 +24,6 @@
             app:summary="Bold text color, font weight, and custom font" />
 
         <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_controlbar"
-            app:title="Bottom Control Bar &amp; UI Theme"
-            app:summary="Toolbar height, background color, icon color &amp; active selection color" />
-
-        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_callouts"
             app:title="Callouts"
             app:summary="Callout typography, borders, colors, and header styles" />
@@ -40,18 +35,18 @@
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_cursor"
-            app:title="Cursor &amp; Selection Settings"
+            app:title="Cursor &amp; Selection"
             app:summary="Configure caret color, blink rate, and selection handles" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_footnotes"
-            app:title="Footnotes Typography"
-            app:summary="Footnote text size, text and reference colors, return-link color, and background" />
+            app:title="Footnotes"
+            app:summary="Footnote text, reference, return-link, and background appearance" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_hr"
-            app:title="Horizontal Rules / Dividers"
-            app:summary="Thickness, border styles, width, colors &amp; vertical margins" />
+            app:title="Horizontal Rules"
+            app:summary="Line style, color, width, and spacing" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_inline_code"

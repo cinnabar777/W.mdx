@@ -4,7 +4,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_blockquote_typography"
-        app:title="Block Quote Typography">
+        app:title="Block Quote">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_blockquote_inherit_body_typography"
             app:title="Inherit Paragraph &amp; Body Typography"
@@ -81,7 +81,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_callout_body_typography"
-        app:title="Callout Body Typography">
+        app:title="Callout Body">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_callout_inherit_body_typography"
             app:title="Inherit Paragraph &amp; Body Typography"
@@ -158,7 +158,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_blockquote_settings"
-        app:title="Block Quote Settings">
+        app:title="Block Quote Appearance">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_blockquote_line_thickness"
             app:title="Block Quote Border Thickness (px)"
@@ -218,7 +218,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_callout_settings"
-        app:title="Callouts Settings">
+        app:title="Callout Appearance">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_callout_line_thickness"
             app:title="Callout Border Thickness (px)"
@@ -278,7 +278,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_callout_shared_header"
-        app:title="Callout Shared Header Settings">
+        app:title="Shared Callout Header">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_callout_header_bg_color"
             app:title="Header Background Color"
@@ -349,7 +349,7 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_callout_type_overrides"
-        app:title="Callout Type-Specific Overrides">
+        app:title="Per-Type Header Overrides">
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_callout_type_selector"
             app:title="Select Callout Type to Override"
