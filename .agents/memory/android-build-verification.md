@@ -1,10 +1,10 @@
 ---
 name: Android build verification
-description: The local Replit workspace lacks the Android SDK required for Gradle APK assembly.
+description: Local Android build tooling and the project’s build cadence.
 ---
 
-Use GitHub Actions as the APK build verification path for this project. The local Replit container does not provide the Android SDK, so Gradle assembly stops before compilation even after a Java runtime is made available.
+The workspace has JDK 17 and the Android SDK installed at `$HOME/.android-sdk`. The project uses API 34 and build-tools 34.0.0. Prefer GitHub Actions for APK builds; local Gradle builds consume the user's limited agent time and should be reserved for issues that need direct local diagnosis.
 
-**Why:** Local APK builds cannot validate changes in this environment; the repository's Actions runners have the Android tooling and build the debug APK automatically.
+**Why:** The user wants builds run through GitHub because Actions does not use their limited time with the agent.
 
-**How to apply:** Run the web test suite locally, then use the branch's GitHub Actions build to verify Android changes. Do not spend time trying to assemble APKs locally unless an Android SDK is installed.
+**How to apply:** Use the existing GitHub Actions workflow for APK builds. Avoid local Gradle assembly and repeated build iterations unless Actions cannot reveal the needed diagnostic.
