@@ -57,6 +57,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var currentToast: Toast? = null
     private var currentTextPackSession: TextPackSession? = null
     private var pendingRenameFallbackName: String? = null
+    private var pendingCreateDocumentAsTextPack: Boolean? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
     private var pendingRenamePermissionRequest: RenameAccessRequest? = null
     private val documentHistoryStack = java.util.ArrayDeque<Uri>()
@@ -92,10 +93,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         if (uri != null) {
             pendingRenameFallbackName = null
-            saveFileToUri(uri)
+            val saveAsTextPack = pendingCreateDocumentAsTextPack
+            pendingCreateDocumentAsTextPack = null
+            saveFileToUri(uri, saveAsTextPack)
         } else if (pendingRenameFallbackName != null) {
+            pendingCreateDocumentAsTextPack = null
             pendingRenameFallbackName = null
             updateTitle()
+        } else {
+            pendingCreateDocumentAsTextPack = null
         }
     }
 
@@ -796,6 +802,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "open" to prefs.getString("pref_hotkey_open", "ctrl+o"),
             "save" to prefs.getString("pref_hotkey_save", "ctrl+s"),
             "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
+            "save_as_textpack" to prefs.getString("pref_hotkey_save_as_textpack", "ctrl+shift+alt+s"),
             "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
             "image" to prefs.getString("pref_hotkey_image", "ctrl+shift+i"),
             "settings" to prefs.getString("pref_hotkey_settings", "ctrl+,"),
@@ -865,6 +872,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             R.id.action_save_as -> {
                 handleSaveAsFile()
+                true
+            }
+            R.id.action_save_as_textpack -> {
+                handleSaveAsTextPackFile()
                 true
             }
             R.id.action_export -> {
@@ -1110,14 +1121,49 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun handleSaveAsFile() {
-        val defaultName = if (currentFileName.endsWith(".textpack", ignoreCase = true)) {
-            currentFileName
-        } else if (currentFileName.contains(".")) {
-            "${currentFileName.substringBeforeLast(".")}.textpack"
-        } else {
-            "$currentFileName.textpack"
+        launchCreateDocument(defaultMarkdownSaveAsName(), asTextPack = false)
+    }
+
+    private fun handleSaveAsTextPackFile() {
+        launchCreateDocument(defaultTextPackSaveAsName(), asTextPack = true)
+    }
+
+    private fun launchCreateDocument(fileName: String, asTextPack: Boolean?) {
+        pendingCreateDocumentAsTextPack = asTextPack
+        createDocumentLauncher.launch(fileName)
+    }
+
+    private fun defaultMarkdownSaveAsName(): String {
+        val name = currentFileName.ifBlank { getString(R.string.untitled_document) }
+        val lowerName = name.lowercase()
+        val markdownName = when {
+            lowerName.endsWith(".textpack.zip") ->
+                name.dropLast(".textpack.zip".length) + ".md"
+            lowerName.endsWith(".textpack") ->
+                name.dropLast(".textpack".length) + ".md"
+            lowerName.endsWith(".markdown") || lowerName.endsWith(".md") -> name
+            else -> {
+                val lastDot = name.lastIndexOf('.')
+                val base = if (lastDot > 0) name.substring(0, lastDot) else name
+                "$base.md"
+            }
         }
-        createDocumentLauncher.launch(defaultName)
+        return markdownName
+    }
+
+    private fun defaultTextPackSaveAsName(): String {
+        val name = currentFileName.ifBlank { getString(R.string.untitled_document) }
+        val lowerName = name.lowercase()
+        return when {
+            lowerName.endsWith(".textpack.zip") || lowerName.endsWith(".textpack") -> name
+            lowerName.endsWith(".markdown") || lowerName.endsWith(".md") ->
+                name.substringBeforeLast(".") + ".textpack"
+            else -> {
+                val lastDot = name.lastIndexOf('.')
+                val base = if (lastDot > 0) name.substring(0, lastDot) else name
+                "$base.textpack"
+            }
+        }
     }
 
     private fun renamedDocumentFileName(requestedName: String, originalName: String): String? {
@@ -1173,6 +1219,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun launchRenameSaveAs(targetName: String) {
         pendingRenameFallbackName = targetName
+        pendingCreateDocumentAsTextPack = null
         createDocumentLauncher.launch(targetName)
     }
 
@@ -1305,7 +1352,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun saveFileToUri(uri: Uri) {
+    private fun saveFileToUri(uri: Uri, requestedAsTextPack: Boolean? = null) {
         val oldDocumentKey = currentDocumentHistoryKey()
         val saveStarted = android.os.SystemClock.elapsedRealtime()
         AppDiagnostics.record(this, "save_start", "mode=$currentEditorMode rev=$currentRevision")
@@ -1322,9 +1369,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
             try {
                 val targetFileName = getFileNameFromUri(uri)
-                val isTextPackTarget = targetFileName.endsWith(".textpack", ignoreCase = true) ||
-                                       targetFileName.endsWith(".textpack.zip", ignoreCase = true) ||
-                                       currentTextPackSession != null
+                val hasTextPackExtension =
+                    targetFileName.endsWith(".textpack", ignoreCase = true) ||
+                    targetFileName.endsWith(".textpack.zip", ignoreCase = true)
+                val isTextPackTarget = requestedAsTextPack ?: (
+                    hasTextPackExtension ||
+                        (uri == currentFileUri && currentTextPackSession != null)
+                    )
 
                 if (isTextPackTarget) {
                     val session = currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
@@ -1338,6 +1389,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         writer.write(markdownText)
                         writer.flush()
                     }
+                    currentTextPackSession = null
                 }
 
                 persistDocumentUriPermission(uri)
@@ -1606,6 +1658,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "open" -> handleOpenFile()
                     "save" -> handleSaveFile()
                     "save_as" -> handleSaveAsFile()
+                    "save_as_textpack" -> handleSaveAsTextPackFile()
                     "export" -> handleExportDocument()
                     "image" -> handleInsertImage()
                     "new_window" -> handleNewWindow()

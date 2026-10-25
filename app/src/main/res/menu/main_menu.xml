@@ -18,6 +18,10 @@
         android:title="@string/action_save_as"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_save_as_textpack"
+        android:title="@string/action_save_as_textpack"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_insert_image"
         android:title="@string/action_insert_image"
         app:showAsAction="ifRoom" />

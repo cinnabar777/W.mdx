@@ -40,6 +40,12 @@
             app:defaultValue="ctrl+shift+s" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_save_as_textpack"
+            app:title="Save as Text Pack Shortcut"
+            app:summary="Key combination (e.g. ctrl+shift+alt+s)"
+            app:defaultValue="ctrl+shift+alt+s" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_export"
             app:title="Export HTML / MHTML Shortcut"
             app:summary="Key combination (e.g. ctrl+shift+e)"

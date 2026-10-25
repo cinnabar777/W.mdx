@@ -56,6 +56,7 @@ let customHotkeys = {
   open: 'ctrl+o',
   save: 'ctrl+s',
   save_as: 'ctrl+shift+s',
+  save_as_textpack: 'ctrl+shift+alt+s',
   export: 'ctrl+shift+e',
   image: 'ctrl+shift+i',
   settings: 'ctrl+,',
@@ -3877,6 +3878,7 @@ function setupGroupedControlBar() {
         { icon: svgIcons.openFile, title: 'Open File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('open') },
         { icon: svgIcons.saveFile, title: 'Save File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save') },
         { icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
+        { icon: svgIcons.saveAsFile, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
         { icon: svgIcons.saveFile, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
         { icon: svgIcons.newWindow, title: 'Switch View Mode', action: () => openWithOtherEngine() },
@@ -5642,6 +5644,9 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as');
+    } else if (parseAndMatchHotkey(e, customHotkeys.save_as_textpack)) {
+      e.preventDefault();
+      window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack');
     } else if (parseAndMatchHotkey(e, customHotkeys.export)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('export');
