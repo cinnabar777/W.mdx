@@ -38,6 +38,7 @@ object AppDiagnostics {
     private fun snapshotDirectory(context: Context) = File(context.filesDir, "navigation_snapshots")
 
     fun startNavigationCapture(context: Context) {
+        if (!BuildConfig.DEBUG) return
         synchronized(lock) {
             val trace = traceFile(context)
             trace.parentFile?.mkdirs()
@@ -66,13 +67,16 @@ object AppDiagnostics {
             .apply()
     }
 
-    fun isNavigationCaptureActive(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).let { prefs ->
+    fun isNavigationCaptureActive(context: Context): Boolean {
+        if (!BuildConfig.DEBUG) return false
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).let { prefs ->
             prefs.getBoolean("capture_active", false) &&
                 prefs.getBoolean("capture_opt_in", false)
         }
+    }
 
     @Synchronized fun record(context: Context, event: String, detail: String = "") {
+        if (!BuildConfig.DEBUG) return
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val lines = (prefs.getString("events", "") ?: "").lineSequence().filter { it.isNotEmpty() }.toList()
         val task = (context as? Activity)?.taskId ?: -1
@@ -90,12 +94,11 @@ object AppDiagnostics {
     }
 
     fun recordNavigationTrace(context: Context, jsonRecord: String) {
+        if (!isNavigationCaptureActive(context)) return
         if (jsonRecord.isBlank() || jsonRecord.length > 16 * 1024) return
         try {
             val record = JSONObject(jsonRecord)
-            if (isNavigationCaptureActive(context)) {
-                appendRecord(context, record)
-            }
+            appendRecord(context, record)
         } catch (_: Exception) {
             appendRecord(context, JSONObject()
                 .put("kind", "trace_parse_error")
@@ -105,6 +108,7 @@ object AppDiagnostics {
     }
 
     fun recordNavigationTraceBatch(context: Context, jsonBatch: String) {
+        if (!isNavigationCaptureActive(context)) return
         if (jsonBatch.isBlank() || jsonBatch.length > MAX_BATCH_CHARS) {
             appendRecord(context, JSONObject()
                 .put("kind", "trace_batch_rejected")
@@ -112,8 +116,6 @@ object AppDiagnostics {
                 .put("payloadLength", jsonBatch.length))
             return
         }
-        if (!isNavigationCaptureActive(context)) return
-
         try {
             val records = JSONArray(jsonBatch)
             val bounded = JSONArray()
@@ -157,6 +159,7 @@ object AppDiagnostics {
     }
 
     fun captureWindowSnapshot(activity: Activity, webView: WebView, reason: String) {
+        if (!isNavigationCaptureActive(activity)) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val now = SystemClock.elapsedRealtime()
         synchronized(lock) {
