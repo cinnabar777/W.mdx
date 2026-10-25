@@ -54,6 +54,7 @@ function tableActionBridge() {
   if (!window.wmdxTableActions) {
     window.wmdxTableActions = {
       context: null,
+      active: null,
       isEnabled(actionId) {
         return Boolean(this.context?.isEnabled(actionId));
       },
@@ -172,6 +173,10 @@ export class WordProcessorTableWidget extends WidgetType {
     let activeCell = selectedRange
       ? { r: selectedRange.endR, c: selectedRange.endC }
       : null;
+    const bridge = tableActionBridge();
+    if (bridge?.active?.view === view && bridge.active.from === this.from) {
+      activeCell = { r: bridge.active.r, c: bridge.active.c };
+    }
     let activeOverlay = null;
 
     const toolbar = document.createElement('div');
@@ -359,11 +364,12 @@ export class WordProcessorTableWidget extends WidgetType {
 
     const publishActiveCell = () => {
       const bridge = tableActionBridge();
-      if (!bridge || !activeCell) return;
+      const active = bridge?.active;
+      if (!bridge || !activeCell || active?.view !== view || active.from !== this.from) return;
       bridge.context = {
         owner: container,
-        isEnabled: actionId => isContextActionEnabled(actionId),
-        run: actionId => runContextAction(actionId)
+        isEnabled: actionId => isContextActionEnabled(actionId, active.r, active.c),
+        run: actionId => runContextAction(actionId, active.r, active.c)
       };
       window.dispatchEvent(new Event('wmdx-table-context-change'));
     };
@@ -540,6 +546,8 @@ export class WordProcessorTableWidget extends WidgetType {
       selectedRange = { startR: r, startC: c, endR: r, endC: c };
       selections?.set(this.from, selectedRange);
       updateSelectionHighlight();
+      const bridge = tableActionBridge();
+      if (bridge) bridge.active = { view, from: this.from, r, c };
       publishActiveCell();
     };
 
@@ -789,6 +797,14 @@ export class WordProcessorTableWidget extends WidgetType {
     if (bridge?.context?.owner === dom) {
       bridge.context = null;
       window.dispatchEvent(new Event('wmdx-table-context-change'));
+      const active = bridge.active;
+      if (active) {
+        requestAnimationFrame(() => {
+          if (bridge.active === active && !bridge.context) {
+            bridge.active = null;
+          }
+        });
+      }
     }
     const contextMenu = dom._tableContextMenu;
     if (contextMenu) {

@@ -174,6 +174,46 @@ test('table toolbar actions are enabled for the selected cell and still edit the
   });
 });
 
+test('selections stay independent across tables and the toolbar follows the most recently tapped table', async () => {
+  const markdown = [
+    '| Name | Value |',
+    '| --- | --- |',
+    '| Alpha | One |',
+    '| Beta | Two |'
+  ].join('\n');
+
+  await withTableEditor(markdown, async ({ dom, container, tapCell, view, remountWidget }) => {
+    const firstTable = container;
+    tapCell(firstTable.querySelector('tbody td[data-row="1"][data-col="0"]'));
+    const actions = dom.window.wmdxTableActions;
+    assert.equal(actions.context.owner, firstTable);
+
+    const { WordProcessorTableWidget } = await import('../src/tableWidget.js');
+    const secondFrom = markdown.length + 10;
+    const secondWidget = new WordProcessorTableWidget(
+      markdown,
+      secondFrom,
+      secondFrom + markdown.length
+    );
+    const secondTable = secondWidget.toDOM(view);
+    document.body.appendChild(secondTable);
+    tapCell(secondTable.querySelector('tbody td[data-row="2"][data-col="1"]'));
+    assert.equal(actions.context.owner, secondTable, 'tapping another table makes it the toolbar target');
+
+    const remountedFirstTable = remountWidget();
+    assert.equal(
+      actions.context.owner,
+      secondTable,
+      'redrawing the first table does not steal the toolbar target from the last tapped table'
+    );
+    assert.ok(
+      remountedFirstTable.querySelector('tbody td[data-row="1"][data-col="0"]').style.backgroundColor,
+      'the first table retains its own selected cell'
+    );
+    secondWidget.destroy(secondTable);
+  });
+});
+
 test('merged-cell selection survives a widget refresh and its editor uses rendered bounds', async () => {
   const { TableModel } = await import('../src/tableModule.js');
   const model = TableModel.parse([

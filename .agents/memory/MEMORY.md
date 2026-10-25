@@ -5,3 +5,4 @@
 - [Editor diagnostics opt-in](editor-diagnostics-opt-in.md) — detailed input and scroll tracing must be off during ordinary editing to avoid adding cursor latency.
 - [CodeMirror syntax cursors](codemirror-syntax-cursors.md) — syntax-tree iteration reuses mutable cursors; copy node positions before retaining data.
 - [Android build verification](android-build-verification.md) — this workspace lacks Android SDK; rely on GitHub Actions for APK builds.
+- [Table selection focus](table-selection-focus.md) — keep cell selections independent per table; toolbar actions follow the last tapped cell, not the last widget redraw.
