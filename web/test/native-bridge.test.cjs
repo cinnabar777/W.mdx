@@ -65,10 +65,14 @@ test('external-open URI permission flags survive until the editor is ready', () 
   assert.ok(mainActivitySource.includes('openFile(uri, permissionFlags = permissionFlags)'));
 });
 
-test('returning to the app keeps the keyboard hidden if it was hidden before backgrounding', () => {
-  assert.ok(mainActivitySource.includes('imeVisibleBeforePause = if (::webView.isInitialized)'));
-  assert.ok(mainActivitySource.includes('.isVisible(WindowInsetsCompat.Type.ime())'));
-  assert.ok(mainActivitySource.includes('val shouldKeepImeHidden = imeVisibleBeforePause == false'));
+test('returning to the app keeps the keyboard hidden until the user touches the editor', () => {
+  assert.ok(mainActivitySource.includes('suppressImeUntilUserTouch = true'));
+  assert.ok(mainActivitySource.includes('SOFT_INPUT_STATE_ALWAYS_HIDDEN'));
+  assert.ok(mainActivitySource.includes('webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 180)'));
+  assert.ok(mainActivitySource.includes('webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 500)'));
+  assert.ok(mainActivitySource.includes('event.actionMasked == MotionEvent.ACTION_DOWN'));
+  assert.ok(mainActivitySource.includes('suppressImeUntilUserTouch = false'));
+  assert.ok(mainActivitySource.includes('SOFT_INPUT_STATE_UNSPECIFIED'));
   assert.ok(mainActivitySource.includes('?.hide(WindowInsetsCompat.Type.ime())'));
 });
 

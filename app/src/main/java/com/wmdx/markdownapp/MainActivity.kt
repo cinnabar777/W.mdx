@@ -11,7 +11,9 @@ import android.util.LruCache
 import android.view.Menu
 import android.view.MenuItem
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -39,7 +41,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
-    private var imeVisibleBeforePause: Boolean? = null
+    private var suppressImeUntilUserTouch = false
+    private var imeHideGeneration = 0
 
     private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
     private val fontDataUriCache = object : LruCache<String, CachedFontData>(8 * 1024) {
@@ -143,6 +146,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
+        webView.setOnTouchListener { _, event ->
+            if (
+                event.actionMasked == MotionEvent.ACTION_DOWN &&
+                suppressImeUntilUserTouch
+            ) {
+                suppressImeUntilUserTouch = false
+                imeHideGeneration++
+                window.setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+                )
+            }
+            false
+        }
 
         updateTitle()
 
@@ -285,27 +302,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (::webView.isInitialized) {
             webView.onResume()
             applyThemeAndFullscreenPreferences()
-            val shouldKeepImeHidden = imeVisibleBeforePause == false
-            imeVisibleBeforePause = null
-            if (shouldKeepImeHidden) {
-                webView.post {
-                    ViewCompat.getWindowInsetsController(webView)
-                        ?.hide(WindowInsetsCompat.Type.ime())
-                    (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-                        ?.hideSoftInputFromWindow(webView.windowToken, 0)
-                }
-            }
+            suppressImeUntilUserTouch = true
+            val generation = ++imeHideGeneration
+            window.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+            )
+            webView.post { hideImeWhileResumeIsSuppressed(generation) }
+            webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 180)
+            webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 500)
         }
     }
 
     override fun onPause() {
         AppDiagnostics.record(this, "window_paused")
-        imeVisibleBeforePause = if (::webView.isInitialized) {
-            ViewCompat.getRootWindowInsets(webView)
-                ?.isVisible(WindowInsetsCompat.Type.ime())
-        } else {
-            null
-        }
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
         if (::webView.isInitialized) {
@@ -343,6 +353,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         AppDiagnostics.record(this, "window_focus", hasFocus.toString())
+        if (hasFocus && suppressImeUntilUserTouch && ::webView.isInitialized) {
+            val generation = imeHideGeneration
+            webView.post { hideImeWhileResumeIsSuppressed(generation) }
+        }
+    }
+
+    private fun hideImeWhileResumeIsSuppressed(generation: Int) {
+        if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
+            return
+        }
+        ViewCompat.getWindowInsetsController(webView)
+            ?.hide(WindowInsetsCompat.Type.ime())
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+            ?.hideSoftInputFromWindow(webView.windowToken, 0)
     }
 
     override fun onStop() {

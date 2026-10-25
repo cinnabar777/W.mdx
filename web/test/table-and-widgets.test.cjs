@@ -22,6 +22,14 @@ test('Widget classes implement eq for DOM reuse', () => {
   assert.ok(code.includes('formatMarkdownImage(altInput.value, newUrl, newWidth)'), 'image width is saved with Markdown image syntax');
   assert.ok(code.includes('aria-label\', \'Edit image\''), 'image edit button has an accessible label');
   assert.ok(code.includes('aria-label\', \'Delete image\''), 'image delete button has an accessible label');
+  assert.ok(
+    code.includes("return Boolean(event.target?.closest?.('.cm-image-preview-wrapper'))"),
+    'image taps are handled by the widget instead of moving the CodeMirror cursor'
+  );
+  assert.ok(
+    code.includes('image.url,\n                  image.alt,\n                  node.from,\n                  node.to,'),
+    'Live Preview image controls receive the source range they edit'
+  );
   assert.ok(code.includes('other instanceof ImagePreviewWidget'), 'ImagePreviewWidget has eq check');
 });
 

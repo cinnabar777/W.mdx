@@ -1006,11 +1006,12 @@ class ImagePreviewWidget extends WidgetType {
   toDOM(view) {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-image-preview-wrapper';
-    wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 6px 0; display: block; box-sizing: border-box;`;
+    wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 6px 0; display: block; box-sizing: border-box; touch-action: manipulation; user-select: none; -webkit-user-select: none;`;
 
     const img = document.createElement('img');
     img.src = this.url;
     img.alt = this.alt;
+    img.draggable = false;
     img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;
 
     img.onload = () => {
@@ -1070,7 +1071,6 @@ class ImagePreviewWidget extends WidgetType {
       actions.classList.toggle('visible');
       rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     };
-    img.addEventListener('click', toggleActions);
     wrapper.addEventListener('click', event => {
       if (event.target.closest('.cm-image-actions')) return;
       toggleActions(event);
@@ -1102,7 +1102,10 @@ class ImagePreviewWidget extends WidgetType {
   }
 
   ignoreEvent(event) {
-    return Boolean(event.target?.closest?.('.cm-image-actions'));
+    // Image previews are atomic widgets. Letting pointer events reach CodeMirror
+    // places the text cursor beside the hidden Markdown instead of activating
+    // the image's own tap controls.
+    return Boolean(event.target?.closest?.('.cm-image-preview-wrapper'));
   }
 }
 
@@ -1862,11 +1865,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'Image') {
             const imgText = view.state.doc.sliceString(node.from, node.to);
-            const match = imgText.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-            if (match && !isNodeActive && !isPureWysiwyg) {
-              const alt = match[1];
-              const url = match[2];
-              builder.push(Decoration.replace({ widget: new ImagePreviewWidget(url, alt) }).range(node.from, node.to));
+            const image = parseMarkdownImage(imgText);
+            if (image && !isNodeActive && !isPureWysiwyg) {
+              builder.push(Decoration.replace({
+                widget: new ImagePreviewWidget(
+                  image.url,
+                  image.alt,
+                  node.from,
+                  node.to,
+                  image.width ?? null
+                )
+              }).range(node.from, node.to));
             }
           }
         }
