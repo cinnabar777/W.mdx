@@ -287,6 +287,18 @@ test('toolbar preview finalizes drops from Android native touch release', () => 
   assert.match(toolbarPreviewSource, /window\.finishToolbarDragFromNative\s*=/);
 });
 
+test('toolbar layout is explicitly saved from the separate preview when settings change or collapse', () => {
+  assert.match(toolbarPreviewSource, /window\.saveToolbarLayout\s*=\s*\(\) => saveConfig\(\)/);
+  assert.match(
+    settingsActivitySource,
+    /appearanceHeader\.setOnPreferenceClickListener\s*\{[\s\S]*?saveToolbarPreviewLayout\(\)/
+  );
+  assert.match(
+    settingsActivitySource,
+    /override fun onSettingPreferenceChanged[\s\S]*?saveToolbarPreviewLayout\(\)[\s\S]*?updateToolbarPreview\(includeToolbarConfig = false\)/
+  );
+});
+
 test('settings labels avoid redundant settings, styling, and shortcut wording', () => {
   const hotkeyTitles = [...hotkeysXml.matchAll(/app:title="([^"]+)"/g)]
     .map((match) => match[1]);

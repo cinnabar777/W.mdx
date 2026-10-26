@@ -1369,6 +1369,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         appearanceHeader.isExpanded = toolbarAppearanceExpanded
         toolbarAppearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
         appearanceHeader.setOnPreferenceClickListener {
+            if (toolbarAppearanceExpanded) saveToolbarPreviewLayout()
             toolbarAppearanceExpanded = !toolbarAppearanceExpanded
             appearanceHeader.isExpanded = toolbarAppearanceExpanded
             toolbarAppearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
