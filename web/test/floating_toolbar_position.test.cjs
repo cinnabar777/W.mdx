@@ -75,7 +75,7 @@ test('floating toolbar has an independent saved layout and replaces the native s
   assert.match(settingsActivity, /pref_toolbar_floating_config/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_key_width/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_corner_radius/);
-  assert.match(nativeActivity, /customSelectionActionModeCallback/);
+  assert.match(nativeActivity, /setCustomSelectionActionModeCallback/);
   assert.match(nativeActivity, /override fun onCreateActionMode[\s\S]*?: Boolean = false/);
   assert.match(styles, /--toolbar-floating-key-width/);
   assert.match(styles, /--toolbar-floating-corner-radius/);
