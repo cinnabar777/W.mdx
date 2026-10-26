@@ -990,6 +990,8 @@ function beginPossibleDrag(event, button) {
     });
     window.addEventListener('pointerup', onDocumentPointerUp, true);
     window.addEventListener('pointercancel', cancelDrag, true);
+    window.addEventListener('touchend', onDocumentTouchEnd, true);
+    window.addEventListener('touchcancel', cancelDrag, true);
   }, 380);
 }
 
@@ -1053,9 +1055,25 @@ function onDocumentPointerUp(event) {
     event.pointerId !== undefined &&
     event.pointerId !== dragState.pointerId
   ) return;
+  finishToolbarDrag(event);
+}
+
+function onDocumentTouchEnd(event) {
+  const touch = event.changedTouches?.[0];
+  if (!dragState?.started || !touch) return;
+  finishToolbarDrag({
+    pointerId: dragState.pointerId,
+    clientX: touch.clientX,
+    clientY: touch.clientY
+  });
+}
+
+function finishToolbarDrag(event) {
   window.removeEventListener('pointermove', onDocumentPointerMove, true);
   window.removeEventListener('pointercancel', cancelDrag, true);
   window.removeEventListener('pointerup', onDocumentPointerUp, true);
+  window.removeEventListener('touchend', onDocumentTouchEnd, true);
+  window.removeEventListener('touchcancel', cancelDrag, true);
   const dropPoint = getDragDropPoint(event.clientX, event.clientY);
   if (dragState) {
     dragState.lastClientX = dropPoint.x;
@@ -1102,6 +1120,8 @@ function cancelDrag(event) {
   window.removeEventListener('pointermove', onDocumentPointerMove, true);
   window.removeEventListener('pointerup', onDocumentPointerUp, true);
   window.removeEventListener('pointercancel', cancelDrag, true);
+  window.removeEventListener('touchend', onDocumentTouchEnd, true);
+  window.removeEventListener('touchcancel', cancelDrag, true);
   document.querySelectorAll('.drop-target, .drop-target-group, .is-dragging').forEach(element => {
     element.classList.remove('drop-target', 'drop-target-group', 'is-dragging');
   });

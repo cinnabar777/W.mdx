@@ -819,7 +819,14 @@ test('dragging a held key through the gap shows its toolbar insertion target', a
         '#toolbar-preview [data-toolbar-key="undo"]'
       ).classList.contains('drop-target')
     );
-    dispatchPointer(dom.window.document, 'pointerup', 10, 500);
+    const touchEnd = new dom.window.Event('touchend', {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(touchEnd, 'changedTouches', {
+      value: [{ clientX: 10, clientY: 500 }]
+    });
+    dom.window.document.dispatchEvent(touchEnd);
 
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-status').textContent,
