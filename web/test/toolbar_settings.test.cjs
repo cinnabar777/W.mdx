@@ -50,8 +50,11 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /preserveSvgColors/);
   assert.match(settingsSource, /editBottomToolbarIcon\?\.\(selectedKey\)/);
   assert.match(html, /id="toolbar-add-custom"/);
+  assert.match(html, /id="toolbar-open-icon-picker"/);
+  assert.match(html, /id="toolbar-icon-picker-back"/);
   assert.match(html, /id="toolbar-icon-search"/);
   assert.match(html, /id="toolbar-icon-list"/);
+  assert.match(html, /id="toolbar-current-icon"/);
   assert.match(html, /id="toolbar-reset-key-colors"/);
   assert.match(html, /id="toolbar-reset-key-style"/);
   assert.match(html, /id="toolbar-reset-layout"/);
