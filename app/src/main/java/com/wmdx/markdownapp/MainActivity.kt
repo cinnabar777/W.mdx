@@ -404,27 +404,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         webView.addJavascriptInterface(WebAppInterface(), "AndroidNative")
-        webView.setCustomSelectionActionModeCallback(
-            object : android.view.ActionMode.Callback {
-                override fun onCreateActionMode(
-                    mode: android.view.ActionMode,
-                    menu: android.view.Menu
-                ): Boolean = false
-
-                override fun onPrepareActionMode(
-                    mode: android.view.ActionMode,
-                    menu: android.view.Menu
-                ): Boolean = false
-
-                override fun onActionItemClicked(
-                    mode: android.view.ActionMode,
-                    item: android.view.MenuItem
-                ): Boolean = false
-
-                override fun onDestroyActionMode(mode: android.view.ActionMode) = Unit
-            }
-        )
-
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView?,

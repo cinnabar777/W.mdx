@@ -62,8 +62,10 @@ test('floating toolbar has an independent saved layout and replaces the native s
   const settings = readWeb('src/toolbarSettingsPreview.js');
   const settingsHtml = readWeb('toolbar-settings-preview.html');
   const nativeActivity = readApp('src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  const editorWebView = readApp('src/main/java/com/wmdx/markdownapp/EditorWebView.kt');
   const settingsActivity = readApp('src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
   const controlbarPrefs = readApp('src/main/res/xml/preferences_styling_controlbar.xml');
+  const activityLayout = readApp('src/main/res/layout/activity_main.xml');
   const styles = readWeb('toolbar.css');
 
   assert.match(main, /let floatingToolbarConfig = normalizeBottomToolbarConfig\(null\)/);
@@ -75,8 +77,10 @@ test('floating toolbar has an independent saved layout and replaces the native s
   assert.match(settingsActivity, /pref_toolbar_floating_config/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_key_width/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_corner_radius/);
-  assert.match(nativeActivity, /setCustomSelectionActionModeCallback/);
-  assert.match(nativeActivity, /override fun onCreateActionMode[\s\S]*?: Boolean = false/);
+  assert.doesNotMatch(nativeActivity, /setCustomSelectionActionModeCallback/);
+  assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback\)/);
+  assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback, type: Int\)/);
+  assert.match(activityLayout, /<com\.wmdx\.markdownapp\.EditorWebView/);
   assert.match(styles, /--toolbar-floating-key-width/);
   assert.match(styles, /--toolbar-floating-corner-radius/);
 });
