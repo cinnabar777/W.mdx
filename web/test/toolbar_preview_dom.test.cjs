@@ -1112,6 +1112,7 @@ test('holding-area layout survives recreating the toolbar settings preview', asy
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const previousWindow = global.window;
   const previousDocument = global.document;
+  let saveCalls = 0;
   let persisted = {
     version: 4,
     order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
@@ -1131,6 +1132,7 @@ test('holding-area layout survives recreating the toolbar settings preview', asy
         pref_app_theme: 'amoled'
       }),
       saveBottomToolbarConfig: value => {
+        saveCalls += 1;
         persisted = JSON.parse(value);
         return true;
       }
@@ -1155,6 +1157,14 @@ test('holding-area layout survives recreating the toolbar settings preview', asy
     await dragKey(firstDom, heading, tray, 90, 50, null, tray);
     assert.ok(persisted.holding.includes('heading'));
     assert.ok(persisted.holding.includes('paragraph'));
+
+    const savesBeforeManualSave = saveCalls;
+    firstDom.window.document.querySelector('#toolbar-save-layout').click();
+    assert.equal(saveCalls, savesBeforeManualSave + 1);
+    assert.equal(
+      firstDom.window.document.querySelector('#toolbar-preview-status').textContent,
+      'Toolbar changes saved.'
+    );
 
     firstDom.window.close();
     reopenedDom = new JSDOM(html, {
