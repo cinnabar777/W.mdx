@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { JSDOM } = require('jsdom');
 
-test('toolbar settings preview renders keys, opens group popups, and supports tray double-tap icon editing', async () => {
+test('toolbar settings preview keeps icon search, SVG actions, and key settings together', async () => {
   const htmlPath = path.resolve(__dirname, '../toolbar-settings-preview.html');
   const html = fs.readFileSync(htmlPath, 'utf8');
   const dom = new JSDOM(html, { url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html' });
@@ -13,8 +13,6 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
   const edits = [];
   const collapseCalls = [];
   const colorPicks = [];
-  const pastedIcons = [];
-  const chosenIconFiles = [];
   const saves = [];
   const settings = {
     version: 1,
@@ -41,8 +39,6 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     },
     pickBottomToolbarColor: (id, property) => colorPicks.push([id, property]),
     editBottomToolbarIcon: id => edits.push(id),
-    pasteBottomToolbarSvg: id => pastedIcons.push(id),
-    chooseBottomToolbarSvg: id => chosenIconFiles.push(id),
     collapseToolbarAppearance: () => collapseCalls.push(true)
   };
   global.window = dom.window;
@@ -147,20 +143,19 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     assert.deepEqual(edits, ['saveFile']);
     dom.window.document.querySelector('#toolbar-icon-color').click();
     assert.deepEqual(colorPicks, [['saveFile', 'iconColor']]);
-    assert.equal(
-      dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('icon-picker-open'),
-      false,
-      'the search field and icon list stay out of the key settings until Icon is tapped'
+    assert.ok(dom.window.document.querySelector('#toolbar-icon-search'));
+    assert.ok(
+      dom.window.document.querySelector('#toolbar-icon-list [role="option"]'),
+      'the built-in icon catalog stays visible with the key controls'
     );
+    const editorContent = dom.window.document.querySelector('.toolbar-preview-editor-content');
+    assert.equal(dom.window.document.querySelector('#toolbar-icon-search').parentElement, editorContent);
+    assert.ok(editorContent.querySelector('[data-reset-property="iconColor"]'));
+    assert.ok(editorContent.querySelector('#toolbar-icon-list'));
     assert.equal(
       dom.window.document.querySelector('[data-reset-property="iconColor"]').disabled,
       false,
       'a reset icon is enabled when that color has an override'
-    );
-    dom.window.document.querySelector('#toolbar-open-icon-picker').click();
-    assert.equal(
-      dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('icon-picker-open'),
-      true
     );
     assert.equal(
       dom.window.document.querySelector('#toolbar-reset-key-style').parentElement.className,
@@ -168,7 +163,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       'Reset all stays in the title row'
     );
     assert.equal(
-      dom.window.document.querySelector('#toolbar-open-icon-picker').parentElement.className,
+      dom.window.document.querySelector('#toolbar-current-key-preview').parentElement.className,
       'toolbar-preview-editor-header',
       'the current live icon preview stays in the title row'
     );
@@ -182,24 +177,15 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     assert.equal(dom.window.document.querySelector('#toolbar-reset-key-colors'), null);
     assert.notEqual(
       dom.window.document
-        .querySelector('#toolbar-open-icon-picker')
+        .querySelector('#toolbar-current-key-preview')
         .style.getPropertyValue('--toolbar-key-active-bg-color'),
       '',
       'the live icon preview uses the configured active/background color'
     );
     dom.window.document.querySelector('#toolbar-paste-svg').click();
     dom.window.document.querySelector('#toolbar-choose-svg').click();
-    assert.deepEqual(pastedIcons, ['saveFile']);
-    assert.deepEqual(chosenIconFiles, ['saveFile']);
-    delete dom.window.ToolbarSettings.pasteBottomToolbarSvg;
-    delete dom.window.ToolbarSettings.chooseBottomToolbarSvg;
-    dom.window.document.querySelector('#toolbar-paste-svg').click();
-    dom.window.document.querySelector('#toolbar-choose-svg').click();
-    assert.deepEqual(
-      edits,
-      ['saveFile', 'saveFile', 'saveFile'],
-      'missing direct bridge actions fall back to the native SVG options dialog'
-    );
+    assert.deepEqual(JSON.parse(edits[1]), { itemId: 'saveFile', action: 'paste' });
+    assert.deepEqual(JSON.parse(edits[2]), { itemId: 'saveFile', action: 'file' });
     const iconSearch = dom.window.document.querySelector('#toolbar-icon-search');
     iconSearch.value = 'bold';
     iconSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
@@ -207,7 +193,6 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     assert.equal(boldChoice.getAttribute('aria-label'), 'Bold');
     boldChoice.click();
     assert.match(saves.at(-1).styles.saveFile.customSvg, /<svg/);
-    dom.window.document.querySelector('#toolbar-icon-picker-back').click();
     dom.window.document
       .querySelector('[data-reset-property="iconColor"]')
       .click();
@@ -260,7 +245,8 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       .querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]')
       .click();
     assert.equal(collapseCalls.length, collapseCallsBeforeTray + 2);
-    assert.deepEqual(edits, ['saveFile', 'saveFile', 'saveFile', 'heading']);
+    assert.equal(edits.length, 4);
+    assert.equal(edits.at(-1), 'heading');
 
     dom.window.applyToolbarSettings({
       pref_toolbar_bottom_config: JSON.stringify({

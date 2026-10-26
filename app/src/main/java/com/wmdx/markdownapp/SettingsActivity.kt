@@ -1738,18 +1738,23 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
 
         @android.webkit.JavascriptInterface
-        fun editBottomToolbarIcon(itemId: String) {
-            runToolbarSvgAction(itemId) { showToolbarSvgChooser(itemId) }
-        }
-
-        @android.webkit.JavascriptInterface
-        fun chooseBottomToolbarSvg(itemId: String) {
-            runToolbarSvgAction(itemId) { chooseToolbarSvgFile(itemId) }
-        }
-
-        @android.webkit.JavascriptInterface
-        fun pasteBottomToolbarSvg(itemId: String) {
-            runToolbarSvgAction(itemId) { pasteToolbarSvg(itemId) }
+        fun editBottomToolbarIcon(request: String) {
+            val payload = if (request.trimStart().startsWith("{")) {
+                runCatching { org.json.JSONObject(request) }.getOrNull()
+            } else {
+                null
+            }
+            val itemId = payload?.optString("itemId")
+                ?.takeIf { it.isNotBlank() }
+                ?: request
+            val action = payload?.optString("action") ?: "chooser"
+            runToolbarSvgAction(itemId) {
+                when (action) {
+                    "paste" -> pasteToolbarSvg(itemId)
+                    "file" -> chooseToolbarSvgFile(itemId)
+                    else -> showToolbarSvgChooser(itemId)
+                }
+            }
         }
     }
 }

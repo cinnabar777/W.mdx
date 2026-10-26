@@ -31,24 +31,29 @@
     }
     .toolbar-preview-editor {
       display: none;
+      flex-direction: column;
       position: fixed;
       z-index: 10006;
       left: 12px;
       right: 12px;
       bottom: calc(var(--toolbar-height, 48px) + 10px);
+      max-height: min(82dvh, calc(100dvh - var(--toolbar-height, 48px) - 24px));
       margin: 0;
       padding: 12px;
+      overflow: hidden;
       border: 1px solid rgba(255,255,255,.2);
       border-radius: 12px;
       background: #171717;
       box-shadow: 0 10px 28px rgba(0,0,0,.75);
     }
-    .toolbar-preview-editor.visible { display: block; }
+    .toolbar-preview-editor.visible { display: flex; }
     .toolbar-preview-editor.above-group {
       bottom: calc(var(--toolbar-height, 48px) + 78px);
+      max-height: min(70dvh, calc(100dvh - var(--toolbar-height, 48px) - 92px));
     }
     .toolbar-preview-editor-header {
       display: flex;
+      flex: 0 0 auto;
       align-items: center;
       justify-content: space-between;
       gap: 5px;
@@ -92,7 +97,13 @@
     .toolbar-preview-editor-reset-all:disabled {
       opacity: .38;
     }
-    .toolbar-preview-editor-content { display: block; }
+    .toolbar-preview-editor-content {
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
     .toolbar-preview-style-controls { display: grid; gap: 3px; }
     .toolbar-preview-color-row {
       display: grid;
@@ -183,24 +194,14 @@
       height: 14px;
       margin: 0;
     }
-    .toolbar-preview-icon-picker { display: none; }
-    .toolbar-preview-editor.icon-picker-open .toolbar-preview-style-controls { display: none; }
-    .toolbar-preview-editor.icon-picker-open .toolbar-preview-icon-picker { display: block; }
-    .toolbar-preview-icon-picker-back {
-      width: 30px;
-      height: 30px;
-      flex: 0 0 30px;
-      border: 1px solid rgba(255,255,255,.2);
-      border-radius: 8px;
-      color: inherit;
-      background: rgba(255,255,255,.08);
-      font: inherit;
-      font-size: 20px;
-    }
+    .toolbar-preview-icon-picker { display: block; }
     .toolbar-preview-icon-search {
+      position: sticky;
+      z-index: 2;
+      top: 0;
       width: 100%;
-      height: 30px;
-      margin: 0 0 4px;
+      height: 34px;
+      margin: 0 0 5px;
       padding: 0 9px;
       border: 1px solid rgba(255,255,255,.2);
       border-radius: 7px;
@@ -208,17 +209,21 @@
       background: rgba(255,255,255,.06);
       font: inherit;
       font-size: 12px;
+      box-shadow: 0 2px 4px rgba(0,0,0,.35);
+    }
+    .toolbar-preview-section-label {
+      margin: 8px 0 4px;
+      color: rgba(255,255,255,.7);
+      font-size: 11px;
+      font-weight: 600;
     }
     .toolbar-preview-icon-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
       gap: 6px;
-      max-height: min(34vh, 280px);
-      overflow: auto;
       padding: 4px;
       border: 1px solid rgba(255,255,255,.15);
       border-radius: 7px;
-      overscroll-behavior: contain;
     }
     .toolbar-preview-icon-choice {
       display: flex;
@@ -286,20 +291,18 @@
       border-color: rgba(0,0,0,.18);
       background: rgba(0,0,0,.04);
     }
-    body.light-theme .toolbar-preview-icon-picker-back {
-      border-color: rgba(0,0,0,.2);
-      background: rgba(0,0,0,.06);
-    }
     body.light-theme .toolbar-preview-icon-search,
     body.light-theme .toolbar-preview-icon-list {
       border-color: rgba(0,0,0,.2);
       background-color: rgba(0,0,0,.04);
     }
+    body.light-theme .toolbar-preview-icon-search {
+      background-color: #f5f5f5;
+    }
     body.light-theme .toolbar-preview-icon-choice[aria-pressed="true"] {
       background: rgba(0,0,0,.08);
     }
     @media (max-height: 620px) {
-      .toolbar-preview-icon-list { max-height: 180px; }
       .toolbar-preview-editor { padding: 9px; }
     }
     body.light-theme .toolbar-preview-tray-label {
@@ -331,11 +334,10 @@
       aria-labelledby="toolbar-preview-selected-title"
       aria-hidden="true">
       <div class="toolbar-preview-editor-header">
-        <button id="toolbar-icon-picker-back" class="toolbar-preview-icon-picker-back" type="button" aria-label="Back to key settings" hidden>‹</button>
         <h2 id="toolbar-preview-selected-title">Selected key</h2>
-        <button id="toolbar-open-icon-picker" class="toolbar-preview-current-key active" type="button" aria-label="Choose built-in icon" title="Choose built-in icon">
+        <div id="toolbar-current-key-preview" class="toolbar-preview-current-key active" role="img" aria-label="Live toolbar icon preview">
           <span id="toolbar-current-icon" class="toolbar-preview-icon-option-preview" aria-hidden="true"></span>
-        </button>
+        </div>
         <button id="toolbar-paste-svg" class="toolbar-preview-header-action" type="button" aria-label="Paste SVG" title="Paste SVG">Paste</button>
         <button id="toolbar-choose-svg" class="toolbar-preview-header-action" type="button" aria-label="Choose SVG file" title="Choose SVG file">File</button>
         <button id="toolbar-reset-key-style" class="toolbar-preview-editor-reset-all" type="button" aria-label="Reset all settings for this key" title="Reset all">
@@ -344,6 +346,7 @@
         <button id="toolbar-preview-close-editor" class="toolbar-preview-editor-close" type="button" aria-label="Close key settings">×</button>
       </div>
       <div class="toolbar-preview-editor-content">
+        <input id="toolbar-icon-search" class="toolbar-preview-icon-search" type="search" placeholder="Search available icons…" aria-label="Search app icons">
         <div class="toolbar-preview-style-controls">
           <div class="toolbar-preview-color-settings">
             <div class="toolbar-preview-color-row">
@@ -367,8 +370,8 @@
             Preserve icon colors
           </label>
         </div>
-        <div class="toolbar-preview-icon-picker">
-          <input id="toolbar-icon-search" class="toolbar-preview-icon-search" type="search" placeholder="Search icons…" aria-label="Search app icons">
+        <div class="toolbar-preview-icon-picker" aria-label="Available app icons">
+          <div class="toolbar-preview-section-label">Available icons</div>
           <div id="toolbar-icon-list" class="toolbar-preview-icon-list" role="listbox" aria-label="Available app icons"></div>
         </div>
       </div>

@@ -50,8 +50,7 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /preserveSvgColors/);
   assert.match(settingsSource, /editBottomToolbarIcon\?\.\(selectedKey\)/);
   assert.match(html, /id="toolbar-add-custom"/);
-  assert.match(html, /id="toolbar-open-icon-picker"/);
-  assert.match(html, /id="toolbar-icon-picker-back"/);
+  assert.match(html, /id="toolbar-current-key-preview"/);
   assert.match(html, /id="toolbar-icon-search"/);
   assert.match(html, /id="toolbar-icon-list"/);
   assert.match(html, /id="toolbar-current-icon"/);
@@ -62,6 +61,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /toolbar-preview-current-key/);
   assert.match(html, /min-height: 28px/);
   assert.match(html, /width: max-content/);
+  assert.match(html, /overflow-y: auto/);
+  assert.doesNotMatch(settingsSource, /iconPickerOpen/);
+  assert.doesNotMatch(html, /toolbar-icon-picker-back/);
   assert.match(html, /id="toolbar-reset-key-style"/);
   assert.match(html, /id="toolbar-reset-key-style"[^>]*class="toolbar-preview-editor-reset-all"/);
   assert.doesNotMatch(html, /id="toolbar-reset-key-colors"/);
@@ -70,8 +72,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(androidSource, /saveBottomToolbarConfig/);
   assert.match(androidSource, /pickBottomToolbarColor/);
   assert.match(androidSource, /editBottomToolbarIcon/);
-  assert.match(androidSource, /fun pasteBottomToolbarSvg/);
-  assert.match(androidSource, /fun chooseBottomToolbarSvg/);
+  assert.match(androidSource, /editBottomToolbarIcon\(request: String\)/);
+  assert.match(androidSource, /"paste" -> pasteToolbarSvg\(itemId\)/);
+  assert.match(androidSource, /"file" -> chooseToolbarSvgFile\(itemId\)/);
   assert.match(androidSource, /pref_toolbar_padding/);
   assert.match(mainSource, /--toolbar-padding/);
   assert.match(preferenceXml, /app:key="pref_toolbar_padding"/);
