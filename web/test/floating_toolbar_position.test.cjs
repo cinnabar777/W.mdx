@@ -53,15 +53,18 @@ test('oversized floating toolbar is clamped to the viewport width', () => {
 });
 
 test('floating toolbar has an independent saved layout and replaces the native selection menu', () => {
-  const read = relativePath =>
-    readFileSync(path.join(process.cwd(), relativePath), 'utf8');
-  const main = read('src/main.js');
-  const settings = read('src/toolbarSettingsPreview.js');
-  const settingsHtml = read('toolbar-settings-preview.html');
-  const nativeActivity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
-  const settingsActivity = read('../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
-  const controlbarPrefs = read('../app/src/main/res/xml/preferences_styling_controlbar.xml');
-  const styles = read('toolbar.css');
+  const repositoryRoot = path.resolve(__dirname, '..', '..');
+  const readWeb = relativePath =>
+    readFileSync(path.join(repositoryRoot, 'web', relativePath), 'utf8');
+  const readApp = relativePath =>
+    readFileSync(path.join(repositoryRoot, 'app', relativePath), 'utf8');
+  const main = readWeb('src/main.js');
+  const settings = readWeb('src/toolbarSettingsPreview.js');
+  const settingsHtml = readWeb('toolbar-settings-preview.html');
+  const nativeActivity = readApp('src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  const settingsActivity = readApp('src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
+  const controlbarPrefs = readApp('src/main/res/xml/preferences_styling_controlbar.xml');
+  const styles = readWeb('toolbar.css');
 
   assert.match(main, /let floatingToolbarConfig = normalizeBottomToolbarConfig\(null\)/);
   assert.match(main, /applyFloatingToolbarConfig: function\(rawConfig\)/);
