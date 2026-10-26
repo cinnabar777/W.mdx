@@ -404,7 +404,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         webView.addJavascriptInterface(WebAppInterface(), "AndroidNative")
-        webView.customSelectionActionModeCallback =
+        webView.setCustomSelectionActionModeCallback(
             object : android.view.ActionMode.Callback {
                 override fun onCreateActionMode(
                     mode: android.view.ActionMode,
@@ -423,6 +423,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 override fun onDestroyActionMode(mode: android.view.ActionMode) = Unit
             }
+        )
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
