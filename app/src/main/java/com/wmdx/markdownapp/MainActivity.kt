@@ -130,6 +130,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (isEditorReady) {
             applyPluginPreferences()
             applyThemeAndFullscreenPreferences()
+            refreshBottomToolbarFromPreferences()
             val captureActive = AppDiagnostics.isNavigationCaptureActive(this)
             webView.evaluateJavascript(
                 "window.editorBridge?.setNavigationDiagnosticsEnabled?.($captureActive);",
@@ -302,6 +303,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (::webView.isInitialized) {
             webView.onResume()
             applyThemeAndFullscreenPreferences()
+            refreshBottomToolbarFromPreferences()
             suppressImeUntilUserTouch = true
             val generation = ++imeHideGeneration
             window.setSoftInputMode(
@@ -347,6 +349,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         if (::webView.isInitialized) {
             applyThemeAndFullscreenPreferences()
+            if (key == "pref_toolbar_bottom_config") {
+                refreshBottomToolbarFromPreferences()
+            }
         }
     }
 
@@ -792,6 +797,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 prefs.edit().putString("cursor_sel_$key", selectionJson).apply()
             }
         }
+    }
+
+    private fun refreshBottomToolbarFromPreferences() {
+        if (!isEditorReady || !::webView.isInitialized) return
+        val config = PreferenceManager.getDefaultSharedPreferences(this)
+            .getString("pref_toolbar_bottom_config", null)
+            ?: return
+        val escapedConfig = JSONObjectWrapper.quote(config)
+        webView.evaluateJavascript(
+            "window.editorBridge?.applyBottomToolbarConfig?.($escapedConfig);",
+            null
+        )
     }
 
     private fun applyThemeAndFullscreenPreferences() {

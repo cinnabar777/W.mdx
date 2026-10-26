@@ -6728,6 +6728,11 @@ window.editorBridge = {
   getEditorMode: function() {
     return currentEditorMode;
   },
+  applyBottomToolbarConfig: function(rawConfig) {
+    bottomToolbarConfig = normalizeBottomToolbarConfig(rawConfig);
+    hidePopupStrip();
+    setupGroupedControlBar();
+  },
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
     const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;

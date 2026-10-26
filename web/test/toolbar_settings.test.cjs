@@ -14,6 +14,10 @@ const androidSource = fs.readFileSync(
   path.join(root, 'app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
   'utf8'
 );
+const mainActivitySource = fs.readFileSync(
+  path.join(root, 'app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'),
+  'utf8'
+);
 const preferenceXml = fs.readFileSync(
   path.join(root, 'app/src/main/res/xml/preferences_styling_controlbar.xml'),
   'utf8'
@@ -90,6 +94,13 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(
     mainSource,
     /if \(Object\.prototype\.hasOwnProperty\.call\(prefs, 'pref_toolbar_bottom_config'\)\) \{\s*bottomToolbarConfig = normalizeBottomToolbarConfig\(\s*prefs\.pref_toolbar_bottom_config\s*\);\s*hidePopupStrip\(\);\s*setupGroupedControlBar\(\);\s*\}/
+  );
+  assert.match(mainSource, /applyBottomToolbarConfig: function\(rawConfig\)/);
+  assert.match(mainActivitySource, /private fun refreshBottomToolbarFromPreferences\(\)/);
+  assert.match(mainActivitySource, /applyBottomToolbarConfig\?\.\(\$escapedConfig\)/);
+  assert.match(
+    mainActivitySource,
+    /applyThemeAndFullscreenPreferences\(\)\s*refreshBottomToolbarFromPreferences\(\)/
   );
   assert.match(androidSource, /"longPress"/);
   assert.doesNotMatch(html, /Action chip|Action icon/);
