@@ -720,6 +720,13 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
     dom.window.document.querySelector('#toolbar-custom-key-action').click();
     const actionPicker = dom.window.document.querySelector('#toolbar-action-picker-modal');
     const search = dom.window.document.querySelector('#toolbar-action-search');
+    search.value = 'Open group';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    assert.equal(
+      actionPicker.querySelector('[role="option"][aria-label="Open group"]'),
+      null,
+      'a plain custom key does not get a group-only action'
+    );
     search.value = 'Save As';
     search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     actionPicker.querySelector('[role="option"][aria-label="Save As"]').click();
@@ -729,7 +736,7 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
       /Key action → Save As/
     );
 
-    dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]').click();
+    dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="format"]').click();
     dom.window.document
       .querySelector('.toolbar-preview-gesture-action[data-gesture-id="tap1"]')
       .click();
@@ -741,12 +748,15 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
     dom.window.document
       .querySelector('.toolbar-preview-gesture-action[data-gesture-id="tap2"]')
       .click();
-    search.value = 'Open group: Format';
+    search.value = 'Open group';
     search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-    actionPicker.querySelector('[role="option"][aria-label="Open group: Format"]').click();
+    const openGroupOptions = actionPicker.querySelectorAll('[role="option"]');
+    assert.equal(openGroupOptions.length, 1);
+    assert.equal(openGroupOptions[0].getAttribute('aria-label'), 'Open group');
+    openGroupOptions[0].click();
     assert.equal(
-      saves.at(-1).styles.undo.gestureActions.tap2,
-      'openToolbarGroup:format'
+      saves.at(-1).styles.format.gestureActions.tap2,
+      'openGroup'
     );
   } finally {
     dom.window.close();

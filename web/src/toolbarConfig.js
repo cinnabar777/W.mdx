@@ -54,16 +54,15 @@ export const BUILT_IN_HOLDING_ITEM_IDS = Object.freeze(
   BUILT_IN_HOLDING_ITEMS.map(item => item.id)
 );
 
-export const OPEN_TOOLBAR_GROUP_ACTION_PREFIX = 'openToolbarGroup:';
+export const OPEN_GROUP_ACTION_ID = 'openGroup';
+const LEGACY_OPEN_GROUP_ACTION_PREFIX = 'openToolbarGroup:';
 
-export function openToolbarGroupActionId(groupId) {
-  return `${OPEN_TOOLBAR_GROUP_ACTION_PREFIX}${groupId}`;
-}
-
-export function getToolbarGroupIdForAction(actionId) {
-  if (typeof actionId !== 'string' ||
-      !actionId.startsWith(OPEN_TOOLBAR_GROUP_ACTION_PREFIX)) return null;
-  return actionId.slice(OPEN_TOOLBAR_GROUP_ACTION_PREFIX.length) || null;
+function normalizeToolbarActionId(actionId) {
+  if (typeof actionId !== 'string') return '';
+  return actionId === OPEN_GROUP_ACTION_ID ||
+    actionId.startsWith(LEGACY_OPEN_GROUP_ACTION_PREFIX)
+    ? OPEN_GROUP_ACTION_ID
+    : actionId;
 }
 
 export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
@@ -176,7 +175,9 @@ export function normalizeBottomToolbarConfig(rawConfig) {
         ? rawKey.icon
         : 'newFile';
       customKeys[id] = { title, icon };
-      if (typeof rawKey.actionId === 'string') customKeyActions[id] = rawKey.actionId;
+      if (typeof rawKey.actionId === 'string') {
+        customKeyActions[id] = normalizeToolbarActionId(rawKey.actionId);
+      }
     }
   }
 
@@ -186,15 +187,10 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     ...Object.keys(customGroups),
     ...Object.keys(customKeys)
   ];
-  const groupIds = new Set([
-    ...Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS),
-    ...Object.keys(customGroups)
-  ]);
   const keyIds = new Set([...rootIds, ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS]);
   const gestureActionIds = new Set([
     ...keyIds,
-    ...BUILT_IN_GESTURE_ACTION_IDS,
-    ...[...groupIds].map(openToolbarGroupActionId)
+    ...BUILT_IN_GESTURE_ACTION_IDS
   ]);
   for (const [id, actionId] of Object.entries(customKeyActions)) {
     if (actionId !== id && gestureActionIds.has(actionId)) {
@@ -350,7 +346,8 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       const gestureActions = {};
       if (style.gestureActions && typeof style.gestureActions === 'object' &&
           !Array.isArray(style.gestureActions)) {
-        for (const [gestureId, actionId] of Object.entries(style.gestureActions)) {
+        for (const [gestureId, rawActionId] of Object.entries(style.gestureActions)) {
+          const actionId = normalizeToolbarActionId(rawActionId);
           if (TOOLBAR_GESTURE_IDS.includes(gestureId) &&
               typeof actionId === 'string' && gestureActionIds.has(actionId)) {
             gestureActions[gestureId] = actionId;
@@ -359,8 +356,8 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       }
       if (!gestureActions.swipeUp &&
           typeof style.gestureAction === 'string' &&
-          gestureActionIds.has(style.gestureAction)) {
-        gestureActions.swipeUp = style.gestureAction;
+          gestureActionIds.has(normalizeToolbarActionId(style.gestureAction))) {
+        gestureActions.swipeUp = normalizeToolbarActionId(style.gestureAction);
       }
       if (Object.keys(gestureActions).length) {
         normalized.gestureActions = gestureActions;

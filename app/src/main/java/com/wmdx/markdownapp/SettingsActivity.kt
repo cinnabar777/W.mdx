@@ -1272,6 +1272,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     companion object {
         private const val TOOLBAR_CONFIG_KEY = "pref_toolbar_bottom_config"
         private const val TOOLBAR_APPEARANCE_HEADER_KEY = "pref_toolbar_global_settings"
+        private const val TOOLBAR_OPEN_GROUP_ACTION_ID = "openGroup"
+        private const val LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX = "openToolbarGroup:"
         private val TOOLBAR_APPEARANCE_PREFERENCE_KEYS = listOf(
             "pref_toolbar_bg_color",
             "pref_toolbar_icon_color",
@@ -1333,7 +1335,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "swipeUpLeft", "swipeUpRight", "swipeDownLeft", "swipeDownRight"
         )
         private val TOOLBAR_GESTURE_ACTION_IDS = listOf(
-            "historyBack", "historyForward", "toggleToolbar", "removeHighlight"
+            "historyBack", "historyForward", "toggleToolbar", "removeHighlight",
+            TOOLBAR_OPEN_GROUP_ACTION_ID
         )
         private val TOOLBAR_CUSTOM_KEY_ID_PATTERN =
             Regex("""^custom-key-[a-z0-9-]{1,48}$""", RegexOption.IGNORE_CASE)
@@ -1671,19 +1674,26 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             customKeys.put(id, org.json.JSONObject().put("title", title).put("icon", icon))
         }
         val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten().toSet()
-        val groupIds = (TOOLBAR_GROUP_ITEM_IDS.keys +
-            customGroups.keys().asSequence().toList()).toList()
         val validRootIds = TOOLBAR_ITEM_IDS +
             TOOLBAR_HOLDING_ITEM_IDS +
             customGroups.keys().asSequence().toList() +
             customKeys.keys().asSequence().toList()
         val validKeyIds = validRootIds + popupActionIds
-        val validActionIds = validKeyIds + TOOLBAR_GESTURE_ACTION_IDS +
-            groupIds.map { "openToolbarGroup:$it" }
+        val validActionIds = validKeyIds + TOOLBAR_GESTURE_ACTION_IDS
+        fun normalizeToolbarActionId(actionId: String): String? {
+            return when {
+                actionId == TOOLBAR_OPEN_GROUP_ACTION_ID ||
+                    actionId.startsWith(LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX) ->
+                    TOOLBAR_OPEN_GROUP_ACTION_ID
+                actionId in validActionIds -> actionId
+                else -> null
+            }
+        }
         for (id in customKeys.keys()) {
             val actionId = rawCustomKeys.optJSONObject(id)?.optString("actionId", "").orEmpty()
-            if (actionId.isNotBlank() && actionId != id && actionId in validActionIds) {
-                customKeys.optJSONObject(id)?.put("actionId", actionId)
+            val normalizedActionId = normalizeToolbarActionId(actionId)
+            if (!normalizedActionId.isNullOrBlank() && normalizedActionId != id) {
+                customKeys.optJSONObject(id)?.put("actionId", normalizedActionId)
             }
         }
         val hidden = mutableListOf<String>()
@@ -1855,11 +1865,14 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             val gestureActions = org.json.JSONObject()
             val rawGestureActions = style.optJSONObject("gestureActions") ?: org.json.JSONObject()
             for (gestureId in TOOLBAR_GESTURE_IDS) {
-                val actionId = rawGestureActions.optString(gestureId, "")
-                if (actionId in validActionIds) gestureActions.put(gestureId, actionId)
+                val actionId = normalizeToolbarActionId(
+                    rawGestureActions.optString(gestureId, "")
+                )
+                if (actionId != null) gestureActions.put(gestureId, actionId)
             }
-            val legacyGestureAction = style.optString("gestureAction", "")
-            if (!gestureActions.has("swipeUp") && legacyGestureAction in validActionIds) {
+            val legacyGestureAction =
+                normalizeToolbarActionId(style.optString("gestureAction", ""))
+            if (!gestureActions.has("swipeUp") && legacyGestureAction != null) {
                 gestureActions.put("swipeUp", legacyGestureAction)
             }
             if (gestureActions.length() > 0) {

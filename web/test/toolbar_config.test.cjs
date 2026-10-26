@@ -56,7 +56,7 @@ test('popup actions can be reordered and removed from their former group into th
     BUILT_IN_HOLDING_ITEM_IDS,
     DEFAULT_BOTTOM_TOOLBAR_CONFIG,
     normalizeBottomToolbarConfig,
-    openToolbarGroupActionId,
+    OPEN_GROUP_ACTION_ID,
     orderBottomToolbarPopupItems
   } = await import('../src/toolbarConfig.js');
   const config = normalizeBottomToolbarConfig({
@@ -94,15 +94,25 @@ test('popup actions can be reordered and removed from their former group into th
     BUILT_IN_HOLDING_ITEM_IDS
   );
 
-  const openFormatGroup = openToolbarGroupActionId('format');
   const gestureConfig = normalizeBottomToolbarConfig({
+    customKeys: {
+      'custom-key-open-group': {
+        title: 'Open group shortcut',
+        icon: 'folder',
+        actionId: 'openToolbarGroup:format'
+      }
+    },
     styles: {
       table: {
-        gestureActions: { swipeUp: openFormatGroup }
+        gestureActions: { swipeUp: 'openToolbarGroup:format' }
       }
     }
   });
-  assert.equal(gestureConfig.styles.table.gestureActions.swipeUp, openFormatGroup);
+  assert.equal(gestureConfig.styles.table.gestureActions.swipeUp, OPEN_GROUP_ACTION_ID);
+  assert.equal(
+    gestureConfig.customKeys['custom-key-open-group'].actionId,
+    OPEN_GROUP_ACTION_ID
+  );
 });
 
 test('toolbar styles retain colors for popup actions but discard unknown style targets', async () => {

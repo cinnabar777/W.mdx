@@ -33,7 +33,7 @@ import { svgIcons } from './toolbarIcons.js';
 import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
-  getToolbarGroupIdForAction,
+  OPEN_GROUP_ACTION_ID,
   normalizeBottomToolbarConfig,
   orderBottomToolbarPopupItems
 } from './toolbarConfig.js';
@@ -4391,8 +4391,12 @@ function createRuntimeToolbarItemRegistry() {
 function runToolbarGestureAction(actionId, sourceButton, visited = new Set()) {
   if (!actionId || visited.has(actionId)) return false;
   visited.add(actionId);
-  const toolbarGroupId = getToolbarGroupIdForAction(actionId);
-  if (toolbarGroupId && bottomToolbarConfig.popupGroups[toolbarGroupId]) {
+  if (actionId === OPEN_GROUP_ACTION_ID) {
+    const toolbarGroupId = [
+      sourceButton?.dataset?.toolbarKey,
+      sourceButton?.dataset?.toolbarStyleId
+    ].find(id => id && bottomToolbarConfig.popupGroups[id]);
+    if (!toolbarGroupId) return false;
     togglePopupStrip(
       toolbarGroupId,
       sourceButton,

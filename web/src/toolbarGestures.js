@@ -82,5 +82,6 @@ export const BUILT_IN_GESTURE_ACTION_IDS = Object.freeze([
   'historyBack',
   'historyForward',
   'toggleToolbar',
-  'removeHighlight'
+  'removeHighlight',
+  'openGroup'
 ]);

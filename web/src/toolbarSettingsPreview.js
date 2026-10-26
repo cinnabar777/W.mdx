@@ -4,7 +4,7 @@ import {
   BOTTOM_TOOLBAR_ITEM_IDS,
   BUILT_IN_HOLDING_ITEMS,
   normalizeBottomToolbarConfig,
-  openToolbarGroupActionId,
+  OPEN_GROUP_ACTION_ID,
   orderBottomToolbarPopupItems
 } from './toolbarConfig.js';
 import {
@@ -186,14 +186,12 @@ function actionDefinitions() {
   for (const [id, key] of Object.entries(config.customKeys || {})) {
     definitions.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
   }
-  for (const group of [...definitions.values()].filter(item => item.kind === 'group')) {
-    const id = openToolbarGroupActionId(group.id);
-    definitions.set(id, {
-      id,
-      title: `Open group: ${group.title}`,
-      icon: group.icon,
-      kind: 'action',
-      toolbarGroupId: group.id
+  if (config.popupGroups[selectedKey]) {
+    definitions.set(OPEN_GROUP_ACTION_ID, {
+      id: OPEN_GROUP_ACTION_ID,
+      title: 'Open group',
+      icon: 'folder',
+      kind: 'action'
     });
   }
   return definitions;
@@ -878,7 +876,7 @@ function renderActionCatalog() {
     button.setAttribute('aria-label', item.title);
     button.setAttribute(
       'aria-pressed',
-      String(item.id === selectedAction || item.toolbarGroupId === selectedAction)
+      String(item.id === selectedAction)
     );
     const icon = document.createElement('span');
     const iconMarkup = getActionIconMarkup(item);

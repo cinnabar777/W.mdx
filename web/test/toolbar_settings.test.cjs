@@ -154,11 +154,13 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /Open group: \$\{group\.title\}/);
   assert.match(mainSource, /function runToolbarClipboardAction\(actionId\)/);
   assert.match(mainSource, /runToolbarClipboardAction\(item\.id\)/);
-  assert.match(mainSource, /getToolbarGroupIdForAction\(actionId\)/);
+  assert.match(mainSource, /actionId === OPEN_GROUP_ACTION_ID/);
+  assert.match(mainSource, /sourceButton\?\.dataset\?\.toolbarKey/);
   assert.match(mainActivitySource, /fun writeClipboard\(text: String\?\): Boolean/);
   assert.match(mainActivitySource, /fun readClipboard\(\): String/);
   assert.match(androidSource, /TOOLBAR_HOLDING_ITEM_IDS = listOf\("cut", "copy", "paste", "selectAll"\)/);
-  assert.match(androidSource, /groupIds\.map \{ "openToolbarGroup:\$it" \}/);
+  assert.match(androidSource, /TOOLBAR_OPEN_GROUP_ACTION_ID = "openGroup"/);
+  assert.match(androidSource, /actionId\.startsWith\(LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX\)/);
 });
 
 test('toolbar appearance refreshes preserve layout and editor overlays follow the configured theme', () => {
