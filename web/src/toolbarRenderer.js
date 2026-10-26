@@ -145,6 +145,14 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
       kind: 'group'
     });
   }
+  for (const [id, definition] of Object.entries(config.customKeys || {})) {
+    definitions.set(id, {
+      id,
+      title: definition.title,
+      icon: definition.icon,
+      kind: 'action'
+    });
+  }
   const doc = container.ownerDocument;
   const buttons = [];
 
@@ -201,11 +209,16 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     labelElement.textContent = title;
     button.appendChild(labelElement);
 
-    if (style.gestureAction && typeof options.resolveGestureActionIcon === 'function') {
+    const gestureActionEntry = Object.entries(style.gestureActions || {})[0] ||
+      (style.gestureAction ? ['swipeUp', style.gestureAction] : null);
+    if (gestureActionEntry && typeof options.resolveGestureActionIcon === 'function') {
+      const [gestureId, actionId] = gestureActionEntry;
       const gestureIcon = options.resolveGestureActionIcon(
-        style.gestureAction,
-        style.gestureActionIconSvg,
-        id
+        actionId,
+        style.gestureActionIcons?.[gestureId] ||
+          (gestureId === 'swipeUp' ? style.gestureActionIconSvg : ''),
+        id,
+        gestureId
       );
       if (gestureIcon) {
         const marker = doc.createElement('span');
@@ -229,19 +242,37 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
       }
     }, { capture: true });
     button.addEventListener('pointerup', event => {
-      if (!pointerStart || typeof options.onSwipeUp !== 'function') {
+      if (!pointerStart) {
         pointerStart = null;
         return;
       }
       const deltaX = event.clientX - pointerStart.x;
       const deltaY = event.clientY - pointerStart.y;
       pointerStart = null;
-      if (deltaY <= -24 && Math.abs(deltaY) > Math.abs(deltaX) * 1.2) {
-        if (options.onSwipeUp(id, event, button)) {
+      const absX = Math.abs(deltaX);
+      const absY = Math.abs(deltaY);
+      let gestureId = null;
+      if (absX < 24 && absY < 24) return;
+      if (absX >= 18 && absY >= 18 && absX >= absY * 0.4 && absY >= absX * 0.4) {
+        gestureId = `${deltaY < 0 ? 'swipeUp' : 'swipeDown'}${deltaX < 0 ? 'Left' : 'Right'}`;
+      } else if (absY > absX * 1.2) {
+        gestureId = deltaY < 0 ? 'swipeUp' : 'swipeDown';
+      } else if (absX > absY * 1.2) {
+        gestureId = deltaX < 0 ? 'swipeLeft' : 'swipeRight';
+      }
+      if (!gestureId) return;
+      const handled = typeof options.onGesture === 'function'
+        ? options.onGesture(id, gestureId, event, button)
+        : gestureId === 'swipeUp' && typeof options.onSwipeUp === 'function'
+          ? options.onSwipeUp(id, event, button)
+          : false;
+      if (handled) {
           button.dataset.toolbarGestureSuppressClick = 'true';
           event.preventDefault();
-        }
       }
+    }, { capture: true });
+    button.addEventListener('pointercancel', () => {
+      pointerStart = null;
     }, { capture: true });
     button.addEventListener('pointerdown', event => {
       // Keep the editor's text selection and IME focus when toolbar keys are

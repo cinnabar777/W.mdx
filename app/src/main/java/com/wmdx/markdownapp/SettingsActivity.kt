@@ -1325,6 +1325,16 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
             "exportHtml", "search", "switchView", "newWindow", "settings"
         )
+        private val TOOLBAR_GESTURE_IDS = listOf(
+            "tap1", "tap2", "tap3",
+            "swipeUp", "swipeDown", "swipeLeft", "swipeRight",
+            "swipeUpLeft", "swipeUpRight", "swipeDownLeft", "swipeDownRight"
+        )
+        private val TOOLBAR_GESTURE_ACTION_IDS = listOf(
+            "historyBack", "historyForward", "toggleToolbar", "removeHighlight"
+        )
+        private val TOOLBAR_CUSTOM_KEY_ID_PATTERN =
+            Regex("""^custom-key-[a-z0-9-]{1,48}$""", RegexOption.IGNORE_CASE)
         private val TOOLBAR_COLOR_PROPERTIES = setOf(
             "iconColor", "backgroundColor", "activeBackgroundColor"
         )
@@ -1552,12 +1562,13 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             )
         }
         return org.json.JSONObject()
-            .put("version", 3)
+            .put("version", 4)
             .put("order", defaultOrder)
             .put("hidden", org.json.JSONArray())
             .put("popupGroups", popupGroups)
             .put("holding", org.json.JSONArray())
             .put("customGroups", org.json.JSONObject())
+            .put("customKeys", org.json.JSONObject())
             .put("styles", org.json.JSONObject())
             .toString()
     }
@@ -1591,11 +1602,31 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 ?: "folder"
             customGroups.put(id, org.json.JSONObject().put("title", title).put("icon", icon))
         }
+        val customKeys = org.json.JSONObject()
+        val rawCustomKeys = input.optJSONObject("customKeys") ?: org.json.JSONObject()
+        for (id in rawCustomKeys.keys()) {
+            val source = rawCustomKeys.optJSONObject(id) ?: continue
+            val title = source.optString("title", "").trim().take(48)
+            if (!TOOLBAR_CUSTOM_KEY_ID_PATTERN.matches(id) || title.isBlank()) continue
+            val icon = source.optString("icon", "newFile")
+                .takeIf { Regex("""^[a-z0-9_-]{1,48}$""", RegexOption.IGNORE_CASE).matches(it) }
+                ?: "newFile"
+            customKeys.put(id, org.json.JSONObject().put("title", title).put("icon", icon))
+        }
         val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten().toSet()
         val groupIds = (TOOLBAR_GROUP_ITEM_IDS.keys +
             customGroups.keys().asSequence().toList()).toList()
-        val validRootIds = TOOLBAR_ITEM_IDS + customGroups.keys().asSequence().toList()
+        val validRootIds = TOOLBAR_ITEM_IDS +
+            customGroups.keys().asSequence().toList() +
+            customKeys.keys().asSequence().toList()
         val validKeyIds = validRootIds + popupActionIds
+        val validActionIds = validKeyIds + TOOLBAR_GESTURE_ACTION_IDS
+        for (id in customKeys.keys()) {
+            val actionId = rawCustomKeys.optJSONObject(id)?.optString("actionId", "").orEmpty()
+            if (actionId.isNotBlank() && actionId != id && actionId in validActionIds) {
+                customKeys.optJSONObject(id)?.put("actionId", actionId)
+            }
+        }
         val hidden = mutableListOf<String>()
         val rawHidden = input.optJSONArray("hidden") ?: org.json.JSONArray()
         for (index in 0 until rawHidden.length()) {
@@ -1733,7 +1764,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         val safeColor = Regex(
             """^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)|[A-Za-z]{1,20})$"""
         )
-        for (id in TOOLBAR_STYLE_IDS + customGroups.keys().asSequence().toList()) {
+        for (id in TOOLBAR_STYLE_IDS +
+            customGroups.keys().asSequence().toList() +
+            customKeys.keys().asSequence().toList()) {
             val style = rawStyles.optJSONObject(id) ?: continue
             val cleanedStyle = org.json.JSONObject()
             for (property in TOOLBAR_COLOR_PROPERTIES) {
@@ -1752,24 +1785,49 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             }
             val title = style.optString("title", "").trim().take(48)
             if (title.isNotBlank()) cleanedStyle.put("title", title)
-            val gestureAction = style.optString("gestureAction", "")
-            if (gestureAction in validKeyIds) {
-                cleanedStyle.put("gestureAction", gestureAction)
-                val gestureIcon = style.optString("gestureActionIconSvg", "")
-                if (gestureIcon.isNotBlank() && isSafeToolbarSvg(gestureIcon)) {
-                    cleanedStyle.put("gestureActionIconSvg", gestureIcon)
+            val gestureActions = org.json.JSONObject()
+            val rawGestureActions = style.optJSONObject("gestureActions") ?: org.json.JSONObject()
+            for (gestureId in TOOLBAR_GESTURE_IDS) {
+                val actionId = rawGestureActions.optString(gestureId, "")
+                if (actionId in validActionIds) gestureActions.put(gestureId, actionId)
+            }
+            val legacyGestureAction = style.optString("gestureAction", "")
+            if (!gestureActions.has("swipeUp") && legacyGestureAction in validActionIds) {
+                gestureActions.put("swipeUp", legacyGestureAction)
+            }
+            if (gestureActions.length() > 0) {
+                cleanedStyle.put("gestureActions", gestureActions)
+            }
+
+            val gestureActionIcons = org.json.JSONObject()
+            val rawGestureIcons = style.optJSONObject("gestureActionIcons") ?: org.json.JSONObject()
+            for (gestureId in TOOLBAR_GESTURE_IDS) {
+                if (!gestureActions.has(gestureId)) continue
+                val iconSvg = rawGestureIcons.optString(gestureId, "")
+                if (iconSvg.isNotBlank() && isSafeToolbarSvg(iconSvg)) {
+                    gestureActionIcons.put(gestureId, iconSvg)
                 }
+            }
+            if (!gestureActionIcons.has("swipeUp") && gestureActions.has("swipeUp")) {
+                val legacyIcon = style.optString("gestureActionIconSvg", "")
+                if (legacyIcon.isNotBlank() && isSafeToolbarSvg(legacyIcon)) {
+                    gestureActionIcons.put("swipeUp", legacyIcon)
+                }
+            }
+            if (gestureActionIcons.length() > 0) {
+                cleanedStyle.put("gestureActionIcons", gestureActionIcons)
             }
             if (cleanedStyle.length() > 0) styles.put(id, cleanedStyle)
         }
 
         return org.json.JSONObject()
-            .put("version", 3)
+            .put("version", 4)
             .put("order", org.json.JSONArray(order))
             .put("hidden", org.json.JSONArray(hidden))
             .put("popupGroups", popupGroups)
             .put("holding", org.json.JSONArray(holding))
             .put("customGroups", customGroups)
+            .put("customKeys", customKeys)
             .put("styles", styles)
             .toString()
     }
@@ -1844,7 +1902,11 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
     private fun isToolbarStyleAllowed(itemId: String): Boolean {
         if (itemId in TOOLBAR_STYLE_IDS) return true
-        if (!Regex("""^custom-group-[a-z0-9-]{1,48}$""", RegexOption.IGNORE_CASE).matches(itemId)) {
+        val isCustomGroup = Regex(
+            """^custom-group-[a-z0-9-]{1,48}$""",
+            RegexOption.IGNORE_CASE
+        ).matches(itemId)
+        if (!isCustomGroup && !TOOLBAR_CUSTOM_KEY_ID_PATTERN.matches(itemId)) {
             return false
         }
         return runCatching {
@@ -1853,7 +1915,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
                     ?: defaultToolbarConfigJson()
             )
-            saved.optJSONObject("customGroups")?.has(itemId) == true
+            saved.optJSONObject("customGroups")?.has(itemId) == true ||
+                saved.optJSONObject("customKeys")?.has(itemId) == true
         }.getOrDefault(false)
     }
 
@@ -1863,10 +1926,14 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         value: String?
     ): Boolean {
         if (!isToolbarStyleAllowed(itemId)) return false
+        val gestureIconMatch = Regex(
+            """^gestureActionIconSvg:(tap1|tap2|tap3|swipeUp|swipeDown|swipeLeft|swipeRight|swipeUpLeft|swipeUpRight|swipeDownLeft|swipeDownRight)$"""
+        ).matchEntire(property)
         if (
             property !in TOOLBAR_COLOR_PROPERTIES &&
             property != "customSvg" &&
-            property != "gestureActionIconSvg"
+            property != "gestureActionIconSvg" &&
+            gestureIconMatch == null
         ) return false
         return try {
             val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
@@ -1876,7 +1943,16 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             )
             val styles = current.optJSONObject("styles") ?: org.json.JSONObject()
             val style = styles.optJSONObject(itemId) ?: org.json.JSONObject()
-            if (value.isNullOrBlank()) {
+            if (gestureIconMatch != null) {
+                val gestureId = gestureIconMatch.groupValues[1]
+                val icons = style.optJSONObject("gestureActionIcons") ?: org.json.JSONObject()
+                val safeValue = value?.takeIf { it.isNotBlank() }
+                if (safeValue == null) icons.remove(gestureId)
+                else if (isSafeToolbarSvg(safeValue)) icons.put(gestureId, safeValue)
+                else return false
+                if (icons.length() == 0) style.remove("gestureActionIcons")
+                else style.put("gestureActionIcons", icons)
+            } else if (value.isNullOrBlank()) {
                 style.remove(property)
             } else {
                 style.put(property, value)
@@ -2059,7 +2135,12 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 ?: request
             val action = payload?.optString("action") ?: "chooser"
             val property = payload?.optString("property")
-                ?.takeIf { it == "gestureActionIconSvg" }
+                ?.takeIf {
+                    it == "gestureActionIconSvg" ||
+                        Regex(
+                            """^gestureActionIconSvg:(tap1|tap2|tap3|swipeUp|swipeDown|swipeLeft|swipeRight|swipeUpLeft|swipeUpRight|swipeDownLeft|swipeDownRight)$"""
+                        ).matches(it)
+                }
                 ?: "customSvg"
             runToolbarSvgAction(itemId, property) {
                 when (action) {

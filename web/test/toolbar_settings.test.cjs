@@ -50,7 +50,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /preserveSvgColors/);
   assert.match(settingsSource, /toolbar-create-group-form/);
   assert.match(settingsSource, /config\.customGroups\[id\]/);
+  assert.match(settingsSource, /config\.customKeys\[id\]/);
   assert.match(html, /id="toolbar-add-custom"/);
+  assert.match(html, /\+ Custom key or group/);
   assert.match(html, /id="toolbar-create-group-form"/);
   assert.match(html, /id="toolbar-delete-custom-group"/);
   assert.match(html, /id="toolbar-open-icon-picker"/);
@@ -58,15 +60,23 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /aria-modal="true"/);
   assert.match(html, /id="toolbar-icon-search"/);
   assert.match(html, /id="toolbar-icon-list"/);
-  assert.match(html, /toolbar-preview-action-assignment/);
-  assert.match(html, /Swipe up/);
-  assert.match(html, /id="toolbar-swipe-up-icon"/);
+  assert.match(html, /data-toolbar-section="taps"/);
+  assert.match(html, /data-toolbar-section="side-swipes"/);
+  assert.match(html, /data-toolbar-section="corner-swipes"/);
+  assert.match(settingsSource, /TOOLBAR_GESTURE_GROUPS/);
+  assert.match(settingsSource, /gestureActions/);
+  assert.match(settingsSource, /gestureActionIcons/);
   assert.match(html, /id="toolbar-action-picker-modal"/);
   assert.match(html, /id="toolbar-action-search"/);
+  assert.match(html, /id="toolbar-custom-key-action"/);
   assert.match(html, /id="toolbar-preview-title-input"/);
   assert.match(html, /id="toolbar-edit-key-name"/);
   assert.match(html, /id="toolbar-delete-custom-group"[^>]*aria-label="Delete custom group"/);
-  assert.match(html, /grid-template-columns: minmax\(0, 1fr\) 48px/);
+  assert.match(html, /grid-template-columns: minmax\(0, 1fr\) 44px/);
+  assert.match(html, /border-radius: 50%/);
+  assert.match(html, /z-index: 10002/);
+  assert.match(html, /popup-open/);
+  assert.match(settingsSource, /layoutSignature/);
   assert.match(sharedCss, /--toolbar-label-display/);
   assert.match(preferenceXml, /pref_toolbar_show_labels/);
   assert.match(preferenceXml, /pref_toolbar_label_size/);
@@ -158,7 +168,8 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
   assert.match(androidSource, /sanitizeToolbarGroupCycles\(popupGroups, groupIds\)/);
   assert.match(androidSource, /id in validKeyIds && id !in assignedActions/);
   assert.match(androidSource, /input\.optInt\("version", 1\) >= 3/);
-  assert.match(androidSource, /\.put\("version", 3\)/);
+  assert.match(androidSource, /\.put\("version", 4\)/);
+  assert.match(androidSource, /\.put\("customKeys", customKeys\)/);
 });
 
 test('choosing a color in a transparent color picker makes the selected color visible', () => {

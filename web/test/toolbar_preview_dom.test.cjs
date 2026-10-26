@@ -180,9 +180,23 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.equal(pickerButton.parentElement, editor.querySelector('.toolbar-preview-editor-content'));
     assert.equal(dom.window.document.querySelector('#toolbar-current-key-preview'), null);
     assert.equal(dom.window.document.querySelector('#toolbar-current-icon'), null);
-    assert.equal(editor.querySelectorAll('.toolbar-preview-action-assignment').length, 1);
-    assert.match(editor.textContent, /Swipe up/);
-    assert.equal(editor.querySelectorAll('.toolbar-preview-action-icon').length, 1);
+    assert.equal(editor.querySelectorAll('[data-toolbar-section]').length, 4);
+    assert.equal(editor.querySelectorAll('.toolbar-preview-gesture-action').length, 12);
+    assert.equal(editor.querySelectorAll('.toolbar-preview-gesture-icon').length, 11);
+    assert.equal(
+      editor.querySelector('[data-toolbar-section="colors"]').open,
+      false,
+      'color settings start collapsed with the gesture sections'
+    );
+    const tapsSection = editor.querySelector('[data-toolbar-section="taps"]');
+    const sideSwipesSection = editor.querySelector('[data-toolbar-section="side-swipes"]');
+    tapsSection.open = true;
+    tapsSection.dispatchEvent(new dom.window.Event('toggle'));
+    sideSwipesSection.open = true;
+    sideSwipesSection.dispatchEvent(new dom.window.Event('toggle'));
+    assert.equal(tapsSection.open, false, 'opening a section collapses the previous section');
+    assert.equal(sideSwipesSection.open, true);
+    sideSwipesSection.open = false;
     pickerButton.click();
     assert.equal(picker.hidden, false, 'tapping the icon row opens a separate popup');
     assert.equal(picker.getAttribute('aria-hidden'), 'false');
@@ -248,7 +262,9 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.equal(picker.hidden, true, 'choosing an icon dismisses the popup');
     assert.match(saves.at(-1).styles.saveFile.customSvg, /<svg/);
     const actionPicker = dom.window.document.querySelector('#toolbar-action-picker-modal');
-    dom.window.document.querySelector('#toolbar-swipe-up-action').click();
+    dom.window.document
+      .querySelector('.toolbar-preview-gesture-action[data-gesture-id="swipeUp"]')
+      .click();
     assert.equal(actionPicker.hidden, false, 'the action row opens its own searchable picker');
     const actionSearch = dom.window.document.querySelector('#toolbar-action-search');
     actionSearch.value = 'bold';
@@ -257,18 +273,18 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.equal(boldAction.getAttribute('aria-label'), 'Bold');
     boldAction.click();
     assert.equal(actionPicker.hidden, true);
-    assert.equal(saves.at(-1).styles.saveFile.gestureAction, 'bold');
+    assert.equal(saves.at(-1).styles.saveFile.gestureActions.swipeUp, 'bold');
     assert.match(
-      dom.window.document.querySelector('#toolbar-swipe-up-icon').innerHTML,
+      dom.window.document.querySelector('.toolbar-preview-gesture-icon[data-gesture-id="swipeUp"]').innerHTML,
       /<svg/,
       'choosing an action fills its matching icon automatically'
     );
-    dom.window.document.querySelector('#toolbar-swipe-up-icon').click();
+    dom.window.document.querySelector('.toolbar-preview-gesture-icon[data-gesture-id="swipeUp"]').click();
     assert.equal(picker.hidden, false, 'the assigned action icon opens the existing icon picker');
     iconSearch.value = 'italic';
     iconSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     picker.querySelector('#toolbar-icon-list [role="option"]').click();
-    assert.match(saves.at(-1).styles.saveFile.gestureActionIconSvg, /<svg/);
+    assert.match(saves.at(-1).styles.saveFile.gestureActionIcons.swipeUp, /<svg/);
 
     dom.window.document.querySelector('#toolbar-edit-key-name').click();
     const nameInput = dom.window.document.querySelector('#toolbar-preview-title-input');
@@ -334,17 +350,11 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.equal(edits.length, 2, 'tapping an action selects its settings without deleting the folder');
     assert.equal(popup.classList.contains('hidden'), true);
 
-    dom.window.applyToolbarSettings({
-      pref_toolbar_bottom_config: JSON.stringify({
-        version: 1,
-        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert'],
-        hidden: ['menu'],
-        styles: {}
-      }),
-      pref_toolbar_height: 48,
-      pref_toolbar_padding: 4,
-      pref_app_theme: 'amoled'
-    });
+    await dragKey(
+      dom,
+      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="menu"]'),
+      dom.window.document.querySelector('#toolbar-holding-tray')
+    );
     const heldMenuFolder = dom.window.document
       .querySelector('#toolbar-holding-tray [data-toolbar-key="menu"]');
     const heldMenuAction = dom.window.document
@@ -476,6 +486,21 @@ test('moving a folder releases its actions and keeps the empty folder visible in
       0,
       'the folder is empty but its configuration remains intact'
     );
+    const heldIdsBeforeAppearanceRefresh = [
+      ...tray.querySelectorAll('[data-toolbar-key], [data-preview-popup-item]')
+    ].map(button => button.dataset.toolbarKey || button.dataset.previewPopupItem);
+    dom.window.applyToolbarSettings(JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify(settings),
+      pref_toolbar_bg_color: '#202020',
+      pref_app_theme: 'amoled'
+    }));
+    assert.deepEqual(
+      [
+        ...tray.querySelectorAll('[data-toolbar-key], [data-preview-popup-item]')
+      ].map(button => button.dataset.toolbarKey || button.dataset.previewPopupItem),
+      heldIdsBeforeAppearanceRefresh,
+      'a stale toolbar snapshot accompanying an appearance change must not restore the old layout'
+    );
   } finally {
     dom.window.close();
     if (previousWindow === undefined) delete global.window;
@@ -519,6 +544,9 @@ test('custom groups accept loose actions and deleting a group releases its child
       .click();
     const popup = dom.window.document.querySelector('#toolbar-preview-popup');
     dom.window.document.querySelector('#toolbar-add-custom').click();
+    const type = dom.window.document.querySelector('#toolbar-create-group-type');
+    type.value = 'group';
+    type.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     const name = dom.window.document.querySelector('#toolbar-create-group-name');
     name.value = 'My group';
     dom.window.document.querySelector('#toolbar-create-group-form')
@@ -597,6 +625,78 @@ test('custom groups accept loose actions and deleting a group releases its child
       saves.at(-1).holding.includes('todoList'),
       'deleting a custom group releases its child action instead of deleting it'
     );
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('custom toolbar keys can run searchable actions and be assigned as gesture actions', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const saves = [];
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify({
+        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+        hidden: [],
+        holding: [],
+        customGroups: {},
+        customKeys: {},
+        styles: {}
+      })
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?custom-key-test=${Date.now()}`);
+    dom.window.document.querySelector('#toolbar-add-custom').click();
+    const name = dom.window.document.querySelector('#toolbar-create-group-name');
+    name.value = 'Quick Action';
+    dom.window.document.querySelector('#toolbar-create-group-form')
+      .dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+
+    const customKeyId = Object.keys(saves.at(-1).customKeys)[0];
+    assert.ok(customKeyId?.startsWith('custom-key-'));
+    assert.ok(saves.at(-1).holding.includes(customKeyId));
+    dom.window.document
+      .querySelector(`#toolbar-holding-tray [data-toolbar-key="${customKeyId}"]`)
+      .click();
+    const customActionRow = dom.window.document.querySelector('#toolbar-custom-key-action-row');
+    assert.equal(customActionRow.hidden, false);
+    dom.window.document.querySelector('#toolbar-custom-key-action').click();
+    const actionPicker = dom.window.document.querySelector('#toolbar-action-picker-modal');
+    const search = dom.window.document.querySelector('#toolbar-action-search');
+    search.value = 'Save As';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    actionPicker.querySelector('[role="option"][aria-label="Save As"]').click();
+    assert.equal(saves.at(-1).customKeys[customKeyId].actionId, 'saveAsFile');
+    assert.match(
+      dom.window.document.querySelector('#toolbar-custom-key-action').textContent,
+      /Key action → Save As/
+    );
+
+    dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]').click();
+    dom.window.document
+      .querySelector('.toolbar-preview-gesture-action[data-gesture-id="tap1"]')
+      .click();
+    search.value = 'Quick Action';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    actionPicker.querySelector('[role="option"][aria-label="Quick Action"]').click();
+    assert.equal(saves.at(-1).styles.undo.gestureActions.tap1, customKeyId);
   } finally {
     dom.window.close();
     if (previousWindow === undefined) delete global.window;

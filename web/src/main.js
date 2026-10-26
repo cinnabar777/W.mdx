@@ -3973,6 +3973,79 @@ async function setEditorMode(mode) {
   return activeAdapter;
 }
 
+function getToolbarSwipeGesture(deltaX, deltaY) {
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+  if (absX < 24 && absY < 24) return null;
+  if (absX >= 18 && absY >= 18 && absX >= absY * 0.4 && absY >= absX * 0.4) {
+    return `${deltaY < 0 ? 'swipeUp' : 'swipeDown'}${deltaX < 0 ? 'Left' : 'Right'}`;
+  }
+  if (absY > absX * 1.2) return deltaY < 0 ? 'swipeUp' : 'swipeDown';
+  if (absX > absY * 1.2) return deltaX < 0 ? 'swipeLeft' : 'swipeRight';
+  return null;
+}
+
+function installToolbarTapActions(container) {
+  if (!container || container.dataset.toolbarTapActionsInstalled === 'true') return;
+  container.dataset.toolbarTapActionsInstalled = 'true';
+  const pendingTaps = new WeakMap();
+  container.addEventListener('click', event => {
+    const button = event.target?.closest?.('[data-toolbar-key], [data-toolbar-style-id]');
+    if (!button || !container.contains(button)) return;
+    if (button.dataset.toolbarTapReplay === 'true') {
+      delete button.dataset.toolbarTapReplay;
+      return;
+    }
+    const id = button.dataset.toolbarKey || button.dataset.toolbarStyleId;
+    const actions = bottomToolbarConfig.styles[id]?.gestureActions || {};
+    const hasTap1 = Boolean(actions.tap1);
+    const hasTap2 = Boolean(actions.tap2);
+    const hasTap3 = Boolean(actions.tap3);
+    if (!hasTap1 && !hasTap2 && !hasTap3) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const state = pendingTaps.get(button) || { count: 0, timer: null };
+    if (state.timer) clearTimeout(state.timer);
+    state.count += 1;
+
+    const fallback = () => {
+      if (hasTap1) runToolbarGestureAction(actions.tap1, button);
+      else {
+        button.dataset.toolbarTapReplay = 'true';
+        button.click();
+      }
+    };
+    const finish = () => {
+      const actionId = actions[`tap${state.count}`];
+      if (actionId) runToolbarGestureAction(actionId, button);
+      else fallback();
+      pendingTaps.delete(button);
+    };
+
+    if (state.count >= 3) {
+      if (state.timer) clearTimeout(state.timer);
+      if (hasTap3) runToolbarGestureAction(actions.tap3, button);
+      else if (hasTap2) runToolbarGestureAction(actions.tap2, button);
+      else fallback();
+      pendingTaps.delete(button);
+      return;
+    }
+    if (state.count === 2 && hasTap2 && !hasTap3) {
+      runToolbarGestureAction(actions.tap2, button);
+      pendingTaps.delete(button);
+      return;
+    }
+    if (state.count === 1 && !hasTap2 && !hasTap3) {
+      runToolbarGestureAction(actions.tap1, button);
+      pendingTaps.delete(button);
+      return;
+    }
+    state.timer = setTimeout(finish, 300);
+    pendingTaps.set(button, state);
+  }, true);
+}
+
 function setupGroupedControlBar() {
   const topContainer = document.querySelector('#editor-container');
   if (!topContainer) return;
@@ -3983,6 +4056,7 @@ function setupGroupedControlBar() {
     bar.className = 'grouped-control-bar';
     topContainer.appendChild(bar);
   }
+  installToolbarTapActions(bar);
 
   const toolbarActionRegistry = createRuntimeToolbarItemRegistry();
   const toolbarDefinitions = Object.fromEntries(
@@ -4001,9 +4075,16 @@ function setupGroupedControlBar() {
         ? icon
         : svgIcons[icon] || icon || '';
     },
-    onSwipeUp: (id, event, button) => {
-      const actionId = bottomToolbarConfig.styles[id]?.gestureAction;
+    onGesture: (id, gestureId, event, button) => {
+      const actionId = bottomToolbarConfig.styles[id]?.gestureActions?.[gestureId] ||
+        (gestureId === 'swipeUp' ? bottomToolbarConfig.styles[id]?.gestureAction : '');
       return actionId ? runToolbarGestureAction(actionId, button) : false;
+    },
+    onKeyClick: (id, event) => {
+      if (!bottomToolbarConfig.customKeys?.[id]) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runToolbarGestureAction(id, event.currentTarget);
     }
   });
 
@@ -4272,13 +4353,52 @@ function createRuntimeToolbarItemRegistry() {
       kind: 'group'
     });
   }
+  for (const [id, key] of Object.entries(bottomToolbarConfig.customKeys || {})) {
+    registry.set(id, {
+      id,
+      title: key.title,
+      icon: svgIcons[key.icon] || key.icon,
+      kind: 'action'
+    });
+  }
+  for (const item of [
+    { id: 'historyBack', title: 'Back in Navigation History', icon: svgIcons.undo },
+    { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
+    { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
+    { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough }
+  ]) {
+    registry.set(item.id, item);
+  }
   return registry;
 }
 
-function runToolbarGestureAction(actionId, sourceButton) {
+function runToolbarGestureAction(actionId, sourceButton, visited = new Set()) {
+  if (!actionId || visited.has(actionId)) return false;
+  visited.add(actionId);
   if (actionId === 'undo') {
     activeAdapter?.undo();
     return Boolean(activeAdapter);
+  }
+  if (actionId === 'historyBack' || actionId === 'historyForward') {
+    const direction = actionId === 'historyBack' ? 'back' : 'forward';
+    if (!navigateTocHistory(direction) && window.AndroidNative) {
+      window.AndroidNative.onNativeAction(
+        direction === 'back' ? 'history_back' : 'history_forward'
+      );
+    }
+    return true;
+  }
+  if (actionId === 'toggleToolbar') {
+    toggleBottomToolbar();
+    return true;
+  }
+  if (actionId === 'removeHighlight') {
+    execCmd('highlight', { value: null });
+    return true;
+  }
+  const customKey = bottomToolbarConfig.customKeys?.[actionId];
+  if (customKey) {
+    return runToolbarGestureAction(customKey.actionId, sourceButton, visited);
   }
   const item = createRuntimeToolbarItemRegistry().get(actionId);
   if (!item) return false;
@@ -4307,11 +4427,17 @@ function installPopupToolbarSwipeUp(button, styleId) {
     const deltaX = event.clientX - pointerStart.x;
     const deltaY = event.clientY - pointerStart.y;
     pointerStart = null;
-    if (deltaY > -24 || Math.abs(deltaY) <= Math.abs(deltaX) * 1.2) return;
-    const actionId = bottomToolbarConfig.styles[styleId]?.gestureAction;
+    const gestureId = getToolbarSwipeGesture(deltaX, deltaY);
+    if (!gestureId) return;
+    const style = bottomToolbarConfig.styles[styleId] || {};
+    const actionId = style.gestureActions?.[gestureId] ||
+      (gestureId === 'swipeUp' ? style.gestureAction : '');
     if (!actionId || !runToolbarGestureAction(actionId, button)) return;
     button.dataset.toolbarGestureSuppressClick = 'true';
     event.preventDefault();
+  }, { capture: true });
+  button.addEventListener('pointercancel', () => {
+    pointerStart = null;
   }, { capture: true });
   button.addEventListener('click', event => {
     if (button.dataset.toolbarGestureSuppressClick !== 'true') return;
@@ -5001,6 +5127,7 @@ function hidePopupStrip() {
 function togglePopupStrip(groupKey, targetBtn, items) {
   const strip = document.querySelector('#popup-toolbar-strip');
   if (!strip) return;
+  installToolbarTapActions(strip);
 
   if (activePopupGroup === groupKey) {
     hidePopupStrip();
@@ -5069,10 +5196,14 @@ function togglePopupStrip(groupKey, targetBtn, items) {
     label.className = 'toolbar-key-label';
     label.textContent = title || '';
     btn.appendChild(label);
-    if (style.gestureAction) {
+    const gestureEntry = Object.entries(style.gestureActions || {})[0] ||
+      (style.gestureAction ? ['swipeUp', style.gestureAction] : null);
+    if (gestureEntry) {
+      const [gestureId, gestureActionId] = gestureEntry;
       const gestureIcon = getToolbarGestureIcon(
-        style.gestureAction,
-        style.gestureActionIconSvg
+        gestureActionId,
+        style.gestureActionIcons?.[gestureId] ||
+          (gestureId === 'swipeUp' ? style.gestureActionIconSvg : '')
       );
       if (gestureIcon) {
         const marker = document.createElement('span');

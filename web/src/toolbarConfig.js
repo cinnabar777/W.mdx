@@ -1,4 +1,5 @@
 import { TABLE_ACTIONS } from './tableActions.js';
+import { BUILT_IN_GESTURE_ACTION_IDS, TOOLBAR_GESTURE_IDS } from './toolbarGestures.js';
 
 export const BOTTOM_TOOLBAR_ITEMS = Object.freeze([
   { id: 'undo', title: 'Undo (Hold: Redo)', icon: 'undo', kind: 'action' },
@@ -48,12 +49,13 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 3,
+  version: 4,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
   holding: [],
   customGroups: {},
+  customKeys: {},
   styles: {}
 });
 
@@ -111,6 +113,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       popupGroups: createDefaultPopupGroups(),
       holding: [],
       customGroups: {},
+      customKeys: {},
       styles: {}
     };
   }
@@ -133,12 +136,45 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     }
   }
 
-  const rootIds = [...BOTTOM_TOOLBAR_ITEM_IDS, ...Object.keys(customGroups)];
+  const customKeys = {};
+  const customKeyActions = {};
+  if (parsed.customKeys && typeof parsed.customKeys === 'object' &&
+      !Array.isArray(parsed.customKeys)) {
+    for (const [id, rawKey] of Object.entries(parsed.customKeys)) {
+      if (!/^custom-key-[a-z0-9-]{1,48}$/i.test(id) ||
+          !rawKey || typeof rawKey !== 'object' || Array.isArray(rawKey)) continue;
+      const title = typeof rawKey.title === 'string'
+        ? rawKey.title.trim().slice(0, 48)
+        : '';
+      if (!title) continue;
+      const icon = typeof rawKey.icon === 'string' &&
+        /^[a-z0-9_-]{1,48}$/i.test(rawKey.icon)
+        ? rawKey.icon
+        : 'newFile';
+      customKeys[id] = { title, icon };
+      if (typeof rawKey.actionId === 'string') customKeyActions[id] = rawKey.actionId;
+    }
+  }
+
+  const rootIds = [
+    ...BOTTOM_TOOLBAR_ITEM_IDS,
+    ...Object.keys(customGroups),
+    ...Object.keys(customKeys)
+  ];
   const groupIds = new Set([
     ...Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS),
     ...Object.keys(customGroups)
   ]);
   const keyIds = new Set([...rootIds, ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS]);
+  const gestureActionIds = new Set([
+    ...keyIds,
+    ...BUILT_IN_GESTURE_ACTION_IDS
+  ]);
+  for (const [id, actionId] of Object.entries(customKeyActions)) {
+    if (actionId !== id && gestureActionIds.has(actionId)) {
+      customKeys[id].actionId = actionId;
+    }
+  }
   const legacyHidden = normalizeUniqueIds(parsed.hidden, keyIds);
   let order = normalizeUniqueIds(parsed.order, keyIds)
     .filter(id => !legacyHidden.includes(id));
@@ -258,7 +294,8 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   if (parsed.styles && typeof parsed.styles === 'object' && !Array.isArray(parsed.styles)) {
     const allowedStyleIds = new Set([
       ...BOTTOM_TOOLBAR_STYLE_IDS,
-      ...Object.keys(customGroups)
+      ...Object.keys(customGroups),
+      ...Object.keys(customKeys)
     ]);
     for (const [id, style] of Object.entries(parsed.styles)) {
       if (!allowedStyleIds.has(id)) continue;
@@ -279,20 +316,49 @@ export function normalizeBottomToolbarConfig(rawConfig) {
         const title = style.title.trim().slice(0, 48);
         if (title) normalized.title = title;
       }
-      if (typeof style.gestureAction === 'string' && keyIds.has(style.gestureAction)) {
-        normalized.gestureAction = style.gestureAction;
-        if (
-          typeof style.gestureActionIconSvg === 'string' &&
-          style.gestureActionIconSvg.length <= 65536
-        ) {
-          normalized.gestureActionIconSvg = style.gestureActionIconSvg;
+      const gestureActions = {};
+      if (style.gestureActions && typeof style.gestureActions === 'object' &&
+          !Array.isArray(style.gestureActions)) {
+        for (const [gestureId, actionId] of Object.entries(style.gestureActions)) {
+          if (TOOLBAR_GESTURE_IDS.includes(gestureId) &&
+              typeof actionId === 'string' && gestureActionIds.has(actionId)) {
+            gestureActions[gestureId] = actionId;
+          }
         }
+      }
+      if (!gestureActions.swipeUp &&
+          typeof style.gestureAction === 'string' &&
+          gestureActionIds.has(style.gestureAction)) {
+        gestureActions.swipeUp = style.gestureAction;
+      }
+      if (Object.keys(gestureActions).length) {
+        normalized.gestureActions = gestureActions;
+      }
+
+      const gestureActionIcons = {};
+      if (style.gestureActionIcons && typeof style.gestureActionIcons === 'object' &&
+          !Array.isArray(style.gestureActionIcons)) {
+        for (const [gestureId, svg] of Object.entries(style.gestureActionIcons)) {
+          if (TOOLBAR_GESTURE_IDS.includes(gestureId) &&
+              typeof svg === 'string' && svg.length <= 65536 &&
+              gestureActions[gestureId]) {
+            gestureActionIcons[gestureId] = svg;
+          }
+        }
+      }
+      if (!gestureActionIcons.swipeUp && gestureActions.swipeUp &&
+          typeof style.gestureActionIconSvg === 'string' &&
+          style.gestureActionIconSvg.length <= 65536) {
+        gestureActionIcons.swipeUp = style.gestureActionIconSvg;
+      }
+      if (Object.keys(gestureActionIcons).length) {
+        normalized.gestureActionIcons = gestureActionIcons;
       }
       if (Object.keys(normalized).length) styles[id] = normalized;
     }
   }
 
-  return { version: 3, order, hidden, popupGroups, holding, customGroups, styles };
+  return { version: 4, order, hidden, popupGroups, holding, customGroups, customKeys, styles };
 }
 
 function hasGroupPath(groupChildren, start, target, visited = new Set()) {

@@ -5,6 +5,10 @@ import {
   normalizeBottomToolbarConfig,
   orderBottomToolbarPopupItems
 } from './toolbarConfig.js';
+import {
+  BUILT_IN_GESTURE_ACTION_IDS,
+  TOOLBAR_GESTURE_GROUPS
+} from './toolbarGestures.js';
 import { svgIcons } from './toolbarIcons.js';
 import {
   renderBottomToolbarKeys,
@@ -32,9 +36,12 @@ let editorKeyCache = null;
 let iconPickerOpen = false;
 let actionPickerOpen = false;
 let iconPickerTarget = 'key';
+let actionPickerTarget = 'gesture';
+let selectedGestureId = null;
 let editingKeyName = false;
 let toolbarEditorOverlayOpen = false;
 let nextCustomGroupNumber = 1;
+let locallySavedToolbarLayout = null;
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 const PREVIEW_GROUP_ITEMS = {
@@ -98,10 +105,20 @@ const PREVIEW_ITEM_DEFINITIONS = new Map([
   ...BOTTOM_TOOLBAR_ITEMS.map(item => [item.id, item]),
   ...Object.values(PREVIEW_GROUP_ITEMS).flat().map(item => [item.id, item])
 ]);
+const PREVIEW_SHORTCUT_ITEMS = [
+  { id: 'historyBack', title: 'Back in Navigation History', icon: svgIcons.undo },
+  { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
+  { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
+  { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough }
+];
+for (const item of PREVIEW_SHORTCUT_ITEMS) {
+  PREVIEW_ITEM_DEFINITIONS.set(item.id, item);
+}
 const PREVIEW_ICON_TITLES = new Map();
 for (const item of [
   ...BOTTOM_TOOLBAR_ITEMS,
-  ...Object.values(PREVIEW_GROUP_ITEMS).flat()
+  ...Object.values(PREVIEW_GROUP_ITEMS).flat(),
+  ...PREVIEW_SHORTCUT_ITEMS
 ]) {
   PREVIEW_ICON_TITLES.set(item.id, item.title);
   if (typeof item.icon === 'string' && svgIcons[item.icon]) {
@@ -140,8 +157,9 @@ function setIconPickerOpen(open, clearSearch = false, target = 'key') {
   if (iconPickerOpen) renderIconCatalog();
 }
 
-function setActionPickerOpen(open, clearSearch = false) {
+function setActionPickerOpen(open, clearSearch = false, target = 'gesture') {
   actionPickerOpen = Boolean(open && selectedKey);
+  if (open) actionPickerTarget = target;
   const search = document.querySelector('#toolbar-action-search');
   if (clearSearch && search) search.value = '';
   if (!actionPicker) return;
@@ -154,6 +172,9 @@ function actionDefinitions() {
   const definitions = new Map(PREVIEW_ITEM_DEFINITIONS);
   for (const [id, group] of Object.entries(config.customGroups)) {
     definitions.set(id, { id, title: group.title, icon: group.icon, kind: 'group' });
+  }
+  for (const [id, key] of Object.entries(config.customKeys || {})) {
+    definitions.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
   }
   return definitions;
 }
@@ -175,10 +196,17 @@ function getActionIconMarkup(item) {
 }
 
 function getAssignedSwipeIconMarkup(style) {
-  if (style?.gestureActionIconSvg) {
-    return sanitizeToolbarSvg(style.gestureActionIconSvg, false, document);
-  }
-  return getActionIconMarkup(getActionDefinition(style?.gestureAction));
+  return getAssignedGestureIconMarkup(style, 'swipeUp');
+}
+
+function getAssignedGestureIconMarkup(style, gestureId) {
+  const svg = style?.gestureActionIcons?.[gestureId] ||
+    (gestureId === 'swipeUp' ? style?.gestureActionIconSvg : '');
+  if (svg) return sanitizeToolbarSvg(svg, false, document);
+  return getActionIconMarkup(getActionDefinition(
+    style?.gestureActions?.[gestureId] ||
+    (gestureId === 'swipeUp' ? style?.gestureAction : '')
+  ));
 }
 
 function syncToolbarEditorOverlay(open) {
@@ -200,6 +228,9 @@ function render() {
   for (const [id, group] of Object.entries(config.customGroups)) {
     definitions.set(id, { id, title: group.title, icon: group.icon, kind: 'group' });
   }
+  for (const [id, key] of Object.entries(config.customKeys || {})) {
+    definitions.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
+  }
   const emptyGroupIds = getEmptyPopupGroupIds();
   const toolbarConfig = {
     ...config,
@@ -210,8 +241,12 @@ function render() {
     definitions: Object.fromEntries(definitions),
     buttonClass: 'grouped-key-btn toolbar-preview-key',
     resolveCustomIcon: style => style.customSvg || '',
-    resolveGestureActionIcon: (actionId, customSvg) =>
-      getAssignedSwipeIconMarkup({ gestureAction: actionId, gestureActionIconSvg: customSvg }),
+    resolveGestureActionIcon: (actionId, customSvg, keyId) =>
+      getAssignedSwipeIconMarkup({
+        ...(config.styles[keyId] || {}),
+        gestureActions: { swipeUp: actionId },
+        gestureActionIcons: { swipeUp: customSvg }
+      }),
     onKeyClick: onToolbarKeyClick
   });
   for (const button of toolbar.querySelectorAll('.toolbar-preview-key')) {
@@ -229,19 +264,28 @@ function render() {
 
   if (config.hidden.length || config.holding.length || emptyGroupIds.size > 0) {
     const heldToolbarKeys = [...new Set([...config.holding, ...config.hidden, ...emptyGroupIds])]
-      .filter(id => BOTTOM_TOOLBAR_ITEMS.some(item => item.id === id) || config.customGroups[id]);
+          .filter(id =>
+            BOTTOM_TOOLBAR_ITEMS.some(item => item.id === id) ||
+            config.customGroups[id] ||
+            config.customKeys?.[id]
+          );
     if (heldToolbarKeys.length === 0) {
       tray.replaceChildren();
     } else {
       const trayConfig = {
         version: 3,
         order: heldToolbarKeys,
-        hidden: [...BOTTOM_TOOLBAR_ITEM_IDS, ...Object.keys(config.customGroups)].filter(
+        hidden: [
+          ...BOTTOM_TOOLBAR_ITEM_IDS,
+          ...Object.keys(config.customGroups),
+          ...Object.keys(config.customKeys || {})
+        ].filter(
           id => !heldToolbarKeys.includes(id)
         ),
         popupGroups: config.popupGroups,
         holding: [],
         customGroups: config.customGroups,
+        customKeys: config.customKeys,
         styles: config.styles
       };
       renderBottomToolbarKeys(tray, trayConfig, svgIcons, {
@@ -249,8 +293,12 @@ function render() {
         includeEmptyGroups: true,
         buttonClass: 'grouped-key-btn toolbar-preview-key',
         resolveCustomIcon: style => style.customSvg || '',
-        resolveGestureActionIcon: (actionId, customSvg) =>
-          getAssignedSwipeIconMarkup({ gestureAction: actionId, gestureActionIconSvg: customSvg }),
+        resolveGestureActionIcon: (actionId, customSvg, keyId) =>
+          getAssignedSwipeIconMarkup({
+            ...(config.styles[keyId] || {}),
+            gestureActions: { swipeUp: actionId },
+            gestureActionIcons: { swipeUp: customSvg }
+          }),
         onKeyClick: onToolbarKeyClick
       });
     }
@@ -284,6 +332,10 @@ function render() {
     actionPicker.setAttribute('aria-hidden', String(!actionPickerOpen));
   }
   renderPopupGroup();
+  editor?.classList.toggle(
+    'popup-open',
+    Boolean(popup && !popup.classList.contains('hidden'))
+  );
 }
 
 function applySettings(payload) {
@@ -297,7 +349,14 @@ function applySettings(payload) {
   }
   if (!prefs || typeof prefs !== 'object') prefs = {};
 
-  config = normalizeBottomToolbarConfig(prefs.pref_toolbar_bottom_config);
+  const incomingConfig = normalizeBottomToolbarConfig(prefs.pref_toolbar_bottom_config);
+  const incomingLayout = layoutSignature(incomingConfig);
+  if (!locallySavedToolbarLayout || incomingLayout === locallySavedToolbarLayout) {
+    config = incomingConfig;
+  }
+  // Appearance preference updates can race a toolbar save. Keep the layout
+  // already saved by this preview instead of replacing its holding area with
+  // an older toolbar-config snapshot.
   const isLightTheme = prefs.pref_app_theme === 'light';
   document.body.classList.toggle('light-theme', isLightTheme);
   setCssVariable('--toolbar-bg', prefs.pref_toolbar_bg_color, isLightTheme ? '#f8f9fa' : '#121212');
@@ -340,6 +399,18 @@ function saveConfig() {
   }
   const success = save(JSON.stringify(config));
   setStatus(success === false ? 'Could not save toolbar changes.' : 'Toolbar changes saved.');
+  if (success !== false) locallySavedToolbarLayout = layoutSignature(config);
+}
+
+function layoutSignature(value) {
+  return JSON.stringify({
+    order: value.order,
+    hidden: value.hidden,
+    popupGroups: value.popupGroups,
+    holding: value.holding,
+    customGroups: value.customGroups,
+    customKeys: value.customKeys
+  });
 }
 
 function onToolbarKeyClick(id) {
@@ -381,6 +452,9 @@ function renderPopupGroup() {
   }
   for (const [id, group] of Object.entries(config.customGroups)) {
     availableItems.set(id, { id, title: group.title, icon: group.icon, kind: 'group' });
+  }
+  for (const [id, key] of Object.entries(config.customKeys || {})) {
+    availableItems.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
   }
   const groupOrder = openPopupGroup
     ? config.popupGroups[openPopupGroup]?.order || []
@@ -458,12 +532,16 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   labelElement.className = 'toolbar-key-label';
   labelElement.textContent = title;
   button.appendChild(labelElement);
-  if (style.gestureAction) {
-    const gestureIcon = getAssignedSwipeIconMarkup(style);
+  const assignedGestureId = TOOLBAR_GESTURE_GROUPS
+    .flatMap(group => group.gestures)
+    .find(gesture => getGestureActionId(style, gesture.id))?.id;
+  if (assignedGestureId) {
+    const gestureIcon = getAssignedGestureIconMarkup(style, assignedGestureId);
     if (gestureIcon) {
       const marker = document.createElement('span');
       marker.className = 'toolbar-key-gesture-indicator';
       marker.setAttribute('aria-hidden', 'true');
+      marker.title = `${assignedGestureId} action`;
       marker.innerHTML = gestureIcon;
       button.appendChild(marker);
     }
@@ -490,7 +568,13 @@ function renderHeldPopupKeys() {
   const availableItems = new Map(
     Object.values(PREVIEW_GROUP_ITEMS).flat().map(item => [item.id, item])
   );
+  const rootIds = new Set([
+    ...BOTTOM_TOOLBAR_ITEM_IDS,
+    ...Object.keys(config.customGroups),
+    ...Object.keys(config.customKeys || {})
+  ]);
   for (const actionId of config.holding) {
+    if (rootIds.has(actionId)) continue;
     const item = availableItems.get(actionId);
     if (item) tray.appendChild(createPreviewPopupKey(item, null, 'tray', true));
   }
@@ -502,16 +586,31 @@ function refreshSelectedKeyEditor() {
     BOTTOM_TOOLBAR_ITEMS.find(item => item.id === selectedKey) ||
     (config.customGroups[selectedKey]
       ? { id: selectedKey, title: config.customGroups[selectedKey].title, kind: 'group' }
+      : config.customKeys?.[selectedKey]
+        ? { id: selectedKey, title: config.customKeys[selectedKey].title, kind: 'action' }
       : null);
   if (selectedKey !== editorKeyCache) {
     const search = document.querySelector('#toolbar-icon-search');
     if (search) search.value = '';
     editingKeyName = false;
+    selectedGestureId = null;
     setActionPickerOpen(false);
+    document.querySelectorAll('[data-toolbar-section]').forEach(section => {
+      section.open = false;
+    });
     editorKeyCache = selectedKey;
   }
   const deleteGroupButton = document.querySelector('#toolbar-delete-custom-group');
-  if (deleteGroupButton) deleteGroupButton.hidden = !config.customGroups[selectedKey];
+  if (deleteGroupButton) {
+    const isCustomGroup = Boolean(config.customGroups[selectedKey]);
+    const isCustomKey = Boolean(config.customKeys?.[selectedKey]);
+    deleteGroupButton.hidden = !isCustomGroup && !isCustomKey;
+    deleteGroupButton.setAttribute(
+      'aria-label',
+      isCustomGroup ? 'Delete custom group' : 'Delete custom key'
+    );
+    deleteGroupButton.title = isCustomGroup ? 'Delete custom group' : 'Delete custom key';
+  }
   const addCustomButton = document.querySelector('#toolbar-add-custom');
   if (addCustomButton) addCustomButton.disabled = false;
   editor.classList.toggle('visible', Boolean(definition));
@@ -520,6 +619,7 @@ function refreshSelectedKeyEditor() {
   if (!definition) return;
 
   const title = config.customGroups[selectedKey]?.title ||
+    config.customKeys?.[selectedKey]?.title ||
     config.styles[selectedKey]?.title ||
     definition.title;
   selectedTitle.textContent = title;
@@ -554,31 +654,88 @@ function refreshSelectedKeyEditor() {
     button.disabled = !style[button.dataset.resetProperty];
   });
   document.querySelector('#toolbar-reset-key-style').disabled = Object.keys(style).length === 0;
-  renderSwipeActionAssignment(style);
+  const customActionRow = document.querySelector('#toolbar-custom-key-action-row');
+  const customActionButton = document.querySelector('#toolbar-custom-key-action');
+  const customKeyAction = getActionDefinition(config.customKeys?.[selectedKey]?.actionId);
+  if (customActionRow) customActionRow.hidden = !config.customKeys?.[selectedKey];
+  if (customActionButton) {
+    customActionButton.textContent = `Key action → ${customKeyAction?.title || 'Choose action'}`;
+    customActionButton.title = customKeyAction
+      ? `This key runs ${customKeyAction.title}`
+      : 'Choose the action this custom key runs';
+  }
+  renderGestureSections(style);
 }
 
-function renderSwipeActionAssignment(style) {
-  const actionButton = document.querySelector('#toolbar-swipe-up-action');
-  const iconButton = document.querySelector('#toolbar-swipe-up-icon');
-  if (!actionButton || !iconButton) return;
-  const action = getActionDefinition(style.gestureAction);
-  actionButton.title = action
-    ? `Swipe up performs ${action.title}`
-    : 'Choose the action to perform when swiping up';
-  actionButton.setAttribute(
-    'aria-label',
-    action ? `Choose swipe up action; currently ${action.title}` : 'Choose swipe up action'
-  );
-  iconButton.disabled = !action;
-  iconButton.title = action
-    ? `${action.title} icon — tap to change`
-    : 'Choose an action first';
-  iconButton.setAttribute(
-    'aria-label',
-    action ? `Choose icon for ${action.title}` : 'Choose an action first'
-  );
-  const iconMarkup = getAssignedSwipeIconMarkup(style);
-  iconButton.innerHTML = iconMarkup || '◇';
+function getGestureActionId(style, gestureId) {
+  return style.gestureActions?.[gestureId] ||
+    (gestureId === 'swipeUp' ? style.gestureAction : '') ||
+    '';
+}
+
+function renderGestureSections(style) {
+  for (const group of TOOLBAR_GESTURE_GROUPS) {
+    const list = document.querySelector(`[data-gesture-list="${group.id}"]`);
+    const summary = document.querySelector(`#toolbar-gesture-summary-${group.id}`);
+    if (!list) continue;
+    list.replaceChildren();
+    const assigned = [];
+    for (const gesture of group.gestures) {
+      const actionId = getGestureActionId(style, gesture.id);
+      const action = getActionDefinition(actionId);
+      if (action) assigned.push(`${gesture.title} → ${action.title}`);
+
+      const row = document.createElement('div');
+      row.className = 'toolbar-preview-gesture-row';
+      const actionButton = document.createElement('button');
+      actionButton.type = 'button';
+      actionButton.className = 'toolbar-preview-gesture-action';
+      actionButton.dataset.gestureId = gesture.id;
+      actionButton.textContent = `${gesture.title} → ${action?.title || 'Choose action'}`;
+      actionButton.title = action
+        ? `${gesture.title} performs ${action.title}`
+        : `Choose an action for ${gesture.title}`;
+      actionButton.setAttribute(
+        'aria-label',
+        action
+          ? `${gesture.title}: ${action.title}. Change action`
+          : `Choose action for ${gesture.title}`
+      );
+      actionButton.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        selectedGestureId = gesture.id;
+        setActionPickerOpen(true, true);
+      });
+
+      const iconButton = document.createElement('button');
+      iconButton.type = 'button';
+      iconButton.className = 'toolbar-preview-gesture-icon';
+      iconButton.dataset.gestureId = gesture.id;
+      iconButton.disabled = !action;
+      iconButton.setAttribute(
+        'aria-label',
+        action
+          ? `Choose icon for ${gesture.title}: ${action.title}`
+          : `Choose an action for ${gesture.title} first`
+      );
+      iconButton.innerHTML = getAssignedGestureIconMarkup(style, gesture.id) || '◇';
+      iconButton.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!getGestureActionId(config.styles[selectedKey] || {}, gesture.id)) return;
+        selectedGestureId = gesture.id;
+        setIconPickerOpen(true, true, 'gesture-action');
+      });
+      row.append(actionButton, iconButton);
+      list.appendChild(row);
+    }
+    if (summary) {
+      summary.textContent = assigned.length
+        ? assigned.join(' · ')
+        : 'No actions assigned';
+    }
+  }
 }
 
 function iconTitle(name) {
@@ -595,8 +752,8 @@ function renderIconCatalog() {
   if (!list || !search) return;
   const query = search.value.trim().toLowerCase();
   const style = config.styles[selectedKey] || {};
-  const selectedSvg = iconPickerTarget === 'action'
-    ? style.gestureActionIconSvg || getAssignedSwipeIconMarkup(style)
+  const selectedSvg = iconPickerTarget === 'gesture-action'
+    ? getAssignedGestureIconMarkup(style, selectedGestureId)
     : style.customSvg;
   list.replaceChildren();
   const icons = Object.entries(svgIcons)
@@ -623,8 +780,9 @@ function renderIconCatalog() {
       event.stopPropagation();
       if (!selectedKey) return;
       const style = config.styles[selectedKey] || {};
-      if (iconPickerTarget === 'action') {
-        style.gestureActionIconSvg = markup;
+      if (iconPickerTarget === 'gesture-action') {
+        style.gestureActionIcons = style.gestureActionIcons || {};
+        style.gestureActionIcons[selectedGestureId] = markup;
       } else {
         style.customSvg = markup;
         style.preserveSvgColors = false;
@@ -649,13 +807,19 @@ function renderActionCatalog() {
   const search = document.querySelector('#toolbar-action-search');
   if (!list || !search) return;
   const query = search.value.trim().toLowerCase();
-  const selectedAction = config.styles[selectedKey]?.gestureAction;
+  const selectedAction = actionPickerTarget === 'custom-key'
+    ? config.customKeys?.[selectedKey]?.actionId
+    : getGestureActionId(config.styles[selectedKey] || {}, selectedGestureId);
   const items = [...actionDefinitions().values()]
     .map(item => ({
       ...item,
       title: config.styles[item.id]?.title || item.title
     }))
-    .filter(item => `${item.id} ${item.title}`.toLowerCase().includes(query));
+    .filter(item =>
+      `${item.id} ${item.title}`.toLowerCase().includes(query) &&
+      (actionPickerTarget !== 'custom-key' ||
+        (item.id !== selectedKey && !customKeyActionWouldCycle(selectedKey, item.id)))
+    );
   list.replaceChildren();
 
   for (const item of items) {
@@ -679,10 +843,23 @@ function renderActionCatalog() {
       event.preventDefault();
       event.stopPropagation();
       if (!selectedKey) return;
-      const style = config.styles[selectedKey] || {};
-      style.gestureAction = item.id;
-      delete style.gestureActionIconSvg;
-      config.styles[selectedKey] = style;
+      if (actionPickerTarget === 'custom-key') {
+        if (config.customKeys?.[selectedKey]) {
+          config.customKeys[selectedKey].actionId = item.id;
+        }
+      } else {
+        const style = config.styles[selectedKey] || {};
+        style.gestureActions = style.gestureActions || {};
+        style.gestureActions[selectedGestureId] = item.id;
+        if (selectedGestureId === 'swipeUp') delete style.gestureAction;
+        if (style.gestureActionIcons) {
+          delete style.gestureActionIcons[selectedGestureId];
+          if (Object.keys(style.gestureActionIcons).length === 0) {
+            delete style.gestureActionIcons;
+          }
+        }
+        config.styles[selectedKey] = style;
+      }
       setActionPickerOpen(false);
       render();
       saveConfig();
@@ -696,6 +873,18 @@ function renderActionCatalog() {
     empty.textContent = 'No matching actions';
     list.appendChild(empty);
   }
+}
+
+function customKeyActionWouldCycle(sourceId, candidateId) {
+  let currentId = candidateId;
+  const visited = new Set();
+  while (config.customKeys?.[currentId]) {
+    if (currentId === sourceId || visited.has(currentId)) return true;
+    visited.add(currentId);
+    currentId = config.customKeys[currentId].actionId;
+    if (!currentId) return false;
+  }
+  return currentId === sourceId;
 }
 
 function beginPossibleDrag(event, button) {
@@ -1075,11 +1264,12 @@ function wouldCreateGroupCycle(movedId, targetGroupId) {
   return visit(targetGroupId);
 }
 
-function generateCustomGroupId() {
+function generateCustomGroupId(kind = 'group') {
   let id;
   do {
-    id = `custom-group-${Date.now().toString(36)}-${nextCustomGroupNumber++}`;
-  } while (config.customGroups[id]);
+    const prefix = kind === 'key' ? 'custom-key' : 'custom-group';
+    id = `${prefix}-${Date.now().toString(36)}-${nextCustomGroupNumber++}`;
+  } while (config.customGroups[id] || config.customKeys?.[id]);
   return id;
 }
 
@@ -1090,6 +1280,8 @@ function createToolbarGroupFromDrop(firstId, secondId, placement) {
     Object.values(PREVIEW_GROUP_ITEMS).flat().find(item => item.id === firstId) ||
     (config.customGroups[firstId]
       ? { id: firstId, title: config.customGroups[firstId].title, icon: config.customGroups[firstId].icon }
+      : config.customKeys?.[firstId]
+        ? { id: firstId, title: config.customKeys[firstId].title, icon: config.customKeys[firstId].icon }
       : null);
   const title = firstDefinition?.title?.trim().slice(0, 48) || 'New group';
   const sourceStyle = config.styles[firstId] || {};
@@ -1194,16 +1386,6 @@ document.querySelector('#toolbar-open-icon-picker')?.addEventListener('click', e
   event.stopPropagation();
   setIconPickerOpen(true, true, 'key');
 });
-document.querySelector('#toolbar-swipe-up-action')?.addEventListener('click', event => {
-  event.preventDefault();
-  event.stopPropagation();
-  setActionPickerOpen(true, true);
-});
-document.querySelector('#toolbar-swipe-up-icon')?.addEventListener('click', event => {
-  event.preventDefault();
-  event.stopPropagation();
-  setIconPickerOpen(true, true, 'action');
-});
 iconPicker?.addEventListener('click', event => {
   event.stopPropagation();
   if (event.target === iconPicker) setIconPickerOpen(false);
@@ -1211,8 +1393,8 @@ iconPicker?.addEventListener('click', event => {
 document.querySelector('#toolbar-icon-picker-close')?.addEventListener('click', event => {
   event.preventDefault();
   event.stopPropagation();
-  const returnTarget = iconPickerTarget === 'action'
-    ? document.querySelector('#toolbar-swipe-up-icon')
+  const returnTarget = iconPickerTarget === 'gesture-action'
+    ? document.querySelector(`.toolbar-preview-gesture-icon[data-gesture-id="${selectedGestureId}"]`)
     : document.querySelector('#toolbar-open-icon-picker');
   setIconPickerOpen(false);
   returnTarget?.focus();
@@ -1225,7 +1407,16 @@ document.querySelector('#toolbar-action-picker-close')?.addEventListener('click'
   event.preventDefault();
   event.stopPropagation();
   setActionPickerOpen(false);
-  document.querySelector('#toolbar-swipe-up-action')?.focus();
+  const returnTarget = actionPickerTarget === 'custom-key'
+    ? document.querySelector('#toolbar-custom-key-action')
+    : document.querySelector(`.toolbar-preview-gesture-action[data-gesture-id="${selectedGestureId}"]`);
+  returnTarget?.focus();
+});
+document.querySelector('#toolbar-custom-key-action')?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!config.customKeys?.[selectedKey]) return;
+  setActionPickerOpen(true, true, 'custom-key');
 });
 
 function invokeSvgAction(action, fallbackMessage) {
@@ -1238,7 +1429,9 @@ function invokeSvgAction(action, fallbackMessage) {
     setStatus(fallbackMessage);
     try {
       const request = { itemId: selectedKey, action };
-      if (iconPickerTarget === 'action') request.property = 'gestureActionIconSvg';
+      if (iconPickerTarget === 'gesture-action') {
+        request.property = `gestureActionIconSvg:${selectedGestureId}`;
+      }
       bridge.editBottomToolbarIcon(JSON.stringify(request));
     } catch (error) {
       setStatus(`Could not open the SVG action: ${error.message || 'unknown error'}`);
@@ -1263,11 +1456,21 @@ document.querySelector('#toolbar-choose-svg')?.addEventListener('click', event =
 document.querySelector('#toolbar-add-custom')?.addEventListener('click', () => {
   const modal = document.querySelector('#toolbar-create-group-modal');
   const input = document.querySelector('#toolbar-create-group-name');
+  const type = document.querySelector('#toolbar-create-group-type');
   if (!modal || !input) return;
   modal.hidden = false;
   modal.setAttribute('aria-hidden', 'false');
   input.value = '';
+  if (type) type.value = 'key';
+  input.placeholder = 'Key name';
   input.focus();
+});
+document.querySelector('#toolbar-create-group-type')?.addEventListener('change', event => {
+  const input = document.querySelector('#toolbar-create-group-name');
+  const title = document.querySelector('#toolbar-create-group-title');
+  const isGroup = event.target.value === 'group';
+  if (input) input.placeholder = isGroup ? 'Group name' : 'Key name';
+  if (title) title.textContent = isGroup ? 'Create custom group' : 'Create custom key';
 });
 
 document.querySelector('#toolbar-create-group-cancel')?.addEventListener('click', () => {
@@ -1291,10 +1494,17 @@ document.querySelector('#toolbar-create-group-form')?.addEventListener('submit',
     input?.focus();
     return;
   }
-  const id = generateCustomGroupId();
-  config.customGroups[id] = { title, icon: 'folder' };
-  config.popupGroups[id] = { order: [], hidden: [] };
-  config.hidden.push(id);
+  const type = document.querySelector('#toolbar-create-group-type')?.value === 'group'
+    ? 'group'
+    : 'key';
+  const id = generateCustomGroupId(type);
+  if (type === 'group') {
+    config.customGroups[id] = { title, icon: 'folder' };
+    config.popupGroups[id] = { order: [], hidden: [] };
+  } else {
+    config.customKeys[id] = { title, icon: 'newFile' };
+  }
+  config.holding.push(id);
   selectedKey = id;
   openPopupGroup = null;
   const modal = document.querySelector('#toolbar-create-group-modal');
@@ -1326,6 +1536,8 @@ function saveKeyNameEdit() {
   }
   if (config.customGroups[selectedKey]) {
     config.customGroups[selectedKey].title = title;
+  } else if (config.customKeys?.[selectedKey]) {
+    config.customKeys[selectedKey].title = title;
   } else {
     const definition = PREVIEW_ITEM_DEFINITIONS.get(selectedKey);
     const style = config.styles[selectedKey] || {};
@@ -1362,14 +1574,23 @@ document.querySelector('#toolbar-preview-title-input')?.addEventListener('keydow
 
 document.querySelector('#toolbar-delete-custom-group')?.addEventListener('click', () => {
   const id = selectedKey;
-  if (!id || !config.customGroups[id]) return;
-  const group = config.popupGroups[id];
-  if (group) config.holding = [...new Set([...config.holding, ...group.order])];
-  delete config.customGroups[id];
-  delete config.popupGroups[id];
+  if (!id || (!config.customGroups[id] && !config.customKeys?.[id])) return;
+  if (config.customGroups[id]) {
+    const group = config.popupGroups[id];
+    if (group) config.holding = [...new Set([...config.holding, ...group.order])];
+    delete config.customGroups[id];
+    delete config.popupGroups[id];
+  } else {
+    for (const popupGroup of Object.values(config.popupGroups)) {
+      popupGroup.order = popupGroup.order.filter(key => key !== id);
+      popupGroup.hidden = popupGroup.hidden.filter(key => key !== id);
+    }
+    delete config.customKeys[id];
+  }
   delete config.styles[id];
   config.order = config.order.filter(key => key !== id);
   config.hidden = config.hidden.filter(key => key !== id);
+  config.holding = config.holding.filter(key => key !== id);
   if (openPopupGroup === id) openPopupGroup = null;
   selectedKey = null;
   render();
@@ -1377,6 +1598,15 @@ document.querySelector('#toolbar-delete-custom-group')?.addEventListener('click'
 });
 document.querySelector('#toolbar-icon-search')?.addEventListener('input', renderIconCatalog);
 document.querySelector('#toolbar-action-search')?.addEventListener('input', renderActionCatalog);
+const toolbarEditorSections = [...document.querySelectorAll('[data-toolbar-section]')];
+for (const section of toolbarEditorSections) {
+  section.addEventListener('toggle', () => {
+    if (!section.open) return;
+    for (const other of toolbarEditorSections) {
+      if (other !== section) other.open = false;
+    }
+  });
+}
 document.querySelector('#toolbar-preserve-svg-colors')?.addEventListener('change', event => {
   if (!selectedKey || !config.styles[selectedKey]?.customSvg) return;
   config.styles[selectedKey].preserveSvgColors = event.target.checked;
@@ -1427,13 +1657,19 @@ document.addEventListener('keydown', event => {
   if (actionPickerOpen) {
     event.preventDefault();
     setActionPickerOpen(false);
-    document.querySelector('#toolbar-swipe-up-action')?.focus();
+    const target = actionPickerTarget === 'custom-key'
+      ? '#toolbar-custom-key-action'
+      : `.toolbar-preview-gesture-action[data-gesture-id="${selectedGestureId}"]`;
+    document.querySelector(target)?.focus();
     return;
   }
   if (iconPickerOpen) {
     event.preventDefault();
     setIconPickerOpen(false);
-    document.querySelector('#toolbar-open-icon-picker')?.focus();
+    const target = iconPickerTarget === 'gesture-action'
+      ? `.toolbar-preview-gesture-icon[data-gesture-id="${selectedGestureId}"]`
+      : '#toolbar-open-icon-picker';
+    document.querySelector(target)?.focus();
     return;
   }
   if (!editor?.classList.contains('visible')) return;

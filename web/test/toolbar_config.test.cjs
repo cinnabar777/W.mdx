@@ -20,7 +20,7 @@ test('bottom toolbar configuration ignores unknown and duplicate keys but restor
     'insert'
   ]);
   assert.deepEqual(config.hidden, ['undo']);
-  assert.equal(config.version, 3);
+  assert.equal(config.version, 4);
   assert.deepEqual([...config.order, ...config.hidden].sort(), [...BOTTOM_TOOLBAR_ITEM_IDS].sort());
 });
 
@@ -82,6 +82,13 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
   const config = normalizeBottomToolbarConfig({
     order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
     hidden: [],
+    customKeys: {
+      'custom-key-quick-save': {
+        title: 'Quick Save',
+        icon: 'saveFile',
+        actionId: 'saveFile'
+      }
+    },
     styles: {
       mergeLeft: {
         iconColor: '#ff0000',
@@ -93,8 +100,11 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
         customSvg: '<svg><path d="M0 0"/></svg>',
         preserveSvgColors: true,
         title: 'Save as Markdown Pack',
-        gestureAction: 'bold',
-        gestureActionIconSvg: '<svg><path d="M1 1"/></svg>'
+        gestureActions: { swipeUp: 'bold', swipeDown: 'custom-key-quick-save' },
+        gestureActionIcons: {
+          swipeUp: '<svg><path d="M1 1"/></svg>',
+          swipeDown: '<svg><path d="M2 2"/></svg>'
+        }
       },
       inventedAction: { iconColor: '#ffffff' },
       undo: { gestureAction: 'inventedAction', title: 'Invalid target' }
@@ -111,11 +121,19 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
     customSvg: '<svg><path d="M0 0"/></svg>',
     preserveSvgColors: true,
     title: 'Save as Markdown Pack',
-    gestureAction: 'bold',
-    gestureActionIconSvg: '<svg><path d="M1 1"/></svg>'
+    gestureActions: { swipeUp: 'bold', swipeDown: 'custom-key-quick-save' },
+    gestureActionIcons: {
+      swipeUp: '<svg><path d="M1 1"/></svg>',
+      swipeDown: '<svg><path d="M2 2"/></svg>'
+    }
+  });
+  assert.deepEqual(config.customKeys['custom-key-quick-save'], {
+    title: 'Quick Save',
+    icon: 'saveFile',
+    actionId: 'saveFile'
   });
   assert.equal(config.styles.inventedAction, undefined);
-  assert.equal(config.styles.undo.gestureAction, undefined);
+  assert.equal(config.styles.undo.gestureActions, undefined);
   assert.equal(config.styles.undo.title, 'Invalid target');
 });
 

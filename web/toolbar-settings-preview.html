@@ -32,7 +32,7 @@
     .toolbar-preview-editor {
       display: none;
       position: fixed;
-      z-index: 10006;
+      z-index: 10002;
       inset: 0 0 var(--toolbar-height, 48px);
       margin: 0;
       padding: 12px;
@@ -44,6 +44,9 @@
       border-radius: 12px 12px 0 0;
       background: #171717;
       box-shadow: 0 10px 28px rgba(0,0,0,.75);
+    }
+    .toolbar-preview-editor.popup-open {
+      padding-bottom: calc(12px + var(--toolbar-popup-height, 48px));
     }
     .toolbar-preview-editor.visible { display: block; }
     .toolbar-preview-editor-header {
@@ -65,9 +68,9 @@
     }
     .toolbar-preview-title-edit {
       display: grid;
-      width: 30px;
-      height: 30px;
-      flex: 0 0 30px;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
       place-items: center;
       border: 0;
       border-radius: 7px;
@@ -75,8 +78,8 @@
       background: transparent;
     }
     .toolbar-preview-title-edit svg {
-      width: 17px;
-      height: 17px;
+      width: 20px;
+      height: 20px;
     }
     .toolbar-preview-title-input {
       min-width: 0;
@@ -94,9 +97,9 @@
     .toolbar-preview-title-save[hidden] { display: none; }
     .toolbar-preview-title-save {
       display: grid;
-      width: 30px;
-      height: 30px;
-      flex: 0 0 30px;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
       place-items: center;
       border: 1px solid rgba(255,255,255,.2);
       border-radius: 8px;
@@ -104,25 +107,25 @@
       background: rgba(255,255,255,.08);
     }
     .toolbar-preview-title-save svg {
-      width: 16px;
-      height: 16px;
+      width: 20px;
+      height: 20px;
     }
     .toolbar-preview-editor-close {
-      width: 30px;
-      height: 30px;
-      flex: 0 0 30px;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
       border: 1px solid rgba(255,255,255,.2);
       border-radius: 8px;
       color: inherit;
       background: rgba(255,255,255,.08);
       font: inherit;
-      font-size: 18px;
+      font-size: 22px;
     }
     .toolbar-preview-editor-reset-all {
       display: grid;
-      width: 30px;
-      height: 30px;
-      flex: 0 0 30px;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
       place-items: center;
       border: 1px solid rgba(255,255,255,.2);
       border-radius: 8px;
@@ -130,8 +133,8 @@
       background: rgba(255,255,255,.08);
     }
     .toolbar-preview-editor-reset-all svg {
-      width: 17px;
-      height: 17px;
+      width: 20px;
+      height: 20px;
     }
     .toolbar-preview-editor-reset-all:disabled {
       opacity: .38;
@@ -197,7 +200,92 @@
       background: rgba(255,255,255,.07);
       font: inherit;
     }
-    .toolbar-preview-style-controls { display: grid; gap: 14px; }
+    .toolbar-preview-editor-sections {
+      display: grid;
+      gap: 7px;
+    }
+    .toolbar-preview-section {
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 8px;
+      background: rgba(255,255,255,.035);
+    }
+    .toolbar-preview-section > summary {
+      display: flex;
+      min-height: 42px;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+      list-style: none;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .toolbar-preview-section > summary::-webkit-details-marker { display: none; }
+    .toolbar-preview-section > summary::after {
+      content: "›";
+      margin-left: auto;
+      color: var(--toolbar-icon-color, #fff);
+      font-size: 20px;
+      line-height: 1;
+      transform: rotate(90deg);
+    }
+    .toolbar-preview-section[open] > summary::after { transform: rotate(-90deg); }
+    .toolbar-preview-section > summary small {
+      min-width: 0;
+      margin-left: auto;
+      overflow: hidden;
+      color: rgba(255,255,255,.64);
+      font-size: 10px;
+      font-weight: 400;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .toolbar-preview-section > summary small:empty { display: none; }
+    .toolbar-preview-gesture-list,
+    .toolbar-preview-style-controls {
+      display: grid;
+      gap: 5px;
+      padding: 0 8px 8px;
+    }
+    .toolbar-preview-gesture-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 44px;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+    .toolbar-preview-gesture-action,
+    .toolbar-preview-gesture-icon {
+      display: flex;
+      min-width: 0;
+      min-height: 38px;
+      align-items: center;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 7px;
+      color: inherit;
+      background: rgba(255,255,255,.05);
+      font: inherit;
+    }
+    .toolbar-preview-gesture-action {
+      padding: 0 9px;
+      overflow: hidden;
+      font-size: 12px;
+      text-align: left;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .toolbar-preview-gesture-icon {
+      justify-content: center;
+      padding: 4px;
+    }
+    .toolbar-preview-gesture-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+    .toolbar-preview-gesture-icon:disabled {
+      opacity: .45;
+    }
+    .toolbar-preview-style-controls { gap: 8px; }
     .toolbar-preview-color-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto auto;
@@ -286,6 +374,23 @@
       border-radius: 8px;
       color: var(--toolbar-icon-color, #fff);
       background: rgba(255,255,255,.05);
+    }
+    .toolbar-preview-create-group-type-label {
+      display: block;
+      margin: 0 0 5px;
+      color: rgba(255,255,255,.7);
+      font-size: 12px;
+    }
+    #toolbar-create-group-type {
+      width: 100%;
+      height: 42px;
+      margin-bottom: 10px;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 8px;
+      color: inherit;
+      background: #222;
+      font: inherit;
     }
     .toolbar-preview-action-icon svg {
       width: 22px;
@@ -539,6 +644,16 @@
     body.light-theme .toolbar-preview-icon-picker-trigger small {
       color: rgba(0,0,0,.62);
     }
+    body.light-theme .toolbar-preview-section,
+    body.light-theme .toolbar-preview-gesture-action,
+    body.light-theme .toolbar-preview-gesture-icon {
+      border-color: rgba(0,0,0,.18);
+      background: rgba(0,0,0,.04);
+      color: #111;
+    }
+    body.light-theme .toolbar-preview-section > summary small {
+      color: rgba(0,0,0,.62);
+    }
   </style>
 </head>
 <body>
@@ -548,7 +663,7 @@
       <div id="toolbar-holding-tray" class="toolbar-preview-tray" aria-label="Hidden toolbar keys"></div>
       <div class="toolbar-preview-layout-actions">
         <button id="toolbar-reset-layout" type="button">Restore default layout</button>
-        <button id="toolbar-add-custom" type="button">Add custom group</button>
+        <button id="toolbar-add-custom" type="button">+ Custom key or group</button>
       </div>
       <div class="toolbar-preview-status" id="toolbar-preview-status" aria-live="polite"></div>
     </div>
@@ -587,13 +702,37 @@
           <span>Choose icon<small>Search built-ins or add an SVG</small></span>
           <span aria-hidden="true">›</span>
         </button>
-        <section class="toolbar-preview-action-slots" aria-label="Action and assigned icon preview">
-          <div class="toolbar-preview-action-assignment">
-            <button id="toolbar-swipe-up-action" class="toolbar-preview-action-label" type="button" aria-haspopup="dialog" aria-controls="toolbar-action-picker-modal">Swipe up</button>
-            <button id="toolbar-swipe-up-icon" class="toolbar-preview-action-icon" type="button" aria-label="Choose icon for Swipe up action">◇</button>
-          </div>
-        </section>
-        <div class="toolbar-preview-style-controls">
+        <div id="toolbar-custom-key-action-row" class="toolbar-preview-custom-key-action-row" hidden>
+          <button id="toolbar-custom-key-action" class="toolbar-preview-gesture-action" type="button" aria-haspopup="dialog" aria-controls="toolbar-action-picker-modal">Key action → Choose action</button>
+        </div>
+        <div class="toolbar-preview-editor-sections" id="toolbar-preview-editor-sections">
+          <details class="toolbar-preview-section" data-toolbar-section="taps">
+            <summary>
+              <span>Taps</span>
+              <small id="toolbar-gesture-summary-taps">No actions assigned</small>
+            </summary>
+            <div class="toolbar-preview-gesture-list" data-gesture-list="taps"></div>
+          </details>
+          <details class="toolbar-preview-section" data-toolbar-section="side-swipes">
+            <summary>
+              <span>Side swipes</span>
+              <small id="toolbar-gesture-summary-side-swipes">No actions assigned</small>
+            </summary>
+            <div class="toolbar-preview-gesture-list" data-gesture-list="side-swipes"></div>
+          </details>
+          <details class="toolbar-preview-section" data-toolbar-section="corner-swipes">
+            <summary>
+              <span>Corner swipes</span>
+              <small id="toolbar-gesture-summary-corner-swipes">No actions assigned</small>
+            </summary>
+            <div class="toolbar-preview-gesture-list" data-gesture-list="corner-swipes"></div>
+          </details>
+          <details class="toolbar-preview-section" data-toolbar-section="colors">
+            <summary>
+              <span>Color options</span>
+              <small>Icon and key backgrounds</small>
+            </summary>
+            <div class="toolbar-preview-style-controls">
           <div class="toolbar-preview-color-settings">
             <div class="toolbar-preview-color-row">
               <span>Icon color</span>
@@ -615,13 +754,20 @@
             <input id="toolbar-preserve-svg-colors" type="checkbox">
             Preserve icon colors
           </label>
+            </div>
+          </details>
         </div>
       </div>
     </section>
     <div id="toolbar-create-group-modal" class="toolbar-preview-create-group-modal" hidden aria-hidden="true">
       <form id="toolbar-create-group-form" class="toolbar-preview-create-group-dialog" role="dialog" aria-modal="true" aria-labelledby="toolbar-create-group-title">
-        <h2 id="toolbar-create-group-title">Create toolbar group</h2>
-        <input id="toolbar-create-group-name" type="text" maxlength="48" required placeholder="Group name" aria-label="Group name">
+        <h2 id="toolbar-create-group-title">Create custom key or group</h2>
+        <label class="toolbar-preview-create-group-type-label" for="toolbar-create-group-type">Create as</label>
+        <select id="toolbar-create-group-type" aria-label="Custom toolbar item type">
+          <option value="key">Custom key</option>
+          <option value="group">Group / folder</option>
+        </select>
+        <input id="toolbar-create-group-name" type="text" maxlength="48" required placeholder="Key name" aria-label="Key name">
         <div class="toolbar-preview-create-group-actions">
           <button id="toolbar-create-group-cancel" type="button">Cancel</button>
           <button type="submit">Create</button>
@@ -649,7 +795,7 @@
           <h2 id="toolbar-action-picker-title">Choose action</h2>
           <button id="toolbar-action-picker-close" class="toolbar-preview-icon-picker-close" type="button" aria-label="Close action picker">×</button>
         </header>
-        <input id="toolbar-action-search" class="toolbar-preview-icon-search" type="search" placeholder="Search actions…" aria-label="Search toolbar actions">
+        <input id="toolbar-action-search" class="toolbar-preview-icon-search" type="search" placeholder="Search actions…" aria-label="Search available actions">
         <div id="toolbar-action-list" class="toolbar-preview-icon-list toolbar-preview-action-choice-list" role="listbox" aria-label="Available toolbar actions"></div>
       </section>
     </div>
