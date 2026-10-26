@@ -4,11 +4,19 @@ const path = require('node:path');
 const test = require('node:test');
 const { JSDOM } = require('jsdom');
 
-async function dragKey(dom, source, target, dropX = 90, dropY = 50, duringDrag = null) {
+async function dragKey(
+  dom,
+  source,
+  target,
+  dropX = 90,
+  dropY = 50,
+  duringDrag = null,
+  pointTarget = target
+) {
   target.getBoundingClientRect = () => ({
     left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100
   });
-  dom.window.document.elementFromPoint = () => target;
+  dom.window.document.elementFromPoint = () => pointTarget;
   const dispatchPointer = (targetElement, type, clientX, clientY) => {
     targetElement.dispatchEvent(new dom.window.MouseEvent(type, {
       bubbles: true,
@@ -736,7 +744,7 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
   }
 });
 
-test('toolbar drag shows a between-key marker and reorders without creating a folder', async () => {
+test('dragging a held key onto the toolbar shows an insertion marker and reorders without grouping', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
@@ -748,8 +756,8 @@ test('toolbar drag shows a between-key marker and reorders without creating a fo
     getBottomToolbarSettings: () => JSON.stringify({
       pref_toolbar_bottom_config: JSON.stringify({
         version: 2,
-        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
-        holding: [],
+        order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
+        holding: ['heading'],
         customGroups: {},
         styles: {}
       })
@@ -766,7 +774,7 @@ test('toolbar drag shows a between-key marker and reorders without creating a fo
     await import(`../src/toolbarSettingsPreview.js?toolbar-insert-test=${Date.now()}`);
     await dragKey(
       dom,
-      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="table"]'),
+      dom.window.document.querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]'),
       dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]'),
       10,
       50,
@@ -775,9 +783,13 @@ test('toolbar drag shows a between-key marker and reorders without creating a fo
         assert.equal(marker.hidden, false);
         assert.equal(marker.dataset.kind, 'insert');
         assert.equal(marker.style.left, '0px');
-      }
+        assert.equal(marker.style.top, '38px');
+        assert.equal(marker.parentElement, dom.window.document.body);
+      },
+      dom.window.document.body
     );
-    assert.deepEqual(saves.at(-1).order.slice(0, 2), ['table', 'undo']);
+    assert.deepEqual(saves.at(-1).order.slice(0, 2), ['heading', 'undo']);
+    assert.ok(!saves.at(-1).holding.includes('heading'));
     assert.deepEqual(saves.at(-1).customGroups, {});
   } finally {
     global.window = previousWindow;

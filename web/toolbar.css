@@ -320,7 +320,7 @@ body.light-theme .popup-toolbar-strip {
   transform: translateX(-50%);
   border-radius: 2px;
   background: var(--toolbar-icon-color, #fff);
-  box-shadow: 0 0 0 2px var(--toolbar-bg, #121212);
+  box-shadow: 0 0 0 2px var(--toolbar-preview-surface, #000);
   pointer-events: none;
 }
 
@@ -334,7 +334,7 @@ body.light-theme .popup-toolbar-strip {
   transform: translate(-50%, -50%);
   border: 2px solid var(--toolbar-icon-color, #fff);
   border-radius: 5px;
-  background: var(--toolbar-bg, #121212);
+  background: var(--toolbar-preview-surface, #000);
 }
 
 .toolbar-preview-popup-key {

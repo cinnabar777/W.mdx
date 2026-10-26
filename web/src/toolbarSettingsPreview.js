@@ -24,6 +24,7 @@ const editor = document.querySelector('#toolbar-preview-editor');
 const iconPicker = document.querySelector('#toolbar-icon-picker-modal');
 const actionPicker = document.querySelector('#toolbar-action-picker-modal');
 const dropMarker = document.querySelector('#toolbar-preview-drop-marker');
+if (dropMarker && document.body) document.body.appendChild(dropMarker);
 const status = document.querySelector('#toolbar-preview-status');
 const selectedTitle = document.querySelector('#toolbar-preview-selected-title');
 let config = normalizeBottomToolbarConfig(null);
@@ -1091,8 +1092,10 @@ function setDropMarker(target) {
 }
 
 function resolveDragTarget(clientX, clientY) {
-  const target = document.elementFromPoint(clientX, clientY);
-  const popupButton = target?.closest?.('.toolbar-preview-popup-key');
+  const pointTarget = document.elementFromPoint(clientX, clientY);
+  const popupButton =
+    buttonAtPoint('.toolbar-preview-popup-key', clientX, clientY) ||
+    pointTarget?.closest?.('.toolbar-preview-popup-key');
   if (popupButton) {
     const popupId = popupButton.dataset.previewPopupItem;
     const sameKey =
@@ -1119,7 +1122,9 @@ function resolveDragTarget(clientX, clientY) {
     );
   }
 
-  const keyButton = target?.closest?.('.toolbar-preview-key');
+  const keyButton =
+    buttonAtPoint('.toolbar-preview-key', clientX, clientY) ||
+    pointTarget?.closest?.('.toolbar-preview-key');
   if (keyButton) {
     const id = keyButton.dataset.toolbarKey;
     if (id === dragState.id) return null;
@@ -1143,15 +1148,30 @@ function resolveDragTarget(clientX, clientY) {
     );
   }
 
-  if (target === tray || tray.contains(target)) {
+  if (
+    pointTarget === tray ||
+    tray.contains(pointTarget) ||
+    pointIsInside(tray, clientX, clientY)
+  ) {
     const buttons = [
       ...tray.querySelectorAll('.toolbar-preview-key, .toolbar-preview-popup-key')
     ];
-    if (!buttons.length) return { type: 'tray' };
+    if (!buttons.length) {
+      const bounds = tray.getBoundingClientRect();
+      return {
+        type: 'tray',
+        markerX: bounds.left + 12,
+        markerY: bounds.top + bounds.height / 2
+      };
+    }
     return listGapTarget('holding-insert', buttons, clientX, clientY);
   }
 
-  const popupContainer = target?.closest?.('#toolbar-preview-popup');
+  const popupContainer =
+    pointTarget?.closest?.('#toolbar-preview-popup') ||
+    (popup && !popup.classList.contains('hidden') && pointIsInside(popup, clientX, clientY)
+      ? popup
+      : null);
   if (popupContainer) {
     const buttons = [...popupContainer.querySelectorAll('.toolbar-preview-popup-key')];
     return listGapTarget('popup-insert', buttons, clientX, clientY, {
@@ -1159,7 +1179,11 @@ function resolveDragTarget(clientX, clientY) {
     });
   }
 
-  if (target?.closest?.('.toolbar-preview-stage')) {
+  const stage = document.querySelector('.toolbar-preview-stage');
+  if (
+    pointTarget?.closest?.('.toolbar-preview-stage') ||
+    pointIsInside(stage, clientX, clientY)
+  ) {
     return listGapTarget(
       'toolbar-insert',
       [...toolbar.querySelectorAll('.toolbar-preview-key')],
@@ -1168,6 +1192,23 @@ function resolveDragTarget(clientX, clientY) {
     );
   }
   return null;
+}
+
+function buttonAtPoint(selector, clientX, clientY) {
+  return [...document.querySelectorAll(selector)].find(button =>
+    pointIsInside(button, clientX, clientY)
+  ) || null;
+}
+
+function pointIsInside(element, clientX, clientY) {
+  if (!element) return false;
+  const bounds = element.getBoundingClientRect();
+  return bounds.width > 0 &&
+    bounds.height > 0 &&
+    clientX >= bounds.left &&
+    clientX <= bounds.right &&
+    clientY >= bounds.top &&
+    clientY <= bounds.bottom;
 }
 
 function keyPositionTarget(type, button, clientX, clientY, groupDrop = false) {
@@ -1187,7 +1228,9 @@ function keyPositionTarget(type, button, clientX, clientY, groupDrop = false) {
     markerX: groupDrop
       ? bounds.left + bounds.width / 2
       : after ? bounds.right : bounds.left,
-    markerY: bounds.bottom - 9
+    markerY: groupDrop
+      ? bounds.bottom - 14
+      : bounds.top + Math.max(0, (bounds.height - 24) / 2)
   };
 }
 
@@ -1228,7 +1271,7 @@ function listGapTarget(type, buttons, clientX, clientY, extra = {}) {
     anchorId: id,
     after,
     markerX: after ? anchor.bounds.right : anchor.bounds.left,
-    markerY: anchor.bounds.bottom - 9
+    markerY: anchor.bounds.top + Math.max(0, (anchor.bounds.height - 24) / 2)
   };
 }
 

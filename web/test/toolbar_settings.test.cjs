@@ -135,8 +135,8 @@ test('toolbar appearance refreshes preserve layout and editor overlays follow th
     settingsSource,
     /scrollStrip\.scrollLeft \+= lastX - pointerEvent\.clientX/
   );
-  assert.match(html, /max-height: calc\(100dvh - var\(--toolbar-height, 48px\) - 12px\)/);
-  assert.match(html, /background: var\(--toolbar-bg, #121212\)/);
+  assert.match(html, /height: min\(76dvh, calc\(100dvh - var\(--toolbar-height, 48px\) - 24px\)\)/);
+  assert.match(html, /background: var\(--toolbar-preview-surface, var\(--bg-color, #000\)\)/);
   assert.doesNotMatch(html, /background:\s*#171717/i);
   assert.match(sharedCss, /\.toolbar-preview-holding\s*\{[^}]*margin-block:\s*auto/s);
   assert.match(sharedCss, /\.toolbar-preview-drop-marker\s*\{/);
