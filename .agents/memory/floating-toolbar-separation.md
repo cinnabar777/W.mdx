@@ -1,0 +1,10 @@
+---
+name: Floating toolbar separation
+description: Product constraints for the editor's floating text-selection toolbar.
+---
+
+The floating selection toolbar has its own saved key layout and key settings, but reuses the bottom toolbar's renderer, action registry, and icon catalog. Its key width and end radius are floating-only settings; the remaining toolbar colors and labels follow the shared appearance settings. Its total width follows the number and width of keys and must stay within the visible viewport.
+
+**Why:** the user explicitly wants the floating and bottom toolbars to be independently arranged while avoiding a duplicate action/icon implementation.
+
+**How to apply:** preserve independent layouts when applying preferences or editing either toolbar. Keep action and icon behavior shared, use the floating-only width and radius settings, and clamp the selection toolbar and its popups to the visible viewport.

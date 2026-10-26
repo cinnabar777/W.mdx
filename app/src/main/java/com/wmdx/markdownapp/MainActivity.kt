@@ -349,7 +349,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         if (::webView.isInitialized) {
             applyThemeAndFullscreenPreferences()
-            if (key == "pref_toolbar_bottom_config") {
+            if (key == "pref_toolbar_bottom_config" ||
+                key == "pref_toolbar_floating_config") {
                 refreshBottomToolbarFromPreferences()
             }
         }
@@ -403,6 +404,25 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         webView.addJavascriptInterface(WebAppInterface(), "AndroidNative")
+        webView.customSelectionActionModeCallback =
+            object : android.view.ActionMode.Callback {
+                override fun onCreateActionMode(
+                    mode: android.view.ActionMode,
+                    menu: android.view.Menu
+                ): Boolean = false
+
+                override fun onPrepareActionMode(
+                    mode: android.view.ActionMode,
+                    menu: android.view.Menu
+                ): Boolean = false
+
+                override fun onActionItemClicked(
+                    mode: android.view.ActionMode,
+                    item: android.view.MenuItem
+                ): Boolean = false
+
+                override fun onDestroyActionMode(mode: android.view.ActionMode) = Unit
+            }
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
@@ -801,12 +821,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun refreshBottomToolbarFromPreferences() {
         if (!isEditorReady || !::webView.isInitialized) return
-        val config = PreferenceManager.getDefaultSharedPreferences(this)
-            .getString("pref_toolbar_bottom_config", null)
-            ?: return
-        val escapedConfig = JSONObjectWrapper.quote(config)
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val bottomConfig = prefs.getString("pref_toolbar_bottom_config", null)
+        val floatingConfig = prefs.getString("pref_toolbar_floating_config", bottomConfig)
+        val escapedConfig = bottomConfig?.let { JSONObjectWrapper.quote(it) } ?: "null"
+        val escapedFloatingConfig = floatingConfig?.let { JSONObjectWrapper.quote(it) } ?: "null"
         webView.evaluateJavascript(
-            "window.editorBridge?.applyBottomToolbarConfig?.($escapedConfig);",
+            "window.editorBridge?.applyBottomToolbarConfig?.($escapedConfig);" +
+                "window.editorBridge?.applyFloatingToolbarConfig?.($escapedFloatingConfig || $escapedConfig);",
             null
         )
     }

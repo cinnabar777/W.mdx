@@ -48,6 +48,7 @@ import {
   sanitizeToolbarSvg,
   toToolbarCssColor
 } from './toolbarRenderer.js';
+import { getFloatingToolbarPosition } from './toolbarPositioning.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -4287,7 +4288,7 @@ function setupFloatingSelectionToolbar() {
   }
   installToolbarTapActions(bar);
 
-  const registry = createRuntimeToolbarItemRegistry(floatingToolbarConfig);
+  const registry = createRuntimeToolbarItemRegistryForConfig(floatingToolbarConfig);
   const definitions = Object.fromEntries(
     [...registry].map(([id, item]) => [
       id,
@@ -4295,6 +4296,7 @@ function setupFloatingSelectionToolbar() {
     ])
   );
   renderBottomToolbarKeys(bar, floatingToolbarConfig, svgIcons, {
+    preventPointerDefault: false,
     resolveCustomIcon: style => style.customSvg || '',
     definitions,
     resolveGestureActionIcon: (actionId, customSvg) => {
@@ -4380,37 +4382,24 @@ function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
 
   bar.classList.add('is-visible');
   bar.setAttribute('aria-hidden', 'false');
+  bar.style.removeProperty('width');
   const rect = bar.getBoundingClientRect();
   const viewport = window.visualViewport;
-  const viewportLeft = viewport?.offsetLeft || 0;
-  const viewportTop = viewport?.offsetTop || 0;
-  const viewportWidth = viewport?.width || window.innerWidth;
-  const viewportHeight = viewport?.height || window.innerHeight;
-  const margin = 8;
-  const leftLimit = viewportLeft + margin;
-  const rightLimit = viewportLeft + viewportWidth - margin;
-  const topLimit = viewportTop + margin;
-  const bottomLimit = viewportTop + viewportHeight - margin;
-  const selectionLeft = Math.min(start.left, end.left);
-  const selectionRight = Math.max(start.right, end.right);
-  const selectionTop = Math.min(start.top, end.top);
-  const selectionBottom = Math.max(start.bottom, end.bottom);
-  const width = Math.min(rect.width, Math.max(0, rightLimit - leftLimit));
-  const left = Math.max(
-    leftLimit,
-    Math.min((selectionLeft + selectionRight - width) / 2, rightLimit - width)
-  );
-  const height = rect.height;
-  const above = selectionTop - height - margin;
-  const below = selectionBottom + margin;
-  const top = above >= topLimit
-    ? above
-    : below + height <= bottomLimit
-      ? below
-      : Math.max(topLimit, Math.min(above, bottomLimit - height));
-
-  bar.style.left = `${left}px`;
-  bar.style.top = `${top}px`;
+  const position = getFloatingToolbarPosition({
+    start,
+    end,
+    toolbarWidth: rect.width,
+    toolbarHeight: rect.height,
+    viewport: {
+      offsetLeft: viewport?.offsetLeft || 0,
+      offsetTop: viewport?.offsetTop || 0,
+      width: viewport?.width || window.innerWidth,
+      height: viewport?.height || window.innerHeight
+    }
+  });
+  bar.style.width = `${position.width}px`;
+  bar.style.left = `${position.left}px`;
+  bar.style.top = `${position.top}px`;
   if (activePopupSurface === 'floating') positionFloatingPopupStrip();
 }
 
@@ -4548,7 +4537,11 @@ function getToolbarConfigForElement(element) {
   return bottomToolbarConfig;
 }
 
-function createRuntimeToolbarItemRegistry(toolbarConfig = bottomToolbarConfig) {
+function createRuntimeToolbarItemRegistry() {
+  return createRuntimeToolbarItemRegistryForConfig(bottomToolbarConfig);
+}
+
+function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
   const registry = createToolbarActionRegistry();
   for (const item of BOTTOM_TOOLBAR_ITEMS) {
     if (!toolbarConfig.popupGroups[item.id]) continue;
@@ -4603,7 +4596,7 @@ function runToolbarGestureAction(
     togglePopupStrip(
       toolbarGroupId,
       sourceButton,
-      getRuntimeToolbarGroupItems(toolbarGroupId, toolbarConfig)
+      getRuntimeToolbarGroupItemsForConfig(toolbarGroupId, toolbarConfig)
     );
     return true;
   }
@@ -4632,13 +4625,13 @@ function runToolbarGestureAction(
   if (customKey) {
     return runToolbarGestureAction(customKey.actionId, sourceButton, visited, toolbarConfig);
   }
-  const item = createRuntimeToolbarItemRegistry(toolbarConfig).get(actionId);
+  const item = createRuntimeToolbarItemRegistryForConfig(toolbarConfig).get(actionId);
   if (!item) return false;
   if (toolbarConfig.popupGroups[actionId]) {
     togglePopupStrip(
       actionId,
       sourceButton,
-      getRuntimeToolbarGroupItems(actionId, toolbarConfig)
+      getRuntimeToolbarGroupItemsForConfig(actionId, toolbarConfig)
     );
     return true;
   }
@@ -4804,14 +4797,18 @@ function installPopupToolbarSwipeUp(
 
 function getToolbarGestureIcon(actionId, customSvg, toolbarConfig = bottomToolbarConfig) {
   if (customSvg) return sanitizeToolbarSvg(customSvg, false);
-  const icon = createRuntimeToolbarItemRegistry(toolbarConfig).get(actionId)?.icon;
+  const icon = createRuntimeToolbarItemRegistryForConfig(toolbarConfig).get(actionId)?.icon;
   return typeof icon === 'string' && icon.includes('<svg')
     ? icon
     : svgIcons[icon] || icon || '';
 }
 
-function getRuntimeToolbarGroupItems(groupId, toolbarConfig = bottomToolbarConfig) {
-  const registry = createRuntimeToolbarItemRegistry(toolbarConfig);
+function getRuntimeToolbarGroupItems(groupId) {
+  return getRuntimeToolbarGroupItemsForConfig(groupId, bottomToolbarConfig);
+}
+
+function getRuntimeToolbarGroupItemsForConfig(groupId, toolbarConfig) {
+  const registry = createRuntimeToolbarItemRegistryForConfig(toolbarConfig);
   return (toolbarConfig.popupGroups[groupId]?.order || [])
     .map(id => {
       const item = registry.get(id);
@@ -5478,6 +5475,10 @@ function hidePopupStrip() {
     strip.style.removeProperty('top');
     strip.style.removeProperty('width');
     strip.style.removeProperty('max-width');
+    strip.style.removeProperty('right');
+    strip.style.removeProperty('bottom');
+    strip.style.removeProperty('position');
+    strip.style.removeProperty('transform');
     strip.dataset.toolbarSurface = 'bottom';
   }
   activePopupGroup = null;
@@ -5520,8 +5521,12 @@ function togglePopupStrip(
     .find(button => button.dataset.toolbarKey === rootKey);
   rootKeyButton?.classList.add('active');
 
-  const configuredItems = toolbarConfig.popupGroups[groupKey]
-    ? getRuntimeToolbarGroupItems(groupKey, toolbarConfig)
+  const configuredItems = bottomToolbarConfig.popupGroups[groupKey]
+    ? surface === 'bottom'
+      ? getRuntimeToolbarGroupItems(groupKey)
+      : getRuntimeToolbarGroupItemsForConfig(groupKey, toolbarConfig)
+    : toolbarConfig.popupGroups[groupKey]
+      ? getRuntimeToolbarGroupItemsForConfig(groupKey, toolbarConfig)
     : items;
   orderBottomToolbarPopupItems(
     groupKey,
@@ -5596,11 +5601,16 @@ function togglePopupStrip(
     });
     btn.onclick = (e) => {
       e.stopPropagation();
-      if (toolbarConfig.popupGroups[styleId]) {
+      if (surface === 'bottom') {
+        if (bottomToolbarConfig.popupGroups[styleId]) {
+          togglePopupStrip(styleId, btn, getRuntimeToolbarGroupItems(styleId));
+          return;
+        }
+      } else if (toolbarConfig.popupGroups[styleId]) {
         togglePopupStrip(
           styleId,
           btn,
-          getRuntimeToolbarGroupItems(styleId, toolbarConfig),
+          getRuntimeToolbarGroupItemsForConfig(styleId, toolbarConfig),
           toolbarConfig
         );
         return;
@@ -7526,27 +7536,21 @@ window.editorBridge = {
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
     // Toolbar
-    const hasBottomConfig = Object.prototype.hasOwnProperty.call(
-      prefs,
-      'pref_toolbar_bottom_config'
-    );
-    const hasFloatingConfig = Object.prototype.hasOwnProperty.call(
-      prefs,
-      'pref_toolbar_floating_config'
-    );
-    if (hasBottomConfig || hasFloatingConfig) {
-      if (hasBottomConfig) {
-        bottomToolbarConfig = normalizeBottomToolbarConfig(
-          prefs.pref_toolbar_bottom_config
-        );
-      }
-      if (hasFloatingConfig) {
-        floatingToolbarConfig = normalizeBottomToolbarConfig(
-          prefs.pref_toolbar_floating_config
-        );
-      }
+    if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
+      bottomToolbarConfig = normalizeBottomToolbarConfig(
+        prefs.pref_toolbar_bottom_config
+      );
       hidePopupStrip();
       setupGroupedControlBar();
+    }
+    const floatingConfigPreference = prefs.pref_toolbar_floating_config ??
+      prefs.pref_toolbar_bottom_config;
+    if (floatingConfigPreference !== undefined) {
+      floatingToolbarConfig = normalizeBottomToolbarConfig(
+        floatingConfigPreference
+      );
+      hidePopupStrip();
+      setupFloatingSelectionToolbar();
     }
     setCssVar('--toolbar-bg', androidArgbToCss(prefs.pref_toolbar_bg_color));
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);

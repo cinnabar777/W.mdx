@@ -1354,6 +1354,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     private var toolbarPreviewPreferencesView: android.view.View? = null
     @Volatile
     private lateinit var toolbarPreferences: SharedPreferences
+    @Volatile
     private var toolbarConfigPreferenceKey = TOOLBAR_CONFIG_KEY
     @Volatile
     private var toolbarSaveFailureReason = "unknown"
@@ -1607,7 +1608,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             )
             payload.put(
                 TOOLBAR_FLOATING_CONFIG_KEY,
-                prefs.getString(TOOLBAR_FLOATING_CONFIG_KEY, defaultToolbarConfigJson())
+                prefs.getString(
+                    TOOLBAR_FLOATING_CONFIG_KEY,
+                    prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                ) ?: prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
                     ?: defaultToolbarConfigJson()
             )
         }

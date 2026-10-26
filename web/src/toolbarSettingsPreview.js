@@ -350,6 +350,33 @@ function render() {
   );
 }
 
+function applyToolbarSurfaceConfig(surface, rawConfig) {
+  const incomingConfig = normalizeBottomToolbarConfig(rawConfig);
+  const incomingLayout = layoutSignature(incomingConfig);
+  const locallySavedLayout = locallySavedToolbarLayouts[surface];
+  if (
+    !hasAppliedToolbarConfig[surface] ||
+    !locallySavedLayout ||
+    incomingLayout === locallySavedLayout
+  ) {
+    configsBySurface[surface] = incomingConfig;
+  } else {
+    // Native color/icon updates may echo a canonicalized config. Accept
+    // those changes without replacing the layout being edited.
+    const currentConfig = configsBySurface[surface];
+    configsBySurface[surface] = {
+      ...incomingConfig,
+      order: currentConfig.order,
+      hidden: currentConfig.hidden,
+      popupGroups: currentConfig.popupGroups,
+      holding: currentConfig.holding,
+      customGroups: currentConfig.customGroups,
+      customKeys: currentConfig.customKeys
+    };
+  }
+  hasAppliedToolbarConfig[surface] = true;
+}
+
 function applySettings(payload) {
   let prefs = payload;
   if (typeof payload === 'string') {
@@ -361,35 +388,11 @@ function applySettings(payload) {
   }
   if (!prefs || typeof prefs !== 'object') prefs = {};
 
-  for (const surface of ['bottom', 'floating']) {
-    const preferenceKey = surface === 'bottom'
-      ? 'pref_toolbar_bottom_config'
-      : 'pref_toolbar_floating_config';
-    if (!Object.prototype.hasOwnProperty.call(prefs, preferenceKey)) continue;
-    const incomingConfig = normalizeBottomToolbarConfig(prefs[preferenceKey]);
-    const incomingLayout = layoutSignature(incomingConfig);
-    const locallySavedLayout = locallySavedToolbarLayouts[surface];
-    if (
-      !hasAppliedToolbarConfig[surface] ||
-      !locallySavedLayout ||
-      incomingLayout === locallySavedLayout
-    ) {
-      configsBySurface[surface] = incomingConfig;
-    } else {
-      // Native color/icon updates may echo a canonicalized config. Accept
-      // those changes without replacing the layout being edited.
-      const currentConfig = configsBySurface[surface];
-      configsBySurface[surface] = {
-        ...incomingConfig,
-        order: currentConfig.order,
-        hidden: currentConfig.hidden,
-        popupGroups: currentConfig.popupGroups,
-        holding: currentConfig.holding,
-        customGroups: currentConfig.customGroups,
-        customKeys: currentConfig.customKeys
-      };
-    }
-    hasAppliedToolbarConfig[surface] = true;
+  if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
+    applyToolbarSurfaceConfig('bottom', prefs.pref_toolbar_bottom_config);
+  }
+  if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_floating_config')) {
+    applyToolbarSurfaceConfig('floating', prefs.pref_toolbar_floating_config);
   }
   config = configsBySurface[activeToolbarSurface];
   const isLightTheme = prefs.pref_app_theme === 'light';
@@ -469,6 +472,7 @@ function saveConfig() {
   if (saved) {
     configsBySurface[activeToolbarSurface] = config;
     locallySavedToolbarLayouts[activeToolbarSurface] = layoutSignature(config);
+    hasAppliedToolbarConfig[activeToolbarSurface] = true;
     setStatus('Toolbar changes saved.');
   } else {
     const failureMessages = {
@@ -478,10 +482,6 @@ function saveConfig() {
       bridge_error: 'Toolbar save failed inside Android; check Android logs.'
     };
     setStatus(failureMessages[success] || 'Could not save toolbar changes.');
-  }
-  if (saved) {
-    locallySavedToolbarLayout = layoutSignature(config);
-    hasAppliedToolbarConfig = true;
   }
   return saved;
 }
@@ -508,6 +508,12 @@ function setToolbarSurface(surface) {
   activeToolbarSurface = surface;
   config = configsBySurface[surface];
   selectedKey = null;
+  openPopupGroup = null;
+  selectedPopupItem = null;
+  selectedGestureId = null;
+  iconPickerOpen = false;
+  actionPickerOpen = false;
+  toolbarEditorOverlayOpen = false;
   window.ToolbarSettings?.setToolbarSurface?.(surface);
   syncToolbarSurfaceSelector();
   render();

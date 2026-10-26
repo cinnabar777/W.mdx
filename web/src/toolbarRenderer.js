@@ -179,6 +179,18 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
 
     const style = config.styles[id] || {};
     button.classList.toggle('has-toolbar-swipe-action', hasToolbarSwipeActions(style));
+    const horizontalGestureIds = [
+      'swipeLeft',
+      'swipeRight',
+      'swipeUpLeft',
+      'swipeUpRight',
+      'swipeDownLeft',
+      'swipeDownRight'
+    ];
+    button.classList.toggle(
+      'has-horizontal-toolbar-swipe-action',
+      horizontalGestureIds.some(gestureId => style.gestureActions?.[gestureId])
+    );
     if (style.iconColor) {
       button.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
     }
@@ -316,7 +328,7 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     button.addEventListener('pointerdown', event => {
       // Keep the editor's text selection and IME focus when toolbar keys are
       // pressed. The subsequent click still runs the toolbar action.
-      event.preventDefault();
+      if (options.preventPointerDefault !== false) event.preventDefault();
     });
     button.addEventListener('click', event => {
       if (button.dataset.toolbarGestureSuppressClick !== 'true') return;

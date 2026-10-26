@@ -165,8 +165,9 @@ body.light-theme .popup-toolbar-strip {
 }
 
 .toolbar-preview-dock.is-floating #toolbar-preview .grouped-key-btn {
-  flex: 0 0 var(--toolbar-floating-key-width, 48px) !important;
+  flex: 0 1 var(--toolbar-floating-key-width, 48px) !important;
   width: var(--toolbar-floating-key-width, 48px) !important;
+  min-width: 24px !important;
   max-width: none !important;
 }
 
@@ -188,7 +189,6 @@ body.light-theme .popup-toolbar-strip {
   overflow-y: hidden !important;
   padding: var(--toolbar-padding, 4px) !important;
   box-sizing: border-box !important;
-  border: 1px solid rgba(255,255,255,.16) !important;
   border-radius: var(--toolbar-floating-corner-radius, 24px) !important;
   background-color: var(--toolbar-bg, #121212) !important;
   box-shadow: 0 3px 12px rgba(0,0,0,.28);
@@ -210,9 +210,15 @@ body.light-theme .popup-toolbar-strip {
 }
 
 .floating-selection-toolbar .grouped-key-btn {
-  flex: 0 0 var(--toolbar-floating-key-width, 48px) !important;
+  flex: 0 1 var(--toolbar-floating-key-width, 48px) !important;
   width: var(--toolbar-floating-key-width, 48px) !important;
+  min-width: 24px !important;
   max-width: none !important;
+  touch-action: pan-x !important;
+}
+
+.floating-selection-toolbar .grouped-key-btn.has-horizontal-toolbar-swipe-action {
+  touch-action: none !important;
 }
 
 .popup-toolbar-strip.is-floating-popup {

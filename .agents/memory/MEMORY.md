@@ -10,3 +10,4 @@
 - [Toolbar icon editor](toolbar-icon-editor.md) — keep spacious key settings scrollable; open icon search/import in a separate dismissible popup.
 - [Toolbar folder placement](toolbar-folder-placement.md) — folders are movable keys; generic “Open group” targets the invoking group, and empty folders stay visible.
 - [Replit branch workflow](branch-tip-comparisons.md) — push requested W.mdx changes to the existing Replit branch and start its GitHub APK build; create no extra branches.
+- [Floating toolbar separation](floating-toolbar-separation.md) — keep its saved layout independent from the bottom toolbar while sharing the action and icon implementation.
