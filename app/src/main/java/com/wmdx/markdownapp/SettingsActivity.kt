@@ -1621,6 +1621,26 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         showPasteToolbarSvgDialog()
     }
 
+    private fun runToolbarSvgAction(itemId: String, action: () -> Unit) {
+        val host = activity ?: return
+        host.runOnUiThread {
+            if (!isAdded) return@runOnUiThread
+            if (itemId !in TOOLBAR_STYLE_IDS) {
+                ThemedToast.show(host, "Select a toolbar key before editing its icon")
+                return@runOnUiThread
+            }
+            targetToolbarIconId = itemId
+            try {
+                action()
+            } catch (error: Exception) {
+                ThemedToast.show(
+                    host,
+                    error.localizedMessage ?: "Could not open the SVG action"
+                )
+            }
+        }
+    }
+
     private fun showPasteToolbarSvgDialog() {
         val input = android.widget.EditText(requireContext()).apply {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
@@ -1719,20 +1739,17 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
         @android.webkit.JavascriptInterface
         fun editBottomToolbarIcon(itemId: String) {
-            if (itemId !in TOOLBAR_STYLE_IDS) return
-            activity?.runOnUiThread { showToolbarSvgChooser(itemId) }
+            runToolbarSvgAction(itemId) { showToolbarSvgChooser(itemId) }
         }
 
         @android.webkit.JavascriptInterface
         fun chooseBottomToolbarSvg(itemId: String) {
-            if (itemId !in TOOLBAR_STYLE_IDS) return
-            activity?.runOnUiThread { chooseToolbarSvgFile(itemId) }
+            runToolbarSvgAction(itemId) { chooseToolbarSvgFile(itemId) }
         }
 
         @android.webkit.JavascriptInterface
         fun pasteBottomToolbarSvg(itemId: String) {
-            if (itemId !in TOOLBAR_STYLE_IDS) return
-            activity?.runOnUiThread { pasteToolbarSvg(itemId) }
+            runToolbarSvgAction(itemId) { pasteToolbarSvg(itemId) }
         }
     }
 }

@@ -167,11 +167,39 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       'toolbar-preview-editor-header',
       'Reset all stays in the title row'
     );
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-open-icon-picker').parentElement.className,
+      'toolbar-preview-editor-header',
+      'the current live icon preview stays in the title row'
+    );
+    for (const actionId of ['toolbar-paste-svg', 'toolbar-choose-svg']) {
+      assert.equal(
+        dom.window.document.querySelector(`#${actionId}`).parentElement.className,
+        'toolbar-preview-editor-header',
+        'custom SVG actions stay beside the live icon'
+      );
+    }
     assert.equal(dom.window.document.querySelector('#toolbar-reset-key-colors'), null);
+    assert.notEqual(
+      dom.window.document
+        .querySelector('#toolbar-open-icon-picker')
+        .style.getPropertyValue('--toolbar-key-active-bg-color'),
+      '',
+      'the live icon preview uses the configured active/background color'
+    );
     dom.window.document.querySelector('#toolbar-paste-svg').click();
     dom.window.document.querySelector('#toolbar-choose-svg').click();
     assert.deepEqual(pastedIcons, ['saveFile']);
     assert.deepEqual(chosenIconFiles, ['saveFile']);
+    delete dom.window.ToolbarSettings.pasteBottomToolbarSvg;
+    delete dom.window.ToolbarSettings.chooseBottomToolbarSvg;
+    dom.window.document.querySelector('#toolbar-paste-svg').click();
+    dom.window.document.querySelector('#toolbar-choose-svg').click();
+    assert.deepEqual(
+      edits,
+      ['saveFile', 'saveFile', 'saveFile'],
+      'missing direct bridge actions fall back to the native SVG options dialog'
+    );
     const iconSearch = dom.window.document.querySelector('#toolbar-icon-search');
     iconSearch.value = 'bold';
     iconSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
@@ -232,7 +260,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       .querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]')
       .click();
     assert.equal(collapseCalls.length, collapseCallsBeforeTray + 2);
-    assert.deepEqual(edits, ['saveFile', 'heading']);
+    assert.deepEqual(edits, ['saveFile', 'saveFile', 'saveFile', 'heading']);
 
     dom.window.applyToolbarSettings({
       pref_toolbar_bottom_config: JSON.stringify({

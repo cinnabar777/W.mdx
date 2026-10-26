@@ -58,7 +58,10 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /id="toolbar-paste-svg"/);
   assert.match(html, /id="toolbar-choose-svg"/);
   assert.match(html, /Paste SVG/);
-  assert.match(html, /Choose file/);
+  assert.match(html, /Choose SVG file/);
+  assert.match(html, /toolbar-preview-current-key/);
+  assert.match(html, /min-height: 28px/);
+  assert.match(html, /width: max-content/);
   assert.match(html, /id="toolbar-reset-key-style"/);
   assert.match(html, /id="toolbar-reset-key-style"[^>]*class="toolbar-preview-editor-reset-all"/);
   assert.doesNotMatch(html, /id="toolbar-reset-key-colors"/);

@@ -303,6 +303,7 @@ function refreshSelectedKeyEditor() {
 
   const style = config.styles[selectedKey] || {};
   const currentIcon = document.querySelector('#toolbar-current-icon');
+  const currentIconButton = document.querySelector('#toolbar-open-icon-picker');
   const iconMarkup = style.customSvg ||
     (typeof definition.icon === 'string' && svgIcons[definition.icon]
       ? svgIcons[definition.icon]
@@ -310,6 +311,21 @@ function refreshSelectedKeyEditor() {
         ? definition.icon
         : '');
   currentIcon.style.color = style.iconColor
+    ? toToolbarCssColor(style.iconColor)
+    : 'var(--toolbar-icon-color)';
+  currentIconButton.style.setProperty(
+    '--toolbar-key-bg-color',
+    style.backgroundColor ? toToolbarCssColor(style.backgroundColor) : 'transparent'
+  );
+  currentIconButton.style.setProperty(
+    '--toolbar-key-active-bg-color',
+    style.activeBackgroundColor
+      ? toToolbarCssColor(style.activeBackgroundColor)
+      : style.backgroundColor
+        ? toToolbarCssColor(style.backgroundColor)
+        : 'transparent'
+  );
+  currentIconButton.style.color = style.iconColor
     ? toToolbarCssColor(style.iconColor)
     : 'var(--toolbar-icon-color)';
   if (iconMarkup) {
@@ -600,17 +616,35 @@ document.querySelector('#toolbar-reset-key-style')?.addEventListener('click', ()
   render();
   saveConfig();
 });
+function invokeSvgAction(method, fallbackMessage) {
+  if (!selectedKey) {
+    setStatus('Select a toolbar key before editing its icon.');
+    return;
+  }
+  const bridge = window.ToolbarSettings;
+  const action = bridge?.[method];
+  if (typeof action === 'function') {
+    setStatus(fallbackMessage);
+    try {
+      bridge[method](selectedKey);
+    } catch (error) {
+      setStatus(`Could not open the SVG action: ${error.message || 'unknown error'}`);
+    }
+    return;
+  }
+  if (typeof bridge?.editBottomToolbarIcon === 'function') {
+    setStatus('Opening SVG options…');
+    bridge.editBottomToolbarIcon(selectedKey);
+    return;
+  }
+  setStatus('SVG editing is unavailable. Close and reopen toolbar settings, then try again.');
+}
+
 document.querySelector('#toolbar-paste-svg')?.addEventListener('click', () => {
-  if (!selectedKey) return;
-  const paste = window.ToolbarSettings?.pasteBottomToolbarSvg;
-  if (typeof paste === 'function') paste(selectedKey);
-  else setStatus('Paste SVG is available in the app.');
+  invokeSvgAction('pasteBottomToolbarSvg', 'Opening SVG paste dialog…');
 });
 document.querySelector('#toolbar-choose-svg')?.addEventListener('click', () => {
-  if (!selectedKey) return;
-  const choose = window.ToolbarSettings?.chooseBottomToolbarSvg;
-  if (typeof choose === 'function') choose(selectedKey);
-  else setStatus('Choose file is available in the app.');
+  invokeSvgAction('chooseBottomToolbarSvg', 'Opening SVG file picker…');
 });
 document.querySelector('#toolbar-add-custom')?.addEventListener('click', () => {
   if (!selectedKey) return;
