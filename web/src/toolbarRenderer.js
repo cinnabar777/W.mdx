@@ -1,4 +1,5 @@
 import { BOTTOM_TOOLBAR_ITEMS, normalizeBottomToolbarConfig } from './toolbarConfig.js';
+import { getToolbarGestureIndicatorEntries } from './toolbarGestures.js';
 
 export function toToolbarCssColor(value) {
   if (typeof value !== 'string') return value;
@@ -209,10 +210,9 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     labelElement.textContent = title;
     button.appendChild(labelElement);
 
-    const gestureActionEntry = Object.entries(style.gestureActions || {})[0] ||
-      (style.gestureAction ? ['swipeUp', style.gestureAction] : null);
-    if (gestureActionEntry && typeof options.resolveGestureActionIcon === 'function') {
-      const [gestureId, actionId] = gestureActionEntry;
+    button.classList.toggle('toolbar-key-force-label', style.forceShowLabel === true);
+    if (typeof options.resolveGestureActionIcon === 'function') {
+      for (const { id: gestureId, actionId, position } of getToolbarGestureIndicatorEntries(style)) {
       const gestureIcon = options.resolveGestureActionIcon(
         actionId,
         style.gestureActionIcons?.[gestureId] ||
@@ -222,28 +222,67 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
       );
       if (gestureIcon) {
         const marker = doc.createElement('span');
-        marker.className = 'toolbar-key-gesture-indicator';
+        marker.className =
+          `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
+        marker.dataset.gesturePosition = position;
         marker.setAttribute('aria-hidden', 'true');
         marker.innerHTML = gestureIcon;
         button.appendChild(marker);
+      }
       }
     }
     if (typeof options.onKeyClick === 'function') {
       button.addEventListener('click', event => options.onKeyClick(id, event));
     }
     let pointerStart = null;
+    let longPressTimer = null;
+    let longPressHandled = false;
+    const clearLongPressTimer = () => {
+      if (longPressTimer !== null) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
     button.addEventListener('pointerdown', event => {
       if (event.button !== undefined && event.button !== 0) return;
+      clearLongPressTimer();
+      longPressHandled = false;
       pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
       try {
         button.setPointerCapture(event.pointerId);
       } catch {
         // Some embedded WebView versions do not expose pointer capture.
       }
+      if (
+        config.styles[id]?.gestureActions?.longPress &&
+        typeof options.onGesture === 'function'
+      ) {
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          if (!pointerStart) return;
+          longPressHandled = Boolean(options.onGesture(id, 'longPress', event, button));
+          if (longPressHandled) {
+            button.dataset.toolbarGestureSuppressClick = 'true';
+          }
+        }, 500);
+      }
+    }, { capture: true });
+    button.addEventListener('pointermove', event => {
+      if (!pointerStart || longPressTimer === null) return;
+      if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 8) {
+        clearLongPressTimer();
+      }
     }, { capture: true });
     button.addEventListener('pointerup', event => {
+      clearLongPressTimer();
       if (!pointerStart) {
         pointerStart = null;
+        return;
+      }
+      if (longPressHandled) {
+        longPressHandled = false;
+        pointerStart = null;
+        event.preventDefault();
         return;
       }
       const deltaX = event.clientX - pointerStart.x;
@@ -272,7 +311,9 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
       }
     }, { capture: true });
     button.addEventListener('pointercancel', () => {
+      clearLongPressTimer();
       pointerStart = null;
+      longPressHandled = false;
     }, { capture: true });
     button.addEventListener('pointerdown', event => {
       // Keep the editor's text selection and IME focus when toolbar keys are

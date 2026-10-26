@@ -7,7 +7,8 @@ import {
 } from './toolbarConfig.js';
 import {
   BUILT_IN_GESTURE_ACTION_IDS,
-  TOOLBAR_GESTURE_GROUPS
+  TOOLBAR_GESTURE_GROUPS,
+  getToolbarGestureIndicatorEntries
 } from './toolbarGestures.js';
 import { svgIcons } from './toolbarIcons.js';
 import {
@@ -25,6 +26,7 @@ const iconPicker = document.querySelector('#toolbar-icon-picker-modal');
 const actionPicker = document.querySelector('#toolbar-action-picker-modal');
 const dropMarker = document.querySelector('#toolbar-preview-drop-marker');
 if (dropMarker && document.body) document.body.appendChild(dropMarker);
+const DROP_MARKER_POINTER_OFFSET_Y = 50;
 const status = document.querySelector('#toolbar-preview-status');
 const selectedTitle = document.querySelector('#toolbar-preview-selected-title');
 let config = normalizeBottomToolbarConfig(null);
@@ -199,10 +201,6 @@ function getActionIconMarkup(item) {
   return typeof item.icon === 'string' ? item.icon : '';
 }
 
-function getAssignedSwipeIconMarkup(style) {
-  return getAssignedGestureIconMarkup(style, 'swipeUp');
-}
-
 function getAssignedGestureIconMarkup(style, gestureId) {
   const svg = style?.gestureActionIcons?.[gestureId] ||
     (gestureId === 'swipeUp' ? style?.gestureActionIconSvg : '');
@@ -245,12 +243,8 @@ function render() {
     definitions: Object.fromEntries(definitions),
     buttonClass: 'grouped-key-btn toolbar-preview-key',
     resolveCustomIcon: style => style.customSvg || '',
-    resolveGestureActionIcon: (actionId, customSvg, keyId) =>
-      getAssignedSwipeIconMarkup({
-        ...(config.styles[keyId] || {}),
-        gestureActions: { swipeUp: actionId },
-        gestureActionIcons: { swipeUp: customSvg }
-      }),
+    resolveGestureActionIcon: (_actionId, _customSvg, keyId, gestureId) =>
+      getAssignedGestureIconMarkup(config.styles[keyId] || {}, gestureId),
     onKeyClick: onToolbarKeyClick
   });
   for (const button of toolbar.querySelectorAll('.toolbar-preview-key')) {
@@ -297,12 +291,8 @@ function render() {
         includeEmptyGroups: true,
         buttonClass: 'grouped-key-btn toolbar-preview-key',
         resolveCustomIcon: style => style.customSvg || '',
-        resolveGestureActionIcon: (actionId, customSvg, keyId) =>
-          getAssignedSwipeIconMarkup({
-            ...(config.styles[keyId] || {}),
-            gestureActions: { swipeUp: actionId },
-            gestureActionIcons: { swipeUp: customSvg }
-          }),
+        resolveGestureActionIcon: (_actionId, _customSvg, keyId, gestureId) =>
+          getAssignedGestureIconMarkup(config.styles[keyId] || {}, gestureId),
         onKeyClick: onToolbarKeyClick
       });
     }
@@ -425,6 +415,16 @@ function saveConfig() {
   }
 }
 
+window.addEventListener('pagehide', () => {
+  const save = window.ToolbarSettings?.saveBottomToolbarConfig;
+  if (typeof save !== 'function') return;
+  try {
+    save(JSON.stringify(normalizeBottomToolbarConfig(config)));
+  } catch (error) {
+    console.warn('Could not save toolbar layout while closing settings', error);
+  }
+});
+
 function layoutSignature(value) {
   return JSON.stringify({
     order: value.order,
@@ -523,6 +523,7 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   button.dataset.previewLocation = location;
   button.dataset.previewPopupHidden = String(isIndividuallyHidden);
   const style = config.styles[item.id] || {};
+  button.classList.toggle('toolbar-key-force-label', style.forceShowLabel === true);
   button.style.setProperty(
     '--toolbar-key-active-bg-color',
     toToolbarCssColor(style.activeBackgroundColor || style.backgroundColor || 'transparent')
@@ -555,16 +556,15 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   labelElement.className = 'toolbar-key-label';
   labelElement.textContent = title;
   button.appendChild(labelElement);
-  const assignedGestureId = TOOLBAR_GESTURE_GROUPS
-    .flatMap(group => group.gestures)
-    .find(gesture => getGestureActionId(style, gesture.id))?.id;
-  if (assignedGestureId) {
-    const gestureIcon = getAssignedGestureIconMarkup(style, assignedGestureId);
+  for (const { id: gestureId, position } of getToolbarGestureIndicatorEntries(style)) {
+    const gestureIcon = getAssignedGestureIconMarkup(style, gestureId);
     if (gestureIcon) {
       const marker = document.createElement('span');
-      marker.className = 'toolbar-key-gesture-indicator';
+      marker.className =
+        `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
+      marker.dataset.gesturePosition = position;
       marker.setAttribute('aria-hidden', 'true');
-      marker.title = `${assignedGestureId} action`;
+      marker.title = `${gestureId} action`;
       marker.innerHTML = gestureIcon;
       button.appendChild(marker);
     }
@@ -673,6 +673,8 @@ function refreshSelectedKeyEditor() {
   const preserveColorControl = document.querySelector('#toolbar-preserve-svg-colors');
   preserveColorControl.checked = style.preserveSvgColors === true;
   preserveColorControl.disabled = !style.customSvg;
+  const forceLabelControl = document.querySelector('#toolbar-force-show-label');
+  if (forceLabelControl) forceLabelControl.checked = style.forceShowLabel === true;
   document.querySelectorAll('.toolbar-preview-reset-color').forEach(button => {
     button.disabled = !style[button.dataset.resetProperty];
   });
@@ -699,14 +701,11 @@ function getGestureActionId(style, gestureId) {
 function renderGestureSections(style) {
   for (const group of TOOLBAR_GESTURE_GROUPS) {
     const list = document.querySelector(`[data-gesture-list="${group.id}"]`);
-    const summary = document.querySelector(`#toolbar-gesture-summary-${group.id}`);
     if (!list) continue;
     list.replaceChildren();
-    const assigned = [];
     for (const gesture of group.gestures) {
       const actionId = getGestureActionId(style, gesture.id);
       const action = getActionDefinition(actionId);
-      if (action) assigned.push(`${gesture.title} → ${action.title}`);
 
       const row = document.createElement('div');
       row.className = 'toolbar-preview-gesture-row';
@@ -752,11 +751,6 @@ function renderGestureSections(style) {
       });
       row.append(actionButton, iconButton);
       list.appendChild(row);
-    }
-    if (summary) {
-      summary.textContent = assigned.length
-        ? assigned.join(' · ')
-        : 'No actions assigned';
     }
   }
 }
@@ -1002,8 +996,9 @@ function onDocumentPointerMove(event) {
     event.pointerId !== undefined &&
     event.pointerId !== dragState.pointerId
   ) return;
-  dragState.lastClientX = event.clientX;
-  dragState.lastClientY = event.clientY;
+  const dropPoint = getDragDropPoint(event.clientX, event.clientY);
+  dragState.lastClientX = dropPoint.x;
+  dragState.lastClientY = dropPoint.y;
   const moved = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY);
   if (!dragState.started && moved < 8) return;
   if (!dragState.started) {
@@ -1018,7 +1013,7 @@ function onDocumentPointerMove(event) {
   document.querySelectorAll('.drop-target, .drop-target-group').forEach(element => {
     element.classList.remove('drop-target', 'drop-target-group');
   });
-  dragState.target = resolveDragTarget(event.clientX, event.clientY);
+  dragState.target = resolveDragTarget(dropPoint.x, dropPoint.y);
   if (
     dragState.target?.button &&
     (dragState.target.groupDrop || dragState.target.type === 'group-key')
@@ -1026,7 +1021,15 @@ function onDocumentPointerMove(event) {
     dragState.target.button.classList.add('drop-target-group');
   }
   if (dragState.target?.type === 'tray') tray.classList.add('drop-target');
-  setDropMarker(dragState.target);
+  if (dragState.target) {
+    const isGroupTarget = dragState.target.groupDrop || dragState.target.type === 'group-key';
+    setDropMarker({
+      ...dragState.target,
+      markerY: isGroupTarget ? dropPoint.y : dropPoint.y - 12
+    });
+  } else {
+    setDropMarker(null);
+  }
 }
 
 function onDocumentPointerUp(event) {
@@ -1038,9 +1041,10 @@ function onDocumentPointerUp(event) {
   document.removeEventListener('pointermove', onDocumentPointerMove);
   document.removeEventListener('pointercancel', cancelDrag);
   document.removeEventListener('pointerup', onDocumentPointerUp);
+  const dropPoint = getDragDropPoint(event.clientX, event.clientY);
   if (dragState) {
-    dragState.lastClientX = event.clientX;
-    dragState.lastClientY = event.clientY;
+    dragState.lastClientX = dropPoint.x;
+    dragState.lastClientY = dropPoint.y;
   }
   document.querySelectorAll('.drop-target, .drop-target-group, .is-dragging').forEach(element => {
     element.classList.remove('drop-target', 'drop-target-group', 'is-dragging');
@@ -1051,12 +1055,21 @@ function onDocumentPointerUp(event) {
     return;
   }
   if (dragState.started) {
-    dragState.target = resolveDragTarget(event.clientX, event.clientY);
+    dragState.target = resolveDragTarget(dropPoint.x, dropPoint.y);
   }
   applyDrop(dragState);
   dragState = null;
   render();
   saveConfig();
+}
+
+function getDragDropPoint(clientX, clientY) {
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const maxY = Math.max(12, viewportHeight - 12);
+  return {
+    x: clientX,
+    y: Math.max(12, Math.min(clientY + DROP_MARKER_POINTER_OFFSET_Y, maxY))
+  };
 }
 
 function cancelDrag(event) {
@@ -1857,6 +1870,16 @@ for (const section of toolbarEditorSections) {
 document.querySelector('#toolbar-preserve-svg-colors')?.addEventListener('change', event => {
   if (!selectedKey || !config.styles[selectedKey]?.customSvg) return;
   config.styles[selectedKey].preserveSvgColors = event.target.checked;
+  render();
+  saveConfig();
+});
+document.querySelector('#toolbar-force-show-label')?.addEventListener('change', event => {
+  if (!selectedKey) return;
+  const style = config.styles[selectedKey] || {};
+  if (event.target.checked) style.forceShowLabel = true;
+  else delete style.forceShowLabel;
+  if (Object.keys(style).length) config.styles[selectedKey] = style;
+  else delete config.styles[selectedKey];
   render();
   saveConfig();
 });

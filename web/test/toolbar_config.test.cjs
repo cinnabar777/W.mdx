@@ -99,8 +99,13 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
         iconColor: '#123456',
         customSvg: '<svg><path d="M0 0"/></svg>',
         preserveSvgColors: true,
+        forceShowLabel: true,
         title: 'Save as Markdown Pack',
-        gestureActions: { swipeUp: 'bold', swipeDown: 'custom-key-quick-save' },
+        gestureActions: {
+          longPress: 'saveFile',
+          swipeUp: 'bold',
+          swipeDown: 'custom-key-quick-save'
+        },
         gestureActionIcons: {
           swipeUp: '<svg><path d="M1 1"/></svg>',
           swipeDown: '<svg><path d="M2 2"/></svg>'
@@ -120,8 +125,13 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
     iconColor: '#123456',
     customSvg: '<svg><path d="M0 0"/></svg>',
     preserveSvgColors: true,
+    forceShowLabel: true,
     title: 'Save as Markdown Pack',
-    gestureActions: { swipeUp: 'bold', swipeDown: 'custom-key-quick-save' },
+    gestureActions: {
+      longPress: 'saveFile',
+      swipeUp: 'bold',
+      swipeDown: 'custom-key-quick-save'
+    },
     gestureActionIcons: {
       swipeUp: '<svg><path d="M1 1"/></svg>',
       swipeDown: '<svg><path d="M2 2"/></svg>'
@@ -135,6 +145,38 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
   assert.equal(config.styles.inventedAction, undefined);
   assert.equal(config.styles.undo.gestureActions, undefined);
   assert.equal(config.styles.undo.title, 'Invalid target');
+});
+
+test('toolbar gesture indicators occupy directional positions and use tap fallbacks only without corner swipes', async () => {
+  const { getToolbarGestureIndicatorEntries } = await import('../src/toolbarGestures.js');
+  assert.deepEqual(
+    getToolbarGestureIndicatorEntries({
+      gestureActions: {
+        longPress: 'saveFile',
+        tap2: 'bold',
+        tap3: 'italic',
+        swipeUp: 'code',
+        swipeLeft: 'heading2'
+      }
+    }),
+    [
+      { id: 'longPress', actionId: 'saveFile', position: 'top-left' },
+      { id: 'tap2', actionId: 'bold', position: 'top-right' },
+      { id: 'tap3', actionId: 'italic', position: 'bottom-right' },
+      { id: 'swipeUp', actionId: 'code', position: 'top' },
+      { id: 'swipeLeft', actionId: 'heading2', position: 'left' }
+    ]
+  );
+  assert.deepEqual(
+    getToolbarGestureIndicatorEntries({
+      gestureActions: {
+        longPress: 'saveFile',
+        tap2: 'bold',
+        swipeDownRight: 'italic'
+      }
+    }),
+    [{ id: 'swipeDownRight', actionId: 'italic', position: 'bottom-right' }]
+  );
 });
 
 test('toolbar config always leaves the Menu key available when every key is hidden', async () => {
@@ -197,10 +239,19 @@ test('runtime renderer creates the configured order with stable accessible key i
   const buttons = renderBottomToolbarKeys(toolbar, {
     version: 1,
     order: ['menu', 'undo'],
-    hidden: ['heading', 'lists', 'format', 'table', 'insert']
+    hidden: ['heading', 'lists', 'format', 'table', 'insert'],
+    styles: {
+      undo: {
+        forceShowLabel: true,
+        gestureActions: { swipeLeft: 'bold', swipeUpRight: 'heading2' }
+      }
+    }
   }, {
     menu: '<svg data-icon="menu"></svg>',
     undo: '<svg data-icon="undo"></svg>'
+  }, {
+    resolveGestureActionIcon: (_actionId, _customSvg, _keyId, gestureId) =>
+      `<svg data-gesture="${gestureId}"></svg>`
   });
 
   assert.deepEqual(buttons.map(button => button.dataset.toolbarKey), ['menu', 'undo']);
@@ -210,6 +261,13 @@ test('runtime renderer creates the configured order with stable accessible key i
   );
   assert.equal(toolbar.querySelector('#grp-btn-menu').getAttribute('aria-label'), 'Menu');
   assert.equal(toolbar.querySelector('#grp-btn-undo svg').dataset.icon, 'undo');
+  const undo = toolbar.querySelector('#grp-btn-undo');
+  assert.equal(undo.classList.contains('toolbar-key-force-label'), true);
+  assert.deepEqual(
+    [...undo.querySelectorAll('.toolbar-key-gesture-indicator')]
+      .map(marker => marker.dataset.gesturePosition),
+    ['left', 'top-right']
+  );
 });
 
 test('custom icons are made tintable by default and unsafe SVG content is stripped', async () => {

@@ -11,7 +11,9 @@ async function dragKey(
   dropX = 90,
   dropY = 50,
   duringDrag = null,
-  pointTarget = target
+  pointTarget = target,
+  moveX = 42,
+  moveY = 12
 ) {
   target.getBoundingClientRect = () => ({
     left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100
@@ -28,7 +30,7 @@ async function dragKey(
   };
   dispatchPointer(source, 'pointerdown', 2, 2);
   await new Promise(resolve => setTimeout(resolve, 410));
-  dispatchPointer(dom.window.document, 'pointermove', 42, 12);
+  dispatchPointer(dom.window.document, 'pointermove', moveX, moveY);
   duringDrag?.();
   dispatchPointer(dom.window.document, 'pointerup', dropX, dropY);
 }
@@ -205,8 +207,8 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.equal(dom.window.document.querySelector('#toolbar-current-key-preview'), null);
     assert.equal(dom.window.document.querySelector('#toolbar-current-icon'), null);
     assert.equal(editor.querySelectorAll('[data-toolbar-section]').length, 4);
-    assert.equal(editor.querySelectorAll('.toolbar-preview-gesture-action').length, 12);
-    assert.equal(editor.querySelectorAll('.toolbar-preview-gesture-icon').length, 11);
+    assert.equal(editor.querySelectorAll('.toolbar-preview-gesture-action').length, 13);
+    assert.equal(editor.querySelectorAll('.toolbar-preview-gesture-icon').length, 12);
     assert.equal(
       editor.querySelector('[data-toolbar-section="colors"]').open,
       false,
@@ -602,7 +604,7 @@ test('custom groups accept loose actions and deleting a group releases its child
       popup.querySelector('[data-preview-popup-item="todoList"]'),
       groupButton,
       50,
-      50
+      0
     );
     assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['todoList']);
     assert.ok(
@@ -642,7 +644,7 @@ test('custom groups accept loose actions and deleting a group releases its child
         `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
       ),
       50,
-      50
+      0
     );
     assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['todoList']);
     assert.ok(!saves.at(-1).holding.includes('todoList'));
@@ -783,10 +785,12 @@ test('dragging a held key onto the toolbar shows an insertion marker and reorder
         assert.equal(marker.hidden, false);
         assert.equal(marker.dataset.kind, 'insert');
         assert.equal(marker.style.left, '0px');
-        assert.equal(marker.style.top, '38px');
+        assert.equal(marker.style.top, '0px');
         assert.equal(marker.parentElement, dom.window.document.body);
       },
-      dom.window.document.body
+      dom.window.document.body,
+      42,
+      -40
     );
     assert.deepEqual(saves.at(-1).order.slice(0, 2), ['heading', 'undo']);
     assert.ok(!saves.at(-1).holding.includes('heading'));
@@ -833,7 +837,7 @@ test('dropping one toolbar key onto another creates a folder with both keys', as
     const target = dom.window.document.querySelector(
       '#toolbar-preview [data-toolbar-key="undo"]'
     );
-    await dragKey(dom, source, target, 50, 50);
+    await dragKey(dom, source, target, 50, 0);
 
     const groupId = Object.keys(saves.at(-1).customGroups)[0];
     assert.ok(groupId, 'a drop on the center of another key creates a group');
@@ -864,7 +868,7 @@ test('dropping one toolbar key onto another creates a folder with both keys', as
         '#toolbar-preview-popup [data-preview-popup-item="todoList"]'
       ),
       50,
-      50
+      0
     );
     const nestedGroupId = Object.keys(saves.at(-1).customGroups)
       .find(id => id !== groupId);

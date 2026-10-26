@@ -245,17 +245,6 @@
       transform: rotate(90deg);
     }
     .toolbar-preview-section[open] > summary::after { transform: rotate(-90deg); }
-    .toolbar-preview-section > summary small {
-      min-width: 0;
-      margin-left: auto;
-      overflow: hidden;
-      color: rgba(255,255,255,.64);
-      font-size: 10px;
-      font-weight: 400;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .toolbar-preview-section > summary small:empty { display: none; }
     .toolbar-preview-gesture-list,
     .toolbar-preview-style-controls {
       display: grid;
@@ -411,7 +400,15 @@
       width: 22px;
       height: 22px;
     }
-    .toolbar-preview-preserve-colors {
+    .toolbar-preview-key-flags {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .toolbar-preview-preserve-colors,
+    .toolbar-preview-force-label {
       display: inline-flex;
       width: max-content;
       max-width: 100%;
@@ -426,7 +423,8 @@
       background: rgba(255,255,255,.05);
       font-size: 10px;
     }
-    .toolbar-preview-preserve-colors input {
+    .toolbar-preview-preserve-colors input,
+    .toolbar-preview-force-label input {
       width: 14px;
       height: 14px;
       margin: 0;
@@ -630,7 +628,8 @@
       background: var(--toolbar-preview-surface, var(--bg-color, #fff));
       color: var(--toolbar-preview-text, #111);
     }
-    body.light-theme .toolbar-preview-preserve-colors {
+    body.light-theme .toolbar-preview-preserve-colors,
+    body.light-theme .toolbar-preview-force-label {
       border-color: rgba(0,0,0,.18);
       background: rgba(0,0,0,.04);
     }
@@ -667,9 +666,6 @@
       border-color: rgba(0,0,0,.18);
       background: rgba(0,0,0,.04);
       color: #111;
-    }
-    body.light-theme .toolbar-preview-section > summary small {
-      color: rgba(0,0,0,.62);
     }
   </style>
 </head>
@@ -729,21 +725,18 @@
           <details class="toolbar-preview-section" data-toolbar-section="taps">
             <summary>
               <span>Taps</span>
-              <small id="toolbar-gesture-summary-taps">No actions assigned</small>
             </summary>
             <div class="toolbar-preview-gesture-list" data-gesture-list="taps"></div>
           </details>
           <details class="toolbar-preview-section" data-toolbar-section="side-swipes">
             <summary>
               <span>Side swipes</span>
-              <small id="toolbar-gesture-summary-side-swipes">No actions assigned</small>
             </summary>
             <div class="toolbar-preview-gesture-list" data-gesture-list="side-swipes"></div>
           </details>
           <details class="toolbar-preview-section" data-toolbar-section="corner-swipes">
             <summary>
               <span>Corner swipes</span>
-              <small id="toolbar-gesture-summary-corner-swipes">No actions assigned</small>
             </summary>
             <div class="toolbar-preview-gesture-list" data-gesture-list="corner-swipes"></div>
           </details>
@@ -770,10 +763,16 @@
               <button class="toolbar-preview-reset-color" data-reset-property="activeBackgroundColor" type="button" aria-label="Reset active background color"></button>
             </div>
           </div>
-          <label class="toolbar-preview-preserve-colors">
-            <input id="toolbar-preserve-svg-colors" type="checkbox">
-            Preserve icon colors
-          </label>
+          <div class="toolbar-preview-key-flags">
+            <label class="toolbar-preview-preserve-colors">
+              <input id="toolbar-preserve-svg-colors" type="checkbox">
+              Preserve icon colors
+            </label>
+            <label class="toolbar-preview-force-label">
+              <input id="toolbar-force-show-label" type="checkbox">
+              Force show key label
+            </label>
+          </div>
             </div>
           </details>
         </div>

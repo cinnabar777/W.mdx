@@ -312,6 +312,9 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       if (typeof style.preserveSvgColors === 'boolean') {
         normalized.preserveSvgColors = style.preserveSvgColors;
       }
+      if (typeof style.forceShowLabel === 'boolean') {
+        normalized.forceShowLabel = style.forceShowLabel;
+      }
       if (typeof style.title === 'string') {
         const title = style.title.trim().slice(0, 48);
         if (title) normalized.title = title;

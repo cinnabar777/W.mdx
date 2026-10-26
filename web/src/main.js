@@ -35,6 +35,7 @@ import {
   normalizeBottomToolbarConfig,
   orderBottomToolbarPopupItems
 } from './toolbarConfig.js';
+import { getToolbarGestureIndicatorEntries } from './toolbarGestures.js';
 import {
   renderBottomToolbarKeys,
   sanitizeToolbarSvg,
@@ -3992,6 +3993,12 @@ function installToolbarTapActions(container) {
   container.addEventListener('click', event => {
     const button = event.target?.closest?.('[data-toolbar-key], [data-toolbar-style-id]');
     if (!button || !container.contains(button)) return;
+    if (button.dataset.toolbarGestureSuppressClick === 'true') {
+      delete button.dataset.toolbarGestureSuppressClick;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (button.dataset.toolbarTapReplay === 'true') {
       delete button.dataset.toolbarTapReplay;
       return;
@@ -4413,17 +4420,51 @@ function runToolbarGestureAction(actionId, sourceButton, visited = new Set()) {
 
 function installPopupToolbarSwipeUp(button, styleId) {
   let pointerStart = null;
+  let longPressTimer = null;
+  let longPressHandled = false;
+  const clearLongPressTimer = () => {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
   button.addEventListener('pointerdown', event => {
     if (event.button !== undefined && event.button !== 0) return;
+    clearLongPressTimer();
+    longPressHandled = false;
     pointerStart = { x: event.clientX, y: event.clientY };
     try {
       button.setPointerCapture(event.pointerId);
     } catch {
       // Pointer capture is not available in every embedded WebView version.
     }
+    if (bottomToolbarConfig.styles[styleId]?.gestureActions?.longPress) {
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (!pointerStart) return;
+        const actionId = bottomToolbarConfig.styles[styleId]?.gestureActions?.longPress;
+        longPressHandled = Boolean(actionId && runToolbarGestureAction(actionId, button));
+        if (longPressHandled) {
+          button.dataset.toolbarGestureSuppressClick = 'true';
+        }
+      }, 500);
+    }
+  }, { capture: true });
+  button.addEventListener('pointermove', event => {
+    if (!pointerStart || longPressTimer === null) return;
+    if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 8) {
+      clearLongPressTimer();
+    }
   }, { capture: true });
   button.addEventListener('pointerup', event => {
+    clearLongPressTimer();
     if (!pointerStart) return;
+    if (longPressHandled) {
+      longPressHandled = false;
+      pointerStart = null;
+      event.preventDefault();
+      return;
+    }
     const deltaX = event.clientX - pointerStart.x;
     const deltaY = event.clientY - pointerStart.y;
     pointerStart = null;
@@ -4437,7 +4478,9 @@ function installPopupToolbarSwipeUp(button, styleId) {
     event.preventDefault();
   }, { capture: true });
   button.addEventListener('pointercancel', () => {
+    clearLongPressTimer();
     pointerStart = null;
+    longPressHandled = false;
   }, { capture: true });
   button.addEventListener('click', event => {
     if (button.dataset.toolbarGestureSuppressClick !== 'true') return;
@@ -5159,6 +5202,7 @@ function togglePopupStrip(groupKey, targetBtn, items) {
     btn.className = 'popup-strip-btn';
     const styleId = item.styleId || item.id || item.command;
     const style = styleId ? bottomToolbarConfig.styles[styleId] || {} : {};
+    btn.classList.toggle('toolbar-key-force-label', style.forceShowLabel === true);
     if (styleId) btn.dataset.toolbarStyleId = styleId;
     if (style.iconColor) {
       btn.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
@@ -5196,10 +5240,8 @@ function togglePopupStrip(groupKey, targetBtn, items) {
     label.className = 'toolbar-key-label';
     label.textContent = title || '';
     btn.appendChild(label);
-    const gestureEntry = Object.entries(style.gestureActions || {})[0] ||
-      (style.gestureAction ? ['swipeUp', style.gestureAction] : null);
-    if (gestureEntry) {
-      const [gestureId, gestureActionId] = gestureEntry;
+    for (const { id: gestureId, actionId: gestureActionId, position } of
+      getToolbarGestureIndicatorEntries(style)) {
       const gestureIcon = getToolbarGestureIcon(
         gestureActionId,
         style.gestureActionIcons?.[gestureId] ||
@@ -5207,7 +5249,9 @@ function togglePopupStrip(groupKey, targetBtn, items) {
       );
       if (gestureIcon) {
         const marker = document.createElement('span');
-        marker.className = 'toolbar-key-gesture-indicator';
+        marker.className =
+          `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
+        marker.dataset.gesturePosition = position;
         marker.setAttribute('aria-hidden', 'true');
         marker.innerHTML = gestureIcon;
         btn.appendChild(marker);

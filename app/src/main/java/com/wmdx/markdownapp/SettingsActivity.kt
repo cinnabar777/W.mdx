@@ -1326,7 +1326,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "exportHtml", "search", "switchView", "newWindow", "settings"
         )
         private val TOOLBAR_GESTURE_IDS = listOf(
-            "tap1", "tap2", "tap3",
+            "longPress", "tap1", "tap2", "tap3",
             "swipeUp", "swipeDown", "swipeLeft", "swipeRight",
             "swipeUpLeft", "swipeUpRight", "swipeDownLeft", "swipeDownRight"
         )
@@ -1513,9 +1513,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         key: String
     ) {
         super.onSettingPreferenceChanged(sharedPreferences, key)
-        if (key == TOOLBAR_CONFIG_KEY) {
-            updateToolbarPreview()
-        } else if (key.startsWith("pref_toolbar_") || key == "pref_app_theme") {
+        if (
+            (key.startsWith("pref_toolbar_") && key != TOOLBAR_CONFIG_KEY) ||
+            key == "pref_app_theme"
+        ) {
             updateToolbarPreview(includeToolbarConfig = false)
         }
     }
@@ -1787,6 +1788,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                     style.optBoolean("preserveSvgColors", false)
                 )
             }
+            if (style.has("forceShowLabel")) {
+                cleanedStyle.put("forceShowLabel", style.optBoolean("forceShowLabel", false))
+            }
             val title = style.optString("title", "").trim().take(48)
             if (title.isNotBlank()) cleanedStyle.put("title", title)
             val gestureActions = org.json.JSONObject()
@@ -1890,16 +1894,24 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
     }
 
-    private fun saveToolbarConfig(raw: String, updatePreview: Boolean = true): Boolean {
+    private fun saveToolbarConfig(
+        raw: String,
+        updatePreview: Boolean = true,
+        flushToDisk: Boolean = false
+    ): Boolean {
         val normalized = try {
             normalizeToolbarConfigForStorage(raw)
         } catch (_: Exception) {
             return false
         }
-        PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val editor = PreferenceManager.getDefaultSharedPreferences(requireContext())
             .edit()
             .putString(TOOLBAR_CONFIG_KEY, normalized)
-            .apply()
+        val saved = if (flushToDisk) editor.commit() else {
+            editor.apply()
+            true
+        }
+        if (!saved) return false
         if (updatePreview) updateToolbarPreview()
         return true
     }
@@ -1931,7 +1943,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     ): Boolean {
         if (!isToolbarStyleAllowed(itemId)) return false
         val gestureIconMatch = Regex(
-            """^gestureActionIconSvg:(tap1|tap2|tap3|swipeUp|swipeDown|swipeLeft|swipeRight|swipeUpLeft|swipeUpRight|swipeDownLeft|swipeDownRight)$"""
+            """^gestureActionIconSvg:(longPress|tap1|tap2|tap3|swipeUp|swipeDown|swipeLeft|swipeRight|swipeUpLeft|swipeUpRight|swipeDownLeft|swipeDownRight)$"""
         ).matchEntire(property)
         if (
             property !in TOOLBAR_COLOR_PROPERTIES &&
@@ -2101,7 +2113,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
 
         @android.webkit.JavascriptInterface
-        fun saveBottomToolbarConfig(raw: String): Boolean = saveToolbarConfig(raw, updatePreview = false)
+        fun saveBottomToolbarConfig(raw: String): Boolean =
+            saveToolbarConfig(raw, updatePreview = false, flushToDisk = true)
 
         @android.webkit.JavascriptInterface
         fun pickBottomToolbarColor(itemId: String, property: String) {
@@ -2142,7 +2155,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 ?.takeIf {
                     it == "gestureActionIconSvg" ||
                         Regex(
-                            """^gestureActionIconSvg:(tap1|tap2|tap3|swipeUp|swipeDown|swipeLeft|swipeRight|swipeUpLeft|swipeUpRight|swipeDownLeft|swipeDownRight)$"""
+                            """^gestureActionIconSvg:(longPress|tap1|tap2|tap3|swipeUp|swipeDown|swipeLeft|swipeRight|swipeUpLeft|swipeUpRight|swipeDownLeft|swipeDownRight)$"""
                         ).matches(it)
                 }
                 ?: "customSvg"

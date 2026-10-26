@@ -63,9 +63,12 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /data-toolbar-section="taps"/);
   assert.match(html, /data-toolbar-section="side-swipes"/);
   assert.match(html, /data-toolbar-section="corner-swipes"/);
+  assert.match(html, /id="toolbar-force-show-label"/);
+  assert.doesNotMatch(html, /toolbar-gesture-summary-/);
   assert.match(settingsSource, /TOOLBAR_GESTURE_GROUPS/);
   assert.match(settingsSource, /gestureActions/);
   assert.match(settingsSource, /gestureActionIcons/);
+  assert.match(settingsSource, /getToolbarGestureIndicatorEntries/);
   assert.match(html, /id="toolbar-action-picker-modal"/);
   assert.match(html, /id="toolbar-action-search"/);
   assert.match(html, /id="toolbar-custom-key-action"/);
@@ -83,6 +86,8 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(preferenceXml, /pref_toolbar_label_color/);
   assert.match(mainSource, /function runToolbarGestureAction/);
   assert.match(mainSource, /installPopupToolbarSwipeUp/);
+  assert.match(mainSource, /getToolbarGestureIndicatorEntries/);
+  assert.match(androidSource, /"longPress"/);
   assert.doesNotMatch(html, /Action chip|Action icon/);
   assert.match(settingsSource, /createPreviewPopupKey/);
   assert.match(settingsSource, /renderHeldPopupKeys/);
@@ -113,6 +118,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(sharedCss, /\.toolbar-preview-key:active,\s*\.toolbar-preview-key\.active/);
   assert.match(sharedCss, /var\(\s*--toolbar-key-active-bg-color,\s*transparent\s*\)/);
   assert.match(androidSource, /saveBottomToolbarConfig/);
+  assert.match(androidSource, /flushToDisk: Boolean = false/);
+  assert.match(androidSource, /editor\.commit\(\)/);
+  assert.match(androidSource, /key != TOOLBAR_CONFIG_KEY/);
   assert.match(androidSource, /pickBottomToolbarColor/);
   assert.match(androidSource, /editBottomToolbarIcon/);
   assert.match(androidSource, /editBottomToolbarIcon\(request: String\)/);
@@ -127,9 +135,12 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
 test('toolbar appearance refreshes preserve layout and editor overlays follow the configured theme', () => {
   assert.match(androidSource, /updateToolbarPreview\(includeToolbarConfig = false\)/);
   assert.match(androidSource, /toolbarSettingsJson\(includeToolbarConfig: Boolean = true\)/);
-  assert.match(androidSource, /saveToolbarConfig\(raw, updatePreview = false\)/);
+  assert.match(androidSource, /saveToolbarConfig\(raw, updatePreview = false, flushToDisk = true\)/);
   assert.match(settingsSource, /hasOwnProperty\.call\(prefs, 'pref_toolbar_bottom_config'\)/);
   assert.match(settingsSource, /setDropMarker/);
+  assert.match(settingsSource, /DROP_MARKER_POINTER_OFFSET_Y = 50/);
+  assert.match(settingsSource, /getDragDropPoint/);
+  assert.match(settingsSource, /window\.addEventListener\('pagehide'/);
   assert.match(settingsSource, /listGapTarget/);
   assert.match(
     settingsSource,
