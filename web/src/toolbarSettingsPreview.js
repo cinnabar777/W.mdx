@@ -407,7 +407,14 @@ function saveConfig() {
     setStatus('Preview only; settings are not saved in this browser.');
     return false;
   }
-  const success = save(JSON.stringify(config));
+  let success;
+  try {
+    success = save(JSON.stringify(config));
+  } catch (error) {
+    console.error('Toolbar settings save bridge threw an exception', error);
+    setStatus('Could not save toolbar changes.');
+    return false;
+  }
   const saved = success !== false;
   setStatus(saved ? 'Toolbar changes saved.' : 'Could not save toolbar changes.');
   if (saved) {

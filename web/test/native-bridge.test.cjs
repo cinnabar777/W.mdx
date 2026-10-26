@@ -320,6 +320,13 @@ test('manual toolbar save is a native settings action with visible success or fa
   assert.match(settingsActivitySource, /Toolbar layout saved/);
   assert.match(settingsActivitySource, /Could not save toolbar layout/);
   assert.match(settingsActivitySource, /Toolbar save function is missing/);
+  assert.match(settingsActivitySource, /private lateinit var toolbarPreferences: SharedPreferences/);
+  assert.match(
+    settingsActivitySource,
+    /PreferenceManager\.getDefaultSharedPreferences\(requireContext\(\)\.applicationContext\)/
+  );
+  assert.match(settingsActivitySource, /Failed to write toolbar layout preferences/);
+  assert.match(settingsActivitySource, /SharedPreferences commit failed for toolbar layout/);
 });
 
 test('settings labels avoid redundant settings, styling, and shortcut wording', () => {

@@ -1344,6 +1344,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     private var toolbarPreviewWebView: android.webkit.WebView? = null
     private var toolbarPreviewHost: android.widget.FrameLayout? = null
     private var toolbarPreviewPreferencesView: android.view.View? = null
+    @Volatile
+    private lateinit var toolbarPreferences: SharedPreferences
     private var toolbarEditorOverlayExpanded = false
     private var targetToolbarIconId: String? = null
     private var targetToolbarIconProperty = "customSvg"
@@ -1357,6 +1359,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        toolbarPreferences =
+            PreferenceManager.getDefaultSharedPreferences(requireContext().applicationContext)
         setPreferencesFromResource(R.xml.preferences_styling_controlbar, rootKey)
         findPreference<Preference>("pref_toolbar_save_layout")?.apply {
             isPersistent = false
@@ -1609,7 +1613,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     }
 
     private fun toolbarSettingsJson(includeToolbarConfig: Boolean = true): String {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val prefs = toolbarPreferences
         val payload = org.json.JSONObject()
         if (includeToolbarConfig) {
             payload.put(
@@ -1975,18 +1979,32 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     ): Boolean {
         val normalized = try {
             normalizeToolbarConfigForStorage(raw)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            android.util.Log.e("ToolbarSettings", "Failed to normalize toolbar layout", error)
             return false
         }
-        val editor = PreferenceManager.getDefaultSharedPreferences(requireContext())
-            .edit()
-            .putString(TOOLBAR_CONFIG_KEY, normalized)
-        val saved = if (flushToDisk) editor.commit() else {
-            editor.apply()
-            true
+        val saved = try {
+            val editor = toolbarPreferences.edit()
+                .putString(TOOLBAR_CONFIG_KEY, normalized)
+            if (flushToDisk) editor.commit() else {
+                editor.apply()
+                true
+            }
+        } catch (error: Exception) {
+            android.util.Log.e("ToolbarSettings", "Failed to write toolbar layout preferences", error)
+            return false
         }
-        if (!saved) return false
-        if (updatePreview) updateToolbarPreview()
+        if (!saved) {
+            android.util.Log.e("ToolbarSettings", "SharedPreferences commit failed for toolbar layout")
+            return false
+        }
+        if (updatePreview) {
+            try {
+                updateToolbarPreview()
+            } catch (error: Exception) {
+                android.util.Log.e("ToolbarSettings", "Toolbar layout saved but preview refresh failed", error)
+            }
+        }
         return true
     }
 
@@ -2000,9 +2018,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             return false
         }
         return runCatching {
-            val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
             val saved = org.json.JSONObject(
-                prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                toolbarPreferences.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
                     ?: defaultToolbarConfigJson()
             )
             saved.optJSONObject("customGroups")?.has(itemId) == true ||
@@ -2026,9 +2043,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             gestureIconMatch == null
         ) return false
         return try {
-            val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
             val current = org.json.JSONObject(
-                prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                toolbarPreferences.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
                     ?: defaultToolbarConfigJson()
             )
             val styles = current.optJSONObject("styles") ?: org.json.JSONObject()
@@ -2188,15 +2204,19 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
         @android.webkit.JavascriptInterface
         fun saveBottomToolbarConfig(raw: String): Boolean =
-            saveToolbarConfig(raw, updatePreview = false, flushToDisk = true)
+            try {
+                saveToolbarConfig(raw, updatePreview = false, flushToDisk = true)
+            } catch (error: Exception) {
+                android.util.Log.e("ToolbarSettings", "Toolbar save bridge failed unexpectedly", error)
+                false
+            }
 
         @android.webkit.JavascriptInterface
         fun pickBottomToolbarColor(itemId: String, property: String) {
             if (!isToolbarStyleAllowed(itemId) || property !in TOOLBAR_COLOR_PROPERTIES) return
             activity?.runOnUiThread {
-                val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
                 val config = org.json.JSONObject(
-                    prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                    toolbarPreferences.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
                         ?: defaultToolbarConfigJson()
                 )
                 val current = config.optJSONObject("styles")
@@ -2204,7 +2224,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                     ?.optString(property)
                     ?.takeIf { !it.isNullOrBlank() }
                     ?: when (property) {
-                        "iconColor" -> prefs.getString("pref_toolbar_icon_color", "#FFFFFF")
+                        "iconColor" -> toolbarPreferences.getString("pref_toolbar_icon_color", "#FFFFFF")
                         else -> "#00000000"
                     }
                     ?: "#FFFFFF"
