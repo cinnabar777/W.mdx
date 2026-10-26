@@ -1379,10 +1379,18 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
     private fun collapseToolbarAppearanceSettings() {
         if (!toolbarAppearanceExpanded) return
+        saveToolbarPreviewLayout()
         toolbarAppearanceExpanded = false
         toolbarAppearanceHeader?.isExpanded = false
         toolbarAppearancePreferences.forEach { it.isVisible = false }
         view?.parent?.requestLayout()
+    }
+
+    private fun saveToolbarPreviewLayout() {
+        toolbarPreviewWebView?.evaluateJavascript(
+            "window.saveToolbarLayout?.();",
+            null
+        )
     }
 
     override fun onCreateView(
@@ -1533,6 +1541,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             (key.startsWith("pref_toolbar_") && key != TOOLBAR_CONFIG_KEY) ||
             key == "pref_app_theme"
         ) {
+            saveToolbarPreviewLayout()
             updateToolbarPreview(includeToolbarConfig = false)
         }
     }

@@ -405,14 +405,16 @@ function saveConfig() {
   const save = window.ToolbarSettings?.saveBottomToolbarConfig;
   if (typeof save !== 'function') {
     setStatus('Preview only; settings are not saved in this browser.');
-    return;
+    return false;
   }
   const success = save(JSON.stringify(config));
-  setStatus(success === false ? 'Could not save toolbar changes.' : 'Toolbar changes saved.');
-  if (success !== false) {
+  const saved = success !== false;
+  setStatus(saved ? 'Toolbar changes saved.' : 'Could not save toolbar changes.');
+  if (saved) {
     locallySavedToolbarLayout = layoutSignature(config);
     hasAppliedToolbarConfig = true;
   }
+  return saved;
 }
 
 window.addEventListener('pagehide', () => {
@@ -2083,6 +2085,7 @@ document.addEventListener('keydown', event => {
 });
 
 window.applyToolbarSettings = applySettings;
+window.saveToolbarLayout = () => saveConfig();
 window.finishToolbarDragFromNative = (clientX, clientY) => {
   const x = Number(clientX);
   const y = Number(clientY);
