@@ -1019,19 +1019,16 @@ function onDocumentPointerMove(event) {
     event.clientX,
     event.clientY
   );
-  if (
-    dragState.target?.button &&
-    (dragState.target.groupDrop || dragState.target.type === 'group-key')
-  ) {
-    dragState.target.button.classList.add('drop-target-group');
+  if (dragState.target?.button) {
+    dragState.target.button.classList.add(
+      dragState.target.groupDrop || dragState.target.type === 'group-key'
+        ? 'drop-target-group'
+        : 'drop-target'
+    );
   }
   if (dragState.target?.type === 'tray') tray.classList.add('drop-target');
   if (dragState.target) {
-    const isGroupTarget = dragState.target.groupDrop || dragState.target.type === 'group-key';
-    setDropMarker({
-      ...dragState.target,
-      markerY: getVisibleDropMarkerY(dropPoint.y, isGroupTarget)
-    });
+    setDropMarker(dragState.target);
   } else {
     setDropMarker(null);
   }
@@ -1080,13 +1077,6 @@ function getDragDropPoint(clientX, clientY) {
   };
 }
 
-function getVisibleDropMarkerY(dropY, isGroupTarget) {
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-  const maxY = Math.max(12, viewportHeight - (isGroupTarget ? 10 : 24));
-  const markerY = isGroupTarget ? dropY : dropY - 12;
-  return Math.max(isGroupTarget ? 10 : 0, Math.min(markerY, maxY));
-}
-
 function cancelDrag(event) {
   if (
     event &&
@@ -1128,9 +1118,31 @@ function resolveDragTarget(clientX, clientY, pointerX = clientX, pointerY = clie
   const dropTarget = resolveDragTargetAtPoint(clientX, clientY);
   if (dropTarget) return dropTarget;
   if (pointerX !== clientX || pointerY !== clientY) {
-    return resolveDragTargetAtPoint(pointerX, pointerY);
+    const pointerTarget = resolveDragTargetAtPoint(pointerX, pointerY);
+    if (pointerTarget) return pointerTarget;
   }
-  return null;
+  return resolveToolbarGapTarget(clientX, clientY) ||
+    resolveToolbarGapTarget(pointerX, pointerY);
+}
+
+function resolveToolbarGapTarget(clientX, clientY) {
+  const content = document.querySelector('.toolbar-preview-content');
+  const holding = document.querySelector('.toolbar-preview-holding');
+  const dock = document.querySelector('.toolbar-preview-dock');
+  if (
+    !pointIsInside(content, clientX, clientY) ||
+    pointIsInside(holding, clientX, clientY) ||
+    pointIsInside(dock, clientX, clientY) ||
+    pointIsInside(tray, clientX, clientY)
+  ) {
+    return null;
+  }
+  return listGapTarget(
+    'toolbar-insert',
+    [...toolbar.querySelectorAll('.toolbar-preview-key')],
+    clientX,
+    clientY
+  );
 }
 
 function resolveCenteredGroupTarget(clientX, clientY) {
@@ -1354,6 +1366,7 @@ function listGapTarget(type, buttons, clientX, clientY, extra = {}) {
   return {
     type,
     ...extra,
+    button: anchor.button,
     anchorId: id,
     after,
     markerX: after ? anchor.bounds.right : anchor.bounds.left,

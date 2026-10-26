@@ -87,6 +87,10 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(mainSource, /function runToolbarGestureAction/);
   assert.match(mainSource, /installPopupToolbarSwipeUp/);
   assert.match(mainSource, /getToolbarGestureIndicatorEntries/);
+  assert.match(
+    mainSource,
+    /if \(Object\.prototype\.hasOwnProperty\.call\(prefs, 'pref_toolbar_bottom_config'\)\) \{\s*bottomToolbarConfig = normalizeBottomToolbarConfig\(\s*prefs\.pref_toolbar_bottom_config\s*\);\s*hidePopupStrip\(\);\s*setupGroupedControlBar\(\);\s*\}/
+  );
   assert.match(androidSource, /"longPress"/);
   assert.doesNotMatch(html, /Action chip|Action icon/);
   assert.match(settingsSource, /createPreviewPopupKey/);
@@ -144,9 +148,13 @@ test('toolbar appearance refreshes preserve layout and editor overlays follow th
   assert.match(settingsSource, /DROP_MARKER_POINTER_OFFSET_Y = 50/);
   assert.match(settingsSource, /getDragDropPoint/);
   assert.match(settingsSource, /resolveCenteredGroupTarget/);
-  assert.match(settingsSource, /getVisibleDropMarkerY/);
+  assert.match(settingsSource, /resolveToolbarGapTarget/);
   assert.match(settingsSource, /window\.addEventListener\('pagehide'/);
   assert.match(settingsSource, /listGapTarget/);
+  assert.match(
+    mainSource,
+    /hasOwnProperty\.call\(prefs, 'pref_toolbar_bottom_config'\)\)\s*\{\s*bottomToolbarConfig = normalizeBottomToolbarConfig\(\s*prefs\.pref_toolbar_bottom_config\s*\);\s*hidePopupStrip\(\);\s*setupGroupedControlBar\(\);/
+  );
   assert.match(
     settingsSource,
     /scrollStrip\.scrollLeft \+= lastX - pointerEvent\.clientX/

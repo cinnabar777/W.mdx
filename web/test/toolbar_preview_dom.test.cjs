@@ -785,7 +785,7 @@ test('dragging a held key onto the toolbar shows an insertion marker and reorder
         assert.equal(marker.hidden, false);
         assert.equal(marker.dataset.kind, 'insert');
         assert.equal(marker.style.left, '0px');
-        assert.equal(marker.style.top, '0px');
+        assert.equal(marker.style.top, '38px');
         assert.equal(marker.parentElement, dom.window.document.body);
       },
       dom.window.document.body,
@@ -797,6 +797,95 @@ test('dragging a held key onto the toolbar shows an insertion marker and reorder
     assert.deepEqual(saves.at(-1).customGroups, {});
   } finally {
     global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('toolbar insertion target stays visible while dragging through the blank gap', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const saves = [];
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify({
+        version: 4,
+        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+        holding: [],
+        customGroups: {},
+        customKeys: {},
+        styles: {}
+      })
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?toolbar-gap-drop-test=${Date.now()}`);
+    const bounds = (left, top, width, height) => ({
+      left, top, width, height, right: left + width, bottom: top + height
+    });
+    const content = dom.window.document.querySelector('.toolbar-preview-content');
+    const holding = dom.window.document.querySelector('.toolbar-preview-holding');
+    const tray = dom.window.document.querySelector('#toolbar-holding-tray');
+    const dock = dom.window.document.querySelector('.toolbar-preview-dock');
+    content.getBoundingClientRect = () => bounds(0, 100, 360, 600);
+    holding.getBoundingClientRect = () => bounds(0, 300, 360, 150);
+    tray.getBoundingClientRect = () => bounds(10, 330, 340, 80);
+    dock.getBoundingClientRect = () => bounds(0, 700, 360, 68);
+
+    const toolbarKeys = [
+      ...dom.window.document.querySelectorAll('#toolbar-preview .toolbar-preview-key')
+    ];
+    toolbarKeys.forEach((button, index) => {
+      button.getBoundingClientRect = () => bounds(index * 44, 700, 44, 48);
+    });
+    dom.window.document.elementFromPoint = () => dom.window.document.body;
+
+    const source = dom.window.document.querySelector(
+      '#toolbar-preview [data-toolbar-key="undo"]'
+    );
+    const dispatchPointer = (element, type, x, y) => {
+      element.dispatchEvent(new dom.window.MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: x,
+        clientY: y
+      }));
+    };
+    dispatchPointer(source, 'pointerdown', 2, 2);
+    await new Promise(resolve => setTimeout(resolve, 410));
+    dispatchPointer(dom.window.document, 'pointermove', 240, 500);
+
+    const marker = dom.window.document.querySelector('#toolbar-preview-drop-marker');
+    const insertKey = dom.window.document.querySelector(
+      '#toolbar-preview [data-toolbar-key="insert"]'
+    );
+    assert.equal(marker.hidden, false);
+    assert.equal(marker.dataset.kind, 'insert');
+    assert.equal(marker.style.left, '220px');
+    assert.equal(marker.style.top, '712px');
+    assert.ok(insertKey.classList.contains('drop-target'));
+
+    dispatchPointer(dom.window.document, 'pointerup', 240, 500);
+    assert.deepEqual(
+      saves.at(-1).order,
+      ['heading', 'lists', 'format', 'table', 'undo', 'insert', 'menu']
+    );
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
     if (previousDocument === undefined) delete global.document;
     else global.document = previousDocument;
   }

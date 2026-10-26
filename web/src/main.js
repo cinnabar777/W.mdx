@@ -7174,11 +7174,10 @@ window.editorBridge = {
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
     // Toolbar
-    const nextBottomToolbarConfig = normalizeBottomToolbarConfig(
-      prefs.pref_toolbar_bottom_config
-    );
-    if (JSON.stringify(nextBottomToolbarConfig) !== JSON.stringify(bottomToolbarConfig)) {
-      bottomToolbarConfig = nextBottomToolbarConfig;
+    if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
+      bottomToolbarConfig = normalizeBottomToolbarConfig(
+        prefs.pref_toolbar_bottom_config
+      );
       hidePopupStrip();
       setupGroupedControlBar();
     }
