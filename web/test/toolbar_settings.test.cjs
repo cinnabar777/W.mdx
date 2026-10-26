@@ -124,6 +124,24 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(resetSource, /key == "pref_toolbar_padding" -> 4/);
 });
 
+test('toolbar appearance refreshes preserve layout and editor overlays follow the configured theme', () => {
+  assert.match(androidSource, /updateToolbarPreview\(includeToolbarConfig = false\)/);
+  assert.match(androidSource, /toolbarSettingsJson\(includeToolbarConfig: Boolean = true\)/);
+  assert.match(androidSource, /saveToolbarConfig\(raw, updatePreview = false\)/);
+  assert.match(settingsSource, /hasOwnProperty\.call\(prefs, 'pref_toolbar_bottom_config'\)/);
+  assert.match(settingsSource, /setDropMarker/);
+  assert.match(settingsSource, /listGapTarget/);
+  assert.match(
+    settingsSource,
+    /scrollStrip\.scrollLeft \+= lastX - pointerEvent\.clientX/
+  );
+  assert.match(html, /max-height: calc\(100dvh - var\(--toolbar-height, 48px\) - 12px\)/);
+  assert.match(html, /background: var\(--toolbar-bg, #121212\)/);
+  assert.doesNotMatch(html, /background:\s*#171717/i);
+  assert.match(sharedCss, /\.toolbar-preview-holding\s*\{[^}]*margin-block:\s*auto/s);
+  assert.match(sharedCss, /\.toolbar-preview-drop-marker\s*\{/);
+});
+
 test('popup toolbar actions accept the same persisted styles in web preview and Android settings', async () => {
   const {
     BOTTOM_TOOLBAR_GROUP_ITEM_IDS,

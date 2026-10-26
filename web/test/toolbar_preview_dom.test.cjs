@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { JSDOM } = require('jsdom');
 
-async function dragKey(dom, source, target, dropX = 90, dropY = 50) {
+async function dragKey(dom, source, target, dropX = 90, dropY = 50, duringDrag = null) {
   target.getBoundingClientRect = () => ({
     left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100
   });
@@ -19,8 +19,9 @@ async function dragKey(dom, source, target, dropX = 90, dropY = 50) {
     }));
   };
   dispatchPointer(source, 'pointerdown', 2, 2);
-  await new Promise(resolve => setTimeout(resolve, 280));
+  await new Promise(resolve => setTimeout(resolve, 410));
   dispatchPointer(dom.window.document, 'pointermove', 42, 12);
+  duringDrag?.();
   dispatchPointer(dom.window.document, 'pointerup', dropX, dropY);
 }
 
@@ -104,6 +105,21 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       .click();
     const popup = dom.window.document.querySelector('#toolbar-preview-popup');
     assert.equal(popup.classList.contains('hidden'), false);
+    const scrollKey = popup.querySelector('.toolbar-preview-popup-key');
+    popup.scrollLeft = 0;
+    const pointerEvent = (target, type, x, y) => target.dispatchEvent(
+      new dom.window.MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: x,
+        clientY: y
+      })
+    );
+    pointerEvent(scrollKey, 'pointerdown', 100, 50);
+    pointerEvent(dom.window.document, 'pointermove', 80, 50);
+    pointerEvent(dom.window.document, 'pointerup', 80, 50);
+    assert.equal(popup.scrollLeft, 20, 'a horizontal swipe scrolls the popup row instead of dragging a key');
     assert.equal(
       dom.window.document
         .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
@@ -490,6 +506,16 @@ test('moving a folder releases its actions and keeps the empty folder visible in
       ...tray.querySelectorAll('[data-toolbar-key], [data-preview-popup-item]')
     ].map(button => button.dataset.toolbarKey || button.dataset.previewPopupItem);
     dom.window.applyToolbarSettings(JSON.stringify({
+      pref_toolbar_bg_color: '#202020',
+      pref_app_theme: 'amoled'
+    }));
+    assert.deepEqual(
+      [...tray.querySelectorAll('[data-toolbar-key], [data-preview-popup-item]')]
+        .map(button => button.dataset.toolbarKey || button.dataset.previewPopupItem),
+      heldIdsBeforeAppearanceRefresh,
+      'appearance-only updates do not replace the saved toolbar layout'
+    );
+    dom.window.applyToolbarSettings(JSON.stringify({
       pref_toolbar_bottom_config: JSON.stringify(settings),
       pref_toolbar_bg_color: '#202020',
       pref_app_theme: 'amoled'
@@ -566,7 +592,9 @@ test('custom groups accept loose actions and deleting a group releases its child
     await dragKey(
       dom,
       popup.querySelector('[data-preview-popup-item="todoList"]'),
-      groupButton
+      groupButton,
+      50,
+      50
     );
     assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['todoList']);
     assert.ok(
@@ -604,7 +632,9 @@ test('custom groups accept loose actions and deleting a group releases its child
       ),
       dom.window.document.querySelector(
         `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
-      )
+      ),
+      50,
+      50
     );
     assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['todoList']);
     assert.ok(!saves.at(-1).holding.includes('todoList'));
@@ -701,6 +731,56 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
     dom.window.close();
     if (previousWindow === undefined) delete global.window;
     else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('toolbar drag shows a between-key marker and reorders without creating a folder', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const saves = [];
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify({
+        version: 2,
+        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+        holding: [],
+        customGroups: {},
+        styles: {}
+      })
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?toolbar-insert-test=${Date.now()}`);
+    await dragKey(
+      dom,
+      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="table"]'),
+      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]'),
+      10,
+      50,
+      () => {
+        const marker = dom.window.document.querySelector('#toolbar-preview-drop-marker');
+        assert.equal(marker.hidden, false);
+        assert.equal(marker.dataset.kind, 'insert');
+        assert.equal(marker.style.left, '0px');
+      }
+    );
+    assert.deepEqual(saves.at(-1).order.slice(0, 2), ['table', 'undo']);
+    assert.deepEqual(saves.at(-1).customGroups, {});
+  } finally {
+    global.window = previousWindow;
     if (previousDocument === undefined) delete global.document;
     else global.document = previousDocument;
   }

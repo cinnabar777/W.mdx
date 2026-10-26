@@ -228,12 +228,19 @@ body.light-theme .popup-toolbar-strip {
 }
 
 .toolbar-preview-content {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   padding: 8px 14px;
   overscroll-behavior: contain;
+}
+
+.toolbar-preview-holding {
+  width: 100%;
+  margin-block: auto;
 }
 
 .toolbar-preview-layout-actions {
@@ -297,6 +304,37 @@ body.light-theme .popup-toolbar-strip {
 .toolbar-preview-tray.drop-target {
   outline: 2px dashed var(--toolbar-icon-color, #fff);
   outline-offset: -2px;
+}
+
+.toolbar-preview-key.drop-target-group,
+.toolbar-preview-popup-key.drop-target-group {
+  outline: 2px solid var(--toolbar-icon-color, #fff);
+  outline-offset: -3px;
+}
+
+.toolbar-preview-drop-marker {
+  position: fixed;
+  z-index: 10007;
+  width: 3px;
+  height: 24px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: var(--toolbar-icon-color, #fff);
+  box-shadow: 0 0 0 2px var(--toolbar-bg, #121212);
+  pointer-events: none;
+}
+
+.toolbar-preview-drop-marker[hidden] {
+  display: none;
+}
+
+.toolbar-preview-drop-marker[data-kind="group"] {
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--toolbar-icon-color, #fff);
+  border-radius: 5px;
+  background: var(--toolbar-bg, #121212);
 }
 
 .toolbar-preview-popup-key {

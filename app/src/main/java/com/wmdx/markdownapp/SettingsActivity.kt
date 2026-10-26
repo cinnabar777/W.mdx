@@ -1513,8 +1513,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         key: String
     ) {
         super.onSettingPreferenceChanged(sharedPreferences, key)
-        if (key.startsWith("pref_toolbar_") || key == "pref_app_theme") {
+        if (key == TOOLBAR_CONFIG_KEY) {
             updateToolbarPreview()
+        } else if (key.startsWith("pref_toolbar_") || key == "pref_app_theme") {
+            updateToolbarPreview(includeToolbarConfig = false)
         }
     }
 
@@ -1531,14 +1533,16 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         super.onDestroyView()
     }
 
-    private fun toolbarSettingsJson(): String {
+    private fun toolbarSettingsJson(includeToolbarConfig: Boolean = true): String {
         val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
         val payload = org.json.JSONObject()
-        payload.put(
-            TOOLBAR_CONFIG_KEY,
-            prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
-                ?: defaultToolbarConfigJson()
-        )
+        if (includeToolbarConfig) {
+            payload.put(
+                TOOLBAR_CONFIG_KEY,
+                prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                    ?: defaultToolbarConfigJson()
+            )
+        }
         payload.put("pref_toolbar_bg_color", prefs.getString("pref_toolbar_bg_color", "default"))
         payload.put("pref_toolbar_icon_color", prefs.getString("pref_toolbar_icon_color", "default"))
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
@@ -1573,10 +1577,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .toString()
     }
 
-    private fun updateToolbarPreview() {
+    private fun updateToolbarPreview(includeToolbarConfig: Boolean = true) {
         val preview = toolbarPreviewWebView ?: return
         val payload = try {
-            org.json.JSONObject.quote(toolbarSettingsJson())
+            org.json.JSONObject.quote(toolbarSettingsJson(includeToolbarConfig))
         } catch (_: Exception) {
             return
         }
@@ -1886,7 +1890,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
     }
 
-    private fun saveToolbarConfig(raw: String): Boolean {
+    private fun saveToolbarConfig(raw: String, updatePreview: Boolean = true): Boolean {
         val normalized = try {
             normalizeToolbarConfigForStorage(raw)
         } catch (_: Exception) {
@@ -1896,7 +1900,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .edit()
             .putString(TOOLBAR_CONFIG_KEY, normalized)
             .apply()
-        updateToolbarPreview()
+        if (updatePreview) updateToolbarPreview()
         return true
     }
 
@@ -2097,7 +2101,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
 
         @android.webkit.JavascriptInterface
-        fun saveBottomToolbarConfig(raw: String): Boolean = saveToolbarConfig(raw)
+        fun saveBottomToolbarConfig(raw: String): Boolean = saveToolbarConfig(raw, updatePreview = false)
 
         @android.webkit.JavascriptInterface
         fun pickBottomToolbarColor(itemId: String, property: String) {

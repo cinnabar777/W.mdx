@@ -23,6 +23,7 @@ const popup = document.querySelector('#toolbar-preview-popup');
 const editor = document.querySelector('#toolbar-preview-editor');
 const iconPicker = document.querySelector('#toolbar-icon-picker-modal');
 const actionPicker = document.querySelector('#toolbar-action-picker-modal');
+const dropMarker = document.querySelector('#toolbar-preview-drop-marker');
 const status = document.querySelector('#toolbar-preview-status');
 const selectedTitle = document.querySelector('#toolbar-preview-selected-title');
 let config = normalizeBottomToolbarConfig(null);
@@ -42,6 +43,8 @@ let editingKeyName = false;
 let toolbarEditorOverlayOpen = false;
 let nextCustomGroupNumber = 1;
 let locallySavedToolbarLayout = null;
+let hasAppliedToolbarConfig = false;
+let pendingDragCleanup = null;
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 const PREVIEW_GROUP_ITEMS = {
@@ -349,14 +352,30 @@ function applySettings(payload) {
   }
   if (!prefs || typeof prefs !== 'object') prefs = {};
 
-  const incomingConfig = normalizeBottomToolbarConfig(prefs.pref_toolbar_bottom_config);
-  const incomingLayout = layoutSignature(incomingConfig);
-  if (!locallySavedToolbarLayout || incomingLayout === locallySavedToolbarLayout) {
-    config = incomingConfig;
+  if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
+    const incomingConfig = normalizeBottomToolbarConfig(prefs.pref_toolbar_bottom_config);
+    const incomingLayout = layoutSignature(incomingConfig);
+    if (
+      !hasAppliedToolbarConfig ||
+      !locallySavedToolbarLayout ||
+      incomingLayout === locallySavedToolbarLayout
+    ) {
+      config = incomingConfig;
+    } else {
+      // Native style/color updates may echo a canonicalized config. Accept the
+      // style changes, but never let that echo replace the layout being edited.
+      config = {
+        ...incomingConfig,
+        order: config.order,
+        hidden: config.hidden,
+        popupGroups: config.popupGroups,
+        holding: config.holding,
+        customGroups: config.customGroups,
+        customKeys: config.customKeys
+      };
+    }
+    hasAppliedToolbarConfig = true;
   }
-  // Appearance preference updates can race a toolbar save. Keep the layout
-  // already saved by this preview instead of replacing its holding area with
-  // an older toolbar-config snapshot.
   const isLightTheme = prefs.pref_app_theme === 'light';
   document.body.classList.toggle('light-theme', isLightTheme);
   setCssVariable('--toolbar-bg', prefs.pref_toolbar_bg_color, isLightTheme ? '#f8f9fa' : '#121212');
@@ -399,7 +418,10 @@ function saveConfig() {
   }
   const success = save(JSON.stringify(config));
   setStatus(success === false ? 'Could not save toolbar changes.' : 'Toolbar changes saved.');
-  if (success !== false) locallySavedToolbarLayout = layoutSignature(config);
+  if (success !== false) {
+    locallySavedToolbarLayout = layoutSignature(config);
+    hasAppliedToolbarConfig = true;
+  }
 }
 
 function layoutSignature(value) {
@@ -889,7 +911,7 @@ function customKeyActionWouldCycle(sourceId, candidateId) {
 
 function beginPossibleDrag(event, button) {
   if (event.button !== undefined && event.button !== 0) return;
-  event.preventDefault();
+  pendingDragCleanup?.();
   const popupItemId = button.dataset.previewPopupItem;
   const groupId = button.dataset.previewGroup || null;
   const isPopupItem = Boolean(popupItemId);
@@ -903,25 +925,82 @@ function beginPossibleDrag(event, button) {
       : 'visible';
   const startX = event.clientX;
   const startY = event.clientY;
-  clearTimeout(dragTimer);
-  dragTimer = setTimeout(() => {
-    dragState = { id, source, groupId, target: null, startX, startY, started: false };
-    document.addEventListener('pointermove', onDocumentPointerMove, { passive: false });
-    document.addEventListener('pointerup', onDocumentPointerUp, { once: true });
-    document.addEventListener('pointercancel', cancelDrag, { once: true });
-  }, 260);
-
-  const cancelPendingHold = () => {
+  const pointerId = event.pointerId;
+  const scrollStrip = source === 'popup' ? button.closest('#toolbar-preview-popup') : null;
+  let lastX = startX;
+  let lastY = startY;
+  let scrolling = false;
+  const matchesPointer = pointerEvent =>
+    pointerId === undefined ||
+    pointerEvent.pointerId === undefined ||
+    pointerEvent.pointerId === pointerId;
+  const cleanup = () => {
     clearTimeout(dragTimer);
-    button.removeEventListener('pointerup', cancelPendingHold);
-    button.removeEventListener('pointerleave', cancelPendingHold);
+    document.removeEventListener('pointermove', onPendingPointerMove);
+    document.removeEventListener('pointerup', onPendingPointerEnd);
+    document.removeEventListener('pointercancel', onPendingPointerEnd);
+    if (pendingDragCleanup === cleanup) pendingDragCleanup = null;
   };
-  button.addEventListener('pointerup', cancelPendingHold, { once: true });
-  button.addEventListener('pointerleave', cancelPendingHold, { once: true });
+  const onPendingPointerEnd = pointerEvent => {
+    if (!matchesPointer(pointerEvent)) return;
+    cleanup();
+  };
+  const onPendingPointerMove = pointerEvent => {
+    if (!matchesPointer(pointerEvent)) return;
+    const deltaX = pointerEvent.clientX - startX;
+    const deltaY = pointerEvent.clientY - startY;
+    if (scrolling) {
+      if (scrollStrip) {
+        scrollStrip.scrollLeft += lastX - pointerEvent.clientX;
+        pointerEvent.preventDefault();
+      }
+      lastX = pointerEvent.clientX;
+      lastY = pointerEvent.clientY;
+      return;
+    }
+    if (Math.hypot(deltaX, deltaY) < 8) return;
+    if (scrollStrip && Math.abs(deltaX) > Math.abs(deltaY) * 1.15) {
+      clearTimeout(dragTimer);
+      scrolling = true;
+      suppressButtonClick(button);
+      scrollStrip.scrollLeft += lastX - pointerEvent.clientX;
+      lastX = pointerEvent.clientX;
+      lastY = pointerEvent.clientY;
+      pointerEvent.preventDefault();
+      return;
+    }
+    // Movement before the long-press is a scroll/touch, not a drag.
+    cleanup();
+  };
+  document.addEventListener('pointermove', onPendingPointerMove, { passive: false });
+  document.addEventListener('pointerup', onPendingPointerEnd);
+  document.addEventListener('pointercancel', onPendingPointerEnd);
+  pendingDragCleanup = cleanup;
+  dragTimer = setTimeout(() => {
+    cleanup();
+    dragState = { id, source, groupId, target: null, startX, startY, pointerId, started: false };
+    document.addEventListener('pointermove', onDocumentPointerMove, { passive: false });
+    document.addEventListener('pointerup', onDocumentPointerUp);
+    document.addEventListener('pointercancel', cancelDrag);
+  }, 380);
+}
+
+function suppressButtonClick(button) {
+  const suppress = event => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  button.addEventListener('click', suppress, true);
+  setTimeout(() => button.removeEventListener('click', suppress, true), 700);
 }
 
 function onDocumentPointerMove(event) {
   if (!dragState) return;
+  if (
+    dragState.pointerId !== undefined &&
+    event.pointerId !== undefined &&
+    event.pointerId !== dragState.pointerId
+  ) return;
   dragState.lastClientX = event.clientX;
   dragState.lastClientY = event.clientY;
   const moved = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY);
@@ -935,29 +1014,42 @@ function onDocumentPointerMove(event) {
     setStatus('Drag to another position or to the holding tray.');
   }
   event.preventDefault();
-  document.querySelectorAll('.drop-target').forEach(element => {
-    element.classList.remove('drop-target');
+  document.querySelectorAll('.drop-target, .drop-target-group').forEach(element => {
+    element.classList.remove('drop-target', 'drop-target-group');
   });
   dragState.target = resolveDragTarget(event.clientX, event.clientY);
-  if (dragState.target?.button) dragState.target.button.classList.add('drop-target');
+  if (
+    dragState.target?.button &&
+    (dragState.target.groupDrop || dragState.target.type === 'group-key')
+  ) {
+    dragState.target.button.classList.add('drop-target-group');
+  }
   if (dragState.target?.type === 'tray') tray.classList.add('drop-target');
+  setDropMarker(dragState.target);
 }
 
 function onDocumentPointerUp(event) {
+  if (
+    dragState?.pointerId !== undefined &&
+    event.pointerId !== undefined &&
+    event.pointerId !== dragState.pointerId
+  ) return;
   document.removeEventListener('pointermove', onDocumentPointerMove);
   document.removeEventListener('pointercancel', cancelDrag);
+  document.removeEventListener('pointerup', onDocumentPointerUp);
   if (dragState) {
     dragState.lastClientX = event.clientX;
     dragState.lastClientY = event.clientY;
   }
-  document.querySelectorAll('.drop-target, .is-dragging').forEach(element => {
-    element.classList.remove('drop-target', 'is-dragging');
+  document.querySelectorAll('.drop-target, .drop-target-group, .is-dragging').forEach(element => {
+    element.classList.remove('drop-target', 'drop-target-group', 'is-dragging');
   });
+  setDropMarker(null);
   if (!dragState?.started) {
     dragState = null;
     return;
   }
-  if (!dragState.target) {
+  if (dragState.started) {
     dragState.target = resolveDragTarget(event.clientX, event.clientY);
   }
   applyDrop(dragState);
@@ -966,14 +1058,36 @@ function onDocumentPointerUp(event) {
   saveConfig();
 }
 
-function cancelDrag() {
+function cancelDrag(event) {
+  if (
+    event &&
+    dragState?.pointerId !== undefined &&
+    event.pointerId !== undefined &&
+    event.pointerId !== dragState.pointerId
+  ) return;
   clearTimeout(dragTimer);
+  pendingDragCleanup?.();
   document.removeEventListener('pointermove', onDocumentPointerMove);
-  document.querySelectorAll('.drop-target, .is-dragging').forEach(element => {
-    element.classList.remove('drop-target', 'is-dragging');
+  document.removeEventListener('pointerup', onDocumentPointerUp);
+  document.removeEventListener('pointercancel', cancelDrag);
+  document.querySelectorAll('.drop-target, .drop-target-group, .is-dragging').forEach(element => {
+    element.classList.remove('drop-target', 'drop-target-group', 'is-dragging');
   });
+  setDropMarker(null);
   dragState = null;
   render();
+}
+
+function setDropMarker(target) {
+  if (!dropMarker || !target || !Number.isFinite(target.markerX) ||
+      !Number.isFinite(target.markerY)) {
+    if (dropMarker) dropMarker.hidden = true;
+    return;
+  }
+  dropMarker.hidden = false;
+  dropMarker.dataset.kind = target.groupDrop || target.type === 'group-key' ? 'group' : 'insert';
+  dropMarker.style.left = `${target.markerX}px`;
+  dropMarker.style.top = `${target.markerY}px`;
 }
 
 function resolveDragTarget(clientX, clientY) {
@@ -985,45 +1099,140 @@ function resolveDragTarget(clientX, clientY) {
       popupId === dragState.id &&
       (popupButton.dataset.previewGroup || null) === dragState.groupId;
     if (sameKey) return null;
-    if (config.popupGroups[popupId]) {
+    const groupDrop = isCenteredOnKey(popupButton, clientX, clientY);
+    if (config.popupGroups[popupId] && groupDrop) {
+      const bounds = popupButton.getBoundingClientRect();
       return {
         type: 'group-key',
         id: popupId,
-        button: popupButton
+        button: popupButton,
+        markerX: bounds.left + bounds.width / 2,
+        markerY: bounds.bottom - 9
       };
     }
-    return {
-      type: 'popup-key',
-      id: popupId,
-      groupId: popupButton.dataset.previewGroup || null,
-      location: popupButton.dataset.previewLocation,
-      hidden: popupButton.dataset.previewPopupHidden === 'true',
-      button: popupButton
-    };
+    return keyPositionTarget(
+      'popup-key',
+      popupButton,
+      clientX,
+      clientY,
+      groupDrop
+    );
   }
 
   const keyButton = target?.closest?.('.toolbar-preview-key');
-  if (keyButton && keyButton.dataset.toolbarKey !== dragState.id) {
-    if (dragState.groupId) {
+  if (keyButton) {
+    const id = keyButton.dataset.toolbarKey;
+    if (id === dragState.id) return null;
+    const groupDrop = isCenteredOnKey(keyButton, clientX, clientY);
+    const bounds = keyButton.getBoundingClientRect();
+    if (config.popupGroups[id] && groupDrop) {
       return {
-        type: config.popupGroups[keyButton.dataset.toolbarKey] ? 'group-key' : 'visible-key',
-        id: keyButton.dataset.toolbarKey,
-        button: keyButton
+        type: 'group-key',
+        id,
+        button: keyButton,
+        markerX: bounds.left + bounds.width / 2,
+        markerY: bounds.bottom - 9
       };
     }
-    return {
-      type: config.popupGroups[keyButton.dataset.toolbarKey]
-        ? 'group-key'
-        : tray.contains(keyButton) ? 'hidden-key' : 'visible-key',
-      id: keyButton.dataset.toolbarKey,
-      button: keyButton
-    };
+    return keyPositionTarget(
+      tray.contains(keyButton) ? 'hidden-key' : 'visible-key',
+      keyButton,
+      clientX,
+      clientY,
+      groupDrop
+    );
   }
-  if (tray === target || tray.contains(target)) return { type: 'tray' };
-  if (target?.closest?.('.toolbar-preview-stage')) return { type: 'stage' };
+
+  if (target === tray || tray.contains(target)) {
+    const buttons = [
+      ...tray.querySelectorAll('.toolbar-preview-key, .toolbar-preview-popup-key')
+    ];
+    if (!buttons.length) return { type: 'tray' };
+    return listGapTarget('holding-insert', buttons, clientX, clientY);
+  }
+
+  const popupContainer = target?.closest?.('#toolbar-preview-popup');
+  if (popupContainer) {
+    const buttons = [...popupContainer.querySelectorAll('.toolbar-preview-popup-key')];
+    return listGapTarget('popup-insert', buttons, clientX, clientY, {
+      groupId: openPopupGroup
+    });
+  }
+
+  if (target?.closest?.('.toolbar-preview-stage')) {
+    return listGapTarget(
+      'toolbar-insert',
+      [...toolbar.querySelectorAll('.toolbar-preview-key')],
+      clientX,
+      clientY
+    );
+  }
   return null;
 }
 
+function keyPositionTarget(type, button, clientX, clientY, groupDrop = false) {
+  const bounds = button.getBoundingClientRect();
+  const after = clientX >= bounds.left + bounds.width / 2;
+  const anchorId = button.dataset.previewPopupItem || button.dataset.toolbarKey;
+  return {
+    type,
+    id: anchorId,
+    anchorId,
+    groupId: button.dataset.previewGroup || null,
+    location: button.dataset.previewLocation,
+    hidden: button.dataset.previewPopupHidden === 'true',
+    button,
+    after,
+    groupDrop,
+    markerX: groupDrop
+      ? bounds.left + bounds.width / 2
+      : after ? bounds.right : bounds.left,
+    markerY: bounds.bottom - 9
+  };
+}
+
+function listGapTarget(type, buttons, clientX, clientY, extra = {}) {
+  const visible = buttons
+    .filter(button => {
+      const id = button.dataset.previewPopupItem || button.dataset.toolbarKey;
+      return id && id !== dragState.id;
+    })
+    .map(button => ({ button, bounds: button.getBoundingClientRect() }));
+  if (!visible.length) {
+    return { type, ...extra, anchorId: null, after: false };
+  }
+
+  const rows = new Map();
+  for (const entry of visible) {
+    const rowTop = Math.round(entry.bounds.top);
+    if (!rows.has(rowTop)) rows.set(rowTop, []);
+    rows.get(rowTop).push(entry);
+  }
+  const row = [...rows.values()]
+    .map(entries => {
+      const top = Math.min(...entries.map(entry => entry.bounds.top));
+      const bottom = Math.max(...entries.map(entry => entry.bounds.bottom));
+      const distance = clientY < top ? top - clientY : clientY > bottom ? clientY - bottom : 0;
+      return { entries: entries.sort((a, b) => a.bounds.left - b.bounds.left), top, bottom, distance };
+    })
+    .sort((a, b) => a.distance - b.distance)[0];
+  const next = row.entries.find(entry =>
+    clientX < entry.bounds.left + entry.bounds.width / 2
+  );
+  const anchor = next || row.entries[row.entries.length - 1];
+  const after = !next;
+  const id = anchor.button.dataset.previewPopupItem || anchor.button.dataset.toolbarKey;
+  return {
+    type,
+    ...extra,
+    anchorId: id,
+    after,
+    markerX: after ? anchor.bounds.right : anchor.bounds.left,
+    markerY: anchor.bounds.bottom - 9
+  };
+}
+
+/* Kept separate so folder drops only occur in the clearly marked center zone. */
 function findToolbarKeyButton(id) {
   return [...document.querySelectorAll('.toolbar-preview-key')]
     .find(button => button.dataset.toolbarKey === id);
@@ -1039,7 +1248,7 @@ function findPopupKeyButton(groupId, id, location) {
 }
 
 function applyDrop({ id, source, groupId, target, lastClientX, lastClientY }) {
-  if (target?.type === 'popup-key') {
+  if (target?.type === 'popup-key' || target?.type === 'popup-insert') {
     applyPopupDrop({ id, source, groupId, target, lastClientX, lastClientY });
     return;
   }
@@ -1071,6 +1280,15 @@ function applyDrop({ id, source, groupId, target, lastClientX, lastClientY }) {
     hideToolbarKey(id);
     return;
   }
+  if (target.type === 'toolbar-insert') {
+    config.order.splice(getDropIndex(config.order, target), 0, id);
+    return;
+  }
+  if (target.type === 'holding-insert') {
+    if (config.popupGroups[id]) releasePopupGroupToHoldingArea(id);
+    config.holding.splice(getDropIndex(config.holding, target), 0, id);
+    return;
+  }
   if (target.type === 'group-key') {
     const targetGroup = config.popupGroups[target.id];
     if (targetGroup && !wouldCreateGroupCycle(id, target.id)) targetGroup.order.push(id);
@@ -1080,57 +1298,45 @@ function applyDrop({ id, source, groupId, target, lastClientX, lastClientY }) {
 
   if (target.type === 'visible-key') {
     const beforeIndex = config.order.indexOf(target.id);
-    if (isCenteredOnKey(target.button, lastClientX, lastClientY)) {
+    if (target.groupDrop) {
       createToolbarGroupFromDrop(target.id, id, {
         location: 'toolbar',
         index: Math.max(0, beforeIndex)
       });
       return;
     }
-    const dropAfter = target.button && eventDropAfter(target.button, lastClientX);
-    const insertAt = beforeIndex < 0
-      ? config.order.length
-      : beforeIndex + (dropAfter ? 1 : 0);
-    config.order.splice(insertAt, 0, id);
+    config.order.splice(getDropIndex(config.order, target), 0, id);
     return;
   }
 
   if (target.type === 'hidden-key') {
     const beforeIndex = config.holding.indexOf(target.id);
-    if (isCenteredOnKey(target.button, lastClientX, lastClientY)) {
+    if (target.groupDrop) {
       createToolbarGroupFromDrop(target.id, id, {
         location: 'holding',
         index: Math.max(0, beforeIndex)
       });
       return;
     }
-    const dropAfter = target.button && eventDropAfter(target.button, lastClientX);
-    const insertAt = beforeIndex < 0
-      ? config.holding.length
-      : beforeIndex + (dropAfter ? 1 : 0);
-    config.holding.splice(insertAt, 0, id);
+    config.holding.splice(getDropIndex(config.holding, target), 0, id);
     return;
   }
 
   config.order.push(id);
 }
 
-function applyPopupDrop({ id, source, groupId, target, lastClientX, lastClientY }) {
+function getDropIndex(list, target) {
+  const anchorIndex = target?.anchorId ? list.indexOf(target.anchorId) : -1;
+  if (anchorIndex < 0) return list.length;
+  return anchorIndex + (target.after ? 1 : 0);
+}
+
+function applyPopupDrop({ id, source, groupId, target }) {
   if (target?.type === 'ignored') return;
   const sourceGroup = groupId ? config.popupGroups[groupId] : null;
-  const sourceList = source === 'visible'
+  const originalIndex = (source === 'visible'
     ? config.order
-    : sourceGroup?.order || config.holding;
-  const originalIndex = sourceList.indexOf(id);
-  const targetGroup = target?.groupId ? config.popupGroups[target.groupId] : null;
-  const targetList = target?.location === 'tray' || target?.type === 'hidden-key'
-    ? config.holding
-    : targetGroup?.order || config.order;
-  const rawTargetIndex = target?.id ? targetList.indexOf(target.id) : -1;
-  const targetIndexBeforeDrop = sourceList === targetList &&
-      originalIndex >= 0 && rawTargetIndex > originalIndex
-    ? rawTargetIndex - 1
-    : rawTargetIndex;
+    : sourceGroup?.order || config.holding).indexOf(id);
   config.order = config.order.filter(item => item !== id);
   config.hidden = config.hidden.filter(item => item !== id);
   for (const group of Object.values(config.popupGroups)) {
@@ -1139,52 +1345,64 @@ function applyPopupDrop({ id, source, groupId, target, lastClientX, lastClientY 
   }
   config.holding = config.holding.filter(item => item !== id);
 
+  const restoreSource = () => {
+    const destination = source === 'visible'
+      ? config.order
+      : sourceGroup?.order || config.holding;
+    destination.splice(Math.max(0, Math.min(originalIndex, destination.length)), 0, id);
+  };
+  const insertIntoHolding = destination => {
+    if (config.popupGroups[id]) releasePopupGroupToHoldingArea(id);
+    config.holding.splice(getDropIndex(config.holding, destination), 0, id);
+    if (groupId && config.popupGroups[groupId]?.order.length === 0) {
+      openPopupGroup = null;
+    }
+  };
+
+  if (target?.type === 'popup-insert') {
+    const targetGroup = target.groupId ? config.popupGroups[target.groupId] : null;
+    const destination = targetGroup?.order || config.order;
+    destination.splice(getDropIndex(destination, target), 0, id);
+    if (groupId && config.popupGroups[groupId]?.order.length === 0) openPopupGroup = null;
+    return;
+  }
+
   if (target?.type === 'popup-key') {
     if (target.location === 'tray') {
-      if (isCenteredOnKey(target.button, lastClientX, lastClientY)) {
+      if (target.groupDrop) {
         createToolbarGroupFromDrop(target.id, id, {
           location: 'holding',
-          index: Math.max(0, targetIndexBeforeDrop)
+          index: Math.max(0, config.holding.indexOf(target.id))
         });
         return;
       }
-      const targetIndex = config.holding.indexOf(target.id);
-      const targetButton = findPopupKeyButton(null, target.id, 'tray');
-      const dropAfter = targetButton && eventDropAfter(targetButton, lastClientX);
-      const insertAt = targetIndex < 0
-        ? config.holding.length
-        : targetIndex + (dropAfter ? 1 : 0);
-      config.holding.splice(insertAt, 0, id);
+      insertIntoHolding(target);
       return;
     }
+    const targetGroup = target.groupId ? config.popupGroups[target.groupId] : null;
     if (!targetGroup) {
-      if (sourceGroup) sourceGroup.order.splice(Math.max(0, originalIndex), 0, id);
-      else config.holding.splice(Math.max(0, originalIndex), 0, id);
+      restoreSource();
       return;
     }
-    if (isCenteredOnKey(target.button, lastClientX, lastClientY)) {
+    if (target.groupDrop) {
       createToolbarGroupFromDrop(target.id, id, {
         location: 'group',
         groupId: target.groupId,
-        index: Math.max(0, targetIndexBeforeDrop)
+        index: Math.max(0, targetGroup.order.indexOf(target.id))
       });
       return;
     }
-    const targetList = targetGroup.order;
-    const targetIndex = targetList.indexOf(target.id);
-    const targetButton = findPopupKeyButton(target.groupId, target.id, target.location);
-    const dropAfter = targetButton && eventDropAfter(targetButton, lastClientX);
-    const insertAt = targetIndex < 0
-      ? targetList.length
-      : targetIndex + (dropAfter ? 1 : 0);
-    targetList.splice(insertAt, 0, id);
+    targetGroup.order.splice(getDropIndex(targetGroup.order, target), 0, id);
     return;
   }
 
   if (target?.type === 'tray') {
-    if (config.popupGroups[id]) releasePopupGroupToHoldingArea(id);
-    config.holding.push(id);
-    if (groupId && config.popupGroups[groupId]?.order.length === 0) openPopupGroup = null;
+    insertIntoHolding({ anchorId: null, after: false });
+    return;
+  }
+
+  if (target?.type === 'holding-insert') {
+    insertIntoHolding(target);
     return;
   }
 
@@ -1196,37 +1414,31 @@ function applyPopupDrop({ id, source, groupId, target, lastClientX, lastClientY 
   }
 
   if (target?.type === 'visible-key') {
-    if (isCenteredOnKey(target.button, lastClientX, lastClientY)) {
+    if (target.groupDrop) {
       createToolbarGroupFromDrop(target.id, id, {
         location: 'toolbar',
-        index: Math.max(0, targetIndexBeforeDrop)
+        index: Math.max(0, config.order.indexOf(target.id))
       });
       return;
     }
-    const targetIndex = config.order.indexOf(target.id);
-    const targetButton = findToolbarKeyButton(target.id);
-    const dropAfter = targetButton && eventDropAfter(targetButton, lastClientX);
-    const insertAt = targetIndex < 0
-      ? config.order.length
-      : targetIndex + (dropAfter ? 1 : 0);
-    config.order.splice(insertAt, 0, id);
+    config.order.splice(getDropIndex(config.order, target), 0, id);
     return;
   }
 
   if (target?.type === 'hidden-key') {
-    if (isCenteredOnKey(target.button, lastClientX, lastClientY)) {
+    if (target.groupDrop) {
       createToolbarGroupFromDrop(target.id, id, {
         location: 'holding',
-        index: Math.max(0, targetIndexBeforeDrop)
+        index: Math.max(0, config.holding.indexOf(target.id))
       });
       return;
     }
-    const targetIndex = config.holding.indexOf(target.id);
-    const dropAfter = target.button && eventDropAfter(target.button, lastClientX);
-    const insertAt = targetIndex < 0
-      ? config.holding.length
-      : targetIndex + (dropAfter ? 1 : 0);
-    config.holding.splice(insertAt, 0, id);
+    insertIntoHolding(target);
+    return;
+  }
+
+  if (target?.type === 'toolbar-insert') {
+    config.order.splice(getDropIndex(config.order, target), 0, id);
     return;
   }
 
@@ -1235,19 +1447,17 @@ function applyPopupDrop({ id, source, groupId, target, lastClientX, lastClientY 
     return;
   }
 
-  // An unsuccessful drop leaves a key exactly where the drag began.
-  if (sourceGroup) sourceGroup.order.splice(Math.max(0, originalIndex), 0, id);
-  else config.holding.splice(Math.max(0, originalIndex), 0, id);
+  restoreSource();
 }
 
 function isCenteredOnKey(button, clientX, clientY) {
   if (!button) return false;
   const bounds = button.getBoundingClientRect();
   if (bounds.width <= 0 || bounds.height <= 0) return true;
-  return clientX >= bounds.left + bounds.width * 0.25 &&
-    clientX <= bounds.right - bounds.width * 0.25 &&
-    clientY >= bounds.top + bounds.height * 0.25 &&
-    clientY <= bounds.bottom - bounds.height * 0.25;
+  return clientX >= bounds.left + bounds.width * 0.32 &&
+    clientX <= bounds.right - bounds.width * 0.32 &&
+    clientY >= bounds.top + bounds.height * 0.34 &&
+    clientY <= bounds.bottom - bounds.height * 0.34;
 }
 
 function wouldCreateGroupCycle(movedId, targetGroupId) {
@@ -1338,12 +1548,6 @@ function releasePopupGroupToHoldingArea(groupId) {
   config.holding = [...new Set([...config.holding, ...groupConfig.order])];
   groupConfig.order = [];
   groupConfig.hidden = [];
-}
-
-function eventDropAfter(targetButton, clientX) {
-  if (!Number.isFinite(clientX)) return false;
-  const bounds = targetButton.getBoundingClientRect();
-  return clientX >= bounds.left + bounds.width / 2;
 }
 
 function openColorPicker(property) {
