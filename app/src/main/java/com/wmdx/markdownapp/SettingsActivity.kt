@@ -1527,7 +1527,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             customGroups.put(id, org.json.JSONObject().put("title", title).put("icon", icon))
         }
         val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten().toSet()
-        val groupIds = TOOLBAR_GROUP_ITEM_IDS.keys + customGroups.keys().asSequence().toList()
+        val groupIds = (TOOLBAR_GROUP_ITEM_IDS.keys +
+            customGroups.keys().asSequence().toList()).toList()
         val validRootIds = TOOLBAR_ITEM_IDS + customGroups.keys().asSequence().toList()
         val validKeyIds = validRootIds + popupActionIds
         val hidden = mutableListOf<String>()
