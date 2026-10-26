@@ -15,6 +15,10 @@ const settingsActivityPath = path.join(
   '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'
 );
 const settingsActivitySource = fs.readFileSync(settingsActivityPath, 'utf8');
+const toolbarPreviewSource = fs.readFileSync(
+  path.join(__dirname, '../src/toolbarSettingsPreview.js'),
+  'utf8'
+);
 const mainSettingsXml = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/res/xml/preferences.xml'),
   'utf8'
@@ -273,6 +277,14 @@ test('bottom toolbar appearance is in main settings below Find & Replace', () =>
   assert.ok(settingsActivitySource.includes('"pref_page_bottom_toolbar"'));
   assert.ok(!stylingPagesXml.includes('pref_styling_page_controlbar'));
   assert.ok(settingsActivitySource.includes('is StylingControlbarFragment -> "Toolbar: Bottom"'));
+});
+
+test('toolbar preview finalizes drops from Android native touch release', () => {
+  assert.match(
+    settingsActivitySource,
+    /setOnTouchListener\s*\{[\s\S]*?MotionEvent\.ACTION_UP[\s\S]*?finishToolbarDragFromNative/
+  );
+  assert.match(toolbarPreviewSource, /window\.finishToolbarDragFromNative\s*=/);
 });
 
 test('settings labels avoid redundant settings, styling, and shortcut wording', () => {

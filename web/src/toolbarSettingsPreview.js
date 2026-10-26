@@ -2083,6 +2083,16 @@ document.addEventListener('keydown', event => {
 });
 
 window.applyToolbarSettings = applySettings;
+window.finishToolbarDragFromNative = (clientX, clientY) => {
+  const x = Number(clientX);
+  const y = Number(clientY);
+  if (!dragState?.started || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  finishToolbarDrag({
+    pointerId: dragState.pointerId,
+    clientX: x,
+    clientY: y
+  });
+};
 
 try {
   applySettings(window.ToolbarSettings?.getBottomToolbarSettings?.() || {});

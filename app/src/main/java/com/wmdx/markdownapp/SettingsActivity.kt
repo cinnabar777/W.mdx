@@ -1414,6 +1414,22 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             settings.allowFileAccess = false
             settings.allowContentAccess = false
             addJavascriptInterface(ToolbarPreviewBridge(), "ToolbarSettings")
+            setOnTouchListener { view, event ->
+                if (
+                    event.actionMasked == android.view.MotionEvent.ACTION_UP &&
+                    event.x.isFinite() &&
+                    event.y.isFinite()
+                ) {
+                    val density = context.resources.displayMetrics.density
+                    val clientX = event.x / density
+                    val clientY = event.y / density
+                    (view as? android.webkit.WebView)?.evaluateJavascript(
+                        "window.finishToolbarDragFromNative?.($clientX,$clientY);",
+                        null
+                    )
+                }
+                false
+            }
         }
         toolbarPreviewWebView = preview
         toolbarPreviewHost = wrapper

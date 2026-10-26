@@ -1091,10 +1091,14 @@ test('dropping onto a toolbar key near the viewport edge still creates a folder'
     );
     assert.ok(target.classList.contains('drop-target-group'));
 
-    dispatchPointer(dom.window.document, 'pointerup', 122, 654);
+    dom.window.finishToolbarDragFromNative(122, 654);
     const groupId = Object.keys(saves.at(-1).customGroups)[0];
     assert.ok(groupId, 'the direct drop on the toolbar key creates a group');
     assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['undo', 'table']);
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-status').textContent,
+      'Toolbar changes saved.'
+    );
   } finally {
     dom.window.close();
     if (previousWindow === undefined) delete global.window;
