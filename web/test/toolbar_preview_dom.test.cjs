@@ -13,6 +13,8 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
   const edits = [];
   const collapseCalls = [];
   const colorPicks = [];
+  const pastedIcons = [];
+  const chosenIconFiles = [];
   const saves = [];
   const settings = {
     version: 1,
@@ -39,6 +41,8 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     },
     pickBottomToolbarColor: (id, property) => colorPicks.push([id, property]),
     editBottomToolbarIcon: id => edits.push(id),
+    pasteBottomToolbarSvg: id => pastedIcons.push(id),
+    chooseBottomToolbarSvg: id => chosenIconFiles.push(id),
     collapseToolbarAppearance: () => collapseCalls.push(true)
   };
   global.window = dom.window;
@@ -158,6 +162,16 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('icon-picker-open'),
       true
     );
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-reset-key-style').parentElement.className,
+      'toolbar-preview-editor-header',
+      'Reset all stays in the title row'
+    );
+    assert.equal(dom.window.document.querySelector('#toolbar-reset-key-colors'), null);
+    dom.window.document.querySelector('#toolbar-paste-svg').click();
+    dom.window.document.querySelector('#toolbar-choose-svg').click();
+    assert.deepEqual(pastedIcons, ['saveFile']);
+    assert.deepEqual(chosenIconFiles, ['saveFile']);
     const iconSearch = dom.window.document.querySelector('#toolbar-icon-search');
     iconSearch.value = 'bold';
     iconSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
@@ -175,9 +189,10 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       '#22000000',
       'resetting one color leaves the other color alone'
     );
-    dom.window.document.querySelector('#toolbar-reset-key-colors').click();
+    dom.window.document
+      .querySelector('[data-reset-property="backgroundColor"]')
+      .click();
     assert.equal(saves.at(-1).styles.saveFile.backgroundColor, undefined);
-    assert.ok(saves.at(-1).styles.saveFile.customSvg, 'Reset colors keeps the chosen icon');
     dom.window.document.querySelector('#toolbar-reset-key-style').click();
     assert.equal(saves.at(-1).styles.saveFile, undefined, 'Reset all clears the key style');
     assert.equal(

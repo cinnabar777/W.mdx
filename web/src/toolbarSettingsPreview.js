@@ -339,9 +339,6 @@ function refreshSelectedKeyEditor() {
   document.querySelectorAll('.toolbar-preview-reset-color').forEach(button => {
     button.disabled = !style[button.dataset.resetProperty];
   });
-  const hasAnyColor = ['iconColor', 'backgroundColor', 'activeBackgroundColor']
-    .some(property => Boolean(style[property]));
-  document.querySelector('#toolbar-reset-key-colors').disabled = !hasAnyColor;
   document.querySelector('#toolbar-reset-key-style').disabled = Object.keys(style).length === 0;
 }
 
@@ -597,23 +594,23 @@ document.querySelectorAll('.toolbar-preview-reset-color').forEach(button => {
     saveConfig();
   });
 });
-document.querySelector('#toolbar-reset-key-colors')?.addEventListener('click', () => {
-  if (!selectedKey) return;
-  const style = config.styles[selectedKey];
-  if (style) {
-    delete style.iconColor;
-    delete style.backgroundColor;
-    delete style.activeBackgroundColor;
-    if (Object.keys(style).length === 0) delete config.styles[selectedKey];
-  }
-  render();
-  saveConfig();
-});
 document.querySelector('#toolbar-reset-key-style')?.addEventListener('click', () => {
   if (!selectedKey) return;
   delete config.styles[selectedKey];
   render();
   saveConfig();
+});
+document.querySelector('#toolbar-paste-svg')?.addEventListener('click', () => {
+  if (!selectedKey) return;
+  const paste = window.ToolbarSettings?.pasteBottomToolbarSvg;
+  if (typeof paste === 'function') paste(selectedKey);
+  else setStatus('Paste SVG is available in the app.');
+});
+document.querySelector('#toolbar-choose-svg')?.addEventListener('click', () => {
+  if (!selectedKey) return;
+  const choose = window.ToolbarSettings?.chooseBottomToolbarSvg;
+  if (typeof choose === 'function') choose(selectedKey);
+  else setStatus('Choose file is available in the app.');
 });
 document.querySelector('#toolbar-add-custom')?.addEventListener('click', () => {
   if (!selectedKey) return;

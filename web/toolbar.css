@@ -245,27 +245,6 @@ body.light-theme .popup-toolbar-strip {
   max-width: 42px !important;
 }
 
-.toolbar-preview-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.toolbar-preview-options button {
-  min-height: 36px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
-  padding: 0 10px;
-  color: inherit;
-  background: rgba(255, 255, 255, 0.08);
-  font: inherit;
-}
-
-.toolbar-preview-options button:disabled {
-  opacity: 0.45;
-}
-
 .toolbar-preview-preserve-colors {
   display: flex;
   align-items: center;

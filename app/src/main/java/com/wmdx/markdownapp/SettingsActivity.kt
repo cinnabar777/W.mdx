@@ -1600,15 +1600,25 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .setTitle("Custom toolbar icon")
             .setItems(arrayOf("Choose SVG file", "Paste SVG code", "Use default icon")) { _, which ->
                 when (which) {
-                    0 -> pickToolbarSvgLauncher.launch(
-                        arrayOf("image/svg+xml", "text/xml", "application/xml", "*/*")
-                    )
-                    1 -> showPasteToolbarSvgDialog()
+                    0 -> chooseToolbarSvgFile(itemId)
+                    1 -> pasteToolbarSvg(itemId)
                     else -> updateToolbarStyle(itemId, "customSvg", null)
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun chooseToolbarSvgFile(itemId: String) {
+        targetToolbarIconId = itemId
+        pickToolbarSvgLauncher.launch(
+            arrayOf("image/svg+xml", "text/xml", "application/xml", "*/*")
+        )
+    }
+
+    private fun pasteToolbarSvg(itemId: String) {
+        targetToolbarIconId = itemId
+        showPasteToolbarSvgDialog()
     }
 
     private fun showPasteToolbarSvgDialog() {
@@ -1711,6 +1721,18 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         fun editBottomToolbarIcon(itemId: String) {
             if (itemId !in TOOLBAR_STYLE_IDS) return
             activity?.runOnUiThread { showToolbarSvgChooser(itemId) }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun chooseBottomToolbarSvg(itemId: String) {
+            if (itemId !in TOOLBAR_STYLE_IDS) return
+            activity?.runOnUiThread { chooseToolbarSvgFile(itemId) }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun pasteBottomToolbarSvg(itemId: String) {
+            if (itemId !in TOOLBAR_STYLE_IDS) return
+            activity?.runOnUiThread { pasteToolbarSvg(itemId) }
         }
     }
 }
