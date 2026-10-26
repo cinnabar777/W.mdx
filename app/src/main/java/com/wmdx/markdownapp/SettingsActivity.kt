@@ -1284,6 +1284,20 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         private val TOOLBAR_ITEM_IDS = listOf(
             "undo", "heading", "lists", "format", "table", "insert", "menu"
         )
+        private val TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS + listOf(
+            "paragraph",
+            "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
+            "wrap", "line-numbers",
+            "bulletedList", "numberedList", "todoList", "indent", "outdent",
+            "bold", "italic", "strikethrough", "underline",
+            "yellowMarker", "greenMarker", "pinkMarker", "blueMarker", "redPen", "greenPen",
+            "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
+            "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
+            "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
+            "horizontalLine", "footnote",
+            "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
+            "exportHtml", "search", "switchView", "newWindow", "settings"
+        )
         private val TOOLBAR_COLOR_PROPERTIES = setOf(
             "iconColor", "backgroundColor", "activeBackgroundColor"
         )
@@ -1494,7 +1508,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         val safeColor = Regex(
             """^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)|[A-Za-z]{1,20})$"""
         )
-        for (id in TOOLBAR_ITEM_IDS) {
+        for (id in TOOLBAR_STYLE_IDS) {
             val style = rawStyles.optJSONObject(id) ?: continue
             val cleanedStyle = org.json.JSONObject()
             for (property in TOOLBAR_COLOR_PROPERTIES) {
@@ -1562,7 +1576,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         property: String,
         value: String?
     ): Boolean {
-        if (itemId !in TOOLBAR_ITEM_IDS) return false
+        if (itemId !in TOOLBAR_STYLE_IDS) return false
         if (property !in TOOLBAR_COLOR_PROPERTIES && property != "customSvg") return false
         return try {
             val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
@@ -1676,7 +1690,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
         @android.webkit.JavascriptInterface
         fun pickBottomToolbarColor(itemId: String, property: String) {
-            if (itemId !in TOOLBAR_ITEM_IDS || property !in TOOLBAR_COLOR_PROPERTIES) return
+            if (itemId !in TOOLBAR_STYLE_IDS || property !in TOOLBAR_COLOR_PROPERTIES) return
             activity?.runOnUiThread {
                 val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
                 val config = org.json.JSONObject(
@@ -1700,7 +1714,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
         @android.webkit.JavascriptInterface
         fun editBottomToolbarIcon(itemId: String) {
-            if (itemId !in TOOLBAR_ITEM_IDS) return
+            if (itemId !in TOOLBAR_STYLE_IDS) return
             activity?.runOnUiThread { showToolbarSvgChooser(itemId) }
         }
     }

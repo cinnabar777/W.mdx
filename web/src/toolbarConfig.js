@@ -12,6 +12,26 @@ export const BOTTOM_TOOLBAR_ITEM_IDS = Object.freeze(
   BOTTOM_TOOLBAR_ITEMS.map(item => item.id)
 );
 
+export const BOTTOM_TOOLBAR_POPUP_ITEM_IDS = Object.freeze([
+  'paragraph',
+  'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6',
+  'wrap', 'line-numbers',
+  'bulletedList', 'numberedList', 'todoList', 'indent', 'outdent',
+  'bold', 'italic', 'strikethrough', 'underline',
+  'yellowMarker', 'greenMarker', 'pinkMarker', 'blueMarker', 'redPen', 'greenPen',
+  'insertTable', 'insertRowBelow', 'insertColumnRight', 'deleteRow', 'deleteColumn',
+  'mergeLeft', 'mergeRight', 'mergeUp', 'mergeDown', 'splitCell',
+  'image', 'link', 'callout', 'inlineCode', 'blockQuote', 'codeBlock',
+  'horizontalLine', 'footnote',
+  'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveAsTextPack',
+  'exportHtml', 'search', 'switchView', 'newWindow', 'settings'
+]);
+
+export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
+  ...BOTTOM_TOOLBAR_ITEM_IDS,
+  ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS
+]);
+
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
   version: 1,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
@@ -69,7 +89,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
 
   const styles = {};
   if (parsed.styles && typeof parsed.styles === 'object' && !Array.isArray(parsed.styles)) {
-    for (const id of BOTTOM_TOOLBAR_ITEM_IDS) {
+    for (const id of BOTTOM_TOOLBAR_STYLE_IDS) {
       const style = parsed.styles[id];
       if (!style || typeof style !== 'object' || Array.isArray(style)) continue;
       const normalized = {};

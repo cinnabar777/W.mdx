@@ -38,6 +38,39 @@ test('invalid saved configuration falls back to the current toolbar order', asyn
   );
 });
 
+test('toolbar styles retain colors for popup actions but discard unknown style targets', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    hidden: [],
+    styles: {
+      mergeLeft: {
+        iconColor: '#ff0000',
+        backgroundColor: '#00000000',
+        activeBackgroundColor: 'rgba(1, 2, 3, 0.5)'
+      },
+      saveAsTextPack: {
+        iconColor: '#123456',
+        customSvg: '<svg><path d="M0 0"/></svg>',
+        preserveSvgColors: true
+      },
+      inventedAction: { iconColor: '#ffffff' }
+    }
+  });
+
+  assert.deepEqual(config.styles.mergeLeft, {
+    iconColor: '#ff0000',
+    backgroundColor: '#00000000',
+    activeBackgroundColor: 'rgba(1, 2, 3, 0.5)'
+  });
+  assert.deepEqual(config.styles.saveAsTextPack, {
+    iconColor: '#123456',
+    customSvg: '<svg><path d="M0 0"/></svg>',
+    preserveSvgColors: true
+  });
+  assert.equal(config.styles.inventedAction, undefined);
+});
+
 test('toolbar config always leaves the Menu key available when every key is hidden', async () => {
   const { BOTTOM_TOOLBAR_ITEM_IDS, normalizeBottomToolbarConfig } =
     await import('../src/toolbarConfig.js');

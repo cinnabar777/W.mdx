@@ -48,8 +48,8 @@ body.light-theme .popup-toolbar-strip {
 }
 
 .popup-strip-btn {
-  background: transparent !important;
-  color: var(--toolbar-icon-color, #fff) !important;
+  background: var(--toolbar-key-bg-color, transparent) !important;
+  color: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
   border: none !important;
   font-size: 15px !important;
   font-weight: 600 !important;
@@ -66,13 +66,16 @@ body.light-theme .popup-toolbar-strip {
 }
 
 .popup-strip-btn svg {
-  color: var(--toolbar-icon-color, #fff) !important;
-  stroke: var(--toolbar-icon-color, #fff) !important;
+  color: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
+  stroke: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
 }
 
 .popup-strip-btn:active,
 .popup-strip-btn.active {
-  background-color: rgba(255, 255, 255, 0.2) !important;
+  background-color: var(
+    --toolbar-key-active-bg-color,
+    rgba(255, 255, 255, 0.2)
+  ) !important;
 }
 
 .popup-strip-btn.active {
@@ -190,11 +193,6 @@ body.light-theme .popup-toolbar-strip {
 .toolbar-preview-key {
   touch-action: none;
   cursor: grab !important;
-}
-
-.toolbar-preview-key.is-selected {
-  outline: 2px solid var(--toolbar-active-icon-color, #00e5ff) !important;
-  outline-offset: -2px;
 }
 
 .toolbar-preview-key.is-dragging {

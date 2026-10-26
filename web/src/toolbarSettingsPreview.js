@@ -5,7 +5,11 @@ import {
   normalizeBottomToolbarConfig
 } from './toolbarConfig.js';
 import { svgIcons } from './toolbarIcons.js';
-import { renderBottomToolbarKeys, toToolbarCssColor } from './toolbarRenderer.js';
+import {
+  renderBottomToolbarKeys,
+  sanitizeToolbarSvg,
+  toToolbarCssColor
+} from './toolbarRenderer.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 
 const toolbar = document.querySelector('#toolbar-preview');
@@ -80,6 +84,10 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'settings', title: 'Settings', icon: svgIcons.settings }
   ]
 };
+const PREVIEW_ITEM_DEFINITIONS = new Map([
+  ...BOTTOM_TOOLBAR_ITEMS.map(item => [item.id, item]),
+  ...Object.values(PREVIEW_GROUP_ITEMS).flat().map(item => [item.id, item])
+]);
 
 function setStatus(message) {
   if (status) status.textContent = message;
@@ -109,21 +117,25 @@ function render() {
     onKeyClick: onToolbarKeyClick
   });
 
-  const trayConfig = {
-    version: 1,
-    order: [...config.hidden],
-    hidden: BOTTOM_TOOLBAR_ITEM_IDS.filter(id => !config.hidden.includes(id)),
-    styles: config.styles
-  };
-  renderBottomToolbarKeys(tray, trayConfig, svgIcons, {
-    buttonClass: 'grouped-key-btn toolbar-preview-key',
-    resolveCustomIcon: style => style.customSvg || '',
-    onKeyClick: onToolbarKeyClick
-  });
+  if (config.hidden.length) {
+    const trayConfig = {
+      version: 1,
+      order: [...config.hidden],
+      hidden: BOTTOM_TOOLBAR_ITEM_IDS.filter(id => !config.hidden.includes(id)),
+      styles: config.styles
+    };
+    renderBottomToolbarKeys(tray, trayConfig, svgIcons, {
+      buttonClass: 'grouped-key-btn toolbar-preview-key',
+      resolveCustomIcon: style => style.customSvg || '',
+      onKeyClick: onToolbarKeyClick
+    });
+  } else {
+    // An empty holding area is valid. Passing an empty order through the normal
+    // toolbar normalizer would restore the Menu key and show it twice.
+    tray.replaceChildren();
+  }
 
   for (const button of document.querySelectorAll('.toolbar-preview-key')) {
-    button.classList.toggle('is-selected', button.dataset.toolbarKey === selectedKey);
-    button.classList.toggle('active', button.dataset.toolbarKey === openPopupGroup);
     if (PREVIEW_GROUP_ITEMS[button.dataset.toolbarKey]) {
       button.setAttribute(
         'aria-expanded',
@@ -219,16 +231,33 @@ function renderPopupGroup() {
     button.className = 'popup-strip-btn toolbar-preview-popup-key';
     button.title = item.title;
     button.setAttribute('aria-label', item.title);
-    button.setAttribute('aria-pressed', String(item.id === selectedPopupItem));
+    button.setAttribute('aria-current', item.id === selectedPopupItem ? 'true' : 'false');
     button.dataset.previewPopupItem = item.id;
-    if (item.id === selectedPopupItem) button.classList.add('active');
-    button.innerHTML = item.icon || item.title;
+    const style = config.styles[item.id] || {};
+    if (style.iconColor) {
+      button.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
+    }
+    if (style.backgroundColor) {
+      button.style.setProperty('--toolbar-key-bg-color', toToolbarCssColor(style.backgroundColor));
+    }
+    if (style.activeBackgroundColor) {
+      button.style.setProperty(
+        '--toolbar-key-active-bg-color',
+        toToolbarCssColor(style.activeBackgroundColor)
+      );
+    }
+    const customIcon = style.customSvg
+      ? sanitizeToolbarSvg(style.customSvg, style.preserveSvgColors === true, document)
+      : '';
+    button.innerHTML = customIcon || item.icon || item.title;
     button.addEventListener('pointerdown', event => event.preventDefault());
     button.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
-      selectedPopupItem = item.id === selectedPopupItem ? null : item.id;
-      renderPopupGroup();
+      selectedPopupItem = item.id;
+      selectedKey = item.id;
+      setStatus('');
+      render();
     });
     popup.appendChild(button);
   }
@@ -237,7 +266,7 @@ function renderPopupGroup() {
 
 function refreshSelectedKeyEditor() {
   if (!editor) return;
-  const definition = BOTTOM_TOOLBAR_ITEMS.find(item => item.id === selectedKey);
+  const definition = PREVIEW_ITEM_DEFINITIONS.get(selectedKey);
   editor.classList.toggle('visible', Boolean(definition));
   editor.classList.toggle('above-group', Boolean(definition && openPopupGroup));
   editor.setAttribute('aria-hidden', String(!definition));
@@ -446,6 +475,10 @@ document.querySelector('#toolbar-reset-key-style')?.addEventListener('click', ()
   }
   render();
   saveConfig();
+});
+document.querySelector('#toolbar-custom-icon')?.addEventListener('click', () => {
+  if (!selectedKey) return;
+  window.ToolbarSettings?.editBottomToolbarIcon?.(selectedKey);
 });
 document.querySelector('#toolbar-preserve-svg-colors')?.addEventListener('change', event => {
   if (!selectedKey || !config.styles[selectedKey]?.customSvg) return;

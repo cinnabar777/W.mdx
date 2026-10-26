@@ -23,6 +23,11 @@ const resetSource = fs.readFileSync(
   'utf8'
 );
 const mainSource = fs.readFileSync(path.join(root, 'web/src/main.js'), 'utf8');
+const toolbarConfigSource = fs.readFileSync(path.join(root, 'web/src/toolbarConfig.js'), 'utf8');
+const colorPickerSource = fs.readFileSync(
+  path.join(root, 'app/src/main/java/com/wmdx/markdownapp/ColorPickerDialog.kt'),
+  'utf8'
+);
 
 test('bottom toolbar preview uses the same renderer, icon source, and toolbar stylesheet as the editor', () => {
   assert.match(settingsSource, /renderBottomToolbarKeys/);
@@ -43,6 +48,8 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /toolbar-holding-tray/);
   assert.match(settingsSource, /pickBottomToolbarColor/);
   assert.match(settingsSource, /preserveSvgColors/);
+  assert.match(settingsSource, /editBottomToolbarIcon\?\.\(selectedKey\)/);
+  assert.match(html, /id="toolbar-custom-icon"/);
   assert.match(androidSource, /saveBottomToolbarConfig/);
   assert.match(androidSource, /pickBottomToolbarColor/);
   assert.match(androidSource, /editBottomToolbarIcon/);
@@ -50,6 +57,38 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(mainSource, /--toolbar-padding/);
   assert.match(preferenceXml, /app:key="pref_toolbar_padding"/);
   assert.match(resetSource, /key == "pref_toolbar_padding" -> 4/);
+});
+
+test('popup toolbar actions accept the same persisted styles in web preview and Android settings', async () => {
+  const { BOTTOM_TOOLBAR_POPUP_ITEM_IDS, BOTTOM_TOOLBAR_STYLE_IDS } =
+    await import('../src/toolbarConfig.js');
+  const kotlinPopupIdsBlock = androidSource.match(
+    /TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS \+ listOf\(([\s\S]*?)\n\s*\)/
+  )?.[1];
+  assert.ok(kotlinPopupIdsBlock, 'Android must allow-list popup item style IDs');
+  const kotlinPopupIds = [...kotlinPopupIdsBlock.matchAll(/"([^"]+)"/g)]
+    .map(match => match[1])
+    .sort();
+  assert.deepEqual(kotlinPopupIds, [...BOTTOM_TOOLBAR_POPUP_ITEM_IDS].sort());
+  assert.equal(BOTTOM_TOOLBAR_STYLE_IDS.length, BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length + 7);
+  assert.match(mainSource, /const styleId = item\.styleId \|\| item\.id \|\| item\.command/);
+  assert.match(mainSource, /dataset\.toolbarStyleId/);
+  assert.match(sharedCss, /--toolbar-key-icon-color, var\(--toolbar-icon-color/);
+  assert.match(settingsSource, /PREVIEW_ITEM_DEFINITIONS\.get\(selectedKey\)/);
+  assert.match(toolbarConfigSource, /for \(const id of BOTTOM_TOOLBAR_STYLE_IDS\)/);
+});
+
+test('choosing a color in a transparent color picker makes the selected color visible', () => {
+  assert.match(colorPickerSource, /makePickedColorVisible\(\)/);
+  assert.match(
+    colorPickerSource,
+    /private fun makePickedColorVisible\(\) \{\s*if \(currentAlpha == 0\) \{\s*currentAlpha = 255/
+  );
+  assert.doesNotMatch(
+    sharedCss,
+    /\.toolbar-preview-key\.is-selected/,
+    'key selection should not paint an extra accent over the configured colors'
+  );
 });
 
 test('global toolbar settings collapse above a bottom-docked toolbar preview', () => {

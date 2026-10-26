@@ -12,11 +12,17 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
   const previousDocument = global.document;
   const edits = [];
   const collapseCalls = [];
+  const colorPicks = [];
   const settings = {
     version: 1,
     order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
     hidden: ['heading'],
-    styles: {}
+    styles: {
+      saveFile: {
+        iconColor: '#00ff00',
+        backgroundColor: '#22000000'
+      }
+    }
   };
 
   dom.window.ToolbarSettings = {
@@ -27,7 +33,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       pref_app_theme: 'amoled'
     }),
     saveBottomToolbarConfig: () => true,
-    pickBottomToolbarColor: () => {},
+    pickBottomToolbarColor: (id, property) => colorPicks.push([id, property]),
     editBottomToolbarIcon: id => edits.push(id),
     collapseToolbarAppearance: () => collapseCalls.push(true)
   };
@@ -57,7 +63,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       dom.window.document
         .querySelector('#toolbar-preview [data-toolbar-key="undo"]')
         .classList.contains('is-selected'),
-      true
+      false
     );
 
     dom.window.document
@@ -65,6 +71,12 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       .click();
     const popup = dom.window.document.querySelector('#toolbar-preview-popup');
     assert.equal(popup.classList.contains('hidden'), false);
+    assert.equal(
+      dom.window.document
+        .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
+        .classList.contains('active'),
+      false
+    );
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('above-group'),
       true
@@ -92,9 +104,34 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     );
     popup.querySelector('[data-preview-popup-item="saveFile"]').click();
     assert.equal(
-      popup.querySelector('[data-preview-popup-item="saveFile"]').getAttribute('aria-pressed'),
+      popup.querySelector('[data-preview-popup-item="saveFile"]').getAttribute('aria-current'),
       'true'
     );
+    assert.equal(
+      popup.querySelector('[data-preview-popup-item="saveFile"]').classList.contains('active'),
+      false
+    );
+    assert.equal(
+      popup.querySelector('[data-preview-popup-item="saveFile"]').style
+        .getPropertyValue('--toolbar-key-icon-color'),
+      '#00ff00'
+    );
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-selected-title').textContent,
+      'Save File'
+    );
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('visible'),
+      true
+    );
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('above-group'),
+      true
+    );
+    dom.window.document.querySelector('#toolbar-custom-icon').click();
+    assert.deepEqual(edits, ['saveFile']);
+    dom.window.document.querySelector('#toolbar-icon-color').click();
+    assert.deepEqual(colorPicks, [['saveFile', 'iconColor']]);
     dom.window.document
       .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
       .click();
@@ -127,7 +164,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       .querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]')
       .click();
     assert.equal(collapseCalls.length, collapseCallsBeforeTray + 2);
-    assert.deepEqual(edits, ['heading']);
+    assert.deepEqual(edits, ['saveFile', 'heading']);
 
     dom.window.applyToolbarSettings({
       pref_toolbar_bottom_config: JSON.stringify({
@@ -155,6 +192,44 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     assert.match(
       dom.window.document.querySelector('#toolbar-preview-status').textContent,
       /Holding-area keys open their settings/
+    );
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('an empty holding tray stays empty instead of restoring a duplicate Menu key', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify({
+        version: 1,
+        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+        hidden: [],
+        styles: {}
+      })
+    })
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?empty-tray-test=${Date.now()}`);
+    assert.equal(dom.window.document.querySelector('#toolbar-holding-tray').children.length, 0);
+    assert.equal(
+      dom.window.document.querySelectorAll(
+        '#toolbar-preview [data-toolbar-key="menu"], #toolbar-holding-tray [data-toolbar-key="menu"]'
+      ).length,
+      1
     );
   } finally {
     dom.window.close();

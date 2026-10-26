@@ -31,7 +31,11 @@ import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownForm
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
 import { normalizeBottomToolbarConfig } from './toolbarConfig.js';
-import { renderBottomToolbarKeys } from './toolbarRenderer.js';
+import {
+  renderBottomToolbarKeys,
+  sanitizeToolbarSvg,
+  toToolbarCssColor
+} from './toolbarRenderer.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -4006,15 +4010,15 @@ function setupGroupedControlBar() {
     headingBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('heading', headingBtn, [
-        { title: 'Paragraph', icon: 'P', command: 'paragraph', action: () => execCmd('heading', { value: 'paragraph' }) },
+        { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', action: () => execCmd('heading', { value: 'paragraph' }) },
         { title: 'Heading 1', icon: 'H1', command: 'heading1', action: () => execCmd('heading', { value: 'heading1' }) },
         { title: 'Heading 2', icon: 'H2', command: 'heading2', action: () => execCmd('heading', { value: 'heading2' }) },
         { title: 'Heading 3', icon: 'H3', command: 'heading3', action: () => execCmd('heading', { value: 'heading3' }) },
         { title: 'Heading 4', icon: 'H4', command: 'heading4', action: () => execCmd('heading', { value: 'heading4' }) },
         { title: 'Heading 5', icon: 'H5', command: 'heading5', action: () => execCmd('heading', { value: 'heading5' }) },
         { title: 'Heading 6', icon: 'H6', command: 'heading6', action: () => execCmd('heading', { value: 'heading6' }) },
-        { icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
-        { icon: '#', title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
+        { id: 'wrap', icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
+        { id: 'line-numbers', icon: '#', title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
       ]);
     };
   }
@@ -4027,8 +4031,8 @@ function setupGroupedControlBar() {
         { title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
         { title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', action: () => execCmd('numberedList') },
         { title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', action: () => execCmd('todoList') },
-        { title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
-        { title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
+        { id: 'indent', title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
+        { id: 'outdent', title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
       ]);
     };
   }
@@ -4058,6 +4062,7 @@ function setupGroupedControlBar() {
       e.stopPropagation();
       togglePopupStrip('table', tableBtn, [
         {
+          id: 'insertTable',
           icon: svgIcons.insertTable,
           title: 'Insert Table',
           action: () => {
@@ -4066,6 +4071,7 @@ function setupGroupedControlBar() {
           }
         },
         ...TABLE_ACTIONS.map(item => ({
+          id: item.id,
           icon: item.icon,
           title: item.title,
           disabled: !window.wmdxTableActions?.isEnabled(item.id),
@@ -4083,14 +4089,14 @@ function setupGroupedControlBar() {
     insertBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('insert', insertBtn, [
-        { icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
-        { icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
-        { icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
-        { icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
-        { icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
-        { icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
-        { icon: svgIcons.horizontalLine, title: 'Insert Line', action: () => execCmd('horizontalLine') },
-        { icon: svgIcons.footnote, title: 'Insert Footnote', action: () => openFootnoteInsertionDialog() }
+        { id: 'image', icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
+        { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
+        { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
+        { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
+        { id: 'blockQuote', icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
+        { id: 'codeBlock', icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
+        { id: 'horizontalLine', icon: svgIcons.horizontalLine, title: 'Insert Line', action: () => execCmd('horizontalLine') },
+        { id: 'footnote', icon: svgIcons.footnote, title: 'Insert Footnote', action: () => openFootnoteInsertionDialog() }
       ]);
     };
   }
@@ -4100,21 +4106,21 @@ function setupGroupedControlBar() {
     menuBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('menu', menuBtn, [
-        { icon: svgIcons.newFile, title: 'New File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('new') },
-        { icon: svgIcons.openFile, title: 'Open File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('open') },
-        { icon: svgIcons.saveFile, title: 'Save File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save') },
-        { icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
-        { icon: svgIcons.saveAsTextPack, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
-        { icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
-        { icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
-        { icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
-        { icon: svgIcons.newWindow, title: 'New Window', action: () => {
+        { id: 'newFile', icon: svgIcons.newFile, title: 'New File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('new') },
+        { id: 'openFile', icon: svgIcons.openFile, title: 'Open File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('open') },
+        { id: 'saveFile', icon: svgIcons.saveFile, title: 'Save File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save') },
+        { id: 'saveAsFile', icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
+        { id: 'saveAsTextPack', icon: svgIcons.saveAsTextPack, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
+        { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
+        { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
+        { id: 'switchView', icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
+        { id: 'newWindow', icon: svgIcons.newWindow, title: 'New Window', action: () => {
           hidePopupStrip();
           if (window.AndroidNative && typeof window.AndroidNative.onNativeAction === 'function') {
             window.AndroidNative.onNativeAction('new_window');
           }
         } },
-        { icon: svgIcons.settings, title: 'Settings', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('settings') }
+        { id: 'settings', icon: svgIcons.settings, title: 'Settings', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('settings') }
       ]);
     };
   }
@@ -4795,6 +4801,21 @@ function togglePopupStrip(groupKey, targetBtn, items) {
   items.forEach(item => {
     const btn = document.createElement('button');
     btn.className = 'popup-strip-btn';
+    const styleId = item.styleId || item.id || item.command;
+    const style = styleId ? bottomToolbarConfig.styles[styleId] || {} : {};
+    if (styleId) btn.dataset.toolbarStyleId = styleId;
+    if (style.iconColor) {
+      btn.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
+    }
+    if (style.backgroundColor) {
+      btn.style.setProperty('--toolbar-key-bg-color', toToolbarCssColor(style.backgroundColor));
+    }
+    if (style.activeBackgroundColor) {
+      btn.style.setProperty(
+        '--toolbar-key-active-bg-color',
+        toToolbarCssColor(style.activeBackgroundColor)
+      );
+    }
     if (item.title) {
       btn.title = item.title;
       btn.setAttribute('aria-label', item.title);
@@ -4805,7 +4826,10 @@ function togglePopupStrip(groupKey, targetBtn, items) {
       btn.classList.add('disabled');
     }
     if (item.command) btn.dataset.toolbarCommand = item.command;
-    btn.innerHTML = item.icon || item.title;
+    const customIcon = style.customSvg
+      ? sanitizeToolbarSvg(style.customSvg, style.preserveSvgColors === true)
+      : '';
+    btn.innerHTML = customIcon || item.icon || item.title;
     btn.addEventListener('pointerdown', event => {
       // Prevent toolbar interaction from stealing focus from the editor and
       // dismissing the on-screen keyboard.

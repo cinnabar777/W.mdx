@@ -120,6 +120,7 @@ class ColorPickerDialog(
             onSatValChanged = { s, v ->
                 currentSat = s
                 currentVal = v
+                makePickedColorVisible()
                 updateColorFromHSV()
             }
         }
@@ -132,6 +133,7 @@ class ColorPickerDialog(
             }
             onHueChanged = { h ->
                 currentHue = h
+                makePickedColorVisible()
                 satValView.setHue(h)
                 updateColorFromHSV()
             }
@@ -357,6 +359,13 @@ class ColorPickerDialog(
     private fun updateColorFromHSV() {
         currentColorInt = Color.HSVToColor(currentAlpha, floatArrayOf(currentHue, currentSat, currentVal))
         updateUIComponents()
+    }
+
+    private fun makePickedColorVisible() {
+        if (currentAlpha == 0) {
+            currentAlpha = 255
+            alphaView.setAlphaValue(currentAlpha)
+        }
     }
 
     private fun setColorInt(colorInt: Int) {
