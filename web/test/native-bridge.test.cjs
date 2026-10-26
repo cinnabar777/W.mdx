@@ -303,23 +303,14 @@ test('toolbar layout is explicitly saved from the separate preview when settings
   );
 });
 
-test('manual toolbar save is a native settings action with visible success or failure feedback', () => {
-  assert.match(
-    toolbarSettingsXml,
-    /app:key="pref_toolbar_save_layout"[\s\S]*?app:title="Save toolbar layout"/
-  );
-  assert.match(
-    settingsActivitySource,
-    /findPreference<Preference>\("pref_toolbar_save_layout"\)[\s\S]*?saveToolbarPreviewLayout\(showFeedback = true\)/
-  );
-  assert.match(settingsActivitySource, /isPersistent = false/);
+test('toolbar layout saves automatically without a manual save row', () => {
+  assert.doesNotMatch(toolbarSettingsXml, /pref_toolbar_save_layout|Save toolbar layout/);
+  assert.doesNotMatch(settingsActivitySource, /pref_toolbar_save_layout|showFeedback/);
+  assert.match(settingsActivitySource, /private fun saveToolbarPreviewLayout\(\)/);
   assert.match(settingsActivitySource, /findViewWithTag<android\.webkit\.WebView>/);
   assert.match(settingsActivitySource, /toolbar-preview-save-target/);
   assert.match(settingsActivitySource, /var save = window\.saveToolbarLayout/);
-  assert.match(settingsActivitySource, /return save\(\) === true \? "saved" : "failed"/);
-  assert.match(settingsActivitySource, /Toolbar layout saved/);
-  assert.match(settingsActivitySource, /Could not save toolbar layout/);
-  assert.match(settingsActivitySource, /Toolbar save function is missing/);
+  assert.doesNotMatch(settingsActivitySource, /Toolbar layout saved|Could not save toolbar layout/);
   assert.match(settingsActivitySource, /private lateinit var toolbarPreferences: SharedPreferences/);
   assert.match(
     settingsActivitySource,

@@ -31,7 +31,9 @@ import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownForm
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
 import {
+  BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
+  getToolbarGroupIdForAction,
   normalizeBottomToolbarConfig,
   orderBottomToolbarPopupItems
 } from './toolbarConfig.js';
@@ -4339,7 +4341,14 @@ function createToolbarActionRegistry() {
       { id: 'settings', title: 'Settings', icon: svgIcons.settings, action: () => window.AndroidNative?.onNativeAction('settings') }
     ]
   ];
-  return new Map(groups.flat().map(item => [item.id, item]));
+  const clipboardItems = BUILT_IN_HOLDING_ITEMS.map(item => ({
+    ...item,
+    icon: svgIcons[item.icon],
+    action: () => {
+      void runToolbarClipboardAction(item.id);
+    }
+  }));
+  return new Map([...groups.flat(), ...clipboardItems].map(item => [item.id, item]));
 }
 
 function createRuntimeToolbarItemRegistry() {
@@ -4382,6 +4391,15 @@ function createRuntimeToolbarItemRegistry() {
 function runToolbarGestureAction(actionId, sourceButton, visited = new Set()) {
   if (!actionId || visited.has(actionId)) return false;
   visited.add(actionId);
+  const toolbarGroupId = getToolbarGroupIdForAction(actionId);
+  if (toolbarGroupId && bottomToolbarConfig.popupGroups[toolbarGroupId]) {
+    togglePopupStrip(
+      toolbarGroupId,
+      sourceButton,
+      getRuntimeToolbarGroupItems(toolbarGroupId)
+    );
+    return true;
+  }
   if (actionId === 'undo') {
     activeAdapter?.undo();
     return Boolean(activeAdapter);
@@ -4416,6 +4434,79 @@ function runToolbarGestureAction(actionId, sourceButton, visited = new Set()) {
   if (typeof item.action !== 'function') return false;
   item.action();
   return true;
+}
+
+async function runToolbarClipboardAction(actionId) {
+  const view = activeAdapter?.view;
+  if (!view) return false;
+
+  if (actionId === 'selectAll') {
+    view.dispatch({
+      selection: { anchor: 0, head: view.state.doc.length },
+      userEvent: 'select'
+    });
+    view.focus();
+    return true;
+  }
+
+  if (actionId === 'copy' || actionId === 'cut') {
+    const state = view.state;
+    const { from, to } = state.selection.main;
+    if (from === to) return false;
+    const text = state.sliceDoc(from, to);
+    let copied = false;
+    try {
+      if (typeof window.AndroidNative?.writeClipboard === 'function') {
+        copied = window.AndroidNative.writeClipboard(text) !== false;
+      }
+      if (!copied && typeof navigator.clipboard?.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+    if (!copied) {
+      window.AndroidNative?.showToast?.('Clipboard access is unavailable');
+      return false;
+    }
+    if (actionId === 'cut' && view.state === state) {
+      view.dispatch({
+        changes: { from, to, insert: '' },
+        selection: { anchor: from },
+        userEvent: 'delete.cut'
+      });
+    }
+    view.focus();
+    return true;
+  }
+
+  if (actionId === 'paste') {
+    let text;
+    try {
+      if (typeof window.AndroidNative?.readClipboard === 'function') {
+        text = window.AndroidNative.readClipboard();
+      } else if (typeof navigator.clipboard?.readText === 'function') {
+        text = await navigator.clipboard.readText();
+      }
+    } catch {
+      text = undefined;
+    }
+    if (typeof text !== 'string') {
+      window.AndroidNative?.showToast?.('Clipboard access is unavailable');
+      return false;
+    }
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+      userEvent: 'input.paste'
+    });
+    view.focus();
+    return true;
+  }
+
+  return false;
 }
 
 function installPopupToolbarSwipeUp(button, styleId) {

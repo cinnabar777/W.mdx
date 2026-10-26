@@ -46,7 +46,10 @@ test('popup actions can be reordered and removed from their former group into th
   const {
     BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
     BOTTOM_TOOLBAR_POPUP_ITEM_IDS,
+    BUILT_IN_HOLDING_ITEM_IDS,
+    DEFAULT_BOTTOM_TOOLBAR_CONFIG,
     normalizeBottomToolbarConfig,
+    openToolbarGroupActionId,
     orderBottomToolbarPopupItems
   } = await import('../src/toolbarConfig.js');
   const config = normalizeBottomToolbarConfig({
@@ -75,6 +78,24 @@ test('popup actions can be reordered and removed from their former group into th
     BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length
   );
   assert.equal(new Set(BOTTOM_TOOLBAR_POPUP_ITEM_IDS).size, BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length);
+  assert.deepEqual(BUILT_IN_HOLDING_ITEM_IDS, ['cut', 'copy', 'paste', 'selectAll']);
+  assert.deepEqual(DEFAULT_BOTTOM_TOOLBAR_CONFIG.holding, BUILT_IN_HOLDING_ITEM_IDS);
+  assert.deepEqual(
+    normalizeBottomToolbarConfig({
+      order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu']
+    }).holding,
+    BUILT_IN_HOLDING_ITEM_IDS
+  );
+
+  const openFormatGroup = openToolbarGroupActionId('format');
+  const gestureConfig = normalizeBottomToolbarConfig({
+    styles: {
+      table: {
+        gestureActions: { swipeUp: openFormatGroup }
+      }
+    }
+  });
+  assert.equal(gestureConfig.styles.table.gestureActions.swipeUp, openFormatGroup);
 });
 
 test('toolbar styles retain colors for popup actions but discard unknown style targets', async () => {

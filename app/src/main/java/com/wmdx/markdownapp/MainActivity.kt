@@ -1792,6 +1792,32 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun writeClipboard(text: String?): Boolean {
+            if (text == null) return false
+            return try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager ?: return false
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("W.mdx", text))
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        @JavascriptInterface
+        fun readClipboard(): String {
+            return try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager ?: return ""
+                val clip = clipboard.primaryClip ?: return ""
+                if (clip.itemCount == 0) return ""
+                clip.getItemAt(0).coerceToText(this@MainActivity)?.toString() ?: ""
+            } catch (_: Exception) {
+                ""
+            }
+        }
+
+        @JavascriptInterface
         fun hideKeyboard() {
             runOnUiThread {
                 val inputMethodManager =

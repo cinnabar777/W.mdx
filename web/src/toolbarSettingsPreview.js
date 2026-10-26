@@ -2,7 +2,9 @@ import {
   BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
   BOTTOM_TOOLBAR_ITEMS,
   BOTTOM_TOOLBAR_ITEM_IDS,
+  BUILT_IN_HOLDING_ITEMS,
   normalizeBottomToolbarConfig,
+  openToolbarGroupActionId,
   orderBottomToolbarPopupItems
 } from './toolbarConfig.js';
 import {
@@ -109,6 +111,7 @@ const PREVIEW_GROUP_ITEMS = {
 };
 const PREVIEW_ITEM_DEFINITIONS = new Map([
   ...BOTTOM_TOOLBAR_ITEMS.map(item => [item.id, item]),
+  ...BUILT_IN_HOLDING_ITEMS.map(item => [item.id, item]),
   ...Object.values(PREVIEW_GROUP_ITEMS).flat().map(item => [item.id, item])
 ]);
 const PREVIEW_SHORTCUT_ITEMS = [
@@ -123,6 +126,7 @@ for (const item of PREVIEW_SHORTCUT_ITEMS) {
 const PREVIEW_ICON_TITLES = new Map();
 for (const item of [
   ...BOTTOM_TOOLBAR_ITEMS,
+  ...BUILT_IN_HOLDING_ITEMS,
   ...Object.values(PREVIEW_GROUP_ITEMS).flat(),
   ...PREVIEW_SHORTCUT_ITEMS
 ]) {
@@ -181,6 +185,16 @@ function actionDefinitions() {
   }
   for (const [id, key] of Object.entries(config.customKeys || {})) {
     definitions.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
+  }
+  for (const group of [...definitions.values()].filter(item => item.kind === 'group')) {
+    const id = openToolbarGroupActionId(group.id);
+    definitions.set(id, {
+      id,
+      title: `Open group: ${group.title}`,
+      icon: group.icon,
+      kind: 'action',
+      toolbarGroupId: group.id
+    });
   }
   return definitions;
 }
@@ -844,6 +858,7 @@ function renderActionCatalog() {
     ? config.customKeys?.[selectedKey]?.actionId
     : getGestureActionId(config.styles[selectedKey] || {}, selectedGestureId);
   const items = [...actionDefinitions().values()]
+    .filter(item => item.kind !== 'group')
     .map(item => ({
       ...item,
       title: config.styles[item.id]?.title || item.title
@@ -861,7 +876,10 @@ function renderActionCatalog() {
     button.className = 'toolbar-preview-action-choice';
     button.setAttribute('role', 'option');
     button.setAttribute('aria-label', item.title);
-    button.setAttribute('aria-pressed', String(item.id === selectedAction));
+    button.setAttribute(
+      'aria-pressed',
+      String(item.id === selectedAction || item.toolbarGroupId === selectedAction)
+    );
     const icon = document.createElement('span');
     const iconMarkup = getActionIconMarkup(item);
     if (iconMarkup.includes('<svg')) {

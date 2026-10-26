@@ -147,6 +147,16 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(mainSource, /--toolbar-padding/);
   assert.match(preferenceXml, /app:key="pref_toolbar_padding"/);
   assert.match(resetSource, /key == "pref_toolbar_padding" -> 4/);
+  assert.match(toolbarConfigSource, /id: 'cut', title: 'Cut', icon: 'cut'/);
+  assert.match(toolbarConfigSource, /id: 'copy', title: 'Copy', icon: 'copy'/);
+  assert.match(toolbarConfigSource, /id: 'paste', title: 'Paste', icon: 'paste'/);
+  assert.match(toolbarConfigSource, /id: 'selectAll', title: 'Select All', icon: 'selectAll'/);
+  assert.match(settingsSource, /Open group: \$\{group\.title\}/);
+  assert.match(mainSource, /function runToolbarClipboardAction\(actionId\)/);
+  assert.match(mainSource, /runToolbarClipboardAction\(item\.id\)/);
+  assert.match(mainSource, /getToolbarGroupIdForAction\(actionId\)/);
+  assert.match(mainActivitySource, /fun writeClipboard\(text: String\?\): Boolean/);
+  assert.match(mainActivitySource, /fun readClipboard\(\): String/);
 });
 
 test('toolbar appearance refreshes preserve layout and editor overlays follow the configured theme', () => {

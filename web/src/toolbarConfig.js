@@ -43,9 +43,33 @@ export const BOTTOM_TOOLBAR_POPUP_ITEM_IDS = Object.freeze(
   Object.values(BOTTOM_TOOLBAR_GROUP_ITEM_IDS).flat()
 );
 
+export const BUILT_IN_HOLDING_ITEMS = Object.freeze([
+  { id: 'cut', title: 'Cut', icon: 'cut', kind: 'action' },
+  { id: 'copy', title: 'Copy', icon: 'copy', kind: 'action' },
+  { id: 'paste', title: 'Paste', icon: 'paste', kind: 'action' },
+  { id: 'selectAll', title: 'Select All', icon: 'selectAll', kind: 'action' }
+]);
+
+export const BUILT_IN_HOLDING_ITEM_IDS = Object.freeze(
+  BUILT_IN_HOLDING_ITEMS.map(item => item.id)
+);
+
+export const OPEN_TOOLBAR_GROUP_ACTION_PREFIX = 'openToolbarGroup:';
+
+export function openToolbarGroupActionId(groupId) {
+  return `${OPEN_TOOLBAR_GROUP_ACTION_PREFIX}${groupId}`;
+}
+
+export function getToolbarGroupIdForAction(actionId) {
+  if (typeof actionId !== 'string' ||
+      !actionId.startsWith(OPEN_TOOLBAR_GROUP_ACTION_PREFIX)) return null;
+  return actionId.slice(OPEN_TOOLBAR_GROUP_ACTION_PREFIX.length) || null;
+}
+
 export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
   ...BOTTOM_TOOLBAR_ITEM_IDS,
-  ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS
+  ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS,
+  ...BUILT_IN_HOLDING_ITEM_IDS
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
@@ -53,7 +77,7 @@ export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
-  holding: [],
+  holding: BUILT_IN_HOLDING_ITEM_IDS,
   customGroups: {},
   customKeys: {},
   styles: {}
@@ -111,7 +135,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       order: [...DEFAULT_BOTTOM_TOOLBAR_CONFIG.order],
       hidden: [],
       popupGroups: createDefaultPopupGroups(),
-      holding: [],
+      holding: [...BUILT_IN_HOLDING_ITEM_IDS],
       customGroups: {},
       customKeys: {},
       styles: {}
@@ -158,6 +182,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
 
   const rootIds = [
     ...BOTTOM_TOOLBAR_ITEM_IDS,
+    ...BUILT_IN_HOLDING_ITEM_IDS,
     ...Object.keys(customGroups),
     ...Object.keys(customKeys)
   ];
@@ -168,7 +193,8 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   const keyIds = new Set([...rootIds, ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS]);
   const gestureActionIds = new Set([
     ...keyIds,
-    ...BUILT_IN_GESTURE_ACTION_IDS
+    ...BUILT_IN_GESTURE_ACTION_IDS,
+    ...[...groupIds].map(openToolbarGroupActionId)
   ]);
   for (const [id, actionId] of Object.entries(customKeyActions)) {
     if (actionId !== id && gestureActionIds.has(actionId)) {
@@ -268,7 +294,9 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   });
   for (const id of rootIds) {
     if (order.includes(id) || holding.includes(id) || assignedKeys.has(id)) continue;
-    if (groupIds.has(id) && popupGroups[id]?.order.length === 0) {
+    if (BUILT_IN_HOLDING_ITEM_IDS.includes(id)) {
+      holding.push(id);
+    } else if (groupIds.has(id) && popupGroups[id]?.order.length === 0) {
       holding.push(id);
     } else {
       order.push(id);

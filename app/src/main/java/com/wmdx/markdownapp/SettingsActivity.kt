@@ -1286,6 +1286,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         private val TOOLBAR_ITEM_IDS = listOf(
             "undo", "heading", "lists", "format", "table", "insert", "menu"
         )
+        private val TOOLBAR_HOLDING_ITEM_IDS = listOf("cut", "copy", "paste", "selectAll")
         private val TOOLBAR_GROUP_ITEM_IDS = linkedMapOf(
             "heading" to listOf(
                 "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5",
@@ -1323,7 +1324,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
             "horizontalLine", "footnote",
             "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
-            "exportHtml", "search", "switchView", "newWindow", "settings"
+            "exportHtml", "search", "switchView", "newWindow", "settings",
+            "cut", "copy", "paste", "selectAll"
         )
         private val TOOLBAR_GESTURE_IDS = listOf(
             "longPress", "tap1", "tap2", "tap3",
@@ -1364,13 +1366,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         toolbarPreferences =
             PreferenceManager.getDefaultSharedPreferences(requireContext().applicationContext)
         setPreferencesFromResource(R.xml.preferences_styling_controlbar, rootKey)
-        findPreference<Preference>("pref_toolbar_save_layout")?.apply {
-            isPersistent = false
-            setOnPreferenceClickListener {
-                saveToolbarPreviewLayout(showFeedback = true)
-                true
-            }
-        }
         val appearanceHeader =
             findPreference<ExpandablePreference>(TOOLBAR_APPEARANCE_HEADER_KEY)
                 ?: return
@@ -1400,7 +1395,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         view?.parent?.requestLayout()
     }
 
-    private fun saveToolbarPreviewLayout(showFeedback: Boolean = false) {
+    private fun saveToolbarPreviewLayout() {
         val preview = toolbarPreviewWebView
             ?: toolbarPreviewHost?.findViewWithTag<android.webkit.WebView>(
                 "toolbar-preview-save-target"
@@ -1408,43 +1403,19 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             ?: view?.rootView?.findViewWithTag<android.webkit.WebView>(
                 "toolbar-preview-save-target"
             )
-        if (preview == null) {
-            if (showFeedback) {
-                activity?.let {
-                    ThemedToast.show(
-                        it,
-                        "Toolbar preview view is unavailable",
-                        android.widget.Toast.LENGTH_SHORT
-                    )
-                }
-            }
-            return
-        }
+            ?: return
         val saveScript = """
             (function() {
                 var save = window.saveToolbarLayout;
-                if (typeof save !== "function") return "missing";
+                if (typeof save !== "function") return false;
                 try {
-                    return save() === true ? "saved" : "failed";
+                    return save() === true;
                 } catch (error) {
-                    return "error";
+                    return false;
                 }
             })()
         """.trimIndent()
-        preview.evaluateJavascript(saveScript) { rawResult ->
-            if (!showFeedback) return@evaluateJavascript
-            val result = rawResult?.trim()?.removeSurrounding("\"")
-            val message = when (result) {
-                "saved" -> "Toolbar layout saved"
-                "failed" -> "Could not save toolbar layout"
-                "missing" -> "Toolbar save function is missing"
-                "error" -> "Toolbar save call failed"
-                else -> "Toolbar save returned no result"
-            }
-            activity?.let {
-                ThemedToast.show(it, message, android.widget.Toast.LENGTH_SHORT)
-            }
-        }
+        preview.evaluateJavascript(saveScript, null)
     }
 
     override fun onCreateView(
@@ -1652,7 +1623,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .put("order", defaultOrder)
             .put("hidden", org.json.JSONArray())
             .put("popupGroups", popupGroups)
-            .put("holding", org.json.JSONArray())
+            .put("holding", org.json.JSONArray(TOOLBAR_HOLDING_ITEM_IDS))
             .put("customGroups", org.json.JSONObject())
             .put("customKeys", org.json.JSONObject())
             .put("styles", org.json.JSONObject())
@@ -1703,10 +1674,12 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         val groupIds = (TOOLBAR_GROUP_ITEM_IDS.keys +
             customGroups.keys().asSequence().toList()).toList()
         val validRootIds = TOOLBAR_ITEM_IDS +
+            TOOLBAR_HOLDING_ITEM_IDS +
             customGroups.keys().asSequence().toList() +
             customKeys.keys().asSequence().toList()
         val validKeyIds = validRootIds + popupActionIds
-        val validActionIds = validKeyIds + TOOLBAR_GESTURE_ACTION_IDS
+        val validActionIds = validKeyIds + TOOLBAR_GESTURE_ACTION_IDS +
+            groupIds.map { "openToolbarGroup:$it" }
         for (id in customKeys.keys()) {
             val actionId = rawCustomKeys.optJSONObject(id)?.optString("actionId", "").orEmpty()
             if (actionId.isNotBlank() && actionId != id && actionId in validActionIds) {
@@ -1783,6 +1756,11 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         for (index in 0 until rawHolding.length()) {
             val id = rawHolding.optString(index)
             if (id in validKeyIds && id !in assignedActions && id !in holding) holding.add(id)
+        }
+        for (id in TOOLBAR_HOLDING_ITEM_IDS) {
+            if (id !in order && id !in assignedActions && id !in holding) {
+                holding.add(id)
+            }
         }
         for (id in legacyHeldActions) {
             if (id !in assignedActions && id !in holding) holding.add(id)
