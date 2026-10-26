@@ -151,7 +151,7 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(toolbarConfigSource, /id: 'copy', title: 'Copy', icon: 'copy'/);
   assert.match(toolbarConfigSource, /id: 'paste', title: 'Paste', icon: 'paste'/);
   assert.match(toolbarConfigSource, /id: 'selectAll', title: 'Select All', icon: 'selectAll'/);
-  assert.match(settingsSource, /Open group: \$\{group\.title\}/);
+  assert.match(settingsSource, /title: 'Open group'/);
   assert.match(mainSource, /function runToolbarClipboardAction\(actionId\)/);
   assert.match(mainSource, /runToolbarClipboardAction\(item\.id\)/);
   assert.match(mainSource, /actionId === OPEN_GROUP_ACTION_ID/);

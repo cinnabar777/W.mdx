@@ -1680,11 +1680,16 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             customKeys.keys().asSequence().toList()
         val validKeyIds = validRootIds + popupActionIds
         val validActionIds = validKeyIds + TOOLBAR_GESTURE_ACTION_IDS
-        fun normalizeToolbarActionId(actionId: String): String? {
+        fun normalizeToolbarActionId(
+            actionId: String,
+            allowOpenGroup: Boolean = false
+        ): String? {
             return when {
+                (actionId == TOOLBAR_OPEN_GROUP_ACTION_ID ||
+                    actionId.startsWith(LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX)) &&
+                    allowOpenGroup -> TOOLBAR_OPEN_GROUP_ACTION_ID
                 actionId == TOOLBAR_OPEN_GROUP_ACTION_ID ||
-                    actionId.startsWith(LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX) ->
-                    TOOLBAR_OPEN_GROUP_ACTION_ID
+                    actionId.startsWith(LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX) -> null
                 actionId in validActionIds -> actionId
                 else -> null
             }
@@ -1866,12 +1871,16 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             val rawGestureActions = style.optJSONObject("gestureActions") ?: org.json.JSONObject()
             for (gestureId in TOOLBAR_GESTURE_IDS) {
                 val actionId = normalizeToolbarActionId(
-                    rawGestureActions.optString(gestureId, "")
+                    rawGestureActions.optString(gestureId, ""),
+                    allowOpenGroup = popupGroups.has(id)
                 )
                 if (actionId != null) gestureActions.put(gestureId, actionId)
             }
             val legacyGestureAction =
-                normalizeToolbarActionId(style.optString("gestureAction", ""))
+                normalizeToolbarActionId(
+                    style.optString("gestureAction", ""),
+                    allowOpenGroup = popupGroups.has(id)
+                )
             if (!gestureActions.has("swipeUp") && legacyGestureAction != null) {
                 gestureActions.put("swipeUp", legacyGestureAction)
             }

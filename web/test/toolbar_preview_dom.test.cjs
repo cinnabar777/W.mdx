@@ -736,7 +736,7 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
       /Key action → Save As/
     );
 
-    dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="format"]').click();
+    dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]').click();
     dom.window.document
       .querySelector('.toolbar-preview-gesture-action[data-gesture-id="tap1"]')
       .click();
@@ -745,6 +745,7 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
     actionPicker.querySelector('[role="option"][aria-label="Quick Action"]').click();
     assert.equal(saves.at(-1).styles.undo.gestureActions.tap1, customKeyId);
 
+    dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="format"]').click();
     dom.window.document
       .querySelector('.toolbar-preview-gesture-action[data-gesture-id="tap2"]')
       .click();

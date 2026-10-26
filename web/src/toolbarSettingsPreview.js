@@ -186,7 +186,7 @@ function actionDefinitions() {
   for (const [id, key] of Object.entries(config.customKeys || {})) {
     definitions.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
   }
-  if (config.popupGroups[selectedKey]) {
+  if (actionPickerTarget !== 'custom-key' && config.popupGroups[selectedKey]) {
     definitions.set(OPEN_GROUP_ACTION_ID, {
       id: OPEN_GROUP_ACTION_ID,
       title: 'Open group',

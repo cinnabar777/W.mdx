@@ -111,7 +111,8 @@ test('popup actions can be reordered and removed from their former group into th
   assert.equal(gestureConfig.styles.table.gestureActions.swipeUp, OPEN_GROUP_ACTION_ID);
   assert.equal(
     gestureConfig.customKeys['custom-key-open-group'].actionId,
-    OPEN_GROUP_ACTION_ID
+    undefined,
+    'a standalone custom key cannot retain a group-opening action'
   );
 });
 

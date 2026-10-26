@@ -57,12 +57,13 @@ export const BUILT_IN_HOLDING_ITEM_IDS = Object.freeze(
 export const OPEN_GROUP_ACTION_ID = 'openGroup';
 const LEGACY_OPEN_GROUP_ACTION_PREFIX = 'openToolbarGroup:';
 
-function normalizeToolbarActionId(actionId) {
+function normalizeToolbarActionId(actionId, allowOpenGroup = false) {
   if (typeof actionId !== 'string') return '';
-  return actionId === OPEN_GROUP_ACTION_ID ||
-    actionId.startsWith(LEGACY_OPEN_GROUP_ACTION_PREFIX)
-    ? OPEN_GROUP_ACTION_ID
-    : actionId;
+  if (actionId === OPEN_GROUP_ACTION_ID ||
+      actionId.startsWith(LEGACY_OPEN_GROUP_ACTION_PREFIX)) {
+    return allowOpenGroup ? OPEN_GROUP_ACTION_ID : '';
+  }
+  return actionId;
 }
 
 export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
@@ -187,6 +188,10 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     ...Object.keys(customGroups),
     ...Object.keys(customKeys)
   ];
+  const groupIds = new Set([
+    ...Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS),
+    ...Object.keys(customGroups)
+  ]);
   const keyIds = new Set([...rootIds, ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS]);
   const gestureActionIds = new Set([
     ...keyIds,
@@ -347,7 +352,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       if (style.gestureActions && typeof style.gestureActions === 'object' &&
           !Array.isArray(style.gestureActions)) {
         for (const [gestureId, rawActionId] of Object.entries(style.gestureActions)) {
-          const actionId = normalizeToolbarActionId(rawActionId);
+          const actionId = normalizeToolbarActionId(rawActionId, groupIds.has(id));
           if (TOOLBAR_GESTURE_IDS.includes(gestureId) &&
               typeof actionId === 'string' && gestureActionIds.has(actionId)) {
             gestureActions[gestureId] = actionId;
@@ -356,8 +361,13 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       }
       if (!gestureActions.swipeUp &&
           typeof style.gestureAction === 'string' &&
-          gestureActionIds.has(normalizeToolbarActionId(style.gestureAction))) {
-        gestureActions.swipeUp = normalizeToolbarActionId(style.gestureAction);
+          gestureActionIds.has(
+            normalizeToolbarActionId(style.gestureAction, groupIds.has(id))
+          )) {
+        gestureActions.swipeUp = normalizeToolbarActionId(
+          style.gestureAction,
+          groupIds.has(id)
+        );
       }
       if (Object.keys(gestureActions).length) {
         normalized.gestureActions = gestureActions;
