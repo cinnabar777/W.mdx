@@ -161,8 +161,8 @@ function render() {
 
   const hasHeldPopupActions = Object.values(config.popupGroups)
     .some(group => group.hidden.length > 0);
-  if (config.hidden.length || hasHeldPopupActions) {
-    const heldToolbarKeys = config.hidden.filter(id => !emptyGroupIds.has(id));
+  if (config.hidden.length || hasHeldPopupActions || emptyGroupIds.size > 0) {
+    const heldToolbarKeys = [...new Set([...config.hidden, ...emptyGroupIds])];
     if (heldToolbarKeys.length === 0) {
       tray.replaceChildren();
     } else {
@@ -170,7 +170,7 @@ function render() {
         version: 1,
         order: heldToolbarKeys,
         hidden: BOTTOM_TOOLBAR_ITEM_IDS.filter(
-          id => !heldToolbarKeys.includes(id) || emptyGroupIds.has(id)
+          id => !heldToolbarKeys.includes(id)
         ),
         popupGroups: config.popupGroups,
         styles: config.styles
@@ -273,7 +273,7 @@ function onToolbarKeyClick(id) {
     : null;
   selectedPopupItem = null;
   setStatus(isHiddenKey
-    ? 'Holding-area keys open settings; popup actions return to their original folder.'
+    ? 'Holding-area keys are available to place on the toolbar.'
     : '');
   render();
 }

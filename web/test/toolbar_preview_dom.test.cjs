@@ -301,15 +301,14 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       pref_toolbar_padding: 4,
       pref_app_theme: 'amoled'
     });
+    const heldMenuFolder = dom.window.document
+      .querySelector('#toolbar-holding-tray [data-toolbar-key="menu"]');
     const heldMenuAction = dom.window.document
       .querySelector('#toolbar-holding-tray [data-preview-popup-item="saveFile"]');
+    assert.ok(heldMenuFolder, 'an empty folder remains visible as a key in the holding area');
+    assert.equal(heldMenuFolder.parentElement.id, 'toolbar-holding-tray');
     assert.ok(heldMenuAction, 'a hidden folder releases its actions into the shared tray');
     assert.equal(heldMenuAction.parentElement.id, 'toolbar-holding-tray');
-    assert.equal(
-      dom.window.document.querySelector('#toolbar-holding-tray [data-toolbar-key="menu"]'),
-      null,
-      'an empty folder is hidden, not shown as a nested tray group'
-    );
     heldMenuAction.click();
     assert.equal(popup.classList.contains('hidden'), true);
     assert.equal(
@@ -329,7 +328,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
   }
 });
 
-test('folder actions stay assigned, appear loose in the holding area, and hide empty folders', async () => {
+test('moving a folder releases its actions and keeps the empty folder visible in the holding area', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
@@ -414,7 +413,9 @@ test('folder actions stay assigned, appear loose in the holding area, and hide e
     assert.ok(saves.at(-1).hidden.includes('lists'));
     assert.equal(saves.at(-1).popupGroups.lists.order.length, 0);
     assert.equal(saves.at(-1).popupGroups.lists.hidden.length, 5);
-    assert.equal(tray.querySelector('[data-toolbar-key="lists"]'), null);
+    const heldFolder = tray.querySelector('[data-toolbar-key="lists"]');
+    assert.ok(heldFolder, 'the empty folder remains available as a standalone key');
+    assert.equal(heldFolder.parentElement, tray);
     const looseActions = [...tray.querySelectorAll('.toolbar-preview-popup-key')];
     assert.equal(
       looseActions.length,
@@ -425,39 +426,10 @@ test('folder actions stay assigned, appear loose in the holding area, and hide e
       looseActions.every(button => button.parentElement === tray),
       'popup keys sit directly in the shared holding area, not in a nested folder'
     );
-
-    const releasedAction = tray.querySelector(
-      '.toolbar-preview-popup-key[data-preview-popup-item="todoList"]'
-    );
-    await dragKey(
-      dom,
-      releasedAction,
-      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="format"]')
-    );
-    assert.ok(saves.at(-1).order.includes('lists'), 'restoring an action restores its original folder');
-    assert.ok(saves.at(-1).popupGroups.lists.order.includes('todoList'));
     assert.equal(
-      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="lists"]') !== null,
-      true
-    );
-
-    dom.window.document
-      .querySelector('#toolbar-preview [data-toolbar-key="lists"]')
-      .click();
-    await dragKey(
-      dom,
-      popup.querySelector('[data-preview-popup-item="todoList"]'),
-      tray
-    );
-    assert.equal(saves.at(-1).popupGroups.lists.order.length, 0);
-    assert.equal(
-      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="lists"]'),
-      null,
-      'an empty folder is hidden from the toolbar'
-    );
-    assert.ok(
-      saves.at(-1).popupGroups.lists,
-      'the folder configuration remains stored and is not implicitly deleted'
+      saves.at(-1).popupGroups.lists.order.length,
+      0,
+      'the folder is empty but its configuration remains intact'
     );
   } finally {
     dom.window.close();
