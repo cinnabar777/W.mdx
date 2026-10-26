@@ -1604,7 +1604,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     override fun onDestroyView() {
         toolbarPreviewWebView?.apply {
             stopLoading()
-            removeJavascriptInterface("ToolbarSettings")
+            // Destroy the WebView with its bridge intact. Removing the bridge
+            // first leaves page scripts holding a stale Java proxy during teardown.
             destroy()
         }
         toolbarPreviewWebView = null

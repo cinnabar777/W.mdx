@@ -159,7 +159,7 @@ test('toolbar appearance refreshes preserve layout and editor overlays follow th
   assert.match(settingsSource, /getDragDropPoint/);
   assert.match(settingsSource, /resolveCenteredGroupTarget/);
   assert.match(settingsSource, /resolveToolbarGapTarget/);
-  assert.match(settingsSource, /window\.addEventListener\('pagehide'/);
+  assert.doesNotMatch(settingsSource, /window\.addEventListener\('pagehide'/);
   assert.match(settingsSource, /listGapTarget/);
   assert.match(
     mainSource,

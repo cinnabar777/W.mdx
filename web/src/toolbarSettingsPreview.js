@@ -441,16 +441,6 @@ function saveConfig() {
   return saved;
 }
 
-window.addEventListener('pagehide', () => {
-  const save = window.ToolbarSettings?.saveBottomToolbarConfig;
-  if (typeof save !== 'function') return;
-  try {
-    save(JSON.stringify(normalizeBottomToolbarConfig(config)));
-  } catch (error) {
-    console.warn('Could not save toolbar layout while closing settings', error);
-  }
-});
-
 function layoutSignature(value) {
   return JSON.stringify({
     order: value.order,
