@@ -91,6 +91,8 @@ Each will have a separate page in settings right next to the find & replace, not
 
 Like the find & replace there will be a holding area for all available toolbar keys. Those that are in the toolbar already will not show, like the find & replace. However there is no + on the keys, they are added by drag-n-drop only, and they are the icons not text in this holding area. Furthermore the key icon can be changed in this area by quick double tap — opens your paste/choose dialogue. This makes it so when they add the key to a group or action that the custom icon is used instead of the default, tricky I know. 
 
+The holding area is one shared, flat area: popup action keys are shown individually, not nested in their folder. Moving a folder key to the holding area releases each popup key into that area. Popup keys stay assigned to their existing folder when restored; they are not silently reassigned to another folder. An empty folder is hidden from the layout but retained in the configuration unless the user explicitly deletes it. Deleting a custom folder must not implicitly delete its contained keys; release them individually into the holding area.
+
 The big difference is that the toolbars have "groups" and we want to make creating groups a drag-n-drop process just like moving icons around on the android home screen — when a second key is dropped on top of another it creates a group, and more keys can be dropped in. 
 
 Group icons: it takes the icon of the first toolbar key, the custom icon if it was set, but like all keys will have the ability to change it, and the colors of the icon and key background. It will also have the same actions as any key. 

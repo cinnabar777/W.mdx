@@ -162,20 +162,25 @@ function render() {
   const hasHeldPopupActions = Object.values(config.popupGroups)
     .some(group => group.hidden.length > 0);
   if (config.hidden.length || hasHeldPopupActions) {
-    const trayConfig = {
-      version: 1,
-      order: config.hidden.filter(id => !emptyGroupIds.has(id)),
-      hidden: BOTTOM_TOOLBAR_ITEM_IDS.filter(
-        id => !config.hidden.includes(id) || emptyGroupIds.has(id)
-      ),
-      popupGroups: config.popupGroups,
-      styles: config.styles
-    };
-    renderBottomToolbarKeys(tray, trayConfig, svgIcons, {
-      buttonClass: 'grouped-key-btn toolbar-preview-key',
-      resolveCustomIcon: style => style.customSvg || '',
-      onKeyClick: onToolbarKeyClick
-    });
+    const heldToolbarKeys = config.hidden.filter(id => !emptyGroupIds.has(id));
+    if (heldToolbarKeys.length === 0) {
+      tray.replaceChildren();
+    } else {
+      const trayConfig = {
+        version: 1,
+        order: heldToolbarKeys,
+        hidden: BOTTOM_TOOLBAR_ITEM_IDS.filter(
+          id => !heldToolbarKeys.includes(id) || emptyGroupIds.has(id)
+        ),
+        popupGroups: config.popupGroups,
+        styles: config.styles
+      };
+      renderBottomToolbarKeys(tray, trayConfig, svgIcons, {
+        buttonClass: 'grouped-key-btn toolbar-preview-key',
+        resolveCustomIcon: style => style.customSvg || '',
+        onKeyClick: onToolbarKeyClick
+      });
+    }
   } else {
     // An empty holding area is valid. Passing an empty order through the normal
     // toolbar normalizer would restore the Menu key and show it twice.

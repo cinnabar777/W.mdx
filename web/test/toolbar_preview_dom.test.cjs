@@ -279,15 +279,15 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       assert.equal(popup.classList.contains('hidden'), true, `${groupKey} popup should close`);
     }
 
-    const collapseCallsBeforeTray = collapseCalls.length;
-    dom.window.document
-      .querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]')
-      .click();
-    dom.window.document
-      .querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]')
-      .click();
-    assert.equal(collapseCalls.length, collapseCallsBeforeTray + 2);
-    assert.equal(edits.length, 3, 'hidden group taps open and close its actions instead of launching an icon chooser');
+    const heldHeadingAction = dom.window.document
+      .querySelector('#toolbar-holding-tray [data-preview-popup-item="paragraph"]');
+    assert.ok(heldHeadingAction, 'empty folders expose their action keys individually');
+    heldHeadingAction.click();
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-selected-title').textContent,
+      'Paragraph'
+    );
+    assert.equal(edits.length, 3, 'tapping an action selects its settings without deleting the folder');
     assert.equal(popup.classList.contains('hidden'), true);
 
     dom.window.applyToolbarSettings({
@@ -301,21 +301,24 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       pref_toolbar_padding: 4,
       pref_app_theme: 'amoled'
     });
-    dom.window.document
-      .querySelector('#toolbar-holding-tray [data-toolbar-key="menu"]')
-      .click();
-    assert.equal(popup.classList.contains('hidden'), false, 'hidden groups can still open to inspect their actions');
+    const heldMenuAction = dom.window.document
+      .querySelector('#toolbar-holding-tray [data-preview-popup-item="saveFile"]');
+    assert.ok(heldMenuAction, 'a hidden folder releases its actions into the shared tray');
+    assert.equal(heldMenuAction.parentElement.id, 'toolbar-holding-tray');
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-holding-tray [data-toolbar-key="menu"]'),
+      null,
+      'an empty folder is hidden, not shown as a nested tray group'
+    );
+    heldMenuAction.click();
+    assert.equal(popup.classList.contains('hidden'), true);
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-editor').getAttribute('aria-hidden'),
       'false'
     );
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-selected-title').textContent,
-      'Menu'
-    );
-    assert.match(
-      dom.window.document.querySelector('#toolbar-preview-status').textContent,
-      /popup actions return to their original folder/
+      'Save File'
     );
   } finally {
     dom.window.close();

@@ -60,9 +60,12 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /Assigned icon placeholder/);
   assert.doesNotMatch(html, /Action chip|Action icon/);
   assert.match(settingsSource, /createPreviewPopupKey/);
-  assert.match(settingsSource, /renderHeldPopupActions/);
+  assert.match(settingsSource, /renderHeldPopupKeys/);
   assert.match(settingsSource, /applyPopupDrop/);
   assert.match(settingsSource, /orderBottomToolbarPopupItems/);
+  assert.match(settingsSource, /releasePopupGroupToHoldingArea/);
+  assert.match(settingsSource, /restorePopupGroupKey/);
+  assert.doesNotMatch(settingsSource, /toolbar-preview-held-group/);
   assert.match(html, /id="toolbar-paste-svg"/);
   assert.match(html, /id="toolbar-choose-svg"/);
   assert.match(html, /Paste SVG/);
