@@ -61,7 +61,6 @@ export function sanitizeToolbarSvg(rawSvg, preserveColors = false, documentRef =
 
   if (!preserveColors) {
     root.setAttribute('fill', 'currentColor');
-    root.setAttribute('stroke', 'currentColor');
     for (const element of [root, ...root.querySelectorAll('*')]) {
       for (const attributeName of ['fill', 'stroke', 'stop-color']) {
         const value = element.getAttribute(attributeName);

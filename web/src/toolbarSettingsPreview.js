@@ -25,6 +25,7 @@ let selectedPopupItem = null;
 let dragState = null;
 let dragTimer = null;
 let previousTap = { id: null, time: 0 };
+let editorKeyCache = null;
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 const PREVIEW_GROUP_ITEMS = {
@@ -88,6 +89,16 @@ const PREVIEW_ITEM_DEFINITIONS = new Map([
   ...BOTTOM_TOOLBAR_ITEMS.map(item => [item.id, item]),
   ...Object.values(PREVIEW_GROUP_ITEMS).flat().map(item => [item.id, item])
 ]);
+const PREVIEW_ICON_TITLES = new Map();
+for (const item of [
+  ...BOTTOM_TOOLBAR_ITEMS,
+  ...Object.values(PREVIEW_GROUP_ITEMS).flat()
+]) {
+  PREVIEW_ICON_TITLES.set(item.id, item.title);
+  if (typeof item.icon === 'string' && svgIcons[item.icon]) {
+    PREVIEW_ICON_TITLES.set(item.icon, item.title);
+  }
+}
 
 function setStatus(message) {
   if (status) status.textContent = message;
@@ -116,6 +127,13 @@ function render() {
     resolveCustomIcon: style => style.customSvg || '',
     onKeyClick: onToolbarKeyClick
   });
+  for (const button of toolbar.querySelectorAll('.toolbar-preview-key')) {
+    const id = button.dataset.toolbarKey;
+    button.classList.toggle(
+      'active',
+      id === selectedKey || id === openPopupGroup
+    );
+  }
 
   if (config.hidden.length) {
     const trayConfig = {
@@ -147,6 +165,7 @@ function render() {
     });
   }
   refreshSelectedKeyEditor();
+  renderIconCatalog();
   renderPopupGroup();
 }
 
@@ -232,6 +251,7 @@ function renderPopupGroup() {
     button.title = item.title;
     button.setAttribute('aria-label', item.title);
     button.setAttribute('aria-current', item.id === selectedPopupItem ? 'true' : 'false');
+    button.classList.toggle('active', item.id === selectedPopupItem);
     button.dataset.previewPopupItem = item.id;
     const style = config.styles[item.id] || {};
     if (style.iconColor) {
@@ -267,6 +287,11 @@ function renderPopupGroup() {
 function refreshSelectedKeyEditor() {
   if (!editor) return;
   const definition = PREVIEW_ITEM_DEFINITIONS.get(selectedKey);
+  if (selectedKey !== editorKeyCache) {
+    document.querySelector('#toolbar-icon-search').value = '';
+    editorKeyCache = selectedKey;
+  }
+  document.querySelector('#toolbar-add-custom').disabled = !definition;
   editor.classList.toggle('visible', Boolean(definition));
   editor.classList.toggle('above-group', Boolean(definition && openPopupGroup));
   editor.setAttribute('aria-hidden', String(!definition));
@@ -289,6 +314,61 @@ function refreshSelectedKeyEditor() {
   const preserveColorControl = document.querySelector('#toolbar-preserve-svg-colors');
   preserveColorControl.checked = style.preserveSvgColors === true;
   preserveColorControl.disabled = !style.customSvg;
+}
+
+function iconTitle(name) {
+  if (PREVIEW_ICON_TITLES.has(name)) return PREVIEW_ICON_TITLES.get(name);
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function renderIconCatalog() {
+  const list = document.querySelector('#toolbar-icon-list');
+  const search = document.querySelector('#toolbar-icon-search');
+  if (!list || !search) return;
+  const query = search.value.trim().toLowerCase();
+  const selectedSvg = config.styles[selectedKey]?.customSvg;
+  list.replaceChildren();
+  const icons = Object.entries(svgIcons)
+    .map(([name, value]) => [
+      name,
+      typeof value === 'function' ? value('#00e5ff') : value,
+      iconTitle(name)
+    ])
+    .filter(([name, , title]) => `${name} ${title}`.toLowerCase().includes(query));
+
+  for (const [name, markup, title] of icons) {
+    if (typeof markup !== 'string' || !markup.includes('<svg')) continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toolbar-preview-icon-choice';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-label', title);
+    button.setAttribute('aria-pressed', String(selectedSvg === markup));
+    button.title = title;
+    button.innerHTML = `${sanitizeToolbarSvg(markup, false, document)}<span>${title}</span>`;
+    button.addEventListener('pointerdown', event => event.preventDefault());
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!selectedKey) return;
+      const style = config.styles[selectedKey] || {};
+      style.customSvg = markup;
+      style.preserveSvgColors = false;
+      config.styles[selectedKey] = style;
+      render();
+      saveConfig();
+    });
+    list.appendChild(button);
+  }
+  if (!list.children.length) {
+    const empty = document.createElement('span');
+    empty.className = 'toolbar-preview-icon-empty';
+    empty.textContent = 'No matching icons';
+    list.appendChild(empty);
+  }
 }
 
 function beginPossibleDrag(event, button) {
@@ -464,7 +544,7 @@ document.querySelector('#toolbar-background-color')?.addEventListener('click', (
 document.querySelector('#toolbar-active-background-color')?.addEventListener('click', () => {
   openColorPicker('activeBackgroundColor');
 });
-document.querySelector('#toolbar-reset-key-style')?.addEventListener('click', () => {
+document.querySelector('#toolbar-reset-key-colors')?.addEventListener('click', () => {
   if (!selectedKey) return;
   const style = config.styles[selectedKey];
   if (style) {
@@ -476,10 +556,17 @@ document.querySelector('#toolbar-reset-key-style')?.addEventListener('click', ()
   render();
   saveConfig();
 });
-document.querySelector('#toolbar-custom-icon')?.addEventListener('click', () => {
+document.querySelector('#toolbar-reset-key-style')?.addEventListener('click', () => {
+  if (!selectedKey) return;
+  delete config.styles[selectedKey];
+  render();
+  saveConfig();
+});
+document.querySelector('#toolbar-add-custom')?.addEventListener('click', () => {
   if (!selectedKey) return;
   window.ToolbarSettings?.editBottomToolbarIcon?.(selectedKey);
 });
+document.querySelector('#toolbar-icon-search')?.addEventListener('input', renderIconCatalog);
 document.querySelector('#toolbar-preserve-svg-colors')?.addEventListener('change', event => {
   if (!selectedKey || !config.styles[selectedKey]?.customSvg) return;
   config.styles[selectedKey].preserveSvgColors = event.target.checked;
@@ -510,6 +597,7 @@ document.addEventListener('click', event => {
   const target = event.target;
   if (
     editor.contains(target) ||
+    target?.closest?.('.toolbar-preview-layout-actions') ||
     target?.closest?.('.toolbar-preview-key, .toolbar-preview-popup-key')
   ) {
     return;

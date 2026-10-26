@@ -13,6 +13,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
   const edits = [];
   const collapseCalls = [];
   const colorPicks = [];
+  const saves = [];
   const settings = {
     version: 1,
     order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
@@ -32,7 +33,10 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       pref_toolbar_padding: 4,
       pref_app_theme: 'amoled'
     }),
-    saveBottomToolbarConfig: () => true,
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    },
     pickBottomToolbarColor: (id, property) => colorPicks.push([id, property]),
     editBottomToolbarIcon: id => edits.push(id),
     collapseToolbarAppearance: () => collapseCalls.push(true)
@@ -65,6 +69,13 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
         .classList.contains('is-selected'),
       false
     );
+    assert.equal(
+      dom.window.document
+        .querySelector('#toolbar-preview [data-toolbar-key="undo"]')
+        .classList.contains('active'),
+      true,
+      'the tapped toolbar key stays active while its settings are open'
+    );
 
     dom.window.document
       .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
@@ -75,7 +86,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       dom.window.document
         .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
         .classList.contains('active'),
-      false
+      true
     );
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('above-group'),
@@ -109,7 +120,7 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
     );
     assert.equal(
       popup.querySelector('[data-preview-popup-item="saveFile"]').classList.contains('active'),
-      false
+      true
     );
     assert.equal(
       popup.querySelector('[data-preview-popup-item="saveFile"]').style
@@ -128,10 +139,22 @@ test('toolbar settings preview renders keys, opens group popups, and supports tr
       dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('above-group'),
       true
     );
-    dom.window.document.querySelector('#toolbar-custom-icon').click();
+    dom.window.document.querySelector('#toolbar-add-custom').click();
     assert.deepEqual(edits, ['saveFile']);
     dom.window.document.querySelector('#toolbar-icon-color').click();
     assert.deepEqual(colorPicks, [['saveFile', 'iconColor']]);
+    const iconSearch = dom.window.document.querySelector('#toolbar-icon-search');
+    iconSearch.value = 'bold';
+    iconSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    const boldChoice = dom.window.document.querySelector('#toolbar-icon-list [role="option"]');
+    assert.equal(boldChoice.getAttribute('aria-label'), 'Bold');
+    boldChoice.click();
+    assert.match(saves.at(-1).styles.saveFile.customSvg, /<svg/);
+    dom.window.document.querySelector('#toolbar-reset-key-colors').click();
+    assert.equal(saves.at(-1).styles.saveFile.iconColor, undefined);
+    assert.ok(saves.at(-1).styles.saveFile.customSvg, 'Reset colors keeps the chosen icon');
+    dom.window.document.querySelector('#toolbar-reset-key-style').click();
+    assert.equal(saves.at(-1).styles.saveFile, undefined, 'Reset all clears the key style');
     dom.window.document
       .querySelector('#toolbar-preview [data-toolbar-key="menu"]')
       .click();

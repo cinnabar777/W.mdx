@@ -37,20 +37,16 @@
       left: 12px;
       right: 12px;
       bottom: calc(var(--toolbar-height, 48px) + 10px);
-      max-height: min(62vh, calc(100% - var(--toolbar-height, 48px) - 20px));
-      overflow-y: auto;
       margin: 0;
       padding: 12px;
       border: 1px solid rgba(255,255,255,.2);
       border-radius: 12px;
       background: #171717;
       box-shadow: 0 10px 28px rgba(0,0,0,.75);
-      overscroll-behavior: contain;
     }
     .toolbar-preview-editor.visible { display: block; }
     .toolbar-preview-editor.above-group {
       bottom: calc(var(--toolbar-height, 48px) + 78px);
-      max-height: min(62vh, calc(100% - var(--toolbar-height, 48px) - 88px));
     }
     .toolbar-preview-editor-header {
       display: flex;
@@ -73,20 +69,126 @@
       font: inherit;
       font-size: 18px;
     }
+    .toolbar-preview-editor-content {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .toolbar-preview-style-controls,
+    .toolbar-preview-icon-browser {
+      min-width: 0;
+    }
+    .toolbar-preview-color-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px 8px;
+    }
     .toolbar-preview-color-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 8px;
-      margin: 6px 0;
+      min-width: 0;
+      min-height: 34px;
+      margin: 0;
       font-size: 12px;
     }
+    .toolbar-preview-color-row span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .toolbar-preview-color-row button {
-      width: 40px;
-      height: 32px;
+      flex: 0 0 34px;
+      width: 34px;
+      height: 28px;
       border: 1px solid rgba(255,255,255,.3);
       border-radius: 8px;
       background: transparent;
+    }
+    .toolbar-preview-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .toolbar-preview-options button {
+      min-height: 36px;
+      min-width: 0;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 8px;
+      padding: 0 10px;
+      color: inherit;
+      background: rgba(255,255,255,.08);
+      font: inherit;
+      font-size: 12px;
+    }
+    .toolbar-preview-preserve-colors {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+    .toolbar-preview-icon-browser h3 {
+      margin: 0 0 6px;
+      font-size: 12px;
+    }
+    .toolbar-preview-icon-search {
+      width: 100%;
+      height: 34px;
+      margin: 0 0 6px;
+      padding: 0 9px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 7px;
+      color: inherit;
+      background: rgba(255,255,255,.06);
+      font: inherit;
+      font-size: 12px;
+    }
+    .toolbar-preview-icon-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+      gap: 4px;
+      max-height: 174px;
+      overflow: auto;
+      padding: 2px;
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 7px;
+      overscroll-behavior: contain;
+    }
+    .toolbar-preview-icon-choice {
+      display: flex;
+      min-width: 0;
+      min-height: 46px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      overflow: hidden;
+      padding: 3px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: inherit;
+      background: transparent;
+      font: inherit;
+      font-size: 10px;
+    }
+    .toolbar-preview-icon-choice[aria-pressed="true"] {
+      border-color: currentColor;
+      background: rgba(255,255,255,.1);
+    }
+    .toolbar-preview-icon-choice svg {
+      width: 20px;
+      height: 20px;
+      flex: 0 0 20px;
+    }
+    .toolbar-preview-icon-choice span {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .toolbar-preview-status {
       min-height: 0;
@@ -109,6 +211,19 @@
       border-color: rgba(0,0,0,.2);
       background: rgba(0,0,0,.06);
     }
+    body.light-theme .toolbar-preview-icon-search,
+    body.light-theme .toolbar-preview-icon-list {
+      border-color: rgba(0,0,0,.2);
+      background-color: rgba(0,0,0,.04);
+    }
+    body.light-theme .toolbar-preview-icon-choice[aria-pressed="true"] {
+      background: rgba(0,0,0,.08);
+    }
+    @media (max-height: 620px) {
+      .toolbar-preview-icon-list { max-height: 112px; }
+      .toolbar-preview-editor { padding: 9px; }
+      .toolbar-preview-editor-content { gap: 8px; }
+    }
     body.light-theme .toolbar-preview-tray-label {
       color: rgba(0,0,0,.62);
     }
@@ -119,6 +234,10 @@
     <div class="toolbar-preview-content">
       <div class="toolbar-preview-tray-label">Holding area · tap a key to customize it; hold and drag to restore it</div>
       <div id="toolbar-holding-tray" class="toolbar-preview-tray" aria-label="Hidden toolbar keys"></div>
+      <div class="toolbar-preview-layout-actions">
+        <button id="toolbar-reset-layout" type="button">Restore default layout</button>
+        <button id="toolbar-add-custom" type="button" disabled>Add custom</button>
+      </div>
       <div class="toolbar-preview-status" id="toolbar-preview-status" aria-live="polite"></div>
     </div>
     <div class="toolbar-preview-dock">
@@ -137,26 +256,36 @@
         <h2 id="toolbar-preview-selected-title">Selected key</h2>
         <button id="toolbar-preview-close-editor" class="toolbar-preview-editor-close" type="button" aria-label="Close key settings">×</button>
       </div>
-      <div class="toolbar-preview-color-row">
-        <span>Icon color</span>
-        <button id="toolbar-icon-color" type="button" aria-label="Change icon color"></button>
-      </div>
-      <div class="toolbar-preview-color-row">
-        <span>Key background</span>
-        <button id="toolbar-background-color" type="button" aria-label="Change key background color"></button>
-      </div>
-      <div class="toolbar-preview-color-row">
-        <span>Active background</span>
-        <button id="toolbar-active-background-color" type="button" aria-label="Change active key background color"></button>
-      </div>
-      <label class="toolbar-preview-preserve-colors">
-        <input id="toolbar-preserve-svg-colors" type="checkbox">
-        Preserve this custom icon’s original colors
-      </label>
-      <div class="toolbar-preview-options">
-        <button id="toolbar-custom-icon" type="button">Custom icon…</button>
-        <button id="toolbar-reset-key-style" type="button">Reset key colors</button>
-        <button id="toolbar-reset-layout" type="button">Restore default layout</button>
+      <div class="toolbar-preview-editor-content">
+        <div class="toolbar-preview-style-controls">
+          <div class="toolbar-preview-color-grid">
+            <div class="toolbar-preview-color-row">
+              <span>Icon color</span>
+              <button id="toolbar-icon-color" type="button" aria-label="Change icon color"></button>
+            </div>
+            <div class="toolbar-preview-color-row">
+              <span>Key background</span>
+              <button id="toolbar-background-color" type="button" aria-label="Change key background color"></button>
+            </div>
+            <div class="toolbar-preview-color-row">
+              <span>Active background</span>
+              <button id="toolbar-active-background-color" type="button" aria-label="Change active key background color"></button>
+            </div>
+          </div>
+          <label class="toolbar-preview-preserve-colors">
+            <input id="toolbar-preserve-svg-colors" type="checkbox">
+            Preserve icon colors
+          </label>
+          <div class="toolbar-preview-options">
+            <button id="toolbar-reset-key-colors" type="button">Reset colors</button>
+            <button id="toolbar-reset-key-style" type="button">Reset all</button>
+          </div>
+        </div>
+        <div class="toolbar-preview-icon-browser">
+          <h3>Icon</h3>
+          <input id="toolbar-icon-search" class="toolbar-preview-icon-search" type="search" placeholder="Search icons…" aria-label="Search app icons">
+          <div id="toolbar-icon-list" class="toolbar-preview-icon-list" role="listbox" aria-label="Available app icons"></div>
+        </div>
       </div>
     </section>
   </main>

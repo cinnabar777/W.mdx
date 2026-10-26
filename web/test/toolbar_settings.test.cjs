@@ -49,7 +49,13 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /pickBottomToolbarColor/);
   assert.match(settingsSource, /preserveSvgColors/);
   assert.match(settingsSource, /editBottomToolbarIcon\?\.\(selectedKey\)/);
-  assert.match(html, /id="toolbar-custom-icon"/);
+  assert.match(html, /id="toolbar-add-custom"/);
+  assert.match(html, /id="toolbar-icon-search"/);
+  assert.match(html, /id="toolbar-icon-list"/);
+  assert.match(html, /id="toolbar-reset-key-colors"/);
+  assert.match(html, /id="toolbar-reset-key-style"/);
+  assert.match(html, /id="toolbar-reset-layout"/);
+  assert.match(settingsSource, /classList\.toggle\(\s*'active'/);
   assert.match(androidSource, /saveBottomToolbarConfig/);
   assert.match(androidSource, /pickBottomToolbarColor/);
   assert.match(androidSource, /editBottomToolbarIcon/);
@@ -88,6 +94,11 @@ test('choosing a color in a transparent color picker makes the selected color vi
     sharedCss,
     /\.toolbar-preview-key\.is-selected/,
     'key selection should not paint an extra accent over the configured colors'
+  );
+  assert.doesNotMatch(
+    sharedCss,
+    /\.grouped-key-btn svg\s*\{[^}]*stroke:/,
+    'fill-only SVGs must not receive a forced stroke that makes them appear bold'
   );
 });
 

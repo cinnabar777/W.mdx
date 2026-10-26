@@ -130,4 +130,9 @@ test('custom multicolor icons retain authored colors only when explicitly reques
 
   assert.match(sanitizeToolbarSvg(svg, true, dom.window.document), /fill="#ff0000"/);
   assert.match(sanitizeToolbarSvg(svg, false, dom.window.document), /fill="currentColor"/);
+  assert.doesNotMatch(
+    sanitizeToolbarSvg(svg, false, dom.window.document),
+    /stroke=/,
+    'tinting a filled SVG must not add a stroke that makes it look heavier'
+  );
 });

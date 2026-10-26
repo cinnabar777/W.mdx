@@ -67,7 +67,6 @@ body.light-theme .popup-toolbar-strip {
 
 .popup-strip-btn svg {
   color: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
-  stroke: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
 }
 
 .popup-strip-btn:active,
@@ -124,7 +123,6 @@ body.light-theme .popup-toolbar-strip {
 
 .grouped-key-btn svg {
   color: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
-  stroke: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
 }
 
 .grouped-key-btn:active,
@@ -139,7 +137,7 @@ body.light-theme .popup-toolbar-strip {
 .grouped-key-btn.active svg,
 .grouped-key-btn.has-active-syntax svg,
 .popup-strip-btn.active svg {
-  stroke: var(--toolbar-active-icon-color, var(--toolbar-icon-color, #fff)) !important;
+  color: var(--toolbar-active-icon-color, var(--toolbar-icon-color, #fff)) !important;
 }
 
 /* The settings view adds a tray around the same real toolbar buttons. */
@@ -163,6 +161,28 @@ body.light-theme .popup-toolbar-strip {
   overflow-y: auto;
   padding: 8px 14px;
   overscroll-behavior: contain;
+}
+
+.toolbar-preview-layout-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.toolbar-preview-layout-actions button {
+  min-height: 36px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: inherit;
+  background: rgba(255,255,255,.08);
+  font: inherit;
+  font-size: 12px;
+}
+
+.toolbar-preview-layout-actions button:disabled {
+  opacity: .45;
 }
 
 .toolbar-preview-dock {
@@ -203,6 +223,13 @@ body.light-theme .popup-toolbar-strip {
 .toolbar-preview-tray.drop-target {
   outline: 2px dashed var(--toolbar-active-icon-color, #00e5ff);
   outline-offset: -2px;
+}
+
+.toolbar-preview-key.active {
+  background-color: var(
+    --toolbar-key-active-bg-color,
+    var(--button-hover, rgba(255,255,255,.16))
+  ) !important;
 }
 
 .toolbar-preview-tray {
@@ -270,4 +297,9 @@ body.light-theme .toolbar-preview-tray {
 
 body.light-theme .toolbar-preview-tray:empty::before {
   color: rgba(0, 0, 0, 0.56);
+}
+
+body.light-theme .toolbar-preview-layout-actions button {
+  border-color: rgba(0,0,0,.18);
+  background: rgba(0,0,0,.05);
 }
