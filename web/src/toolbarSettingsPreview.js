@@ -402,14 +402,14 @@ function applySettings(payload) {
 
 function saveConfig() {
   config = normalizeBottomToolbarConfig(config);
-  const save = window.ToolbarSettings?.saveBottomToolbarConfig;
-  if (typeof save !== 'function') {
+  const bridge = window.ToolbarSettings;
+  if (typeof bridge?.saveBottomToolbarConfig !== 'function') {
     setStatus('Preview only; settings are not saved in this browser.');
     return false;
   }
   let success;
   try {
-    success = save(JSON.stringify(config));
+    success = bridge.saveBottomToolbarConfig(JSON.stringify(config));
   } catch (error) {
     console.error('Toolbar settings save bridge threw an exception', error);
     const detail = String(error?.message || error || '')

@@ -1267,6 +1267,41 @@ test('toolbar preview surfaces native preference commit failures', async () => {
   }
 });
 
+test('toolbar save invokes the injected bridge with its receiver intact', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const bridge = {
+    getBottomToolbarSettings: () => JSON.stringify({})
+  };
+  bridge.saveBottomToolbarConfig = function () {
+    assert.equal(this, bridge, 'the injected Java bridge must remain the method receiver');
+    return 'saved';
+  };
+  dom.window.ToolbarSettings = bridge;
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?save-bridge-receiver-test=${Date.now()}`);
+
+    assert.equal(dom.window.saveToolbarLayout(), true);
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-status').textContent,
+      'Toolbar changes saved.'
+    );
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
 test('an empty holding tray stays empty instead of restoring a duplicate Menu key', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const dom = new JSDOM(html, {

@@ -332,6 +332,14 @@ test('manual toolbar save is a native settings action with visible success or fa
   assert.match(settingsActivitySource, /toolbarSaveFailureReason = "commit_failed"/);
   assert.doesNotMatch(settingsActivitySource, /removeJavascriptInterface\("ToolbarSettings"\)/);
   assert.match(settingsActivitySource, /toolbarPreviewWebView\?\.apply\s*\{[\s\S]*?stopLoading\(\)[\s\S]*?destroy\(\)/);
+  assert.match(
+    toolbarPreviewSource,
+    /bridge\.saveBottomToolbarConfig\(JSON\.stringify\(config\)\)/
+  );
+  assert.doesNotMatch(
+    toolbarPreviewSource,
+    /const save = window\.ToolbarSettings\?\.saveBottomToolbarConfig/
+  );
 });
 
 test('settings labels avoid redundant settings, styling, and shortcut wording', () => {
