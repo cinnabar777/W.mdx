@@ -1396,24 +1396,44 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
     private fun saveToolbarPreviewLayout(showFeedback: Boolean = false) {
         val preview = toolbarPreviewWebView
+            ?: toolbarPreviewHost?.findViewWithTag<android.webkit.WebView>(
+                "toolbar-preview-save-target"
+            )
+            ?: view?.rootView?.findViewWithTag<android.webkit.WebView>(
+                "toolbar-preview-save-target"
+            )
         if (preview == null) {
             if (showFeedback) {
                 activity?.let {
                     ThemedToast.show(
                         it,
-                        "Toolbar preview is not ready",
+                        "Toolbar preview view is unavailable",
                         android.widget.Toast.LENGTH_SHORT
                     )
                 }
             }
             return
         }
-        preview.evaluateJavascript("window.saveToolbarLayout?.();") { result ->
+        val saveScript = """
+            (function() {
+                var save = window.saveToolbarLayout;
+                if (typeof save !== "function") return "missing";
+                try {
+                    return save() === true ? "saved" : "failed";
+                } catch (error) {
+                    return "error";
+                }
+            })()
+        """.trimIndent()
+        preview.evaluateJavascript(saveScript) { rawResult ->
             if (!showFeedback) return@evaluateJavascript
+            val result = rawResult?.trim()?.removeSurrounding("\"")
             val message = when (result) {
-                "true" -> "Toolbar layout saved"
-                "false" -> "Could not save toolbar layout"
-                else -> "Toolbar preview is not ready"
+                "saved" -> "Toolbar layout saved"
+                "failed" -> "Could not save toolbar layout"
+                "missing" -> "Toolbar save function is missing"
+                "error" -> "Toolbar save call failed"
+                else -> "Toolbar save returned no result"
             }
             activity?.let {
                 ThemedToast.show(it, message, android.widget.Toast.LENGTH_SHORT)
@@ -1444,6 +1464,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             android.view.ViewGroup.LayoutParams.WRAP_CONTENT
         )
         val preview = android.webkit.WebView(context).apply {
+            tag = "toolbar-preview-save-target"
             alpha = 0f
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = false

@@ -313,8 +313,13 @@ test('manual toolbar save is a native settings action with visible success or fa
     /findPreference<Preference>\("pref_toolbar_save_layout"\)[\s\S]*?saveToolbarPreviewLayout\(showFeedback = true\)/
   );
   assert.match(settingsActivitySource, /isPersistent = false/);
+  assert.match(settingsActivitySource, /findViewWithTag<android\.webkit\.WebView>/);
+  assert.match(settingsActivitySource, /toolbar-preview-save-target/);
+  assert.match(settingsActivitySource, /var save = window\.saveToolbarLayout/);
+  assert.match(settingsActivitySource, /return save\(\) === true \? "saved" : "failed"/);
   assert.match(settingsActivitySource, /Toolbar layout saved/);
   assert.match(settingsActivitySource, /Could not save toolbar layout/);
+  assert.match(settingsActivitySource, /Toolbar save function is missing/);
 });
 
 test('settings labels avoid redundant settings, styling, and shortcut wording', () => {
