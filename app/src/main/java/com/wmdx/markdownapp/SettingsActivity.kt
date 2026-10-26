@@ -1680,6 +1680,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             customKeys.keys().asSequence().toList()
         val validKeyIds = validRootIds + popupActionIds
         val validActionIds = validKeyIds + TOOLBAR_GESTURE_ACTION_IDS
+        val groupIds = TOOLBAR_GROUP_ITEM_IDS.keys.toList() +
+            customGroups.keys().asSequence().toList()
         fun normalizeToolbarActionId(
             actionId: String,
             allowOpenGroup: Boolean = false
