@@ -131,6 +131,95 @@ body.light-theme .popup-toolbar-strip {
   padding-right: calc(var(--toolbar-padding, 4px) + 40px) !important;
 }
 
+.toolbar-preview-surface-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 16px 8px;
+}
+
+.toolbar-preview-surface-button {
+  min-height: 38px;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--toolbar-bg, #121212);
+  font: inherit;
+}
+
+.toolbar-preview-surface-button.is-active {
+  border-color: var(--toolbar-icon-color, #fff);
+}
+
+.toolbar-preview-dock.is-floating .toolbar-preview-stage {
+  display: flex;
+  justify-content: center;
+}
+
+.toolbar-preview-dock.is-floating #toolbar-preview {
+  width: max-content !important;
+  max-width: calc(100vw - 24px) !important;
+  justify-content: flex-start !important;
+  padding-right: var(--toolbar-padding, 4px) !important;
+  border-radius: var(--toolbar-floating-corner-radius, 24px) !important;
+}
+
+.toolbar-preview-dock.is-floating #toolbar-preview .grouped-key-btn {
+  flex: 0 0 var(--toolbar-floating-key-width, 48px) !important;
+  width: var(--toolbar-floating-key-width, 48px) !important;
+  max-width: none !important;
+}
+
+.floating-selection-toolbar {
+  position: fixed !important;
+  z-index: 10005 !important;
+  top: 0;
+  left: 0;
+  right: auto !important;
+  bottom: auto !important;
+  display: flex !important;
+  width: max-content !important;
+  max-width: calc(100vw - 16px) !important;
+  height: var(--toolbar-height, 48px) !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding: var(--toolbar-padding, 4px) !important;
+  box-sizing: border-box !important;
+  border: 1px solid rgba(255,255,255,.16) !important;
+  border-radius: var(--toolbar-floating-corner-radius, 24px) !important;
+  background-color: var(--toolbar-bg, #121212) !important;
+  box-shadow: 0 3px 12px rgba(0,0,0,.28);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+
+.floating-selection-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.floating-selection-toolbar.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.floating-selection-toolbar .grouped-key-btn {
+  flex: 0 0 var(--toolbar-floating-key-width, 48px) !important;
+  width: var(--toolbar-floating-key-width, 48px) !important;
+  max-width: none !important;
+}
+
+.popup-toolbar-strip.is-floating-popup {
+  bottom: auto !important;
+  z-index: 10006 !important;
+}
+
 .grouped-key-btn {
   position: relative;
   background-color: var(--toolbar-key-bg-color, transparent) !important;

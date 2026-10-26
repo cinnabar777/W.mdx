@@ -33,6 +33,11 @@ const DROP_MARKER_POINTER_OFFSET_Y = 50;
 const status = document.querySelector('#toolbar-preview-status');
 const selectedTitle = document.querySelector('#toolbar-preview-selected-title');
 let config = normalizeBottomToolbarConfig(null);
+const configsBySurface = {
+  bottom: config,
+  floating: normalizeBottomToolbarConfig(null)
+};
+let activeToolbarSurface = 'bottom';
 let selectedKey = null;
 let openPopupGroup = null;
 let selectedPopupItem = null;
@@ -48,8 +53,8 @@ let selectedGestureId = null;
 let editingKeyName = false;
 let toolbarEditorOverlayOpen = false;
 let nextCustomGroupNumber = 1;
-let locallySavedToolbarLayout = null;
-let hasAppliedToolbarConfig = false;
+const locallySavedToolbarLayouts = { bottom: null, floating: null };
+const hasAppliedToolbarConfig = { bottom: false, floating: false };
 let pendingDragCleanup = null;
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
@@ -356,30 +361,37 @@ function applySettings(payload) {
   }
   if (!prefs || typeof prefs !== 'object') prefs = {};
 
-  if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
-    const incomingConfig = normalizeBottomToolbarConfig(prefs.pref_toolbar_bottom_config);
+  for (const surface of ['bottom', 'floating']) {
+    const preferenceKey = surface === 'bottom'
+      ? 'pref_toolbar_bottom_config'
+      : 'pref_toolbar_floating_config';
+    if (!Object.prototype.hasOwnProperty.call(prefs, preferenceKey)) continue;
+    const incomingConfig = normalizeBottomToolbarConfig(prefs[preferenceKey]);
     const incomingLayout = layoutSignature(incomingConfig);
+    const locallySavedLayout = locallySavedToolbarLayouts[surface];
     if (
-      !hasAppliedToolbarConfig ||
-      !locallySavedToolbarLayout ||
-      incomingLayout === locallySavedToolbarLayout
+      !hasAppliedToolbarConfig[surface] ||
+      !locallySavedLayout ||
+      incomingLayout === locallySavedLayout
     ) {
-      config = incomingConfig;
+      configsBySurface[surface] = incomingConfig;
     } else {
-      // Native style/color updates may echo a canonicalized config. Accept the
-      // style changes, but never let that echo replace the layout being edited.
-      config = {
+      // Native color/icon updates may echo a canonicalized config. Accept
+      // those changes without replacing the layout being edited.
+      const currentConfig = configsBySurface[surface];
+      configsBySurface[surface] = {
         ...incomingConfig,
-        order: config.order,
-        hidden: config.hidden,
-        popupGroups: config.popupGroups,
-        holding: config.holding,
-        customGroups: config.customGroups,
-        customKeys: config.customKeys
+        order: currentConfig.order,
+        hidden: currentConfig.hidden,
+        popupGroups: currentConfig.popupGroups,
+        holding: currentConfig.holding,
+        customGroups: currentConfig.customGroups,
+        customKeys: currentConfig.customKeys
       };
     }
-    hasAppliedToolbarConfig = true;
+    hasAppliedToolbarConfig[surface] = true;
   }
+  config = configsBySurface[activeToolbarSurface];
   const isLightTheme = prefs.pref_app_theme === 'light';
   document.body.classList.toggle('light-theme', isLightTheme);
   setCssVariable('--toolbar-bg', prefs.pref_toolbar_bg_color, isLightTheme ? '#f8f9fa' : '#121212');
@@ -410,6 +422,23 @@ function applySettings(payload) {
     '--toolbar-padding',
     `${Number.isFinite(padding) && padding >= 0 && padding <= 16 ? padding : 4}px`
   );
+  const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-key-width',
+    `${Number.isFinite(floatingKeyWidth) && floatingKeyWidth >= 36 && floatingKeyWidth <= 72
+      ? floatingKeyWidth
+      : 48}px`
+  );
+  const floatingCornerRadius = Number(prefs.pref_toolbar_floating_corner_radius);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-corner-radius',
+    `${Number.isFinite(floatingCornerRadius) &&
+      floatingCornerRadius >= 0 &&
+      floatingCornerRadius <= 36
+      ? floatingCornerRadius
+      : 24}px`
+  );
+  syncToolbarSurfaceSelector();
   render();
 }
 
@@ -422,6 +451,7 @@ function saveConfig() {
   }
   let success;
   try {
+    bridge.setToolbarSurface?.(activeToolbarSurface);
     success = bridge.saveBottomToolbarConfig(JSON.stringify(config));
   } catch (error) {
     console.error('Toolbar settings save bridge threw an exception', error);
@@ -437,6 +467,8 @@ function saveConfig() {
   }
   const saved = success === true || success === 'saved';
   if (saved) {
+    configsBySurface[activeToolbarSurface] = config;
+    locallySavedToolbarLayouts[activeToolbarSurface] = layoutSignature(config);
     setStatus('Toolbar changes saved.');
   } else {
     const failureMessages = {
@@ -452,6 +484,33 @@ function saveConfig() {
     hasAppliedToolbarConfig = true;
   }
   return saved;
+}
+
+function syncToolbarSurfaceSelector() {
+  document.querySelectorAll('.toolbar-preview-surface-button').forEach(button => {
+    const isActive = button.dataset.toolbarSurface === activeToolbarSurface;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+  document.getElementById('toolbar-preview-dock')?.classList.toggle(
+    'is-floating',
+    activeToolbarSurface === 'floating'
+  );
+  const toolbar = document.getElementById('toolbar-preview');
+  toolbar?.setAttribute(
+    'aria-label',
+    activeToolbarSurface === 'floating' ? 'Floating toolbar preview' : 'Bottom toolbar preview'
+  );
+}
+
+function setToolbarSurface(surface) {
+  if (surface !== 'bottom' && surface !== 'floating') return;
+  activeToolbarSurface = surface;
+  config = configsBySurface[surface];
+  selectedKey = null;
+  window.ToolbarSettings?.setToolbarSurface?.(surface);
+  syncToolbarSurfaceSelector();
+  render();
 }
 
 function layoutSignature(value) {
@@ -2174,6 +2233,10 @@ window.finishToolbarDragFromNative = (clientX, clientY) => {
     clientY: y
   });
 };
+
+document.querySelectorAll('.toolbar-preview-surface-button').forEach(button => {
+  button.addEventListener('click', () => setToolbarSurface(button.dataset.toolbarSurface));
+});
 
 try {
   applySettings(window.ToolbarSettings?.getBottomToolbarSettings?.() || {});

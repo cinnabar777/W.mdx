@@ -1271,6 +1271,7 @@ class StylingHrFragment : StylingSettingsFragment() {
 class StylingControlbarFragment : StylingSettingsFragment() {
     companion object {
         private const val TOOLBAR_CONFIG_KEY = "pref_toolbar_bottom_config"
+        private const val TOOLBAR_FLOATING_CONFIG_KEY = "pref_toolbar_floating_config"
         private const val TOOLBAR_APPEARANCE_HEADER_KEY = "pref_toolbar_global_settings"
         private const val TOOLBAR_OPEN_GROUP_ACTION_ID = "openGroup"
         private const val LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX = "openToolbarGroup:"
@@ -1281,6 +1282,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "pref_toolbar_toggle_icon_color",
             "pref_toolbar_height",
             "pref_toolbar_padding",
+            "pref_toolbar_floating_key_width",
+            "pref_toolbar_floating_corner_radius",
             "pref_toolbar_show_labels",
             "pref_toolbar_label_size",
             "pref_toolbar_label_color"
@@ -1351,6 +1354,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     private var toolbarPreviewPreferencesView: android.view.View? = null
     @Volatile
     private lateinit var toolbarPreferences: SharedPreferences
+    private var toolbarConfigPreferenceKey = TOOLBAR_CONFIG_KEY
     @Volatile
     private var toolbarSaveFailureReason = "unknown"
     private var toolbarEditorOverlayExpanded = false
@@ -1368,6 +1372,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         toolbarPreferences =
             PreferenceManager.getDefaultSharedPreferences(requireContext().applicationContext)
+        toolbarConfigPreferenceKey = TOOLBAR_CONFIG_KEY
         setPreferencesFromResource(R.xml.preferences_styling_controlbar, rootKey)
         val appearanceHeader =
             findPreference<ExpandablePreference>(TOOLBAR_APPEARANCE_HEADER_KEY)
@@ -1567,7 +1572,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     ) {
         super.onSettingPreferenceChanged(sharedPreferences, key)
         if (
-            (key.startsWith("pref_toolbar_") && key != TOOLBAR_CONFIG_KEY) ||
+            (key.startsWith("pref_toolbar_") &&
+                key != TOOLBAR_CONFIG_KEY &&
+                key != TOOLBAR_FLOATING_CONFIG_KEY) ||
             key == "pref_app_theme"
         ) {
             saveToolbarPreviewLayout()
@@ -1598,11 +1605,18 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
                     ?: defaultToolbarConfigJson()
             )
+            payload.put(
+                TOOLBAR_FLOATING_CONFIG_KEY,
+                prefs.getString(TOOLBAR_FLOATING_CONFIG_KEY, defaultToolbarConfigJson())
+                    ?: defaultToolbarConfigJson()
+            )
         }
         payload.put("pref_toolbar_bg_color", prefs.getString("pref_toolbar_bg_color", "default"))
         payload.put("pref_toolbar_icon_color", prefs.getString("pref_toolbar_icon_color", "default"))
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
+        payload.put("pref_toolbar_floating_key_width", prefs.getInt("pref_toolbar_floating_key_width", 48))
+        payload.put("pref_toolbar_floating_corner_radius", prefs.getInt("pref_toolbar_floating_corner_radius", 24))
         payload.put("pref_toolbar_show_labels", prefs.getBoolean("pref_toolbar_show_labels", false))
         payload.put("pref_toolbar_label_size", prefs.getInt("pref_toolbar_label_size", 8))
         payload.put("pref_toolbar_label_color", prefs.getString("pref_toolbar_label_color", "default"))
@@ -1992,7 +2006,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
         val saved = try {
             val editor = toolbarPreferences.edit()
-                .putString(TOOLBAR_CONFIG_KEY, normalized)
+                .putString(toolbarConfigPreferenceKey, normalized)
             if (flushToDisk) editor.commit() else {
                 editor.apply()
                 true
@@ -2029,7 +2043,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
         return runCatching {
             val saved = org.json.JSONObject(
-                toolbarPreferences.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                toolbarPreferences.getString(toolbarConfigPreferenceKey, defaultToolbarConfigJson())
                     ?: defaultToolbarConfigJson()
             )
             saved.optJSONObject("customGroups")?.has(itemId) == true ||
@@ -2054,7 +2068,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         ) return false
         return try {
             val current = org.json.JSONObject(
-                toolbarPreferences.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                toolbarPreferences.getString(toolbarConfigPreferenceKey, defaultToolbarConfigJson())
                     ?: defaultToolbarConfigJson()
             )
             val styles = current.optJSONObject("styles") ?: org.json.JSONObject()
@@ -2201,6 +2215,15 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         fun getBottomToolbarSettings(): String = toolbarSettingsJson()
 
         @android.webkit.JavascriptInterface
+        fun setToolbarSurface(surface: String) {
+            toolbarConfigPreferenceKey = if (surface == "floating") {
+                TOOLBAR_FLOATING_CONFIG_KEY
+            } else {
+                TOOLBAR_CONFIG_KEY
+            }
+        }
+
+        @android.webkit.JavascriptInterface
         fun collapseToolbarAppearance() {
             activity?.runOnUiThread { collapseToolbarAppearanceSettings() }
         }
@@ -2231,7 +2254,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             if (!isToolbarStyleAllowed(itemId) || property !in TOOLBAR_COLOR_PROPERTIES) return
             activity?.runOnUiThread {
                 val config = org.json.JSONObject(
-                    toolbarPreferences.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                    toolbarPreferences.getString(toolbarConfigPreferenceKey, defaultToolbarConfigJson())
                         ?: defaultToolbarConfigJson()
                 )
                 val current = config.optJSONObject("styles")

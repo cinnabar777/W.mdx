@@ -312,7 +312,7 @@
     }
 
     /* Toolbar Toggle Rule: Hide bottom control bar when body.toolbar-hidden is active */
-    body.toolbar-hidden .grouped-control-bar {
+    body.toolbar-hidden #bottom-toolbar {
       display: none !important;
     }
 
@@ -1751,6 +1751,11 @@
     <div id="editor"></div>
   </div>
   <div id="popup-toolbar-strip" class="popup-toolbar-strip hidden"></div>
+  <div id="floating-selection-toolbar"
+       class="grouped-control-bar floating-selection-toolbar"
+       role="toolbar"
+       aria-label="Floating selection toolbar"
+       aria-hidden="true"></div>
   <div id="fast-scrollbar-track">
     <div id="fast-scrollbar-thumb"></div>
   </div>

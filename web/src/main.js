@@ -74,7 +74,10 @@ let pendingMarkdown = null;
 let isLineWrapEnabled = true;
 let activePopupGroup = null;
 let activeToolbarRootKey = null;
+let activePopupSurface = 'bottom';
 let bottomToolbarConfig = normalizeBottomToolbarConfig(null);
+let floatingToolbarConfig = normalizeBottomToolbarConfig(null);
+let floatingToolbarSelectionFrame = 0;
 let tocHideFileExtension = false;
 
 let customHotkeys = {
@@ -3676,6 +3679,7 @@ class CodeMirrorAdapter {
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             updateTableDocumentSelection(update.view);
+            updateFloatingSelectionToolbar(update.view);
           }
           if (update.selectionSet || update.docChanged) {
             refreshToolbarSyntaxState(update.view);
@@ -3999,7 +4003,8 @@ function installToolbarTapActions(container) {
       return;
     }
     const id = button.dataset.toolbarKey || button.dataset.toolbarStyleId;
-    const actions = bottomToolbarConfig.styles[id]?.gestureActions || {};
+    const toolbarConfig = getToolbarConfigForElement(button);
+    const actions = toolbarConfig.styles[id]?.gestureActions || {};
     const hasTap1 = Boolean(actions.tap1);
     const hasTap2 = Boolean(actions.tap2);
     const hasTap3 = Boolean(actions.tap3);
@@ -4012,7 +4017,7 @@ function installToolbarTapActions(container) {
     state.count += 1;
 
     const fallback = () => {
-      if (hasTap1) runToolbarGestureAction(actions.tap1, button);
+      if (hasTap1) runToolbarGestureAction(actions.tap1, button, new Set(), toolbarConfig);
       else {
         button.dataset.toolbarTapReplay = 'true';
         button.click();
@@ -4020,26 +4025,26 @@ function installToolbarTapActions(container) {
     };
     const finish = () => {
       const actionId = actions[`tap${state.count}`];
-      if (actionId) runToolbarGestureAction(actionId, button);
+      if (actionId) runToolbarGestureAction(actionId, button, new Set(), toolbarConfig);
       else fallback();
       pendingTaps.delete(button);
     };
 
     if (state.count >= 3) {
       if (state.timer) clearTimeout(state.timer);
-      if (hasTap3) runToolbarGestureAction(actions.tap3, button);
-      else if (hasTap2) runToolbarGestureAction(actions.tap2, button);
+      if (hasTap3) runToolbarGestureAction(actions.tap3, button, new Set(), toolbarConfig);
+      else if (hasTap2) runToolbarGestureAction(actions.tap2, button, new Set(), toolbarConfig);
       else fallback();
       pendingTaps.delete(button);
       return;
     }
     if (state.count === 2 && hasTap2 && !hasTap3) {
-      runToolbarGestureAction(actions.tap2, button);
+      runToolbarGestureAction(actions.tap2, button, new Set(), toolbarConfig);
       pendingTaps.delete(button);
       return;
     }
     if (state.count === 1 && !hasTap2 && !hasTap3) {
-      runToolbarGestureAction(actions.tap1, button);
+      runToolbarGestureAction(actions.tap1, button, new Set(), toolbarConfig);
       pendingTaps.delete(button);
       return;
     }
@@ -4052,10 +4057,11 @@ function setupGroupedControlBar() {
   const topContainer = document.querySelector('#editor-container');
   if (!topContainer) return;
 
-  let bar = document.querySelector('.grouped-control-bar');
+  let bar = document.querySelector('#bottom-toolbar');
   if (!bar) {
     bar = document.createElement('div');
-    bar.className = 'grouped-control-bar';
+    bar.id = 'bottom-toolbar';
+    bar.className = 'grouped-control-bar bottom-toolbar-bar';
     topContainer.appendChild(bar);
   }
   installToolbarTapActions(bar);
@@ -4104,15 +4110,20 @@ function setupGroupedControlBar() {
   if (!document.__wmdxToolbarOutsideClickInstalled) {
     document.addEventListener('click', (e) => {
       const strip = document.querySelector('#popup-toolbar-strip');
-      const barEl = document.querySelector('.grouped-control-bar');
+      const bars = [
+        document.querySelector('#bottom-toolbar'),
+        document.querySelector('#floating-selection-toolbar')
+      ].filter(Boolean);
       if (strip && !strip.classList.contains('hidden')) {
-        if (!strip.contains(e.target) && (!barEl || !barEl.contains(e.target))) {
+        if (!strip.contains(e.target) && !bars.some(barEl => barEl.contains(e.target))) {
           hidePopupStrip();
         }
       }
     });
     document.__wmdxToolbarOutsideClickInstalled = true;
   }
+
+  setupFloatingSelectionToolbar();
 
   const headingBtn = bar.querySelector('#grp-btn-heading');
   if (headingBtn) {
@@ -4261,6 +4272,189 @@ function setupGroupedControlBar() {
 
 }
 
+function setupFloatingSelectionToolbar() {
+  const container = document.querySelector('#editor-container');
+  if (!container) return;
+  let bar = document.querySelector('#floating-selection-toolbar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'floating-selection-toolbar';
+    bar.className = 'grouped-control-bar floating-selection-toolbar';
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'Floating selection toolbar');
+    bar.setAttribute('aria-hidden', 'true');
+    container.appendChild(bar);
+  }
+  installToolbarTapActions(bar);
+
+  const registry = createRuntimeToolbarItemRegistry(floatingToolbarConfig);
+  const definitions = Object.fromEntries(
+    [...registry].map(([id, item]) => [
+      id,
+      { id, title: item.title, icon: item.icon, kind: item.kind || 'action' }
+    ])
+  );
+  renderBottomToolbarKeys(bar, floatingToolbarConfig, svgIcons, {
+    resolveCustomIcon: style => style.customSvg || '',
+    definitions,
+    resolveGestureActionIcon: (actionId, customSvg) => {
+      if (customSvg) return sanitizeToolbarSvg(customSvg, false);
+      const icon = registry.get(actionId)?.icon;
+      return typeof icon === 'string' && icon.includes('<svg')
+        ? icon
+        : svgIcons[icon] || icon || '';
+    },
+    onGesture: (id, gestureId, event, button) => {
+      const actionId = getToolbarGestureActionId(
+        floatingToolbarConfig.styles[id],
+        gestureId
+      );
+      return actionId
+        ? runToolbarGestureAction(actionId, button, new Set(), floatingToolbarConfig)
+        : false;
+    },
+    onKeyClick: (id, event) => {
+      if (!floatingToolbarConfig.customKeys?.[id]) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runToolbarGestureAction(id, event.currentTarget, new Set(), floatingToolbarConfig);
+    }
+  });
+
+  if (bar.dataset.floatingClickHandlerInstalled !== 'true') {
+    bar.dataset.floatingClickHandlerInstalled = 'true';
+    bar.addEventListener('click', event => {
+      const button = event.target?.closest?.('[data-toolbar-key], [data-toolbar-style-id]');
+      if (!button || !bar.contains(button)) return;
+      const id = button.dataset.toolbarKey || button.dataset.toolbarStyleId;
+      if (floatingToolbarConfig.customKeys?.[id]) return;
+      runToolbarGestureAction(id, button, new Set(), floatingToolbarConfig);
+    });
+  }
+
+  if (!document.__wmdxFloatingToolbarPositioningInstalled) {
+    const refresh = () => scheduleFloatingToolbarPosition();
+    window.addEventListener('resize', refresh, { passive: true });
+    window.addEventListener('scroll', refresh, { passive: true, capture: true });
+    window.visualViewport?.addEventListener('resize', refresh, { passive: true });
+    window.visualViewport?.addEventListener('scroll', refresh, { passive: true });
+    document.__wmdxFloatingToolbarPositioningInstalled = true;
+  }
+  updateFloatingSelectionToolbar();
+}
+
+function scheduleFloatingToolbarPosition() {
+  if (floatingToolbarSelectionFrame) return;
+  floatingToolbarSelectionFrame = window.requestAnimationFrame(() => {
+    floatingToolbarSelectionFrame = 0;
+    updateFloatingSelectionToolbar();
+  });
+}
+
+function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
+  const bar = document.querySelector('#floating-selection-toolbar');
+  if (!bar) return;
+  const selection = view?.state?.selection?.main;
+  if (!view?.dom?.isConnected || !selection || selection.empty) {
+    bar.classList.remove('is-visible');
+    bar.setAttribute('aria-hidden', 'true');
+    if (activePopupSurface === 'floating') hidePopupStrip();
+    return;
+  }
+
+  let start;
+  let end;
+  try {
+    start = view.coordsAtPos(selection.from);
+    end = view.coordsAtPos(selection.to);
+  } catch {
+    start = null;
+    end = null;
+  }
+  if (!start || !end) {
+    bar.classList.remove('is-visible');
+    bar.setAttribute('aria-hidden', 'true');
+    if (activePopupSurface === 'floating') hidePopupStrip();
+    return;
+  }
+
+  bar.classList.add('is-visible');
+  bar.setAttribute('aria-hidden', 'false');
+  const rect = bar.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const viewportLeft = viewport?.offsetLeft || 0;
+  const viewportTop = viewport?.offsetTop || 0;
+  const viewportWidth = viewport?.width || window.innerWidth;
+  const viewportHeight = viewport?.height || window.innerHeight;
+  const margin = 8;
+  const leftLimit = viewportLeft + margin;
+  const rightLimit = viewportLeft + viewportWidth - margin;
+  const topLimit = viewportTop + margin;
+  const bottomLimit = viewportTop + viewportHeight - margin;
+  const selectionLeft = Math.min(start.left, end.left);
+  const selectionRight = Math.max(start.right, end.right);
+  const selectionTop = Math.min(start.top, end.top);
+  const selectionBottom = Math.max(start.bottom, end.bottom);
+  const width = Math.min(rect.width, Math.max(0, rightLimit - leftLimit));
+  const left = Math.max(
+    leftLimit,
+    Math.min((selectionLeft + selectionRight - width) / 2, rightLimit - width)
+  );
+  const height = rect.height;
+  const above = selectionTop - height - margin;
+  const below = selectionBottom + margin;
+  const top = above >= topLimit
+    ? above
+    : below + height <= bottomLimit
+      ? below
+      : Math.max(topLimit, Math.min(above, bottomLimit - height));
+
+  bar.style.left = `${left}px`;
+  bar.style.top = `${top}px`;
+  if (activePopupSurface === 'floating') positionFloatingPopupStrip();
+}
+
+function positionFloatingPopupStrip(targetButton = null) {
+  const strip = document.querySelector('#popup-toolbar-strip');
+  const bar = targetButton?.closest?.('#floating-selection-toolbar') ||
+    document.querySelector('#floating-selection-toolbar');
+  if (!strip || strip.classList.contains('hidden') || !bar) return;
+  const barRect = bar.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const viewportLeft = viewport?.offsetLeft || 0;
+  const viewportTop = viewport?.offsetTop || 0;
+  const viewportWidth = viewport?.width || window.innerWidth;
+  const viewportHeight = viewport?.height || window.innerHeight;
+  const margin = 8;
+  const availableWidth = Math.max(0, viewportWidth - margin * 2);
+  strip.style.position = 'fixed';
+  strip.style.right = 'auto';
+  strip.style.bottom = 'auto';
+  strip.style.transform = 'none';
+  strip.style.maxWidth = `${availableWidth}px`;
+  strip.style.width = `${Math.min(strip.scrollWidth, availableWidth)}px`;
+  const stripRect = strip.getBoundingClientRect();
+  const left = Math.max(
+    viewportLeft + margin,
+    Math.min(
+      barRect.left + (barRect.width - stripRect.width) / 2,
+      viewportLeft + viewportWidth - stripRect.width - margin
+    )
+  );
+  const above = barRect.top - stripRect.height - margin;
+  const below = barRect.bottom + margin;
+  const top = above >= viewportTop + margin
+    ? above
+    : below + stripRect.height <= viewportTop + viewportHeight - margin
+      ? below
+      : Math.max(
+        viewportTop + margin,
+        Math.min(above, viewportTop + viewportHeight - stripRect.height - margin)
+      );
+  strip.style.left = `${left}px`;
+  strip.style.top = `${top}px`;
+}
+
 function createToolbarActionRegistry() {
   const groups = [
     [
@@ -4346,17 +4540,25 @@ function createToolbarActionRegistry() {
   return new Map([...groups.flat(), ...clipboardItems].map(item => [item.id, item]));
 }
 
-function createRuntimeToolbarItemRegistry() {
+function getToolbarConfigForElement(element) {
+  const floatingToolbar = element?.closest?.('#floating-selection-toolbar');
+  if (floatingToolbar) return floatingToolbarConfig;
+  const popupStrip = element?.closest?.('#popup-toolbar-strip');
+  if (popupStrip?.dataset?.toolbarSurface === 'floating') return floatingToolbarConfig;
+  return bottomToolbarConfig;
+}
+
+function createRuntimeToolbarItemRegistry(toolbarConfig = bottomToolbarConfig) {
   const registry = createToolbarActionRegistry();
   for (const item of BOTTOM_TOOLBAR_ITEMS) {
-    if (!bottomToolbarConfig.popupGroups[item.id]) continue;
+    if (!toolbarConfig.popupGroups[item.id]) continue;
     registry.set(item.id, {
       ...item,
       kind: 'group',
       icon: svgIcons[item.icon] || item.icon
     });
   }
-  for (const [id, group] of Object.entries(bottomToolbarConfig.customGroups)) {
+  for (const [id, group] of Object.entries(toolbarConfig.customGroups || {})) {
     registry.set(id, {
       id,
       title: group.title,
@@ -4364,7 +4566,7 @@ function createRuntimeToolbarItemRegistry() {
       kind: 'group'
     });
   }
-  for (const [id, key] of Object.entries(bottomToolbarConfig.customKeys || {})) {
+  for (const [id, key] of Object.entries(toolbarConfig.customKeys || {})) {
     registry.set(id, {
       id,
       title: key.title,
@@ -4384,19 +4586,24 @@ function createRuntimeToolbarItemRegistry() {
   return registry;
 }
 
-function runToolbarGestureAction(actionId, sourceButton, visited = new Set()) {
+function runToolbarGestureAction(
+  actionId,
+  sourceButton,
+  visited = new Set(),
+  toolbarConfig = getToolbarConfigForElement(sourceButton)
+) {
   if (!actionId || visited.has(actionId)) return false;
   visited.add(actionId);
   if (actionId === OPEN_GROUP_ACTION_ID) {
     const toolbarGroupId = [
       sourceButton?.dataset?.toolbarKey,
       sourceButton?.dataset?.toolbarStyleId
-    ].find(id => id && bottomToolbarConfig.popupGroups[id]);
+    ].find(id => id && toolbarConfig.popupGroups[id]);
     if (!toolbarGroupId) return false;
     togglePopupStrip(
       toolbarGroupId,
       sourceButton,
-      getRuntimeToolbarGroupItems(toolbarGroupId)
+      getRuntimeToolbarGroupItems(toolbarGroupId, toolbarConfig)
     );
     return true;
   }
@@ -4421,14 +4628,18 @@ function runToolbarGestureAction(actionId, sourceButton, visited = new Set()) {
     execCmd('highlight', { value: null });
     return true;
   }
-  const customKey = bottomToolbarConfig.customKeys?.[actionId];
+  const customKey = toolbarConfig.customKeys?.[actionId];
   if (customKey) {
-    return runToolbarGestureAction(customKey.actionId, sourceButton, visited);
+    return runToolbarGestureAction(customKey.actionId, sourceButton, visited, toolbarConfig);
   }
-  const item = createRuntimeToolbarItemRegistry().get(actionId);
+  const item = createRuntimeToolbarItemRegistry(toolbarConfig).get(actionId);
   if (!item) return false;
-  if (bottomToolbarConfig.popupGroups[actionId]) {
-    togglePopupStrip(actionId, sourceButton, getRuntimeToolbarGroupItems(actionId));
+  if (toolbarConfig.popupGroups[actionId]) {
+    togglePopupStrip(
+      actionId,
+      sourceButton,
+      getRuntimeToolbarGroupItems(actionId, toolbarConfig)
+    );
     return true;
   }
   if (typeof item.action !== 'function') return false;
@@ -4509,7 +4720,11 @@ async function runToolbarClipboardAction(actionId) {
   return false;
 }
 
-function installPopupToolbarSwipeUp(button, styleId) {
+function installPopupToolbarSwipeUp(
+  button,
+  styleId,
+  toolbarConfig = getToolbarConfigForElement(button)
+) {
   let pointerStart = null;
   let longPressTimer = null;
   let longPressHandled = false;
@@ -4529,12 +4744,14 @@ function installPopupToolbarSwipeUp(button, styleId) {
     } catch {
       // Pointer capture is not available in every embedded WebView version.
     }
-    if (bottomToolbarConfig.styles[styleId]?.gestureActions?.longPress) {
+    if (toolbarConfig.styles[styleId]?.gestureActions?.longPress) {
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
         if (!pointerStart) return;
-        const actionId = bottomToolbarConfig.styles[styleId]?.gestureActions?.longPress;
-        longPressHandled = Boolean(actionId && runToolbarGestureAction(actionId, button));
+        const actionId = toolbarConfig.styles[styleId]?.gestureActions?.longPress;
+        longPressHandled = Boolean(
+          actionId && runToolbarGestureAction(actionId, button, new Set(), toolbarConfig)
+        );
         if (longPressHandled) {
           button.dataset.toolbarGestureSuppressClick = 'true';
         }
@@ -4565,9 +4782,10 @@ function installPopupToolbarSwipeUp(button, styleId) {
     pointerStart = null;
     const gestureId = getToolbarSwipeGesture(deltaX, deltaY);
     if (!gestureId) return;
-    const style = bottomToolbarConfig.styles[styleId] || {};
+    const style = toolbarConfig.styles[styleId] || {};
     const actionId = getToolbarGestureActionId(style, gestureId);
-    if (!actionId || !runToolbarGestureAction(actionId, button)) return;
+    if (!actionId ||
+        !runToolbarGestureAction(actionId, button, new Set(), toolbarConfig)) return;
     button.dataset.toolbarGestureSuppressClick = 'true';
     event.preventDefault();
   }, { capture: true });
@@ -4584,17 +4802,17 @@ function installPopupToolbarSwipeUp(button, styleId) {
   }, { capture: true });
 }
 
-function getToolbarGestureIcon(actionId, customSvg) {
+function getToolbarGestureIcon(actionId, customSvg, toolbarConfig = bottomToolbarConfig) {
   if (customSvg) return sanitizeToolbarSvg(customSvg, false);
-  const icon = createRuntimeToolbarItemRegistry().get(actionId)?.icon;
+  const icon = createRuntimeToolbarItemRegistry(toolbarConfig).get(actionId)?.icon;
   return typeof icon === 'string' && icon.includes('<svg')
     ? icon
     : svgIcons[icon] || icon || '';
 }
 
-function getRuntimeToolbarGroupItems(groupId) {
-  const registry = createRuntimeToolbarItemRegistry();
-  return (bottomToolbarConfig.popupGroups[groupId]?.order || [])
+function getRuntimeToolbarGroupItems(groupId, toolbarConfig = bottomToolbarConfig) {
+  const registry = createRuntimeToolbarItemRegistry(toolbarConfig);
+  return (toolbarConfig.popupGroups[groupId]?.order || [])
     .map(id => {
       const item = registry.get(id);
       return item ? { ...item, styleId: id } : null;
@@ -5254,19 +5472,32 @@ function hidePopupStrip() {
   const strip = document.querySelector('#popup-toolbar-strip');
   if (strip) {
     strip.classList.add('hidden');
+    strip.classList.remove('is-floating-popup');
     strip.innerHTML = '';
+    strip.style.removeProperty('left');
+    strip.style.removeProperty('top');
+    strip.style.removeProperty('width');
+    strip.style.removeProperty('max-width');
+    strip.dataset.toolbarSurface = 'bottom';
   }
   activePopupGroup = null;
   activeToolbarRootKey = null;
+  activePopupSurface = 'bottom';
   document.querySelectorAll('.grouped-key-btn').forEach(btn => btn.classList.remove('active'));
 }
 
-function togglePopupStrip(groupKey, targetBtn, items) {
+function togglePopupStrip(
+  groupKey,
+  targetBtn,
+  items,
+  toolbarConfig = getToolbarConfigForElement(targetBtn)
+) {
   const strip = document.querySelector('#popup-toolbar-strip');
   if (!strip) return;
   installToolbarTapActions(strip);
+  const surface = toolbarConfig === floatingToolbarConfig ? 'floating' : 'bottom';
 
-  if (activePopupGroup === groupKey) {
+  if (activePopupGroup === groupKey && activePopupSurface === surface) {
     hidePopupStrip();
     return;
   }
@@ -5275,27 +5506,32 @@ function togglePopupStrip(groupKey, targetBtn, items) {
     activeToolbarRootKey = targetBtn.dataset.toolbarKey || groupKey;
   }
   strip.innerHTML = '';
+  strip.dataset.toolbarSurface = surface;
+  strip.classList.toggle('is-floating-popup', surface === 'floating');
   strip.classList.remove('hidden');
   activePopupGroup = groupKey;
+  activePopupSurface = surface;
   document.querySelectorAll('.grouped-key-btn').forEach(btn => btn.classList.remove('active'));
   const rootKey = activeToolbarRootKey || groupKey;
-  const rootKeyButton = [...document.querySelectorAll(
-    '.grouped-control-bar [data-toolbar-key]'
-  )].find(button => button.dataset.toolbarKey === rootKey);
+  const rootSelector = surface === 'floating'
+    ? '#floating-selection-toolbar [data-toolbar-key]'
+    : '#bottom-toolbar [data-toolbar-key]';
+  const rootKeyButton = [...document.querySelectorAll(rootSelector)]
+    .find(button => button.dataset.toolbarKey === rootKey);
   rootKeyButton?.classList.add('active');
 
-  const configuredItems = bottomToolbarConfig.popupGroups[groupKey]
-    ? getRuntimeToolbarGroupItems(groupKey)
+  const configuredItems = toolbarConfig.popupGroups[groupKey]
+    ? getRuntimeToolbarGroupItems(groupKey, toolbarConfig)
     : items;
   orderBottomToolbarPopupItems(
     groupKey,
     configuredItems,
-    bottomToolbarConfig.popupGroups
+    toolbarConfig.popupGroups
   ).forEach(item => {
     const btn = document.createElement('button');
     btn.className = 'popup-strip-btn';
     const styleId = item.styleId || item.id || item.command;
-    const style = styleId ? bottomToolbarConfig.styles[styleId] || {} : {};
+    const style = styleId ? toolbarConfig.styles[styleId] || {} : {};
     btn.classList.toggle('has-toolbar-swipe-action', hasToolbarSwipeActions(style));
     btn.classList.toggle('toolbar-key-force-label', style.forceShowLabel === true);
     if (styleId) btn.dataset.toolbarStyleId = styleId;
@@ -5340,7 +5576,8 @@ function togglePopupStrip(groupKey, targetBtn, items) {
       const gestureIcon = getToolbarGestureIcon(
         gestureActionId,
         style.gestureActionIcons?.[gestureId] ||
-          (gestureId === 'swipeUp' ? style.gestureActionIconSvg : '')
+          (gestureId === 'swipeUp' ? style.gestureActionIconSvg : ''),
+        toolbarConfig
       );
       if (gestureIcon) {
         const marker = document.createElement('span');
@@ -5359,20 +5596,24 @@ function togglePopupStrip(groupKey, targetBtn, items) {
     });
     btn.onclick = (e) => {
       e.stopPropagation();
-      if (bottomToolbarConfig.popupGroups[styleId]) {
-        togglePopupStrip(styleId, btn, getRuntimeToolbarGroupItems(styleId));
+      if (toolbarConfig.popupGroups[styleId]) {
+        togglePopupStrip(
+          styleId,
+          btn,
+          getRuntimeToolbarGroupItems(styleId, toolbarConfig),
+          toolbarConfig
+        );
         return;
       }
-      if (typeof item.action === 'function') {
-        item.action();
-      }
+      runToolbarGestureAction(styleId, btn, new Set(), toolbarConfig);
     };
-    installPopupToolbarSwipeUp(btn, styleId);
+    installPopupToolbarSwipeUp(btn, styleId, toolbarConfig);
     strip.appendChild(btn);
   });
 
   strip.classList.remove('hidden');
   strip.scrollLeft = 0;
+  if (surface === 'floating') positionFloatingPopupStrip(targetBtn);
   refreshToolbarSyntaxState();
   const activeCommand = strip.querySelector('.popup-strip-btn.active');
   if (activeCommand) {
@@ -6828,6 +7069,17 @@ window.editorBridge = {
     hidePopupStrip();
     setupGroupedControlBar();
   },
+  applyFloatingToolbarConfig: function(rawConfig) {
+    floatingToolbarConfig = normalizeBottomToolbarConfig(rawConfig);
+    hidePopupStrip();
+    setupFloatingSelectionToolbar();
+  },
+  applyToolbarConfigs: function(bottomRawConfig, floatingRawConfig) {
+    bottomToolbarConfig = normalizeBottomToolbarConfig(bottomRawConfig);
+    floatingToolbarConfig = normalizeBottomToolbarConfig(floatingRawConfig);
+    hidePopupStrip();
+    setupGroupedControlBar();
+  },
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
     const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
@@ -7274,10 +7526,25 @@ window.editorBridge = {
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
     // Toolbar
-    if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
-      bottomToolbarConfig = normalizeBottomToolbarConfig(
-        prefs.pref_toolbar_bottom_config
-      );
+    const hasBottomConfig = Object.prototype.hasOwnProperty.call(
+      prefs,
+      'pref_toolbar_bottom_config'
+    );
+    const hasFloatingConfig = Object.prototype.hasOwnProperty.call(
+      prefs,
+      'pref_toolbar_floating_config'
+    );
+    if (hasBottomConfig || hasFloatingConfig) {
+      if (hasBottomConfig) {
+        bottomToolbarConfig = normalizeBottomToolbarConfig(
+          prefs.pref_toolbar_bottom_config
+        );
+      }
+      if (hasFloatingConfig) {
+        floatingToolbarConfig = normalizeBottomToolbarConfig(
+          prefs.pref_toolbar_floating_config
+        );
+      }
       hidePopupStrip();
       setupGroupedControlBar();
     }
@@ -7314,6 +7581,20 @@ window.editorBridge = {
     setCssVar(
       '--toolbar-padding',
       Number.isFinite(toolbarPadding) ? Math.max(0, Math.min(16, toolbarPadding)) : 4,
+      'px'
+    );
+    const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width ?? 48);
+    setCssVar(
+      '--toolbar-floating-key-width',
+      Number.isFinite(floatingKeyWidth) ? Math.max(36, Math.min(72, floatingKeyWidth)) : 48,
+      'px'
+    );
+    const floatingCornerRadius = Number(prefs.pref_toolbar_floating_corner_radius ?? 24);
+    setCssVar(
+      '--toolbar-floating-corner-radius',
+      Number.isFinite(floatingCornerRadius)
+        ? Math.max(0, Math.min(36, floatingCornerRadius))
+        : 24,
       'px'
     );
 
