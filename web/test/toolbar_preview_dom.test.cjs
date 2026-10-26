@@ -821,6 +821,11 @@ test('dragging a held key through the gap shows its toolbar insertion target', a
     );
     dispatchPointer(dom.window.document, 'pointerup', 10, 500);
 
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-status').textContent,
+      'Toolbar changes saved.'
+    );
+    assert.equal(saves.length, 1);
     assert.deepEqual(saves.at(-1).order.slice(0, 2), ['heading', 'undo']);
     assert.ok(!saves.at(-1).holding.includes('heading'));
     assert.deepEqual(saves.at(-1).customGroups, {});

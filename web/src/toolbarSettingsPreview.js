@@ -974,9 +974,22 @@ function beginPossibleDrag(event, button) {
   dragTimer = setTimeout(() => {
     cleanup();
     dragState = { id, source, groupId, target: null, startX, startY, pointerId, started: false };
-    document.addEventListener('pointermove', onDocumentPointerMove, { passive: false });
-    document.addEventListener('pointerup', onDocumentPointerUp);
-    document.addEventListener('pointercancel', cancelDrag);
+    const sourceButton = groupId
+      ? findPopupKeyButton(groupId, id)
+      : findToolbarKeyButton(id);
+    if (Number.isInteger(pointerId)) {
+      try {
+        sourceButton?.setPointerCapture?.(pointerId);
+      } catch {
+        // The WebView may already have released the pointer; window capture still handles it.
+      }
+    }
+    window.addEventListener('pointermove', onDocumentPointerMove, {
+      capture: true,
+      passive: false
+    });
+    window.addEventListener('pointerup', onDocumentPointerUp, true);
+    window.addEventListener('pointercancel', cancelDrag, true);
   }, 380);
 }
 
@@ -1040,9 +1053,9 @@ function onDocumentPointerUp(event) {
     event.pointerId !== undefined &&
     event.pointerId !== dragState.pointerId
   ) return;
-  document.removeEventListener('pointermove', onDocumentPointerMove);
-  document.removeEventListener('pointercancel', cancelDrag);
-  document.removeEventListener('pointerup', onDocumentPointerUp);
+  window.removeEventListener('pointermove', onDocumentPointerMove, true);
+  window.removeEventListener('pointercancel', cancelDrag, true);
+  window.removeEventListener('pointerup', onDocumentPointerUp, true);
   const dropPoint = getDragDropPoint(event.clientX, event.clientY);
   if (dragState) {
     dragState.lastClientX = dropPoint.x;
@@ -1086,13 +1099,16 @@ function cancelDrag(event) {
   ) return;
   clearTimeout(dragTimer);
   pendingDragCleanup?.();
-  document.removeEventListener('pointermove', onDocumentPointerMove);
-  document.removeEventListener('pointerup', onDocumentPointerUp);
-  document.removeEventListener('pointercancel', cancelDrag);
+  window.removeEventListener('pointermove', onDocumentPointerMove, true);
+  window.removeEventListener('pointerup', onDocumentPointerUp, true);
+  window.removeEventListener('pointercancel', cancelDrag, true);
   document.querySelectorAll('.drop-target, .drop-target-group, .is-dragging').forEach(element => {
     element.classList.remove('drop-target', 'drop-target-group', 'is-dragging');
   });
   setDropMarker(null);
+  if (dragState?.started) {
+    setStatus('Drag cancelled; changes were not saved.');
+  }
   dragState = null;
   render();
 }
