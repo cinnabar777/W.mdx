@@ -135,7 +135,13 @@ function setIconPickerOpen(open, clearSearch = false) {
 
 function render() {
   if (!toolbar || !tray) return;
-  renderBottomToolbarKeys(toolbar, config, svgIcons, {
+  const emptyGroupIds = getEmptyPopupGroupIds();
+  const toolbarConfig = {
+    ...config,
+    order: config.order.filter(id => !emptyGroupIds.has(id)),
+    hidden: [...new Set([...config.hidden, ...emptyGroupIds])]
+  };
+  renderBottomToolbarKeys(toolbar, toolbarConfig, svgIcons, {
     buttonClass: 'grouped-key-btn toolbar-preview-key',
     resolveCustomIcon: style => style.customSvg || '',
     onKeyClick: onToolbarKeyClick
@@ -153,11 +159,15 @@ function render() {
     );
   }
 
-  if (config.hidden.length) {
+  const hasHeldPopupActions = Object.values(config.popupGroups)
+    .some(group => group.hidden.length > 0);
+  if (config.hidden.length || hasHeldPopupActions) {
     const trayConfig = {
       version: 1,
-      order: [...config.hidden],
-      hidden: BOTTOM_TOOLBAR_ITEM_IDS.filter(id => !config.hidden.includes(id)),
+      order: config.hidden.filter(id => !emptyGroupIds.has(id)),
+      hidden: BOTTOM_TOOLBAR_ITEM_IDS.filter(
+        id => !config.hidden.includes(id) || emptyGroupIds.has(id)
+      ),
       popupGroups: config.popupGroups,
       styles: config.styles
     };
@@ -171,7 +181,7 @@ function render() {
     // toolbar normalizer would restore the Menu key and show it twice.
     tray.replaceChildren();
   }
-  renderHeldPopupActions();
+  renderHeldPopupKeys();
 
   for (const button of document.querySelectorAll('.toolbar-preview-key')) {
     if (PREVIEW_GROUP_ITEMS[button.dataset.toolbarKey]) {
@@ -205,6 +215,7 @@ function applySettings(payload) {
   if (!prefs || typeof prefs !== 'object') prefs = {};
 
   config = normalizeBottomToolbarConfig(prefs.pref_toolbar_bottom_config);
+  releaseActionsFromHiddenFolders();
   const isLightTheme = prefs.pref_app_theme === 'light';
   document.body.classList.toggle('light-theme', isLightTheme);
   setCssVariable('--toolbar-bg', prefs.pref_toolbar_bg_color, isLightTheme ? '#f8f9fa' : '#121212');
@@ -257,7 +268,7 @@ function onToolbarKeyClick(id) {
     : null;
   selectedPopupItem = null;
   setStatus(isHiddenKey
-    ? 'Holding-area keys open settings; grouped actions stay with their group.'
+    ? 'Holding-area keys open settings; popup actions return to their original folder.'
     : '');
   render();
 }
@@ -283,6 +294,22 @@ function renderPopupGroup() {
   popup.classList.remove('hidden');
 }
 
+function getEmptyPopupGroupIds() {
+  return new Set(
+    Object.entries(config.popupGroups)
+      .filter(([, group]) => group.order.length === 0)
+      .map(([groupId]) => groupId)
+  );
+}
+
+function releaseActionsFromHiddenFolders() {
+  for (const [groupId, groupConfig] of Object.entries(config.popupGroups)) {
+    if (!config.hidden.includes(groupId) || groupConfig.order.length === 0) continue;
+    groupConfig.hidden = [...new Set([...groupConfig.order, ...groupConfig.hidden])];
+    groupConfig.order = [];
+  }
+}
+
 function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = false) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -291,7 +318,6 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   button.setAttribute('aria-label', item.title);
   button.setAttribute('aria-current', item.id === selectedPopupItem ? 'true' : 'false');
   button.classList.toggle('active', item.id === selectedPopupItem);
-  button.classList.toggle('is-individually-hidden', isIndividuallyHidden);
   button.dataset.previewPopupItem = item.id;
   button.dataset.previewGroup = groupId;
   button.dataset.previewLocation = location;
@@ -333,59 +359,13 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   return button;
 }
 
-function renderHeldPopupActions() {
+function renderHeldPopupKeys() {
   if (!tray) return;
   for (const [groupId, items] of Object.entries(PREVIEW_GROUP_ITEMS)) {
     const groupConfig = config.popupGroups[groupId];
-    const groupIsHidden = config.hidden.includes(groupId);
-    if (!groupIsHidden && !groupConfig.hidden.length) continue;
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'toolbar-preview-held-group';
-    wrapper.dataset.previewGroup = groupId;
-
-    const groupButton = groupIsHidden
-      ? [...tray.querySelectorAll('.toolbar-preview-key')]
-        .find(button => button.dataset.toolbarKey === groupId)
-      : null;
-    if (groupButton) wrapper.appendChild(groupButton);
-
-    const actionsAreShownInPopup = groupIsHidden &&
-      openPopupGroup === groupId &&
-      groupConfig.order.length > 0;
-    const actionIds = groupIsHidden
-      ? actionsAreShownInPopup
-        ? [...groupConfig.hidden]
-        : [
-          ...(groupConfig.order || BOTTOM_TOOLBAR_GROUP_ITEM_IDS[groupId]),
-          ...groupConfig.hidden
-        ]
-      : [...groupConfig.hidden];
-    if (actionIds.length && !actionsAreShownInPopup) {
-      const title = document.createElement('span');
-      title.className = 'toolbar-preview-held-group-title';
-      title.textContent = `${BOTTOM_TOOLBAR_ITEMS.find(item => item.id === groupId)?.title || groupId} actions`;
-      wrapper.appendChild(title);
-
-      const actionTray = document.createElement('div');
-      actionTray.className = 'toolbar-preview-held-actions';
-      for (const actionId of actionIds) {
-        const item = items.find(candidate => candidate.id === actionId);
-        if (!item) continue;
-        actionTray.appendChild(
-          createPreviewPopupKey(
-            item,
-            groupId,
-            'tray',
-            groupConfig.hidden.includes(item.id)
-          )
-        );
-      }
-      wrapper.appendChild(actionTray);
-    }
-
-    if (groupButton || wrapper.querySelector('.toolbar-preview-held-actions')) {
-      tray.appendChild(wrapper);
+    for (const actionId of groupConfig.hidden) {
+      const item = items.find(candidate => candidate.id === actionId);
+      if (item) tray.appendChild(createPreviewPopupKey(item, groupId, 'tray', true));
     }
   }
 }
@@ -599,7 +579,13 @@ function resolveDragTarget(clientX, clientY) {
 
   const keyButton = target?.closest?.('.toolbar-preview-key');
   if (keyButton && keyButton.dataset.toolbarKey !== dragState.id) {
-    if (dragState.groupId) return { type: 'ignored' };
+    if (dragState.groupId) {
+      return {
+        type: 'visible-key',
+        id: keyButton.dataset.toolbarKey,
+        button: keyButton
+      };
+    }
     return {
       type: tray.contains(keyButton) ? 'hidden-key' : 'visible-key',
       id: keyButton.dataset.toolbarKey,
@@ -641,8 +627,7 @@ function applyDrop({ id, source, groupId, target, lastClientX }) {
     return;
   }
   if (target.type === 'tray') {
-    config.hidden.push(id);
-    if (openPopupGroup === id) openPopupGroup = null;
+    hideToolbarKey(id);
     return;
   }
 
@@ -662,8 +647,7 @@ function applyDrop({ id, source, groupId, target, lastClientX }) {
 
   if (target.type === 'hidden-key') {
     if (wasVisible) {
-      config.hidden.push(id);
-      if (openPopupGroup === id) openPopupGroup = null;
+      hideToolbarKey(id);
     } else {
       const beforeIndex = config.hidden.indexOf(target.id);
       const targetButton = document.querySelector(
@@ -685,8 +669,7 @@ function applyDrop({ id, source, groupId, target, lastClientX }) {
 function applyPopupDrop({ id, source, groupId, target, lastClientX }) {
   const groupConfig = config.popupGroups[groupId];
   if (!groupConfig) return;
-  if (target?.type === 'ignored' || target?.type === 'stage' ||
-      target?.type === 'visible-key' || target?.type === 'hidden-key') return;
+  if (target?.type === 'ignored' || target?.type === 'hidden-key') return;
   if (target?.type === 'popup-key' && target.groupId !== groupId) return;
 
   const wasHidden = groupConfig.hidden.includes(id);
@@ -715,15 +698,43 @@ function applyPopupDrop({ id, source, groupId, target, lastClientX }) {
     nextHidden.push(id);
     groupConfig.order = nextOrder;
     groupConfig.hidden = nextHidden;
+    if (nextOrder.length === 0) openPopupGroup = null;
     return;
   }
 
-  // Dropping a popup action outside its own group is not a move. Preserve its
-  // original visibility and order rather than promoting it to a top-level key.
+  if (target?.type === 'visible-key' || target?.type === 'stage') {
+    if (wasHidden) {
+      nextOrder.push(id);
+      groupConfig.order = nextOrder;
+      groupConfig.hidden = nextHidden;
+      restorePopupGroupKey(groupId);
+    }
+    return;
+  }
+
+  // Dropping over empty space does not change a popup action's folder.
   const restoreList = wasHidden ? nextHidden : nextOrder;
   restoreList.splice(Math.max(0, originalIndex), 0, id);
   groupConfig.order = nextOrder;
   groupConfig.hidden = nextHidden;
+}
+
+function hideToolbarKey(id) {
+  config.hidden.push(id);
+  if (PREVIEW_GROUP_ITEMS[id]) releasePopupGroupToHoldingArea(id);
+  if (openPopupGroup === id) openPopupGroup = null;
+}
+
+function releasePopupGroupToHoldingArea(groupId) {
+  const groupConfig = config.popupGroups[groupId];
+  if (!groupConfig) return;
+  groupConfig.hidden = [...new Set([...groupConfig.order, ...groupConfig.hidden])];
+  groupConfig.order = [];
+}
+
+function restorePopupGroupKey(groupId) {
+  config.hidden = config.hidden.filter(id => id !== groupId);
+  if (!config.order.includes(groupId)) config.order.push(groupId);
 }
 
 function eventDropAfter(targetButton, clientX) {
