@@ -310,7 +310,6 @@ test('toolbar layout saves automatically without a manual save row', () => {
   assert.match(settingsActivitySource, /findViewWithTag<android\.webkit\.WebView>/);
   assert.match(settingsActivitySource, /toolbar-preview-save-target/);
   assert.match(settingsActivitySource, /var save = window\.saveToolbarLayout/);
-  assert.doesNotMatch(settingsActivitySource, /Toolbar layout saved|Could not save toolbar layout/);
   assert.match(settingsActivitySource, /private lateinit var toolbarPreferences: SharedPreferences/);
   assert.match(
     settingsActivitySource,

@@ -3,7 +3,11 @@ const test = require('node:test');
 const { JSDOM } = require('jsdom');
 
 test('bottom toolbar configuration ignores unknown and duplicate keys but restores missing built-ins', async () => {
-  const { BOTTOM_TOOLBAR_ITEM_IDS, normalizeBottomToolbarConfig } =
+  const {
+    BOTTOM_TOOLBAR_ITEM_IDS,
+    BUILT_IN_HOLDING_ITEM_IDS,
+    normalizeBottomToolbarConfig
+  } =
     await import('../src/toolbarConfig.js');
   const config = normalizeBottomToolbarConfig({
     version: 999,
@@ -19,9 +23,12 @@ test('bottom toolbar configuration ignores unknown and duplicate keys but restor
     'format',
     'insert'
   ]);
-  assert.deepEqual(config.hidden, ['undo']);
+  assert.deepEqual(config.hidden, ['undo', 'cut', 'copy', 'paste', 'selectAll']);
   assert.equal(config.version, 4);
-  assert.deepEqual([...config.order, ...config.hidden].sort(), [...BOTTOM_TOOLBAR_ITEM_IDS].sort());
+  assert.deepEqual(
+    [...config.order, ...config.hidden].sort(),
+    [...BOTTOM_TOOLBAR_ITEM_IDS, ...BUILT_IN_HOLDING_ITEM_IDS].sort()
+  );
 });
 
 test('invalid saved configuration falls back to the current toolbar order', async () => {

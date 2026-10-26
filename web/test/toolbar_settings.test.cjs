@@ -157,6 +157,8 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(mainSource, /getToolbarGroupIdForAction\(actionId\)/);
   assert.match(mainActivitySource, /fun writeClipboard\(text: String\?\): Boolean/);
   assert.match(mainActivitySource, /fun readClipboard\(\): String/);
+  assert.match(androidSource, /TOOLBAR_HOLDING_ITEM_IDS = listOf\("cut", "copy", "paste", "selectAll"\)/);
+  assert.match(androidSource, /groupIds\.map \{ "openToolbarGroup:\$it" \}/);
 });
 
 test('toolbar appearance refreshes preserve layout and editor overlays follow the configured theme', () => {
@@ -190,6 +192,7 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
   const {
     BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
     BOTTOM_TOOLBAR_POPUP_ITEM_IDS,
+    BUILT_IN_HOLDING_ITEM_IDS,
     BOTTOM_TOOLBAR_STYLE_IDS
   } =
     await import('../src/toolbarConfig.js');
@@ -200,8 +203,11 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
   const kotlinPopupIds = [...kotlinPopupIdsBlock.matchAll(/"([^"]+)"/g)]
     .map(match => match[1])
     .sort();
-  assert.deepEqual(kotlinPopupIds, [...BOTTOM_TOOLBAR_POPUP_ITEM_IDS].sort());
-  assert.equal(BOTTOM_TOOLBAR_STYLE_IDS.length, BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length + 7);
+  assert.deepEqual(
+    kotlinPopupIds,
+    [...BOTTOM_TOOLBAR_POPUP_ITEM_IDS, ...BUILT_IN_HOLDING_ITEM_IDS].sort()
+  );
+  assert.equal(BOTTOM_TOOLBAR_STYLE_IDS.length, BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length + 11);
   const kotlinGroupsBlock = androidSource.match(
     /TOOLBAR_GROUP_ITEM_IDS = linkedMapOf\(([\s\S]*?)\n\s*\)\s*\n\s*private val TOOLBAR_STYLE_IDS/
   )?.[1];

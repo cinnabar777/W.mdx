@@ -479,7 +479,7 @@ test('moving a folder releases its actions and keeps the empty folder visible in
       popup.querySelector('[data-preview-popup-item="outdent"]'),
       2
     );
-    assert.deepEqual(saves.at(-1).holding, []);
+    assert.deepEqual(saves.at(-1).holding, ['cut', 'copy', 'paste', 'selectAll']);
     assert.ok(
       [...popup.querySelectorAll('[data-preview-popup-item]')]
         .some(button => button.dataset.previewPopupItem === 'todoList'),
@@ -493,7 +493,7 @@ test('moving a folder releases its actions and keeps the empty folder visible in
     );
     assert.ok(saves.at(-1).hidden.includes('lists'));
     assert.equal(saves.at(-1).popupGroups.lists.order.length, 0);
-    assert.equal(saves.at(-1).holding.length, 6);
+    assert.equal(saves.at(-1).holding.length, 10);
     const heldFolder = tray.querySelector('[data-toolbar-key="lists"]');
     assert.ok(heldFolder, 'the empty folder remains available as a standalone key');
     assert.equal(heldFolder.parentElement, tray);
@@ -737,6 +737,17 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
     search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     actionPicker.querySelector('[role="option"][aria-label="Quick Action"]').click();
     assert.equal(saves.at(-1).styles.undo.gestureActions.tap1, customKeyId);
+
+    dom.window.document
+      .querySelector('.toolbar-preview-gesture-action[data-gesture-id="tap2"]')
+      .click();
+    search.value = 'Open group: Format';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    actionPicker.querySelector('[role="option"][aria-label="Open group: Format"]').click();
+    assert.equal(
+      saves.at(-1).styles.undo.gestureActions.tap2,
+      'openToolbarGroup:format'
+    );
   } finally {
     dom.window.close();
     if (previousWindow === undefined) delete global.window;
