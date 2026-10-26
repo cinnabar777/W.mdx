@@ -31,7 +31,6 @@
     }
     .toolbar-preview-editor {
       display: none;
-      flex-direction: column;
       position: fixed;
       z-index: 10006;
       left: 12px;
@@ -39,14 +38,17 @@
       bottom: calc(var(--toolbar-height, 48px) + 10px);
       max-height: min(82dvh, calc(100dvh - var(--toolbar-height, 48px) - 24px));
       margin: 0;
-      padding: 12px;
-      overflow: hidden;
+      padding: 16px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
       border: 1px solid rgba(255,255,255,.2);
       border-radius: 12px;
       background: #171717;
       box-shadow: 0 10px 28px rgba(0,0,0,.75);
     }
-    .toolbar-preview-editor.visible { display: flex; }
+    .toolbar-preview-editor.visible { display: block; }
     .toolbar-preview-editor.above-group {
       bottom: calc(var(--toolbar-height, 48px) + 78px);
       max-height: min(70dvh, calc(100dvh - var(--toolbar-height, 48px) - 92px));
@@ -97,28 +99,22 @@
     .toolbar-preview-editor-reset-all:disabled {
       opacity: .38;
     }
-    .toolbar-preview-editor-content {
-      min-height: 0;
-      flex: 1 1 auto;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      scrollbar-width: thin;
-    }
-    .toolbar-preview-style-controls { display: grid; gap: 3px; }
+    .toolbar-preview-editor-content { display: block; }
+    .toolbar-preview-style-controls { display: grid; gap: 14px; }
     .toolbar-preview-color-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto auto;
       align-items: center;
-      gap: 6px;
-      min-height: 28px;
+      gap: 10px;
+      min-height: 40px;
       margin: 0;
-      font-size: 12px;
+      font-size: 14px;
     }
     .toolbar-preview-color-row button {
-      width: 30px;
-      height: 24px;
+      width: 38px;
+      height: 32px;
       border: 1px solid rgba(255,255,255,.3);
-      border-radius: 6px;
+      border-radius: 8px;
       background: transparent;
     }
     .toolbar-preview-reset-color {
@@ -137,42 +133,73 @@
     .toolbar-preview-reset-color:disabled {
       opacity: .38;
     }
-    .toolbar-preview-current-key {
+    .toolbar-preview-icon-picker-trigger {
       display: grid;
-      width: 32px;
-      height: 30px;
-      flex: 0 0 32px;
-      place-items: center;
-      padding: 3px;
+      width: 100%;
+      grid-template-columns: 28px minmax(0, 1fr) 20px;
+      align-items: center;
+      gap: 10px;
+      min-height: 54px;
+      margin: 0 0 18px;
+      padding: 9px 12px;
       border: 1px solid rgba(255,255,255,.2);
-      border-radius: 7px;
-      color: var(--toolbar-icon-color);
-      background: transparent;
-    }
-    .toolbar-preview-current-key.active {
-      background: var(--toolbar-key-active-bg-color, var(--toolbar-key-bg-color, transparent));
-    }
-    .toolbar-preview-icon-option-preview {
-      display: grid;
-      width: 24px;
-      height: 24px;
-      place-items: center;
-    }
-    .toolbar-preview-icon-option-preview svg {
-      width: 21px;
-      height: 21px;
-    }
-    .toolbar-preview-header-action {
-      min-width: 34px;
-      height: 30px;
-      flex: 0 0 auto;
-      padding: 0 6px;
-      border: 1px solid rgba(255,255,255,.2);
-      border-radius: 7px;
+      border-radius: 9px;
       color: inherit;
-      background: rgba(255,255,255,.08);
+      background: rgba(255,255,255,.05);
+      text-align: left;
       font: inherit;
+    }
+    .toolbar-preview-icon-picker-trigger svg {
+      width: 22px;
+      height: 22px;
+    }
+    .toolbar-preview-icon-picker-trigger small {
+      display: block;
+      margin-top: 2px;
+      color: rgba(255,255,255,.62);
       font-size: 11px;
+    }
+    .toolbar-preview-action-slots {
+      margin: 0 0 18px;
+    }
+    .toolbar-preview-action-slots h3,
+    .toolbar-preview-colors-heading {
+      margin: 0 0 7px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .toolbar-preview-action-slot-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+    }
+    .toolbar-preview-action-slot {
+      display: flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 7px 10px;
+      border: 1px dashed rgba(255,255,255,.28);
+      border-radius: 8px;
+      color: rgba(255,255,255,.68);
+      font-size: 12px;
+    }
+    .toolbar-preview-action-slot-placeholder {
+      display: grid;
+      min-width: 38px;
+      min-height: 30px;
+      place-items: center;
+      padding: 0 8px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 7px;
+      color: rgba(255,255,255,.5);
+      background: rgba(255,255,255,.04);
+      font-size: 11px;
+    }
+    .toolbar-preview-colors-heading {
+      margin-top: 2px;
+      margin-bottom: 5px;
     }
     .toolbar-preview-preserve-colors {
       display: inline-flex;
@@ -194,36 +221,101 @@
       height: 14px;
       margin: 0;
     }
-    .toolbar-preview-icon-picker { display: block; }
-    .toolbar-preview-icon-search {
-      position: sticky;
-      z-index: 2;
-      top: 0;
-      width: 100%;
-      height: 34px;
-      margin: 0 0 5px;
-      padding: 0 9px;
+    .toolbar-preview-icon-picker-modal {
+      position: fixed;
+      z-index: 10008;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(0,0,0,.62);
+    }
+    .toolbar-preview-icon-picker-modal[hidden] { display: none; }
+    .toolbar-preview-icon-picker-dialog {
+      display: flex;
+      width: min(100%, 520px);
+      max-height: min(78dvh, 640px);
+      flex-direction: column;
+      overflow: hidden;
+      padding: 14px;
       border: 1px solid rgba(255,255,255,.2);
-      border-radius: 7px;
+      border-radius: 12px;
+      color: inherit;
+      background: #171717;
+      box-shadow: 0 12px 32px rgba(0,0,0,.75);
+    }
+    .toolbar-preview-icon-picker-header {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .toolbar-preview-icon-picker-header h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+    .toolbar-preview-icon-picker-close {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.07);
+      font: inherit;
+      font-size: 20px;
+    }
+    .toolbar-preview-icon-search {
+      flex: 0 0 auto;
+      width: 100%;
+      height: 42px;
+      margin: 0 0 9px;
+      padding: 0 12px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
       color: inherit;
       background: rgba(255,255,255,.06);
       font: inherit;
-      font-size: 12px;
-      box-shadow: 0 2px 4px rgba(0,0,0,.35);
+      font-size: 14px;
+    }
+    .toolbar-preview-icon-actions {
+      display: flex;
+      flex: 0 0 auto;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .toolbar-preview-icon-actions button {
+      min-height: 40px;
+      flex: 1 1 0;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.07);
+      font: inherit;
+      font-size: 13px;
     }
     .toolbar-preview-section-label {
-      margin: 8px 0 4px;
+      flex: 0 0 auto;
+      margin: 0 0 6px;
       color: rgba(255,255,255,.7);
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
     }
     .toolbar-preview-icon-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
       gap: 6px;
+      min-height: 0;
+      overflow-y: auto;
       padding: 4px;
       border: 1px solid rgba(255,255,255,.15);
       border-radius: 7px;
+      overscroll-behavior: contain;
     }
     .toolbar-preview-icon-choice {
       display: flex;
@@ -279,16 +371,27 @@
       background: rgba(0,0,0,.06);
     }
     body.light-theme .toolbar-preview-editor-reset-all,
-    body.light-theme .toolbar-preview-header-action {
+    body.light-theme .toolbar-preview-icon-picker-trigger,
+    body.light-theme .toolbar-preview-icon-picker-close,
+    body.light-theme .toolbar-preview-icon-actions button {
       border-color: rgba(0,0,0,.2);
       background: rgba(0,0,0,.06);
     }
-    body.light-theme .toolbar-preview-current-key {
+    body.light-theme .toolbar-preview-icon-picker-dialog {
       border-color: rgba(0,0,0,.2);
-      background: var(--toolbar-key-active-bg-color, var(--toolbar-key-bg-color, transparent));
+      background: #f5f5f5;
     }
     body.light-theme .toolbar-preview-preserve-colors {
       border-color: rgba(0,0,0,.18);
+      background: rgba(0,0,0,.04);
+    }
+    body.light-theme .toolbar-preview-action-slot {
+      border-color: rgba(0,0,0,.28);
+      color: rgba(0,0,0,.68);
+    }
+    body.light-theme .toolbar-preview-action-slot-placeholder {
+      border-color: rgba(0,0,0,.18);
+      color: rgba(0,0,0,.5);
       background: rgba(0,0,0,.04);
     }
     body.light-theme .toolbar-preview-icon-search,
@@ -296,16 +399,17 @@
       border-color: rgba(0,0,0,.2);
       background-color: rgba(0,0,0,.04);
     }
-    body.light-theme .toolbar-preview-icon-search {
-      background-color: #f5f5f5;
-    }
     body.light-theme .toolbar-preview-icon-choice[aria-pressed="true"] {
       background: rgba(0,0,0,.08);
     }
     @media (max-height: 620px) {
       .toolbar-preview-editor { padding: 9px; }
+      .toolbar-preview-icon-picker-dialog { max-height: 84dvh; padding: 10px; }
     }
     body.light-theme .toolbar-preview-tray-label {
+      color: rgba(0,0,0,.62);
+    }
+    body.light-theme .toolbar-preview-icon-picker-trigger small {
       color: rgba(0,0,0,.62);
     }
   </style>
@@ -335,18 +439,31 @@
       aria-hidden="true">
       <div class="toolbar-preview-editor-header">
         <h2 id="toolbar-preview-selected-title">Selected key</h2>
-        <div id="toolbar-current-key-preview" class="toolbar-preview-current-key active" role="img" aria-label="Live toolbar icon preview">
-          <span id="toolbar-current-icon" class="toolbar-preview-icon-option-preview" aria-hidden="true"></span>
-        </div>
-        <button id="toolbar-paste-svg" class="toolbar-preview-header-action" type="button" aria-label="Paste SVG" title="Paste SVG">Paste</button>
-        <button id="toolbar-choose-svg" class="toolbar-preview-header-action" type="button" aria-label="Choose SVG file" title="Choose SVG file">File</button>
         <button id="toolbar-reset-key-style" class="toolbar-preview-editor-reset-all" type="button" aria-label="Reset all settings for this key" title="Reset all">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>
         </button>
         <button id="toolbar-preview-close-editor" class="toolbar-preview-editor-close" type="button" aria-label="Close key settings">×</button>
       </div>
       <div class="toolbar-preview-editor-content">
-        <input id="toolbar-icon-search" class="toolbar-preview-icon-search" type="search" placeholder="Search available icons…" aria-label="Search app icons">
+        <button id="toolbar-open-icon-picker" class="toolbar-preview-icon-picker-trigger" type="button" aria-haspopup="dialog" aria-controls="toolbar-icon-picker-modal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+          <span>Choose icon<small>Search built-ins or add an SVG</small></span>
+          <span aria-hidden="true">›</span>
+        </button>
+        <section class="toolbar-preview-action-slots" aria-label="Action layout placeholders">
+          <h3>Action layout</h3>
+          <div class="toolbar-preview-action-slot-row">
+            <div class="toolbar-preview-action-slot">
+              <span>Action chip</span>
+              <span class="toolbar-preview-action-slot-placeholder" aria-hidden="true">Action</span>
+            </div>
+            <div class="toolbar-preview-action-slot">
+              <span>Action icon</span>
+              <span class="toolbar-preview-action-slot-placeholder" aria-hidden="true">Icon</span>
+            </div>
+          </div>
+        </section>
+        <div class="toolbar-preview-colors-heading">Colors</div>
         <div class="toolbar-preview-style-controls">
           <div class="toolbar-preview-color-settings">
             <div class="toolbar-preview-color-row">
@@ -370,12 +487,23 @@
             Preserve icon colors
           </label>
         </div>
-        <div class="toolbar-preview-icon-picker" aria-label="Available app icons">
-          <div class="toolbar-preview-section-label">Available icons</div>
-          <div id="toolbar-icon-list" class="toolbar-preview-icon-list" role="listbox" aria-label="Available app icons"></div>
-        </div>
       </div>
     </section>
+    <div id="toolbar-icon-picker-modal" class="toolbar-preview-icon-picker-modal" hidden aria-hidden="true">
+      <section class="toolbar-preview-icon-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="toolbar-icon-picker-title">
+        <header class="toolbar-preview-icon-picker-header">
+          <h2 id="toolbar-icon-picker-title">Choose icon</h2>
+          <button id="toolbar-icon-picker-close" class="toolbar-preview-icon-picker-close" type="button" aria-label="Close icon picker">×</button>
+        </header>
+        <input id="toolbar-icon-search" class="toolbar-preview-icon-search" type="search" placeholder="Search available icons…" aria-label="Search app icons">
+        <div class="toolbar-preview-icon-actions">
+          <button id="toolbar-paste-svg" type="button">Paste SVG</button>
+          <button id="toolbar-choose-svg" type="button">Choose SVG file</button>
+        </div>
+        <div class="toolbar-preview-section-label">Available icons</div>
+        <div id="toolbar-icon-list" class="toolbar-preview-icon-list" role="listbox" aria-label="Available app icons"></div>
+      </section>
+    </div>
   </main>
   <script src="./toolbar-settings.js"></script>
 </body>

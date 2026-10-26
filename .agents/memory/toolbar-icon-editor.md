@@ -3,8 +3,8 @@ name: Toolbar icon editor
 description: User requirements for keeping toolbar icon discovery and customization complete and accessible.
 ---
 
-The built-in icon search supplements custom SVG paste and file selection; it must never replace them. Keep search, the full built-in icon list, Paste SVG, Choose file, the live icon preview, and color controls available together in one scrollable editor. Keep Preserve icon colors compact rather than giving it a full row.
+Keep the key settings roomy and scrollable. Near the top, provide an icon-selection row that opens a separate, dismissible popup containing built-in search, the full icon list, Paste SVG, and Choose file. Do not put the search field or import buttons in the settings header or inline with the color controls. The selected toolbar key itself is the live preview; do not duplicate it in the header. Reserve visible placeholders for a future action chip and its icon.
 
-**Why:** The user repeatedly called out that adding icon search had removed or hidden custom SVG actions, and that splitting the controls into separate views made the full set difficult to use.
+**Why:** The user asked to restore the spacious layout after the inline icon grid crowded settings, and specifically said the picker must open as a popup that can be dismissed without closing key settings.
 
-**How to apply:** When adjusting toolbar customization, preserve every existing action and keep the built-in search/list visible alongside import, color, active-color, reset, and preserve-color controls.
+**How to apply:** Keep colors, reset, and the compact Preserve icon colors control in the scrollable key settings. Put icon search/import in its own popup with clear close, backdrop, and Escape behavior. Avoid adding a separate teal selected-state color; the toolbar key should use its configured active or background color, otherwise remain transparent.

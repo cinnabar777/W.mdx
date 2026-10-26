@@ -16,6 +16,7 @@ const toolbar = document.querySelector('#toolbar-preview');
 const tray = document.querySelector('#toolbar-holding-tray');
 const popup = document.querySelector('#toolbar-preview-popup');
 const editor = document.querySelector('#toolbar-preview-editor');
+const iconPicker = document.querySelector('#toolbar-icon-picker-modal');
 const status = document.querySelector('#toolbar-preview-status');
 const selectedTitle = document.querySelector('#toolbar-preview-selected-title');
 let config = normalizeBottomToolbarConfig(null);
@@ -26,6 +27,7 @@ let dragState = null;
 let dragTimer = null;
 let previousTap = { id: null, time: 0 };
 let editorKeyCache = null;
+let iconPickerOpen = false;
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 const PREVIEW_GROUP_ITEMS = {
@@ -120,6 +122,16 @@ function setCssVariable(name, value, fallback) {
   document.documentElement.style.setProperty(name, toCssColor(String(value)));
 }
 
+function setIconPickerOpen(open, clearSearch = false) {
+  iconPickerOpen = Boolean(open && selectedKey);
+  const search = document.querySelector('#toolbar-icon-search');
+  if (clearSearch && search) search.value = '';
+  if (!iconPicker) return;
+  iconPicker.hidden = !iconPickerOpen;
+  iconPicker.setAttribute('aria-hidden', String(!iconPickerOpen));
+  if (iconPickerOpen) renderIconCatalog();
+}
+
 function render() {
   if (!toolbar || !tray) return;
   renderBottomToolbarKeys(toolbar, config, svgIcons, {
@@ -129,6 +141,11 @@ function render() {
   });
   for (const button of toolbar.querySelectorAll('.toolbar-preview-key')) {
     const id = button.dataset.toolbarKey;
+    const style = config.styles[id] || {};
+    button.style.setProperty(
+      '--toolbar-key-active-bg-color',
+      toToolbarCssColor(style.activeBackgroundColor || style.backgroundColor || 'transparent')
+    );
     button.classList.toggle(
       'active',
       id === selectedKey || id === openPopupGroup
@@ -166,6 +183,10 @@ function render() {
   }
   refreshSelectedKeyEditor();
   renderIconCatalog();
+  if (iconPicker) {
+    iconPicker.hidden = !iconPickerOpen;
+    iconPicker.setAttribute('aria-hidden', String(!iconPickerOpen));
+  }
   renderPopupGroup();
 }
 
@@ -221,6 +242,7 @@ function onToolbarKeyClick(id) {
     return;
   }
   previousTap = { id, time: now };
+  setIconPickerOpen(false);
   selectedKey = id;
   openPopupGroup = isHiddenKey
     ? null
@@ -253,6 +275,10 @@ function renderPopupGroup() {
     button.classList.toggle('active', item.id === selectedPopupItem);
     button.dataset.previewPopupItem = item.id;
     const style = config.styles[item.id] || {};
+    button.style.setProperty(
+      '--toolbar-key-active-bg-color',
+      toToolbarCssColor(style.activeBackgroundColor || style.backgroundColor || 'transparent')
+    );
     if (style.iconColor) {
       button.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
     }
@@ -287,7 +313,8 @@ function refreshSelectedKeyEditor() {
   if (!editor) return;
   const definition = PREVIEW_ITEM_DEFINITIONS.get(selectedKey);
   if (selectedKey !== editorKeyCache) {
-    document.querySelector('#toolbar-icon-search').value = '';
+    const search = document.querySelector('#toolbar-icon-search');
+    if (search) search.value = '';
     editorKeyCache = selectedKey;
   }
   document.querySelector('#toolbar-add-custom').disabled = !definition;
@@ -298,41 +325,6 @@ function refreshSelectedKeyEditor() {
   selectedTitle.textContent = definition.title;
 
   const style = config.styles[selectedKey] || {};
-  const currentIcon = document.querySelector('#toolbar-current-icon');
-  const currentIconButton = document.querySelector('#toolbar-current-key-preview');
-  const iconMarkup = style.customSvg ||
-    (typeof definition.icon === 'string' && svgIcons[definition.icon]
-      ? svgIcons[definition.icon]
-      : typeof definition.icon === 'string' && definition.icon.includes('<svg')
-        ? definition.icon
-        : '');
-  currentIcon.style.color = style.iconColor
-    ? toToolbarCssColor(style.iconColor)
-    : 'var(--toolbar-icon-color)';
-  currentIconButton.style.setProperty(
-    '--toolbar-key-bg-color',
-    style.backgroundColor ? toToolbarCssColor(style.backgroundColor) : 'transparent'
-  );
-  currentIconButton.style.setProperty(
-    '--toolbar-key-active-bg-color',
-    style.activeBackgroundColor
-      ? toToolbarCssColor(style.activeBackgroundColor)
-      : style.backgroundColor
-        ? toToolbarCssColor(style.backgroundColor)
-        : 'transparent'
-  );
-  currentIconButton.style.color = style.iconColor
-    ? toToolbarCssColor(style.iconColor)
-    : 'var(--toolbar-icon-color)';
-  if (iconMarkup) {
-    currentIcon.innerHTML = sanitizeToolbarSvg(
-      iconMarkup,
-      style.preserveSvgColors === true,
-      document
-    );
-  } else {
-    currentIcon.textContent = definition.icon || '';
-  }
   const iconButton = document.querySelector('#toolbar-icon-color');
   const backgroundButton = document.querySelector('#toolbar-background-color');
   const activeButton = document.querySelector('#toolbar-active-background-color');
@@ -396,6 +388,7 @@ function renderIconCatalog() {
       style.customSvg = markup;
       style.preserveSvgColors = false;
       config.styles[selectedKey] = style;
+      setIconPickerOpen(false);
       render();
       saveConfig();
     });
@@ -602,6 +595,23 @@ document.querySelector('#toolbar-reset-key-style')?.addEventListener('click', ()
   render();
   saveConfig();
 });
+
+document.querySelector('#toolbar-open-icon-picker')?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  setIconPickerOpen(true, true);
+});
+iconPicker?.addEventListener('click', event => {
+  event.stopPropagation();
+  if (event.target === iconPicker) setIconPickerOpen(false);
+});
+document.querySelector('#toolbar-icon-picker-close')?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  setIconPickerOpen(false);
+  document.querySelector('#toolbar-open-icon-picker')?.focus();
+});
+
 function invokeSvgAction(action, fallbackMessage) {
   if (!selectedKey) {
     setStatus('Select a toolbar key before editing its icon.');
@@ -620,10 +630,16 @@ function invokeSvgAction(action, fallbackMessage) {
   setStatus('SVG editing is unavailable. Close and reopen toolbar settings, then try again.');
 }
 
-document.querySelector('#toolbar-paste-svg')?.addEventListener('click', () => {
+document.querySelector('#toolbar-paste-svg')?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  setIconPickerOpen(false);
   invokeSvgAction('paste', 'Opening SVG paste dialog…');
 });
-document.querySelector('#toolbar-choose-svg')?.addEventListener('click', () => {
+document.querySelector('#toolbar-choose-svg')?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  setIconPickerOpen(false);
   invokeSvgAction('file', 'Opening SVG file picker…');
 });
 document.querySelector('#toolbar-add-custom')?.addEventListener('click', () => {
@@ -644,6 +660,7 @@ document.querySelector('#toolbar-reset-layout')?.addEventListener('click', () =>
     hidden: [],
     styles: {}
   };
+  setIconPickerOpen(false);
   selectedKey = null;
   openPopupGroup = null;
   selectedPopupItem = null;
@@ -652,11 +669,13 @@ document.querySelector('#toolbar-reset-layout')?.addEventListener('click', () =>
 });
 
 document.querySelector('#toolbar-preview-close-editor')?.addEventListener('click', () => {
+  setIconPickerOpen(false);
   selectedKey = null;
   render();
 });
 
 document.addEventListener('click', event => {
+  if (iconPickerOpen) return;
   if (!editor?.classList.contains('visible')) return;
   const target = event.target;
   if (
@@ -671,7 +690,15 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || !editor?.classList.contains('visible')) return;
+  if (event.key !== 'Escape') return;
+  if (iconPickerOpen) {
+    event.preventDefault();
+    setIconPickerOpen(false);
+    document.querySelector('#toolbar-open-icon-picker')?.focus();
+    return;
+  }
+  if (!editor?.classList.contains('visible')) return;
+  setIconPickerOpen(false);
   selectedKey = null;
   render();
 });

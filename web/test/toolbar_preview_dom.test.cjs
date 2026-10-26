@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { JSDOM } = require('jsdom');
 
-test('toolbar settings preview keeps icon search, SVG actions, and key settings together', async () => {
+test('toolbar settings preview opens a dismissible icon picker popup above spacious key settings', async () => {
   const htmlPath = path.resolve(__dirname, '../toolbar-settings-preview.html');
   const html = fs.readFileSync(htmlPath, 'utf8');
   const dom = new JSDOM(html, { url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html' });
@@ -143,15 +143,25 @@ test('toolbar settings preview keeps icon search, SVG actions, and key settings 
     assert.deepEqual(edits, ['saveFile']);
     dom.window.document.querySelector('#toolbar-icon-color').click();
     assert.deepEqual(colorPicks, [['saveFile', 'iconColor']]);
-    assert.ok(dom.window.document.querySelector('#toolbar-icon-search'));
-    assert.ok(
-      dom.window.document.querySelector('#toolbar-icon-list [role="option"]'),
-      'the built-in icon catalog stays visible with the key controls'
+    const editor = dom.window.document.querySelector('#toolbar-preview-editor');
+    const picker = dom.window.document.querySelector('#toolbar-icon-picker-modal');
+    const pickerButton = dom.window.document.querySelector('#toolbar-open-icon-picker');
+    assert.equal(picker.hidden, true, 'the icon picker starts out of the way');
+    assert.equal(picker.parentElement, editor.parentElement, 'the picker is a separate popup, not editor content');
+    assert.equal(pickerButton.parentElement, editor.querySelector('.toolbar-preview-editor-content'));
+    assert.equal(dom.window.document.querySelector('#toolbar-current-key-preview'), null);
+    assert.equal(dom.window.document.querySelector('#toolbar-current-icon'), null);
+    assert.match(editor.textContent, /Action chip/);
+    assert.match(editor.textContent, /Action icon/);
+    pickerButton.click();
+    assert.equal(picker.hidden, false, 'tapping the icon row opens a separate popup');
+    assert.equal(picker.getAttribute('aria-hidden'), 'false');
+    assert.ok(picker.querySelector('#toolbar-icon-search'));
+    assert.ok(picker.querySelector('#toolbar-icon-list [role="option"]'));
+    assert.equal(
+      picker.querySelector('#toolbar-icon-search').parentElement,
+      picker.querySelector('.toolbar-preview-icon-picker-dialog')
     );
-    const editorContent = dom.window.document.querySelector('.toolbar-preview-editor-content');
-    assert.equal(dom.window.document.querySelector('#toolbar-icon-search').parentElement, editorContent);
-    assert.ok(editorContent.querySelector('[data-reset-property="iconColor"]'));
-    assert.ok(editorContent.querySelector('#toolbar-icon-list'));
     assert.equal(
       dom.window.document.querySelector('[data-reset-property="iconColor"]').disabled,
       false,
@@ -162,36 +172,49 @@ test('toolbar settings preview keeps icon search, SVG actions, and key settings 
       'toolbar-preview-editor-header',
       'Reset all stays in the title row'
     );
-    assert.equal(
-      dom.window.document.querySelector('#toolbar-current-key-preview').parentElement.className,
-      'toolbar-preview-editor-header',
-      'the current live icon preview stays in the title row'
-    );
-    for (const actionId of ['toolbar-paste-svg', 'toolbar-choose-svg']) {
-      assert.equal(
-        dom.window.document.querySelector(`#${actionId}`).parentElement.className,
-        'toolbar-preview-editor-header',
-        'custom SVG actions stay beside the live icon'
-      );
-    }
+    assert.equal(dom.window.document.querySelector('#toolbar-paste-svg').parentElement.className, 'toolbar-preview-icon-actions');
+    assert.equal(dom.window.document.querySelector('#toolbar-choose-svg').parentElement.className, 'toolbar-preview-icon-actions');
     assert.equal(dom.window.document.querySelector('#toolbar-reset-key-colors'), null);
     assert.notEqual(
-      dom.window.document
-        .querySelector('#toolbar-current-key-preview')
+      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]')
         .style.getPropertyValue('--toolbar-key-active-bg-color'),
       '',
-      'the live icon preview uses the configured active/background color'
+      'the actual toolbar key uses its configured color for active-state preview'
     );
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]')
+        .style.getPropertyValue('--toolbar-key-active-bg-color'),
+      'transparent',
+      'an unconfigured key does not get a separate accent/tap color'
+    );
+    dom.window.document.querySelector('#toolbar-icon-picker-close').click();
+    assert.equal(picker.hidden, true, 'the popup close control dismisses it');
+    assert.equal(editor.classList.contains('visible'), true, 'closing the picker leaves key settings open');
+    pickerButton.click();
+    picker.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.equal(picker.hidden, true, 'tapping the popup backdrop dismisses it');
+    assert.equal(editor.classList.contains('visible'), true, 'backdrop dismissal keeps key settings open');
+    pickerButton.click();
+    dom.window.document.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    );
+    assert.equal(picker.hidden, true, 'Escape dismisses the icon popup');
+    assert.equal(editor.classList.contains('visible'), true, 'Escape does not dismiss key settings');
+    pickerButton.click();
     dom.window.document.querySelector('#toolbar-paste-svg').click();
-    dom.window.document.querySelector('#toolbar-choose-svg').click();
     assert.deepEqual(JSON.parse(edits[1]), { itemId: 'saveFile', action: 'paste' });
+    assert.equal(picker.hidden, true, 'starting Paste closes the picker popup');
+    pickerButton.click();
+    dom.window.document.querySelector('#toolbar-choose-svg').click();
     assert.deepEqual(JSON.parse(edits[2]), { itemId: 'saveFile', action: 'file' });
+    pickerButton.click();
     const iconSearch = dom.window.document.querySelector('#toolbar-icon-search');
     iconSearch.value = 'bold';
     iconSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     const boldChoice = dom.window.document.querySelector('#toolbar-icon-list [role="option"]');
     assert.equal(boldChoice.getAttribute('aria-label'), 'Bold');
     boldChoice.click();
+    assert.equal(picker.hidden, true, 'choosing an icon dismisses the popup');
     assert.match(saves.at(-1).styles.saveFile.customSvg, /<svg/);
     dom.window.document
       .querySelector('[data-reset-property="iconColor"]')

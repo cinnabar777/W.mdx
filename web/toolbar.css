@@ -213,10 +213,11 @@ body.light-theme .popup-toolbar-strip {
   outline-offset: -2px;
 }
 
+.toolbar-preview-key:active,
 .toolbar-preview-key.active {
   background-color: var(
     --toolbar-key-active-bg-color,
-    var(--button-hover, rgba(255,255,255,.16))
+    transparent
   ) !important;
 }
 
