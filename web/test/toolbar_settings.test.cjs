@@ -45,6 +45,16 @@ test('bottom toolbar preview uses the same renderer, icon source, and toolbar st
   assert.match(fs.readFileSync(path.join(root, 'web/index.html'), 'utf8'), /toolbar\.css/);
   assert.match(sharedCss, /\.grouped-control-bar\s*\{/);
   assert.match(sharedCss, /\.grouped-key-btn\s*\{/);
+  assert.match(
+    sharedCss,
+    /\.grouped-key-btn\s*\{[^}]*touch-action:\s*none\s*!important/s,
+    'the main toolbar keys reserve pointer movement for swipe actions'
+  );
+  assert.match(
+    sharedCss,
+    /\.popup-strip-btn\.has-toolbar-swipe-action\s*\{[^}]*touch-action:\s*none\s*!important/s,
+    'popup keys with swipe actions reserve pointer movement for the action'
+  );
 });
 
 test('toolbar settings support drag ordering, a hidden-key tray, icon colors, and per-key SVG colors', () => {
@@ -79,7 +89,7 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /id="toolbar-preview-title-input"/);
   assert.match(html, /id="toolbar-edit-key-name"/);
   assert.match(html, /id="toolbar-delete-custom-group"[^>]*aria-label="Delete custom group"/);
-  assert.match(html, /grid-template-columns: minmax\(0, 1fr\) 44px/);
+  assert.match(html, /grid-template-columns: minmax\(0, 1fr\) 40px 30px/);
   assert.match(html, /border-radius: 50%/);
   assert.match(html, /z-index: 10002/);
   assert.match(html, /popup-open/);
@@ -90,6 +100,11 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(preferenceXml, /pref_toolbar_label_color/);
   assert.match(mainSource, /function runToolbarGestureAction/);
   assert.match(mainSource, /installPopupToolbarSwipeUp/);
+  assert.match(
+    mainSource,
+    /\{ id: OPEN_GROUP_ACTION_ID, title: 'Open group', icon: svgIcons\.folder \}/,
+    'the generic Open group action has a live toolbar icon'
+  );
   assert.match(mainSource, /getToolbarGestureIndicatorEntries/);
   assert.match(
     mainSource,

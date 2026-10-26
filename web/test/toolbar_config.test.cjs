@@ -309,6 +309,60 @@ test('runtime renderer creates the configured order with stable accessible key i
   );
 });
 
+test('runtime toolbar dispatches all eight swipe directions from a key', async () => {
+  const { renderBottomToolbarKeys } = await import('../src/toolbarRenderer.js');
+  const { TOOLBAR_SWIPE_GESTURE_IDS } = await import('../src/toolbarGestures.js');
+  const dom = new JSDOM('<div id="toolbar"></div>');
+  const toolbar = dom.window.document.querySelector('#toolbar');
+  const directions = {
+    swipeUp: [0, -60],
+    swipeDown: [0, 60],
+    swipeLeft: [-60, 0],
+    swipeRight: [60, 0],
+    swipeUpLeft: [-50, -50],
+    swipeUpRight: [50, -50],
+    swipeDownLeft: [-50, 50],
+    swipeDownRight: [50, 50]
+  };
+  const dispatched = [];
+  const [button] = renderBottomToolbarKeys(toolbar, {
+    order: ['undo'],
+    styles: {
+      undo: {
+        gestureActions: Object.fromEntries(
+          TOOLBAR_SWIPE_GESTURE_IDS.map(id => [id, 'bold'])
+        )
+      }
+    }
+  }, { undo: '<svg></svg>' }, {
+    onGesture: (_keyId, gestureId) => {
+      dispatched.push(gestureId);
+      return true;
+    }
+  });
+  assert.equal(button.classList.contains('has-toolbar-swipe-action'), true);
+
+  for (const gestureId of TOOLBAR_SWIPE_GESTURE_IDS) {
+    const [deltaX, deltaY] = directions[gestureId];
+    for (const [type, x, y] of [
+      ['pointerdown', 100, 100],
+      ['pointerup', 100 + deltaX, 100 + deltaY]
+    ]) {
+      const event = new dom.window.MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: x,
+        clientY: y
+      });
+      Object.defineProperty(event, 'pointerId', { value: 1 });
+      button.dispatchEvent(event);
+    }
+  }
+
+  assert.deepEqual(dispatched, TOOLBAR_SWIPE_GESTURE_IDS);
+});
+
 test('custom icons are made tintable by default and unsafe SVG content is stripped', async () => {
   const { sanitizeToolbarSvg } =
     await import('../src/toolbarRenderer.js');

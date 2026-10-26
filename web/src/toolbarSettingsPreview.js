@@ -9,6 +9,7 @@ import {
 } from './toolbarConfig.js';
 import {
   BUILT_IN_GESTURE_ACTION_IDS,
+  getToolbarGestureActionId,
   TOOLBAR_GESTURE_GROUPS,
   getToolbarGestureIndicatorEntries
 } from './toolbarGestures.js';
@@ -52,6 +53,7 @@ let hasAppliedToolbarConfig = false;
 let pendingDragCleanup = null;
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+const RESET_ICON_MARKUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>';
 const PREVIEW_GROUP_ITEMS = {
   heading: [
     { id: 'paragraph', title: 'Paragraph', icon: 'P' },
@@ -178,7 +180,7 @@ function setActionPickerOpen(open, clearSearch = false, target = 'gesture') {
   if (actionPickerOpen) renderActionCatalog();
 }
 
-function actionDefinitions() {
+function actionDefinitions(contextKey = selectedKey) {
   const definitions = new Map(PREVIEW_ITEM_DEFINITIONS);
   for (const [id, group] of Object.entries(config.customGroups)) {
     definitions.set(id, { id, title: group.title, icon: group.icon, kind: 'group' });
@@ -186,7 +188,7 @@ function actionDefinitions() {
   for (const [id, key] of Object.entries(config.customKeys || {})) {
     definitions.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
   }
-  if (actionPickerTarget !== 'custom-key' && config.popupGroups[selectedKey]) {
+  if (config.popupGroups[contextKey]) {
     definitions.set(OPEN_GROUP_ACTION_ID, {
       id: OPEN_GROUP_ACTION_ID,
       title: 'Open group',
@@ -197,8 +199,8 @@ function actionDefinitions() {
   return definitions;
 }
 
-function getActionDefinition(id) {
-  const definition = actionDefinitions().get(id);
+function getActionDefinition(id, contextKey = selectedKey) {
+  const definition = actionDefinitions(contextKey).get(id);
   if (!definition) return null;
   return {
     ...definition,
@@ -213,14 +215,13 @@ function getActionIconMarkup(item) {
   return typeof item.icon === 'string' ? item.icon : '';
 }
 
-function getAssignedGestureIconMarkup(style, gestureId) {
+function getAssignedGestureIconMarkup(style, gestureId, contextKey = selectedKey) {
   const svg = style?.gestureActionIcons?.[gestureId] ||
     (gestureId === 'swipeUp' ? style?.gestureActionIconSvg : '');
   if (svg) return sanitizeToolbarSvg(svg, false, document);
-  return getActionIconMarkup(getActionDefinition(
-    style?.gestureActions?.[gestureId] ||
-    (gestureId === 'swipeUp' ? style?.gestureAction : '')
-  ));
+  return getActionIconMarkup(
+    getActionDefinition(getToolbarGestureActionId(style, gestureId), contextKey)
+  );
 }
 
 function syncToolbarEditorOverlay(open) {
@@ -256,7 +257,7 @@ function render() {
     buttonClass: 'grouped-key-btn toolbar-preview-key',
     resolveCustomIcon: style => style.customSvg || '',
     resolveGestureActionIcon: (_actionId, _customSvg, keyId, gestureId) =>
-      getAssignedGestureIconMarkup(config.styles[keyId] || {}, gestureId),
+      getAssignedGestureIconMarkup(config.styles[keyId] || {}, gestureId, keyId),
     onKeyClick: onToolbarKeyClick
   });
   for (const button of toolbar.querySelectorAll('.toolbar-preview-key')) {
@@ -585,7 +586,7 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   labelElement.textContent = title;
   button.appendChild(labelElement);
   for (const { id: gestureId, position } of getToolbarGestureIndicatorEntries(style)) {
-    const gestureIcon = getAssignedGestureIconMarkup(style, gestureId);
+    const gestureIcon = getAssignedGestureIconMarkup(style, gestureId, item.id);
     if (gestureIcon) {
       const marker = document.createElement('span');
       marker.className =
@@ -721,9 +722,7 @@ function refreshSelectedKeyEditor() {
 }
 
 function getGestureActionId(style, gestureId) {
-  return style.gestureActions?.[gestureId] ||
-    (gestureId === 'swipeUp' ? style.gestureAction : '') ||
-    '';
+  return getToolbarGestureActionId(style, gestureId);
 }
 
 function renderGestureSections(style) {
@@ -777,10 +776,51 @@ function renderGestureSections(style) {
         selectedGestureId = gesture.id;
         setIconPickerOpen(true, true, 'gesture-action');
       });
-      row.append(actionButton, iconButton);
+
+      const resetButton = document.createElement('button');
+      resetButton.type = 'button';
+      resetButton.className = 'toolbar-preview-gesture-reset';
+      resetButton.dataset.gestureId = gesture.id;
+      resetButton.disabled = !actionId;
+      resetButton.innerHTML = RESET_ICON_MARKUP;
+      resetButton.setAttribute('aria-label', `Reset action for ${gesture.title}`);
+      resetButton.title = `Reset action for ${gesture.title}`;
+      resetButton.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        resetGestureAction(gesture.id);
+      });
+
+      row.append(actionButton, iconButton, resetButton);
       list.appendChild(row);
     }
   }
+}
+
+function resetGestureAction(gestureId) {
+  if (!selectedKey) return;
+  const style = config.styles[selectedKey];
+  if (!style || !getGestureActionId(style, gestureId)) return;
+
+  if (style.gestureActions) {
+    delete style.gestureActions[gestureId];
+    if (Object.keys(style.gestureActions).length === 0) {
+      delete style.gestureActions;
+    }
+  }
+  if (gestureId === 'swipeUp') {
+    delete style.gestureAction;
+    delete style.gestureActionIconSvg;
+  }
+  if (style.gestureActionIcons) {
+    delete style.gestureActionIcons[gestureId];
+    if (Object.keys(style.gestureActionIcons).length === 0) {
+      delete style.gestureActionIcons;
+    }
+  }
+  if (Object.keys(style).length === 0) delete config.styles[selectedKey];
+  render();
+  saveConfig();
 }
 
 function iconTitle(name) {
@@ -807,7 +847,11 @@ function renderIconCatalog() {
       typeof value === 'function' ? value('#00e5ff') : value,
       iconTitle(name)
     ])
-    .filter(([name, , title]) => `${name} ${title}`.toLowerCase().includes(query));
+    .filter(([name, , title]) => `${name} ${title}`.toLowerCase().includes(query))
+    .sort(([nameA, , titleA], [nameB, , titleB]) =>
+      titleA.localeCompare(titleB, undefined, { sensitivity: 'base', numeric: true }) ||
+      nameA.localeCompare(nameB, undefined, { sensitivity: 'base', numeric: true })
+    );
 
   for (const [name, markup, title] of icons) {
     if (typeof markup !== 'string' || !markup.includes('<svg')) continue;
@@ -863,8 +907,13 @@ function renderActionCatalog() {
     }))
     .filter(item =>
       `${item.id} ${item.title}`.toLowerCase().includes(query) &&
+        (actionPickerTarget !== 'custom-key' || item.id !== OPEN_GROUP_ACTION_ID) &&
       (actionPickerTarget !== 'custom-key' ||
         (item.id !== selectedKey && !customKeyActionWouldCycle(selectedKey, item.id)))
+      )
+    .sort((a, b) =>
+      a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true }) ||
+      a.id.localeCompare(b.id, undefined, { sensitivity: 'base', numeric: true })
     );
   list.replaceChildren();
 

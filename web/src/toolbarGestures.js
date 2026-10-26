@@ -35,6 +35,17 @@ export const TOOLBAR_GESTURE_IDS = Object.freeze(
   TOOLBAR_GESTURE_GROUPS.flatMap(group => group.gestures.map(gesture => gesture.id))
 );
 
+export const TOOLBAR_SWIPE_GESTURE_IDS = Object.freeze([
+  'swipeUp',
+  'swipeDown',
+  'swipeLeft',
+  'swipeRight',
+  'swipeUpLeft',
+  'swipeUpRight',
+  'swipeDownLeft',
+  'swipeDownRight'
+]);
+
 const CORNER_SWIPE_IDS = Object.freeze([
   'swipeUpLeft',
   'swipeUpRight',
@@ -56,12 +67,35 @@ const GESTURE_INDICATOR_POSITIONS = Object.freeze({
   swipeDownRight: 'bottom-right'
 });
 
-export function getToolbarGestureIndicatorEntries(style = {}) {
-  const actions = { ...(style.gestureActions || {}) };
-  if (!actions.swipeUp && style.gestureAction) {
-    actions.swipeUp = style.gestureAction;
+export function getToolbarGestureActionId(style = {}, gestureId) {
+  return style?.gestureActions?.[gestureId] ||
+    (gestureId === 'swipeUp' ? style?.gestureAction : '') ||
+    '';
+}
+
+export function hasToolbarSwipeActions(style = {}) {
+  return TOOLBAR_SWIPE_GESTURE_IDS.some(gestureId =>
+    Boolean(getToolbarGestureActionId(style, gestureId))
+  );
+}
+
+export function getToolbarSwipeGesture(deltaX, deltaY) {
+  if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return null;
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+  if (absX < 24 && absY < 24) return null;
+  if (absX >= 18 && absY >= 18 && absX >= absY * 0.4 && absY >= absX * 0.4) {
+    return `${deltaY < 0 ? 'swipeUp' : 'swipeDown'}${deltaX < 0 ? 'Left' : 'Right'}`;
   }
-  const hasCornerSwipe = CORNER_SWIPE_IDS.some(id => Boolean(actions[id]));
+  if (absY > absX * 1.2) return deltaY < 0 ? 'swipeUp' : 'swipeDown';
+  if (absX > absY * 1.2) return deltaX < 0 ? 'swipeLeft' : 'swipeRight';
+  return null;
+}
+
+export function getToolbarGestureIndicatorEntries(style = {}) {
+  const hasCornerSwipe = CORNER_SWIPE_IDS.some(id =>
+    Boolean(getToolbarGestureActionId(style, id))
+  );
   const positions = { ...GESTURE_INDICATOR_POSITIONS };
   if (hasCornerSwipe) {
     delete positions.longPress;
@@ -70,10 +104,11 @@ export function getToolbarGestureIndicatorEntries(style = {}) {
   }
   return TOOLBAR_GESTURE_GROUPS
     .flatMap(group => group.gestures)
-    .filter(gesture => Boolean(actions[gesture.id]) && positions[gesture.id])
+    .filter(gesture => Boolean(getToolbarGestureActionId(style, gesture.id)) &&
+      positions[gesture.id])
     .map(gesture => ({
       id: gesture.id,
-      actionId: actions[gesture.id],
+      actionId: getToolbarGestureActionId(style, gesture.id),
       position: positions[gesture.id]
     }));
 }

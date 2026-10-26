@@ -54,6 +54,9 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       saveFile: {
         iconColor: '#00ff00',
         backgroundColor: '#22000000'
+      },
+      format: {
+        gestureActions: { tap3: 'openGroup' }
       }
     }
   };
@@ -85,6 +88,11 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
         .map(button => button.dataset.toolbarKey),
       ['undo', 'lists', 'format', 'table', 'insert', 'menu']
     );
+    const openGroupIndicator = dom.window.document.querySelector(
+      '#toolbar-preview [data-toolbar-key="format"] .toolbar-key-gesture-indicator'
+    );
+    assert.ok(openGroupIndicator?.querySelector('svg'),
+      'the group action icon is rendered when no key editor is open');
     const visibleKey = dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]');
     visibleKey.click();
     assert.equal(collapseCalls.length, 1);
@@ -228,6 +236,15 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.equal(picker.getAttribute('aria-hidden'), 'false');
     assert.ok(picker.querySelector('#toolbar-icon-search'));
     assert.ok(picker.querySelector('#toolbar-icon-list [role="option"]'));
+    const iconTitles = [...picker.querySelectorAll('#toolbar-icon-list [role="option"]')]
+      .map(button => button.getAttribute('aria-label'));
+    assert.deepEqual(
+      iconTitles,
+      [...iconTitles].sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })
+      ),
+      'the icon catalog is alphabetized'
+    );
     assert.equal(
       picker.querySelector('#toolbar-icon-search').parentElement,
       picker.querySelector('.toolbar-preview-icon-picker-dialog')
@@ -293,6 +310,15 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       .click();
     assert.equal(actionPicker.hidden, false, 'the action row opens its own searchable picker');
     const actionSearch = dom.window.document.querySelector('#toolbar-action-search');
+    const actionTitles = [...actionPicker.querySelectorAll('#toolbar-action-list [role="option"]')]
+      .map(button => button.getAttribute('aria-label'));
+    assert.deepEqual(
+      actionTitles,
+      [...actionTitles].sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })
+      ),
+      'the action catalog is alphabetized'
+    );
     actionSearch.value = 'bold';
     actionSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     const boldAction = actionPicker.querySelector('[role="option"]');
@@ -311,6 +337,28 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     iconSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     picker.querySelector('#toolbar-icon-list [role="option"]').click();
     assert.match(saves.at(-1).styles.saveFile.gestureActionIcons.swipeUp, /<svg/);
+    const resetSwipeUp = dom.window.document.querySelector(
+      '.toolbar-preview-gesture-reset[data-gesture-id="swipeUp"]'
+    );
+    assert.equal(resetSwipeUp.disabled, false);
+    resetSwipeUp.click();
+    assert.equal(
+      saves.at(-1).styles.saveFile.gestureActions?.swipeUp,
+      undefined,
+      'reset removes the gesture action'
+    );
+    assert.equal(
+      saves.at(-1).styles.saveFile.gestureActionIcons?.swipeUp,
+      undefined,
+      'reset removes its custom icon override too'
+    );
+    assert.equal(
+      dom.window.document.querySelector(
+        '.toolbar-preview-gesture-icon[data-gesture-id="swipeUp"]'
+      ).disabled,
+      true,
+      'reset disables the now-unassigned gesture icon control'
+    );
 
     dom.window.document.querySelector('#toolbar-edit-key-name').click();
     const nameInput = dom.window.document.querySelector('#toolbar-preview-title-input');

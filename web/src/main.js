@@ -37,7 +37,12 @@ import {
   normalizeBottomToolbarConfig,
   orderBottomToolbarPopupItems
 } from './toolbarConfig.js';
-import { getToolbarGestureIndicatorEntries } from './toolbarGestures.js';
+import {
+  getToolbarGestureActionId,
+  getToolbarGestureIndicatorEntries,
+  getToolbarSwipeGesture,
+  hasToolbarSwipeActions
+} from './toolbarGestures.js';
 import {
   renderBottomToolbarKeys,
   sanitizeToolbarSvg,
@@ -3976,18 +3981,6 @@ async function setEditorMode(mode) {
   return activeAdapter;
 }
 
-function getToolbarSwipeGesture(deltaX, deltaY) {
-  const absX = Math.abs(deltaX);
-  const absY = Math.abs(deltaY);
-  if (absX < 24 && absY < 24) return null;
-  if (absX >= 18 && absY >= 18 && absX >= absY * 0.4 && absY >= absX * 0.4) {
-    return `${deltaY < 0 ? 'swipeUp' : 'swipeDown'}${deltaX < 0 ? 'Left' : 'Right'}`;
-  }
-  if (absY > absX * 1.2) return deltaY < 0 ? 'swipeUp' : 'swipeDown';
-  if (absX > absY * 1.2) return deltaX < 0 ? 'swipeLeft' : 'swipeRight';
-  return null;
-}
-
 function installToolbarTapActions(container) {
   if (!container || container.dataset.toolbarTapActionsInstalled === 'true') return;
   container.dataset.toolbarTapActionsInstalled = 'true';
@@ -4085,8 +4078,10 @@ function setupGroupedControlBar() {
         : svgIcons[icon] || icon || '';
     },
     onGesture: (id, gestureId, event, button) => {
-      const actionId = bottomToolbarConfig.styles[id]?.gestureActions?.[gestureId] ||
-        (gestureId === 'swipeUp' ? bottomToolbarConfig.styles[id]?.gestureAction : '');
+      const actionId = getToolbarGestureActionId(
+        bottomToolbarConfig.styles[id],
+        gestureId
+      );
       return actionId ? runToolbarGestureAction(actionId, button) : false;
     },
     onKeyClick: (id, event) => {
@@ -4381,7 +4376,8 @@ function createRuntimeToolbarItemRegistry() {
     { id: 'historyBack', title: 'Back in Navigation History', icon: svgIcons.undo },
     { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
     { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
-    { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough }
+    { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough },
+    { id: OPEN_GROUP_ACTION_ID, title: 'Open group', icon: svgIcons.folder }
   ]) {
     registry.set(item.id, item);
   }
@@ -4527,7 +4523,7 @@ function installPopupToolbarSwipeUp(button, styleId) {
     if (event.button !== undefined && event.button !== 0) return;
     clearLongPressTimer();
     longPressHandled = false;
-    pointerStart = { x: event.clientX, y: event.clientY };
+    pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
     try {
       button.setPointerCapture(event.pointerId);
     } catch {
@@ -4546,6 +4542,8 @@ function installPopupToolbarSwipeUp(button, styleId) {
     }
   }, { capture: true });
   button.addEventListener('pointermove', event => {
+    if (pointerStart?.pointerId !== undefined &&
+        event.pointerId !== pointerStart.pointerId) return;
     if (!pointerStart || longPressTimer === null) return;
     if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 8) {
       clearLongPressTimer();
@@ -4553,6 +4551,8 @@ function installPopupToolbarSwipeUp(button, styleId) {
   }, { capture: true });
   button.addEventListener('pointerup', event => {
     clearLongPressTimer();
+    if (pointerStart?.pointerId !== undefined &&
+        event.pointerId !== pointerStart.pointerId) return;
     if (!pointerStart) return;
     if (longPressHandled) {
       longPressHandled = false;
@@ -4566,8 +4566,7 @@ function installPopupToolbarSwipeUp(button, styleId) {
     const gestureId = getToolbarSwipeGesture(deltaX, deltaY);
     if (!gestureId) return;
     const style = bottomToolbarConfig.styles[styleId] || {};
-    const actionId = style.gestureActions?.[gestureId] ||
-      (gestureId === 'swipeUp' ? style.gestureAction : '');
+    const actionId = getToolbarGestureActionId(style, gestureId);
     if (!actionId || !runToolbarGestureAction(actionId, button)) return;
     button.dataset.toolbarGestureSuppressClick = 'true';
     event.preventDefault();
@@ -5297,6 +5296,7 @@ function togglePopupStrip(groupKey, targetBtn, items) {
     btn.className = 'popup-strip-btn';
     const styleId = item.styleId || item.id || item.command;
     const style = styleId ? bottomToolbarConfig.styles[styleId] || {} : {};
+    btn.classList.toggle('has-toolbar-swipe-action', hasToolbarSwipeActions(style));
     btn.classList.toggle('toolbar-key-force-label', style.forceShowLabel === true);
     if (styleId) btn.dataset.toolbarStyleId = styleId;
     if (style.iconColor) {

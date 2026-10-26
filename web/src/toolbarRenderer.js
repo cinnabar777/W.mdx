@@ -1,5 +1,10 @@
 import { BOTTOM_TOOLBAR_ITEMS, normalizeBottomToolbarConfig } from './toolbarConfig.js';
-import { getToolbarGestureIndicatorEntries } from './toolbarGestures.js';
+import {
+  getToolbarGestureActionId,
+  getToolbarGestureIndicatorEntries,
+  getToolbarSwipeGesture,
+  hasToolbarSwipeActions
+} from './toolbarGestures.js';
 
 export function toToolbarCssColor(value) {
   if (typeof value !== 'string') return value;
@@ -173,6 +178,7 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     button.setAttribute('data-toolbar-kind', definition.kind);
 
     const style = config.styles[id] || {};
+    button.classList.toggle('has-toolbar-swipe-action', hasToolbarSwipeActions(style));
     if (style.iconColor) {
       button.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
     }
@@ -253,10 +259,8 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
       } catch {
         // Some embedded WebView versions do not expose pointer capture.
       }
-      if (
-        config.styles[id]?.gestureActions?.longPress &&
-        typeof options.onGesture === 'function'
-      ) {
+      if (getToolbarGestureActionId(config.styles[id], 'longPress') &&
+          typeof options.onGesture === 'function') {
         longPressTimer = setTimeout(() => {
           longPressTimer = null;
           if (!pointerStart) return;
@@ -268,6 +272,8 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
       }
     }, { capture: true });
     button.addEventListener('pointermove', event => {
+      if (pointerStart?.pointerId !== undefined &&
+          event.pointerId !== pointerStart.pointerId) return;
       if (!pointerStart || longPressTimer === null) return;
       if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 8) {
         clearLongPressTimer();
@@ -275,6 +281,8 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     }, { capture: true });
     button.addEventListener('pointerup', event => {
       clearLongPressTimer();
+      if (pointerStart?.pointerId !== undefined &&
+          event.pointerId !== pointerStart.pointerId) return;
       if (!pointerStart) {
         pointerStart = null;
         return;
@@ -288,17 +296,7 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
       const deltaX = event.clientX - pointerStart.x;
       const deltaY = event.clientY - pointerStart.y;
       pointerStart = null;
-      const absX = Math.abs(deltaX);
-      const absY = Math.abs(deltaY);
-      let gestureId = null;
-      if (absX < 24 && absY < 24) return;
-      if (absX >= 18 && absY >= 18 && absX >= absY * 0.4 && absY >= absX * 0.4) {
-        gestureId = `${deltaY < 0 ? 'swipeUp' : 'swipeDown'}${deltaX < 0 ? 'Left' : 'Right'}`;
-      } else if (absY > absX * 1.2) {
-        gestureId = deltaY < 0 ? 'swipeUp' : 'swipeDown';
-      } else if (absX > absY * 1.2) {
-        gestureId = deltaX < 0 ? 'swipeLeft' : 'swipeRight';
-      }
+      const gestureId = getToolbarSwipeGesture(deltaX, deltaY);
       if (!gestureId) return;
       const handled = typeof options.onGesture === 'function'
         ? options.onGesture(id, gestureId, event, button)
@@ -306,8 +304,8 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
           ? options.onSwipeUp(id, event, button)
           : false;
       if (handled) {
-          button.dataset.toolbarGestureSuppressClick = 'true';
-          event.preventDefault();
+        button.dataset.toolbarGestureSuppressClick = 'true';
+        event.preventDefault();
       }
     }, { capture: true });
     button.addEventListener('pointercancel', () => {

@@ -65,6 +65,11 @@ body.light-theme .popup-toolbar-strip {
   white-space: nowrap !important;
   user-select: none !important;
   gap: 4px !important;
+  touch-action: pan-x;
+}
+
+.popup-strip-btn.has-toolbar-swipe-action {
+  touch-action: none !important;
 }
 
 .popup-strip-btn .toolbar-key-icon {
@@ -143,6 +148,7 @@ body.light-theme .popup-toolbar-strip {
   max-width: 60px !important;
   user-select: none !important;
   -webkit-tap-highlight-color: transparent;
+  touch-action: none !important;
 }
 
 .grouped-key-btn .toolbar-key-icon {
