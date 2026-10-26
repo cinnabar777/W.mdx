@@ -91,9 +91,13 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
       saveAsTextPack: {
         iconColor: '#123456',
         customSvg: '<svg><path d="M0 0"/></svg>',
-        preserveSvgColors: true
+        preserveSvgColors: true,
+        title: 'Save as Markdown Pack',
+        gestureAction: 'bold',
+        gestureActionIconSvg: '<svg><path d="M1 1"/></svg>'
       },
-      inventedAction: { iconColor: '#ffffff' }
+      inventedAction: { iconColor: '#ffffff' },
+      undo: { gestureAction: 'inventedAction', title: 'Invalid target' }
     }
   });
 
@@ -105,9 +109,14 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
   assert.deepEqual(config.styles.saveAsTextPack, {
     iconColor: '#123456',
     customSvg: '<svg><path d="M0 0"/></svg>',
-    preserveSvgColors: true
+    preserveSvgColors: true,
+    title: 'Save as Markdown Pack',
+    gestureAction: 'bold',
+    gestureActionIconSvg: '<svg><path d="M1 1"/></svg>'
   });
   assert.equal(config.styles.inventedAction, undefined);
+  assert.equal(config.styles.undo.gestureAction, undefined);
+  assert.equal(config.styles.undo.title, 'Invalid target');
 });
 
 test('toolbar config always leaves the Menu key available when every key is hidden', async () => {

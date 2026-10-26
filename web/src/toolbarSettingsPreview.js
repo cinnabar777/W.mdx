@@ -1237,11 +1237,9 @@ function invokeSvgAction(action, fallbackMessage) {
   if (typeof bridge?.editBottomToolbarIcon === 'function') {
     setStatus(fallbackMessage);
     try {
-      bridge.editBottomToolbarIcon(JSON.stringify({
-        itemId: selectedKey,
-        action,
-        property: iconPickerTarget === 'action' ? 'gestureActionIconSvg' : 'customSvg'
-      }));
+      const request = { itemId: selectedKey, action };
+      if (iconPickerTarget === 'action') request.property = 'gestureActionIconSvg';
+      bridge.editBottomToolbarIcon(JSON.stringify(request));
     } catch (error) {
       setStatus(`Could not open the SVG action: ${error.message || 'unknown error'}`);
     }

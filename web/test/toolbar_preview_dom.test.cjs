@@ -32,6 +32,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
   const previousDocument = global.document;
   const edits = [];
   const collapseCalls = [];
+  const overlayCalls = [];
   const colorPicks = [];
   const saves = [];
   const settings = {
@@ -59,7 +60,8 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     },
     pickBottomToolbarColor: (id, property) => colorPicks.push([id, property]),
     editBottomToolbarIcon: id => edits.push(id),
-    collapseToolbarAppearance: () => collapseCalls.push(true)
+    collapseToolbarAppearance: () => collapseCalls.push(true),
+    setToolbarEditorOverlay: open => overlayCalls.push(open)
   };
   global.window = dom.window;
   global.document = dom.window.document;
@@ -110,7 +112,8 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     );
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('above-group'),
-      true
+      false,
+      'the editor uses the full overlay instead of being positioned above a group'
     );
     assert.deepEqual(
       [...popup.querySelectorAll('[data-preview-popup-item]')].map(button => button.title),
@@ -157,7 +160,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     );
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-editor').classList.contains('above-group'),
-      true
+      false
     );
     dom.window.document.querySelector('#toolbar-add-custom').click();
     assert.equal(
@@ -214,6 +217,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       'transparent',
       'an unconfigured key does not get a separate accent/tap color'
     );
+    assert.deepEqual(overlayCalls, [true], 'opening a key editor expands over the native global settings');
     dom.window.document.querySelector('#toolbar-icon-picker-close').click();
     assert.equal(picker.hidden, true, 'the popup close control dismisses it');
     assert.equal(editor.classList.contains('visible'), true, 'closing the picker leaves key settings open');
@@ -243,6 +247,38 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     boldChoice.click();
     assert.equal(picker.hidden, true, 'choosing an icon dismisses the popup');
     assert.match(saves.at(-1).styles.saveFile.customSvg, /<svg/);
+    const actionPicker = dom.window.document.querySelector('#toolbar-action-picker-modal');
+    dom.window.document.querySelector('#toolbar-swipe-up-action').click();
+    assert.equal(actionPicker.hidden, false, 'the action row opens its own searchable picker');
+    const actionSearch = dom.window.document.querySelector('#toolbar-action-search');
+    actionSearch.value = 'bold';
+    actionSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    const boldAction = actionPicker.querySelector('[role="option"]');
+    assert.equal(boldAction.getAttribute('aria-label'), 'Bold');
+    boldAction.click();
+    assert.equal(actionPicker.hidden, true);
+    assert.equal(saves.at(-1).styles.saveFile.gestureAction, 'bold');
+    assert.match(
+      dom.window.document.querySelector('#toolbar-swipe-up-icon').innerHTML,
+      /<svg/,
+      'choosing an action fills its matching icon automatically'
+    );
+    dom.window.document.querySelector('#toolbar-swipe-up-icon').click();
+    assert.equal(picker.hidden, false, 'the assigned action icon opens the existing icon picker');
+    iconSearch.value = 'italic';
+    iconSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    picker.querySelector('#toolbar-icon-list [role="option"]').click();
+    assert.match(saves.at(-1).styles.saveFile.gestureActionIconSvg, /<svg/);
+
+    dom.window.document.querySelector('#toolbar-edit-key-name').click();
+    const nameInput = dom.window.document.querySelector('#toolbar-preview-title-input');
+    nameInput.value = 'Save quick';
+    dom.window.document.querySelector('#toolbar-save-key-name').click();
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-selected-title').textContent,
+      'Save quick'
+    );
+    assert.equal(saves.at(-1).styles.saveFile.title, 'Save quick');
     dom.window.document
       .querySelector('[data-reset-property="iconColor"]')
       .click();

@@ -60,7 +60,19 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /id="toolbar-icon-list"/);
   assert.match(html, /toolbar-preview-action-assignment/);
   assert.match(html, /Swipe up/);
-  assert.match(html, /Assigned icon placeholder/);
+  assert.match(html, /id="toolbar-swipe-up-icon"/);
+  assert.match(html, /id="toolbar-action-picker-modal"/);
+  assert.match(html, /id="toolbar-action-search"/);
+  assert.match(html, /id="toolbar-preview-title-input"/);
+  assert.match(html, /id="toolbar-edit-key-name"/);
+  assert.match(html, /id="toolbar-delete-custom-group"[^>]*aria-label="Delete custom group"/);
+  assert.match(html, /grid-template-columns: minmax\(0, 1fr\) 48px/);
+  assert.match(sharedCss, /--toolbar-label-display/);
+  assert.match(preferenceXml, /pref_toolbar_show_labels/);
+  assert.match(preferenceXml, /pref_toolbar_label_size/);
+  assert.match(preferenceXml, /pref_toolbar_label_color/);
+  assert.match(mainSource, /function runToolbarGestureAction/);
+  assert.match(mainSource, /installPopupToolbarSwipeUp/);
   assert.doesNotMatch(html, /Action chip|Action icon/);
   assert.match(settingsSource, /createPreviewPopupKey/);
   assert.match(settingsSource, /renderHeldPopupKeys/);
@@ -94,8 +106,8 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(androidSource, /pickBottomToolbarColor/);
   assert.match(androidSource, /editBottomToolbarIcon/);
   assert.match(androidSource, /editBottomToolbarIcon\(request: String\)/);
-  assert.match(androidSource, /"paste" -> pasteToolbarSvg\(itemId\)/);
-  assert.match(androidSource, /"file" -> chooseToolbarSvgFile\(itemId\)/);
+  assert.match(androidSource, /"paste" -> pasteToolbarSvg\(itemId, property\)/);
+  assert.match(androidSource, /"file" -> chooseToolbarSvgFile\(itemId, property\)/);
   assert.match(androidSource, /pref_toolbar_padding/);
   assert.match(mainSource, /--toolbar-padding/);
   assert.match(preferenceXml, /app:key="pref_toolbar_padding"/);
@@ -171,7 +183,7 @@ test('choosing a color in a transparent color picker makes the selected color vi
   assert.doesNotMatch(preferenceXml, /pref_toolbar_active_icon_color|Active Icon Color/);
   assert.match(
     sharedCss,
-    /\.grouped-key-btn svg\s*\{\s*color:\s*var\(--toolbar-key-icon-color/
+    /\.grouped-key-btn \.toolbar-key-icon svg\s*\{[^}]*color:\s*var\(--toolbar-key-icon-color/
   );
 });
 
@@ -189,17 +201,16 @@ test('global toolbar settings collapse above a bottom-docked toolbar preview', (
     androidSource,
     /preferencesView\.layoutParams = android\.widget\.LinearLayout\.LayoutParams\([\s\S]*?WRAP_CONTENT/
   );
-  const preferencesViewAdd = androidSource.search(/wrapper\.addView\(\s*preferencesView/);
+  const preferencesViewAdd = androidSource.search(/baseLayout\.addView\(\s*preferencesView/);
   const previewAdd = androidSource.search(/wrapper\.addView\(\s*preview/);
   assert.ok(
     preferencesViewAdd >= 0 &&
       previewAdd > preferencesViewAdd,
     'the content-sized settings list must be placed above a preview that uses the remaining space'
   );
-  assert.match(
-    androidSource.slice(previewAdd, previewAdd + 500),
-    /0,\s*1f/
-  );
+  assert.match(androidSource, /fun setToolbarEditorOverlay\(expanded: Boolean\)/);
+  assert.match(androidSource, /if \(toolbarEditorOverlayExpanded\) 0 else preferenceBottom/);
+  assert.match(androidSource, /baseLayout\.addView\(\s*android\.view\.View\(context\),\s*android\.widget\.LinearLayout\.LayoutParams\([\s\S]*?0,\s*1f/);
 });
 
 test('runtime toolbar consumes the saved bottom toolbar configuration', () => {

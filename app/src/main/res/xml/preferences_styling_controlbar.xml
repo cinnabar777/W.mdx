@@ -58,7 +58,7 @@
 
     <com.wmdx.markdownapp.ResetSeekBarPreference
         app:key="pref_toolbar_label_size"
-        app:title="Key Label Font Size (sp)"
+        app:title="Key Label Font Size (px)"
         app:summary="Text size for toolbar key labels"
         android:defaultValue="8"
         app:min="4"
