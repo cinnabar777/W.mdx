@@ -48,10 +48,12 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 1,
+  version: 3,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
+  holding: [],
+  customGroups: {},
   styles: {}
 });
 
@@ -65,12 +67,10 @@ function createDefaultPopupGroups() {
 }
 
 export function orderBottomToolbarPopupItems(groupId, items, popupGroups = {}) {
-  const allowedIds = BOTTOM_TOOLBAR_GROUP_ITEM_IDS[groupId];
-  if (!allowedIds) return [...items];
   const groupConfig = popupGroups?.[groupId] || {};
   const hidden = new Set(
     Array.isArray(groupConfig.hidden)
-      ? groupConfig.hidden.filter(id => allowedIds.includes(id))
+      ? groupConfig.hidden
       : []
   );
   const byId = new Map();
@@ -81,14 +81,10 @@ export function orderBottomToolbarPopupItems(groupId, items, popupGroups = {}) {
   const ordered = [];
   const configuredOrder = Array.isArray(groupConfig.order)
     ? groupConfig.order
-    : allowedIds;
+    : items.map(item => item.id || item.command);
   for (const id of configuredOrder) {
     const item = byId.get(id);
     if (item && !hidden.has(id) && !ordered.includes(item)) ordered.push(item);
-  }
-  for (const item of items) {
-    const id = item.id || item.command;
-    if (!hidden.has(id) && !ordered.includes(item)) ordered.push(item);
   }
   return ordered;
 }
@@ -113,65 +109,159 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       order: [...DEFAULT_BOTTOM_TOOLBAR_CONFIG.order],
       hidden: [],
       popupGroups: createDefaultPopupGroups(),
+      holding: [],
+      customGroups: {},
       styles: {}
     };
   }
 
-  const allowed = new Set(BOTTOM_TOOLBAR_ITEM_IDS);
-  const hidden = [];
-  if (Array.isArray(parsed.hidden)) {
-    for (const id of parsed.hidden) {
-      if (allowed.has(id) && !hidden.includes(id)) hidden.push(id);
+  const customGroups = {};
+  if (parsed.customGroups && typeof parsed.customGroups === 'object' &&
+      !Array.isArray(parsed.customGroups)) {
+    for (const [id, rawGroup] of Object.entries(parsed.customGroups)) {
+      if (!/^custom-group-[a-z0-9-]{1,48}$/i.test(id) ||
+          !rawGroup || typeof rawGroup !== 'object' || Array.isArray(rawGroup)) continue;
+      const title = typeof rawGroup.title === 'string'
+        ? rawGroup.title.trim().slice(0, 48)
+        : '';
+      if (!title) continue;
+      const icon = typeof rawGroup.icon === 'string' &&
+        /^[a-z0-9_-]{1,48}$/i.test(rawGroup.icon)
+        ? rawGroup.icon
+        : 'folder';
+      customGroups[id] = { title, icon };
     }
   }
 
-  const order = [];
-  if (Array.isArray(parsed.order)) {
-    for (const id of parsed.order) {
-      if (allowed.has(id) && !hidden.includes(id) && !order.includes(id)) {
-        order.push(id);
+  const rootIds = [...BOTTOM_TOOLBAR_ITEM_IDS, ...Object.keys(customGroups)];
+  const groupIds = new Set([
+    ...Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS),
+    ...Object.keys(customGroups)
+  ]);
+  const keyIds = new Set([...rootIds, ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS]);
+  const legacyHidden = normalizeUniqueIds(parsed.hidden, keyIds);
+  let order = normalizeUniqueIds(parsed.order, keyIds)
+    .filter(id => !legacyHidden.includes(id));
+  const popupGroups = {};
+  for (const id of new Set([
+    ...Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS),
+    ...Object.keys(customGroups)
+  ])) {
+    popupGroups[id] = { order: [], hidden: [] };
+  }
+
+  const rawPopupGroups = parsed.popupGroups && typeof parsed.popupGroups === 'object' &&
+    !Array.isArray(parsed.popupGroups)
+    ? parsed.popupGroups
+    : {};
+  const legacyHeldKeys = [];
+  for (const groupId of Object.keys(popupGroups)) {
+    const rawGroup = rawPopupGroups[groupId];
+    if (!rawGroup || typeof rawGroup !== 'object' || Array.isArray(rawGroup)) {
+      if (groupId in BOTTOM_TOOLBAR_GROUP_ITEM_IDS) {
+        popupGroups[groupId].order = [...BOTTOM_TOOLBAR_GROUP_ITEM_IDS[groupId]];
+      }
+      continue;
+    }
+    const groupOrder = [];
+    if (Array.isArray(rawGroup.order)) {
+      for (const id of rawGroup.order) {
+        if (keyIds.has(id) && id !== groupId &&
+            !Object.values(popupGroups).some(group => group.order.includes(id)) &&
+            !groupOrder.includes(id)) {
+          groupOrder.push(id);
+        }
       }
     }
+    if (Array.isArray(rawGroup.hidden)) {
+      for (const id of rawGroup.hidden) {
+        if (keyIds.has(id) && !legacyHeldKeys.includes(id)) {
+          legacyHeldKeys.push(id);
+        }
+      }
+    }
+    popupGroups[groupId] = { order: groupOrder, hidden: [] };
   }
 
-  for (const id of BOTTOM_TOOLBAR_ITEM_IDS) {
-    if (!order.includes(id) && !hidden.includes(id)) order.push(id);
+  // A folder may contain another folder, but never itself or an ancestor.
+  // Remove only the edge that would close a cycle; all other keys stay saved.
+  const acceptedChildren = new Map();
+  for (const groupId of Object.keys(popupGroups)) {
+    const accepted = [];
+    for (const childId of popupGroups[groupId].order) {
+      if (groupIds.has(childId) &&
+          hasGroupPath(acceptedChildren, childId, groupId)) {
+        continue;
+      }
+      accepted.push(childId);
+      if (groupIds.has(childId)) {
+        const children = acceptedChildren.get(groupId) || [];
+        children.push(childId);
+        acceptedChildren.set(groupId, children);
+      }
+    }
+    popupGroups[groupId].order = accepted;
   }
+  const assignedKeys = new Set(
+    Object.values(popupGroups).flatMap(group => group.order)
+  );
+
+  let holding = normalizeUniqueIds(parsed.holding, keyIds);
+  for (const id of legacyHidden) {
+    if (!holding.includes(id)) holding.push(id);
+  }
+  for (const id of legacyHeldKeys) {
+    if (!holding.includes(id)) holding.push(id);
+  }
+  holding = holding.filter(id => !assignedKeys.has(id));
+
+  // A hidden folder is still a key in the shared tray. Its direct members are
+  // released there too, while nested folders retain their own contents.
+  for (const groupId of groupIds) {
+    if (Number(parsed.version) >= 3 || !legacyHidden.includes(groupId)) continue;
+    const members = popupGroups[groupId]?.order || [];
+    for (const id of members) {
+      if (!holding.includes(id)) holding.push(id);
+      assignedKeys.delete(id);
+    }
+    popupGroups[groupId].order = [];
+  }
+
+  order = order.filter(id => {
+    return !holding.includes(id) && !assignedKeys.has(id);
+  });
+  for (const id of rootIds) {
+    if (order.includes(id) || holding.includes(id) || assignedKeys.has(id)) continue;
+    if (groupIds.has(id) && popupGroups[id]?.order.length === 0) {
+      holding.push(id);
+    } else {
+      order.push(id);
+    }
+  }
+  for (const id of BOTTOM_TOOLBAR_POPUP_ITEM_IDS) {
+    if (!order.includes(id) && !assignedKeys.has(id) && !holding.includes(id)) {
+      holding.push(id);
+    }
+  }
+  order = order.filter(id => !holding.includes(id) && !assignedKeys.has(id));
   if (order.length === 0) {
-    hidden.splice(hidden.indexOf('menu'), hidden.includes('menu') ? 1 : 0);
+    for (const group of Object.values(popupGroups)) {
+      group.order = group.order.filter(id => id !== 'menu');
+    }
+    assignedKeys.delete('menu');
+    holding = holding.filter(id => id !== 'menu');
     order.push('menu');
   }
-
-  const popupGroups = createDefaultPopupGroups();
-  if (parsed.popupGroups && typeof parsed.popupGroups === 'object' && !Array.isArray(parsed.popupGroups)) {
-    for (const [groupId, allowedIds] of Object.entries(BOTTOM_TOOLBAR_GROUP_ITEM_IDS)) {
-      const rawGroup = parsed.popupGroups[groupId];
-      if (!rawGroup || typeof rawGroup !== 'object' || Array.isArray(rawGroup)) continue;
-      const groupHidden = [];
-      if (Array.isArray(rawGroup.hidden)) {
-        for (const id of rawGroup.hidden) {
-          if (allowedIds.includes(id) && !groupHidden.includes(id)) groupHidden.push(id);
-        }
-      }
-      const groupOrder = [];
-      if (Array.isArray(rawGroup.order)) {
-        for (const id of rawGroup.order) {
-          if (allowedIds.includes(id) && !groupHidden.includes(id) && !groupOrder.includes(id)) {
-            groupOrder.push(id);
-          }
-        }
-      }
-      for (const id of allowedIds) {
-        if (!groupOrder.includes(id) && !groupHidden.includes(id)) groupOrder.push(id);
-      }
-      popupGroups[groupId] = { order: groupOrder, hidden: groupHidden };
-    }
-  }
+  const hidden = holding.filter(id => rootIds.includes(id));
 
   const styles = {};
   if (parsed.styles && typeof parsed.styles === 'object' && !Array.isArray(parsed.styles)) {
-    for (const id of BOTTOM_TOOLBAR_STYLE_IDS) {
-      const style = parsed.styles[id];
+    const allowedStyleIds = new Set([
+      ...BOTTOM_TOOLBAR_STYLE_IDS,
+      ...Object.keys(customGroups)
+    ]);
+    for (const [id, style] of Object.entries(parsed.styles)) {
+      if (!allowedStyleIds.has(id)) continue;
       if (!style || typeof style !== 'object' || Array.isArray(style)) continue;
       const normalized = {};
       for (const property of ['iconColor', 'backgroundColor', 'activeBackgroundColor']) {
@@ -189,7 +279,28 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     }
   }
 
-  return { version: 1, order, hidden, popupGroups, styles };
+  return { version: 3, order, hidden, popupGroups, holding, customGroups, styles };
+}
+
+function hasGroupPath(groupChildren, start, target, visited = new Set()) {
+  if (start === target) return true;
+  if (visited.has(start)) return false;
+  visited.add(start);
+  for (const child of groupChildren.get(start) || []) {
+    if (hasGroupPath(groupChildren, child, target, visited)) return true;
+  }
+  return false;
+}
+
+function normalizeUniqueIds(rawIds, allowedIds) {
+  if (!Array.isArray(rawIds)) return [];
+  const result = [];
+  for (const id of rawIds) {
+    if (typeof id === 'string' && allowedIds.has(id) && !result.includes(id)) {
+      result.push(id);
+    }
+  }
+  return result;
 }
 
 function isSafeCssColor(value) {

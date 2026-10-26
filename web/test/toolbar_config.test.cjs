@@ -20,7 +20,7 @@ test('bottom toolbar configuration ignores unknown and duplicate keys but restor
     'insert'
   ]);
   assert.deepEqual(config.hidden, ['undo']);
-  assert.equal(config.version, 1);
+  assert.equal(config.version, 3);
   assert.deepEqual([...config.order, ...config.hidden].sort(), [...BOTTOM_TOOLBAR_ITEM_IDS].sort());
 });
 
@@ -42,7 +42,7 @@ test('invalid saved configuration falls back to the current toolbar order', asyn
   );
 });
 
-test('popup group actions can be reordered or hidden without losing sibling actions', async () => {
+test('popup actions can be reordered and removed from their former group into the shared holding area', async () => {
   const {
     BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
     BOTTOM_TOOLBAR_POPUP_ITEM_IDS,
@@ -58,17 +58,17 @@ test('popup group actions can be reordered or hidden without losing sibling acti
     }
   });
 
-  assert.deepEqual(config.popupGroups.format.order.slice(0, 3), [
-    'italic', 'bold', 'strikethrough'
-  ]);
-  assert.deepEqual(config.popupGroups.format.hidden, ['underline']);
+  assert.deepEqual(config.popupGroups.format.order, ['italic', 'bold']);
+  assert.deepEqual(config.popupGroups.format.hidden, []);
+  assert.ok(config.holding.includes('underline'));
+  assert.ok(config.holding.includes('strikethrough'));
   assert.deepEqual(
     orderBottomToolbarPopupItems(
       'format',
       BOTTOM_TOOLBAR_GROUP_ITEM_IDS.format.map(id => ({ id })),
       config.popupGroups
-    ).map(item => item.id).slice(0, 3),
-    ['italic', 'bold', 'strikethrough']
+    ).map(item => item.id),
+    ['italic', 'bold']
   );
   assert.equal(
     [...Object.values(BOTTOM_TOOLBAR_GROUP_ITEM_IDS).flat()].length,
@@ -121,6 +121,45 @@ test('toolbar config always leaves the Menu key available when every key is hidd
 
   assert.deepEqual(config.order, ['menu']);
   assert.equal(config.hidden.includes('menu'), false);
+});
+
+test('groups can contain other toolbar keys while normalization removes cyclic or duplicate placement', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 3,
+    order: ['undo', 'menu', 'heading', 'lists', 'format', 'table', 'insert'],
+    hidden: [],
+    holding: [],
+    customGroups: {
+      'custom-group-alpha': { title: 'Alpha', icon: 'folder' },
+      'custom-group-beta': { title: 'Beta', icon: 'folder' }
+    },
+    popupGroups: {
+      'custom-group-alpha': {
+        order: ['table', 'custom-group-beta'],
+        hidden: []
+      },
+      'custom-group-beta': {
+        order: ['custom-group-alpha'],
+        hidden: []
+      }
+    },
+    styles: {}
+  });
+
+  assert.deepEqual(config.popupGroups['custom-group-alpha'].order, [
+    'table', 'custom-group-beta'
+  ]);
+  assert.deepEqual(config.popupGroups['custom-group-beta'].order, []);
+  assert.ok(config.order.includes('custom-group-alpha'));
+  assert.ok(!config.order.includes('table'));
+  assert.ok(!config.holding.includes('custom-group-beta'));
+  assert.equal(
+    Object.values(config.popupGroups).flatMap(group => group.order)
+      .filter(id => id === 'table').length,
+    1,
+    'a key has only one folder location'
+  );
 });
 
 test('runtime renderer creates the configured order with stable accessible key identifiers', async () => {

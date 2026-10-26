@@ -100,6 +100,64 @@
       opacity: .38;
     }
     .toolbar-preview-editor-content { display: block; }
+    .toolbar-preview-delete-group {
+      width: 100%;
+      min-height: 40px;
+      margin-top: 14px;
+      border: 1px solid rgba(255,100,100,.45);
+      border-radius: 8px;
+      color: #ffb4ab;
+      background: rgba(255,80,80,.09);
+      font: inherit;
+    }
+    .toolbar-preview-delete-group[hidden] { display: none; }
+    .toolbar-preview-create-group-modal {
+      position: fixed;
+      z-index: 10009;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(0,0,0,.65);
+    }
+    .toolbar-preview-create-group-modal[hidden] { display: none; }
+    .toolbar-preview-create-group-dialog {
+      width: min(100%, 420px);
+      padding: 18px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 12px;
+      background: #171717;
+      box-shadow: 0 12px 32px rgba(0,0,0,.75);
+    }
+    .toolbar-preview-create-group-dialog h2 {
+      margin: 0 0 14px;
+      font-size: 17px;
+    }
+    .toolbar-preview-create-group-dialog input {
+      width: 100%;
+      height: 44px;
+      margin-bottom: 12px;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.06);
+      font: inherit;
+    }
+    .toolbar-preview-create-group-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .toolbar-preview-create-group-actions button {
+      min-height: 40px;
+      padding: 0 14px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.07);
+      font: inherit;
+    }
     .toolbar-preview-style-controls { display: grid; gap: 14px; }
     .toolbar-preview-color-row {
       display: grid;
@@ -433,7 +491,7 @@
       <div id="toolbar-holding-tray" class="toolbar-preview-tray" aria-label="Hidden toolbar keys"></div>
       <div class="toolbar-preview-layout-actions">
         <button id="toolbar-reset-layout" type="button">Restore default layout</button>
-        <button id="toolbar-add-custom" type="button" disabled>Add custom</button>
+        <button id="toolbar-add-custom" type="button">Add custom group</button>
       </div>
       <div class="toolbar-preview-status" id="toolbar-preview-status" aria-live="polite"></div>
     </div>
@@ -457,6 +515,7 @@
         <button id="toolbar-preview-close-editor" class="toolbar-preview-editor-close" type="button" aria-label="Close key settings">×</button>
       </div>
       <div class="toolbar-preview-editor-content">
+        <button id="toolbar-delete-custom-group" class="toolbar-preview-delete-group" type="button" hidden>Delete custom group</button>
         <button id="toolbar-open-icon-picker" class="toolbar-preview-icon-picker-trigger" type="button" aria-haspopup="dialog" aria-controls="toolbar-icon-picker-modal">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
           <span>Choose icon<small>Search built-ins or add an SVG</small></span>
@@ -496,6 +555,16 @@
         </div>
       </div>
     </section>
+    <div id="toolbar-create-group-modal" class="toolbar-preview-create-group-modal" hidden aria-hidden="true">
+      <form id="toolbar-create-group-form" class="toolbar-preview-create-group-dialog" role="dialog" aria-modal="true" aria-labelledby="toolbar-create-group-title">
+        <h2 id="toolbar-create-group-title">Create toolbar group</h2>
+        <input id="toolbar-create-group-name" type="text" maxlength="48" required placeholder="Group name" aria-label="Group name">
+        <div class="toolbar-preview-create-group-actions">
+          <button id="toolbar-create-group-cancel" type="button">Cancel</button>
+          <button type="submit">Create</button>
+        </div>
+      </form>
+    </div>
     <div id="toolbar-icon-picker-modal" class="toolbar-preview-icon-picker-modal" hidden aria-hidden="true">
       <section class="toolbar-preview-icon-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="toolbar-icon-picker-title">
         <header class="toolbar-preview-icon-picker-header">

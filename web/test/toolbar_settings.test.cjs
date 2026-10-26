@@ -48,8 +48,11 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /toolbar-holding-tray/);
   assert.match(settingsSource, /pickBottomToolbarColor/);
   assert.match(settingsSource, /preserveSvgColors/);
-  assert.match(settingsSource, /editBottomToolbarIcon\?\.\(selectedKey\)/);
+  assert.match(settingsSource, /toolbar-create-group-form/);
+  assert.match(settingsSource, /config\.customGroups\[id\]/);
   assert.match(html, /id="toolbar-add-custom"/);
+  assert.match(html, /id="toolbar-create-group-form"/);
+  assert.match(html, /id="toolbar-delete-custom-group"/);
   assert.match(html, /id="toolbar-open-icon-picker"/);
   assert.match(html, /id="toolbar-icon-picker-modal"/);
   assert.match(html, /aria-modal="true"/);
@@ -64,7 +67,8 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /applyPopupDrop/);
   assert.match(settingsSource, /orderBottomToolbarPopupItems/);
   assert.match(settingsSource, /releasePopupGroupToHoldingArea/);
-  assert.match(settingsSource, /restorePopupGroupKey/);
+  assert.doesNotMatch(settingsSource, /restorePopupGroupKey/);
+  assert.match(settingsSource, /config\.holding/);
   assert.doesNotMatch(settingsSource, /toolbar-preview-held-group/);
   assert.match(html, /id="toolbar-paste-svg"/);
   assert.match(html, /id="toolbar-choose-svg"/);
@@ -127,11 +131,22 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
   assert.deepEqual(kotlinGroups, BOTTOM_TOOLBAR_GROUP_ITEM_IDS);
   assert.match(androidSource, /put\("popupGroups", popupGroups\)/);
   assert.match(mainSource, /orderBottomToolbarPopupItems\(\s*groupKey/);
+  assert.match(mainSource, /function createRuntimeToolbarItemRegistry\(\)/);
+  assert.match(mainSource, /function getRuntimeToolbarGroupItems\(groupId\)/);
+  assert.match(mainSource, /if \(bottomToolbarConfig\.popupGroups\[styleId\]\)/);
+  assert.match(mainSource, /const configuredItems = bottomToolbarConfig\.popupGroups\[groupKey\]/);
   assert.match(mainSource, /const styleId = item\.styleId \|\| item\.id \|\| item\.command/);
   assert.match(mainSource, /dataset\.toolbarStyleId/);
   assert.match(sharedCss, /--toolbar-key-icon-color, var\(--toolbar-icon-color/);
   assert.match(settingsSource, /PREVIEW_ITEM_DEFINITIONS\.get\(selectedKey\)/);
-  assert.match(toolbarConfigSource, /for \(const id of BOTTOM_TOOLBAR_STYLE_IDS\)/);
+  assert.match(toolbarConfigSource, /allowedStyleIds/);
+  assert.match(toolbarConfigSource, /\.\.\.Object\.keys\(customGroups\)/);
+  assert.match(androidSource, /isToolbarStyleAllowed/);
+  assert.match(androidSource, /custom-group-\[a-z0-9-\]/);
+  assert.match(androidSource, /sanitizeToolbarGroupCycles\(popupGroups, groupIds\)/);
+  assert.match(androidSource, /id in validKeyIds && id !in assignedActions/);
+  assert.match(androidSource, /input\.optInt\("version", 1\) >= 3/);
+  assert.match(androidSource, /\.put\("version", 3\)/);
 });
 
 test('choosing a color in a transparent color picker makes the selected color visible', () => {

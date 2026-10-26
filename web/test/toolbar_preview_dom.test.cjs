@@ -4,8 +4,10 @@ const path = require('node:path');
 const test = require('node:test');
 const { JSDOM } = require('jsdom');
 
-async function dragKey(dom, source, target, dropX = 90) {
-  target.getBoundingClientRect = () => ({ left: 0, width: 100, right: 100 });
+async function dragKey(dom, source, target, dropX = 90, dropY = 50) {
+  target.getBoundingClientRect = () => ({
+    left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100
+  });
   dom.window.document.elementFromPoint = () => target;
   const dispatchPointer = (targetElement, type, clientX, clientY) => {
     targetElement.dispatchEvent(new dom.window.MouseEvent(type, {
@@ -19,7 +21,7 @@ async function dragKey(dom, source, target, dropX = 90) {
   dispatchPointer(source, 'pointerdown', 2, 2);
   await new Promise(resolve => setTimeout(resolve, 280));
   dispatchPointer(dom.window.document, 'pointermove', 42, 12);
-  dispatchPointer(dom.window.document, 'pointerup', dropX, 12);
+  dispatchPointer(dom.window.document, 'pointerup', dropX, dropY);
 }
 
 test('toolbar settings preview opens a dismissible icon picker popup above spacious key settings', async () => {
@@ -158,7 +160,13 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       true
     );
     dom.window.document.querySelector('#toolbar-add-custom').click();
-    assert.deepEqual(edits, ['saveFile']);
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-create-group-modal').hidden,
+      false,
+      'the custom-group action opens a dedicated name dialog'
+    );
+    assert.deepEqual(edits, []);
+    dom.window.document.querySelector('#toolbar-create-group-cancel').click();
     dom.window.document.querySelector('#toolbar-icon-color').click();
     assert.deepEqual(colorPicks, [['saveFile', 'iconColor']]);
     const editor = dom.window.document.querySelector('#toolbar-preview-editor');
@@ -221,11 +229,11 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.equal(editor.classList.contains('visible'), true, 'Escape does not dismiss key settings');
     pickerButton.click();
     dom.window.document.querySelector('#toolbar-paste-svg').click();
-    assert.deepEqual(JSON.parse(edits[1]), { itemId: 'saveFile', action: 'paste' });
+    assert.deepEqual(JSON.parse(edits[0]), { itemId: 'saveFile', action: 'paste' });
     assert.equal(picker.hidden, true, 'starting Paste closes the picker popup');
     pickerButton.click();
     dom.window.document.querySelector('#toolbar-choose-svg').click();
-    assert.deepEqual(JSON.parse(edits[2]), { itemId: 'saveFile', action: 'file' });
+    assert.deepEqual(JSON.parse(edits[1]), { itemId: 'saveFile', action: 'file' });
     pickerButton.click();
     const iconSearch = dom.window.document.querySelector('#toolbar-icon-search');
     iconSearch.value = 'bold';
@@ -287,7 +295,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       dom.window.document.querySelector('#toolbar-preview-selected-title').textContent,
       'Paragraph'
     );
-    assert.equal(edits.length, 3, 'tapping an action selects its settings without deleting the folder');
+    assert.equal(edits.length, 2, 'tapping an action selects its settings without deleting the folder');
     assert.equal(popup.classList.contains('hidden'), true);
 
     dom.window.applyToolbarSettings({
@@ -381,7 +389,8 @@ test('moving a folder releases its actions and keeps the empty folder visible in
       popup.querySelector('[data-preview-popup-item="todoList"]'),
       tray
     );
-    assert.deepEqual(saves.at(-1).popupGroups.lists.hidden, ['todoList']);
+    assert.deepEqual(saves.at(-1).popupGroups.lists.hidden, []);
+    assert.ok(saves.at(-1).holding.includes('todoList'));
     assert.equal(
       popup.querySelector('[data-preview-popup-item="todoList"]'),
       null,
@@ -398,11 +407,11 @@ test('moving a folder releases its actions and keeps the empty folder visible in
       popup.querySelector('[data-preview-popup-item="outdent"]'),
       2
     );
-    assert.deepEqual(saves.at(-1).popupGroups.lists.hidden, []);
+    assert.deepEqual(saves.at(-1).holding, []);
     assert.ok(
       [...popup.querySelectorAll('[data-preview-popup-item]')]
         .some(button => button.dataset.previewPopupItem === 'todoList'),
-      'restored popup actions return to their group'
+      'dropping a loose action on a group places it in that group'
     );
 
     await dragKey(
@@ -412,7 +421,7 @@ test('moving a folder releases its actions and keeps the empty folder visible in
     );
     assert.ok(saves.at(-1).hidden.includes('lists'));
     assert.equal(saves.at(-1).popupGroups.lists.order.length, 0);
-    assert.equal(saves.at(-1).popupGroups.lists.hidden.length, 5);
+    assert.equal(saves.at(-1).holding.length, 6);
     const heldFolder = tray.querySelector('[data-toolbar-key="lists"]');
     assert.ok(heldFolder, 'the empty folder remains available as a standalone key');
     assert.equal(heldFolder.parentElement, tray);
@@ -430,6 +439,216 @@ test('moving a folder releases its actions and keeps the empty folder visible in
       saves.at(-1).popupGroups.lists.order.length,
       0,
       'the folder is empty but its configuration remains intact'
+    );
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('custom groups accept loose actions and deleting a group releases its children', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const saves = [];
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify({
+        version: 2,
+        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+        hidden: [],
+        holding: [],
+        customGroups: {},
+        styles: {}
+      })
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?custom-group-test=${Date.now()}`);
+    dom.window.document
+      .querySelector('#toolbar-preview [data-toolbar-key="lists"]')
+      .click();
+    const popup = dom.window.document.querySelector('#toolbar-preview-popup');
+    dom.window.document.querySelector('#toolbar-add-custom').click();
+    const name = dom.window.document.querySelector('#toolbar-create-group-name');
+    name.value = 'My group';
+    dom.window.document.querySelector('#toolbar-create-group-form')
+      .dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+
+    const groupId = Object.keys(saves.at(-1).customGroups)[0];
+    assert.ok(groupId);
+    assert.equal(saves.at(-1).customGroups[groupId].title, 'My group');
+    dom.window.document
+      .querySelector('#toolbar-preview [data-toolbar-key="lists"]')
+      .click();
+    const groupButton = dom.window.document.querySelector(
+      `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
+    );
+    assert.ok(groupButton, 'the new empty folder is immediately visible in the holding area');
+
+    await dragKey(
+      dom,
+      popup.querySelector('[data-preview-popup-item="todoList"]'),
+      groupButton
+    );
+    assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['todoList']);
+    assert.ok(
+      !saves.at(-1).popupGroups.lists.order.includes('todoList'),
+      'the action no longer belongs to its former folder'
+    );
+    assert.ok(
+      dom.window.document.querySelector(
+        `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
+      ),
+      'a filled group stays at the location where the user placed it'
+    );
+
+    dom.window.document
+      .querySelector(`#toolbar-holding-tray [data-toolbar-key="${groupId}"]`)
+      .click();
+    await dragKey(
+      dom,
+      popup.querySelector('[data-preview-popup-item="todoList"]'),
+      dom.window.document.querySelector('#toolbar-holding-tray')
+    );
+    assert.deepEqual(saves.at(-1).popupGroups[groupId].order, []);
+    assert.ok(saves.at(-1).holding.includes(groupId));
+    assert.ok(
+      dom.window.document.querySelector(
+        `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
+      ),
+      'an emptied folder remains visible in the shared holding area'
+    );
+
+    await dragKey(
+      dom,
+      dom.window.document.querySelector(
+        '#toolbar-holding-tray [data-preview-popup-item="todoList"][data-preview-location="tray"]'
+      ),
+      dom.window.document.querySelector(
+        `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
+      )
+    );
+    assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['todoList']);
+    assert.ok(!saves.at(-1).holding.includes('todoList'));
+
+    dom.window.document
+      .querySelector(`#toolbar-holding-tray [data-toolbar-key="${groupId}"]`)
+      .click();
+    assert.ok(
+      dom.window.document.querySelector(
+        '#toolbar-preview-popup [data-preview-popup-item="todoList"]'
+      ),
+      'the app preview opens the group and displays its assigned action'
+    );
+    dom.window.document.querySelector('#toolbar-delete-custom-group').click();
+    assert.equal(saves.at(-1).customGroups[groupId], undefined);
+    assert.equal(saves.at(-1).popupGroups[groupId], undefined);
+    assert.ok(
+      saves.at(-1).holding.includes('todoList'),
+      'deleting a custom group releases its child action instead of deleting it'
+    );
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('dropping one toolbar key onto another creates a folder with both keys', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const saves = [];
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify({
+        version: 3,
+        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+        hidden: [],
+        holding: [],
+        customGroups: {},
+        styles: {}
+      })
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?drag-create-group-test=${Date.now()}`);
+    const source = dom.window.document.querySelector(
+      '#toolbar-preview [data-toolbar-key="table"]'
+    );
+    const target = dom.window.document.querySelector(
+      '#toolbar-preview [data-toolbar-key="undo"]'
+    );
+    await dragKey(dom, source, target, 50, 50);
+
+    const groupId = Object.keys(saves.at(-1).customGroups)[0];
+    assert.ok(groupId, 'a drop on the center of another key creates a group');
+    assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['undo', 'table']);
+    assert.ok(!saves.at(-1).order.includes('undo'));
+    assert.ok(!saves.at(-1).order.includes('table'));
+    assert.ok(saves.at(-1).order.includes(groupId));
+    assert.ok(
+      dom.window.document.querySelector(
+        '#toolbar-preview-popup [data-preview-popup-item="undo"]'
+      ),
+      'the new folder opens to show the first key'
+    );
+    assert.ok(
+      dom.window.document.querySelector(
+        '#toolbar-preview-popup [data-preview-popup-item="table"]'
+      ),
+      'the new folder opens to show the dropped key'
+    );
+
+    dom.window.document
+      .querySelector('#toolbar-preview [data-toolbar-key="lists"]')
+      .click();
+    await dragKey(
+      dom,
+      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="menu"]'),
+      dom.window.document.querySelector(
+        '#toolbar-preview-popup [data-preview-popup-item="todoList"]'
+      ),
+      50,
+      50
+    );
+    const nestedGroupId = Object.keys(saves.at(-1).customGroups)
+      .find(id => id !== groupId);
+    assert.ok(nestedGroupId, 'dropping a toolbar key on a popup action creates a nested group');
+    assert.deepEqual(saves.at(-1).popupGroups[nestedGroupId].order, ['todoList', 'menu']);
+    assert.ok(saves.at(-1).popupGroups.lists.order.includes(nestedGroupId));
+    assert.ok(!saves.at(-1).order.includes('menu'));
+    assert.ok(
+      dom.window.document.querySelector(
+        '#toolbar-preview-popup [data-preview-popup-item="menu"]'
+      ),
+      'a group key can be nested and remains a folder in its new location'
     );
   } finally {
     dom.window.close();

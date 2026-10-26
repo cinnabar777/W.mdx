@@ -125,7 +125,26 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
   if (!container || !container.ownerDocument) return [];
 
   const config = normalizeBottomToolbarConfig(rawConfig);
+  if (options.includeEmptyGroups && Array.isArray(rawConfig?.order)) {
+    for (const id of rawConfig.order) {
+      if (config.popupGroups[id]?.order.length === 0 && !config.order.includes(id)) {
+        config.order.push(id);
+      }
+    }
+    config.hidden = config.hidden.filter(id => !config.order.includes(id));
+  }
   const definitions = new Map(BOTTOM_TOOLBAR_ITEMS.map(item => [item.id, item]));
+  for (const [id, definition] of Object.entries(options.definitions || {})) {
+    definitions.set(id, definition);
+  }
+  for (const [id, definition] of Object.entries(config.customGroups || {})) {
+    definitions.set(id, {
+      id,
+      title: definition.title,
+      icon: definition.icon,
+      kind: 'group'
+    });
+  }
   const doc = container.ownerDocument;
   const buttons = [];
 
@@ -160,11 +179,18 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     const customIcon = typeof options.resolveCustomIcon === 'function'
       ? options.resolveCustomIcon(style, id)
       : '';
-    const iconMarkup = customIcon || icons[definition.icon] || '';
+    const iconMarkup = customIcon ||
+      (typeof definition.icon === 'string' && definition.icon.includes('<svg')
+        ? definition.icon
+        : icons[definition.icon]) ||
+      '';
     const sanitizedIcon = customIcon
       ? sanitizeToolbarSvg(iconMarkup, style.preserveSvgColors === true, doc)
       : iconMarkup;
     button.innerHTML = sanitizedIcon || (customIcon ? '' : iconMarkup);
+    if (!sanitizedIcon && !customIcon && !iconMarkup && typeof definition.icon === 'string') {
+      button.textContent = definition.icon;
+    }
     if (typeof options.onKeyClick === 'function') {
       button.addEventListener('click', event => options.onKeyClick(id, event));
     }

@@ -8,3 +8,4 @@
 - [Table selection focus](table-selection-focus.md) — keep cell selections independent per table; toolbar actions follow the last tapped cell, not the last widget redraw.
 - [Toolbar preview colors](toolbar-preview-colors.md) — active states preserve chosen key colors; SVG tinting must not turn outlines into filled shapes.
 - [Toolbar icon editor](toolbar-icon-editor.md) — keep spacious key settings scrollable; open icon search/import in a separate dismissible popup.
+- [Toolbar folder placement](toolbar-folder-placement.md) — custom folders and actions share one flat holding area; empty folders stay visible until moved or explicitly deleted.

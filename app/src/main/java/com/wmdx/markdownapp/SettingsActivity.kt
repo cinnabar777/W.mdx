@@ -1487,10 +1487,12 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             )
         }
         return org.json.JSONObject()
-            .put("version", 1)
+            .put("version", 3)
             .put("order", defaultOrder)
             .put("hidden", org.json.JSONArray())
             .put("popupGroups", popupGroups)
+            .put("holding", org.json.JSONArray())
+            .put("customGroups", org.json.JSONObject())
             .put("styles", org.json.JSONObject())
             .toString()
     }
@@ -1512,55 +1514,152 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
     private fun normalizeToolbarConfigForStorage(raw: String): String {
         val input = org.json.JSONObject(raw)
+        val customGroups = org.json.JSONObject()
+        val rawCustomGroups = input.optJSONObject("customGroups") ?: org.json.JSONObject()
+        val customGroupIdPattern = Regex("""^custom-group-[a-z0-9-]{1,48}$""", RegexOption.IGNORE_CASE)
+        for (id in rawCustomGroups.keys()) {
+            val source = rawCustomGroups.optJSONObject(id) ?: continue
+            val title = source.optString("title", "").trim().take(48)
+            if (!customGroupIdPattern.matches(id) || title.isBlank()) continue
+            val icon = source.optString("icon", "folder")
+                .takeIf { Regex("""^[a-z0-9_-]{1,48}$""", RegexOption.IGNORE_CASE).matches(it) }
+                ?: "folder"
+            customGroups.put(id, org.json.JSONObject().put("title", title).put("icon", icon))
+        }
+        val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten().toSet()
+        val groupIds = TOOLBAR_GROUP_ITEM_IDS.keys + customGroups.keys().asSequence().toList()
+        val validRootIds = TOOLBAR_ITEM_IDS + customGroups.keys().asSequence().toList()
+        val validKeyIds = validRootIds + popupActionIds
         val hidden = mutableListOf<String>()
         val rawHidden = input.optJSONArray("hidden") ?: org.json.JSONArray()
         for (index in 0 until rawHidden.length()) {
             val id = rawHidden.optString(index)
-            if (id in TOOLBAR_ITEM_IDS && id !in hidden) hidden.add(id)
+            if (id in validKeyIds && id !in hidden) hidden.add(id)
         }
 
         val order = mutableListOf<String>()
         val rawOrder = input.optJSONArray("order") ?: org.json.JSONArray()
         for (index in 0 until rawOrder.length()) {
             val id = rawOrder.optString(index)
-            if (id in TOOLBAR_ITEM_IDS && id !in hidden && id !in order) order.add(id)
+            if (id in validKeyIds && id !in hidden && id !in order) order.add(id)
         }
         for (id in TOOLBAR_ITEM_IDS) {
             if (id !in order && id !in hidden) order.add(id)
         }
-        if (order.isEmpty()) {
-            hidden.remove("menu")
-            order.add("menu")
-        }
 
         val popupGroups = org.json.JSONObject()
         val rawPopupGroups = input.optJSONObject("popupGroups") ?: org.json.JSONObject()
-        for ((groupId, itemIds) in TOOLBAR_GROUP_ITEM_IDS) {
+        val assignedActions = mutableSetOf<String>()
+        val legacyHeldActions = mutableListOf<String>()
+        for (groupId in groupIds) {
             val rawGroup = rawPopupGroups.optJSONObject(groupId) ?: org.json.JSONObject()
-            val hiddenItems = mutableListOf<String>()
             val rawGroupHidden = rawGroup.optJSONArray("hidden") ?: org.json.JSONArray()
             for (index in 0 until rawGroupHidden.length()) {
                 val id = rawGroupHidden.optString(index)
-                if (id in itemIds && id !in hiddenItems) hiddenItems.add(id)
+                if (id in validKeyIds && id !in legacyHeldActions) legacyHeldActions.add(id)
             }
 
             val groupOrder = mutableListOf<String>()
             val rawGroupOrder = rawGroup.optJSONArray("order") ?: org.json.JSONArray()
             for (index in 0 until rawGroupOrder.length()) {
                 val id = rawGroupOrder.optString(index)
-                if (id in itemIds && id !in hiddenItems && id !in groupOrder) {
+                if (id in validKeyIds && id != groupId &&
+                    id !in assignedActions && id !in groupOrder) {
                     groupOrder.add(id)
+                    assignedActions.add(id)
                 }
             }
-            for (id in itemIds) {
-                if (id !in groupOrder && id !in hiddenItems) groupOrder.add(id)
+            if (!rawPopupGroups.has(groupId)) {
+                val defaults = TOOLBAR_GROUP_ITEM_IDS[groupId].orEmpty()
+                for (id in defaults) {
+                    if (id !in assignedActions) {
+                        groupOrder.add(id)
+                        assignedActions.add(id)
+                    }
+                }
             }
             popupGroups.put(
                 groupId,
                 org.json.JSONObject()
                     .put("order", org.json.JSONArray(groupOrder))
-                    .put("hidden", org.json.JSONArray(hiddenItems))
+                    .put("hidden", org.json.JSONArray())
             )
+        }
+        sanitizeToolbarGroupCycles(popupGroups, groupIds)
+        assignedActions.clear()
+        for (groupId in groupIds) {
+            val items = popupGroups.optJSONObject(groupId)?.optJSONArray("order")
+                ?: org.json.JSONArray()
+            for (index in 0 until items.length()) {
+                assignedActions.add(items.optString(index))
+            }
+        }
+
+        val holding = mutableListOf<String>()
+        val rawHolding = input.optJSONArray("holding") ?: org.json.JSONArray()
+        for (index in 0 until rawHolding.length()) {
+            val id = rawHolding.optString(index)
+            if (id in validKeyIds && id !in assignedActions && id !in holding) holding.add(id)
+        }
+        for (id in legacyHeldActions) {
+            if (id !in assignedActions && id !in holding) holding.add(id)
+        }
+        for (groupId in groupIds) {
+            if (input.optInt("version", 1) >= 3 || groupId !in hidden) continue
+            val group = popupGroups.optJSONObject(groupId) ?: continue
+            val items = group.optJSONArray("order") ?: org.json.JSONArray()
+            for (index in 0 until items.length()) {
+                val id = items.optString(index)
+                assignedActions.remove(id)
+                if (id !in holding) holding.add(id)
+            }
+            group.put("order", org.json.JSONArray())
+        }
+        order.removeAll { it in assignedActions || it in holding }
+        for (id in validKeyIds) {
+            if (id !in assignedActions && id !in holding && id !in order &&
+                (id in popupActionIds || id in customGroups.keys().asSequence().toList())) {
+                holding.add(id)
+            }
+        }
+        for (groupId in groupIds) {
+            val group = popupGroups.optJSONObject(groupId) ?: continue
+            if (group.optJSONArray("order")?.length() == 0 && groupId !in assignedActions) {
+                order.remove(groupId)
+                if (groupId !in holding) holding.add(groupId)
+                if (groupId !in hidden) hidden.add(groupId)
+            }
+        }
+        for (id in validRootIds) {
+            if (id in assignedActions || id in holding || id in order) continue
+            if (popupGroups.has(id) && popupGroups.optJSONObject(id)
+                    ?.optJSONArray("order")?.length() == 0) {
+                holding.add(id)
+                hidden.add(id)
+            } else if (id !in hidden) {
+                order.add(id)
+            }
+        }
+        order.removeAll { it in assignedActions || it in holding }
+        if (order.isEmpty()) {
+            for (groupId in groupIds) {
+                val group = popupGroups.optJSONObject(groupId) ?: continue
+                val children = group.optJSONArray("order") ?: org.json.JSONArray()
+                val retained = org.json.JSONArray()
+                for (index in 0 until children.length()) {
+                    val id = children.optString(index)
+                    if (id != "menu") retained.put(id)
+                }
+                group.put("order", retained)
+            }
+            assignedActions.remove("menu")
+            holding.remove("menu")
+            hidden.remove("menu")
+            order.add("menu")
+        }
+        hidden.clear()
+        for (id in holding) {
+            if (id in validRootIds && id !in hidden) hidden.add(id)
         }
 
         val styles = org.json.JSONObject()
@@ -1568,7 +1667,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         val safeColor = Regex(
             """^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)|[A-Za-z]{1,20})$"""
         )
-        for (id in TOOLBAR_STYLE_IDS) {
+        for (id in TOOLBAR_STYLE_IDS + customGroups.keys().asSequence().toList()) {
             val style = rawStyles.optJSONObject(id) ?: continue
             val cleanedStyle = org.json.JSONObject()
             for (property in TOOLBAR_COLOR_PROPERTIES) {
@@ -1589,12 +1688,47 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
 
         return org.json.JSONObject()
-            .put("version", 1)
+            .put("version", 3)
             .put("order", org.json.JSONArray(order))
             .put("hidden", org.json.JSONArray(hidden))
             .put("popupGroups", popupGroups)
+            .put("holding", org.json.JSONArray(holding))
+            .put("customGroups", customGroups)
             .put("styles", styles)
             .toString()
+    }
+
+    private fun sanitizeToolbarGroupCycles(
+        groups: org.json.JSONObject,
+        groupIds: List<String>
+    ) {
+        val groupIdSet = groupIds.toSet()
+        val acceptedChildren = mutableMapOf<String, MutableList<String>>()
+
+        fun hasPath(start: String, target: String, visited: MutableSet<String>): Boolean {
+            if (start == target) return true
+            if (!visited.add(start)) return false
+            return acceptedChildren[start].orEmpty().any { child ->
+                hasPath(child, target, visited)
+            }
+        }
+
+        for (groupId in groupIds) {
+            val group = groups.optJSONObject(groupId) ?: continue
+            val rawOrder = group.optJSONArray("order") ?: org.json.JSONArray()
+            val safeOrder = org.json.JSONArray()
+            for (index in 0 until rawOrder.length()) {
+                val childId = rawOrder.optString(index)
+                if (childId in groupIdSet && hasPath(childId, groupId, mutableSetOf())) {
+                    continue
+                }
+                safeOrder.put(childId)
+                if (childId in groupIdSet) {
+                    acceptedChildren.getOrPut(groupId) { mutableListOf() }.add(childId)
+                }
+            }
+            group.put("order", safeOrder)
+        }
     }
 
     private fun isSafeToolbarSvg(svg: String): Boolean {
@@ -1632,12 +1766,27 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         return true
     }
 
+    private fun isToolbarStyleAllowed(itemId: String): Boolean {
+        if (itemId in TOOLBAR_STYLE_IDS) return true
+        if (!Regex("""^custom-group-[a-z0-9-]{1,48}$""", RegexOption.IGNORE_CASE).matches(itemId)) {
+            return false
+        }
+        return runCatching {
+            val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
+            val saved = org.json.JSONObject(
+                prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
+                    ?: defaultToolbarConfigJson()
+            )
+            saved.optJSONObject("customGroups")?.has(itemId) == true
+        }.getOrDefault(false)
+    }
+
     private fun updateToolbarStyle(
         itemId: String,
         property: String,
         value: String?
     ): Boolean {
-        if (itemId !in TOOLBAR_STYLE_IDS) return false
+        if (!isToolbarStyleAllowed(itemId)) return false
         if (property !in TOOLBAR_COLOR_PROPERTIES && property != "customSvg") return false
         return try {
             val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
@@ -1691,7 +1840,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         val host = activity ?: return
         host.runOnUiThread {
             if (!isAdded) return@runOnUiThread
-            if (itemId !in TOOLBAR_STYLE_IDS) {
+            if (!isToolbarStyleAllowed(itemId)) {
                 ThemedToast.show(host, "Select a toolbar key before editing its icon")
                 return@runOnUiThread
             }
@@ -1781,7 +1930,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
         @android.webkit.JavascriptInterface
         fun pickBottomToolbarColor(itemId: String, property: String) {
-            if (itemId !in TOOLBAR_STYLE_IDS || property !in TOOLBAR_COLOR_PROPERTIES) return
+            if (!isToolbarStyleAllowed(itemId) || property !in TOOLBAR_COLOR_PROPERTIES) return
             activity?.runOnUiThread {
                 val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
                 val config = org.json.JSONObject(
