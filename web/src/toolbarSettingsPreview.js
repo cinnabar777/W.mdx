@@ -18,6 +18,7 @@ const tray = document.querySelector('#toolbar-holding-tray');
 const popup = document.querySelector('#toolbar-preview-popup');
 const editor = document.querySelector('#toolbar-preview-editor');
 const iconPicker = document.querySelector('#toolbar-icon-picker-modal');
+const actionPicker = document.querySelector('#toolbar-action-picker-modal');
 const status = document.querySelector('#toolbar-preview-status');
 const selectedTitle = document.querySelector('#toolbar-preview-selected-title');
 let config = normalizeBottomToolbarConfig(null);
@@ -29,6 +30,10 @@ let dragTimer = null;
 let previousTap = { id: null, time: 0 };
 let editorKeyCache = null;
 let iconPickerOpen = false;
+let actionPickerOpen = false;
+let iconPickerTarget = 'key';
+let editingKeyName = false;
+let toolbarEditorOverlayOpen = false;
 let nextCustomGroupNumber = 1;
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
@@ -124,14 +129,63 @@ function setCssVariable(name, value, fallback) {
   document.documentElement.style.setProperty(name, toCssColor(String(value)));
 }
 
-function setIconPickerOpen(open, clearSearch = false) {
+function setIconPickerOpen(open, clearSearch = false, target = 'key') {
   iconPickerOpen = Boolean(open && selectedKey);
+  if (open) iconPickerTarget = target;
   const search = document.querySelector('#toolbar-icon-search');
   if (clearSearch && search) search.value = '';
   if (!iconPicker) return;
   iconPicker.hidden = !iconPickerOpen;
   iconPicker.setAttribute('aria-hidden', String(!iconPickerOpen));
   if (iconPickerOpen) renderIconCatalog();
+}
+
+function setActionPickerOpen(open, clearSearch = false) {
+  actionPickerOpen = Boolean(open && selectedKey);
+  const search = document.querySelector('#toolbar-action-search');
+  if (clearSearch && search) search.value = '';
+  if (!actionPicker) return;
+  actionPicker.hidden = !actionPickerOpen;
+  actionPicker.setAttribute('aria-hidden', String(!actionPickerOpen));
+  if (actionPickerOpen) renderActionCatalog();
+}
+
+function actionDefinitions() {
+  const definitions = new Map(PREVIEW_ITEM_DEFINITIONS);
+  for (const [id, group] of Object.entries(config.customGroups)) {
+    definitions.set(id, { id, title: group.title, icon: group.icon, kind: 'group' });
+  }
+  return definitions;
+}
+
+function getActionDefinition(id) {
+  const definition = actionDefinitions().get(id);
+  if (!definition) return null;
+  return {
+    ...definition,
+    title: config.styles[id]?.title || definition.title
+  };
+}
+
+function getActionIconMarkup(item) {
+  if (!item) return '';
+  if (typeof item.icon === 'string' && item.icon.includes('<svg')) return item.icon;
+  if (typeof item.icon === 'string' && svgIcons[item.icon]) return svgIcons[item.icon];
+  return typeof item.icon === 'string' ? item.icon : '';
+}
+
+function getAssignedSwipeIconMarkup(style) {
+  if (style?.gestureActionIconSvg) {
+    return sanitizeToolbarSvg(style.gestureActionIconSvg, false, document);
+  }
+  return getActionIconMarkup(getActionDefinition(style?.gestureAction));
+}
+
+function syncToolbarEditorOverlay(open) {
+  const next = Boolean(open);
+  if (next === toolbarEditorOverlayOpen) return;
+  toolbarEditorOverlayOpen = next;
+  window.ToolbarSettings?.setToolbarEditorOverlay?.(next);
 }
 
 function render() {
@@ -156,6 +210,8 @@ function render() {
     definitions: Object.fromEntries(definitions),
     buttonClass: 'grouped-key-btn toolbar-preview-key',
     resolveCustomIcon: style => style.customSvg || '',
+    resolveGestureActionIcon: (actionId, customSvg) =>
+      getAssignedSwipeIconMarkup({ gestureAction: actionId, gestureActionIconSvg: customSvg }),
     onKeyClick: onToolbarKeyClick
   });
   for (const button of toolbar.querySelectorAll('.toolbar-preview-key')) {
@@ -193,6 +249,8 @@ function render() {
         includeEmptyGroups: true,
         buttonClass: 'grouped-key-btn toolbar-preview-key',
         resolveCustomIcon: style => style.customSvg || '',
+        resolveGestureActionIcon: (actionId, customSvg) =>
+          getAssignedSwipeIconMarkup({ gestureAction: actionId, gestureActionIconSvg: customSvg }),
         onKeyClick: onToolbarKeyClick
       });
     }
@@ -216,9 +274,14 @@ function render() {
   }
   refreshSelectedKeyEditor();
   renderIconCatalog();
+  renderActionCatalog();
   if (iconPicker) {
     iconPicker.hidden = !iconPickerOpen;
     iconPicker.setAttribute('aria-hidden', String(!iconPickerOpen));
+  }
+  if (actionPicker) {
+    actionPicker.hidden = !actionPickerOpen;
+    actionPicker.setAttribute('aria-hidden', String(!actionPickerOpen));
   }
   renderPopupGroup();
 }
@@ -241,6 +304,20 @@ function applySettings(payload) {
   setCssVariable('--toolbar-icon-color', prefs.pref_toolbar_icon_color, isLightTheme ? '#111111' : '#ffffff');
   setCssVariable('--toolbar-preview-text', null, isLightTheme ? '#111111' : '#ffffff');
   setCssVariable('--toolbar-preview-surface', null, isLightTheme ? '#ffffff' : '#000000');
+  document.documentElement.style.setProperty(
+    '--toolbar-label-display',
+    prefs.pref_toolbar_show_labels === true ? 'flex' : 'none'
+  );
+  const labelSize = Number(prefs.pref_toolbar_label_size);
+  document.documentElement.style.setProperty(
+    '--toolbar-label-size',
+    `${Number.isFinite(labelSize) && labelSize >= 4 && labelSize <= 16 ? labelSize : 8}px`
+  );
+  setCssVariable(
+    '--toolbar-label-color',
+    prefs.pref_toolbar_label_color,
+    isLightTheme ? '#111111' : '#ffffff'
+  );
   const height = Number(prefs.pref_toolbar_height);
   document.documentElement.style.setProperty(
     '--toolbar-height',
@@ -338,8 +415,9 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'popup-strip-btn toolbar-preview-popup-key';
-  button.title = item.title;
-  button.setAttribute('aria-label', item.title);
+  const title = config.styles[item.id]?.title || item.title;
+  button.title = title;
+  button.setAttribute('aria-label', title);
   button.setAttribute('aria-current', item.id === selectedPopupItem ? 'true' : 'false');
   button.classList.toggle('active', item.id === selectedPopupItem);
   button.dataset.previewPopupItem = item.id;
@@ -367,7 +445,29 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   const customIcon = style.customSvg
     ? sanitizeToolbarSvg(style.customSvg, style.preserveSvgColors === true, document)
     : '';
-  button.innerHTML = customIcon || item.icon || item.title;
+  const iconElement = document.createElement('span');
+  iconElement.className = 'toolbar-key-icon';
+  const iconMarkup = customIcon || item.icon || '';
+  if (typeof iconMarkup === 'string' && iconMarkup.includes('<svg')) {
+    iconElement.innerHTML = iconMarkup;
+  } else {
+    iconElement.textContent = iconMarkup || item.title;
+  }
+  button.appendChild(iconElement);
+  const labelElement = document.createElement('span');
+  labelElement.className = 'toolbar-key-label';
+  labelElement.textContent = title;
+  button.appendChild(labelElement);
+  if (style.gestureAction) {
+    const gestureIcon = getAssignedSwipeIconMarkup(style);
+    if (gestureIcon) {
+      const marker = document.createElement('span');
+      marker.className = 'toolbar-key-gesture-indicator';
+      marker.setAttribute('aria-hidden', 'true');
+      marker.innerHTML = gestureIcon;
+      button.appendChild(marker);
+    }
+  }
   button.addEventListener('pointerdown', event => beginPossibleDrag(event, button), {
     passive: false
   });
@@ -406,6 +506,8 @@ function refreshSelectedKeyEditor() {
   if (selectedKey !== editorKeyCache) {
     const search = document.querySelector('#toolbar-icon-search');
     if (search) search.value = '';
+    editingKeyName = false;
+    setActionPickerOpen(false);
     editorKeyCache = selectedKey;
   }
   const deleteGroupButton = document.querySelector('#toolbar-delete-custom-group');
@@ -413,10 +515,24 @@ function refreshSelectedKeyEditor() {
   const addCustomButton = document.querySelector('#toolbar-add-custom');
   if (addCustomButton) addCustomButton.disabled = false;
   editor.classList.toggle('visible', Boolean(definition));
-  editor.classList.toggle('above-group', Boolean(definition && openPopupGroup));
   editor.setAttribute('aria-hidden', String(!definition));
+  syncToolbarEditorOverlay(Boolean(definition));
   if (!definition) return;
-  selectedTitle.textContent = definition.title;
+
+  const title = config.customGroups[selectedKey]?.title ||
+    config.styles[selectedKey]?.title ||
+    definition.title;
+  selectedTitle.textContent = title;
+  selectedTitle.hidden = editingKeyName;
+  const nameInput = document.querySelector('#toolbar-preview-title-input');
+  const editNameButton = document.querySelector('#toolbar-edit-key-name');
+  const saveNameButton = document.querySelector('#toolbar-save-key-name');
+  if (nameInput) {
+    nameInput.hidden = !editingKeyName;
+    if (!editingKeyName) nameInput.value = title;
+  }
+  if (editNameButton) editNameButton.hidden = editingKeyName;
+  if (saveNameButton) saveNameButton.hidden = !editingKeyName;
 
   const style = config.styles[selectedKey] || {};
   const iconButton = document.querySelector('#toolbar-icon-color');
@@ -438,6 +554,31 @@ function refreshSelectedKeyEditor() {
     button.disabled = !style[button.dataset.resetProperty];
   });
   document.querySelector('#toolbar-reset-key-style').disabled = Object.keys(style).length === 0;
+  renderSwipeActionAssignment(style);
+}
+
+function renderSwipeActionAssignment(style) {
+  const actionButton = document.querySelector('#toolbar-swipe-up-action');
+  const iconButton = document.querySelector('#toolbar-swipe-up-icon');
+  if (!actionButton || !iconButton) return;
+  const action = getActionDefinition(style.gestureAction);
+  actionButton.title = action
+    ? `Swipe up performs ${action.title}`
+    : 'Choose the action to perform when swiping up';
+  actionButton.setAttribute(
+    'aria-label',
+    action ? `Choose swipe up action; currently ${action.title}` : 'Choose swipe up action'
+  );
+  iconButton.disabled = !action;
+  iconButton.title = action
+    ? `${action.title} icon — tap to change`
+    : 'Choose an action first';
+  iconButton.setAttribute(
+    'aria-label',
+    action ? `Choose icon for ${action.title}` : 'Choose an action first'
+  );
+  const iconMarkup = getAssignedSwipeIconMarkup(style);
+  iconButton.innerHTML = iconMarkup || '◇';
 }
 
 function iconTitle(name) {
@@ -453,7 +594,10 @@ function renderIconCatalog() {
   const search = document.querySelector('#toolbar-icon-search');
   if (!list || !search) return;
   const query = search.value.trim().toLowerCase();
-  const selectedSvg = config.styles[selectedKey]?.customSvg;
+  const style = config.styles[selectedKey] || {};
+  const selectedSvg = iconPickerTarget === 'action'
+    ? style.gestureActionIconSvg || getAssignedSwipeIconMarkup(style)
+    : style.customSvg;
   list.replaceChildren();
   const icons = Object.entries(svgIcons)
     .map(([name, value]) => [
@@ -479,8 +623,12 @@ function renderIconCatalog() {
       event.stopPropagation();
       if (!selectedKey) return;
       const style = config.styles[selectedKey] || {};
-      style.customSvg = markup;
-      style.preserveSvgColors = false;
+      if (iconPickerTarget === 'action') {
+        style.gestureActionIconSvg = markup;
+      } else {
+        style.customSvg = markup;
+        style.preserveSvgColors = false;
+      }
       config.styles[selectedKey] = style;
       setIconPickerOpen(false);
       render();
@@ -492,6 +640,60 @@ function renderIconCatalog() {
     const empty = document.createElement('span');
     empty.className = 'toolbar-preview-icon-empty';
     empty.textContent = 'No matching icons';
+    list.appendChild(empty);
+  }
+}
+
+function renderActionCatalog() {
+  const list = document.querySelector('#toolbar-action-list');
+  const search = document.querySelector('#toolbar-action-search');
+  if (!list || !search) return;
+  const query = search.value.trim().toLowerCase();
+  const selectedAction = config.styles[selectedKey]?.gestureAction;
+  const items = [...actionDefinitions().values()]
+    .map(item => ({
+      ...item,
+      title: config.styles[item.id]?.title || item.title
+    }))
+    .filter(item => `${item.id} ${item.title}`.toLowerCase().includes(query));
+  list.replaceChildren();
+
+  for (const item of items) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toolbar-preview-action-choice';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-label', item.title);
+    button.setAttribute('aria-pressed', String(item.id === selectedAction));
+    const icon = document.createElement('span');
+    const iconMarkup = getActionIconMarkup(item);
+    if (iconMarkup.includes('<svg')) {
+      icon.innerHTML = iconMarkup;
+    } else {
+      icon.textContent = iconMarkup;
+    }
+    const title = document.createElement('span');
+    title.textContent = item.title;
+    button.append(icon, title);
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!selectedKey) return;
+      const style = config.styles[selectedKey] || {};
+      style.gestureAction = item.id;
+      delete style.gestureActionIconSvg;
+      config.styles[selectedKey] = style;
+      setActionPickerOpen(false);
+      render();
+      saveConfig();
+    });
+    list.appendChild(button);
+  }
+
+  if (!list.children.length) {
+    const empty = document.createElement('span');
+    empty.className = 'toolbar-preview-icon-empty';
+    empty.textContent = 'No matching actions';
     list.appendChild(empty);
   }
 }
@@ -990,7 +1192,17 @@ document.querySelector('#toolbar-reset-key-style')?.addEventListener('click', ()
 document.querySelector('#toolbar-open-icon-picker')?.addEventListener('click', event => {
   event.preventDefault();
   event.stopPropagation();
-  setIconPickerOpen(true, true);
+  setIconPickerOpen(true, true, 'key');
+});
+document.querySelector('#toolbar-swipe-up-action')?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  setActionPickerOpen(true, true);
+});
+document.querySelector('#toolbar-swipe-up-icon')?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  setIconPickerOpen(true, true, 'action');
 });
 iconPicker?.addEventListener('click', event => {
   event.stopPropagation();
@@ -999,8 +1211,21 @@ iconPicker?.addEventListener('click', event => {
 document.querySelector('#toolbar-icon-picker-close')?.addEventListener('click', event => {
   event.preventDefault();
   event.stopPropagation();
+  const returnTarget = iconPickerTarget === 'action'
+    ? document.querySelector('#toolbar-swipe-up-icon')
+    : document.querySelector('#toolbar-open-icon-picker');
   setIconPickerOpen(false);
-  document.querySelector('#toolbar-open-icon-picker')?.focus();
+  returnTarget?.focus();
+});
+actionPicker?.addEventListener('click', event => {
+  event.stopPropagation();
+  if (event.target === actionPicker) setActionPickerOpen(false);
+});
+document.querySelector('#toolbar-action-picker-close')?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  setActionPickerOpen(false);
+  document.querySelector('#toolbar-swipe-up-action')?.focus();
 });
 
 function invokeSvgAction(action, fallbackMessage) {
@@ -1012,7 +1237,11 @@ function invokeSvgAction(action, fallbackMessage) {
   if (typeof bridge?.editBottomToolbarIcon === 'function') {
     setStatus(fallbackMessage);
     try {
-      bridge.editBottomToolbarIcon(JSON.stringify({ itemId: selectedKey, action }));
+      bridge.editBottomToolbarIcon(JSON.stringify({
+        itemId: selectedKey,
+        action,
+        property: iconPickerTarget === 'action' ? 'gestureActionIconSvg' : 'customSvg'
+      }));
     } catch (error) {
       setStatus(`Could not open the SVG action: ${error.message || 'unknown error'}`);
     }
@@ -1079,6 +1308,60 @@ document.querySelector('#toolbar-create-group-form')?.addEventListener('submit',
   saveConfig();
 });
 
+function startKeyNameEdit() {
+  if (!selectedKey) return;
+  editingKeyName = true;
+  refreshSelectedKeyEditor();
+  const input = document.querySelector('#toolbar-preview-title-input');
+  input?.focus();
+  input?.select();
+}
+
+function saveKeyNameEdit() {
+  if (!selectedKey) return;
+  const input = document.querySelector('#toolbar-preview-title-input');
+  const title = input?.value.trim().slice(0, 48);
+  if (!title) {
+    input?.focus();
+    setStatus('Enter a name for this toolbar key.');
+    return;
+  }
+  if (config.customGroups[selectedKey]) {
+    config.customGroups[selectedKey].title = title;
+  } else {
+    const definition = PREVIEW_ITEM_DEFINITIONS.get(selectedKey);
+    const style = config.styles[selectedKey] || {};
+    if (title === definition?.title) delete style.title;
+    else style.title = title;
+    if (Object.keys(style).length) config.styles[selectedKey] = style;
+    else delete config.styles[selectedKey];
+  }
+  editingKeyName = false;
+  setStatus('');
+  render();
+  saveConfig();
+}
+
+function cancelKeyNameEdit() {
+  if (!editingKeyName) return;
+  editingKeyName = false;
+  render();
+}
+
+document.querySelector('#toolbar-edit-key-name')?.addEventListener('click', startKeyNameEdit);
+document.querySelector('#toolbar-save-key-name')?.addEventListener('click', saveKeyNameEdit);
+document.querySelector('#toolbar-preview-title-input')?.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.stopPropagation();
+    saveKeyNameEdit();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelKeyNameEdit();
+  }
+});
+
 document.querySelector('#toolbar-delete-custom-group')?.addEventListener('click', () => {
   const id = selectedKey;
   if (!id || !config.customGroups[id]) return;
@@ -1095,6 +1378,7 @@ document.querySelector('#toolbar-delete-custom-group')?.addEventListener('click'
   saveConfig();
 });
 document.querySelector('#toolbar-icon-search')?.addEventListener('input', renderIconCatalog);
+document.querySelector('#toolbar-action-search')?.addEventListener('input', renderActionCatalog);
 document.querySelector('#toolbar-preserve-svg-colors')?.addEventListener('change', event => {
   if (!selectedKey || !config.styles[selectedKey]?.customSvg) return;
   config.styles[selectedKey].preserveSvgColors = event.target.checked;
@@ -1118,7 +1402,7 @@ document.querySelector('#toolbar-preview-close-editor')?.addEventListener('click
 });
 
 document.addEventListener('click', event => {
-  if (iconPickerOpen) return;
+  if (iconPickerOpen || actionPickerOpen) return;
   if (!editor?.classList.contains('visible')) return;
   const target = event.target;
   if (
@@ -1140,6 +1424,12 @@ document.addEventListener('keydown', event => {
     event.preventDefault();
     createGroupModal.hidden = true;
     createGroupModal.setAttribute('aria-hidden', 'true');
+    return;
+  }
+  if (actionPickerOpen) {
+    event.preventDefault();
+    setActionPickerOpen(false);
+    document.querySelector('#toolbar-swipe-up-action')?.focus();
     return;
   }
   if (iconPickerOpen) {

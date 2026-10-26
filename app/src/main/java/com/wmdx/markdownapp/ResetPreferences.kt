@@ -38,6 +38,7 @@ object PreferenceResetHelper {
             "pref_settings_bg_color" -> "#000000"
             "pref_toolbar_bg_color" -> "#121212"
             "pref_toolbar_icon_color" -> "#FFFFFF"
+            "pref_toolbar_label_color" -> "#FFFFFF"
             "pref_toolbar_toggle_bg_color" -> "#00000000"
             "pref_toolbar_toggle_icon_color" -> "#FFFFFF"
             "pref_toc_panel_bg_color" -> "#121212"
@@ -353,6 +354,9 @@ object PreferenceResetHelper {
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"
             key == "pref_toolbar_bg_color" -> "default"
             key == "pref_toolbar_icon_color" -> "default"
+            key == "pref_toolbar_show_labels" -> false
+            key == "pref_toolbar_label_size" -> 8
+            key == "pref_toolbar_label_color" -> "default"
             key == "pref_toolbar_toggle_bg_color" -> "default"
             key == "pref_toolbar_toggle_icon_color" -> "default"
             key == "pref_toolbar_height" -> 48

@@ -275,6 +275,19 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       if (typeof style.preserveSvgColors === 'boolean') {
         normalized.preserveSvgColors = style.preserveSvgColors;
       }
+      if (typeof style.title === 'string') {
+        const title = style.title.trim().slice(0, 48);
+        if (title) normalized.title = title;
+      }
+      if (typeof style.gestureAction === 'string' && keyIds.has(style.gestureAction)) {
+        normalized.gestureAction = style.gestureAction;
+        if (
+          typeof style.gestureActionIconSvg === 'string' &&
+          style.gestureActionIconSvg.length <= 65536
+        ) {
+          normalized.gestureActionIconSvg = style.gestureActionIconSvg;
+        }
+      }
       if (Object.keys(normalized).length) styles[id] = normalized;
     }
   }

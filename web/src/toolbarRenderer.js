@@ -158,8 +158,9 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     button.className = options.buttonClass || 'grouped-key-btn';
     button.id = `grp-btn-${id}`;
     button.dataset.toolbarKey = id;
-    button.title = definition.title;
-    button.setAttribute('aria-label', definition.title);
+    const title = config.styles[id]?.title || definition.title;
+    button.title = title;
+    button.setAttribute('aria-label', title);
     button.setAttribute('data-toolbar-kind', definition.kind);
 
     const style = config.styles[id] || {};
@@ -187,18 +188,72 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     const sanitizedIcon = customIcon
       ? sanitizeToolbarSvg(iconMarkup, style.preserveSvgColors === true, doc)
       : iconMarkup;
-    button.innerHTML = sanitizedIcon || (customIcon ? '' : iconMarkup);
-    if (!sanitizedIcon && !customIcon && !iconMarkup && typeof definition.icon === 'string') {
-      button.textContent = definition.icon;
+    const iconElement = doc.createElement('span');
+    iconElement.className = 'toolbar-key-icon';
+    if (sanitizedIcon || (!customIcon && iconMarkup)) {
+      iconElement.innerHTML = sanitizedIcon || iconMarkup;
+    } else if (!customIcon && typeof definition.icon === 'string') {
+      iconElement.textContent = definition.icon;
+    }
+    button.appendChild(iconElement);
+    const labelElement = doc.createElement('span');
+    labelElement.className = 'toolbar-key-label';
+    labelElement.textContent = title;
+    button.appendChild(labelElement);
+
+    if (style.gestureAction && typeof options.resolveGestureActionIcon === 'function') {
+      const gestureIcon = options.resolveGestureActionIcon(
+        style.gestureAction,
+        style.gestureActionIconSvg,
+        id
+      );
+      if (gestureIcon) {
+        const marker = doc.createElement('span');
+        marker.className = 'toolbar-key-gesture-indicator';
+        marker.setAttribute('aria-hidden', 'true');
+        marker.innerHTML = gestureIcon;
+        button.appendChild(marker);
+      }
     }
     if (typeof options.onKeyClick === 'function') {
       button.addEventListener('click', event => options.onKeyClick(id, event));
     }
+    let pointerStart = null;
+    button.addEventListener('pointerdown', event => {
+      if (event.button !== undefined && event.button !== 0) return;
+      pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+      try {
+        button.setPointerCapture(event.pointerId);
+      } catch {
+        // Some embedded WebView versions do not expose pointer capture.
+      }
+    }, { capture: true });
+    button.addEventListener('pointerup', event => {
+      if (!pointerStart || typeof options.onSwipeUp !== 'function') {
+        pointerStart = null;
+        return;
+      }
+      const deltaX = event.clientX - pointerStart.x;
+      const deltaY = event.clientY - pointerStart.y;
+      pointerStart = null;
+      if (deltaY <= -24 && Math.abs(deltaY) > Math.abs(deltaX) * 1.2) {
+        if (options.onSwipeUp(id, event, button)) {
+          button.dataset.toolbarGestureSuppressClick = 'true';
+          event.preventDefault();
+        }
+      }
+    }, { capture: true });
     button.addEventListener('pointerdown', event => {
       // Keep the editor's text selection and IME focus when toolbar keys are
       // pressed. The subsequent click still runs the toolbar action.
       event.preventDefault();
     });
+    button.addEventListener('click', event => {
+      if (button.dataset.toolbarGestureSuppressClick !== 'true') return;
+      delete button.dataset.toolbarGestureSuppressClick;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, { capture: true });
     container.appendChild(button);
     buttons.push(button);
   }

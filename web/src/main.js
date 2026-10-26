@@ -3993,7 +3993,18 @@ function setupGroupedControlBar() {
   );
   renderBottomToolbarKeys(bar, bottomToolbarConfig, svgIcons, {
     resolveCustomIcon: style => style.customSvg || '',
-    definitions: toolbarDefinitions
+    definitions: toolbarDefinitions,
+    resolveGestureActionIcon: (actionId, customSvg) => {
+      if (customSvg) return sanitizeToolbarSvg(customSvg, false);
+      const icon = toolbarActionRegistry.get(actionId)?.icon;
+      return typeof icon === 'string' && icon.includes('<svg')
+        ? icon
+        : svgIcons[icon] || icon || '';
+    },
+    onSwipeUp: (id, event, button) => {
+      const actionId = bottomToolbarConfig.styles[id]?.gestureAction;
+      return actionId ? runToolbarGestureAction(actionId, button) : false;
+    }
   });
 
   const undoBtn = bar.querySelector('#grp-btn-undo');
@@ -4262,6 +4273,60 @@ function createRuntimeToolbarItemRegistry() {
     });
   }
   return registry;
+}
+
+function runToolbarGestureAction(actionId, sourceButton) {
+  if (actionId === 'undo') {
+    activeAdapter?.undo();
+    return Boolean(activeAdapter);
+  }
+  const item = createRuntimeToolbarItemRegistry().get(actionId);
+  if (!item) return false;
+  if (bottomToolbarConfig.popupGroups[actionId]) {
+    togglePopupStrip(actionId, sourceButton, getRuntimeToolbarGroupItems(actionId));
+    return true;
+  }
+  if (typeof item.action !== 'function') return false;
+  item.action();
+  return true;
+}
+
+function installPopupToolbarSwipeUp(button, styleId) {
+  let pointerStart = null;
+  button.addEventListener('pointerdown', event => {
+    if (event.button !== undefined && event.button !== 0) return;
+    pointerStart = { x: event.clientX, y: event.clientY };
+    try {
+      button.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is not available in every embedded WebView version.
+    }
+  }, { capture: true });
+  button.addEventListener('pointerup', event => {
+    if (!pointerStart) return;
+    const deltaX = event.clientX - pointerStart.x;
+    const deltaY = event.clientY - pointerStart.y;
+    pointerStart = null;
+    if (deltaY > -24 || Math.abs(deltaY) <= Math.abs(deltaX) * 1.2) return;
+    const actionId = bottomToolbarConfig.styles[styleId]?.gestureAction;
+    if (!actionId || !runToolbarGestureAction(actionId, button)) return;
+    button.dataset.toolbarGestureSuppressClick = 'true';
+    event.preventDefault();
+  }, { capture: true });
+  button.addEventListener('click', event => {
+    if (button.dataset.toolbarGestureSuppressClick !== 'true') return;
+    delete button.dataset.toolbarGestureSuppressClick;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, { capture: true });
+}
+
+function getToolbarGestureIcon(actionId, customSvg) {
+  if (customSvg) return sanitizeToolbarSvg(customSvg, false);
+  const icon = createRuntimeToolbarItemRegistry().get(actionId)?.icon;
+  return typeof icon === 'string' && icon.includes('<svg')
+    ? icon
+    : svgIcons[icon] || icon || '';
 }
 
 function getRuntimeToolbarGroupItems(groupId) {
@@ -4980,9 +5045,10 @@ function togglePopupStrip(groupKey, targetBtn, items) {
         toToolbarCssColor(style.activeBackgroundColor)
       );
     }
-    if (item.title) {
-      btn.title = item.title;
-      btn.setAttribute('aria-label', item.title);
+    const title = style.title || item.title;
+    if (title) {
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
     }
     if (item.disabled) {
       btn.disabled = true;
@@ -4993,7 +5059,29 @@ function togglePopupStrip(groupKey, targetBtn, items) {
     const customIcon = style.customSvg
       ? sanitizeToolbarSvg(style.customSvg, style.preserveSvgColors === true)
       : '';
-    btn.innerHTML = customIcon || item.icon || item.title;
+    const icon = document.createElement('span');
+    icon.className = 'toolbar-key-icon';
+    const iconMarkup = customIcon || item.icon || '';
+    if (iconMarkup.includes?.('<svg')) icon.innerHTML = iconMarkup;
+    else icon.textContent = iconMarkup || title || '';
+    btn.appendChild(icon);
+    const label = document.createElement('span');
+    label.className = 'toolbar-key-label';
+    label.textContent = title || '';
+    btn.appendChild(label);
+    if (style.gestureAction) {
+      const gestureIcon = getToolbarGestureIcon(
+        style.gestureAction,
+        style.gestureActionIconSvg
+      );
+      if (gestureIcon) {
+        const marker = document.createElement('span');
+        marker.className = 'toolbar-key-gesture-indicator';
+        marker.setAttribute('aria-hidden', 'true');
+        marker.innerHTML = gestureIcon;
+        btn.appendChild(marker);
+      }
+    }
     btn.addEventListener('pointerdown', event => {
       // Prevent toolbar interaction from stealing focus from the editor and
       // dismissing the on-screen keyboard.
@@ -5009,6 +5097,7 @@ function togglePopupStrip(groupKey, targetBtn, items) {
         item.action();
       }
     };
+    installPopupToolbarSwipeUp(btn, styleId);
     strip.appendChild(btn);
   });
 
@@ -6920,6 +7009,24 @@ window.editorBridge = {
     }
     setCssVar('--toolbar-bg', androidArgbToCss(prefs.pref_toolbar_bg_color));
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);
+    setCssVar(
+      '--toolbar-label-display',
+      prefs.pref_toolbar_show_labels === true ? 'flex' : 'none'
+    );
+    const toolbarLabelSize = Number(prefs.pref_toolbar_label_size ?? 8);
+    setCssVar(
+      '--toolbar-label-size',
+      Number.isFinite(toolbarLabelSize)
+        ? Math.max(4, Math.min(16, toolbarLabelSize))
+        : 8,
+      'px'
+    );
+    const toolbarLabelColor = prefs.pref_toolbar_label_color;
+    if (typeof toolbarLabelColor === 'string' && toolbarLabelColor !== 'default') {
+      setCssVar('--toolbar-label-color', androidArgbToCss(toolbarLabelColor));
+    } else {
+      document.documentElement.style.removeProperty('--toolbar-label-color');
+    }
     setCssVar(
       '--toolbar-toggle-bg-color',
       androidArgbToCss(prefs.pref_toolbar_toggle_bg_color)

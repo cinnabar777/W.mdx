@@ -33,26 +33,19 @@
       display: none;
       position: fixed;
       z-index: 10006;
-      left: 12px;
-      right: 12px;
-      bottom: calc(var(--toolbar-height, 48px) + 10px);
-      max-height: min(82dvh, calc(100dvh - var(--toolbar-height, 48px) - 24px));
+      inset: 0 0 var(--toolbar-height, 48px);
       margin: 0;
-      padding: 16px;
+      padding: 12px;
       overflow-x: hidden;
       overflow-y: auto;
       overscroll-behavior: contain;
       scrollbar-width: thin;
       border: 1px solid rgba(255,255,255,.2);
-      border-radius: 12px;
+      border-radius: 12px 12px 0 0;
       background: #171717;
       box-shadow: 0 10px 28px rgba(0,0,0,.75);
     }
     .toolbar-preview-editor.visible { display: block; }
-    .toolbar-preview-editor.above-group {
-      bottom: calc(var(--toolbar-height, 48px) + 78px);
-      max-height: min(70dvh, calc(100dvh - var(--toolbar-height, 48px) - 92px));
-    }
     .toolbar-preview-editor-header {
       display: flex;
       flex: 0 0 auto;
@@ -69,6 +62,50 @@
       font-size: 12px;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .toolbar-preview-title-edit {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      place-items: center;
+      border: 0;
+      border-radius: 7px;
+      color: inherit;
+      background: transparent;
+    }
+    .toolbar-preview-title-edit svg {
+      width: 17px;
+      height: 17px;
+    }
+    .toolbar-preview-title-input {
+      min-width: 0;
+      height: 32px;
+      flex: 1;
+      padding: 0 6px;
+      border: 1px solid rgba(255,255,255,.28);
+      border-radius: 6px;
+      color: inherit;
+      background: rgba(255,255,255,.06);
+      font: inherit;
+      font-size: 13px;
+    }
+    .toolbar-preview-title-input[hidden],
+    .toolbar-preview-title-save[hidden] { display: none; }
+    .toolbar-preview-title-save {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.08);
+    }
+    .toolbar-preview-title-save svg {
+      width: 16px;
+      height: 16px;
     }
     .toolbar-preview-editor-close {
       width: 30px;
@@ -101,15 +138,17 @@
     }
     .toolbar-preview-editor-content { display: block; }
     .toolbar-preview-delete-group {
-      width: 100%;
-      min-height: 40px;
-      margin-top: 14px;
+      display: grid;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      place-items: center;
       border: 1px solid rgba(255,100,100,.45);
       border-radius: 8px;
       color: #ffb4ab;
       background: rgba(255,80,80,.09);
-      font: inherit;
     }
+    .toolbar-preview-delete-group svg { width: 17px; height: 17px; }
     .toolbar-preview-delete-group[hidden] { display: none; }
     .toolbar-preview-create-group-modal {
       position: fixed;
@@ -169,10 +208,10 @@
       font-size: 14px;
     }
     .toolbar-preview-color-row button {
-      width: 38px;
-      height: 32px;
+      width: 34px;
+      height: 34px;
       border: 1px solid rgba(255,255,255,.3);
-      border-radius: 8px;
+      border-radius: 50%;
       background: transparent;
     }
     .toolbar-preview-reset-color {
@@ -217,55 +256,40 @@
       color: rgba(255,255,255,.62);
       font-size: 11px;
     }
-    .toolbar-preview-action-slots {
-      margin: 0 0 18px;
-    }
-    .toolbar-preview-action-slots h3,
-    .toolbar-preview-colors-heading {
-      margin: 0 0 7px;
-      font-size: 13px;
-      font-weight: 600;
-    }
+    .toolbar-preview-action-slots { margin: 0 0 14px; }
     .toolbar-preview-action-assignment {
-      display: flex;
-      min-height: 48px;
-      align-items: center;
-      gap: 10px;
-      padding: 5px 8px;
-      border: 1px dashed rgba(255,255,255,.28);
-      border-radius: 8px;
-      color: rgba(255,255,255,.68);
-      font-size: 12px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 48px;
+      gap: 8px;
     }
     .toolbar-preview-action-label {
-      display: inline-flex;
-      min-height: 32px;
+      display: flex;
+      min-width: 0;
+      min-height: 40px;
       align-items: center;
-      padding: 0 12px;
+      justify-content: flex-start;
+      padding: 0 10px;
       border: 1px solid rgba(255,255,255,.22);
       border-radius: 8px;
-      color: inherit;
+      color: rgba(255,255,255,.9);
       background: rgba(255,255,255,.06);
-    }
-    .toolbar-preview-action-assignment-arrow {
-      color: rgba(255,255,255,.52);
-      font-size: 18px;
+      font: inherit;
+      font-size: 13px;
+      text-align: left;
     }
     .toolbar-preview-action-icon {
       display: grid;
-      width: 36px;
-      height: 36px;
-      flex: 0 0 36px;
+      width: 48px;
+      height: 40px;
       place-items: center;
       border: 1px solid rgba(255,255,255,.24);
       border-radius: 8px;
-      color: rgba(255,255,255,.7);
+      color: var(--toolbar-icon-color, #fff);
       background: rgba(255,255,255,.05);
-      font-size: 20px;
     }
-    .toolbar-preview-colors-heading {
-      margin-top: 2px;
-      margin-bottom: 5px;
+    .toolbar-preview-action-icon svg {
+      width: 22px;
+      height: 22px;
     }
     .toolbar-preview-preserve-colors {
       display: inline-flex;
@@ -415,6 +439,39 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .toolbar-preview-action-choice-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .toolbar-preview-action-choice {
+      display: flex;
+      min-width: 0;
+      min-height: 48px;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 9px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      color: inherit;
+      background: transparent;
+      text-align: left;
+      font: inherit;
+      font-size: 12px;
+    }
+    .toolbar-preview-action-choice[aria-pressed="true"] {
+      border-color: currentColor;
+      background: rgba(255,255,255,.1);
+    }
+    .toolbar-preview-action-choice svg {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 22px;
+    }
+    .toolbar-preview-action-choice span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .toolbar-preview-status {
       min-height: 0;
       margin-top: 6px;
@@ -436,6 +493,10 @@
       border-color: rgba(0,0,0,.2);
       background: rgba(0,0,0,.06);
     }
+    body.light-theme .toolbar-preview-title-input {
+      border-color: rgba(0,0,0,.22);
+      background: rgba(0,0,0,.04);
+    }
     body.light-theme .toolbar-preview-editor-reset-all,
     body.light-theme .toolbar-preview-icon-picker-trigger,
     body.light-theme .toolbar-preview-icon-picker-close,
@@ -452,17 +513,13 @@
       background: rgba(0,0,0,.04);
     }
     body.light-theme .toolbar-preview-action-assignment {
-      border-color: rgba(0,0,0,.28);
       color: rgba(0,0,0,.68);
     }
     body.light-theme .toolbar-preview-action-label,
     body.light-theme .toolbar-preview-action-icon {
       border-color: rgba(0,0,0,.18);
-      color: rgba(0,0,0,.5);
+      color: rgba(0,0,0,.85);
       background: rgba(0,0,0,.04);
-    }
-    body.light-theme .toolbar-preview-action-assignment-arrow {
-      color: rgba(0,0,0,.48);
     }
     body.light-theme .toolbar-preview-icon-search,
     body.light-theme .toolbar-preview-icon-list {
@@ -509,27 +566,33 @@
       aria-hidden="true">
       <div class="toolbar-preview-editor-header">
         <h2 id="toolbar-preview-selected-title">Selected key</h2>
+        <input id="toolbar-preview-title-input" class="toolbar-preview-title-input" type="text" maxlength="48" hidden aria-label="Toolbar key name">
+        <button id="toolbar-edit-key-name" class="toolbar-preview-title-edit" type="button" aria-label="Rename toolbar key" title="Rename">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+        </button>
+        <button id="toolbar-save-key-name" class="toolbar-preview-title-save" type="button" hidden aria-label="Save toolbar key name" title="Save name">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+        </button>
         <button id="toolbar-reset-key-style" class="toolbar-preview-editor-reset-all" type="button" aria-label="Reset all settings for this key" title="Reset all">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
+        <button id="toolbar-delete-custom-group" class="toolbar-preview-delete-group" type="button" hidden aria-label="Delete custom group" title="Delete custom group">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
         </button>
         <button id="toolbar-preview-close-editor" class="toolbar-preview-editor-close" type="button" aria-label="Close key settings">×</button>
       </div>
       <div class="toolbar-preview-editor-content">
-        <button id="toolbar-delete-custom-group" class="toolbar-preview-delete-group" type="button" hidden>Delete custom group</button>
         <button id="toolbar-open-icon-picker" class="toolbar-preview-icon-picker-trigger" type="button" aria-haspopup="dialog" aria-controls="toolbar-icon-picker-modal">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
           <span>Choose icon<small>Search built-ins or add an SVG</small></span>
           <span aria-hidden="true">›</span>
         </button>
         <section class="toolbar-preview-action-slots" aria-label="Action and assigned icon preview">
-          <h3>Action preview</h3>
           <div class="toolbar-preview-action-assignment">
-            <span class="toolbar-preview-action-label">Swipe up</span>
-            <span class="toolbar-preview-action-assignment-arrow" aria-hidden="true">→</span>
-            <span class="toolbar-preview-action-icon" role="img" aria-label="Assigned icon placeholder">◇</span>
+            <button id="toolbar-swipe-up-action" class="toolbar-preview-action-label" type="button" aria-haspopup="dialog" aria-controls="toolbar-action-picker-modal">Swipe up</button>
+            <button id="toolbar-swipe-up-icon" class="toolbar-preview-action-icon" type="button" aria-label="Choose icon for Swipe up action">◇</button>
           </div>
         </section>
-        <div class="toolbar-preview-colors-heading">Colors</div>
         <div class="toolbar-preview-style-controls">
           <div class="toolbar-preview-color-settings">
             <div class="toolbar-preview-color-row">
@@ -578,6 +641,16 @@
         </div>
         <div class="toolbar-preview-section-label">Available icons</div>
         <div id="toolbar-icon-list" class="toolbar-preview-icon-list" role="listbox" aria-label="Available app icons"></div>
+      </section>
+    </div>
+    <div id="toolbar-action-picker-modal" class="toolbar-preview-icon-picker-modal" hidden aria-hidden="true">
+      <section class="toolbar-preview-icon-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="toolbar-action-picker-title">
+        <header class="toolbar-preview-icon-picker-header">
+          <h2 id="toolbar-action-picker-title">Choose action</h2>
+          <button id="toolbar-action-picker-close" class="toolbar-preview-icon-picker-close" type="button" aria-label="Close action picker">×</button>
+        </header>
+        <input id="toolbar-action-search" class="toolbar-preview-icon-search" type="search" placeholder="Search actions…" aria-label="Search toolbar actions">
+        <div id="toolbar-action-list" class="toolbar-preview-icon-list toolbar-preview-action-choice-list" role="listbox" aria-label="Available toolbar actions"></div>
       </section>
     </div>
   </main>

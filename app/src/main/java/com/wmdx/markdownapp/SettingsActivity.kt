@@ -1278,7 +1278,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "pref_toolbar_toggle_bg_color",
             "pref_toolbar_toggle_icon_color",
             "pref_toolbar_height",
-            "pref_toolbar_padding"
+            "pref_toolbar_padding",
+            "pref_toolbar_show_labels",
+            "pref_toolbar_label_size",
+            "pref_toolbar_label_color"
         )
         private val TOOLBAR_ITEM_IDS = listOf(
             "undo", "heading", "lists", "format", "table", "insert", "menu"
@@ -1329,7 +1332,11 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     }
 
     private var toolbarPreviewWebView: android.webkit.WebView? = null
+    private var toolbarPreviewHost: android.widget.FrameLayout? = null
+    private var toolbarPreviewPreferencesView: android.view.View? = null
+    private var toolbarEditorOverlayExpanded = false
     private var targetToolbarIconId: String? = null
+    private var targetToolbarIconProperty = "customSvg"
     private var toolbarAppearanceExpanded = false
     private var toolbarAppearanceHeader: ExpandablePreference? = null
     private var toolbarAppearancePreferences: List<Preference> = emptyList()
@@ -1375,7 +1382,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     ): android.view.View {
         val preferencesView = super.onCreateView(inflater, container, savedInstanceState)
         val context = requireContext()
-        val wrapper = android.widget.LinearLayout(context).apply {
+        val wrapper = android.widget.FrameLayout(context)
+        val baseLayout = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
         }
@@ -1390,6 +1398,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             android.view.ViewGroup.LayoutParams.WRAP_CONTENT
         )
         val preview = android.webkit.WebView(context).apply {
+            alpha = 0f
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = false
             settings.allowFileAccess = false
@@ -1397,21 +1406,43 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             addJavascriptInterface(ToolbarPreviewBridge(), "ToolbarSettings")
         }
         toolbarPreviewWebView = preview
-        wrapper.addView(
+        toolbarPreviewHost = wrapper
+        toolbarPreviewPreferencesView = preferencesView
+        toolbarEditorOverlayExpanded = false
+        baseLayout.addView(
             preferencesView,
             android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
-        wrapper.addView(
-            preview,
+        baseLayout.addView(
+            android.view.View(context),
             android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
                 1f
             )
         )
+        wrapper.addView(
+            baseLayout,
+            android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        wrapper.addView(
+            preview,
+            android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        val updatePreviewBounds = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateToolbarPreviewBounds()
+        }
+        wrapper.addOnLayoutChangeListener(updatePreviewBounds)
+        preferencesView.addOnLayoutChangeListener(updatePreviewBounds)
 
         val assetLoader = androidx.webkit.WebViewAssetLoader.Builder()
             .addPathHandler(
@@ -1436,7 +1467,35 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         preview.loadUrl(
             "https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html"
         )
+        wrapper.post { updateToolbarPreviewBounds() }
         return wrapper
+    }
+
+    private fun updateToolbarPreviewBounds() {
+        val host = toolbarPreviewHost ?: return
+        val preview = toolbarPreviewWebView ?: return
+        if (host.height <= 0) return
+        val preferenceBottom = toolbarPreviewPreferencesView?.bottom ?: 0
+        val top = (if (toolbarEditorOverlayExpanded) 0 else preferenceBottom)
+            .coerceIn(0, host.height)
+        val params = (preview.layoutParams as? android.widget.FrameLayout.LayoutParams)
+            ?: android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        params.width = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        params.height = (host.height - top).coerceAtLeast(0)
+        params.topMargin = top
+        params.gravity = android.view.Gravity.TOP
+        preview.layoutParams = params
+        preview.alpha = 1f
+        preview.bringToFront()
+    }
+
+    private fun setToolbarEditorOverlay(expanded: Boolean) {
+        if (toolbarEditorOverlayExpanded == expanded) return
+        toolbarEditorOverlayExpanded = expanded
+        toolbarPreviewHost?.post { updateToolbarPreviewBounds() }
     }
 
     override fun onSettingPreferenceChanged(
@@ -1456,6 +1515,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             destroy()
         }
         toolbarPreviewWebView = null
+        toolbarPreviewHost = null
+        toolbarPreviewPreferencesView = null
+        toolbarEditorOverlayExpanded = false
         super.onDestroyView()
     }
 
@@ -1471,6 +1533,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         payload.put("pref_toolbar_icon_color", prefs.getString("pref_toolbar_icon_color", "default"))
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
+        payload.put("pref_toolbar_show_labels", prefs.getBoolean("pref_toolbar_show_labels", false))
+        payload.put("pref_toolbar_label_size", prefs.getInt("pref_toolbar_label_size", 8))
+        payload.put("pref_toolbar_label_color", prefs.getString("pref_toolbar_label_color", "default"))
         payload.put("pref_app_theme", prefs.getString("pref_app_theme", "amoled"))
         return payload.toString()
     }
@@ -1685,6 +1750,16 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                     style.optBoolean("preserveSvgColors", false)
                 )
             }
+            val title = style.optString("title", "").trim().take(48)
+            if (title.isNotBlank()) cleanedStyle.put("title", title)
+            val gestureAction = style.optString("gestureAction", "")
+            if (gestureAction in validKeyIds) {
+                cleanedStyle.put("gestureAction", gestureAction)
+                val gestureIcon = style.optString("gestureActionIconSvg", "")
+                if (gestureIcon.isNotBlank() && isSafeToolbarSvg(gestureIcon)) {
+                    cleanedStyle.put("gestureActionIconSvg", gestureIcon)
+                }
+            }
             if (cleanedStyle.length() > 0) styles.put(id, cleanedStyle)
         }
 
@@ -1788,7 +1863,11 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         value: String?
     ): Boolean {
         if (!isToolbarStyleAllowed(itemId)) return false
-        if (property !in TOOLBAR_COLOR_PROPERTIES && property != "customSvg") return false
+        if (
+            property !in TOOLBAR_COLOR_PROPERTIES &&
+            property != "customSvg" &&
+            property != "gestureActionIconSvg"
+        ) return false
         return try {
             val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
             val current = org.json.JSONObject(
@@ -1810,34 +1889,41 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
     }
 
-    private fun showToolbarSvgChooser(itemId: String) {
+    private fun showToolbarSvgChooser(itemId: String, property: String = "customSvg") {
         targetToolbarIconId = itemId
+        targetToolbarIconProperty = property
         AlertDialog.Builder(requireContext())
             .setTitle("Custom toolbar icon")
             .setItems(arrayOf("Choose SVG file", "Paste SVG code", "Use default icon")) { _, which ->
                 when (which) {
-                    0 -> chooseToolbarSvgFile(itemId)
-                    1 -> pasteToolbarSvg(itemId)
-                    else -> updateToolbarStyle(itemId, "customSvg", null)
+                    0 -> chooseToolbarSvgFile(itemId, property)
+                    1 -> pasteToolbarSvg(itemId, property)
+                    else -> updateToolbarStyle(itemId, property, null)
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun chooseToolbarSvgFile(itemId: String) {
+    private fun chooseToolbarSvgFile(itemId: String, property: String = "customSvg") {
         targetToolbarIconId = itemId
+        targetToolbarIconProperty = property
         pickToolbarSvgLauncher.launch(
             arrayOf("image/svg+xml", "text/xml", "application/xml", "*/*")
         )
     }
 
-    private fun pasteToolbarSvg(itemId: String) {
+    private fun pasteToolbarSvg(itemId: String, property: String = "customSvg") {
         targetToolbarIconId = itemId
+        targetToolbarIconProperty = property
         showPasteToolbarSvgDialog()
     }
 
-    private fun runToolbarSvgAction(itemId: String, action: () -> Unit) {
+    private fun runToolbarSvgAction(
+        itemId: String,
+        property: String = "customSvg",
+        action: () -> Unit
+    ) {
         val host = activity ?: return
         host.runOnUiThread {
             if (!isAdded) return@runOnUiThread
@@ -1846,6 +1932,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 return@runOnUiThread
             }
             targetToolbarIconId = itemId
+            targetToolbarIconProperty = property
             try {
                 action()
             } catch (error: Exception) {
@@ -1876,7 +1963,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 val itemId = targetToolbarIconId
                 if (itemId == null || svg.isBlank() || !isSafeToolbarSvg(svg)) {
                     ThemedToast.show(requireContext(), "Invalid or unsafe SVG icon")
-                } else if (updateToolbarStyle(itemId, "customSvg", svg)) {
+                } else if (updateToolbarStyle(itemId, targetToolbarIconProperty, svg)) {
                     ThemedToast.show(requireContext(), "Toolbar icon updated")
                 }
             }
@@ -1906,7 +1993,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 ThemedToast.show(requireContext(), "Invalid or unsafe SVG icon")
                 return
             }
-            if (updateToolbarStyle(itemId, "customSvg", svg)) {
+            if (updateToolbarStyle(itemId, targetToolbarIconProperty, svg)) {
                 ThemedToast.show(requireContext(), "Toolbar icon updated")
             }
         } catch (error: Exception) {
@@ -1924,6 +2011,13 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         @android.webkit.JavascriptInterface
         fun collapseToolbarAppearance() {
             activity?.runOnUiThread { collapseToolbarAppearanceSettings() }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun setToolbarEditorOverlay(expanded: Boolean) {
+            activity?.runOnUiThread {
+                this@StylingControlbarFragment.setToolbarEditorOverlay(expanded)
+            }
         }
 
         @android.webkit.JavascriptInterface
@@ -1964,11 +2058,14 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 ?.takeIf { it.isNotBlank() }
                 ?: request
             val action = payload?.optString("action") ?: "chooser"
-            runToolbarSvgAction(itemId) {
+            val property = payload?.optString("property")
+                ?.takeIf { it == "gestureActionIconSvg" }
+                ?: "customSvg"
+            runToolbarSvgAction(itemId, property) {
                 when (action) {
-                    "paste" -> pasteToolbarSvg(itemId)
-                    "file" -> chooseToolbarSvgFile(itemId)
-                    else -> showToolbarSvgChooser(itemId)
+                    "paste" -> pasteToolbarSvg(itemId, property)
+                    "file" -> chooseToolbarSvgFile(itemId, property)
+                    else -> showToolbarSvgChooser(itemId, property)
                 }
             }
         }
