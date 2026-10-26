@@ -2028,10 +2028,6 @@ document.querySelector('#toolbar-reset-layout')?.addEventListener('click', () =>
   render();
   saveConfig();
 });
-document.querySelector('#toolbar-save-layout')?.addEventListener('click', () => {
-  saveConfig();
-});
-
 document.querySelector('#toolbar-preview-close-editor')?.addEventListener('click', () => {
   setIconPickerOpen(false);
   selectedKey = null;

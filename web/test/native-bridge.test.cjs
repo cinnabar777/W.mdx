@@ -15,6 +15,10 @@ const settingsActivityPath = path.join(
   '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'
 );
 const settingsActivitySource = fs.readFileSync(settingsActivityPath, 'utf8');
+const toolbarSettingsXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_controlbar.xml'),
+  'utf8'
+);
 const toolbarPreviewSource = fs.readFileSync(
   path.join(__dirname, '../src/toolbarSettingsPreview.js'),
   'utf8'
@@ -297,6 +301,20 @@ test('toolbar layout is explicitly saved from the separate preview when settings
     settingsActivitySource,
     /override fun onSettingPreferenceChanged[\s\S]*?saveToolbarPreviewLayout\(\)[\s\S]*?updateToolbarPreview\(includeToolbarConfig = false\)/
   );
+});
+
+test('manual toolbar save is a native settings action with visible success or failure feedback', () => {
+  assert.match(
+    toolbarSettingsXml,
+    /app:key="pref_toolbar_save_layout"[\s\S]*?app:title="Save toolbar layout"/
+  );
+  assert.match(
+    settingsActivitySource,
+    /findPreference<Preference>\("pref_toolbar_save_layout"\)[\s\S]*?saveToolbarPreviewLayout\(showFeedback = true\)/
+  );
+  assert.match(settingsActivitySource, /isPersistent = false/);
+  assert.match(settingsActivitySource, /Toolbar layout saved/);
+  assert.match(settingsActivitySource, /Could not save toolbar layout/);
 });
 
 test('settings labels avoid redundant settings, styling, and shortcut wording', () => {

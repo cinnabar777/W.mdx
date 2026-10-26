@@ -8,6 +8,11 @@
         app:summary="Toolbar-wide colors, size, labels, and spacing"
         app:widgetLayout="@layout/preference_expand_chevron" />
 
+    <Preference
+        app:key="pref_toolbar_save_layout"
+        app:title="Save toolbar layout"
+        app:summary="Save the current toolbar arrangement" />
+
     <com.wmdx.markdownapp.ResetColorPickerPreference
         app:key="pref_toolbar_bg_color"
         app:title="Toolbar Background Color"

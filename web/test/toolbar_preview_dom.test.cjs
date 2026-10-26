@@ -1159,7 +1159,7 @@ test('holding-area layout survives recreating the toolbar settings preview', asy
     assert.ok(persisted.holding.includes('paragraph'));
 
     const savesBeforeManualSave = saveCalls;
-    firstDom.window.document.querySelector('#toolbar-save-layout').click();
+    assert.equal(firstDom.window.saveToolbarLayout(), true);
     assert.equal(saveCalls, savesBeforeManualSave + 1);
     assert.equal(
       firstDom.window.document.querySelector('#toolbar-preview-status').textContent,

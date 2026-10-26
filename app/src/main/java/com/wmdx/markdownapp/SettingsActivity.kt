@@ -1358,6 +1358,13 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_controlbar, rootKey)
+        findPreference<Preference>("pref_toolbar_save_layout")?.apply {
+            isPersistent = false
+            setOnPreferenceClickListener {
+                saveToolbarPreviewLayout(showFeedback = true)
+                true
+            }
+        }
         val appearanceHeader =
             findPreference<ExpandablePreference>(TOOLBAR_APPEARANCE_HEADER_KEY)
                 ?: return
@@ -1387,11 +1394,31 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         view?.parent?.requestLayout()
     }
 
-    private fun saveToolbarPreviewLayout() {
-        toolbarPreviewWebView?.evaluateJavascript(
-            "window.saveToolbarLayout?.();",
-            null
-        )
+    private fun saveToolbarPreviewLayout(showFeedback: Boolean = false) {
+        val preview = toolbarPreviewWebView
+        if (preview == null) {
+            if (showFeedback) {
+                activity?.let {
+                    ThemedToast.show(
+                        it,
+                        "Toolbar preview is not ready",
+                        android.widget.Toast.LENGTH_SHORT
+                    )
+                }
+            }
+            return
+        }
+        preview.evaluateJavascript("window.saveToolbarLayout?.();") { result ->
+            if (!showFeedback) return@evaluateJavascript
+            val message = when (result) {
+                "true" -> "Toolbar layout saved"
+                "false" -> "Could not save toolbar layout"
+                else -> "Toolbar preview is not ready"
+            }
+            activity?.let {
+                ThemedToast.show(it, message, android.widget.Toast.LENGTH_SHORT)
+            }
+        }
     }
 
     override fun onCreateView(
