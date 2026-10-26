@@ -9,3 +9,4 @@
 - [Toolbar preview colors](toolbar-preview-colors.md) — active states preserve chosen key colors; SVG tinting must not turn outlines into filled shapes.
 - [Toolbar icon editor](toolbar-icon-editor.md) — keep spacious key settings scrollable; open icon search/import in a separate dismissible popup.
 - [Toolbar folder placement](toolbar-folder-placement.md) — custom folders and actions share one flat holding area; empty folders stay visible until moved or explicitly deleted.
+- [Replit branch workflow](branch-tip-comparisons.md) — integrate validated work on the existing Replit branch; create no additional branches unless explicitly requested.
