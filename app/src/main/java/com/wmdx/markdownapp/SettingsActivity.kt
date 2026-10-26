@@ -1283,6 +1283,31 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         private val TOOLBAR_ITEM_IDS = listOf(
             "undo", "heading", "lists", "format", "table", "insert", "menu"
         )
+        private val TOOLBAR_GROUP_ITEM_IDS = linkedMapOf(
+            "heading" to listOf(
+                "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5",
+                "heading6", "wrap", "line-numbers"
+            ),
+            "lists" to listOf(
+                "bulletedList", "numberedList", "todoList", "indent", "outdent"
+            ),
+            "format" to listOf(
+                "bold", "italic", "strikethrough", "underline", "yellowMarker", "greenMarker",
+                "pinkMarker", "blueMarker", "redPen", "greenPen"
+            ),
+            "table" to listOf(
+                "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
+                "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell"
+            ),
+            "insert" to listOf(
+                "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
+                "horizontalLine", "footnote"
+            ),
+            "menu" to listOf(
+                "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
+                "exportHtml", "search", "switchView", "newWindow", "settings"
+            )
+        )
         private val TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS + listOf(
             "paragraph",
             "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
@@ -1452,10 +1477,20 @@ class StylingControlbarFragment : StylingSettingsFragment() {
 
     private fun defaultToolbarConfigJson(): String {
         val defaultOrder = org.json.JSONArray(TOOLBAR_ITEM_IDS)
+        val popupGroups = org.json.JSONObject()
+        for ((groupId, itemIds) in TOOLBAR_GROUP_ITEM_IDS) {
+            popupGroups.put(
+                groupId,
+                org.json.JSONObject()
+                    .put("order", org.json.JSONArray(itemIds))
+                    .put("hidden", org.json.JSONArray())
+            )
+        }
         return org.json.JSONObject()
             .put("version", 1)
             .put("order", defaultOrder)
             .put("hidden", org.json.JSONArray())
+            .put("popupGroups", popupGroups)
             .put("styles", org.json.JSONObject())
             .toString()
     }
@@ -1498,6 +1533,36 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             order.add("menu")
         }
 
+        val popupGroups = org.json.JSONObject()
+        val rawPopupGroups = input.optJSONObject("popupGroups") ?: org.json.JSONObject()
+        for ((groupId, itemIds) in TOOLBAR_GROUP_ITEM_IDS) {
+            val rawGroup = rawPopupGroups.optJSONObject(groupId) ?: org.json.JSONObject()
+            val hiddenItems = mutableListOf<String>()
+            val rawGroupHidden = rawGroup.optJSONArray("hidden") ?: org.json.JSONArray()
+            for (index in 0 until rawGroupHidden.length()) {
+                val id = rawGroupHidden.optString(index)
+                if (id in itemIds && id !in hiddenItems) hiddenItems.add(id)
+            }
+
+            val groupOrder = mutableListOf<String>()
+            val rawGroupOrder = rawGroup.optJSONArray("order") ?: org.json.JSONArray()
+            for (index in 0 until rawGroupOrder.length()) {
+                val id = rawGroupOrder.optString(index)
+                if (id in itemIds && id !in hiddenItems && id !in groupOrder) {
+                    groupOrder.add(id)
+                }
+            }
+            for (id in itemIds) {
+                if (id !in groupOrder && id !in hiddenItems) groupOrder.add(id)
+            }
+            popupGroups.put(
+                groupId,
+                org.json.JSONObject()
+                    .put("order", org.json.JSONArray(groupOrder))
+                    .put("hidden", org.json.JSONArray(hiddenItems))
+            )
+        }
+
         val styles = org.json.JSONObject()
         val rawStyles = input.optJSONObject("styles") ?: org.json.JSONObject()
         val safeColor = Regex(
@@ -1527,6 +1592,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .put("version", 1)
             .put("order", org.json.JSONArray(order))
             .put("hidden", org.json.JSONArray(hidden))
+            .put("popupGroups", popupGroups)
             .put("styles", styles)
             .toString()
     }

@@ -1,8 +1,10 @@
 import {
-  BOTTOM_TOOLBAR_ITEM_IDS,
+  BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
   BOTTOM_TOOLBAR_ITEMS,
+  BOTTOM_TOOLBAR_ITEM_IDS,
   DEFAULT_BOTTOM_TOOLBAR_CONFIG,
-  normalizeBottomToolbarConfig
+  normalizeBottomToolbarConfig,
+  orderBottomToolbarPopupItems
 } from './toolbarConfig.js';
 import { svgIcons } from './toolbarIcons.js';
 import {
@@ -157,6 +159,7 @@ function render() {
       version: 1,
       order: [...config.hidden],
       hidden: BOTTOM_TOOLBAR_ITEM_IDS.filter(id => !config.hidden.includes(id)),
+      popupGroups: config.popupGroups,
       styles: config.styles
     };
     renderBottomToolbarKeys(tray, trayConfig, svgIcons, {
@@ -169,6 +172,7 @@ function render() {
     // toolbar normalizer would restore the Menu key and show it twice.
     tray.replaceChildren();
   }
+  renderHeldPopupActions();
 
   for (const button of document.querySelectorAll('.toolbar-preview-key')) {
     if (PREVIEW_GROUP_ITEMS[button.dataset.toolbarKey]) {
@@ -236,7 +240,12 @@ function onToolbarKeyClick(id) {
   window.ToolbarSettings?.collapseToolbarAppearance?.();
   const isHiddenKey = config.hidden.includes(id);
   const now = Date.now();
-  if (isHiddenKey && previousTap.id === id && now - previousTap.time <= 400) {
+  if (
+    isHiddenKey &&
+    !PREVIEW_GROUP_ITEMS[id] &&
+    previousTap.id === id &&
+    now - previousTap.time <= 400
+  ) {
     previousTap = { id: null, time: 0 };
     window.ToolbarSettings?.editBottomToolbarIcon?.(id);
     return;
@@ -244,11 +253,9 @@ function onToolbarKeyClick(id) {
   previousTap = { id, time: now };
   setIconPickerOpen(false);
   selectedKey = id;
-  openPopupGroup = isHiddenKey
-    ? null
-    : PREVIEW_GROUP_ITEMS[id]
-      ? (openPopupGroup === id ? null : id)
-      : null;
+  openPopupGroup = PREVIEW_GROUP_ITEMS[id]
+    ? (openPopupGroup === id ? null : id)
+    : null;
   selectedPopupItem = null;
   setStatus(isHiddenKey
     ? 'Holding-area keys open their settings; drag one back to restore it.'
@@ -259,54 +266,122 @@ function onToolbarKeyClick(id) {
 function renderPopupGroup() {
   if (!popup) return;
   popup.replaceChildren();
-  const items = openPopupGroup ? PREVIEW_GROUP_ITEMS[openPopupGroup] : null;
+  const items = openPopupGroup
+    ? orderBottomToolbarPopupItems(
+      openPopupGroup,
+      PREVIEW_GROUP_ITEMS[openPopupGroup] || [],
+      config.popupGroups
+    )
+    : null;
   if (!items?.length) {
     popup.classList.add('hidden');
     return;
   }
 
   for (const item of items) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'popup-strip-btn toolbar-preview-popup-key';
-    button.title = item.title;
-    button.setAttribute('aria-label', item.title);
-    button.setAttribute('aria-current', item.id === selectedPopupItem ? 'true' : 'false');
-    button.classList.toggle('active', item.id === selectedPopupItem);
-    button.dataset.previewPopupItem = item.id;
-    const style = config.styles[item.id] || {};
-    button.style.setProperty(
-      '--toolbar-key-active-bg-color',
-      toToolbarCssColor(style.activeBackgroundColor || style.backgroundColor || 'transparent')
-    );
-    if (style.iconColor) {
-      button.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
-    }
-    if (style.backgroundColor) {
-      button.style.setProperty('--toolbar-key-bg-color', toToolbarCssColor(style.backgroundColor));
-    }
-    if (style.activeBackgroundColor) {
-      button.style.setProperty(
-        '--toolbar-key-active-bg-color',
-        toToolbarCssColor(style.activeBackgroundColor)
-      );
-    }
-    const customIcon = style.customSvg
-      ? sanitizeToolbarSvg(style.customSvg, style.preserveSvgColors === true, document)
-      : '';
-    button.innerHTML = customIcon || item.icon || item.title;
-    button.addEventListener('pointerdown', event => event.preventDefault());
-    button.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      selectedPopupItem = item.id;
-      selectedKey = item.id;
-      setStatus('');
-      render();
-    });
-    popup.appendChild(button);
+    popup.appendChild(createPreviewPopupKey(item, openPopupGroup, 'popup'));
   }
   popup.classList.remove('hidden');
+}
+
+function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = false) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'popup-strip-btn toolbar-preview-popup-key';
+  button.title = item.title;
+  button.setAttribute('aria-label', item.title);
+  button.setAttribute('aria-current', item.id === selectedPopupItem ? 'true' : 'false');
+  button.classList.toggle('active', item.id === selectedPopupItem);
+  button.classList.toggle('is-individually-hidden', isIndividuallyHidden);
+  button.dataset.previewPopupItem = item.id;
+  button.dataset.previewGroup = groupId;
+  button.dataset.previewLocation = location;
+  button.dataset.previewPopupHidden = String(isIndividuallyHidden);
+  const style = config.styles[item.id] || {};
+  button.style.setProperty(
+    '--toolbar-key-active-bg-color',
+    toToolbarCssColor(style.activeBackgroundColor || style.backgroundColor || 'transparent')
+  );
+  if (style.iconColor) {
+    button.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
+  }
+  if (style.backgroundColor) {
+    button.style.setProperty('--toolbar-key-bg-color', toToolbarCssColor(style.backgroundColor));
+  }
+  if (style.activeBackgroundColor) {
+    button.style.setProperty(
+      '--toolbar-key-active-bg-color',
+      toToolbarCssColor(style.activeBackgroundColor)
+    );
+  }
+  const customIcon = style.customSvg
+    ? sanitizeToolbarSvg(style.customSvg, style.preserveSvgColors === true, document)
+    : '';
+  button.innerHTML = customIcon || item.icon || item.title;
+  button.addEventListener('pointerdown', event => beginPossibleDrag(event, button), {
+    passive: false
+  });
+  button.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    selectedPopupItem = item.id;
+    selectedKey = item.id;
+    if (location === 'popup') openPopupGroup = groupId;
+    else if (openPopupGroup !== groupId) openPopupGroup = null;
+    setStatus('');
+    render();
+  });
+  return button;
+}
+
+function renderHeldPopupActions() {
+  if (!tray) return;
+  for (const [groupId, items] of Object.entries(PREVIEW_GROUP_ITEMS)) {
+    const groupConfig = config.popupGroups[groupId];
+    const groupIsHidden = config.hidden.includes(groupId);
+    if (!groupIsHidden && !groupConfig.hidden.length) continue;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'toolbar-preview-held-group';
+    wrapper.dataset.previewGroup = groupId;
+
+    const groupButton = groupIsHidden
+      ? [...tray.querySelectorAll('.toolbar-preview-key')]
+        .find(button => button.dataset.toolbarKey === groupId)
+      : null;
+    if (groupButton) wrapper.appendChild(groupButton);
+
+    const actionIds = groupIsHidden
+      ? [...groupConfig.order, ...groupConfig.hidden]
+      : [...groupConfig.hidden];
+    const actionsAreShownInPopup = groupIsHidden && openPopupGroup === groupId;
+    if (actionIds.length && !actionsAreShownInPopup) {
+      const title = document.createElement('span');
+      title.className = 'toolbar-preview-held-group-title';
+      title.textContent = `${BOTTOM_TOOLBAR_ITEMS.find(item => item.id === groupId)?.title || groupId} actions`;
+      wrapper.appendChild(title);
+
+      const actionTray = document.createElement('div');
+      actionTray.className = 'toolbar-preview-held-actions';
+      for (const actionId of actionIds) {
+        const item = items.find(candidate => candidate.id === actionId);
+        if (!item) continue;
+        actionTray.appendChild(
+          createPreviewPopupKey(
+            item,
+            groupId,
+            'tray',
+            groupConfig.hidden.includes(item.id)
+          )
+        );
+      }
+      wrapper.appendChild(actionTray);
+    }
+
+    if (groupButton || wrapper.querySelector('.toolbar-preview-held-actions')) {
+      tray.appendChild(wrapper);
+    }
+  }
 }
 
 function refreshSelectedKeyEditor() {

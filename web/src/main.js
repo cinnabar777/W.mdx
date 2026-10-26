@@ -30,7 +30,10 @@ import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
-import { normalizeBottomToolbarConfig } from './toolbarConfig.js';
+import {
+  normalizeBottomToolbarConfig,
+  orderBottomToolbarPopupItems
+} from './toolbarConfig.js';
 import {
   renderBottomToolbarKeys,
   sanitizeToolbarSvg,
@@ -4798,7 +4801,11 @@ function togglePopupStrip(groupKey, targetBtn, items) {
   activePopupGroup = groupKey;
   targetBtn.classList.add('active');
 
-  items.forEach(item => {
+  orderBottomToolbarPopupItems(
+    groupKey,
+    items,
+    bottomToolbarConfig.popupGroups
+  ).forEach(item => {
     const btn = document.createElement('button');
     btn.className = 'popup-strip-btn';
     const styleId = item.styleId || item.id || item.command;
