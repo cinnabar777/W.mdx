@@ -208,9 +208,63 @@ body.light-theme .popup-toolbar-strip {
 }
 
 .toolbar-preview-key.drop-target,
+.toolbar-preview-popup-key.drop-target,
 .toolbar-preview-tray.drop-target {
   outline: 2px dashed var(--toolbar-icon-color, #fff);
   outline-offset: -2px;
+}
+
+.toolbar-preview-popup-key {
+  touch-action: none;
+  cursor: grab !important;
+}
+
+.toolbar-preview-popup-key.is-dragging {
+  opacity: 0.45 !important;
+}
+
+.toolbar-preview-popup-key.is-individually-hidden {
+  opacity: 0.58;
+  border-style: dashed !important;
+}
+
+.toolbar-preview-held-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 7px;
+}
+
+.toolbar-preview-held-group-title {
+  flex: 0 0 100%;
+  padding: 0 3px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 10px;
+}
+
+.toolbar-preview-held-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 100%;
+}
+
+.toolbar-preview-held-actions .toolbar-preview-popup-key {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  flex: 0 0 36px;
+  padding: 2px;
+}
+
+.toolbar-preview-held-actions .toolbar-preview-popup-key svg {
+  max-width: 25px;
+  max-height: 25px;
 }
 
 .toolbar-preview-key:active,
@@ -261,6 +315,14 @@ body.light-theme .toolbar-preview-shell {
 
 body.light-theme .toolbar-preview-tray {
   border-color: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .toolbar-preview-held-group {
+  border-color: rgba(0, 0, 0, 0.24);
+}
+
+body.light-theme .toolbar-preview-held-group-title {
+  color: rgba(0, 0, 0, 0.62);
 }
 
 body.light-theme .toolbar-preview-tray:empty::before {

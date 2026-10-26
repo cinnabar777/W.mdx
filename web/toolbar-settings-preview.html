@@ -168,34 +168,42 @@
       font-size: 13px;
       font-weight: 600;
     }
-    .toolbar-preview-action-slot-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 10px;
-    }
-    .toolbar-preview-action-slot {
+    .toolbar-preview-action-assignment {
       display: flex;
       min-height: 48px;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 7px 10px;
+      gap: 10px;
+      padding: 5px 8px;
       border: 1px dashed rgba(255,255,255,.28);
       border-radius: 8px;
       color: rgba(255,255,255,.68);
       font-size: 12px;
     }
-    .toolbar-preview-action-slot-placeholder {
+    .toolbar-preview-action-label {
+      display: inline-flex;
+      min-height: 32px;
+      align-items: center;
+      padding: 0 12px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.06);
+    }
+    .toolbar-preview-action-assignment-arrow {
+      color: rgba(255,255,255,.52);
+      font-size: 18px;
+    }
+    .toolbar-preview-action-icon {
       display: grid;
-      min-width: 38px;
-      min-height: 30px;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
       place-items: center;
-      padding: 0 8px;
-      border: 1px solid rgba(255,255,255,.18);
-      border-radius: 7px;
-      color: rgba(255,255,255,.5);
-      background: rgba(255,255,255,.04);
-      font-size: 11px;
+      border: 1px solid rgba(255,255,255,.24);
+      border-radius: 8px;
+      color: rgba(255,255,255,.7);
+      background: rgba(255,255,255,.05);
+      font-size: 20px;
     }
     .toolbar-preview-colors-heading {
       margin-top: 2px;
@@ -385,14 +393,18 @@
       border-color: rgba(0,0,0,.18);
       background: rgba(0,0,0,.04);
     }
-    body.light-theme .toolbar-preview-action-slot {
+    body.light-theme .toolbar-preview-action-assignment {
       border-color: rgba(0,0,0,.28);
       color: rgba(0,0,0,.68);
     }
-    body.light-theme .toolbar-preview-action-slot-placeholder {
+    body.light-theme .toolbar-preview-action-label,
+    body.light-theme .toolbar-preview-action-icon {
       border-color: rgba(0,0,0,.18);
       color: rgba(0,0,0,.5);
       background: rgba(0,0,0,.04);
+    }
+    body.light-theme .toolbar-preview-action-assignment-arrow {
+      color: rgba(0,0,0,.48);
     }
     body.light-theme .toolbar-preview-icon-search,
     body.light-theme .toolbar-preview-icon-list {
@@ -417,7 +429,7 @@
 <body>
   <main class="toolbar-preview-shell">
     <div class="toolbar-preview-content">
-      <div class="toolbar-preview-tray-label">Holding area · tap a key to customize it; hold and drag to restore it</div>
+      <div class="toolbar-preview-tray-label">Holding area · hold and drag keys to reorder or hide them; grouped actions stay with their group</div>
       <div id="toolbar-holding-tray" class="toolbar-preview-tray" aria-label="Hidden toolbar keys"></div>
       <div class="toolbar-preview-layout-actions">
         <button id="toolbar-reset-layout" type="button">Restore default layout</button>
@@ -450,17 +462,12 @@
           <span>Choose icon<small>Search built-ins or add an SVG</small></span>
           <span aria-hidden="true">›</span>
         </button>
-        <section class="toolbar-preview-action-slots" aria-label="Action layout placeholders">
-          <h3>Action layout</h3>
-          <div class="toolbar-preview-action-slot-row">
-            <div class="toolbar-preview-action-slot">
-              <span>Action chip</span>
-              <span class="toolbar-preview-action-slot-placeholder" aria-hidden="true">Action</span>
-            </div>
-            <div class="toolbar-preview-action-slot">
-              <span>Action icon</span>
-              <span class="toolbar-preview-action-slot-placeholder" aria-hidden="true">Icon</span>
-            </div>
+        <section class="toolbar-preview-action-slots" aria-label="Action and assigned icon preview">
+          <h3>Action preview</h3>
+          <div class="toolbar-preview-action-assignment">
+            <span class="toolbar-preview-action-label">Swipe up</span>
+            <span class="toolbar-preview-action-assignment-arrow" aria-hidden="true">→</span>
+            <span class="toolbar-preview-action-icon" role="img" aria-label="Assigned icon placeholder">◇</span>
           </div>
         </section>
         <div class="toolbar-preview-colors-heading">Colors</div>

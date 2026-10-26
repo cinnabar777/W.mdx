@@ -25,17 +25,56 @@ test('bottom toolbar configuration ignores unknown and duplicate keys but restor
 });
 
 test('invalid saved configuration falls back to the current toolbar order', async () => {
-  const { normalizeBottomToolbarConfig } =
+  const { BOTTOM_TOOLBAR_GROUP_ITEM_IDS, normalizeBottomToolbarConfig } =
     await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig('{invalid json');
+  assert.deepEqual(config.order, ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu']);
+  assert.deepEqual(config.hidden, []);
+  assert.deepEqual(config.styles, {});
   assert.deepEqual(
-    normalizeBottomToolbarConfig('{invalid json'),
-    {
-      version: 1,
-      order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
-      hidden: [],
-      styles: {}
-    }
+    config.popupGroups,
+    Object.fromEntries(
+      Object.entries(BOTTOM_TOOLBAR_GROUP_ITEM_IDS).map(([group, ids]) => [
+        group,
+        { order: [...ids], hidden: [] }
+      ])
+    )
   );
+});
+
+test('popup group actions can be reordered or hidden without losing sibling actions', async () => {
+  const {
+    BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
+    BOTTOM_TOOLBAR_POPUP_ITEM_IDS,
+    normalizeBottomToolbarConfig,
+    orderBottomToolbarPopupItems
+  } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    popupGroups: {
+      format: {
+        order: ['italic', 'bold', 'italic', 'unknown'],
+        hidden: ['underline', 'underline', 'unknown']
+      }
+    }
+  });
+
+  assert.deepEqual(config.popupGroups.format.order.slice(0, 3), [
+    'italic', 'bold', 'strikethrough'
+  ]);
+  assert.deepEqual(config.popupGroups.format.hidden, ['underline']);
+  assert.deepEqual(
+    orderBottomToolbarPopupItems(
+      'format',
+      BOTTOM_TOOLBAR_GROUP_ITEM_IDS.format.map(id => ({ id })),
+      config.popupGroups
+    ).map(item => item.id).slice(0, 3),
+    ['italic', 'bold', 'strikethrough']
+  );
+  assert.equal(
+    [...Object.values(BOTTOM_TOOLBAR_GROUP_ITEM_IDS).flat()].length,
+    BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length
+  );
+  assert.equal(new Set(BOTTOM_TOOLBAR_POPUP_ITEM_IDS).size, BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length);
 });
 
 test('toolbar styles retain colors for popup actions but discard unknown style targets', async () => {

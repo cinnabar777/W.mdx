@@ -55,9 +55,14 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /aria-modal="true"/);
   assert.match(html, /id="toolbar-icon-search"/);
   assert.match(html, /id="toolbar-icon-list"/);
-  assert.match(html, /toolbar-preview-action-slot-row/);
-  assert.match(html, /Action chip/);
-  assert.match(html, /Action icon/);
+  assert.match(html, /toolbar-preview-action-assignment/);
+  assert.match(html, /Swipe up/);
+  assert.match(html, /Assigned icon placeholder/);
+  assert.doesNotMatch(html, /Action chip|Action icon/);
+  assert.match(settingsSource, /createPreviewPopupKey/);
+  assert.match(settingsSource, /renderHeldPopupActions/);
+  assert.match(settingsSource, /applyPopupDrop/);
+  assert.match(settingsSource, /orderBottomToolbarPopupItems/);
   assert.match(html, /id="toolbar-paste-svg"/);
   assert.match(html, /id="toolbar-choose-svg"/);
   assert.match(html, /Paste SVG/);
@@ -91,7 +96,11 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
 });
 
 test('popup toolbar actions accept the same persisted styles in web preview and Android settings', async () => {
-  const { BOTTOM_TOOLBAR_POPUP_ITEM_IDS, BOTTOM_TOOLBAR_STYLE_IDS } =
+  const {
+    BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
+    BOTTOM_TOOLBAR_POPUP_ITEM_IDS,
+    BOTTOM_TOOLBAR_STYLE_IDS
+  } =
     await import('../src/toolbarConfig.js');
   const kotlinPopupIdsBlock = androidSource.match(
     /TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS \+ listOf\(([\s\S]*?)\n\s*\)/
@@ -102,6 +111,19 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
     .sort();
   assert.deepEqual(kotlinPopupIds, [...BOTTOM_TOOLBAR_POPUP_ITEM_IDS].sort());
   assert.equal(BOTTOM_TOOLBAR_STYLE_IDS.length, BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length + 7);
+  const kotlinGroupsBlock = androidSource.match(
+    /TOOLBAR_GROUP_ITEM_IDS = linkedMapOf\(([\s\S]*?)\n\s*\)\s*\n\s*private val TOOLBAR_STYLE_IDS/
+  )?.[1];
+  assert.ok(kotlinGroupsBlock, 'Android must preserve each popup group layout');
+  const kotlinGroups = Object.fromEntries(
+    [...kotlinGroupsBlock.matchAll(/"([^"]+)" to listOf\(([\s\S]*?)\)/g)].map(([, group, ids]) => [
+      group,
+      [...ids.matchAll(/"([^"]+)"/g)].map(([, id]) => id)
+    ])
+  );
+  assert.deepEqual(kotlinGroups, BOTTOM_TOOLBAR_GROUP_ITEM_IDS);
+  assert.match(androidSource, /put\("popupGroups", popupGroups\)/);
+  assert.match(mainSource, /orderBottomToolbarPopupItems\(\s*groupKey/);
   assert.match(mainSource, /const styleId = item\.styleId \|\| item\.id \|\| item\.command/);
   assert.match(mainSource, /dataset\.toolbarStyleId/);
   assert.match(sharedCss, /--toolbar-key-icon-color, var\(--toolbar-icon-color/);

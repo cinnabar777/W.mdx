@@ -4,6 +4,24 @@ const path = require('node:path');
 const test = require('node:test');
 const { JSDOM } = require('jsdom');
 
+async function dragKey(dom, source, target, dropX = 90) {
+  target.getBoundingClientRect = () => ({ left: 0, width: 100, right: 100 });
+  dom.window.document.elementFromPoint = () => target;
+  const dispatchPointer = (targetElement, type, clientX, clientY) => {
+    targetElement.dispatchEvent(new dom.window.MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX,
+      clientY
+    }));
+  };
+  dispatchPointer(source, 'pointerdown', 2, 2);
+  await new Promise(resolve => setTimeout(resolve, 280));
+  dispatchPointer(dom.window.document, 'pointermove', 42, 12);
+  dispatchPointer(dom.window.document, 'pointerup', dropX, 12);
+}
+
 test('toolbar settings preview opens a dismissible icon picker popup above spacious key settings', async () => {
   const htmlPath = path.resolve(__dirname, '../toolbar-settings-preview.html');
   const html = fs.readFileSync(htmlPath, 'utf8');
@@ -151,8 +169,9 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.equal(pickerButton.parentElement, editor.querySelector('.toolbar-preview-editor-content'));
     assert.equal(dom.window.document.querySelector('#toolbar-current-key-preview'), null);
     assert.equal(dom.window.document.querySelector('#toolbar-current-icon'), null);
-    assert.match(editor.textContent, /Action chip/);
-    assert.match(editor.textContent, /Action icon/);
+    assert.equal(editor.querySelectorAll('.toolbar-preview-action-assignment').length, 1);
+    assert.match(editor.textContent, /Swipe up/);
+    assert.equal(editor.querySelectorAll('.toolbar-preview-action-icon').length, 1);
     pickerButton.click();
     assert.equal(picker.hidden, false, 'tapping the icon row opens a separate popup');
     assert.equal(picker.getAttribute('aria-hidden'), 'false');
@@ -268,8 +287,8 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       .querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]')
       .click();
     assert.equal(collapseCalls.length, collapseCallsBeforeTray + 2);
-    assert.equal(edits.length, 4);
-    assert.equal(edits.at(-1), 'heading');
+    assert.equal(edits.length, 3, 'hidden group taps open and close its actions instead of launching an icon chooser');
+    assert.equal(popup.classList.contains('hidden'), true);
 
     dom.window.applyToolbarSettings({
       pref_toolbar_bottom_config: JSON.stringify({
@@ -285,7 +304,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     dom.window.document
       .querySelector('#toolbar-holding-tray [data-toolbar-key="menu"]')
       .click();
-    assert.equal(popup.classList.contains('hidden'), true);
+    assert.equal(popup.classList.contains('hidden'), false, 'hidden groups can still open to inspect their actions');
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-editor').getAttribute('aria-hidden'),
       'false'
@@ -296,7 +315,106 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     );
     assert.match(
       dom.window.document.querySelector('#toolbar-preview-status').textContent,
-      /Holding-area keys open their settings/
+      /grouped actions stay with their group/
+    );
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('popup actions drag to reorder, hide, restore, and remain visible with a hidden group', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const saves = [];
+  const settings = {
+    version: 1,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    hidden: [],
+    styles: {}
+  };
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify(settings),
+      pref_toolbar_height: 48,
+      pref_toolbar_padding: 4,
+      pref_app_theme: 'amoled'
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?popup-drag-test=${Date.now()}`);
+    dom.window.document
+      .querySelector('#toolbar-preview [data-toolbar-key="lists"]')
+      .click();
+    const popup = dom.window.document.querySelector('#toolbar-preview-popup');
+    const tray = dom.window.document.querySelector('#toolbar-holding-tray');
+
+    await dragKey(
+      dom,
+      popup.querySelector('[data-preview-popup-item="bulletedList"]'),
+      popup.querySelector('[data-preview-popup-item="outdent"]')
+    );
+    assert.deepEqual(
+      saves.at(-1).popupGroups.lists.order.slice(-2),
+      ['outdent', 'bulletedList'],
+      'a popup action can be reordered within its group'
+    );
+
+    await dragKey(
+      dom,
+      popup.querySelector('[data-preview-popup-item="todoList"]'),
+      tray
+    );
+    assert.deepEqual(saves.at(-1).popupGroups.lists.hidden, ['todoList']);
+    assert.equal(
+      popup.querySelector('[data-preview-popup-item="todoList"]'),
+      null,
+      'hidden popup actions leave the group popup'
+    );
+    assert.ok(
+      tray.querySelector('.toolbar-preview-popup-key[data-preview-popup-item="todoList"]'),
+      'hidden popup actions appear in the holding area'
+    );
+
+    await dragKey(
+      dom,
+      tray.querySelector('.toolbar-preview-popup-key[data-preview-popup-item="todoList"]'),
+      popup.querySelector('[data-preview-popup-item="outdent"]'),
+      2
+    );
+    assert.deepEqual(saves.at(-1).popupGroups.lists.hidden, []);
+    assert.ok(
+      [...popup.querySelectorAll('[data-preview-popup-item]')]
+        .some(button => button.dataset.previewPopupItem === 'todoList'),
+      'restored popup actions return to their group'
+    );
+
+    await dragKey(
+      dom,
+      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="lists"]'),
+      tray
+    );
+    assert.ok(saves.at(-1).hidden.includes('lists'));
+    const heldGroup = tray.querySelector('.toolbar-preview-held-group[data-preview-group="lists"]');
+    assert.ok(heldGroup.querySelector('[data-toolbar-key="lists"]'));
+    assert.equal(
+      heldGroup.querySelectorAll('.toolbar-preview-popup-key').length,
+      5,
+      'moving a group to the holding area shows all its contained actions'
     );
   } finally {
     dom.window.close();
