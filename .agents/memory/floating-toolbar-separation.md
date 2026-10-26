@@ -7,4 +7,4 @@ The floating selection toolbar has its own saved key layout and key settings, bu
 
 **Why:** the user explicitly wants the floating and bottom toolbars to be independently arranged while avoiding a duplicate action/icon implementation.
 
-**How to apply:** preserve independent layouts when applying preferences or editing either toolbar. Keep action and icon behavior shared, use the floating-only width and radius settings, and clamp the selection toolbar and its popups to the visible viewport.
+**How to apply:** preserve independent layouts when applying preferences or editing either toolbar. Keep action and icon behavior shared, use the floating-only width and radius settings, and clamp the selection toolbar and its popups to the visible viewport. To replace Android's native selection menu without cancelling WebView text selection, return an empty `ActionMode` from both `startActionMode` overloads in the custom WebView; returning `null` cancels the selection action mode.
