@@ -1345,8 +1345,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     private var toolbarPreviewHost: android.widget.FrameLayout? = null
     private var toolbarPreviewPreferencesView: android.view.View? = null
     private var toolbarEditorOverlayExpanded = false
-    @Volatile
-    private var lastSavedToolbarConfig: String? = null
     private var targetToolbarIconId: String? = null
     private var targetToolbarIconProperty = "customSvg"
     private var toolbarAppearanceExpanded = false
@@ -1524,16 +1522,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     }
 
     override fun onDestroyView() {
-        // Keep the latest toolbar layout intact when Android tears down this
-        // settings page. The preview already saves each edit; this final
-        // synchronous write protects the last layout from lifecycle races.
-        lastSavedToolbarConfig?.let { savedConfig ->
-            saveToolbarConfig(
-                savedConfig,
-                updatePreview = false,
-                flushToDisk = true
-            )
-        }
         toolbarPreviewWebView?.apply {
             stopLoading()
             removeJavascriptInterface("ToolbarSettings")
@@ -1909,7 +1897,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     private fun saveToolbarConfig(
         raw: String,
         updatePreview: Boolean = true,
-        flushToDisk: Boolean = false
+        flushToDisk: Boolean = true
     ): Boolean {
         val normalized = try {
             normalizeToolbarConfigForStorage(raw)
@@ -1924,7 +1912,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             true
         }
         if (!saved) return false
-        lastSavedToolbarConfig = normalized
         if (updatePreview) updateToolbarPreview()
         return true
     }

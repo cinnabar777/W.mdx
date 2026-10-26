@@ -746,7 +746,7 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
   }
 });
 
-test('dragging a held key onto the toolbar shows an insertion marker and reorders without grouping', async () => {
+test('dragging a held key through the gap shows its toolbar insertion target', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
@@ -757,9 +757,10 @@ test('dragging a held key onto the toolbar shows an insertion marker and reorder
   dom.window.ToolbarSettings = {
     getBottomToolbarSettings: () => JSON.stringify({
       pref_toolbar_bottom_config: JSON.stringify({
-        version: 2,
+        version: 4,
         order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
         holding: ['heading'],
+        popupGroups: { heading: { order: [], hidden: [] } },
         customGroups: {},
         styles: {}
       })
@@ -774,24 +775,52 @@ test('dragging a held key onto the toolbar shows an insertion marker and reorder
 
   try {
     await import(`../src/toolbarSettingsPreview.js?toolbar-insert-test=${Date.now()}`);
-    await dragKey(
-      dom,
-      dom.window.document.querySelector('#toolbar-holding-tray [data-toolbar-key="heading"]'),
-      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]'),
-      10,
-      50,
-      () => {
-        const marker = dom.window.document.querySelector('#toolbar-preview-drop-marker');
-        assert.equal(marker.hidden, false);
-        assert.equal(marker.dataset.kind, 'insert');
-        assert.equal(marker.style.left, '0px');
-        assert.equal(marker.style.top, '38px');
-        assert.equal(marker.parentElement, dom.window.document.body);
-      },
-      dom.window.document.body,
-      42,
-      -40
+    const bounds = (left, top, width, height) => ({
+      left, top, width, height, right: left + width, bottom: top + height
+    });
+    dom.window.document.querySelector('.toolbar-preview-content').getBoundingClientRect =
+      () => bounds(0, 100, 360, 600);
+    dom.window.document.querySelector('.toolbar-preview-holding').getBoundingClientRect =
+      () => bounds(0, 300, 360, 150);
+    dom.window.document.querySelector('#toolbar-holding-tray').getBoundingClientRect =
+      () => bounds(10, 330, 340, 80);
+    dom.window.document.querySelector('.toolbar-preview-dock').getBoundingClientRect =
+      () => bounds(0, 700, 360, 68);
+    [
+      ...dom.window.document.querySelectorAll('#toolbar-preview .toolbar-preview-key')
+    ].forEach((button, index) => {
+      button.getBoundingClientRect = () => bounds(index * 44, 700, 44, 48);
+    });
+    dom.window.document.elementFromPoint = () => dom.window.document.body;
+
+    const source = dom.window.document.querySelector(
+      '#toolbar-holding-tray [data-toolbar-key="heading"]'
     );
+    const dispatchPointer = (element, type, x, y) => {
+      element.dispatchEvent(new dom.window.MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: x,
+        clientY: y
+      }));
+    };
+    dispatchPointer(source, 'pointerdown', 2, 2);
+    await new Promise(resolve => setTimeout(resolve, 410));
+    dispatchPointer(dom.window.document, 'pointermove', 10, 500);
+
+    const marker = dom.window.document.querySelector('#toolbar-preview-drop-marker');
+    assert.equal(marker.hidden, false);
+    assert.equal(marker.dataset.kind, 'insert');
+    assert.equal(marker.style.left, '0px');
+    assert.equal(marker.style.top, '712px');
+    assert.ok(
+      dom.window.document.querySelector(
+        '#toolbar-preview [data-toolbar-key="undo"]'
+      ).classList.contains('drop-target')
+    );
+    dispatchPointer(dom.window.document, 'pointerup', 10, 500);
+
     assert.deepEqual(saves.at(-1).order.slice(0, 2), ['heading', 'undo']);
     assert.ok(!saves.at(-1).holding.includes('heading'));
     assert.deepEqual(saves.at(-1).customGroups, {});
@@ -1041,16 +1070,16 @@ test('dropping onto a toolbar key near the viewport edge still creates a folder'
 
     dispatchPointer(source, 'pointerdown', 2, 2);
     await new Promise(resolve => setTimeout(resolve, 410));
-    dispatchPointer(dom.window.document, 'pointermove', 122, 724);
+    dispatchPointer(dom.window.document, 'pointermove', 122, 654);
     const marker = dom.window.document.querySelector('#toolbar-preview-drop-marker');
     assert.equal(marker.dataset.kind, 'group');
     assert.ok(
-      Number.parseFloat(marker.style.top) > 724,
+      Number.parseFloat(marker.style.top) > 654,
       'the visible group marker stays below the finger when the toolbar is near the screen edge'
     );
     assert.ok(target.classList.contains('drop-target-group'));
 
-    dispatchPointer(dom.window.document, 'pointerup', 122, 724);
+    dispatchPointer(dom.window.document, 'pointerup', 122, 654);
     const groupId = Object.keys(saves.at(-1).customGroups)[0];
     assert.ok(groupId, 'the direct drop on the toolbar key creates a group');
     assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['undo', 'table']);

@@ -1169,7 +1169,7 @@ function resolveCenteredGroupTarget(clientX, clientY) {
   const keyButton = buttonAtPoint('.toolbar-preview-key', clientX, clientY);
   if (!keyButton) return null;
   const id = keyButton.dataset.toolbarKey;
-  if (id === dragState.id || !isCenteredOnKey(keyButton, clientX, clientY)) return null;
+  if (id === dragState.id || !isToolbarKeyDrop(keyButton, clientX, clientY)) return null;
   if (config.popupGroups[id]) {
     const bounds = keyButton.getBoundingClientRect();
     return {
@@ -1226,7 +1226,7 @@ function resolveDragTargetAtPoint(clientX, clientY) {
   if (keyButton) {
     const id = keyButton.dataset.toolbarKey;
     if (id === dragState.id) return null;
-    const groupDrop = isCenteredOnKey(keyButton, clientX, clientY);
+    const groupDrop = isToolbarKeyDrop(keyButton, clientX, clientY);
     const bounds = keyButton.getBoundingClientRect();
     if (config.popupGroups[id] && groupDrop) {
       return {
@@ -1600,6 +1600,18 @@ function isCenteredOnKey(button, clientX, clientY) {
     clientX <= bounds.right - bounds.width * 0.12 &&
     clientY >= bounds.top + bounds.height * 0.12 &&
     clientY <= bounds.bottom - bounds.height * 0.12;
+}
+
+function isToolbarKeyDrop(button, clientX, clientY) {
+  if (!button) return false;
+  const bounds = button.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) return true;
+  const insetX = Math.min(2, bounds.width / 10);
+  const insetY = Math.min(2, bounds.height / 10);
+  return clientX > bounds.left + insetX &&
+    clientX < bounds.right - insetX &&
+    clientY > bounds.top + insetY &&
+    clientY < bounds.bottom - insetY;
 }
 
 function wouldCreateGroupCycle(movedId, targetGroupId) {

@@ -122,10 +122,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(sharedCss, /\.toolbar-preview-key:active,\s*\.toolbar-preview-key\.active/);
   assert.match(sharedCss, /var\(\s*--toolbar-key-active-bg-color,\s*transparent\s*\)/);
   assert.match(androidSource, /saveBottomToolbarConfig/);
-  assert.match(androidSource, /flushToDisk: Boolean = false/);
+  assert.match(androidSource, /flushToDisk: Boolean = true/);
   assert.match(androidSource, /editor\.commit\(\)/);
-  assert.match(androidSource, /lastSavedToolbarConfig = normalized/);
-  assert.match(androidSource, /lastSavedToolbarConfig\?\.let/);
+  assert.doesNotMatch(androidSource, /lastSavedToolbarConfig/);
   assert.match(androidSource, /flushToDisk = true/);
   assert.match(androidSource, /key != TOOLBAR_CONFIG_KEY/);
   assert.match(androidSource, /pickBottomToolbarColor/);
