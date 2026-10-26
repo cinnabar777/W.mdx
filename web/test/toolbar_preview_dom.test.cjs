@@ -1222,13 +1222,44 @@ test('toolbar preview contains native save bridge exceptions and reports a faile
     assert.equal(dom.window.saveToolbarLayout(), false);
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-status').textContent,
-      'Could not save toolbar changes.'
+      'Toolbar save bridge threw; check Android logs.'
     );
     assert.equal(errors.length, 1);
     assert.match(String(errors[0][0]), /save bridge threw an exception/);
   } finally {
     dom.window.close();
     console.error = previousConsoleError;
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('toolbar preview surfaces native preference commit failures', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({}),
+    saveBottomToolbarConfig: () => 'commit_failed'
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?save-commit-failure-test=${Date.now()}`);
+
+    assert.equal(dom.window.saveToolbarLayout(), false);
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-status').textContent,
+      'Android did not commit the toolbar preferences.'
+    );
+  } finally {
+    dom.window.close();
     if (previousWindow === undefined) delete global.window;
     else global.window = previousWindow;
     if (previousDocument === undefined) delete global.document;

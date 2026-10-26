@@ -327,6 +327,9 @@ test('manual toolbar save is a native settings action with visible success or fa
   );
   assert.match(settingsActivitySource, /Failed to write toolbar layout preferences/);
   assert.match(settingsActivitySource, /SharedPreferences commit failed for toolbar layout/);
+  assert.match(settingsActivitySource, /fun saveBottomToolbarConfig\(raw: String\): String/);
+  assert.match(settingsActivitySource, /toolbarSaveFailureReason = "invalid_config"/);
+  assert.match(settingsActivitySource, /toolbarSaveFailureReason = "commit_failed"/);
 });
 
 test('settings labels avoid redundant settings, styling, and shortcut wording', () => {

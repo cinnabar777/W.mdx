@@ -1346,6 +1346,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     private var toolbarPreviewPreferencesView: android.view.View? = null
     @Volatile
     private lateinit var toolbarPreferences: SharedPreferences
+    @Volatile
+    private var toolbarSaveFailureReason = "unknown"
     private var toolbarEditorOverlayExpanded = false
     private var targetToolbarIconId: String? = null
     private var targetToolbarIconProperty = "customSvg"
@@ -1977,9 +1979,11 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         updatePreview: Boolean = true,
         flushToDisk: Boolean = true
     ): Boolean {
+        toolbarSaveFailureReason = "unknown"
         val normalized = try {
             normalizeToolbarConfigForStorage(raw)
         } catch (error: Exception) {
+            toolbarSaveFailureReason = "invalid_config"
             android.util.Log.e("ToolbarSettings", "Failed to normalize toolbar layout", error)
             return false
         }
@@ -1991,10 +1995,12 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 true
             }
         } catch (error: Exception) {
+            toolbarSaveFailureReason = "preference_write_error"
             android.util.Log.e("ToolbarSettings", "Failed to write toolbar layout preferences", error)
             return false
         }
         if (!saved) {
+            toolbarSaveFailureReason = "commit_failed"
             android.util.Log.e("ToolbarSettings", "SharedPreferences commit failed for toolbar layout")
             return false
         }
@@ -2005,6 +2011,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 android.util.Log.e("ToolbarSettings", "Toolbar layout saved but preview refresh failed", error)
             }
         }
+        toolbarSaveFailureReason = "saved"
         return true
     }
 
@@ -2203,12 +2210,17 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
 
         @android.webkit.JavascriptInterface
-        fun saveBottomToolbarConfig(raw: String): Boolean =
+        fun saveBottomToolbarConfig(raw: String): String =
             try {
-                saveToolbarConfig(raw, updatePreview = false, flushToDisk = true)
+                if (saveToolbarConfig(raw, updatePreview = false, flushToDisk = true)) {
+                    "saved"
+                } else {
+                    toolbarSaveFailureReason
+                }
             } catch (error: Exception) {
+                toolbarSaveFailureReason = "bridge_error"
                 android.util.Log.e("ToolbarSettings", "Toolbar save bridge failed unexpectedly", error)
-                false
+                "bridge_error"
             }
 
         @android.webkit.JavascriptInterface

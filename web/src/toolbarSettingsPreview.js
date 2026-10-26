@@ -412,11 +412,21 @@ function saveConfig() {
     success = save(JSON.stringify(config));
   } catch (error) {
     console.error('Toolbar settings save bridge threw an exception', error);
-    setStatus('Could not save toolbar changes.');
+    setStatus('Toolbar save bridge threw; check Android logs.');
     return false;
   }
-  const saved = success !== false;
-  setStatus(saved ? 'Toolbar changes saved.' : 'Could not save toolbar changes.');
+  const saved = success === true || success === 'saved';
+  if (saved) {
+    setStatus('Toolbar changes saved.');
+  } else {
+    const failureMessages = {
+      invalid_config: 'Toolbar layout data was invalid; nothing was saved.',
+      preference_write_error: 'Could not write toolbar preferences.',
+      commit_failed: 'Android did not commit the toolbar preferences.',
+      bridge_error: 'Toolbar save failed inside Android; check Android logs.'
+    };
+    setStatus(failureMessages[success] || 'Could not save toolbar changes.');
+  }
   if (saved) {
     locallySavedToolbarLayout = layoutSignature(config);
     hasAppliedToolbarConfig = true;
