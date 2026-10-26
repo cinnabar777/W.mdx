@@ -1275,7 +1275,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         private val TOOLBAR_APPEARANCE_PREFERENCE_KEYS = listOf(
             "pref_toolbar_bg_color",
             "pref_toolbar_icon_color",
-            "pref_toolbar_active_icon_color",
             "pref_toolbar_toggle_bg_color",
             "pref_toolbar_toggle_icon_color",
             "pref_toolbar_height",
@@ -1445,10 +1444,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         )
         payload.put("pref_toolbar_bg_color", prefs.getString("pref_toolbar_bg_color", "default"))
         payload.put("pref_toolbar_icon_color", prefs.getString("pref_toolbar_icon_color", "default"))
-        payload.put(
-            "pref_toolbar_active_icon_color",
-            prefs.getString("pref_toolbar_active_icon_color", "default")
-        )
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
         payload.put("pref_app_theme", prefs.getString("pref_app_theme", "amoled"))

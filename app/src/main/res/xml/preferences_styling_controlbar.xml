@@ -21,12 +21,6 @@
         app:defaultValue="default" />
 
     <com.wmdx.markdownapp.ResetColorPickerPreference
-        app:key="pref_toolbar_active_icon_color"
-        app:title="Active Icon Color"
-        app:summary="Accent color for the selected control or open popup"
-        app:defaultValue="default" />
-
-    <com.wmdx.markdownapp.ResetColorPickerPreference
         app:key="pref_toolbar_toggle_bg_color"
         app:title="Toolbar Toggle Background Color"
         app:summary="Background color for the floating button that shows or hides the bottom toolbar"

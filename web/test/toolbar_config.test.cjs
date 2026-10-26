@@ -122,6 +122,37 @@ test('custom icons are made tintable by default and unsafe SVG content is stripp
   assert.match(sanitized, /stroke="currentColor"/);
 });
 
+test('outline icons keep a no-fill shape when prepared for toolbar tinting', async () => {
+  const { sanitizeToolbarSvg } =
+    await import('../src/toolbarRenderer.js');
+  const dom = new JSDOM('');
+  const sanitized = sanitizeToolbarSvg(
+    '<svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#222"><path d="M2 2L22 22"/></svg>',
+    false,
+    dom.window.document
+  );
+
+  assert.match(sanitized, /fill="none"/);
+  assert.match(sanitized, /stroke="currentColor"/);
+  assert.doesNotMatch(sanitized, /<path[^>]*fill="currentColor"/);
+
+  const styleBasedNone = sanitizeToolbarSvg(
+    '<svg xmlns="http://www.w3.org/2000/svg" style="fill:none;stroke:#222"><path d="M2 2L22 22"/></svg>',
+    false,
+    dom.window.document
+  );
+  assert.match(styleBasedNone, /fill="none"/);
+  assert.match(styleBasedNone, /stroke="currentColor"/);
+
+  const inferredOutline = sanitizeToolbarSvg(
+    '<svg xmlns="http://www.w3.org/2000/svg"><path stroke="#222" d="M2 2L22 22"/></svg>',
+    false,
+    dom.window.document
+  );
+  assert.match(inferredOutline, /fill="none"/);
+  assert.match(inferredOutline, /stroke="currentColor"/);
+});
+
 test('custom multicolor icons retain authored colors only when explicitly requested', async () => {
   const { sanitizeToolbarSvg } =
     await import('../src/toolbarRenderer.js');

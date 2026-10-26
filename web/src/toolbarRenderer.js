@@ -60,8 +60,27 @@ export function sanitizeToolbarSvg(rawSvg, preserveColors = false, documentRef =
   }
 
   if (!preserveColors) {
-    root.setAttribute('fill', 'currentColor');
-    for (const element of [root, ...root.querySelectorAll('*')]) {
+    const elements = [root, ...root.querySelectorAll('*')];
+    const styleValue = (element, property) => {
+      const declaration = element
+        .getAttribute('style')
+        ?.split(';')
+        .find(part => part.slice(0, part.indexOf(':')).trim().toLowerCase() === property);
+      return declaration?.slice(declaration.indexOf(':') + 1)
+        .trim()
+        .replace(/\s*!important\s*$/i, '')
+        .toLowerCase();
+    };
+    const hasExplicitFill = elements.some(element => {
+      const fill = element.getAttribute('fill')?.trim().toLowerCase() || styleValue(element, 'fill');
+      return Boolean(fill && fill !== 'none');
+    });
+    const hasVisibleStroke = elements.some(element => {
+      const stroke = element.getAttribute('stroke')?.trim().toLowerCase() || styleValue(element, 'stroke');
+      return Boolean(stroke && stroke !== 'none');
+    });
+
+    for (const element of elements) {
       for (const attributeName of ['fill', 'stroke', 'stop-color']) {
         const value = element.getAttribute(attributeName);
         if (value && value.toLowerCase() !== 'none') {
@@ -70,13 +89,31 @@ export function sanitizeToolbarSvg(rawSvg, preserveColors = false, documentRef =
       }
       const style = element.getAttribute('style');
       if (style) {
-        const safeDeclarations = style
-          .split(';')
-          .filter(declaration => !/^\s*(?:fill|stroke|stop-color|color)\s*:/i.test(declaration))
-          .join(';');
-        if (safeDeclarations) element.setAttribute('style', safeDeclarations);
+        const safeDeclarations = [];
+        for (const declaration of style.split(';')) {
+          const separator = declaration.indexOf(':');
+          if (separator < 0) continue;
+          const property = declaration.slice(0, separator).trim().toLowerCase();
+          const value = declaration
+            .slice(separator + 1)
+            .trim()
+            .replace(/\s*!important\s*$/i, '');
+          if (property === 'color') continue;
+          if (property === 'fill' || property === 'stroke' || property === 'stop-color') {
+            element.setAttribute(
+              property,
+              value.toLowerCase() === 'none' ? 'none' : 'currentColor'
+            );
+            continue;
+          }
+          safeDeclarations.push(declaration);
+        }
+        if (safeDeclarations.length) element.setAttribute('style', safeDeclarations.join(';'));
         else element.removeAttribute('style');
       }
+    }
+    if (!root.hasAttribute('fill')) {
+      root.setAttribute('fill', hasVisibleStroke && !hasExplicitFill ? 'none' : 'currentColor');
     }
   }
 

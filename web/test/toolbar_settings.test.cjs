@@ -103,6 +103,14 @@ test('choosing a color in a transparent color picker makes the selected color vi
     /\.grouped-key-btn svg\s*\{[^}]*stroke:/,
     'fill-only SVGs must not receive a forced stroke that makes them appear bold'
   );
+  assert.doesNotMatch(sharedCss, /--toolbar-active-icon-color/);
+  assert.doesNotMatch(settingsSource, /pref_toolbar_active_icon_color|--toolbar-active-icon-color/);
+  assert.doesNotMatch(mainSource, /pref_toolbar_active_icon_color|--toolbar-active-icon-color/);
+  assert.doesNotMatch(preferenceXml, /pref_toolbar_active_icon_color|Active Icon Color/);
+  assert.match(
+    sharedCss,
+    /\.grouped-key-btn svg\s*\{\s*color:\s*var\(--toolbar-key-icon-color/
+  );
 });
 
 test('global toolbar settings collapse above a bottom-docked toolbar preview', () => {

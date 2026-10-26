@@ -186,7 +186,6 @@ function applySettings(payload) {
   document.body.classList.toggle('light-theme', isLightTheme);
   setCssVariable('--toolbar-bg', prefs.pref_toolbar_bg_color, isLightTheme ? '#f8f9fa' : '#121212');
   setCssVariable('--toolbar-icon-color', prefs.pref_toolbar_icon_color, isLightTheme ? '#111111' : '#ffffff');
-  setCssVariable('--toolbar-active-icon-color', prefs.pref_toolbar_active_icon_color, '#00e5ff');
   setCssVariable('--toolbar-preview-text', null, isLightTheme ? '#111111' : '#ffffff');
   setCssVariable('--toolbar-preview-surface', null, isLightTheme ? '#ffffff' : '#000000');
   const height = Number(prefs.pref_toolbar_height);

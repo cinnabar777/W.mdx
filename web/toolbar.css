@@ -77,12 +77,6 @@ body.light-theme .popup-toolbar-strip {
   ) !important;
 }
 
-.popup-strip-btn.active {
-  color: var(--toolbar-active-icon-color, var(--toolbar-icon-color, #fff)) !important;
-  outline: 1px solid var(--toolbar-active-icon-color, var(--toolbar-icon-color, #fff));
-  outline-offset: -1px;
-}
-
 .popup-strip-btn:disabled,
 .popup-strip-btn.disabled {
   opacity: 0.4 !important;
@@ -132,12 +126,6 @@ body.light-theme .popup-toolbar-strip {
 
 .grouped-key-btn.has-active-syntax {
   background-color: var(--toolbar-key-active-bg-color, var(--button-hover, rgba(255, 255, 255, 0.16))) !important;
-}
-
-.grouped-key-btn.active svg,
-.grouped-key-btn.has-active-syntax svg,
-.popup-strip-btn.active svg {
-  color: var(--toolbar-active-icon-color, var(--toolbar-icon-color, #fff)) !important;
 }
 
 /* The settings view adds a tray around the same real toolbar buttons. */
@@ -221,7 +209,7 @@ body.light-theme .popup-toolbar-strip {
 
 .toolbar-preview-key.drop-target,
 .toolbar-preview-tray.drop-target {
-  outline: 2px dashed var(--toolbar-active-icon-color, #00e5ff);
+  outline: 2px dashed var(--toolbar-icon-color, #fff);
   outline-offset: -2px;
 }
 

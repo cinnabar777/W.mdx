@@ -6,3 +6,4 @@
 - [CodeMirror syntax cursors](codemirror-syntax-cursors.md) — syntax-tree iteration reuses mutable cursors; copy node positions before retaining data.
 - [Android build verification](android-build-verification.md) — use GitHub Actions for APK builds; limit local Gradle builds to cases that need direct diagnosis.
 - [Table selection focus](table-selection-focus.md) — keep cell selections independent per table; toolbar actions follow the last tapped cell, not the last widget redraw.
+- [Toolbar preview colors](toolbar-preview-colors.md) — active states preserve chosen key colors; SVG tinting must not turn outlines into filled shapes.
