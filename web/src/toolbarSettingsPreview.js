@@ -412,7 +412,14 @@ function saveConfig() {
     success = save(JSON.stringify(config));
   } catch (error) {
     console.error('Toolbar settings save bridge threw an exception', error);
-    setStatus('Toolbar save bridge threw; check Android logs.');
+    const detail = String(error?.message || error || '')
+      .replace(/[\r\n\t]+/g, ' ')
+      .slice(0, 120);
+    setStatus(
+      detail
+        ? `Toolbar save failed: ${detail}`
+        : 'Toolbar save bridge threw; check Android logs.'
+    );
     return false;
   }
   const saved = success === true || success === 'saved';

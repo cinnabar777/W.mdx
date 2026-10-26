@@ -1222,7 +1222,7 @@ test('toolbar preview contains native save bridge exceptions and reports a faile
     assert.equal(dom.window.saveToolbarLayout(), false);
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview-status').textContent,
-      'Toolbar save bridge threw; check Android logs.'
+      'Toolbar save failed: simulated native save bridge failure'
     );
     assert.equal(errors.length, 1);
     assert.match(String(errors[0][0]), /save bridge threw an exception/);
