@@ -891,6 +891,168 @@ test('dropping one toolbar key onto another creates a folder with both keys', as
   }
 });
 
+test('dropping onto a toolbar key near the viewport edge still creates a folder', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const saves = [];
+  Object.defineProperty(dom.window, 'innerHeight', { configurable: true, value: 768 });
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify({
+        version: 4,
+        order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+        holding: [],
+        customGroups: {},
+        customKeys: {},
+        styles: {}
+      })
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?bottom-edge-group-test=${Date.now()}`);
+    const source = dom.window.document.querySelector(
+      '#toolbar-preview [data-toolbar-key="table"]'
+    );
+    const target = dom.window.document.querySelector(
+      '#toolbar-preview [data-toolbar-key="undo"]'
+    );
+    const targetBounds = {
+      left: 100,
+      top: 700,
+      width: 44,
+      height: 48,
+      right: 144,
+      bottom: 748
+    };
+    target.getBoundingClientRect = () => targetBounds;
+    dom.window.document.elementFromPoint = (_x, y) =>
+      y >= targetBounds.top && y <= targetBounds.bottom
+        ? target
+        : dom.window.document.body;
+    const dispatchPointer = (element, type, x, y) => {
+      element.dispatchEvent(new dom.window.MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: x,
+        clientY: y
+      }));
+    };
+
+    dispatchPointer(source, 'pointerdown', 2, 2);
+    await new Promise(resolve => setTimeout(resolve, 410));
+    dispatchPointer(dom.window.document, 'pointermove', 122, 724);
+    const marker = dom.window.document.querySelector('#toolbar-preview-drop-marker');
+    assert.equal(marker.dataset.kind, 'group');
+    assert.ok(
+      Number.parseFloat(marker.style.top) > 724,
+      'the visible group marker stays below the finger when the toolbar is near the screen edge'
+    );
+    assert.ok(target.classList.contains('drop-target-group'));
+
+    dispatchPointer(dom.window.document, 'pointerup', 122, 724);
+    const groupId = Object.keys(saves.at(-1).customGroups)[0];
+    assert.ok(groupId, 'the direct drop on the toolbar key creates a group');
+    assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['undo', 'table']);
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('holding-area layout survives recreating the toolbar settings preview', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  let persisted = {
+    version: 4,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    hidden: [],
+    holding: [],
+    popupGroups: {},
+    customGroups: {},
+    customKeys: {},
+    styles: {}
+  };
+  const attachBridge = dom => {
+    dom.window.ToolbarSettings = {
+      getBottomToolbarSettings: () => JSON.stringify({
+        pref_toolbar_bottom_config: JSON.stringify(persisted),
+        pref_toolbar_height: 48,
+        pref_toolbar_padding: 4,
+        pref_app_theme: 'amoled'
+      }),
+      saveBottomToolbarConfig: value => {
+        persisted = JSON.parse(value);
+        return true;
+      }
+    };
+  };
+  let firstDom;
+  let reopenedDom;
+
+  try {
+    firstDom = new JSDOM(html, {
+      url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+    });
+    attachBridge(firstDom);
+    global.window = firstDom.window;
+    global.document = firstDom.window.document;
+    await import(`../src/toolbarSettingsPreview.js?holding-save-test=${Date.now()}`);
+
+    const heading = firstDom.window.document.querySelector(
+      '#toolbar-preview [data-toolbar-key="heading"]'
+    );
+    const tray = firstDom.window.document.querySelector('#toolbar-holding-tray');
+    await dragKey(firstDom, heading, tray, 90, 50, null, tray);
+    assert.ok(persisted.holding.includes('heading'));
+    assert.ok(persisted.holding.includes('paragraph'));
+
+    firstDom.window.close();
+    reopenedDom = new JSDOM(html, {
+      url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+    });
+    attachBridge(reopenedDom);
+    global.window = reopenedDom.window;
+    global.document = reopenedDom.window.document;
+    await import(`../src/toolbarSettingsPreview.js?holding-reopen-test=${Date.now()}`);
+
+    assert.ok(
+      reopenedDom.window.document.querySelector(
+        '#toolbar-holding-tray [data-toolbar-key="heading"]'
+      ),
+      'the group remains in the holding area after the preview is recreated'
+    );
+    assert.ok(
+      reopenedDom.window.document.querySelector(
+        '#toolbar-holding-tray [data-preview-popup-item="paragraph"]'
+      ),
+      'the group actions remain in the holding area after the preview is recreated'
+    );
+  } finally {
+    firstDom?.window.close();
+    reopenedDom?.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
 test('an empty holding tray stays empty instead of restoring a duplicate Menu key', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const dom = new JSDOM(html, {

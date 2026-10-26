@@ -120,6 +120,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(androidSource, /saveBottomToolbarConfig/);
   assert.match(androidSource, /flushToDisk: Boolean = false/);
   assert.match(androidSource, /editor\.commit\(\)/);
+  assert.match(androidSource, /lastSavedToolbarConfig = normalized/);
+  assert.match(androidSource, /lastSavedToolbarConfig\?\.let/);
+  assert.match(androidSource, /flushToDisk = true/);
   assert.match(androidSource, /key != TOOLBAR_CONFIG_KEY/);
   assert.match(androidSource, /pickBottomToolbarColor/);
   assert.match(androidSource, /editBottomToolbarIcon/);
@@ -140,6 +143,8 @@ test('toolbar appearance refreshes preserve layout and editor overlays follow th
   assert.match(settingsSource, /setDropMarker/);
   assert.match(settingsSource, /DROP_MARKER_POINTER_OFFSET_Y = 50/);
   assert.match(settingsSource, /getDragDropPoint/);
+  assert.match(settingsSource, /resolveCenteredGroupTarget/);
+  assert.match(settingsSource, /getVisibleDropMarkerY/);
   assert.match(settingsSource, /window\.addEventListener\('pagehide'/);
   assert.match(settingsSource, /listGapTarget/);
   assert.match(

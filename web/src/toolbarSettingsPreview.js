@@ -1013,7 +1013,12 @@ function onDocumentPointerMove(event) {
   document.querySelectorAll('.drop-target, .drop-target-group').forEach(element => {
     element.classList.remove('drop-target', 'drop-target-group');
   });
-  dragState.target = resolveDragTarget(dropPoint.x, dropPoint.y);
+  dragState.target = resolveDragTarget(
+    dropPoint.x,
+    dropPoint.y,
+    event.clientX,
+    event.clientY
+  );
   if (
     dragState.target?.button &&
     (dragState.target.groupDrop || dragState.target.type === 'group-key')
@@ -1025,7 +1030,7 @@ function onDocumentPointerMove(event) {
     const isGroupTarget = dragState.target.groupDrop || dragState.target.type === 'group-key';
     setDropMarker({
       ...dragState.target,
-      markerY: isGroupTarget ? dropPoint.y : dropPoint.y - 12
+      markerY: getVisibleDropMarkerY(dropPoint.y, isGroupTarget)
     });
   } else {
     setDropMarker(null);
@@ -1055,7 +1060,12 @@ function onDocumentPointerUp(event) {
     return;
   }
   if (dragState.started) {
-    dragState.target = resolveDragTarget(dropPoint.x, dropPoint.y);
+    dragState.target = resolveDragTarget(
+      dropPoint.x,
+      dropPoint.y,
+      event.clientX,
+      event.clientY
+    );
   }
   applyDrop(dragState);
   dragState = null;
@@ -1064,12 +1074,17 @@ function onDocumentPointerUp(event) {
 }
 
 function getDragDropPoint(clientX, clientY) {
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-  const maxY = Math.max(12, viewportHeight - 12);
   return {
     x: clientX,
-    y: Math.max(12, Math.min(clientY + DROP_MARKER_POINTER_OFFSET_Y, maxY))
+    y: clientY + DROP_MARKER_POINTER_OFFSET_Y
   };
+}
+
+function getVisibleDropMarkerY(dropY, isGroupTarget) {
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const maxY = Math.max(12, viewportHeight - (isGroupTarget ? 10 : 24));
+  const markerY = isGroupTarget ? dropY : dropY - 12;
+  return Math.max(isGroupTarget ? 10 : 0, Math.min(markerY, maxY));
 }
 
 function cancelDrag(event) {
@@ -1104,7 +1119,65 @@ function setDropMarker(target) {
   dropMarker.style.top = `${target.markerY}px`;
 }
 
-function resolveDragTarget(clientX, clientY) {
+function resolveDragTarget(clientX, clientY, pointerX = clientX, pointerY = clientY) {
+  // At the bottom toolbar, the 50 px drop point can fall outside the WebView.
+  // A centered direct touch on a key is still an explicit group-drop gesture.
+  const directGroupTarget = resolveCenteredGroupTarget(pointerX, pointerY);
+  if (directGroupTarget) return directGroupTarget;
+
+  const dropTarget = resolveDragTargetAtPoint(clientX, clientY);
+  if (dropTarget) return dropTarget;
+  if (pointerX !== clientX || pointerY !== clientY) {
+    return resolveDragTargetAtPoint(pointerX, pointerY);
+  }
+  return null;
+}
+
+function resolveCenteredGroupTarget(clientX, clientY) {
+  const popupButton = buttonAtPoint('.toolbar-preview-popup-key', clientX, clientY);
+  if (popupButton) {
+    const id = popupButton.dataset.previewPopupItem;
+    const sameKey =
+      id === dragState.id &&
+      (popupButton.dataset.previewGroup || null) === dragState.groupId;
+    if (sameKey || !isCenteredOnKey(popupButton, clientX, clientY)) return null;
+    if (config.popupGroups[id]) {
+      const bounds = popupButton.getBoundingClientRect();
+      return {
+        type: 'group-key',
+        id,
+        button: popupButton,
+        markerX: bounds.left + bounds.width / 2,
+        markerY: bounds.bottom - 9
+      };
+    }
+    return keyPositionTarget('popup-key', popupButton, clientX, clientY, true);
+  }
+
+  const keyButton = buttonAtPoint('.toolbar-preview-key', clientX, clientY);
+  if (!keyButton) return null;
+  const id = keyButton.dataset.toolbarKey;
+  if (id === dragState.id || !isCenteredOnKey(keyButton, clientX, clientY)) return null;
+  if (config.popupGroups[id]) {
+    const bounds = keyButton.getBoundingClientRect();
+    return {
+      type: 'group-key',
+      id,
+      button: keyButton,
+      markerX: bounds.left + bounds.width / 2,
+      markerY: bounds.bottom - 9
+    };
+  }
+  return keyPositionTarget(
+    tray.contains(keyButton) ? 'hidden-key' : 'visible-key',
+    keyButton,
+    clientX,
+    clientY,
+    true
+  );
+}
+
+function resolveDragTargetAtPoint(clientX, clientY) {
   const pointTarget = document.elementFromPoint(clientX, clientY);
   const popupButton =
     buttonAtPoint('.toolbar-preview-popup-key', clientX, clientY) ||
@@ -1510,10 +1583,10 @@ function isCenteredOnKey(button, clientX, clientY) {
   if (!button) return false;
   const bounds = button.getBoundingClientRect();
   if (bounds.width <= 0 || bounds.height <= 0) return true;
-  return clientX >= bounds.left + bounds.width * 0.32 &&
-    clientX <= bounds.right - bounds.width * 0.32 &&
-    clientY >= bounds.top + bounds.height * 0.34 &&
-    clientY <= bounds.bottom - bounds.height * 0.34;
+  return clientX >= bounds.left + bounds.width * 0.12 &&
+    clientX <= bounds.right - bounds.width * 0.12 &&
+    clientY >= bounds.top + bounds.height * 0.12 &&
+    clientY <= bounds.bottom - bounds.height * 0.12;
 }
 
 function wouldCreateGroupCycle(movedId, targetGroupId) {
