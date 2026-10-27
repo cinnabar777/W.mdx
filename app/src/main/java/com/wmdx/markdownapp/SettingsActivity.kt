@@ -1011,6 +1011,7 @@ class StylingHeadingsFragment : StylingSettingsFragment() {
 class StylingParagraphFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_paragraph, rootKey)
+        configureFontPreferences()
     }
 }
 
@@ -1020,6 +1021,7 @@ abstract class StylingInlineElementFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_inline, rootKey)
         keepPreferenceCategories(categoryKey)
+        configureFontPreferences()
     }
 }
 
@@ -1072,6 +1074,7 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
             "styling_callout_shared_header",
             "styling_callout_type_overrides"
         )
+        configureFontPreferences()
     }
 
     override fun onViewCreated(view: android.view.View, savedInstanceState: Bundle?) {

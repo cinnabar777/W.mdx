@@ -9,6 +9,7 @@ const shortcuts = read('app/src/main/res/xml/preferences_styling.xml');
 const main = read('web/src/main.js');
 const styles = read('web/index.html');
 const reset = read('app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt');
+const settingsActivity = read('app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
 const paragraph = read('app/src/main/res/xml/preferences_styling_paragraph.xml');
 const lists = read('app/src/main/res/xml/preferences_styling_lists.xml');
 const blocks = read('app/src/main/res/xml/preferences_styling_blockquotes.xml');
@@ -35,6 +36,20 @@ test('Typography pages keep headings and body first, then alphabetical element p
     'pref_styling_page_lists',
     'pref_styling_page_tables'
   ]);
+});
+
+test('custom font pickers remain connected on the rearranged typography pages', () => {
+  for (const fragmentName of [
+    'StylingParagraphFragment',
+    'StylingInlineElementFragment',
+    'StylingCalloutsFragment'
+  ]) {
+    const start = settingsActivity.indexOf(`class ${fragmentName}`);
+    assert.notEqual(start, -1, `${fragmentName} exists`);
+    const nextClass = settingsActivity.indexOf('\nclass ', start + 1);
+    const fragment = settingsActivity.slice(start, nextClass === -1 ? undefined : nextClass);
+    assert.match(fragment, /configureFontPreferences\(\)/, `${fragmentName} configures custom font pickers`);
+  }
 });
 
 test('Body typography exposes font weight, text color, and hyphenation', () => {
