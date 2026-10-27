@@ -20,6 +20,12 @@
         app:summary="Default color for toolbar icons"
         app:defaultValue="default" />
 
+    <com.wmdx.markdownapp.ResetColorPickerPreference
+        app:key="pref_toolbar_active_key_bg_color"
+        app:title="Toolbar Key Active Background Color"
+        app:summary="Background color for a selected or active toolbar key"
+        app:defaultValue="default" />
+
     <com.wmdx.markdownapp.ResetSeekBarPreference
         app:key="pref_toolbar_height"
         app:title="Toolbar Height (dp)"
@@ -38,7 +44,7 @@
         android:max="16"
         app:showSeekBarValue="true" />
 
-    <androidx.preference.SwitchPreferenceCompat
+    <com.wmdx.markdownapp.ResetSwitchPreference
         app:key="pref_toolbar_show_labels"
         app:title="Show Key Labels"
         app:summary="Show small text labels below toolbar keys"
@@ -96,7 +102,7 @@
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="pref_toolbar_floating_category"
         app:title="Floating toolbar">
-        <androidx.preference.SwitchPreferenceCompat
+        <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_toolbar_floating_enabled"
             app:title="Enable floating toolbar"
             app:summary="Show the floating toolbar when text is selected"

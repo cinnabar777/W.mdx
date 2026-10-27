@@ -260,10 +260,14 @@ function render() {
   for (const button of toolbar.querySelectorAll('.toolbar-preview-key')) {
     const id = button.dataset.toolbarKey;
     const style = config.styles[id] || {};
-    button.style.setProperty(
-      '--toolbar-key-active-bg-color',
-      toToolbarCssColor(style.activeBackgroundColor || style.backgroundColor || 'transparent')
-    );
+    if (style.activeBackgroundColor) {
+      button.style.setProperty(
+        '--toolbar-key-active-bg-color',
+        toToolbarCssColor(style.activeBackgroundColor)
+      );
+    } else {
+      button.style.removeProperty('--toolbar-key-active-bg-color');
+    }
     button.classList.toggle(
       'active',
       id === selectedKey || id === openPopupGroup
@@ -391,6 +395,17 @@ function applySettings(payload) {
   document.body.classList.toggle('light-theme', isLightTheme);
   setCssVariable('--toolbar-bg', prefs.pref_toolbar_bg_color, isLightTheme ? '#f8f9fa' : '#121212');
   setCssVariable('--toolbar-icon-color', prefs.pref_toolbar_icon_color, isLightTheme ? '#111111' : '#ffffff');
+  if (
+    typeof prefs.pref_toolbar_active_key_bg_color === 'string' &&
+    prefs.pref_toolbar_active_key_bg_color !== 'default'
+  ) {
+    document.documentElement.style.setProperty(
+      '--toolbar-key-active-bg-color',
+      toToolbarCssColor(prefs.pref_toolbar_active_key_bg_color)
+    );
+  } else {
+    document.documentElement.style.removeProperty('--toolbar-key-active-bg-color');
+  }
   setCssVariable('--toolbar-preview-text', null, isLightTheme ? '#111111' : '#ffffff');
   setCssVariable('--toolbar-preview-surface', null, isLightTheme ? '#ffffff' : '#000000');
   document.documentElement.style.setProperty(
@@ -619,10 +634,14 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   button.dataset.previewPopupHidden = String(isIndividuallyHidden);
   const style = config.styles[item.id] || {};
   button.classList.toggle('toolbar-key-force-label', style.forceShowLabel === true);
-  button.style.setProperty(
-    '--toolbar-key-active-bg-color',
-    toToolbarCssColor(style.activeBackgroundColor || style.backgroundColor || 'transparent')
-  );
+  if (style.activeBackgroundColor) {
+    button.style.setProperty(
+      '--toolbar-key-active-bg-color',
+      toToolbarCssColor(style.activeBackgroundColor)
+    );
+  } else {
+    button.style.removeProperty('--toolbar-key-active-bg-color');
+  }
   if (style.iconColor) {
     button.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
   }
@@ -763,7 +782,7 @@ function refreshSelectedKeyEditor() {
     : 'transparent';
   activeButton.style.background = style.activeBackgroundColor
     ? toToolbarCssColor(style.activeBackgroundColor)
-    : 'transparent';
+    : 'var(--toolbar-key-active-bg-color, var(--button-hover, transparent))';
   const preserveColorControl = document.querySelector('#toolbar-preserve-svg-colors');
   preserveColorControl.checked = style.preserveSvgColors === true;
   preserveColorControl.disabled = !style.customSvg;

@@ -144,9 +144,13 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.doesNotMatch(html, /id="toolbar-reset-key-colors"/);
   assert.match(html, /id="toolbar-reset-layout"/);
   assert.match(settingsSource, /classList\.toggle\(\s*'active'/);
-  assert.match(settingsSource, /style\.activeBackgroundColor \|\| style\.backgroundColor \|\| 'transparent'/);
+  assert.match(settingsSource, /if \(style\.activeBackgroundColor\)\s*\{\s*button\.style\.setProperty\(/);
+  assert.match(settingsSource, /button\.style\.removeProperty\('--toolbar-key-active-bg-color'\)/);
   assert.match(sharedCss, /\.toolbar-preview-key:active,\s*\.toolbar-preview-key\.active/);
-  assert.match(sharedCss, /var\(\s*--toolbar-key-active-bg-color,\s*transparent\s*\)/);
+  assert.match(
+    sharedCss,
+    /var\(\s*--toolbar-key-active-bg-color,\s*var\(--button-hover,\s*transparent\)\s*\)/
+  );
   assert.match(androidSource, /saveBottomToolbarConfig/);
   assert.match(androidSource, /flushToDisk: Boolean = true/);
   assert.match(androidSource, /editor\.commit\(\)/);
@@ -277,6 +281,13 @@ test('choosing a color in a transparent color picker makes the selected color vi
   assert.doesNotMatch(settingsSource, /pref_toolbar_active_icon_color|--toolbar-active-icon-color/);
   assert.doesNotMatch(mainSource, /pref_toolbar_active_icon_color|--toolbar-active-icon-color/);
   assert.doesNotMatch(preferenceXml, /pref_toolbar_active_icon_color|Active Icon Color/);
+  assert.match(preferenceXml, /pref_toolbar_active_key_bg_color/);
+  assert.match(settingsSource, /pref_toolbar_active_key_bg_color/);
+  assert.match(mainSource, /pref_toolbar_active_key_bg_color/);
+  assert.match(
+    sharedCss,
+    /--toolbar-key-active-bg-color,\s*var\(--button-hover/
+  );
   assert.match(
     sharedCss,
     /\.grouped-key-btn \.toolbar-key-icon svg\s*\{[^}]*color:\s*var\(--toolbar-key-icon-color/

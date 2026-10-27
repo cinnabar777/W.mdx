@@ -65,6 +65,7 @@ test('floating toolbar has an independent layout and restores Android selection 
   const editorWebView = readApp('src/main/java/com/wmdx/markdownapp/EditorWebView.kt');
   const settingsActivity = readApp('src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
   const controlbarPrefs = readApp('src/main/res/xml/preferences_styling_controlbar.xml');
+  const resetPreferences = readApp('src/main/java/com/wmdx/markdownapp/ResetPreferences.kt');
   const mainSettingsPrefs = readApp('src/main/res/xml/preferences.xml');
   const activityLayout = readApp('src/main/res/layout/activity_main.xml');
   const webIndex = readFileSync(path.join(repositoryRoot, 'web', 'index.html'), 'utf8');
@@ -109,6 +110,13 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(controlbarPrefs, /pref_toolbar_toggle_category[\s\S]*?app:title="Toolbar toggle"/);
   assert.match(controlbarPrefs, /pref_toolbar_toggle_closed_width[\s\S]*?android:defaultValue="34"/);
   assert.match(controlbarPrefs, /pref_toolbar_toggle_closed_height[\s\S]*?android:defaultValue="34"/);
+  assert.match(controlbarPrefs, /ResetSwitchPreference[\s\S]*?pref_toolbar_show_labels/);
+  assert.match(controlbarPrefs, /ResetSwitchPreference[\s\S]*?pref_toolbar_floating_enabled/);
+  assert.match(resetPreferences, /key == "pref_toolbar_toggle_closed_width" -> 34/);
+  assert.match(resetPreferences, /key == "pref_toolbar_toggle_closed_height" -> 34/);
+  assert.match(resetPreferences, /key == "pref_toolbar_floating_enabled" -> true/);
+  assert.match(resetPreferences, /key == "pref_toolbar_floating_key_width" -> 48/);
+  assert.match(resetPreferences, /key == "pref_toolbar_floating_corner_radius" -> 24/);
   assert.match(main, /--toolbar-toggle-open-size/);
   assert.match(main, /pref_toolbar_toggle_closed_width/);
   assert.match(main, /pref_toolbar_toggle_closed_height/);
@@ -124,6 +132,8 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(editorWebView, /getBoolean\("pref_toolbar_floating_enabled", true\)/);
   assert.match(editorWebView, /else\s*\{\s*super\.startActionMode\(callback\)\s*\}/);
   assert.match(editorWebView, /else\s*\{\s*super\.startActionMode\(callback, type\)\s*\}/);
+  assert.match(editorWebView, /override fun startActionModeForChild\(/);
+  assert.match(editorWebView, /super\.startActionModeForChild\(child, callback, type\)/);
   assert.match(activityLayout, /<com\.wmdx\.markdownapp\.EditorWebView/);
   assert.match(styles, /--toolbar-floating-key-width/);
   assert.match(styles, /--toolbar-floating-corner-radius/);

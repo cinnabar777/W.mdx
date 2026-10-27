@@ -624,7 +624,7 @@ body.light-theme .toolbar-preview-help-header {
 .toolbar-preview-key.active {
   background-color: var(
     --toolbar-key-active-bg-color,
-    transparent
+    var(--button-hover, transparent)
   ) !important;
 }
 

@@ -7597,6 +7597,18 @@ window.editorBridge = {
     }
     setCssVar('--toolbar-bg', androidArgbToCss(prefs.pref_toolbar_bg_color));
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);
+    const activeKeyBackgroundColor = prefs.pref_toolbar_active_key_bg_color;
+    if (
+      typeof activeKeyBackgroundColor === 'string' &&
+      activeKeyBackgroundColor !== 'default'
+    ) {
+      setCssVar(
+        '--toolbar-key-active-bg-color',
+        androidArgbToCss(activeKeyBackgroundColor)
+      );
+    } else {
+      document.documentElement.style.removeProperty('--toolbar-key-active-bg-color');
+    }
     setCssVar(
       '--toolbar-label-display',
       prefs.pref_toolbar_show_labels === true ? 'flex' : 'none'

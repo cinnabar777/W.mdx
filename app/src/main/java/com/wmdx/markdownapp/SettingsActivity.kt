@@ -1278,6 +1278,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         private val TOOLBAR_APPEARANCE_PREFERENCE_KEYS = listOf(
             "pref_toolbar_bg_color",
             "pref_toolbar_icon_color",
+            "pref_toolbar_active_key_bg_color",
             "pref_toolbar_toggle_category",
             "pref_toolbar_toggle_bg_color",
             "pref_toolbar_toggle_icon_color",
@@ -1612,6 +1613,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
         payload.put("pref_toolbar_bg_color", prefs.getString("pref_toolbar_bg_color", "default"))
         payload.put("pref_toolbar_icon_color", prefs.getString("pref_toolbar_icon_color", "default"))
+        payload.put(
+            "pref_toolbar_active_key_bg_color",
+            prefs.getString("pref_toolbar_active_key_bg_color", "default")
+        )
         payload.put(
             "pref_toolbar_toggle_closed_width",
             prefs.getInt("pref_toolbar_toggle_closed_width", 34)

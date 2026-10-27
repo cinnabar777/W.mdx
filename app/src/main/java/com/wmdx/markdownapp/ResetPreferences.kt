@@ -38,6 +38,7 @@ object PreferenceResetHelper {
             "pref_settings_bg_color" -> "#000000"
             "pref_toolbar_bg_color" -> "#121212"
             "pref_toolbar_icon_color" -> "#FFFFFF"
+            "pref_toolbar_active_key_bg_color" -> "#1F1F1F"
             "pref_toolbar_label_color" -> "#FFFFFF"
             "pref_toolbar_toggle_bg_color" -> "#00000000"
             "pref_toolbar_toggle_icon_color" -> "#FFFFFF"
@@ -159,6 +160,8 @@ object PreferenceResetHelper {
             }
             "pref_toc_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_toolbar_active_key_bg_color" ->
+                if (isLightTheme) "#E9ECEF" else "#1F1F1F"
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> {
                 val tocTextColor = prefs.getString("pref_toc_text_color", "default")
                 if (!tocTextColor.isNullOrBlank() && tocTextColor != "default") {
@@ -356,13 +359,19 @@ object PreferenceResetHelper {
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"
             key == "pref_toolbar_bg_color" -> "default"
             key == "pref_toolbar_icon_color" -> "default"
+            key == "pref_toolbar_active_key_bg_color" -> "default"
             key == "pref_toolbar_show_labels" -> false
             key == "pref_toolbar_label_size" -> 8
             key == "pref_toolbar_label_color" -> "default"
             key == "pref_toolbar_toggle_bg_color" -> "default"
             key == "pref_toolbar_toggle_icon_color" -> "default"
+            key == "pref_toolbar_toggle_closed_width" -> 34
+            key == "pref_toolbar_toggle_closed_height" -> 34
             key == "pref_toolbar_height" -> 48
             key == "pref_toolbar_padding" -> 4
+            key == "pref_toolbar_floating_enabled" -> true
+            key == "pref_toolbar_floating_key_width" -> 48
+            key == "pref_toolbar_floating_corner_radius" -> 24
             key == "pref_app_theme" -> "amoled"
             key == "pref_toc_panel_width" -> 80
             key == "pref_toc_default_level" -> 2

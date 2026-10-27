@@ -10,8 +10,8 @@ import android.webkit.WebView
 import androidx.preference.PreferenceManager
 
 /**
- * WebView that keeps its text selection while letting the editor's own floating
- * toolbar replace Android's default selection action mode.
+ * WebView that keeps text selection and switches between the editor's floating
+ * toolbar and Android's native selection action mode according to preferences.
  */
 class EditorWebView @JvmOverloads constructor(
     context: Context,
@@ -35,6 +35,27 @@ class EditorWebView @JvmOverloads constructor(
             EmptySelectionActionMode()
         } else {
             super.startActionMode(callback, type)
+        }
+
+    override fun startActionModeForChild(
+        child: View,
+        callback: ActionMode.Callback
+    ): ActionMode? =
+        if (isFloatingToolbarEnabled()) {
+            EmptySelectionActionMode()
+        } else {
+            super.startActionModeForChild(child, callback)
+        }
+
+    override fun startActionModeForChild(
+        child: View,
+        callback: ActionMode.Callback,
+        type: Int
+    ): ActionMode? =
+        if (isFloatingToolbarEnabled()) {
+            EmptySelectionActionMode()
+        } else {
+            super.startActionModeForChild(child, callback, type)
         }
 
     private class EmptySelectionActionMode : ActionMode() {

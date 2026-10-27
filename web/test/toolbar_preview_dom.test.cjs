@@ -66,7 +66,8 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       pref_toolbar_bottom_config: JSON.stringify(settings),
       pref_toolbar_height: 48,
       pref_toolbar_padding: 4,
-      pref_app_theme: 'amoled'
+      pref_app_theme: 'amoled',
+      pref_toolbar_active_key_bg_color: '#224466'
     }),
     saveBottomToolbarConfig: value => {
       saves.push(JSON.parse(value));
@@ -279,17 +280,16 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.equal(dom.window.document.querySelector('#toolbar-paste-svg').parentElement.className, 'toolbar-preview-icon-actions');
     assert.equal(dom.window.document.querySelector('#toolbar-choose-svg').parentElement.className, 'toolbar-preview-icon-actions');
     assert.equal(dom.window.document.querySelector('#toolbar-reset-key-colors'), null);
-    assert.notEqual(
-      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]')
-        .style.getPropertyValue('--toolbar-key-active-bg-color'),
-      '',
-      'the actual toolbar key uses its configured color for active-state preview'
+    assert.equal(
+      dom.window.document.documentElement.style.getPropertyValue('--toolbar-key-active-bg-color'),
+      '#224466',
+      'the global active-key background is applied to the preview'
     );
     assert.equal(
       dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="undo"]')
         .style.getPropertyValue('--toolbar-key-active-bg-color'),
-      'transparent',
-      'an unconfigured key does not get a separate accent/tap color'
+      '',
+      'a key without a per-key override inherits the global active background'
     );
     assert.deepEqual(
       overlayCalls,
