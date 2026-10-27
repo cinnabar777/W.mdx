@@ -91,6 +91,16 @@ test('tapping focused editor content explicitly requests the Android keyboard', 
   assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
 });
 
+test('keyboard diagnostics record suppression, native show, and observed IME visibility', () => {
+  assert.match(mainActivitySource, /"ime_resume_suppression_started"/);
+  assert.match(mainActivitySource, /"ime_user_touch_released_suppression"/);
+  assert.match(mainActivitySource, /"ime_resume_hide_applied"/);
+  assert.match(mainActivitySource, /"ime_show_requested"/);
+  assert.match(mainActivitySource, /"ime_show_dispatched"[sS]*?immAccepted=/);
+  assert.match(mainActivitySource, /"ime_show_observed"[sS]*?imeVisible=/);
+  assert.match(mainActivitySource, /fun editorImeVisible(): Boolean/);
+});
+
 test('installed device fonts override custom body and heading font files when selected', () => {
   assert.ok(mainActivitySource.includes('if (bodyFontFamily == "default")'));
   assert.ok(mainActivitySource.includes('if (headingFontFamily == "default")'));

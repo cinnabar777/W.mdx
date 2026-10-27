@@ -153,10 +153,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 suppressImeUntilUserTouch
             ) {
                 suppressImeUntilUserTouch = false
-                imeHideGeneration++
+                val generation = ++imeHideGeneration
                 window.setSoftInputMode(
                     WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                         WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+                )
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "ime_user_touch_released_suppression",
+                    "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()}"
                 )
             }
             false
@@ -313,6 +318,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             webView.post { hideImeWhileResumeIsSuppressed(generation) }
             webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 180)
             webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 500)
+            AppDiagnostics.record(
+                this,
+                "ime_resume_suppression_started",
+                "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
+            )
         }
     }
 
@@ -365,16 +375,25 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun editorImeVisible(): Boolean =
+        ViewCompat.getRootWindowInsets(webView)
+            ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+
     private fun hideImeWhileResumeIsSuppressed(generation: Int) {
         if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
             return
         }
+        val visibleBefore = editorImeVisible()
         ViewCompat.getWindowInsetsController(webView)
             ?.hide(WindowInsetsCompat.Type.ime())
         (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
             ?.hideSoftInputFromWindow(webView.windowToken, 0)
+        AppDiagnostics.record(
+            this,
+            "ime_resume_hide_applied",
+            "generation=${generation} visibleBefore=${visibleBefore} visibleAfter=${editorImeVisible()} viewFocused=${webView.isFocused}"
+        )
     }
-
     override fun onStop() {
         super.onStop()
         performAutoSaveOnLeave()
@@ -1831,20 +1850,38 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         @JavascriptInterface
         fun showEditorKeyboard() {
             runOnUiThread {
+                val visibleBefore = editorImeVisible()
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "ime_show_requested",
+                    "suppressed=${suppressImeUntilUserTouch} generation=${imeHideGeneration} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${visibleBefore}"
+                )
                 suppressImeUntilUserTouch = false
-                imeHideGeneration++
+                val generation = ++imeHideGeneration
                 window.setSoftInputMode(
                     WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                         WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
                 )
-                webView.requestFocus()
-                ViewCompat.getWindowInsetsController(webView)
-                    ?.show(WindowInsetsCompat.Type.ime())
-                (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-                    ?.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
+                val focusRequested = webView.requestFocus()
+                val insetsController = ViewCompat.getWindowInsetsController(webView)
+                insetsController?.show(WindowInsetsCompat.Type.ime())
+                val showAccepted =
+                    (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                        ?.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "ime_show_dispatched",
+                    "generation=${generation} focusRequested=${focusRequested} viewFocused=${webView.isFocused} controller=${insetsController != null} immAccepted=${showAccepted} imeVisible=${editorImeVisible()}"
+                )
+                webView.postDelayed({
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "ime_show_observed",
+                        "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
+                    )
+                }, 350L)
             }
         }
-
         @JavascriptInterface
         fun renameCurrentDocument(newName: String) {
             runOnUiThread {
