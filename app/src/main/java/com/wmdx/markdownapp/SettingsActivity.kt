@@ -2589,6 +2589,11 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
 
         val counterColorHex = prefs.getString("pref_findreplace_counter_color", "default") ?: "default"
         previewCounter?.setTextColor(if (counterColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(counterColorHex, Color.parseColor("#888888")))
+        val counterBgHex = prefs.getString("pref_findreplace_counter_bg", "default") ?: "default"
+        previewCounter?.setBackgroundColor(
+            if (counterBgHex == "default") Color.TRANSPARENT
+            else ColorPickerDialog.parseHexColor(counterBgHex, Color.TRANSPARENT)
+        )
 
         val (row1List, row2List) = parseAndNormalizeRows(prefs)
         val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
@@ -2625,6 +2630,11 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         if (chipBox != null && ctx != null) {
             chipBox.removeAllViews()
             val density = ctx.resources.displayMetrics.density
+            (chipBox.parent as? android.widget.ScrollView)?.let { chipsScroll ->
+                chipsScroll.layoutParams = chipsScroll.layoutParams.apply {
+                    height = ((if (hiddenSet.isEmpty()) 24 else 120) * density).toInt()
+                }
+            }
             if (hiddenSet.isEmpty()) {
                 val emptyTv = android.widget.TextView(ctx).apply {
                     text = "(No hidden buttons)"
@@ -2676,6 +2686,12 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             val btnBgHex = prefs.getString("pref_findreplace_btn_${suffix}_bg", "default") ?: "default"
             val btnColorHex = prefs.getString("pref_findreplace_btn_${suffix}_color", "default") ?: "default"
             val customSvg = prefs.getString("pref_findreplace_btn_${suffix}_svg", "") ?: ""
+            val density = btnView.context.resources.displayMetrics.density
+            val iconWidth = prefs.getInt("pref_findreplace_btn_${suffix}_width", 28)
+            (btnView.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { params ->
+                params.width = (iconWidth * density).toInt()
+                btnView.layoutParams = params
+            }
 
             btnView.setBackgroundColor(if (btnBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(btnBgHex, Color.parseColor("#1E1E1E")))
 
@@ -2691,7 +2707,6 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             if (customSvg.isNotBlank() && isValidAndSafeSvg(customSvg)) {
                 try {
                     val svg = com.caverock.androidsvg.SVG.getFromString(customSvg)
-                    val density = btnView.context.resources.displayMetrics.density
                     val sizePx = (18 * density).toInt()
                     svg.documentWidth = sizePx.toFloat()
                     svg.documentHeight = sizePx.toFloat()
@@ -2735,6 +2750,12 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 btnView.setCompoundDrawables(null, null, null, null)
             }
         }
+
+        val fieldHeightPx = (prefs.getInt("pref_findreplace_field_height", 32) *
+            (context?.resources?.displayMetrics?.density ?: 1f)).toInt()
+        listOf(previewFindField, previewReplaceField).forEach { field ->
+            field?.layoutParams = field?.layoutParams?.apply { height = fieldHeightPx }
+        }
     }
 
     private fun filterCategories() {
@@ -2752,6 +2773,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 pref.isVisible = (pref.key == selectedCategoryKey)
             }
         }
+        listView?.post { listView?.setSelection(0) }
     }
 
     private fun setupInteractivePreview(fragmentRootView: android.view.View) {
@@ -2774,6 +2796,16 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             setBackgroundColor(Color.parseColor("#121212"))
         }
         previewCardView = previewCard
+
+        val previewHint = android.widget.TextView(context).apply {
+            text = "Tap a field or icon to edit it · hold an icon and drag to rearrange"
+            textSize = 11f
+            setTextColor(Color.parseColor("#888888"))
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = (6 * density).toInt() }
+        }
 
         val row1 = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
@@ -2912,6 +2944,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         chipsScroll.addView(chipsContainer)
         hiddenTray.addView(chipsScroll)
 
+        previewCard.addView(previewHint)
         previewCard.addView(row1)
         previewCard.addView(row2)
         previewCard.addView(hiddenTray)
@@ -2943,11 +2976,84 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             }
         }
 
+        val dropMarkerTag = "findreplace_drop_marker"
+        fun draggedButtonId(event: android.view.DragEvent): String? =
+            (event.localState as? String) ?: event.clipData?.getItemAt(0)?.text?.toString()
+
+        fun removeDropMarker(group: android.widget.LinearLayout) {
+            for (i in group.childCount - 1 downTo 0) {
+                if (group.getChildAt(i).tag == dropMarkerTag) group.removeViewAt(i)
+            }
+        }
+
+        fun clearDropMarkers() {
+            removeDropMarker(row1Icons)
+            removeDropMarker(row2Icons)
+        }
+
+        fun insertionIndex(
+            group: android.widget.LinearLayout,
+            x: Float,
+            draggedId: String?
+        ): Int {
+            removeDropMarker(group)
+            val draggedView = draggedId?.let { previewButtonMap[it] }
+            var indexWithoutDragged = 0
+            for (i in 0 until group.childCount) {
+                val child = group.getChildAt(i)
+                if (child === draggedView || child.tag == dropMarkerTag) continue
+                if (x < child.x + child.width / 2f) return indexWithoutDragged
+                indexWithoutDragged++
+            }
+            return indexWithoutDragged
+        }
+
+        fun showDropMarker(
+            group: android.widget.LinearLayout,
+            x: Float,
+            draggedId: String
+        ) {
+            clearDropMarkers()
+            val index = insertionIndex(group, x, draggedId)
+            val marker = android.view.View(context).apply {
+                tag = dropMarkerTag
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.parseColor("#0078D4"))
+                    cornerRadius = 2 * density
+                }
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    (3 * density).toInt(),
+                    (28 * density).toInt()
+                ).apply {
+                    marginStart = (2 * density).toInt()
+                    marginEnd = (2 * density).toInt()
+                }
+                contentDescription = "Drop position"
+            }
+            group.addView(marker, index.coerceIn(0, group.childCount))
+        }
+
         val handleRowDrop = { isRow1Target: Boolean, event: android.view.DragEvent ->
+            val targetGroup = if (isRow1Target) row1Icons else row2Icons
+            val draggedId = draggedButtonId(event)
             when (event.action) {
-                android.view.DragEvent.ACTION_DROP -> {
-                    val draggedId = event.clipData?.getItemAt(0)?.text?.toString()
+                android.view.DragEvent.ACTION_DRAG_STARTED ->
+                    draggedId != null && draggedId in KNOWN_BUTTON_IDS
+                android.view.DragEvent.ACTION_DRAG_ENTERED,
+                android.view.DragEvent.ACTION_DRAG_LOCATION -> {
                     if (draggedId != null && draggedId in KNOWN_BUTTON_IDS) {
+                        showDropMarker(targetGroup, event.x, draggedId)
+                    }
+                    true
+                }
+                android.view.DragEvent.ACTION_DRAG_EXITED -> {
+                    removeDropMarker(targetGroup)
+                    true
+                }
+                android.view.DragEvent.ACTION_DROP -> {
+                    clearDropMarkers()
+                    if (draggedId != null && draggedId in KNOWN_BUTTON_IDS) {
+                        val targetIndex = insertionIndex(targetGroup, event.x, draggedId)
                         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
                         val (row1, row2) = parseAndNormalizeRows(prefs)
                         val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
@@ -2956,23 +3062,8 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                         row1.remove(draggedId)
                         row2.remove(draggedId)
 
-                        val targetGroup = if (isRow1Target) row1GroupView else row2GroupView
                         val targetList = if (isRow1Target) row1 else row2
-
-                        var targetIndex = targetGroup?.childCount ?: 0
-                        if (targetGroup != null) {
-                            for (i in 0 until targetGroup.childCount) {
-                                val child = targetGroup.getChildAt(i)
-                                val childMidX = child.x + child.width / 2f
-                                if (event.x < childMidX) {
-                                    targetIndex = i
-                                    break
-                                }
-                            }
-                        }
-
-                        val insertIdx = Math.min(targetList.size, Math.max(0, targetIndex))
-                        targetList.add(insertIdx, draggedId)
+                        targetList.add(targetIndex.coerceIn(0, targetList.size), draggedId)
 
                         prefs.edit()
                             .putString(PREF_KEY_BUTTON_ROW1, row1.joinToString(","))
@@ -2985,7 +3076,10 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                     }
                     true
                 }
-                android.view.DragEvent.ACTION_DRAG_STARTED -> true
+                android.view.DragEvent.ACTION_DRAG_ENDED -> {
+                    clearDropMarkers()
+                    true
+                }
                 else -> true
             }
         }

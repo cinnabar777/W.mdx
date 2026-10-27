@@ -105,6 +105,7 @@ object PreferenceResetHelper {
             "pref_findreplace_field_find_border", "pref_findreplace_field_replace_border" -> "#333333"
             "pref_findreplace_field_find_focus_border", "pref_findreplace_field_replace_focus_border" -> "#0078D4"
             "pref_findreplace_counter_color" -> "#888888"
+            "pref_findreplace_counter_bg" -> "#00000000"
             "pref_findreplace_match_bg" -> "rgba(255, 255, 0, 0.35)"
             "pref_findreplace_current_match_bg" -> "#0078D4"
             "pref_findreplace_current_match_color" -> "#FFFFFF"
@@ -338,6 +339,7 @@ object PreferenceResetHelper {
             key == "pref_findreplace_field_replace_font_size" -> 14
             key == "pref_findreplace_field_height" -> 32
             key == "pref_findreplace_counter_color" -> "default"
+            key == "pref_findreplace_counter_bg" -> "default"
             key == "pref_findreplace_match_bg" -> "default"
             key == "pref_findreplace_current_match_bg" -> "default"
             key == "pref_findreplace_current_match_color" -> "default"

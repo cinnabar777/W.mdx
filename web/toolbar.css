@@ -378,6 +378,116 @@ body.light-theme .popup-toolbar-strip {
   margin-block: auto;
 }
 
+.toolbar-preview-tray-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.toolbar-preview-tray-heading .toolbar-preview-tray-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toolbar-preview-help-button {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 50%;
+  color: var(--toolbar-icon-color, #fff);
+  background: var(--toolbar-bg, #121212);
+  cursor: pointer;
+}
+
+.toolbar-preview-help-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.toolbar-preview-help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.toolbar-preview-help-overlay[hidden] {
+  display: none !important;
+}
+
+.toolbar-preview-help-dialog {
+  width: min(100%, 480px);
+  max-height: min(75dvh, 620px);
+  overflow: auto;
+  color: var(--toolbar-preview-text, #fff);
+  background: var(--toolbar-bg, #121212);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.toolbar-preview-help-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: inherit;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.toolbar-preview-help-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.toolbar-preview-help-header button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  font-size: 22px;
+}
+
+.toolbar-preview-help-content {
+  padding: 4px 16px 16px;
+  line-height: 1.45;
+}
+
+.toolbar-preview-help-content h3 {
+  margin: 12px 0 4px;
+  font-size: 14px;
+}
+
+.toolbar-preview-help-content p {
+  margin: 0;
+  color: var(--toolbar-preview-text, rgba(255, 255, 255, 0.72));
+  font-size: 13px;
+}
+
+body.light-theme .toolbar-preview-help-button,
+body.light-theme .toolbar-preview-help-dialog,
+body.light-theme .toolbar-preview-help-header {
+  border-color: rgba(0, 0, 0, 0.22);
+}
+
 .toolbar-preview-layout-actions {
   display: flex;
   justify-content: space-between;

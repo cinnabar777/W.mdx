@@ -2185,6 +2185,7 @@ document.addEventListener('click', event => {
   if (
     editor.contains(target) ||
     target?.closest?.('#toolbar-create-group-modal') ||
+    target?.closest?.('#toolbar-help-modal, #toolbar-help-button') ||
     target?.closest?.('.toolbar-preview-layout-actions') ||
     target?.closest?.('.toolbar-preview-key, .toolbar-preview-popup-key')
   ) {
@@ -2196,6 +2197,12 @@ document.addEventListener('click', event => {
 
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
+  const helpModal = document.querySelector('#toolbar-help-modal');
+  if (helpModal && !helpModal.hidden) {
+    event.preventDefault();
+    setToolbarHelpOpen(false);
+    return;
+  }
   const createGroupModal = document.querySelector('#toolbar-create-group-modal');
   if (createGroupModal && !createGroupModal.hidden) {
     event.preventDefault();
@@ -2242,6 +2249,26 @@ window.finishToolbarDragFromNative = (clientX, clientY) => {
 
 document.querySelectorAll('.toolbar-preview-surface-button').forEach(button => {
   button.addEventListener('click', () => setToolbarSurface(button.dataset.toolbarSurface));
+});
+
+const toolbarHelpButton = document.querySelector('#toolbar-help-button');
+const toolbarHelpModal = document.querySelector('#toolbar-help-modal');
+const toolbarHelpClose = document.querySelector('#toolbar-help-close');
+function setToolbarHelpOpen(open) {
+  if (!toolbarHelpModal || !toolbarHelpButton) return;
+  toolbarHelpModal.hidden = !open;
+  toolbarHelpModal.setAttribute('aria-hidden', String(!open));
+  toolbarHelpButton.setAttribute('aria-expanded', String(open));
+  if (open) toolbarHelpClose?.focus();
+  else toolbarHelpButton.focus();
+}
+
+toolbarHelpButton?.addEventListener('click', () => {
+  setToolbarHelpOpen(Boolean(toolbarHelpModal?.hidden));
+});
+toolbarHelpClose?.addEventListener('click', () => setToolbarHelpOpen(false));
+toolbarHelpModal?.addEventListener('click', event => {
+  if (event.target === toolbarHelpModal) setToolbarHelpOpen(false);
 });
 
 try {

@@ -83,6 +83,21 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
   try {
     await import(`../src/toolbarSettingsPreview.js?preview-test=${Date.now()}`);
 
+    const helpButton = dom.window.document.querySelector('#toolbar-help-button');
+    const helpModal = dom.window.document.querySelector('#toolbar-help-modal');
+    assert.ok(helpButton?.querySelector('svg'), 'the holding area help control uses the question icon');
+    helpButton.click();
+    assert.equal(helpModal.hidden, false, 'the help popup opens');
+    assert.equal(helpButton.getAttribute('aria-expanded'), 'true');
+    helpButton.click();
+    assert.equal(helpModal.hidden, true, 'tapping the help control closes the popup');
+    helpButton.click();
+    dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true
+    }));
+    assert.equal(helpModal.hidden, true, 'Escape dismisses the help popup');
+
     assert.deepEqual(
       [...dom.window.document.querySelectorAll('#toolbar-preview [data-toolbar-key]')]
         .map(button => button.dataset.toolbarKey),

@@ -5,6 +5,14 @@ const path = require('node:path');
 
 const mainJsPath = path.join(__dirname, '../src/main.js');
 const source = fs.readFileSync(mainJsPath, 'utf8');
+const findReplacePreferences = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_findreplace.xml'),
+  'utf8'
+);
+const settingsActivity = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
+  'utf8'
+);
 
 test('main.js contains @codemirror/search imports and setup', () => {
   assert.ok(source.includes("@codemirror/search"), 'Missing @codemirror/search import');
@@ -27,8 +35,19 @@ test('applyAllPreferences maps --findreplace CSS variables', () => {
   assert.ok(source.includes("--findreplace-panel-bg"), 'Missing --findreplace-panel-bg mapping');
   assert.ok(source.includes("--findreplace-field-find-border"), 'Missing --findreplace-field-find-border mapping');
   assert.ok(source.includes("--findreplace-counter-color"), 'Missing --findreplace-counter-color mapping');
+  assert.ok(source.includes("--findreplace-counter-bg"), 'Missing --findreplace-counter-bg mapping');
   assert.ok(source.includes("--findreplace-match-bg"), 'Missing --findreplace-match-bg mapping');
   assert.ok(source.includes("--findreplace-current-match-bg"), 'Missing --findreplace-current-match-bg mapping');
+});
+
+test('Find & Replace exposes the requested sizing and counter colors without a tall empty tray', () => {
+  assert.ok(findReplacePreferences.includes('app:title="Search Field Height (px)"'));
+  assert.ok(findReplacePreferences.includes('app:key="pref_findreplace_counter_color"'));
+  assert.ok(findReplacePreferences.includes('app:key="pref_findreplace_counter_bg"'));
+  assert.equal((findReplacePreferences.match(/app:title="Icon Width \(px\)"/g) || []).length, 9);
+  assert.ok(settingsActivity.includes('listView?.post { listView?.setSelection(0) }'));
+  assert.ok(settingsActivity.includes('if (hiddenSet.isEmpty()) 24 else 120'));
+  assert.ok(settingsActivity.includes('ACTION_DRAG_LOCATION'));
 });
 
 test('literal search vs regex search pattern logic', () => {

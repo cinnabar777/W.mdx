@@ -7670,6 +7670,7 @@ window.editorBridge = {
     setCssVar('--findreplace-field-replace-font-size', prefs.pref_findreplace_field_replace_font_size, 'px');
     setCssVar('--findreplace-field-height', prefs.pref_findreplace_field_height, 'px');
     setCssVar('--findreplace-counter-color', androidArgbToCss(prefs.pref_findreplace_counter_color));
+    setCssVar('--findreplace-counter-bg', androidArgbToCss(prefs.pref_findreplace_counter_bg));
     setCssVar('--findreplace-match-bg', androidArgbToCss(prefs.pref_findreplace_match_bg));
     setCssVar('--findreplace-current-match-bg', androidArgbToCss(prefs.pref_findreplace_current_match_bg));
     setCssVar('--findreplace-current-match-color', androidArgbToCss(prefs.pref_findreplace_current_match_color));
