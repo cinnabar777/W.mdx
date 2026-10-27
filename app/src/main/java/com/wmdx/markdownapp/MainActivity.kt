@@ -128,7 +128,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (isEditorReady) {
-            applyPluginPreferences()
             applyThemeAndFullscreenPreferences()
             refreshBottomToolbarFromPreferences()
             val captureActive = AppDiagnostics.isNavigationCaptureActive(this)
@@ -1620,27 +1619,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun applyPluginPreferences() {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val disabledPlugins = mutableListOf<String>()
-
-        val keys = listOf(
-            "heading", "bold", "italic", "strikethrough", "highlight", "code", "link",
-            "image", "blockQuote", "codeBlock", "table", "list",
-            "todoList", "indent", "horizontalLine", "sourceEditing", "findAndReplace", "autoformat"
-        )
-
-        for (key in keys) {
-            val enabled = prefs.getBoolean("pref_plugin_$key", true)
-            if (!enabled) {
-                disabledPlugins.add(key)
-            }
-        }
-
-        val jsonArray = JSONArray(disabledPlugins)
-        val escapedJson = JSONObjectWrapper.quote(jsonArray.toString())
-        webView.evaluateJavascript("window.editorBridge.configurePlugins($escapedJson);", null)
-    }
 
     private fun showUnsavedChangesDialog(onConfirm: () -> Unit) {
         AlertDialog.Builder(this)
@@ -1782,7 +1760,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(this@MainActivity, "editor_ready", "mode=$activeMode")
                 isEditorReady = true
                 if (!wasReady) {
-                    applyPluginPreferences()
                     applyThemeAndFullscreenPreferences()
                 }
                 updateTitle()

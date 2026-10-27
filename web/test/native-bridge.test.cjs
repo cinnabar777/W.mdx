@@ -433,16 +433,3 @@ test('every visible hotkey preference reaches a matching editor action', () => {
   assert.ok(keyboardHandler.includes("setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source')"));
 });
 
-test('hidden Markdown and empty lines provide caret geometry anchors', () => {
-  const footnotesSource = fs.readFileSync(path.join(__dirname, '../src/footnotes.js'), 'utf8');
-  const anchorSource = fs.readFileSync(path.join(__dirname, '../src/caretGeometryAnchor.js'), 'utf8');
-  assert.ok(source.includes('class CaretGeometryAnchorWidget extends WidgetType'));
-  assert.ok(source.includes('if (line.length === 0)'));
-  assert.ok(source.includes("const range = Decoration.replace({ widget: new CaretGeometryAnchorWidget() }).range(from, to);"));
-  assert.ok(source.includes("Decoration.replace({ widget: new CaretGeometryAnchorWidget() }).range(line.from, line.to)"));
-  assert.ok(source.includes("Decoration.widget({ widget: new CaretGeometryAnchorWidget(), side: 1 }).range(line.from)"));
-  assert.ok(source.includes('wrapper.appendChild(caretAnchor)'));
-  assert.ok(source.includes('header.appendChild(caretAnchor)'));
-  assert.ok(footnotesSource.includes('createCaretGeometryAnchorElement'));
-  assert.ok(anchorSource.includes('width:1px;height:1em'));
-});

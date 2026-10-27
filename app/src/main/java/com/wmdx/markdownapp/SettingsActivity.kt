@@ -67,7 +67,6 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingSettingsFragment -> "Typography"
                 is ExportSettingsFragment -> "HTML & MHTML Export"
                 is HotkeysSettingsFragment -> "Keyboard Shortcuts"
-                is PluginsSettingsFragment -> "Plugins & Toolbar"
                 else -> getString(R.string.settings_title)
             }
         }
@@ -302,13 +301,6 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_hotkeys", "pref_hotkeys_page" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, HotkeysSettingsFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_plugins", "pref_plugins_page" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, PluginsSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -3242,11 +3234,6 @@ class ExportSettingsFragment : BaseSettingsFragment() {
     }
 }
 
-class PluginsSettingsFragment : BaseSettingsFragment() {
-    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-        setPreferencesFromResource(R.xml.preferences_plugins, rootKey)
-    }
-}
 
 class SettingsThemeFragment : BaseSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {

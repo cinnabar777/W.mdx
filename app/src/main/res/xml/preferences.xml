@@ -34,11 +34,6 @@
             app:summary="Choose keys for app actions, formatting, headings, and highlights" />
 
         <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_page_plugins"
-            app:title="Plugins &amp; Toolbar"
-            app:summary="Enable or disable editor plugins and toolbar items" />
-
-        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_export"
             app:title="HTML &amp; MHTML Export"
             app:summary="Choose export format, contents, and stylesheet options" />
@@ -114,7 +109,7 @@
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_reset_all_defaults"
             app:title="Restore Defaults ↺"
-            app:summary="Restore typography, colors, key combinations, fonts, and plugin choices to their defaults" />
+            app:summary="Restore typography, colors, key combinations, and fonts to their defaults" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>
