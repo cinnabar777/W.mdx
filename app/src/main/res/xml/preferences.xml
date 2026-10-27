@@ -25,8 +25,8 @@
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_bottom_toolbar"
-            app:title="Toolbar: Bottom"
-            app:summary="Toolbar height, colors, and toggle appearance" />
+            app:title="Toolbars"
+            app:summary="Edit bottom and floating toolbar layouts and appearance" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_hotkeys"

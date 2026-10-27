@@ -132,10 +132,15 @@ body.light-theme .popup-toolbar-strip {
 }
 
 .toolbar-preview-surface-switch {
+  position: sticky;
+  top: 0;
+  z-index: 10006;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  padding: 0 16px 8px;
+  flex: 0 0 auto;
+  padding: 8px 0;
+  background: var(--toolbar-preview-surface, #000);
 }
 
 .toolbar-preview-surface-button {

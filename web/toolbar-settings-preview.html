@@ -690,6 +690,12 @@
 <body>
   <main class="toolbar-preview-shell">
     <div class="toolbar-preview-content">
+      <div class="toolbar-preview-surface-switch" role="group" aria-label="Toolbar layout">
+        <button type="button" class="toolbar-preview-surface-button is-active"
+                data-toolbar-surface="bottom" aria-pressed="true">Bottom toolbar</button>
+        <button type="button" class="toolbar-preview-surface-button"
+                data-toolbar-surface="floating" aria-pressed="false">Floating toolbar</button>
+      </div>
       <div class="toolbar-preview-holding">
         <div class="toolbar-preview-tray-label">Holding area · hidden keys appear individually; empty folders stay here until placed or deleted</div>
         <div id="toolbar-holding-tray" class="toolbar-preview-tray" aria-label="Hidden toolbar keys"></div>
@@ -701,12 +707,6 @@
       </div>
     </div>
     <div class="toolbar-preview-dock" id="toolbar-preview-dock">
-      <div class="toolbar-preview-surface-switch" role="group" aria-label="Toolbar layout">
-        <button type="button" class="toolbar-preview-surface-button is-active"
-                data-toolbar-surface="bottom" aria-pressed="true">Bottom toolbar</button>
-        <button type="button" class="toolbar-preview-surface-button"
-                data-toolbar-surface="floating" aria-pressed="false">Floating toolbar</button>
-      </div>
       <div class="toolbar-preview-stage" id="toolbar-preview-stage">
         <div id="toolbar-preview" class="grouped-control-bar"
              aria-label="Bottom toolbar preview"></div>

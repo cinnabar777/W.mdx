@@ -59,7 +59,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingTablesFragment -> "Tables"
                 is StylingCodeFragment -> "Code Blocks"
                 is StylingHrFragment -> "Horizontal Rules"
-                is StylingControlbarFragment -> "Toolbar: Bottom"
+                is StylingControlbarFragment -> "Toolbars"
                 is StylingCursorFragment -> "Cursor & Selection"
                 is StylingFindReplaceFragment -> "Find & Replace"
                 is TocPanelSettingsFragment -> "Table of Contents"

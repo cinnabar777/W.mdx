@@ -50,24 +50,6 @@
         android:max="16"
         app:showSeekBarValue="true" />
 
-    <com.wmdx.markdownapp.ResetSeekBarPreference
-        app:key="pref_toolbar_floating_key_width"
-        app:title="Floating Toolbar Key Width (dp)"
-        app:summary="Width of each floating toolbar key"
-        android:defaultValue="48"
-        app:min="36"
-        android:max="72"
-        app:showSeekBarValue="true" />
-
-    <com.wmdx.markdownapp.ResetSeekBarPreference
-        app:key="pref_toolbar_floating_corner_radius"
-        app:title="Floating Toolbar Corner Radius (dp)"
-        app:summary="Round the ends of the floating toolbar"
-        android:defaultValue="24"
-        app:min="0"
-        android:max="36"
-        app:showSeekBarValue="true" />
-
     <androidx.preference.SwitchPreferenceCompat
         app:key="pref_toolbar_show_labels"
         app:title="Show Key Labels"
@@ -88,5 +70,25 @@
         app:title="Key Label Text Color"
         app:summary="Color for toolbar key labels"
         app:defaultValue="default" />
+
+    <PreferenceCategory app:title="Floating toolbar">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_floating_key_width"
+            app:title="Key Width (dp)"
+            app:summary="Width of each floating toolbar key"
+            android:defaultValue="48"
+            app:min="36"
+            android:max="72"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_floating_corner_radius"
+            app:title="Corner Radius (dp)"
+            app:summary="Round the ends of the floating toolbar"
+            android:defaultValue="24"
+            app:min="0"
+            android:max="36"
+            app:showSeekBarValue="true" />
+    </PreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

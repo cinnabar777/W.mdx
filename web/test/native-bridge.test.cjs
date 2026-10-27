@@ -277,10 +277,10 @@ test('bottom toolbar appearance is in main settings below Find & Replace', () =>
 
   assert.ok(findReplaceIndex >= 0 && findReplaceIndex < toolbarIndex);
   assert.ok(toolbarIndex < keyboardIndex);
-  assert.match(mainSettingsXml, /app:key="pref_page_bottom_toolbar"[\s\S]*?app:title="Toolbar: Bottom"/);
+  assert.match(mainSettingsXml, /app:key="pref_page_bottom_toolbar"[\s\S]*?app:title="Toolbars"/);
   assert.ok(settingsActivitySource.includes('"pref_page_bottom_toolbar"'));
   assert.ok(!stylingPagesXml.includes('pref_styling_page_controlbar'));
-  assert.ok(settingsActivitySource.includes('is StylingControlbarFragment -> "Toolbar: Bottom"'));
+  assert.ok(settingsActivitySource.includes('is StylingControlbarFragment -> "Toolbars"'));
 });
 
 test('toolbar preview finalizes drops from Android native touch release', () => {

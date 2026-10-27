@@ -504,7 +504,12 @@ function syncToolbarSurfaceSelector() {
 }
 
 function setToolbarSurface(surface) {
-  if (surface !== 'bottom' && surface !== 'floating') return;
+  if (
+    (surface !== 'bottom' && surface !== 'floating') ||
+    surface === activeToolbarSurface
+  ) return;
+  const content = document.querySelector('.toolbar-preview-content');
+  const scrollTop = content?.scrollTop ?? 0;
   activeToolbarSurface = surface;
   config = configsBySurface[surface];
   selectedKey = null;
@@ -517,6 +522,11 @@ function setToolbarSurface(surface) {
   window.ToolbarSettings?.setToolbarSurface?.(surface);
   syncToolbarSurfaceSelector();
   render();
+  if (content) {
+    requestAnimationFrame(() => {
+      if (content.isConnected) content.scrollTop = scrollTop;
+    });
+  }
 }
 
 function layoutSignature(value) {

@@ -65,6 +65,7 @@ test('floating toolbar has an independent saved layout and replaces the native s
   const editorWebView = readApp('src/main/java/com/wmdx/markdownapp/EditorWebView.kt');
   const settingsActivity = readApp('src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
   const controlbarPrefs = readApp('src/main/res/xml/preferences_styling_controlbar.xml');
+  const mainSettingsPrefs = readApp('src/main/res/xml/preferences.xml');
   const activityLayout = readApp('src/main/res/layout/activity_main.xml');
   const styles = readWeb('toolbar.css');
 
@@ -74,13 +75,25 @@ test('floating toolbar has an independent saved layout and replaces the native s
   assert.match(settings, /configsBySurface = \{\s*bottom: config,\s*floating:/);
   assert.match(settings, /setToolbarSurface\(surface\)/);
   assert.match(settingsHtml, /data-toolbar-surface="floating"/);
+  assert.match(
+    settingsHtml,
+    /toolbar-preview-content">[\s\S]*?toolbar-preview-surface-switch[\s\S]*?toolbar-preview-holding/
+  );
+  const dockMarkup = settingsHtml.slice(settingsHtml.indexOf('toolbar-preview-dock'));
+  assert.doesNotMatch(dockMarkup, /toolbar-preview-surface-switch/);
+  assert.match(settings, /surface === activeToolbarSurface/);
+  assert.match(settings, /content\.scrollTop = scrollTop/);
   assert.match(settingsActivity, /pref_toolbar_floating_config/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_key_width/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_corner_radius/);
+  assert.match(controlbarPrefs, /<PreferenceCategory app:title="Floating toolbar">/);
+  assert.match(mainSettingsPrefs, /app:title="Toolbars"/);
+  assert.match(settingsActivity, /is StylingControlbarFragment -> "Toolbars"/);
   assert.doesNotMatch(nativeActivity, /setCustomSelectionActionModeCallback/);
   assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback\)/);
   assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback, type: Int\)/);
   assert.match(activityLayout, /<com\.wmdx\.markdownapp\.EditorWebView/);
   assert.match(styles, /--toolbar-floating-key-width/);
   assert.match(styles, /--toolbar-floating-corner-radius/);
+  assert.match(styles, /\.toolbar-preview-surface-switch\s*\{[^}]*position:\s*sticky/s);
 });
