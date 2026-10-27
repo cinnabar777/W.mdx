@@ -265,7 +265,7 @@ test('choosing a color in a transparent color picker makes the selected color vi
   assert.match(colorPickerSource, /makePickedColorVisible\(\)/);
   assert.match(
     colorPickerSource,
-    /private fun makePickedColorVisible\(\) \{\s*if \(currentAlpha == 0\) \{\s*currentAlpha = 255/
+    /private fun makePickedColorVisible\(\) \{\s*\/\/ A newly chosen color[\s\S]*?if \(currentAlpha != 255\) \{\s*currentAlpha = 255/
   );
   assert.doesNotMatch(
     sharedCss,

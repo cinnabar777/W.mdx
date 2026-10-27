@@ -21,6 +21,12 @@
             android:defaultValue="default"
             app:dependency="pref_blockquote_inherit_body_typography" />
 
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_font_file_blockquote"
+            app:title="Block Quote Font File"
+            app:summary="Tap to pick a custom font file (.ttf, .otf, .woff, .woff2)"
+            app:dependency="pref_blockquote_inherit_body_typography" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_blockquote_font_weight"
             app:title="Block Quote Font Weight"
@@ -96,6 +102,12 @@
             android:entries="@array/font_family_entries"
             android:entryValues="@array/font_family_values"
             android:defaultValue="default"
+            app:dependency="pref_callout_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_font_file_callout"
+            app:title="Callout Body Font File"
+            app:summary="Tap to pick a custom font file (.ttf, .otf, .woff, .woff2)"
             app:dependency="pref_callout_inherit_body_typography" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference

@@ -5,6 +5,14 @@
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_inline_bold"
         app:title="Bold Text">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_bold_font_family"
+            app:title="Bold Font Family"
+            app:summary="Choose a device font or use the custom font file"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_bold_color"
             app:title="Bold Text Color"
@@ -29,6 +37,14 @@
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_inline_italic"
         app:title="Italic Text">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_italic_font_family"
+            app:title="Italic Font Family"
+            app:summary="Choose a device font or use the custom font file"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_italic_color"
             app:title="Italic Text Color"
@@ -43,6 +59,14 @@
             android:max="900"
             app:defaultValue="400"
             app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_italic_decoration"
+            app:title="Italic Text Decoration"
+            app:summary="Choose underline style or no decoration"
+            android:entries="@array/underline_style_entries"
+            android:entryValues="@array/underline_style_values"
+            android:defaultValue="none" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_font_file_italic"
@@ -80,6 +104,14 @@
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_inline_code"
         app:title="Inline Code">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_code_font_family"
+            app:title="Inline Code Font Family"
+            app:summary="Choose a device font or use the custom font file"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_code_color"
             app:title="Inline Code Text Color"

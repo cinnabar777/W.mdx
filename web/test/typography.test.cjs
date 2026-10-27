@@ -205,6 +205,15 @@ test('cursor and selection styling page is configured', () => {
   assert.match(cursorSettings, /app:key="pref_selection_highlight_bg_color"/);
   assert.match(source, /setCssVar\('--cursor-color', prefs\.pref_cursor_color\)/);
   assert.match(source, /setCssVar\('--cursor-width', prefs\.pref_cursor_width, 'px'\)/);
+  assert.match(source, /Number\.parseFloat\(cursorBlinkRate\) === 0/);
+  assert.match(indexHtml, /body\.cursor-blink-disabled \.cm-editor \.cm-cursorLayer/);
+  assert.match(indexHtml, /cursor-blink-disabled[\s\S]*?animation:\s*none\s*!important/);
+});
+
+test('table hyphenation wraps nested cell text without horizontal scrolling', () => {
+  assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table-container[\s\S]*?overflow-x:\s*hidden\s*!important/);
+  assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table td \*[\s\S]*?white-space:\s*normal\s*!important/);
+  assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table td \*[\s\S]*?overflow-wrap:\s*anywhere\s*!important/);
 });
 
 test('Wikilinks rendering and refined link styling rules in main.js and index.html', () => {

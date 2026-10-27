@@ -5,7 +5,10 @@ import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidg
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
 import { parseAndMatchHotkey } from './hotkeys.js';
-import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
+import {
+  filterSelectionOutsideHiddenSyntax,
+  mapSelectionOutsideHiddenSyntax
+} from './visibleSelection.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import {
   buildFootnoteDecorations,
@@ -455,6 +458,27 @@ function activeTypographySignature() {
     ])
   });
 }
+
+class EmptyLineCursorAnchorWidget extends WidgetType {
+  eq(other) {
+    return other instanceof EmptyLineCursorAnchorWidget;
+  }
+
+  toDOM() {
+    const anchor = document.createElement('span');
+    anchor.className = 'cm-empty-line-cursor-anchor';
+    anchor.setAttribute('aria-hidden', 'true');
+    anchor.setAttribute('contenteditable', 'false');
+    anchor.textContent = '\u200b';
+    return anchor;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
+const emptyLineCursorAnchorWidget = new EmptyLineCursorAnchorWidget();
 
 class CodeBlockHeaderWidget extends WidgetType {
   constructor(lang, codeText) {
@@ -2168,7 +2192,73 @@ function hiddenSyntaxRangesForView(view) {
     : (livePreviewRanges ?? wysiwygRanges);
   const footnoteRanges =
     view.state.field(footnoteStateField, false)?.hiddenSyntaxRanges ?? Decoration.none;
-  return mergeHiddenSyntaxRanges(view.state.doc.length, baseRanges, footnoteRanges);
+  const codeBlockRanges =
+    view.state.field(wysiwygCodeBlockField, false)?.hiddenSyntaxRanges ?? Decoration.none;
+  return mergeHiddenSyntaxRanges(
+    view.state.doc.length,
+    baseRanges,
+    codeBlockRanges,
+    footnoteRanges
+  );
+}
+
+function hiddenSyntaxRangesForState(state) {
+  const ranges = [];
+  const sets = [
+    state.field(heightMapField, false)?.hiddenSyntaxRanges,
+    state.field(wysiwygCodeBlockField, false)?.hiddenSyntaxRanges,
+    state.field(footnoteStateField, false)?.hiddenSyntaxRanges
+  ];
+
+  for (const set of sets) {
+    set?.between(0, state.doc.length, (from, to) => {
+      if (to > from) ranges.push({ from, to });
+    });
+  }
+
+  ranges.sort((a, b) => a.from - b.from || a.to - b.to);
+  const merged = [];
+  for (const range of ranges) {
+    const previous = merged[merged.length - 1];
+    if (previous && range.from <= previous.to) {
+      previous.to = Math.max(previous.to, range.to);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged;
+}
+
+let pendingNativeCursorAnchorView = null;
+let nativeCursorAnchorFrame = null;
+
+function scheduleNativeCursorAnchor(view) {
+  const bridge = window.AndroidNative;
+  if (!bridge || typeof bridge.onSelectionChanged !== 'function') return;
+
+  pendingNativeCursorAnchorView = view;
+  if (nativeCursorAnchorFrame !== null) return;
+
+  nativeCursorAnchorFrame = requestAnimationFrame(() => {
+    nativeCursorAnchorFrame = null;
+    const activeView = pendingNativeCursorAnchorView;
+    pendingNativeCursorAnchorView = null;
+    if (!activeView?.dom?.isConnected) return;
+
+    const caret = activeView.coordsAtPos(activeView.state.selection.main.head);
+    if (!caret) return;
+
+    const visualViewport = window.visualViewport;
+    bridge.onSelectionChanged(JSON.stringify({
+      left: caret.left,
+      top: caret.top,
+      bottom: caret.bottom,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      visualViewportScale: visualViewport?.scale || 1,
+      visualViewportOffsetLeft: visualViewport?.offsetLeft || 0,
+      visualViewportOffsetTop: visualViewport?.offsetTop || 0
+    }));
+  });
 }
 
 export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
@@ -2507,11 +2597,17 @@ export function updateTableDocumentSelection(view) {
 }
 
 function buildWysiwygCodeBlockDecorations(state) {
-  if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+  if (currentEditorMode !== 'wysiwyg') {
+    return {
+      decorations: Decoration.none,
+      hiddenSyntaxRanges: Decoration.none
+    };
+  }
   recordDecorationBuild(currentEditorMode, 'wysiwyg_code_blocks');
 
   const doc = state.doc;
   const builder = [];
+  const hiddenSyntaxRanges = [];
 
   syntaxTree(state).iterate({
     from: 0,
@@ -2547,7 +2643,9 @@ function buildWysiwygCodeBlockDecorations(state) {
         ) {
           // The opening fence is replaced by the language header below.
           // Hide the closing fence too so WYSIWYG never exposes Markdown syntax.
-          builder.push(Decoration.replace({}).range(line.from, line.to));
+          const range = Decoration.replace({}).range(line.from, line.to);
+          builder.push(range);
+          hiddenSyntaxRanges.push(range);
         }
       }
 
@@ -2556,9 +2654,10 @@ function buildWysiwygCodeBlockDecorations(state) {
         const langMatch = firstLine.text.match(/^```(\w+)/);
         const lang = langMatch ? langMatch[1] : 'Plain text';
         const headerWidget = new CodeBlockHeaderWidget(lang, codeText);
-        builder.push(
-          Decoration.replace({ widget: headerWidget }).range(firstLine.from, firstLine.to)
-        );
+        const headerRange = Decoration.replace({ widget: headerWidget })
+          .range(firstLine.from, firstLine.to);
+        builder.push(headerRange);
+        hiddenSyntaxRanges.push(headerRange);
       }
 
       return false;
@@ -2566,7 +2665,11 @@ function buildWysiwygCodeBlockDecorations(state) {
   });
 
   builder.sort((a, b) => a.from - b.from || a.to - b.to);
-  return Decoration.set(builder, true);
+  hiddenSyntaxRanges.sort((a, b) => a.from - b.from || a.to - b.to);
+  return {
+    decorations: Decoration.set(builder, true),
+    hiddenSyntaxRanges: Decoration.set(hiddenSyntaxRanges, true)
+  };
 }
 
 function rangeTouchesSyntaxNode(state, from, to, nodeNames) {
@@ -2651,11 +2754,15 @@ const wysiwygCodeBlockField = StateField.define({
         markerPattern: /[\n`~]/
       })
     ) {
-      return current.map(tr.changes);
+      return {
+        decorations: current.decorations.map(tr.changes),
+        hiddenSyntaxRanges: current.hiddenSyntaxRanges.map(tr.changes)
+      };
     }
     return buildWysiwygCodeBlockDecorations(tr.state);
   },
-  provide: field => EditorView.decorations.from(field)
+  provide: field =>
+    EditorView.decorations.from(field, value => value.decorations)
 });
 
 function buildHeightMapValue(state) {
@@ -2671,6 +2778,17 @@ function buildHeightMapValue(state) {
   const tree = syntaxTree(state);
   const replacements = [];
   const hiddenSyntaxRanges = [];
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
+    const line = doc.line(lineNumber);
+    if (line.length === 0) {
+      replacements.push(
+        Decoration.widget({
+          widget: emptyLineCursorAnchorWidget,
+          side: 1
+        }).range(line.from)
+      );
+    }
+  }
 
   const hideSyntax = (from, to) => {
     if (to > from) {
@@ -2877,7 +2995,11 @@ function buildHeightMapValue(state) {
         const taskText = doc.sliceString(node.from, node.to);
         const isChecked = taskText.toLowerCase().includes('x');
         if (node.to > node.from) {
-          replacements.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+          const range = Decoration.replace({
+            widget: new CheckboxWidget(isChecked, node.from, node.to - node.from)
+          }).range(node.from, node.to);
+          replacements.push(range);
+          hiddenSyntaxRanges.push(range);
         }
       }
 
@@ -3626,6 +3748,20 @@ class CodeMirrorAdapter {
         livePreviewPlugin,
         listMarkerMeasurementPlugin,
         hiddenSyntaxAtomicRanges,
+        EditorState.transactionFilter.of(transaction => {
+          if (
+            currentEditorMode !== 'wysiwyg' ||
+            transaction.docChanged ||
+            !transaction.selection
+          ) {
+            return transaction;
+          }
+          return filterSelectionOutsideHiddenSyntax(
+            transaction,
+            hiddenSyntaxRangesForState(transaction.startState),
+            transaction.newDoc.length
+          );
+        }),
         this.lineWrapCompartment.of(isLineWrapEnabled ? EditorView.lineWrapping : []),
         this.lineNumbersCompartment.of(this.showLineNumbers ? lineNumbers() : []),
         EditorView.theme({
@@ -3684,6 +3820,9 @@ class CodeMirrorAdapter {
             updateTableDocumentSelection(update.view);
             updateFloatingSelectionToolbar(update.view);
           }
+          if (update.selectionSet || update.docChanged || update.viewportChanged) {
+            scheduleNativeCursorAnchor(update.view);
+          }
           if (update.selectionSet || update.docChanged) {
             refreshToolbarSyntaxState(update.view);
           }
@@ -3717,6 +3856,7 @@ class CodeMirrorAdapter {
         const hiddenSyntax = mergeHiddenSyntaxRanges(
           startState.doc.length,
           startState.field(heightMapField).hiddenSyntaxRanges,
+          startState.field(wysiwygCodeBlockField, false)?.hiddenSyntaxRanges,
           startState.field(footnoteStateField, false)?.hiddenSyntaxRanges
         );
         hiddenSyntax.between(0, startState.doc.length, (from, to) => {
@@ -5135,13 +5275,13 @@ export function openFootnoteInsertionDialog(options = {}) {
             from: selectionSnapshot.to,
             insert: marker +
               separatorFor(docText.slice(0, selectionSnapshot.to) + marker) +
-              formattedDefinition
+              formattedDefinition + '\n\n'
           }
         : [
             { from: selectionSnapshot.to, insert: marker },
             {
               from: view.state.doc.length,
-              insert: separatorFor(docText) + formattedDefinition
+              insert: separatorFor(docText) + formattedDefinition + '\n\n'
             }
           ];
 
@@ -6734,11 +6874,13 @@ function setupTocGestureAndPanel(scrollDOM) {
       level: Number(row.dataset.level) || 1,
       title: row.querySelector('.toc-text')?.dataset.headingTitle ?? ''
     }));
-    const { matchingIndexes, visibleIndexes } = getTocSearchState(items, query);
+    const { matchingIndexes } = getTocSearchState(items, query);
     itemRows.forEach((row, index) => {
-      row.style.display = visibleIndexes.has(index) ? 'flex' : 'none';
+      // Keep the full heading outline present while searching; the match is
+      // highlighted in context rather than replacing the outline with results.
+      row.style.display = 'flex';
       const toggle = row.querySelector('.toc-toggle');
-      if (toggle) toggle.style.visibility = 'hidden';
+      if (toggle) toggle.style.removeProperty('visibility');
       if (matchingIndexes.has(index)) {
         renderTocHeadingText(row.querySelector('.toc-text'), items[index].title, query);
       } else {
@@ -6750,6 +6892,15 @@ function setupTocGestureAndPanel(scrollDOM) {
       emptyMessage.className = 'toc-search-empty';
       emptyMessage.textContent = 'No matching headings.';
       tocContent.appendChild(emptyMessage);
+    } else {
+      const firstMatch = itemRows[[...matchingIndexes][0]];
+      if (firstMatch) {
+        const containerRect = tocContent.getBoundingClientRect();
+        const rowRect = firstMatch.getBoundingClientRect();
+        tocContent.scrollTop +=
+          rowRect.top - containerRect.top -
+          (tocContent.clientHeight - rowRect.height) / 2;
+      }
     }
   }
 
@@ -7157,7 +7308,12 @@ window.editorBridge = {
     // Cursor & Selection
     setCssVar('--cursor-color', prefs.pref_cursor_color);
     setCssVar('--cursor-width', prefs.pref_cursor_width, 'px');
-    setCssVar('--cursor-blink-rate', prefs.pref_cursor_blink_rate);
+    const cursorBlinkRate = String(prefs.pref_cursor_blink_rate ?? '0.8s').trim();
+    setCssVar('--cursor-blink-rate', cursorBlinkRate);
+    document.body.classList.toggle(
+      'cursor-blink-disabled',
+      Number.parseFloat(cursorBlinkRate) === 0
+    );
     setCssVar('--selection-highlight-bg', prefs.pref_selection_highlight_bg_color);
     setCssVar('--selection-highlight-text', prefs.pref_selection_highlight_text_color);
 
@@ -7240,6 +7396,7 @@ window.editorBridge = {
       setCssVar('--heading-' + i + '-margin-top', prefs[key + 'margin_top'], 'px');
       setCssVar('--heading-' + i + '-margin-bottom', prefs[key + 'margin_bottom'], 'px');
       setCssVar('--heading-' + i + '-font-weight', prefs[key + 'font_weight']);
+      setCssVar('--heading-' + i + '-font-family', toCssFontFamily(prefs[key + 'font_family']));
     }
 
     // Inline formats
@@ -7247,6 +7404,9 @@ window.editorBridge = {
     setCssVar('--bold-font-weight', prefs.pref_font_weight_bold);
     setCssVar('--italic-color', prefs.pref_italic_color);
     setCssVar('--italic-font-weight', prefs.pref_font_weight_italic);
+    const italicDecoration = prefs.pref_italic_decoration || 'none';
+    setCssVar('--italic-decoration-line', italicDecoration === 'none' ? 'none' : 'underline');
+    setCssVar('--italic-decoration-style', italicDecoration === 'none' ? 'solid' : italicDecoration);
     setCssVar('--link-color', prefs.pref_link_color);
     const linkStyle = prefs.pref_link_decoration || 'solid';
     setCssVar('--link-decoration-line', linkStyle === 'none' ? 'none' : 'underline');
@@ -7468,6 +7628,10 @@ window.editorBridge = {
     // Tables
     const inheritTableTypography =
       prefs.pref_table_inherit_body_typography !== false;
+    const tableHyphenation = inheritTableTypography
+      ? prefs.pref_paragraph_hyphenate === true
+      : prefs.pref_table_hyphenate === true;
+    document.body.classList.toggle('table-hyphenate', tableHyphenation);
     setCssVar('--table-font-family', inheritTableTypography
       ? 'var(--body-font-family, inherit)'
       : (prefs.pref_table_font_family && prefs.pref_table_font_family !== 'default'
@@ -7520,6 +7684,7 @@ window.editorBridge = {
     setCssVar('--code-copy-bg', androidArgbToCss(prefs.pref_code_block_copy_bg_color));
     setCssVar('--code-copy-color', androidArgbToCss(prefs.pref_code_block_copy_text_color));
     setCssVar('--code-block-font-size', prefs.pref_code_block_font_size, 'px');
+    setCssVar('--code-block-font-family', toCssFontFamily(prefs.pref_code_block_font_family));
     setCssVar('--code-block-margin-left', prefs.pref_code_block_margin_left ?? 0, 'px');
     setCssVar('--code-block-margin-right', prefs.pref_code_block_margin_right ?? 0, 'px');
     setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
@@ -7975,7 +8140,7 @@ window.editorBridge = {
     }
     updateTocHistoryButtons();
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData, fontFootnoteData, bodyFontFamily = 'default', headingFontFamily = 'default') {
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData, fontFootnoteData, bodyFontFamily = 'default', headingFontFamily = 'default', fontOverridesJson = '{}') {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -8014,7 +8179,15 @@ window.editorBridge = {
 
     let fontCss = '';
     const registeredFontFamilies = new Map();
-    const applyFontCategory = (categoryName, fontData, cssVarName) => {
+    let fontOverrides = { families: {}, files: {} };
+    try {
+      fontOverrides = JSON.parse(fontOverridesJson || '{}');
+    } catch (error) {
+      console.error('invalid_font_overrides', error);
+    }
+    const fontFamilies = fontOverrides.families || {};
+    const fontFiles = fontOverrides.files || {};
+    const applyFontCategory = (categoryName, fontData, cssVarName, deviceFont = 'default') => {
       if (fontData && fontData.length > 10) {
         let familyName = registeredFontFamilies.get(fontData);
         if (!familyName) {
@@ -8030,9 +8203,6 @@ window.editorBridge = {
         fontCss += `.cm-content { --custom-${categoryName.toLowerCase()}-font: '${familyName}'; }\n`;
         document.documentElement.style.setProperty(cssVarName, `'${familyName}'`);
       } else {
-        const deviceFont = categoryName === 'Body'
-          ? bodyFontFamily
-          : (categoryName === 'Heading' ? headingFontFamily : 'default');
         const familyValue = toCssFontFamily(deviceFont);
         if (familyValue) {
           document.documentElement.style.setProperty(cssVarName, familyValue);
@@ -8044,12 +8214,17 @@ window.editorBridge = {
 
     applyFontCategory('Body', fontBodyData, '--body-font-family');
     applyFontCategory('Heading', fontHeadingData, '--heading-font-family');
-    applyFontCategory('Bold', fontBoldData, '--bold-font-family');
-    applyFontCategory('Italic', fontItalicData, '--italic-font-family');
-    applyFontCategory('Code', fontCodeData, '--code-font-family');
-    applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family');
-    applyFontCategory('Toc', fontTocData, '--toc-font-family');
-    applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family');
+    applyFontCategory('Bold', fontBoldData, '--bold-font-family', fontFamilies.bold || 'default');
+    applyFontCategory('Italic', fontItalicData, '--italic-font-family', fontFamilies.italic || 'default');
+    applyFontCategory('Code', fontCodeData, '--code-font-family', fontFamilies.code || 'default');
+    applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family', fontFamilies.calloutHeader || 'default');
+    applyFontCategory('Toc', fontTocData, '--toc-font-family', fontFamilies.toc || 'default');
+    applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family', bodyFontFamily);
+    applyFontCategory('Blockquote', fontFiles.blockquote, '--blockquote-font-family', fontFamilies.blockquote || 'default');
+    applyFontCategory('Callout', fontFiles.callout, '--callout-font-family', fontFamilies.callout || 'default');
+    applyFontCategory('CodeBlock', fontFiles.codeBlock, '--code-block-font-family', fontFamilies.codeBlock || 'default');
+    applyFontCategory('List', fontFiles.list, '--list-font-family', fontFamilies.list || 'default');
+    applyFontCategory('Table', fontFiles.table, '--table-font-family', fontFamilies.table || 'default');
     let headingLevelFonts = [];
     try {
       headingLevelFonts = JSON.parse(fontHeadingLevelsDataJson || '[]');
@@ -8060,7 +8235,10 @@ window.editorBridge = {
       applyFontCategory(
         `Heading${level}`,
         headingLevelFonts[level - 1],
-        `--heading-${level}-font-family`
+        `--heading-${level}-font-family`,
+        fontFamilies[`heading${level}`] && fontFamilies[`heading${level}`] !== 'default'
+          ? fontFamilies[`heading${level}`]
+          : headingFontFamily
       );
     }
 
@@ -8069,142 +8247,6 @@ window.editorBridge = {
     }
   },
 };
-
-// --- Obsidian Plugin Polyfill Layer ---
-if (typeof window !== 'undefined') {
-  class Notice {
-    constructor(message, duration = 4000) {
-      console.log('[Obsidian Notice]', message);
-      if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
-        window.AndroidNative.showToast(message);
-      }
-    }
-  }
-
-  class Component {
-    constructor() {
-      this._children = [];
-    }
-    load() {}
-    unload() {}
-    addChild(child) {
-      this._children.push(child);
-      if (child && typeof child.load === 'function') child.load();
-      return child;
-    }
-    removeChild(child) {
-      const idx = this._children.indexOf(child);
-      if (idx !== -1) {
-        this._children.splice(idx, 1);
-        if (child && typeof child.unload === 'function') child.unload();
-      }
-    }
-  }
-
-  class Plugin extends Component {
-    constructor(app, manifest) {
-      super();
-      this.app = app;
-      this.manifest = manifest;
-    }
-
-    addCommand(command) {
-      if (this.app && this.app.commands) {
-        this.app.commands.addCommand(command);
-      }
-    }
-
-    registerView(type, viewCreator) {
-      if (this.app && this.app.workspace) {
-        this.app.workspace.registerView(type, viewCreator);
-      }
-    }
-
-    registerSettingTab(settingTab) {
-      if (this.app && this.app.setting) {
-        this.app.setting.addSettingTab(settingTab);
-      }
-    }
-
-    async loadData() {
-      return {};
-    }
-
-    async saveData(data) {
-      console.log('[Obsidian Plugin] saveData:', data);
-    }
-  }
-
-  class PluginSettingTab {
-    constructor(app, plugin) {
-      this.app = app;
-      this.plugin = plugin;
-      this.containerEl = document.createElement('div');
-    }
-    display() {}
-    hide() {}
-  }
-
-  class Setting {
-    constructor(containerEl) {
-      this.containerEl = containerEl;
-      this.settingEl = document.createElement('div');
-      this.containerEl.appendChild(this.settingEl);
-    }
-    setName(name) { return this; }
-    setDesc(desc) { return this; }
-    addText(cb) { return this; }
-    addToggle(cb) { return this; }
-    addDropdown(cb) { return this; }
-    addButton(cb) { return this; }
-  }
-
-  class TFile {
-    constructor(path) {
-      this.path = path || 'Untitled.md';
-      this.name = path ? path.split('/').pop() : 'Untitled.md';
-      this.basename = this.name.replace(/\.[^/.]+$/, '');
-      this.extension = 'md';
-    }
-  }
-
-  window.obsidian = {
-    Plugin,
-    Component,
-    Notice,
-    PluginSettingTab,
-    Setting,
-    TFile,
-    ItemView: class extends Component {},
-    WorkspaceLeaf: class {},
-    MarkdownView: class {}
-  };
-
-  window.app = window.app || {
-    vault: {
-      read: async () => window.editorBridge ? window.editorBridge.getMarkdown() : '',
-      modify: async (file, data) => {
-        if (window.editorBridge) window.editorBridge.setMarkdown(data);
-      },
-      getAbstractFileByPath: (path) => new TFile(path)
-    },
-    workspace: {
-      activeLeaf: null,
-      registerView: (type, creator) => console.log('[Obsidian] Registered view:', type),
-      on: (event, callback) => {}
-    },
-    commands: {
-      commands: {},
-      addCommand: (cmd) => {
-        console.log('[Obsidian] Registered Command:', cmd.id, cmd.name);
-      }
-    },
-    setting: {
-      settingTabs: [],
-      addSettingTab: (tab) => console.log('[Obsidian] Registered Setting Tab')
-    }
-  };
-}
 
 let nextTraceId = 1;
 

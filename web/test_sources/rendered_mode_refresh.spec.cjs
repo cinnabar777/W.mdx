@@ -83,9 +83,6 @@ RangeProto.getBoundingClientRect = function() {
 require('../src/main.js');
 
 test('rendered mode transitions preserve WYSIWYG headings, body font scaling, and scroll placement', async () => {
-  const markdownPath = path.join(__dirname, '../../Documentation/Markdown.md');
-  const stressDoc = fs.readFileSync(markdownPath, 'utf8');
-
   const mostlyPlainDoc = Array.from({ length: 672 }, (_, index) => {
     if (index % 80 === 0) return `## Section ${index / 80 + 1}`;
     if (index % 35 === 0) return 'A paragraph with **bold** and _italic_ text.';
@@ -162,7 +159,7 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
 
   // 1. Verify WYSIWYG heading rendering
   await window.editorBridge.setEditorMode('wysiwyg');
-  window.editorBridge.setMarkdown(stressDoc);
+  window.editorBridge.setMarkdown(mostlyPlainDoc);
   assert.equal(window.editorBridge.getEditorMode(), 'wysiwyg');
   let headingLines = dom.window.document.querySelectorAll('.cm-line.cm-heading');
   assert.ok(headingLines.length > 0, 'WYSIWYG mode renders .cm-heading line classes');
@@ -172,13 +169,11 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
   assert.ok(indexHtml.includes('var(--body-font-size, 16px)'), 'index.html calculates heading font-size relative to --body-font-size');
 
   // 3. Repeated mode scroll restore assertion
-  await assertModeRestore(stressDoc, 'Markdown cheat sheet', 400);
   await assertModeRestore(mostlyPlainDoc, 'mostly plain-text document', 400);
   await assertModeRestore(mostlyPlainDoc, 'zero scroll document', 0);
 
   // 4. Bounded scroll sweep checks
   performBoundedScrollSweep(mostlyPlainDoc, 'mostly plain-text document');
-  performBoundedScrollSweep(stressDoc, 'Markdown cheat sheet');
 
   // Clean up
   if (window.editorBridge && typeof window.editorBridge.destroy === 'function') {

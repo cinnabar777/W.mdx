@@ -62,6 +62,18 @@ test('editorBridge exposes required methods', () => {
   assert.ok(source.includes('toggleLineNumbers'));
 });
 
+test('CodeMirror caret bounds are forwarded to Android input methods', () => {
+  assert.match(source, /scheduleNativeCursorAnchor\(update\.view\)/);
+  assert.match(source, /bridge\.onSelectionChanged\(JSON\.stringify\(\{/);
+  assert.match(source, /left:\s*caret\.left/);
+  assert.match(mainActivitySource, /fun onSelectionChanged\(selectionJson: String\)/);
+  assert.match(mainActivitySource, /CursorAnchorInfo\.Builder\(\)/);
+  assert.match(
+    mainActivitySource,
+    /updateCursorAnchorInfo\(webView,\s*cursorAnchor\)/
+  );
+});
+
 test('undo uses undoDepth guard and preserves document on repeated undo', () => {
   assert.ok(source.includes('undoDepth'), 'Missing undoDepth check in undo()');
   assert.ok(source.includes('Transaction.addToHistory.of(false)'), 'Missing history bypass in setMarkdown');

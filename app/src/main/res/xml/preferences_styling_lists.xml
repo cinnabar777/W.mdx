@@ -19,6 +19,12 @@
             android:defaultValue="default"
             app:dependency="pref_list_inherit_body_typography" />
 
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_font_file_list"
+            app:title="List Font File"
+            app:summary="Tap to pick a custom font file (.ttf, .otf, .woff, .woff2)"
+            app:dependency="pref_list_inherit_body_typography" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_list_font_weight"
             app:title="List Font Weight"

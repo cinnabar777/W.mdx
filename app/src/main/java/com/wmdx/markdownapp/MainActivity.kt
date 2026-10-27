@@ -2,6 +2,7 @@ package com.wmdx.markdownapp
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Matrix
 import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
@@ -15,6 +16,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.CursorAnchorInfo
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -907,9 +909,60 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedFootnoteFont = JSONObjectWrapper.quote(fontFootnoteData)
         val escapedBodyFontFamily = JSONObjectWrapper.quote(bodyFontFamily)
         val escapedHeadingFontFamily = JSONObjectWrapper.quote(headingFontFamily)
+        val fontOverrides = org.json.JSONObject()
+        val fontFamilies = org.json.JSONObject()
+        val fontFiles = org.json.JSONObject()
+        val familyPreferenceKeys = mapOf(
+            "bold" to "pref_bold_font_family",
+            "italic" to "pref_italic_font_family",
+            "code" to "pref_code_font_family",
+            "codeBlock" to "pref_code_block_font_family",
+            "blockquote" to "pref_blockquote_font_family",
+            "callout" to "pref_callout_font_family",
+            "list" to "pref_list_font_family",
+            "table" to "pref_table_font_family",
+            "toc" to "pref_toc_font_family",
+            "calloutHeader" to "pref_callout_header_font_family"
+        )
+        familyPreferenceKeys.forEach { (category, preferenceKey) ->
+            var family = prefs.getString(preferenceKey, "default") ?: "default"
+            val inherited = when (category) {
+                "blockquote" -> prefs.getBoolean("pref_blockquote_inherit_body_typography", true)
+                "callout" -> prefs.getBoolean("pref_callout_inherit_body_typography", true)
+                "list" -> prefs.getBoolean("pref_list_inherit_body_typography", true)
+                "table" -> prefs.getBoolean("pref_table_inherit_body_typography", true)
+                else -> false
+            }
+            if (inherited) family = "default"
+            fontFamilies.put(category, family)
+        }
+        for (level in 1..6) {
+            fontFamilies.put(
+                "heading$level",
+                prefs.getString("pref_heading_${level}_font_family", "default") ?: "default"
+            )
+        }
+        val customFontFiles = mapOf(
+            "blockquote" to Pair("pref_font_file_blockquote", !prefs.getBoolean("pref_blockquote_inherit_body_typography", true)),
+            "callout" to Pair("pref_font_file_callout", !prefs.getBoolean("pref_callout_inherit_body_typography", true)),
+            "codeBlock" to Pair("pref_font_file_code_block", true),
+            "list" to Pair("pref_font_file_list", !prefs.getBoolean("pref_list_inherit_body_typography", true)),
+            "table" to Pair("pref_font_file_table", !prefs.getBoolean("pref_table_inherit_body_typography", true))
+        )
+        customFontFiles.forEach { (category, target) ->
+            val data = if (target.second) {
+                loadFontDataUri(prefs.getString("${target.first}_path", null))
+            } else {
+                null
+            }
+            fontFiles.put(category, data)
+        }
+        fontOverrides.put("families", fontFamilies)
+        fontOverrides.put("files", fontFiles)
+        val escapedFontOverrides = JSONObjectWrapper.quote(fontOverrides.toString())
 
         webView.evaluateJavascript(
-            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont, $escapedFootnoteFont, $escapedBodyFontFamily, $escapedHeadingFontFamily); }",
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont, $escapedFootnoteFont, $escapedBodyFontFamily, $escapedHeadingFontFamily, $escapedFontOverrides); }",
             null
         )
 
@@ -1890,7 +1943,66 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun onSelectionChanged(selectionJson: String) {
-            // Live selection updates are not persisted as return scroll position
+            if (selectionJson.length > 2048) return
+            val selection = try {
+                org.json.JSONObject(selectionJson)
+            } catch (_: Exception) {
+                return
+            }
+
+            val left = selection.optDouble("left", Double.NaN)
+            val top = selection.optDouble("top", Double.NaN)
+            val bottom = selection.optDouble("bottom", Double.NaN)
+            val pixelRatio = selection.optDouble(
+                "devicePixelRatio",
+                resources.displayMetrics.density.toDouble()
+            )
+            val viewportScale = selection.optDouble("visualViewportScale", 1.0)
+            val viewportOffsetLeft = selection.optDouble("visualViewportOffsetLeft", 0.0)
+            val viewportOffsetTop = selection.optDouble("visualViewportOffsetTop", 0.0)
+            if (
+                !left.isFinite() || !top.isFinite() || !bottom.isFinite() ||
+                !pixelRatio.isFinite() || !viewportScale.isFinite() ||
+                !viewportOffsetLeft.isFinite() || !viewportOffsetTop.isFinite() ||
+                pixelRatio <= 0.0 || viewportScale <= 0.0 || bottom < top
+            ) {
+                return
+            }
+
+            webView.post {
+                if (
+                    !webView.isAttachedToWindow ||
+                    !webView.isFocused ||
+                    !window.decorView.hasWindowFocus() ||
+                    !editorImeVisible()
+                ) {
+                    return@post
+                }
+
+                val scale = (pixelRatio * viewportScale).toFloat()
+                val locationOnScreen = IntArray(2)
+                webView.getLocationOnScreen(locationOnScreen)
+                val matrix = Matrix().apply {
+                    setScale(scale, scale)
+                    postTranslate(
+                        locationOnScreen[0] - viewportOffsetLeft.toFloat() * scale,
+                        locationOnScreen[1] - viewportOffsetTop.toFloat() * scale
+                    )
+                }
+                val baseline = (top + (bottom - top) * 0.8).toFloat()
+                val cursorAnchor = CursorAnchorInfo.Builder()
+                    .setMatrix(matrix)
+                    .setInsertionMarkerLocation(
+                        left.toFloat(),
+                        top.toFloat(),
+                        baseline,
+                        bottom.toFloat(),
+                        CursorAnchorInfo.FLAG_HAS_VISIBLE_REGION
+                    )
+                    .build()
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.updateCursorAnchorInfo(webView, cursorAnchor)
+            }
         }
 
         @JavascriptInterface

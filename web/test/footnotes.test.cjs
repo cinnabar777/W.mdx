@@ -110,6 +110,7 @@ test('footnote labels remain unique and multiline definitions use Markdown conti
 test('toolbar insertion opens the footnote dialog and all footnote settings reach rendered styles', () => {
   assert.match(source, /title: 'Insert Footnote', action: \(\) => openFootnoteInsertionDialog\(\)/);
   assert.match(source, /function openFootnoteInsertionDialog/);
+  assert.match(source, /formattedDefinition \+ '\\n\\n'/, 'inserted footnotes leave a blank editable line after the final definition');
   assert.match(source, /footnoteStateField/);
   assert.match(source, /--footnote-text-color/);
   assert.match(source, /setCssVar\('--footnote-bg-color', androidArgbToCss/);

@@ -188,6 +188,18 @@ object PreferenceResetHelper {
             key == "pref_font_weight_bold" -> 700
             key == "pref_font_weight_italic" -> 400
             key == "pref_font_weight_heading" -> 700
+            key == "pref_bold_font_family" -> "default"
+            key == "pref_italic_font_family" -> "default"
+            key == "pref_code_font_family" -> "default"
+            key == "pref_code_block_font_family" -> "default"
+            key == "pref_toc_font_family" -> "default"
+            key == "pref_italic_decoration" -> "none"
+            key == "pref_heading_1_font_family" ||
+                key == "pref_heading_2_font_family" ||
+                key == "pref_heading_3_font_family" ||
+                key == "pref_heading_4_font_family" ||
+                key == "pref_heading_5_font_family" ||
+                key == "pref_heading_6_font_family" -> "default"
             key == "pref_heading_align" -> "default"
             key == "pref_heading_line_height" -> "1.2"
             key == "pref_heading_letter_spacing" -> "0px"
@@ -212,6 +224,7 @@ object PreferenceResetHelper {
             key == "pref_list_left_indent" -> 24
             key == "pref_list_inherit_body_typography" -> true
             key == "pref_list_font_family" -> "default"
+            key == "pref_font_file_list" -> null
             key == "pref_list_font_weight" -> 400
             key == "pref_list_font_size" -> 16
             key == "pref_list_letter_spacing" -> "0px"
@@ -235,6 +248,7 @@ object PreferenceResetHelper {
             key == "pref_blockquote_text_color" -> "default"
             key == "pref_blockquote_inherit_body_typography" -> true
             key == "pref_blockquote_font_family" -> "default"
+            key == "pref_font_file_blockquote" -> null
             key == "pref_blockquote_font_weight" -> 400
             key == "pref_blockquote_font_size" -> 16
             key == "pref_blockquote_letter_spacing" -> "0px"
@@ -251,6 +265,7 @@ object PreferenceResetHelper {
             key == "pref_callout_text_color" -> "default"
             key == "pref_callout_inherit_body_typography" -> true
             key == "pref_callout_font_family" -> "default"
+            key == "pref_font_file_callout" -> null
             key == "pref_callout_font_weight" -> 400
             key == "pref_callout_font_size" -> 16
             key == "pref_callout_letter_spacing" -> "0px"
@@ -269,6 +284,8 @@ object PreferenceResetHelper {
             key == "pref_callout_header_accent_color" -> "default"
             key == "pref_callout_header_accent_thickness" -> 0
             key == "pref_font_file_callout_header" -> null
+            key == "pref_font_file_code_block" -> null
+            key == "pref_font_file_table" -> null
             key == "pref_font_file_footnote" -> null
             key == "pref_callout_type_selector" -> "info"
             key.startsWith("pref_callout_type_") -> "default"
@@ -472,7 +489,6 @@ object PreferenceResetHelper {
             key == "pref_hotkey_highlight_red_pen" -> "ctrl+alt+r"
             key == "pref_hotkey_highlight_green_pen" -> "ctrl+alt+shift+g"
             key == "pref_hotkey_highlight_remove" -> "ctrl+alt+x"
-            key.startsWith("pref_plugin_") -> true
             else -> null
         }
     }

@@ -50,3 +50,16 @@ export function mapSelectionOutsideHiddenSyntax(selection, ranges, docLength) {
 
   return EditorSelection.create(mappedRanges, selection.mainIndex);
 }
+
+export function filterSelectionOutsideHiddenSyntax(transaction, ranges, docLength) {
+  if (!transaction.selection || !ranges.length) return transaction;
+
+  const mapped = mapSelectionOutsideHiddenSyntax(
+    transaction.newSelection,
+    ranges,
+    docLength
+  );
+  if (mapped.eq(transaction.newSelection)) return transaction;
+
+  return [transaction, { selection: mapped, sequential: true }];
+}

@@ -47,6 +47,8 @@ test('TOC search is non-navigating, appears above history arrows, and has a rese
   assert.ok(searchInputIndex >= 0 && searchInputIndex < historyIndex);
   assert.ok(html.indexOf('id="toc-document-stats"') < html.indexOf('id="toc-document-name"'));
   assert.match(main, /tocSearchInput\.addEventListener\('input', \(\) => \{\s*applyTocCollapseState\(\);/);
+  assert.match(main, /row\.style\.display = 'flex'/, 'search preserves every heading in the TOC');
+  assert.match(main, /tocContent\.scrollTop \+=\s*rowRect\.top - containerRect\.top/, 'search scrolls to the first matching heading');
   assert.match(main, /pref_toc_search_highlight_bg_color/);
   assert.match(html, /\.toc-search-match\s*\{[^}]*var\(--toc-search-highlight-bg-color/s);
   assert.match(

@@ -362,7 +362,10 @@ class ColorPickerDialog(
     }
 
     private fun makePickedColorVisible() {
-        if (currentAlpha == 0) {
+        // A newly chosen color in the saturation/value or hue field starts
+        // opaque. Users can then set the exact transparency with the alpha
+        // slider, rather than inheriting a nearly transparent default swatch.
+        if (currentAlpha != 255) {
             currentAlpha = 255
             alphaView.setAlphaValue(currentAlpha)
         }

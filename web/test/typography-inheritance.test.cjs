@@ -9,6 +9,7 @@ const shortcuts = read('app/src/main/res/xml/preferences_styling.xml');
 const main = read('web/src/main.js');
 const styles = read('web/index.html');
 const reset = read('app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt');
+const settingsActivity = read('app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
 const paragraph = read('app/src/main/res/xml/preferences_styling_paragraph.xml');
 const lists = read('app/src/main/res/xml/preferences_styling_lists.xml');
 const blocks = read('app/src/main/res/xml/preferences_styling_blockquotes.xml');
@@ -35,6 +36,20 @@ test('Typography pages keep headings and body first, then alphabetical element p
     'pref_styling_page_lists',
     'pref_styling_page_tables'
   ]);
+});
+
+test('custom font pickers remain connected on the rearranged typography pages', () => {
+  for (const fragmentName of [
+    'StylingParagraphFragment',
+    'StylingInlineElementFragment',
+    'StylingCalloutsFragment'
+  ]) {
+    const start = settingsActivity.indexOf(`class ${fragmentName}`);
+    assert.notEqual(start, -1, `${fragmentName} exists`);
+    const nextClass = settingsActivity.indexOf('\nclass ', start + 1);
+    const fragment = settingsActivity.slice(start, nextClass === -1 ? undefined : nextClass);
+    assert.match(fragment, /configureFontPreferences\(\)/, `${fragmentName} configures custom font pickers`);
+  }
 });
 
 test('Body typography exposes font weight, text color, and hyphenation', () => {
@@ -148,4 +163,35 @@ test('Typography overrides reach rendered elements without renaming existing sav
   }
   assert.match(tableWidget, /font-size:\s*var\(--table-font-size/);
   assert.match(tableWidget, /font-family:\s*var\(--table-font-family/);
+});
+
+test('system and custom font choices are available and connected across typography pages', () => {
+  for (const [xml, preferenceKey] of [
+    [blocks, 'pref_font_file_blockquote'],
+    [blocks, 'pref_font_file_callout'],
+    [lists, 'pref_font_file_list'],
+    [tables, 'pref_font_file_table']
+  ]) {
+    assert.ok(xml.includes(`app:key="${preferenceKey}"`), `${preferenceKey} is available`);
+    assert.ok(settingsActivity.includes(`"${preferenceKey}"`), `${preferenceKey} opens the font picker`);
+  }
+
+  for (const [xml, key] of [
+    [paragraph, 'pref_body_font_family'],
+    [blocks, 'pref_blockquote_font_family'],
+    [blocks, 'pref_callout_font_family'],
+    [lists, 'pref_list_font_family'],
+    [tables, 'pref_table_font_family']
+  ]) {
+    assert.ok(xml.includes(`app:key="${key}"`), `${key} has a system-font selector`);
+  }
+
+  assert.match(settingsActivity, /key = prefix \+ "font_family"/);
+  assert.match(main, /fontFamilies\[`heading\$\{level\}`\]/);
+  assert.match(main, /fontFiles\.blockquote/);
+  assert.match(main, /fontFiles\.callout/);
+  assert.match(main, /fontFiles\.list/);
+  assert.match(main, /fontFiles\.table/);
+  assert.match(styles, /font-family:\s*var\(--code-block-font-family/);
+  assert.match(main, /--italic-decoration-line/);
 });
