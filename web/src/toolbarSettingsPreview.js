@@ -2140,8 +2140,8 @@ document.querySelector('#toolbar-icon-search')?.addEventListener('input', render
 document.querySelector('#toolbar-action-search')?.addEventListener('input', renderActionCatalog);
 const toolbarEditorSections = [...document.querySelectorAll('[data-toolbar-section]')];
 for (const section of toolbarEditorSections) {
-  section.addEventListener('toggle', () => {
-    if (!section.open) return;
+  section.querySelector('summary')?.addEventListener('click', () => {
+    if (section.open) return;
     for (const other of toolbarEditorSections) {
       if (other !== section) other.open = false;
     }
