@@ -91,6 +91,17 @@ test('tapping focused editor content explicitly requests the Android keyboard', 
   assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
 });
 
+test('auto-save snapshots the editor before pausing WebView and runs once per leave', () => {
+  const pauseStart = mainActivitySource.indexOf('override fun onPause()');
+  const pauseEnd = mainActivitySource.indexOf('override fun onSharedPreferenceChanged', pauseStart);
+  const pauseBody = mainActivitySource.slice(pauseStart, pauseEnd);
+  const saveRequest = pauseBody.indexOf('performAutoSaveOnLeave()');
+  const webViewPause = pauseBody.indexOf('webView.onPause()');
+  assert.ok(saveRequest >= 0);
+  assert.ok(webViewPause > saveRequest);
+  assert.equal(mainActivitySource.indexOf('override fun onStop()'), -1);
+});
+
 test('native keyboard request gives WebView touch focus before showing IME', () => {
   assert.ok(mainActivitySource.includes('webView.isFocusable = true'));
   assert.ok(mainActivitySource.includes('webView.isFocusableInTouchMode = true'));

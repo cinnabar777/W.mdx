@@ -337,10 +337,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
+        performAutoSaveOnLeave()
         if (::webView.isInitialized) {
             webView.onPause()
         }
-        performAutoSaveOnLeave()
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
@@ -401,11 +401,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "generation=${generation} visibleBefore=${visibleBefore} visibleAfter=${editorImeVisible()} viewFocused=${webView.isFocused}"
         )
     }
-    override fun onStop() {
-        super.onStop()
-        performAutoSaveOnLeave()
-    }
-
     private fun performAutoSaveOnLeave() {
         if (!isDirty || currentFileUri == null) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
