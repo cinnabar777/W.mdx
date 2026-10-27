@@ -283,7 +283,7 @@ test('choosing a color in a transparent color picker makes the selected color vi
   );
 });
 
-test('global toolbar settings collapse above a bottom-docked toolbar preview', () => {
+test('global toolbar settings stay fixed while the key editor fits its content', () => {
   assert.match(
     preferenceXml,
     /ExpandablePreference[\s\S]*?pref_toolbar_global_settings[\s\S]*?preference_expand_chevron/
@@ -292,6 +292,14 @@ test('global toolbar settings collapse above a bottom-docked toolbar preview', (
   assert.match(androidSource, /toolbarAppearancePreferences\.forEach \{ it\.isVisible = toolbarAppearanceExpanded \}/);
   assert.match(androidSource, /fun collapseToolbarAppearance\(\)/);
   assert.match(androidSource, /activity\?\.runOnUiThread \{ collapseToolbarAppearanceSettings\(\) \}/);
+  assert.match(
+    preferenceXml,
+    /ResetPreferenceCategory[\s\S]*?pref_toolbar_floating_category[\s\S]*?app:title="Floating toolbar"/
+  );
+  assert.match(
+    androidSource,
+    /TOOLBAR_APPEARANCE_PREFERENCE_KEYS = listOf\([\s\S]*?"pref_toolbar_floating_category"[\s\S]*?"pref_toolbar_floating_key_width"[\s\S]*?"pref_toolbar_floating_corner_radius"/
+  );
   assert.match(androidSource, /isNestedScrollingEnabled = false/);
   assert.match(
     androidSource,
@@ -304,8 +312,10 @@ test('global toolbar settings collapse above a bottom-docked toolbar preview', (
       previewAdd > preferencesViewAdd,
     'the content-sized settings list must be placed above a preview that uses the remaining space'
   );
-  assert.match(androidSource, /fun setToolbarEditorOverlay\(expanded: Boolean\)/);
-  assert.match(androidSource, /if \(toolbarEditorOverlayExpanded\) 0 else preferenceBottom/);
+  assert.match(androidSource, /val top = preferenceBottom\.coerceIn\(0, host\.height\)/);
+  assert.doesNotMatch(androidSource, /toolbarEditorOverlayExpanded|fun setToolbarEditorOverlay/);
+  assert.match(html, /\.toolbar-preview-editor\s*\{[^}]*height:\s*auto/s);
+  assert.match(html, /max-height:\s*min\(76dvh,/);
   assert.match(androidSource, /baseLayout\.addView\(\s*android\.view\.View\(context\),\s*android\.widget\.LinearLayout\.LayoutParams\([\s\S]*?0,\s*1f/);
 });
 

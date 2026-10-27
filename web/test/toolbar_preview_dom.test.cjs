@@ -274,7 +274,11 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       'transparent',
       'an unconfigured key does not get a separate accent/tap color'
     );
-    assert.deepEqual(overlayCalls, [true], 'opening a key editor expands over the native global settings');
+    assert.deepEqual(
+      overlayCalls,
+      [],
+      'opening a key editor leaves the native global settings and surface buttons in place'
+    );
     dom.window.document.querySelector('#toolbar-icon-picker-close').click();
     assert.equal(picker.hidden, true, 'the popup close control dismisses it');
     assert.equal(editor.classList.contains('visible'), true, 'closing the picker leaves key settings open');

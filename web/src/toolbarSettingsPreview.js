@@ -51,7 +51,6 @@ let iconPickerTarget = 'key';
 let actionPickerTarget = 'gesture';
 let selectedGestureId = null;
 let editingKeyName = false;
-let toolbarEditorOverlayOpen = false;
 let nextCustomGroupNumber = 1;
 const locallySavedToolbarLayouts = { bottom: null, floating: null };
 const hasAppliedToolbarConfig = { bottom: false, floating: false };
@@ -227,13 +226,6 @@ function getAssignedGestureIconMarkup(style, gestureId, contextKey = selectedKey
   return getActionIconMarkup(
     getActionDefinition(getToolbarGestureActionId(style, gestureId), contextKey)
   );
-}
-
-function syncToolbarEditorOverlay(open) {
-  const next = Boolean(open);
-  if (next === toolbarEditorOverlayOpen) return;
-  toolbarEditorOverlayOpen = next;
-  window.ToolbarSettings?.setToolbarEditorOverlay?.(next);
 }
 
 function render() {
@@ -518,7 +510,6 @@ function setToolbarSurface(surface) {
   selectedGestureId = null;
   iconPickerOpen = false;
   actionPickerOpen = false;
-  toolbarEditorOverlayOpen = false;
   window.ToolbarSettings?.setToolbarSurface?.(surface);
   syncToolbarSurfaceSelector();
   render();
@@ -742,7 +733,6 @@ function refreshSelectedKeyEditor() {
   if (addCustomButton) addCustomButton.disabled = false;
   editor.classList.toggle('visible', Boolean(definition));
   editor.setAttribute('aria-hidden', String(!definition));
-  syncToolbarEditorOverlay(Boolean(definition));
   if (!definition) return;
 
   const title = config.customGroups[selectedKey]?.title ||

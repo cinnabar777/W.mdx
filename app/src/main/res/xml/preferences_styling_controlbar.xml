@@ -71,7 +71,9 @@
         app:summary="Color for toolbar key labels"
         app:defaultValue="default" />
 
-    <PreferenceCategory app:title="Floating toolbar">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="pref_toolbar_floating_category"
+        app:title="Floating toolbar">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_toolbar_floating_key_width"
             app:title="Key Width (dp)"
@@ -89,6 +91,6 @@
             app:min="0"
             android:max="36"
             app:showSeekBarValue="true" />
-    </PreferenceCategory>
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

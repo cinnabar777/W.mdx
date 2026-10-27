@@ -37,7 +37,7 @@
       right: 0;
       bottom: auto;
       left: 0;
-      height: min(76vh, calc(100vh - var(--toolbar-height, 48px) - 24px));
+      height: auto;
       max-height: calc(100vh - var(--toolbar-height, 48px) - 24px);
       transform: translateY(-50%);
       margin: 0;
@@ -55,8 +55,8 @@
     @supports (height: 100dvh) {
       .toolbar-preview-editor {
         top: calc((100dvh - var(--toolbar-height, 48px)) / 2);
-        height: min(76dvh, calc(100dvh - var(--toolbar-height, 48px) - 24px));
-        max-height: calc(100dvh - var(--toolbar-height, 48px) - 24px);
+        height: auto;
+        max-height: min(76dvh, calc(100dvh - var(--toolbar-height, 48px) - 24px));
       }
     }
     .toolbar-preview-editor.popup-open {

@@ -1282,6 +1282,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "pref_toolbar_toggle_icon_color",
             "pref_toolbar_height",
             "pref_toolbar_padding",
+            "pref_toolbar_floating_category",
             "pref_toolbar_floating_key_width",
             "pref_toolbar_floating_corner_radius",
             "pref_toolbar_show_labels",
@@ -1358,7 +1359,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
     private var toolbarConfigPreferenceKey = TOOLBAR_CONFIG_KEY
     @Volatile
     private var toolbarSaveFailureReason = "unknown"
-    private var toolbarEditorOverlayExpanded = false
     private var targetToolbarIconId: String? = null
     private var targetToolbarIconProperty = "customSvg"
     private var toolbarAppearanceExpanded = false
@@ -1477,7 +1477,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         toolbarPreviewWebView = preview
         toolbarPreviewHost = wrapper
         toolbarPreviewPreferencesView = preferencesView
-        toolbarEditorOverlayExpanded = false
         baseLayout.addView(
             preferencesView,
             android.widget.LinearLayout.LayoutParams(
@@ -1545,8 +1544,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         val preview = toolbarPreviewWebView ?: return
         if (host.height <= 0) return
         val preferenceBottom = toolbarPreviewPreferencesView?.bottom ?: 0
-        val top = (if (toolbarEditorOverlayExpanded) 0 else preferenceBottom)
-            .coerceIn(0, host.height)
+        val top = preferenceBottom.coerceIn(0, host.height)
         val params = (preview.layoutParams as? android.widget.FrameLayout.LayoutParams)
             ?: android.widget.FrameLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1559,12 +1557,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         preview.layoutParams = params
         preview.alpha = 1f
         preview.bringToFront()
-    }
-
-    private fun setToolbarEditorOverlay(expanded: Boolean) {
-        if (toolbarEditorOverlayExpanded == expanded) return
-        toolbarEditorOverlayExpanded = expanded
-        toolbarPreviewHost?.post { updateToolbarPreviewBounds() }
     }
 
     override fun onSettingPreferenceChanged(
@@ -1593,7 +1585,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         toolbarPreviewWebView = null
         toolbarPreviewHost = null
         toolbarPreviewPreferencesView = null
-        toolbarEditorOverlayExpanded = false
         super.onDestroyView()
     }
 
@@ -2230,13 +2221,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         @android.webkit.JavascriptInterface
         fun collapseToolbarAppearance() {
             activity?.runOnUiThread { collapseToolbarAppearanceSettings() }
-        }
-
-        @android.webkit.JavascriptInterface
-        fun setToolbarEditorOverlay(expanded: Boolean) {
-            activity?.runOnUiThread {
-                this@StylingControlbarFragment.setToolbarEditorOverlay(expanded)
-            }
         }
 
         @android.webkit.JavascriptInterface

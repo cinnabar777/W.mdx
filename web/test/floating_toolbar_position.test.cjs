@@ -86,7 +86,10 @@ test('floating toolbar has an independent saved layout and replaces the native s
   assert.match(settingsActivity, /pref_toolbar_floating_config/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_key_width/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_corner_radius/);
-  assert.match(controlbarPrefs, /<PreferenceCategory app:title="Floating toolbar">/);
+  assert.match(
+    controlbarPrefs,
+    /ResetPreferenceCategory[\s\S]*?pref_toolbar_floating_category[\s\S]*?app:title="Floating toolbar"/
+  );
   assert.match(mainSettingsPrefs, /app:title="Toolbars"/);
   assert.match(settingsActivity, /is StylingControlbarFragment -> "Toolbars"/);
   assert.doesNotMatch(nativeActivity, /setCustomSelectionActionModeCallback/);
