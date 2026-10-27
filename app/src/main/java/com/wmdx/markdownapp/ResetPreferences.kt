@@ -194,12 +194,12 @@ object PreferenceResetHelper {
             key == "pref_code_block_font_family" -> "default"
             key == "pref_toc_font_family" -> "default"
             key == "pref_italic_decoration" -> "none"
-            key == "pref_heading_1_font_family",
-            key == "pref_heading_2_font_family",
-            key == "pref_heading_3_font_family",
-            key == "pref_heading_4_font_family",
-            key == "pref_heading_5_font_family",
-            key == "pref_heading_6_font_family" -> "default"
+            key == "pref_heading_1_font_family" ||
+                key == "pref_heading_2_font_family" ||
+                key == "pref_heading_3_font_family" ||
+                key == "pref_heading_4_font_family" ||
+                key == "pref_heading_5_font_family" ||
+                key == "pref_heading_6_font_family" -> "default"
             key == "pref_heading_align" -> "default"
             key == "pref_heading_line_height" -> "1.2"
             key == "pref_heading_letter_spacing" -> "0px"
