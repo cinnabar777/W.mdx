@@ -3,6 +3,19 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Appearance">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_code_block_font_family"
+            app:title="Code Block Font Family"
+            app:summary="Choose a device font or use the custom font file"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_font_file_code_block"
+            app:title="Code Block Font File"
+            app:summary="Tap to pick a custom font file (.ttf, .otf, .woff, .woff2)" />
+
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_code_block_color"
             app:title="Code Block Text Color"

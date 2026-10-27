@@ -164,3 +164,34 @@ test('Typography overrides reach rendered elements without renaming existing sav
   assert.match(tableWidget, /font-size:\s*var\(--table-font-size/);
   assert.match(tableWidget, /font-family:\s*var\(--table-font-family/);
 });
+
+test('system and custom font choices are available and connected across typography pages', () => {
+  for (const [xml, preferenceKey] of [
+    [blocks, 'pref_font_file_blockquote'],
+    [blocks, 'pref_font_file_callout'],
+    [lists, 'pref_font_file_list'],
+    [tables, 'pref_font_file_table']
+  ]) {
+    assert.ok(xml.includes(`app:key="${preferenceKey}"`), `${preferenceKey} is available`);
+    assert.ok(settingsActivity.includes(`"${preferenceKey}"`), `${preferenceKey} opens the font picker`);
+  }
+
+  for (const [xml, key] of [
+    [paragraph, 'pref_body_font_family'],
+    [blocks, 'pref_blockquote_font_family'],
+    [blocks, 'pref_callout_font_family'],
+    [lists, 'pref_list_font_family'],
+    [tables, 'pref_table_font_family']
+  ]) {
+    assert.ok(xml.includes(`app:key="${key}"`), `${key} has a system-font selector`);
+  }
+
+  assert.match(settingsActivity, /key = prefix \+ "font_family"/);
+  assert.match(main, /fontFamilies\[`heading\$\{level\}`\]/);
+  assert.match(main, /fontFiles\.blockquote/);
+  assert.match(main, /fontFiles\.callout/);
+  assert.match(main, /fontFiles\.list/);
+  assert.match(main, /fontFiles\.table/);
+  assert.match(styles, /font-family:\s*var\(--code-block-font-family/);
+  assert.match(main, /--italic-decoration-line/);
+});

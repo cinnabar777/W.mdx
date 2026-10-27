@@ -19,6 +19,12 @@
             android:defaultValue="default"
             app:dependency="pref_table_inherit_body_typography" />
 
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_font_file_table"
+            app:title="Table Font File"
+            app:summary="Tap to pick a custom font file (.ttf, .otf, .woff, .woff2)"
+            app:dependency="pref_table_inherit_body_typography" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_table_font_weight"
             app:title="Table Font Weight"

@@ -656,9 +656,14 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_font_file_heading_4",
             "pref_font_file_heading_5",
             "pref_font_file_heading_6",
+            "pref_font_file_blockquote",
+            "pref_font_file_callout",
             "pref_font_file_bold",
             "pref_font_file_italic",
             "pref_font_file_code",
+            "pref_font_file_code_block",
+            "pref_font_file_list",
+            "pref_font_file_table",
             "pref_font_file_callout_header",
             "pref_font_file_toc",
             "pref_font_file_footnote"
@@ -742,6 +747,16 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
                 isVisible = false
             }
             controls.add(weight)
+
+            controls.add(ResetListPreference(context).apply {
+                key = prefix + "font_family"
+                title = "Heading Font Family"
+                summary = "Choose a device font for H$level"
+                entries = context.resources.getTextArray(R.array.font_family_entries)
+                entryValues = context.resources.getTextArray(R.array.font_family_values)
+                setDefaultValue(inherited("font_family", "default"))
+                isVisible = false
+            })
 
             controls.add(addResetPreference(
                 "pref_font_file_heading_$level",
@@ -1051,6 +1066,7 @@ class StylingFootnotesFragment : StylingSettingsFragment() {
 class StylingListsFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_lists, rootKey)
+        configureFontPreferences()
     }
 }
 
@@ -1058,6 +1074,7 @@ class StylingBlockquotesFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_blockquotes, rootKey)
         keepPreferenceCategories("styling_blockquote_typography", "styling_blockquote_settings")
+        configureFontPreferences()
     }
 }
 
@@ -1248,12 +1265,14 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
 class StylingTablesFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_tables, rootKey)
+        configureFontPreferences()
     }
 }
 
 class StylingCodeFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_code, rootKey)
+        configureFontPreferences()
     }
 }
 

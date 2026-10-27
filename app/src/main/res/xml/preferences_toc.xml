@@ -92,6 +92,14 @@
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Text">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_toc_font_family"
+            app:title="TOC Font Family"
+            app:summary="Choose a device font or use the custom font file"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_font_file_toc"
             app:title="TOC Font File"

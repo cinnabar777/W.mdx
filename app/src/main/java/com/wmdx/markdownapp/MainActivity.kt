@@ -907,9 +907,60 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedFootnoteFont = JSONObjectWrapper.quote(fontFootnoteData)
         val escapedBodyFontFamily = JSONObjectWrapper.quote(bodyFontFamily)
         val escapedHeadingFontFamily = JSONObjectWrapper.quote(headingFontFamily)
+        val fontOverrides = org.json.JSONObject()
+        val fontFamilies = org.json.JSONObject()
+        val fontFiles = org.json.JSONObject()
+        val familyPreferenceKeys = mapOf(
+            "bold" to "pref_bold_font_family",
+            "italic" to "pref_italic_font_family",
+            "code" to "pref_code_font_family",
+            "codeBlock" to "pref_code_block_font_family",
+            "blockquote" to "pref_blockquote_font_family",
+            "callout" to "pref_callout_font_family",
+            "list" to "pref_list_font_family",
+            "table" to "pref_table_font_family",
+            "toc" to "pref_toc_font_family",
+            "calloutHeader" to "pref_callout_header_font_family"
+        )
+        familyPreferenceKeys.forEach { (category, preferenceKey) ->
+            var family = prefs.getString(preferenceKey, "default") ?: "default"
+            val inherited = when (category) {
+                "blockquote" -> prefs.getBoolean("pref_blockquote_inherit_body_typography", true)
+                "callout" -> prefs.getBoolean("pref_callout_inherit_body_typography", true)
+                "list" -> prefs.getBoolean("pref_list_inherit_body_typography", true)
+                "table" -> prefs.getBoolean("pref_table_inherit_body_typography", true)
+                else -> false
+            }
+            if (inherited) family = "default"
+            fontFamilies.put(category, family)
+        }
+        for (level in 1..6) {
+            fontFamilies.put(
+                "heading$level",
+                prefs.getString("pref_heading_${level}_font_family", "default") ?: "default"
+            )
+        }
+        val customFontFiles = mapOf(
+            "blockquote" to Pair("pref_font_file_blockquote", !prefs.getBoolean("pref_blockquote_inherit_body_typography", true)),
+            "callout" to Pair("pref_font_file_callout", !prefs.getBoolean("pref_callout_inherit_body_typography", true)),
+            "codeBlock" to Pair("pref_font_file_code_block", true),
+            "list" to Pair("pref_font_file_list", !prefs.getBoolean("pref_list_inherit_body_typography", true)),
+            "table" to Pair("pref_font_file_table", !prefs.getBoolean("pref_table_inherit_body_typography", true))
+        )
+        customFontFiles.forEach { (category, target) ->
+            val data = if (target.second) {
+                loadFontDataUri(prefs.getString("${target.first}_path", null))
+            } else {
+                null
+            }
+            fontFiles.put(category, data)
+        }
+        fontOverrides.put("families", fontFamilies)
+        fontOverrides.put("files", fontFiles)
+        val escapedFontOverrides = JSONObjectWrapper.quote(fontOverrides.toString())
 
         webView.evaluateJavascript(
-            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont, $escapedFootnoteFont, $escapedBodyFontFamily, $escapedHeadingFontFamily); }",
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont, $escapedFootnoteFont, $escapedBodyFontFamily, $escapedHeadingFontFamily, $escapedFontOverrides); }",
             null
         )
 

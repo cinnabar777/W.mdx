@@ -5135,13 +5135,13 @@ export function openFootnoteInsertionDialog(options = {}) {
             from: selectionSnapshot.to,
             insert: marker +
               separatorFor(docText.slice(0, selectionSnapshot.to) + marker) +
-              formattedDefinition
+              formattedDefinition + '\n\n'
           }
         : [
             { from: selectionSnapshot.to, insert: marker },
             {
               from: view.state.doc.length,
-              insert: separatorFor(docText) + formattedDefinition
+              insert: separatorFor(docText) + formattedDefinition + '\n\n'
             }
           ];
 
@@ -6734,11 +6734,13 @@ function setupTocGestureAndPanel(scrollDOM) {
       level: Number(row.dataset.level) || 1,
       title: row.querySelector('.toc-text')?.dataset.headingTitle ?? ''
     }));
-    const { matchingIndexes, visibleIndexes } = getTocSearchState(items, query);
+    const { matchingIndexes } = getTocSearchState(items, query);
     itemRows.forEach((row, index) => {
-      row.style.display = visibleIndexes.has(index) ? 'flex' : 'none';
+      // Keep the full heading outline present while searching; the match is
+      // highlighted in context rather than replacing the outline with results.
+      row.style.display = 'flex';
       const toggle = row.querySelector('.toc-toggle');
-      if (toggle) toggle.style.visibility = 'hidden';
+      if (toggle) toggle.style.removeProperty('visibility');
       if (matchingIndexes.has(index)) {
         renderTocHeadingText(row.querySelector('.toc-text'), items[index].title, query);
       } else {
@@ -6750,6 +6752,15 @@ function setupTocGestureAndPanel(scrollDOM) {
       emptyMessage.className = 'toc-search-empty';
       emptyMessage.textContent = 'No matching headings.';
       tocContent.appendChild(emptyMessage);
+    } else {
+      const firstMatch = itemRows[[...matchingIndexes][0]];
+      if (firstMatch) {
+        const containerRect = tocContent.getBoundingClientRect();
+        const rowRect = firstMatch.getBoundingClientRect();
+        tocContent.scrollTop +=
+          rowRect.top - containerRect.top -
+          (tocContent.clientHeight - rowRect.height) / 2;
+      }
     }
   }
 
@@ -7157,7 +7168,12 @@ window.editorBridge = {
     // Cursor & Selection
     setCssVar('--cursor-color', prefs.pref_cursor_color);
     setCssVar('--cursor-width', prefs.pref_cursor_width, 'px');
-    setCssVar('--cursor-blink-rate', prefs.pref_cursor_blink_rate);
+    const cursorBlinkRate = String(prefs.pref_cursor_blink_rate ?? '0.8s').trim();
+    setCssVar('--cursor-blink-rate', cursorBlinkRate);
+    document.body.classList.toggle(
+      'cursor-blink-disabled',
+      Number.parseFloat(cursorBlinkRate) === 0
+    );
     setCssVar('--selection-highlight-bg', prefs.pref_selection_highlight_bg_color);
     setCssVar('--selection-highlight-text', prefs.pref_selection_highlight_text_color);
 
@@ -7240,6 +7256,7 @@ window.editorBridge = {
       setCssVar('--heading-' + i + '-margin-top', prefs[key + 'margin_top'], 'px');
       setCssVar('--heading-' + i + '-margin-bottom', prefs[key + 'margin_bottom'], 'px');
       setCssVar('--heading-' + i + '-font-weight', prefs[key + 'font_weight']);
+      setCssVar('--heading-' + i + '-font-family', toCssFontFamily(prefs[key + 'font_family']));
     }
 
     // Inline formats
@@ -7247,6 +7264,9 @@ window.editorBridge = {
     setCssVar('--bold-font-weight', prefs.pref_font_weight_bold);
     setCssVar('--italic-color', prefs.pref_italic_color);
     setCssVar('--italic-font-weight', prefs.pref_font_weight_italic);
+    const italicDecoration = prefs.pref_italic_decoration || 'none';
+    setCssVar('--italic-decoration-line', italicDecoration === 'none' ? 'none' : 'underline');
+    setCssVar('--italic-decoration-style', italicDecoration === 'none' ? 'solid' : italicDecoration);
     setCssVar('--link-color', prefs.pref_link_color);
     const linkStyle = prefs.pref_link_decoration || 'solid';
     setCssVar('--link-decoration-line', linkStyle === 'none' ? 'none' : 'underline');
@@ -7468,6 +7488,10 @@ window.editorBridge = {
     // Tables
     const inheritTableTypography =
       prefs.pref_table_inherit_body_typography !== false;
+    const tableHyphenation = inheritTableTypography
+      ? prefs.pref_paragraph_hyphenate === true
+      : prefs.pref_table_hyphenate === true;
+    document.body.classList.toggle('table-hyphenate', tableHyphenation);
     setCssVar('--table-font-family', inheritTableTypography
       ? 'var(--body-font-family, inherit)'
       : (prefs.pref_table_font_family && prefs.pref_table_font_family !== 'default'
@@ -7520,6 +7544,7 @@ window.editorBridge = {
     setCssVar('--code-copy-bg', androidArgbToCss(prefs.pref_code_block_copy_bg_color));
     setCssVar('--code-copy-color', androidArgbToCss(prefs.pref_code_block_copy_text_color));
     setCssVar('--code-block-font-size', prefs.pref_code_block_font_size, 'px');
+    setCssVar('--code-block-font-family', toCssFontFamily(prefs.pref_code_block_font_family));
     setCssVar('--code-block-margin-left', prefs.pref_code_block_margin_left ?? 0, 'px');
     setCssVar('--code-block-margin-right', prefs.pref_code_block_margin_right ?? 0, 'px');
     setCssVar('--code-block-padding', prefs.pref_code_block_padding, 'px');
@@ -7975,7 +8000,7 @@ window.editorBridge = {
     }
     updateTocHistoryButtons();
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData, fontFootnoteData, bodyFontFamily = 'default', headingFontFamily = 'default') {
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData, fontFootnoteData, bodyFontFamily = 'default', headingFontFamily = 'default', fontOverridesJson = '{}') {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -8014,7 +8039,15 @@ window.editorBridge = {
 
     let fontCss = '';
     const registeredFontFamilies = new Map();
-    const applyFontCategory = (categoryName, fontData, cssVarName) => {
+    let fontOverrides = { families: {}, files: {} };
+    try {
+      fontOverrides = JSON.parse(fontOverridesJson || '{}');
+    } catch (error) {
+      console.error('invalid_font_overrides', error);
+    }
+    const fontFamilies = fontOverrides.families || {};
+    const fontFiles = fontOverrides.files || {};
+    const applyFontCategory = (categoryName, fontData, cssVarName, deviceFont = 'default') => {
       if (fontData && fontData.length > 10) {
         let familyName = registeredFontFamilies.get(fontData);
         if (!familyName) {
@@ -8030,9 +8063,6 @@ window.editorBridge = {
         fontCss += `.cm-content { --custom-${categoryName.toLowerCase()}-font: '${familyName}'; }\n`;
         document.documentElement.style.setProperty(cssVarName, `'${familyName}'`);
       } else {
-        const deviceFont = categoryName === 'Body'
-          ? bodyFontFamily
-          : (categoryName === 'Heading' ? headingFontFamily : 'default');
         const familyValue = toCssFontFamily(deviceFont);
         if (familyValue) {
           document.documentElement.style.setProperty(cssVarName, familyValue);
@@ -8044,12 +8074,17 @@ window.editorBridge = {
 
     applyFontCategory('Body', fontBodyData, '--body-font-family');
     applyFontCategory('Heading', fontHeadingData, '--heading-font-family');
-    applyFontCategory('Bold', fontBoldData, '--bold-font-family');
-    applyFontCategory('Italic', fontItalicData, '--italic-font-family');
-    applyFontCategory('Code', fontCodeData, '--code-font-family');
-    applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family');
-    applyFontCategory('Toc', fontTocData, '--toc-font-family');
-    applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family');
+    applyFontCategory('Bold', fontBoldData, '--bold-font-family', fontFamilies.bold || 'default');
+    applyFontCategory('Italic', fontItalicData, '--italic-font-family', fontFamilies.italic || 'default');
+    applyFontCategory('Code', fontCodeData, '--code-font-family', fontFamilies.code || 'default');
+    applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family', fontFamilies.calloutHeader || 'default');
+    applyFontCategory('Toc', fontTocData, '--toc-font-family', fontFamilies.toc || 'default');
+    applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family', bodyFontFamily);
+    applyFontCategory('Blockquote', fontFiles.blockquote, '--blockquote-font-family', fontFamilies.blockquote || 'default');
+    applyFontCategory('Callout', fontFiles.callout, '--callout-font-family', fontFamilies.callout || 'default');
+    applyFontCategory('CodeBlock', fontFiles.codeBlock, '--code-block-font-family', fontFamilies.codeBlock || 'default');
+    applyFontCategory('List', fontFiles.list, '--list-font-family', fontFamilies.list || 'default');
+    applyFontCategory('Table', fontFiles.table, '--table-font-family', fontFamilies.table || 'default');
     let headingLevelFonts = [];
     try {
       headingLevelFonts = JSON.parse(fontHeadingLevelsDataJson || '[]');
@@ -8060,7 +8095,10 @@ window.editorBridge = {
       applyFontCategory(
         `Heading${level}`,
         headingLevelFonts[level - 1],
-        `--heading-${level}-font-family`
+        `--heading-${level}-font-family`,
+        fontFamilies[`heading${level}`] && fontFamilies[`heading${level}`] !== 'default'
+          ? fontFamilies[`heading${level}`]
+          : headingFontFamily
       );
     }
 

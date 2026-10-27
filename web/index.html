@@ -752,6 +752,10 @@
       line-height: var(--table-line-height, 1.6) !important;
       hyphens: var(--table-hyphens, none) !important;
     }
+    body.table-hyphenate .cm-table-row {
+      overflow-wrap: anywhere !important;
+      word-break: break-word !important;
+    }
     .cm-table-header-row {
       font-weight: var(--table-header-font-weight, 700) !important;
       background-color: var(--table-header-bg, rgba(255, 255, 255, 0.12)) !important;
@@ -793,6 +797,17 @@
       line-height: var(--table-line-height, 1.6);
       hyphens: var(--table-hyphens, none);
       border: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444444);
+    }
+    body.table-hyphenate .cm-wp-table {
+      width: 100% !important;
+      min-width: 100% !important;
+      table-layout: fixed !important;
+    }
+    body.table-hyphenate .cm-wp-table th,
+    body.table-hyphenate .cm-wp-table td {
+      overflow-wrap: anywhere !important;
+      word-break: break-word !important;
+      hyphens: auto !important;
     }
 
     .cm-wp-table th {
@@ -1129,6 +1144,8 @@
       color: var(--italic-color, inherit) !important;
       font-weight: var(--italic-font-weight, 400) !important;
       font-family: var(--italic-font-family, inherit) !important;
+      text-decoration-line: var(--italic-decoration-line, none) !important;
+      text-decoration-style: var(--italic-decoration-style, solid) !important;
     }
     .cm-content .cm-inline-code {
       font-family: var(--code-font-family, monospace) !important;
@@ -1199,6 +1216,7 @@
       color: var(--code-block-color, #e0e0e0) !important;
       background: var(--code-block-bg-color, #121212) !important;
       font-size: var(--code-block-font-size, 14px) !important;
+      font-family: var(--code-block-font-family, monospace) !important;
       line-height: var(--code-block-line-height, 1.4) !important;
       margin-left: var(--code-block-margin-left, 0px) !important;
       margin-right: var(--code-block-margin-right, 0px) !important;
@@ -1210,6 +1228,7 @@
     .cm-content .cm-codeblock-line span:not(.cm-codeblock-lang-label) {
       color: var(--code-block-color, #e0e0e0) !important;
       font-size: var(--code-block-font-size, 14px) !important;
+      font-family: var(--code-block-font-family, monospace) !important;
     }
     .cm-content .cm-codeblock-line .cm-codeblock-text * {
       background: transparent !important;
@@ -1525,19 +1544,26 @@
     }
     .cm-content .cm-line.cm-hr {
       box-sizing: border-box !important;
-      border-bottom: var(--hr-thickness, 2px) var(--hr-style, solid) var(--hr-color, #444444) !important;
+      border: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+    }
+    .cm-content .cm-line.cm-hr::after {
+      content: "" !important;
+      display: block !important;
+      box-sizing: border-box !important;
       width: var(--hr-width, 100%) !important;
       max-width: calc(100% - var(--hr-margin-left, 0%) - var(--hr-margin-right, 0%)) !important;
-      margin-top: 0 !important;
-      margin-bottom: 0 !important;
-      margin-left: var(--hr-margin-left, 0%) !important;
-      margin-right: var(--hr-margin-right, 0%) !important;
-      padding-top: var(--hr-margin-top, 16px) !important;
-      padding-bottom: var(--hr-margin-bottom, 16px) !important;
+      margin: var(--hr-margin-top, 16px) var(--hr-margin-right, 0%) var(--hr-margin-bottom, 16px) var(--hr-margin-left, 0%) !important;
+      border-bottom: var(--hr-thickness, 2px) var(--hr-style, solid) var(--hr-color, #444444) !important;
     }
-    body.hr-centered .cm-content .cm-line.cm-hr {
+    body.hr-centered .cm-content .cm-line.cm-hr::after {
       margin-left: auto !important;
       margin-right: auto !important;
+    }
+    body.cursor-blink-disabled .cm-editor .cm-cursor,
+    body.cursor-blink-disabled .cm-editor .cm-dropCursor {
+      animation: none !important;
     }
 
     /* In-App Themed Insertion Dialog Modal Overlay */
