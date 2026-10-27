@@ -2229,6 +2229,38 @@ function hiddenSyntaxRangesForState(state) {
   return merged;
 }
 
+let pendingNativeCursorAnchorView = null;
+let nativeCursorAnchorFrame = null;
+
+function scheduleNativeCursorAnchor(view) {
+  const bridge = window.AndroidNative;
+  if (!bridge || typeof bridge.onSelectionChanged !== 'function') return;
+
+  pendingNativeCursorAnchorView = view;
+  if (nativeCursorAnchorFrame !== null) return;
+
+  nativeCursorAnchorFrame = requestAnimationFrame(() => {
+    nativeCursorAnchorFrame = null;
+    const activeView = pendingNativeCursorAnchorView;
+    pendingNativeCursorAnchorView = null;
+    if (!activeView?.dom?.isConnected) return;
+
+    const caret = activeView.coordsAtPos(activeView.state.selection.main.head);
+    if (!caret) return;
+
+    const visualViewport = window.visualViewport;
+    bridge.onSelectionChanged(JSON.stringify({
+      left: caret.left,
+      top: caret.top,
+      bottom: caret.bottom,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      visualViewportScale: visualViewport?.scale || 1,
+      visualViewportOffsetLeft: visualViewport?.offsetLeft || 0,
+      visualViewportOffsetTop: visualViewport?.offsetTop || 0
+    }));
+  });
+}
+
 export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
   view => hiddenSyntaxRangesForView(view)
 );
@@ -3787,6 +3819,9 @@ class CodeMirrorAdapter {
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             updateTableDocumentSelection(update.view);
             updateFloatingSelectionToolbar(update.view);
+          }
+          if (update.selectionSet || update.docChanged || update.viewportChanged) {
+            scheduleNativeCursorAnchor(update.view);
           }
           if (update.selectionSet || update.docChanged) {
             refreshToolbarSyntaxState(update.view);
