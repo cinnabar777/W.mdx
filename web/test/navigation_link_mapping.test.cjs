@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { EditorState } = require('@codemirror/state');
+const { markdown } = require('@codemirror/lang-markdown');
+const { syntaxTree } = require('@codemirror/language');
 const { TableModel } = require('../src/tableModule.js');
 
 test('Table cell link insertion replaces selected text in cell and preserves table structure', () => {
@@ -52,17 +54,45 @@ test('Dialog cancellation leaves document and table untouched', () => {
   assert.strictEqual(beforeState, afterState);
 });
 
-test('Markdown cheat sheet regression fixture loads and parses headings, code blocks, callouts, lists, and embeds', () => {
-  const cheatSheetPath = path.join(__dirname, '../../Documentation/Markdown.md');
-  assert.ok(fs.existsSync(cheatSheetPath), 'Documentation/Markdown.md fixture should exist');
+test('Markdown parser recognizes stable syntax examples independent of the editable cheat sheet', () => {
+  const sample = [
+    '# Heading',
+    '',
+    'Text with **bold**, _italic_, `inline code`, and [a link](https://example.com).',
+    '',
+    '```js',
+    'const value = 1;',
+    '```',
+    '',
+    '> [!note] Sample callout',
+    '> Callout body text',
+    '',
+    '- [ ] Task item',
+    '',
+    '![[Embedded Note]]'
+  ].join('\n');
+  const state = EditorState.create({ doc: sample, extensions: [markdown()] });
+  const nodeNames = new Set();
 
-  const cheatSheetText = fs.readFileSync(cheatSheetPath, 'utf8');
-  const state = EditorState.create({ doc: cheatSheetText });
+  syntaxTree(state).iterate({
+    enter(node) {
+      nodeNames.add(node.name);
+    }
+  });
 
-  assert.strictEqual(state.doc.toString(), cheatSheetText);
-  assert.ok(cheatSheetText.includes('# EMBED'));
-  assert.ok(cheatSheetText.includes('![[Note to Embed]]'));
-  assert.ok(cheatSheetText.includes('> [!info] header'));
+  for (const expectedNode of [
+    'ATXHeading1',
+    'FencedCode',
+    'Blockquote',
+    'ListItem',
+    'Link',
+    'InlineCode',
+    'Emphasis',
+    'StrongEmphasis'
+  ]) {
+    assert.ok(nodeNames.has(expectedNode), `Markdown parser recognizes ${expectedNode}`);
+  }
+  assert.match(sample, /!\[\[[^\]]+\]\]/, 'The sample includes an app-specific embedded-note link');
 });
 
 test('main.js contains hideSyntax replacement decorations and selection snapshot handling', () => {

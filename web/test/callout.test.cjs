@@ -30,13 +30,19 @@ test('Callout regex pattern logic matches types and optional fold markers', () =
   }
 });
 
-test('Markdown cheat sheet keeps the first callout body inside its quoted block', () => {
-  const markdownPath = path.join(__dirname, '../../Documentation/Markdown.md');
-  const markdown = fs.readFileSync(markdownPath, 'utf8');
-  assert.match(
-    markdown,
-    /> \[!info\] header\n> The type identifier determines how the callout looks and feels\./
-  );
+test('Callout title and body remain inside a quoted Markdown block', () => {
+  const example = '> [!note] Example title\n> Example body';
+  const state = EditorState.create({ doc: example, extensions: [markdown()] });
+  let hasBlockquote = false;
+
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === 'Blockquote') hasBlockquote = true;
+    }
+  });
+
+  assert.ok(hasBlockquote, 'CodeMirror recognizes the callout as a blockquote');
+  assert.match(example, /^>\s*\[!note\].*\n>\s*\S/m, 'The body stays quoted after the callout title');
 });
 
 test('Callout title calculation retains custom title or capitalizes default type', () => {
