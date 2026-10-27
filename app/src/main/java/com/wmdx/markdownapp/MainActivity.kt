@@ -1733,8 +1733,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 latestMarkdownContent = markdownText
             }
             currentRevision = revision
+            val becameDirty = !isDirty
             isDirty = true
-            runOnUiThread { updateTitle() }
+            if (becameDirty) runOnUiThread { updateTitle() }
         }
 
         @JavascriptInterface
