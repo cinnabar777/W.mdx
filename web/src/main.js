@@ -5,7 +5,10 @@ import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidg
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
 import { parseAndMatchHotkey } from './hotkeys.js';
-import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
+import {
+  filterSelectionOutsideHiddenSyntax,
+  mapSelectionOutsideHiddenSyntax
+} from './visibleSelection.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import {
   buildFootnoteDecorations,
@@ -455,6 +458,27 @@ function activeTypographySignature() {
     ])
   });
 }
+
+class EmptyLineCursorAnchorWidget extends WidgetType {
+  eq(other) {
+    return other instanceof EmptyLineCursorAnchorWidget;
+  }
+
+  toDOM() {
+    const anchor = document.createElement('span');
+    anchor.className = 'cm-empty-line-cursor-anchor';
+    anchor.setAttribute('aria-hidden', 'true');
+    anchor.setAttribute('contenteditable', 'false');
+    anchor.textContent = '\u200b';
+    return anchor;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
+const emptyLineCursorAnchorWidget = new EmptyLineCursorAnchorWidget();
 
 class CodeBlockHeaderWidget extends WidgetType {
   constructor(lang, codeText) {
@@ -2168,7 +2192,41 @@ function hiddenSyntaxRangesForView(view) {
     : (livePreviewRanges ?? wysiwygRanges);
   const footnoteRanges =
     view.state.field(footnoteStateField, false)?.hiddenSyntaxRanges ?? Decoration.none;
-  return mergeHiddenSyntaxRanges(view.state.doc.length, baseRanges, footnoteRanges);
+  const codeBlockRanges =
+    view.state.field(wysiwygCodeBlockField, false)?.hiddenSyntaxRanges ?? Decoration.none;
+  return mergeHiddenSyntaxRanges(
+    view.state.doc.length,
+    baseRanges,
+    codeBlockRanges,
+    footnoteRanges
+  );
+}
+
+function hiddenSyntaxRangesForState(state) {
+  const ranges = [];
+  const sets = [
+    state.field(heightMapField, false)?.hiddenSyntaxRanges,
+    state.field(wysiwygCodeBlockField, false)?.hiddenSyntaxRanges,
+    state.field(footnoteStateField, false)?.hiddenSyntaxRanges
+  ];
+
+  for (const set of sets) {
+    set?.between(0, state.doc.length, (from, to) => {
+      if (to > from) ranges.push({ from, to });
+    });
+  }
+
+  ranges.sort((a, b) => a.from - b.from || a.to - b.to);
+  const merged = [];
+  for (const range of ranges) {
+    const previous = merged[merged.length - 1];
+    if (previous && range.from <= previous.to) {
+      previous.to = Math.max(previous.to, range.to);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged;
 }
 
 export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
@@ -2507,11 +2565,17 @@ export function updateTableDocumentSelection(view) {
 }
 
 function buildWysiwygCodeBlockDecorations(state) {
-  if (currentEditorMode !== 'wysiwyg') return Decoration.none;
+  if (currentEditorMode !== 'wysiwyg') {
+    return {
+      decorations: Decoration.none,
+      hiddenSyntaxRanges: Decoration.none
+    };
+  }
   recordDecorationBuild(currentEditorMode, 'wysiwyg_code_blocks');
 
   const doc = state.doc;
   const builder = [];
+  const hiddenSyntaxRanges = [];
 
   syntaxTree(state).iterate({
     from: 0,
@@ -2547,7 +2611,9 @@ function buildWysiwygCodeBlockDecorations(state) {
         ) {
           // The opening fence is replaced by the language header below.
           // Hide the closing fence too so WYSIWYG never exposes Markdown syntax.
-          builder.push(Decoration.replace({}).range(line.from, line.to));
+          const range = Decoration.replace({}).range(line.from, line.to);
+          builder.push(range);
+          hiddenSyntaxRanges.push(range);
         }
       }
 
@@ -2556,9 +2622,10 @@ function buildWysiwygCodeBlockDecorations(state) {
         const langMatch = firstLine.text.match(/^```(\w+)/);
         const lang = langMatch ? langMatch[1] : 'Plain text';
         const headerWidget = new CodeBlockHeaderWidget(lang, codeText);
-        builder.push(
-          Decoration.replace({ widget: headerWidget }).range(firstLine.from, firstLine.to)
-        );
+        const headerRange = Decoration.replace({ widget: headerWidget })
+          .range(firstLine.from, firstLine.to);
+        builder.push(headerRange);
+        hiddenSyntaxRanges.push(headerRange);
       }
 
       return false;
@@ -2566,7 +2633,11 @@ function buildWysiwygCodeBlockDecorations(state) {
   });
 
   builder.sort((a, b) => a.from - b.from || a.to - b.to);
-  return Decoration.set(builder, true);
+  hiddenSyntaxRanges.sort((a, b) => a.from - b.from || a.to - b.to);
+  return {
+    decorations: Decoration.set(builder, true),
+    hiddenSyntaxRanges: Decoration.set(hiddenSyntaxRanges, true)
+  };
 }
 
 function rangeTouchesSyntaxNode(state, from, to, nodeNames) {
@@ -2651,11 +2722,15 @@ const wysiwygCodeBlockField = StateField.define({
         markerPattern: /[\n`~]/
       })
     ) {
-      return current.map(tr.changes);
+      return {
+        decorations: current.decorations.map(tr.changes),
+        hiddenSyntaxRanges: current.hiddenSyntaxRanges.map(tr.changes)
+      };
     }
     return buildWysiwygCodeBlockDecorations(tr.state);
   },
-  provide: field => EditorView.decorations.from(field)
+  provide: field =>
+    EditorView.decorations.from(field, value => value.decorations)
 });
 
 function buildHeightMapValue(state) {
@@ -2671,6 +2746,17 @@ function buildHeightMapValue(state) {
   const tree = syntaxTree(state);
   const replacements = [];
   const hiddenSyntaxRanges = [];
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
+    const line = doc.line(lineNumber);
+    if (line.length === 0) {
+      replacements.push(
+        Decoration.widget({
+          widget: emptyLineCursorAnchorWidget,
+          side: 1
+        }).range(line.from)
+      );
+    }
+  }
 
   const hideSyntax = (from, to) => {
     if (to > from) {
@@ -2877,7 +2963,11 @@ function buildHeightMapValue(state) {
         const taskText = doc.sliceString(node.from, node.to);
         const isChecked = taskText.toLowerCase().includes('x');
         if (node.to > node.from) {
-          replacements.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+          const range = Decoration.replace({
+            widget: new CheckboxWidget(isChecked, node.from, node.to - node.from)
+          }).range(node.from, node.to);
+          replacements.push(range);
+          hiddenSyntaxRanges.push(range);
         }
       }
 
@@ -3626,6 +3716,20 @@ class CodeMirrorAdapter {
         livePreviewPlugin,
         listMarkerMeasurementPlugin,
         hiddenSyntaxAtomicRanges,
+        EditorState.transactionFilter.of(transaction => {
+          if (
+            currentEditorMode !== 'wysiwyg' ||
+            transaction.docChanged ||
+            !transaction.selection
+          ) {
+            return transaction;
+          }
+          return filterSelectionOutsideHiddenSyntax(
+            transaction,
+            hiddenSyntaxRangesForState(transaction.startState),
+            transaction.newDoc.length
+          );
+        }),
         this.lineWrapCompartment.of(isLineWrapEnabled ? EditorView.lineWrapping : []),
         this.lineNumbersCompartment.of(this.showLineNumbers ? lineNumbers() : []),
         EditorView.theme({
@@ -3717,6 +3821,7 @@ class CodeMirrorAdapter {
         const hiddenSyntax = mergeHiddenSyntaxRanges(
           startState.doc.length,
           startState.field(heightMapField).hiddenSyntaxRanges,
+          startState.field(wysiwygCodeBlockField, false)?.hiddenSyntaxRanges,
           startState.field(footnoteStateField, false)?.hiddenSyntaxRanges
         );
         hiddenSyntax.between(0, startState.doc.length, (from, to) => {

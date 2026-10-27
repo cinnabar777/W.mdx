@@ -51,3 +51,34 @@ test('mapSelectionOutsideHiddenSyntax skips adjacent hidden ranges without infin
   const mapped = mapSelectionOutsideHiddenSyntax(sel, ranges, docLength);
   assert.equal(mapped.main.head, 10);
 });
+
+test('transaction filtering keeps IME cursor selections out of hidden source ranges', async () => {
+  const [
+    { EditorSelection: ESMEditorSelection, EditorState, Transaction },
+    { filterSelectionOutsideHiddenSyntax }
+  ] = await Promise.all([
+    import('@codemirror/state'),
+    import('../src/visibleSelection.js')
+  ]);
+  const hiddenRanges = [{ from: 1, to: 4 }];
+  const state = EditorState.create({
+    doc: 'a[ ]b',
+    extensions: [
+      EditorState.transactionFilter.of(transaction =>
+        filterSelectionOutsideHiddenSyntax(
+          transaction,
+          hiddenRanges,
+          transaction.newDoc.length
+        )
+      )
+    ]
+  });
+
+  const transaction = state.update({
+    selection: ESMEditorSelection.cursor(2),
+    userEvent: 'select.pointer'
+  });
+  assert.equal(transaction.newSelection.main.head, 1);
+  assert.equal(transaction.annotation(Transaction.userEvent), 'select.pointer');
+  assert.equal(transaction.docChanged, false);
+});
