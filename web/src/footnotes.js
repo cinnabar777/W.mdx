@@ -1,5 +1,6 @@
 import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
+import { createCaretGeometryAnchorElement } from './caretGeometryAnchor.js';
 
 const CODE_NODE_NAMES = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
 const FOOTNOTE_STRUCTURE_CHARS = /[\[\]^:`~\r\n]/;
@@ -121,7 +122,13 @@ class FootnoteReferenceWidget extends WidgetType {
   toDOM(view) {
     const reference = document.createElement('sup');
     reference.className = 'cm-footnote-reference';
-    reference.textContent = this.label;
+    reference.style.position = 'relative';
+    const caretAnchor = createCaretGeometryAnchorElement();
+    caretAnchor.style.position = 'absolute';
+    caretAnchor.style.left = '0';
+    caretAnchor.style.top = '0';
+    reference.appendChild(caretAnchor);
+    reference.appendChild(document.createTextNode(this.label));
     reference.dataset.footnoteLabel = this.normalizedLabel;
     reference.tabIndex = 0;
     reference.setAttribute('role', 'button');

@@ -4,6 +4,8 @@ import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
+import { createCaretGeometryAnchorElement } from './caretGeometryAnchor.js';
+import { parseAndMatchHotkey } from './hotkeys.js';
 import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
 import {
@@ -104,6 +106,7 @@ let customHotkeys = {
   code: 'ctrl+e',
   link: 'ctrl+k',
   footnote: 'ctrl+shift+f',
+  sourceEditing: 'ctrl+shift+u',
   blockQuote: 'ctrl+shift+q',
   callout: 'ctrl+alt+q',
   codeBlock: 'ctrl+shift+c',
@@ -130,6 +133,20 @@ let customHotkeys = {
   highlight_green_pen: 'ctrl+alt+shift+g',
   highlight_remove: 'ctrl+alt+x'
 };
+
+class CaretGeometryAnchorWidget extends WidgetType {
+  eq(other) {
+    return other instanceof CaretGeometryAnchorWidget;
+  }
+
+  toDOM() {
+    return createCaretGeometryAnchorElement();
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
 
 class ListMarkerWidget extends WidgetType {
   constructor(source, isBullet) {
@@ -169,6 +186,14 @@ class CheckboxWidget extends WidgetType {
   }
 
   toDOM(view) {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'cm-task-marker-widget';
+    wrapper.style.cssText = 'display:inline-block;position:relative;vertical-align:baseline;';
+    const caretAnchor = new CaretGeometryAnchorWidget().toDOM();
+    caretAnchor.style.position = 'absolute';
+    caretAnchor.style.left = '0';
+    caretAnchor.style.top = '0';
+
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = this.checked;
@@ -181,7 +206,9 @@ class CheckboxWidget extends WidgetType {
         changes: { from: this.pos, to: this.pos + this.len, insert: newText }
       });
     });
-    return input;
+    wrapper.appendChild(caretAnchor);
+    wrapper.appendChild(input);
+    return wrapper;
   }
 }
 
@@ -494,6 +521,13 @@ class CodeBlockHeaderWidget extends WidgetType {
       'font-family:monospace;' +
       'user-select:none;border:1px solid var(--code-block-border-color, rgba(255,255,255,.2));' +
       'border-bottom-width:1px;';
+    header.style.position = 'relative';
+
+    const caretAnchor = new CaretGeometryAnchorWidget().toDOM();
+    caretAnchor.style.position = 'absolute';
+    caretAnchor.style.left = '0';
+    caretAnchor.style.top = '0';
+    header.appendChild(caretAnchor);
 
     const langSpan = document.createElement('span');
     langSpan.className = 'cm-codeblock-lang-label';
@@ -1512,7 +1546,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const hiddenSyntaxRanges = [];
     const hideSyntax = (from, to) => {
       if (to > from) {
-        const range = Decoration.replace({}).range(from, to);
+        const range = Decoration.replace({ widget: new CaretGeometryAnchorWidget() }).range(from, to);
         builder.push(range);
         hiddenSyntaxRanges.push(range);
       }
@@ -2546,7 +2580,7 @@ function buildWysiwygCodeBlockDecorations(state) {
         ) {
           // The opening fence is replaced by the language header below.
           // Hide the closing fence too so WYSIWYG never exposes Markdown syntax.
-          builder.push(Decoration.replace({}).range(line.from, line.to));
+          builder.push(Decoration.replace({ widget: new CaretGeometryAnchorWidget() }).range(line.from, line.to));
         }
       }
 
@@ -2673,7 +2707,7 @@ function buildHeightMapValue(state) {
 
   const hideSyntax = (from, to) => {
     if (to > from) {
-      const range = Decoration.replace({}).range(from, to);
+      const range = Decoration.replace({ widget: new CaretGeometryAnchorWidget() }).range(from, to);
       replacements.push(range);
       hiddenSyntaxRanges.push(range);
     }
@@ -2707,6 +2741,9 @@ function buildHeightMapValue(state) {
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
     const line = doc.line(lineNumber);
+    if (line.length === 0) {
+      replacements.push(Decoration.widget({ widget: new CaretGeometryAnchorWidget(), side: 1 }).range(line.from));
+    }
     const firstText = /\S/.exec(line.text);
     const probe = firstText ? line.from + firstText.index : line.from;
     const resolvedNode = tree.resolveInner(probe, 1);
@@ -6934,44 +6971,6 @@ function setupFloatingToggle() {
   }
 }
 
-function matchSingleHotkey(event, shortcutString) {
-  if (!shortcutString || typeof shortcutString !== 'string') return false;
-  const parts = shortcutString.toLowerCase().trim().split('+');
-  const hasCtrl = parts.includes('ctrl') || parts.includes('control');
-  const hasAlt = parts.includes('alt');
-  const hasShift = parts.includes('shift');
-  const keyPart = parts.find(p => p !== 'ctrl' && p !== 'control' && p !== 'alt' && p !== 'shift');
-
-  if (!keyPart || keyPart.length === 0) return false;
-
-  const ctrlPressed = event.ctrlKey || event.metaKey;
-  const altPressed = event.altKey;
-  const shiftPressed = event.shiftKey;
-
-  if (hasCtrl !== ctrlPressed) return false;
-  if (hasAlt !== altPressed) return false;
-  if (hasShift !== shiftPressed) return false;
-
-  const keyLower = (event.key || '').toLowerCase();
-  const codeLower = (event.code || '').toLowerCase();
-
-  if (keyLower === keyPart) return true;
-  if (codeLower === `key${keyPart}` || codeLower === keyPart) return true;
-  if (keyPart === ',' && (keyLower === ',' || codeLower === 'comma')) return true;
-  if (keyPart === '.' && (keyLower === '.' || codeLower === 'period')) return true;
-  if (keyPart === 'tab' && (keyLower === 'tab' || codeLower === 'tab')) return true;
-  if (keyPart === 'left' && (keyLower === 'arrowleft' || codeLower === 'arrowleft')) return true;
-  if (keyPart === 'right' && (keyLower === 'arrowright' || codeLower === 'arrowright')) return true;
-
-  return false;
-}
-
-function parseAndMatchHotkey(event, shortcutString) {
-  if (!shortcutString || typeof shortcutString !== 'string') return false;
-  const shortcuts = shortcutString.trim().split(/\s+/);
-  return shortcuts.some(sc => matchSingleHotkey(event, sc));
-}
-
 function setupKeyboardShortcuts() {
   window.addEventListener('keydown', (e) => {
     if (e.target?.closest?.('input, textarea, select')) return;
@@ -7042,6 +7041,9 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.line_numbers)) {
       e.preventDefault();
       window.editorBridge.toggleLineNumbers();
+    } else if (parseAndMatchHotkey(e, customHotkeys.sourceEditing)) {
+      e.preventDefault();
+      setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source');
     } else if (parseAndMatchHotkey(e, customHotkeys.findAndReplace)) {
       e.preventDefault();
       toggleFindAndReplaceBar();
@@ -7054,6 +7056,7 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.strikethrough)) { e.preventDefault(); execCmd('strikethrough'); }
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.footnote)) { e.preventDefault(); execCmd('InsertFootnote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.callout)) { e.preventDefault(); execCmd('callout'); }
     else if (parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.codeBlock)) { e.preventDefault(); execCmd('codeBlock'); }
