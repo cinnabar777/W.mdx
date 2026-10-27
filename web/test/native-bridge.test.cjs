@@ -303,7 +303,7 @@ test('typography editor categories are separated into individual navigation page
   }
 
   const orderedPages = [
-    'Headings (H1 â H6)',
+    'Headings (H1 – H6)',
     'Paragraph &amp; Body Text',
     'Block Quotes',
     'Bold',

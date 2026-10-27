@@ -145,7 +145,7 @@ class ListMarkerWidget extends WidgetType {
   toDOM() {
     const span = document.createElement('span');
     span.className = this.isBullet ? 'cm-list-bullet' : 'cm-list-number';
-    span.textContent = this.isBullet ? 'â¢' : this.source;
+    span.textContent = this.isBullet ? '•' : this.source;
     span.setAttribute('aria-hidden', 'true');
     return span;
   }
@@ -6918,10 +6918,10 @@ function toggleBottomToolbar(forceState) {
 
   if (shouldShow) {
     document.body.classList.remove('toolbar-hidden');
-    if (toggleBtn) toggleBtn.innerHTML = 'â©';
+    if (toggleBtn) toggleBtn.innerHTML = '⟩';
   } else {
     document.body.classList.add('toolbar-hidden');
-    if (toggleBtn) toggleBtn.innerHTML = 'â¨';
+    if (toggleBtn) toggleBtn.innerHTML = '⟨';
   }
 }
 
