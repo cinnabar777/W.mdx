@@ -147,6 +147,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
+        webView.isFocusable = true
+        webView.isFocusableInTouchMode = true
+        AppDiagnostics.record(
+            this,
+            "ime_webview_focus_configured",
+            "focusable=${webView.isFocusable} touchFocusable=${webView.isFocusableInTouchMode}"
+        )
         webView.setOnTouchListener { _, event ->
             if (
                 event.actionMasked == MotionEvent.ACTION_DOWN &&
@@ -1862,7 +1869,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                         WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
                 )
-                val focusRequested = webView.requestFocus()
+                val touchFocusRequested = webView.requestFocusFromTouch()
+                val focusRequested = touchFocusRequested || webView.requestFocus()
                 val insetsController = ViewCompat.getWindowInsetsController(webView)
                 insetsController?.show(WindowInsetsCompat.Type.ime())
                 val showAccepted =
@@ -1871,7 +1879,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(
                     this@MainActivity,
                     "ime_show_dispatched",
-                    "generation=${generation} focusRequested=${focusRequested} viewFocused=${webView.isFocused} controller=${insetsController != null} immAccepted=${showAccepted} imeVisible=${editorImeVisible()}"
+                    "generation=${generation} touchFocus=${touchFocusRequested} focusRequested=${focusRequested} viewFocused=${webView.isFocused} immAccepted=${showAccepted} touchFocusable=${webView.isFocusableInTouchMode}"
                 )
                 webView.postDelayed({
                     AppDiagnostics.record(

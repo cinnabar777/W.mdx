@@ -91,6 +91,16 @@ test('tapping focused editor content explicitly requests the Android keyboard', 
   assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
 });
 
+test('native keyboard request gives WebView touch focus before showing IME', () => {
+  assert.ok(mainActivitySource.includes('webView.isFocusable = true'));
+  assert.ok(mainActivitySource.includes('webView.isFocusableInTouchMode = true'));
+  const touchFocus = mainActivitySource.indexOf('webView.requestFocusFromTouch()');
+  const showIme = mainActivitySource.indexOf('insetsController?.show(WindowInsetsCompat.Type.ime())', touchFocus);
+  assert.ok(touchFocus >= 0);
+  assert.ok(showIme > touchFocus);
+  assert.ok(mainActivitySource.includes('touchFocus='));
+});
+
 test('keyboard diagnostics record suppression, native show, and observed IME visibility', () => {
   assert.ok(mainActivitySource.includes('"ime_resume_suppression_started"'));
   assert.ok(mainActivitySource.includes('"ime_user_touch_released_suppression"'));
