@@ -57,13 +57,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     private var currentFileName: String = "Untitled.md"
     private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
-    private var isDirty: Boolean = false
+    @Volatile private var isDirty: Boolean = false
     private var isEditorReady: Boolean = false
     private var currentEditorMode: String = "rich_text"
-    private var currentRevision: Long = 0
+    @Volatile private var currentRevision: Long = 0
     private var hasBom: Boolean = false
     private var hasCrlf: Boolean = false
-    private var latestMarkdownContent: String? = null
+    @Volatile private var latestMarkdownContent: String? = null
     private var pendingOpenUri: Uri? = null
     private var pendingOpenPermissionFlags: Int? = null
     private var pendingSharedText: String? = null
@@ -407,7 +407,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val autoSaveEnabled = prefs.getBoolean("pref_auto_save_on_leave", true)
         if (autoSaveEnabled) {
             currentFileUri?.let { uri ->
-                saveFileToUri(uri)
+                val cachedMarkdownContent = latestMarkdownContent
+                if (cachedMarkdownContent != null) {
+                    saveFileToUri(uri, cachedMarkdownText = cachedMarkdownContent)
+                } else {
+                    saveFileToUri(uri)
+                }
             }
         }
     }
@@ -1164,6 +1169,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(this, "textpack_read_done", "chars=${text.length} lines=$lines ms=$readMs")
 
                 currentTextPackSession = session
+                latestMarkdownContent = text
                 currentFileUri = uri
                 currentFileName = fileName
                 isDirty = false
@@ -1188,6 +1194,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     val content = reader.readText()
                     hasBom = content.startsWith("\uFEFF")
                     hasCrlf = content.contains("\r\n")
+                    latestMarkdownContent = content
                     val lines = content.lineSequence().count()
                     val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
                     AppDiagnostics.record(this, "file_read_done", "chars=${content.length} lines=$lines ms=$readMs")
@@ -1467,13 +1474,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun saveFileToUri(uri: Uri, requestedAsTextPack: Boolean? = null) {
+    private fun saveFileToUri(
+        uri: Uri,
+        requestedAsTextPack: Boolean? = null,
+        cachedMarkdownText: String? = null
+    ) {
         val oldDocumentKey = currentDocumentHistoryKey()
         val saveStarted = android.os.SystemClock.elapsedRealtime()
-        AppDiagnostics.record(this, "save_start", "mode=$currentEditorMode rev=$currentRevision")
-        webView.evaluateJavascript("window.editorBridge.getMarkdown();") { result ->
-            var markdownText = JSONObjectWrapper.unquote(result)
-            AppDiagnostics.record(this, "snapshot_taken", "mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length}")
+        val snapshotSource = if (cachedMarkdownText != null) "cached" else "webview"
+        AppDiagnostics.record(this, "save_start", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision")
+        val persistSnapshot: (String) -> Unit = { snapshot ->
+            var markdownText = snapshot
+            AppDiagnostics.record(this, "snapshot_taken", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length}")
 
             if (hasCrlf && !markdownText.contains("\r\n") && markdownText.contains("\n")) {
                 markdownText = markdownText.replace("\r\n", "\n").replace("\n", "\r\n")
@@ -1521,6 +1533,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val saveMs = android.os.SystemClock.elapsedRealtime() - saveStarted
                 AppDiagnostics.record(this, "save_done", "status=failure category=${e.javaClass.simpleName} ms=$saveMs")
                 ThemedToast.show(this, "Failed to save file: ${e.localizedMessage}", Toast.LENGTH_LONG)
+            }
+        }
+        if (cachedMarkdownText != null) {
+            persistSnapshot(cachedMarkdownText)
+        } else {
+            webView.evaluateJavascript("window.editorBridge.getMarkdown();") { result ->
+                persistSnapshot(JSONObjectWrapper.unquote(result))
             }
         }
     }
@@ -1714,12 +1733,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 latestMarkdownContent = markdownText
             }
             currentRevision = revision
-            runOnUiThread {
-                if (!isDirty) {
-                    isDirty = true
-                    updateTitle()
-                }
-            }
+            isDirty = true
+            runOnUiThread { updateTitle() }
         }
 
         @JavascriptInterface

@@ -145,7 +145,7 @@ class ListMarkerWidget extends WidgetType {
   toDOM() {
     const span = document.createElement('span');
     span.className = this.isBullet ? 'cm-list-bullet' : 'cm-list-number';
-    span.textContent = this.isBullet ? '•' : this.source;
+    span.textContent = this.isBullet ? 'â¢' : this.source;
     span.setAttribute('aria-hidden', 'true');
     return span;
   }
@@ -3673,10 +3673,10 @@ class CodeMirrorAdapter {
         EditorView.updateListener.of(update => {
           if (update.docChanged && !this.isProgrammatic) {
             this.revision++;
-            if (window.AndroidNative && typeof window.AndroidNative.onDirtyStateChanged === 'function') {
+            if (window.AndroidNative && typeof window.AndroidNative.onContentChanged === 'function') {
+              window.AndroidNative.onContentChanged(update.state.doc.toString(), this.revision);
+            } else if (window.AndroidNative && typeof window.AndroidNative.onDirtyStateChanged === 'function') {
               window.AndroidNative.onDirtyStateChanged(true, this.revision);
-            } else if (window.AndroidNative && typeof window.AndroidNative.onContentChanged === 'function') {
-              window.AndroidNative.onContentChanged(null, this.revision);
             }
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
@@ -6918,10 +6918,10 @@ function toggleBottomToolbar(forceState) {
 
   if (shouldShow) {
     document.body.classList.remove('toolbar-hidden');
-    if (toggleBtn) toggleBtn.innerHTML = '⟩';
+    if (toggleBtn) toggleBtn.innerHTML = 'â©';
   } else {
     document.body.classList.add('toolbar-hidden');
-    if (toggleBtn) toggleBtn.innerHTML = '⟨';
+    if (toggleBtn) toggleBtn.innerHTML = 'â¨';
   }
 }
 

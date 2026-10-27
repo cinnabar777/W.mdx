@@ -102,6 +102,22 @@ test('auto-save snapshots the editor before pausing WebView and runs once per le
   assert.equal(mainActivitySource.indexOf('override fun onStop()'), -1);
 });
 
+test('editor edits publish the latest Markdown snapshot before app lifecycle save', () => {
+  assert.match(source, /onContentChanged\(update\.state\.doc\.toString\(\), this\.revision\)/);
+  assert.match(mainActivitySource, /@Volatile private var latestMarkdownContent: String\? = null/);
+  assert.match(mainActivitySource, /@Volatile private var isDirty: Boolean = false/);
+  assert.match(mainActivitySource, /saveFileToUri\(uri, cachedMarkdownText = cachedMarkdownContent\)/);
+  assert.match(mainActivitySource, /latestMarkdownContent = content/);
+});
+
+test('cached leave-save writes without waiting for evaluateJavascript callback', () => {
+  const saveStart = mainActivitySource.indexOf('private fun saveFileToUri(');
+  const saveEnd = mainActivitySource.indexOf('private fun handleNewWindow()', saveStart);
+  const saveBody = mainActivitySource.slice(saveStart, saveEnd);
+  assert.ok(saveBody.indexOf('if (cachedMarkdownText != null)') < saveBody.indexOf('webView.evaluateJavascript'));
+  assert.match(saveBody, /source=\$snapshotSource/);
+});
+
 test('native keyboard request gives WebView touch focus before showing IME', () => {
   assert.ok(mainActivitySource.includes('webView.isFocusable = true'));
   assert.ok(mainActivitySource.includes('webView.isFocusableInTouchMode = true'));
@@ -287,7 +303,7 @@ test('typography editor categories are separated into individual navigation page
   }
 
   const orderedPages = [
-    'Headings (H1 – H6)',
+    'Headings (H1 â H6)',
     'Paragraph &amp; Body Text',
     'Block Quotes',
     'Bold',
