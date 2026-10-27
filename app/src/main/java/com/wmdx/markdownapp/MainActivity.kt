@@ -1829,6 +1829,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun showEditorKeyboard() {
+            runOnUiThread {
+                suppressImeUntilUserTouch = false
+                imeHideGeneration++
+                window.setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+                )
+                webView.requestFocus()
+                ViewCompat.getWindowInsetsController(webView)
+                    ?.show(WindowInsetsCompat.Type.ime())
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
+
+        @JavascriptInterface
         fun renameCurrentDocument(newName: String) {
             runOnUiThread {
                 this@MainActivity.renameCurrentDocument(newName)

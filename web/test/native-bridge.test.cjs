@@ -84,6 +84,13 @@ test('returning to the app keeps the keyboard hidden until the user touches the 
   assert.ok(mainActivitySource.includes('?.hide(WindowInsetsCompat.Type.ime())'));
 });
 
+test('tapping focused editor content explicitly requests the Android keyboard', () => {
+  assert.match(source, /contentDOM\.addEventListener\('pointerdown'/);
+  assert.match(source, /contentDOM\.addEventListener\('pointerup'/);
+  assert.match(source, /this\.view\.hasFocus\)[\s\S]*?AndroidNative\?\.showEditorKeyboard\?\.\(\)/);
+  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
+});
+
 test('installed device fonts override custom body and heading font files when selected', () => {
   assert.ok(mainActivitySource.includes('if (bodyFontFamily == "default")'));
   assert.ok(mainActivitySource.includes('if (headingFontFamily == "default")'));

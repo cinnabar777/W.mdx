@@ -3736,6 +3736,38 @@ class CodeMirrorAdapter {
       scrollTo: modeSnapshot?.scroll
     });
 
+    let editorTapStart = null;
+    this.view.contentDOM.addEventListener('pointerdown', event => {
+      if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
+        editorTapStart = null;
+        return;
+      }
+      editorTapStart = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY
+      };
+    }, { capture: true });
+    this.view.contentDOM.addEventListener('pointerup', event => {
+      const start = editorTapStart;
+      editorTapStart = null;
+      if (
+        !start ||
+        start.pointerId !== event.pointerId ||
+        Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12
+      ) {
+        return;
+      }
+      requestAnimationFrame(() => {
+        if (this.view?.dom.isConnected && this.view.hasFocus) {
+          window.AndroidNative?.showEditorKeyboard?.();
+        }
+      });
+    }, { capture: true });
+    this.view.contentDOM.addEventListener('pointercancel', () => {
+      editorTapStart = null;
+    }, { capture: true });
+
     this.view.scrollDOM.style.overflowAnchor = 'auto';
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
     this.visibilityPersistHandler = () => {
