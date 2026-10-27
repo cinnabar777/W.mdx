@@ -28,7 +28,7 @@ test('WYSIWYG code blocks hide the closing fence as well as replacing the openin
     'The closing fence line is detected separately from the opening fence'
   );
   assert.ok(
-    codeBlockDecorations.includes('Decoration.replace({}).range(line.from, line.to)'),
-    'Closing fence syntax is replaced with no visible text'
+    codeBlockDecorations.includes('Decoration.replace({ widget: new CaretGeometryAnchorWidget() }).range(line.from, line.to)'),
+    'Closing fence uses an invisible caret geometry anchor'
   );
 });
