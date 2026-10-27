@@ -20,18 +20,6 @@
         app:summary="Default color for toolbar icons"
         app:defaultValue="default" />
 
-    <com.wmdx.markdownapp.ResetColorPickerPreference
-        app:key="pref_toolbar_toggle_bg_color"
-        app:title="Toolbar Toggle Background Color"
-        app:summary="Background color for the floating button that shows or hides the bottom toolbar"
-        app:defaultValue="default" />
-
-    <com.wmdx.markdownapp.ResetColorPickerPreference
-        app:key="pref_toolbar_toggle_icon_color"
-        app:title="Toolbar Toggle Icon Color"
-        app:summary="Icon color for the floating button that shows or hides the bottom toolbar"
-        app:defaultValue="default" />
-
     <com.wmdx.markdownapp.ResetSeekBarPreference
         app:key="pref_toolbar_height"
         app:title="Toolbar Height (dp)"
@@ -70,6 +58,40 @@
         app:title="Key Label Text Color"
         app:summary="Color for toolbar key labels"
         app:defaultValue="default" />
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="pref_toolbar_toggle_category"
+        app:title="Toolbar toggle">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_toggle_bg_color"
+            app:title="Toggle Background Color"
+            app:summary="Background for the button that shows or hides the bottom toolbar"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_toggle_icon_color"
+            app:title="Toggle Icon Color"
+            app:summary="Icon color for the bottom-toolbar toggle"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_toggle_closed_width"
+            app:title="Closed Toggle Width (dp)"
+            app:summary="Width while the bottom toolbar is closed"
+            android:defaultValue="34"
+            app:min="24"
+            android:max="72"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_toggle_closed_height"
+            app:title="Closed Toggle Height (dp)"
+            app:summary="Height while the bottom toolbar is closed"
+            android:defaultValue="34"
+            app:min="24"
+            android:max="72"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="pref_toolbar_floating_category"

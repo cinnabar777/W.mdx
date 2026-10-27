@@ -52,7 +52,7 @@ test('oversized floating toolbar is clamped to the viewport width', () => {
   assert.ok(position.left + position.width <= 352);
 });
 
-test('floating toolbar has an independent saved layout and replaces the native selection menu', () => {
+test('floating toolbar has an independent layout and restores Android selection actions when disabled', () => {
   const repositoryRoot = path.resolve(__dirname, '..', '..');
   const readWeb = relativePath =>
     readFileSync(path.join(repositoryRoot, 'web', relativePath), 'utf8');
@@ -98,7 +98,20 @@ test('floating toolbar has an independent saved layout and replaces the native s
   assert.match(main, /let floatingToolbarEnabled = true/);
   assert.match(main, /floatingToolbarEnabled = prefs\.pref_toolbar_floating_enabled !== false/);
   assert.match(main, /if \(!floatingToolbarEnabled\) \{[\s\S]*?aria-hidden', 'true'/);
-  assert.match(webIndex, /\.floating-toggle-btn\s*\{[^}]*width:\s*48px;[^}]*height:\s*48px;/s);
+  assert.match(
+    webIndex,
+    /\.floating-toggle-btn\s*\{[^}]*width:\s*var\(--toolbar-toggle-open-size,\s*34px\);[^}]*height:\s*var\(--toolbar-toggle-open-size,\s*34px\);/s
+  );
+  assert.match(
+    webIndex,
+    /body\.toolbar-hidden \.floating-toggle-btn\s*\{[^}]*--toolbar-toggle-closed-width[^}]*--toolbar-toggle-closed-height/s
+  );
+  assert.match(controlbarPrefs, /pref_toolbar_toggle_category[\s\S]*?app:title="Toolbar toggle"/);
+  assert.match(controlbarPrefs, /pref_toolbar_toggle_closed_width[\s\S]*?android:defaultValue="34"/);
+  assert.match(controlbarPrefs, /pref_toolbar_toggle_closed_height[\s\S]*?android:defaultValue="34"/);
+  assert.match(main, /--toolbar-toggle-open-size/);
+  assert.match(main, /pref_toolbar_toggle_closed_width/);
+  assert.match(main, /pref_toolbar_toggle_closed_height/);
   assert.match(
     controlbarPrefs,
     /ResetPreferenceCategory[\s\S]*?pref_toolbar_floating_category[\s\S]*?app:title="Floating toolbar"/
@@ -108,6 +121,9 @@ test('floating toolbar has an independent saved layout and replaces the native s
   assert.doesNotMatch(nativeActivity, /setCustomSelectionActionModeCallback/);
   assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback\)/);
   assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback, type: Int\)/);
+  assert.match(editorWebView, /getBoolean\("pref_toolbar_floating_enabled", true\)/);
+  assert.match(editorWebView, /else\s*\{\s*super\.startActionMode\(callback\)\s*\}/);
+  assert.match(editorWebView, /else\s*\{\s*super\.startActionMode\(callback, type\)\s*\}/);
   assert.match(activityLayout, /<com\.wmdx\.markdownapp\.EditorWebView/);
   assert.match(styles, /--toolbar-floating-key-width/);
   assert.match(styles, /--toolbar-floating-corner-radius/);

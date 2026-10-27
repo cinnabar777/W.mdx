@@ -7,6 +7,7 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.View
 import android.webkit.WebView
+import androidx.preference.PreferenceManager
 
 /**
  * WebView that keeps its text selection while letting the editor's own floating
@@ -18,11 +19,23 @@ class EditorWebView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : WebView(context, attrs, defStyleAttr) {
 
+    private fun isFloatingToolbarEnabled(): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getBoolean("pref_toolbar_floating_enabled", true)
+
     override fun startActionMode(callback: ActionMode.Callback): ActionMode =
-        EmptySelectionActionMode()
+        if (isFloatingToolbarEnabled()) {
+            EmptySelectionActionMode()
+        } else {
+            super.startActionMode(callback)
+        }
 
     override fun startActionMode(callback: ActionMode.Callback, type: Int): ActionMode =
-        EmptySelectionActionMode()
+        if (isFloatingToolbarEnabled()) {
+            EmptySelectionActionMode()
+        } else {
+            super.startActionMode(callback, type)
+        }
 
     private class EmptySelectionActionMode : ActionMode() {
         override fun finish() = Unit

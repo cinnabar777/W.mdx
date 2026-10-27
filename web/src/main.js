@@ -7623,8 +7623,33 @@ window.editorBridge = {
       '--toolbar-toggle-icon-color',
       androidArgbToCss(prefs.pref_toolbar_toggle_icon_color)
     );
+    const toolbarHeight = Number(prefs.pref_toolbar_height ?? 48);
+    const safeToolbarHeight = Number.isFinite(toolbarHeight)
+      ? Math.max(36, Math.min(72, toolbarHeight))
+      : 48;
+    setCssVar('--toolbar-height', safeToolbarHeight, 'px');
+    setCssVar(
+      '--toolbar-toggle-open-size',
+      Math.round((safeToolbarHeight * 34) / 48),
+      'px'
+    );
+    const closedToggleWidth = Number(prefs.pref_toolbar_toggle_closed_width ?? 34);
+    const closedToggleHeight = Number(prefs.pref_toolbar_toggle_closed_height ?? 34);
+    setCssVar(
+      '--toolbar-toggle-closed-width',
+      Number.isFinite(closedToggleWidth)
+        ? Math.max(24, Math.min(72, closedToggleWidth))
+        : 34,
+      'px'
+    );
+    setCssVar(
+      '--toolbar-toggle-closed-height',
+      Number.isFinite(closedToggleHeight)
+        ? Math.max(24, Math.min(72, closedToggleHeight))
+        : 34,
+      'px'
+    );
     updateFloatingSelectionToolbar();
-    setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
     const toolbarPadding = Number(prefs.pref_toolbar_padding ?? 4);
     setCssVar(
       '--toolbar-padding',
