@@ -315,7 +315,8 @@ test('global toolbar settings stay fixed while the key editor fits its content',
   assert.match(androidSource, /val top = preferenceBottom\.coerceIn\(0, host\.height\)/);
   assert.doesNotMatch(androidSource, /toolbarEditorOverlayExpanded|fun setToolbarEditorOverlay/);
   assert.match(html, /\.toolbar-preview-editor\s*\{[^}]*height:\s*auto/s);
-  assert.match(html, /max-height:\s*min\(76dvh,/);
+  assert.match(html, /min-height:\s*min\(76dvh,/);
+  assert.match(html, /max-height:\s*calc\(100dvh - var\(--toolbar-height/);
   assert.match(androidSource, /baseLayout\.addView\(\s*android\.view\.View\(context\),\s*android\.widget\.LinearLayout\.LayoutParams\([\s\S]*?0,\s*1f/);
 });
 
