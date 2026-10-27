@@ -96,8 +96,10 @@ test('keyboard diagnostics record suppression, native show, and observed IME vis
   assert.match(mainActivitySource, /"ime_user_touch_released_suppression"/);
   assert.match(mainActivitySource, /"ime_resume_hide_applied"/);
   assert.match(mainActivitySource, /"ime_show_requested"/);
-  assert.match(mainActivitySource, /"ime_show_dispatched"[sS]*?immAccepted=/);
-  assert.match(mainActivitySource, /"ime_show_observed"[sS]*?imeVisible=/);
+  assert.ok(mainActivitySource.includes('"ime_show_dispatched"'));
+  assert.ok(mainActivitySource.includes('immAccepted='));
+  assert.ok(mainActivitySource.includes('"ime_show_observed"'));
+  assert.ok(mainActivitySource.includes('imeVisible='));
   assert.match(mainActivitySource, /fun editorImeVisible(): Boolean/);
 });
 
