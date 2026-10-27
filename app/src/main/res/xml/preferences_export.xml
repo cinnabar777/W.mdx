@@ -13,23 +13,23 @@
 
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_export_include_css"
-            app:title="Include CSS Styling in Export"
-            app:summary="Embed clean responsive CSS styles for fonts, dark/light themes, code blocks &amp; tables"
+            app:title="Include CSS in Export"
+            app:summary="Embed responsive styles for fonts, themes, code blocks, and tables"
             android:defaultValue="true" />
 
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_export_css_placement"
-            app:title="CSS Placement for HTML Export"
+            app:title="CSS Placement"
             app:summary="Embed CSS inside HTML &lt;head&gt; or export as a separate .css file"
             app:entries="@array/pref_export_css_placement_entries"
             app:entryValues="@array/pref_export_css_placement_values"
             app:defaultValue="head" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table of Contents (TOC) Export Settings">
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table of Contents">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_export_include_toc"
-            app:title="Include Table of Contents in Export"
+            app:title="Include Table of Contents"
             app:summary="Automatically generate an interactive Table of Contents section at the top of exported file"
             android:defaultValue="true" />
 

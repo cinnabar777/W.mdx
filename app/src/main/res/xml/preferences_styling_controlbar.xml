@@ -2,44 +2,128 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Bottom Control Bar Customization">
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_toolbar_bg_color"
-            app:title="Toolbar Background Color"
-            app:summary="Background color for bottom control bar"
-            app:defaultValue="default" />
+    <com.wmdx.markdownapp.ExpandablePreference
+        app:key="pref_toolbar_global_settings"
+        app:title="Appearance"
+        app:summary="Toolbar-wide colors, size, labels, and spacing"
+        app:widgetLayout="@layout/preference_expand_chevron" />
 
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_toolbar_icon_color"
-            app:title="Toolbar Icon Color"
-            app:summary="Default color for toolbar SVG icons"
-            app:defaultValue="default" />
+    <com.wmdx.markdownapp.ResetColorPickerPreference
+        app:key="pref_toolbar_bg_color"
+        app:title="Toolbar Background Color"
+        app:summary="Background behind the toolbar"
+        app:defaultValue="default" />
 
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_toolbar_active_icon_color"
-            app:title="Selected / Active Icon Accent Color"
-            app:summary="Accent color when a toolbar item or popup is active"
-            app:defaultValue="default" />
+    <com.wmdx.markdownapp.ResetColorPickerPreference
+        app:key="pref_toolbar_icon_color"
+        app:title="Toolbar Icon Color"
+        app:summary="Default color for toolbar icons"
+        app:defaultValue="default" />
 
+    <com.wmdx.markdownapp.ResetColorPickerPreference
+        app:key="pref_toolbar_active_key_bg_color"
+        app:title="Toolbar Key Active Background Color"
+        app:summary="Background color for a selected or active toolbar key"
+        app:defaultValue="default" />
+
+    <com.wmdx.markdownapp.ResetSeekBarPreference
+        app:key="pref_toolbar_height"
+        app:title="Toolbar Height (dp)"
+        app:summary="Height of the bottom toolbar"
+        android:defaultValue="48"
+        app:min="36"
+        android:max="72"
+        app:showSeekBarValue="true" />
+
+    <com.wmdx.markdownapp.ResetSeekBarPreference
+        app:key="pref_toolbar_padding"
+        app:title="Toolbar Padding (dp)"
+        app:summary="Spacing around the toolbar keys"
+        android:defaultValue="4"
+        app:min="0"
+        android:max="16"
+        app:showSeekBarValue="true" />
+
+    <com.wmdx.markdownapp.ResetSwitchPreference
+        app:key="pref_toolbar_show_labels"
+        app:title="Show Key Labels"
+        app:summary="Show small text labels below toolbar keys"
+        android:defaultValue="false" />
+
+    <com.wmdx.markdownapp.ResetSeekBarPreference
+        app:key="pref_toolbar_label_size"
+        app:title="Key Label Font Size (px)"
+        app:summary="Text size for toolbar key labels"
+        android:defaultValue="8"
+        app:min="4"
+        android:max="16"
+        app:showSeekBarValue="true" />
+
+    <com.wmdx.markdownapp.ResetColorPickerPreference
+        app:key="pref_toolbar_label_color"
+        app:title="Key Label Text Color"
+        app:summary="Color for toolbar key labels"
+        app:defaultValue="default" />
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="pref_toolbar_toggle_category"
+        app:title="Toolbar toggle">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_toolbar_toggle_bg_color"
-            app:title="Toolbar Toggle Background Color"
-            app:summary="Background color for the floating button that shows or hides the bottom toolbar"
+            app:title="Toggle Background Color"
+            app:summary="Background for the button that shows or hides the bottom toolbar"
             app:defaultValue="default" />
 
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_toolbar_toggle_icon_color"
-            app:title="Toolbar Toggle Icon Color"
-            app:summary="Icon color for the floating button that shows or hides the bottom toolbar"
+            app:title="Toggle Icon Color"
+            app:summary="Icon color for the bottom-toolbar toggle"
             app:defaultValue="default" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_toolbar_height"
-            app:title="Toolbar Height (dp)"
-            app:summary="Height of the bottom toolbar bar"
+            app:key="pref_toolbar_toggle_closed_width"
+            app:title="Closed Toggle Width (dp)"
+            app:summary="Width while the bottom toolbar is closed"
+            android:defaultValue="34"
+            app:min="24"
+            android:max="72"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_toggle_closed_height"
+            app:title="Closed Toggle Height (dp)"
+            app:summary="Height while the bottom toolbar is closed"
+            android:defaultValue="34"
+            app:min="24"
+            android:max="72"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="pref_toolbar_floating_category"
+        app:title="Floating toolbar">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_toolbar_floating_enabled"
+            app:title="Enable floating toolbar"
+            app:summary="Show the floating toolbar when text is selected"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_floating_key_width"
+            app:title="Key Width (dp)"
+            app:summary="Width of each floating toolbar key"
             android:defaultValue="48"
             app:min="36"
             android:max="72"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_floating_corner_radius"
+            app:title="Corner Radius (dp)"
+            app:summary="Round the ends of the floating toolbar"
+            android:defaultValue="24"
+            app:min="0"
+            android:max="36"
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 

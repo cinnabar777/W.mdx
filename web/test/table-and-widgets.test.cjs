@@ -16,6 +16,31 @@ test('Widget classes implement eq for DOM reuse', () => {
 
   // Check ImagePreviewWidget eq
   assert.ok(code.includes('class ImagePreviewWidget'), 'ImagePreviewWidget exists');
+  assert.ok(code.includes('openImageEditDialog'), 'images can be edited in the WYSIWYG view');
+  assert.ok(code.includes('openImageDeleteConfirmation'), 'image deletion requires confirmation');
+  assert.ok(code.includes('modal-image-width'), 'image editing includes a saved width field');
+  assert.ok(code.includes('formatMarkdownImage(altInput.value, newUrl, newWidth)'), 'image width is saved with Markdown image syntax');
+  assert.ok(code.includes('aria-label\', \'Edit image\''), 'image edit button has an accessible label');
+  assert.ok(code.includes('aria-label\', \'Delete image\''), 'image delete button has an accessible label');
+  assert.ok(code.includes("document.body.appendChild(actions)"), 'image actions are portaled outside the tall image flow');
+  assert.ok(code.includes("wrapper.addEventListener('contextmenu'"), 'native long-press context menus are intercepted');
+  assert.ok(code.includes('suppressNextImageClick'), 'a held press cannot immediately toggle its action bar closed');
+  assert.ok(code.includes('window.visualViewport?.addEventListener'), 'image actions are repositioned when the visible viewport changes');
+  assert.ok(code.includes('const centeredLeft = lastPressPoint.x - width / 2;'), 'image actions are centered away from the touching finger');
+  assert.ok(code.includes('const aboveTop = lastPressPoint.y - height - gap;'), 'image actions prefer a position above the press point');
+  assert.ok(
+    code.includes("return Boolean(event.target?.closest?.('.cm-image-preview-wrapper'))"),
+    'image taps are handled by the widget instead of moving the CodeMirror cursor'
+  );
+  assert.ok(code.includes('}, 550);'), 'pressing and holding an image reveals Edit and Delete controls');
+  assert.ok(
+    code.includes("if (event.target?.closest?.('.cm-image-preview-wrapper')) return true;"),
+    'the editor-level pointer handler prevents image taps from placing the text cursor'
+  );
+  assert.ok(
+    code.includes('image.url,\n                  image.alt,\n                  node.from,\n                  node.to,'),
+    'Live Preview image controls receive the source range they edit'
+  );
   assert.ok(code.includes('other instanceof ImagePreviewWidget'), 'ImagePreviewWidget has eq check');
 });
 
@@ -69,13 +94,30 @@ test('TableModel parses, merges, splits, and serializes GFM tables correctly', a
 
 test('WordProcessorTableWidget provides structural context menu items', () => {
   const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const actions = fs.readFileSync(path.join(__dirname, '../src/tableActions.js'), 'utf8');
 
-  assert.ok(code.includes('Add Row Below'), 'Context menu includes Add Row Below');
-  assert.ok(code.includes('Add Column Right'), 'Context menu includes Add Column Right');
-  assert.ok(code.includes('Delete Row'), 'Context menu includes Delete Row');
-  assert.ok(code.includes('Delete Column'), 'Context menu includes Delete Column');
-  assert.ok(code.includes('Merge Right'), 'Context menu includes directional Merge');
+  assert.ok(code.includes('TABLE_ACTIONS.forEach'), 'Context menu renders the shared table actions');
+  assert.ok(code.includes("btn.className = 'cm-wp-table-action'"), 'Context actions use icon buttons');
+  assert.ok(code.includes("btn.setAttribute('aria-label', title)"), 'Icon buttons retain accessible names');
+  assert.ok(actions.includes("title: 'Add Row Below'"), 'Context menu includes Add Row Below');
+  assert.ok(actions.includes("title: 'Add Column Right'"), 'Context menu includes Add Column Right');
+  assert.ok(actions.includes("title: 'Delete Row'"), 'Context menu includes Delete Row');
+  assert.ok(actions.includes("title: 'Delete Column'"), 'Context menu includes Delete Column');
+  assert.ok(actions.includes("title: 'Merge Right'"), 'Context menu includes directional Merge');
   assert.ok(!code.includes("btnEdit.textContent = 'Edit Cell'"), 'Context menu excludes Edit Cell');
+});
+
+test('table action menu stays horizontal and provides scrollable named icon buttons', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const actions = fs.readFileSync(path.join(__dirname, '../src/tableActions.js'), 'utf8');
+
+  assert.match(code, /menu\.setAttribute\('role', 'toolbar'\)/);
+  assert.match(code, /window\.visualViewport/);
+  assert.match(actions, /id: 'mergeUp'[\s\S]*?icon: icon\(/);
+  assert.match(actions, /id: 'splitCell'[\s\S]*?icon: icon\(/);
+  assert.match(html, /\.cm-wp-table-context-menu\s*\{[^}]*flex-flow:\s*row nowrap;[^}]*overflow-x:\s*auto/s);
+  assert.match(html, /\.cm-wp-table-action:disabled/);
 });
 
 test('TableModel insertRow and insertCol add empty cells and preserve alignments and merges', async () => {
@@ -201,7 +243,7 @@ test('heightMapField provides WYSIWYG decorations and measured height caching', 
   assert.ok(mainCode.includes('export const heightMapRefreshEffect = StateEffect.define()'));
   assert.ok(mainCode.includes('export const heightMapField = StateField.define'));
   assert.ok(mainCode.includes('EditorView.decorations.from(field, value => value.decorations)'));
-  assert.ok(mainCode.includes('view.state.field(heightMapField).hiddenSyntaxRanges'));
+  assert.ok(mainCode.includes('view.state.field(heightMapField, false)?.hiddenSyntaxRanges'));
   assert.ok(mainCode.includes('scheduleHeightMapRefresh(view)'));
   assert.ok(mainCode.includes('createDeferredViewCallback'));
   assert.ok(mainCode.includes('measuredWidgetHeights = new Map()'));

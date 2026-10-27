@@ -4,8 +4,16 @@ import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
+import { parseAndMatchHotkey } from './hotkeys.js';
 import { mapSelectionOutsideHiddenSyntax } from './visibleSelection.js';
 import { serializeNavigationTraceRecord } from './navigationDiagnostics.js';
+import {
+  buildFootnoteDecorations,
+  footnoteEditRequiresReparse,
+  formatFootnoteDefinition,
+  nextFootnoteLabel,
+  updateFootnoteDecorationsFromCached
+} from './footnotes.js';
 import {
   recordDecorationBuild,
   recordHeightMapRefresh,
@@ -17,6 +25,31 @@ import {
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
+import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
+import { toCssFontFamily } from './fontFamilies.js';
+import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
+import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownFormatting.js';
+import { TABLE_ACTIONS } from './tableActions.js';
+import { svgIcons } from './toolbarIcons.js';
+import {
+  BUILT_IN_HOLDING_ITEMS,
+  BOTTOM_TOOLBAR_ITEMS,
+  OPEN_GROUP_ACTION_ID,
+  normalizeBottomToolbarConfig,
+  orderBottomToolbarPopupItems
+} from './toolbarConfig.js';
+import {
+  getToolbarGestureActionId,
+  getToolbarGestureIndicatorEntries,
+  getToolbarSwipeGesture,
+  hasToolbarSwipeActions
+} from './toolbarGestures.js';
+import {
+  renderBottomToolbarKeys,
+  sanitizeToolbarSvg,
+  toToolbarCssColor
+} from './toolbarRenderer.js';
+import { getFloatingToolbarPosition } from './toolbarPositioning.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -42,6 +75,12 @@ let isProgrammaticChange = false;
 let pendingMarkdown = null;
 let isLineWrapEnabled = true;
 let activePopupGroup = null;
+let activeToolbarRootKey = null;
+let activePopupSurface = 'bottom';
+let bottomToolbarConfig = normalizeBottomToolbarConfig(null);
+let floatingToolbarConfig = normalizeBottomToolbarConfig(null);
+let floatingToolbarSelectionFrame = 0;
+let floatingToolbarEnabled = true;
 let tocHideFileExtension = false;
 
 let customHotkeys = {
@@ -51,6 +90,7 @@ let customHotkeys = {
   open: 'ctrl+o',
   save: 'ctrl+s',
   save_as: 'ctrl+shift+s',
+  save_as_textpack: 'ctrl+shift+alt+s',
   export: 'ctrl+shift+e',
   image: 'ctrl+shift+i',
   settings: 'ctrl+,',
@@ -65,6 +105,7 @@ let customHotkeys = {
   code: 'ctrl+e',
   link: 'ctrl+k',
   footnote: 'ctrl+shift+f',
+  sourceEditing: 'ctrl+shift+u',
   blockQuote: 'ctrl+shift+q',
   callout: 'ctrl+alt+q',
   codeBlock: 'ctrl+shift+c',
@@ -90,44 +131,6 @@ let customHotkeys = {
   highlight_red_pen: 'ctrl+alt+r',
   highlight_green_pen: 'ctrl+alt+shift+g',
   highlight_remove: 'ctrl+alt+x'
-};
-
-const svgIcons = {
-  undo: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>`,
-  redo: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>`,
-  paragraph: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4v16"/><path d="M17 4v16"/><path d="M19 4H9.5a4.5 4.5 0 0 0 0 9H13"/></svg>`,
-  lists: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
-  format: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`,
-  table: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/></svg>`,
-  insertTable: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/><path d="M16 16h4m-2-2v4"/></svg>`,
-  insert: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-  menu: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>`,
-  wrap: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 21 6"/><path d="M3 12h15a3 3 0 0 1 0 6h-4"/><polyline points="16 16 14 18 16 20"/></svg>`,
-  bold: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>`,
-  italic: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>`,
-  underline: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 0 0 12 0V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>`,
-  strikethrough: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4H9a3 3 0 0 0-2.83 4M14 12a4 4 0 0 1 0 8H6"/><line x1="4" y1="12" x2="20" y2="12"/></svg>`,
-  inlineCode: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l-4 4 4 4"/><path d="M17 8l4 4-4 4"/><line x1="14" y1="4" x2="10" y2="20"/></svg>`,
-  codeBlock: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 9l-2 3 2 3"/><path d="M12 9l2 3-2 3"/></svg>`,
-  link: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
-  image: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
-  blockQuote: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-  horizontalLine: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/></svg>`,
-  bulletedList: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
-  numberedList: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>`,
-  todoList: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
-  indent: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 10 7 14 3 18"/><line x1="21" y1="6" x2="11" y2="6"/><line x1="21" y1="12" x2="11" y2="12"/><line x1="21" y1="18" x2="11" y2="18"/></svg>`,
-  outdent: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 10 3 14 7 18"/><line x1="21" y1="6" x2="11" y2="6"/><line x1="21" y1="12" x2="11" y2="12"/><line x1="21" y1="18" x2="11" y2="18"/></svg>`,
-  newFile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>`,
-  openFile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
-  saveFile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
-  saveAsFile: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/><path d="M12 10v4m-2-2h4"/></svg>`,
-  search: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
-  settings: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
-  newWindow: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>`,
-  footnote: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M4 15h16"/><path d="M9 11V5h6v6"/><path d="M9 8h6"/></svg>`,
-  squareMarker: (color) => `<svg width="18" height="18" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="${color}"/></svg>`,
-  circlePen: (color) => `<svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="${color}"/></svg>`
 };
 
 class ListMarkerWidget extends WidgetType {
@@ -493,7 +496,6 @@ class CodeBlockHeaderWidget extends WidgetType {
       'font-family:monospace;' +
       'user-select:none;border:1px solid var(--code-block-border-color, rgba(255,255,255,.2));' +
       'border-bottom-width:1px;';
-
     const langSpan = document.createElement('span');
     langSpan.className = 'cm-codeblock-lang-label';
     langSpan.textContent = this.lang;
@@ -850,6 +852,12 @@ function recordTocNavigation(view, targetPos) {
   return true;
 }
 
+function navigateFootnote(view, targetPos) {
+  if (!view || !Number.isInteger(targetPos)) return false;
+  recordTocNavigation(view, targetPos);
+  return scrollToPositionUpperMiddle(view, targetPos, { focus: false });
+}
+
 function restoreTocNavigationState(view, state) {
   if (!view?.state || !view.scrollDOM || !state) return false;
   const docLength = view.state.doc.length;
@@ -947,15 +955,26 @@ export const typographySettingsEffect = StateEffect.define();
 const imageAspectCache = new Map();
 
 class ImagePreviewWidget extends WidgetType {
-  constructor(url, alt) {
+  constructor(url, alt, from, to, imageWidth = null) {
     super();
     this.url = url;
     this.alt = alt || 'image';
-    const width = activeContentWidth();
+    this.from = from;
+    this.to = to;
+    this.imageWidth = imageWidth;
+    const contentWidth = activeContentWidth();
     const sig = activeTypographySignature();
-    this.heightKey = measuredWidgetHeightKey('image-preview', `${this.url}`, width, sig);
+    this.heightKey = measuredWidgetHeightKey(
+      'image-preview',
+      `${this.url}:${this.imageWidth ?? 'auto'}`,
+      contentWidth,
+      sig
+    );
     const aspect = imageAspectCache.get(this.url);
-    const fallbackHeight = aspect ? Math.round(width / aspect) : 180;
+    const estimatedWidth = this.imageWidth
+      ? Math.min(this.imageWidth, contentWidth)
+      : contentWidth;
+    const fallbackHeight = aspect ? Math.round(estimatedWidth / aspect) : 180;
     this.heightEstimate = estimatedWidgetHeight(this.heightKey, fallbackHeight);
   }
 
@@ -968,6 +987,9 @@ class ImagePreviewWidget extends WidgetType {
       other instanceof ImagePreviewWidget &&
       other.url === this.url &&
       other.alt === this.alt &&
+      other.imageWidth === this.imageWidth &&
+      other.from === this.from &&
+      other.to === this.to &&
       other.heightEstimate === this.heightEstimate
     );
   }
@@ -975,12 +997,13 @@ class ImagePreviewWidget extends WidgetType {
   toDOM(view) {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-image-preview-wrapper';
-    wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 6px 0; display: block; box-sizing: border-box;`;
+    wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 6px 0; display: block; box-sizing: border-box; touch-action: manipulation; user-select: none; -webkit-user-select: none;`;
 
     const img = document.createElement('img');
     img.src = this.url;
     img.alt = this.alt;
-    img.style.cssText = 'max-width: 100%; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);';
+    img.draggable = false;
+    img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;
 
     img.onload = () => {
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -997,7 +1020,7 @@ class ImagePreviewWidget extends WidgetType {
 
     img.onerror = () => {
       imageAspectCache.delete(this.url);
-      wrapper.innerHTML = '';
+      img.remove();
       const fallbackBox = document.createElement('div');
       fallbackBox.className = 'cm-image-error-fallback';
       fallbackBox.style.cssText = 'padding: 12px 16px; border: 1px dashed var(--border-color, #666); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text-color, #888); font-size: 13px; font-style: italic;';
@@ -1008,9 +1031,175 @@ class ImagePreviewWidget extends WidgetType {
       rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     };
 
-    wrapper.appendChild(img);
+    const actions = document.createElement('div');
+    actions.className = 'cm-image-actions';
+    actions.setAttribute('aria-label', 'Image actions');
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'cm-image-action-edit';
+    editButton.setAttribute('aria-label', 'Edit image');
+    editButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg><span>Edit</span>';
+    editButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      hideActions();
+      openImageEditDialog(view, this.from, this.to, this.alt, this.url, this.imageWidth);
+    });
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'cm-image-action-delete';
+    deleteButton.setAttribute('aria-label', 'Delete image');
+    deleteButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg><span>Delete</span>';
+    deleteButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      hideActions();
+      openImageDeleteConfirmation(view, this.from, this.to);
+    });
+    actions.append(editButton, deleteButton);
+
+    let lastPressPoint = null;
+    const positionActions = () => {
+      if (!actions.isConnected || !lastPressPoint) return;
+      const viewport = window.visualViewport;
+      const viewportLeft = viewport?.offsetLeft ?? 0;
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const width = actions.offsetWidth || 144;
+      const height = actions.offsetHeight || 48;
+      const minLeft = viewportLeft + 8;
+      const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - width - 8);
+      const centeredLeft = lastPressPoint.x - width / 2;
+      const left = Math.max(minLeft, Math.min(centeredLeft, maxLeft));
+      const minTop = viewportTop + 8;
+      const maxTop = Math.max(minTop, viewportTop + viewportHeight - height - 8);
+      const gap = 14;
+      const aboveTop = lastPressPoint.y - height - gap;
+      const belowTop = lastPressPoint.y + gap;
+      let top;
+      if (aboveTop >= minTop) {
+        top = aboveTop;
+      } else if (belowTop <= maxTop) {
+        top = belowTop;
+      } else {
+        top = Math.max(minTop, Math.min(aboveTop, maxTop));
+      }
+      actions.style.left = `${left}px`;
+      actions.style.top = `${Math.max(minTop, Math.min(top, maxTop))}px`;
+    };
+    const showActions = (point) => {
+      lastPressPoint = point && Number.isFinite(point.x) && Number.isFinite(point.y)
+        ? point
+        : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      if (!actions.isConnected) document.body.appendChild(actions);
+      actions.classList.add('visible');
+      positionActions();
+    };
+    const hideActions = () => {
+      actions.classList.remove('visible');
+      actions.remove();
+    };
+    const toggleActions = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (actions.classList.contains('visible')) hideActions();
+      else showActions({ x: event.clientX, y: event.clientY });
+    };
+    let pressTimer = null;
+    let suppressNextImageClick = false;
+    const clearPressTimer = () => {
+      if (pressTimer !== null) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+    wrapper.addEventListener('pointerdown', event => {
+      if (event.target.closest('.cm-image-actions')) return;
+      if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      suppressNextImageClick = false;
+      clearPressTimer();
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        suppressNextImageClick = true;
+        showActions({ x: startX, y: startY });
+      }, 550);
+      wrapper._imagePressStart = { x: startX, y: startY };
+    });
+    wrapper.addEventListener('pointermove', event => {
+      const start = wrapper._imagePressStart;
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) {
+        clearPressTimer();
+        wrapper._imagePressStart = null;
+      }
+    });
+    wrapper.addEventListener('pointerup', () => {
+      clearPressTimer();
+      wrapper._imagePressStart = null;
+    });
+    wrapper.addEventListener('pointercancel', () => {
+      clearPressTimer();
+      wrapper._imagePressStart = null;
+    });
+    wrapper.addEventListener('click', event => {
+      if (suppressNextImageClick) {
+        suppressNextImageClick = false;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      toggleActions(event);
+    });
+    wrapper.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextImageClick = true;
+      showActions({ x: event.clientX, y: event.clientY });
+    });
+    const dismissActions = event => {
+      if (
+        !wrapper.contains(event.target) &&
+        !actions.contains(event.target) &&
+        actions.classList.contains('visible')
+      ) {
+        hideActions();
+      }
+    };
+    const repositionActions = () => positionActions();
+    document.addEventListener('pointerdown', dismissActions, true);
+    window.visualViewport?.addEventListener('resize', repositionActions);
+    wrapper._imageDismissHandler = dismissActions;
+    wrapper._imageRepositionHandler = repositionActions;
+    wrapper._clearImagePressTimer = clearPressTimer;
+    wrapper._hideImageActions = hideActions;
+
+    if (img.parentNode !== wrapper) wrapper.appendChild(img);
     rememberWidgetHeight(view, this.heightKey, wrapper, 'image_preview', this.heightEstimate);
     return wrapper;
+  }
+
+  destroy(dom) {
+    dom?._clearImagePressTimer?.();
+    dom?._hideImageActions?.();
+    if (dom?._imageDismissHandler) {
+      document.removeEventListener(
+        'pointerdown',
+        dom._imageDismissHandler,
+        true
+      );
+    }
+    if (dom?._imageRepositionHandler) {
+      window.visualViewport?.removeEventListener('resize', dom._imageRepositionHandler);
+    }
+  }
+
+  ignoreEvent(event) {
+    // Image previews are atomic widgets. Letting pointer events reach CodeMirror
+    // places the text cursor beside the hidden Markdown instead of activating
+    // the image's own tap controls.
+    return Boolean(event.target?.closest?.('.cm-image-preview-wrapper'));
   }
 }
 
@@ -1770,11 +1959,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'Image') {
             const imgText = view.state.doc.sliceString(node.from, node.to);
-            const match = imgText.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-            if (match && !isNodeActive && !isPureWysiwyg) {
-              const alt = match[1];
-              const url = match[2];
-              builder.push(Decoration.replace({ widget: new ImagePreviewWidget(url, alt) }).range(node.from, node.to));
+            const image = parseMarkdownImage(imgText);
+            if (image && !isNodeActive && !isPureWysiwyg) {
+              builder.push(Decoration.replace({
+                widget: new ImagePreviewWidget(
+                  image.url,
+                  image.alt,
+                  node.from,
+                  node.to,
+                  image.width ?? null
+                )
+              }).range(node.from, node.to));
             }
           }
         }
@@ -1905,10 +2100,79 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   decorations: v => v.decorations
 });
 
+const footnoteStateField = StateField.define({
+  create(state) {
+    return buildFootnoteDecorations(state, {
+      mode: currentEditorMode,
+      onEdit: definition => openFootnoteInsertionDialog({ definition }),
+      onNavigate: navigateFootnote
+    });
+  },
+  update(current, tr) {
+    const refresh = tr.effects.some(effect => effect.is(typographySettingsEffect));
+    const revealRefresh =
+      currentEditorMode === 'live_preview' &&
+      tr.selectionSet &&
+      current.hasFootnotes;
+    if (
+      !tr.docChanged &&
+      !refresh &&
+      !revealRefresh
+    ) {
+      return current;
+    }
+    const options = {
+      mode: currentEditorMode,
+      onEdit: definition => openFootnoteInsertionDialog({ definition }),
+      onNavigate: navigateFootnote
+    };
+    if (!refresh && !footnoteEditRequiresReparse(current, tr, currentEditorMode)) {
+      return updateFootnoteDecorationsFromCached(
+        tr.state,
+        current,
+        tr.changes,
+        options
+      );
+    }
+    return buildFootnoteDecorations(tr.state, {
+      ...options
+    });
+  },
+  provide: field =>
+    EditorView.decorations.from(field, value => value.decorations)
+});
+
+function mergeHiddenSyntaxRanges(docLength, ...sets) {
+  const activeSets = sets.filter(set => set && set !== Decoration.none);
+  if (!activeSets.length) return Decoration.none;
+  if (activeSets.length === 1) return activeSets[0];
+
+  const ranges = [];
+  for (const set of activeSets) {
+    set.between(0, docLength, (from, to) => {
+      if (to > from) ranges.push(Decoration.replace({}).range(from, to));
+    });
+  }
+  if (!ranges.length) return Decoration.none;
+  ranges.sort((a, b) => a.from - b.from || a.to - b.to);
+  return Decoration.set(ranges, true);
+}
+
+function hiddenSyntaxRangesForView(view) {
+  const wysiwygRanges =
+    view.state.field(heightMapField, false)?.hiddenSyntaxRanges;
+  const livePreviewRanges =
+    view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
+  const baseRanges = currentEditorMode === 'wysiwyg'
+    ? (wysiwygRanges ?? livePreviewRanges)
+    : (livePreviewRanges ?? wysiwygRanges);
+  const footnoteRanges =
+    view.state.field(footnoteStateField, false)?.hiddenSyntaxRanges ?? Decoration.none;
+  return mergeHiddenSyntaxRanges(view.state.doc.length, baseRanges, footnoteRanges);
+}
+
 export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
-  view => (currentEditorMode === 'wysiwyg'
-    ? view.state.field(heightMapField).hiddenSyntaxRanges
-    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges) ?? Decoration.none
+  view => hiddenSyntaxRangesForView(view)
 );
 
 function cmToggleLinePrefix(view, prefix) {
@@ -2644,11 +2908,17 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'Image') {
         const imgText = doc.sliceString(node.from, node.to);
-        const match = imgText.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-        if (match) {
-          const alt = match[1];
-          const url = match[2];
-          replacements.push(Decoration.replace({ widget: new ImagePreviewWidget(url, alt) }).range(node.from, node.to));
+        const image = parseMarkdownImage(imgText);
+        if (image) {
+          replacements.push(Decoration.replace({
+            widget: new ImagePreviewWidget(
+              image.url,
+              image.alt,
+              node.from,
+              node.to,
+              image.width ?? null
+            )
+          }).range(node.from, node.to));
         }
       }
     }
@@ -3063,9 +3333,7 @@ function renderedLineForPosition(view, position, side) {
 }
 
 function leaveHiddenSyntax(view, position, direction) {
-  const ranges = currentEditorMode === 'wysiwyg'
-    ? view.state.field(heightMapField).hiddenSyntaxRanges
-    : view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
+  const ranges = hiddenSyntaxRangesForView(view);
   if (!ranges || position >= view.state.doc.length) return position;
 
   let result = position;
@@ -3200,9 +3468,18 @@ export const renderedRowNavigationKeymap = keymap.of([
 ]);
 
 export const resetRenderedVerticalGoal = EditorView.domEventHandlers({
-  pointerdown(_event, view) {
+  pointerdown(event, view) {
+    if (event.target?.closest?.('.cm-image-preview-wrapper')) return true;
     renderedVerticalGoals.delete(view);
     return false;
+  },
+  click(event) {
+    return Boolean(event.target?.closest?.('.cm-image-preview-wrapper'));
+  },
+  contextmenu(event) {
+    if (!event.target?.closest?.('.cm-image-preview-wrapper')) return false;
+    event.preventDefault();
+    return true;
   }
 });
 
@@ -3397,14 +3674,18 @@ class CodeMirrorAdapter {
         EditorView.updateListener.of(update => {
           if (update.docChanged && !this.isProgrammatic) {
             this.revision++;
-            if (window.AndroidNative && typeof window.AndroidNative.onDirtyStateChanged === 'function') {
+            if (window.AndroidNative && typeof window.AndroidNative.onContentChanged === 'function') {
+              window.AndroidNative.onContentChanged(update.state.doc.toString(), this.revision);
+            } else if (window.AndroidNative && typeof window.AndroidNative.onDirtyStateChanged === 'function') {
               window.AndroidNative.onDirtyStateChanged(true, this.revision);
-            } else if (window.AndroidNative && typeof window.AndroidNative.onContentChanged === 'function') {
-              window.AndroidNative.onContentChanged(null, this.revision);
             }
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             updateTableDocumentSelection(update.view);
+            updateFloatingSelectionToolbar(update.view);
+          }
+          if (update.selectionSet || update.docChanged) {
+            refreshToolbarSyntaxState(update.view);
           }
           if ((update.selectionSet || update.docChanged) && typeof updateTocActiveSection === 'function') {
             updateTocActiveSection();
@@ -3415,6 +3696,7 @@ class CodeMirrorAdapter {
         }),
         tableStateField,
         wysiwygCodeBlockField,
+        footnoteStateField,
         persistentLayoutField,
         heightMapField,
         tableNavigationKeymap,
@@ -3432,7 +3714,11 @@ class CodeMirrorAdapter {
 
       if (currentEditorMode === 'wysiwyg') {
         const hiddenRanges = [];
-        const hiddenSyntax = startState.field(heightMapField).hiddenSyntaxRanges;
+        const hiddenSyntax = mergeHiddenSyntaxRanges(
+          startState.doc.length,
+          startState.field(heightMapField).hiddenSyntaxRanges,
+          startState.field(footnoteStateField, false)?.hiddenSyntaxRanges
+        );
         hiddenSyntax.between(0, startState.doc.length, (from, to) => {
           hiddenRanges.push({ from, to });
         });
@@ -3451,6 +3737,38 @@ class CodeMirrorAdapter {
       parent: containerEl,
       scrollTo: modeSnapshot?.scroll
     });
+
+    let editorTapStart = null;
+    this.view.contentDOM.addEventListener('pointerdown', event => {
+      if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
+        editorTapStart = null;
+        return;
+      }
+      editorTapStart = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY
+      };
+    }, { capture: true });
+    this.view.contentDOM.addEventListener('pointerup', event => {
+      const start = editorTapStart;
+      editorTapStart = null;
+      if (
+        !start ||
+        start.pointerId !== event.pointerId ||
+        Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12
+      ) {
+        return;
+      }
+      requestAnimationFrame(() => {
+        if (this.view?.dom.isConnected && this.view.hasFocus) {
+          window.AndroidNative?.showEditorKeyboard?.();
+        }
+      });
+    }, { capture: true });
+    this.view.contentDOM.addEventListener('pointercancel', () => {
+      editorTapStart = null;
+    }, { capture: true });
 
     this.view.scrollDOM.style.overflowAnchor = 'auto';
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
@@ -3509,9 +3827,13 @@ class CodeMirrorAdapter {
     this.tableContentWidthObserver.observe(this.view.contentDOM);
 
     updateTableDocumentSelection(this.view);
-    this.navigationDiagnosticsCleanup = setupNavigationDiagnostics(this.view);
+    this.navigationDiagnosticsCleanup = null;
+    this.setNavigationDiagnosticsEnabled(
+      window.AndroidNative?.isNavigationCaptureActive?.() === true
+    );
 
         setupGroupedControlBar();
+    refreshToolbarSyntaxState(this.view);
     initCustomSearchBar();
     this.fastScrollbarCleanup = setupFastScrollbar();
     this.tocGestureCleanup = setupTocGestureAndPanel(this.view.scrollDOM);
@@ -3533,6 +3855,16 @@ class CodeMirrorAdapter {
     this.revision = 0;
     const timer = setTimeout(() => { this.isProgrammatic = false; }, 20);
     if (timer && typeof timer.unref === 'function') timer.unref();
+  }
+
+  setNavigationDiagnosticsEnabled(enabled) {
+    if (!this.view) return;
+    if (enabled && !this.navigationDiagnosticsCleanup) {
+      this.navigationDiagnosticsCleanup = setupNavigationDiagnostics(this.view);
+    } else if (!enabled && this.navigationDiagnosticsCleanup) {
+      this.navigationDiagnosticsCleanup();
+      this.navigationDiagnosticsCleanup = null;
+    }
   }
 
   getMarkdown() {
@@ -3688,26 +4020,118 @@ async function setEditorMode(mode) {
   return activeAdapter;
 }
 
+function installToolbarTapActions(container) {
+  if (!container || container.dataset.toolbarTapActionsInstalled === 'true') return;
+  container.dataset.toolbarTapActionsInstalled = 'true';
+  const pendingTaps = new WeakMap();
+  container.addEventListener('click', event => {
+    const button = event.target?.closest?.('[data-toolbar-key], [data-toolbar-style-id]');
+    if (!button || !container.contains(button)) return;
+    if (button.dataset.toolbarGestureSuppressClick === 'true') {
+      delete button.dataset.toolbarGestureSuppressClick;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (button.dataset.toolbarTapReplay === 'true') {
+      delete button.dataset.toolbarTapReplay;
+      return;
+    }
+    const id = button.dataset.toolbarKey || button.dataset.toolbarStyleId;
+    const toolbarConfig = getToolbarConfigForElement(button);
+    const actions = toolbarConfig.styles[id]?.gestureActions || {};
+    const hasTap1 = Boolean(actions.tap1);
+    const hasTap2 = Boolean(actions.tap2);
+    const hasTap3 = Boolean(actions.tap3);
+    if (!hasTap1 && !hasTap2 && !hasTap3) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const state = pendingTaps.get(button) || { count: 0, timer: null };
+    if (state.timer) clearTimeout(state.timer);
+    state.count += 1;
+
+    const fallback = () => {
+      if (hasTap1) runToolbarGestureAction(actions.tap1, button, new Set(), toolbarConfig);
+      else {
+        button.dataset.toolbarTapReplay = 'true';
+        button.click();
+      }
+    };
+    const finish = () => {
+      const actionId = actions[`tap${state.count}`];
+      if (actionId) runToolbarGestureAction(actionId, button, new Set(), toolbarConfig);
+      else fallback();
+      pendingTaps.delete(button);
+    };
+
+    if (state.count >= 3) {
+      if (state.timer) clearTimeout(state.timer);
+      if (hasTap3) runToolbarGestureAction(actions.tap3, button, new Set(), toolbarConfig);
+      else if (hasTap2) runToolbarGestureAction(actions.tap2, button, new Set(), toolbarConfig);
+      else fallback();
+      pendingTaps.delete(button);
+      return;
+    }
+    if (state.count === 2 && hasTap2 && !hasTap3) {
+      runToolbarGestureAction(actions.tap2, button, new Set(), toolbarConfig);
+      pendingTaps.delete(button);
+      return;
+    }
+    if (state.count === 1 && !hasTap2 && !hasTap3) {
+      runToolbarGestureAction(actions.tap1, button, new Set(), toolbarConfig);
+      pendingTaps.delete(button);
+      return;
+    }
+    state.timer = setTimeout(finish, 300);
+    pendingTaps.set(button, state);
+  }, true);
+}
+
 function setupGroupedControlBar() {
   const topContainer = document.querySelector('#editor-container');
   if (!topContainer) return;
 
-  let bar = document.querySelector('.grouped-control-bar');
+  let bar = document.querySelector('#bottom-toolbar');
   if (!bar) {
     bar = document.createElement('div');
-    bar.className = 'grouped-control-bar';
+    bar.id = 'bottom-toolbar';
+    bar.className = 'grouped-control-bar bottom-toolbar-bar';
     topContainer.appendChild(bar);
   }
+  installToolbarTapActions(bar);
 
-  bar.innerHTML = `
-    <button class="grouped-key-btn" id="grp-btn-undo" title="Undo (Hold: Redo)">${svgIcons.undo}</button>
-    <button class="grouped-key-btn" id="grp-btn-heading" title="Paragraph & Headings">${svgIcons.paragraph}</button>
-    <button class="grouped-key-btn" id="grp-btn-lists" title="Lists">${svgIcons.lists}</button>
-    <button class="grouped-key-btn" id="grp-btn-format" title="Format">${svgIcons.format}</button>
-    <button class="grouped-key-btn" id="grp-btn-table" title="Table">${svgIcons.insertTable}</button>
-    <button class="grouped-key-btn" id="grp-btn-insert" title="Insert">${svgIcons.insert}</button>
-    <button class="grouped-key-btn" id="grp-btn-menu" title="Menu">${svgIcons.menu}</button>
-  `;
+  const toolbarActionRegistry = createRuntimeToolbarItemRegistry();
+  const toolbarDefinitions = Object.fromEntries(
+    [...toolbarActionRegistry].map(([id, item]) => [
+      id,
+      { id, title: item.title, icon: item.icon, kind: 'action' }
+    ])
+  );
+  renderBottomToolbarKeys(bar, bottomToolbarConfig, svgIcons, {
+    resolveCustomIcon: style => style.customSvg || '',
+    definitions: toolbarDefinitions,
+    resolveGestureActionIcon: (actionId, customSvg) => {
+      if (customSvg) return sanitizeToolbarSvg(customSvg, false);
+      const icon = toolbarActionRegistry.get(actionId)?.icon;
+      return typeof icon === 'string' && icon.includes('<svg')
+        ? icon
+        : svgIcons[icon] || icon || '';
+    },
+    onGesture: (id, gestureId, event, button) => {
+      const actionId = getToolbarGestureActionId(
+        bottomToolbarConfig.styles[id],
+        gestureId
+      );
+      return actionId ? runToolbarGestureAction(actionId, button) : false;
+    },
+    onKeyClick: (id, event) => {
+      if (!bottomToolbarConfig.customKeys?.[id]) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runToolbarGestureAction(id, event.currentTarget);
+    }
+  });
 
   const undoBtn = bar.querySelector('#grp-btn-undo');
   if (undoBtn) {
@@ -3718,30 +4142,38 @@ function setupGroupedControlBar() {
     };
   }
 
-  document.addEventListener('click', (e) => {
-    const strip = document.querySelector('#popup-toolbar-strip');
-    const barEl = document.querySelector('.grouped-control-bar');
-    if (strip && !strip.classList.contains('hidden')) {
-      if (!strip.contains(e.target) && (!barEl || !barEl.contains(e.target))) {
-        hidePopupStrip();
+  if (!document.__wmdxToolbarOutsideClickInstalled) {
+    document.addEventListener('click', (e) => {
+      const strip = document.querySelector('#popup-toolbar-strip');
+      const bars = [
+        document.querySelector('#bottom-toolbar'),
+        document.querySelector('#floating-selection-toolbar')
+      ].filter(Boolean);
+      if (strip && !strip.classList.contains('hidden')) {
+        if (!strip.contains(e.target) && !bars.some(barEl => barEl.contains(e.target))) {
+          hidePopupStrip();
+        }
       }
-    }
-  });
+    });
+    document.__wmdxToolbarOutsideClickInstalled = true;
+  }
+
+  setupFloatingSelectionToolbar();
 
   const headingBtn = bar.querySelector('#grp-btn-heading');
   if (headingBtn) {
     headingBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('heading', headingBtn, [
-        { title: 'Paragraph', icon: 'P', action: () => execCmd('heading', { value: 'paragraph' }) },
-        { title: 'Heading 1', icon: 'H1', action: () => execCmd('heading', { value: 'heading1' }) },
-        { title: 'Heading 2', icon: 'H2', action: () => execCmd('heading', { value: 'heading2' }) },
-        { title: 'Heading 3', icon: 'H3', action: () => execCmd('heading', { value: 'heading3' }) },
-        { title: 'Heading 4', icon: 'H4', action: () => execCmd('heading', { value: 'heading4' }) },
-        { title: 'Heading 5', icon: 'H5', action: () => execCmd('heading', { value: 'heading5' }) },
-        { title: 'Heading 6', icon: 'H6', action: () => execCmd('heading', { value: 'heading6' }) },
-        { icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
-        { icon: '#', title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
+        { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', action: () => execCmd('heading', { value: 'paragraph' }) },
+        { title: 'Heading 1', icon: 'H1', command: 'heading1', action: () => execCmd('heading', { value: 'heading1' }) },
+        { title: 'Heading 2', icon: 'H2', command: 'heading2', action: () => execCmd('heading', { value: 'heading2' }) },
+        { title: 'Heading 3', icon: 'H3', command: 'heading3', action: () => execCmd('heading', { value: 'heading3' }) },
+        { title: 'Heading 4', icon: 'H4', command: 'heading4', action: () => execCmd('heading', { value: 'heading4' }) },
+        { title: 'Heading 5', icon: 'H5', command: 'heading5', action: () => execCmd('heading', { value: 'heading5' }) },
+        { title: 'Heading 6', icon: 'H6', command: 'heading6', action: () => execCmd('heading', { value: 'heading6' }) },
+        { id: 'wrap', icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
+        { id: 'line-numbers', icon: '#', title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
       ]);
     };
   }
@@ -3751,11 +4183,11 @@ function setupGroupedControlBar() {
     listsBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('lists', listsBtn, [
-        { title: 'Bulleted List', icon: svgIcons.bulletedList, action: () => execCmd('bulletedList') },
-        { title: 'Numbered List', icon: svgIcons.numberedList, action: () => execCmd('numberedList') },
-        { title: 'Todo List', icon: svgIcons.todoList, action: () => execCmd('todoList') },
-        { title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
-        { title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
+        { title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
+        { title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', action: () => execCmd('numberedList') },
+        { title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', action: () => execCmd('todoList') },
+        { id: 'indent', title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
+        { id: 'outdent', title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
       ]);
     };
   }
@@ -3765,16 +4197,16 @@ function setupGroupedControlBar() {
     formatBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('format', formatBtn, [
-        { icon: svgIcons.bold, title: 'Bold', action: () => execCmd('bold') },
-        { icon: svgIcons.italic, title: 'Italic', action: () => execCmd('italic') },
-        { icon: svgIcons.strikethrough, title: 'Strikethrough', action: () => execCmd('strikethrough') },
-        { icon: svgIcons.underline, title: 'Underline', action: () => execCmd('underline') },
-        { icon: svgIcons.squareMarker('#ffe066'), title: 'Yellow Marker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
-        { icon: svgIcons.squareMarker('#a8f087'), title: 'Green Marker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
-        { icon: svgIcons.squareMarker('#ff99c8'), title: 'Pink Marker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
-        { icon: svgIcons.squareMarker('#9bf6ff'), title: 'Blue Marker', action: () => execCmd('highlight', { value: 'blueMarker' }) },
-        { icon: svgIcons.circlePen('#ff595e'), title: 'Red Pen', action: () => execCmd('highlight', { value: 'redPen' }) },
-        { icon: svgIcons.circlePen('#2ec4b6'), title: 'Green Pen', action: () => execCmd('highlight', { value: 'greenPen' }) }
+        { icon: svgIcons.bold, title: 'Bold', command: 'bold', action: () => execCmd('bold') },
+        { icon: svgIcons.italic, title: 'Italic', command: 'italic', action: () => execCmd('italic') },
+        { icon: svgIcons.strikethrough, title: 'Strikethrough', command: 'strikethrough', action: () => execCmd('strikethrough') },
+        { icon: svgIcons.underline, title: 'Underline', command: 'underline', action: () => execCmd('underline') },
+        { icon: svgIcons.squareMarker('#ffe066'), title: 'Yellow Marker', command: 'yellowMarker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
+        { icon: svgIcons.squareMarker('#a8f087'), title: 'Green Marker', command: 'greenMarker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
+        { icon: svgIcons.squareMarker('#ff99c8'), title: 'Pink Marker', command: 'pinkMarker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
+        { icon: svgIcons.squareMarker('#9bf6ff'), title: 'Blue Marker', command: 'blueMarker', action: () => execCmd('highlight', { value: 'blueMarker' }) },
+        { icon: svgIcons.circlePen('#ff595e'), title: 'Red Pen', command: 'redPen', action: () => execCmd('highlight', { value: 'redPen' }) },
+        { icon: svgIcons.circlePen('#2ec4b6'), title: 'Green Pen', command: 'greenPen', action: () => execCmd('highlight', { value: 'greenPen' }) }
       ]);
     };
   }
@@ -3783,7 +4215,27 @@ function setupGroupedControlBar() {
   if (tableBtn) {
     tableBtn.onclick = (e) => {
       e.stopPropagation();
-      showTableGridPickerModal();
+      togglePopupStrip('table', tableBtn, [
+        {
+          id: 'insertTable',
+          icon: svgIcons.insertTable,
+          title: 'Insert Table',
+          action: () => {
+            hidePopupStrip();
+            showTableGridPickerModal();
+          }
+        },
+        ...TABLE_ACTIONS.map(item => ({
+          id: item.id,
+          icon: item.icon,
+          title: item.title,
+          disabled: !window.wmdxTableActions?.isEnabled(item.id),
+          action: () => {
+            hidePopupStrip();
+            window.wmdxTableActions?.run(item.id);
+          }
+        }))
+      ]);
     };
   }
 
@@ -3792,14 +4244,14 @@ function setupGroupedControlBar() {
     insertBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('insert', insertBtn, [
-        { icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
-        { icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
-        { icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
-        { icon: svgIcons.inlineCode, title: 'Inline Code', action: () => execCmd('code') },
-        { icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
-        { icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
-        { icon: svgIcons.horizontalLine, title: 'Insert Line', action: () => execCmd('horizontalLine') },
-        { icon: svgIcons.footnote, title: 'Insert Footnote', action: () => execCmd('InsertFootnote') }
+        { id: 'image', icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
+        { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
+        { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
+        { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
+        { id: 'blockQuote', icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
+        { id: 'codeBlock', icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
+        { id: 'horizontalLine', icon: svgIcons.horizontalLine, title: 'Insert Line', action: () => execCmd('horizontalLine') },
+        { id: 'footnote', icon: svgIcons.footnote, title: 'Insert Footnote', action: () => openFootnoteInsertionDialog() }
       ]);
     };
   }
@@ -3809,19 +4261,600 @@ function setupGroupedControlBar() {
     menuBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('menu', menuBtn, [
-        { icon: svgIcons.newFile, title: 'New File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('new') },
-        { icon: svgIcons.openFile, title: 'Open File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('open') },
-        { icon: svgIcons.saveFile, title: 'Save File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save') },
-        { icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
-        { icon: svgIcons.saveFile, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
-        { icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
-        { icon: svgIcons.newWindow, title: 'Switch View Mode', action: () => openWithOtherEngine() },
-        { icon: svgIcons.newWindow, title: 'New Window', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('new_window') },
-        { icon: svgIcons.settings, title: 'Settings', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('settings') }
+        { id: 'newFile', icon: svgIcons.newFile, title: 'New File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('new') },
+        { id: 'openFile', icon: svgIcons.openFile, title: 'Open File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('open') },
+        { id: 'saveFile', icon: svgIcons.saveFile, title: 'Save File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save') },
+        { id: 'saveAsFile', icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
+        { id: 'saveAsTextPack', icon: svgIcons.saveAsTextPack, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
+        { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
+        { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
+        { id: 'switchView', icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
+        { id: 'newWindow', icon: svgIcons.newWindow, title: 'New Window', action: () => {
+          hidePopupStrip();
+          if (window.AndroidNative && typeof window.AndroidNative.onNativeAction === 'function') {
+            window.AndroidNative.onNativeAction('new_window');
+          }
+        } },
+        { id: 'settings', icon: svgIcons.settings, title: 'Settings', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('settings') }
       ]);
     };
   }
 
+  for (const button of bar.querySelectorAll('.grouped-key-btn')) {
+    const id = button.dataset.toolbarKey;
+    if (['heading', 'lists', 'format', 'table', 'insert', 'menu', 'undo'].includes(id)) {
+      continue;
+    }
+    if (bottomToolbarConfig.popupGroups[id]) {
+      button.onclick = event => {
+        event.stopPropagation();
+        const items = bottomToolbarConfig.popupGroups[id].order
+          .map(itemId => toolbarActionRegistry.get(itemId))
+          .filter(Boolean);
+        togglePopupStrip(id, button, items);
+      };
+      continue;
+    }
+    const action = toolbarActionRegistry.get(id);
+    if (action) {
+      button.onclick = event => {
+        event.preventDefault();
+        event.stopPropagation();
+        action.action?.();
+      };
+    }
+  }
+
+}
+
+function setupFloatingSelectionToolbar() {
+  const container = document.querySelector('#editor-container');
+  if (!container) return;
+  let bar = document.querySelector('#floating-selection-toolbar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'floating-selection-toolbar';
+    bar.className = 'grouped-control-bar floating-selection-toolbar';
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'Floating selection toolbar');
+    bar.setAttribute('aria-hidden', 'true');
+    container.appendChild(bar);
+  }
+  installToolbarTapActions(bar);
+
+  const registry = createRuntimeToolbarItemRegistryForConfig(floatingToolbarConfig);
+  const definitions = Object.fromEntries(
+    [...registry].map(([id, item]) => [
+      id,
+      { id, title: item.title, icon: item.icon, kind: item.kind || 'action' }
+    ])
+  );
+  renderBottomToolbarKeys(bar, floatingToolbarConfig, svgIcons, {
+    preventPointerDefault: false,
+    resolveCustomIcon: style => style.customSvg || '',
+    definitions,
+    resolveGestureActionIcon: (actionId, customSvg) => {
+      if (customSvg) return sanitizeToolbarSvg(customSvg, false);
+      const icon = registry.get(actionId)?.icon;
+      return typeof icon === 'string' && icon.includes('<svg')
+        ? icon
+        : svgIcons[icon] || icon || '';
+    },
+    onGesture: (id, gestureId, event, button) => {
+      const actionId = getToolbarGestureActionId(
+        floatingToolbarConfig.styles[id],
+        gestureId
+      );
+      return actionId
+        ? runToolbarGestureAction(actionId, button, new Set(), floatingToolbarConfig)
+        : false;
+    },
+    onKeyClick: (id, event) => {
+      if (!floatingToolbarConfig.customKeys?.[id]) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runToolbarGestureAction(id, event.currentTarget, new Set(), floatingToolbarConfig);
+    }
+  });
+
+  if (bar.dataset.floatingClickHandlerInstalled !== 'true') {
+    bar.dataset.floatingClickHandlerInstalled = 'true';
+    bar.addEventListener('click', event => {
+      const button = event.target?.closest?.('[data-toolbar-key], [data-toolbar-style-id]');
+      if (!button || !bar.contains(button)) return;
+      const id = button.dataset.toolbarKey || button.dataset.toolbarStyleId;
+      if (floatingToolbarConfig.customKeys?.[id]) return;
+      runToolbarGestureAction(id, button, new Set(), floatingToolbarConfig);
+    });
+  }
+
+  if (!document.__wmdxFloatingToolbarPositioningInstalled) {
+    const refresh = () => scheduleFloatingToolbarPosition();
+    window.addEventListener('resize', refresh, { passive: true });
+    window.addEventListener('scroll', refresh, { passive: true, capture: true });
+    window.visualViewport?.addEventListener('resize', refresh, { passive: true });
+    window.visualViewport?.addEventListener('scroll', refresh, { passive: true });
+    document.__wmdxFloatingToolbarPositioningInstalled = true;
+  }
+  updateFloatingSelectionToolbar();
+}
+
+function scheduleFloatingToolbarPosition() {
+  if (floatingToolbarSelectionFrame) return;
+  floatingToolbarSelectionFrame = window.requestAnimationFrame(() => {
+    floatingToolbarSelectionFrame = 0;
+    updateFloatingSelectionToolbar();
+  });
+}
+
+function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
+  const bar = document.querySelector('#floating-selection-toolbar');
+  if (!bar) return;
+  if (!floatingToolbarEnabled) {
+    bar.classList.remove('is-visible');
+    bar.setAttribute('aria-hidden', 'true');
+    if (activePopupSurface === 'floating') hidePopupStrip();
+    return;
+  }
+  const selection = view?.state?.selection?.main;
+  if (!view?.dom?.isConnected || !selection || selection.empty) {
+    bar.classList.remove('is-visible');
+    bar.setAttribute('aria-hidden', 'true');
+    if (activePopupSurface === 'floating') hidePopupStrip();
+    return;
+  }
+
+  let start;
+  let end;
+  try {
+    start = view.coordsAtPos(selection.from);
+    end = view.coordsAtPos(selection.to);
+  } catch {
+    start = null;
+    end = null;
+  }
+  if (!start || !end) {
+    bar.classList.remove('is-visible');
+    bar.setAttribute('aria-hidden', 'true');
+    if (activePopupSurface === 'floating') hidePopupStrip();
+    return;
+  }
+
+  bar.classList.add('is-visible');
+  bar.setAttribute('aria-hidden', 'false');
+  bar.style.removeProperty('width');
+  const rect = bar.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const position = getFloatingToolbarPosition({
+    start,
+    end,
+    toolbarWidth: rect.width,
+    toolbarHeight: rect.height,
+    viewport: {
+      offsetLeft: viewport?.offsetLeft || 0,
+      offsetTop: viewport?.offsetTop || 0,
+      width: viewport?.width || window.innerWidth,
+      height: viewport?.height || window.innerHeight
+    }
+  });
+  bar.style.width = `${position.width}px`;
+  bar.style.left = `${position.left}px`;
+  bar.style.top = `${position.top}px`;
+  if (activePopupSurface === 'floating') positionFloatingPopupStrip();
+}
+
+function positionFloatingPopupStrip(targetButton = null) {
+  const strip = document.querySelector('#popup-toolbar-strip');
+  const bar = targetButton?.closest?.('#floating-selection-toolbar') ||
+    document.querySelector('#floating-selection-toolbar');
+  if (!strip || strip.classList.contains('hidden') || !bar) return;
+  const barRect = bar.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const viewportLeft = viewport?.offsetLeft || 0;
+  const viewportTop = viewport?.offsetTop || 0;
+  const viewportWidth = viewport?.width || window.innerWidth;
+  const viewportHeight = viewport?.height || window.innerHeight;
+  const margin = 8;
+  const availableWidth = Math.max(0, viewportWidth - margin * 2);
+  strip.style.position = 'fixed';
+  strip.style.right = 'auto';
+  strip.style.bottom = 'auto';
+  strip.style.transform = 'none';
+  strip.style.maxWidth = `${availableWidth}px`;
+  strip.style.width = `${Math.min(strip.scrollWidth, availableWidth)}px`;
+  const stripRect = strip.getBoundingClientRect();
+  const left = Math.max(
+    viewportLeft + margin,
+    Math.min(
+      barRect.left + (barRect.width - stripRect.width) / 2,
+      viewportLeft + viewportWidth - stripRect.width - margin
+    )
+  );
+  const above = barRect.top - stripRect.height - margin;
+  const below = barRect.bottom + margin;
+  const top = above >= viewportTop + margin
+    ? above
+    : below + stripRect.height <= viewportTop + viewportHeight - margin
+      ? below
+      : Math.max(
+        viewportTop + margin,
+        Math.min(above, viewportTop + viewportHeight - stripRect.height - margin)
+      );
+  strip.style.left = `${left}px`;
+  strip.style.top = `${top}px`;
+}
+
+function createToolbarActionRegistry() {
+  const groups = [
+    [
+      { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', action: () => execCmd('heading', { value: 'paragraph' }) },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        id: `heading${index + 1}`,
+        title: `Heading ${index + 1}`,
+        icon: `H${index + 1}`,
+        command: `heading${index + 1}`,
+        action: () => execCmd('heading', { value: `heading${index + 1}` })
+      })),
+      { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap, action: () => window.editorBridge.toggleLineWrap() },
+      { id: 'line-numbers', title: 'Toggle Line Numbers', icon: '#', action: () => window.editorBridge.toggleLineNumbers() }
+    ],
+    [
+      { id: 'bulletedList', title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
+      { id: 'numberedList', title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', action: () => execCmd('numberedList') },
+      { id: 'todoList', title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', action: () => execCmd('todoList') },
+      { id: 'indent', title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
+      { id: 'outdent', title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
+    ],
+    [
+      { id: 'bold', title: 'Bold', icon: svgIcons.bold, command: 'bold', action: () => execCmd('bold') },
+      { id: 'italic', title: 'Italic', icon: svgIcons.italic, command: 'italic', action: () => execCmd('italic') },
+      { id: 'strikethrough', title: 'Strikethrough', icon: svgIcons.strikethrough, command: 'strikethrough', action: () => execCmd('strikethrough') },
+      { id: 'underline', title: 'Underline', icon: svgIcons.underline, command: 'underline', action: () => execCmd('underline') },
+      { id: 'yellowMarker', title: 'Yellow Marker', icon: svgIcons.squareMarker('#ffe066'), command: 'yellowMarker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
+      { id: 'greenMarker', title: 'Green Marker', icon: svgIcons.squareMarker('#a8f087'), command: 'greenMarker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
+      { id: 'pinkMarker', title: 'Pink Marker', icon: svgIcons.squareMarker('#ff99c8'), command: 'pinkMarker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
+      { id: 'blueMarker', title: 'Blue Marker', icon: svgIcons.squareMarker('#9bf6ff'), command: 'blueMarker', action: () => execCmd('highlight', { value: 'blueMarker' }) },
+      { id: 'redPen', title: 'Red Pen', icon: svgIcons.circlePen('#ff595e'), command: 'redPen', action: () => execCmd('highlight', { value: 'redPen' }) },
+      { id: 'greenPen', title: 'Green Pen', icon: svgIcons.circlePen('#2ec4b6'), command: 'greenPen', action: () => execCmd('highlight', { value: 'greenPen' }) }
+    ],
+    [
+      { id: 'insertTable', title: 'Insert Table', icon: svgIcons.insertTable, action: () => {
+        hidePopupStrip();
+        showTableGridPickerModal();
+      } },
+      ...TABLE_ACTIONS.map(item => ({
+        id: item.id,
+        title: item.title,
+        icon: item.icon,
+        disabled: !window.wmdxTableActions?.isEnabled(item.id),
+        action: () => {
+          hidePopupStrip();
+          window.wmdxTableActions?.run(item.id);
+        }
+      }))
+    ],
+    [
+      { id: 'image', title: 'Insert Image', icon: svgIcons.image, action: () => window.AndroidNative?.onNativeAction('image') },
+      { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
+      { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
+      { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
+      { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote, action: () => execCmd('blockQuote') },
+      { id: 'codeBlock', title: 'Code Block', icon: svgIcons.codeBlock, action: () => execCmd('codeBlock') },
+      { id: 'horizontalLine', title: 'Insert Line', icon: svgIcons.horizontalLine, action: () => execCmd('horizontalLine') },
+      { id: 'footnote', title: 'Insert Footnote', icon: svgIcons.footnote, action: () => openFootnoteInsertionDialog() }
+    ],
+    [
+      { id: 'newFile', title: 'New File', icon: svgIcons.newFile, action: () => window.AndroidNative?.onNativeAction('new') },
+      { id: 'openFile', title: 'Open File', icon: svgIcons.openFile, action: () => window.AndroidNative?.onNativeAction('open') },
+      { id: 'saveFile', title: 'Save File', icon: svgIcons.saveFile, action: () => window.AndroidNative?.onNativeAction('save') },
+      { id: 'saveAsFile', title: 'Save As', icon: svgIcons.saveAsFile, action: () => window.AndroidNative?.onNativeAction('save_as') },
+      { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack, action: () => window.AndroidNative?.onNativeAction('save_as_textpack') },
+      { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
+      { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
+      { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView, action: () => openWithOtherEngine() },
+      { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow, action: () => {
+        hidePopupStrip();
+        window.AndroidNative?.onNativeAction('new_window');
+      } },
+      { id: 'settings', title: 'Settings', icon: svgIcons.settings, action: () => window.AndroidNative?.onNativeAction('settings') }
+    ]
+  ];
+  const clipboardItems = BUILT_IN_HOLDING_ITEMS.map(item => ({
+    ...item,
+    icon: svgIcons[item.icon],
+    action: () => {
+      void runToolbarClipboardAction(item.id);
+    }
+  }));
+  return new Map([...groups.flat(), ...clipboardItems].map(item => [item.id, item]));
+}
+
+function getToolbarConfigForElement(element) {
+  const floatingToolbar = element?.closest?.('#floating-selection-toolbar');
+  if (floatingToolbar) return floatingToolbarConfig;
+  const popupStrip = element?.closest?.('#popup-toolbar-strip');
+  if (popupStrip?.dataset?.toolbarSurface === 'floating') return floatingToolbarConfig;
+  return bottomToolbarConfig;
+}
+
+function createRuntimeToolbarItemRegistry() {
+  return createRuntimeToolbarItemRegistryForConfig(bottomToolbarConfig);
+}
+
+function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
+  const registry = createToolbarActionRegistry();
+  for (const item of BOTTOM_TOOLBAR_ITEMS) {
+    if (!toolbarConfig.popupGroups[item.id]) continue;
+    registry.set(item.id, {
+      ...item,
+      kind: 'group',
+      icon: svgIcons[item.icon] || item.icon
+    });
+  }
+  for (const [id, group] of Object.entries(toolbarConfig.customGroups || {})) {
+    registry.set(id, {
+      id,
+      title: group.title,
+      icon: svgIcons[group.icon] || group.icon,
+      kind: 'group'
+    });
+  }
+  for (const [id, key] of Object.entries(toolbarConfig.customKeys || {})) {
+    registry.set(id, {
+      id,
+      title: key.title,
+      icon: svgIcons[key.icon] || key.icon,
+      kind: 'action'
+    });
+  }
+  for (const item of [
+    { id: 'historyBack', title: 'Back in Navigation History', icon: svgIcons.undo },
+    { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
+    { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
+    { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough },
+    { id: OPEN_GROUP_ACTION_ID, title: 'Open group', icon: svgIcons.folder }
+  ]) {
+    registry.set(item.id, item);
+  }
+  return registry;
+}
+
+function runToolbarGestureAction(
+  actionId,
+  sourceButton,
+  visited = new Set(),
+  toolbarConfig = getToolbarConfigForElement(sourceButton)
+) {
+  if (!actionId || visited.has(actionId)) return false;
+  visited.add(actionId);
+  if (actionId === OPEN_GROUP_ACTION_ID) {
+    const toolbarGroupId = [
+      sourceButton?.dataset?.toolbarKey,
+      sourceButton?.dataset?.toolbarStyleId
+    ].find(id => id && toolbarConfig.popupGroups[id]);
+    if (!toolbarGroupId) return false;
+    togglePopupStrip(
+      toolbarGroupId,
+      sourceButton,
+      getRuntimeToolbarGroupItemsForConfig(toolbarGroupId, toolbarConfig)
+    );
+    return true;
+  }
+  if (actionId === 'undo') {
+    activeAdapter?.undo();
+    return Boolean(activeAdapter);
+  }
+  if (actionId === 'historyBack' || actionId === 'historyForward') {
+    const direction = actionId === 'historyBack' ? 'back' : 'forward';
+    if (!navigateTocHistory(direction) && window.AndroidNative) {
+      window.AndroidNative.onNativeAction(
+        direction === 'back' ? 'history_back' : 'history_forward'
+      );
+    }
+    return true;
+  }
+  if (actionId === 'toggleToolbar') {
+    toggleBottomToolbar();
+    return true;
+  }
+  if (actionId === 'removeHighlight') {
+    execCmd('highlight', { value: null });
+    return true;
+  }
+  const customKey = toolbarConfig.customKeys?.[actionId];
+  if (customKey) {
+    return runToolbarGestureAction(customKey.actionId, sourceButton, visited, toolbarConfig);
+  }
+  const item = createRuntimeToolbarItemRegistryForConfig(toolbarConfig).get(actionId);
+  if (!item) return false;
+  if (toolbarConfig.popupGroups[actionId]) {
+    togglePopupStrip(
+      actionId,
+      sourceButton,
+      getRuntimeToolbarGroupItemsForConfig(actionId, toolbarConfig)
+    );
+    return true;
+  }
+  if (typeof item.action !== 'function') return false;
+  item.action();
+  return true;
+}
+
+async function runToolbarClipboardAction(actionId) {
+  const view = activeAdapter?.view;
+  if (!view) return false;
+
+  if (actionId === 'selectAll') {
+    view.dispatch({
+      selection: { anchor: 0, head: view.state.doc.length },
+      userEvent: 'select'
+    });
+    view.focus();
+    return true;
+  }
+
+  if (actionId === 'copy' || actionId === 'cut') {
+    const state = view.state;
+    const { from, to } = state.selection.main;
+    if (from === to) return false;
+    const text = state.sliceDoc(from, to);
+    let copied = false;
+    try {
+      if (typeof window.AndroidNative?.writeClipboard === 'function') {
+        copied = window.AndroidNative.writeClipboard(text) !== false;
+      }
+      if (!copied && typeof navigator.clipboard?.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+    if (!copied) {
+      window.AndroidNative?.showToast?.('Clipboard access is unavailable');
+      return false;
+    }
+    if (actionId === 'cut' && view.state === state) {
+      view.dispatch({
+        changes: { from, to, insert: '' },
+        selection: { anchor: from },
+        userEvent: 'delete.cut'
+      });
+    }
+    view.focus();
+    return true;
+  }
+
+  if (actionId === 'paste') {
+    let text;
+    try {
+      if (typeof window.AndroidNative?.readClipboard === 'function') {
+        text = window.AndroidNative.readClipboard();
+      } else if (typeof navigator.clipboard?.readText === 'function') {
+        text = await navigator.clipboard.readText();
+      }
+    } catch {
+      text = undefined;
+    }
+    if (typeof text !== 'string') {
+      window.AndroidNative?.showToast?.('Clipboard access is unavailable');
+      return false;
+    }
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+      userEvent: 'input.paste'
+    });
+    view.focus();
+    return true;
+  }
+
+  return false;
+}
+
+function installPopupToolbarSwipeUp(
+  button,
+  styleId,
+  toolbarConfig = getToolbarConfigForElement(button)
+) {
+  let pointerStart = null;
+  let longPressTimer = null;
+  let longPressHandled = false;
+  const clearLongPressTimer = () => {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+  button.addEventListener('pointerdown', event => {
+    if (event.button !== undefined && event.button !== 0) return;
+    clearLongPressTimer();
+    longPressHandled = false;
+    pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+    try {
+      button.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is not available in every embedded WebView version.
+    }
+    if (toolbarConfig.styles[styleId]?.gestureActions?.longPress) {
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (!pointerStart) return;
+        const actionId = toolbarConfig.styles[styleId]?.gestureActions?.longPress;
+        longPressHandled = Boolean(
+          actionId && runToolbarGestureAction(actionId, button, new Set(), toolbarConfig)
+        );
+        if (longPressHandled) {
+          button.dataset.toolbarGestureSuppressClick = 'true';
+        }
+      }, 500);
+    }
+  }, { capture: true });
+  button.addEventListener('pointermove', event => {
+    if (pointerStart?.pointerId !== undefined &&
+        event.pointerId !== pointerStart.pointerId) return;
+    if (!pointerStart || longPressTimer === null) return;
+    if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 8) {
+      clearLongPressTimer();
+    }
+  }, { capture: true });
+  button.addEventListener('pointerup', event => {
+    clearLongPressTimer();
+    if (pointerStart?.pointerId !== undefined &&
+        event.pointerId !== pointerStart.pointerId) return;
+    if (!pointerStart) return;
+    if (longPressHandled) {
+      longPressHandled = false;
+      pointerStart = null;
+      event.preventDefault();
+      return;
+    }
+    const deltaX = event.clientX - pointerStart.x;
+    const deltaY = event.clientY - pointerStart.y;
+    pointerStart = null;
+    const gestureId = getToolbarSwipeGesture(deltaX, deltaY);
+    if (!gestureId) return;
+    const style = toolbarConfig.styles[styleId] || {};
+    const actionId = getToolbarGestureActionId(style, gestureId);
+    if (!actionId ||
+        !runToolbarGestureAction(actionId, button, new Set(), toolbarConfig)) return;
+    button.dataset.toolbarGestureSuppressClick = 'true';
+    event.preventDefault();
+  }, { capture: true });
+  button.addEventListener('pointercancel', () => {
+    clearLongPressTimer();
+    pointerStart = null;
+    longPressHandled = false;
+  }, { capture: true });
+  button.addEventListener('click', event => {
+    if (button.dataset.toolbarGestureSuppressClick !== 'true') return;
+    delete button.dataset.toolbarGestureSuppressClick;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, { capture: true });
+}
+
+function getToolbarGestureIcon(actionId, customSvg, toolbarConfig = bottomToolbarConfig) {
+  if (customSvg) return sanitizeToolbarSvg(customSvg, false);
+  const icon = createRuntimeToolbarItemRegistryForConfig(toolbarConfig).get(actionId)?.icon;
+  return typeof icon === 'string' && icon.includes('<svg')
+    ? icon
+    : svgIcons[icon] || icon || '';
+}
+
+function getRuntimeToolbarGroupItems(groupId) {
+  return getRuntimeToolbarGroupItemsForConfig(groupId, bottomToolbarConfig);
+}
+
+function getRuntimeToolbarGroupItemsForConfig(groupId, toolbarConfig) {
+  const registry = createRuntimeToolbarItemRegistryForConfig(toolbarConfig);
+  return (toolbarConfig.popupGroups[groupId]?.order || [])
+    .map(id => {
+      const item = registry.get(id);
+      return item ? { ...item, styleId: id } : null;
+    })
+    .filter(Boolean);
 }
 
 export function getDocumentHeadings(doc) {
@@ -4023,6 +5056,241 @@ export function openLinkInsertionDialog() {
   });
 }
 
+export function openFootnoteInsertionDialog(options = {}) {
+  if (!activeAdapter || !activeAdapter.view) return;
+  const view = activeAdapter.view;
+  const definition = options.definition ?? null;
+  const selection = view.state.selection.main;
+  const selectionSnapshot = { from: selection.from, to: selection.to };
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">${definition ? 'Edit Footnote' : 'Insert Footnote'}</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-footnote-text">Footnote text</label>
+      <textarea id="modal-footnote-text" class="modal-input modal-textarea"
+        placeholder="Write the footnote here"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-btn-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm">
+        ${definition ? 'Save' : 'Insert'}
+      </button>
+    </div>
+  `;
+
+  const textInput = dialog.querySelector('#modal-footnote-text');
+  const btnCancel = dialog.querySelector('#modal-btn-cancel');
+  const btnConfirm = dialog.querySelector('#modal-btn-confirm');
+  textInput.value = definition?.body ?? '';
+
+  const closeModal = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+  };
+
+  btnCancel.addEventListener('click', event => {
+    event.preventDefault();
+    closeModal();
+    view.focus();
+  });
+
+  btnConfirm.addEventListener('click', event => {
+    event.preventDefault();
+    const body = textInput.value.trim();
+    if (!body) {
+      textInput.focus();
+      return;
+    }
+
+    if (definition) {
+      const formattedDefinition = formatFootnoteDefinition(definition.label, body);
+      view.dispatch({
+        changes: {
+          from: definition.from,
+          to: definition.to,
+          insert: formattedDefinition
+        },
+        selection: {
+          anchor: definition.from + formattedDefinition.length,
+          head: definition.from + formattedDefinition.length
+        }
+      });
+    } else {
+      const label = nextFootnoteLabel(view.state.doc.toString());
+      const marker = `[^${label}]`;
+      const formattedDefinition = formatFootnoteDefinition(label, body);
+      const docText = view.state.doc.toString();
+      const separatorFor = text => {
+        if (!text) return '\n\n';
+        if (text.endsWith('\n\n')) return '';
+        if (text.endsWith('\n')) return '\n';
+        return '\n\n';
+      };
+      const markerEnd = selectionSnapshot.to + marker.length;
+      const changes = selectionSnapshot.to === view.state.doc.length
+        ? {
+            from: selectionSnapshot.to,
+            insert: marker +
+              separatorFor(docText.slice(0, selectionSnapshot.to) + marker) +
+              formattedDefinition
+          }
+        : [
+            { from: selectionSnapshot.to, insert: marker },
+            {
+              from: view.state.doc.length,
+              insert: separatorFor(docText) + formattedDefinition
+            }
+          ];
+
+      view.dispatch({
+        changes,
+        selection: { anchor: markerEnd, head: markerEnd }
+      });
+    }
+
+    closeModal();
+    view.focus();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => textInput.focus());
+}
+
+function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Image</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-image-alt">Description (alt text)</label>
+      <input id="modal-image-alt" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-image-url">Image location</label>
+      <input id="modal-image-url" class="modal-input" type="text" autocomplete="off" />
+    </div>
+      <div class="modal-field-group">
+        <label class="modal-label" for="modal-image-width">Width in pixels (optional)</label>
+        <input id="modal-image-width" class="modal-input" type="number" min="1" max="10000" step="1" inputmode="numeric" placeholder="Automatic" />
+      </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-image-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-image-save">Save</button>
+    </div>
+  `;
+
+  const altInput = dialog.querySelector('#modal-image-alt');
+  const urlInput = dialog.querySelector('#modal-image-url');
+  const widthInput = dialog.querySelector('#modal-image-width');
+  const error = document.createElement('p');
+  error.className = 'modal-error';
+  error.setAttribute('role', 'alert');
+  error.hidden = true;
+  dialog.querySelector('.modal-actions').before(error);
+  altInput.value = alt;
+  urlInput.value = url;
+  widthInput.value = imageWidth ?? '';
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-image-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-image-save').addEventListener('click', event => {
+    event.preventDefault();
+    const newUrl = urlInput.value.trim();
+    if (!newUrl) {
+      error.textContent = 'Enter an image location before saving.';
+      error.hidden = false;
+      urlInput.focus();
+      return;
+    }
+    const widthText = widthInput.value.trim();
+    const newWidth = widthText === '' ? null : Number(widthText);
+    if (newWidth !== null &&
+      (!Number.isInteger(newWidth) || newWidth < 1 || newWidth > 10000)
+    ) {
+      error.textContent = 'Width must be a whole number from 1 to 10000 pixels.';
+      error.hidden = false;
+      widthInput.focus();
+      return;
+    }
+    if (
+      from < 0 ||
+      to > view.state.doc.length ||
+      from >= to ||
+      !parseMarkdownImage(view.state.doc.sliceString(from, to))
+    ) {
+      error.textContent = 'This image is no longer in the document.';
+      error.hidden = false;
+      return;
+    }
+
+    const markdown = formatMarkdownImage(altInput.value, newUrl, newWidth);
+    view.dispatch({
+      changes: { from, to, insert: markdown },
+      selection: { anchor: from + markdown.length, head: from + markdown.length }
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => altInput.focus());
+}
+
+function openImageDeleteConfirmation(view, from, to) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Delete Image?</h3>
+    <p class="modal-message">
+      This removes the image from the document only. The image file itself will not be deleted.
+    </p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-image-keep">Keep Image</button>
+      <button type="button" class="modal-btn modal-btn-delete" id="modal-image-confirm-delete">Delete</button>
+    </div>
+  `;
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-image-keep').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-image-confirm-delete').addEventListener('click', event => {
+    event.preventDefault();
+    if (
+      from < 0 ||
+      to > view.state.doc.length ||
+      from >= to ||
+      !parseMarkdownImage(view.state.doc.sliceString(from, to))
+    ) {
+      close();
+      return;
+    }
+    view.dispatch({
+      changes: { from, to, insert: '' },
+      selection: { anchor: from, head: from }
+    });
+    close();
+  });
+  overlay.classList.add('open');
+}
+
 export function openCalloutInsertionDialog() {
   if (!activeAdapter || !activeAdapter.view) return;
   const view = activeAdapter.view;
@@ -4199,12 +5467,15 @@ function insertCustomTable(rows, cols) {
 function execCmd(cmdName, options) {
   if (activeAdapter && activeAdapter.view) {
     const view = activeAdapter.view;
-    if (cmdName === 'bold') cmWrapSelection(view, '**');
-    else if (cmdName === 'italic') cmWrapSelection(view, '*');
-    else if (cmdName === 'strikethrough') cmWrapSelection(view, '~~');
-    else if (cmdName === 'underline') cmWrapSelection(view, '<u>', '</u>');
-    else if (cmdName === 'code') cmWrapSelection(view, '`');
-    else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
+    if (
+      cmdName === 'bold' ||
+      cmdName === 'italic' ||
+      cmdName === 'strikethrough' ||
+      cmdName === 'underline' ||
+      cmdName === 'code'
+    ) {
+      toggleMarkdownFormat(view, cmdName);
+    } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
     else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
     else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
@@ -4212,7 +5483,7 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'indent') cmIndentSelection(view, '  ');
     else if (cmdName === 'outdent') cmOutdentSelection(view, '  ');
     else if (cmdName === 'horizontalLine') cmWrapSelection(view, '\n---\n', '');
-    else if (cmdName === 'InsertFootnote') cmWrapSelection(view, '[^1]', '\n[^1]: footnote text');
+    else if (cmdName === 'InsertFootnote') openFootnoteInsertionDialog();
     else if (cmdName === 'link') openLinkInsertionDialog();
     else if (cmdName === 'callout') openCalloutInsertionDialog();
     else if (cmdName === 'insertTable') cmWrapSelection(view, '\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '');
@@ -4227,9 +5498,9 @@ function execCmd(cmdName, options) {
       else if (val === 'heading6') cmToggleLinePrefix(view, '###### ');
     } else if (cmdName === 'highlight') {
       const val = options ? options.value : null;
-      if (val === 'yellowMarker' || val === 'greenMarker' || val === 'pinkMarker' || val === 'blueMarker') cmWrapSelection(view, '==', '==');
-      else if (val === 'redPen') cmWrapSelection(view, '<span style="color:red">', '</span>');
-      else if (val === 'greenPen') cmWrapSelection(view, '<span style="color:green">', '</span>');
+      if (val === 'yellowMarker' || val === 'greenMarker' || val === 'pinkMarker' || val === 'blueMarker' || val === 'redPen' || val === 'greenPen') {
+        toggleMarkdownFormat(view, val);
+      }
     }
   }
 }
@@ -4238,40 +5509,217 @@ function hidePopupStrip() {
   const strip = document.querySelector('#popup-toolbar-strip');
   if (strip) {
     strip.classList.add('hidden');
+    strip.classList.remove('is-floating-popup');
     strip.innerHTML = '';
+    strip.style.removeProperty('left');
+    strip.style.removeProperty('top');
+    strip.style.removeProperty('width');
+    strip.style.removeProperty('max-width');
+    strip.style.removeProperty('right');
+    strip.style.removeProperty('bottom');
+    strip.style.removeProperty('position');
+    strip.style.removeProperty('transform');
+    strip.dataset.toolbarSurface = 'bottom';
   }
   activePopupGroup = null;
+  activeToolbarRootKey = null;
+  activePopupSurface = 'bottom';
   document.querySelectorAll('.grouped-key-btn').forEach(btn => btn.classList.remove('active'));
 }
 
-function togglePopupStrip(groupKey, targetBtn, items) {
+function togglePopupStrip(
+  groupKey,
+  targetBtn,
+  items,
+  toolbarConfig = getToolbarConfigForElement(targetBtn)
+) {
   const strip = document.querySelector('#popup-toolbar-strip');
   if (!strip) return;
+  installToolbarTapActions(strip);
+  const surface = toolbarConfig === floatingToolbarConfig ? 'floating' : 'bottom';
 
-  if (activePopupGroup === groupKey) {
+  if (activePopupGroup === groupKey && activePopupSurface === surface) {
     hidePopupStrip();
     return;
   }
 
-  hidePopupStrip();
+  if (targetBtn?.closest('.grouped-control-bar')) {
+    activeToolbarRootKey = targetBtn.dataset.toolbarKey || groupKey;
+  }
+  strip.innerHTML = '';
+  strip.dataset.toolbarSurface = surface;
+  strip.classList.toggle('is-floating-popup', surface === 'floating');
+  strip.classList.remove('hidden');
   activePopupGroup = groupKey;
-  targetBtn.classList.add('active');
+  activePopupSurface = surface;
+  document.querySelectorAll('.grouped-key-btn').forEach(btn => btn.classList.remove('active'));
+  const rootKey = activeToolbarRootKey || groupKey;
+  const rootSelector = surface === 'floating'
+    ? '#floating-selection-toolbar [data-toolbar-key]'
+    : '#bottom-toolbar [data-toolbar-key]';
+  const rootKeyButton = [...document.querySelectorAll(rootSelector)]
+    .find(button => button.dataset.toolbarKey === rootKey);
+  rootKeyButton?.classList.add('active');
 
-  items.forEach(item => {
+  const configuredItems = bottomToolbarConfig.popupGroups[groupKey]
+    ? surface === 'bottom'
+      ? getRuntimeToolbarGroupItems(groupKey)
+      : getRuntimeToolbarGroupItemsForConfig(groupKey, toolbarConfig)
+    : toolbarConfig.popupGroups[groupKey]
+      ? getRuntimeToolbarGroupItemsForConfig(groupKey, toolbarConfig)
+    : items;
+  orderBottomToolbarPopupItems(
+    groupKey,
+    configuredItems,
+    toolbarConfig.popupGroups
+  ).forEach(item => {
     const btn = document.createElement('button');
     btn.className = 'popup-strip-btn';
-    if (item.title) btn.title = item.title;
-    btn.innerHTML = item.icon || item.title;
+    const styleId = item.styleId || item.id || item.command;
+    const style = styleId ? toolbarConfig.styles[styleId] || {} : {};
+    btn.classList.toggle('has-toolbar-swipe-action', hasToolbarSwipeActions(style));
+    btn.classList.toggle('toolbar-key-force-label', style.forceShowLabel === true);
+    if (styleId) btn.dataset.toolbarStyleId = styleId;
+    if (style.iconColor) {
+      btn.style.setProperty('--toolbar-key-icon-color', toToolbarCssColor(style.iconColor));
+    }
+    if (style.backgroundColor) {
+      btn.style.setProperty('--toolbar-key-bg-color', toToolbarCssColor(style.backgroundColor));
+    }
+    if (style.activeBackgroundColor) {
+      btn.style.setProperty(
+        '--toolbar-key-active-bg-color',
+        toToolbarCssColor(style.activeBackgroundColor)
+      );
+    }
+    const title = style.title || item.title;
+    if (title) {
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+    }
+    if (item.disabled) {
+      btn.disabled = true;
+      btn.setAttribute('aria-disabled', 'true');
+      btn.classList.add('disabled');
+    }
+    if (item.command) btn.dataset.toolbarCommand = item.command;
+    const customIcon = style.customSvg
+      ? sanitizeToolbarSvg(style.customSvg, style.preserveSvgColors === true)
+      : '';
+    const icon = document.createElement('span');
+    icon.className = 'toolbar-key-icon';
+    const iconMarkup = customIcon || item.icon || '';
+    if (iconMarkup.includes?.('<svg')) icon.innerHTML = iconMarkup;
+    else icon.textContent = iconMarkup || title || '';
+    btn.appendChild(icon);
+    const label = document.createElement('span');
+    label.className = 'toolbar-key-label';
+    label.textContent = title || '';
+    btn.appendChild(label);
+    for (const { id: gestureId, actionId: gestureActionId, position } of
+      getToolbarGestureIndicatorEntries(style)) {
+      const gestureIcon = getToolbarGestureIcon(
+        gestureActionId,
+        style.gestureActionIcons?.[gestureId] ||
+          (gestureId === 'swipeUp' ? style.gestureActionIconSvg : ''),
+        toolbarConfig
+      );
+      if (gestureIcon) {
+        const marker = document.createElement('span');
+        marker.className =
+          `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
+        marker.dataset.gesturePosition = position;
+        marker.setAttribute('aria-hidden', 'true');
+        marker.innerHTML = gestureIcon;
+        btn.appendChild(marker);
+      }
+    }
+    btn.addEventListener('pointerdown', event => {
+      // Prevent toolbar interaction from stealing focus from the editor and
+      // dismissing the on-screen keyboard.
+      event.preventDefault();
+    });
     btn.onclick = (e) => {
       e.stopPropagation();
-      if (typeof item.action === 'function') {
-        item.action();
+      if (surface === 'bottom') {
+        if (bottomToolbarConfig.popupGroups[styleId]) {
+          togglePopupStrip(styleId, btn, getRuntimeToolbarGroupItems(styleId));
+          return;
+        }
+      } else if (toolbarConfig.popupGroups[styleId]) {
+        togglePopupStrip(
+          styleId,
+          btn,
+          getRuntimeToolbarGroupItemsForConfig(styleId, toolbarConfig),
+          toolbarConfig
+        );
+        return;
       }
+      runToolbarGestureAction(styleId, btn, new Set(), toolbarConfig);
     };
+    installPopupToolbarSwipeUp(btn, styleId, toolbarConfig);
     strip.appendChild(btn);
   });
 
   strip.classList.remove('hidden');
+  strip.scrollLeft = 0;
+  if (surface === 'floating') positionFloatingPopupStrip(targetBtn);
+  refreshToolbarSyntaxState();
+  const activeCommand = strip.querySelector('.popup-strip-btn.active');
+  if (activeCommand) {
+    const stripRect = strip.getBoundingClientRect();
+    const commandRect = activeCommand.getBoundingClientRect();
+    if (commandRect.left < stripRect.left + 8) {
+      strip.scrollLeft -= stripRect.left + 8 - commandRect.left;
+    } else if (commandRect.right > stripRect.right - 8) {
+      strip.scrollLeft += commandRect.right - stripRect.right + 8;
+    }
+  }
+}
+
+function getToolbarSyntaxState(view) {
+  if (!view?.state) return {};
+  const state = getMarkdownFormattingState(view);
+  const selection = view.state.selection.main;
+  const line = view.state.doc.lineAt(selection.head).text;
+  const heading = /^\s{0,3}(#{1,6})\s+/.exec(line);
+  const todo = /^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+/.test(line);
+  const numbered = /^\s*\d+[.)]\s+/.test(line);
+  const bullet = /^\s*[-*+]\s+/.test(line) && !todo;
+  state.paragraph = !heading && !todo && !numbered && !bullet;
+  for (let level = 1; level <= 6; level++) {
+    state[`heading${level}`] = Number(heading?.[1].length) === level;
+  }
+  state.todoList = todo;
+  state.numberedList = numbered && !todo;
+  state.bulletedList = bullet;
+  return state;
+}
+
+function refreshToolbarSyntaxState(view = activeAdapter?.view) {
+  if (!view?.state || typeof document === 'undefined') return;
+  const state = getToolbarSyntaxState(view);
+  document.querySelectorAll('[data-toolbar-command]').forEach(button => {
+    const active = Boolean(state[button.dataset.toolbarCommand]);
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+
+  const groupStates = {
+    heading: Object.keys(state).some(key => /^heading[1-6]$/.test(key) && state[key]),
+    lists: Boolean(state.bulletedList || state.numberedList || state.todoList),
+    format: Boolean(
+      state.bold || state.italic || state.strikethrough || state.underline ||
+      state.code || state.yellowMarker || state.greenMarker || state.pinkMarker ||
+      state.blueMarker || state.redPen || state.greenPen
+    )
+  };
+  for (const [group, active] of Object.entries(groupStates)) {
+    const button = document.querySelector(`#grp-btn-${group}`);
+    if (!button) continue;
+    button.classList.toggle('has-active-syntax', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
 }
 
 let regexHistory = [];
@@ -4820,6 +6268,8 @@ function setupFastScrollbar() {
 function updateTocActiveSection() {
   const tocContent = document.querySelector('#toc-content');
   const panel = document.querySelector('#toc-panel');
+  const tocSearchInput = document.querySelector('#toc-search-input');
+  const isSearching = Boolean(tocSearchInput?.value.trim());
   if (
     !tocContent ||
     !panel?.classList.contains('open') ||
@@ -4871,12 +6321,12 @@ function updateTocActiveSection() {
 
   if (activeRow) {
     let activeHeadingChanged = activeRow.dataset.headingKey !== tocExpansionState.activeHeadingKey;
-    if (typeof revealActiveTocHeading === 'function') {
+    if (!isSearching && typeof revealActiveTocHeading === 'function') {
       activeHeadingChanged = revealActiveTocHeading(activeRow) || activeHeadingChanged;
     }
     activeRow.classList.add('active-section');
 
-    if (activeHeadingChanged || tocExpansionState.centerOnNextUpdate) {
+    if (!isSearching && (activeHeadingChanged || tocExpansionState.centerOnNextUpdate)) {
       const containerRect = tocContent.getBoundingClientRect();
       const rowRect = activeRow.getBoundingClientRect();
       if (containerRect.height > 0 && rowRect.height > 0 && tocContent.clientHeight > 0) {
@@ -4908,6 +6358,8 @@ function setupTocGestureAndPanel(scrollDOM) {
   const settingsButton = document.querySelector('#toc-settings-button');
   const historyBackButton = document.querySelector('#toc-history-back');
   const historyForwardButton = document.querySelector('#toc-history-forward');
+  const documentStatsRow = document.querySelector('#toc-document-stats');
+  const tocSearchInput = document.querySelector('#toc-search-input');
   if (!panel || !overlay) return () => {};
 
   let pendingRefreshTimer = null;
@@ -4986,6 +6438,10 @@ function setupTocGestureAndPanel(scrollDOM) {
       cancelDocumentNameEdit();
       documentNameInput.blur();
     }
+    if (document.activeElement === tocSearchInput) {
+      tocSearchInput.blur();
+      window.AndroidNative?.hideKeyboard?.();
+    }
     panel.classList.remove('open');
     overlay.classList.remove('open');
   };
@@ -5010,6 +6466,20 @@ function setupTocGestureAndPanel(scrollDOM) {
     documentNameInput.addEventListener('click', onDocumentNameClick);
     documentNameInput.addEventListener('keydown', onDocumentNameKeyDown);
     documentNameInput.addEventListener('blur', onDocumentNameBlur);
+  }
+  if (tocSearchInput) {
+    tocSearchInput.addEventListener('input', () => {
+      applyTocCollapseState();
+      updateTocActiveSection();
+    });
+    tocSearchInput.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        tocSearchInput.value = '';
+        applyTocCollapseState();
+        updateTocActiveSection();
+      }
+    });
   }
 
   const onSettingsClick = () => {
@@ -5096,7 +6566,17 @@ function setupTocGestureAndPanel(scrollDOM) {
     if (!tocContent || !activeAdapter) return;
     tocContent.innerHTML = '';
 
-    const items = extractTocHeadings(activeAdapter.getMarkdown());
+    const markdown = activeAdapter.getMarkdown();
+    const counts = countDocumentText(markdown);
+    if (documentStatsRow) {
+      documentStatsRow.textContent = '';
+      const words = document.createElement('span');
+      words.textContent = `Words: ${counts.words.toLocaleString()}`;
+      const characters = document.createElement('span');
+      characters.textContent = `Characters: ${counts.characters.toLocaleString()}`;
+      documentStatsRow.append(words, characters);
+    }
+    const items = extractTocHeadings(markdown);
 
     if (items.length === 0) {
       tocExpansionState.collapsedHeadingKeys.clear();
@@ -5191,7 +6671,8 @@ function setupTocGestureAndPanel(scrollDOM) {
 
       const textSpan = document.createElement('span');
       textSpan.className = 'toc-text';
-      textSpan.textContent = item.title;
+      textSpan.dataset.headingTitle = item.title;
+      renderTocHeadingText(textSpan, item.title, tocSearchInput?.value);
 
       itemRow.appendChild(toggleSpan);
       itemRow.appendChild(textSpan);
@@ -5212,6 +6693,64 @@ function setupTocGestureAndPanel(scrollDOM) {
 
     applyTocCollapseState();
     updateTocActiveSection();
+  }
+
+  function renderTocHeadingText(textSpan, title, query) {
+    const ranges = findTocMatchRanges(title, query);
+    if (ranges.length === 0) {
+      textSpan.textContent = title;
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    let offset = 0;
+    ranges.forEach(({ from, to }) => {
+      if (from > offset) fragment.appendChild(document.createTextNode(title.slice(offset, from)));
+      const mark = document.createElement('mark');
+      mark.className = 'toc-search-match';
+      mark.textContent = title.slice(from, to);
+      fragment.appendChild(mark);
+      offset = to;
+    });
+    if (offset < title.length) fragment.appendChild(document.createTextNode(title.slice(offset)));
+    textSpan.replaceChildren(fragment);
+  }
+
+  function applyTocSearchFilter(itemRows) {
+    const query = tocSearchInput?.value.trim() ?? '';
+    tocContent.querySelector('.toc-search-empty')?.remove();
+    if (!query) {
+      itemRows.forEach(row => {
+        row.querySelector('.toc-toggle')?.style.removeProperty('visibility');
+        renderTocHeadingText(
+          row.querySelector('.toc-text'),
+          row.querySelector('.toc-text')?.dataset.headingTitle ?? '',
+          ''
+        );
+      });
+      return;
+    }
+
+    const items = itemRows.map(row => ({
+      level: Number(row.dataset.level) || 1,
+      title: row.querySelector('.toc-text')?.dataset.headingTitle ?? ''
+    }));
+    const { matchingIndexes, visibleIndexes } = getTocSearchState(items, query);
+    itemRows.forEach((row, index) => {
+      row.style.display = visibleIndexes.has(index) ? 'flex' : 'none';
+      const toggle = row.querySelector('.toc-toggle');
+      if (toggle) toggle.style.visibility = 'hidden';
+      if (matchingIndexes.has(index)) {
+        renderTocHeadingText(row.querySelector('.toc-text'), items[index].title, query);
+      } else {
+        renderTocHeadingText(row.querySelector('.toc-text'), items[index].title, '');
+      }
+    });
+    if (matchingIndexes.size === 0 && itemRows.length > 0) {
+      const emptyMessage = document.createElement('div');
+      emptyMessage.className = 'toc-search-empty';
+      emptyMessage.textContent = 'No matching headings.';
+      tocContent.appendChild(emptyMessage);
+    }
   }
 
   function applyTocCollapseState() {
@@ -5238,6 +6777,7 @@ function setupTocGestureAndPanel(scrollDOM) {
           toggle.setAttribute('aria-disabled', String(!hasChildren));
         }
       });
+      applyTocSearchFilter(itemRows);
       return;
     }
 
@@ -5265,6 +6805,7 @@ function setupTocGestureAndPanel(scrollDOM) {
         child.style.display = 'none';
       }
     });
+    applyTocSearchFilter(itemRows);
   }
 
   const revealActiveHeadingInToc = (activeRow) => {
@@ -5394,44 +6935,6 @@ function setupFloatingToggle() {
   }
 }
 
-function matchSingleHotkey(event, shortcutString) {
-  if (!shortcutString || typeof shortcutString !== 'string') return false;
-  const parts = shortcutString.toLowerCase().trim().split('+');
-  const hasCtrl = parts.includes('ctrl') || parts.includes('control');
-  const hasAlt = parts.includes('alt');
-  const hasShift = parts.includes('shift');
-  const keyPart = parts.find(p => p !== 'ctrl' && p !== 'control' && p !== 'alt' && p !== 'shift');
-
-  if (!keyPart || keyPart.length === 0) return false;
-
-  const ctrlPressed = event.ctrlKey || event.metaKey;
-  const altPressed = event.altKey;
-  const shiftPressed = event.shiftKey;
-
-  if (hasCtrl !== ctrlPressed) return false;
-  if (hasAlt !== altPressed) return false;
-  if (hasShift !== shiftPressed) return false;
-
-  const keyLower = (event.key || '').toLowerCase();
-  const codeLower = (event.code || '').toLowerCase();
-
-  if (keyLower === keyPart) return true;
-  if (codeLower === `key${keyPart}` || codeLower === keyPart) return true;
-  if (keyPart === ',' && (keyLower === ',' || codeLower === 'comma')) return true;
-  if (keyPart === '.' && (keyLower === '.' || codeLower === 'period')) return true;
-  if (keyPart === 'tab' && (keyLower === 'tab' || codeLower === 'tab')) return true;
-  if (keyPart === 'left' && (keyLower === 'arrowleft' || codeLower === 'arrowleft')) return true;
-  if (keyPart === 'right' && (keyLower === 'arrowright' || codeLower === 'arrowright')) return true;
-
-  return false;
-}
-
-function parseAndMatchHotkey(event, shortcutString) {
-  if (!shortcutString || typeof shortcutString !== 'string') return false;
-  const shortcuts = shortcutString.trim().split(/\s+/);
-  return shortcuts.some(sc => matchSingleHotkey(event, sc));
-}
-
 function setupKeyboardShortcuts() {
   window.addEventListener('keydown', (e) => {
     if (e.target?.closest?.('input, textarea, select')) return;
@@ -5475,6 +6978,9 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as');
+    } else if (parseAndMatchHotkey(e, customHotkeys.save_as_textpack)) {
+      e.preventDefault();
+      window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack');
     } else if (parseAndMatchHotkey(e, customHotkeys.export)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('export');
@@ -5499,6 +7005,9 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.line_numbers)) {
       e.preventDefault();
       window.editorBridge.toggleLineNumbers();
+    } else if (parseAndMatchHotkey(e, customHotkeys.sourceEditing)) {
+      e.preventDefault();
+      setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source');
     } else if (parseAndMatchHotkey(e, customHotkeys.findAndReplace)) {
       e.preventDefault();
       toggleFindAndReplaceBar();
@@ -5511,6 +7020,7 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.strikethrough)) { e.preventDefault(); execCmd('strikethrough'); }
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.footnote)) { e.preventDefault(); execCmd('InsertFootnote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.callout)) { e.preventDefault(); execCmd('callout'); }
     else if (parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.codeBlock)) { e.preventDefault(); execCmd('codeBlock'); }
@@ -5558,11 +7068,33 @@ window.editorBridge = {
   openCalloutInsertionDialog: function() {
     openCalloutInsertionDialog();
   },
+  openFootnoteInsertionDialog: function() {
+    openFootnoteInsertionDialog();
+  },
+  setNavigationDiagnosticsEnabled: function(enabled) {
+    activeAdapter?.setNavigationDiagnosticsEnabled(Boolean(enabled));
+  },
   setEditorMode: function(mode) {
     return setEditorMode(mode);
   },
   getEditorMode: function() {
     return currentEditorMode;
+  },
+  applyBottomToolbarConfig: function(rawConfig) {
+    bottomToolbarConfig = normalizeBottomToolbarConfig(rawConfig);
+    hidePopupStrip();
+    setupGroupedControlBar();
+  },
+  applyFloatingToolbarConfig: function(rawConfig) {
+    floatingToolbarConfig = normalizeBottomToolbarConfig(rawConfig);
+    hidePopupStrip();
+    setupFloatingSelectionToolbar();
+  },
+  applyToolbarConfigs: function(bottomRawConfig, floatingRawConfig) {
+    bottomToolbarConfig = normalizeBottomToolbarConfig(bottomRawConfig);
+    floatingToolbarConfig = normalizeBottomToolbarConfig(floatingRawConfig);
+    hidePopupStrip();
+    setupGroupedControlBar();
   },
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
@@ -5630,11 +7162,17 @@ window.editorBridge = {
     setCssVar('--selection-highlight-text', prefs.pref_selection_highlight_text_color);
 
     // Body & Paragraph
+    const paragraphAlignment = prefs.pref_justify_paragraph === true
+      ? 'justify'
+      : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify || 'left');
     setCssVar('--body-font-size', prefs.pref_body_font_size, 'px');
+    setCssVar('--body-font-family', toCssFontFamily(prefs.pref_body_font_family));
+    setCssVar('--body-font-weight', prefs.pref_body_font_weight ?? 400);
+    setCssVar('--body-text-color', androidArgbToCss(prefs.pref_body_text_color));
     setCssVar('--paragraph-line-height', prefs.pref_paragraph_line_height);
     setCssVar('--paragraph-letter-spacing', prefs.pref_letter_spacing || prefs.pref_paragraph_letter_spacing, 'px');
-    const alignVal = prefs.pref_justify_paragraph === true ? 'justify' : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify);
-    setCssVar('--paragraph-align', alignVal);
+    setCssVar('--paragraph-align', paragraphAlignment);
+    setCssVar('--paragraph-hyphens', prefs.pref_paragraph_hyphenate === true ? 'auto' : 'none');
     setCssVar('--paragraph-indent', prefs.pref_paragraph_first_line_indent, 'px');
     setCssVar('--paragraph-margin-top', prefs.pref_paragraph_margin_top, 'px');
     setCssVar('--paragraph-margin-bottom', prefs.pref_paragraph_margin_bottom, 'px');
@@ -5647,6 +7185,7 @@ window.editorBridge = {
     setCssVar('--heading-scale', globalHeadingScale);
 
     setCssVar('--heading-color', androidArgbToCss(prefs.pref_heading_color));
+    setCssVar('--heading-font-family', toCssFontFamily(prefs.pref_heading_font_family));
     setCssVar('--heading-font-weight', prefs.pref_font_weight_heading);
     setCssVar('--heading-align', prefs.pref_heading_align);
     setCssVar('--heading-line-height', prefs.pref_heading_line_height);
@@ -5718,11 +7257,53 @@ window.editorBridge = {
     setCssVar('--code-padding', prefs.pref_code_padding, 'px');
     setCssVar('--code-border-radius', prefs.pref_code_border_radius, 'px');
 
-    // Footnote
-    setCssVar('--footnote-text-color', prefs.pref_footnote_text_color);
-    setCssVar('--footnote-bg-color', prefs.pref_footnote_bg_color);
-    setCssVar('--footnote-ref-color', prefs.pref_footnote_ref_color);
-    setCssVar('--footnote-font-size', prefs.pref_footnote_font_size, 'px');
+    // Footnote typography inherits paragraph/body values until overrides are enabled.
+    const inheritFootnoteTypography =
+      prefs.pref_footnote_inherit_body_typography !== false;
+    setCssVar(
+      '--footnote-font-size',
+      inheritFootnoteTypography ? 'var(--body-font-size)' : prefs.pref_footnote_font_size,
+      inheritFootnoteTypography ? '' : 'px'
+    );
+    setCssVar(
+      '--footnote-font-weight',
+      inheritFootnoteTypography
+        ? 'var(--body-font-weight, 400)'
+        : (prefs.pref_footnote_font_weight ?? 400)
+    );
+    setCssVar(
+      '--footnote-letter-spacing',
+      inheritFootnoteTypography
+        ? 'var(--paragraph-letter-spacing)'
+        : prefs.pref_footnote_letter_spacing
+    );
+    setCssVar(
+      '--footnote-line-height',
+      inheritFootnoteTypography
+        ? 'var(--paragraph-line-height)'
+        : prefs.pref_footnote_line_height
+    );
+    setCssVar(
+      '--footnote-text-align',
+      inheritFootnoteTypography
+        ? paragraphAlignment
+        : prefs.pref_footnote_text_align
+    );
+    setCssVar(
+      '--footnote-text-color',
+      inheritFootnoteTypography
+        ? 'var(--body-text-color, var(--text-color, inherit))'
+        : androidArgbToCss(prefs.pref_footnote_text_color)
+    );
+    setCssVar(
+      '--footnote-hyphens',
+      inheritFootnoteTypography
+        ? 'var(--paragraph-hyphens, none)'
+        : (prefs.pref_footnote_hyphenate === true ? 'auto' : 'none')
+    );
+    setCssVar('--footnote-bg-color', androidArgbToCss(prefs.pref_footnote_bg_color));
+    setCssVar('--footnote-ref-color', androidArgbToCss(prefs.pref_footnote_ref_color));
+    setCssVar('--footnote-link-color', androidArgbToCss(prefs.pref_footnote_link_color));
 
     // Body & Headings Margins
     setCssVar('--body-margin-left', prefs.pref_body_margin_left ?? 16, 'px');
@@ -5731,11 +7312,39 @@ window.editorBridge = {
     setCssVar('--heading-margin-right', prefs.pref_heading_margin_right ?? 0, 'px');
 
     // Lists
+    const inheritListTypography = prefs.pref_list_inherit_body_typography !== false;
+    setCssVar('--list-font-family', inheritListTypography
+      ? 'var(--body-font-family, inherit)'
+      : (prefs.pref_list_font_family && prefs.pref_list_font_family !== 'default'
+        ? toCssFontFamily(prefs.pref_list_font_family)
+        : 'inherit'));
+    setCssVar('--list-font-size', inheritListTypography
+      ? 'var(--body-font-size, 16px)'
+      : (prefs.pref_list_font_size ?? 16), inheritListTypography ? '' : 'px');
+    setCssVar('--list-font-weight', inheritListTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_list_font_weight ?? 400));
+    setCssVar('--list-letter-spacing', inheritListTypography
+      ? 'var(--paragraph-letter-spacing, 0px)'
+      : (prefs.pref_list_letter_spacing ?? '0px'));
+    setCssVar('--list-text-color', inheritListTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_list_text_color));
+    setCssVar('--list-text-align', inheritListTypography
+      ? 'var(--paragraph-align, left)'
+      : (prefs.pref_list_text_align && prefs.pref_list_text_align !== 'default'
+        ? prefs.pref_list_text_align
+        : 'var(--paragraph-align, left)'));
+    setCssVar('--list-hyphens', inheritListTypography
+      ? 'var(--paragraph-hyphens, none)'
+      : (prefs.pref_list_hyphenate === true ? 'auto' : 'none'));
+    setCssVar('--list-line-height', inheritListTypography
+      ? 'var(--paragraph-line-height, 1.6)'
+      : (prefs.pref_list_line_height ?? '1.5'));
     setCssVar('--list-left-indent', prefs.pref_list_left_indent, 'px');
     setCssVar('--list-margin-right', prefs.pref_list_right_margin ?? 0, 'px');
     setCssVar('--list-marker-gutter', '24px');
     setCssVar('--list-item-spacing', prefs.pref_list_item_spacing, 'px');
-    setCssVar('--list-line-height', prefs.pref_list_line_height);
     setCssVar('--list-bullet-color', prefs.pref_list_bullet_color);
     setCssVar('--list-number-color', prefs.pref_list_number_color);
     setCssVar('--todo-border-color', androidArgbToCss(prefs.pref_todo_unchecked_color || prefs.pref_todo_unchecked_border_color));
@@ -5744,11 +7353,40 @@ window.editorBridge = {
     setCssVar('--todo-bg-color', androidArgbToCss(prefs.pref_todo_unchecked_bg_color));
 
     // Blockquotes & Callouts
+    const inheritBlockquoteTypography =
+      prefs.pref_blockquote_inherit_body_typography !== false;
+    setCssVar('--blockquote-font-family', inheritBlockquoteTypography
+      ? 'var(--body-font-family, inherit)'
+      : (prefs.pref_blockquote_font_family && prefs.pref_blockquote_font_family !== 'default'
+        ? toCssFontFamily(prefs.pref_blockquote_font_family)
+        : 'inherit'));
+    setCssVar('--blockquote-font-size', inheritBlockquoteTypography
+      ? 'var(--body-font-size, 16px)'
+      : (prefs.pref_blockquote_font_size ?? 16), inheritBlockquoteTypography ? '' : 'px');
+    setCssVar('--blockquote-font-weight', inheritBlockquoteTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_blockquote_font_weight ?? 400));
+    setCssVar('--blockquote-letter-spacing', inheritBlockquoteTypography
+      ? 'var(--paragraph-letter-spacing, 0px)'
+      : (prefs.pref_blockquote_letter_spacing ?? '0px'));
+    setCssVar('--blockquote-text-align', inheritBlockquoteTypography
+      ? 'var(--paragraph-align, left)'
+      : (prefs.pref_blockquote_text_align && prefs.pref_blockquote_text_align !== 'default'
+        ? prefs.pref_blockquote_text_align
+        : 'var(--paragraph-align, left)'));
+    setCssVar('--blockquote-hyphens', inheritBlockquoteTypography
+      ? 'var(--paragraph-hyphens, none)'
+      : (prefs.pref_blockquote_hyphenate === true ? 'auto' : 'none'));
+    setCssVar('--blockquote-line-height', inheritBlockquoteTypography
+      ? 'var(--paragraph-line-height, 1.6)'
+      : (prefs.pref_blockquote_line_height ?? '1.6'));
     setCssVar('--blockquote-border-width', prefs.pref_blockquote_line_thickness, 'px');
     setCssVar('--blockquote-border-style', prefs.pref_blockquote_line_style);
     setCssVar('--blockquote-border-color', prefs.pref_blockquote_line_color);
     setCssVar('--blockquote-bg-color', prefs.pref_blockquote_bg_color);
-    setCssVar('--blockquote-text-color', prefs.pref_blockquote_text_color);
+    setCssVar('--blockquote-text-color', inheritBlockquoteTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_blockquote_text_color));
     setCssVar(
       '--blockquote-left-margin',
       prefs.pref_blockquote_left_indent ?? prefs.pref_blockquote_left_margin ?? 0,
@@ -5757,11 +7395,40 @@ window.editorBridge = {
     setCssVar('--blockquote-right-margin', prefs.pref_blockquote_right_margin ?? 0, 'px');
     setCssVar('--blockquote-padding', prefs.pref_blockquote_padding, 'px');
 
+    const inheritCalloutTypography =
+      prefs.pref_callout_inherit_body_typography !== false;
+    setCssVar('--callout-font-family', inheritCalloutTypography
+      ? 'var(--body-font-family, inherit)'
+      : (prefs.pref_callout_font_family && prefs.pref_callout_font_family !== 'default'
+        ? toCssFontFamily(prefs.pref_callout_font_family)
+        : 'inherit'));
+    setCssVar('--callout-font-size', inheritCalloutTypography
+      ? 'var(--body-font-size, 16px)'
+      : (prefs.pref_callout_font_size ?? 16), inheritCalloutTypography ? '' : 'px');
+    setCssVar('--callout-font-weight', inheritCalloutTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_callout_font_weight ?? 400));
+    setCssVar('--callout-letter-spacing', inheritCalloutTypography
+      ? 'var(--paragraph-letter-spacing, 0px)'
+      : (prefs.pref_callout_letter_spacing ?? '0px'));
+    setCssVar('--callout-text-align', inheritCalloutTypography
+      ? 'var(--paragraph-align, left)'
+      : (prefs.pref_callout_text_align && prefs.pref_callout_text_align !== 'default'
+        ? prefs.pref_callout_text_align
+        : 'var(--paragraph-align, left)'));
+    setCssVar('--callout-hyphens', inheritCalloutTypography
+      ? 'var(--paragraph-hyphens, none)'
+      : (prefs.pref_callout_hyphenate === true ? 'auto' : 'none'));
+    setCssVar('--callout-line-height', inheritCalloutTypography
+      ? 'var(--paragraph-line-height, 1.6)'
+      : (prefs.pref_callout_line_height ?? '1.6'));
     setCssVar('--callout-border-width', prefs.pref_callout_line_thickness, 'px');
     setCssVar('--callout-border-style', prefs.pref_callout_line_style);
     setCssVar('--callout-border-color', prefs.pref_callout_line_color);
     setCssVar('--callout-bg-color', prefs.pref_callout_bg_color);
-    setCssVar('--callout-text-color', prefs.pref_callout_text_color);
+    setCssVar('--callout-text-color', inheritCalloutTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_callout_text_color));
     setCssVar('--callout-margin-left', prefs.pref_callout_margin_left ?? 0, 'px');
     setCssVar('--callout-margin-right', prefs.pref_callout_margin_right ?? 0, 'px');
     setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
@@ -5775,7 +7442,7 @@ window.editorBridge = {
     } else {
       setCssVar('--callout-header-title-size', titleSizeVal, 'px');
     }
-    setCssVar('--callout-header-font-family', prefs.pref_callout_header_font_family);
+    setCssVar('--callout-header-font-family', toCssFontFamily(prefs.pref_callout_header_font_family));
     setCssVar('--callout-header-font-weight', prefs.pref_callout_header_font_weight);
     setCssVar('--callout-header-padding', prefs.pref_callout_header_padding, 'px');
     setCssVar('--callout-header-accent-color', prefs.pref_callout_header_accent_color);
@@ -5799,16 +7466,44 @@ window.editorBridge = {
     });
 
     // Tables
+    const inheritTableTypography =
+      prefs.pref_table_inherit_body_typography !== false;
+    setCssVar('--table-font-family', inheritTableTypography
+      ? 'var(--body-font-family, inherit)'
+      : (prefs.pref_table_font_family && prefs.pref_table_font_family !== 'default'
+        ? toCssFontFamily(prefs.pref_table_font_family)
+        : 'inherit'));
+    setCssVar('--table-font-size', inheritTableTypography
+      ? 'var(--body-font-size, 16px)'
+      : (prefs.pref_table_font_size ?? 15), inheritTableTypography ? '' : 'px');
+    setCssVar('--table-font-weight', inheritTableTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_table_font_weight ?? 400));
+    setCssVar('--table-letter-spacing', inheritTableTypography
+      ? 'var(--paragraph-letter-spacing, 0px)'
+      : (prefs.pref_table_letter_spacing ?? '0px'));
+    setCssVar('--table-line-height', inheritTableTypography
+      ? 'var(--paragraph-line-height, 1.6)'
+      : (prefs.pref_table_line_height ?? '1.6'));
+    setCssVar('--table-hyphens', inheritTableTypography
+      ? 'var(--paragraph-hyphens, none)'
+      : (prefs.pref_table_hyphenate === true ? 'auto' : 'none'));
     setCssVar('--table-margin-left', prefs.pref_table_margin_left ?? 0, 'px');
     setCssVar('--table-margin-right', prefs.pref_table_margin_right ?? 0, 'px');
     setCssVar('--table-border-style', prefs.pref_table_border_style);
     setCssVar('--table-border-width', prefs.pref_table_border_thickness || prefs.pref_table_border_width, 'px');
     setCssVar('--table-border-color', prefs.pref_table_border_color);
     setCssVar('--table-header-bg', prefs.pref_table_header_bg_color || prefs.pref_table_header_bg);
-    setCssVar('--table-header-color', prefs.pref_table_header_text_color || prefs.pref_table_header_color);
-    setCssVar('--table-header-font-weight', prefs.pref_table_header_font_weight);
+    setCssVar('--table-header-color', inheritTableTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_table_header_text_color || prefs.pref_table_header_color));
+    setCssVar('--table-header-font-weight', inheritTableTypography
+      ? 'var(--body-font-weight, 400)'
+      : (prefs.pref_table_header_font_weight ?? 700));
     setCssVar('--table-cell-bg', prefs.pref_table_cell_bg_color || prefs.pref_table_cell_bg);
-    setCssVar('--table-cell-color', prefs.pref_table_cell_text_color || prefs.pref_table_cell_color);
+    setCssVar('--table-cell-color', inheritTableTypography
+      ? 'var(--body-text-color, var(--text-color, inherit))'
+      : androidArgbToCss(prefs.pref_table_cell_text_color || prefs.pref_table_cell_color));
     setCssVar('--table-cell-padding', prefs.pref_table_cell_padding, 'px');
     setCssVar('--table-menu-bg', prefs.pref_table_menu_bg_color);
     setCssVar('--table-menu-action-bg', prefs.pref_table_menu_action_bg_color);
@@ -5847,9 +7542,58 @@ window.editorBridge = {
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
     // Toolbar
+    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled !== false;
+    if (!floatingToolbarEnabled && activePopupSurface === 'floating') {
+      hidePopupStrip();
+    }
+    if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
+      bottomToolbarConfig = normalizeBottomToolbarConfig(
+        prefs.pref_toolbar_bottom_config
+      );
+      hidePopupStrip();
+      setupGroupedControlBar();
+    }
+    const floatingConfigPreference = prefs.pref_toolbar_floating_config ??
+      prefs.pref_toolbar_bottom_config;
+    if (floatingConfigPreference !== undefined) {
+      floatingToolbarConfig = normalizeBottomToolbarConfig(
+        floatingConfigPreference
+      );
+      hidePopupStrip();
+      setupFloatingSelectionToolbar();
+    }
     setCssVar('--toolbar-bg', androidArgbToCss(prefs.pref_toolbar_bg_color));
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);
-    setCssVar('--toolbar-active-icon-color', prefs.pref_toolbar_active_icon_color);
+    const activeKeyBackgroundColor = prefs.pref_toolbar_active_key_bg_color;
+    if (
+      typeof activeKeyBackgroundColor === 'string' &&
+      activeKeyBackgroundColor !== 'default'
+    ) {
+      setCssVar(
+        '--toolbar-key-active-bg-color',
+        androidArgbToCss(activeKeyBackgroundColor)
+      );
+    } else {
+      document.documentElement.style.removeProperty('--toolbar-key-active-bg-color');
+    }
+    setCssVar(
+      '--toolbar-label-display',
+      prefs.pref_toolbar_show_labels === true ? 'flex' : 'none'
+    );
+    const toolbarLabelSize = Number(prefs.pref_toolbar_label_size ?? 8);
+    setCssVar(
+      '--toolbar-label-size',
+      Number.isFinite(toolbarLabelSize)
+        ? Math.max(4, Math.min(16, toolbarLabelSize))
+        : 8,
+      'px'
+    );
+    const toolbarLabelColor = prefs.pref_toolbar_label_color;
+    if (typeof toolbarLabelColor === 'string' && toolbarLabelColor !== 'default') {
+      setCssVar('--toolbar-label-color', androidArgbToCss(toolbarLabelColor));
+    } else {
+      document.documentElement.style.removeProperty('--toolbar-label-color');
+    }
     setCssVar(
       '--toolbar-toggle-bg-color',
       androidArgbToCss(prefs.pref_toolbar_toggle_bg_color)
@@ -5858,7 +7602,53 @@ window.editorBridge = {
       '--toolbar-toggle-icon-color',
       androidArgbToCss(prefs.pref_toolbar_toggle_icon_color)
     );
-    setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
+    const toolbarHeight = Number(prefs.pref_toolbar_height ?? 48);
+    const safeToolbarHeight = Number.isFinite(toolbarHeight)
+      ? Math.max(36, Math.min(72, toolbarHeight))
+      : 48;
+    setCssVar('--toolbar-height', safeToolbarHeight, 'px');
+    setCssVar(
+      '--toolbar-toggle-open-size',
+      Math.round((safeToolbarHeight * 34) / 48),
+      'px'
+    );
+    const closedToggleWidth = Number(prefs.pref_toolbar_toggle_closed_width ?? 34);
+    const closedToggleHeight = Number(prefs.pref_toolbar_toggle_closed_height ?? 34);
+    setCssVar(
+      '--toolbar-toggle-closed-width',
+      Number.isFinite(closedToggleWidth)
+        ? Math.max(24, Math.min(72, closedToggleWidth))
+        : 34,
+      'px'
+    );
+    setCssVar(
+      '--toolbar-toggle-closed-height',
+      Number.isFinite(closedToggleHeight)
+        ? Math.max(24, Math.min(72, closedToggleHeight))
+        : 34,
+      'px'
+    );
+    updateFloatingSelectionToolbar();
+    const toolbarPadding = Number(prefs.pref_toolbar_padding ?? 4);
+    setCssVar(
+      '--toolbar-padding',
+      Number.isFinite(toolbarPadding) ? Math.max(0, Math.min(16, toolbarPadding)) : 4,
+      'px'
+    );
+    const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width ?? 48);
+    setCssVar(
+      '--toolbar-floating-key-width',
+      Number.isFinite(floatingKeyWidth) ? Math.max(36, Math.min(72, floatingKeyWidth)) : 48,
+      'px'
+    );
+    const floatingCornerRadius = Number(prefs.pref_toolbar_floating_corner_radius ?? 24);
+    setCssVar(
+      '--toolbar-floating-corner-radius',
+      Number.isFinite(floatingCornerRadius)
+        ? Math.max(0, Math.min(36, floatingCornerRadius))
+        : 24,
+      'px'
+    );
 
     // Table of contents panel appearance
     const tocPanelWidth = Number(prefs.pref_toc_panel_width ?? 80);
@@ -5896,6 +7686,7 @@ window.editorBridge = {
     setCssVar('--toc-text-color', androidArgbToCss(prefs.pref_toc_text_color));
     setCssVar('--toc-active-text-color', androidArgbToCss(prefs.pref_toc_active_text_color));
     setCssVar('--toc-active-bg-color', androidArgbToCss(prefs.pref_toc_active_bg_color));
+    setCssVar('--toc-search-highlight-bg-color', androidArgbToCss(prefs.pref_toc_search_highlight_bg_color));
     setCssVar('--toc-toggle-bg-color', androidArgbToCss(prefs.pref_toc_toggle_bg_color));
     setCssVar('--toc-toggle-icon-color', androidArgbToCss(prefs.pref_toc_toggle_icon_color));
     setCssVar('--toc-toggle-active-bg-color', androidArgbToCss(prefs.pref_toc_toggle_active_bg_color));
@@ -5927,6 +7718,7 @@ window.editorBridge = {
     setCssVar('--findreplace-field-replace-font-size', prefs.pref_findreplace_field_replace_font_size, 'px');
     setCssVar('--findreplace-field-height', prefs.pref_findreplace_field_height, 'px');
     setCssVar('--findreplace-counter-color', androidArgbToCss(prefs.pref_findreplace_counter_color));
+    setCssVar('--findreplace-counter-bg', androidArgbToCss(prefs.pref_findreplace_counter_bg));
     setCssVar('--findreplace-match-bg', androidArgbToCss(prefs.pref_findreplace_match_bg));
     setCssVar('--findreplace-current-match-bg', androidArgbToCss(prefs.pref_findreplace_current_match_bg));
     setCssVar('--findreplace-current-match-color', androidArgbToCss(prefs.pref_findreplace_current_match_color));
@@ -6183,7 +7975,7 @@ window.editorBridge = {
     }
     updateTocHistoryButtons();
   },
-  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData) {
+  setFontSettings: function(bodyFontSizePx, headingScale, boldColor, italicColor, linkColor, codeColor, codeBgColor, codeBlockColor, codeBlockBgColor, fontBodyData, fontHeadingData, fontBoldData, fontItalicData, fontCodeData, fontWeightBold, fontWeightItalic, fontWeightHeading, fontCalloutHeaderData, fontHeadingLevelsDataJson, fontTocData, fontFootnoteData, bodyFontFamily = 'default', headingFontFamily = 'default') {
     const setCssVar = (varName, val) => {
       if (val && val !== 'default') {
         document.documentElement.style.setProperty(varName, val);
@@ -6221,21 +8013,32 @@ window.editorBridge = {
     }
 
     let fontCss = '';
+    const registeredFontFamilies = new Map();
     const applyFontCategory = (categoryName, fontData, cssVarName) => {
       if (fontData && fontData.length > 10) {
-        const familyName = `CustomFont_${categoryName}`;
-        fontCss += `
-          @font-face {
-            font-family: '${familyName}';
-            src: url('${fontData}');
-          }
-          .cm-content {
-            --custom-${categoryName.toLowerCase()}-font: '${familyName}';
-          }
-        `;
+        let familyName = registeredFontFamilies.get(fontData);
+        if (!familyName) {
+          familyName = `CustomFont_${categoryName}`;
+          registeredFontFamilies.set(fontData, familyName);
+          fontCss += `
+            @font-face {
+              font-family: '${familyName}';
+              src: url('${fontData}');
+            }
+          `;
+        }
+        fontCss += `.cm-content { --custom-${categoryName.toLowerCase()}-font: '${familyName}'; }\n`;
         document.documentElement.style.setProperty(cssVarName, `'${familyName}'`);
       } else {
-        document.documentElement.style.removeProperty(cssVarName);
+        const deviceFont = categoryName === 'Body'
+          ? bodyFontFamily
+          : (categoryName === 'Heading' ? headingFontFamily : 'default');
+        const familyValue = toCssFontFamily(deviceFont);
+        if (familyValue) {
+          document.documentElement.style.setProperty(cssVarName, familyValue);
+        } else {
+          document.documentElement.style.removeProperty(cssVarName);
+        }
       }
     };
 
@@ -6246,6 +8049,7 @@ window.editorBridge = {
     applyFontCategory('Code', fontCodeData, '--code-font-family');
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family');
     applyFontCategory('Toc', fontTocData, '--toc-font-family');
+    applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family');
     let headingLevelFonts = [];
     try {
       headingLevelFonts = JSON.parse(fontHeadingLevelsDataJson || '[]');
@@ -6260,11 +8064,10 @@ window.editorBridge = {
       );
     }
 
-    styleEl.innerHTML = fontCss;
+    if (styleEl.textContent !== fontCss) {
+      styleEl.textContent = fontCss;
+    }
   },
-  configurePlugins: function() {
-    return Promise.resolve();
-  }
 };
 
 // --- Obsidian Plugin Polyfill Layer ---

@@ -2,7 +2,163 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Block Quote Settings">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_blockquote_typography"
+        app:title="Block Quote">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_blockquote_inherit_body_typography"
+            app:title="Inherit Paragraph &amp; Body Typography"
+            app:summary="Use the paragraph font, weight, spacing, color, size, alignment, hyphenation, and line height"
+            app:disableDependentsState="true"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_blockquote_font_family"
+            app:title="Block Quote Font Family"
+            app:summary="Font family for block quote text"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default"
+            app:dependency="pref_blockquote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_blockquote_font_weight"
+            app:title="Block Quote Font Weight"
+            app:summary="Font weight for block quote text (100–900)"
+            app:min="100"
+            android:max="900"
+            app:defaultValue="400"
+            app:showSeekBarValue="true"
+            app:dependency="pref_blockquote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_blockquote_font_size"
+            app:title="Block Quote Font Size (px)"
+            app:summary="Font size for block quote text"
+            app:min="4"
+            android:max="32"
+            app:defaultValue="16"
+            app:showSeekBarValue="true"
+            app:dependency="pref_blockquote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_blockquote_letter_spacing"
+            app:title="Block Quote Letter Spacing (px)"
+            app:summary="Space between letters in block quotes"
+            app:defaultValue="0px"
+            app:dependency="pref_blockquote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_blockquote_text_color"
+            app:title="Block Quote Text Color"
+            app:summary="Text color for block quotes"
+            app:defaultValue="default"
+            app:dependency="pref_blockquote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_blockquote_text_align"
+            app:title="Block Quote Text Alignment"
+            app:summary="Align block quote text left, center, right, or justify"
+            android:entries="@array/align_entries"
+            android:entryValues="@array/align_values"
+            android:defaultValue="default"
+            app:dependency="pref_blockquote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_blockquote_hyphenate"
+            app:title="Hyphenate Block Quote Text"
+            app:summary="Allow long words in block quotes to break with automatic hyphens"
+            android:defaultValue="false"
+            app:dependency="pref_blockquote_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_blockquote_line_height"
+            app:title="Block Quote Line Height"
+            app:summary="Line-height multiplier for block quote text"
+            app:defaultValue="1.6"
+            app:dependency="pref_blockquote_inherit_body_typography" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_callout_body_typography"
+        app:title="Callout Body">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_callout_inherit_body_typography"
+            app:title="Inherit Paragraph &amp; Body Typography"
+            app:summary="Use the paragraph font, weight, spacing, color, size, alignment, hyphenation, and line height for callout body text"
+            app:disableDependentsState="true"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_callout_font_family"
+            app:title="Callout Body Font Family"
+            app:summary="Font family for callout body text"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default"
+            app:dependency="pref_callout_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_callout_font_weight"
+            app:title="Callout Body Font Weight"
+            app:summary="Font weight for callout body text (100–900)"
+            app:min="100"
+            android:max="900"
+            app:defaultValue="400"
+            app:showSeekBarValue="true"
+            app:dependency="pref_callout_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_callout_font_size"
+            app:title="Callout Body Font Size (px)"
+            app:summary="Font size for callout body text"
+            app:min="4"
+            android:max="32"
+            app:defaultValue="16"
+            app:showSeekBarValue="true"
+            app:dependency="pref_callout_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_callout_letter_spacing"
+            app:title="Callout Body Letter Spacing (px)"
+            app:summary="Space between letters in callout body text"
+            app:defaultValue="0px"
+            app:dependency="pref_callout_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_callout_text_color"
+            app:title="Callout Body Text Color"
+            app:summary="Text color for callout body text"
+            app:defaultValue="default"
+            app:dependency="pref_callout_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_callout_text_align"
+            app:title="Callout Body Text Alignment"
+            app:summary="Align callout body text left, center, right, or justify"
+            android:entries="@array/align_entries"
+            android:entryValues="@array/align_values"
+            android:defaultValue="default"
+            app:dependency="pref_callout_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_callout_hyphenate"
+            app:title="Hyphenate Callout Body Text"
+            app:summary="Allow long callout body words to break with automatic hyphens"
+            android:defaultValue="false"
+            app:dependency="pref_callout_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_callout_line_height"
+            app:title="Callout Body Line Height"
+            app:summary="Line-height multiplier for callout body text"
+            app:defaultValue="1.6"
+            app:dependency="pref_callout_inherit_body_typography" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_blockquote_settings"
+        app:title="Block Quote Appearance">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_blockquote_line_thickness"
             app:title="Block Quote Border Thickness (px)"
@@ -30,12 +186,6 @@
             app:key="pref_blockquote_bg_color"
             app:title="Block Quote Background Color"
             app:summary="Tap to select background color or default"
-            app:defaultValue="default" />
-
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_blockquote_text_color"
-            app:title="Block Quote Text Color"
-            app:summary="Tap to select text color or default"
             app:defaultValue="default" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
@@ -66,7 +216,9 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Callouts Settings">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_callout_settings"
+        app:title="Callout Appearance">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_callout_line_thickness"
             app:title="Callout Border Thickness (px)"
@@ -94,12 +246,6 @@
             app:key="pref_callout_bg_color"
             app:title="Callout Background Color"
             app:summary="Tap to select background tint color or default"
-            app:defaultValue="default" />
-
-        <com.wmdx.markdownapp.ResetColorPickerPreference
-            app:key="pref_callout_text_color"
-            app:title="Callout Text Color"
-            app:summary="Text color for callout body"
             app:defaultValue="default" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference
@@ -130,7 +276,9 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Callout Shared Header Settings">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_callout_shared_header"
+        app:title="Shared Callout Header">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_callout_header_bg_color"
             app:title="Header Background Color"
@@ -199,7 +347,9 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Callout Type-Specific Overrides">
+    <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_callout_type_overrides"
+        app:title="Per-Type Header Overrides">
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_callout_type_selector"
             app:title="Select Callout Type to Override"

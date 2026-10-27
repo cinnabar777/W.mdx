@@ -38,7 +38,8 @@ object PreferenceResetHelper {
             "pref_settings_bg_color" -> "#000000"
             "pref_toolbar_bg_color" -> "#121212"
             "pref_toolbar_icon_color" -> "#FFFFFF"
-            "pref_toolbar_active_icon_color" -> "#00E5FF"
+            "pref_toolbar_active_key_bg_color" -> "#1F1F1F"
+            "pref_toolbar_label_color" -> "#FFFFFF"
             "pref_toolbar_toggle_bg_color" -> "#00000000"
             "pref_toolbar_toggle_icon_color" -> "#FFFFFF"
             "pref_toc_panel_bg_color" -> "#121212"
@@ -49,9 +50,11 @@ object PreferenceResetHelper {
             "pref_toc_text_color" -> "#FFFFFF"
             "pref_toc_active_text_color" -> "#FFFF00"
             "pref_toc_active_bg_color" -> "#00000000"
+            "pref_toc_search_highlight_bg_color" -> "#FFFFC107"
             "pref_toc_toggle_bg_color", "pref_toc_toggle_active_bg_color" -> "#26FFFFFF"
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> "#FFFFFF"
             "pref_heading_underline_color" -> "#FFFFFF"
+            "pref_body_text_color", "pref_list_text_color" -> "#FFFFFF"
             "pref_blockquote_line_color" -> "#444444"
             "pref_blockquote_bg_color" -> "#1A1A1A"
             "pref_blockquote_text_color" -> "#FFFFFF"
@@ -103,6 +106,7 @@ object PreferenceResetHelper {
             "pref_findreplace_field_find_border", "pref_findreplace_field_replace_border" -> "#333333"
             "pref_findreplace_field_find_focus_border", "pref_findreplace_field_replace_focus_border" -> "#0078D4"
             "pref_findreplace_counter_color" -> "#888888"
+            "pref_findreplace_counter_bg" -> "#00000000"
             "pref_findreplace_match_bg" -> "rgba(255, 255, 0, 0.35)"
             "pref_findreplace_current_match_bg" -> "#0078D4"
             "pref_findreplace_current_match_color" -> "#FFFFFF"
@@ -120,6 +124,8 @@ object PreferenceResetHelper {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
         return when (key) {
+            "pref_body_text_color", "pref_list_text_color" ->
+                if (isLightTheme) "#111111" else "#FFFFFF"
             "pref_toc_panel_bg_color" -> {
                 val toolbarColor = prefs.getString("pref_toolbar_bg_color", "default")
                 if (!toolbarColor.isNullOrBlank() && toolbarColor != "default") {
@@ -154,6 +160,8 @@ object PreferenceResetHelper {
             }
             "pref_toc_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_toolbar_active_key_bg_color" ->
+                if (isLightTheme) "#E9ECEF" else "#1F1F1F"
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> {
                 val tocTextColor = prefs.getString("pref_toc_text_color", "default")
                 if (!tocTextColor.isNullOrBlank() && tocTextColor != "default") {
@@ -172,6 +180,8 @@ object PreferenceResetHelper {
         return when {
             getPerHeadingOverrideDefault(key) != null -> getPerHeadingOverrideDefault(key)
             key == "pref_body_font_size" -> 16
+            key == "pref_body_font_weight" -> 400
+            key == "pref_body_text_color" -> "default"
             key == "pref_heading_scale_percent" -> 100
             key == "pref_heading_color" -> "default"
             key == "pref_heading_word_spacing" -> "0px"
@@ -200,6 +210,14 @@ object PreferenceResetHelper {
             key == "pref_heading_margin_left" -> 0
             key == "pref_heading_margin_right" -> 0
             key == "pref_list_left_indent" -> 24
+            key == "pref_list_inherit_body_typography" -> true
+            key == "pref_list_font_family" -> "default"
+            key == "pref_list_font_weight" -> 400
+            key == "pref_list_font_size" -> 16
+            key == "pref_list_letter_spacing" -> "0px"
+            key == "pref_list_text_color" -> "default"
+            key == "pref_list_text_align" -> "default"
+            key == "pref_list_hyphenate" -> false
             key == "pref_list_right_margin" -> 0
             key == "pref_list_wrap_under_text" -> false
             key == "pref_list_item_spacing" -> 4
@@ -215,6 +233,14 @@ object PreferenceResetHelper {
             key == "pref_blockquote_line_color" -> "default"
             key == "pref_blockquote_bg_color" -> "default"
             key == "pref_blockquote_text_color" -> "default"
+            key == "pref_blockquote_inherit_body_typography" -> true
+            key == "pref_blockquote_font_family" -> "default"
+            key == "pref_blockquote_font_weight" -> 400
+            key == "pref_blockquote_font_size" -> 16
+            key == "pref_blockquote_letter_spacing" -> "0px"
+            key == "pref_blockquote_text_align" -> "default"
+            key == "pref_blockquote_hyphenate" -> false
+            key == "pref_blockquote_line_height" -> "1.6"
             key == "pref_blockquote_left_indent" -> 0
             key == "pref_blockquote_right_margin" -> 0
             key == "pref_blockquote_padding" -> 12
@@ -223,6 +249,14 @@ object PreferenceResetHelper {
             key == "pref_callout_line_color" -> "default"
             key == "pref_callout_bg_color" -> "default"
             key == "pref_callout_text_color" -> "default"
+            key == "pref_callout_inherit_body_typography" -> true
+            key == "pref_callout_font_family" -> "default"
+            key == "pref_callout_font_weight" -> 400
+            key == "pref_callout_font_size" -> 16
+            key == "pref_callout_letter_spacing" -> "0px"
+            key == "pref_callout_text_align" -> "default"
+            key == "pref_callout_hyphenate" -> false
+            key == "pref_callout_line_height" -> "1.6"
             key == "pref_callout_margin_left" -> 0
             key == "pref_callout_margin_right" -> 0
             key == "pref_callout_padding" -> 12
@@ -235,10 +269,18 @@ object PreferenceResetHelper {
             key == "pref_callout_header_accent_color" -> "default"
             key == "pref_callout_header_accent_thickness" -> 0
             key == "pref_font_file_callout_header" -> null
+            key == "pref_font_file_footnote" -> null
             key == "pref_callout_type_selector" -> "info"
             key.startsWith("pref_callout_type_") -> "default"
             key == "pref_table_margin_left" -> 0
             key == "pref_table_margin_right" -> 0
+            key == "pref_table_inherit_body_typography" -> true
+            key == "pref_table_font_family" -> "default"
+            key == "pref_table_font_weight" -> 400
+            key == "pref_table_font_size" -> 15
+            key == "pref_table_letter_spacing" -> "0px"
+            key == "pref_table_hyphenate" -> false
+            key == "pref_table_line_height" -> "1.6"
             key == "pref_table_border_style" -> "solid"
             key == "pref_table_border_thickness" -> 1
             key == "pref_table_border_color" -> "default"
@@ -270,6 +312,7 @@ object PreferenceResetHelper {
             key == "pref_hr_margin_top" -> 16
             key == "pref_hr_margin_bottom" -> 16
             key == "pref_justify_paragraph" -> false
+            key == "pref_paragraph_hyphenate" -> false
             key == "pref_paragraph_line_height" -> "1.6"
             key == "pref_letter_spacing" -> "0px"
             key == "pref_line_wrap" -> true
@@ -299,6 +342,7 @@ object PreferenceResetHelper {
             key == "pref_findreplace_field_replace_font_size" -> 14
             key == "pref_findreplace_field_height" -> 32
             key == "pref_findreplace_counter_color" -> "default"
+            key == "pref_findreplace_counter_bg" -> "default"
             key == "pref_findreplace_match_bg" -> "default"
             key == "pref_findreplace_current_match_bg" -> "default"
             key == "pref_findreplace_current_match_color" -> "default"
@@ -315,10 +359,19 @@ object PreferenceResetHelper {
             key.startsWith("pref_heading_") && key.endsWith("_color") -> "default"
             key == "pref_toolbar_bg_color" -> "default"
             key == "pref_toolbar_icon_color" -> "default"
-            key == "pref_toolbar_active_icon_color" -> "default"
+            key == "pref_toolbar_active_key_bg_color" -> "default"
+            key == "pref_toolbar_show_labels" -> false
+            key == "pref_toolbar_label_size" -> 8
+            key == "pref_toolbar_label_color" -> "default"
             key == "pref_toolbar_toggle_bg_color" -> "default"
             key == "pref_toolbar_toggle_icon_color" -> "default"
+            key == "pref_toolbar_toggle_closed_width" -> 34
+            key == "pref_toolbar_toggle_closed_height" -> 34
             key == "pref_toolbar_height" -> 48
+            key == "pref_toolbar_padding" -> 4
+            key == "pref_toolbar_floating_enabled" -> true
+            key == "pref_toolbar_floating_key_width" -> 48
+            key == "pref_toolbar_floating_corner_radius" -> 24
             key == "pref_app_theme" -> "amoled"
             key == "pref_toc_panel_width" -> 80
             key == "pref_toc_default_level" -> 2
@@ -333,6 +386,7 @@ object PreferenceResetHelper {
             key == "pref_toc_text_color" -> "default"
             key == "pref_toc_active_text_color" -> "#FFFF00"
             key == "pref_toc_active_bg_color" -> "default"
+            key == "pref_toc_search_highlight_bg_color" -> "#FFFFC107"
             key == "pref_toc_history_bg_color" -> "default"
             key == "pref_toc_history_border_color" -> "default"
             key == "pref_toc_history_icon_color" -> "default"
@@ -363,11 +417,17 @@ object PreferenceResetHelper {
             key == "pref_hotkey_open_with" -> "ctrl+shift+o"
             key == "pref_hotkey_line_numbers" -> "ctrl+alt+l"
             key == "pref_hotkey_footnote" -> "ctrl+shift+f"
+            key == "pref_footnote_inherit_body_typography" -> true
+            key == "pref_footnote_font_weight" -> 400
+            key == "pref_footnote_letter_spacing" -> "0px"
             key == "pref_footnote_font_size" -> 14
             key == "pref_footnote_text_color" -> "default"
             key == "pref_footnote_ref_color" -> "default"
             key == "pref_footnote_link_color" -> "default"
             key == "pref_footnote_bg_color" -> "default"
+            key == "pref_footnote_text_align" -> "default"
+            key == "pref_footnote_line_height" -> "default"
+            key == "pref_footnote_hyphenate" -> false
             key == "pref_auto_save_on_leave" -> true
             key == "pref_hotkey_new" -> "ctrl+n"
             key == "pref_hotkey_history_back" -> "alt+left"
@@ -375,6 +435,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_open" -> "ctrl+o"
             key == "pref_hotkey_save" -> "ctrl+s"
             key == "pref_hotkey_save_as" -> "ctrl+shift+s"
+            key == "pref_hotkey_save_as_textpack" -> "ctrl+shift+alt+s"
             key == "pref_hotkey_image" -> "ctrl+shift+i"
             key == "pref_hotkey_settings" -> "ctrl+,"
             key == "pref_hotkey_toggle_toolbar" -> "ctrl+t"
@@ -859,6 +920,31 @@ open class ResetPreferenceCategory @JvmOverloads constructor(
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
         PreferenceResetHelper.applySettingsTheme(holder, this)
+    }
+}
+
+class ExpandablePreference @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = androidx.preference.R.attr.preferenceStyle
+) : Preference(context, attrs, defStyleAttr) {
+    var isExpanded: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyChanged()
+        }
+
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        val chevron = holder.findViewById(R.id.preference_expand_chevron)
+            as? android.widget.TextView ?: return
+        chevron.text = if (isExpanded) "⌄" else "›"
+        chevron.contentDescription = if (isExpanded) {
+            "Collapse settings"
+        } else {
+            "Expand settings"
+        }
     }
 }
 

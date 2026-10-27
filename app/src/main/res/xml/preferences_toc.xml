@@ -160,6 +160,14 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Search">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toc_search_highlight_bg_color"
+            app:title="Search Match Highlight Color"
+            app:summary="Background color behind matching heading text"
+            app:defaultValue="#FFFFC107" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Heading Fold Controls">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_toc_toggle_bg_color"

@@ -47,7 +47,8 @@
             android:name=".MainActivity"
             android:icon="@mipmap/ic_launcher"
             android:exported="false"
-            android:launchMode="singleTop"
+            android:launchMode="standard"
+            android:documentLaunchMode="always"
             android:maxRecents="20"
             android:resizeableActivity="true"
             android:windowSoftInputMode="adjustResize" />

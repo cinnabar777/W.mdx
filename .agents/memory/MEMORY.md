@@ -1,3 +1,14 @@
-- [Collaborative code fixes](collaborative-code-fixes.md) — clarify the observed symptom and scope before uncertain UI/settings fixes; avoid speculative changes.
+- [Collaborative code fixes](collaborative-code-fixes.md) — verify the tested build; restore an explicitly requested baseline instead of repeating narrow fixes.
 - [Android heading preference inheritance](android-heading-preferences.md) — AndroidX can persist displayed defaults; keep inherited heading values out of saved overrides.
 - [SeekBar reset alignment](seekbar-reset-alignment.md) — AndroidX’s inner end padding, not margins, misaligned reset icons; clearing it was confirmed to fix alignment.
+- [Android IME verification](android-ime-verification.md) — successful builds do not verify that a dialog actually opens the keyboard; test soft-input behavior on Android.
+- [Editor diagnostics opt-in](editor-diagnostics-opt-in.md) — detailed input and scroll tracing must be off during ordinary editing to avoid adding cursor latency.
+- [CodeMirror syntax cursors](codemirror-syntax-cursors.md) — syntax-tree iteration reuses mutable cursors; copy node positions before retaining data.
+- [Android build verification](android-build-verification.md) — use GitHub Actions for APK builds; limit local Gradle builds to cases that need direct diagnosis.
+- [Table selection focus](table-selection-focus.md) — keep cell selections independent per table; toolbar actions follow the last tapped cell, not the last widget redraw.
+- [Toolbar preview colors](toolbar-preview-colors.md) — active states preserve chosen key colors; SVG tinting must not turn outlines into filled shapes.
+- [Toolbar icon editor](toolbar-icon-editor.md) — keep spacious key settings scrollable; open icon search/import in a separate dismissible popup.
+- [Toolbar folder placement](toolbar-folder-placement.md) — folders are movable keys; generic “Open group” targets the invoking group, and empty folders stay visible.
+- [Replit branch workflow](branch-tip-comparisons.md) — push requested W.mdx changes to the existing Replit branch and start its GitHub APK build; create no extra branches.
+- [Floating toolbar separation](floating-toolbar-separation.md) — keep its saved layout independent from the bottom toolbar while sharing the action and icon implementation.
+- [Toolbar gesture layout](toolbar-gesture-layout.md) — the existing Taps, Side swipes, and Corner swipes groups represent gesture choices; don't add a duplicate mode switch.

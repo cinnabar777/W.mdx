@@ -2,7 +2,7 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Code Block Styling">
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Appearance">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_code_block_color"
             app:title="Code Block Text Color"

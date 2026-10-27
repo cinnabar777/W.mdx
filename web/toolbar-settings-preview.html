@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="./toolbar.css">
+  <style>
+    :root {
+      color-scheme: dark;
+      --toolbar-bg: #121212;
+      --toolbar-icon-color: #fff;
+      --toolbar-height: 48px;
+      --button-hover: rgba(255, 255, 255, 0.16);
+    }
+    * { box-sizing: border-box; }
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      margin: 0;
+      background: var(--toolbar-preview-surface, #000);
+      font-family: system-ui, sans-serif;
+    }
+    .toolbar-preview-status {
+      min-height: 16px;
+      padding-top: 5px;
+      color: #70dba2;
+      font-size: 11px;
+    }
+    .toolbar-preview-editor {
+      display: none;
+      position: fixed;
+      z-index: 10002;
+      top: calc((100vh - var(--toolbar-height, 48px)) / 2);
+      right: 0;
+      bottom: auto;
+      left: 0;
+      height: auto;
+      min-height: min(76vh, calc(100vh - var(--toolbar-height, 48px) - 24px));
+      max-height: calc(100vh - var(--toolbar-height, 48px) - 24px);
+      transform: translateY(-50%);
+      margin: 0;
+      padding: 12px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 12px 12px 0 0;
+      background: var(--toolbar-preview-surface, var(--bg-color, #000));
+      color: var(--toolbar-preview-text, #fff);
+      box-shadow: 0 10px 28px rgba(0,0,0,.75);
+    }
+    @supports (height: 100dvh) {
+      .toolbar-preview-editor {
+        top: calc((100dvh - var(--toolbar-height, 48px)) / 2);
+        height: auto;
+        min-height: min(76dvh, calc(100dvh - var(--toolbar-height, 48px) - 24px));
+        max-height: calc(100dvh - var(--toolbar-height, 48px) - 24px);
+      }
+    }
+    .toolbar-preview-editor.popup-open {
+      padding-bottom: calc(12px + var(--toolbar-popup-height, 48px));
+    }
+    .toolbar-preview-editor.visible { display: block; }
+    .toolbar-preview-editor-header {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 5px;
+      margin-bottom: 6px;
+    }
+    .toolbar-preview-editor h2 {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      overflow: hidden;
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .toolbar-preview-title-edit {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+      place-items: center;
+      border: 0;
+      border-radius: 7px;
+      color: inherit;
+      background: transparent;
+    }
+    .toolbar-preview-title-edit svg {
+      width: 20px;
+      height: 20px;
+    }
+    .toolbar-preview-title-input {
+      min-width: 0;
+      height: 32px;
+      flex: 1;
+      padding: 0 6px;
+      border: 1px solid rgba(255,255,255,.28);
+      border-radius: 6px;
+      color: inherit;
+      background: rgba(255,255,255,.06);
+      font: inherit;
+      font-size: 13px;
+    }
+    .toolbar-preview-title-input[hidden],
+    .toolbar-preview-title-save[hidden] { display: none; }
+    .toolbar-preview-title-save {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.08);
+    }
+    .toolbar-preview-title-save svg {
+      width: 20px;
+      height: 20px;
+    }
+    .toolbar-preview-editor-close {
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.08);
+      font: inherit;
+      font-size: 22px;
+    }
+    .toolbar-preview-editor-reset-all {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.08);
+    }
+    .toolbar-preview-editor-reset-all svg {
+      width: 20px;
+      height: 20px;
+    }
+    .toolbar-preview-editor-reset-all:disabled {
+      opacity: .38;
+    }
+    .toolbar-preview-editor-content { display: block; }
+    .toolbar-preview-delete-group {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      place-items: center;
+      border: 1px solid rgba(255,100,100,.45);
+      border-radius: 8px;
+      color: #ffb4ab;
+      background: rgba(255,80,80,.09);
+    }
+    .toolbar-preview-delete-group svg { width: 17px; height: 17px; }
+    .toolbar-preview-delete-group[hidden] { display: none; }
+    .toolbar-preview-create-group-modal {
+      position: fixed;
+      z-index: 10009;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(0,0,0,.65);
+    }
+    .toolbar-preview-create-group-modal[hidden] { display: none; }
+    .toolbar-preview-create-group-dialog {
+      width: min(100%, 420px);
+      padding: 18px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 12px;
+      background: var(--toolbar-preview-surface, var(--bg-color, #000));
+      color: var(--toolbar-preview-text, #fff);
+      box-shadow: 0 12px 32px rgba(0,0,0,.75);
+    }
+    .toolbar-preview-create-group-dialog h2 {
+      margin: 0 0 14px;
+      font-size: 17px;
+    }
+    .toolbar-preview-create-group-dialog input {
+      width: 100%;
+      height: 44px;
+      margin-bottom: 12px;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.06);
+      font: inherit;
+    }
+    .toolbar-preview-create-group-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .toolbar-preview-create-group-actions button {
+      min-height: 40px;
+      padding: 0 14px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.07);
+      font: inherit;
+    }
+    .toolbar-preview-editor-sections {
+      display: grid;
+      gap: 7px;
+    }
+    .toolbar-preview-section {
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 8px;
+      background: rgba(255,255,255,.035);
+    }
+    .toolbar-preview-section > summary {
+      display: flex;
+      min-height: 42px;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+      list-style: none;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .toolbar-preview-section > summary::-webkit-details-marker { display: none; }
+    .toolbar-preview-section > summary::after {
+      content: "›";
+      margin-left: auto;
+      color: var(--toolbar-icon-color, #fff);
+      font-size: 20px;
+      line-height: 1;
+      transform: rotate(90deg);
+    }
+    .toolbar-preview-section[open] > summary::after { transform: rotate(-90deg); }
+    .toolbar-preview-gesture-list,
+    .toolbar-preview-style-controls {
+      display: grid;
+      gap: 5px;
+      padding: 0 8px 8px;
+    }
+    .toolbar-preview-gesture-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 40px 30px;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .toolbar-preview-gesture-action,
+    .toolbar-preview-gesture-icon,
+    .toolbar-preview-gesture-reset {
+      display: flex;
+      min-width: 0;
+      min-height: 38px;
+      align-items: center;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 7px;
+      color: inherit;
+      background: rgba(255,255,255,.05);
+      font: inherit;
+    }
+    .toolbar-preview-gesture-action {
+      padding: 0 9px;
+      overflow: hidden;
+      font-size: 12px;
+      text-align: left;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .toolbar-preview-gesture-icon {
+      justify-content: center;
+      padding: 4px;
+    }
+    .toolbar-preview-gesture-reset {
+      display: grid;
+      width: 30px;
+      min-height: 32px;
+      height: 32px;
+      place-items: center;
+      padding: 0;
+      color: inherit;
+      background: transparent;
+    }
+    .toolbar-preview-gesture-reset svg {
+      width: 16px;
+      height: 16px;
+    }
+    .toolbar-preview-gesture-reset:disabled {
+      opacity: .35;
+    }
+    .toolbar-preview-gesture-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+    .toolbar-preview-gesture-icon:disabled {
+      opacity: .45;
+    }
+    .toolbar-preview-style-controls { gap: 8px; }
+    .toolbar-preview-color-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 40px;
+      margin: 0;
+      font-size: 14px;
+    }
+    .toolbar-preview-color-row button {
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      background: transparent;
+    }
+    .toolbar-preview-reset-color {
+      display: grid;
+      width: 26px !important;
+      height: 26px !important;
+      place-items: center;
+      border: 0 !important;
+      color: inherit;
+      background: transparent !important;
+    }
+    .toolbar-preview-reset-color svg {
+      width: 16px;
+      height: 16px;
+    }
+    .toolbar-preview-reset-color:disabled {
+      opacity: .38;
+    }
+    .toolbar-preview-icon-picker-trigger {
+      display: grid;
+      width: 100%;
+      grid-template-columns: 28px minmax(0, 1fr) 20px;
+      align-items: center;
+      gap: 10px;
+      min-height: 54px;
+      margin: 0 0 18px;
+      padding: 9px 12px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 9px;
+      color: inherit;
+      background: rgba(255,255,255,.05);
+      text-align: left;
+      font: inherit;
+    }
+    .toolbar-preview-icon-picker-trigger svg {
+      width: 22px;
+      height: 22px;
+    }
+    .toolbar-preview-icon-picker-trigger small {
+      display: block;
+      margin-top: 2px;
+      color: rgba(255,255,255,.62);
+      font-size: 11px;
+    }
+    .toolbar-preview-action-slots { margin: 0 0 14px; }
+    .toolbar-preview-action-assignment {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 48px;
+      gap: 8px;
+    }
+    .toolbar-preview-action-label {
+      display: flex;
+      min-width: 0;
+      min-height: 40px;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 8px;
+      color: rgba(255,255,255,.9);
+      background: rgba(255,255,255,.06);
+      font: inherit;
+      font-size: 13px;
+      text-align: left;
+    }
+    .toolbar-preview-action-icon {
+      display: grid;
+      width: 48px;
+      height: 40px;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.24);
+      border-radius: 8px;
+      color: var(--toolbar-icon-color, #fff);
+      background: rgba(255,255,255,.05);
+    }
+    .toolbar-preview-create-group-type-label {
+      display: block;
+      margin: 0 0 5px;
+      color: rgba(255,255,255,.7);
+      font-size: 12px;
+    }
+    #toolbar-create-group-type {
+      width: 100%;
+      height: 42px;
+      margin-bottom: 10px;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 8px;
+      color: inherit;
+      background: #222;
+      font: inherit;
+    }
+    .toolbar-preview-action-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+    .toolbar-preview-key-flags {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .toolbar-preview-preserve-colors,
+    .toolbar-preview-force-label {
+      display: inline-flex;
+      width: max-content;
+      max-width: 100%;
+      min-height: 21px;
+      align-items: center;
+      gap: 5px;
+      margin: 0;
+      padding: 1px 6px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 6px;
+      color: inherit;
+      background: rgba(255,255,255,.05);
+      font-size: 10px;
+    }
+    .toolbar-preview-preserve-colors input,
+    .toolbar-preview-force-label input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+    }
+    .toolbar-preview-icon-picker-modal {
+      position: fixed;
+      z-index: 10008;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(0,0,0,.62);
+    }
+    .toolbar-preview-icon-picker-modal[hidden] { display: none; }
+    .toolbar-preview-icon-picker-dialog {
+      display: flex;
+      width: min(100%, 520px);
+      max-height: min(78dvh, 640px);
+      flex-direction: column;
+      overflow: hidden;
+      padding: 14px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 12px;
+      color: var(--toolbar-preview-text, #fff);
+      background: var(--toolbar-preview-surface, var(--bg-color, #000));
+      box-shadow: 0 12px 32px rgba(0,0,0,.75);
+    }
+    .toolbar-preview-icon-picker-header {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .toolbar-preview-icon-picker-header h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+    .toolbar-preview-icon-picker-close {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.07);
+      font: inherit;
+      font-size: 20px;
+    }
+    .toolbar-preview-icon-search {
+      flex: 0 0 auto;
+      width: 100%;
+      height: 42px;
+      margin: 0 0 9px;
+      padding: 0 12px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.06);
+      font: inherit;
+      font-size: 14px;
+    }
+    .toolbar-preview-icon-actions {
+      display: flex;
+      flex: 0 0 auto;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .toolbar-preview-icon-actions button {
+      min-height: 40px;
+      flex: 1 1 0;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      color: inherit;
+      background: rgba(255,255,255,.07);
+      font: inherit;
+      font-size: 13px;
+    }
+    .toolbar-preview-section-label {
+      flex: 0 0 auto;
+      margin: 0 0 6px;
+      color: rgba(255,255,255,.7);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .toolbar-preview-icon-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+      gap: 6px;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 4px;
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 7px;
+      overscroll-behavior: contain;
+    }
+    .toolbar-preview-icon-choice {
+      display: flex;
+      min-width: 0;
+      min-height: 58px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      overflow: hidden;
+      padding: 3px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: inherit;
+      background: transparent;
+      font: inherit;
+      font-size: 11px;
+    }
+    .toolbar-preview-icon-choice[aria-pressed="true"] {
+      border-color: currentColor;
+      background: rgba(255,255,255,.1);
+    }
+    .toolbar-preview-icon-choice svg {
+      width: 24px;
+      height: 24px;
+      flex: 0 0 24px;
+    }
+    .toolbar-preview-icon-choice span {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .toolbar-preview-action-choice-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .toolbar-preview-action-choice {
+      display: flex;
+      min-width: 0;
+      min-height: 48px;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 9px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      color: inherit;
+      background: transparent;
+      text-align: left;
+      font: inherit;
+      font-size: 12px;
+    }
+    .toolbar-preview-action-choice[aria-pressed="true"] {
+      border-color: currentColor;
+      background: rgba(255,255,255,.1);
+    }
+    .toolbar-preview-action-choice svg {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 22px;
+    }
+    .toolbar-preview-action-choice span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .toolbar-preview-status {
+      min-height: 0;
+      margin-top: 6px;
+      color: #70dba2;
+      font-size: 11px;
+    }
+    .toolbar-preview-tray-label {
+      margin: 0 0 6px;
+      color: rgba(255,255,255,.68);
+      font-size: 11px;
+    }
+    body.light-theme .toolbar-preview-editor {
+      color: #111;
+      border-color: rgba(0,0,0,.2);
+      background: var(--toolbar-preview-surface, var(--bg-color, #fff));
+      color: var(--toolbar-preview-text, #111);
+      box-shadow: 0 10px 28px rgba(0,0,0,.24);
+    }
+    body.light-theme .toolbar-preview-editor-close {
+      border-color: rgba(0,0,0,.2);
+      background: rgba(0,0,0,.06);
+    }
+    body.light-theme .toolbar-preview-title-input {
+      border-color: rgba(0,0,0,.22);
+      background: rgba(0,0,0,.04);
+    }
+    body.light-theme .toolbar-preview-editor-reset-all,
+    body.light-theme .toolbar-preview-icon-picker-trigger,
+    body.light-theme .toolbar-preview-icon-picker-close,
+    body.light-theme .toolbar-preview-icon-actions button {
+      border-color: rgba(0,0,0,.2);
+      background: rgba(0,0,0,.06);
+    }
+    body.light-theme .toolbar-preview-icon-picker-dialog {
+      border-color: rgba(0,0,0,.2);
+      background: var(--toolbar-preview-surface, var(--bg-color, #fff));
+      color: var(--toolbar-preview-text, #111);
+    }
+    body.light-theme .toolbar-preview-preserve-colors,
+    body.light-theme .toolbar-preview-force-label {
+      border-color: rgba(0,0,0,.18);
+      background: rgba(0,0,0,.04);
+    }
+    body.light-theme .toolbar-preview-action-assignment {
+      color: rgba(0,0,0,.68);
+    }
+    body.light-theme .toolbar-preview-action-label,
+    body.light-theme .toolbar-preview-action-icon {
+      border-color: rgba(0,0,0,.18);
+      color: rgba(0,0,0,.85);
+      background: rgba(0,0,0,.04);
+    }
+    body.light-theme .toolbar-preview-icon-search,
+    body.light-theme .toolbar-preview-icon-list {
+      border-color: rgba(0,0,0,.2);
+      background-color: rgba(0,0,0,.04);
+    }
+    body.light-theme .toolbar-preview-icon-choice[aria-pressed="true"] {
+      background: rgba(0,0,0,.08);
+    }
+    @media (max-height: 620px) {
+      .toolbar-preview-editor { padding: 9px; }
+      .toolbar-preview-icon-picker-dialog { max-height: 84dvh; padding: 10px; }
+    }
+    body.light-theme .toolbar-preview-tray-label {
+      color: rgba(0,0,0,.62);
+    }
+    body.light-theme .toolbar-preview-icon-picker-trigger small {
+      color: rgba(0,0,0,.62);
+    }
+    body.light-theme .toolbar-preview-section,
+    body.light-theme .toolbar-preview-gesture-action,
+    body.light-theme .toolbar-preview-gesture-icon {
+      border-color: rgba(0,0,0,.18);
+      background: rgba(0,0,0,.04);
+      color: #111;
+    }
+  </style>
+</head>
+<body>
+  <main class="toolbar-preview-shell">
+    <div class="toolbar-preview-content">
+      <div class="toolbar-preview-surface-switch" role="group" aria-label="Toolbar layout">
+        <button type="button" class="toolbar-preview-surface-button is-active"
+                data-toolbar-surface="bottom" aria-pressed="true">Bottom toolbar</button>
+        <button type="button" class="toolbar-preview-surface-button"
+                data-toolbar-surface="floating" aria-pressed="false">Floating toolbar</button>
+      </div>
+      <div class="toolbar-preview-holding">
+        <div class="toolbar-preview-tray-heading">
+          <div class="toolbar-preview-tray-label">Holding area · hidden keys appear individually; empty folders stay here until placed or deleted</div>
+          <button id="toolbar-help-button" class="toolbar-preview-help-button" type="button"
+                  aria-label="Toolbar help" aria-haspopup="dialog" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+              <path d="M12 17h.01"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="toolbar-holding-tray" class="toolbar-preview-tray" aria-label="Hidden toolbar keys"></div>
+        <div class="toolbar-preview-layout-actions">
+          <button id="toolbar-reset-layout" type="button">Restore default layout</button>
+          <button id="toolbar-add-custom" type="button">+ Custom key or group</button>
+        </div>
+        <div class="toolbar-preview-status" id="toolbar-preview-status" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="toolbar-preview-dock" id="toolbar-preview-dock">
+      <div class="toolbar-preview-stage" id="toolbar-preview-stage">
+        <div id="toolbar-preview" class="grouped-control-bar"
+             aria-label="Bottom toolbar preview"></div>
+      </div>
+      <div id="toolbar-preview-popup" class="popup-toolbar-strip hidden" aria-label="Toolbar group popup"></div>
+    </div>
+    <div id="toolbar-preview-drop-marker" class="toolbar-preview-drop-marker" aria-hidden="true" hidden></div>
+    <section
+      id="toolbar-preview-editor"
+      class="toolbar-preview-editor"
+      role="dialog"
+      aria-labelledby="toolbar-preview-selected-title"
+      aria-hidden="true">
+      <div class="toolbar-preview-editor-header">
+        <h2 id="toolbar-preview-selected-title">Selected key</h2>
+        <input id="toolbar-preview-title-input" class="toolbar-preview-title-input" type="text" maxlength="48" hidden aria-label="Toolbar key name">
+        <button id="toolbar-edit-key-name" class="toolbar-preview-title-edit" type="button" aria-label="Rename toolbar key" title="Rename">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+        </button>
+        <button id="toolbar-save-key-name" class="toolbar-preview-title-save" type="button" hidden aria-label="Save toolbar key name" title="Save name">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+        </button>
+        <button id="toolbar-reset-key-style" class="toolbar-preview-editor-reset-all" type="button" aria-label="Reset all settings for this key" title="Reset all">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
+        <button id="toolbar-delete-custom-group" class="toolbar-preview-delete-group" type="button" hidden aria-label="Delete custom group" title="Delete custom group">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
+        </button>
+        <button id="toolbar-preview-close-editor" class="toolbar-preview-editor-close" type="button" aria-label="Close key settings">×</button>
+      </div>
+      <div class="toolbar-preview-editor-content">
+        <button id="toolbar-open-icon-picker" class="toolbar-preview-icon-picker-trigger" type="button" aria-haspopup="dialog" aria-controls="toolbar-icon-picker-modal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+          <span>Choose icon<small>Search built-ins or add an SVG</small></span>
+          <span aria-hidden="true">›</span>
+        </button>
+        <div id="toolbar-custom-key-action-row" class="toolbar-preview-custom-key-action-row" hidden>
+          <button id="toolbar-custom-key-action" class="toolbar-preview-gesture-action" type="button" aria-haspopup="dialog" aria-controls="toolbar-action-picker-modal">Key action → Choose action</button>
+        </div>
+        <div class="toolbar-preview-editor-sections" id="toolbar-preview-editor-sections">
+          <details class="toolbar-preview-section" data-toolbar-section="taps">
+            <summary>
+              <span>Taps</span>
+            </summary>
+            <div class="toolbar-preview-gesture-list" data-gesture-list="taps"></div>
+          </details>
+          <details class="toolbar-preview-section" data-toolbar-section="side-swipes">
+            <summary>
+              <span>Side swipes</span>
+            </summary>
+            <div class="toolbar-preview-gesture-list" data-gesture-list="side-swipes"></div>
+          </details>
+          <details class="toolbar-preview-section" data-toolbar-section="corner-swipes">
+            <summary>
+              <span>Corner swipes</span>
+            </summary>
+            <div class="toolbar-preview-gesture-list" data-gesture-list="corner-swipes"></div>
+          </details>
+          <details class="toolbar-preview-section" data-toolbar-section="colors">
+            <summary>
+              <span>Color options</span>
+              <small>Icon and key backgrounds</small>
+            </summary>
+            <div class="toolbar-preview-style-controls">
+          <div class="toolbar-preview-color-settings">
+            <div class="toolbar-preview-color-row">
+              <span>Icon color</span>
+              <button id="toolbar-icon-color" type="button" aria-label="Change icon color"></button>
+              <button class="toolbar-preview-reset-color" data-reset-property="iconColor" type="button" aria-label="Reset icon color"></button>
+            </div>
+            <div class="toolbar-preview-color-row">
+              <span>Key background</span>
+              <button id="toolbar-background-color" type="button" aria-label="Change key background color"></button>
+              <button class="toolbar-preview-reset-color" data-reset-property="backgroundColor" type="button" aria-label="Reset key background color"></button>
+            </div>
+            <div class="toolbar-preview-color-row">
+              <span>Active background</span>
+              <button id="toolbar-active-background-color" type="button" aria-label="Change active key background color"></button>
+              <button class="toolbar-preview-reset-color" data-reset-property="activeBackgroundColor" type="button" aria-label="Reset active background color"></button>
+            </div>
+          </div>
+          <div class="toolbar-preview-key-flags">
+            <label class="toolbar-preview-preserve-colors">
+              <input id="toolbar-preserve-svg-colors" type="checkbox">
+              Preserve icon colors
+            </label>
+            <label class="toolbar-preview-force-label">
+              <input id="toolbar-force-show-label" type="checkbox">
+              Force show key label
+            </label>
+          </div>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+    <div id="toolbar-create-group-modal" class="toolbar-preview-create-group-modal" hidden aria-hidden="true">
+      <form id="toolbar-create-group-form" class="toolbar-preview-create-group-dialog" role="dialog" aria-modal="true" aria-labelledby="toolbar-create-group-title">
+        <h2 id="toolbar-create-group-title">Create custom key or group</h2>
+        <label class="toolbar-preview-create-group-type-label" for="toolbar-create-group-type">Create as</label>
+        <select id="toolbar-create-group-type" aria-label="Custom toolbar item type">
+          <option value="key">Custom key</option>
+          <option value="group">Group / folder</option>
+        </select>
+        <input id="toolbar-create-group-name" type="text" maxlength="48" required placeholder="Key name" aria-label="Key name">
+        <div class="toolbar-preview-create-group-actions">
+          <button id="toolbar-create-group-cancel" type="button">Cancel</button>
+          <button type="submit">Create</button>
+        </div>
+      </form>
+    </div>
+    <div id="toolbar-icon-picker-modal" class="toolbar-preview-icon-picker-modal" hidden aria-hidden="true">
+      <section class="toolbar-preview-icon-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="toolbar-icon-picker-title">
+        <header class="toolbar-preview-icon-picker-header">
+          <h2 id="toolbar-icon-picker-title">Choose icon</h2>
+          <button id="toolbar-icon-picker-close" class="toolbar-preview-icon-picker-close" type="button" aria-label="Close icon picker">×</button>
+        </header>
+        <input id="toolbar-icon-search" class="toolbar-preview-icon-search" type="search" placeholder="Search available icons…" aria-label="Search app icons">
+        <div class="toolbar-preview-icon-actions">
+          <button id="toolbar-paste-svg" type="button">Paste SVG</button>
+          <button id="toolbar-choose-svg" type="button">Choose SVG file</button>
+        </div>
+        <div class="toolbar-preview-section-label">Available icons</div>
+        <div id="toolbar-icon-list" class="toolbar-preview-icon-list" role="listbox" aria-label="Available app icons"></div>
+      </section>
+    </div>
+    <div id="toolbar-action-picker-modal" class="toolbar-preview-icon-picker-modal" hidden aria-hidden="true">
+      <section class="toolbar-preview-icon-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="toolbar-action-picker-title">
+        <header class="toolbar-preview-icon-picker-header">
+          <h2 id="toolbar-action-picker-title">Choose action</h2>
+          <button id="toolbar-action-picker-close" class="toolbar-preview-icon-picker-close" type="button" aria-label="Close action picker">×</button>
+        </header>
+        <input id="toolbar-action-search" class="toolbar-preview-icon-search" type="search" placeholder="Search actions…" aria-label="Search available actions">
+        <div id="toolbar-action-list" class="toolbar-preview-icon-list toolbar-preview-action-choice-list" role="listbox" aria-label="Available toolbar actions"></div>
+      </section>
+    </div>
+    <div id="toolbar-help-modal" class="toolbar-preview-help-overlay" hidden aria-hidden="true">
+      <section class="toolbar-preview-help-dialog" role="dialog" aria-modal="true" aria-labelledby="toolbar-help-title">
+        <header class="toolbar-preview-help-header">
+          <h2 id="toolbar-help-title">Toolbar help</h2>
+          <button id="toolbar-help-close" type="button" aria-label="Close toolbar help">×</button>
+        </header>
+        <div class="toolbar-preview-help-content">
+          <h3>Arrange keys</h3>
+          <p>Press and hold a key, then drag it between keys to move it. Drop it on another key to make or add to a group. Drag it to the holding area to hide it.</p>
+          <h3>Edit keys and groups</h3>
+          <p>Tap a key to change its name, icon, colors, and tap or swipe actions. Tap a folder to open its keys. An empty folder stays in the holding area until you place it or delete it.</p>
+          <h3>Restore keys</h3>
+          <p>Drag a key from the holding area back into the toolbar. Use “Restore default layout” only when you want to replace your current arrangement with the default layout.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="./toolbar-settings.js"></script>
+</body>
+</html>

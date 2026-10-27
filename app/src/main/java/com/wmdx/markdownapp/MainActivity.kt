@@ -7,10 +7,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Base64
+import android.util.LruCache
 import android.view.Menu
 import android.view.MenuItem
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -25,6 +29,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.ViewCompat
 import androidx.preference.PreferenceManager
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
@@ -36,6 +41,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
+    private var suppressImeUntilUserTouch = false
+    private var imeHideGeneration = 0
+
+    private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
+    private val fontDataUriCache = object : LruCache<String, CachedFontData>(8 * 1024) {
+        override fun sizeOf(key: String, value: CachedFontData): Int =
+            maxOf(1, value.dataUri.length / 1024)
+    }
 
     private var currentFileUri: Uri? = null
         set(value) {
@@ -44,19 +57,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     private var currentFileName: String = "Untitled.md"
     private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
-    private var isDirty: Boolean = false
+    @Volatile private var isDirty: Boolean = false
     private var isEditorReady: Boolean = false
     private var currentEditorMode: String = "rich_text"
-    private var currentRevision: Long = 0
+    @Volatile private var currentRevision: Long = 0
     private var hasBom: Boolean = false
     private var hasCrlf: Boolean = false
-    private var latestMarkdownContent: String? = null
+    @Volatile private var latestMarkdownContent: String? = null
     private var pendingOpenUri: Uri? = null
     private var pendingOpenPermissionFlags: Int? = null
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
     private var currentTextPackSession: TextPackSession? = null
     private var pendingRenameFallbackName: String? = null
+    private var pendingCreateDocumentAsTextPack: Boolean? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
     private var pendingRenamePermissionRequest: RenameAccessRequest? = null
     private val documentHistoryStack = java.util.ArrayDeque<Uri>()
@@ -92,10 +106,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         if (uri != null) {
             pendingRenameFallbackName = null
-            saveFileToUri(uri)
+            val saveAsTextPack = pendingCreateDocumentAsTextPack
+            pendingCreateDocumentAsTextPack = null
+            saveFileToUri(uri, saveAsTextPack)
         } else if (pendingRenameFallbackName != null) {
+            pendingCreateDocumentAsTextPack = null
             pendingRenameFallbackName = null
             updateTitle()
+        } else {
+            pendingCreateDocumentAsTextPack = null
         }
     }
 
@@ -109,8 +128,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (isEditorReady) {
-            applyPluginPreferences()
             applyThemeAndFullscreenPreferences()
+            refreshBottomToolbarFromPreferences()
+            val captureActive = AppDiagnostics.isNavigationCaptureActive(this)
+            webView.evaluateJavascript(
+                "window.editorBridge?.setNavigationDiagnosticsEnabled?.($captureActive);",
+                null
+            )
         }
     }
 
@@ -122,6 +146,32 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
+        webView.isFocusable = true
+        webView.isFocusableInTouchMode = true
+        AppDiagnostics.record(
+            this,
+            "ime_webview_focus_configured",
+            "focusable=${webView.isFocusable} touchFocusable=${webView.isFocusableInTouchMode}"
+        )
+        webView.setOnTouchListener { _, event ->
+            if (
+                event.actionMasked == MotionEvent.ACTION_DOWN &&
+                suppressImeUntilUserTouch
+            ) {
+                suppressImeUntilUserTouch = false
+                val generation = ++imeHideGeneration
+                window.setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+                )
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "ime_user_touch_released_suppression",
+                    "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()}"
+                )
+            }
+            false
+        }
 
         updateTitle()
 
@@ -264,6 +314,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (::webView.isInitialized) {
             webView.onResume()
             applyThemeAndFullscreenPreferences()
+            refreshBottomToolbarFromPreferences()
+            suppressImeUntilUserTouch = true
+            val generation = ++imeHideGeneration
+            window.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+            )
+            webView.post { hideImeWhileResumeIsSuppressed(generation) }
+            webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 180)
+            webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 500)
+            AppDiagnostics.record(
+                this,
+                "ime_resume_suppression_started",
+                "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
+            )
         }
     }
 
@@ -271,10 +336,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
+        performAutoSaveOnLeave()
         if (::webView.isInitialized) {
             webView.onPause()
         }
-        performAutoSaveOnLeave()
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
@@ -300,26 +365,53 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         if (::webView.isInitialized) {
             applyThemeAndFullscreenPreferences()
+            if (key == "pref_toolbar_bottom_config" ||
+                key == "pref_toolbar_floating_config") {
+                refreshBottomToolbarFromPreferences()
+            }
         }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         AppDiagnostics.record(this, "window_focus", hasFocus.toString())
+        if (hasFocus && suppressImeUntilUserTouch && ::webView.isInitialized) {
+            val generation = imeHideGeneration
+            webView.post { hideImeWhileResumeIsSuppressed(generation) }
+        }
     }
 
-    override fun onStop() {
-        super.onStop()
-        performAutoSaveOnLeave()
-    }
+    private fun editorImeVisible(): Boolean =
+        ViewCompat.getRootWindowInsets(webView)
+            ?.isVisible(WindowInsetsCompat.Type.ime()) == true
 
+    private fun hideImeWhileResumeIsSuppressed(generation: Int) {
+        if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
+            return
+        }
+        val visibleBefore = editorImeVisible()
+        ViewCompat.getWindowInsetsController(webView)
+            ?.hide(WindowInsetsCompat.Type.ime())
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+            ?.hideSoftInputFromWindow(webView.windowToken, 0)
+        AppDiagnostics.record(
+            this,
+            "ime_resume_hide_applied",
+            "generation=${generation} visibleBefore=${visibleBefore} visibleAfter=${editorImeVisible()} viewFocused=${webView.isFocused}"
+        )
+    }
     private fun performAutoSaveOnLeave() {
         if (!isDirty || currentFileUri == null) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val autoSaveEnabled = prefs.getBoolean("pref_auto_save_on_leave", true)
         if (autoSaveEnabled) {
             currentFileUri?.let { uri ->
-                saveFileToUri(uri)
+                val cachedMarkdownContent = latestMarkdownContent
+                if (cachedMarkdownContent != null) {
+                    saveFileToUri(uri, cachedMarkdownText = cachedMarkdownContent)
+                } else {
+                    saveFileToUri(uri)
+                }
             }
         }
     }
@@ -337,7 +429,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         webView.addJavascriptInterface(WebAppInterface(), "AndroidNative")
-
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView?,
@@ -733,6 +824,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun refreshBottomToolbarFromPreferences() {
+        if (!isEditorReady || !::webView.isInitialized) return
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val bottomConfig = prefs.getString("pref_toolbar_bottom_config", null)
+        val floatingConfig = prefs.getString("pref_toolbar_floating_config", bottomConfig)
+        val escapedConfig = bottomConfig?.let { JSONObjectWrapper.quote(it) } ?: "null"
+        val escapedFloatingConfig = floatingConfig?.let { JSONObjectWrapper.quote(it) } ?: "null"
+        webView.evaluateJavascript(
+            "window.editorBridge?.applyBottomToolbarConfig?.($escapedConfig);" +
+                "window.editorBridge?.applyFloatingToolbarConfig?.($escapedFloatingConfig || $escapedConfig);",
+            null
+        )
+    }
+
     private fun applyThemeAndFullscreenPreferences() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         PreferenceResetHelper.migratePersistedHeadingDefaults(prefs)
@@ -746,8 +851,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedJson = JSONObjectWrapper.quote(jsonObject.toString())
         webView.evaluateJavascript("if (window.editorBridge && window.editorBridge.applyAllPreferences) { window.editorBridge.applyAllPreferences($escapedJson); }", null)
 
-        val fontBodyData = loadFontDataUri(prefs.getString("pref_font_file_body_path", null))
-        val fontHeadingData = loadFontDataUri(prefs.getString("pref_font_file_heading_path", null))
+        val bodyFontFamily = prefs.getString("pref_body_font_family", "default") ?: "default"
+        val headingFontFamily = prefs.getString("pref_heading_font_family", "default") ?: "default"
+        val fontBodyData = if (bodyFontFamily == "default") {
+            loadFontDataUri(prefs.getString("pref_font_file_body_path", null))
+        } else {
+            null
+        }
+        val fontHeadingData = if (headingFontFamily == "default") {
+            loadFontDataUri(prefs.getString("pref_font_file_heading_path", null))
+        } else {
+            null
+        }
         val fontHeadingLevelsData = (1..6).map { level ->
             loadFontDataUri(prefs.getString("pref_font_file_heading_${level}_path", null))
         }
@@ -759,6 +874,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val fontCodeData = loadFontDataUri(prefs.getString("pref_font_file_code_path", null))
         val fontCalloutHeaderData = loadFontDataUri(prefs.getString("pref_font_file_callout_header_path", null))
         val fontTocData = loadFontDataUri(prefs.getString("pref_font_file_toc_path", null))
+        val fontFootnoteData = if (
+            prefs.getBoolean("pref_footnote_inherit_body_typography", true)
+        ) {
+            null
+        } else {
+            loadFontDataUri(prefs.getString("pref_font_file_footnote_path", null))
+        }
 
         val bodyFontSize = prefs.getInt("pref_body_font_size", 16)
         val headingScalePercent = prefs.getInt("pref_heading_scale_percent", 100)
@@ -782,9 +904,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val escapedCodeFont = JSONObjectWrapper.quote(fontCodeData)
         val escapedCalloutHeaderFont = JSONObjectWrapper.quote(fontCalloutHeaderData)
         val escapedTocFont = JSONObjectWrapper.quote(fontTocData)
+        val escapedFootnoteFont = JSONObjectWrapper.quote(fontFootnoteData)
+        val escapedBodyFontFamily = JSONObjectWrapper.quote(bodyFontFamily)
+        val escapedHeadingFontFamily = JSONObjectWrapper.quote(headingFontFamily)
 
         webView.evaluateJavascript(
-            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont); }",
+            "if (window.editorBridge && window.editorBridge.setFontSettings) { window.editorBridge.setFontSettings($bodyFontSize, $headingScale, $boldColor, $italicColor, $linkColor, $codeColor, $codeBgColor, $codeBlockColor, $codeBlockBgColor, $escapedBodyFont, $escapedHeadingFont, $escapedBoldFont, $escapedItalicFont, $escapedCodeFont, $fontWeightBold, $fontWeightItalic, $fontWeightHeading, $escapedCalloutHeaderFont, $escapedHeadingLevelsData, $escapedTocFont, $escapedFootnoteFont, $escapedBodyFontFamily, $escapedHeadingFontFamily); }",
             null
         )
 
@@ -796,16 +921,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "open" to prefs.getString("pref_hotkey_open", "ctrl+o"),
             "save" to prefs.getString("pref_hotkey_save", "ctrl+s"),
             "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
+            "save_as_textpack" to prefs.getString("pref_hotkey_save_as_textpack", "ctrl+shift+alt+s"),
             "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
             "image" to prefs.getString("pref_hotkey_image", "ctrl+shift+i"),
             "settings" to prefs.getString("pref_hotkey_settings", "ctrl+,"),
+            "open_with" to prefs.getString("pref_hotkey_open_with", "ctrl+shift+o"),
             "toggle_toolbar" to prefs.getString("pref_hotkey_toggle_toolbar", "ctrl+t"),
+            "line_numbers" to prefs.getString("pref_hotkey_line_numbers", "ctrl+alt+l"),
             "line_wrap" to prefs.getString("pref_hotkey_line_wrap", "ctrl+alt+w"),
             "bold" to prefs.getString("pref_hotkey_bold", "ctrl+b"),
             "italic" to prefs.getString("pref_hotkey_italic", "ctrl+i"),
             "underline" to prefs.getString("pref_hotkey_underline", "ctrl+u"),
             "strikethrough" to prefs.getString("pref_hotkey_strikethrough", "ctrl+shift+x"),
             "code" to prefs.getString("pref_hotkey_code", "ctrl+e"),
+            "callout" to prefs.getString("pref_hotkey_callout", "ctrl+alt+q"),
             "link" to prefs.getString("pref_hotkey_link", "ctrl+k"),
             "footnote" to prefs.getString("pref_hotkey_footnote", "ctrl+shift+f"),
             "blockQuote" to prefs.getString("pref_hotkey_blockQuote", "ctrl+shift+q"),
@@ -865,6 +994,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             R.id.action_save_as -> {
                 handleSaveAsFile()
+                true
+            }
+            R.id.action_save_as_textpack -> {
+                handleSaveAsTextPackFile()
                 true
             }
             R.id.action_export -> {
@@ -1038,6 +1171,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(this, "textpack_read_done", "chars=${text.length} lines=$lines ms=$readMs")
 
                 currentTextPackSession = session
+                latestMarkdownContent = text
                 currentFileUri = uri
                 currentFileName = fileName
                 isDirty = false
@@ -1062,6 +1196,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     val content = reader.readText()
                     hasBom = content.startsWith("\uFEFF")
                     hasCrlf = content.contains("\r\n")
+                    latestMarkdownContent = content
                     val lines = content.lineSequence().count()
                     val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
                     AppDiagnostics.record(this, "file_read_done", "chars=${content.length} lines=$lines ms=$readMs")
@@ -1110,14 +1245,49 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun handleSaveAsFile() {
-        val defaultName = if (currentFileName.endsWith(".textpack", ignoreCase = true)) {
-            currentFileName
-        } else if (currentFileName.contains(".")) {
-            "${currentFileName.substringBeforeLast(".")}.textpack"
-        } else {
-            "$currentFileName.textpack"
+        launchCreateDocument(defaultMarkdownSaveAsName(), asTextPack = false)
+    }
+
+    private fun handleSaveAsTextPackFile() {
+        launchCreateDocument(defaultTextPackSaveAsName(), asTextPack = true)
+    }
+
+    private fun launchCreateDocument(fileName: String, asTextPack: Boolean?) {
+        pendingCreateDocumentAsTextPack = asTextPack
+        createDocumentLauncher.launch(fileName)
+    }
+
+    private fun defaultMarkdownSaveAsName(): String {
+        val name = currentFileName.ifBlank { getString(R.string.untitled_document) }
+        val lowerName = name.lowercase()
+        val markdownName = when {
+            lowerName.endsWith(".textpack.zip") ->
+                name.dropLast(".textpack.zip".length) + ".md"
+            lowerName.endsWith(".textpack") ->
+                name.dropLast(".textpack".length) + ".md"
+            lowerName.endsWith(".markdown") || lowerName.endsWith(".md") -> name
+            else -> {
+                val lastDot = name.lastIndexOf('.')
+                val base = if (lastDot > 0) name.substring(0, lastDot) else name
+                "$base.md"
+            }
         }
-        createDocumentLauncher.launch(defaultName)
+        return markdownName
+    }
+
+    private fun defaultTextPackSaveAsName(): String {
+        val name = currentFileName.ifBlank { getString(R.string.untitled_document) }
+        val lowerName = name.lowercase()
+        return when {
+            lowerName.endsWith(".textpack.zip") || lowerName.endsWith(".textpack") -> name
+            lowerName.endsWith(".markdown") || lowerName.endsWith(".md") ->
+                name.substringBeforeLast(".") + ".textpack"
+            else -> {
+                val lastDot = name.lastIndexOf('.')
+                val base = if (lastDot > 0) name.substring(0, lastDot) else name
+                "$base.textpack"
+            }
+        }
     }
 
     private fun renamedDocumentFileName(requestedName: String, originalName: String): String? {
@@ -1173,6 +1343,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun launchRenameSaveAs(targetName: String) {
         pendingRenameFallbackName = targetName
+        pendingCreateDocumentAsTextPack = null
         createDocumentLauncher.launch(targetName)
     }
 
@@ -1305,13 +1476,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun saveFileToUri(uri: Uri) {
+    private fun saveFileToUri(
+        uri: Uri,
+        requestedAsTextPack: Boolean? = null,
+        cachedMarkdownText: String? = null
+    ) {
         val oldDocumentKey = currentDocumentHistoryKey()
         val saveStarted = android.os.SystemClock.elapsedRealtime()
-        AppDiagnostics.record(this, "save_start", "mode=$currentEditorMode rev=$currentRevision")
-        webView.evaluateJavascript("window.editorBridge.getMarkdown();") { result ->
-            var markdownText = JSONObjectWrapper.unquote(result)
-            AppDiagnostics.record(this, "snapshot_taken", "mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length}")
+        val snapshotSource = if (cachedMarkdownText != null) "cached" else "webview"
+        AppDiagnostics.record(this, "save_start", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision")
+        val persistSnapshot: (String) -> Unit = { snapshot ->
+            var markdownText = snapshot
+            AppDiagnostics.record(this, "snapshot_taken", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length}")
 
             if (hasCrlf && !markdownText.contains("\r\n") && markdownText.contains("\n")) {
                 markdownText = markdownText.replace("\r\n", "\n").replace("\n", "\r\n")
@@ -1322,9 +1498,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
             try {
                 val targetFileName = getFileNameFromUri(uri)
-                val isTextPackTarget = targetFileName.endsWith(".textpack", ignoreCase = true) ||
-                                       targetFileName.endsWith(".textpack.zip", ignoreCase = true) ||
-                                       currentTextPackSession != null
+                val hasTextPackExtension =
+                    targetFileName.endsWith(".textpack", ignoreCase = true) ||
+                    targetFileName.endsWith(".textpack.zip", ignoreCase = true)
+                val isTextPackTarget = requestedAsTextPack ?: (
+                    hasTextPackExtension ||
+                        (uri == currentFileUri && currentTextPackSession != null)
+                    )
 
                 if (isTextPackTarget) {
                     val session = currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
@@ -1338,6 +1518,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         writer.write(markdownText)
                         writer.flush()
                     }
+                    currentTextPackSession = null
                 }
 
                 persistDocumentUriPermission(uri)
@@ -1356,15 +1537,34 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 ThemedToast.show(this, "Failed to save file: ${e.localizedMessage}", Toast.LENGTH_LONG)
             }
         }
+        if (cachedMarkdownText != null) {
+            persistSnapshot(cachedMarkdownText)
+        } else {
+            webView.evaluateJavascript("window.editorBridge.getMarkdown();") { result ->
+                persistSnapshot(JSONObjectWrapper.unquote(result))
+            }
+        }
     }
 
     private fun handleNewWindow() {
+        val newWindowId = java.util.UUID.randomUUID().toString()
         val intent = android.content.Intent(this, MainActivity::class.java).apply {
             action = android.content.Intent.ACTION_MAIN
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT or android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            data = Uri.parse("wmdx://window/$newWindowId")
+            addFlags(
+                android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
+                    android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            )
             putExtra("is_new_document", true)
         }
-        startActivity(intent)
+        try {
+            startActivity(intent)
+            AppDiagnostics.record(this, "new_window_requested")
+        } catch (error: Exception) {
+            AppDiagnostics.record(this, "new_window_failed", error.javaClass.simpleName)
+            ThemedToast.show(this, "Could not open a new window", Toast.LENGTH_LONG)
+        }
     }
 
 
@@ -1419,27 +1619,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun applyPluginPreferences() {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val disabledPlugins = mutableListOf<String>()
-
-        val keys = listOf(
-            "heading", "bold", "italic", "strikethrough", "highlight", "code", "link",
-            "image", "blockQuote", "codeBlock", "table", "list",
-            "todoList", "indent", "horizontalLine", "sourceEditing", "findAndReplace", "autoformat"
-        )
-
-        for (key in keys) {
-            val enabled = prefs.getBoolean("pref_plugin_$key", true)
-            if (!enabled) {
-                disabledPlugins.add(key)
-            }
-        }
-
-        val jsonArray = JSONArray(disabledPlugins)
-        val escapedJson = JSONObjectWrapper.quote(jsonArray.toString())
-        webView.evaluateJavascript("window.editorBridge.configurePlugins($escapedJson);", null)
-    }
 
     private fun showUnsavedChangesDialog(onConfirm: () -> Unit) {
         AlertDialog.Builder(this)
@@ -1477,6 +1656,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         return try {
             val file = java.io.File(path)
             if (!file.exists()) return ""
+            val modifiedAt = file.lastModified()
+            val length = file.length()
+            fontDataUriCache.get(path)?.let { cached ->
+                if (cached.modifiedAt == modifiedAt && cached.length == length) {
+                    return cached.dataUri
+                }
+            }
             val bytes = file.readBytes()
             val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
             val mimeType = when {
@@ -1485,7 +1671,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 path.endsWith(".woff", ignoreCase = true) -> "font/woff"
                 else -> "font/ttf"
             }
-            "data:$mimeType;base64,$base64"
+            val dataUri = "data:$mimeType;base64,$base64"
+            fontDataUriCache.put(path, CachedFontData(modifiedAt, length, dataUri))
+            dataUri
         } catch (e: Exception) {
             ""
         }
@@ -1526,37 +1714,42 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 latestMarkdownContent = markdownText
             }
             currentRevision = revision
-            runOnUiThread {
-                if (!isDirty) {
-                    isDirty = true
-                    updateTitle()
-                }
-            }
+            val becameDirty = !isDirty
+            isDirty = true
+            if (becameDirty) runOnUiThread { updateTitle() }
         }
 
         @JavascriptInterface
         fun reportDiagnostic(event: String, detail: String = "") {
-            AppDiagnostics.record(this@MainActivity, event, detail)
+            if (BuildConfig.DEBUG) {
+                AppDiagnostics.record(this@MainActivity, event, detail)
+            }
         }
 
         @JavascriptInterface
         fun reportNavigationTrace(jsonRecord: String?) {
-            if (jsonRecord != null && jsonRecord.length <= 16 * 1024) {
+            if (BuildConfig.DEBUG && jsonRecord != null && jsonRecord.length <= 16 * 1024) {
                 AppDiagnostics.recordNavigationTrace(this@MainActivity, jsonRecord)
             }
         }
 
         @JavascriptInterface
         fun reportNavigationTraceBatch(jsonBatch: String?) {
-            if (jsonBatch != null) {
+            if (BuildConfig.DEBUG && jsonBatch != null) {
                 AppDiagnostics.recordNavigationTraceBatch(this@MainActivity, jsonBatch)
             }
         }
 
         @JavascriptInterface
         fun captureDiagnosticSnapshot(reason: String?) {
-            AppDiagnostics.captureWindowSnapshot(this@MainActivity, webView, reason ?: "webview-request")
+            if (BuildConfig.DEBUG) {
+                AppDiagnostics.captureWindowSnapshot(this@MainActivity, webView, reason ?: "webview-request")
+            }
         }
+
+        @JavascriptInterface
+        fun isNavigationCaptureActive(): Boolean =
+            AppDiagnostics.isNavigationCaptureActive(this@MainActivity)
 
         @JavascriptInterface
         fun onEditorReady(mode: String? = null) {
@@ -1564,13 +1757,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val activeMode = mode ?: currentEditorMode
                 currentEditorMode = activeMode
                 val wasReady = isEditorReady
-                if (!wasReady) {
-                    AppDiagnostics.startNavigationCapture(this@MainActivity)
-                }
                 AppDiagnostics.record(this@MainActivity, "editor_ready", "mode=$activeMode")
                 isEditorReady = true
                 if (!wasReady) {
-                    applyPluginPreferences()
                     applyThemeAndFullscreenPreferences()
                 }
                 updateTitle()
@@ -1606,6 +1795,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "open" -> handleOpenFile()
                     "save" -> handleSaveFile()
                     "save_as" -> handleSaveAsFile()
+                    "save_as_textpack" -> handleSaveAsTextPackFile()
                     "export" -> handleExportDocument()
                     "image" -> handleInsertImage()
                     "new_window" -> handleNewWindow()
@@ -1621,6 +1811,32 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun writeClipboard(text: String?): Boolean {
+            if (text == null) return false
+            return try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager ?: return false
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("W.mdx", text))
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        @JavascriptInterface
+        fun readClipboard(): String {
+            return try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager ?: return ""
+                val clip = clipboard.primaryClip ?: return ""
+                if (clip.itemCount == 0) return ""
+                clip.getItemAt(0).coerceToText(this@MainActivity)?.toString() ?: ""
+            } catch (_: Exception) {
+                ""
+            }
+        }
+
+        @JavascriptInterface
         fun hideKeyboard() {
             runOnUiThread {
                 val inputMethodManager =
@@ -1629,6 +1845,42 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
+        @JavascriptInterface
+        fun showEditorKeyboard() {
+            runOnUiThread {
+                val visibleBefore = editorImeVisible()
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "ime_show_requested",
+                    "suppressed=${suppressImeUntilUserTouch} generation=${imeHideGeneration} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${visibleBefore}"
+                )
+                suppressImeUntilUserTouch = false
+                val generation = ++imeHideGeneration
+                window.setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+                )
+                val touchFocusRequested = webView.requestFocusFromTouch()
+                val focusRequested = touchFocusRequested || webView.requestFocus()
+                val insetsController = ViewCompat.getWindowInsetsController(webView)
+                insetsController?.show(WindowInsetsCompat.Type.ime())
+                val showAccepted =
+                    (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                        ?.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "ime_show_dispatched",
+                    "generation=${generation} touchFocus=${touchFocusRequested} focusRequested=${focusRequested} viewFocused=${webView.isFocused} immAccepted=${showAccepted} touchFocusable=${webView.isFocusableInTouchMode}"
+                )
+                webView.postDelayed({
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "ime_show_observed",
+                        "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
+                    )
+                }, 350L)
+            }
+        }
         @JavascriptInterface
         fun renameCurrentDocument(newName: String) {
             runOnUiThread {

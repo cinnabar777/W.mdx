@@ -2,6 +2,81 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="List Typography">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_list_inherit_body_typography"
+            app:title="Inherit Paragraph &amp; Body Typography"
+            app:summary="Use the paragraph font, weight, spacing, color, size, alignment, hyphenation, and line height"
+            app:disableDependentsState="true"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_list_font_family"
+            app:title="List Font Family"
+            app:summary="Font family for list item text"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default"
+            app:dependency="pref_list_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_list_font_weight"
+            app:title="List Font Weight"
+            app:summary="Font weight for list item text (100–900)"
+            app:min="100"
+            android:max="900"
+            app:defaultValue="400"
+            app:showSeekBarValue="true"
+            app:dependency="pref_list_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_list_font_size"
+            app:title="List Font Size (px)"
+            app:summary="Font size for list item text"
+            app:min="4"
+            android:max="32"
+            app:defaultValue="16"
+            app:showSeekBarValue="true"
+            app:dependency="pref_list_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_list_letter_spacing"
+            app:title="List Letter Spacing (px)"
+            app:summary="Space between letters in list items"
+            app:defaultValue="0px"
+            app:dependency="pref_list_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_list_text_color"
+            app:title="List Text Color"
+            app:summary="Text color for list items"
+            app:defaultValue="default"
+            app:dependency="pref_list_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_list_text_align"
+            app:title="List Text Alignment"
+            app:summary="Align list item text left, center, right, or justify"
+            android:entries="@array/align_entries"
+            android:entryValues="@array/align_values"
+            android:defaultValue="default"
+            app:dependency="pref_list_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_list_hyphenate"
+            app:title="Hyphenate List Text"
+            app:summary="Allow long words in list items to break with automatic hyphens"
+            android:defaultValue="false"
+            app:dependency="pref_list_inherit_body_typography" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_list_line_height"
+            app:title="List Line Height"
+            app:summary="Line-height multiplier for list items"
+            app:defaultValue="1.5"
+            app:dependency="pref_list_inherit_body_typography" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="List Spacing &amp; Indentation">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_list_left_indent"
@@ -36,11 +111,6 @@
             app:defaultValue="4"
             app:showSeekBarValue="true" />
 
-        <com.wmdx.markdownapp.ResetEditTextPreference
-            app:key="pref_list_line_height"
-            app:title="List Line Height"
-            app:summary="Line height multiplier for list items (e.g. 1.5 or default)"
-            app:defaultValue="1.5" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Bullets &amp; Numbers">

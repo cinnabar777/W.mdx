@@ -2,7 +2,7 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Settings UI Text Colors">
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Text Colors">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_settings_category_title_color"
             app:title="Category Header Text Color"
@@ -22,7 +22,7 @@
             app:defaultValue="#AAAAAA" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Settings UI Controls &amp; Icons">
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Controls &amp; Icons">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_settings_switch_color"
             app:title="Switch Toggle Active Color"
@@ -43,8 +43,8 @@
 
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_settings_bg_color"
-            app:title="Settings Screen Background Color"
-            app:summary="Background color for all settings screens (default: #000000)"
+            app:title="Page Background Color"
+            app:summary="Background behind settings pages (default: #000000)"
             app:defaultValue="#000000" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 

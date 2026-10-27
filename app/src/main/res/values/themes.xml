@@ -1,7 +1,16 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.WMdx" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">#7C3AED</item>
-        <item name="colorPrimaryVariant">#6D28D9</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimary">#00E5C8</item>
+        <item name="colorPrimaryVariant">#00BFA5</item>
+        <item name="colorOnPrimary">#001713</item>
+        <item name="colorAccent">#00E5C8</item>
+        <item name="colorControlActivated">#00E5C8</item>
+        <item name="colorSecondary">#00E5C8</item>
+        <item name="colorOnSecondary">#001713</item>
+        <item name="colorSurface">#080808</item>
+        <item name="colorOnSurface">#FFFFFF</item>
+        <item name="android:colorBackground">#000000</item>
+        <item name="android:colorBackgroundFloating">#080808</item>
+        <item name="android:colorAccent">#00E5C8</item>
     </style>
 </resources>
