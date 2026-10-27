@@ -79,6 +79,7 @@ let activePopupSurface = 'bottom';
 let bottomToolbarConfig = normalizeBottomToolbarConfig(null);
 let floatingToolbarConfig = normalizeBottomToolbarConfig(null);
 let floatingToolbarSelectionFrame = 0;
+let floatingToolbarEnabled = true;
 let tocHideFileExtension = false;
 
 let customHotkeys = {
@@ -4388,6 +4389,12 @@ function scheduleFloatingToolbarPosition() {
 function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
   const bar = document.querySelector('#floating-selection-toolbar');
   if (!bar) return;
+  if (!floatingToolbarEnabled) {
+    bar.classList.remove('is-visible');
+    bar.setAttribute('aria-hidden', 'true');
+    if (activePopupSurface === 'floating') hidePopupStrip();
+    return;
+  }
   const selection = view?.state?.selection?.main;
   if (!view?.dom?.isConnected || !selection || selection.empty) {
     bar.classList.remove('is-visible');
@@ -7568,6 +7575,10 @@ window.editorBridge = {
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
     // Toolbar
+    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled !== false;
+    if (!floatingToolbarEnabled && activePopupSurface === 'floating') {
+      hidePopupStrip();
+    }
     if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
       bottomToolbarConfig = normalizeBottomToolbarConfig(
         prefs.pref_toolbar_bottom_config
@@ -7612,6 +7623,7 @@ window.editorBridge = {
       '--toolbar-toggle-icon-color',
       androidArgbToCss(prefs.pref_toolbar_toggle_icon_color)
     );
+    updateFloatingSelectionToolbar();
     setCssVar('--toolbar-height', prefs.pref_toolbar_height, 'px');
     const toolbarPadding = Number(prefs.pref_toolbar_padding ?? 4);
     setCssVar(

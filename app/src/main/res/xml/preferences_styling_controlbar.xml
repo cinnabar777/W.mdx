@@ -74,6 +74,12 @@
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="pref_toolbar_floating_category"
         app:title="Floating toolbar">
+        <androidx.preference.SwitchPreferenceCompat
+            app:key="pref_toolbar_floating_enabled"
+            app:title="Enable floating toolbar"
+            app:summary="Show the floating toolbar when text is selected"
+            android:defaultValue="true" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_toolbar_floating_key_width"
             app:title="Key Width (dp)"

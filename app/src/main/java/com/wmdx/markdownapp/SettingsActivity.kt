@@ -1280,6 +1280,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "pref_toolbar_icon_color",
             "pref_toolbar_toggle_bg_color",
             "pref_toolbar_toggle_icon_color",
+            "pref_toolbar_floating_enabled",
             "pref_toolbar_height",
             "pref_toolbar_padding",
             "pref_toolbar_floating_category",
@@ -1608,6 +1609,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
         payload.put("pref_toolbar_bg_color", prefs.getString("pref_toolbar_bg_color", "default"))
         payload.put("pref_toolbar_icon_color", prefs.getString("pref_toolbar_icon_color", "default"))
+        payload.put(
+            "pref_toolbar_floating_enabled",
+            prefs.getBoolean("pref_toolbar_floating_enabled", true)
+        )
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
         payload.put("pref_toolbar_floating_key_width", prefs.getInt("pref_toolbar_floating_key_width", 48))

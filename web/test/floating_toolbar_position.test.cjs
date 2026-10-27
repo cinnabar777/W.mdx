@@ -67,6 +67,7 @@ test('floating toolbar has an independent saved layout and replaces the native s
   const controlbarPrefs = readApp('src/main/res/xml/preferences_styling_controlbar.xml');
   const mainSettingsPrefs = readApp('src/main/res/xml/preferences.xml');
   const activityLayout = readApp('src/main/res/layout/activity_main.xml');
+  const webIndex = readFileSync(path.join(repositoryRoot, 'web', 'index.html'), 'utf8');
   const styles = readWeb('toolbar.css');
 
   assert.match(main, /let floatingToolbarConfig = normalizeBottomToolbarConfig\(null\)/);
@@ -86,6 +87,18 @@ test('floating toolbar has an independent saved layout and replaces the native s
   assert.match(settingsActivity, /pref_toolbar_floating_config/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_key_width/);
   assert.match(controlbarPrefs, /pref_toolbar_floating_corner_radius/);
+  assert.match(
+    controlbarPrefs,
+    /pref_toolbar_floating_enabled[\s\S]*?android:defaultValue="true"/
+  );
+  assert.match(
+    settingsActivity,
+    /prefs\.getBoolean\("pref_toolbar_floating_enabled", true\)/
+  );
+  assert.match(main, /let floatingToolbarEnabled = true/);
+  assert.match(main, /floatingToolbarEnabled = prefs\.pref_toolbar_floating_enabled !== false/);
+  assert.match(main, /if \(!floatingToolbarEnabled\) \{[\s\S]*?aria-hidden', 'true'/);
+  assert.match(webIndex, /\.floating-toggle-btn\s*\{[^}]*width:\s*48px;[^}]*height:\s*48px;/s);
   assert.match(
     controlbarPrefs,
     /ResetPreferenceCategory[\s\S]*?pref_toolbar_floating_category[\s\S]*?app:title="Floating toolbar"/
