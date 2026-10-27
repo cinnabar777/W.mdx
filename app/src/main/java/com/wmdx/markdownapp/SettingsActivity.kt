@@ -2773,7 +2773,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 pref.isVisible = (pref.key == selectedCategoryKey)
             }
         }
-        listView?.post { listView?.setSelection(0) }
+        listView?.post { listView?.scrollToPosition(0) }
     }
 
     private fun setupInteractivePreview(fragmentRootView: android.view.View) {
