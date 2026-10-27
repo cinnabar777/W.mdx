@@ -1,4 +1,4 @@
- # MD CHEAT SHEET
+# MD CHEAT SHEET
 
 ## MARKDOWN QR
 
@@ -251,8 +251,8 @@ lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 ### CALLOUTS
 
-> [!info] header — this is an extended header for text word wrap so Jules can see what it should look like. 
-> The type identifier determines how the callout looks and feels. This is extra text to show how word wrap should look. 
+> [!info] header
+> The type identifier determines how the callout looks and feels.
 
 Example:
 
