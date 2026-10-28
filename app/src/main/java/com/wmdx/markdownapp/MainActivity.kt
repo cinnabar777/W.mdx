@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     @Volatile private var latestMarkdownContent: String? = null
     private var pendingOpenUri: Uri? = null
     private var pendingOpenPermissionFlags: Int? = null
+    private var pendingExistingDocumentFocusUri: Uri? = null
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
     private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
@@ -90,6 +91,79 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingRenamePermissionRequest: RenameAccessRequest? = null
     private val documentHistoryStack = java.util.ArrayDeque<Uri>()
     private val documentForwardStack = java.util.ArrayDeque<Uri>()
+    private val documentHistoryLock = Any()
+
+    fun requestExistingDocumentFocus(uriString: String) {
+        val uri = runCatching { Uri.parse(uriString).normalizeScheme() }.getOrNull() ?: return
+        runOnUiThread {
+            pendingExistingDocumentFocusUri = uri
+            dispatchPendingExistingDocumentFocus()
+        }
+    }
+
+    private fun dispatchPendingExistingDocumentFocus() {
+        val uri = pendingExistingDocumentFocusUri ?: return
+        if (!isEditorReady || !::webView.isInitialized) return
+        val escapedUri = JSONObjectWrapper.quote(uri.toString())
+        webView.evaluateJavascript(
+            "(window.leftPanelController?.focusDocumentUri?.($escapedUri) === true)"
+        ) { _ ->
+            if (pendingExistingDocumentFocusUri == uri) {
+                pendingExistingDocumentFocusUri = null
+            }
+        }
+    }
+
+    private fun documentHistoryStateJson(): String = synchronized(documentHistoryLock) {
+        val back = JSONArray().apply {
+            documentHistoryStack.forEach { put(it.toString()) }
+        }
+        val forward = JSONArray().apply {
+            documentForwardStack.forEach { put(it.toString()) }
+        }
+        org.json.JSONObject()
+            .put("back", back)
+            .put("forward", forward)
+            .toString()
+    }
+
+    private fun restoreDocumentHistoryState(historyStateJson: String?) {
+        val state = runCatching {
+            org.json.JSONObject(historyStateJson ?: "{}")
+        }.getOrNull()
+        synchronized(documentHistoryLock) {
+            documentHistoryStack.clear()
+            documentForwardStack.clear()
+            if (state == null) return@synchronized
+            val back = state.optJSONArray("back") ?: JSONArray()
+            val forward = state.optJSONArray("forward") ?: JSONArray()
+            for (index in 0 until back.length()) {
+                back.optString(index).takeIf { it.isNotBlank() }?.let { value ->
+                    runCatching { Uri.parse(value).normalizeScheme() }
+                        .getOrNull()?.let(documentHistoryStack::addLast)
+                }
+            }
+            for (index in 0 until forward.length()) {
+                forward.optString(index).takeIf { it.isNotBlank() }?.let { value ->
+                    runCatching { Uri.parse(value).normalizeScheme() }
+                        .getOrNull()?.let(documentForwardStack::addLast)
+                }
+            }
+        }
+    }
+
+    private fun canNavigateDocumentBack(): Boolean =
+        synchronized(documentHistoryLock) { documentHistoryStack.isNotEmpty() }
+
+    private fun canNavigateDocumentForward(): Boolean =
+        synchronized(documentHistoryLock) { documentForwardStack.isNotEmpty() }
+
+    private fun beginTabHistoryNavigation() {
+        webView.evaluateJavascript(
+            "window.leftPanelController?.onTabHistoryNavigationStarted?.();",
+            null
+        )
+    }
 
     private fun showCustomToast(message: String) {
         runOnUiThread {
@@ -171,6 +245,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowRegistry.registerActivity(this)
         val startupPreferences = PreferenceManager.getDefaultSharedPreferences(this)
         if (!startupPreferences.getBoolean("pref_toolbar_default_corrected", false)) {
             startupPreferences.edit()
@@ -232,6 +307,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     override fun onDestroy() {
+        WindowRegistry.unregisterActivity(this)
         if (
             isFinishing &&
             !isChangingConfigurations &&
@@ -264,10 +340,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putStringArrayList("document_history",
-            ArrayList(documentHistoryStack.map { it.toString() }))
-        outState.putStringArrayList("document_forward_history",
-            ArrayList(documentForwardStack.map { it.toString() }))
+        synchronized(documentHistoryLock) {
+            outState.putStringArrayList(
+                "document_history",
+                ArrayList(documentHistoryStack.map { it.toString() })
+            )
+            outState.putStringArrayList(
+                "document_forward_history",
+                ArrayList(documentForwardStack.map { it.toString() })
+            )
+        }
         super.onSaveInstanceState(outState)
     }
 
@@ -357,6 +439,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onResume() {
         super.onResume()
+        WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
+            pendingExistingDocumentFocusUri = it
+        }
+        dispatchPendingExistingDocumentFocus()
         AppDiagnostics.record(this, "window_resumed")
         PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(this)
         if (::webView.isInitialized) {
@@ -611,10 +697,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val titleText = "$currentFileName$dirtyIndicator"
         val escapedTitle = JSONObjectWrapper.quote(titleText)
         val escapedDocumentKey = JSONObjectWrapper.quote(currentDocumentHistoryKey())
-        val canGoBack = documentHistoryStack.isNotEmpty()
-        val canGoForward = documentForwardStack.isNotEmpty()
+        val escapedHistoryState = JSONObjectWrapper.quote(documentHistoryStateJson())
+        val canGoBack = canNavigateDocumentBack()
+        val canGoForward = canNavigateDocumentForward()
         webView.evaluateJavascript(
-            "if (window.editorBridge) { window.editorBridge.setDocumentTitle($escapedTitle, $escapedDocumentKey); window.editorBridge.setDocumentHistoryState($canGoBack, $canGoForward); }",
+            "if (window.editorBridge) { window.editorBridge.setDocumentTitle($escapedTitle, $escapedDocumentKey); window.editorBridge.setDocumentHistoryState($canGoBack, $canGoForward); window.leftPanelController?.onDocumentHistoryStateChanged?.($escapedHistoryState); }",
             null
         )
     }
@@ -902,8 +989,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             stack.clear()
             entries.forEach { stack.addLast(it) }
         }
-        replaceIn(documentHistoryStack)
-        replaceIn(documentForwardStack)
+        synchronized(documentHistoryLock) {
+            replaceIn(documentHistoryStack)
+            replaceIn(documentForwardStack)
+        }
     }
 
     private fun saveCurrentStateBeforeSettings() {
@@ -1173,8 +1262,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun createNewDocument() {
-        currentFileUri?.let { documentHistoryStack.push(it) }
-        documentForwardStack.clear()
+        synchronized(documentHistoryLock) {
+            currentFileUri?.let { documentHistoryStack.push(it) }
+            documentForwardStack.clear()
+        }
         currentDocumentSessionId = java.util.UUID.randomUUID().toString()
         currentRevision = 0
         currentEmptyContentExplicitlyEdited = false
@@ -1188,9 +1279,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun navigateBackOrFinish() {
-        if (documentHistoryStack.isNotEmpty()) {
-            val previousUri = documentHistoryStack.pop()
-            currentFileUri?.let { documentForwardStack.push(it) }
+        val previousUri = synchronized(documentHistoryLock) {
+            if (documentHistoryStack.isEmpty()) {
+                null
+            } else {
+                documentHistoryStack.pop().also {
+                    currentFileUri?.let { current -> documentForwardStack.push(current) }
+                }
+            }
+        }
+        if (previousUri != null) {
             openFileFromHistory(previousUri)
             updateTitle()
         } else {
@@ -1210,14 +1308,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (handled == "true") return@evaluateJavascript
 
             when {
-                direction == "back" && documentHistoryStack.isNotEmpty() -> {
+                direction == "back" && canNavigateDocumentBack() -> {
                     if (isDirty) {
                         showUnsavedChangesDialog { navigateBackOrFinish() }
                     } else {
                         navigateBackOrFinish()
                     }
                 }
-                direction == "forward" && documentForwardStack.isNotEmpty() -> {
+                direction == "forward" && canNavigateDocumentForward() -> {
                     if (isDirty) {
                         showUnsavedChangesDialog { navigateForwardDocument() }
                     } else {
@@ -1236,15 +1334,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun navigateForwardDocument() {
-        if (documentForwardStack.isEmpty()) return
-        val nextUri = documentForwardStack.pop()
-        currentFileUri?.let { documentHistoryStack.push(it) }
-        openFile(nextUri, rememberHistory = false)
+        val nextUri = synchronized(documentHistoryLock) {
+            if (documentForwardStack.isEmpty()) {
+                null
+            } else {
+                documentForwardStack.pop().also {
+                    currentFileUri?.let { current -> documentHistoryStack.push(current) }
+                }
+            }
+        } ?: return
+        beginTabHistoryNavigation()
+        openFile(nextUri, rememberHistory = false, skipExistingWindowFocus = true)
         updateTitle()
     }
 
     private fun openFileFromHistory(uri: Uri) {
-        openFile(uri, rememberHistory = false)
+        beginTabHistoryNavigation()
+        openFile(uri, rememberHistory = false, skipExistingWindowFocus = true)
     }
 
     private fun createOpenDocumentIntent(initialUri: Uri? = null): android.content.Intent {
@@ -1298,10 +1404,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (!forceReload && currentFileUri == uri && !isDirty) return
-        if (!skipExistingWindowFocus && WindowRegistry.focus(this, uri, excludeTask = taskId)) return
-        if (rememberHistory && currentFileUri != null && currentFileUri != uri) {
-            documentHistoryStack.push(currentFileUri)
-            documentForwardStack.clear()
+        if (!skipExistingWindowFocus && WindowRegistry.focus(this, uri)) return
+        synchronized(documentHistoryLock) {
+            if (rememberHistory && currentFileUri != null && currentFileUri != uri) {
+                documentHistoryStack.push(currentFileUri)
+                documentForwardStack.clear()
+            }
         }
 
         AppDiagnostics.record(this, "native_read_start")
@@ -1342,7 +1450,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             } else {
                 currentTextPackSession = null
-                contentResolver.openInputStream(uri)?.use { inputStream ->
+                val inputStream = contentResolver.openInputStream(uri)
+                    ?: throw java.io.FileNotFoundException("Could not read the selected file")
+                inputStream.use {
                     val reader = BufferedReader(InputStreamReader(inputStream))
                     val content = reader.readText()
                     hasBom = content.startsWith("\uFEFF")
@@ -1374,6 +1484,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             }
         } catch (e: Exception) {
+            webView.evaluateJavascript(
+                "window.leftPanelController?.onTabHistoryNavigationCancelled?.();",
+                null
+            )
             WindowRegistry.register(this, currentFileUri)
             AppDiagnostics.record(this, "file_load_error", "category=${e.javaClass.simpleName}")
             ThemedToast.show(this, "Failed to open file: ${e.localizedMessage}", Toast.LENGTH_LONG)
@@ -2287,13 +2401,31 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun getDocumentNavigationHistory(): String =
+            this@MainActivity.documentHistoryStateJson()
+
+        @JavascriptInterface
+        fun registerLeftPanelOpenTabUris(urisJson: String) {
+            WindowRegistry.registerOpenTabUris(this@MainActivity, urisJson)
+        }
+
+        @JavascriptInterface
+        fun focusOpenDocument(uriString: String): Boolean {
+            val uri = runCatching { Uri.parse(uriString).normalizeScheme() }.getOrNull()
+                ?: return false
+            return WindowRegistry.focus(this@MainActivity, uri, excludeTask = taskId)
+        }
+
+        @JavascriptInterface
         fun readLeftPanelDocumentForNavigation(uriString: String): String {
             val uri = runCatching { Uri.parse(uriString) }.getOrNull()
                 ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
             val document = this@MainActivity.readLeftPanelDocument(uri)
             if (document.optBoolean("ok") && currentFileUri != uri) {
-                currentFileUri?.let { documentHistoryStack.push(it) }
-                documentForwardStack.clear()
+                synchronized(documentHistoryLock) {
+                    currentFileUri?.let { current -> documentHistoryStack.push(current) }
+                    documentForwardStack.clear()
+                }
             }
             return document.toString()
         }
@@ -2340,12 +2472,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             isTextPack: Boolean,
             tabHasBom: Boolean,
             tabHasCrlf: Boolean,
-            emptyContentExplicitlyEdited: Boolean
+            emptyContentExplicitlyEdited: Boolean,
+            historyStateJson: String
         ): Boolean {
             val uri = uriString.takeIf { it.isNotBlank() }?.let {
                 runCatching { Uri.parse(it) }.getOrNull()
             }
             if (uri != null && !hasLeftPanelDocumentAccess(uri)) return false
+            restoreDocumentHistoryState(historyStateJson)
             currentFileUri = uri
             currentFileName = name.ifBlank { "Untitled.md" }
             currentDocumentSessionId = java.util.UUID.randomUUID().toString()
@@ -2540,6 +2674,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         updateTitle()
                     }
                 }
+                dispatchPendingExistingDocumentFocus()
 
                 webView.post {
                     webView.requestLayout()
@@ -2716,10 +2851,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         @JavascriptInterface
         fun onInDocumentNavigationOccurred() {
             runOnUiThread {
-                if (documentForwardStack.isNotEmpty()) {
-                    documentForwardStack.clear()
-                    updateTitle()
+                val hadForwardHistory = synchronized(documentHistoryLock) {
+                    if (documentForwardStack.isEmpty()) {
+                        false
+                    } else {
+                        documentForwardStack.clear()
+                        true
+                    }
                 }
+                if (hadForwardHistory) updateTitle()
             }
         }
 

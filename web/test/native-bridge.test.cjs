@@ -672,7 +672,7 @@ test('folder file actions keep open, open-in-new-tab, rename, and delete distinc
   assert.match(leftPanelSource, /deleteTabFile\(openTab \|\| \{/);
   assert.match(
     mainActivitySource,
-    /fun readLeftPanelDocumentForNavigation[\s\S]*?documentHistoryStack\.push\(it\)[\s\S]*?documentForwardStack\.clear\(\)/
+    /fun readLeftPanelDocumentForNavigation[\s\S]*?synchronized\(documentHistoryLock\)[\s\S]*?currentFileUri\?\.let \{ current -> documentHistoryStack\.push\(current\) \}[\s\S]*?documentForwardStack\.clear\(\)/
   );
 });
 
@@ -683,5 +683,42 @@ test('tab group membership persists alongside file tab state', () => {
   );
   assert.match(leftPanelSource, /groupId: groups\.some\(\(group\) => group\.id === savedTab\.groupId\)/);
   assert.match(leftPanelSource, /dissolveTabGroup\(tabs, groups, group\.id\)/);
+});
+
+test('document history is stored and restored with the active tab', () => {
+  assert.match(leftPanelSource, /documentHistoryBack: \[\]/);
+  assert.match(leftPanelSource, /documentHistoryBack: Array\.isArray\(savedTab\.documentHistoryBack\)/);
+  assert.match(leftPanelSource, /captureTabHistoryState\(tab\)/);
+  assert.match(leftPanelSource, /serializeTabHistoryState\(next\)/);
+  assert.match(leftPanelSource, /pendingTabHistoryNavigation && current/);
+  assert.match(mainActivitySource, /fun getDocumentNavigationHistory\(\)/);
+  assert.match(mainActivitySource, /restoreDocumentHistoryState\(historyStateJson\)/);
+  assert.match(
+    mainActivitySource,
+    /beginTabHistoryNavigation\(\)\s*openFile\(uri, rememberHistory = false, skipExistingWindowFocus = true\)/
+  );
+});
+
+test('opening a file already in another tab or window focuses its existing owner', () => {
+  const windowRegistrySource = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/WindowRegistry.kt'),
+    'utf8'
+  );
+  assert.match(leftPanelSource, /native\?\.focusOpenDocument\?\.\(uri\) === true/);
+  assert.match(leftPanelSource, /focusDocumentUri\(uri\)/);
+  assert.match(mainActivitySource, /fun registerLeftPanelOpenTabUris\(urisJson: String\)/);
+  assert.match(windowRegistrySource, /openTabUris\(context, taskId\)/);
+  assert.match(windowRegistrySource, /activity\.requestExistingDocumentFocus\(normalizedUri\)/);
+});
+
+test('launcher tabs persist while file-manager window tabs are temporary', () => {
+  assert.match(
+    leftPanelSource,
+    /const tabsStorageKey = launcherWindow\s*\? LAUNCHER_TABS_KEY\s*:\s*`\$\{TASK_TABS_KEY_PREFIX\}\$\{windowContext\.taskId \?\? 'untracked'\}`/
+  );
+  assert.match(
+    leftPanelSource,
+    /onWindowClosing\(\)\s*\{\s*if \(!launcherWindow\)\s*\{[\s\S]*?localStorage\.removeItem\(tabsStorageKey\)/
+  );
 });
 

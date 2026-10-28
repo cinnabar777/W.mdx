@@ -100,6 +100,35 @@ class WindowPolicyTest {
     }
 
     @Test
+    fun windowPolicyMatchesDocumentsOpenInInactiveTabs() {
+        val requestedUri = "content://com.wmdx/second.md"
+
+        assertTrue(
+            WindowPolicy.matches(
+                launcherRequest = false,
+                requestedUri = requestedUri,
+                launcherTask = true,
+                currentUri = "content://com.wmdx/first.md",
+                taskId = 10,
+                excludedTask = -1,
+                openTabUris = setOf(requestedUri)
+            )
+        )
+
+        assertFalse(
+            WindowPolicy.matches(
+                launcherRequest = false,
+                requestedUri = requestedUri,
+                launcherTask = true,
+                currentUri = "content://com.wmdx/first.md",
+                taskId = 10,
+                excludedTask = 10,
+                openTabUris = setOf(requestedUri)
+            )
+        )
+    }
+
+    @Test
     fun fingerprintUriReturnsEightCharHashOrNone() {
         assertEquals("none", WindowPolicy.fingerprintUri(null))
         assertEquals("none", WindowPolicy.fingerprintUri(""))

@@ -4,10 +4,12 @@ import java.security.MessageDigest
 
 object WindowPolicy {
     fun matches(launcherRequest: Boolean, requestedUri: String?, launcherTask: Boolean,
-                currentUri: String?, taskId: Int, excludedTask: Int): Boolean {
+                currentUri: String?, taskId: Int, excludedTask: Int,
+                openTabUris: Set<String> = emptySet()): Boolean {
         if (taskId == excludedTask) return false
         return if (launcherRequest) launcherTask
-        else !requestedUri.isNullOrEmpty() && requestedUri == currentUri
+        else !requestedUri.isNullOrEmpty() &&
+            (requestedUri == currentUri || requestedUri in openTabUris)
     }
 
     fun resolveDocumentUri(

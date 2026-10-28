@@ -286,6 +286,7 @@ export function setupLeftPanel() {
   let activeTabId = null;
   let loadedTabId = null;
   let switchingTab = false;
+  let pendingTabHistoryNavigation = false;
   let tabsPersistTimer = null;
   let windowClosing = false;
   let searchTimer = null;
@@ -322,9 +323,23 @@ export function setupLeftPanel() {
     }
   };
 
+  let registeredOpenTabUrisJson = null;
+  const syncNativeOpenTabUris = () => {
+    const visibleTabs = tabsEnabled
+      ? tabs
+      : tabs.filter((tab) => tab.id === activeTabId);
+    const uris = visibleTabs.map((tab) => tab.uri).filter(Boolean).sort();
+    const urisJson = JSON.stringify(uris);
+    if (urisJson === registeredOpenTabUrisJson) return;
+    if (typeof native?.registerLeftPanelOpenTabUris !== 'function') return;
+    native.registerLeftPanelOpenTabUris(urisJson);
+    registeredOpenTabUrisJson = urisJson;
+  };
+
   const persistTabsNow = () => {
     clearTimeout(tabsPersistTimer);
     tabsPersistTimer = null;
+    syncNativeOpenTabUris();
     if (windowClosing && !launcherWindow) return;
     try {
       localStorage.setItem(tabsStorageKey, JSON.stringify({ activeTabId, tabs, groups }));
@@ -335,6 +350,7 @@ export function setupLeftPanel() {
 
   const persistTabs = () => {
     if (windowClosing && !launcherWindow) return;
+    syncNativeOpenTabUris();
     clearTimeout(tabsPersistTimer);
     tabsPersistTimer = setTimeout(persistTabsNow, 250);
   };
@@ -492,6 +508,25 @@ export function setupLeftPanel() {
 
   const currentMarkdown = () => window.editorBridge?.getMarkdown?.() || '';
   const activeTab = () => tabs.find((tab) => tab.id === activeTabId) || null;
+  const uniqueDocumentTabId = (uri, target) => {
+    const baseId = uri ||
+      `untitled:${native?.getCurrentDocumentSessionId?.() || Date.now()}`;
+    return tabs.some((tab) => tab !== target && tab.id === baseId)
+      ? `tab:${baseId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+      : baseId;
+  };
+  const tabHistoryState = (tab) => ({
+    back: Array.isArray(tab?.documentHistoryBack) ? tab.documentHistoryBack : [],
+    forward: Array.isArray(tab?.documentHistoryForward) ? tab.documentHistoryForward : []
+  });
+  const serializeTabHistoryState = (tab) => JSON.stringify(tabHistoryState(tab));
+  const captureTabHistoryState = (tab) => {
+    if (!tab) return;
+    const state = parseBridgeResult(native?.getDocumentNavigationHistory?.(), null);
+    if (!state || !Array.isArray(state.back) || !Array.isArray(state.forward)) return;
+    tab.documentHistoryBack = state.back.filter((uri) => typeof uri === 'string');
+    tab.documentHistoryForward = state.forward.filter((uri) => typeof uri === 'string');
+  };
   const displayTabName = (name) => {
     const fullName = String(name || 'Untitled');
     if (!hideTabFileExtension) return fullName;
@@ -508,6 +543,7 @@ export function setupLeftPanel() {
       native?.reportDiagnostic?.('left_panel_snapshot_uri_mismatch', '');
       return;
     }
+    captureTabHistoryState(tab);
     const markdown = currentMarkdown();
     if (markdown === '' && tab.markdown !== '' && !tab.emptyContentExplicitlyEdited) {
       native?.reportDiagnostic?.('left_panel_empty_snapshot_rejected', '');
@@ -613,6 +649,8 @@ export function setupLeftPanel() {
       dirty: Boolean(documentData.dirty),
       pinned: false,
       groupId: null,
+      documentHistoryBack: [],
+      documentHistoryForward: [],
       emptyContentExplicitlyEdited: Boolean(documentData.emptyContentExplicitlyEdited),
       isTextPack: Boolean(documentData.isTextPack),
       hasBom: Boolean(documentData.hasBom),
@@ -647,7 +685,8 @@ export function setupLeftPanel() {
       next.isTextPack,
       next.hasBom,
       next.hasCrlf,
-      next.emptyContentExplicitlyEdited
+      next.emptyContentExplicitlyEdited,
+      serializeTabHistoryState(next)
     );
     if (activated === false) {
       const invalidIndex = tabs.findIndex((tab) => tab.id === next.id);
@@ -701,7 +740,8 @@ export function setupLeftPanel() {
       tab.isTextPack,
       tab.hasBom,
       tab.hasCrlf,
-      tab.emptyContentExplicitlyEdited
+      tab.emptyContentExplicitlyEdited,
+      serializeTabHistoryState(tab)
     );
     tab.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
     window.editorBridge?.setMarkdown?.(tab.markdown || '');
@@ -723,6 +763,11 @@ export function setupLeftPanel() {
     const current = activeTab();
     if (current?.uri === uri) return true;
     const existingTarget = tabs.find((tab) => tab.uri === uri && tab.id !== current?.id);
+    if (tabsEnabled && existingTarget) {
+      activateTab(existingTarget.id);
+      return activeTabId === existingTarget.id;
+    }
+    if (native?.focusOpenDocument?.(uri) === true) return true;
     if (!native?.readLeftPanelDocumentForNavigation || !native?.activateLeftPanelTab) {
       folderStatus.textContent = 'Opening a file in the active tab is unavailable in this app build.';
       return false;
@@ -754,8 +799,11 @@ export function setupLeftPanel() {
       folderStatus.textContent = documentData?.error || 'Could not open this file.';
       return false;
     }
+    captureTabHistoryState(current);
 
-    const target = tabs.find((tab) => tab.uri === documentData.uri) || current;
+    const target = (tabsEnabled
+      ? tabs.find((tab) => tab.uri === documentData.uri)
+      : null) || current;
     if (!target) {
       folderStatus.textContent = 'There is no active tab to open this file in.';
       return false;
@@ -768,7 +816,8 @@ export function setupLeftPanel() {
       Boolean(documentData.isTextPack),
       Boolean(documentData.hasBom),
       Boolean(documentData.hasCrlf),
-      false
+      false,
+      serializeTabHistoryState(target)
     );
     if (!activated) {
       folderStatus.textContent = 'Could not activate this file in the current window.';
@@ -779,7 +828,7 @@ export function setupLeftPanel() {
     restoredTabIds.delete(oldId);
     checkedRestoredTabIds.delete(oldId);
     unverifiedRestoredTabIds.delete(oldId);
-    target.id = documentData.uri;
+    target.id = uniqueDocumentTabId(documentData.uri, target);
     target.uri = documentData.uri;
     target.name = documentData.name || target.name;
     target.markdown = documentData.markdown || '';
@@ -803,6 +852,15 @@ export function setupLeftPanel() {
     if (replaceActive || !tabsEnabled) {
       return openDocumentInActiveTab(uri);
     }
+    const current = activeTab();
+    const existing = current?.uri === uri
+      ? current
+      : tabs.find((tab) => tab.uri === uri);
+    if (existing) {
+      activateTab(existing.id);
+      return;
+    }
+    if (native?.focusOpenDocument?.(uri) === true) return;
     if (!native?.readLeftPanelDocument) {
       folderStatus.textContent = 'File access is unavailable in this app build.';
       return;
@@ -1765,6 +1823,12 @@ export function setupLeftPanel() {
         groupId: groups.some((group) => group.id === savedTab.groupId)
           ? savedTab.groupId
           : null,
+        documentHistoryBack: Array.isArray(savedTab.documentHistoryBack)
+          ? savedTab.documentHistoryBack.filter((uri) => typeof uri === 'string')
+          : [],
+        documentHistoryForward: Array.isArray(savedTab.documentHistoryForward)
+          ? savedTab.documentHistoryForward.filter((uri) => typeof uri === 'string')
+          : [],
         emptyContentExplicitlyEdited: Boolean(savedTab.emptyContentExplicitlyEdited),
         isTextPack: Boolean(savedTab.isTextPack),
         hasBom: Boolean(savedTab.hasBom),
@@ -1836,15 +1900,37 @@ export function setupLeftPanel() {
     const context = parseBridgeResult(native?.getLeftPanelContext?.(), {});
     if (!context || typeof context !== 'object') return;
     const current = activeTab();
+    if (pendingTabHistoryNavigation && current) {
+      pendingTabHistoryNavigation = false;
+      const oldId = current.id;
+      current.id = uniqueDocumentTabId(context.uri, current);
+      current.uri = context.uri || null;
+      current.name = context.name || 'Untitled';
+      current.markdown = String(markdown ?? context.markdown ?? '');
+      current.dirty = Boolean(context.dirty);
+      current.isTextPack = Boolean(context.isTextPack);
+      current.hasBom = Boolean(context.hasBom);
+      current.hasCrlf = Boolean(context.hasCrlf);
+      current.emptyContentExplicitlyEdited =
+        Boolean(context.emptyContentExplicitlyEdited);
+      current.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
+      restoredTabIds.delete(oldId);
+      checkedRestoredTabIds.delete(oldId);
+      unverifiedRestoredTabIds.delete(oldId);
+      activeTabId = current.id;
+      loadedTabId = current.id;
+      captureTabHistoryState(current);
+      renderTabs();
+      persistTabs();
+      return;
+    }
     if (!tabsEnabled) {
-      const existing = context.uri
+      const target = current || (context.uri
         ? tabs.find((tab) => tab.uri === context.uri)
-        : null;
-      const target = existing || current;
+        : null);
       if (!target) return;
       const oldId = target.id;
-      target.id = context.uri ||
-        `untitled:${native?.getCurrentDocumentSessionId?.() || Date.now()}`;
+      target.id = uniqueDocumentTabId(context.uri, target);
       target.uri = context.uri || null;
       target.name = context.name || 'Untitled';
       target.markdown = String(markdown ?? context.markdown ?? '');
@@ -1903,6 +1989,8 @@ export function setupLeftPanel() {
           dirty: Boolean(context.dirty),
           pinned: false,
           groupId: null,
+          documentHistoryBack: [],
+          documentHistoryForward: [],
           isTextPack: Boolean(context.isTextPack),
           hasBom: Boolean(context.hasBom),
           hasCrlf: Boolean(context.hasCrlf),
@@ -1924,6 +2012,7 @@ export function setupLeftPanel() {
       loadedTab.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
       loadedTab.emptyContentExplicitlyEdited =
         Boolean(context.emptyContentExplicitlyEdited);
+      captureTabHistoryState(loadedTab);
     }
     loadedTabId = activeTabId;
     renderTabs();
@@ -1935,6 +2024,41 @@ export function setupLeftPanel() {
     close: closePanel,
     onEditorChanged,
     onNativeDocumentLoaded,
+    focusDocumentUri(uri) {
+      const current = activeTab();
+      const target = current?.uri === uri
+        ? current
+        : tabs.find((tab) => tab.uri === uri);
+      if (!target) return false;
+      if (target.id !== activeTabId) activateTab(target.id);
+      return activeTabId === target.id;
+    },
+    onDocumentHistoryStateChanged(stateJson) {
+      const state = parseBridgeResult(stateJson, null);
+      const tab = activeTab();
+      if (!tab || !state || !Array.isArray(state.back) || !Array.isArray(state.forward)) {
+        return;
+      }
+      const back = state.back.filter((uri) => typeof uri === 'string');
+      const forward = state.forward.filter((uri) => typeof uri === 'string');
+      const sameHistory = (current, next) =>
+        Array.isArray(current) &&
+        current.length === next.length &&
+        current.every((uri, index) => uri === next[index]);
+      if (
+        sameHistory(tab.documentHistoryBack, back) &&
+        sameHistory(tab.documentHistoryForward, forward)
+      ) return;
+      tab.documentHistoryBack = back;
+      tab.documentHistoryForward = forward;
+      persistTabs();
+    },
+    onTabHistoryNavigationStarted() {
+      pendingTabHistoryNavigation = true;
+    },
+    onTabHistoryNavigationCancelled() {
+      pendingTabHistoryNavigation = false;
+    },
     onSearchResults(requestId, json) {
       if (requestId !== searchRequestId) return;
       searchPending = false;
@@ -2003,6 +2127,7 @@ export function setupLeftPanel() {
       if (!panelEnabled && panel.classList.contains('open')) closePanel();
 
       tabsEnabled = prefs?.pref_left_panel_tabs_enabled !== false;
+      syncNativeOpenTabUris();
       hideTabFileExtension = prefs?.pref_left_panel_hide_file_extension !== false;
       for (const id of SECTION_ORDER) {
         const enabled = prefs?.[`pref_left_panel_${id}_keep_open`] === true;
