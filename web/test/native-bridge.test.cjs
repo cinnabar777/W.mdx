@@ -132,6 +132,31 @@ test('cached leave-save writes without waiting for evaluateJavascript callback',
   assert.match(saveBody, /source=\$snapshotSource/);
 });
 
+test('asynchronous saves are rejected if the active document session changed', () => {
+  const saveStart = mainActivitySource.indexOf('private fun saveFileToUri(');
+  const saveEnd = mainActivitySource.indexOf('private fun handleNewWindow()', saveStart);
+  const saveBody = mainActivitySource.slice(saveStart, saveEnd);
+  assert.match(mainActivitySource, /pendingCreateDocumentSessionId = currentDocumentSessionId/);
+  assert.match(mainActivitySource, /pref_toolbar_default_corrected/);
+  assert.match(saveBody, /saveSessionId != currentDocumentSessionId/);
+  assert.match(saveBody, /return@persistSnapshot/);
+  assert.match(saveBody, /onDocumentSavedAs\?\.\(\$escapedOldUri, \$escapedUri, \$escapedName, \$escapedSessionId\)/);
+});
+
+test('save completion only clears the tab matching the saved file identity', () => {
+  const leftPanelSource = fs.readFileSync(
+    path.join(__dirname, '../src/leftPanel.js'),
+    'utf8'
+  );
+  assert.match(leftPanelSource, /onDocumentSavedAs\(oldUri, newUri, name, sessionId\)/);
+  const saveCallbackStart = leftPanelSource.indexOf('onNativeDocumentSaved(uri)');
+  const saveCallbackEnd = leftPanelSource.indexOf('onWindowClosing()', saveCallbackStart);
+  const saveCallback = leftPanelSource.slice(saveCallbackStart, saveCallbackEnd);
+  assert.match(saveCallback, /tabs\.find\(\(item\) => item\.uri === uri\)/);
+  assert.doesNotMatch(saveCallback, /activeTab\(\)/);
+  assert.match(mainActivitySource, /save_skipped_unconfirmed_empty_snapshot/);
+});
+
 test('native keyboard request gives WebView touch focus before showing IME', () => {
   assert.ok(mainActivitySource.includes('webView.isFocusable = true'));
   assert.ok(mainActivitySource.includes('webView.isFocusableInTouchMode = true'));

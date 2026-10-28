@@ -3,6 +3,64 @@ const LAUNCHER_TABS_KEY = 'wmdx.leftPanel.launcherTabs.v1';
 const TASK_TABS_KEY_PREFIX = 'wmdx.leftPanel.taskTabs.';
 const SECTION_ORDER = ['search', 'folders', 'tabs'];
 
+export function allocatePanelBodyHeights(availableBodyHeight, sections, activeSection) {
+  const heights = Object.fromEntries(sections.map(({ id }) => [id, 0]));
+  const expanded = sections.filter(({ expanded, contentHeight }) =>
+    expanded && contentHeight > 0
+  );
+  if (!expanded.length) return heights;
+
+  const available = Math.max(0, Math.floor(availableBodyHeight));
+  const naturalTotal = expanded.reduce((total, section) => total + section.contentHeight, 0);
+  if (naturalTotal <= available) {
+    expanded.forEach(({ id, contentHeight }) => {
+      heights[id] = contentHeight;
+    });
+    return heights;
+  }
+
+  const active = expanded.find(({ id }) => id === activeSection) || expanded.at(-1);
+  const others = expanded.filter(({ id }) => id !== active.id);
+  const minimums = new Map(others.map((section) => [
+    section.id,
+    Math.min(section.contentHeight, section.compactHeight)
+  ]));
+  const reserved = [...minimums.values()].reduce((total, height) => total + height, 0);
+
+  if (reserved > available) {
+    const scale = available / reserved;
+    minimums.forEach((height, id) => {
+      heights[id] = Math.floor(height * scale);
+    });
+    return heights;
+  }
+
+  for (const [id, height] of minimums) heights[id] = height;
+  heights[active.id] = Math.min(active.contentHeight, available - reserved);
+  let extra = available - reserved - heights[active.id];
+  let eligible = others.filter(({ id, contentHeight }) => heights[id] < contentHeight);
+
+  while (extra > 0 && eligible.length) {
+    const share = Math.max(1, Math.floor(extra / eligible.length));
+    let allocatedThisRound = 0;
+    for (const section of eligible) {
+      const amount = Math.min(
+        share,
+        section.contentHeight - heights[section.id],
+        extra - allocatedThisRound
+      );
+      heights[section.id] += amount;
+      allocatedThisRound += amount;
+      if (allocatedThisRound >= extra) break;
+    }
+    if (!allocatedThisRound) break;
+    extra -= allocatedThisRound;
+    eligible = eligible.filter(({ id, contentHeight }) => heights[id] < contentHeight);
+  }
+
+  return heights;
+}
+
 function parseJson(value, fallback) {
   if (value == null || value === '') return fallback;
   try {
@@ -46,9 +104,16 @@ export function setupLeftPanel() {
   const state = savedState && typeof savedState === 'object' && !Array.isArray(savedState)
     ? savedState
     : {};
+  let tabsManuallyCollapsed = state.tabsManuallyCollapsed === true;
   const wantedExpanded = Object.fromEntries(
-    SECTION_ORDER.map((section) => [section, Boolean(state.expanded?.[section])])
+    SECTION_ORDER.map((section) => [
+      section,
+      typeof state.expanded?.[section] === 'boolean'
+        ? state.expanded[section]
+        : section === 'tabs'
+    ])
   );
+  if (!tabsManuallyCollapsed) wantedExpanded.tabs = true;
   const keepOpen = { search: false, folders: false, tabs: false };
   let activeSection = SECTION_ORDER.includes(state.activeSection) ? state.activeSection : null;
   let windowContext = parseBridgeResult(native?.getLeftPanelContext?.(), {});
@@ -81,7 +146,7 @@ export function setupLeftPanel() {
     try {
       localStorage.setItem(
         LEFT_PANEL_STATE_KEY,
-        JSON.stringify({ expanded: wantedExpanded, activeSection })
+        JSON.stringify({ expanded: wantedExpanded, activeSection, tabsManuallyCollapsed })
       );
     } catch {
       // Private browsing or storage exhaustion should not block panel use.
@@ -148,6 +213,7 @@ export function setupLeftPanel() {
   const setSectionOpen = (id, shouldOpen) => {
     if (!SECTION_ORDER.includes(id)) return;
     wantedExpanded[id] = shouldOpen;
+    if (id === 'tabs') tabsManuallyCollapsed = !shouldOpen;
     if (shouldOpen) activeSection = id;
     else if (activeSection === id) {
       activeSection = [...SECTION_ORDER].reverse().find(
@@ -162,8 +228,7 @@ export function setupLeftPanel() {
     for (const id of SECTION_ORDER) {
       const section = sectionElements.get(id);
       if (!section) continue;
-      const expanded = wantedExpanded[id] &&
-        (id === activeSection || keepOpen[id]);
+      const expanded = wantedExpanded[id];
       section.setAttribute('aria-expanded', String(expanded));
       section.querySelector('.left-panel-section-header')
         ?.setAttribute('aria-expanded', String(expanded));
@@ -175,42 +240,39 @@ export function setupLeftPanel() {
 
   function reflowSections() {
     if (!stack.isConnected) return;
-    const availableHeight = stack.clientHeight;
-    const active = sectionElements.get(activeSection);
-    if (!active || active.getAttribute('aria-expanded') !== 'true') return;
-
-    let otherExpandedHeight = 0;
-    for (const id of SECTION_ORDER) {
-      if (id === activeSection) continue;
+    const stackStyle = getComputedStyle(stack);
+    const padding = Number.parseFloat(stackStyle.paddingTop || '0') +
+      Number.parseFloat(stackStyle.paddingBottom || '0');
+    const sections = SECTION_ORDER.map((id) => {
       const section = sectionElements.get(id);
-      if (!section) continue;
-      const isExpanded = section.getAttribute('aria-expanded') === 'true';
-      const body = section.querySelector('.left-panel-section-body');
-      if (isExpanded && body) {
-        const comfortableLimit = Math.max(120, Math.round(availableHeight * 0.28));
-        const bodyHeight = Math.min(body.scrollHeight, comfortableLimit);
-        body.style.maxHeight = `${bodyHeight}px`;
-        otherExpandedHeight += section.querySelector('.left-panel-section-header')?.offsetHeight || 46;
-        otherExpandedHeight += bodyHeight;
-      } else if (section.getAttribute('aria-expanded') !== null) {
-        const body = section.querySelector('.left-panel-section-body');
-        if (body) body.style.maxHeight = '';
-        otherExpandedHeight += section.querySelector('.left-panel-section-header')?.offsetHeight || 46;
-      }
-    }
-
-    const activeBody = active.querySelector('.left-panel-section-body');
-    if (!activeBody) return;
-    const activeHeaderHeight =
-      active.querySelector('.left-panel-section-header')?.offsetHeight || 46;
-    const remaining = Math.max(96, availableHeight - otherExpandedHeight - activeHeaderHeight);
-    const desiredHeight = activeBody.scrollHeight;
-    if (desiredHeight > remaining) {
-      active.classList.add('fill-available');
-      activeBody.style.maxHeight = `${remaining}px`;
-    } else {
-      active.classList.remove('fill-available');
-      activeBody.style.maxHeight = `${Math.max(desiredHeight, 0)}px`;
+      const header = section?.querySelector('.left-panel-section-header');
+      const body = section?.querySelector('.left-panel-section-body');
+      const border = section
+        ? Number.parseFloat(getComputedStyle(section).borderTopWidth || '0')
+        : 0;
+      return {
+        id,
+        expanded: wantedExpanded[id],
+        contentHeight: wantedExpanded[id] ? body?.scrollHeight || 0 : 0,
+        headerHeight: (header?.offsetHeight || 46) + border,
+        compactHeight: keepOpen[id]
+          ? (id === 'search' ? 112 : 100)
+          : (id === 'search' ? 96 : id === 'folders' ? 48 : 56)
+      };
+    });
+    const headerHeight = sections.reduce((total, section) => total + section.headerHeight, 0);
+    const bodyHeights = allocatePanelBodyHeights(
+      stack.clientHeight - padding - headerHeight,
+      sections,
+      activeSection
+    );
+    for (const { id } of sections) {
+      const section = sectionElements.get(id);
+      const body = section?.querySelector('.left-panel-section-body');
+      if (!body) continue;
+      if (wantedExpanded[id]) body.style.maxHeight = `${bodyHeights[id]}px`;
+      else body.style.maxHeight = '';
+      section.classList.remove('fill-available');
     }
   }
 
@@ -297,7 +359,8 @@ export function setupLeftPanel() {
         tab.markdown,
         tab.isTextPack,
         tab.hasBom,
-        tab.hasCrlf
+        tab.hasCrlf,
+        tab.emptyContentExplicitlyEdited
       ),
       {}
     );
@@ -344,7 +407,7 @@ export function setupLeftPanel() {
     return tab;
   };
 
-  const activateTab = (id) => {
+  const activateTab = (id, focusTabsSection = true) => {
     const next = tabs.find((tab) => tab.id === id);
     if (!next) return;
     if (id !== activeTabId && loadedTabId === activeTabId) {
@@ -363,7 +426,8 @@ export function setupLeftPanel() {
       next.dirty,
       next.isTextPack,
       next.hasBom,
-      next.hasCrlf
+      next.hasCrlf,
+      next.emptyContentExplicitlyEdited
     );
     if (activated === false) {
       const invalidIndex = tabs.findIndex((tab) => tab.id === next.id);
@@ -384,6 +448,14 @@ export function setupLeftPanel() {
     }
     window.editorBridge?.setMarkdown?.(next.markdown);
     loadedTabId = next.id;
+    next.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
+    if (focusTabsSection) {
+      activeSection = 'tabs';
+      wantedExpanded.tabs = true;
+      tabsManuallyCollapsed = false;
+      persistPanelState();
+      updateSectionVisibility();
+    }
     renderTabs();
     persistTabs();
     requestAnimationFrame(() => {
@@ -408,10 +480,17 @@ export function setupLeftPanel() {
       tab.dirty,
       tab.isTextPack,
       tab.hasBom,
-      tab.hasCrlf
+      tab.hasCrlf,
+      tab.emptyContentExplicitlyEdited
     );
+    tab.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
     window.editorBridge?.setMarkdown?.(tab.markdown || '');
     loadedTabId = tab.id;
+    activeSection = 'tabs';
+    wantedExpanded.tabs = true;
+    tabsManuallyCollapsed = false;
+    persistPanelState();
+    updateSectionVisibility();
     renderTabs();
     persistTabs();
     requestAnimationFrame(() => {
@@ -464,6 +543,9 @@ export function setupLeftPanel() {
     parentElement.appendChild(childGroup);
     let loaded = false;
     row.addEventListener('click', () => {
+      activeSection = 'folders';
+      persistPanelState();
+      updateSectionVisibility();
       if (childGroup.hidden) {
         childGroup.hidden = false;
         label.textContent = `⌄ ${entry.name || 'Folder'}`;
@@ -750,7 +832,8 @@ export function setupLeftPanel() {
             tab.markdown,
             tab.isTextPack,
             tab.hasBom,
-            tab.hasCrlf
+            tab.hasCrlf,
+            tab.emptyContentExplicitlyEdited
           ),
           {}
         );
@@ -813,7 +896,8 @@ export function setupLeftPanel() {
       tab.dirty,
       tab.isTextPack,
       tab.hasBom,
-      tab.hasCrlf
+      tab.hasCrlf,
+      tab.emptyContentExplicitlyEdited
     );
     activeTabId = tab.id;
     renderTabs();
@@ -862,14 +946,28 @@ export function setupLeftPanel() {
   document.getElementById('left-panel-search-clear')?.addEventListener('click', () => {
     searchInput.value = '';
     searchInput.focus();
+    wantedExpanded.search = true;
+    activeSection = 'search';
+    persistPanelState();
+    updateSectionVisibility();
     runSearch();
   });
   searchInput?.addEventListener('input', () => {
     searchRequestId++;
+    wantedExpanded.search = true;
+    activeSection = 'search';
+    persistPanelState();
+    updateSectionVisibility();
     clearTimeout(searchTimer);
     searchTimer = setTimeout(runSearch, 220);
   });
-  searchContents?.addEventListener('change', runSearch);
+  searchContents?.addEventListener('change', () => {
+    wantedExpanded.search = true;
+    activeSection = 'search';
+    persistPanelState();
+    updateSectionVisibility();
+    runSearch();
+  });
   sectionElements.get('folders')?.querySelector('.left-panel-section-header')
     ?.addEventListener('click', () => {
       if (wantedExpanded.folders) {
@@ -894,7 +992,8 @@ export function setupLeftPanel() {
         emptyContentExplicitlyEdited: Boolean(savedTab.emptyContentExplicitlyEdited),
         isTextPack: Boolean(savedTab.isTextPack),
         hasBom: Boolean(savedTab.hasBom),
-        hasCrlf: Boolean(savedTab.hasCrlf)
+        hasCrlf: Boolean(savedTab.hasCrlf),
+        documentSessionId: null
       };
       tabs.push(restoredTab);
       if (restoredTab.uri) restoredTabIds.add(restoredTab.id);
@@ -926,7 +1025,8 @@ export function setupLeftPanel() {
       dirty: Boolean(windowContext.dirty),
       isTextPack: Boolean(windowContext.isTextPack),
       hasBom: Boolean(windowContext.hasBom),
-      hasCrlf: Boolean(windowContext.hasCrlf)
+      hasCrlf: Boolean(windowContext.hasCrlf),
+      emptyContentExplicitlyEdited: Boolean(windowContext.emptyContentExplicitlyEdited)
     }, { activate: false, persist: false });
     activeTabId = tabs[0]?.id || null;
   }
@@ -937,7 +1037,7 @@ export function setupLeftPanel() {
     });
     activeTabId = tabs[0]?.id || null;
   }
-  if (activeTabId) activateTab(activeTabId);
+  if (activeTabId) activateTab(activeTabId, false);
   renderTabs();
 
   const onEditorChanged = (markdown) => {
@@ -974,8 +1074,9 @@ export function setupLeftPanel() {
       current.isTextPack = Boolean(context.isTextPack);
       current.hasBom = Boolean(context.hasBom);
       current.hasCrlf = Boolean(context.hasCrlf);
+      current.emptyContentExplicitlyEdited =
+        Boolean(context.emptyContentExplicitlyEdited);
       activeTabId = current.id;
-      current.emptyContentExplicitlyEdited = false;
     } else if (!current || current.uri !== (context.uri || null)) {
       const existing = context.uri ? tabs.find((tab) => tab.uri === context.uri) : null;
       if (existing) activeTabId = existing.id;
@@ -987,10 +1088,12 @@ export function setupLeftPanel() {
           markdown: String(markdown ?? context.markdown ?? ''),
           dirty: Boolean(context.dirty),
           pinned: false,
-          emptyContentExplicitlyEdited: false,
           isTextPack: Boolean(context.isTextPack),
           hasBom: Boolean(context.hasBom),
-          hasCrlf: Boolean(context.hasCrlf)
+          hasCrlf: Boolean(context.hasCrlf),
+          emptyContentExplicitlyEdited:
+            Boolean(context.emptyContentExplicitlyEdited),
+          documentSessionId: null
         };
         tabs.push(newTab);
         activeTabId = newTab.id;
@@ -1000,6 +1103,12 @@ export function setupLeftPanel() {
       current.markdown = String(markdown ?? context.markdown ?? '');
       current.dirty = Boolean(context.dirty);
       if (current.markdown || !current.dirty) current.emptyContentExplicitlyEdited = false;
+    }
+    const loadedTab = activeTab();
+    if (loadedTab) {
+      loadedTab.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
+      loadedTab.emptyContentExplicitlyEdited =
+        Boolean(context.emptyContentExplicitlyEdited);
     }
     loadedTabId = activeTabId;
     renderTabs();
@@ -1049,10 +1158,13 @@ export function setupLeftPanel() {
         renderTabs();
       }
     },
-    onDocumentSavedAs(oldUri, newUri, name) {
-      const tab = tabs.find((item) => item.id === activeTabId) ||
-        tabs.find((item) => item.uri === oldUri);
+    onDocumentSavedAs(oldUri, newUri, name, sessionId) {
+      const tab = sessionId
+        ? tabs.find((item) => item.documentSessionId === sessionId)
+        : tabs.find((item) => item.uri === oldUri);
       if (!tab) return;
+      if (oldUri && tab.uri !== oldUri) return;
+      if (!oldUri && tab.uri) return;
       restoredTabIds.delete(tab.id);
       checkedRestoredTabIds.delete(tab.id);
       unverifiedRestoredTabIds.delete(tab.id);
@@ -1094,8 +1206,14 @@ export function setupLeftPanel() {
     },
     applyPreferences(prefs) {
       for (const id of SECTION_ORDER) {
-        keepOpen[id] = prefs?.[`pref_left_panel_${id}_keep_open`] === true;
+        const enabled = prefs?.[`pref_left_panel_${id}_keep_open`] === true;
+        if (enabled && !keepOpen[id]) {
+          wantedExpanded[id] = true;
+          if (!activeSection) activeSection = id;
+        }
+        keepOpen[id] = enabled;
       }
+      persistPanelState();
       updateSectionVisibility();
       updateToolbarClearance();
       if (panel.classList.contains('open') && wantedExpanded.folders) {
@@ -1125,6 +1243,7 @@ export function setupLeftPanel() {
   if (wantedExpanded[activeSection] !== true) {
     activeSection = SECTION_ORDER.slice().reverse().find((id) => wantedExpanded[id]) || null;
   }
+  persistPanelState();
   updateSectionVisibility();
   if (activeSection === 'folders') loadFolderRoots();
 

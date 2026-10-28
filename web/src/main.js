@@ -84,7 +84,7 @@ let activePopupSurface = 'bottom';
 let bottomToolbarConfig = normalizeBottomToolbarConfig(null);
 let floatingToolbarConfig = normalizeBottomToolbarConfig(null);
 let floatingToolbarSelectionFrame = 0;
-let floatingToolbarEnabled = true;
+let floatingToolbarEnabled = false;
 let tocHideFileExtension = false;
 
 let customHotkeys = {
@@ -7737,7 +7737,7 @@ window.editorBridge = {
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
     // Toolbar
-    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled !== false;
+    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled === true;
     if (!floatingToolbarEnabled && activePopupSurface === 'floating') {
       hidePopupStrip();
     }

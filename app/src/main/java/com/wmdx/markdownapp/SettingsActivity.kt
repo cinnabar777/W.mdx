@@ -1651,7 +1651,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         )
         payload.put(
             "pref_toolbar_floating_enabled",
-            prefs.getBoolean("pref_toolbar_floating_enabled", true)
+            prefs.getBoolean("pref_toolbar_floating_enabled", false)
         )
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))

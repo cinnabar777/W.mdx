@@ -90,14 +90,14 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(controlbarPrefs, /pref_toolbar_floating_corner_radius/);
   assert.match(
     controlbarPrefs,
-    /pref_toolbar_floating_enabled[\s\S]*?android:defaultValue="true"/
+    /pref_toolbar_floating_enabled[\s\S]*?android:defaultValue="false"/
   );
   assert.match(
     settingsActivity,
-    /prefs\.getBoolean\("pref_toolbar_floating_enabled", true\)/
+    /prefs\.getBoolean\("pref_toolbar_floating_enabled", false\)/
   );
-  assert.match(main, /let floatingToolbarEnabled = true/);
-  assert.match(main, /floatingToolbarEnabled = prefs\.pref_toolbar_floating_enabled !== false/);
+  assert.match(main, /let floatingToolbarEnabled = false/);
+  assert.match(main, /floatingToolbarEnabled = prefs\.pref_toolbar_floating_enabled === true/);
   assert.match(main, /if \(!floatingToolbarEnabled\) \{[\s\S]*?aria-hidden', 'true'/);
   assert.match(
     webIndex,
@@ -114,7 +114,7 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(controlbarPrefs, /ResetSwitchPreference[\s\S]*?pref_toolbar_floating_enabled/);
   assert.match(resetPreferences, /key == "pref_toolbar_toggle_closed_width" -> 34/);
   assert.match(resetPreferences, /key == "pref_toolbar_toggle_closed_height" -> 34/);
-  assert.match(resetPreferences, /key == "pref_toolbar_floating_enabled" -> true/);
+  assert.match(resetPreferences, /key == "pref_toolbar_floating_enabled" -> false/);
   assert.match(resetPreferences, /key == "pref_toolbar_floating_key_width" -> 48/);
   assert.match(resetPreferences, /key == "pref_toolbar_floating_corner_radius" -> 24/);
   assert.match(main, /--toolbar-toggle-open-size/);
@@ -129,7 +129,7 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.doesNotMatch(nativeActivity, /setCustomSelectionActionModeCallback/);
   assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback\)/);
   assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback, type: Int\)/);
-  assert.match(editorWebView, /getBoolean\("pref_toolbar_floating_enabled", true\)/);
+  assert.match(editorWebView, /getBoolean\("pref_toolbar_floating_enabled", false\)/);
   assert.match(editorWebView, /else\s*\{\s*super\.startActionMode\(callback\)\s*\}/);
   assert.match(editorWebView, /else\s*\{\s*super\.startActionMode\(callback, type\)\s*\}/);
   assert.match(editorWebView, /override fun startActionModeForChild\(/);

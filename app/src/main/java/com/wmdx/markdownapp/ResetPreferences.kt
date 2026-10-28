@@ -386,7 +386,7 @@ object PreferenceResetHelper {
             key == "pref_toolbar_toggle_closed_height" -> 34
             key == "pref_toolbar_height" -> 48
             key == "pref_toolbar_padding" -> 4
-            key == "pref_toolbar_floating_enabled" -> true
+            key == "pref_toolbar_floating_enabled" -> false
             key == "pref_toolbar_floating_key_width" -> 48
             key == "pref_toolbar_floating_corner_radius" -> 24
             key == "pref_app_theme" -> "amoled"

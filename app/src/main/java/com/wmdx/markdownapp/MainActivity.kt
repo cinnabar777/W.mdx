@@ -72,6 +72,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var isEditorReady: Boolean = false
     private var currentEditorMode: String = "rich_text"
     @Volatile private var currentRevision: Long = 0
+    @Volatile private var currentEmptyContentExplicitlyEdited: Boolean = false
     private var hasBom: Boolean = false
     private var hasCrlf: Boolean = false
     @Volatile private var latestMarkdownContent: String? = null
@@ -84,6 +85,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var currentTextPackSession: TextPackSession? = null
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
+    private var pendingCreateDocumentSessionId: String? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
     private var pendingRenamePermissionRequest: RenameAccessRequest? = null
     private val documentHistoryStack = java.util.ArrayDeque<Uri>()
@@ -121,13 +123,29 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             pendingRenameFallbackName = null
             val saveAsTextPack = pendingCreateDocumentAsTextPack
             pendingCreateDocumentAsTextPack = null
-            saveFileToUri(uri, saveAsTextPack)
+            val expectedSessionId = pendingCreateDocumentSessionId
+            pendingCreateDocumentSessionId = null
+            if (expectedSessionId != null && expectedSessionId != currentDocumentSessionId) {
+                ThemedToast.show(
+                    this,
+                    "The active document changed before Save As finished. Nothing was saved.",
+                    Toast.LENGTH_LONG
+                )
+            } else {
+                saveFileToUri(
+                    uri,
+                    saveAsTextPack,
+                    expectedDocumentSessionId = expectedSessionId
+                )
+            }
         } else if (pendingRenameFallbackName != null) {
             pendingCreateDocumentAsTextPack = null
+            pendingCreateDocumentSessionId = null
             pendingRenameFallbackName = null
             updateTitle()
         } else {
             pendingCreateDocumentAsTextPack = null
+            pendingCreateDocumentSessionId = null
         }
     }
 
@@ -153,6 +171,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val startupPreferences = PreferenceManager.getDefaultSharedPreferences(this)
+        if (!startupPreferences.getBoolean("pref_toolbar_default_corrected", false)) {
+            startupPreferences.edit()
+                .putBoolean("pref_toolbar_floating_enabled", false)
+                .putBoolean("pref_toolbar_default_corrected", true)
+                .apply()
+        }
         setContentView(R.layout.activity_main)
 
         applySystemBarDimming()
@@ -1152,6 +1177,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         documentForwardStack.clear()
         currentDocumentSessionId = java.util.UUID.randomUUID().toString()
         currentRevision = 0
+        currentEmptyContentExplicitlyEdited = false
         currentTextPackSession = null
         latestMarkdownContent = ""
         currentFileUri = null
@@ -1296,6 +1322,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 currentTextPackSession = session
                 currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                 currentRevision = 0
+                currentEmptyContentExplicitlyEdited = false
                 latestMarkdownContent = text
                 currentFileUri = uri
                 currentFileName = fileName
@@ -1322,6 +1349,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     hasCrlf = content.contains("\r\n")
                     currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                     currentRevision = 0
+                    currentEmptyContentExplicitlyEdited = false
                     latestMarkdownContent = content
                     val lines = content.lineSequence().count()
                     val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
@@ -1383,6 +1411,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun launchCreateDocument(fileName: String, asTextPack: Boolean?) {
         pendingCreateDocumentAsTextPack = asTextPack
+        pendingCreateDocumentSessionId = currentDocumentSessionId
         createDocumentLauncher.launch(fileName)
     }
 
@@ -1473,6 +1502,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun launchRenameSaveAs(targetName: String) {
         pendingRenameFallbackName = targetName
         pendingCreateDocumentAsTextPack = null
+        pendingCreateDocumentSessionId = currentDocumentSessionId
         createDocumentLauncher.launch(targetName)
     }
 
@@ -1608,15 +1638,49 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun saveFileToUri(
         uri: Uri,
         requestedAsTextPack: Boolean? = null,
-        cachedMarkdownText: String? = null
+        cachedMarkdownText: String? = null,
+        expectedDocumentSessionId: String? = null
     ) {
+        val saveSessionId = expectedDocumentSessionId ?: currentDocumentSessionId
+        if (saveSessionId != currentDocumentSessionId) {
+            ThemedToast.show(
+                this,
+                "The active document changed before saving. Nothing was saved.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
         val oldDocumentKey = currentDocumentHistoryKey()
         val oldUriString = currentFileUri?.toString().orEmpty()
         val saveStarted = android.os.SystemClock.elapsedRealtime()
         val snapshotSource = if (cachedMarkdownText != null) "cached" else "webview"
         AppDiagnostics.record(this, "save_start", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision")
-        val persistSnapshot: (String) -> Unit = { snapshot ->
+        val persistSnapshot: (String) -> Unit = persistSnapshot@{ snapshot ->
+            if (saveSessionId != currentDocumentSessionId) {
+                AppDiagnostics.record(this, "save_skipped_stale_document_session")
+                ThemedToast.show(
+                    this,
+                    "The active document changed before saving. Nothing was saved.",
+                    Toast.LENGTH_LONG
+                )
+                return@persistSnapshot
+            }
             var markdownText = snapshot
+            if (
+                uri == currentFileUri &&
+                isDirty &&
+                markdownText.isEmpty() &&
+                currentRevision == 0L &&
+                !currentEmptyContentExplicitlyEdited
+            ) {
+                AppDiagnostics.record(this, "save_skipped_unconfirmed_empty_snapshot")
+                ThemedToast.show(
+                    this,
+                    "The empty snapshot was not confirmed as an intentional edit. The file was left unchanged.",
+                    Toast.LENGTH_LONG
+                )
+                return@persistSnapshot
+            }
             AppDiagnostics.record(this, "snapshot_taken", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length}")
 
             if (hasCrlf && !markdownText.contains("\r\n") && markdownText.contains("\n")) {
@@ -1658,6 +1722,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 latestMarkdownContent = markdownText
                 isDirty = false
                 currentRevision = 0
+                currentEmptyContentExplicitlyEdited = false
                 updateTitle()
                 val escapedSavedUri = JSONObjectWrapper.quote(uri.toString())
                 webView.evaluateJavascript(
@@ -1667,8 +1732,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val escapedOldUri = JSONObjectWrapper.quote(oldUriString)
                 val escapedUri = JSONObjectWrapper.quote(uri.toString())
                 val escapedName = JSONObjectWrapper.quote(targetFileName)
+                val escapedSessionId = JSONObjectWrapper.quote(saveSessionId)
                 webView.evaluateJavascript(
-                    "window.leftPanelController?.onDocumentSavedAs?.($escapedOldUri, $escapedUri, $escapedName);",
+                    "window.leftPanelController?.onDocumentSavedAs?.($escapedOldUri, $escapedUri, $escapedName, $escapedSessionId);",
                     null
                 )
                 val saveMs = android.os.SystemClock.elapsedRealtime() - saveStarted
@@ -1926,6 +1992,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .put("name", name)
             .put("markdown", markdown)
             .put("dirty", isDirty)
+            .put("emptyContentExplicitlyEdited", currentEmptyContentExplicitlyEdited)
             .put("isTextPack", currentTextPackSession != null || name.endsWith(".textpack", true) || name.endsWith(".textpack.zip", true))
             .put("hasBom", hasBom)
             .put("hasCrlf", hasCrlf)
@@ -2074,10 +2141,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         markdown: String,
         isTextPack: Boolean,
         tabHasBom: Boolean,
-        tabHasCrlf: Boolean
+        tabHasCrlf: Boolean,
+        emptyContentExplicitlyEdited: Boolean
     ): org.json.JSONObject {
         if (!hasLeftPanelDocumentAccess(uri, write = true)) {
             return org.json.JSONObject().put("ok", false).put("error", "This file is not writable.")
+        }
+        if (markdown.isEmpty() && !emptyContentExplicitlyEdited) {
+            return org.json.JSONObject()
+                .put("ok", false)
+                .put("error", "The empty snapshot was not confirmed as an intentional edit.")
         }
         return runCatching {
             var content = markdown
@@ -2107,6 +2180,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 latestMarkdownContent = markdown
                 isDirty = false
                 currentRevision = 0
+                currentEmptyContentExplicitlyEdited = false
                 runOnUiThread { updateTitle() }
             }
             org.json.JSONObject().put("ok", true)
@@ -2205,7 +2279,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             dirty: Boolean,
             isTextPack: Boolean,
             tabHasBom: Boolean,
-            tabHasCrlf: Boolean
+            tabHasCrlf: Boolean,
+            emptyContentExplicitlyEdited: Boolean
         ): Boolean {
             val uri = uriString.takeIf { it.isNotBlank() }?.let {
                 runCatching { Uri.parse(it) }.getOrNull()
@@ -2215,6 +2290,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             currentFileName = name.ifBlank { "Untitled.md" }
             currentDocumentSessionId = java.util.UUID.randomUUID().toString()
             currentRevision = 0
+            currentEmptyContentExplicitlyEdited = emptyContentExplicitlyEdited
             currentTextPackSession = if (isTextPack && uri != null) {
                 runCatching { TextPackManager.openTextPack(this@MainActivity, uri) }.getOrNull()
             } else null
@@ -2233,11 +2309,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             markdown: String,
             isTextPack: Boolean,
             tabHasBom: Boolean,
-            tabHasCrlf: Boolean
+            tabHasCrlf: Boolean,
+            emptyContentExplicitlyEdited: Boolean
         ): String {
             val uri = runCatching { Uri.parse(uriString) }.getOrNull()
                 ?: return org.json.JSONObject().put("ok", false).put("error", "This tab has no saved file yet.").toString()
-            return saveLeftPanelDocument(uri, markdown, isTextPack, tabHasBom, tabHasCrlf).toString()
+            return saveLeftPanelDocument(
+                uri,
+                markdown,
+                isTextPack,
+                tabHasBom,
+                tabHasCrlf,
+                emptyContentExplicitlyEdited
+            ).toString()
         }
 
         @JavascriptInterface
@@ -2324,6 +2408,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 latestMarkdownContent = markdownText
             }
             currentRevision = revision
+            currentEmptyContentExplicitlyEdited =
+                revision > 0 && markdownText.isNullOrEmpty()
             val becameDirty = !isDirty
             isDirty = true
             if (becameDirty) runOnUiThread { updateTitle() }
