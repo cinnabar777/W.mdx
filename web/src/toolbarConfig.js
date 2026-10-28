@@ -19,6 +19,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   heading: Object.freeze([
     'paragraph',
     'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6',
+    'autoHeading',
     'wrap', 'line-numbers'
   ]),
   lists: Object.freeze([
@@ -76,7 +77,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 5,
+  version: 6,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -295,6 +296,22 @@ export function normalizeBottomToolbarConfig(rawConfig) {
         formatOrder.push(id);
         assignedActions.add(id);
       }
+    }
+  }
+
+  if (
+    parsedVersion > 0 &&
+    parsedVersion < DEFAULT_BOTTOM_TOOLBAR_CONFIG.version &&
+    Array.isArray(rawPopupGroups.heading?.order) &&
+    popupGroups.heading.order.length > 0
+  ) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    if (
+      !assignedActions.has('autoHeading') &&
+      !legacyHeldKeys.includes('autoHeading') &&
+      !legacyHidden.includes('autoHeading')
+    ) {
+      popupGroups.heading.order.push('autoHeading');
     }
   }
 

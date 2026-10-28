@@ -550,6 +550,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_heading_4" -> "ctrl+alt+4"
             key == "pref_hotkey_heading_5" -> "ctrl+alt+5"
             key == "pref_hotkey_heading_6" -> "ctrl+alt+6"
+            key == "pref_hotkey_auto_heading" -> ""
             key == "pref_hotkey_highlight_yellow" -> "ctrl+alt+y"
             key == "pref_hotkey_highlight_red_pen" -> "ctrl+alt+r"
             key.startsWith("pref_hotkey_marker_") -> ""

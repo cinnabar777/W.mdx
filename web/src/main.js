@@ -29,6 +29,7 @@ import {
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
+import { applyAutoHeading } from './autoHeading.js';
 import { toCssFontFamily } from './fontFamilies.js';
 import { setupLeftPanel } from './leftPanel.js';
 import { setupPanelSwipe } from './panelSwipe.js';
@@ -36,6 +37,7 @@ import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import {
   getMarkdownFormattingState,
   getMarkdownFormatRanges,
+  getWmdxUnderlineSyntaxDelimiterRanges,
   getWmdxColorSyntaxRanges,
   isWmdxUnderlineSyntaxEnabled,
   setWmdxUnderlineSyntaxEnabled,
@@ -136,6 +138,7 @@ let customHotkeys = {
   indent: 'tab',
   outdent: 'shift+tab',
   horizontalLine: 'ctrl+shift+h',
+  autoHeading: '',
   findAndReplace: 'ctrl+f',
   heading_p: 'ctrl+alt+0',
   heading_1: 'ctrl+alt+1',
@@ -1871,7 +1874,15 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.mark({ class: 'cm-bold' }).range(node.from, node.to));
           }
           if (node.name === 'EmphasisMark' && !isNodeActive) {
-            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
+            const isWmdxUnderlineDelimiter = underlineSyntaxRanges.some(range =>
+              range.kind === 'wmdx' && (
+                (node.from >= range.wrapperFrom && node.to <= range.contentFrom) ||
+                (node.from >= range.contentTo && node.to <= range.wrapperTo)
+              )
+            );
+            if (!isWmdxUnderlineDelimiter && !isPureWysiwyg) {
+              hideSyntax(node.from, node.to);
+            }
           }
 
           if (node.name === 'Emphasis') {
@@ -2045,8 +2056,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       if (range.kind === 'html' && !isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
-      } else if (range.kind === 'wmdx' && range.style !== 'solid' && !isRangeActive) {
-        hideSyntax(range.wrapperFrom + 1, range.contentFrom);
+      } else if (range.kind === 'wmdx' && !isRangeActive) {
+        for (const delimiter of getWmdxUnderlineSyntaxDelimiterRanges(range)) {
+          hideSyntax(delimiter.from, delimiter.to);
+        }
       }
       if (range.kind === 'wmdx') {
         builder.push(Decoration.mark({
@@ -4410,6 +4423,7 @@ function setupGroupedControlBar() {
         { title: 'Heading 4', icon: 'H4', command: 'heading4', action: () => execCmd('heading', { value: 'heading4' }) },
         { title: 'Heading 5', icon: 'H5', command: 'heading5', action: () => execCmd('heading', { value: 'heading5' }) },
         { title: 'Heading 6', icon: 'H6', command: 'heading6', action: () => execCmd('heading', { value: 'heading6' }) },
+        { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
         { id: 'wrap', icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
         { id: 'line-numbers', icon: '#', title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
       ]);
@@ -4743,6 +4757,7 @@ function createToolbarActionRegistry() {
         command: `heading${index + 1}`,
         action: () => execCmd('heading', { value: `heading${index + 1}` })
       })),
+      { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
       { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap, action: () => window.editorBridge.toggleLineWrap() },
       { id: 'line-numbers', title: 'Toggle Line Numbers', icon: '#', action: () => window.editorBridge.toggleLineNumbers() }
     ],
@@ -5751,6 +5766,7 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'link') openLinkInsertionDialog();
     else if (cmdName === 'callout') openCalloutInsertionDialog();
     else if (cmdName === 'insertTable') cmWrapSelection(view, '\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '');
+    else if (cmdName === 'autoHeading') applyAutoHeading(view);
     else if (cmdName === 'heading') {
       const val = options ? options.value : '';
       if (val === 'paragraph') cmToggleLinePrefix(view, '');
@@ -7289,6 +7305,7 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.horizontalLine)) { e.preventDefault(); execCmd('horizontalLine'); }
 
     // Headings shortcuts
+    else if (parseAndMatchHotkey(e, customHotkeys.autoHeading)) { e.preventDefault(); execCmd('autoHeading'); }
     else if (parseAndMatchHotkey(e, customHotkeys.heading_p)) { e.preventDefault(); execCmd('heading', { value: 'paragraph' }); }
     else if (parseAndMatchHotkey(e, customHotkeys.heading_1)) { e.preventDefault(); execCmd('heading', { value: 'heading1' }); }
     else if (parseAndMatchHotkey(e, customHotkeys.heading_2)) { e.preventDefault(); execCmd('heading', { value: 'heading2' }); }

@@ -213,6 +213,11 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Headings">
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_auto_heading"
+            app:title="Auto Heading"
+            app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_heading_1"
             app:title="Heading 1"
             app:defaultValue="ctrl+alt+1" />

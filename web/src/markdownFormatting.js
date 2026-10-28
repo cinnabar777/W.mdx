@@ -212,6 +212,14 @@ export function getWmdxUnderlineSyntaxRanges(state, bounds = null) {
   return ranges;
 }
 
+export function getWmdxUnderlineSyntaxDelimiterRanges(range) {
+  if (!range || range.kind !== 'wmdx') return [];
+  return [
+    { from: range.wrapperFrom, to: range.contentFrom },
+    { from: range.contentTo, to: range.wrapperTo }
+  ].filter(delimiter => delimiter.to > delimiter.from);
+}
+
 function expandedLineBounds(state, from, to) {
   return {
     from: state.doc.lineAt(from).from,

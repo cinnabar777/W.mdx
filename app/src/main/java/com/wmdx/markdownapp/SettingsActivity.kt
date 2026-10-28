@@ -1407,7 +1407,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         private val TOOLBAR_GROUP_ITEM_IDS = linkedMapOf(
             "heading" to listOf(
                 "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5",
-                "heading6", "wrap", "line-numbers"
+                "heading6", "autoHeading", "wrap", "line-numbers"
             ),
             "lists" to listOf(
                 "bulletedList", "numberedList", "todoList", "indent", "outdent"
@@ -1434,6 +1434,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         private val TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS + listOf(
             "paragraph",
             "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
+            "autoHeading",
             "wrap", "line-numbers",
             "bulletedList", "numberedList", "todoList", "indent", "outdent",
             "bold", "italic", "strikethrough", "underline", "underlineSolid",

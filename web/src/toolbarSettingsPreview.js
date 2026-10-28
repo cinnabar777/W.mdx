@@ -66,6 +66,7 @@ const PREVIEW_GROUP_ITEMS = {
       title: `Heading ${index + 1}`,
       icon: `H${index + 1}`
     })),
+    { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading },
     { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap },
     { id: 'line-numbers', title: 'Toggle Line Numbers', icon: '#' }
   ],

@@ -97,6 +97,25 @@ test('version 4 toolbar layouts migrate marker and pen actions without restoring
   ));
 });
 
+test('version 5 toolbar layouts add Auto Heading to the heading actions', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 5,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      heading: {
+        order: ['paragraph', 'heading1', 'heading2'],
+        hidden: []
+      }
+    }
+  });
+
+  assert.deepEqual(config.popupGroups.heading.order, [
+    'paragraph', 'heading1', 'heading2', 'autoHeading'
+  ]);
+  assert.ok(config.holding.includes('heading3'));
+});
+
 test('popup actions can be reordered and removed from their former group into the shared holding area', async () => {
   const {
     BOTTOM_TOOLBAR_GROUP_ITEM_IDS,

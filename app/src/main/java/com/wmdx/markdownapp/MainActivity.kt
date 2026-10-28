@@ -1225,6 +1225,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "horizontalLine" to prefs.getString("pref_hotkey_horizontalLine", "ctrl+shift+h"),
             "findAndReplace" to prefs.getString("pref_hotkey_findAndReplace", "ctrl+f"),
             "sourceEditing" to prefs.getString("pref_hotkey_sourceEditing", "ctrl+shift+u"),
+            "autoHeading" to prefs.getString("pref_hotkey_auto_heading", ""),
             "heading_p" to prefs.getString("pref_hotkey_heading_p", "ctrl+alt+0"),
             "heading_1" to prefs.getString("pref_hotkey_heading_1", "ctrl+alt+1"),
             "heading_2" to prefs.getString("pref_hotkey_heading_2", "ctrl+alt+2"),
