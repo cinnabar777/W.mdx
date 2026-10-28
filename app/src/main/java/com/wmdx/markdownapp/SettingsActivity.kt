@@ -1343,7 +1343,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "horizontalLine", "footnote"
             ),
             "menu" to listOf(
-                "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
+                "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
                 "exportHtml", "search", "switchView", "newWindow", "settings"
             )
         )
@@ -1358,7 +1358,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
             "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
             "horizontalLine", "footnote",
-            "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
+            "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "exportHtml", "search", "switchView", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll"
         )
