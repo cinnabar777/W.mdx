@@ -35,11 +35,15 @@ import androidx.core.view.ViewCompat
 import androidx.preference.PreferenceManager
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+
+private const val WMDX_TAB_SESSION_MIME = "application/vnd.wmdx.tabs-session+json"
+private const val MAX_WMDX_TAB_SESSION_BYTES = 512 * 1024
 
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -88,6 +92,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
     private var pendingCreateDocumentSessionId: String? = null
+    private var pendingWmdxTabSessionJson: String? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
     private var pendingRenamePermissionRequest: RenameAccessRequest? = null
     private val documentHistoryStack = java.util.ArrayDeque<Uri>()
@@ -228,6 +233,29 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             pendingCreateDocumentSessionId = null
         }
     }
+
+    private val saveWmdxTabSessionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.CreateDocument(WMDX_TAB_SESSION_MIME)
+        ) { uri ->
+            val sessionJson = pendingWmdxTabSessionJson
+            pendingWmdxTabSessionJson = null
+            if (uri == null || sessionJson == null) return@registerForActivityResult
+            runCatching {
+                val output = contentResolver.openOutputStream(uri, "w")
+                    ?: throw java.io.IOException("Could not create the selected session file.")
+                output.use { it.write(sessionJson.toByteArray(Charsets.UTF_8)) }
+                persistDocumentUriPermission(uri)
+            }.onSuccess {
+                ThemedToast.show(this, "Tab session saved.", Toast.LENGTH_SHORT)
+            }.onFailure {
+                ThemedToast.show(
+                    this,
+                    it.localizedMessage ?: "Could not save the tab session.",
+                    Toast.LENGTH_LONG
+                )
+            }
+        }
 
     private val exportDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         uri?.let { saveExportToUri(it) }
@@ -1165,6 +1193,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "open" to prefs.getString("pref_hotkey_open", "ctrl+o"),
             "save" to prefs.getString("pref_hotkey_save", "ctrl+s"),
             "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
+            "save_tabs" to prefs.getString("pref_hotkey_save_tabs", ""),
             "save_as_textpack" to prefs.getString("pref_hotkey_save_as_textpack", "ctrl+shift+alt+s"),
             "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
             "image" to prefs.getString("pref_hotkey_image", "ctrl+shift+i"),
@@ -1411,6 +1440,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        if (isWmdxTabSession(uri)) {
+            restoreWmdxTabSession(uri)
+            return
+        }
         if (!forceReload && currentFileUri == uri && !isDirty) return
         if (!skipExistingWindowFocus && WindowRegistry.focus(this, uri)) return
         synchronized(documentHistoryLock) {
@@ -1513,6 +1546,158 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             prefs.edit().putInt(key, savedScroll).apply()
         }
         webView.evaluateJavascript("window.editorBridge.setScrollPosition($savedScroll);", null)
+    }
+
+    private fun sanitizeWmdxTabSession(rawJson: String): String? {
+        if (rawJson.length > MAX_WMDX_TAB_SESSION_BYTES) return null
+        return try {
+            val source = org.json.JSONObject(rawJson)
+            if (
+                source.optString("format") != "wmdx-tabs-session" ||
+                source.optInt("version") != 1
+            ) return null
+            val sourceTabs = source.optJSONArray("tabs") ?: return null
+            if (sourceTabs.length() !in 1..200) return null
+
+            val sourceGroups = source.optJSONArray("groups") ?: JSONArray()
+            val groups = linkedMapOf<String, org.json.JSONObject>()
+            for (index in 0 until minOf(sourceGroups.length(), 200)) {
+                val group = sourceGroups.optJSONObject(index) ?: continue
+                val id = group.optString("id").trim().take(128)
+                if (id.isEmpty() || groups.containsKey(id)) continue
+                val name = group.optString("name", "Group").trim().take(80)
+                groups[id] = org.json.JSONObject()
+                    .put("id", id)
+                    .put("name", name.ifEmpty { "Group" })
+                    .put("collapsed", group.optBoolean("collapsed", false))
+            }
+
+            val tabs = JSONArray()
+            val ids = mutableSetOf<String>()
+            val uris = mutableSetOf<String>()
+            val usedGroups = mutableSetOf<String>()
+            for (index in 0 until sourceTabs.length()) {
+                val tab = sourceTabs.optJSONObject(index) ?: continue
+                val id = tab.optString("id").trim().take(512)
+                if (id.isEmpty() || !ids.add(id)) continue
+                val uriValue = tab.opt("uri")
+                val uriString = (uriValue as? String)?.takeIf { it.isNotBlank() }
+                if (uriString != null) {
+                    if (uriString.length > 8192) {
+                        ids.remove(id)
+                        continue
+                    }
+                    val scheme = runCatching { Uri.parse(uriString).scheme?.lowercase() }.getOrNull()
+                    if (scheme != "content" && scheme != "file") {
+                        ids.remove(id)
+                        continue
+                    }
+                    if (!uris.add(uriString)) {
+                        ids.remove(id)
+                        continue
+                    }
+                }
+                val requestedGroupId = (tab.opt("groupId") as? String)
+                    ?.takeIf { groups.containsKey(it) }
+                if (requestedGroupId != null) usedGroups.add(requestedGroupId)
+                val name = tab.optString("name", "Untitled").trim().take(240)
+                val scrollTop = if (tab.isNull("scrollTop")) null else {
+                    runCatching {
+                        tab.getDouble("scrollTop").toLong().coerceIn(0L, 20000000L)
+                    }.getOrNull()
+                }
+                tabs.put(
+                    org.json.JSONObject()
+                        .put("id", id)
+                        .put("uri", uriString ?: JSONObject.NULL)
+                        .put("name", name.ifEmpty { "Untitled" })
+                        .put("pinned", tab.optBoolean("pinned", false))
+                        .put("groupId", requestedGroupId ?: JSONObject.NULL)
+                        .put("scrollTop", scrollTop ?: JSONObject.NULL)
+                )
+            }
+            if (tabs.length() == 0) return null
+
+            val groupsJson = JSONArray()
+            groups.forEach { (id, group) ->
+                if (id in usedGroups) groupsJson.put(group)
+            }
+            val activeTabId = source.optString("activeTabId")
+                .takeIf { it in ids }
+                ?: tabs.getJSONObject(0).getString("id")
+            val sanitized = org.json.JSONObject()
+                .put("format", "wmdx-tabs-session")
+                .put("version", 1)
+                .put("activeTabId", activeTabId)
+                .put("groups", groupsJson)
+                .put("tabs", tabs)
+                .toString()
+            if (sanitized.toByteArray(Charsets.UTF_8).size > MAX_WMDX_TAB_SESSION_BYTES) {
+                null
+            } else {
+                sanitized
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun isWmdxTabSession(uri: Uri): Boolean {
+        val name = runCatching { getFileNameFromUri(uri) }.getOrNull().orEmpty()
+        val mimeType = runCatching { contentResolver.getType(uri) }.getOrNull()
+        return name.endsWith(".wmdxsession", ignoreCase = true) ||
+            mimeType == WMDX_TAB_SESSION_MIME
+    }
+
+    private fun readWmdxTabSession(uri: Uri): org.json.JSONObject {
+        if (!isWmdxTabSession(uri)) return org.json.JSONObject().put("isSession", false)
+        return runCatching {
+            val input = contentResolver.openInputStream(uri)
+                ?: throw java.io.FileNotFoundException("Could not open the tab session.")
+            val output = java.io.ByteArrayOutputStream()
+            input.use { stream ->
+                val buffer = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > MAX_WMDX_TAB_SESSION_BYTES) {
+                        throw java.io.IOException("The tab session file is too large.")
+                    }
+                    output.write(buffer, 0, count)
+                }
+            }
+            val sessionJson = sanitizeWmdxTabSession(
+                String(output.toByteArray(), Charsets.UTF_8)
+            ) ?: throw java.io.IOException("This is not a supported W.mdx tab session.")
+            org.json.JSONObject()
+                .put("isSession", true)
+                .put("ok", true)
+                .put("session", org.json.JSONObject(sessionJson))
+        }.getOrElse {
+            org.json.JSONObject()
+                .put("isSession", true)
+                .put("ok", false)
+                .put("error", it.localizedMessage ?: "Could not read the tab session.")
+        }
+    }
+
+    private fun restoreWmdxTabSession(uri: Uri) {
+        val result = readWmdxTabSession(uri)
+        if (!result.optBoolean("ok")) {
+            ThemedToast.show(
+                this,
+                result.optString("error", "Could not read the tab session."),
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+        val sessionJson = JSONObjectWrapper.quote(result.optJSONObject("session")?.toString())
+        webView.evaluateJavascript(
+            "window.leftPanelController?.restorePortableSession?.($sessionJson);",
+            null
+        )
     }
 
     private fun handleSaveFile() {
@@ -2406,6 +2591,26 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val uri = runCatching { Uri.parse(uriString) }.getOrNull()
                 ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
             return this@MainActivity.readLeftPanelDocument(uri).toString()
+        }
+
+        @JavascriptInterface
+        fun readWmdxTabSession(uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject()
+                    .put("isSession", false)
+                    .toString()
+            return this@MainActivity.readWmdxTabSession(uri).toString()
+        }
+
+        @JavascriptInterface
+        fun saveWmdxTabSession(sessionJson: String): Boolean {
+            val sanitized = sanitizeWmdxTabSession(sessionJson) ?: return false
+            if (isFinishing) return false
+            runOnUiThread {
+                pendingWmdxTabSessionJson = sanitized
+                saveWmdxTabSessionLauncher.launch("Wmdx Session.wmdxsession")
+            }
+            return true
         }
 
         @JavascriptInterface

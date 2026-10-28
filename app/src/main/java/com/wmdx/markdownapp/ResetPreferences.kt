@@ -503,6 +503,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_open" -> "ctrl+o"
             key == "pref_hotkey_save" -> "ctrl+s"
             key == "pref_hotkey_save_as" -> "ctrl+shift+s"
+            key == "pref_hotkey_save_tabs" -> ""
             key == "pref_hotkey_save_as_textpack" -> "ctrl+shift+alt+s"
             key == "pref_hotkey_image" -> "ctrl+shift+i"
             key == "pref_hotkey_settings" -> "ctrl+,"

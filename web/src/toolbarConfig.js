@@ -34,7 +34,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
     'horizontalLine', 'footnote'
   ]),
   menu: Object.freeze([
-    'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveAsTextPack',
+    'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack',
     'exportHtml', 'search', 'switchView', 'newWindow', 'settings'
   ])
 });

@@ -70,6 +70,12 @@
             app:defaultValue="ctrl+s" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_save_tabs"
+            app:title="Save Tabs"
+            app:summary="Key combination (leave empty to disable)"
+            app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_toggle_toolbar"
             app:title="Toggle Bottom Toolbar"
             app:summary="Key combination (e.g. ctrl+t)"

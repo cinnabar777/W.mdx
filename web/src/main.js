@@ -96,6 +96,7 @@ let customHotkeys = {
   open: 'ctrl+o',
   save: 'ctrl+s',
   save_as: 'ctrl+shift+s',
+  save_tabs: '',
   save_as_textpack: 'ctrl+shift+alt+s',
   export: 'ctrl+shift+e',
   image: 'ctrl+shift+i',
@@ -3692,6 +3693,11 @@ class CodeMirrorAdapter {
     if (this.syntaxRefreshComplete) this.scheduleRestoredScrollTop();
   }
 
+  getScrollPosition() {
+    const scrollTop = this.view?.scrollDOM?.scrollTop;
+    return Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : null;
+  }
+
   scheduleRestoredScrollTop() {
     const view = this.view;
     const scrollTop = this.pendingRestoreScrollTop;
@@ -4428,6 +4434,7 @@ function setupGroupedControlBar() {
         { id: 'openFile', icon: svgIcons.openFile, title: 'Open File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('open') },
         { id: 'saveFile', icon: svgIcons.saveFile, title: 'Save File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save') },
         { id: 'saveAsFile', icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
+        { id: 'saveTabs', icon: svgIcons.saveTabs, title: 'Save Tabs', action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
         { id: 'saveAsTextPack', icon: svgIcons.saveAsTextPack, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
         { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
@@ -4711,6 +4718,7 @@ function createToolbarActionRegistry() {
       { id: 'openFile', title: 'Open File', icon: svgIcons.openFile, action: () => window.AndroidNative?.onNativeAction('open') },
       { id: 'saveFile', title: 'Save File', icon: svgIcons.saveFile, action: () => window.AndroidNative?.onNativeAction('save') },
       { id: 'saveAsFile', title: 'Save As', icon: svgIcons.saveAsFile, action: () => window.AndroidNative?.onNativeAction('save_as') },
+      { id: 'saveTabs', title: 'Save Tabs', icon: svgIcons.saveTabs, action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
       { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack, action: () => window.AndroidNative?.onNativeAction('save_as_textpack') },
       { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
       { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
@@ -7129,6 +7137,9 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as');
+    } else if (parseAndMatchHotkey(e, customHotkeys.save_tabs)) {
+      e.preventDefault();
+      void window.leftPanelController?.saveTabSession?.();
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as_textpack)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack');
@@ -7212,6 +7223,9 @@ window.editorBridge = {
   },
   setScrollPosition: function(scrollTop) {
     if (activeAdapter) activeAdapter.setScrollPosition(scrollTop);
+  },
+  getScrollPosition: function() {
+    return activeAdapter?.getScrollPosition?.() ?? null;
   },
   openLinkInsertionDialog: function() {
     openLinkInsertionDialog();

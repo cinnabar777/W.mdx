@@ -740,3 +740,32 @@ test('launcher tabs persist while file-manager window tabs are temporary', () =>
   );
 });
 
+test('tab sessions save and restore tab references and scroll positions only', () => {
+  const toolbarConfigSource = fs.readFileSync(
+    path.join(__dirname, '../src/toolbarConfig.js'),
+    'utf8'
+  );
+  const toolbarIconsSource = fs.readFileSync(
+    path.join(__dirname, '../src/toolbarIcons.js'),
+    'utf8'
+  );
+  const sanitizerStart = mainActivitySource.indexOf('private fun sanitizeWmdxTabSession');
+  const sanitizerEnd = mainActivitySource.indexOf('private fun isWmdxTabSession', sanitizerStart);
+  const sanitizerSource = mainActivitySource.slice(sanitizerStart, sanitizerEnd);
+
+  assert.match(leftPanelSource, /format: 'wmdx-tabs-session'/);
+  assert.match(leftPanelSource, /restorePortableSession/);
+  assert.match(leftPanelSource, /scrollTop: Number\.isFinite\(tab\.scrollTop\)/);
+  assert.match(mainActivitySource, /saveWmdxTabSession\(sessionJson: String\)/);
+  assert.match(mainActivitySource, /readWmdxTabSession\(uriString: String\)/);
+  assert.match(mainActivitySource, /Wmdx Session\.wmdxsession/);
+  assert.doesNotMatch(sanitizerSource, /\.put\("markdown"/);
+  assert.match(appManifestXml, /application\/vnd\.wmdx\.tabs-session\+json/);
+  assert.match(hotkeysXml, /pref_hotkey_save_tabs[\s\S]*app:defaultValue=""/);
+  assert.match(resetPreferencesSource, /pref_hotkey_save_tabs" -> ""/);
+  assert.match(mainActivitySource, /"save_tabs" to prefs\.getString\("pref_hotkey_save_tabs", ""\)/);
+  assert.match(source, /save_tabs: ''/);
+  assert.match(toolbarConfigSource, /'saveTabs'/);
+  assert.match(toolbarIconsSource, /saveTabs:/);
+});
+

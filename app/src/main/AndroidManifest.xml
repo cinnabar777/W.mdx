@@ -33,6 +33,7 @@
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/vnd.wmdx.tabs-session+json" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
