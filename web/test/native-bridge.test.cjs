@@ -157,6 +157,41 @@ test('save completion only clears the tab matching the saved file identity', () 
   assert.match(mainActivitySource, /save_skipped_unconfirmed_empty_snapshot/);
 });
 
+test('dirty file tabs save on switch independently of the leave-autosave preference', () => {
+  const leftPanelSource = fs.readFileSync(
+    path.join(__dirname, '../src/leftPanel.js'),
+    'utf8'
+  );
+  const persistStart = leftPanelSource.indexOf('const persistDirtyTab =');
+  const leaveSaveStart = leftPanelSource.indexOf('const autoSaveDirtyTab =', persistStart);
+  const persistBody = leftPanelSource.slice(persistStart, leaveSaveStart);
+  const switchStart = leftPanelSource.indexOf('const activateTab =');
+  const switchEnd = leftPanelSource.indexOf('const activateUntitledTab =', switchStart);
+  const switchBody = leftPanelSource.slice(switchStart, switchEnd);
+
+  assert.doesNotMatch(persistBody, /isAutoSaveOnLeaveEnabled/);
+  assert.match(switchBody, /persistDirtyTab\(outgoingTab\)/);
+  assert.doesNotMatch(switchBody, /activeSection\s*=\s*'tabs'/);
+  assert.match(leftPanelSource, /const autoSaveDirtyTab = \(tab\) => \{\s*if \(native\?\.isAutoSaveOnLeaveEnabled/);
+});
+
+test('scroll positions are stored by file URI and reused across windows', () => {
+  const leftPanelSource = fs.readFileSync(
+    path.join(__dirname, '../src/leftPanel.js'),
+    'utf8'
+  );
+  const historyKeyStart = mainActivitySource.indexOf('private fun currentDocumentHistoryKey()');
+  const historyKeyEnd = mainActivitySource.indexOf('private fun persistDocumentUriPermission', historyKeyStart);
+  const historyKey = mainActivitySource.slice(historyKeyStart, historyKeyEnd);
+  const scrollSaveStart = mainActivitySource.indexOf('fun onScrollChanged(');
+  const scrollSaveEnd = mainActivitySource.indexOf('\n        }', scrollSaveStart);
+  const scrollSave = mainActivitySource.slice(scrollSaveStart, scrollSaveEnd);
+
+  assert.match(historyKey, /currentFileUri\?\.toString\(\)/);
+  assert.match(scrollSave, /cursor_scroll_\$\{currentDocumentHistoryKey\(\)\}/);
+  assert.match(leftPanelSource, /persistCurrentScrollPosition\?\.\(\)/);
+});
+
 test('native keyboard request gives WebView touch focus before showing IME', () => {
   assert.ok(mainActivitySource.includes('webView.isFocusable = true'));
   assert.ok(mainActivitySource.includes('webView.isFocusableInTouchMode = true'));

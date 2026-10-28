@@ -1,7 +1,21 @@
-const LEFT_PANEL_STATE_KEY = 'wmdx.leftPanel.state.v1';
+const LEFT_PANEL_STATE_KEY = 'wmdx.leftPanel.state.v2';
 const LAUNCHER_TABS_KEY = 'wmdx.leftPanel.launcherTabs.v1';
 const TASK_TABS_KEY_PREFIX = 'wmdx.leftPanel.taskTabs.';
 const SECTION_ORDER = ['search', 'folders', 'tabs'];
+
+export function createPanelExpandedState(state = {}) {
+  const tabsManuallyCollapsed = state.tabsManuallyCollapsed === true;
+  const expanded = Object.fromEntries(
+    SECTION_ORDER.map((section) => [
+      section,
+      typeof state.expanded?.[section] === 'boolean'
+        ? state.expanded[section]
+        : true
+    ])
+  );
+  if (!tabsManuallyCollapsed) expanded.tabs = true;
+  return { expanded, tabsManuallyCollapsed };
+}
 
 export function allocatePanelBodyHeights(availableBodyHeight, sections, activeSection) {
   const heights = Object.fromEntries(sections.map(({ id }) => [id, 0]));
@@ -19,8 +33,10 @@ export function allocatePanelBodyHeights(availableBodyHeight, sections, activeSe
     return heights;
   }
 
-  const active = expanded.find(({ id }) => id === activeSection) || expanded.at(-1);
-  const others = expanded.filter(({ id }) => id !== active.id);
+  const active = expanded.find(({ id }) => id === activeSection);
+  const others = active
+    ? expanded.filter(({ id }) => id !== active.id)
+    : expanded;
   const minimums = new Map(others.map((section) => [
     section.id,
     Math.min(section.contentHeight, section.compactHeight)
@@ -28,16 +44,24 @@ export function allocatePanelBodyHeights(availableBodyHeight, sections, activeSe
   const reserved = [...minimums.values()].reduce((total, height) => total + height, 0);
 
   if (reserved > available) {
-    const scale = available / reserved;
+    const activeMinimum = active
+      ? Math.min(active.contentHeight, active.compactHeight)
+      : 0;
+    const remainder = Math.max(0, available - activeMinimum);
+    const scale = reserved > 0 ? remainder / reserved : 0;
     minimums.forEach((height, id) => {
       heights[id] = Math.floor(height * scale);
     });
+    if (active) heights[active.id] = Math.min(activeMinimum, available);
     return heights;
   }
 
   for (const [id, height] of minimums) heights[id] = height;
-  heights[active.id] = Math.min(active.contentHeight, available - reserved);
-  let extra = available - reserved - heights[active.id];
+  let extra = available - reserved;
+  if (active) {
+    heights[active.id] = Math.min(active.contentHeight, extra);
+    extra -= heights[active.id];
+  }
   let eligible = others.filter(({ id, contentHeight }) => heights[id] < contentHeight);
 
   while (extra > 0 && eligible.length) {
@@ -104,18 +128,12 @@ export function setupLeftPanel() {
   const state = savedState && typeof savedState === 'object' && !Array.isArray(savedState)
     ? savedState
     : {};
-  let tabsManuallyCollapsed = state.tabsManuallyCollapsed === true;
-  const wantedExpanded = Object.fromEntries(
-    SECTION_ORDER.map((section) => [
-      section,
-      typeof state.expanded?.[section] === 'boolean'
-        ? state.expanded[section]
-        : section === 'tabs'
-    ])
-  );
-  if (!tabsManuallyCollapsed) wantedExpanded.tabs = true;
+  const panelExpandedState = createPanelExpandedState(state);
+  let tabsManuallyCollapsed = panelExpandedState.tabsManuallyCollapsed;
+  const wantedExpanded = panelExpandedState.expanded;
   const keepOpen = { search: false, folders: false, tabs: false };
-  let activeSection = SECTION_ORDER.includes(state.activeSection) ? state.activeSection : null;
+  let activeSection = null;
+  let sectionBeforeSearch = null;
   let windowContext = parseBridgeResult(native?.getLeftPanelContext?.(), {});
   if (!windowContext || typeof windowContext !== 'object') windowContext = {};
   const launcherWindow = Boolean(windowContext.launcherWindow);
@@ -214,11 +232,17 @@ export function setupLeftPanel() {
     if (!SECTION_ORDER.includes(id)) return;
     wantedExpanded[id] = shouldOpen;
     if (id === 'tabs') tabsManuallyCollapsed = !shouldOpen;
-    if (shouldOpen) activeSection = id;
-    else if (activeSection === id) {
-      activeSection = [...SECTION_ORDER].reverse().find(
-        (candidate) => candidate !== id && wantedExpanded[candidate]
-      ) || null;
+    if (shouldOpen && id === 'search') {
+      if (activeSection !== 'search') sectionBeforeSearch = activeSection;
+      if (searchInput?.value.trim()) activeSection = 'search';
+    } else if (shouldOpen) {
+      activeSection = id;
+    } else if (activeSection === id) {
+      activeSection = id === 'search' && sectionBeforeSearch &&
+        wantedExpanded[sectionBeforeSearch]
+        ? sectionBeforeSearch
+        : null;
+      if (id === 'search') sectionBeforeSearch = null;
     }
     persistPanelState();
     updateSectionVisibility();
@@ -278,7 +302,7 @@ export function setupLeftPanel() {
 
   for (const [id, section] of sectionElements) {
     section?.querySelector('.left-panel-section-header')?.addEventListener('click', () => {
-      setSectionOpen(id, !wantedExpanded[id] || activeSection !== id);
+      setSectionOpen(id, !wantedExpanded[id]);
     });
   }
 
@@ -292,6 +316,19 @@ export function setupLeftPanel() {
   const searchStatus = document.getElementById('left-panel-search-status');
   const tabsList = document.getElementById('left-panel-tabs-list');
   const tabMenu = document.getElementById('left-panel-tab-menu');
+  const updateSearchPriority = () => {
+    if (searchInput?.value.trim()) {
+      if (activeSection !== 'search') sectionBeforeSearch = activeSection;
+      activeSection = 'search';
+    } else {
+      if (activeSection === 'search') {
+        activeSection = sectionBeforeSearch && wantedExpanded[sectionBeforeSearch]
+          ? sectionBeforeSearch
+          : null;
+      }
+      sectionBeforeSearch = null;
+    }
+  };
 
   const currentMarkdown = () => window.editorBridge?.getMarkdown?.() || '';
   const activeTab = () => tabs.find((tab) => tab.id === activeTabId) || null;
@@ -343,13 +380,12 @@ export function setupLeftPanel() {
     }
   };
 
-  const autoSaveDirtyTab = (tab) => {
+  const persistDirtyTab = (tab) => {
     if (!tab?.dirty) return false;
     refreshRestoredTabFromStorage(tab);
     if (
       !tab?.uri ||
       unverifiedRestoredTabIds.has(tab.id) ||
-      native?.isAutoSaveOnLeaveEnabled?.() !== true ||
       (tab.markdown === '' && !tab.emptyContentExplicitlyEdited)
     ) return false;
     const saved = parseBridgeResult(
@@ -372,6 +408,11 @@ export function setupLeftPanel() {
     tab.emptyContentExplicitlyEdited = false;
     persistTabs();
     return true;
+  };
+
+  const autoSaveDirtyTab = (tab) => {
+    if (native?.isAutoSaveOnLeaveEnabled?.() !== true) return false;
+    return persistDirtyTab(tab);
   };
 
   const autoSaveDirtyTabsOnLeave = () => {
@@ -413,7 +454,9 @@ export function setupLeftPanel() {
     if (id !== activeTabId && loadedTabId === activeTabId) {
       window.editorBridge?.persistCurrentScrollPosition?.();
       syncActiveTab();
-      autoSaveDirtyTab(activeTab());
+      const outgoingTab = activeTab();
+      const saved = persistDirtyTab(outgoingTab);
+      if (outgoingTab?.uri && outgoingTab.dirty && !saved) return;
     }
     refreshRestoredTabFromStorage(next);
     const previousTabId = activeTabId;
@@ -450,9 +493,11 @@ export function setupLeftPanel() {
     loadedTabId = next.id;
     next.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
     if (focusTabsSection) {
-      activeSection = 'tabs';
       wantedExpanded.tabs = true;
       tabsManuallyCollapsed = false;
+      if (activeSection === 'folders' && !searchInput.value.trim()) {
+        activeSection = null;
+      }
       persistPanelState();
       updateSectionVisibility();
     }
@@ -486,9 +531,11 @@ export function setupLeftPanel() {
     tab.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
     window.editorBridge?.setMarkdown?.(tab.markdown || '');
     loadedTabId = tab.id;
-    activeSection = 'tabs';
     wantedExpanded.tabs = true;
     tabsManuallyCollapsed = false;
+    if (activeSection === 'folders' && !searchInput.value.trim()) {
+      activeSection = null;
+    }
     persistPanelState();
     updateSectionVisibility();
     renderTabs();
@@ -510,7 +557,6 @@ export function setupLeftPanel() {
       return;
     }
     addTab(result);
-    setSectionOpen('tabs', true);
   };
 
   const renderFolderEntry = (entry, treeUri, parentElement, depth = 0) => {
@@ -947,7 +993,7 @@ export function setupLeftPanel() {
     searchInput.value = '';
     searchInput.focus();
     wantedExpanded.search = true;
-    activeSection = 'search';
+    updateSearchPriority();
     persistPanelState();
     updateSectionVisibility();
     runSearch();
@@ -955,7 +1001,7 @@ export function setupLeftPanel() {
   searchInput?.addEventListener('input', () => {
     searchRequestId++;
     wantedExpanded.search = true;
-    activeSection = 'search';
+    updateSearchPriority();
     persistPanelState();
     updateSectionVisibility();
     clearTimeout(searchTimer);
@@ -963,7 +1009,7 @@ export function setupLeftPanel() {
   });
   searchContents?.addEventListener('change', () => {
     wantedExpanded.search = true;
-    activeSection = 'search';
+    updateSearchPriority();
     persistPanelState();
     updateSectionVisibility();
     runSearch();
@@ -1209,7 +1255,6 @@ export function setupLeftPanel() {
         const enabled = prefs?.[`pref_left_panel_${id}_keep_open`] === true;
         if (enabled && !keepOpen[id]) {
           wantedExpanded[id] = true;
-          if (!activeSection) activeSection = id;
         }
         keepOpen[id] = enabled;
       }
@@ -1240,8 +1285,8 @@ export function setupLeftPanel() {
   window.visualViewport?.addEventListener('resize', () => controller.refreshLayout());
 
   updateSectionVisibility();
-  if (wantedExpanded[activeSection] !== true) {
-    activeSection = SECTION_ORDER.slice().reverse().find((id) => wantedExpanded[id]) || null;
+  if (activeSection && wantedExpanded[activeSection] !== true) {
+    activeSection = null;
   }
   persistPanelState();
   updateSectionVisibility();
