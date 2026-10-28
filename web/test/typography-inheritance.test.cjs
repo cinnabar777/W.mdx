@@ -44,6 +44,12 @@ test('Typography pages keep headings and body first, then alphabetical element p
 
 test('highlight and pen colors, syntax, and replacement shortcuts stay connected', () => {
   assert.match(settingsActivity, /"pref_styling_page_highlights_pens" -> StylingHighlightsPensFragment\(\)/);
+  assert.match(highlightsPens, /PreferenceCategory app:title="Markers"/);
+  assert.deepEqual(
+    [...highlightsPens.matchAll(/<com\.wmdx\.markdownapp\.ExpandablePreference[\s\S]*?app:title="([^"]+)"/g)]
+      .map(([, title]) => title),
+    ['1', '2', '3', '4', '1', '2', '3', '4']
+  );
   assert.match(main, /pref_highlight_\$\{color\}_background_color/);
   assert.match(main, /pref_highlight_\$\{color\}_text_color/);
   assert.match(main, /pref_pen_\$\{color\}_text_color/);

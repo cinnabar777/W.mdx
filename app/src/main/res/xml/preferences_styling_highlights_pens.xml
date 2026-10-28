@@ -2,10 +2,10 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <androidx.preference.PreferenceCategory app:title="Highlighters">
+    <androidx.preference.PreferenceCategory app:title="Markers">
         <com.wmdx.markdownapp.ExpandablePreference
             app:key="pref_highlight_yellow_section"
-            app:title="Yellow"
+            app:title="1"
             app:summary="Syntax: ==word==" />
         <androidx.preference.PreferenceCategory
             app:key="pref_highlight_yellow_controls"
@@ -22,7 +22,7 @@
 
         <com.wmdx.markdownapp.ExpandablePreference
             app:key="pref_highlight_green_section"
-            app:title="Green"
+            app:title="2"
             app:summary="Syntax: ==₀word==" />
         <androidx.preference.PreferenceCategory
             app:key="pref_highlight_green_controls"
@@ -39,7 +39,7 @@
 
         <com.wmdx.markdownapp.ExpandablePreference
             app:key="pref_highlight_pink_section"
-            app:title="Pink"
+            app:title="3"
             app:summary="Syntax: ==₁word==" />
         <androidx.preference.PreferenceCategory
             app:key="pref_highlight_pink_controls"
@@ -56,7 +56,7 @@
 
         <com.wmdx.markdownapp.ExpandablePreference
             app:key="pref_highlight_blue_section"
-            app:title="Blue"
+            app:title="4"
             app:summary="Syntax: ==₂word==" />
         <androidx.preference.PreferenceCategory
             app:key="pref_highlight_blue_controls"
@@ -75,7 +75,7 @@
     <androidx.preference.PreferenceCategory app:title="Pens">
         <com.wmdx.markdownapp.ExpandablePreference
             app:key="pref_pen_red_section"
-            app:title="Red"
+            app:title="1"
             app:summary="Syntax: =word=" />
         <androidx.preference.PreferenceCategory
             app:key="pref_pen_red_controls"
@@ -88,7 +88,7 @@
 
         <com.wmdx.markdownapp.ExpandablePreference
             app:key="pref_pen_green_section"
-            app:title="Green"
+            app:title="2"
             app:summary="Syntax: =₀word=" />
         <androidx.preference.PreferenceCategory
             app:key="pref_pen_green_controls"
@@ -101,7 +101,7 @@
 
         <com.wmdx.markdownapp.ExpandablePreference
             app:key="pref_pen_blue_section"
-            app:title="Blue"
+            app:title="3"
             app:summary="Syntax: =₁word=" />
         <androidx.preference.PreferenceCategory
             app:key="pref_pen_blue_controls"
@@ -114,7 +114,7 @@
 
         <com.wmdx.markdownapp.ExpandablePreference
             app:key="pref_pen_purple_section"
-            app:title="Purple"
+            app:title="4"
             app:summary="Syntax: =₂word=" />
         <androidx.preference.PreferenceCategory
             app:key="pref_pen_purple_controls"

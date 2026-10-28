@@ -70,6 +70,18 @@ object PreferenceResetHelper {
             "pref_bold_color" -> "#FFFFFF"
             "pref_italic_color" -> "#FFFFFF"
             "pref_link_color" -> "#29B6F6"
+            "pref_highlight_yellow_background_color" -> "#ffe066"
+            "pref_highlight_green_background_color" -> "#a8f087"
+            "pref_highlight_pink_background_color" -> "#ff99c8"
+            "pref_highlight_blue_background_color" -> "#9bf6ff"
+            "pref_highlight_yellow_text_color",
+            "pref_highlight_green_text_color",
+            "pref_highlight_pink_text_color",
+            "pref_highlight_blue_text_color" -> "#111111"
+            "pref_pen_red_text_color" -> "#ff595e"
+            "pref_pen_green_text_color" -> "#2ec4b6"
+            "pref_pen_blue_text_color" -> "#4dabf7"
+            "pref_pen_purple_text_color" -> "#845ef7"
             "pref_code_color" -> "#FF80AB"
             "pref_code_bg_color" -> "#212121"
             "pref_code_block_color" -> "#E0E0E0"
