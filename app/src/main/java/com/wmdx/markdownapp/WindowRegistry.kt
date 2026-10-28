@@ -4,7 +4,11 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.system.Os
+import android.system.OsConstants
 import org.json.JSONArray
+import java.io.File
 import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 
@@ -72,6 +76,31 @@ object WindowRegistry {
         return uris
     }
 
+    private fun physicalFileIdentity(context: Context, uriString: String?): String? {
+        if (uriString.isNullOrBlank()) return null
+        val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return null
+        val descriptor = when {
+            uri.scheme.equals("content", ignoreCase = true) ->
+                runCatching { context.contentResolver.openFileDescriptor(uri, "r") }.getOrNull()
+            uri.scheme.equals("file", ignoreCase = true) -> runCatching {
+                ParcelFileDescriptor.open(
+                    File(uri.path ?: return null),
+                    ParcelFileDescriptor.MODE_READ_ONLY
+                )
+            }.getOrNull()
+            else -> return null
+        } ?: return null
+
+        return runCatching {
+            descriptor.use { parcelFile ->
+                val stat = Os.fstat(parcelFile.fileDescriptor)
+                val fileType = stat.st_mode and OsConstants.S_IFMT
+                if (fileType != OsConstants.S_IFREG) null
+                else "${stat.st_dev}:${stat.st_ino}"
+            }
+        }.getOrNull()
+    }
+
     fun consumePendingFocusUri(activity: Activity, taskId: Int): Uri? {
         val key = "pending_focus_$taskId"
         val uriString = prefs(activity).getString(key, null) ?: return null
@@ -94,19 +123,32 @@ object WindowRegistry {
         var matchedTaskId: Int? = null
         var matchedBy = "none"
         var matchedFocusUri: String? = null
+        val physicalIdentities = mutableMapOf<String, String?>()
+        fun physicalIdentity(uriString: String?): String? {
+            if (uriString.isNullOrBlank()) return null
+            if (!physicalIdentities.containsKey(uriString)) {
+                physicalIdentities[uriString] = physicalFileIdentity(context, uriString)
+            }
+            return physicalIdentities[uriString]
+        }
+        fun sameDocument(left: String?, right: String?): Boolean {
+            if (WindowPolicy.sameDocumentUri(left, right)) return true
+            val leftIdentity = physicalIdentity(left) ?: return false
+            return leftIdentity == physicalIdentity(right)
+        }
+
         val task = manager.appTasks.firstOrNull {
             val info = it.taskInfo
             @Suppress("DEPRECATION")
             val taskId = info.id
             val currentUri = current(context, taskId)?.normalizeScheme()?.toString()
             val tabUris = openTabUris(context, taskId)
-            val matchingTabUri = normalizedUri?.let { requested ->
-                tabUris.firstOrNull { tabUri ->
-                    WindowPolicy.sameDocumentUri(requested, tabUri)
-                }
+            val excluded = taskId == excludeTask
+            val matchingTabUri = if (excluded) null else normalizedUri?.let { requested ->
+                tabUris.firstOrNull { tabUri -> sameDocument(requested, tabUri) }
             }
-            val currentMatches = WindowPolicy.sameDocumentUri(normalizedUri, currentUri)
-            val matched = WindowPolicy.matches(
+            val currentMatches = !excluded && sameDocument(normalizedUri, currentUri)
+            val matchedByUri = WindowPolicy.matches(
                 launcherRequest = launcher,
                 requestedUri = normalizedUri,
                 launcherTask = info.baseIntent.getBooleanExtra("launcher_window", false),
@@ -115,22 +157,35 @@ object WindowRegistry {
                 excludedTask = excludeTask,
                 openTabUris = tabUris
             )
+            val matched = matchedByUri ||
+                (!launcher && !excluded && normalizedUri != null &&
+                    (currentMatches || matchingTabUri != null))
             if (matched) {
                 matchedTaskId = taskId
                 matchedFocusUri = matchingTabUri ?: currentUri
                 matchedBy = when {
                     launcher -> "launcher"
                     matchingTabUri != null && normalizedUri == matchingTabUri -> "tab"
-                    matchingTabUri != null -> "tab_document_identity"
+                    matchingTabUri != null &&
+                        WindowPolicy.sameDocumentUri(normalizedUri, matchingTabUri) -> "tab_document_identity"
+                    matchingTabUri != null -> "tab_file_identity"
                     currentMatches && normalizedUri == currentUri -> "current"
-                    currentMatches -> "current_document_identity"
+                    currentMatches && WindowPolicy.sameDocumentUri(normalizedUri, currentUri) ->
+                        "current_document_identity"
+                    currentMatches -> "current_file_identity"
                     else -> "other"
                 }
             }
             matched
         }
+        val physicalCandidateHashes = physicalIdentities.values
+            .filterNotNull()
+            .distinct()
+            .take(12)
+            .joinToString(",") { WindowPolicy.fingerprintUri(it) }
+        val requestedPhysicalIdentity = normalizedUri?.let { physicalIdentities[it] }
         AppDiagnostics.record(context, "window_route_lookup",
-            "requested=${WindowPolicy.fingerprintUri(normalizedUri)} identity=${WindowPolicy.fingerprintUri(WindowPolicy.uriIdentity(normalizedUri))} count=${manager.appTasks.size} match=${matchedTaskId ?: "none"} via=$matchedBy")
+            "requested=${WindowPolicy.fingerprintUri(normalizedUri)} identity=${WindowPolicy.fingerprintUri(WindowPolicy.uriIdentity(normalizedUri))} fileIdentity=${WindowPolicy.fingerprintUri(requestedPhysicalIdentity)} candidates=$physicalCandidateHashes count=${manager.appTasks.size} match=${matchedTaskId ?: "none"} via=$matchedBy")
         if (task == null) return false
         val taskId = matchedTaskId
         val targetUri = matchedFocusUri

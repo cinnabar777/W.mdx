@@ -715,10 +715,13 @@
 
     .left-panel-context-menu {
       position: fixed;
-      z-index: 10000;
+      z-index: 10020 !important;
       display: none;
       min-width: 190px;
       max-width: min(260px, calc(100vw - 24px));
+      max-height: calc(100vh - 16px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
       padding: 5px;
       border: 1px solid var(--left-panel-border-color, var(--border-color));
       border-radius: 10px;

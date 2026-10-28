@@ -1397,6 +1397,23 @@ export function setupLeftPanel() {
     tabMenu?.replaceChildren();
   };
 
+  const positionTabMenu = (x, y) => {
+    if (!tabMenu) return;
+    const toolbar = document.getElementById('bottom-toolbar');
+    const toolbarVisible = toolbar && getComputedStyle(toolbar).display !== 'none';
+    const toolbarRect = toolbarVisible ? toolbar.getBoundingClientRect() : null;
+    const toolbarTop = toolbarRect && toolbarRect.height > 0 &&
+      toolbarRect.top < window.innerHeight
+      ? toolbarRect.top
+      : window.innerHeight;
+    const safeBottom = Math.max(8, Math.min(window.innerHeight, toolbarTop) - 8);
+    tabMenu.style.maxHeight = `${Math.max(0, safeBottom - 8)}px`;
+    const rect = tabMenu.getBoundingClientRect();
+    const maxTop = Math.max(8, safeBottom - rect.height);
+    tabMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+    tabMenu.style.top = `${Math.max(8, Math.min(y, maxTop))}px`;
+  };
+
   document.addEventListener('pointerdown', (event) => {
     if (!tabMenu?.classList.contains('open')) return;
     if (
@@ -1440,9 +1457,7 @@ export function setupLeftPanel() {
       tabMenu.appendChild(button);
     });
     tabMenu.classList.add('open');
-    const rect = tabMenu.getBoundingClientRect();
-    tabMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
-    tabMenu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+    positionTabMenu(x, y);
   };
 
   const showFolderFileMenu = (entry, x = 16, y = 120) => {
@@ -1474,9 +1489,7 @@ export function setupLeftPanel() {
       tabMenu.appendChild(button);
     });
     tabMenu.classList.add('open');
-    const rect = tabMenu.getBoundingClientRect();
-    tabMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
-    tabMenu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+    positionTabMenu(x, y);
   };
 
   const showDialog = ({ title, message, inputValue, actions }) => new Promise((resolve) => {
@@ -1565,9 +1578,7 @@ export function setupLeftPanel() {
       tabMenu.appendChild(button);
     });
     tabMenu.classList.add('open');
-    const rect = tabMenu.getBoundingClientRect();
-    tabMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
-    tabMenu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+    positionTabMenu(x, y);
   };
 
   const closeTabs = async (ids) => {

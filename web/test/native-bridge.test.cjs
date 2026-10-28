@@ -715,9 +715,18 @@ test('opening a file already in another tab or window focuses its existing owner
   assert.match(windowRegistrySource, /openTabUris\(context, taskId\)/);
   assert.match(windowRegistrySource, /activity\.requestExistingDocumentFocus\(targetUri\)/);
   assert.match(windowRegistrySource, /matchedFocusUri = matchingTabUri \?\: currentUri/);
+  assert.match(windowRegistrySource, /Os\.fstat\(parcelFile\.fileDescriptor\)/);
+  assert.match(windowRegistrySource, /tab_file_identity/);
   assert.match(windowRegistrySource, /via=\$matchedBy/);
   assert.match(mainActivitySource, /window_focus_tab_result/);
   assert.match(mainActivitySource, /if \(!isActivityResumed \|\| !isEditorReady/);
+});
+
+test('long-press menus stay above the bottom toolbar', () => {
+  assert.match(leftPanelSource, /const positionTabMenu = \(x, y\) =>/);
+  assert.match(leftPanelSource, /toolbarRect\.top/);
+  assert.match(leftPanelSource, /tabMenu\.style\.maxHeight/);
+  assert.match(leftPanelHtml, /\.left-panel-context-menu\s*\{[\s\S]*z-index:\s*10020 !important;[\s\S]*overflow-y:\s*auto;/);
 });
 
 test('launcher tabs persist while file-manager window tabs are temporary', () => {
