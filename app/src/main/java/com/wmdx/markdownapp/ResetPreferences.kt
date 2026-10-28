@@ -414,6 +414,19 @@ object PreferenceResetHelper {
             key == "pref_toc_text_overflow" -> "truncate"
             key == "pref_toc_row_spacing" -> 4
             key == "pref_toc_indent_spacing" -> 12
+            key == "pref_left_panel_width" -> 80
+            key == "pref_left_panel_bg_color" -> "default"
+            key == "pref_left_panel_bg_opacity" -> 100
+            key == "pref_left_panel_border_color" -> "default"
+            key == "pref_left_panel_overlay_dim" -> 50
+            key == "pref_left_panel_font_family" -> "default"
+            key == "pref_left_panel_font_size" -> 16
+            key == "pref_left_panel_font_weight" -> 600
+            key == "pref_left_panel_text_color" -> "default"
+            key == "pref_left_panel_row_spacing" -> 2
+            key == "pref_left_panel_search_keep_open" ||
+                key == "pref_left_panel_folders_keep_open" ||
+                key == "pref_left_panel_tabs_keep_open" -> false
             key == "pref_image_mode" -> "picker"
             key == "pref_settings_category_title_color" -> "#00E5FF"
             key == "pref_settings_title_color" -> "#FFFFFF"

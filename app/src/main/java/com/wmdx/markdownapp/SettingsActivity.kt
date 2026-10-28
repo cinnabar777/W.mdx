@@ -1344,7 +1344,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             ),
             "menu" to listOf(
                 "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
-                "exportHtml", "search", "switchView", "newWindow", "leftPanel", "settings"
+                "exportHtml", "search", "switchView", "newWindow", "settings"
             )
         )
         private val TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS + listOf(
@@ -1359,7 +1359,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
             "horizontalLine", "footnote",
             "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
-            "exportHtml", "search", "switchView", "newWindow", "leftPanel", "settings",
+            "exportHtml", "search", "switchView", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll"
         )
         private val TOOLBAR_GESTURE_IDS = listOf(
@@ -1823,21 +1823,6 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
 
         val rawHoldingActions = input.optJSONArray("holding") ?: org.json.JSONArray()
-        val leftPanelExplicitlyHeld = (0 until rawHoldingActions.length()).any {
-            rawHoldingActions.optString(it) == "leftPanel"
-        }
-        val menuItems = popupGroups.optJSONObject("menu")?.optJSONArray("order")
-        if (
-            menuItems != null &&
-            !order.contains("leftPanel") &&
-            !assignedActions.contains("leftPanel") &&
-            !hidden.contains("leftPanel") &&
-            !legacyHeldActions.contains("leftPanel") &&
-            !leftPanelExplicitlyHeld
-        ) {
-            menuItems.put("leftPanel")
-            assignedActions.add("leftPanel")
-        }
 
         val holding = mutableListOf<String>()
         val rawHolding = rawHoldingActions

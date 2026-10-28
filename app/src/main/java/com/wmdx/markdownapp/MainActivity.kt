@@ -1763,29 +1763,29 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun authorizedLeftPanelTrees(): List<Uri> {
+    private fun authorizedLeftPanelTrees(requireWrite: Boolean = false): List<Uri> {
         val revoked = PreferenceManager.getDefaultSharedPreferences(this)
             .getStringSet("locally_revoked_storage_folder_uris", emptySet())
             .orEmpty()
         return contentResolver.persistedUriPermissions
             .filter {
                 it.isReadPermission &&
-                    it.isWritePermission &&
+                    (!requireWrite || it.isWritePermission) &&
                     android.provider.DocumentsContract.isTreeUri(it.uri) &&
                     it.uri.toString() !in revoked
             }
             .map { it.uri }
     }
 
-    private fun authorizedLeftPanelTree(treeUri: Uri): Uri? =
-        authorizedLeftPanelTrees().firstOrNull { it == treeUri }
+    private fun authorizedLeftPanelTree(treeUri: Uri, requireWrite: Boolean = false): Uri? =
+        authorizedLeftPanelTrees(requireWrite).firstOrNull { it == treeUri }
 
-    private fun leftPanelTreeForDocument(documentUri: Uri): Uri? {
+    private fun leftPanelTreeForDocument(documentUri: Uri, requireWrite: Boolean = false): Uri? {
         if (!android.provider.DocumentsContract.isDocumentUri(this, documentUri)) return null
         val documentTreeId = runCatching {
             android.provider.DocumentsContract.getTreeDocumentId(documentUri)
         }.getOrNull() ?: return null
-        return authorizedLeftPanelTrees().firstOrNull { treeUri ->
+        return authorizedLeftPanelTrees(requireWrite).firstOrNull { treeUri ->
             treeUri.authority == documentUri.authority &&
                 runCatching {
                     android.provider.DocumentsContract.getTreeDocumentId(treeUri) == documentTreeId
@@ -1794,7 +1794,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun hasLeftPanelDocumentAccess(uri: Uri, write: Boolean = false): Boolean {
-        if (leftPanelTreeForDocument(uri) != null) return true
+        if (leftPanelTreeForDocument(uri, requireWrite = write) != null) return true
         if (!write && uri == currentFileUri) return true
         val flag = if (write) {
             android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
@@ -2339,10 +2339,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "toc_settings" -> settingsLauncher.launch(
                         android.content.Intent(this@MainActivity, SettingsActivity::class.java)
                             .putExtra("settings_page", "toc")
-                    )
-                    "left_panel_settings" -> settingsLauncher.launch(
-                        android.content.Intent(this@MainActivity, SettingsActivity::class.java)
-                            .putExtra("settings_page", "left_panel")
                     )
                     "history_back" -> navigateCombinedHistory("back")
                     "history_forward" -> navigateCombinedHistory("forward")

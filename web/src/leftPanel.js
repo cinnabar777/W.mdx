@@ -101,6 +101,17 @@ export function setupLeftPanel() {
     tabsPersistTimer = setTimeout(persistTabsNow, 250);
   };
 
+  const updateToolbarClearance = () => {
+    const toolbar = document.getElementById('bottom-toolbar');
+    if (!toolbar || getComputedStyle(toolbar).display === 'none') {
+      panel.style.setProperty('--left-panel-bottom-clearance', '0px');
+      return;
+    }
+    const toolbarTop = toolbar.getBoundingClientRect().top;
+    const clearance = Math.max(0, Math.min(window.innerHeight, window.innerHeight - toolbarTop));
+    panel.style.setProperty('--left-panel-bottom-clearance', `${clearance}px`);
+  };
+
   const closePanel = () => {
     panel.classList.remove('open');
     panel.setAttribute('aria-hidden', 'true');
@@ -114,6 +125,7 @@ export function setupLeftPanel() {
 
   const openPanel = () => {
     window.closeTocPanel?.();
+    updateToolbarClearance();
     if (document.activeElement === searchInput) searchInput.blur();
     native?.hideKeyboard?.();
     panel.classList.add('open');
@@ -187,14 +199,8 @@ export function setupLeftPanel() {
     const activeHeaderHeight =
       active.querySelector('.left-panel-section-header')?.offsetHeight || 46;
     const remaining = Math.max(96, availableHeight - otherExpandedHeight - activeHeaderHeight);
-    const desiredHeight = activeBody.scrollHeight;
-    if (desiredHeight > remaining) {
-      active.classList.add('fill-available');
-      activeBody.style.maxHeight = `${remaining}px`;
-    } else {
-      active.classList.remove('fill-available');
-      activeBody.style.maxHeight = `${Math.max(desiredHeight, 0)}px`;
-    }
+    active.classList.add('fill-available');
+    activeBody.style.maxHeight = `${remaining}px`;
   }
 
   for (const [id, section] of sectionElements) {
@@ -203,11 +209,7 @@ export function setupLeftPanel() {
     });
   }
 
-  document.getElementById('left-panel-close')?.addEventListener('click', closePanel);
   overlay.addEventListener('click', closePanel);
-  document.getElementById('left-panel-settings')?.addEventListener('click', () => {
-    native?.onNativeAction?.('left_panel_settings');
-  });
 
   const folderTree = document.getElementById('left-panel-folders-tree');
   const folderStatus = document.getElementById('left-panel-folders-status');
@@ -754,9 +756,13 @@ export function setupLeftPanel() {
     searchTimer = setTimeout(runSearch, 220);
   });
   searchContents?.addEventListener('change', runSearch);
-  sectionElements.get('folders')?.addEventListener('toggle', loadFolderRoots);
   sectionElements.get('folders')?.querySelector('.left-panel-section-header')
-    ?.addEventListener('click', loadFolderRoots);
+    ?.addEventListener('click', () => {
+      if (wantedExpanded.folders) {
+        folderRootsLoaded = false;
+        loadFolderRoots();
+      }
+    });
 
   const storedTabs = parseJson(readStorage(tabsStorageKey), null);
   if (Array.isArray(storedTabs?.tabs) && storedTabs.tabs.length) {
@@ -935,6 +941,15 @@ export function setupLeftPanel() {
         keepOpen[id] = prefs?.[`pref_left_panel_${id}_keep_open`] === true;
       }
       updateSectionVisibility();
+      updateToolbarClearance();
+      if (panel.classList.contains('open') && wantedExpanded.folders) {
+        folderRootsLoaded = false;
+        loadFolderRoots();
+      }
+    },
+    refreshLayout() {
+      updateToolbarClearance();
+      requestAnimationFrame(reflowSections);
     },
     get isSwitchingTab() {
       return switchingTab;
@@ -944,6 +959,7 @@ export function setupLeftPanel() {
   controller.activateTab = activateTab;
   controller.renderTabs = renderTabs;
   window.addEventListener('pagehide', persistTabsNow);
+  window.addEventListener('resize', () => controller.refreshLayout());
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') persistTabsNow();
   });
@@ -957,22 +973,59 @@ export function setupLeftPanel() {
 
   let touchStartX = null;
   let touchStartY = null;
-  document.addEventListener('touchstart', (event) => {
-    if (!event.touches?.length) return;
+  let touchStartTarget = null;
+  const resetTouchStart = () => {
+    touchStartX = null;
+    touchStartY = null;
+    touchStartTarget = null;
+  };
+  const onTouchStart = (event) => {
+    if (event.touches?.length !== 1) {
+      resetTouchStart();
+      return;
+    }
     const touch = event.touches[0];
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
-  }, { passive: true });
-  document.addEventListener('touchend', (event) => {
-    if (touchStartX == null || !event.changedTouches?.length) return;
+    touchStartTarget = event.target instanceof Element ? event.target : null;
+  };
+  const onTouchEnd = (event) => {
+    if (touchStartX == null || !event.changedTouches?.length) {
+      resetTouchStart();
+      return;
+    }
     const touch = event.changedTouches[0];
     const deltaX = touch.clientX - touchStartX;
     const deltaY = Math.abs(touch.clientY - touchStartY);
-    if (deltaY < 70 && touchStartX < 18 && deltaX > 70) openPanel();
-    else if (panel.classList.contains('open') && deltaY < 70 && deltaX < -70) closePanel();
-    touchStartX = null;
-    touchStartY = null;
-  }, { passive: true });
+    const isHorizontalSwipe = Math.abs(deltaX) > 60 &&
+      Math.abs(deltaX) > deltaY * 1.5;
+    const hasSelection = Boolean(window.getSelection?.()?.toString());
+    const startedInToolbar = Boolean(
+      touchStartTarget?.closest?.('#bottom-toolbar, #popup-toolbar-strip, #floating-selection-toolbar')
+    );
+    if (!hasSelection && !startedInToolbar && isHorizontalSwipe) {
+      if (
+        !panel.classList.contains('open') &&
+        touchStartX <= window.innerWidth * 0.25 &&
+        deltaX > 60
+      ) {
+        openPanel();
+      } else if (
+        panel.classList.contains('open') &&
+        panel.contains(touchStartTarget) &&
+        touchStartX <= Math.min(panel.getBoundingClientRect().right, window.innerWidth * 0.8) &&
+        deltaX < -60
+      ) {
+        closePanel();
+      }
+    }
+    resetTouchStart();
+  };
+  const touchListenerOptions = { passive: true };
+  window.addEventListener('touchstart', onTouchStart, touchListenerOptions);
+  window.addEventListener('touchend', onTouchEnd, touchListenerOptions);
+  window.addEventListener('touchcancel', resetTouchStart, touchListenerOptions);
+  updateToolbarClearance();
 
   return controller;
 }

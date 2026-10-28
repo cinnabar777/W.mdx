@@ -4417,10 +4417,6 @@ function setupGroupedControlBar() {
             window.AndroidNative.onNativeAction('new_window');
           }
         } },
-        { id: 'leftPanel', icon: svgIcons.folder, title: 'Files & Tabs', action: () => {
-          hidePopupStrip();
-          window.leftPanelController?.open?.();
-        } },
         { id: 'settings', icon: svgIcons.settings, title: 'Settings', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('settings') }
       ]);
     };
@@ -4701,10 +4697,6 @@ function createToolbarActionRegistry() {
       { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow, action: () => {
         hidePopupStrip();
         window.AndroidNative?.onNativeAction('new_window');
-      } },
-      { id: 'leftPanel', title: 'Files & Tabs', icon: svgIcons.folder, action: () => {
-        hidePopupStrip();
-        window.leftPanelController?.open?.();
       } },
       { id: 'settings', title: 'Settings', icon: svgIcons.settings, action: () => window.AndroidNative?.onNativeAction('settings') }
     ]
@@ -7087,6 +7079,7 @@ function toggleBottomToolbar(forceState) {
     document.body.classList.add('toolbar-hidden');
     if (toggleBtn) toggleBtn.innerHTML = '⟨';
   }
+  window.leftPanelController?.refreshLayout?.();
 }
 
 function setupFloatingToggle() {

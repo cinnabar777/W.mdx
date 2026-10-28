@@ -35,7 +35,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   ]),
   menu: Object.freeze([
     'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveAsTextPack',
-    'exportHtml', 'search', 'switchView', 'newWindow', 'leftPanel', 'settings'
+    'exportHtml', 'search', 'switchView', 'newWindow', 'settings'
   ])
 });
 
@@ -302,17 +302,6 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     } else {
       order.push(id);
     }
-  }
-  const menuOrder = popupGroups.menu?.order;
-  if (
-    menuOrder &&
-    !menuOrder.includes('leftPanel') &&
-    !order.includes('leftPanel') &&
-    !assignedKeys.has('leftPanel') &&
-    !holding.includes('leftPanel')
-  ) {
-    menuOrder.push('leftPanel');
-    assignedKeys.add('leftPanel');
   }
   for (const id of BOTTOM_TOOLBAR_POPUP_ITEM_IDS) {
     if (!order.includes(id) && !assignedKeys.has(id) && !holding.includes(id)) {

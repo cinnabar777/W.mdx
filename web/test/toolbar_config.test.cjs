@@ -31,27 +31,22 @@ test('bottom toolbar configuration ignores unknown and duplicate keys but restor
   );
 });
 
-test('new Files & Tabs action is added to existing menu layouts without overriding user placement', async () => {
-  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
-  const olderLayout = normalizeBottomToolbarConfig({
+test('obsolete Files & Tabs toolbar action is removed from saved layouts', async () => {
+  const { BOTTOM_TOOLBAR_GROUP_ITEM_IDS, normalizeBottomToolbarConfig } =
+    await import('../src/toolbarConfig.js');
+  const oldLayout = normalizeBottomToolbarConfig({
     version: 4,
     order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
     popupGroups: {
-      menu: { order: ['newFile', 'settings'], hidden: [] }
-    }
-  });
-  assert.deepEqual(olderLayout.popupGroups.menu.order, ['newFile', 'settings', 'leftPanel']);
-
-  const heldLayout = normalizeBottomToolbarConfig({
-    version: 4,
-    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
-    popupGroups: {
-      menu: { order: ['newFile', 'settings'], hidden: [] }
+      menu: { order: ['newFile', 'leftPanel', 'settings'], hidden: [] }
     },
-    holding: ['leftPanel']
+    holding: ['leftPanel'],
+    styles: { leftPanel: { backgroundColor: '#123456' } }
   });
-  assert.deepEqual(heldLayout.popupGroups.menu.order, ['newFile', 'settings']);
-  assert.ok(heldLayout.holding.includes('leftPanel'));
+  assert.deepEqual(oldLayout.popupGroups.menu.order, ['newFile', 'settings']);
+  assert.ok(!oldLayout.holding.includes('leftPanel'));
+  assert.equal(oldLayout.styles.leftPanel, undefined);
+  assert.ok(!BOTTOM_TOOLBAR_GROUP_ITEM_IDS.menu.includes('leftPanel'));
 });
 
 test('invalid saved configuration falls back to the current toolbar order', async () => {

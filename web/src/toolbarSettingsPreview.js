@@ -112,7 +112,6 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'search', title: 'Find & Replace', icon: svgIcons.search },
     { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView },
     { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow },
-    { id: 'leftPanel', title: 'Files & Tabs', icon: svgIcons.folder },
     { id: 'settings', title: 'Settings', icon: svgIcons.settings }
   ]
 };
