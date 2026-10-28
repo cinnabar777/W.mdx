@@ -713,7 +713,8 @@ test('opening a file already in another tab or window focuses its existing owner
   assert.match(leftPanelSource, /normalizeDocumentUri/);
   assert.match(mainActivitySource, /fun registerLeftPanelOpenTabUris\(urisJson: String\)/);
   assert.match(windowRegistrySource, /openTabUris\(context, taskId\)/);
-  assert.match(windowRegistrySource, /activity\.requestExistingDocumentFocus\(normalizedUri\)/);
+  assert.match(windowRegistrySource, /activity\.requestExistingDocumentFocus\(targetUri\)/);
+  assert.match(windowRegistrySource, /matchedFocusUri = matchingTabUri \?\: currentUri/);
   assert.match(windowRegistrySource, /via=\$matchedBy/);
   assert.match(mainActivitySource, /window_focus_tab_result/);
   assert.match(mainActivitySource, /if \(!isActivityResumed \|\| !isEditorReady/);
