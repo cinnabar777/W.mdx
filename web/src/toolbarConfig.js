@@ -115,11 +115,28 @@ export function orderBottomToolbarPopupItems(groupId, items, popupGroups = {}) {
     const item = byId.get(id);
     if (item && !hidden.has(id) && !ordered.includes(item)) ordered.push(item);
   }
-  for (const item of items) {
-    const id = item.id || item.command;
-    if (id && !hidden.has(id) && !ordered.includes(item)) ordered.push(item);
-  }
   return ordered;
+}
+
+const LEGACY_COLOR_ACTION_IDS = Object.freeze({
+  yellowMarker: 'highlightYellow',
+  greenMarker: 'highlightGreen',
+  pinkMarker: 'highlightPink',
+  blueMarker: 'highlightBlue',
+  redPen: 'penRed',
+  greenPen: 'penGreen'
+});
+
+function migrateToolbarActionId(id, version) {
+  return version > 0 && version < DEFAULT_BOTTOM_TOOLBAR_CONFIG.version
+    ? (LEGACY_COLOR_ACTION_IDS[id] || id)
+    : id;
+}
+
+function migrateToolbarActionIds(ids, version) {
+  return Array.isArray(ids)
+    ? ids.map(id => migrateToolbarActionId(id, version))
+    : ids;
 }
 
 /**
@@ -148,6 +165,9 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       styles: {}
     };
   }
+  const parsedVersion = Number.isFinite(Number(parsed.version))
+    ? Number(parsed.version)
+    : 0;
 
   const customGroups = {};
   if (parsed.customGroups && typeof parsed.customGroups === 'object' &&
@@ -184,7 +204,9 @@ export function normalizeBottomToolbarConfig(rawConfig) {
         : 'newFile';
       customKeys[id] = { title, icon };
       if (typeof rawKey.actionId === 'string') {
-        customKeyActions[id] = normalizeToolbarActionId(rawKey.actionId);
+        customKeyActions[id] = normalizeToolbarActionId(
+          migrateToolbarActionId(rawKey.actionId, parsedVersion)
+        );
       }
     }
   }
@@ -209,8 +231,14 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       customKeys[id].actionId = actionId;
     }
   }
-  const legacyHidden = normalizeUniqueIds(parsed.hidden, keyIds);
-  let order = normalizeUniqueIds(parsed.order, keyIds)
+  const legacyHidden = normalizeUniqueIds(
+    migrateToolbarActionIds(parsed.hidden, parsedVersion),
+    keyIds
+  );
+  let order = normalizeUniqueIds(
+    migrateToolbarActionIds(parsed.order, parsedVersion),
+    keyIds
+  )
     .filter(id => !legacyHidden.includes(id));
   const popupGroups = {};
   for (const id of new Set([
@@ -235,7 +263,8 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     }
     const groupOrder = [];
     if (Array.isArray(rawGroup.order)) {
-      for (const id of rawGroup.order) {
+      for (const rawId of rawGroup.order) {
+        const id = migrateToolbarActionId(rawId, parsedVersion);
         if (keyIds.has(id) && id !== groupId &&
             !Object.values(popupGroups).some(group => group.order.includes(id)) &&
             !groupOrder.includes(id)) {
@@ -244,13 +273,29 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       }
     }
     if (Array.isArray(rawGroup.hidden)) {
-      for (const id of rawGroup.hidden) {
+      for (const rawId of rawGroup.hidden) {
+        const id = migrateToolbarActionId(rawId, parsedVersion);
         if (keyIds.has(id) && !legacyHeldKeys.includes(id)) {
           legacyHeldKeys.push(id);
         }
       }
     }
     popupGroups[groupId] = { order: groupOrder, hidden: [] };
+  }
+
+  if (
+    parsedVersion > 0 &&
+    parsedVersion < DEFAULT_BOTTOM_TOOLBAR_CONFIG.version &&
+    Array.isArray(rawPopupGroups.format?.order)
+  ) {
+    const formatOrder = popupGroups.format.order;
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    for (const id of ['highlightCycle', 'penCycle', 'penBlue', 'penPurple']) {
+      if (!assignedActions.has(id) && !legacyHeldKeys.includes(id) && !legacyHidden.includes(id)) {
+        formatOrder.push(id);
+        assignedActions.add(id);
+      }
+    }
   }
 
   // A folder may contain another folder, but never itself or an ancestor.
@@ -276,7 +321,10 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     Object.values(popupGroups).flatMap(group => group.order)
   );
 
-  let holding = normalizeUniqueIds(parsed.holding, keyIds);
+  let holding = normalizeUniqueIds(
+    migrateToolbarActionIds(parsed.holding, parsedVersion),
+    keyIds
+  );
   for (const id of legacyHidden) {
     if (!holding.includes(id)) holding.push(id);
   }
@@ -333,7 +381,8 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       ...Object.keys(customGroups),
       ...Object.keys(customKeys)
     ]);
-    for (const [id, style] of Object.entries(parsed.styles)) {
+    for (const [legacyId, style] of Object.entries(parsed.styles)) {
+      const id = migrateToolbarActionId(legacyId, parsedVersion);
       if (!allowedStyleIds.has(id)) continue;
       if (!style || typeof style !== 'object' || Array.isArray(style)) continue;
       const normalized = {};

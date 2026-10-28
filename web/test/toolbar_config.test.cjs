@@ -67,6 +67,36 @@ test('invalid saved configuration falls back to the current toolbar order', asyn
   );
 });
 
+test('version 4 toolbar layouts migrate marker and pen actions without restoring hidden actions', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 4,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      format: {
+        order: ['bold', 'yellowMarker', 'greenMarker', 'redPen', 'greenPen'],
+        hidden: ['blueMarker']
+      }
+    }
+  });
+
+  assert.deepEqual(config.popupGroups.format.order, [
+    'bold',
+    'highlightYellow',
+    'highlightGreen',
+    'penRed',
+    'penGreen',
+    'highlightCycle',
+    'penCycle',
+    'penBlue',
+    'penPurple'
+  ]);
+  assert.ok(config.holding.includes('highlightBlue'));
+  assert.ok(!config.popupGroups.format.order.some(id =>
+    ['yellowMarker', 'greenMarker', 'blueMarker', 'redPen', 'greenPen'].includes(id)
+  ));
+});
+
 test('popup actions can be reordered and removed from their former group into the shared holding area', async () => {
   const {
     BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
