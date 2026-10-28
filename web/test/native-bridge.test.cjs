@@ -88,8 +88,10 @@ test('external-open URI permission flags survive until the editor is ready', () 
 test('returning to the app keeps the keyboard hidden until the user touches the editor', () => {
   assert.ok(mainActivitySource.includes('suppressImeUntilUserTouch = true'));
   assert.ok(mainActivitySource.includes('SOFT_INPUT_STATE_ALWAYS_HIDDEN'));
-  assert.ok(mainActivitySource.includes('webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 180)'));
-  assert.ok(mainActivitySource.includes('webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 500)'));
+  assert.ok(mainActivitySource.includes('SOFT_INPUT_ADJUST_NOTHING'));
+  assert.match(mainActivitySource, /restoreImeResizeAfterResume\(generation\)/);
+  assert.match(mainActivitySource, /stableHiddenChecks < 2/);
+  assert.match(mainActivitySource, /SOFT_INPUT_ADJUST_RESIZE or/);
   assert.ok(mainActivitySource.includes('event.actionMasked == MotionEvent.ACTION_DOWN'));
   assert.ok(mainActivitySource.includes('suppressImeUntilUserTouch = false'));
   assert.ok(mainActivitySource.includes('SOFT_INPUT_STATE_UNSPECIFIED'));

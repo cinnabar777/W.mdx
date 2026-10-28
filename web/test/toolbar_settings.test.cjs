@@ -108,7 +108,7 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(mainSource, /getToolbarGestureIndicatorEntries/);
   assert.match(
     mainSource,
-    /if \(Object\.prototype\.hasOwnProperty\.call\(prefs, 'pref_toolbar_bottom_config'\)\) \{\s*bottomToolbarConfig = normalizeBottomToolbarConfig\(\s*prefs\.pref_toolbar_bottom_config\s*\);\s*hidePopupStrip\(\);\s*setupGroupedControlBar\(\);\s*\}/
+    /if \(Object\.prototype\.hasOwnProperty\.call\(prefs, 'pref_toolbar_bottom_config'\)\) \{\s*const nextBottomConfig = normalizeBottomToolbarConfig\(\s*prefs\.pref_toolbar_bottom_config\s*\);\s*if \(JSON\.stringify\(nextBottomConfig\) !== JSON\.stringify\(bottomToolbarConfig\)\) \{\s*bottomToolbarConfig = nextBottomConfig;\s*hidePopupStrip\(\);\s*setupGroupedControlBar\(\);\s*\}\s*\}/
   );
   assert.match(mainSource, /applyBottomToolbarConfig: function\(rawConfig\)/);
   assert.match(mainActivitySource, /private fun refreshBottomToolbarFromPreferences\(\)/);
@@ -196,7 +196,7 @@ test('toolbar appearance refreshes preserve layout and editor overlays follow th
   assert.match(settingsSource, /listGapTarget/);
   assert.match(
     mainSource,
-    /hasOwnProperty\.call\(prefs, 'pref_toolbar_bottom_config'\)\)\s*\{\s*bottomToolbarConfig = normalizeBottomToolbarConfig\(\s*prefs\.pref_toolbar_bottom_config\s*\);\s*hidePopupStrip\(\);\s*setupGroupedControlBar\(\);/
+    /hasOwnProperty\.call\(prefs, 'pref_toolbar_bottom_config'\)\)\s*\{\s*const nextBottomConfig = normalizeBottomToolbarConfig\(\s*prefs\.pref_toolbar_bottom_config\s*\);\s*if \(JSON\.stringify\(nextBottomConfig\) !== JSON\.stringify\(bottomToolbarConfig\)\)\s*\{\s*bottomToolbarConfig = nextBottomConfig;\s*hidePopupStrip\(\);\s*setupGroupedControlBar\(\);/
   );
   assert.match(
     settingsSource,
