@@ -177,6 +177,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
         'Find & Replace',
         'Switch View Mode',
         'New Window',
+        'Files & Tabs',
         'Settings'
       ]
     );
