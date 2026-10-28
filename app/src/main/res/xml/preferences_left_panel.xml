@@ -91,6 +91,14 @@
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Search">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_left_panel_show_search_path"
+            app:title="Show File Path in Search"
+            app:summary="Show each result's folder path below its file name"
+            app:defaultValue="false" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Section Behavior">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_left_panel_search_keep_open"

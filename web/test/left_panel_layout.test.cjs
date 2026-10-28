@@ -68,3 +68,91 @@ test('all three sections start open while a saved user collapse is respected', a
   assert.deepEqual(saved.expanded, { search: false, folders: true, tabs: false });
   assert.deepEqual(heights, { search: 0, folders: 0, tabs: 52 });
 });
+
+test('dropping a tab on another tab creates a saved group without changing file identity', async () => {
+  const { applyTabDrop } = await layoutPromise;
+  const tabs = [
+    { id: 'file-a', name: 'A.md', uri: 'uri-a', groupId: null },
+    { id: 'file-b', name: 'B.md', uri: 'uri-b', groupId: null },
+    { id: 'file-c', name: 'C.md', uri: 'uri-c', groupId: null }
+  ];
+  const groups = [];
+
+  assert.equal(
+    applyTabDrop(
+      tabs,
+      groups,
+      { kind: 'tab', id: 'file-a' },
+      { kind: 'tab', id: 'file-b' },
+      'group'
+    ),
+    true
+  );
+
+  assert.equal(groups.length, 1);
+  assert.equal(tabs.find((tab) => tab.id === 'file-a').uri, 'uri-a');
+  assert.equal(tabs.find((tab) => tab.id === 'file-a').groupId, groups[0].id);
+  assert.equal(tabs.find((tab) => tab.id === 'file-b').groupId, groups[0].id);
+  assert.equal(tabs.find((tab) => tab.id === 'file-c').groupId, null);
+});
+
+test('groups can be moved as a block and deleted without deleting their tabs', async () => {
+  const { applyTabDrop, dissolveTabGroup } = await layoutPromise;
+  const group = { id: 'group-a', name: 'Notes', collapsed: true };
+  const tabs = [
+    { id: 'tab-a', uri: 'uri-a', groupId: group.id },
+    { id: 'tab-b', uri: 'uri-b', groupId: null },
+    { id: 'tab-c', uri: 'uri-c', groupId: group.id }
+  ];
+  const groups = [group];
+
+  assert.equal(
+    applyTabDrop(
+      tabs,
+      groups,
+      { kind: 'group', id: group.id },
+      { kind: 'tab', id: 'tab-b' },
+      'after'
+    ),
+    true
+  );
+  assert.deepEqual(tabs.map((tab) => tab.id), ['tab-b', 'tab-a', 'tab-c']);
+  assert.equal(group.collapsed, true);
+
+  assert.equal(dissolveTabGroup(tabs, groups, group.id), true);
+  assert.equal(groups.length, 0);
+  assert.deepEqual(tabs.map((tab) => tab.uri), ['uri-b', 'uri-a', 'uri-c']);
+  assert.ok(tabs.every((tab) => tab.groupId === null));
+});
+
+test('moving a tab outside its group preserves the remaining group and removes empty groups', async () => {
+  const { applyTabDrop } = await layoutPromise;
+  const group = { id: 'group-a', name: 'Notes', collapsed: false };
+  const tabs = [
+    { id: 'tab-a', uri: 'uri-a', groupId: group.id },
+    { id: 'tab-b', uri: 'uri-b', groupId: group.id },
+    { id: 'tab-c', uri: 'uri-c', groupId: null }
+  ];
+  const groups = [group];
+
+  applyTabDrop(
+    tabs,
+    groups,
+    { kind: 'tab', id: 'tab-a' },
+    { kind: 'tab', id: 'tab-c' },
+    'after'
+  );
+  assert.equal(groups.length, 1);
+  assert.equal(tabs.find((tab) => tab.id === 'tab-a').groupId, null);
+  assert.equal(tabs.find((tab) => tab.id === 'tab-b').groupId, group.id);
+
+  applyTabDrop(
+    tabs,
+    groups,
+    { kind: 'tab', id: 'tab-b' },
+    { kind: 'tab', id: 'tab-a' },
+    'after'
+  );
+  assert.equal(groups.length, 0);
+  assert.ok(tabs.every((tab) => tab.groupId === null));
+});

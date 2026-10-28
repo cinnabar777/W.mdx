@@ -10,6 +10,22 @@ const mainActivityPath = path.join(
   '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'
 );
 const mainActivitySource = fs.readFileSync(mainActivityPath, 'utf8');
+const leftPanelSource = fs.readFileSync(
+  path.join(__dirname, '../src/leftPanel.js'),
+  'utf8'
+);
+const leftPanelHtml = fs.readFileSync(
+  path.join(__dirname, '../index.html'),
+  'utf8'
+);
+const leftPanelSettingsXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_left_panel.xml'),
+  'utf8'
+);
+const resetPreferencesSource = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
+  'utf8'
+);
 const settingsActivityPath = path.join(
   __dirname,
   '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'
@@ -534,5 +550,62 @@ test('every visible hotkey preference reaches a matching editor action', () => {
   }
   assert.ok(keyboardHandler.includes("execCmd('InsertFootnote')"));
   assert.ok(keyboardHandler.includes("setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source')"));
+});
+
+test('left panel search options reach native search and the file filters', () => {
+  assert.match(leftPanelHtml, /id="left-panel-search-whole-words"[\s\S]*?<span>word<\/span>/);
+  assert.match(leftPanelHtml, /id="left-panel-search-contents"[\s\S]*?<span>in files<\/span>/);
+  assert.match(leftPanelHtml, /id="left-panel-search-markdown-only"[\s\S]*?<span>\*\.md<\/span>/);
+  assert.match(
+    leftPanelSource,
+    /searchLeftPanelFiles\(\s*query,\s*Boolean\(searchContents\?\.checked\),\s*Boolean\(searchWholeWords\?\.checked\),\s*Boolean\(searchMarkdownOnly\?\.checked\),\s*requestId/s
+  );
+  assert.match(
+    mainActivitySource,
+    /fun searchLeftPanelFiles\(\s*query: String,\s*includeContents: Boolean,\s*wholeWords: Boolean,\s*markdownOnly: Boolean,\s*requestId: Int/s
+  );
+  assert.match(
+    mainActivitySource,
+    /markdownExtensions = setOf\("\.md", "\.textpack", "\.mdx", "\.textpack\.zip"\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /Regex\(\s*"\(\^\|\[\^\\\\p\{L\}\\\\p\{N\}_\]\).*Regex\.escape\(needle\).*IGNORE_CASE/s
+  );
+});
+
+test('search paths are hidden by default and controlled by left panel settings', () => {
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_show_search_path"[\s\S]*?app:defaultValue="false"/
+  );
+  assert.match(
+    resetPreferencesSource,
+    /key == "pref_left_panel_show_search_path" -> false/
+  );
+  assert.match(leftPanelSource, /if \(showSearchPath && result\.path\)/);
+  assert.match(
+    leftPanelSource,
+    /prefs\?\.pref_left_panel_show_search_path === true/
+  );
+});
+
+test('left panel search checkboxes use list typography and todo checkbox colors', () => {
+  assert.match(
+    leftPanelHtml,
+    /\.left-panel-search-option\s*\{[\s\S]*?font-family:\s*var\(--list-font-family[\s\S]*?font-size:\s*var\(--list-font-size[\s\S]*?font-weight:\s*var\(--list-font-weight/
+  );
+  assert.match(leftPanelHtml, /border:\s*1\.5px solid var\(--todo-border-color/);
+  assert.match(leftPanelHtml, /background:\s*var\(--todo-accent-color/);
+  assert.match(leftPanelHtml, /border:\s*solid var\(--todo-checkmark-color/);
+});
+
+test('tab group membership persists alongside file tab state', () => {
+  assert.match(
+    leftPanelSource,
+    /JSON\.stringify\(\{ activeTabId, tabs, groups \}\)/
+  );
+  assert.match(leftPanelSource, /groupId: groups\.some\(\(group\) => group\.id === savedTab\.groupId\)/);
+  assert.match(leftPanelSource, /dissolveTabGroup\(tabs, groups, group\.id\)/);
 });
 

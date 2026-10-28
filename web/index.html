@@ -393,6 +393,13 @@
       transform: translateX(0);
     }
 
+    #left-panel.dragging,
+    #left-panel-overlay.dragging,
+    #toc-panel.dragging,
+    #toc-overlay.dragging {
+      transition: none !important;
+    }
+
     .left-panel-section-header,
     .left-panel-icon-button {
       border: 0;
@@ -415,6 +422,73 @@
     .left-panel-icon-button:active,
     .left-panel-section-header:active {
       background: color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 12%, transparent);
+    }
+
+    .left-panel-tab-drag {
+      touch-action: none !important;
+      user-select: none;
+      cursor: grab;
+    }
+
+    .left-panel-group-row {
+      gap: 2px;
+      font-weight: 600;
+    }
+
+    .left-panel-group-toggle {
+      flex-basis: 30px;
+      width: 30px;
+      min-width: 30px;
+      height: 34px;
+    }
+
+    .left-panel-group-label {
+      min-height: 34px;
+      padding: 0 2px;
+    }
+
+    .left-panel-row.is-nested {
+      padding-left: 24px;
+    }
+
+    .left-panel-row.is-drag-source {
+      opacity: 0.45;
+    }
+
+    .left-panel-row.is-drop-target.is-drop-group,
+    .left-panel-group-row.is-drop-target.is-drop-group {
+      background: color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 22%, transparent);
+      outline: 2px solid color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 72%, transparent);
+    }
+
+    .left-panel-row.is-drop-before,
+    .left-panel-group-row.is-drop-before {
+      box-shadow: inset 0 3px 0 var(--left-panel-text-color, var(--text-color));
+    }
+
+    .left-panel-row.is-drop-after,
+    .left-panel-group-row.is-drop-after {
+      box-shadow: inset 0 -3px 0 var(--left-panel-text-color, var(--text-color));
+    }
+
+    .left-panel-drag-indicator {
+      position: fixed;
+      z-index: 10050;
+      display: none;
+      pointer-events: none;
+      max-width: calc(100vw - 24px);
+      padding: 7px 12px;
+      border: 1px solid color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 45%, transparent);
+      border-radius: 999px;
+      color: var(--left-panel-text-color, var(--text-color));
+      background: var(--left-panel-bg-color, var(--toolbar-bg));
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+      font: 600 13px/1.2 var(--left-panel-font-family, inherit);
+      transform: translate(8px, 8px);
+    }
+
+    .left-panel-drag-indicator.open {
+      display: block;
     }
 
     #left-panel-stack {
@@ -523,7 +597,42 @@
       align-items: center;
       gap: 8px;
       padding: 4px 2px 8px;
-      font-size: 13px;
+      font-family: var(--list-font-family, inherit);
+      font-size: var(--list-font-size, var(--left-panel-font-size, 16px));
+      font-weight: var(--list-font-weight, 400);
+      letter-spacing: var(--list-letter-spacing, normal);
+      color: var(--list-text-color, var(--left-panel-text-color, var(--text-color)));
+    }
+
+    .left-panel-search-option input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      position: relative;
+      flex: 0 0 16px;
+      width: 16px;
+      height: 16px;
+      box-sizing: border-box;
+      margin: 0;
+      border: 1.5px solid var(--todo-border-color, #888888);
+      border-radius: 3px;
+      background: var(--todo-bg-color, #222222);
+    }
+
+    .left-panel-search-option input[type="checkbox"]:checked {
+      border-color: var(--todo-accent-color, #00e5ff);
+      background: var(--todo-accent-color, #00e5ff);
+    }
+
+    .left-panel-search-option input[type="checkbox"]:checked::after {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 4px;
+      height: 8px;
+      border: solid var(--todo-checkmark-color, #111111);
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
     }
 
     .left-panel-list {
@@ -2082,8 +2191,16 @@
             <button id="left-panel-search-clear" class="left-panel-icon-button" type="button" aria-label="Clear search">×</button>
           </div>
           <label class="left-panel-search-option">
+            <input id="left-panel-search-whole-words" type="checkbox" />
+            <span>word</span>
+          </label>
+          <label class="left-panel-search-option">
             <input id="left-panel-search-contents" type="checkbox" />
-            <span>Search within files</span>
+            <span>in files</span>
+          </label>
+          <label class="left-panel-search-option">
+            <input id="left-panel-search-markdown-only" type="checkbox" />
+            <span>*.md</span>
           </label>
           <div id="left-panel-search-status" class="left-panel-muted" aria-live="polite"></div>
           <div id="left-panel-search-results" class="left-panel-list" role="list"></div>

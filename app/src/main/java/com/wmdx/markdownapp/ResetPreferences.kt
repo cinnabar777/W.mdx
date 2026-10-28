@@ -424,6 +424,7 @@ object PreferenceResetHelper {
             key == "pref_left_panel_font_weight" -> 600
             key == "pref_left_panel_text_color" -> "default"
             key == "pref_left_panel_row_spacing" -> 2
+            key == "pref_left_panel_show_search_path" -> false
             key == "pref_left_panel_search_keep_open" ||
                 key == "pref_left_panel_folders_keep_open" ||
                 key == "pref_left_panel_tabs_keep_open" -> false

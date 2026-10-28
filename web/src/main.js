@@ -31,6 +31,7 @@ import { extractTocHeadings } from './tocHeadings.js';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { toCssFontFamily } from './fontFamilies.js';
 import { setupLeftPanel } from './leftPanel.js';
+import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
@@ -6686,44 +6687,15 @@ function setupTocGestureAndPanel(scrollDOM) {
     globalToggleBtn.onclick = globalToggleHandler;
   }
 
-  let touchStartX = 0;
-  let touchStartY = 0;
-  let isSwiping = false;
-
-  const onTouchStart = (e) => {
-    const popupStrip = document.querySelector('#popup-toolbar-strip');
-    if (popupStrip && popupStrip.contains(e.target)) {
-      isSwiping = false;
-      return;
-    }
-    if (e.touches.length === 1) {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-      isSwiping = true;
-    }
-  };
-
-  const onTouchEnd = (e) => {
-    if (!isSwiping || e.changedTouches.length !== 1) return;
-    isSwiping = false;
-    const deltaX = e.changedTouches[0].clientX - touchStartX;
-    const deltaY = e.changedTouches[0].clientY - touchStartY;
-
-    const isSelectionActive = window.getSelection() && window.getSelection().toString().length > 0;
-    if (!isSelectionActive && Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
-      const screenWidth = win.innerWidth;
-      const isRightEdgeTouch = touchStartX >= (screenWidth * 0.80);
-
-      if (deltaX < 0 && !panel.classList.contains('open') && isRightEdgeTouch) {
-        openToc();
-      } else if (deltaX > 0 && panel.classList.contains('open')) {
-        closeToc();
-      }
-    }
-  };
-  const touchListenerOptions = { passive: true };
-  win.addEventListener('touchstart', onTouchStart, touchListenerOptions);
-  win.addEventListener('touchend', onTouchEnd, touchListenerOptions);
+  const cleanupPanelSwipe = setupPanelSwipe({
+    panel,
+    overlay,
+    side: 'right',
+    windowObject: win,
+    isOpen: () => panel.classList.contains('open'),
+    onOpen: openToc,
+    onClose: closeToc
+  });
 
   function buildTocTree() {
     if (!tocContent || !activeAdapter) return;
@@ -7039,8 +7011,7 @@ function setupTocGestureAndPanel(scrollDOM) {
   refreshOpenTocPanel = scheduleOpenPanelRefresh;
 
   return () => {
-    win.removeEventListener('touchstart', onTouchStart, touchListenerOptions);
-    win.removeEventListener('touchend', onTouchEnd, touchListenerOptions);
+    cleanupPanelSwipe();
     if (pendingRefreshTimer !== null) {
       win.clearTimeout(pendingRefreshTimer);
       pendingRefreshTimer = null;

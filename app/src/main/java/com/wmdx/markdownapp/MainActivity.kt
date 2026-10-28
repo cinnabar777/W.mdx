@@ -2027,19 +2027,29 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun leftPanelFileContains(uri: Uri, needle: String): Boolean = runCatching {
+    private fun leftPanelFileContains(
+        uri: Uri,
+        needle: String,
+        wholeWordPattern: Regex?
+    ): Boolean = runCatching {
         val input = contentResolver.openInputStream(uri) ?: return@runCatching false
         BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { reader ->
             var matched = false
             while (!matched && !Thread.currentThread().isInterrupted) {
                 val line = reader.readLine() ?: break
-                matched = line.lowercase().contains(needle)
+                matched = wholeWordPattern?.containsMatchIn(line)
+                    ?: line.contains(needle, ignoreCase = true)
             }
             matched
         }
     }.getOrDefault(false)
 
-    private fun searchLeftPanelDocuments(query: String, includeContents: Boolean): String {
+    private fun searchLeftPanelDocuments(
+        query: String,
+        includeContents: Boolean,
+        wholeWords: Boolean,
+        markdownOnly: Boolean
+    ): String {
         val needle = query.trim().lowercase()
         if (needle.isEmpty()) return org.json.JSONObject().put("items", JSONArray()).toString()
         val results = JSONArray()
@@ -2048,6 +2058,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val maxResults = 100
         val maxScannedFiles = 2500
         val textExtensions = setOf(".md", ".markdown", ".mdx", ".txt")
+        val wholeWordPattern = if (wholeWords) {
+            Regex(
+                "(^|[^\\p{L}\\p{N}_])${Regex.escape(needle)}(?![\\p{L}\\p{N}_])",
+                RegexOption.IGNORE_CASE
+            )
+        } else {
+            null
+        }
+        val markdownExtensions = setOf(".md", ".textpack", ".mdx", ".textpack.zip")
 
         for (treeUri in authorizedLeftPanelTrees()) {
             if (results.length() >= maxResults || scannedFiles >= maxScannedFiles) {
@@ -2086,22 +2105,40 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         continue
                     }
                     scannedFiles++
-                    val nameMatches = entry.name.lowercase().contains(needle)
+                    val hasTextPackExtension = entry.name.endsWith(".textpack", true) ||
+                        entry.name.endsWith(".textpack.zip", true)
+                    val hasPlainTextExtension = textExtensions.any { entry.name.endsWith(it, true) }
+                    val needsTextPackProbe = includeContents &&
+                        (
+                            entry.name.endsWith(".mdx", true) ||
+                                (!markdownOnly && !hasPlainTextExtension && !hasTextPackExtension)
+                            )
+                    val isTextPack = hasTextPackExtension ||
+                        (needsTextPackProbe &&
+                            TextPackManager.isTextPackFile(this, entry.uri, entry.name))
+                    val isMarkdownFile = markdownExtensions.any { entry.name.endsWith(it, true) } ||
+                        isTextPack
+                    if (markdownOnly && !isMarkdownFile) continue
+                    val nameMatches = wholeWordPattern?.containsMatchIn(entry.name)
+                        ?: entry.name.contains(needle, ignoreCase = true)
                     var contentMatches = false
                     if (
                         !nameMatches &&
                         includeContents &&
                         (
-                            textExtensions.any { entry.name.endsWith(it, true) } ||
-                                TextPackManager.isTextPackFile(this, entry.uri, entry.name)
+                            hasPlainTextExtension ||
+                                isTextPack
                             )
                     ) {
                         contentMatches = runCatching {
-                            if (TextPackManager.isTextPackFile(this, entry.uri, entry.name)) {
+                            if (isTextPack) {
                                 TextPackManager.openTextPack(this, entry.uri)
-                                    .markdownContent.lowercase().contains(needle)
+                                    .markdownContent.let { content ->
+                                        wholeWordPattern?.containsMatchIn(content)
+                                            ?: content.contains(needle, ignoreCase = true)
+                                    }
                             } else {
-                                leftPanelFileContains(entry.uri, needle)
+                                leftPanelFileContains(entry.uri, needle, wholeWordPattern)
                             }
                         }.getOrDefault(false)
                     }
@@ -2250,12 +2287,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun searchLeftPanelFiles(query: String, includeContents: Boolean, requestId: Int) {
+        fun searchLeftPanelFiles(
+            query: String,
+            includeContents: Boolean,
+            wholeWords: Boolean,
+            markdownOnly: Boolean,
+            requestId: Int
+        ) {
             val safeQuery = query.take(240)
             synchronized(this@MainActivity) {
                 leftPanelSearchFuture?.cancel(true)
                 leftPanelSearchFuture = leftPanelSearchExecutor.submit {
-                    val results = searchLeftPanelDocuments(safeQuery, includeContents)
+                    val results = searchLeftPanelDocuments(
+                        safeQuery,
+                        includeContents,
+                        wholeWords,
+                        markdownOnly
+                    )
                     if (!Thread.currentThread().isInterrupted && !isFinishing) {
                         val escapedResults = JSONObjectWrapper.quote(results)
                         webView.post {

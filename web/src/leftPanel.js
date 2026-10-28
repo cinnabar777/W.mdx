@@ -1,7 +1,140 @@
+import { setupPanelSwipe } from './panelSwipe.js';
+
 const LEFT_PANEL_STATE_KEY = 'wmdx.leftPanel.state.v2';
 const LAUNCHER_TABS_KEY = 'wmdx.leftPanel.launcherTabs.v1';
 const TASK_TABS_KEY_PREFIX = 'wmdx.leftPanel.taskTabs.';
 const SECTION_ORDER = ['search', 'folders', 'tabs'];
+
+function removeEmptyTabGroups(tabs, groups) {
+  const usedIds = new Set(tabs.map((tab) => tab.groupId).filter(Boolean));
+  for (let index = groups.length - 1; index >= 0; index--) {
+    if (!usedIds.has(groups[index].id)) groups.splice(index, 1);
+  }
+}
+
+export function dissolveTabGroup(tabs, groups, groupId) {
+  const index = groups.findIndex((group) => group.id === groupId);
+  if (index < 0) return false;
+  tabs.forEach((tab) => {
+    if (tab.groupId === groupId) tab.groupId = null;
+  });
+  groups.splice(index, 1);
+  return true;
+}
+
+export function applyTabDrop(tabs, groups, source, target, position = 'after') {
+  if (!source || !target || source.id === target.id && source.kind === target.kind) {
+    return false;
+  }
+  const sourceGroup = source.kind === 'group'
+    ? groups.find((group) => group.id === source.id)
+    : null;
+  const sourceTab = source.kind === 'tab'
+    ? tabs.find((tab) => tab.id === source.id)
+    : null;
+  if ((!sourceGroup && !sourceTab) || !['before', 'after', 'group', 'join-group'].includes(position)) {
+    return false;
+  }
+
+  if (sourceGroup) {
+    if (target.kind === 'group' && target.id === source.id) return false;
+    const targetTab = target.kind === 'tab'
+      ? tabs.find((tab) => tab.id === target.id)
+      : null;
+    const targetGroup = target.kind === 'group'
+      ? groups.find((group) => group.id === target.id)
+      : targetTab?.groupId
+        ? groups.find((group) => group.id === targetTab.groupId)
+        : null;
+    if (target.kind === 'tab' && !targetTab) return false;
+    if (target.kind === 'group' && !targetGroup) return false;
+    if (targetTab?.groupId === source.id) return false;
+
+    const movingTabs = tabs.filter((tab) => tab.groupId === source.id);
+    if (!movingTabs.length) return false;
+    for (let index = tabs.length - 1; index >= 0; index--) {
+      if (tabs[index].groupId === source.id) tabs.splice(index, 1);
+    }
+    const anchorTabs = targetGroup
+      ? tabs.filter((tab) => tab.groupId === targetGroup.id)
+      : [targetTab];
+    const anchorIndices = anchorTabs
+      .map((tab) => tabs.indexOf(tab))
+      .filter((index) => index >= 0);
+    if (!anchorIndices.length) {
+      tabs.push(...movingTabs);
+      removeEmptyTabGroups(tabs, groups);
+      return false;
+    }
+    const insertionIndex = position === 'after'
+      ? Math.max(...anchorIndices) + 1
+      : Math.min(...anchorIndices);
+    tabs.splice(insertionIndex, 0, ...movingTabs);
+    removeEmptyTabGroups(tabs, groups);
+    return true;
+  }
+
+  const targetTab = target.kind === 'tab'
+    ? tabs.find((tab) => tab.id === target.id)
+    : null;
+  const targetGroup = target.kind === 'group'
+    ? groups.find((group) => group.id === target.id)
+    : null;
+  if ((target.kind === 'tab' && !targetTab) || (target.kind === 'group' && !targetGroup)) {
+    return false;
+  }
+  if (targetGroup && sourceTab.groupId === targetGroup.id) return false;
+
+  const oldGroupId = sourceTab.groupId;
+  tabs.splice(tabs.indexOf(sourceTab), 1);
+  let targetGroupId = targetGroup?.id || null;
+  let targetAnchor = targetTab;
+  let insertionAfter = position === 'after';
+
+  if (targetTab && (position === 'group' || position === 'join-group')) {
+    if (sourceTab.groupId && sourceTab.groupId === targetTab.groupId) {
+      targetGroupId = sourceTab.groupId;
+      insertionAfter = true;
+    } else if (targetTab.groupId) {
+      targetGroupId = targetTab.groupId;
+      insertionAfter = true;
+    } else {
+      let id;
+      do {
+        id = `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      } while (groups.some((group) => group.id === id));
+      targetGroupId = id;
+      groups.push({ id, name: 'Group', collapsed: false });
+      targetTab.groupId = id;
+      insertionAfter = true;
+    }
+  }
+
+  if (targetGroup) {
+    targetGroupId = targetGroup.id;
+    const groupTabs = tabs.filter((tab) => tab.groupId === targetGroupId);
+    targetAnchor = groupTabs.at(-1) || null;
+    insertionAfter = true;
+    if (!targetAnchor) {
+      tabs.push(sourceTab);
+      sourceTab.groupId = oldGroupId || null;
+      return false;
+    }
+  } else if (targetTab) {
+    targetGroupId ??= targetTab.groupId || null;
+  }
+
+  sourceTab.groupId = targetGroupId;
+  if (!targetAnchor) {
+    tabs.push(sourceTab);
+  } else {
+    const targetIndex = tabs.indexOf(targetAnchor);
+    if (targetIndex < 0) tabs.push(sourceTab);
+    else tabs.splice(targetIndex + (insertionAfter ? 1 : 0), 0, sourceTab);
+  }
+  removeEmptyTabGroups(tabs, groups);
+  return true;
+}
 
 export function createPanelExpandedState(state = {}) {
   const tabsManuallyCollapsed = state.tabsManuallyCollapsed === true;
@@ -131,6 +264,11 @@ export function setupLeftPanel() {
   const panelExpandedState = createPanelExpandedState(state);
   let tabsManuallyCollapsed = panelExpandedState.tabsManuallyCollapsed;
   const wantedExpanded = panelExpandedState.expanded;
+  const searchOptions = {
+    wholeWords: state.searchOptions?.wholeWords === true,
+    includeContents: state.searchOptions?.includeContents === true,
+    markdownOnly: state.searchOptions?.markdownOnly === true
+  };
   const keepOpen = { search: false, folders: false, tabs: false };
   let activeSection = null;
   let sectionBeforeSearch = null;
@@ -141,6 +279,7 @@ export function setupLeftPanel() {
     ? LAUNCHER_TABS_KEY
     : `${TASK_TABS_KEY_PREFIX}${windowContext.taskId ?? 'untracked'}`;
   const tabs = [];
+  const groups = [];
   const restoredTabIds = new Set();
   const checkedRestoredTabIds = new Set();
   const unverifiedRestoredTabIds = new Set();
@@ -151,7 +290,11 @@ export function setupLeftPanel() {
   let windowClosing = false;
   let searchTimer = null;
   let searchRequestId = 0;
+  let searchPending = false;
   let folderRootsLoaded = false;
+  let showSearchPath = false;
+  let lastSearchResults = [];
+  let lastSearchTruncated = false;
 
   const sectionElements = new Map(
     SECTION_ORDER.map((id) => [
@@ -164,7 +307,12 @@ export function setupLeftPanel() {
     try {
       localStorage.setItem(
         LEFT_PANEL_STATE_KEY,
-        JSON.stringify({ expanded: wantedExpanded, activeSection, tabsManuallyCollapsed })
+        JSON.stringify({
+          expanded: wantedExpanded,
+          activeSection,
+          tabsManuallyCollapsed,
+          searchOptions
+        })
       );
     } catch {
       // Private browsing or storage exhaustion should not block panel use.
@@ -176,7 +324,7 @@ export function setupLeftPanel() {
     tabsPersistTimer = null;
     if (windowClosing && !launcherWindow) return;
     try {
-      localStorage.setItem(tabsStorageKey, JSON.stringify({ activeTabId, tabs }));
+      localStorage.setItem(tabsStorageKey, JSON.stringify({ activeTabId, tabs, groups }));
     } catch {
       // A session remains usable in memory if WebView storage is unavailable.
     }
@@ -312,10 +460,15 @@ export function setupLeftPanel() {
   const folderStatus = document.getElementById('left-panel-folders-status');
   const searchInput = document.getElementById('left-panel-search-input');
   const searchContents = document.getElementById('left-panel-search-contents');
+  const searchWholeWords = document.getElementById('left-panel-search-whole-words');
+  const searchMarkdownOnly = document.getElementById('left-panel-search-markdown-only');
   const searchResults = document.getElementById('left-panel-search-results');
   const searchStatus = document.getElementById('left-panel-search-status');
   const tabsList = document.getElementById('left-panel-tabs-list');
   const tabMenu = document.getElementById('left-panel-tab-menu');
+  if (searchContents) searchContents.checked = searchOptions.includeContents;
+  if (searchWholeWords) searchWholeWords.checked = searchOptions.wholeWords;
+  if (searchMarkdownOnly) searchMarkdownOnly.checked = searchOptions.markdownOnly;
   const updateSearchPriority = () => {
     if (searchInput?.value.trim()) {
       if (activeSection !== 'search') sectionBeforeSearch = activeSection;
@@ -446,6 +599,7 @@ export function setupLeftPanel() {
       markdown: documentData.markdown || '',
       dirty: Boolean(documentData.dirty),
       pinned: false,
+      groupId: null,
       emptyContentExplicitlyEdited: Boolean(documentData.emptyContentExplicitlyEdited),
       isTextPack: Boolean(documentData.isTextPack),
       hasBom: Boolean(documentData.hasBom),
@@ -653,6 +807,9 @@ export function setupLeftPanel() {
   const runSearch = () => {
     const requestId = ++searchRequestId;
     const query = searchInput?.value?.trim() || '';
+    searchPending = false;
+    lastSearchResults = [];
+    lastSearchTruncated = false;
     searchResults?.replaceChildren();
     requestAnimationFrame(reflowSections);
     if (!query) {
@@ -663,96 +820,403 @@ export function setupLeftPanel() {
       searchStatus.textContent = 'File search is unavailable in this app build.';
       return;
     }
+    searchPending = true;
     searchStatus.textContent = 'Searching approved folders…';
-    native.searchLeftPanelFiles(query, Boolean(searchContents?.checked), requestId);
+    native.searchLeftPanelFiles(
+      query,
+      Boolean(searchContents?.checked),
+      Boolean(searchWholeWords?.checked),
+      Boolean(searchMarkdownOnly?.checked),
+      requestId
+    );
   };
 
-  const renderTabs = () => {
-    if (!tabsList) return;
-    tabsList.replaceChildren();
-    tabs.forEach((tab, index) => {
-      const row = document.createElement('div');
-      row.className = `left-panel-row${tab.id === activeTabId ? ' selected' : ''}`;
-      row.setAttribute('role', 'listitem');
-      row.dataset.tabId = tab.id;
-
-      const dragHandle = document.createElement('button');
-      dragHandle.type = 'button';
-      dragHandle.className = 'left-panel-icon-button left-panel-tab-drag';
-      dragHandle.textContent = '⠿';
-      dragHandle.setAttribute('aria-label', `Reorder ${tab.name}`);
-      dragHandle.addEventListener('pointerdown', (event) => startTabDrag(event, tab.id));
-      row.appendChild(dragHandle);
-
-      const label = document.createElement('button');
-      label.type = 'button';
-      label.className = 'left-panel-row-label left-panel-tab-label';
-      label.style.cssText = 'border:0;background:transparent;color:inherit;text-align:left;font:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-      label.textContent = `${tab.pinned ? '◆ ' : ''}${tab.name}${tab.dirty ? ' •' : ''}`;
-      label.title = tab.name;
-      label.addEventListener('click', () => activateTab(tab.id));
-      label.addEventListener('contextmenu', (event) => {
-        event.preventDefault();
-        showTabMenu(tab, event.clientX, event.clientY);
-      });
-      let longPressTimer = null;
-      label.addEventListener('pointerdown', (event) => {
-        longPressTimer = setTimeout(
-          () => showTabMenu(tab, event.clientX, event.clientY),
-          550
-        );
-      });
-      for (const eventName of ['pointerup', 'pointercancel', 'pointerleave']) {
-        label.addEventListener(eventName, () => {
-          if (longPressTimer) clearTimeout(longPressTimer);
-          longPressTimer = null;
-        });
+  const renderSearchResults = (results, payload = {}) => {
+    if (!searchResults) return;
+    lastSearchResults = Array.isArray(results) ? results : [];
+    lastSearchTruncated = Boolean(payload?.truncated);
+    searchResults.replaceChildren();
+    searchStatus.textContent = lastSearchResults.length
+      ? `${lastSearchResults.length} result${lastSearchResults.length === 1 ? '' : 's'}${lastSearchTruncated ? ' — search limit reached' : ''}`
+      : lastSearchTruncated
+        ? 'Search limit reached; no matches found in scanned files.'
+        : 'No matches found.';
+    lastSearchResults.forEach((result) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'left-panel-row';
+      button.setAttribute('role', 'listitem');
+      const wrapper = document.createElement('span');
+      wrapper.className = 'left-panel-row-label';
+      wrapper.textContent = result.name || 'Untitled';
+      button.appendChild(wrapper);
+      if (showSearchPath && result.path) {
+        const path = document.createElement('span');
+        path.className = 'left-panel-result-path';
+        path.textContent = result.path;
+        button.appendChild(path);
       }
-      row.appendChild(label);
-
-      if (!tab.pinned) {
-        const closeButton = document.createElement('button');
-        closeButton.type = 'button';
-        closeButton.className = 'left-panel-icon-button';
-        closeButton.textContent = '×';
-        closeButton.setAttribute('aria-label', `Close ${tab.name}`);
-        closeButton.addEventListener('click', () => closeTabs([tab.id]));
-        row.appendChild(closeButton);
-      }
-      row.dataset.index = String(index);
-      tabsList.appendChild(row);
+      button.addEventListener('click', () => openDocument(result.uri));
+      searchResults.appendChild(button);
     });
     requestAnimationFrame(reflowSections);
   };
 
-  let dragState = null;
-  const startTabDrag = (event, id) => {
-    event.preventDefault();
-    dragState = { id, pointerId: event.pointerId };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    const move = (moveEvent) => {
-      if (!dragState || moveEvent.pointerId !== dragState.pointerId) return;
-      const target = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)
-        ?.closest?.('[data-tab-id]');
-      if (!target || target.dataset.tabId === dragState.id) return;
-      const from = tabs.findIndex((tab) => tab.id === dragState.id);
-      const to = tabs.findIndex((tab) => tab.id === target.dataset.tabId);
-      if (from < 0 || to < 0) return;
-      const [tab] = tabs.splice(from, 1);
-      tabs.splice(to, 0, tab);
-      renderTabs();
+  const bindLongPress = (element, callback, delay = 520) => {
+    let timer = null;
+    let startX = 0;
+    let startY = 0;
+    let triggered = false;
+    const clear = () => {
+      clearTimeout(timer);
+      timer = null;
     };
-    const finish = (finishEvent) => {
-      if (finishEvent.pointerId !== dragState?.pointerId) return;
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerup', finish);
-      document.removeEventListener('pointercancel', finish);
+    element.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || event.isPrimary === false) return;
+      startX = event.clientX;
+      startY = event.clientY;
+      triggered = false;
+      const x = startX;
+      const y = startY;
+      timer = setTimeout(() => {
+        timer = null;
+        triggered = true;
+        callback(x, y);
+      }, delay);
+    });
+    element.addEventListener('pointermove', (event) => {
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > 8) clear();
+    });
+    for (const eventName of ['pointerup', 'pointercancel', 'pointerleave']) {
+      element.addEventListener(eventName, clear);
+    }
+    return () => {
+      const didTrigger = triggered;
+      triggered = false;
+      return didTrigger;
+    };
+  };
+
+  let dragState = null;
+  const dragIndicator = document.createElement('div');
+  dragIndicator.className = 'left-panel-drag-indicator';
+  dragIndicator.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(dragIndicator);
+
+  const setDragCandidate = (candidate) => {
+    if (!dragState) return;
+    if (dragState.targetElement) {
+      dragState.targetElement.classList.remove(
+        'is-drop-target',
+        'is-drop-group',
+        'is-drop-before',
+        'is-drop-after'
+      );
+    }
+    dragState.target = candidate?.target || null;
+    dragState.position = candidate?.position || null;
+    dragState.targetElement = candidate?.element || null;
+    if (dragState.targetElement) {
+      dragState.targetElement.classList.add('is-drop-target');
+      if (candidate.position === 'group' || candidate.position === 'join-group') {
+        dragState.targetElement.classList.add('is-drop-group');
+      } else {
+        dragState.targetElement.classList.add(
+          candidate.position === 'before' ? 'is-drop-before' : 'is-drop-after'
+        );
+      }
+    }
+    const message = candidate?.position === 'group'
+      ? 'Create group'
+      : candidate?.position === 'join-group'
+        ? 'Add to group'
+        : dragState.source.kind === 'group'
+          ? 'Move group'
+          : 'Move tab';
+    dragIndicator.textContent = message;
+    dragIndicator.classList.toggle('has-target', Boolean(candidate));
+  };
+
+  const findDragCandidate = (event) => {
+    const element = document.elementFromPoint(event.clientX, event.clientY);
+    const groupRow = element?.closest?.('.left-panel-group-row[data-group-id]');
+    const tabRow = element?.closest?.('.left-panel-row[data-tab-id]');
+    const targetElement = groupRow || tabRow;
+    if (!targetElement) return null;
+    const rect = targetElement.getBoundingClientRect();
+    const ratio = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
+    const position = ratio < 0.34 ? 'before' : ratio > 0.66 ? 'after' : 'group';
+    if (groupRow) {
+      const groupId = groupRow.dataset.groupId;
+      if (dragState?.source.kind === 'group') {
+        if (groupId === dragState.source.id) return null;
+        return {
+          element: groupRow,
+          target: { kind: 'group', id: groupId },
+          position: position === 'group' ? 'after' : position
+        };
+      }
+      const tab = tabs.find((item) => item.id === dragState?.source.id);
+      if (!tab || tab.groupId === groupId) return null;
+      return {
+        element: groupRow,
+        target: { kind: 'group', id: groupId },
+        position: 'join-group'
+      };
+    }
+
+    const targetId = tabRow.dataset.tabId;
+    if (dragState?.source.kind === 'group') {
+      const targetTab = tabs.find((tab) => tab.id === targetId);
+      if (!targetTab || targetTab.groupId === dragState.source.id) return null;
+      return {
+        element: tabRow,
+        target: { kind: 'tab', id: targetId },
+        position: position === 'group' ? 'after' : position
+      };
+    }
+    const sourceTab = tabs.find((tab) => tab.id === dragState?.source.id);
+    const targetTab = tabs.find((tab) => tab.id === targetId);
+    if (!sourceTab || !targetTab || sourceTab.id === targetTab.id) return null;
+    const sameGroup = sourceTab.groupId && sourceTab.groupId === targetTab.groupId;
+    return {
+      element: tabRow,
+      target: { kind: 'tab', id: targetId },
+      position: sameGroup
+        ? (position === 'before' ? 'before' : 'after')
+        : position
+    };
+  };
+
+  const startPointerDrag = (event, source) => {
+    if (event.button !== 0 || event.isPrimary === false || dragState) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let started = false;
+    let cancelled = false;
+    let timer = null;
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onEnd);
+      document.removeEventListener('pointercancel', onCancel);
+      handle.removeEventListener('lostpointercapture', onCancel);
+      handle.closest('.left-panel-row')?.classList.remove('is-drag-source');
+      dragIndicator.classList.remove('open', 'has-target');
+      dragIndicator.textContent = '';
+      if (dragState?.targetElement) {
+        dragState.targetElement.classList.remove(
+          'is-drop-target',
+          'is-drop-group',
+          'is-drop-before',
+          'is-drop-after'
+        );
+      }
       dragState = null;
+    };
+
+    const onMove = (moveEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      if (!started) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 8) {
+          cancelled = true;
+          cleanup();
+        }
+        return;
+      }
+      moveEvent.preventDefault();
+      const indicatorX = Math.max(6, Math.min(
+        window.innerWidth - 140,
+        moveEvent.clientX + 10
+      ));
+      dragIndicator.style.left = `${indicatorX}px`;
+      dragIndicator.style.top = `${Math.max(8, moveEvent.clientY + 10)}px`;
+      setDragCandidate(findDragCandidate(moveEvent));
+      const sectionBody = tabsList?.closest('.left-panel-section-body');
+      const bodyRect = sectionBody?.getBoundingClientRect();
+      if (bodyRect && moveEvent.clientY < bodyRect.top + 42) {
+        sectionBody.scrollTop -= 12;
+      } else if (bodyRect && moveEvent.clientY > bodyRect.bottom - 42) {
+        sectionBody.scrollTop += 12;
+      }
+    };
+
+    const onEnd = (endEvent) => {
+      if (endEvent.pointerId !== pointerId) return;
+      clearTimeout(timer);
+      if (started && !cancelled && dragState?.target && dragState?.position) {
+        const applied = applyTabDrop(
+          tabs,
+          groups,
+          dragState.source,
+          dragState.target,
+          dragState.position
+        );
+        if (applied) persistTabs();
+      }
+      cleanup();
+      renderTabs();
       persistTabs();
     };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', finish);
-    document.addEventListener('pointercancel', finish);
+
+    const onCancel = (cancelEvent) => {
+      if (cancelEvent.pointerId !== pointerId) return;
+      cancelled = true;
+      cleanup();
+      renderTabs();
+    };
+
+    timer = setTimeout(() => {
+      if (cancelled) return;
+      started = true;
+      dragState = { active: true, source, target: null, position: null, targetElement: null };
+      handle.closest('.left-panel-row')?.classList.add('is-drag-source');
+      dragIndicator.textContent = source.kind === 'group' ? 'Move group' : 'Move tab';
+      dragIndicator.style.left = `${Math.max(6, startX + 10)}px`;
+      dragIndicator.style.top = `${Math.max(8, startY + 10)}px`;
+      dragIndicator.classList.add('open');
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch {
+        // Document-level listeners still track the pointer if capture is unavailable.
+      }
+    }, 320);
+
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', onEnd);
+    document.addEventListener('pointercancel', onCancel);
+    handle.addEventListener('lostpointercapture', onCancel);
+  };
+
+  const renderTabRow = (tab, index, nested = false) => {
+    const row = document.createElement('div');
+    row.className = `left-panel-row${tab.id === activeTabId ? ' selected' : ''}${nested ? ' is-nested' : ''}`;
+    row.setAttribute('role', 'listitem');
+    row.dataset.tabId = tab.id;
+    row.dataset.index = String(index);
+
+    const dragHandle = document.createElement('button');
+    dragHandle.type = 'button';
+    dragHandle.className = 'left-panel-icon-button left-panel-tab-drag';
+    dragHandle.textContent = '⠿';
+    dragHandle.setAttribute('aria-label', `Reorder ${tab.name}`);
+    dragHandle.addEventListener('pointerdown', (event) =>
+      startPointerDrag(event, { kind: 'tab', id: tab.id })
+    );
+    row.appendChild(dragHandle);
+
+    const label = document.createElement('button');
+    label.type = 'button';
+    label.className = 'left-panel-row-label left-panel-tab-label';
+    label.style.cssText = 'border:0;background:transparent;color:inherit;text-align:left;font:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    label.textContent = `${tab.pinned ? '◆ ' : ''}${tab.name}${tab.dirty ? ' •' : ''}`;
+    label.title = tab.name;
+    const didLongPress = bindLongPress(label, (x, y) => {
+      showTabMenu(tab, x, y);
+    });
+    label.addEventListener('click', (clickEvent) => {
+      if (didLongPress()) {
+        clickEvent.preventDefault();
+        return;
+      }
+      activateTab(tab.id);
+    });
+    label.addEventListener('contextmenu', (contextEvent) => {
+      contextEvent.preventDefault();
+      showTabMenu(tab, contextEvent.clientX, contextEvent.clientY);
+    });
+    row.appendChild(label);
+
+    if (!tab.pinned) {
+      const closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.className = 'left-panel-icon-button';
+      closeButton.textContent = '×';
+      closeButton.setAttribute('aria-label', `Close ${tab.name}`);
+      closeButton.addEventListener('click', () => closeTabs([tab.id]));
+      row.appendChild(closeButton);
+    }
+    tabsList.appendChild(row);
+  };
+
+  const renderGroupRow = (group, groupTabs) => {
+    const row = document.createElement('div');
+    row.className = 'left-panel-row left-panel-group-row';
+    row.setAttribute('role', 'listitem');
+    row.dataset.groupId = group.id;
+
+    const dragHandle = document.createElement('button');
+    dragHandle.type = 'button';
+    dragHandle.className = 'left-panel-icon-button left-panel-tab-drag left-panel-group-drag';
+    dragHandle.textContent = '⠿';
+    dragHandle.setAttribute('aria-label', `Reorder ${group.name || 'group'}`);
+    dragHandle.addEventListener('pointerdown', (event) =>
+      startPointerDrag(event, { kind: 'group', id: group.id })
+    );
+    row.appendChild(dragHandle);
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'left-panel-icon-button left-panel-group-toggle';
+    toggle.textContent = group.collapsed ? '▸' : '⌄';
+    toggle.setAttribute('aria-label', `${group.collapsed ? 'Expand' : 'Collapse'} ${group.name || 'group'}`);
+    toggle.setAttribute('aria-expanded', String(!group.collapsed));
+    toggle.addEventListener('click', () => {
+      group.collapsed = !group.collapsed;
+      persistTabs();
+      renderTabs();
+    });
+    row.appendChild(toggle);
+
+    const label = document.createElement('button');
+    label.type = 'button';
+    label.className = 'left-panel-row-label left-panel-group-label';
+    label.style.cssText = 'border:0;background:transparent;color:inherit;text-align:left;font:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    label.textContent = group.name || 'Group';
+    label.title = group.name || 'Group';
+    const didLongPress = bindLongPress(label, (x, y) => {
+      showGroupMenu(group, x, y);
+    });
+    label.addEventListener('click', (clickEvent) => {
+      if (didLongPress()) {
+        clickEvent.preventDefault();
+        return;
+      }
+      group.collapsed = !group.collapsed;
+      persistTabs();
+      renderTabs();
+    });
+    label.addEventListener('contextmenu', (contextEvent) => {
+      contextEvent.preventDefault();
+      showGroupMenu(group, contextEvent.clientX, contextEvent.clientY);
+    });
+    row.appendChild(label);
+    tabsList.appendChild(row);
+
+    if (!group.collapsed) {
+      groupTabs.forEach((tab, index) => renderTabRow(tab, index, true));
+    }
+  };
+
+  const renderTabs = () => {
+    if (!tabsList || dragState?.active) return;
+    tabsList.replaceChildren();
+    const renderedGroups = new Set();
+    tabs.forEach((tab, index) => {
+      if (tab.groupId) {
+        const group = groups.find((item) => item.id === tab.groupId);
+        if (!group || renderedGroups.has(group.id)) return;
+        renderedGroups.add(group.id);
+        renderGroupRow(group, tabs.filter((item) => item.groupId === group.id));
+      } else {
+        renderTabRow(tab, index);
+      }
+    });
+    requestAnimationFrame(reflowSections);
   };
 
   const hideTabMenu = () => {
@@ -762,7 +1226,10 @@ export function setupLeftPanel() {
 
   document.addEventListener('pointerdown', (event) => {
     if (!tabMenu?.classList.contains('open')) return;
-    if (tabMenu.contains(event.target) || event.target.closest?.('.left-panel-tab-label')) return;
+    if (
+      tabMenu.contains(event.target) ||
+      event.target.closest?.('.left-panel-tab-label, .left-panel-group-label')
+    ) return;
     hideTabMenu();
   });
   document.addEventListener('keydown', (event) => {
@@ -854,6 +1321,48 @@ export function setupLeftPanel() {
     input?.select();
   });
 
+  const renameGroup = async (group) => {
+    const result = await showDialog({
+      title: 'Rename group',
+      inputValue: group.name || 'Group',
+      actions: [
+        { label: 'Cancel', value: null },
+        { label: 'Rename', value: 'rename', primary: true }
+      ]
+    });
+    if (!result?.text?.trim()) return;
+    group.name = result.text.trim();
+    renderTabs();
+    persistTabs();
+  };
+
+  const showGroupMenu = (group, x = 16, y = 120) => {
+    if (!tabMenu) return;
+    tabMenu.replaceChildren();
+    [
+      ['Rename group', () => renameGroup(group)],
+      ['Delete group', () => {
+        dissolveTabGroup(tabs, groups, group.id);
+        renderTabs();
+        persistTabs();
+      }]
+    ].forEach(([label, action]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.setAttribute('role', 'menuitem');
+      button.addEventListener('click', () => {
+        hideTabMenu();
+        action();
+      });
+      tabMenu.appendChild(button);
+    });
+    tabMenu.classList.add('open');
+    const rect = tabMenu.getBoundingClientRect();
+    tabMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+    tabMenu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+  };
+
   const closeTabs = async (ids) => {
     const targets = ids
       .map((id) => tabs.find((tab) => tab.id === id))
@@ -905,6 +1414,7 @@ export function setupLeftPanel() {
       const index = tabs.findIndex((tab) => tab.id === id);
       if (index >= 0) tabs.splice(index, 1);
     }
+    removeEmptyTabGroups(tabs, groups);
     if (!tabs.length) {
       activateUntitledTab();
     } else if (closeIds.includes(activeTabId)) {
@@ -983,6 +1493,7 @@ export function setupLeftPanel() {
     }
     const index = tabs.findIndex((item) => item.id === tab.id);
     if (index >= 0) tabs.splice(index, 1);
+    removeEmptyTabGroups(tabs, groups);
     if (activeTabId === tab.id) {
       activeTabId = tabs[0]?.id || null;
       if (activeTabId) activateTab(activeTabId);
@@ -1006,6 +1517,10 @@ export function setupLeftPanel() {
   });
   searchInput?.addEventListener('input', () => {
     searchRequestId++;
+    searchPending = false;
+    lastSearchResults = [];
+    lastSearchTruncated = false;
+    searchResults?.replaceChildren();
     wantedExpanded.search = true;
     updateSearchPriority();
     persistPanelState();
@@ -1013,13 +1528,23 @@ export function setupLeftPanel() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(runSearch, 220);
   });
-  searchContents?.addEventListener('change', () => {
+  const onSearchOptionChanged = (key, input) => {
+    searchOptions[key] = Boolean(input?.checked);
     wantedExpanded.search = true;
     updateSearchPriority();
     persistPanelState();
     updateSectionVisibility();
     runSearch();
-  });
+  };
+  searchContents?.addEventListener('change', () =>
+    onSearchOptionChanged('includeContents', searchContents)
+  );
+  searchWholeWords?.addEventListener('change', () =>
+    onSearchOptionChanged('wholeWords', searchWholeWords)
+  );
+  searchMarkdownOnly?.addEventListener('change', () =>
+    onSearchOptionChanged('markdownOnly', searchMarkdownOnly)
+  );
   sectionElements.get('folders')?.querySelector('.left-panel-section-header')
     ?.addEventListener('click', () => {
       if (wantedExpanded.folders) {
@@ -1030,6 +1555,24 @@ export function setupLeftPanel() {
 
   const storedTabs = parseJson(readStorage(tabsStorageKey), null);
   if (Array.isArray(storedTabs?.tabs) && storedTabs.tabs.length) {
+    if (Array.isArray(storedTabs.groups)) {
+      storedTabs.groups.forEach((savedGroup) => {
+        if (
+          savedGroup &&
+          typeof savedGroup.id === 'string' &&
+          savedGroup.id &&
+          !groups.some((group) => group.id === savedGroup.id)
+        ) {
+          groups.push({
+            id: savedGroup.id,
+            name: typeof savedGroup.name === 'string' && savedGroup.name.trim()
+              ? savedGroup.name
+              : 'Group',
+            collapsed: Boolean(savedGroup.collapsed)
+          });
+        }
+      });
+    }
     for (const savedTab of storedTabs.tabs) {
       if (!savedTab || typeof savedTab.id !== 'string' || tabs.some((tab) => tab.id === savedTab.id)) {
         continue;
@@ -1041,6 +1584,9 @@ export function setupLeftPanel() {
         markdown: typeof savedTab.markdown === 'string' ? savedTab.markdown : '',
         dirty: Boolean(savedTab.dirty),
         pinned: Boolean(savedTab.pinned),
+        groupId: groups.some((group) => group.id === savedTab.groupId)
+          ? savedTab.groupId
+          : null,
         emptyContentExplicitlyEdited: Boolean(savedTab.emptyContentExplicitlyEdited),
         isTextPack: Boolean(savedTab.isTextPack),
         hasBom: Boolean(savedTab.hasBom),
@@ -1050,6 +1596,7 @@ export function setupLeftPanel() {
       tabs.push(restoredTab);
       if (restoredTab.uri) restoredTabIds.add(restoredTab.id);
     }
+    removeEmptyTabGroups(tabs, groups);
     const emptyUntitledTabs = tabs.filter((tab) =>
       !tab.uri &&
       !tab.dirty &&
@@ -1140,6 +1687,7 @@ export function setupLeftPanel() {
           markdown: String(markdown ?? context.markdown ?? ''),
           dirty: Boolean(context.dirty),
           pinned: false,
+          groupId: null,
           isTextPack: Boolean(context.isTextPack),
           hasBom: Boolean(context.hasBom),
           hasCrlf: Boolean(context.hasCrlf),
@@ -1174,33 +1722,10 @@ export function setupLeftPanel() {
     onNativeDocumentLoaded,
     onSearchResults(requestId, json) {
       if (requestId !== searchRequestId) return;
+      searchPending = false;
       const payload = parseBridgeResult(json, []);
-      searchResults?.replaceChildren();
       const results = Array.isArray(payload) ? payload : payload?.items || [];
-      searchStatus.textContent = results.length
-        ? `${results.length} result${results.length === 1 ? '' : 's'}${payload?.truncated ? ' — search limit reached' : ''}`
-        : payload?.truncated
-          ? 'Search limit reached; no matches found in scanned files.'
-          : 'No matches found.';
-      results.forEach((result) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'left-panel-row';
-        button.setAttribute('role', 'listitem');
-        const wrapper = document.createElement('span');
-        wrapper.className = 'left-panel-row-label';
-        wrapper.textContent = result.name || 'Untitled';
-        button.appendChild(wrapper);
-        if (result.path) {
-          const path = document.createElement('span');
-          path.className = 'left-panel-result-path';
-          path.textContent = result.path;
-          button.appendChild(path);
-        }
-        button.addEventListener('click', () => openDocument(result.uri));
-        searchResults.appendChild(button);
-      });
-      requestAnimationFrame(reflowSections);
+      renderSearchResults(results, payload);
     },
     onDocumentSaved(uri) {
       const tab = tabs.find((item) => item.uri === uri) || activeTab();
@@ -1267,6 +1792,13 @@ export function setupLeftPanel() {
       persistPanelState();
       updateSectionVisibility();
       updateToolbarClearance();
+      const nextShowSearchPath = prefs?.pref_left_panel_show_search_path === true;
+      if (showSearchPath !== nextShowSearchPath) {
+        showSearchPath = nextShowSearchPath;
+        if (searchInput?.value.trim() && !searchPending) {
+          renderSearchResults(lastSearchResults, { truncated: lastSearchTruncated });
+        }
+      }
       if (panel.classList.contains('open') && wantedExpanded.folders) {
         folderRootsLoaded = false;
         loadFolderRoots();
@@ -1298,60 +1830,14 @@ export function setupLeftPanel() {
   updateSectionVisibility();
   if (activeSection === 'folders') loadFolderRoots();
 
-  let touchStartX = null;
-  let touchStartY = null;
-  let touchStartTarget = null;
-  const resetTouchStart = () => {
-    touchStartX = null;
-    touchStartY = null;
-    touchStartTarget = null;
-  };
-  const onTouchStart = (event) => {
-    if (event.touches?.length !== 1) {
-      resetTouchStart();
-      return;
-    }
-    const touch = event.touches[0];
-    touchStartX = touch.clientX;
-    touchStartY = touch.clientY;
-    touchStartTarget = event.target instanceof Element ? event.target : null;
-  };
-  const onTouchEnd = (event) => {
-    if (touchStartX == null || !event.changedTouches?.length) {
-      resetTouchStart();
-      return;
-    }
-    const touch = event.changedTouches[0];
-    const deltaX = touch.clientX - touchStartX;
-    const deltaY = Math.abs(touch.clientY - touchStartY);
-    const isHorizontalSwipe = Math.abs(deltaX) > 60 &&
-      Math.abs(deltaX) > deltaY * 1.5;
-    const hasSelection = Boolean(window.getSelection?.()?.toString());
-    const startedInToolbar = Boolean(
-      touchStartTarget?.closest?.('#bottom-toolbar, #popup-toolbar-strip, #floating-selection-toolbar')
-    );
-    if (!hasSelection && !startedInToolbar && isHorizontalSwipe) {
-      if (
-        !panel.classList.contains('open') &&
-        touchStartX <= window.innerWidth * 0.25 &&
-        deltaX > 60
-      ) {
-        openPanel();
-      } else if (
-        panel.classList.contains('open') &&
-        panel.contains(touchStartTarget) &&
-        touchStartX <= Math.min(panel.getBoundingClientRect().right, window.innerWidth * 0.8) &&
-        deltaX < -60
-      ) {
-        closePanel();
-      }
-    }
-    resetTouchStart();
-  };
-  const touchListenerOptions = { passive: true };
-  window.addEventListener('touchstart', onTouchStart, touchListenerOptions);
-  window.addEventListener('touchend', onTouchEnd, touchListenerOptions);
-  window.addEventListener('touchcancel', resetTouchStart, touchListenerOptions);
+  setupPanelSwipe({
+    panel,
+    overlay,
+    side: 'left',
+    isOpen: () => panel.classList.contains('open'),
+    onOpen: openPanel,
+    onClose: closePanel
+  });
   updateToolbarClearance();
 
   return controller;
