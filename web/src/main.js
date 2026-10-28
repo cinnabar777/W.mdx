@@ -4139,6 +4139,7 @@ async function setEditorMode(mode) {
   if (activeAdapter) {
     activeAdapter.destroy();
     activeAdapter = null;
+    pendingMarkdown = null;
   }
 
   currentEditorMode = targetMode;
@@ -4158,6 +4159,11 @@ async function setEditorMode(mode) {
   const containerEl = document.querySelector('#editor');
   await adapter.init(containerEl, existingText, modeSnapshot);
   activeAdapter = adapter;
+  if (pendingMarkdown !== null) {
+    const latestPendingMarkdown = pendingMarkdown;
+    pendingMarkdown = null;
+    window.editorBridge?.setMarkdown?.(latestPendingMarkdown);
+  }
 
   if (document.querySelector('#toc-panel')?.classList.contains('open')) {
     tocExpansionState.centerOnNextUpdate = true;
@@ -8074,12 +8080,13 @@ window.editorBridge = {
     if (activeOverlay) {
       activeOverlay.blur();
     }
-    if (pendingMarkdown !== null) return pendingMarkdown;
     if (typeof activeAdapter !== 'undefined' && activeAdapter) return activeAdapter.getMarkdown();
+    if (pendingMarkdown !== null) return pendingMarkdown;
     return '';
   },
   setMarkdown: function(markdownText) {
     if (typeof activeAdapter !== 'undefined' && activeAdapter) {
+      pendingMarkdown = null;
       isProgrammaticChange = true;
       try {
         activeAdapter.setMarkdown(markdownText || '');

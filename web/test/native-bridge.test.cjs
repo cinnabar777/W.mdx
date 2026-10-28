@@ -175,6 +175,35 @@ test('dirty file tabs save on switch independently of the leave-autosave prefere
   assert.match(leftPanelSource, /const autoSaveDirtyTab = \(tab\) => \{\s*if \(native\?\.isAutoSaveOnLeaveEnabled/);
 });
 
+test('tab snapshots read the live editor and reject stale or empty state', () => {
+  const leftPanelSource = fs.readFileSync(
+    path.join(__dirname, '../src/leftPanel.js'),
+    'utf8'
+  );
+  const getMarkdownStart = source.indexOf('getMarkdown: function()');
+  const setMarkdownStart = source.indexOf('setMarkdown: function()', getMarkdownStart);
+  const getMarkdownBody = source.slice(getMarkdownStart, setMarkdownStart);
+  const syncStart = leftPanelSource.indexOf('const syncActiveTab =');
+  const syncEnd = leftPanelSource.indexOf('const refreshRestoredTabFromStorage', syncStart);
+  const syncBody = leftPanelSource.slice(syncStart, syncEnd);
+  const activateStart = leftPanelSource.indexOf('const activateTab =');
+  const activateEnd = leftPanelSource.indexOf('const activateUntitledTab =', activateStart);
+  const activateBody = leftPanelSource.slice(activateStart, activateEnd);
+
+  assert.ok(
+    getMarkdownBody.indexOf('return activeAdapter.getMarkdown()') <
+      getMarkdownBody.indexOf('if (pendingMarkdown !== null)')
+  );
+  assert.match(source, /activeAdapter = adapter;\s*if \(pendingMarkdown !== null\)/);
+  assert.match(source, /window\.editorBridge\?\.setMarkdown\?\.\(latestPendingMarkdown\)/);
+  assert.match(source, /pendingMarkdown = null;\s*isProgrammaticChange = true/);
+  assert.match(syncBody, /switchingTab \|\| loadedTabId !== activeTabId/);
+  assert.match(syncBody, /\(context\?\.uri \|\| null\) !== \(tab\.uri \|\| null\)/);
+  assert.match(syncBody, /markdown === '' && tab\.markdown !== ''/);
+  assert.match(activateBody, /switchingTab = false;\s*renderTabs\(\)/);
+  assert.doesNotMatch(activateBody, /requestAnimationFrame\(\(\) => \{\s*switchingTab = false/);
+});
+
 test('scroll positions are stored by file URI and reused across windows', () => {
   const leftPanelSource = fs.readFileSync(
     path.join(__dirname, '../src/leftPanel.js'),

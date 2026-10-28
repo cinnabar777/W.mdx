@@ -334,10 +334,20 @@ export function setupLeftPanel() {
   const activeTab = () => tabs.find((tab) => tab.id === activeTabId) || null;
 
   const syncActiveTab = () => {
-    if (loadedTabId !== activeTabId) return;
+    if (switchingTab || loadedTabId !== activeTabId) return;
     const tab = activeTab();
     if (!tab) return;
-    tab.markdown = currentMarkdown();
+    const context = parseBridgeResult(native?.getLeftPanelContext?.(), {});
+    if ((context?.uri || null) !== (tab.uri || null)) {
+      native?.reportDiagnostic?.('left_panel_snapshot_uri_mismatch', '');
+      return;
+    }
+    const markdown = currentMarkdown();
+    if (markdown === '' && tab.markdown !== '' && !tab.emptyContentExplicitlyEdited) {
+      native?.reportDiagnostic?.('left_panel_empty_snapshot_rejected', '');
+      return;
+    }
+    tab.markdown = markdown;
     persistTabs();
   };
 
@@ -501,11 +511,9 @@ export function setupLeftPanel() {
       persistPanelState();
       updateSectionVisibility();
     }
+    switchingTab = false;
     renderTabs();
     persistTabs();
-    requestAnimationFrame(() => {
-      switchingTab = false;
-    });
   };
 
   const activateUntitledTab = () => {
@@ -538,11 +546,9 @@ export function setupLeftPanel() {
     }
     persistPanelState();
     updateSectionVisibility();
+    switchingTab = false;
     renderTabs();
     persistTabs();
-    requestAnimationFrame(() => {
-      switchingTab = false;
-    });
     return tab;
   };
 
