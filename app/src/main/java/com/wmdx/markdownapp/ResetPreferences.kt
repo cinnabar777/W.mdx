@@ -50,6 +50,8 @@ object PreferenceResetHelper {
             "pref_toc_text_color" -> "#FFFFFF"
             "pref_toc_active_text_color" -> "#FFFF00"
             "pref_toc_active_bg_color" -> "#00000000"
+            "pref_left_panel_active_tab_text_color" -> "#FFFFFF"
+            "pref_left_panel_active_tab_bg_color" -> "#24FFFFFF"
             "pref_toc_search_highlight_bg_color" -> "#FFFFC107"
             "pref_toc_toggle_bg_color", "pref_toc_toggle_active_bg_color" -> "#26FFFFFF"
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> "#FFFFFF"
@@ -160,6 +162,35 @@ object PreferenceResetHelper {
             }
             "pref_toc_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_left_panel_active_tab_text_color" -> {
+                val panelTextColor = prefs.getString("pref_left_panel_text_color", "default")
+                if (!panelTextColor.isNullOrBlank() && panelTextColor != "default") {
+                    panelTextColor
+                } else if (isLightTheme) {
+                    "#111111"
+                } else {
+                    "#FFFFFF"
+                }
+            }
+            "pref_left_panel_active_tab_bg_color" -> {
+                val panelTextColor = prefs.getString("pref_left_panel_text_color", "default")
+                    ?.takeIf { it.isNotBlank() && it != "default" }
+                    ?: if (isLightTheme) "#111111" else "#FFFFFF"
+                val fallback = android.graphics.Color.parseColor(
+                    if (isLightTheme) "#111111" else "#FFFFFF"
+                )
+                val color = ColorPickerDialog.parseHexColor(panelTextColor, fallback)
+                val alpha = Math.round(android.graphics.Color.alpha(color) * 0.14).toInt()
+                String.format(
+                    "#%08X",
+                    android.graphics.Color.argb(
+                        alpha,
+                        android.graphics.Color.red(color),
+                        android.graphics.Color.green(color),
+                        android.graphics.Color.blue(color)
+                    )
+                )
+            }
             "pref_toolbar_active_key_bg_color" ->
                 if (isLightTheme) "#E9ECEF" else "#1F1F1F"
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> {
@@ -427,6 +458,8 @@ object PreferenceResetHelper {
             key == "pref_left_panel_font_size" -> 16
             key == "pref_left_panel_font_weight" -> 600
             key == "pref_left_panel_text_color" -> "default"
+            key == "pref_left_panel_active_tab_text_color" ||
+                key == "pref_left_panel_active_tab_bg_color" -> "default"
             key == "pref_left_panel_row_spacing" -> 2
             key == "pref_left_panel_show_search_path" -> false
             key == "pref_left_panel_search_keep_open" ||

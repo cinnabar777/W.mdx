@@ -690,9 +690,16 @@
       cursor: pointer;
     }
 
-    .left-panel-row:active,
-    .left-panel-row.selected {
+    .left-panel-row:active {
       background: color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 14%, transparent);
+    }
+
+    .left-panel-row.selected {
+      color: var(--left-panel-active-tab-text-color, inherit);
+      background: var(
+        --left-panel-active-tab-bg-color,
+        color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 14%, transparent)
+      );
     }
 
     .left-panel-row-label {

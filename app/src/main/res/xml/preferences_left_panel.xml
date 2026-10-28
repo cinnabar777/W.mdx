@@ -20,6 +20,18 @@
             app:title="Hide File Extension in Tabs"
             app:summary="Hide the extension in tab labels while keeping the full file name"
             app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_left_panel_active_tab_text_color"
+            app:title="Active Tab Text Color"
+            app:summary="Text color for the selected tab"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_left_panel_active_tab_bg_color"
+            app:title="Active Tab Background Color"
+            app:summary="Background color for the selected tab"
+            app:defaultValue="default" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Left Panel Appearance">

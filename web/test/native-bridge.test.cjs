@@ -640,6 +640,31 @@ test('panel and tab controls default enabled, and tab labels hide extensions', (
   assert.match(source, /if \(!tocPanelEnabled\) return/);
 });
 
+test('active tab text and background colors are configurable with existing defaults preserved', () => {
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_active_tab_text_color"[\s\S]*?app:defaultValue="default"/
+  );
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_active_tab_bg_color"[\s\S]*?app:defaultValue="default"/
+  );
+  assert.match(
+    resetPreferencesSource,
+    /key == "pref_left_panel_active_tab_text_color" \|\|\s*key == "pref_left_panel_active_tab_bg_color" -> "default"/
+  );
+  assert.match(
+    resetPreferencesSource,
+    /"pref_left_panel_active_tab_bg_color" -> \{[\s\S]*?ColorPickerDialog\.parseHexColor\(panelTextColor, fallback\)/
+  );
+  assert.match(
+    leftPanelHtml,
+    /\.left-panel-row\.selected\s*\{[\s\S]*?--left-panel-active-tab-text-color[\s\S]*?--left-panel-active-tab-bg-color/
+  );
+  assert.match(source, /--left-panel-active-tab-text-color/);
+  assert.match(source, /--left-panel-active-tab-bg-color/);
+});
+
 test('folder file actions keep open, open-in-new-tab, rename, and delete distinct', () => {
   assert.match(leftPanelSource, /\['Rename', \(\) => renameFolderFile\(entry\)\]/);
   assert.match(leftPanelSource, /\['Open in new tab', \(\) => openDocument\(entry\.uri\)\]/);

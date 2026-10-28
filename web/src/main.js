@@ -7888,6 +7888,14 @@ window.editorBridge = {
     setCssVar('--left-panel-bg-opacity', prefs.pref_left_panel_bg_opacity ?? 100, '%');
     setCssVar('--left-panel-border-color', androidArgbToCss(prefs.pref_left_panel_border_color));
     setCssVar('--left-panel-text-color', androidArgbToCss(prefs.pref_left_panel_text_color));
+    setCssVar(
+      '--left-panel-active-tab-text-color',
+      androidArgbToCss(prefs.pref_left_panel_active_tab_text_color)
+    );
+    setCssVar(
+      '--left-panel-active-tab-bg-color',
+      androidArgbToCss(prefs.pref_left_panel_active_tab_bg_color)
+    );
     setCssVar('--left-panel-font-size', prefs.pref_left_panel_font_size ?? 16, 'px');
     setCssVar('--left-panel-font-weight', prefs.pref_left_panel_font_weight ?? 600);
     setCssVar('--left-panel-row-spacing', prefs.pref_left_panel_row_spacing ?? 2, 'px');
