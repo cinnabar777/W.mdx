@@ -59,6 +59,11 @@
             app:summary="Italic text color, font weight, and custom font" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_underline"
+            app:title="Underline"
+            app:summary="Underline syntax, style, color, and thickness" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_links"
             app:title="Links"
             app:summary="Link text color, underline style, and thickness" />

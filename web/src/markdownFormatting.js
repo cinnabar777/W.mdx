@@ -1,5 +1,15 @@
 import { syntaxTree } from '@codemirror/language';
 
+const UNDERLINE_STYLE_MARKERS = Object.freeze({
+  solid: '',
+  dotted: '₀',
+  dashed: '₁',
+  double: '₂',
+  wavy: '₃'
+});
+const UNDERLINE_CYCLE = Object.keys(UNDERLINE_STYLE_MARKERS);
+let wmdxUnderlineSyntaxEnabled = false;
+
 const MARKDOWN_FORMATS = {
   bold: { node: 'StrongEmphasis', open: '**', close: '**' },
   italic: { node: 'Emphasis', open: '*', close: '*' },
@@ -120,6 +130,44 @@ function markerRanges(state, bounds = null) {
   return ranges;
 }
 
+export function setWmdxUnderlineSyntaxEnabled(enabled) {
+  wmdxUnderlineSyntaxEnabled = Boolean(enabled);
+}
+
+export function isWmdxUnderlineSyntaxEnabled() {
+  return wmdxUnderlineSyntaxEnabled;
+}
+
+export function getWmdxUnderlineSyntaxRanges(state, bounds = null) {
+  if (!wmdxUnderlineSyntaxEnabled || !state) return [];
+  const scanFrom = bounds?.from ?? 0;
+  const scanTo = bounds?.to ?? state.doc.length;
+  const source = state.doc.sliceString(scanFrom, scanTo);
+  const code = codeRanges(state, bounds);
+  const ranges = [];
+  const expression = /(?<![\w\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?!\w)/gu;
+  let match;
+  while ((match = expression.exec(source))) {
+    const wrapperFrom = scanFrom + match.index;
+    const wrapperTo = wrapperFrom + match[0].length;
+    if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
+    const style = Object.entries(UNDERLINE_STYLE_MARKERS)
+      .find(([, marker]) => marker === match[1])?.[0] ?? 'solid';
+    const open = `_${match[1]}`;
+    ranges.push({
+      wrapperFrom,
+      wrapperTo,
+      contentFrom: wrapperFrom + open.length,
+      contentTo: wrapperTo - 1,
+      open,
+      close: '_',
+      style,
+      kind: 'wmdx'
+    });
+  }
+  return ranges;
+}
+
 function expandedLineBounds(state, from, to) {
   return {
     from: state.doc.lineAt(from).from,
@@ -145,7 +193,24 @@ export function getMarkdownFormatRanges(view, formatName, bounds = null) {
         if (range) ranges.push(range);
       }
     });
+    if (formatName === 'italic' && wmdxUnderlineSyntaxEnabled) {
+      const customRanges = getWmdxUnderlineSyntaxRanges(state, scanBounds);
+      return ranges.filter(range => !customRanges.some(custom =>
+        custom.wrapperFrom === range.wrapperFrom &&
+        custom.wrapperTo === range.wrapperTo
+      ));
+    }
     return ranges;
+  }
+  if (formatName === 'underline') {
+    return [
+      ...htmlFormatRanges(state, format, scanBounds).map(range => ({
+        ...range,
+        style: 'solid',
+        kind: 'html'
+      })),
+      ...getWmdxUnderlineSyntaxRanges(state, scanBounds)
+    ].sort((a, b) => a.wrapperFrom - b.wrapperFrom);
   }
   if (format.htmlTag) return htmlFormatRanges(state, format, scanBounds);
   if (format.marker) return markerRanges(state, scanBounds);
@@ -169,25 +234,11 @@ export function isMarkdownFormatActive(view, formatName) {
   if (!view?.state) return false;
   const selection = view.state.selection.main;
   if (selection.empty) {
-    const tree = syntaxTree(view.state);
-    const format = MARKDOWN_FORMATS[formatName];
-    const ranges = [];
-    if (format?.node) {
-      for (const bias of [-1, 1]) {
-        let node = tree.resolveInner(selection.head, bias);
-        while (node) {
-          if (node.name === format.node) {
-            const range = rangeFromSyntaxNode(view.state, node, format);
-            if (range) ranges.push(range);
-          }
-          node = node.parent;
-        }
-      }
-    }
-    ranges.push(...getMarkdownFormatRanges(view, formatName, {
-      from: view.state.doc.lineAt(selection.head).from,
-      to: view.state.doc.lineAt(selection.head).to
-    }));
+    const line = view.state.doc.lineAt(selection.head);
+    const ranges = getMarkdownFormatRanges(view, formatName, {
+      from: line.from,
+      to: line.to
+    });
     return ranges.some(range =>
       selection.head >= range.contentFrom && selection.head < range.contentTo
     );
@@ -205,14 +256,30 @@ export function getMarkdownFormattingState(view) {
   const state = Object.fromEntries(
     Object.keys(MARKDOWN_FORMATS).map(formatName => [formatName, false])
   );
+  for (const style of UNDERLINE_CYCLE) {
+    state[`underline${style[0].toUpperCase()}${style.slice(1)}`] = false;
+  }
   const selection = view.state.selection.main;
   if (!selection.empty) {
     for (const formatName of Object.keys(MARKDOWN_FORMATS)) {
       state[formatName] = isMarkdownFormatActive(view, formatName);
     }
+    for (const range of getMarkdownFormatRanges(view, 'underline', {
+      from: selection.from,
+      to: selection.to
+    })) {
+      if (range.wrapperFrom <= selection.from && range.wrapperTo >= selection.to) {
+        state.underline = true;
+        const key = `underline${range.style[0].toUpperCase()}${range.style.slice(1)}`;
+        state[key] = true;
+      }
+    }
     return state;
   }
 
+  const line = view.state.doc.lineAt(selection.head);
+  const bounds = { from: line.from, to: line.to };
+  const customUnderlineRanges = getWmdxUnderlineSyntaxRanges(view.state, bounds);
   const tree = syntaxTree(view.state);
   for (const bias of [-1, 1]) {
     let node = tree.resolveInner(selection.head, bias);
@@ -220,6 +287,10 @@ export function getMarkdownFormattingState(view) {
       for (const [formatName, format] of Object.entries(MARKDOWN_FORMATS)) {
         if (!format.node || node.name !== format.node) continue;
         const range = rangeFromSyntaxNode(view.state, node, format);
+        if (formatName === 'italic' && customUnderlineRanges.some(custom =>
+          custom.wrapperFrom === range?.wrapperFrom &&
+          custom.wrapperTo === range?.wrapperTo
+        )) continue;
         if (range && selection.head >= range.contentFrom && selection.head < range.contentTo) {
           state[formatName] = true;
         }
@@ -228,8 +299,6 @@ export function getMarkdownFormattingState(view) {
     }
   }
 
-  const line = view.state.doc.lineAt(selection.head);
-  const bounds = { from: line.from, to: line.to };
   for (const [formatName, format] of Object.entries(MARKDOWN_FORMATS)) {
     if (!format.htmlTag) continue;
     state[formatName] = htmlFormatRanges(view.state, format, bounds).some(range =>
@@ -242,6 +311,14 @@ export function getMarkdownFormattingState(view) {
     for (const formatName of ['yellowMarker', 'greenMarker', 'pinkMarker', 'blueMarker']) {
       state[formatName] = true;
     }
+  }
+  const underline = getMarkdownFormatRanges(view, 'underline', bounds).find(range =>
+    selection.head >= range.contentFrom && selection.head < range.contentTo
+  );
+  if (underline) {
+    state.underline = true;
+    const key = `underline${underline.style[0].toUpperCase()}${underline.style.slice(1)}`;
+    state[key] = true;
   }
   return state;
 }
@@ -435,7 +512,7 @@ function applyFormatToSelection(view, selection, ranges, format) {
   return true;
 }
 
-export function toggleMarkdownFormat(view, formatName) {
+function toggleMarkdownFormatInternal(view, formatName) {
   if (!view?.state) return false;
   const format = MARKDOWN_FORMATS[formatName];
   if (!format || !format.open || !format.close) return false;
@@ -515,4 +592,176 @@ export function toggleMarkdownFormat(view, formatName) {
   });
   view.focus();
   return true;
+}
+
+function underlineDelimiters(style) {
+  const marker = UNDERLINE_STYLE_MARKERS[style];
+  return marker == null ? null : { open: `_${marker}`, close: '_' };
+}
+
+function wrapUnderlineSegment(text, style) {
+  if (!style) return { text, contentStart: 0, contentLength: text.length };
+  let leading = '';
+  let trailing = '';
+  let core = text;
+  while (core && /\s/.test(core[0])) {
+    leading += core[0];
+    core = core.slice(1);
+  }
+  while (core && /\s/.test(core[core.length - 1])) {
+    trailing = core[core.length - 1] + trailing;
+    core = core.slice(0, -1);
+  }
+  if (!core) return { text, contentStart: 0, contentLength: text.length };
+  const delimiters = underlineDelimiters(style);
+  return {
+    text: `${leading}${delimiters.open}${core}${delimiters.close}${trailing}`,
+    contentStart: leading.length + delimiters.open.length,
+    contentLength: core.length
+  };
+}
+
+function replaceUnderlineRange(view, range, selection, style) {
+  const doc = view.state.doc;
+  if (range.contentFrom === range.contentTo && selection.empty) {
+    const delimiters = style ? underlineDelimiters(style) : null;
+    const replacement = delimiters
+      ? `${delimiters.open}${delimiters.close}`
+      : '';
+    const cursor = range.wrapperFrom + (delimiters ? delimiters.open.length : 0);
+    view.dispatch({
+      changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: replacement },
+      selection: { anchor: cursor, head: cursor }
+    });
+    view.focus();
+    return true;
+  }
+  const oldText = doc.sliceString(range.contentFrom, range.contentTo);
+  const selectedFrom = Math.max(selection.from, range.contentFrom);
+  const selectedTo = Math.min(selection.to, range.contentTo);
+  const hasSelection = selectedTo > selectedFrom;
+  const leftText = hasSelection ? doc.sliceString(range.contentFrom, selectedFrom) : '';
+  const selectedText = hasSelection
+    ? doc.sliceString(selectedFrom, selectedTo)
+    : oldText;
+  const rightText = hasSelection ? doc.sliceString(selectedTo, range.contentTo) : '';
+  const previousStyle = range.kind === 'wmdx' ? range.style : 'solid';
+  const left = wrapUnderlineSegment(leftText, previousStyle);
+  const selected = wrapUnderlineSegment(selectedText, style);
+  const right = wrapUnderlineSegment(rightText, previousStyle);
+  const replacement = left.text + selected.text + right.text;
+  const anchorInSelection = hasSelection
+    ? Math.max(0, Math.min(selectedText.length, selection.anchor - selectedFrom))
+    : Math.max(0, Math.min(selectedText.length, selection.anchor - range.contentFrom));
+  const headInSelection = hasSelection
+    ? Math.max(0, Math.min(selectedText.length, selection.head - selectedFrom))
+    : Math.max(0, Math.min(selectedText.length, selection.head - range.contentFrom));
+  const newContentFrom = range.wrapperFrom + left.text.length + selected.contentStart;
+  const anchor = style
+    ? newContentFrom + anchorInSelection
+    : range.wrapperFrom + left.text.length + anchorInSelection;
+  const head = style
+    ? newContentFrom + headInSelection
+    : range.wrapperFrom + left.text.length + headInSelection;
+  view.dispatch({
+    changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: replacement },
+    selection: { anchor, head }
+  });
+  view.focus();
+  return true;
+}
+
+function emptyUnderlinePairAt(view, position) {
+  const doc = view.state.doc;
+  for (const style of UNDERLINE_CYCLE) {
+    const { open, close } = underlineDelimiters(style);
+    const wrapperFrom = position - open.length;
+    if (
+      wrapperFrom >= 0 &&
+      doc.sliceString(wrapperFrom, position) === open &&
+      doc.sliceString(position, position + close.length) === close
+    ) {
+      return {
+        wrapperFrom,
+        wrapperTo: position + close.length,
+        contentFrom: position,
+        contentTo: position,
+        open,
+        close,
+        style,
+        kind: 'wmdx'
+      };
+    }
+  }
+  return null;
+}
+
+export function toggleUnderlineFormat(view, action = 'cycle') {
+  if (!view?.state) return false;
+  if (!wmdxUnderlineSyntaxEnabled) {
+    return toggleMarkdownFormatInternal(view, 'underline');
+  }
+
+  const isCycle = action === 'cycle';
+  const requestedStyle = isCycle ? null : action;
+  if (!isCycle &&
+      !Object.prototype.hasOwnProperty.call(UNDERLINE_STYLE_MARKERS, requestedStyle)) {
+    return false;
+  }
+
+  const selection = view.state.selection.main;
+  const ranges = getMarkdownFormatRanges(view, 'underline');
+  const current = ranges.find(range => selection.empty
+    ? selection.head >= range.contentFrom && selection.head <= range.contentTo
+    : selection.from >= range.contentFrom && selection.to <= range.contentTo
+  ) || (selection.empty ? emptyUnderlinePairAt(view, selection.head) : null);
+  let style = requestedStyle;
+  if (isCycle) {
+    if (!current) {
+      style = 'solid';
+    } else {
+      const currentIndex = UNDERLINE_CYCLE.indexOf(current.style || 'solid');
+      style = currentIndex >= UNDERLINE_CYCLE.length - 1
+        ? null
+        : UNDERLINE_CYCLE[currentIndex + 1];
+    }
+  } else if (current?.style === requestedStyle) {
+    style = null;
+  }
+
+  if (current) return replaceUnderlineRange(view, current, selection, style);
+
+  if (selection.empty) {
+    const delimiters = underlineDelimiters(style || 'solid');
+    const position = selection.head;
+    const insertion = style
+      ? `${delimiters.open}${delimiters.close}`
+      : '';
+    view.dispatch({
+      changes: { from: position, to: position, insert: insertion },
+      selection: {
+        anchor: position + (style ? delimiters.open.length : 0),
+        head: position + (style ? delimiters.open.length : 0)
+      }
+    });
+    view.focus();
+    return true;
+  }
+
+  const selectedText = view.state.doc.sliceString(selection.from, selection.to);
+  const wrapped = wrapUnderlineSegment(selectedText, style);
+  view.dispatch({
+    changes: { from: selection.from, to: selection.to, insert: wrapped.text },
+    selection: {
+      anchor: selection.from + wrapped.contentStart,
+      head: selection.from + wrapped.contentStart + wrapped.contentLength
+    }
+  });
+  view.focus();
+  return true;
+}
+
+export function toggleMarkdownFormat(view, formatName) {
+  if (formatName === 'underline') return toggleUnderlineFormat(view, 'cycle');
+  return toggleMarkdownFormatInternal(view, formatName);
 }

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <androidx.preference.SwitchPreferenceCompat
+        app:key="pref_underline_use_wmdx_syntax"
+        app:title="Use Wmdx syntax"
+        app:summary="Use Wmdx underline markers instead of HTML underline"
+        app:defaultValue="true" />
+
+    <com.wmdx.markdownapp.ExpandablePreference
+        app:key="pref_underline_solid_section"
+        app:title="Solid"
+        app:summary="Syntax: _word_" />
+    <androidx.preference.PreferenceCategory
+        app:key="pref_underline_solid_controls"
+        app:title="">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_underline_solid_color"
+            app:title="Color"
+            app:summary="Underline color or default text color"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_underline_solid_thickness"
+            app:title="Thickness (px)"
+            app:min="1"
+            android:max="8"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+    </androidx.preference.PreferenceCategory>
+
+    <com.wmdx.markdownapp.ExpandablePreference
+        app:key="pref_underline_dotted_section"
+        app:title="Dotted"
+        app:summary="Syntax: _₀word_" />
+    <androidx.preference.PreferenceCategory
+        app:key="pref_underline_dotted_controls"
+        app:title="">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_underline_dotted_color"
+            app:title="Color"
+            app:summary="Underline color or default text color"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_underline_dotted_thickness"
+            app:title="Thickness (px)"
+            app:min="1"
+            android:max="8"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+    </androidx.preference.PreferenceCategory>
+
+    <com.wmdx.markdownapp.ExpandablePreference
+        app:key="pref_underline_dashed_section"
+        app:title="Dashed"
+        app:summary="Syntax: _₁word_" />
+    <androidx.preference.PreferenceCategory
+        app:key="pref_underline_dashed_controls"
+        app:title="">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_underline_dashed_color"
+            app:title="Color"
+            app:summary="Underline color or default text color"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_underline_dashed_thickness"
+            app:title="Thickness (px)"
+            app:min="1"
+            android:max="8"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+    </androidx.preference.PreferenceCategory>
+
+    <com.wmdx.markdownapp.ExpandablePreference
+        app:key="pref_underline_double_section"
+        app:title="Double"
+        app:summary="Syntax: _₂word_" />
+    <androidx.preference.PreferenceCategory
+        app:key="pref_underline_double_controls"
+        app:title="">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_underline_double_color"
+            app:title="Color"
+            app:summary="Underline color or default text color"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_underline_double_thickness"
+            app:title="Thickness (px)"
+            app:min="1"
+            android:max="8"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+    </androidx.preference.PreferenceCategory>
+
+    <com.wmdx.markdownapp.ExpandablePreference
+        app:key="pref_underline_wavy_section"
+        app:title="Wavy"
+        app:summary="Syntax: _₃word_" />
+    <androidx.preference.PreferenceCategory
+        app:key="pref_underline_wavy_controls"
+        app:title="">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_underline_wavy_color"
+            app:title="Color"
+            app:summary="Underline color or default text color"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_underline_wavy_thickness"
+            app:title="Thickness (px)"
+            app:min="1"
+            android:max="8"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+    </androidx.preference.PreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

@@ -33,7 +33,14 @@ import { toCssFontFamily } from './fontFamilies.js';
 import { setupLeftPanel } from './leftPanel.js';
 import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
-import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownFormatting.js';
+import {
+  getMarkdownFormattingState,
+  getMarkdownFormatRanges,
+  isWmdxUnderlineSyntaxEnabled,
+  setWmdxUnderlineSyntaxEnabled,
+  toggleMarkdownFormat,
+  toggleUnderlineFormat
+} from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
 import {
@@ -108,6 +115,11 @@ let customHotkeys = {
   bold: 'ctrl+b',
   italic: 'ctrl+i',
   underline: 'ctrl+u',
+  underlineSolid: '',
+  underlineDotted: '',
+  underlineDashed: '',
+  underlineDouble: '',
+  underlineWavy: '',
   strikethrough: 'ctrl+shift+x',
   code: 'ctrl+e',
   link: 'ctrl+k',
@@ -1564,6 +1576,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
     const doc = view.state.doc;
     const decorationRanges = view.visibleRanges;
+    const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
+      ? [...new Map(decorationRanges
+        .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
+        .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()]
+      : [...new Map(decorationRanges
+        .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
+        .filter(range => range.kind === 'html')
+        .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
 
     const getQuotedLineInfo = (lineNum) => {
       if (lineNum < 1 || lineNum > doc.lines) return null;
@@ -1848,7 +1868,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'Emphasis') {
-            builder.push(Decoration.mark({ class: 'cm-italic' }).range(node.from, node.to));
+            const isWmdxUnderline = underlineSyntaxRanges.some(range =>
+              range.wrapperFrom === node.from && range.wrapperTo === node.to
+            );
+            if (!isWmdxUnderline) {
+              builder.push(Decoration.mark({ class: 'cm-italic' }).range(node.from, node.to));
+            }
           }
 
           if (node.name === 'Strikethrough') {
@@ -2002,6 +2027,23 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
         }
       });
+    }
+
+    for (const range of underlineSyntaxRanges) {
+      const isRangeActive = !isPureWysiwyg && (
+        selection.empty
+          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
+          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
+      );
+      if (range.kind === 'html' && !isRangeActive) {
+        hideSyntax(range.wrapperFrom, range.contentFrom);
+        hideSyntax(range.contentTo, range.wrapperTo);
+      } else if (range.kind === 'wmdx' && range.style !== 'solid' && !isRangeActive) {
+        hideSyntax(range.wrapperFrom + 1, range.contentFrom);
+      }
+      builder.push(Decoration.mark({
+        class: `cm-underline cm-underline-${range.style}`
+      }).range(range.contentFrom, range.contentTo));
     }
 
     const activeFolds = foldedRanges(view.state);
@@ -4369,7 +4411,12 @@ function setupGroupedControlBar() {
         { icon: svgIcons.bold, title: 'Bold', command: 'bold', action: () => execCmd('bold') },
         { icon: svgIcons.italic, title: 'Italic', command: 'italic', action: () => execCmd('italic') },
         { icon: svgIcons.strikethrough, title: 'Strikethrough', command: 'strikethrough', action: () => execCmd('strikethrough') },
-        { icon: svgIcons.underline, title: 'Underline', command: 'underline', action: () => execCmd('underline') },
+        { icon: svgIcons.underline, title: 'Cycle Underline Style', command: 'underline', action: () => execCmd('underline') },
+        { icon: svgIcons.underlineSolid, title: 'Solid Underline', command: 'underlineSolid', action: () => execCmd('underlineSolid') },
+        { icon: svgIcons.underlineDotted, title: 'Dotted Underline', command: 'underlineDotted', action: () => execCmd('underlineDotted') },
+        { icon: svgIcons.underlineDashed, title: 'Dashed Underline', command: 'underlineDashed', action: () => execCmd('underlineDashed') },
+        { icon: svgIcons.underlineDouble, title: 'Double Underline', command: 'underlineDouble', action: () => execCmd('underlineDouble') },
+        { icon: svgIcons.underlineWavy, title: 'Wavy Underline', command: 'underlineWavy', action: () => execCmd('underlineWavy') },
         { icon: svgIcons.squareMarker('#ffe066'), title: 'Yellow Marker', command: 'yellowMarker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
         { icon: svgIcons.squareMarker('#a8f087'), title: 'Green Marker', command: 'greenMarker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
         { icon: svgIcons.squareMarker('#ff99c8'), title: 'Pink Marker', command: 'pinkMarker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
@@ -4679,7 +4726,12 @@ function createToolbarActionRegistry() {
       { id: 'bold', title: 'Bold', icon: svgIcons.bold, command: 'bold', action: () => execCmd('bold') },
       { id: 'italic', title: 'Italic', icon: svgIcons.italic, command: 'italic', action: () => execCmd('italic') },
       { id: 'strikethrough', title: 'Strikethrough', icon: svgIcons.strikethrough, command: 'strikethrough', action: () => execCmd('strikethrough') },
-      { id: 'underline', title: 'Underline', icon: svgIcons.underline, command: 'underline', action: () => execCmd('underline') },
+      { id: 'underline', title: 'Cycle Underline Style', icon: svgIcons.underline, command: 'underline', action: () => execCmd('underline') },
+      { id: 'underlineSolid', title: 'Solid Underline', icon: svgIcons.underlineSolid, command: 'underlineSolid', action: () => execCmd('underlineSolid') },
+      { id: 'underlineDotted', title: 'Dotted Underline', icon: svgIcons.underlineDotted, command: 'underlineDotted', action: () => execCmd('underlineDotted') },
+      { id: 'underlineDashed', title: 'Dashed Underline', icon: svgIcons.underlineDashed, command: 'underlineDashed', action: () => execCmd('underlineDashed') },
+      { id: 'underlineDouble', title: 'Double Underline', icon: svgIcons.underlineDouble, command: 'underlineDouble', action: () => execCmd('underlineDouble') },
+      { id: 'underlineWavy', title: 'Wavy Underline', icon: svgIcons.underlineWavy, command: 'underlineWavy', action: () => execCmd('underlineWavy') },
       { id: 'yellowMarker', title: 'Yellow Marker', icon: svgIcons.squareMarker('#ffe066'), command: 'yellowMarker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
       { id: 'greenMarker', title: 'Green Marker', icon: svgIcons.squareMarker('#a8f087'), command: 'greenMarker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
       { id: 'pinkMarker', title: 'Pink Marker', icon: svgIcons.squareMarker('#ff99c8'), command: 'pinkMarker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
@@ -5642,10 +5694,16 @@ function execCmd(cmdName, options) {
       cmdName === 'bold' ||
       cmdName === 'italic' ||
       cmdName === 'strikethrough' ||
-      cmdName === 'underline' ||
       cmdName === 'code'
     ) {
       toggleMarkdownFormat(view, cmdName);
+    } else if (cmdName === 'underline') {
+      toggleUnderlineFormat(view, 'cycle');
+    } else if (cmdName.startsWith('underline')) {
+      toggleUnderlineFormat(
+        view,
+        cmdName.slice('underline'.length).toLowerCase()
+      );
     } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
     else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
@@ -7179,6 +7237,11 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.bold)) { e.preventDefault(); execCmd('bold'); }
     else if (parseAndMatchHotkey(e, customHotkeys.italic)) { e.preventDefault(); execCmd('italic'); }
     else if (parseAndMatchHotkey(e, customHotkeys.underline)) { e.preventDefault(); execCmd('underline'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineSolid)) { e.preventDefault(); execCmd('underlineSolid'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineDotted)) { e.preventDefault(); execCmd('underlineDotted'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineDashed)) { e.preventDefault(); execCmd('underlineDashed'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineDouble)) { e.preventDefault(); execCmd('underlineDouble'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineWavy)) { e.preventDefault(); execCmd('underlineWavy'); }
     else if (parseAndMatchHotkey(e, customHotkeys.strikethrough)) { e.preventDefault(); execCmd('strikethrough'); }
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
@@ -7276,6 +7339,11 @@ window.editorBridge = {
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
     const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
+    setWmdxUnderlineSyntaxEnabled(prefs.pref_underline_use_wmdx_syntax !== false);
+    if (activeAdapter?.view) {
+      activeAdapter.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
+      refreshToolbarSyntaxState(activeAdapter.view);
+    }
 
     // Set a CSS custom property; only append a unit to a plain numeric value.
     const setCssVar = (varName, value, unit = '') => {
@@ -7438,6 +7506,17 @@ window.editorBridge = {
     setCssVar('--link-decoration-line', linkStyle === 'none' ? 'none' : 'underline');
     setCssVar('--link-decoration-style', linkStyle === 'none' ? 'solid' : linkStyle);
     setCssVar('--link-decoration-thickness', prefs.pref_link_underline_thickness, 'px');
+    for (const style of ['solid', 'dotted', 'dashed', 'double', 'wavy']) {
+      setCssVar(
+        `--underline-${style}-color`,
+        androidArgbToCss(prefs[`pref_underline_${style}_color`])
+      );
+      setCssVar(
+        `--underline-${style}-thickness`,
+        prefs[`pref_underline_${style}_thickness`],
+        'px'
+      );
+    }
     setCssVar('--code-color', prefs.pref_code_color);
     setCssVar('--code-bg-color', prefs.pref_code_bg_color);
     setCssVar('--code-padding', prefs.pref_code_padding, 'px');

@@ -512,6 +512,11 @@ object PreferenceResetHelper {
             key == "pref_hotkey_bold" -> "ctrl+b"
             key == "pref_hotkey_italic" -> "ctrl+i"
             key == "pref_hotkey_underline" -> "ctrl+u"
+            key == "pref_hotkey_underlineSolid" ||
+                key == "pref_hotkey_underlineDotted" ||
+                key == "pref_hotkey_underlineDashed" ||
+                key == "pref_hotkey_underlineDouble" ||
+                key == "pref_hotkey_underlineWavy" -> ""
             key == "pref_hotkey_strikethrough" -> "ctrl+shift+x"
             key == "pref_hotkey_code" -> "ctrl+e"
             key == "pref_hotkey_link" -> "ctrl+k"
@@ -541,6 +546,9 @@ object PreferenceResetHelper {
             key == "pref_hotkey_highlight_red_pen" -> "ctrl+alt+r"
             key == "pref_hotkey_highlight_green_pen" -> "ctrl+alt+shift+g"
             key == "pref_hotkey_highlight_remove" -> "ctrl+alt+x"
+            key == "pref_underline_use_wmdx_syntax" -> true
+            key.startsWith("pref_underline_") && key.endsWith("_color") -> "default"
+            key.startsWith("pref_underline_") && key.endsWith("_thickness") -> 1
             else -> null
         }
     }

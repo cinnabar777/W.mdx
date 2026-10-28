@@ -116,6 +116,11 @@
             app:defaultValue="ctrl+shift+c" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_underline"
+            app:title="Cycle Underline Style"
+            app:defaultValue="ctrl+u" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_outdent"
             app:title="Decrease Indent"
             app:defaultValue="shift+tab" />
@@ -181,9 +186,29 @@
             app:defaultValue="ctrl+shift+l" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
-            app:key="pref_hotkey_underline"
-            app:title="Underline"
-            app:defaultValue="ctrl+u" />
+            app:key="pref_hotkey_underlineDashed"
+            app:title="Underline Dashed"
+            app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_underlineDotted"
+            app:title="Underline Dotted"
+            app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_underlineDouble"
+            app:title="Underline Double"
+            app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_underlineSolid"
+            app:title="Underline Solid"
+            app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_underlineWavy"
+            app:title="Underline Wavy"
+            app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Headings">

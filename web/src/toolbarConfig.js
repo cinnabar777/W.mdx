@@ -25,7 +25,9 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
     'bulletedList', 'numberedList', 'todoList', 'indent', 'outdent'
   ]),
   format: Object.freeze([
-    'bold', 'italic', 'strikethrough', 'underline',
+    'bold', 'italic', 'strikethrough',
+    'underline', 'underlineSolid', 'underlineDotted', 'underlineDashed',
+    'underlineDouble', 'underlineWavy',
     'yellowMarker', 'greenMarker', 'pinkMarker', 'blueMarker', 'redPen', 'greenPen'
   ]),
   table: Object.freeze(['insertTable', ...TABLE_ACTIONS.map(item => item.id)]),

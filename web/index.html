@@ -1560,6 +1560,40 @@
       text-decoration-line: var(--italic-decoration-line, none) !important;
       text-decoration-style: var(--italic-decoration-style, solid) !important;
     }
+    .cm-content .cm-underline,
+    .cm-content u {
+      font-style: normal !important;
+      text-decoration-line: underline !important;
+      text-decoration-color: var(--cm-underline-color, currentColor) !important;
+      text-decoration-thickness: var(--cm-underline-thickness, 1px) !important;
+      text-underline-offset: 0.08em !important;
+    }
+    .cm-content .cm-underline-solid,
+    .cm-content u {
+      --cm-underline-color: var(--underline-solid-color, currentColor);
+      --cm-underline-thickness: var(--underline-solid-thickness, 1px);
+      text-decoration-style: solid !important;
+    }
+    .cm-content .cm-underline-dotted {
+      --cm-underline-color: var(--underline-dotted-color, currentColor);
+      --cm-underline-thickness: var(--underline-dotted-thickness, 1px);
+      text-decoration-style: dotted !important;
+    }
+    .cm-content .cm-underline-dashed {
+      --cm-underline-color: var(--underline-dashed-color, currentColor);
+      --cm-underline-thickness: var(--underline-dashed-thickness, 1px);
+      text-decoration-style: dashed !important;
+    }
+    .cm-content .cm-underline-double {
+      --cm-underline-color: var(--underline-double-color, currentColor);
+      --cm-underline-thickness: var(--underline-double-thickness, 1px);
+      text-decoration-style: double !important;
+    }
+    .cm-content .cm-underline-wavy {
+      --cm-underline-color: var(--underline-wavy-color, currentColor);
+      --cm-underline-thickness: var(--underline-wavy-thickness, 1px);
+      text-decoration-style: wavy !important;
+    }
     .cm-content .cm-inline-code {
       font-family: var(--code-font-family, monospace) !important;
       color: var(--code-color, #ff80ab) !important;

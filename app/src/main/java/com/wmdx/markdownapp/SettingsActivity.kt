@@ -934,6 +934,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_paragraph" -> StylingParagraphFragment()
             "pref_styling_page_bold" -> StylingBoldFragment()
             "pref_styling_page_italic" -> StylingItalicFragment()
+            "pref_styling_page_underline" -> StylingUnderlineFragment()
             "pref_styling_page_links" -> StylingLinksFragment()
             "pref_styling_page_inline_code" -> StylingInlineCodeFragment()
             "pref_styling_page_footnotes" -> StylingFootnotesFragment()
@@ -1056,6 +1057,50 @@ class StylingBoldFragment : StylingInlineElementFragment() {
 
 class StylingItalicFragment : StylingInlineElementFragment() {
     override val categoryKey = "styling_inline_italic"
+}
+
+class StylingUnderlineFragment : StylingSettingsFragment() {
+    private val underlineSectionKeys = listOf(
+        "solid", "dotted", "dashed", "double", "wavy"
+    )
+
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_underline, rootKey)
+        for (style in underlineSectionKeys) {
+            val section = findPreference<ExpandablePreference>(
+                "pref_underline_${style}_section"
+            ) ?: continue
+            section.setOnPreferenceClickListener {
+                section.isExpanded = !section.isExpanded
+                refreshUnderlineSections()
+                true
+            }
+        }
+        refreshUnderlineSections()
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (key == "pref_underline_use_wmdx_syntax") refreshUnderlineSections()
+    }
+
+    private fun refreshUnderlineSections() {
+        val enabled = findPreference<androidx.preference.SwitchPreferenceCompat>(
+            "pref_underline_use_wmdx_syntax"
+        )?.isChecked == true
+        for (style in underlineSectionKeys) {
+            val section = findPreference<ExpandablePreference>(
+                "pref_underline_${style}_section"
+            )
+            val controls = findPreference<androidx.preference.PreferenceCategory>(
+                "pref_underline_${style}_controls"
+            )
+            section?.isVisible = enabled
+            controls?.isVisible = enabled && section?.isExpanded == true
+        }
+    }
 }
 
 class StylingLinksFragment : StylingInlineElementFragment() {
@@ -1331,7 +1376,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "bulletedList", "numberedList", "todoList", "indent", "outdent"
             ),
             "format" to listOf(
-                "bold", "italic", "strikethrough", "underline", "yellowMarker", "greenMarker",
+                "bold", "italic", "strikethrough", "underline", "underlineSolid",
+                "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
+                "yellowMarker", "greenMarker",
                 "pinkMarker", "blueMarker", "redPen", "greenPen"
             ),
             "table" to listOf(
@@ -1352,7 +1399,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
             "wrap", "line-numbers",
             "bulletedList", "numberedList", "todoList", "indent", "outdent",
-            "bold", "italic", "strikethrough", "underline",
+            "bold", "italic", "strikethrough", "underline", "underlineSolid",
+            "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
             "yellowMarker", "greenMarker", "pinkMarker", "blueMarker", "redPen", "greenPen",
             "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
