@@ -44,13 +44,21 @@ object WindowRegistry {
             }.getOrNull() ?: continue
             normalizedUris.put(normalized)
         }
+        val identityHashes = (0 until minOf(normalizedUris.length(), 16))
+            .map { index ->
+                WindowPolicy.fingerprintUri(
+                    WindowPolicy.uriIdentity(normalizedUris.optString(index))
+                )
+            }
+            .joinToString(",")
+        val omittedCount = (normalizedUris.length() - 16).coerceAtLeast(0)
         prefs(activity).edit()
             .putString("tabs_${activity.taskId}", normalizedUris.toString())
             .apply()
         AppDiagnostics.record(
             activity,
             "window_tabs_registered",
-            "task=${activity.taskId} count=${normalizedUris.length()}"
+            "task=${activity.taskId} count=${normalizedUris.length()} identities=$identityHashes${if (omittedCount > 0) ",more=$omittedCount" else ""}"
         )
     }
 
@@ -85,12 +93,19 @@ object WindowRegistry {
         val normalizedUri = uri?.normalizeScheme()?.toString()
         var matchedTaskId: Int? = null
         var matchedBy = "none"
+        var matchedFocusUri: String? = null
         val task = manager.appTasks.firstOrNull {
             val info = it.taskInfo
             @Suppress("DEPRECATION")
             val taskId = info.id
             val currentUri = current(context, taskId)?.normalizeScheme()?.toString()
             val tabUris = openTabUris(context, taskId)
+            val matchingTabUri = normalizedUri?.let { requested ->
+                tabUris.firstOrNull { tabUri ->
+                    WindowPolicy.sameDocumentUri(requested, tabUri)
+                }
+            }
+            val currentMatches = WindowPolicy.sameDocumentUri(normalizedUri, currentUri)
             val matched = WindowPolicy.matches(
                 launcherRequest = launcher,
                 requestedUri = normalizedUri,
@@ -102,29 +117,33 @@ object WindowRegistry {
             )
             if (matched) {
                 matchedTaskId = taskId
+                matchedFocusUri = matchingTabUri ?: currentUri
                 matchedBy = when {
                     launcher -> "launcher"
-                    normalizedUri == currentUri -> "current"
-                    normalizedUri in tabUris -> "tab"
+                    matchingTabUri != null && normalizedUri == matchingTabUri -> "tab"
+                    matchingTabUri != null -> "tab_document_identity"
+                    currentMatches && normalizedUri == currentUri -> "current"
+                    currentMatches -> "current_document_identity"
                     else -> "other"
                 }
             }
             matched
         }
         AppDiagnostics.record(context, "window_route_lookup",
-            "requested=${WindowPolicy.fingerprintUri(normalizedUri)} count=${manager.appTasks.size} match=${matchedTaskId ?: "none"} via=$matchedBy")
+            "requested=${WindowPolicy.fingerprintUri(normalizedUri)} identity=${WindowPolicy.fingerprintUri(WindowPolicy.uriIdentity(normalizedUri))} count=${manager.appTasks.size} match=${matchedTaskId ?: "none"} via=$matchedBy")
         if (task == null) return false
         val taskId = matchedTaskId
-        if (normalizedUri != null && taskId != null) {
+        val targetUri = matchedFocusUri
+        if (targetUri != null && taskId != null) {
             prefs(context).edit()
-                .putString("pending_focus_$taskId", normalizedUri)
+                .putString("pending_focus_$taskId", targetUri)
                 .apply()
         }
         task.moveToFront()
-        if (normalizedUri != null && taskId != null) {
+        if (targetUri != null && taskId != null) {
             val activity = liveActivities[taskId]?.get()
             if (activity != null) {
-                activity.requestExistingDocumentFocus(normalizedUri)
+                activity.requestExistingDocumentFocus(targetUri)
                 prefs(context).edit().remove("pending_focus_$taskId").apply()
             }
         }
