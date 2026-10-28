@@ -22,6 +22,10 @@ const leftPanelSettingsXml = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/res/xml/preferences_left_panel.xml'),
   'utf8'
 );
+const tocSettingsXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_toc.xml'),
+  'utf8'
+);
 const resetPreferencesSource = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
   'utf8'
@@ -598,6 +602,53 @@ test('left panel search checkboxes use list typography and todo checkbox colors'
   assert.match(leftPanelHtml, /border:\s*1\.5px solid var\(--todo-border-color/);
   assert.match(leftPanelHtml, /background:\s*var\(--todo-accent-color/);
   assert.match(leftPanelHtml, /border:\s*solid var\(--todo-checkmark-color/);
+});
+
+test('search options stay in one row', () => {
+  assert.match(leftPanelHtml, /class="left-panel-search-options"[\s\S]*?id="left-panel-search-whole-words"[\s\S]*?id="left-panel-search-contents"[\s\S]*?id="left-panel-search-markdown-only"/);
+  assert.match(leftPanelHtml, /\.left-panel-search-options\s*\{[\s\S]*?display:\s*flex/);
+  assert.match(leftPanelHtml, /\.left-panel-search-options\s*\{[\s\S]*?flex-wrap:\s*nowrap/);
+});
+
+test('panel and tab controls default enabled, and tab labels hide extensions', () => {
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_enabled"[\s\S]*?app:defaultValue="true"/
+  );
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_tabs_enabled"[\s\S]*?app:defaultValue="true"/
+  );
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_hide_file_extension"[\s\S]*?app:defaultValue="true"/
+  );
+  assert.match(
+    tocSettingsXml,
+    /app:key="pref_toc_panel_enabled"[\s\S]*?app:defaultValue="true"/
+  );
+  assert.match(
+    resetPreferencesSource,
+    /key == "pref_left_panel_hide_file_extension" -> true/
+  );
+  assert.match(
+    leftPanelSource,
+    /prefs\?\.pref_left_panel_tabs_enabled !== false/
+  );
+  assert.match(leftPanelSource, /displayTabName\(tab\.name\)/);
+  assert.match(leftPanelSource, /if \(!panelEnabled && panel\.classList\.contains\('open'\)\) closePanel\(\)/);
+  assert.match(source, /if \(!tocPanelEnabled\) return/);
+});
+
+test('folder file actions keep open, open-in-new-tab, rename, and delete distinct', () => {
+  assert.match(leftPanelSource, /\['Rename', \(\) => renameFolderFile\(entry\)\]/);
+  assert.match(leftPanelSource, /\['Open in new tab', \(\) => openDocument\(entry\.uri\)\]/);
+  assert.match(leftPanelSource, /\['Open', \(\) => openDocument\(entry\.uri, \{ replaceActive: true \}\)\]/);
+  assert.match(leftPanelSource, /deleteTabFile\(openTab \|\| \{/);
+  assert.match(
+    mainActivitySource,
+    /fun readLeftPanelDocumentForNavigation[\s\S]*?documentHistoryStack\.push\(it\)[\s\S]*?documentForwardStack\.clear\(\)/
+  );
 });
 
 test('tab group membership persists alongside file tab state', () => {

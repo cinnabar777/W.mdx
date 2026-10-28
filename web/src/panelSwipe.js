@@ -31,6 +31,7 @@ export function setupPanelSwipe({
   side,
   windowObject = window,
   isOpen,
+  isEnabled = () => true,
   onOpen,
   onClose
 }) {
@@ -70,6 +71,10 @@ export function setupPanelSwipe({
   };
 
   const onTouchStart = (event) => {
+    if (!isEnabled()) {
+      gesture = null;
+      return;
+    }
     if (event.touches?.length !== 1) {
       gesture = null;
       return;
@@ -110,6 +115,10 @@ export function setupPanelSwipe({
 
   const onTouchMove = (event) => {
     if (!gesture || event.touches?.length !== 1) return;
+    if (!isEnabled()) {
+      finish(null, true);
+      return;
+    }
     const touch = event.touches[0];
     const deltaX = touch.clientX - gesture.startX;
     const deltaY = touch.clientY - gesture.startY;

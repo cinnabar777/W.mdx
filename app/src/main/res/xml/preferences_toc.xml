@@ -2,6 +2,12 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <com.wmdx.markdownapp.ResetSwitchPreference
+        app:key="pref_toc_panel_enabled"
+        app:title="Enable Right Panel"
+        app:summary="Show the table of contents panel and allow edge-swipe access"
+        app:defaultValue="true" />
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="TOC Panel">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_toc_panel_width"

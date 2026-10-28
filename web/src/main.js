@@ -87,6 +87,7 @@ let floatingToolbarConfig = normalizeBottomToolbarConfig(null);
 let floatingToolbarSelectionFrame = 0;
 let floatingToolbarEnabled = false;
 let tocHideFileExtension = false;
+let tocPanelEnabled = true;
 
 let customHotkeys = {
   new: 'ctrl+n',
@@ -6523,6 +6524,8 @@ function setupTocGestureAndPanel(scrollDOM) {
   const documentStatsRow = document.querySelector('#toc-document-stats');
   const tocSearchInput = document.querySelector('#toc-search-input');
   if (!panel || !overlay) return () => {};
+  panel.classList.toggle('panel-disabled', !tocPanelEnabled);
+  overlay.classList.toggle('panel-disabled', !tocPanelEnabled);
 
   let pendingRefreshTimer = null;
   let tocScrollFrame = null;
@@ -6582,6 +6585,7 @@ function setupTocGestureAndPanel(scrollDOM) {
   };
 
   const openToc = () => {
+    if (!tocPanelEnabled) return;
     window.leftPanelController?.close?.();
     if (activeAdapter?.view?.contentDOM) {
       activeAdapter.view.contentDOM.blur();
@@ -6693,6 +6697,7 @@ function setupTocGestureAndPanel(scrollDOM) {
     side: 'right',
     windowObject: win,
     isOpen: () => panel.classList.contains('open'),
+    isEnabled: () => tocPanelEnabled,
     onOpen: openToc,
     onClose: closeToc
   });
@@ -7850,6 +7855,13 @@ window.editorBridge = {
     }
     tocExpandLevelsPerTap = nextTocExpandLevelsPerTap;
     tocHideFileExtension = prefs.pref_toc_hide_file_extension === true;
+    const nextTocPanelEnabled = prefs.pref_toc_panel_enabled !== false;
+    if (tocPanelEnabled && !nextTocPanelEnabled) window.closeTocPanel?.();
+    tocPanelEnabled = nextTocPanelEnabled;
+    document.querySelector('#toc-panel')
+      ?.classList.toggle('panel-disabled', !tocPanelEnabled);
+    document.querySelector('#toc-overlay')
+      ?.classList.toggle('panel-disabled', !tocPanelEnabled);
     refreshTocDocumentNameField();
     setCssVar('--toc-panel-bg-color', androidArgbToCss(prefs.pref_toc_panel_bg_color));
     setCssVar('--toc-panel-bg-opacity', prefs.pref_toc_panel_bg_opacity ?? 100, '%');

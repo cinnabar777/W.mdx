@@ -293,6 +293,9 @@ export function setupLeftPanel() {
   let searchPending = false;
   let folderRootsLoaded = false;
   let showSearchPath = false;
+  let panelEnabled = true;
+  let tabsEnabled = true;
+  let hideTabFileExtension = true;
   let lastSearchResults = [];
   let lastSearchTruncated = false;
 
@@ -359,6 +362,7 @@ export function setupLeftPanel() {
   };
 
   const openPanel = () => {
+    if (!panelEnabled) return;
     window.closeTocPanel?.();
     window.editorBridge?.dismissToolbarPopups?.();
     updateToolbarClearance();
@@ -400,6 +404,7 @@ export function setupLeftPanel() {
     for (const id of SECTION_ORDER) {
       const section = sectionElements.get(id);
       if (!section) continue;
+      section.hidden = id === 'tabs' && !tabsEnabled;
       const expanded = wantedExpanded[id];
       section.setAttribute('aria-expanded', String(expanded));
       section.querySelector('.left-panel-section-header')
@@ -415,28 +420,30 @@ export function setupLeftPanel() {
     const stackStyle = getComputedStyle(stack);
     const padding = Number.parseFloat(stackStyle.paddingTop || '0') +
       Number.parseFloat(stackStyle.paddingBottom || '0');
-    const sections = SECTION_ORDER.map((id) => {
-      const section = sectionElements.get(id);
-      const header = section?.querySelector('.left-panel-section-header');
-      const body = section?.querySelector('.left-panel-section-body');
-      const border = section
-        ? Number.parseFloat(getComputedStyle(section).borderTopWidth || '0')
-        : 0;
-      return {
-        id,
-        expanded: wantedExpanded[id],
-        contentHeight: wantedExpanded[id] ? body?.scrollHeight || 0 : 0,
-        headerHeight: (header?.offsetHeight || 46) + border,
-        compactHeight: keepOpen[id]
-          ? (id === 'search' ? 112 : 100)
-          : (id === 'search' ? 96 : id === 'folders' ? 48 : 56)
-      };
-    });
+    const sections = SECTION_ORDER
+      .filter((id) => id !== 'tabs' || tabsEnabled)
+      .map((id) => {
+        const section = sectionElements.get(id);
+        const header = section?.querySelector('.left-panel-section-header');
+        const body = section?.querySelector('.left-panel-section-body');
+        const border = section
+          ? Number.parseFloat(getComputedStyle(section).borderTopWidth || '0')
+          : 0;
+        return {
+          id,
+          expanded: wantedExpanded[id],
+          contentHeight: wantedExpanded[id] ? body?.scrollHeight || 0 : 0,
+          headerHeight: (header?.offsetHeight || 46) + border,
+          compactHeight: keepOpen[id]
+            ? (id === 'search' ? 112 : 100)
+            : (id === 'search' ? 96 : id === 'folders' ? 48 : 56)
+        };
+      });
     const headerHeight = sections.reduce((total, section) => total + section.headerHeight, 0);
     const bodyHeights = allocatePanelBodyHeights(
       stack.clientHeight - padding - headerHeight,
       sections,
-      activeSection
+      sections.some((section) => section.id === activeSection) ? activeSection : null
     );
     for (const { id } of sections) {
       const section = sectionElements.get(id);
@@ -485,6 +492,12 @@ export function setupLeftPanel() {
 
   const currentMarkdown = () => window.editorBridge?.getMarkdown?.() || '';
   const activeTab = () => tabs.find((tab) => tab.id === activeTabId) || null;
+  const displayTabName = (name) => {
+    const fullName = String(name || 'Untitled');
+    if (!hideTabFileExtension) return fullName;
+    const extensionIndex = fullName.lastIndexOf('.');
+    return extensionIndex > 0 ? fullName.slice(0, extensionIndex) : fullName;
+  };
 
   const syncActiveTab = () => {
     if (switchingTab || loadedTabId !== activeTabId) return;
@@ -706,7 +719,90 @@ export function setupLeftPanel() {
     return tab;
   };
 
-  const openDocument = (uri) => {
+  const openDocumentInActiveTab = async (uri) => {
+    const current = activeTab();
+    if (current?.uri === uri) return true;
+    const existingTarget = tabs.find((tab) => tab.uri === uri && tab.id !== current?.id);
+    if (!native?.readLeftPanelDocumentForNavigation || !native?.activateLeftPanelTab) {
+      folderStatus.textContent = 'Opening a file in the active tab is unavailable in this app build.';
+      return false;
+    }
+
+    if (loadedTabId === activeTabId) syncActiveTab();
+    if (current?.dirty) {
+      if (current.uri) {
+        if (!persistDirtyTab(current)) return false;
+      } else if (!existingTarget) {
+        const discard = await showDialog({
+          title: 'Discard unsaved tab?',
+          message: 'Opening another file will replace this untitled tab. Its unsaved text will be lost.',
+          actions: [
+            { label: 'Cancel', value: false },
+            { label: 'Discard and Open', value: true, primary: true }
+          ]
+        });
+        if (!discard) return false;
+      }
+    }
+
+    window.editorBridge?.persistCurrentScrollPosition?.();
+    const documentData = parseBridgeResult(
+      native.readLeftPanelDocumentForNavigation(uri),
+      {}
+    );
+    if (!documentData?.ok) {
+      folderStatus.textContent = documentData?.error || 'Could not open this file.';
+      return false;
+    }
+
+    const target = tabs.find((tab) => tab.uri === documentData.uri) || current;
+    if (!target) {
+      folderStatus.textContent = 'There is no active tab to open this file in.';
+      return false;
+    }
+    const activated = native.activateLeftPanelTab(
+      documentData.uri,
+      documentData.name || target.name,
+      documentData.markdown || '',
+      false,
+      Boolean(documentData.isTextPack),
+      Boolean(documentData.hasBom),
+      Boolean(documentData.hasCrlf),
+      false
+    );
+    if (!activated) {
+      folderStatus.textContent = 'Could not activate this file in the current window.';
+      return false;
+    }
+
+    const oldId = target.id;
+    restoredTabIds.delete(oldId);
+    checkedRestoredTabIds.delete(oldId);
+    unverifiedRestoredTabIds.delete(oldId);
+    target.id = documentData.uri;
+    target.uri = documentData.uri;
+    target.name = documentData.name || target.name;
+    target.markdown = documentData.markdown || '';
+    target.dirty = false;
+    target.emptyContentExplicitlyEdited = false;
+    target.isTextPack = Boolean(documentData.isTextPack);
+    target.hasBom = Boolean(documentData.hasBom);
+    target.hasCrlf = Boolean(documentData.hasCrlf);
+    target.documentSessionId = native.getCurrentDocumentSessionId?.() || null;
+    activeTabId = target.id;
+    loadedTabId = target.id;
+    switchingTab = true;
+    window.editorBridge?.setMarkdown?.(target.markdown);
+    switchingTab = false;
+    persistTabs();
+    renderTabs();
+    return true;
+  };
+
+  const openDocument = (uri, { replaceActive = false } = {}) => {
+    if (replaceActive || !tabsEnabled) {
+      return openDocumentInActiveTab(uri);
+    }
     if (!native?.readLeftPanelDocument) {
       folderStatus.textContent = 'File access is unavailable in this app build.';
       return;
@@ -739,7 +835,20 @@ export function setupLeftPanel() {
 
     if (!entry.isDirectory) {
       row.tabIndex = 0;
-      row.addEventListener('click', () => openDocument(entry.uri));
+      const didLongPress = bindLongPress(row, (x, y) => {
+        showFolderFileMenu(entry, x, y);
+      });
+      row.addEventListener('click', (event) => {
+        if (didLongPress()) {
+          event.preventDefault();
+          return;
+        }
+        openDocument(entry.uri);
+      });
+      row.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        showFolderFileMenu(entry, event.clientX, event.clientY);
+      });
       return;
     }
 
@@ -1113,7 +1222,7 @@ export function setupLeftPanel() {
     label.type = 'button';
     label.className = 'left-panel-row-label left-panel-tab-label';
     label.style.cssText = 'border:0;background:transparent;color:inherit;text-align:left;font:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-    label.textContent = `${tab.pinned ? '◆ ' : ''}${tab.name}${tab.dirty ? ' •' : ''}`;
+    label.textContent = `${tab.pinned ? '◆ ' : ''}${displayTabName(tab.name)}${tab.dirty ? ' •' : ''}`;
     label.title = tab.name;
     const didLongPress = bindLongPress(label, (x, y) => {
       showTabMenu(tab, x, y);
@@ -1254,6 +1363,40 @@ export function setupLeftPanel() {
         closeTabs(tabs.filter((item) => item.id !== tab.id && !item.pinned).map((item) => item.id));
       }],
       ...(tab.uri ? [['Delete file', () => deleteTabFile(tab)]] : [])
+    ];
+    actions.forEach(([label, action]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.setAttribute('role', 'menuitem');
+      button.addEventListener('click', () => {
+        hideTabMenu();
+        action();
+      });
+      tabMenu.appendChild(button);
+    });
+    tabMenu.classList.add('open');
+    const rect = tabMenu.getBoundingClientRect();
+    tabMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+    tabMenu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+  };
+
+  const showFolderFileMenu = (entry, x = 16, y = 120) => {
+    if (!tabMenu) return;
+    tabMenu.replaceChildren();
+    const actions = [
+      ['Rename', () => renameFolderFile(entry)],
+      ['Delete', () => {
+        const openTab = tabs.find((tab) => tab.uri === entry.uri);
+        deleteTabFile(openTab || {
+          id: entry.uri,
+          uri: entry.uri,
+          name: entry.name || 'Untitled',
+          dirty: false
+        });
+      }],
+      ...(tabsEnabled ? [['Open in new tab', () => openDocument(entry.uri)]] : []),
+      ['Open', () => openDocument(entry.uri, { replaceActive: true })]
     ];
     actions.forEach(([label, action]) => {
       const button = document.createElement('button');
@@ -1436,6 +1579,7 @@ export function setupLeftPanel() {
       ]
     });
     if (!result?.text?.trim()) return;
+    const oldId = tab.id;
     const renamed = parseBridgeResult(
       native.renameLeftPanelDocument(tab.uri, result.text.trim()),
       {}
@@ -1451,17 +1595,51 @@ export function setupLeftPanel() {
     tab.uri = renamed.uri || tab.uri;
     tab.id = tab.uri;
     tab.name = renamed.name || result.text.trim();
-    native.activateLeftPanelTab?.(
-      tab.uri,
-      tab.name,
-      tab.markdown,
-      tab.dirty,
-      tab.isTextPack,
-      tab.hasBom,
-      tab.hasCrlf,
-      tab.emptyContentExplicitlyEdited
+    if (activeTabId === oldId) activeTabId = tab.id;
+    if (loadedTabId === oldId) loadedTabId = tab.id;
+    renderTabs();
+    persistTabs();
+    folderRootsLoaded = false;
+    loadFolderRoots();
+    runSearch();
+  };
+
+  const renameFolderFile = async (entry) => {
+    if (!entry?.uri || !native?.renameLeftPanelDocument) return;
+    const result = await showDialog({
+      title: 'Rename file',
+      inputValue: entry.name || 'Untitled',
+      actions: [
+        { label: 'Cancel', value: null },
+        { label: 'Rename', value: 'rename', primary: true }
+      ]
+    });
+    if (!result?.text?.trim()) return;
+    const renamed = parseBridgeResult(
+      native.renameLeftPanelDocument(entry.uri, result.text.trim()),
+      {}
     );
-    activeTabId = tab.id;
+    if (!renamed?.ok) {
+      await showDialog({
+        title: 'Could not rename file',
+        message: renamed?.error || 'The storage provider did not rename this file.',
+        actions: [{ label: 'OK', value: true, primary: true }]
+      });
+      return;
+    }
+
+    const tab = tabs.find((item) => item.uri === entry.uri);
+    if (tab) {
+      const oldId = tab.id;
+      restoredTabIds.delete(oldId);
+      checkedRestoredTabIds.delete(oldId);
+      unverifiedRestoredTabIds.delete(oldId);
+      tab.uri = renamed.uri || tab.uri;
+      tab.id = tab.uri;
+      tab.name = renamed.name || result.text.trim();
+      if (activeTabId === oldId) activeTabId = tab.id;
+      if (loadedTabId === oldId) loadedTabId = tab.id;
+    }
     renderTabs();
     persistTabs();
     folderRootsLoaded = false;
@@ -1658,6 +1836,34 @@ export function setupLeftPanel() {
     const context = parseBridgeResult(native?.getLeftPanelContext?.(), {});
     if (!context || typeof context !== 'object') return;
     const current = activeTab();
+    if (!tabsEnabled) {
+      const existing = context.uri
+        ? tabs.find((tab) => tab.uri === context.uri)
+        : null;
+      const target = existing || current;
+      if (!target) return;
+      const oldId = target.id;
+      target.id = context.uri ||
+        `untitled:${native?.getCurrentDocumentSessionId?.() || Date.now()}`;
+      target.uri = context.uri || null;
+      target.name = context.name || 'Untitled';
+      target.markdown = String(markdown ?? context.markdown ?? '');
+      target.dirty = Boolean(context.dirty);
+      target.isTextPack = Boolean(context.isTextPack);
+      target.hasBom = Boolean(context.hasBom);
+      target.hasCrlf = Boolean(context.hasCrlf);
+      target.emptyContentExplicitlyEdited =
+        Boolean(context.emptyContentExplicitlyEdited);
+      target.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
+      restoredTabIds.delete(oldId);
+      checkedRestoredTabIds.delete(oldId);
+      unverifiedRestoredTabIds.delete(oldId);
+      activeTabId = target.id;
+      loadedTabId = target.id;
+      renderTabs();
+      persistTabs();
+      return;
+    }
     const replaceEmptyPlaceholder = context.uri &&
       current &&
       !current.uri &&
@@ -1678,8 +1884,17 @@ export function setupLeftPanel() {
       activeTabId = current.id;
     } else if (!current || current.uri !== (context.uri || null)) {
       const existing = context.uri ? tabs.find((tab) => tab.uri === context.uri) : null;
-      if (existing) activeTabId = existing.id;
-      else {
+      if (existing) {
+        existing.name = context.name || existing.name;
+        existing.markdown = String(markdown ?? context.markdown ?? '');
+        existing.dirty = Boolean(context.dirty);
+        existing.isTextPack = Boolean(context.isTextPack);
+        existing.hasBom = Boolean(context.hasBom);
+        existing.hasCrlf = Boolean(context.hasCrlf);
+        existing.emptyContentExplicitlyEdited =
+          Boolean(context.emptyContentExplicitlyEdited);
+        activeTabId = existing.id;
+      } else {
         const newTab = {
           id: context.uri || `untitled:${Date.now()}`,
           uri: context.uri || null,
@@ -1782,6 +1997,13 @@ export function setupLeftPanel() {
       }
     },
     applyPreferences(prefs) {
+      panelEnabled = prefs?.pref_left_panel_enabled !== false;
+      panel.classList.toggle('panel-disabled', !panelEnabled);
+      overlay.classList.toggle('panel-disabled', !panelEnabled);
+      if (!panelEnabled && panel.classList.contains('open')) closePanel();
+
+      tabsEnabled = prefs?.pref_left_panel_tabs_enabled !== false;
+      hideTabFileExtension = prefs?.pref_left_panel_hide_file_extension !== false;
       for (const id of SECTION_ORDER) {
         const enabled = prefs?.[`pref_left_panel_${id}_keep_open`] === true;
         if (enabled && !keepOpen[id]) {
@@ -1791,6 +2013,7 @@ export function setupLeftPanel() {
       }
       persistPanelState();
       updateSectionVisibility();
+      renderTabs();
       updateToolbarClearance();
       const nextShowSearchPath = prefs?.pref_left_panel_show_search_path === true;
       if (showSearchPath !== nextShowSearchPath) {
@@ -1835,6 +2058,7 @@ export function setupLeftPanel() {
     overlay,
     side: 'left',
     isOpen: () => panel.classList.contains('open'),
+    isEnabled: () => panelEnabled,
     onOpen: openPanel,
     onClose: closePanel
   });

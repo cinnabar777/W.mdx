@@ -400,6 +400,17 @@
       transition: none !important;
     }
 
+    #left-panel.panel-disabled,
+    #left-panel-overlay.panel-disabled,
+    #toc-panel.panel-disabled,
+    #toc-overlay.panel-disabled {
+      display: none !important;
+    }
+
+    #left-panel .left-panel-section[hidden] {
+      display: none !important;
+    }
+
     .left-panel-section-header,
     .left-panel-icon-button {
       border: 0;
@@ -596,12 +607,29 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 4px 2px 8px;
+      flex: 0 0 auto;
+      padding: 4px 0 8px;
+      white-space: nowrap;
       font-family: var(--list-font-family, inherit);
       font-size: var(--list-font-size, var(--left-panel-font-size, 16px));
       font-weight: var(--list-font-weight, 400);
       letter-spacing: var(--list-letter-spacing, normal);
       color: var(--list-text-color, var(--left-panel-text-color, var(--text-color)));
+    }
+
+    .left-panel-search-options {
+      display: flex;
+      align-items: center;
+      gap: clamp(6px, 2vw, 12px);
+      flex-wrap: nowrap;
+      max-width: 100%;
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+    }
+
+    .left-panel-search-options::-webkit-scrollbar {
+      display: none;
     }
 
     .left-panel-search-option input[type="checkbox"] {
@@ -2190,18 +2218,20 @@
             <input id="left-panel-search-input" type="search" placeholder="Search files" enterkeyhint="search" autocomplete="off" aria-label="Search file names or contents" />
             <button id="left-panel-search-clear" class="left-panel-icon-button" type="button" aria-label="Clear search">×</button>
           </div>
-          <label class="left-panel-search-option">
-            <input id="left-panel-search-whole-words" type="checkbox" />
-            <span>word</span>
-          </label>
-          <label class="left-panel-search-option">
-            <input id="left-panel-search-contents" type="checkbox" />
-            <span>in files</span>
-          </label>
-          <label class="left-panel-search-option">
-            <input id="left-panel-search-markdown-only" type="checkbox" />
-            <span>*.md</span>
-          </label>
+          <div class="left-panel-search-options">
+            <label class="left-panel-search-option">
+              <input id="left-panel-search-whole-words" type="checkbox" />
+              <span>word</span>
+            </label>
+            <label class="left-panel-search-option">
+              <input id="left-panel-search-contents" type="checkbox" />
+              <span>in files</span>
+            </label>
+            <label class="left-panel-search-option">
+              <input id="left-panel-search-markdown-only" type="checkbox" />
+              <span>*.md</span>
+            </label>
+          </div>
           <div id="left-panel-search-status" class="left-panel-muted" aria-live="polite"></div>
           <div id="left-panel-search-results" class="left-panel-list" role="list"></div>
         </div>

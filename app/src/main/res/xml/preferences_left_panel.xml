@@ -2,6 +2,26 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <com.wmdx.markdownapp.ResetSwitchPreference
+        app:key="pref_left_panel_enabled"
+        app:title="Enable Left Panel"
+        app:summary="Show the left workspace panel and allow edge-swipe access"
+        app:defaultValue="true" />
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Tabs">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_left_panel_tabs_enabled"
+            app:title="Enable Tabs"
+            app:summary="Keep files open in separate tabs instead of navigating in one tab"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_left_panel_hide_file_extension"
+            app:title="Hide File Extension in Tabs"
+            app:summary="Hide the extension in tab labels while keeping the full file name"
+            app:defaultValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Left Panel Appearance">
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_left_panel_width"

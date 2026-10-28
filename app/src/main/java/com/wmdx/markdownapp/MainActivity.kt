@@ -2287,6 +2287,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun readLeftPanelDocumentForNavigation(uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
+            val document = this@MainActivity.readLeftPanelDocument(uri)
+            if (document.optBoolean("ok") && currentFileUri != uri) {
+                currentFileUri?.let { documentHistoryStack.push(it) }
+                documentForwardStack.clear()
+            }
+            return document.toString()
+        }
+
+        @JavascriptInterface
         fun searchLeftPanelFiles(
             query: String,
             includeContents: Boolean,

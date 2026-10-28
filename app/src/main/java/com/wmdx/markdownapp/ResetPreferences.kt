@@ -391,6 +391,7 @@ object PreferenceResetHelper {
             key == "pref_toolbar_floating_corner_radius" -> 24
             key == "pref_app_theme" -> "amoled"
             key == "pref_toc_panel_width" -> 80
+            key == "pref_toc_panel_enabled" -> true
             key == "pref_toc_default_level" -> 2
             key == "pref_toc_expand_levels_per_tap" -> 1
             key == "pref_toc_hide_file_extension" -> false
@@ -415,6 +416,9 @@ object PreferenceResetHelper {
             key == "pref_toc_row_spacing" -> 4
             key == "pref_toc_indent_spacing" -> 12
             key == "pref_left_panel_width" -> 80
+            key == "pref_left_panel_enabled" ||
+                key == "pref_left_panel_tabs_enabled" -> true
+            key == "pref_left_panel_hide_file_extension" -> true
             key == "pref_left_panel_bg_color" -> "default"
             key == "pref_left_panel_bg_opacity" -> 100
             key == "pref_left_panel_border_color" -> "default"

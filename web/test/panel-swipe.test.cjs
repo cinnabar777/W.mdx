@@ -134,6 +134,25 @@ test('a completed edge swipe opens the panel after following the finger', async 
   assert.equal(harness.panel.classList.contains('open'), true);
 });
 
+test('a disabled panel ignores edge swipes', async () => {
+  const { setupPanelSwipe } = await panelSwipePromise;
+  const harness = createSwipeHarness();
+  setupPanelSwipe({
+    ...harness,
+    side: 'left',
+    isOpen: () => harness.panel.classList.contains('open'),
+    isEnabled: () => false,
+    onOpen: () => harness.calls.open++,
+    onClose: () => harness.calls.close++
+  });
+  harness.start(10);
+  harness.move(120);
+  harness.end(120);
+  assert.deepEqual(harness.calls, { open: 0, close: 0 });
+  assert.equal(harness.panel.classList.contains('open'), false);
+  assert.equal(harness.panel.style.transform, undefined);
+});
+
 test('reversing the finger during a swipe moves the panel back with it', async () => {
   const { setupPanelSwipe } = await panelSwipePromise;
   const harness = createSwipeHarness();
