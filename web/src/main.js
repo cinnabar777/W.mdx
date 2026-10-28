@@ -3612,6 +3612,7 @@ export const resetRenderedVerticalGoal = EditorView.domEventHandlers({
 class CodeMirrorAdapter {
   constructor() {
     this.mode = currentEditorMode;
+    this.documentSessionId = window.AndroidNative?.getCurrentDocumentSessionId?.() || null;
     this.view = null;
     this.lineWrapCompartment = new Compartment();
     this.lineNumbersCompartment = new Compartment();
@@ -3701,7 +3702,7 @@ class CodeMirrorAdapter {
     });
   }
 
-  persistScrollPosition() {
+  persistScrollPosition(documentSessionId = this.documentSessionId) {
     if (this.scrollPersistTimer !== null) {
       clearTimeout(this.scrollPersistTimer);
       this.scrollPersistTimer = null;
@@ -3712,7 +3713,8 @@ class CodeMirrorAdapter {
     if (typeof bridge?.onScrollChanged !== 'function') return;
 
     bridge.onScrollChanged(
-      Math.max(0, Math.round(this.view.scrollDOM.scrollTop))
+      Math.max(0, Math.round(this.view.scrollDOM.scrollTop)),
+      documentSessionId
     );
   }
 
@@ -3722,9 +3724,10 @@ class CodeMirrorAdapter {
       clearTimeout(this.scrollPersistTimer);
     }
 
+    const documentSessionId = this.documentSessionId;
     this.scrollPersistTimer = setTimeout(() => {
       this.scrollPersistTimer = null;
-      this.persistScrollPosition();
+      this.persistScrollPosition(documentSessionId);
     }, 250);
     if (this.scrollPersistTimer && typeof this.scrollPersistTimer.unref === 'function') {
       this.scrollPersistTimer.unref();
@@ -3813,9 +3816,13 @@ class CodeMirrorAdapter {
             this.revision++;
             window.leftPanelController?.onEditorChanged?.(update.state.doc.toString());
             if (window.AndroidNative && typeof window.AndroidNative.onContentChanged === 'function') {
-              window.AndroidNative.onContentChanged(update.state.doc.toString(), this.revision);
+              window.AndroidNative.onContentChanged(
+                update.state.doc.toString(),
+                this.revision,
+                this.documentSessionId
+              );
             } else if (window.AndroidNative && typeof window.AndroidNative.onDirtyStateChanged === 'function') {
-              window.AndroidNative.onDirtyStateChanged(true, this.revision);
+              window.AndroidNative.onDirtyStateChanged(true, this.revision, this.documentSessionId);
             }
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
@@ -3985,6 +3992,12 @@ class CodeMirrorAdapter {
 
   setMarkdown(text) {
     if (!this.view) return;
+    if (this.scrollPersistTimer !== null) {
+      clearTimeout(this.scrollPersistTimer);
+      this.scrollPersistTimer = null;
+    }
+    this.documentSessionId =
+      window.AndroidNative?.getCurrentDocumentSessionId?.() || this.documentSessionId;
     this.isProgrammatic = true;
     const currentDoc = this.view.state.doc.toString();
     if (currentDoc !== text) {
@@ -8074,10 +8087,19 @@ window.editorBridge = {
         console.error('Error setting markdown:', e);
       }
       window.leftPanelController?.onNativeDocumentLoaded?.(markdownText || '');
+      window.AndroidNative?.restoreNativeCursorAndScrollState?.(
+        activeAdapter.documentSessionId
+      );
       setTimeout(() => { isProgrammaticChange = false; }, 50);
     } else {
       pendingMarkdown = markdownText;
     }
+  },
+  persistCurrentScrollPosition: function() {
+    activeAdapter?.persistScrollPosition?.();
+  },
+  dismissToolbarPopups: function() {
+    hidePopupStrip();
   },
   toggleLineWrap: function() {
     isLineWrapEnabled = !isLineWrapEnabled;

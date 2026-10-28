@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             WindowRegistry.register(this, value)
         }
     private var currentFileName: String = "Untitled.md"
-    private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
+    @Volatile private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
     @Volatile private var isDirty: Boolean = false
     private var isEditorReady: Boolean = false
     private var currentEditorMode: String = "rich_text"
@@ -473,6 +473,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             currentFileUri?.let { uri ->
                 val cachedMarkdownContent = latestMarkdownContent
                 if (cachedMarkdownContent != null) {
+                    if (currentRevision == 0L) {
+                        AppDiagnostics.record(this, "save_skipped_unmodified_session")
+                        return
+                    }
                     saveFileToUri(uri, cachedMarkdownText = cachedMarkdownContent)
                 } else {
                     saveFileToUri(uri)
@@ -1147,6 +1151,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         currentFileUri?.let { documentHistoryStack.push(it) }
         documentForwardStack.clear()
         currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+        currentRevision = 0
         currentTextPackSession = null
         latestMarkdownContent = ""
         currentFileUri = null
@@ -1289,6 +1294,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(this, "textpack_read_done", "chars=${text.length} lines=$lines ms=$readMs")
 
                 currentTextPackSession = session
+                currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+                currentRevision = 0
                 latestMarkdownContent = text
                 currentFileUri = uri
                 currentFileName = fileName
@@ -1299,7 +1306,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 val escaped = JSONObjectWrapper.quote(text)
                 webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
-                    restoreCursorAndScrollState()
                     webView.post {
                         webView.requestFocus()
                         webView.requestLayout()
@@ -1314,6 +1320,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     val content = reader.readText()
                     hasBom = content.startsWith("\uFEFF")
                     hasCrlf = content.contains("\r\n")
+                    currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+                    currentRevision = 0
                     latestMarkdownContent = content
                     val lines = content.lineSequence().count()
                     val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
@@ -1328,7 +1336,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                     val escaped = JSONObjectWrapper.quote(content)
                     webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
-                        restoreCursorAndScrollState()
                         webView.post {
                             webView.requestFocus()
                             webView.requestLayout()
@@ -1349,8 +1356,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val fileName = currentFileName
         if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val key = "doc_$fileName"
-        val savedScroll = prefs.getInt("cursor_scroll_$key", 0)
+        val key = "cursor_scroll_${currentDocumentHistoryKey()}"
+        val legacyKey = "cursor_scroll_doc_$fileName"
+        val savedScroll = prefs.getInt(key, prefs.getInt(legacyKey, 0))
+        if (!prefs.contains(key) && prefs.contains(legacyKey)) {
+            prefs.edit().putInt(key, savedScroll).apply()
+        }
         webView.evaluateJavascript("window.editorBridge.setScrollPosition($savedScroll);", null)
     }
 
@@ -1646,7 +1657,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 currentFileName = targetFileName
                 latestMarkdownContent = markdownText
                 isDirty = false
+                currentRevision = 0
                 updateTitle()
+                val escapedSavedUri = JSONObjectWrapper.quote(uri.toString())
+                webView.evaluateJavascript(
+                    "window.leftPanelController?.onNativeDocumentSaved?.($escapedSavedUri);",
+                    null
+                )
                 val escapedOldUri = JSONObjectWrapper.quote(oldUriString)
                 val escapedUri = JSONObjectWrapper.quote(uri.toString())
                 val escapedName = JSONObjectWrapper.quote(targetFileName)
@@ -2089,6 +2106,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (uri == currentFileUri) {
                 latestMarkdownContent = markdown
                 isDirty = false
+                currentRevision = 0
                 runOnUiThread { updateTitle() }
             }
             org.json.JSONObject().put("ok", true)
@@ -2100,6 +2118,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     inner class WebAppInterface {
         @JavascriptInterface
         fun getLeftPanelContext(): String = leftPanelContextJson()
+
+        @JavascriptInterface
+        fun getCurrentDocumentSessionId(): String = currentDocumentSessionId
+
+        @JavascriptInterface
+        fun isAutoSaveOnLeaveEnabled(): Boolean =
+            PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                .getBoolean("pref_auto_save_on_leave", true)
 
         @JavascriptInterface
         fun listLeftPanelFolderRoots(): String {
@@ -2187,7 +2213,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (uri != null && !hasLeftPanelDocumentAccess(uri)) return false
             currentFileUri = uri
             currentFileName = name.ifBlank { "Untitled.md" }
-            currentDocumentSessionId = uri?.toString() ?: java.util.UUID.randomUUID().toString()
+            currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+            currentRevision = 0
             currentTextPackSession = if (isTextPack && uri != null) {
                 runCatching { TextPackManager.openTextPack(this@MainActivity, uri) }.getOrNull()
             } else null
@@ -2276,7 +2303,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun onDirtyStateChanged(dirty: Boolean, revision: Long) {
+        fun onDirtyStateChanged(dirty: Boolean, revision: Long, documentSessionId: String?) {
+            if (documentSessionId != currentDocumentSessionId) return
             runOnUiThread {
                 currentRevision = revision
                 if (isDirty != dirty) {
@@ -2287,7 +2315,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun onContentChanged(markdownText: String?, revision: Long = 0) {
+        fun onContentChanged(markdownText: String?, revision: Long, documentSessionId: String?) {
+            if (documentSessionId != currentDocumentSessionId) {
+                AppDiagnostics.record(this@MainActivity, "stale_document_edit_ignored")
+                return
+            }
             if (markdownText != null) {
                 latestMarkdownContent = markdownText
             }
@@ -2350,10 +2382,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
                 pendingSharedText?.let { text ->
                     pendingSharedText = null
+                    currentFileUri = null
+                    currentFileName = getString(R.string.untitled_document)
+                    currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+                    currentRevision = 0
+                    currentTextPackSession = null
+                    latestMarkdownContent = text
+                    isDirty = text.isNotEmpty()
                     val escaped = JSONObjectWrapper.quote(text)
                     webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
-                        latestMarkdownContent = text
-                        isDirty = text.isNotEmpty()
                         updateTitle()
                     }
                 }
@@ -2541,19 +2578,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun restoreNativeCursorAndScrollState() {
+        fun restoreNativeCursorAndScrollState(documentSessionId: String?) {
             runOnUiThread {
+                if (documentSessionId != currentDocumentSessionId) return@runOnUiThread
                 restoreCursorAndScrollState()
             }
         }
 
         @JavascriptInterface
-        fun onScrollChanged(scrollTop: Int) {
+        fun onScrollChanged(scrollTop: Int, documentSessionId: String?) {
+            if (documentSessionId != currentDocumentSessionId) return
             val fileName = currentFileName
             if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
-            val key = "doc_$fileName"
+            val key = "cursor_scroll_${currentDocumentHistoryKey()}"
             val prefs = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
-            prefs.edit().putInt("cursor_scroll_$key", scrollTop).apply()
+            prefs.edit().putInt(key, scrollTop).apply()
         }
     }
 

@@ -58,7 +58,11 @@ export function setupLeftPanel() {
     ? LAUNCHER_TABS_KEY
     : `${TASK_TABS_KEY_PREFIX}${windowContext.taskId ?? 'untracked'}`;
   const tabs = [];
+  const restoredTabIds = new Set();
+  const checkedRestoredTabIds = new Set();
+  const unverifiedRestoredTabIds = new Set();
   let activeTabId = null;
+  let loadedTabId = null;
   let switchingTab = false;
   let tabsPersistTimer = null;
   let windowClosing = false;
@@ -125,6 +129,7 @@ export function setupLeftPanel() {
 
   const openPanel = () => {
     window.closeTocPanel?.();
+    window.editorBridge?.dismissToolbarPopups?.();
     updateToolbarClearance();
     if (document.activeElement === searchInput) searchInput.blur();
     native?.hideKeyboard?.();
@@ -230,24 +235,87 @@ export function setupLeftPanel() {
   const activeTab = () => tabs.find((tab) => tab.id === activeTabId) || null;
 
   const syncActiveTab = () => {
+    if (loadedTabId !== activeTabId) return;
     const tab = activeTab();
     if (!tab) return;
     tab.markdown = currentMarkdown();
     persistTabs();
   };
 
-  const refreshBlankTabFromStorage = (tab) => {
-    if (!tab?.uri || tab.dirty || tab.markdown) return;
+  const refreshRestoredTabFromStorage = (tab) => {
+    if (
+      !tab?.uri ||
+      !restoredTabIds.has(tab.id) ||
+      checkedRestoredTabIds.has(tab.id)
+    ) return;
     const documentData = parseBridgeResult(
       native?.readLeftPanelDocument?.(tab.uri),
       null
     );
     if (!documentData?.ok || typeof documentData.markdown !== 'string') return;
-    tab.name = documentData.name || tab.name;
-    tab.markdown = documentData.markdown;
-    tab.isTextPack = Boolean(documentData.isTextPack);
-    tab.hasBom = Boolean(documentData.hasBom);
-    tab.hasCrlf = Boolean(documentData.hasCrlf);
+    checkedRestoredTabIds.add(tab.id);
+    const diskMarkdown = documentData.markdown;
+    const matchesDisk = tab.markdown === diskMarkdown;
+    if (!tab.dirty || matchesDisk || (
+      tab.markdown === '' &&
+      !tab.emptyContentExplicitlyEdited &&
+      diskMarkdown !== ''
+    )) {
+      if (tab.markdown !== diskMarkdown && diskMarkdown) {
+        folderStatus.textContent = `Restored ${tab.name} from its saved file.`;
+      }
+      tab.name = documentData.name || tab.name;
+      tab.markdown = diskMarkdown;
+      tab.dirty = false;
+      tab.emptyContentExplicitlyEdited = false;
+      tab.isTextPack = Boolean(documentData.isTextPack);
+      tab.hasBom = Boolean(documentData.hasBom);
+      tab.hasCrlf = Boolean(documentData.hasCrlf);
+      unverifiedRestoredTabIds.delete(tab.id);
+      return;
+    }
+    if (tab.dirty && !matchesDisk) {
+      unverifiedRestoredTabIds.add(tab.id);
+      folderStatus.textContent =
+        `Unsaved changes for ${tab.name} were kept. Edit or save this tab to apply them.`;
+    }
+  };
+
+  const autoSaveDirtyTab = (tab) => {
+    if (!tab?.dirty) return false;
+    refreshRestoredTabFromStorage(tab);
+    if (
+      !tab?.uri ||
+      unverifiedRestoredTabIds.has(tab.id) ||
+      native?.isAutoSaveOnLeaveEnabled?.() !== true ||
+      (tab.markdown === '' && !tab.emptyContentExplicitlyEdited)
+    ) return false;
+    const saved = parseBridgeResult(
+      native?.saveLeftPanelTab?.(
+        tab.uri,
+        tab.name,
+        tab.markdown,
+        tab.isTextPack,
+        tab.hasBom,
+        tab.hasCrlf
+      ),
+      {}
+    );
+    if (!saved?.ok) {
+      folderStatus.textContent = saved?.error || `Could not auto-save ${tab.name}.`;
+      return false;
+    }
+    tab.dirty = false;
+    tab.emptyContentExplicitlyEdited = false;
+    persistTabs();
+    return true;
+  };
+
+  const autoSaveDirtyTabsOnLeave = () => {
+    if (loadedTabId === activeTabId) syncActiveTab();
+    for (const tab of tabs) autoSaveDirtyTab(tab);
+    renderTabs();
+    persistTabsNow();
   };
 
   const addTab = (documentData, { activate = true, persist = true } = {}) => {
@@ -264,6 +332,7 @@ export function setupLeftPanel() {
       markdown: documentData.markdown || '',
       dirty: Boolean(documentData.dirty),
       pinned: false,
+      emptyContentExplicitlyEdited: Boolean(documentData.emptyContentExplicitlyEdited),
       isTextPack: Boolean(documentData.isTextPack),
       hasBom: Boolean(documentData.hasBom),
       hasCrlf: Boolean(documentData.hasCrlf)
@@ -278,8 +347,12 @@ export function setupLeftPanel() {
   const activateTab = (id) => {
     const next = tabs.find((tab) => tab.id === id);
     if (!next) return;
-    syncActiveTab();
-    refreshBlankTabFromStorage(next);
+    if (id !== activeTabId && loadedTabId === activeTabId) {
+      window.editorBridge?.persistCurrentScrollPosition?.();
+      syncActiveTab();
+      autoSaveDirtyTab(activeTab());
+    }
+    refreshRestoredTabFromStorage(next);
     const previousTabId = activeTabId;
     activeTabId = next.id;
     switchingTab = true;
@@ -310,6 +383,7 @@ export function setupLeftPanel() {
       return;
     }
     window.editorBridge?.setMarkdown?.(next.markdown);
+    loadedTabId = next.id;
     renderTabs();
     persistTabs();
     requestAnimationFrame(() => {
@@ -337,6 +411,7 @@ export function setupLeftPanel() {
       tab.hasCrlf
     );
     window.editorBridge?.setMarkdown?.(tab.markdown || '');
+    loadedTabId = tab.id;
     renderTabs();
     persistTabs();
     requestAnimationFrame(() => {
@@ -688,6 +763,7 @@ export function setupLeftPanel() {
           return;
         }
         tab.dirty = false;
+        tab.emptyContentExplicitlyEdited = false;
       }
     }
     for (const id of closeIds) {
@@ -808,17 +884,20 @@ export function setupLeftPanel() {
       if (!savedTab || typeof savedTab.id !== 'string' || tabs.some((tab) => tab.id === savedTab.id)) {
         continue;
       }
-      tabs.push({
+      const restoredTab = {
         id: savedTab.id,
         uri: typeof savedTab.uri === 'string' && savedTab.uri ? savedTab.uri : null,
         name: typeof savedTab.name === 'string' ? savedTab.name : 'Untitled',
         markdown: typeof savedTab.markdown === 'string' ? savedTab.markdown : '',
         dirty: Boolean(savedTab.dirty),
         pinned: Boolean(savedTab.pinned),
+        emptyContentExplicitlyEdited: Boolean(savedTab.emptyContentExplicitlyEdited),
         isTextPack: Boolean(savedTab.isTextPack),
         hasBom: Boolean(savedTab.hasBom),
         hasCrlf: Boolean(savedTab.hasCrlf)
-      });
+      };
+      tabs.push(restoredTab);
+      if (restoredTab.uri) restoredTabIds.add(restoredTab.id);
     }
     const emptyUntitledTabs = tabs.filter((tab) =>
       !tab.uri &&
@@ -862,11 +941,15 @@ export function setupLeftPanel() {
   renderTabs();
 
   const onEditorChanged = (markdown) => {
-    if (switchingTab) return;
+    if (switchingTab || loadedTabId !== activeTabId) return;
     const tab = activeTab();
     if (!tab) return;
     tab.markdown = String(markdown ?? '');
     tab.dirty = true;
+    tab.emptyContentExplicitlyEdited = tab.markdown === '';
+    restoredTabIds.delete(tab.id);
+    checkedRestoredTabIds.delete(tab.id);
+    unverifiedRestoredTabIds.delete(tab.id);
     persistTabs();
     renderTabs();
   };
@@ -892,6 +975,7 @@ export function setupLeftPanel() {
       current.hasBom = Boolean(context.hasBom);
       current.hasCrlf = Boolean(context.hasCrlf);
       activeTabId = current.id;
+      current.emptyContentExplicitlyEdited = false;
     } else if (!current || current.uri !== (context.uri || null)) {
       const existing = context.uri ? tabs.find((tab) => tab.uri === context.uri) : null;
       if (existing) activeTabId = existing.id;
@@ -903,6 +987,7 @@ export function setupLeftPanel() {
           markdown: String(markdown ?? context.markdown ?? ''),
           dirty: Boolean(context.dirty),
           pinned: false,
+          emptyContentExplicitlyEdited: false,
           isTextPack: Boolean(context.isTextPack),
           hasBom: Boolean(context.hasBom),
           hasCrlf: Boolean(context.hasCrlf)
@@ -914,7 +999,9 @@ export function setupLeftPanel() {
       current.name = context.name || current.name;
       current.markdown = String(markdown ?? context.markdown ?? '');
       current.dirty = Boolean(context.dirty);
+      if (current.markdown || !current.dirty) current.emptyContentExplicitlyEdited = false;
     }
+    loadedTabId = activeTabId;
     renderTabs();
     persistTabs();
   };
@@ -966,15 +1053,30 @@ export function setupLeftPanel() {
       const tab = tabs.find((item) => item.id === activeTabId) ||
         tabs.find((item) => item.uri === oldUri);
       if (!tab) return;
+      restoredTabIds.delete(tab.id);
+      checkedRestoredTabIds.delete(tab.id);
+      unverifiedRestoredTabIds.delete(tab.id);
       tab.uri = newUri || tab.uri;
       tab.id = tab.uri || tab.id;
       tab.name = name || tab.name;
       tab.dirty = false;
+      tab.emptyContentExplicitlyEdited = false;
       const context = parseBridgeResult(native?.getLeftPanelContext?.(), {});
       tab.isTextPack = Boolean(context?.isTextPack);
       tab.hasBom = Boolean(context?.hasBom);
       tab.hasCrlf = Boolean(context?.hasCrlf);
       activeTabId = tab.id;
+      persistTabs();
+      renderTabs();
+    },
+    onNativeDocumentSaved(uri) {
+      const tab = tabs.find((item) => item.uri === uri);
+      if (!tab) return;
+      tab.dirty = false;
+      tab.emptyContentExplicitlyEdited = false;
+      restoredTabIds.delete(tab.id);
+      checkedRestoredTabIds.delete(tab.id);
+      unverifiedRestoredTabIds.delete(tab.id);
       persistTabs();
       renderTabs();
     },
@@ -1012,11 +1114,12 @@ export function setupLeftPanel() {
   window.leftPanelController = controller;
   controller.activateTab = activateTab;
   controller.renderTabs = renderTabs;
-  window.addEventListener('pagehide', persistTabsNow);
+  window.addEventListener('pagehide', autoSaveDirtyTabsOnLeave);
   window.addEventListener('resize', () => controller.refreshLayout());
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') persistTabsNow();
+    if (document.visibilityState === 'hidden') autoSaveDirtyTabsOnLeave();
   });
+  window.visualViewport?.addEventListener('resize', () => controller.refreshLayout());
 
   updateSectionVisibility();
   if (wantedExpanded[activeSection] !== true) {
