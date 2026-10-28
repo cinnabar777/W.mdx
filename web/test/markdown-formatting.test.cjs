@@ -45,8 +45,8 @@ test('inline formatting state follows the syntax at the cursor and selection', a
   view.state = view.state.update({
     selection: EditorSelection.cursor(doc.indexOf('marked') + 2)
   }).state;
-  assert.equal(isMarkdownFormatActive(view, 'yellowMarker'), true);
-  assert.equal(isMarkdownFormatActive(view, 'blueMarker'), true);
+  assert.equal(isMarkdownFormatActive(view, 'highlightYellow'), true);
+  assert.equal(isMarkdownFormatActive(view, 'highlightBlue'), false);
 });
 
 test('the same inline toolbar action toggles formatting instead of nesting it', async () => {
@@ -134,9 +134,7 @@ test('every inline format removes its existing wrapper when toggled again', asyn
     { name: 'italic', doc: '*text*', start: 1, end: 5, plain: 'text' },
     { name: 'strikethrough', doc: '~~text~~', start: 2, end: 6, plain: 'text' },
     { name: 'code', doc: '`text`', start: 1, end: 5, plain: 'text' },
-    { name: 'underline', doc: '<u>text</u>', start: 3, end: 7, plain: 'text' },
-    { name: 'yellowMarker', doc: '==text==', start: 2, end: 6, plain: 'text' },
-    { name: 'redPen', doc: '<span style="color:red">text</span>', start: 24, end: 28, plain: 'text' }
+    { name: 'underline', doc: '<u>text</u>', start: 3, end: 7, plain: 'text' }
   ];
 
   for (const format of formats) {
@@ -155,6 +153,46 @@ test('every inline format removes its existing wrapper when toggled again', asyn
     toggleMarkdownFormat(view, format.name);
     assert.equal(view.state.doc.toString(), format.plain, `${format.name} removes its existing syntax`);
   }
+});
+
+test('highlighter and pen cycle actions apply every custom style then remove it', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { toggleWmdxColorFormat, isMarkdownFormatActive } =
+    await import('../src/markdownFormatting.js');
+  const createView = () => {
+    const state = EditorState.create({
+      doc: 'word',
+      selection: EditorSelection.range(0, 4),
+      extensions: [markdown()]
+    });
+    return {
+      state,
+      dispatch(transaction) {
+        this.state = this.state.update(transaction).state;
+      },
+      focus() {}
+    };
+  };
+
+  const highlighter = createView();
+  for (const expected of ['==word==', '==₀word==', '==₁word==', '==₂word==', 'word']) {
+    assert.equal(toggleWmdxColorFormat(highlighter, 'highlightCycle'), true);
+    assert.equal(highlighter.state.doc.toString(), expected);
+  }
+
+  const pen = createView();
+  for (const expected of ['=word=', '=₀word=', '=₁word=', '=₂word=', 'word']) {
+    assert.equal(toggleWmdxColorFormat(pen, 'penCycle'), true);
+    assert.equal(pen.state.doc.toString(), expected);
+  }
+
+  const specific = createView();
+  assert.equal(toggleWmdxColorFormat(specific, 'highlightBlue'), true);
+  assert.equal(specific.state.doc.toString(), '==₂word==');
+  assert.equal(isMarkdownFormatActive(specific, 'highlightBlue'), true);
+  assert.equal(toggleWmdxColorFormat(specific, 'highlightBlue'), true);
+  assert.equal(specific.state.doc.toString(), 'word');
 });
 
 test('an empty inline-format pair can be toggled off at the caret', async () => {

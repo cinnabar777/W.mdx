@@ -250,39 +250,54 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Highlights &amp; Pens">
         <com.wmdx.markdownapp.ResetEditTextPreference
-            app:key="pref_hotkey_highlight_blue"
-            app:title="Blue Marker"
-            app:defaultValue="ctrl+alt+b" />
+            app:key="pref_hotkey_highlight_yellow"
+            app:title="Cycle Highlighter Colors"
+            app:defaultValue="ctrl+alt+y" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
-            app:key="pref_hotkey_highlight_green"
-            app:title="Green Marker"
-            app:defaultValue="ctrl+alt+g" />
+            app:key="pref_hotkey_marker_yellow"
+            app:title="Yellow Highlighter"
+            app:defaultValue="" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
-            app:key="pref_hotkey_highlight_green_pen"
-            app:title="Green Pen Text Color"
-            app:defaultValue="ctrl+alt+shift+g" />
+            app:key="pref_hotkey_marker_green"
+            app:title="Green Highlighter"
+            app:defaultValue="" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
-            app:key="pref_hotkey_highlight_pink"
-            app:title="Pink Marker"
-            app:defaultValue="ctrl+alt+p" />
+            app:key="pref_hotkey_marker_pink"
+            app:title="Pink Highlighter"
+            app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_marker_blue"
+            app:title="Blue Highlighter"
+            app:defaultValue="" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_highlight_red_pen"
-            app:title="Red Pen Text Color"
+            app:title="Cycle Pen Colors"
             app:defaultValue="ctrl+alt+r" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
-            app:key="pref_hotkey_highlight_remove"
-            app:title="Remove Highlight / Pen"
-            app:defaultValue="ctrl+alt+x" />
+            app:key="pref_hotkey_pen_red"
+            app:title="Red Pen"
+            app:defaultValue="" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
-            app:key="pref_hotkey_highlight_yellow"
-            app:title="Yellow Marker"
-            app:defaultValue="ctrl+alt+y" />
+            app:key="pref_hotkey_pen_green"
+            app:title="Green Pen"
+            app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_pen_blue"
+            app:title="Blue Pen"
+            app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_pen_purple"
+            app:title="Purple Pen"
+            app:defaultValue="" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

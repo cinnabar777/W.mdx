@@ -36,9 +36,11 @@ import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import {
   getMarkdownFormattingState,
   getMarkdownFormatRanges,
+  getWmdxColorSyntaxRanges,
   isWmdxUnderlineSyntaxEnabled,
   setWmdxUnderlineSyntaxEnabled,
   toggleMarkdownFormat,
+  toggleWmdxColorFormat,
   toggleUnderlineFormat
 } from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
@@ -142,14 +144,16 @@ let customHotkeys = {
   heading_4: 'ctrl+alt+4',
   heading_5: 'ctrl+alt+5',
   heading_6: 'ctrl+alt+6',
-  highlight_yellow: 'ctrl+alt+y',
-  highlight_green: 'ctrl+alt+g',
-  highlight_pink: 'ctrl+alt+p',
-  highlight_blue: 'ctrl+alt+b',
-  highlight_red: 'ctrl+alt+r',
-  highlight_red_pen: 'ctrl+alt+r',
-  highlight_green_pen: 'ctrl+alt+shift+g',
-  highlight_remove: 'ctrl+alt+x'
+  highlightCycle: 'ctrl+alt+y',
+  highlightYellow: '',
+  highlightGreen: '',
+  highlightPink: '',
+  highlightBlue: '',
+  penCycle: 'ctrl+alt+r',
+  penRed: '',
+  penGreen: '',
+  penBlue: '',
+  penPurple: ''
 };
 
 class ListMarkerWidget extends WidgetType {
@@ -1584,6 +1588,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
         .filter(range => range.kind === 'html')
         .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
+    const colorSyntaxRanges = [...new Map(decorationRanges
+      .flatMap(range => getWmdxColorSyntaxRanges(view.state, range))
+      .map(range => [`${range.group}:${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
 
     const getQuotedLineInfo = (lineNum) => {
       if (lineNum < 1 || lineNum > doc.lines) return null;
@@ -2041,8 +2048,28 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       } else if (range.kind === 'wmdx' && range.style !== 'solid' && !isRangeActive) {
         hideSyntax(range.wrapperFrom + 1, range.contentFrom);
       }
+      if (range.kind === 'wmdx') {
+        builder.push(Decoration.mark({
+          class: 'cm-wmdx-underline-syntax'
+        }).range(range.wrapperFrom, range.wrapperTo));
+      }
       builder.push(Decoration.mark({
         class: `cm-underline cm-underline-${range.style}`
+      }).range(range.contentFrom, range.contentTo));
+    }
+
+    for (const range of colorSyntaxRanges) {
+      const isRangeActive = !isPureWysiwyg && (
+        selection.empty
+          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
+          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
+      );
+      if (!isRangeActive) {
+        hideSyntax(range.wrapperFrom, range.contentFrom);
+        hideSyntax(range.contentTo, range.wrapperTo);
+      }
+      builder.push(Decoration.mark({
+        class: `cm-wmdx-${range.group}-${range.color}`
       }).range(range.contentFrom, range.contentTo));
     }
 
@@ -4417,12 +4444,16 @@ function setupGroupedControlBar() {
         { icon: svgIcons.underlineDashed, title: 'Dashed Underline', command: 'underlineDashed', action: () => execCmd('underlineDashed') },
         { icon: svgIcons.underlineDouble, title: 'Double Underline', command: 'underlineDouble', action: () => execCmd('underlineDouble') },
         { icon: svgIcons.underlineWavy, title: 'Wavy Underline', command: 'underlineWavy', action: () => execCmd('underlineWavy') },
-        { icon: svgIcons.squareMarker('#ffe066'), title: 'Yellow Marker', command: 'yellowMarker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
-        { icon: svgIcons.squareMarker('#a8f087'), title: 'Green Marker', command: 'greenMarker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
-        { icon: svgIcons.squareMarker('#ff99c8'), title: 'Pink Marker', command: 'pinkMarker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
-        { icon: svgIcons.squareMarker('#9bf6ff'), title: 'Blue Marker', command: 'blueMarker', action: () => execCmd('highlight', { value: 'blueMarker' }) },
-        { icon: svgIcons.circlePen('#ff595e'), title: 'Red Pen', command: 'redPen', action: () => execCmd('highlight', { value: 'redPen' }) },
-        { icon: svgIcons.circlePen('#2ec4b6'), title: 'Green Pen', command: 'greenPen', action: () => execCmd('highlight', { value: 'greenPen' }) }
+        { icon: svgIcons.highlighter, title: 'Cycle Highlighter Color', command: 'highlightCycle', action: () => execCmd('highlight', { value: 'highlightCycle' }) },
+        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-yellow-background, #ffe066)'), title: 'Yellow Highlighter', command: 'highlightYellow', action: () => execCmd('highlight', { value: 'highlightYellow' }) },
+        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-green-background, #a8f087)'), title: 'Green Highlighter', command: 'highlightGreen', action: () => execCmd('highlight', { value: 'highlightGreen' }) },
+        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-pink-background, #ff99c8)'), title: 'Pink Highlighter', command: 'highlightPink', action: () => execCmd('highlight', { value: 'highlightPink' }) },
+        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-blue-background, #9bf6ff)'), title: 'Blue Highlighter', command: 'highlightBlue', action: () => execCmd('highlight', { value: 'highlightBlue' }) },
+        { icon: svgIcons.pen, title: 'Cycle Pen Color', command: 'penCycle', action: () => execCmd('highlight', { value: 'penCycle' }) },
+        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-red-text, #ff595e)'), title: 'Red Pen', command: 'penRed', action: () => execCmd('highlight', { value: 'penRed' }) },
+        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-green-text, #2ec4b6)'), title: 'Green Pen', command: 'penGreen', action: () => execCmd('highlight', { value: 'penGreen' }) },
+        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-blue-text, #4dabf7)'), title: 'Blue Pen', command: 'penBlue', action: () => execCmd('highlight', { value: 'penBlue' }) },
+        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-purple-text, #845ef7)'), title: 'Purple Pen', command: 'penPurple', action: () => execCmd('highlight', { value: 'penPurple' }) }
       ]);
     };
   }
@@ -4732,12 +4763,16 @@ function createToolbarActionRegistry() {
       { id: 'underlineDashed', title: 'Dashed Underline', icon: svgIcons.underlineDashed, command: 'underlineDashed', action: () => execCmd('underlineDashed') },
       { id: 'underlineDouble', title: 'Double Underline', icon: svgIcons.underlineDouble, command: 'underlineDouble', action: () => execCmd('underlineDouble') },
       { id: 'underlineWavy', title: 'Wavy Underline', icon: svgIcons.underlineWavy, command: 'underlineWavy', action: () => execCmd('underlineWavy') },
-      { id: 'yellowMarker', title: 'Yellow Marker', icon: svgIcons.squareMarker('#ffe066'), command: 'yellowMarker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
-      { id: 'greenMarker', title: 'Green Marker', icon: svgIcons.squareMarker('#a8f087'), command: 'greenMarker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
-      { id: 'pinkMarker', title: 'Pink Marker', icon: svgIcons.squareMarker('#ff99c8'), command: 'pinkMarker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
-      { id: 'blueMarker', title: 'Blue Marker', icon: svgIcons.squareMarker('#9bf6ff'), command: 'blueMarker', action: () => execCmd('highlight', { value: 'blueMarker' }) },
-      { id: 'redPen', title: 'Red Pen', icon: svgIcons.circlePen('#ff595e'), command: 'redPen', action: () => execCmd('highlight', { value: 'redPen' }) },
-      { id: 'greenPen', title: 'Green Pen', icon: svgIcons.circlePen('#2ec4b6'), command: 'greenPen', action: () => execCmd('highlight', { value: 'greenPen' }) }
+      { id: 'highlightCycle', title: 'Cycle Highlighter Color', icon: svgIcons.highlighter, command: 'highlightCycle', action: () => execCmd('highlight', { value: 'highlightCycle' }) },
+      { id: 'highlightYellow', title: 'Yellow Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-yellow-background, #ffe066)'), command: 'highlightYellow', action: () => execCmd('highlight', { value: 'highlightYellow' }) },
+      { id: 'highlightGreen', title: 'Green Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-green-background, #a8f087)'), command: 'highlightGreen', action: () => execCmd('highlight', { value: 'highlightGreen' }) },
+      { id: 'highlightPink', title: 'Pink Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-pink-background, #ff99c8)'), command: 'highlightPink', action: () => execCmd('highlight', { value: 'highlightPink' }) },
+      { id: 'highlightBlue', title: 'Blue Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-blue-background, #9bf6ff)'), command: 'highlightBlue', action: () => execCmd('highlight', { value: 'highlightBlue' }) },
+      { id: 'penCycle', title: 'Cycle Pen Color', icon: svgIcons.pen, command: 'penCycle', action: () => execCmd('highlight', { value: 'penCycle' }) },
+      { id: 'penRed', title: 'Red Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-red-text, #ff595e)'), command: 'penRed', action: () => execCmd('highlight', { value: 'penRed' }) },
+      { id: 'penGreen', title: 'Green Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-green-text, #2ec4b6)'), command: 'penGreen', action: () => execCmd('highlight', { value: 'penGreen' }) },
+      { id: 'penBlue', title: 'Blue Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-blue-text, #4dabf7)'), command: 'penBlue', action: () => execCmd('highlight', { value: 'penBlue' }) },
+      { id: 'penPurple', title: 'Purple Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-purple-text, #845ef7)'), command: 'penPurple', action: () => execCmd('highlight', { value: 'penPurple' }) }
     ],
     [
       { id: 'insertTable', title: 'Insert Table', icon: svgIcons.insertTable, action: () => {
@@ -5727,9 +5762,7 @@ function execCmd(cmdName, options) {
       else if (val === 'heading6') cmToggleLinePrefix(view, '###### ');
     } else if (cmdName === 'highlight') {
       const val = options ? options.value : null;
-      if (val === 'yellowMarker' || val === 'greenMarker' || val === 'pinkMarker' || val === 'blueMarker' || val === 'redPen' || val === 'greenPen') {
-        toggleMarkdownFormat(view, val);
-      }
+      toggleWmdxColorFormat(view, val);
     }
   }
 }
@@ -5939,8 +5972,7 @@ function refreshToolbarSyntaxState(view = activeAdapter?.view) {
     lists: Boolean(state.bulletedList || state.numberedList || state.todoList),
     format: Boolean(
       state.bold || state.italic || state.strikethrough || state.underline ||
-      state.code || state.yellowMarker || state.greenMarker || state.pinkMarker ||
-      state.blueMarker || state.redPen || state.greenPen
+      state.code || state.highlightCycle || state.penCycle
     )
   };
   for (const [group, active] of Object.entries(groupStates)) {
@@ -7265,14 +7297,17 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.heading_5)) { e.preventDefault(); execCmd('heading', { value: 'heading5' }); }
     else if (parseAndMatchHotkey(e, customHotkeys.heading_6)) { e.preventDefault(); execCmd('heading', { value: 'heading6' }); }
 
-    // Highlight Markers & Pens
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_yellow)) { e.preventDefault(); execCmd('highlight', { value: 'yellowMarker' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_green)) { e.preventDefault(); execCmd('highlight', { value: 'greenMarker' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_pink)) { e.preventDefault(); execCmd('highlight', { value: 'pinkMarker' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_blue)) { e.preventDefault(); execCmd('highlight', { value: 'blueMarker' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_red_pen) || parseAndMatchHotkey(e, customHotkeys.highlight_red)) { e.preventDefault(); execCmd('highlight', { value: 'redPen' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_green_pen)) { e.preventDefault(); execCmd('highlight', { value: 'greenPen' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_remove)) { e.preventDefault(); execCmd('highlight', { value: null }); }
+    // Wmdx highlight and pen cycles, plus optional color-specific shortcuts.
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightCycle)) { e.preventDefault(); execCmd('highlight', { value: 'highlightCycle' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightYellow)) { e.preventDefault(); execCmd('highlight', { value: 'highlightYellow' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightGreen)) { e.preventDefault(); execCmd('highlight', { value: 'highlightGreen' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightPink)) { e.preventDefault(); execCmd('highlight', { value: 'highlightPink' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightBlue)) { e.preventDefault(); execCmd('highlight', { value: 'highlightBlue' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penCycle)) { e.preventDefault(); execCmd('highlight', { value: 'penCycle' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penRed)) { e.preventDefault(); execCmd('highlight', { value: 'penRed' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penGreen)) { e.preventDefault(); execCmd('highlight', { value: 'penGreen' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penBlue)) { e.preventDefault(); execCmd('highlight', { value: 'penBlue' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penPurple)) { e.preventDefault(); execCmd('highlight', { value: 'penPurple' }); }
   }, true);
 }
 
@@ -7515,6 +7550,22 @@ window.editorBridge = {
         `--underline-${style}-thickness`,
         prefs[`pref_underline_${style}_thickness`],
         'px'
+      );
+    }
+    for (const color of ['yellow', 'green', 'pink', 'blue']) {
+      setCssVar(
+        `--highlight-${color}-background`,
+        androidArgbToCss(prefs[`pref_highlight_${color}_background_color`])
+      );
+      setCssVar(
+        `--highlight-${color}-text`,
+        androidArgbToCss(prefs[`pref_highlight_${color}_text_color`])
+      );
+    }
+    for (const color of ['red', 'green', 'blue', 'purple']) {
+      setCssVar(
+        `--pen-${color}-text`,
+        androidArgbToCss(prefs[`pref_pen_${color}_text_color`])
       );
     }
     setCssVar('--code-color', prefs.pref_code_color);

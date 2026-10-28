@@ -28,7 +28,8 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
     'bold', 'italic', 'strikethrough',
     'underline', 'underlineSolid', 'underlineDotted', 'underlineDashed',
     'underlineDouble', 'underlineWavy',
-    'yellowMarker', 'greenMarker', 'pinkMarker', 'blueMarker', 'redPen', 'greenPen'
+    'highlightCycle', 'highlightYellow', 'highlightGreen', 'highlightPink', 'highlightBlue',
+    'penCycle', 'penRed', 'penGreen', 'penBlue', 'penPurple'
   ]),
   table: Object.freeze(['insertTable', ...TABLE_ACTIONS.map(item => item.id)]),
   insert: Object.freeze([
@@ -75,7 +76,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 4,
+  version: 5,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -113,6 +114,10 @@ export function orderBottomToolbarPopupItems(groupId, items, popupGroups = {}) {
   for (const id of configuredOrder) {
     const item = byId.get(id);
     if (item && !hidden.has(id) && !ordered.includes(item)) ordered.push(item);
+  }
+  for (const item of items) {
+    const id = item.id || item.command;
+    if (id && !hidden.has(id) && !ordered.includes(item)) ordered.push(item);
   }
   return ordered;
 }

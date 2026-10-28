@@ -15,6 +15,8 @@ const lists = read('app/src/main/res/xml/preferences_styling_lists.xml');
 const blocks = read('app/src/main/res/xml/preferences_styling_blockquotes.xml');
 const tables = read('app/src/main/res/xml/preferences_styling_tables.xml');
 const footnotes = read('app/src/main/res/xml/preferences_styling_footnotes.xml');
+const highlightsPens = read('app/src/main/res/xml/preferences_styling_highlights_pens.xml');
+const hotkeys = read('app/src/main/res/xml/preferences_hotkeys.xml');
 const tableWidget = read('web/src/tableWidget.js');
 
 test('Typography pages keep headings and body first, then alphabetical element pages', () => {
@@ -29,6 +31,7 @@ test('Typography pages keep headings and body first, then alphabetical element p
     'pref_styling_page_code',
     'pref_styling_page_cursor',
     'pref_styling_page_footnotes',
+    'pref_styling_page_highlights_pens',
     'pref_styling_page_hr',
     'pref_styling_page_inline_code',
     'pref_styling_page_italic',
@@ -37,6 +40,41 @@ test('Typography pages keep headings and body first, then alphabetical element p
     'pref_styling_page_tables',
     'pref_styling_page_underline'
   ]);
+});
+
+test('highlight and pen colors, syntax, and replacement shortcuts stay connected', () => {
+  assert.match(settingsActivity, /"pref_styling_page_highlights_pens" -> StylingHighlightsPensFragment\(\)/);
+  assert.match(main, /pref_highlight_\$\{color\}_background_color/);
+  assert.match(main, /pref_highlight_\$\{color\}_text_color/);
+  assert.match(main, /pref_pen_\$\{color\}_text_color/);
+  for (const color of ['yellow', 'green', 'pink', 'blue']) {
+    assert.ok(highlightsPens.includes(`pref_highlight_${color}_background_color`));
+    assert.ok(highlightsPens.includes(`pref_highlight_${color}_text_color`));
+    assert.ok(styles.includes(`.cm-wmdx-highlight-${color}`));
+  }
+  for (const color of ['red', 'green', 'blue', 'purple']) {
+    assert.ok(highlightsPens.includes(`pref_pen_${color}_text_color`));
+    assert.ok(styles.includes(`.cm-wmdx-pen-${color}`));
+  }
+  assert.match(hotkeys, /app:title="Cycle Highlighter Colors"\s+app:defaultValue="ctrl\+alt\+y"/);
+  assert.match(hotkeys, /app:title="Cycle Pen Colors"\s+app:defaultValue="ctrl\+alt\+r"/);
+  for (const key of [
+    'pref_hotkey_marker_yellow',
+    'pref_hotkey_marker_green',
+    'pref_hotkey_marker_pink',
+    'pref_hotkey_marker_blue',
+    'pref_hotkey_pen_red',
+    'pref_hotkey_pen_green',
+    'pref_hotkey_pen_blue',
+    'pref_hotkey_pen_purple'
+  ]) {
+    assert.match(
+      hotkeys,
+      new RegExp(`app:key="${key}"\\s+app:title="[^"]+"\\s+app:defaultValue=""`)
+    );
+  }
+  assert.doesNotMatch(hotkeys, /pref_hotkey_highlight_(green|pink|blue)|pref_hotkey_highlight_remove/);
+  assert.match(styles, /\.cm-content \.cm-wmdx-underline-syntax\s*\{\s*font-style:\s*normal !important;/);
 });
 
 test('custom font pickers remain connected on the rearranged typography pages', () => {

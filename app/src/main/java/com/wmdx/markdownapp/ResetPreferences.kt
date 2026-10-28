@@ -539,13 +539,24 @@ object PreferenceResetHelper {
             key == "pref_hotkey_heading_5" -> "ctrl+alt+5"
             key == "pref_hotkey_heading_6" -> "ctrl+alt+6"
             key == "pref_hotkey_highlight_yellow" -> "ctrl+alt+y"
-            key == "pref_hotkey_highlight_green" -> "ctrl+alt+g"
-            key == "pref_hotkey_highlight_pink" -> "ctrl+alt+p"
-            key == "pref_hotkey_highlight_blue" -> "ctrl+alt+b"
-            key == "pref_hotkey_highlight_red" -> "ctrl+alt+r"
             key == "pref_hotkey_highlight_red_pen" -> "ctrl+alt+r"
-            key == "pref_hotkey_highlight_green_pen" -> "ctrl+alt+shift+g"
-            key == "pref_hotkey_highlight_remove" -> "ctrl+alt+x"
+            key.startsWith("pref_hotkey_marker_") -> ""
+            key.startsWith("pref_hotkey_pen_") -> ""
+            key.startsWith("pref_highlight_") && key.endsWith("_background_color") ->
+                mapOf(
+                    "pref_highlight_yellow_background_color" to "#ffe066",
+                    "pref_highlight_green_background_color" to "#a8f087",
+                    "pref_highlight_pink_background_color" to "#ff99c8",
+                    "pref_highlight_blue_background_color" to "#9bf6ff"
+                )[key]
+            key.startsWith("pref_highlight_") && key.endsWith("_text_color") -> "#111111"
+            key.startsWith("pref_pen_") && key.endsWith("_text_color") ->
+                mapOf(
+                    "pref_pen_red_text_color" to "#ff595e",
+                    "pref_pen_green_text_color" to "#2ec4b6",
+                    "pref_pen_blue_text_color" to "#4dabf7",
+                    "pref_pen_purple_text_color" to "#845ef7"
+                )[key]
             key == "pref_underline_use_wmdx_syntax" -> true
             key.startsWith("pref_underline_") && key.endsWith("_color") -> "default"
             key.startsWith("pref_underline_") && key.endsWith("_thickness") -> 1

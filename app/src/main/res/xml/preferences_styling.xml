@@ -44,6 +44,11 @@
             app:summary="Footnote text, reference, return-link, and background appearance" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_highlights_pens"
+            app:title="Highlights &amp; Pens"
+            app:summary="Wmdx marker and pen syntax, colors, and toolbar actions" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_hr"
             app:title="Horizontal Rules"
             app:summary="Line style, color, width, and spacing" />

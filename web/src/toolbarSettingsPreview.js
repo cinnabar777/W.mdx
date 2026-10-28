@@ -86,12 +86,16 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'underlineDashed', title: 'Dashed Underline', icon: svgIcons.underlineDashed },
     { id: 'underlineDouble', title: 'Double Underline', icon: svgIcons.underlineDouble },
     { id: 'underlineWavy', title: 'Wavy Underline', icon: svgIcons.underlineWavy },
-    { id: 'yellowMarker', title: 'Yellow Marker', icon: svgIcons.squareMarker('#ffe066') },
-    { id: 'greenMarker', title: 'Green Marker', icon: svgIcons.squareMarker('#a8f087') },
-    { id: 'pinkMarker', title: 'Pink Marker', icon: svgIcons.squareMarker('#ff99c8') },
-    { id: 'blueMarker', title: 'Blue Marker', icon: svgIcons.squareMarker('#9bf6ff') },
-    { id: 'redPen', title: 'Red Pen', icon: svgIcons.circlePen('#ff595e') },
-    { id: 'greenPen', title: 'Green Pen', icon: svgIcons.circlePen('#2ec4b6') }
+    { id: 'highlightCycle', title: 'Cycle Highlighter Color', icon: svgIcons.highlighter },
+    { id: 'highlightYellow', title: 'Yellow Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-yellow-background, #ffe066)') },
+    { id: 'highlightGreen', title: 'Green Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-green-background, #a8f087)') },
+    { id: 'highlightPink', title: 'Pink Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-pink-background, #ff99c8)') },
+    { id: 'highlightBlue', title: 'Blue Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-blue-background, #9bf6ff)') },
+    { id: 'penCycle', title: 'Cycle Pen Color', icon: svgIcons.pen },
+    { id: 'penRed', title: 'Red Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-red-text, #ff595e)') },
+    { id: 'penGreen', title: 'Green Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-green-text, #2ec4b6)') },
+    { id: 'penBlue', title: 'Blue Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-blue-text, #4dabf7)') },
+    { id: 'penPurple', title: 'Purple Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-purple-text, #845ef7)') }
   ],
   table: [
     { id: 'insertTable', title: 'Insert Table', icon: svgIcons.insertTable },

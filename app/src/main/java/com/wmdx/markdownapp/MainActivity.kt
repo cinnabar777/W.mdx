@@ -1232,14 +1232,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "heading_4" to prefs.getString("pref_hotkey_heading_4", "ctrl+alt+4"),
             "heading_5" to prefs.getString("pref_hotkey_heading_5", "ctrl+alt+5"),
             "heading_6" to prefs.getString("pref_hotkey_heading_6", "ctrl+alt+6"),
-            "highlight_yellow" to prefs.getString("pref_hotkey_highlight_yellow", "ctrl+alt+y"),
-            "highlight_green" to prefs.getString("pref_hotkey_highlight_green", "ctrl+alt+g"),
-            "highlight_pink" to prefs.getString("pref_hotkey_highlight_pink", "ctrl+alt+p"),
-            "highlight_blue" to prefs.getString("pref_hotkey_highlight_blue", "ctrl+alt+b"),
-            "highlight_red" to prefs.getString("pref_hotkey_highlight_red", "ctrl+alt+r"),
-            "highlight_red_pen" to prefs.getString("pref_hotkey_highlight_red_pen", "ctrl+alt+r"),
-            "highlight_green_pen" to prefs.getString("pref_hotkey_highlight_green_pen", "ctrl+alt+shift+g"),
-            "highlight_remove" to prefs.getString("pref_hotkey_highlight_remove", "ctrl+alt+x")
+            "highlightCycle" to prefs.getString("pref_hotkey_highlight_yellow", "ctrl+alt+y"),
+            "highlightYellow" to prefs.getString("pref_hotkey_marker_yellow", ""),
+            "highlightGreen" to prefs.getString("pref_hotkey_marker_green", ""),
+            "highlightPink" to prefs.getString("pref_hotkey_marker_pink", ""),
+            "highlightBlue" to prefs.getString("pref_hotkey_marker_blue", ""),
+            "penCycle" to prefs.getString("pref_hotkey_highlight_red_pen", "ctrl+alt+r"),
+            "penRed" to prefs.getString("pref_hotkey_pen_red", ""),
+            "penGreen" to prefs.getString("pref_hotkey_pen_green", ""),
+            "penBlue" to prefs.getString("pref_hotkey_pen_blue", ""),
+            "penPurple" to prefs.getString("pref_hotkey_pen_purple", "")
         )
         val hotkeysJson = org.json.JSONObject(hotkeys).toString()
         val escapedHotkeys = JSONObjectWrapper.quote(hotkeysJson)

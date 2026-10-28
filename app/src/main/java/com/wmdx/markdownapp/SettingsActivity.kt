@@ -935,6 +935,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_bold" -> StylingBoldFragment()
             "pref_styling_page_italic" -> StylingItalicFragment()
             "pref_styling_page_underline" -> StylingUnderlineFragment()
+            "pref_styling_page_highlights_pens" -> StylingHighlightsPensFragment()
             "pref_styling_page_links" -> StylingLinksFragment()
             "pref_styling_page_inline_code" -> StylingInlineCodeFragment()
             "pref_styling_page_footnotes" -> StylingFootnotesFragment()
@@ -1057,6 +1058,42 @@ class StylingBoldFragment : StylingInlineElementFragment() {
 
 class StylingItalicFragment : StylingInlineElementFragment() {
     override val categoryKey = "styling_inline_italic"
+}
+
+class StylingHighlightsPensFragment : StylingSettingsFragment() {
+    private val highlightColors = listOf("yellow", "green", "pink", "blue")
+    private val penColors = listOf("red", "green", "blue", "purple")
+
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_highlights_pens, rootKey)
+        for (color in highlightColors) configureColorSection("pref_highlight_${color}_section")
+        for (color in penColors) configureColorSection("pref_pen_${color}_section")
+        refreshColorSections()
+    }
+
+    private fun configureColorSection(sectionKey: String) {
+        val section = findPreference<ExpandablePreference>(sectionKey) ?: return
+        section.setOnPreferenceClickListener {
+            section.isExpanded = !section.isExpanded
+            refreshColorSections()
+            true
+        }
+    }
+
+    private fun refreshColorSections() {
+        for (color in highlightColors) {
+            updateColorSection("pref_highlight_${color}_section", "pref_highlight_${color}_controls")
+        }
+        for (color in penColors) {
+            updateColorSection("pref_pen_${color}_section", "pref_pen_${color}_controls")
+        }
+    }
+
+    private fun updateColorSection(sectionKey: String, controlsKey: String) {
+        val section = findPreference<ExpandablePreference>(sectionKey) ?: return
+        findPreference<androidx.preference.PreferenceCategory>(controlsKey)?.isVisible =
+            section.isExpanded
+    }
 }
 
 class StylingUnderlineFragment : StylingSettingsFragment() {
@@ -1378,8 +1415,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "format" to listOf(
                 "bold", "italic", "strikethrough", "underline", "underlineSolid",
                 "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
-                "yellowMarker", "greenMarker",
-                "pinkMarker", "blueMarker", "redPen", "greenPen"
+                "highlightCycle", "highlightYellow", "highlightGreen", "highlightPink",
+                "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple"
             ),
             "table" to listOf(
                 "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
@@ -1401,7 +1438,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "bulletedList", "numberedList", "todoList", "indent", "outdent",
             "bold", "italic", "strikethrough", "underline", "underlineSolid",
             "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
-            "yellowMarker", "greenMarker", "pinkMarker", "blueMarker", "redPen", "greenPen",
+            "highlightCycle", "highlightYellow", "highlightGreen", "highlightPink",
+            "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple",
             "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
             "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
