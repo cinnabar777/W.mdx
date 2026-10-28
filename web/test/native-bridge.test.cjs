@@ -117,7 +117,7 @@ test('auto-save snapshots the editor before pausing WebView and runs once per le
 });
 
 test('editor edits publish the latest Markdown snapshot before app lifecycle save', () => {
-  assert.match(source, /onContentChanged\(update\.state\.doc\.toString\(\), this\.revision\)/);
+  assert.match(source, /onContentChanged\(update\.state\.doc\.toString\(\), this\.revision, this\.documentSessionId\)/);
   assert.match(mainActivitySource, /@Volatile private var latestMarkdownContent: String\? = null/);
   assert.match(mainActivitySource, /@Volatile private var isDirty: Boolean = false/);
   assert.match(mainActivitySource, /saveFileToUri\(uri, cachedMarkdownText = cachedMarkdownContent\)/);
