@@ -27,10 +27,10 @@ class SettingsActivity : AppCompatActivity() {
 
         if (savedInstanceState == null) {
             val directPage = intent.getStringExtra("settings_page")
-            val initialFragment = if (directPage == "toc") {
-                TocPanelSettingsFragment()
-            } else {
-                SettingsFragment()
+            val initialFragment = when (directPage) {
+                "toc" -> TocPanelSettingsFragment()
+                "left_panel" -> LeftPanelSettingsFragment()
+                else -> SettingsFragment()
             }
             supportFragmentManager
                 .beginTransaction()
@@ -40,6 +40,8 @@ class SettingsActivity : AppCompatActivity() {
 
         if (intent.getStringExtra("settings_page") == "toc") {
             supportActionBar?.title = "Table of Contents Panel"
+        } else if (intent.getStringExtra("settings_page") == "left_panel") {
+            supportActionBar?.title = "Left Side Panel"
         }
 
         supportFragmentManager.addOnBackStackChangedListener {
@@ -63,6 +65,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingCursorFragment -> "Cursor & Selection"
                 is StylingFindReplaceFragment -> "Find & Replace"
                 is TocPanelSettingsFragment -> "Table of Contents"
+                is LeftPanelSettingsFragment -> "Left Side Panel"
                 is StorageAccessSettingsFragment -> "File & Folder Access"
                 is StylingSettingsFragment -> "Typography"
                 is ExportSettingsFragment -> "HTML & MHTML Export"
@@ -252,6 +255,13 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_toc" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, TocPanelSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_left_panel" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, LeftPanelSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -1334,7 +1344,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             ),
             "menu" to listOf(
                 "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
-                "exportHtml", "search", "switchView", "newWindow", "settings"
+                "exportHtml", "search", "switchView", "newWindow", "leftPanel", "settings"
             )
         )
         private val TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS + listOf(
@@ -1349,7 +1359,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
             "horizontalLine", "footnote",
             "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
-            "exportHtml", "search", "switchView", "newWindow", "settings",
+            "exportHtml", "search", "switchView", "newWindow", "leftPanel", "settings",
             "cut", "copy", "paste", "selectAll"
         )
         private val TOOLBAR_GESTURE_IDS = listOf(
@@ -1812,8 +1822,25 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             }
         }
 
+        val rawHoldingActions = input.optJSONArray("holding") ?: org.json.JSONArray()
+        val leftPanelExplicitlyHeld = (0 until rawHoldingActions.length()).any {
+            rawHoldingActions.optString(it) == "leftPanel"
+        }
+        val menuItems = popupGroups.optJSONObject("menu")?.optJSONArray("order")
+        if (
+            menuItems != null &&
+            !order.contains("leftPanel") &&
+            !assignedActions.contains("leftPanel") &&
+            !hidden.contains("leftPanel") &&
+            !legacyHeldActions.contains("leftPanel") &&
+            !leftPanelExplicitlyHeld
+        ) {
+            menuItems.put("leftPanel")
+            assignedActions.add("leftPanel")
+        }
+
         val holding = mutableListOf<String>()
-        val rawHolding = input.optJSONArray("holding") ?: org.json.JSONArray()
+        val rawHolding = rawHoldingActions
         for (index in 0 until rawHolding.length()) {
             val id = rawHolding.optString(index)
             if (id in validKeyIds && id !in assignedActions && id !in holding) holding.add(id)
@@ -3266,6 +3293,13 @@ class SettingsThemeFragment : BaseSettingsFragment() {
 class TocPanelSettingsFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_toc, rootKey)
+        configureFontPreferences()
+    }
+}
+
+class LeftPanelSettingsFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_left_panel, rootKey)
         configureFontPreferences()
     }
 }

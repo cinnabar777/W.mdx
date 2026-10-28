@@ -38,6 +38,8 @@ import org.json.JSONArray
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -47,6 +49,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var imeHideGeneration = 0
 
     private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
+    private data class LeftPanelDocumentEntry(
+        val documentId: String,
+        val name: String,
+        val uri: Uri,
+        val isDirectory: Boolean,
+        val mimeType: String
+    )
     private val fontDataUriCache = object : LruCache<String, CachedFontData>(8 * 1024) {
         override fun sizeOf(key: String, value: CachedFontData): Int =
             maxOf(1, value.dataUri.length / 1024)
@@ -70,6 +79,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingOpenPermissionFlags: Int? = null
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
+    private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
+    @Volatile private var leftPanelSearchFuture: Future<*>? = null
     private var currentTextPackSession: TextPackSession? = null
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
@@ -196,6 +207,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     override fun onDestroy() {
+        if (
+            isFinishing &&
+            !isChangingConfigurations &&
+            !intent.getBooleanExtra("launcher_window", false) &&
+            ::webView.isInitialized
+        ) {
+            webView.evaluateJavascript("window.leftPanelController?.onWindowClosing?.();", null)
+        }
+        leftPanelSearchFuture?.cancel(true)
+        leftPanelSearchExecutor.shutdownNow()
         if (isFinishing && !isChangingConfigurations) {
             WindowRegistry.unregister(this)
         }
@@ -922,6 +943,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "list" to "pref_list_font_family",
             "table" to "pref_table_font_family",
             "toc" to "pref_toc_font_family",
+            "leftPanel" to "pref_left_panel_font_family",
             "calloutHeader" to "pref_callout_header_font_family"
         )
         familyPreferenceKeys.forEach { (category, preferenceKey) ->
@@ -947,7 +969,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "callout" to Pair("pref_font_file_callout", !prefs.getBoolean("pref_callout_inherit_body_typography", true)),
             "codeBlock" to Pair("pref_font_file_code_block", true),
             "list" to Pair("pref_font_file_list", !prefs.getBoolean("pref_list_inherit_body_typography", true)),
-            "table" to Pair("pref_font_file_table", !prefs.getBoolean("pref_table_inherit_body_typography", true))
+            "table" to Pair("pref_font_file_table", !prefs.getBoolean("pref_table_inherit_body_typography", true)),
+            "leftPanel" to Pair("pref_font_file_left_panel", true)
         )
         customFontFiles.forEach { (category, target) ->
             val data = if (target.second) {
@@ -1535,6 +1558,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         cachedMarkdownText: String? = null
     ) {
         val oldDocumentKey = currentDocumentHistoryKey()
+        val oldUriString = currentFileUri?.toString().orEmpty()
         val saveStarted = android.os.SystemClock.elapsedRealtime()
         val snapshotSource = if (cachedMarkdownText != null) "cached" else "webview"
         AppDiagnostics.record(this, "save_start", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision")
@@ -1581,6 +1605,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 latestMarkdownContent = markdownText
                 isDirty = false
                 updateTitle()
+                val escapedOldUri = JSONObjectWrapper.quote(oldUriString)
+                val escapedUri = JSONObjectWrapper.quote(uri.toString())
+                val escapedName = JSONObjectWrapper.quote(targetFileName)
+                webView.evaluateJavascript(
+                    "window.leftPanelController?.onDocumentSavedAs?.($escapedOldUri, $escapedUri, $escapedName);",
+                    null
+                )
                 val saveMs = android.os.SystemClock.elapsedRealtime() - saveStarted
                 AppDiagnostics.record(this, "save_done", "status=success mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length} ms=$saveMs")
                 ThemedToast.show(this, "File saved successfully", Toast.LENGTH_SHORT)
@@ -1732,7 +1763,459 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun authorizedLeftPanelTrees(): List<Uri> {
+        val revoked = PreferenceManager.getDefaultSharedPreferences(this)
+            .getStringSet("locally_revoked_storage_folder_uris", emptySet())
+            .orEmpty()
+        return contentResolver.persistedUriPermissions
+            .filter {
+                it.isReadPermission &&
+                    it.isWritePermission &&
+                    android.provider.DocumentsContract.isTreeUri(it.uri) &&
+                    it.uri.toString() !in revoked
+            }
+            .map { it.uri }
+    }
+
+    private fun authorizedLeftPanelTree(treeUri: Uri): Uri? =
+        authorizedLeftPanelTrees().firstOrNull { it == treeUri }
+
+    private fun leftPanelTreeForDocument(documentUri: Uri): Uri? {
+        if (!android.provider.DocumentsContract.isDocumentUri(this, documentUri)) return null
+        val documentTreeId = runCatching {
+            android.provider.DocumentsContract.getTreeDocumentId(documentUri)
+        }.getOrNull() ?: return null
+        return authorizedLeftPanelTrees().firstOrNull { treeUri ->
+            treeUri.authority == documentUri.authority &&
+                runCatching {
+                    android.provider.DocumentsContract.getTreeDocumentId(treeUri) == documentTreeId
+                }.getOrDefault(false)
+        }
+    }
+
+    private fun hasLeftPanelDocumentAccess(uri: Uri, write: Boolean = false): Boolean {
+        if (leftPanelTreeForDocument(uri) != null) return true
+        if (!write && uri == currentFileUri) return true
+        val flag = if (write) {
+            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        } else {
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        return checkUriPermission(
+            uri,
+            android.os.Process.myPid(),
+            android.os.Process.myUid(),
+            flag
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            contentResolver.persistedUriPermissions.any {
+                it.uri == uri && (if (write) it.isWritePermission else it.isReadPermission)
+            }
+    }
+
+    private fun queryLeftPanelChildren(treeUri: Uri, parentDocumentId: String): List<LeftPanelDocumentEntry> {
+        if (authorizedLeftPanelTree(treeUri) == null) return emptyList()
+        val childrenUri = runCatching {
+            android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId)
+        }.getOrNull() ?: return emptyList()
+        return runCatching {
+            contentResolver.query(
+                childrenUri,
+                arrayOf(
+                    android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE
+                ),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)
+                if (idIndex < 0 || nameIndex < 0 || mimeIndex < 0) return@use emptyList()
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val documentId = cursor.getString(idIndex) ?: continue
+                        val name = cursor.getString(nameIndex) ?: continue
+                        val mimeType = cursor.getString(mimeIndex).orEmpty()
+                        val documentUri = runCatching {
+                            android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+                        }.getOrNull() ?: continue
+                        add(
+                            LeftPanelDocumentEntry(
+                                documentId = documentId,
+                                name = name,
+                                uri = documentUri,
+                                isDirectory = mimeType == android.provider.DocumentsContract.Document.MIME_TYPE_DIR,
+                                mimeType = mimeType
+                            )
+                        )
+                    }
+                }.sortedWith(compareByDescending<LeftPanelDocumentEntry> { it.isDirectory }.thenBy { it.name.lowercase() })
+            } ?: emptyList()
+        }.getOrDefault(emptyList())
+    }
+
+    private fun leftPanelContextJson(): String {
+        val uri = currentFileUri
+        val name = currentFileName
+        val markdown = latestMarkdownContent.orEmpty()
+        return org.json.JSONObject()
+            .put("launcherWindow", intent.getBooleanExtra("launcher_window", false))
+            .put("taskId", taskId)
+            .put("uri", uri?.toString())
+            .put("name", name)
+            .put("markdown", markdown)
+            .put("dirty", isDirty)
+            .put("isTextPack", currentTextPackSession != null || name.endsWith(".textpack", true) || name.endsWith(".textpack.zip", true))
+            .put("hasBom", hasBom)
+            .put("hasCrlf", hasCrlf)
+            .toString()
+    }
+
+    private fun readLeftPanelDocument(uri: Uri): org.json.JSONObject {
+        if (!hasLeftPanelDocumentAccess(uri)) {
+            return org.json.JSONObject().put("ok", false).put("error", "This file is outside the folders approved for the panel.")
+        }
+        return runCatching {
+            val name = getFileNameFromUri(uri)
+            val textPack = TextPackManager.isTextPackFile(this, uri, name)
+            val markdown = if (textPack) {
+                TextPackManager.openTextPack(this, uri).markdownContent
+            } else {
+                contentResolver.openInputStream(uri)?.use {
+                    BufferedReader(InputStreamReader(it, Charsets.UTF_8)).readText()
+                } ?: throw java.io.IOException("Could not read the selected file.")
+            }
+            org.json.JSONObject()
+                .put("ok", true)
+                .put("uri", uri.toString())
+                .put("name", name)
+                .put("markdown", markdown)
+                .put("dirty", false)
+                .put("isTextPack", textPack)
+                .put("hasBom", markdown.startsWith("\uFEFF"))
+                .put("hasCrlf", markdown.contains("\r\n"))
+        }.getOrElse {
+            org.json.JSONObject().put("ok", false).put("error", it.localizedMessage ?: "Could not read this file.")
+        }
+    }
+
+    private fun leftPanelFileContains(uri: Uri, needle: String): Boolean = runCatching {
+        val input = contentResolver.openInputStream(uri) ?: return@runCatching false
+        BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { reader ->
+            var matched = false
+            while (!matched && !Thread.currentThread().isInterrupted) {
+                val line = reader.readLine() ?: break
+                matched = line.lowercase().contains(needle)
+            }
+            matched
+        }
+    }.getOrDefault(false)
+
+    private fun searchLeftPanelDocuments(query: String, includeContents: Boolean): String {
+        val needle = query.trim().lowercase()
+        if (needle.isEmpty()) return org.json.JSONObject().put("items", JSONArray()).toString()
+        val results = JSONArray()
+        var scannedFiles = 0
+        var truncated = false
+        val maxResults = 100
+        val maxScannedFiles = 2500
+        val textExtensions = setOf(".md", ".markdown", ".mdx", ".txt")
+
+        for (treeUri in authorizedLeftPanelTrees()) {
+            if (results.length() >= maxResults || scannedFiles >= maxScannedFiles) {
+                truncated = true
+                break
+            }
+            val rootId = runCatching { android.provider.DocumentsContract.getTreeDocumentId(treeUri) }
+                .getOrNull() ?: continue
+            val rootName = runCatching {
+                queryDocumentDisplayName(
+                    android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
+                )
+            }.getOrNull().orEmpty()
+            val pending = java.util.ArrayDeque<Triple<String, String, Int>>()
+            pending.add(Triple(rootId, rootName, 0))
+            while (
+                pending.isNotEmpty() &&
+                results.length() < maxResults &&
+                scannedFiles < maxScannedFiles &&
+                !Thread.currentThread().isInterrupted
+            ) {
+                val (parentId, parentPath, depth) = pending.removeLast()
+                if (depth > 14) {
+                    truncated = true
+                    continue
+                }
+                for (entry in queryLeftPanelChildren(treeUri, parentId)) {
+                    if (Thread.currentThread().isInterrupted) break
+                    if (results.length() >= maxResults) {
+                        truncated = true
+                        break
+                    }
+                    val path = listOf(parentPath, entry.name).filter { it.isNotBlank() }.joinToString("/")
+                    if (entry.isDirectory) {
+                        pending.add(Triple(entry.documentId, path, depth + 1))
+                        continue
+                    }
+                    scannedFiles++
+                    val nameMatches = entry.name.lowercase().contains(needle)
+                    var contentMatches = false
+                    if (
+                        !nameMatches &&
+                        includeContents &&
+                        (
+                            textExtensions.any { entry.name.endsWith(it, true) } ||
+                                TextPackManager.isTextPackFile(this, entry.uri, entry.name)
+                            )
+                    ) {
+                        contentMatches = runCatching {
+                            if (TextPackManager.isTextPackFile(this, entry.uri, entry.name)) {
+                                TextPackManager.openTextPack(this, entry.uri)
+                                    .markdownContent.lowercase().contains(needle)
+                            } else {
+                                leftPanelFileContains(entry.uri, needle)
+                            }
+                        }.getOrDefault(false)
+                    }
+                    if (nameMatches || contentMatches) {
+                        results.put(
+                            org.json.JSONObject()
+                                .put("uri", entry.uri.toString())
+                                .put("name", entry.name)
+                                .put("path", parentPath)
+                                .put("match", if (nameMatches) "name" else "content")
+                        )
+                    }
+                    if (results.length() >= maxResults) {
+                        truncated = true
+                        break
+                    }
+                    if (scannedFiles >= maxScannedFiles) break
+                }
+            }
+            if (
+                results.length() >= maxResults ||
+                scannedFiles >= maxScannedFiles ||
+                Thread.currentThread().isInterrupted
+            ) {
+                truncated = true
+            }
+        }
+        return org.json.JSONObject()
+            .put("items", results)
+            .put("truncated", truncated)
+            .put("scannedFiles", scannedFiles)
+            .toString()
+    }
+
+    private fun saveLeftPanelDocument(
+        uri: Uri,
+        markdown: String,
+        isTextPack: Boolean,
+        tabHasBom: Boolean,
+        tabHasCrlf: Boolean
+    ): org.json.JSONObject {
+        if (!hasLeftPanelDocumentAccess(uri, write = true)) {
+            return org.json.JSONObject().put("ok", false).put("error", "This file is not writable.")
+        }
+        return runCatching {
+            var content = markdown
+            if (tabHasCrlf && !content.contains("\r\n") && content.contains("\n")) {
+                content = content.replace("\r\n", "\n").replace("\n", "\r\n")
+            }
+            if (tabHasBom && !content.startsWith("\uFEFF")) content = "\uFEFF$content"
+            val name = getFileNameFromUri(uri)
+            val packTarget = isTextPack || TextPackManager.isTextPackFile(this, uri, name)
+            if (packTarget) {
+                val session = if (uri == currentFileUri) {
+                    currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
+                } else {
+                    TextPackManager.openTextPack(this, uri)
+                }
+                TextPackManager.saveTextPack(this, session, content, uri)
+                if (uri == currentFileUri) currentTextPackSession = session
+            } else {
+                val output = contentResolver.openOutputStream(uri, "rwt")
+                    ?: throw java.io.IOException("Could not open this file for writing.")
+                output.use { stream ->
+                    OutputStreamWriter(stream, Charsets.UTF_8).use { writer -> writer.write(content) }
+                }
+            }
+            persistDocumentUriPermission(uri)
+            if (uri == currentFileUri) {
+                latestMarkdownContent = markdown
+                isDirty = false
+                runOnUiThread { updateTitle() }
+            }
+            org.json.JSONObject().put("ok", true)
+        }.getOrElse {
+            org.json.JSONObject().put("ok", false).put("error", it.localizedMessage ?: "Could not save this file.")
+        }
+    }
+
     inner class WebAppInterface {
+        @JavascriptInterface
+        fun getLeftPanelContext(): String = leftPanelContextJson()
+
+        @JavascriptInterface
+        fun listLeftPanelFolderRoots(): String {
+            val roots = JSONArray()
+            for (treeUri in authorizedLeftPanelTrees()) {
+                val documentId = runCatching {
+                    android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+                }.getOrNull() ?: continue
+                val rootDocumentUri = runCatching {
+                    android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+                }.getOrNull() ?: continue
+                val name = queryDocumentDisplayName(rootDocumentUri) ?: "Folder"
+                roots.put(
+                    org.json.JSONObject()
+                        .put("treeUri", treeUri.toString())
+                        .put("documentId", documentId)
+                        .put("uri", rootDocumentUri.toString())
+                        .put("name", name)
+                        .put("isDirectory", true)
+                )
+            }
+            return roots.toString()
+        }
+
+        @JavascriptInterface
+        fun listLeftPanelFolderChildren(treeUriString: String, documentId: String): String {
+            val treeUri = runCatching { Uri.parse(treeUriString) }.getOrNull() ?: return "[]"
+            if (authorizedLeftPanelTree(treeUri) == null) return "[]"
+            val items = JSONArray()
+            queryLeftPanelChildren(treeUri, documentId).forEach { entry ->
+                items.put(
+                    org.json.JSONObject()
+                        .put("treeUri", treeUri.toString())
+                        .put("documentId", entry.documentId)
+                        .put("uri", entry.uri.toString())
+                        .put("name", entry.name)
+                        .put("isDirectory", entry.isDirectory)
+                )
+            }
+            return items.toString()
+        }
+
+        @JavascriptInterface
+        fun readLeftPanelDocument(uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
+            return this@MainActivity.readLeftPanelDocument(uri).toString()
+        }
+
+        @JavascriptInterface
+        fun searchLeftPanelFiles(query: String, includeContents: Boolean, requestId: Int) {
+            val safeQuery = query.take(240)
+            synchronized(this@MainActivity) {
+                leftPanelSearchFuture?.cancel(true)
+                leftPanelSearchFuture = leftPanelSearchExecutor.submit {
+                    val results = searchLeftPanelDocuments(safeQuery, includeContents)
+                    if (!Thread.currentThread().isInterrupted && !isFinishing) {
+                        val escapedResults = JSONObjectWrapper.quote(results)
+                        webView.post {
+                            if (!isFinishing && webView.isAttachedToWindow) {
+                                webView.evaluateJavascript(
+                                    "window.leftPanelController?.onSearchResults?.($requestId, $escapedResults);",
+                                    null
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun activateLeftPanelTab(
+            uriString: String,
+            name: String,
+            markdown: String,
+            dirty: Boolean,
+            isTextPack: Boolean,
+            tabHasBom: Boolean,
+            tabHasCrlf: Boolean
+        ): Boolean {
+            val uri = uriString.takeIf { it.isNotBlank() }?.let {
+                runCatching { Uri.parse(it) }.getOrNull()
+            }
+            if (uri != null && !hasLeftPanelDocumentAccess(uri)) return false
+            currentFileUri = uri
+            currentFileName = name.ifBlank { "Untitled.md" }
+            currentDocumentSessionId = uri?.toString() ?: java.util.UUID.randomUUID().toString()
+            currentTextPackSession = if (isTextPack && uri != null) {
+                runCatching { TextPackManager.openTextPack(this@MainActivity, uri) }.getOrNull()
+            } else null
+            hasBom = tabHasBom
+            hasCrlf = tabHasCrlf
+            latestMarkdownContent = markdown
+            isDirty = dirty
+            runOnUiThread { updateTitle() }
+            return true
+        }
+
+        @JavascriptInterface
+        fun saveLeftPanelTab(
+            uriString: String,
+            name: String,
+            markdown: String,
+            isTextPack: Boolean,
+            tabHasBom: Boolean,
+            tabHasCrlf: Boolean
+        ): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "This tab has no saved file yet.").toString()
+            return saveLeftPanelDocument(uri, markdown, isTextPack, tabHasBom, tabHasCrlf).toString()
+        }
+
+        @JavascriptInterface
+        fun renameLeftPanelDocument(uriString: String, requestedName: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
+            if (!hasLeftPanelDocumentAccess(uri, write = true)) {
+                return org.json.JSONObject().put("ok", false).put("error", "This file is not writable.").toString()
+            }
+            val newName = requestedName.trim().take(180)
+            if (newName.isBlank()) return org.json.JSONObject().put("ok", false).put("error", "Enter a file name.").toString()
+            if (newName.contains('/') || newName.contains('\\')) {
+                return org.json.JSONObject().put("ok", false).put("error", "File names cannot contain path separators.").toString()
+            }
+            val renamed = runCatching {
+                android.provider.DocumentsContract.renameDocument(contentResolver, uri, newName)
+            }.getOrNull() ?: return org.json.JSONObject().put("ok", false).put("error", "The storage provider could not rename this file.").toString()
+            val finalName = queryDocumentDisplayName(renamed) ?: newName
+            if (currentFileUri == uri) {
+                currentFileUri = renamed
+                currentFileName = finalName
+                runOnUiThread { updateTitle() }
+            }
+            return org.json.JSONObject()
+                .put("ok", true)
+                .put("uri", renamed.toString())
+                .put("name", finalName)
+                .toString()
+        }
+
+        @JavascriptInterface
+        fun deleteLeftPanelDocument(uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
+            if (!hasLeftPanelDocumentAccess(uri, write = true)) {
+                return org.json.JSONObject().put("ok", false).put("error", "This file is not writable.").toString()
+            }
+            val deleted = runCatching {
+                android.provider.DocumentsContract.deleteDocument(contentResolver, uri)
+            }.getOrDefault(false)
+            return if (deleted) {
+                org.json.JSONObject().put("ok", true).toString()
+            } else {
+                org.json.JSONObject().put("ok", false).put("error", "The storage provider could not delete this file.").toString()
+            }
+        }
+
         @JavascriptInterface
         fun showToast(message: String) {
             showCustomToast(message)
@@ -1856,6 +2339,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "toc_settings" -> settingsLauncher.launch(
                         android.content.Intent(this@MainActivity, SettingsActivity::class.java)
                             .putExtra("settings_page", "toc")
+                    )
+                    "left_panel_settings" -> settingsLauncher.launch(
+                        android.content.Intent(this@MainActivity, SettingsActivity::class.java)
+                            .putExtra("settings_page", "left_panel")
                     )
                     "history_back" -> navigateCombinedHistory("back")
                     "history_forward" -> navigateCombinedHistory("forward")

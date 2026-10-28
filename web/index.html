@@ -349,6 +349,281 @@
       color: var(--selection-highlight-text, inherit) !important;
     }
 
+    /* Left workspace panel; toolbars remain above its overlay and panel. */
+    #left-panel-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9998;
+      background: rgba(0, 0, 0, var(--left-panel-overlay-dim, 0.5));
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.25s ease, visibility 0.25s ease;
+    }
+
+    #left-panel-overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    #left-panel {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 10000;
+      width: var(--left-panel-width, 82vw);
+      max-width: 360px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      color: var(--left-panel-text-color, var(--text-color));
+      background: color-mix(
+        in srgb,
+        var(--left-panel-bg-color, var(--toolbar-bg)) var(--left-panel-bg-opacity, 100%),
+        transparent
+      );
+      border-right: 1px solid var(--left-panel-border-color, var(--border-color));
+      box-shadow: 4px 0 16px rgba(0, 0, 0, 0.4);
+      transform: translateX(-100%);
+      transition: transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      font-family: var(--left-panel-font-family, inherit);
+    }
+
+    #left-panel.open {
+      transform: translateX(0);
+    }
+
+    .left-panel-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--left-panel-border-color, var(--border-color));
+      flex: 0 0 auto;
+    }
+
+    .left-panel-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .left-panel-top-action,
+    .left-panel-section-header,
+    .left-panel-icon-button {
+      border: 0;
+      color: inherit;
+      background: transparent;
+      font: inherit;
+      touch-action: manipulation;
+    }
+
+    .left-panel-top-action,
+    .left-panel-icon-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 38px;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+    }
+
+    .left-panel-top-action:active,
+    .left-panel-icon-button:active,
+    .left-panel-section-header:active {
+      background: color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 12%, transparent);
+    }
+
+    #left-panel-stack {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 0;
+      overflow: hidden;
+      padding: 8px 10px 10px;
+      box-sizing: border-box;
+    }
+
+    .left-panel-section {
+      display: flex;
+      flex: 0 0 auto;
+      min-height: 0;
+      flex-direction: column;
+      border-top: 1px solid color-mix(in srgb, var(--left-panel-border-color, var(--border-color)) 65%, transparent);
+    }
+
+    .left-panel-section-header {
+      display: flex;
+      flex: 0 0 auto;
+      width: 100%;
+      min-height: 46px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 8px;
+      text-align: left;
+      font-size: var(--left-panel-font-size, 16px);
+      font-weight: var(--left-panel-font-weight, 600);
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .left-panel-section-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .left-panel-section-chevron {
+      display: inline-flex;
+      flex: 0 0 20px;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      transition: transform 0.18s ease;
+    }
+
+    .left-panel-section[aria-expanded="true"] .left-panel-section-chevron {
+      transform: rotate(180deg);
+    }
+
+    .left-panel-section-body {
+      display: none;
+      flex: 0 1 auto;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+      padding: 0 6px 8px;
+      box-sizing: border-box;
+    }
+
+    .left-panel-section[aria-expanded="true"] .left-panel-section-body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .left-panel-section.is-priority.fill-available {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .left-panel-section.is-priority.fill-available .left-panel-section-body {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .left-panel-search-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0 8px;
+    }
+
+    #left-panel-search-input {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 42px;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border: 1px solid var(--left-panel-border-color, var(--border-color));
+      border-radius: 8px;
+      color: var(--left-panel-text-color, var(--text-color));
+      background: color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 6%, transparent);
+      font: inherit;
+    }
+
+    .left-panel-search-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 2px 8px;
+      font-size: 13px;
+    }
+
+    .left-panel-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--left-panel-row-spacing, 2px);
+      min-height: 0;
+    }
+
+    .left-panel-row {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 42px;
+      gap: 8px;
+      padding: 4px 8px;
+      border: 0;
+      border-radius: 8px;
+      color: inherit;
+      background: transparent;
+      text-align: left;
+      font: inherit;
+      overflow-wrap: anywhere;
+      touch-action: manipulation;
+      cursor: pointer;
+    }
+
+    .left-panel-row:active,
+    .left-panel-row.selected {
+      background: color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 14%, transparent);
+    }
+
+    .left-panel-row-label {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .left-panel-muted,
+    .left-panel-result-path {
+      opacity: 0.72;
+      font-size: 12px;
+    }
+
+    .left-panel-context-menu {
+      position: fixed;
+      z-index: 10000;
+      display: none;
+      min-width: 190px;
+      max-width: min(260px, calc(100vw - 24px));
+      padding: 5px;
+      border: 1px solid var(--left-panel-border-color, var(--border-color));
+      border-radius: 10px;
+      color: var(--left-panel-text-color, var(--text-color));
+      background: var(--left-panel-bg-color, var(--toolbar-bg));
+      box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5);
+    }
+
+    .left-panel-context-menu.open {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .left-panel-context-menu button {
+      min-height: 42px;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 7px;
+      color: inherit;
+      background: transparent;
+      text-align: left;
+      font: inherit;
+    }
+
+    .left-panel-context-menu button:active {
+      background: color-mix(in srgb, var(--left-panel-text-color, var(--text-color)) 14%, transparent);
+    }
+
     /* Slide-over Table of Contents (TOC) Panel */
     #toc-overlay {
       position: fixed;
@@ -1814,6 +2089,54 @@
   <div id="fast-scrollbar-track">
     <div id="fast-scrollbar-thumb"></div>
   </div>
+  <div id="left-panel-overlay" aria-hidden="true"></div>
+  <aside id="left-panel" aria-label="Workspace panel" aria-hidden="true">
+    <div class="left-panel-topbar">
+      <span class="left-panel-title">Workspace</span>
+      <button id="left-panel-settings" class="left-panel-top-action" type="button" aria-label="Left panel settings" title="Settings">⚙</button>
+      <button id="left-panel-close" class="left-panel-top-action" type="button" aria-label="Close workspace panel" title="Close">×</button>
+    </div>
+    <div id="left-panel-stack">
+      <section class="left-panel-section" data-left-section="search" aria-expanded="false">
+        <button class="left-panel-section-header" type="button" aria-expanded="false">
+          <span class="left-panel-section-label">Search</span>
+          <span class="left-panel-section-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div class="left-panel-section-body" id="left-panel-search-body">
+          <div class="left-panel-search-row">
+            <input id="left-panel-search-input" type="search" placeholder="Search files" enterkeyhint="search" autocomplete="off" aria-label="Search file names or contents" />
+            <button id="left-panel-search-clear" class="left-panel-icon-button" type="button" aria-label="Clear search">×</button>
+          </div>
+          <label class="left-panel-search-option">
+            <input id="left-panel-search-contents" type="checkbox" />
+            <span>Search within files</span>
+          </label>
+          <div id="left-panel-search-status" class="left-panel-muted" aria-live="polite"></div>
+          <div id="left-panel-search-results" class="left-panel-list" role="list"></div>
+        </div>
+      </section>
+      <section class="left-panel-section" data-left-section="folders" aria-expanded="false">
+        <button class="left-panel-section-header" type="button" aria-expanded="false">
+          <span class="left-panel-section-label">Folders</span>
+          <span class="left-panel-section-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div class="left-panel-section-body" id="left-panel-folders-body">
+          <div id="left-panel-folders-status" class="left-panel-muted" aria-live="polite"></div>
+          <div id="left-panel-folders-tree" class="left-panel-list" role="tree"></div>
+        </div>
+      </section>
+      <section class="left-panel-section" data-left-section="tabs" aria-expanded="false">
+        <button class="left-panel-section-header" type="button" aria-expanded="false">
+          <span class="left-panel-section-label">Tabs</span>
+          <span class="left-panel-section-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div class="left-panel-section-body" id="left-panel-tabs-body">
+          <div id="left-panel-tabs-list" class="left-panel-list" role="list"></div>
+        </div>
+      </section>
+    </div>
+  </aside>
+  <div id="left-panel-tab-menu" class="left-panel-context-menu" role="menu" aria-label="Tab actions"></div>
   <div id="toc-overlay"></div>
   <div id="toc-panel">
     <div class="toc-header">

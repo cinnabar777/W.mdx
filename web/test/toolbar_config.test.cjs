@@ -31,6 +31,29 @@ test('bottom toolbar configuration ignores unknown and duplicate keys but restor
   );
 });
 
+test('new Files & Tabs action is added to existing menu layouts without overriding user placement', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const olderLayout = normalizeBottomToolbarConfig({
+    version: 4,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      menu: { order: ['newFile', 'settings'], hidden: [] }
+    }
+  });
+  assert.deepEqual(olderLayout.popupGroups.menu.order, ['newFile', 'settings', 'leftPanel']);
+
+  const heldLayout = normalizeBottomToolbarConfig({
+    version: 4,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      menu: { order: ['newFile', 'settings'], hidden: [] }
+    },
+    holding: ['leftPanel']
+  });
+  assert.deepEqual(heldLayout.popupGroups.menu.order, ['newFile', 'settings']);
+  assert.ok(heldLayout.holding.includes('leftPanel'));
+});
+
 test('invalid saved configuration falls back to the current toolbar order', async () => {
   const { BOTTOM_TOOLBAR_GROUP_ITEM_IDS, normalizeBottomToolbarConfig } =
     await import('../src/toolbarConfig.js');

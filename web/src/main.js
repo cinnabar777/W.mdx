@@ -30,6 +30,7 @@ import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { toCssFontFamily } from './fontFamilies.js';
+import { setupLeftPanel } from './leftPanel.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
@@ -3810,6 +3811,7 @@ class CodeMirrorAdapter {
         EditorView.updateListener.of(update => {
           if (update.docChanged && !this.isProgrammatic) {
             this.revision++;
+            window.leftPanelController?.onEditorChanged?.(update.state.doc.toString());
             if (window.AndroidNative && typeof window.AndroidNative.onContentChanged === 'function') {
               window.AndroidNative.onContentChanged(update.state.doc.toString(), this.revision);
             } else if (window.AndroidNative && typeof window.AndroidNative.onDirtyStateChanged === 'function') {
@@ -4415,6 +4417,10 @@ function setupGroupedControlBar() {
             window.AndroidNative.onNativeAction('new_window');
           }
         } },
+        { id: 'leftPanel', icon: svgIcons.folder, title: 'Files & Tabs', action: () => {
+          hidePopupStrip();
+          window.leftPanelController?.open?.();
+        } },
         { id: 'settings', icon: svgIcons.settings, title: 'Settings', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('settings') }
       ]);
     };
@@ -4695,6 +4701,10 @@ function createToolbarActionRegistry() {
       { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow, action: () => {
         hidePopupStrip();
         window.AndroidNative?.onNativeAction('new_window');
+      } },
+      { id: 'leftPanel', title: 'Files & Tabs', icon: svgIcons.folder, action: () => {
+        hidePopupStrip();
+        window.leftPanelController?.open?.();
       } },
       { id: 'settings', title: 'Settings', icon: svgIcons.settings, action: () => window.AndroidNative?.onNativeAction('settings') }
     ]
@@ -6560,6 +6570,7 @@ function setupTocGestureAndPanel(scrollDOM) {
   };
 
   const openToc = () => {
+    window.leftPanelController?.close?.();
     if (activeAdapter?.view?.contentDOM) {
       activeAdapter.view.contentDOM.blur();
     }
@@ -6585,6 +6596,7 @@ function setupTocGestureAndPanel(scrollDOM) {
     panel.classList.remove('open');
     overlay.classList.remove('open');
   };
+  window.closeTocPanel = closeToc;
 
   overlay.onclick = closeToc;
   const onDocumentNameClick = () => beginDocumentNameEdit();
@@ -7857,6 +7869,18 @@ window.editorBridge = {
     setCssVar('--toc-toggle-active-bg-color', androidArgbToCss(prefs.pref_toc_toggle_active_bg_color));
     setCssVar('--toc-toggle-active-icon-color', androidArgbToCss(prefs.pref_toc_toggle_active_icon_color));
     setCssVar('--toc-row-spacing', prefs.pref_toc_row_spacing ?? 4, 'px');
+    const leftPanelWidth = Number(prefs.pref_left_panel_width ?? 80);
+    setCssVar('--left-panel-width', Math.max(50, Math.min(90, leftPanelWidth)), 'vw');
+    setCssVar('--left-panel-bg-color', androidArgbToCss(prefs.pref_left_panel_bg_color));
+    setCssVar('--left-panel-bg-opacity', prefs.pref_left_panel_bg_opacity ?? 100, '%');
+    setCssVar('--left-panel-border-color', androidArgbToCss(prefs.pref_left_panel_border_color));
+    setCssVar('--left-panel-text-color', androidArgbToCss(prefs.pref_left_panel_text_color));
+    setCssVar('--left-panel-font-size', prefs.pref_left_panel_font_size ?? 16, 'px');
+    setCssVar('--left-panel-font-weight', prefs.pref_left_panel_font_weight ?? 600);
+    setCssVar('--left-panel-row-spacing', prefs.pref_left_panel_row_spacing ?? 2, 'px');
+    const leftPanelOverlayDim = Number(prefs.pref_left_panel_overlay_dim ?? 50);
+    setCssVar('--left-panel-overlay-dim', Math.max(0, Math.min(90, leftPanelOverlayDim)) / 100);
+    window.leftPanelController?.applyPreferences?.(prefs);
     const tocIndentSpacing = Number(prefs.pref_toc_indent_spacing ?? 12);
     for (let level = 1; level <= 6; level++) {
       setCssVar(`--toc-level-${level}-indent`, 8 + ((level - 1) * tocIndentSpacing), 'px');
@@ -8038,6 +8062,7 @@ window.editorBridge = {
       } catch (e) {
         console.error('Error setting markdown:', e);
       }
+      window.leftPanelController?.onNativeDocumentLoaded?.(markdownText || '');
       setTimeout(() => { isProgrammaticChange = false; }, 50);
     } else {
       pendingMarkdown = markdownText;
@@ -8219,6 +8244,7 @@ window.editorBridge = {
     applyFontCategory('Code', fontCodeData, '--code-font-family', fontFamilies.code || 'default');
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family', fontFamilies.calloutHeader || 'default');
     applyFontCategory('Toc', fontTocData, '--toc-font-family', fontFamilies.toc || 'default');
+    applyFontCategory('LeftPanel', fontFiles.leftPanel, '--left-panel-font-family', fontFamilies.leftPanel || 'default');
     applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family', bodyFontFamily);
     applyFontCategory('Blockquote', fontFiles.blockquote, '--blockquote-font-family', fontFamilies.blockquote || 'default');
     applyFontCategory('Callout', fontFiles.callout, '--callout-font-family', fontFamilies.callout || 'default');
@@ -8892,6 +8918,7 @@ export function setupNavigationDiagnostics(view) {
 window.addEventListener('DOMContentLoaded', () => {
   setupFloatingToggle();
   setupKeyboardShortcuts();
+  setupLeftPanel();
   if (window.AndroidNative && typeof window.AndroidNative.onHostReady === 'function') {
     window.AndroidNative.onHostReady();
   } else {
