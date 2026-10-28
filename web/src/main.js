@@ -7237,20 +7237,32 @@ window.editorBridge = {
     return currentEditorMode;
   },
   applyBottomToolbarConfig: function(rawConfig) {
-    bottomToolbarConfig = normalizeBottomToolbarConfig(rawConfig);
+    const nextConfig = normalizeBottomToolbarConfig(rawConfig);
+    if (JSON.stringify(nextConfig) === JSON.stringify(bottomToolbarConfig)) return;
+    bottomToolbarConfig = nextConfig;
     hidePopupStrip();
     setupGroupedControlBar();
   },
   applyFloatingToolbarConfig: function(rawConfig) {
-    floatingToolbarConfig = normalizeBottomToolbarConfig(rawConfig);
+    const nextConfig = normalizeBottomToolbarConfig(rawConfig);
+    if (JSON.stringify(nextConfig) === JSON.stringify(floatingToolbarConfig)) return;
+    floatingToolbarConfig = nextConfig;
     hidePopupStrip();
     setupFloatingSelectionToolbar();
   },
   applyToolbarConfigs: function(bottomRawConfig, floatingRawConfig) {
-    bottomToolbarConfig = normalizeBottomToolbarConfig(bottomRawConfig);
-    floatingToolbarConfig = normalizeBottomToolbarConfig(floatingRawConfig);
+    const nextBottomConfig = normalizeBottomToolbarConfig(bottomRawConfig);
+    const nextFloatingConfig = normalizeBottomToolbarConfig(floatingRawConfig);
+    const bottomChanged =
+      JSON.stringify(nextBottomConfig) !== JSON.stringify(bottomToolbarConfig);
+    const floatingChanged =
+      JSON.stringify(nextFloatingConfig) !== JSON.stringify(floatingToolbarConfig);
+    if (!bottomChanged && !floatingChanged) return;
+    bottomToolbarConfig = nextBottomConfig;
+    floatingToolbarConfig = nextFloatingConfig;
     hidePopupStrip();
-    setupGroupedControlBar();
+    if (bottomChanged) setupGroupedControlBar();
+    if (floatingChanged) setupFloatingSelectionToolbar();
   },
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
@@ -7717,20 +7729,26 @@ window.editorBridge = {
       hidePopupStrip();
     }
     if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
-      bottomToolbarConfig = normalizeBottomToolbarConfig(
+      const nextBottomConfig = normalizeBottomToolbarConfig(
         prefs.pref_toolbar_bottom_config
       );
-      hidePopupStrip();
-      setupGroupedControlBar();
+      if (JSON.stringify(nextBottomConfig) !== JSON.stringify(bottomToolbarConfig)) {
+        bottomToolbarConfig = nextBottomConfig;
+        hidePopupStrip();
+        setupGroupedControlBar();
+      }
     }
     const floatingConfigPreference = prefs.pref_toolbar_floating_config ??
       prefs.pref_toolbar_bottom_config;
     if (floatingConfigPreference !== undefined) {
-      floatingToolbarConfig = normalizeBottomToolbarConfig(
+      const nextFloatingConfig = normalizeBottomToolbarConfig(
         floatingConfigPreference
       );
-      hidePopupStrip();
-      setupFloatingSelectionToolbar();
+      if (JSON.stringify(nextFloatingConfig) !== JSON.stringify(floatingToolbarConfig)) {
+        floatingToolbarConfig = nextFloatingConfig;
+        hidePopupStrip();
+        setupFloatingSelectionToolbar();
+      }
     }
     setCssVar('--toolbar-bg', androidArgbToCss(prefs.pref_toolbar_bg_color));
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);

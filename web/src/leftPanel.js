@@ -199,8 +199,14 @@ export function setupLeftPanel() {
     const activeHeaderHeight =
       active.querySelector('.left-panel-section-header')?.offsetHeight || 46;
     const remaining = Math.max(96, availableHeight - otherExpandedHeight - activeHeaderHeight);
-    active.classList.add('fill-available');
-    activeBody.style.maxHeight = `${remaining}px`;
+    const desiredHeight = activeBody.scrollHeight;
+    if (desiredHeight > remaining) {
+      active.classList.add('fill-available');
+      activeBody.style.maxHeight = `${remaining}px`;
+    } else {
+      active.classList.remove('fill-available');
+      activeBody.style.maxHeight = `${Math.max(desiredHeight, 0)}px`;
+    }
   }
 
   for (const [id, section] of sectionElements) {
@@ -228,6 +234,20 @@ export function setupLeftPanel() {
     if (!tab) return;
     tab.markdown = currentMarkdown();
     persistTabs();
+  };
+
+  const refreshBlankTabFromStorage = (tab) => {
+    if (!tab?.uri || tab.dirty || tab.markdown) return;
+    const documentData = parseBridgeResult(
+      native?.readLeftPanelDocument?.(tab.uri),
+      null
+    );
+    if (!documentData?.ok || typeof documentData.markdown !== 'string') return;
+    tab.name = documentData.name || tab.name;
+    tab.markdown = documentData.markdown;
+    tab.isTextPack = Boolean(documentData.isTextPack);
+    tab.hasBom = Boolean(documentData.hasBom);
+    tab.hasCrlf = Boolean(documentData.hasCrlf);
   };
 
   const addTab = (documentData, { activate = true, persist = true } = {}) => {
@@ -259,6 +279,7 @@ export function setupLeftPanel() {
     const next = tabs.find((tab) => tab.id === id);
     if (!next) return;
     syncActiveTab();
+    refreshBlankTabFromStorage(next);
     const previousTabId = activeTabId;
     activeTabId = next.id;
     switchingTab = true;
@@ -278,16 +299,12 @@ export function setupLeftPanel() {
         ? previousTabId
         : tabs[0]?.id || null;
       switchingTab = false;
-      renderTabs();
-      persistTabs();
       if (activeTabId) {
+        renderTabs();
+        persistTabs();
         activateTab(activeTabId);
       } else {
-        native?.activateLeftPanelTab?.('', 'Untitled', '', false, false, false, false);
-        window.editorBridge?.setMarkdown?.('');
-        addTab({ uri: null, name: 'Untitled', markdown: '' }, { activate: false });
-        activeTabId = tabs[0]?.id || null;
-        renderTabs();
+        activateUntitledTab();
       }
       folderStatus.textContent = 'A tab points to a file that is no longer available.';
       return;
@@ -298,6 +315,34 @@ export function setupLeftPanel() {
     requestAnimationFrame(() => {
       switchingTab = false;
     });
+  };
+
+  const activateUntitledTab = () => {
+    let tab = tabs.find((item) => !item.uri);
+    if (!tab) {
+      tab = addTab(
+        { uri: null, name: 'Untitled', markdown: '' },
+        { activate: false, persist: false }
+      );
+    }
+    activeTabId = tab.id;
+    switchingTab = true;
+    native?.activateLeftPanelTab?.(
+      '',
+      tab.name || 'Untitled',
+      tab.markdown || '',
+      tab.dirty,
+      tab.isTextPack,
+      tab.hasBom,
+      tab.hasCrlf
+    );
+    window.editorBridge?.setMarkdown?.(tab.markdown || '');
+    renderTabs();
+    persistTabs();
+    requestAnimationFrame(() => {
+      switchingTab = false;
+    });
+    return tab;
   };
 
   const openDocument = (uri) => {
@@ -650,9 +695,7 @@ export function setupLeftPanel() {
       if (index >= 0) tabs.splice(index, 1);
     }
     if (!tabs.length) {
-      native?.activateLeftPanelTab?.('', 'Untitled', '', false, false, false, false);
-      window.editorBridge?.setMarkdown?.('');
-      addTab({ uri: null, name: 'Untitled', markdown: '' }, { persist: false });
+      activateUntitledTab();
     } else if (closeIds.includes(activeTabId)) {
       const replacement = tabs[0];
       if (replacement && tabs.includes(replacement)) activateTab(replacement.id);
@@ -731,12 +774,7 @@ export function setupLeftPanel() {
     if (activeTabId === tab.id) {
       activeTabId = tabs[0]?.id || null;
       if (activeTabId) activateTab(activeTabId);
-      else {
-        native.activateLeftPanelTab?.('', 'Untitled', '', false, false, false, false);
-        window.editorBridge?.setMarkdown?.('');
-        addTab({ uri: null, name: 'Untitled', markdown: '' }, { activate: false });
-        activeTabId = tabs[0]?.id || null;
-      }
+      else activateUntitledTab();
     }
     renderTabs();
     persistTabs();
@@ -782,6 +820,21 @@ export function setupLeftPanel() {
         hasCrlf: Boolean(savedTab.hasCrlf)
       });
     }
+    const emptyUntitledTabs = tabs.filter((tab) =>
+      !tab.uri &&
+      !tab.dirty &&
+      tab.markdown === '' &&
+      /^Untitled(?:\.md)?$/i.test(tab.name)
+    );
+    if (emptyUntitledTabs.length > 1) {
+      const keepId = emptyUntitledTabs.some((tab) => tab.id === storedTabs.activeTabId)
+        ? storedTabs.activeTabId
+        : emptyUntitledTabs[0].id;
+      const retainedTabs = tabs.filter((tab) =>
+        !emptyUntitledTabs.includes(tab) || tab.id === keepId
+      );
+      tabs.splice(0, tabs.length, ...retainedTabs);
+    }
     activeTabId = tabs.some((tab) => tab.id === storedTabs.activeTabId)
       ? storedTabs.activeTabId
       : tabs[0]?.id;
@@ -809,6 +862,7 @@ export function setupLeftPanel() {
   renderTabs();
 
   const onEditorChanged = (markdown) => {
+    if (switchingTab) return;
     const tab = activeTab();
     if (!tab) return;
     tab.markdown = String(markdown ?? '');

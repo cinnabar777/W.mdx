@@ -335,22 +335,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         AppDiagnostics.record(this, "window_resumed")
         PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(this)
         if (::webView.isInitialized) {
-            webView.onResume()
-            applyThemeAndFullscreenPreferences()
-            refreshBottomToolbarFromPreferences()
             suppressImeUntilUserTouch = true
             val generation = ++imeHideGeneration
             window.setSoftInputMode(
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING or
                     WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
             )
-            webView.post { hideImeWhileResumeIsSuppressed(generation) }
-            webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 180)
-            webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 500)
+            webView.onResume()
+            applyThemeAndFullscreenPreferences()
+            refreshBottomToolbarFromPreferences()
+            webView.post {
+                hideImeWhileResumeIsSuppressed(generation)
+                restoreImeResizeAfterResume(generation)
+            }
             AppDiagnostics.record(
                 this,
                 "ime_resume_suppression_started",
-                "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
+                "generation=${generation} adjust=nothing viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
             )
         }
     }
@@ -423,6 +424,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "generation=${generation} visibleBefore=${visibleBefore} visibleAfter=${editorImeVisible()} viewFocused=${webView.isFocused}"
         )
     }
+
+    private fun restoreImeResizeAfterResume(
+        generation: Int,
+        attempts: Int = 0,
+        stableHiddenChecks: Int = 0
+    ) {
+        if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
+            return
+        }
+        if (editorImeVisible()) {
+            if (attempts >= 12) {
+                AppDiagnostics.record(
+                    this,
+                    "ime_resume_adjustment_still_suppressed",
+                    "generation=${generation} imeVisible=true"
+                )
+                return
+            }
+            hideImeWhileResumeIsSuppressed(generation)
+            webView.postDelayed({
+                restoreImeResizeAfterResume(generation, attempts + 1, 0)
+            }, 80L)
+            return
+        }
+        if (stableHiddenChecks < 2) {
+            webView.postDelayed({
+                restoreImeResizeAfterResume(generation, attempts + 1, stableHiddenChecks + 1)
+            }, 80L)
+            return
+        }
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+        )
+        AppDiagnostics.record(
+            this,
+            "ime_resume_resize_restored",
+            "generation=${generation} stableHiddenChecks=${stableHiddenChecks}"
+        )
+    }
+
     private fun performAutoSaveOnLeave() {
         if (!isDirty || currentFileUri == null) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
