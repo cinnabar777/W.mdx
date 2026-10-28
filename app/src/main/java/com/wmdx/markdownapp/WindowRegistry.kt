@@ -47,6 +47,11 @@ object WindowRegistry {
         prefs(activity).edit()
             .putString("tabs_${activity.taskId}", normalizedUris.toString())
             .apply()
+        AppDiagnostics.record(
+            activity,
+            "window_tabs_registered",
+            "task=${activity.taskId} count=${normalizedUris.length()}"
+        )
     }
 
     private fun openTabUris(context: Context, taskId: Int): Set<String> {
@@ -79,24 +84,35 @@ object WindowRegistry {
         val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val normalizedUri = uri?.normalizeScheme()?.toString()
         var matchedTaskId: Int? = null
+        var matchedBy = "none"
         val task = manager.appTasks.firstOrNull {
             val info = it.taskInfo
             @Suppress("DEPRECATION")
             val taskId = info.id
+            val currentUri = current(context, taskId)?.normalizeScheme()?.toString()
+            val tabUris = openTabUris(context, taskId)
             val matched = WindowPolicy.matches(
                 launcherRequest = launcher,
                 requestedUri = normalizedUri,
                 launcherTask = info.baseIntent.getBooleanExtra("launcher_window", false),
-                currentUri = current(context, taskId)?.normalizeScheme()?.toString(),
+                currentUri = currentUri,
                 taskId = taskId,
                 excludedTask = excludeTask,
-                openTabUris = openTabUris(context, taskId)
+                openTabUris = tabUris
             )
-            if (matched) matchedTaskId = taskId
+            if (matched) {
+                matchedTaskId = taskId
+                matchedBy = when {
+                    launcher -> "launcher"
+                    normalizedUri == currentUri -> "current"
+                    normalizedUri in tabUris -> "tab"
+                    else -> "other"
+                }
+            }
             matched
         }
         AppDiagnostics.record(context, "window_route_lookup",
-            "requested=${WindowPolicy.fingerprintUri(normalizedUri)} count=${manager.appTasks.size} match=${matchedTaskId ?: "none"}")
+            "requested=${WindowPolicy.fingerprintUri(normalizedUri)} count=${manager.appTasks.size} match=${matchedTaskId ?: "none"} via=$matchedBy")
         if (task == null) return false
         val taskId = matchedTaskId
         if (normalizedUri != null && taskId != null) {

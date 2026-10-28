@@ -218,7 +218,10 @@ test('tab snapshots read the live editor and reject stale or empty state', () =>
   assert.match(source, /window\.editorBridge\?\.setMarkdown\?\.\(latestPendingMarkdown\)/);
   assert.match(source, /pendingMarkdown = null;\s*isProgrammaticChange = true/);
   assert.match(syncBody, /switchingTab \|\| loadedTabId !== activeTabId/);
-  assert.match(syncBody, /\(context\?\.uri \|\| null\) !== \(tab\.uri \|\| null\)/);
+  assert.match(
+    syncBody,
+    /sameDocumentUri\(context\?\.uri \|\| null, tab\.uri \|\| null\)/
+  );
   assert.match(syncBody, /markdown === '' && tab\.markdown !== ''/);
   assert.match(activateBody, /switchingTab = false;\s*renderTabs\(\)/);
   assert.doesNotMatch(activateBody, /requestAnimationFrame\(\(\) => \{\s*switchingTab = false/);
@@ -706,9 +709,14 @@ test('opening a file already in another tab or window focuses its existing owner
   );
   assert.match(leftPanelSource, /native\?\.focusOpenDocument\?\.\(uri\) === true/);
   assert.match(leftPanelSource, /focusDocumentUri\(uri\)/);
+  assert.match(leftPanelSource, /sameDocumentUri\(tab\.uri, uri\)/);
+  assert.match(leftPanelSource, /normalizeDocumentUri/);
   assert.match(mainActivitySource, /fun registerLeftPanelOpenTabUris\(urisJson: String\)/);
   assert.match(windowRegistrySource, /openTabUris\(context, taskId\)/);
   assert.match(windowRegistrySource, /activity\.requestExistingDocumentFocus\(normalizedUri\)/);
+  assert.match(windowRegistrySource, /via=\$matchedBy/);
+  assert.match(mainActivitySource, /window_focus_tab_result/);
+  assert.match(mainActivitySource, /if \(!isActivityResumed \|\| !isEditorReady/);
 });
 
 test('launcher tabs persist while file-manager window tabs are temporary', () => {

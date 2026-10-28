@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingOpenUri: Uri? = null
     private var pendingOpenPermissionFlags: Int? = null
     private var pendingExistingDocumentFocusUri: Uri? = null
+    private var isActivityResumed = false
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
     private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
@@ -103,11 +104,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun dispatchPendingExistingDocumentFocus() {
         val uri = pendingExistingDocumentFocusUri ?: return
-        if (!isEditorReady || !::webView.isInitialized) return
+        if (!isActivityResumed || !isEditorReady || !::webView.isInitialized) return
         val escapedUri = JSONObjectWrapper.quote(uri.toString())
         webView.evaluateJavascript(
             "(window.leftPanelController?.focusDocumentUri?.($escapedUri) === true)"
-        ) { _ ->
+        ) { focused ->
+            AppDiagnostics.record(
+                this,
+                "window_focus_tab_result",
+                "uri=${WindowPolicy.fingerprintUri(uri.toString())} focused=${focused == "true"}"
+            )
             if (pendingExistingDocumentFocusUri == uri) {
                 pendingExistingDocumentFocusUri = null
             }
@@ -439,10 +445,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onResume() {
         super.onResume()
+        isActivityResumed = true
         WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
             pendingExistingDocumentFocusUri = it
         }
-        dispatchPendingExistingDocumentFocus()
         AppDiagnostics.record(this, "window_resumed")
         PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(this)
         if (::webView.isInitialized) {
@@ -465,9 +471,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 "generation=${generation} adjust=nothing viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
             )
         }
+        dispatchPendingExistingDocumentFocus()
     }
 
     override fun onPause() {
+        isActivityResumed = false
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)

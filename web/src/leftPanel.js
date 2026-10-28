@@ -515,6 +515,11 @@ export function setupLeftPanel() {
       ? `tab:${baseId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
       : baseId;
   };
+  const normalizeDocumentUri = (uri) => typeof uri === 'string'
+    ? uri.replace(/^([a-z][a-z\d+.-]*):/i, (_, scheme) => `${scheme.toLowerCase()}:`)
+    : null;
+  const sameDocumentUri = (left, right) =>
+    normalizeDocumentUri(left) === normalizeDocumentUri(right);
   const tabHistoryState = (tab) => ({
     back: Array.isArray(tab?.documentHistoryBack) ? tab.documentHistoryBack : [],
     forward: Array.isArray(tab?.documentHistoryForward) ? tab.documentHistoryForward : []
@@ -539,7 +544,7 @@ export function setupLeftPanel() {
     const tab = activeTab();
     if (!tab) return;
     const context = parseBridgeResult(native?.getLeftPanelContext?.(), {});
-    if ((context?.uri || null) !== (tab.uri || null)) {
+    if (!sameDocumentUri(context?.uri || null, tab.uri || null)) {
       native?.reportDiagnostic?.('left_panel_snapshot_uri_mismatch', '');
       return;
     }
@@ -636,7 +641,7 @@ export function setupLeftPanel() {
 
   const addTab = (documentData, { activate = true, persist = true } = {}) => {
     const uri = documentData.uri || null;
-    const existing = uri ? tabs.find((tab) => tab.uri === uri) : null;
+    const existing = uri ? tabs.find((tab) => sameDocumentUri(tab.uri, uri)) : null;
     if (existing) {
       if (activate) activateTab(existing.id);
       return existing;
@@ -761,8 +766,9 @@ export function setupLeftPanel() {
 
   const openDocumentInActiveTab = async (uri) => {
     const current = activeTab();
-    if (current?.uri === uri) return true;
-    const existingTarget = tabs.find((tab) => tab.uri === uri && tab.id !== current?.id);
+    if (sameDocumentUri(current?.uri || null, uri)) return true;
+    const existingTarget = tabs.find((tab) =>
+      sameDocumentUri(tab.uri, uri) && tab.id !== current?.id);
     if (tabsEnabled && existingTarget) {
       activateTab(existingTarget.id);
       return activeTabId === existingTarget.id;
@@ -802,7 +808,7 @@ export function setupLeftPanel() {
     captureTabHistoryState(current);
 
     const target = (tabsEnabled
-      ? tabs.find((tab) => tab.uri === documentData.uri)
+      ? tabs.find((tab) => sameDocumentUri(tab.uri, documentData.uri))
       : null) || current;
     if (!target) {
       folderStatus.textContent = 'There is no active tab to open this file in.';
@@ -853,9 +859,9 @@ export function setupLeftPanel() {
       return openDocumentInActiveTab(uri);
     }
     const current = activeTab();
-    const existing = current?.uri === uri
+    const existing = sameDocumentUri(current?.uri || null, uri)
       ? current
-      : tabs.find((tab) => tab.uri === uri);
+      : tabs.find((tab) => sameDocumentUri(tab.uri, uri));
     if (existing) {
       activateTab(existing.id);
       return;
@@ -1926,7 +1932,7 @@ export function setupLeftPanel() {
     }
     if (!tabsEnabled) {
       const target = current || (context.uri
-        ? tabs.find((tab) => tab.uri === context.uri)
+        ? tabs.find((tab) => sameDocumentUri(tab.uri, context.uri))
         : null);
       if (!target) return;
       const oldId = target.id;
@@ -1968,8 +1974,10 @@ export function setupLeftPanel() {
       current.emptyContentExplicitlyEdited =
         Boolean(context.emptyContentExplicitlyEdited);
       activeTabId = current.id;
-    } else if (!current || current.uri !== (context.uri || null)) {
-      const existing = context.uri ? tabs.find((tab) => tab.uri === context.uri) : null;
+    } else if (!current || !sameDocumentUri(current.uri, context.uri || null)) {
+      const existing = context.uri
+        ? tabs.find((tab) => sameDocumentUri(tab.uri, context.uri))
+        : null;
       if (existing) {
         existing.name = context.name || existing.name;
         existing.markdown = String(markdown ?? context.markdown ?? '');
@@ -2026,9 +2034,9 @@ export function setupLeftPanel() {
     onNativeDocumentLoaded,
     focusDocumentUri(uri) {
       const current = activeTab();
-      const target = current?.uri === uri
+      const target = sameDocumentUri(current?.uri || null, uri)
         ? current
-        : tabs.find((tab) => tab.uri === uri);
+        : tabs.find((tab) => sameDocumentUri(tab.uri, uri));
       if (!target) return false;
       if (target.id !== activeTabId) activateTab(target.id);
       return activeTabId === target.id;
