@@ -1464,6 +1464,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         )
         private val TOOLBAR_GESTURE_ACTION_IDS = listOf(
             "historyBack", "historyForward", "toggleToolbar", "removeHighlight",
+            "editToolbarKeyPreferences",
             TOOLBAR_OPEN_GROUP_ACTION_ID
         )
         private val TOOLBAR_CUSTOM_KEY_ID_PATTERN =

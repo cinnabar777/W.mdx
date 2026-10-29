@@ -135,7 +135,12 @@ const PREVIEW_SHORTCUT_ITEMS = [
   { id: 'historyBack', title: 'Back in Navigation History', icon: svgIcons.undo },
   { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
   { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
-  { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough }
+  { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough },
+  {
+    id: 'editToolbarKeyPreferences',
+    title: "Edit This Key's Preferences",
+    icon: svgIcons.settings
+  }
 ];
 for (const item of PREVIEW_SHORTCUT_ITEMS) {
   PREVIEW_ITEM_DEFINITIONS.set(item.id, item);

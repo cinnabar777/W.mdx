@@ -2567,6 +2567,33 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         fun getCurrentDocumentSessionId(): String = currentDocumentSessionId
 
         @JavascriptInterface
+        fun saveToolbarKeyPreferences(surface: String, rawConfig: String): Boolean {
+            if (surface != "bottom" && surface != "floating") return false
+            if (rawConfig.length > 256_000) return false
+            val config = runCatching { org.json.JSONObject(rawConfig) }.getOrNull()
+                ?: return false
+            if (config.optInt("version", 0) < 1 ||
+                config.optJSONArray("order") == null ||
+                config.optJSONObject("styles") == null) {
+                return false
+            }
+
+            val preferenceKey = if (surface == "floating") {
+                "pref_toolbar_floating_config"
+            } else {
+                "pref_toolbar_bottom_config"
+            }
+            val saved = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                .edit()
+                .putString(preferenceKey, config.toString())
+                .commit()
+            if (saved) {
+                runOnUiThread { refreshBottomToolbarFromPreferences() }
+            }
+            return saved
+        }
+
+        @JavascriptInterface
         fun isAutoSaveOnLeaveEnabled(): Boolean =
             PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
                 .getBoolean("pref_auto_save_on_leave", true)

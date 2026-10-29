@@ -66,6 +66,7 @@ import {
   toToolbarCssColor
 } from './toolbarRenderer.js';
 import { getFloatingToolbarPosition } from './toolbarPositioning.js';
+import { openToolbarKeyPreferencesDialog } from './toolbarKeyPreferencesDialog.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -4885,6 +4886,11 @@ function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
     { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
     { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
     { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough },
+    {
+      id: 'editToolbarKeyPreferences',
+      title: "Edit This Key's Preferences",
+      icon: svgIcons.settings
+    },
     { id: OPEN_GROUP_ACTION_ID, title: 'Open group', icon: svgIcons.folder }
   ]) {
     registry.set(item.id, item);
@@ -4900,6 +4906,10 @@ function runToolbarGestureAction(
 ) {
   if (!actionId || visited.has(actionId)) return false;
   visited.add(actionId);
+  if (actionId === 'editToolbarKeyPreferences') {
+    hidePopupStrip();
+    return openToolbarKeyPreferences(sourceButton, toolbarConfig);
+  }
   if (actionId === OPEN_GROUP_ACTION_ID) {
     const toolbarGroupId = [
       sourceButton?.dataset?.toolbarKey,
@@ -4951,6 +4961,43 @@ function runToolbarGestureAction(
   if (typeof item.action !== 'function') return false;
   item.action();
   return true;
+}
+
+function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
+  if (currentEditorMode !== 'wysiwyg') return false;
+  const keyId =
+    sourceButton?.dataset?.toolbarStyleId ||
+    sourceButton?.dataset?.toolbarKey;
+  if (!keyId) return false;
+
+  const registry = createRuntimeToolbarItemRegistryForConfig(toolbarConfig);
+  const definition = registry.get(keyId);
+  const title =
+    toolbarConfig.styles?.[keyId]?.title ||
+    toolbarConfig.customGroups?.[keyId]?.title ||
+    toolbarConfig.customKeys?.[keyId]?.title ||
+    definition?.title ||
+    keyId;
+  const surface = toolbarConfig === floatingToolbarConfig ? 'floating' : 'bottom';
+  return openToolbarKeyPreferencesDialog({
+    keyId,
+    keyTitle: title,
+    surface,
+    config: toolbarConfig,
+    actions: [...registry.values()],
+    onSave: (targetSurface, nextConfig) => {
+      const save = window.AndroidNative?.saveToolbarKeyPreferences;
+      if (typeof save !== 'function') return false;
+      const rawConfig = JSON.stringify(nextConfig);
+      if (!save(targetSurface, rawConfig)) return false;
+      if (targetSurface === 'floating') {
+        window.editorBridge?.applyFloatingToolbarConfig?.(nextConfig);
+      } else {
+        window.editorBridge?.applyBottomToolbarConfig?.(nextConfig);
+      }
+      return true;
+    }
+  });
 }
 
 async function runToolbarClipboardAction(actionId) {

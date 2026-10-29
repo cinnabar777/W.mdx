@@ -28,6 +28,11 @@ const resetSource = fs.readFileSync(
 );
 const mainSource = fs.readFileSync(path.join(root, 'web/src/main.js'), 'utf8');
 const toolbarConfigSource = fs.readFileSync(path.join(root, 'web/src/toolbarConfig.js'), 'utf8');
+const toolbarGesturesSource = fs.readFileSync(path.join(root, 'web/src/toolbarGestures.js'), 'utf8');
+const keyPreferencesDialogSource = fs.readFileSync(
+  path.join(root, 'web/src/toolbarKeyPreferencesDialog.js'),
+  'utf8'
+);
 const colorPickerSource = fs.readFileSync(
   path.join(root, 'app/src/main/java/com/wmdx/markdownapp/ColorPickerDialog.kt'),
   'utf8'
@@ -190,6 +195,30 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(androidSource, /TOOLBAR_HOLDING_ITEM_IDS = listOf\("cut", "copy", "paste", "selectAll"\)/);
   assert.match(androidSource, /TOOLBAR_OPEN_GROUP_ACTION_ID = "openGroup"/);
   assert.match(androidSource, /actionId\.startsWith\(LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX\)/);
+});
+
+test('toolbar gestures can open and save the preferences for their own key', () => {
+  assert.match(toolbarGesturesSource, /'editToolbarKeyPreferences'/);
+  assert.match(settingsSource, /id: 'editToolbarKeyPreferences'/);
+  assert.match(
+    mainSource,
+    /actionId === 'editToolbarKeyPreferences'[\s\S]*?openToolbarKeyPreferences\(sourceButton, toolbarConfig\)/
+  );
+  assert.match(
+    mainSource,
+    /sourceButton\?\.dataset\?\.toolbarStyleId[\s\S]*?sourceButton\?\.dataset\?\.toolbarKey/
+  );
+  assert.match(mainSource, /currentEditorMode !== 'wysiwyg'/);
+  assert.match(keyPreferencesDialogSource, /TOOLBAR_GESTURE_GROUPS/);
+  assert.match(keyPreferencesDialogSource, /nextStyle\.gestureActions/);
+  assert.match(
+    mainSource,
+    /save\(targetSurface, rawConfig\)/
+  );
+  assert.match(mainActivitySource, /fun saveToolbarKeyPreferences\(surface: String, rawConfig: String\)/);
+  assert.match(androidSource, /"editToolbarKeyPreferences"/);
+  assert.match(sharedCss, /\.toolbar-key-preferences-overlay\s*\{[^}]*z-index:\s*10030/s);
+  assert.doesNotMatch(mainSource, /customHotkeys\.toolbarKeyPreferences/);
 });
 
 test('toolbar appearance refreshes preserve layout and editor overlays follow the configured theme', () => {
