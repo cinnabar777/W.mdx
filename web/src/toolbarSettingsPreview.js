@@ -25,6 +25,7 @@ const embeddedWindow = window;
 const toolbar = document.querySelector('#toolbar-preview');
 const tray = document.querySelector('#toolbar-holding-tray');
 const popup = document.querySelector('#toolbar-preview-popup');
+const editorLayer = document.querySelector('#toolbar-preview-editor-layer');
 const editor = document.querySelector('#toolbar-preview-editor');
 const iconPicker = document.querySelector('#toolbar-icon-picker-modal');
 const actionPicker = document.querySelector('#toolbar-action-picker-modal');
@@ -864,6 +865,10 @@ function refreshSelectedKeyEditor() {
   }
   const addCustomButton = document.querySelector('#toolbar-add-custom');
   if (addCustomButton) addCustomButton.disabled = false;
+  if (editorLayer) {
+    editorLayer.hidden = !definition;
+    editorLayer.setAttribute('aria-hidden', String(!definition));
+  }
   editor.classList.toggle('visible', Boolean(definition));
   editor.setAttribute('aria-hidden', String(!definition));
   if (!definition) return;
@@ -2414,6 +2419,12 @@ window.finishToolbarDragFromNative = (clientX, clientY) => {
 
 document.querySelectorAll('.toolbar-preview-surface-button').forEach(button => {
   button.addEventListener('click', () => setToolbarSurface(button.dataset.toolbarSurface));
+});
+
+editorLayer?.addEventListener('click', event => {
+  if (event.target !== editorLayer) return;
+  selectedKey = null;
+  render();
 });
 
 const toolbarHelpButton = document.querySelector('#toolbar-help-button');

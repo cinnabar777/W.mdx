@@ -108,7 +108,7 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /id="toolbar-delete-custom-group"[^>]*aria-label="Delete custom group"/);
   assert.match(html, /grid-template-columns: minmax\(0, 1fr\) 40px 30px/);
   assert.match(html, /border-radius: 50%/);
-  assert.match(html, /z-index: 10002/);
+  assert.match(html, /\.toolbar-preview-editor-layer\s*\{[^}]*z-index:\s*10030/s);
   assert.match(html, /popup-open/);
   assert.match(settingsSource, /layoutSignature/);
   assert.match(sharedCss, /--toolbar-label-display/);
@@ -241,6 +241,8 @@ test('toolbar gestures can open and save the preferences for their own key', () 
   assert.match(sharedCss, /width:\s*min\(100%,\s*520px\)/);
   assert.match(sharedCss, /\.toolbar-key-preferences-overlay\s*\{[\s\S]*?align-items:\s*flex-start/);
   assert.match(sharedCss, /\.toolbar-key-preferences-frame\s*\{/);
+  assert.match(html, /\.toolbar-preview-editor-layer\s*\{[\s\S]*?z-index:\s*10030/);
+  assert.match(html, /\.toolbar-preview-icon-picker-modal\s*\{[\s\S]*?z-index:\s*10040/);
 });
 
 test('embedded preferences open the existing full key editor for the triggering key', async () => {
@@ -268,8 +270,10 @@ test('embedded preferences open the existing full key editor for the triggering 
       }
     });
     const editor = dom.window.document.querySelector('#toolbar-preview-editor');
+    const editorLayer = dom.window.document.querySelector('#toolbar-preview-editor-layer');
     assert.equal(opened, true);
     assert.equal(editor.classList.contains('visible'), true);
+    assert.equal(editorLayer.hidden, false);
     assert.equal(dom.window.document.querySelector('#toolbar-open-icon-picker') !== null, true);
     assert.equal(dom.window.document.querySelector('[data-toolbar-section="taps"]') !== null, true);
     assert.equal(dom.window.document.querySelector('[data-toolbar-section="side-swipes"]') !== null, true);
@@ -315,7 +319,7 @@ test('toolbar appearance refreshes preserve layout and editor overlays follow th
     settingsSource,
     /scrollStrip\.scrollLeft \+= lastX - pointerEvent\.clientX/
   );
-  assert.match(html, /height: min\(76dvh, calc\(100dvh - var\(--toolbar-height, 48px\) - 24px\)\)/);
+  assert.match(html, /\.toolbar-preview-editor-layer\s*\{[^}]*align-items:\s*flex-start/s);
   assert.match(html, /background: var\(--toolbar-preview-surface, var\(--bg-color, #000\)\)/);
   assert.doesNotMatch(html, /background:\s*#171717/i);
   assert.match(sharedCss, /\.toolbar-preview-holding\s*\{[^}]*margin-block:\s*auto/s);
@@ -439,8 +443,8 @@ test('global toolbar settings stay fixed while the key editor fits its content',
   assert.match(androidSource, /val top = preferenceBottom\.coerceIn\(0, host\.height\)/);
   assert.doesNotMatch(androidSource, /toolbarEditorOverlayExpanded|fun setToolbarEditorOverlay/);
   assert.match(html, /\.toolbar-preview-editor\s*\{[^}]*height:\s*auto/s);
-  assert.match(html, /min-height:\s*min\(76dvh,/);
-  assert.match(html, /max-height:\s*calc\(100dvh - var\(--toolbar-height/);
+  assert.match(html, /\.toolbar-preview-editor\s*\{[^}]*max-height:\s*none/s);
+  assert.match(html, /\.toolbar-preview-editor\s*\{[^}]*overflow:\s*visible/s);
   assert.match(androidSource, /baseLayout\.addView\(\s*android\.view\.View\(context\),\s*android\.widget\.LinearLayout\.LayoutParams\([\s\S]*?0,\s*1f/);
 });
 
