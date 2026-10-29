@@ -203,36 +203,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             handleRenameFolderSelection(result.resultCode, result.data)
         }
 
-    private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-        if (uri != null) {
-            pendingRenameFallbackName = null
-            val saveAsTextPack = pendingCreateDocumentAsTextPack
-            pendingCreateDocumentAsTextPack = null
-            val expectedSessionId = pendingCreateDocumentSessionId
-            pendingCreateDocumentSessionId = null
-            if (expectedSessionId != null && expectedSessionId != currentDocumentSessionId) {
-                ThemedToast.show(
-                    this,
-                    "The active document changed before Save As finished. Nothing was saved.",
-                    Toast.LENGTH_LONG
-                )
-            } else {
-                saveFileToUri(
-                    uri,
-                    saveAsTextPack,
-                    expectedDocumentSessionId = expectedSessionId
-                )
-            }
-        } else if (pendingRenameFallbackName != null) {
-            pendingCreateDocumentAsTextPack = null
-            pendingCreateDocumentSessionId = null
-            pendingRenameFallbackName = null
-            updateTitle()
-        } else {
-            pendingCreateDocumentAsTextPack = null
-            pendingCreateDocumentSessionId = null
+    private val createDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+            handleCreateDocumentResult(uri)
         }
-    }
+
+    private val createTextPackDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            handleCreateDocumentResult(uri)
+        }
 
     private val saveWmdxTabSessionLauncher =
         registerForActivityResult(
@@ -1653,7 +1632,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun isWmdxTabSession(uri: Uri): Boolean {
         val name = runCatching { getFileNameFromUri(uri) }.getOrNull().orEmpty()
         val mimeType = runCatching { contentResolver.getType(uri) }.getOrNull()
-        return name.endsWith(".wmdxsession", ignoreCase = true) ||
+        return name.endsWith(".mds", ignoreCase = true) ||
+            name.endsWith(".wmdxsession", ignoreCase = true) ||
             mimeType == WMDX_TAB_SESSION_MIME
     }
 
@@ -1727,7 +1707,42 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun launchCreateDocument(fileName: String, asTextPack: Boolean?) {
         pendingCreateDocumentAsTextPack = asTextPack
         pendingCreateDocumentSessionId = currentDocumentSessionId
-        createDocumentLauncher.launch(fileName)
+        if (asTextPack == true) {
+            createTextPackDocumentLauncher.launch(fileName)
+        } else {
+            createDocumentLauncher.launch(fileName)
+        }
+    }
+
+    private fun handleCreateDocumentResult(uri: Uri?) {
+        if (uri != null) {
+            pendingRenameFallbackName = null
+            val saveAsTextPack = pendingCreateDocumentAsTextPack
+            pendingCreateDocumentAsTextPack = null
+            val expectedSessionId = pendingCreateDocumentSessionId
+            pendingCreateDocumentSessionId = null
+            if (expectedSessionId != null && expectedSessionId != currentDocumentSessionId) {
+                ThemedToast.show(
+                    this,
+                    "The active document changed before Save As finished. Nothing was saved.",
+                    Toast.LENGTH_LONG
+                )
+            } else {
+                saveFileToUri(
+                    uri,
+                    saveAsTextPack,
+                    expectedDocumentSessionId = expectedSessionId
+                )
+            }
+        } else if (pendingRenameFallbackName != null) {
+            pendingCreateDocumentAsTextPack = null
+            pendingCreateDocumentSessionId = null
+            pendingRenameFallbackName = null
+            updateTitle()
+        } else {
+            pendingCreateDocumentAsTextPack = null
+            pendingCreateDocumentSessionId = null
+        }
     }
 
     private fun defaultMarkdownSaveAsName(): String {
@@ -1751,16 +1766,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun defaultTextPackSaveAsName(): String {
         val name = currentFileName.ifBlank { getString(R.string.untitled_document) }
         val lowerName = name.lowercase()
-        return when {
-            lowerName.endsWith(".textpack.zip") || lowerName.endsWith(".textpack") -> name
-            lowerName.endsWith(".markdown") || lowerName.endsWith(".md") ->
-                name.substringBeforeLast(".") + ".textpack"
+        val base = when {
+            lowerName.endsWith(".textpack.zip") ->
+                name.dropLast(".textpack.zip".length)
+            lowerName.endsWith(".textpack") ->
+                name.dropLast(".textpack".length)
             else -> {
                 val lastDot = name.lastIndexOf('.')
-                val base = if (lastDot > 0) name.substring(0, lastDot) else name
-                "$base.textpack"
+                if (lastDot > 0) name.substring(0, lastDot) else name
             }
         }
+        return "$base.mdx"
     }
 
     private fun renamedDocumentFileName(requestedName: String, originalName: String): String? {
@@ -2616,7 +2632,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (isFinishing) return false
             runOnUiThread {
                 pendingWmdxTabSessionJson = sanitized
-                saveWmdxTabSessionLauncher.launch("Wmdx Session.wmdxsession")
+                saveWmdxTabSessionLauncher.launch("Wmdx Session.mds")
             }
             return true
         }

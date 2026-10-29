@@ -10,6 +10,10 @@ const mainActivityPath = path.join(
   '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'
 );
 const mainActivitySource = fs.readFileSync(mainActivityPath, 'utf8');
+const textPackManagerSource = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/TextPackManager.kt'),
+  'utf8'
+);
 const leftPanelSource = fs.readFileSync(
   path.join(__dirname, '../src/leftPanel.js'),
   'utf8'
@@ -758,9 +762,17 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(leftPanelSource, /scrollTop: Number\.isFinite\(tab\.scrollTop\)/);
   assert.match(mainActivitySource, /saveWmdxTabSession\(sessionJson: String\)/);
   assert.match(mainActivitySource, /readWmdxTabSession\(uriString: String\)/);
-  assert.match(mainActivitySource, /Wmdx Session\.wmdxsession/);
+  assert.match(mainActivitySource, /Wmdx Session\.mds/);
+  assert.match(mainActivitySource, /name\.endsWith\("\.mds", ignoreCase = true\)/);
+  assert.match(mainActivitySource, /name\.endsWith\("\.wmdxsession", ignoreCase = true\)/);
   assert.doesNotMatch(sanitizerSource, /\.put\("markdown"/);
   assert.match(appManifestXml, /application\/vnd\.wmdx\.tabs-session\+json/);
+  assert.match(mainActivitySource, /CreateDocument\("application\/zip"\)/);
+  assert.match(
+    mainActivitySource,
+    /private fun defaultTextPackSaveAsName\(\)[\s\S]*?return "\$base\.mdx"/
+  );
+  assert.match(textPackManagerSource, /ZipInputStream\(inputStream\)/);
   assert.match(hotkeysXml, /pref_hotkey_save_tabs[\s\S]*app:defaultValue=""/);
   assert.match(resetPreferencesSource, /pref_hotkey_save_tabs" -> ""/);
   assert.match(mainActivitySource, /"save_tabs" to prefs\.getString\("pref_hotkey_save_tabs", ""\)/);
