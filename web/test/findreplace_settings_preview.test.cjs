@@ -41,6 +41,7 @@ test('find and replace preview matches live icon sizing and saved button layout'
   const dom = new JSDOM(previewHtml, { runScripts: 'outside-only' });
   const { document } = dom.window;
   dom.window.eval(previewScript);
+  assert.match(previewHtml, /-webkit-user-select:\s*none\s*!important/);
 
   let savedLayout = null;
   let selectedCategory = null;
@@ -123,6 +124,20 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
   setRect(row2, { left: 100, top: 54, width: 128, height: 32 });
   setRect(tray, { left: 0, top: 110, width: 300, height: 50 });
   for (const [id, left] of [
+    ['prev', 100],
+    ['next', 132],
+    ['highlight', 164],
+    ['regex', 196],
+    ['close', 228]
+  ]) {
+    setRect(document.querySelector(`[data-button-id="${id}"]`), {
+      left,
+      top: 4,
+      width: 28,
+      height: 32
+    });
+  }
+  for (const [id, left] of [
     ['replace-one', 100],
     ['replace-all', 132],
     ['case', 164],
@@ -136,26 +151,25 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
     });
   }
 
-  const previous = document.querySelector('[data-button-id="prev"]');
-  dispatchPointer(dom.window, previous, 'pointerdown', { x: 10, y: 15 });
+  const caseButton = document.querySelector('[data-button-id="case"]');
+  dispatchPointer(dom.window, caseButton, 'pointerdown', { x: 175, y: 60 });
   await new Promise(resolve => setTimeout(resolve, 380));
-  dispatchPointer(dom.window, previous, 'pointermove', { x: 160, y: 60 });
-  assert.ok(row2.querySelector('.findreplace-drop-marker'));
-  dispatchPointer(dom.window, previous, 'pointerup', { x: 160, y: 60 });
+  dispatchPointer(dom.window, caseButton, 'pointermove', { x: 200, y: 20 });
+  assert.ok(row1.querySelector('.findreplace-drop-marker'));
+  dispatchPointer(dom.window, caseButton, 'pointerup', { x: 200, y: 20 });
 
-  assert.equal(row1.contains(previous), false);
+  assert.equal(row2.contains(caseButton), false);
   assert.deepEqual(
-    [...row2.children]
+    [...row1.children]
       .filter(element => element.matches('.search-icon-btn'))
       .map(element => element.dataset.buttonId),
-    ['replace-one', 'replace-all', 'prev', 'case', 'word']
+    ['prev', 'next', 'highlight', 'case', 'regex', 'close']
   );
-  assert.equal(savedLayout[0].includes('prev'), false);
-  assert.equal(savedLayout[1].includes('prev'), true);
+  assert.equal(savedLayout[0].includes('case'), true);
+  assert.equal(savedLayout[1].includes('case'), false);
 
   const next = document.querySelector('[data-button-id="next"]');
   dispatchPointer(dom.window, next, 'pointerdown', { x: 10, y: 15 });
-  await new Promise(resolve => setTimeout(resolve, 380));
   dispatchPointer(dom.window, next, 'pointermove', { x: 150, y: 130 });
   assert.ok(tray.classList.contains('drag-over'));
   dispatchPointer(dom.window, next, 'pointerup', { x: 150, y: 130 });

@@ -2973,6 +2973,8 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             settings.allowContentAccess = false
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
+            isLongClickable = false
+            setOnLongClickListener { true }
             setBackgroundColor(Color.TRANSPARENT)
             addJavascriptInterface(FindReplacePreviewBridge(), "FindReplaceSettings")
         }

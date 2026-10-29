@@ -284,6 +284,18 @@ function pointInside(element, x, y) {
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
+function startPointerDrag(candidate) {
+  if (candidate.active) return;
+  candidate.active = true;
+  state.dragging = candidate.button.dataset.buttonId;
+  candidate.button.classList.add('dragging');
+  try {
+    candidate.button.setPointerCapture?.(candidate.pointerId);
+  } catch {
+    // The document-level pointer handlers remain available if capture is unsupported.
+  }
+}
+
 function updateDropIndicator(x, y) {
   const tray = document.querySelector('#findreplace-hidden-tray');
   tray?.classList.remove('drag-over');
@@ -365,50 +377,57 @@ for (const button of buttonElements.values()) {
       moved: false,
       active: false
     };
+    try {
+      button.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Document-level pointer handlers keep dragging functional without capture.
+    }
     pointerTimer = window.setTimeout(() => {
       if (!pointerCandidate || pointerCandidate.button !== button) return;
-      pointerCandidate.active = true;
-      state.dragging = button.dataset.buttonId;
-      button.classList.add('dragging');
-      button.setPointerCapture?.(pointerCandidate.pointerId);
+      startPointerDrag(pointerCandidate);
     }, 360);
   });
-  button.addEventListener('pointermove', event => {
-    if (!pointerCandidate || pointerCandidate.pointerId !== event.pointerId) return;
-    const deltaX = event.clientX - pointerCandidate.startX;
-    const deltaY = event.clientY - pointerCandidate.startY;
-    if (!pointerCandidate.active && Math.hypot(deltaX, deltaY) > 10) {
-      clearTimeout(pointerTimer);
-      pointerTimer = 0;
-      pointerCandidate = null;
-      return;
-    }
-    if (!pointerCandidate.active) return;
-    pointerCandidate.moved ||= Math.hypot(deltaX, deltaY) > 8;
-    event.preventDefault();
-    if (pointerCandidate.moved) updateDropIndicator(event.clientX, event.clientY);
-  });
-  button.addEventListener('pointerup', event => {
-    if (!pointerCandidate || pointerCandidate.pointerId !== event.pointerId) return;
-    const candidate = pointerCandidate;
-    clearTimeout(pointerTimer);
-    pointerTimer = 0;
-    if (!candidate.active) {
-      pointerCandidate = null;
-      return;
-    }
-    event.preventDefault();
-    finishPointerDrag(button, event, candidate.moved);
-  });
-  button.addEventListener('pointercancel', event => {
-    if (!pointerCandidate || pointerCandidate.pointerId !== event.pointerId) return;
-    const active = pointerCandidate.active;
-    clearTimeout(pointerTimer);
-    pointerTimer = 0;
-    if (active) finishPointerDrag(button, event, false);
-    else pointerCandidate = null;
-  });
 }
+
+document.addEventListener('pointermove', event => {
+  if (!pointerCandidate || pointerCandidate.pointerId !== event.pointerId) return;
+  const deltaX = event.clientX - pointerCandidate.startX;
+  const deltaY = event.clientY - pointerCandidate.startY;
+  if (!pointerCandidate.active && Math.hypot(deltaX, deltaY) > 8) {
+    pointerCandidate.moved = true;
+    startPointerDrag(pointerCandidate);
+  }
+  if (!pointerCandidate.active) return;
+  pointerCandidate.moved ||= Math.hypot(deltaX, deltaY) > 8;
+  event.preventDefault();
+  if (pointerCandidate.moved) updateDropIndicator(event.clientX, event.clientY);
+});
+
+document.addEventListener('pointerup', event => {
+  if (!pointerCandidate || pointerCandidate.pointerId !== event.pointerId) return;
+  const candidate = pointerCandidate;
+  clearTimeout(pointerTimer);
+  pointerTimer = 0;
+  if (!candidate.active) {
+    pointerCandidate = null;
+    return;
+  }
+  event.preventDefault();
+  finishPointerDrag(candidate.button, event, candidate.moved);
+});
+
+document.addEventListener('pointercancel', event => {
+  if (!pointerCandidate || pointerCandidate.pointerId !== event.pointerId) return;
+  const candidate = pointerCandidate;
+  clearTimeout(pointerTimer);
+  pointerTimer = 0;
+  if (candidate.active) finishPointerDrag(candidate.button, event, false);
+  else pointerCandidate = null;
+});
+
+document.addEventListener('contextmenu', event => {
+  if (event.target.closest?.('.search-icon-btn')) event.preventDefault();
+});
 
 document.querySelector('#search-input')?.addEventListener('click', () => {
   window.FindReplaceSettings?.selectCategory?.('category_field_find');
