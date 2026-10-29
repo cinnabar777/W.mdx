@@ -7471,6 +7471,13 @@ window.editorBridge = {
     setCssVar('--body-font-family', toCssFontFamily(prefs.pref_body_font_family));
     setCssVar('--body-font-weight', prefs.pref_body_font_weight ?? 400);
     setCssVar('--body-text-color', androidArgbToCss(prefs.pref_body_text_color));
+    const bodyBackgroundColor = prefs.pref_body_background_color;
+    setCssVar(
+      '--body-background-color',
+      bodyBackgroundColor && bodyBackgroundColor !== 'default'
+        ? androidArgbToCss(bodyBackgroundColor)
+        : undefined
+    );
     setCssVar('--paragraph-line-height', prefs.pref_paragraph_line_height);
     setCssVar('--paragraph-letter-spacing', prefs.pref_letter_spacing || prefs.pref_paragraph_letter_spacing, 'px');
     setCssVar('--paragraph-align', paragraphAlignment);

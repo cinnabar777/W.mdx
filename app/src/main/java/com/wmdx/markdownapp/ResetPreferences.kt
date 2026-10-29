@@ -57,6 +57,7 @@ object PreferenceResetHelper {
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> "#FFFFFF"
             "pref_heading_underline_color" -> "#FFFFFF"
             "pref_body_text_color", "pref_list_text_color" -> "#FFFFFF"
+            "pref_body_background_color" -> "#000000"
             "pref_blockquote_line_color" -> "#444444"
             "pref_blockquote_bg_color" -> "#1A1A1A"
             "pref_blockquote_text_color" -> "#FFFFFF"
@@ -138,6 +139,8 @@ object PreferenceResetHelper {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
         return when (key) {
+            "pref_body_background_color" ->
+                if (isLightTheme) "#FFFFFF" else "#000000"
             "pref_body_text_color", "pref_list_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
             "pref_toc_panel_bg_color" -> {
@@ -225,6 +228,7 @@ object PreferenceResetHelper {
             key == "pref_body_font_size" -> 16
             key == "pref_body_font_weight" -> 400
             key == "pref_body_text_color" -> "default"
+            key == "pref_body_background_color" -> "default"
             key == "pref_heading_scale_percent" -> 100
             key == "pref_heading_color" -> "default"
             key == "pref_heading_word_spacing" -> "0px"

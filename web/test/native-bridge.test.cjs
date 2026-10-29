@@ -34,6 +34,14 @@ const resetPreferencesSource = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
   'utf8'
 );
+const paragraphSettingsXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_paragraph.xml'),
+  'utf8'
+);
+const editorHtml = fs.readFileSync(
+  path.join(__dirname, '../index.html'),
+  'utf8'
+);
 const settingsActivityPath = path.join(
   __dirname,
   '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'
@@ -366,6 +374,30 @@ test('New Window launches a fresh, separate Android editor task', () => {
   assert.match(handler, /putExtra\("is_new_document", true\)/);
   assert.match(mainActivitySource, /"new_window"\s*->\s*handleNewWindow\(\)/);
   assert.match(source, /title: 'New Window'[\s\S]*?onNativeAction\('new_window'\)/);
+});
+
+test('body background color is configurable independently of the app theme', () => {
+  assert.match(
+    paragraphSettingsXml,
+    /app:key="pref_body_background_color"[\s\S]*?app:defaultValue="default"/
+  );
+  assert.match(resetPreferencesSource, /key == "pref_body_background_color" -> "default"/);
+  assert.match(
+    resetPreferencesSource,
+    /"pref_body_background_color" ->\s*if \(isLightTheme\) "#FFFFFF" else "#000000"/
+  );
+  assert.match(
+    source,
+    /const bodyBackgroundColor = prefs\.pref_body_background_color;[\s\S]*?setCssVar\(\s*'--body-background-color',\s*bodyBackgroundColor && bodyBackgroundColor !== 'default'\s*\?\s*androidArgbToCss\(bodyBackgroundColor\)\s*:\s*undefined/
+  );
+  assert.match(
+    editorHtml,
+    /html, body\s*\{[\s\S]*?background-color: var\(--body-background-color, var\(--bg-color\)\)/
+  );
+  assert.match(
+    editorHtml,
+    /\.cm-editor\s*\{[\s\S]*?background-color: var\(--body-background-color, var\(--bg-color\)\) !important/
+  );
 });
 
 test('typography editor categories are separated into individual navigation pages', () => {
