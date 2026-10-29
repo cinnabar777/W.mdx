@@ -2,7 +2,8 @@
 
 This guide covers standard Markdown, GitHub Flavored Markdown (GFM), and the
 additional syntax W.mdx recognizes. Settings can change the appearance of
-formatting, but do not change the syntax shown here.
+formatting, but do not change the syntax shown here. The code samples show what
+to type; the examples labeled **Rendered** show the result in the editor.
 
 ## Quick reference
 
@@ -37,6 +38,15 @@ Put one to six `#` characters and a space before a heading:
 ###### Heading 6
 ```
 
+**Rendered:**
+
+# Heading level 1
+## Heading level 2
+### Heading level 3
+#### Heading level 4
+##### Heading level 5
+###### Heading level 6
+
 The alternate Setext form supports the first two levels:
 
 ```markdown
@@ -65,6 +75,8 @@ __Bold also works__
 ~~Strikethrough~~
 ```
 
+**Rendered:** **Bold**, *italic*, ***bold italic***, and ~~strikethrough~~.
+
 When **Use Wmdx syntax** is enabled in Underline settings, underscores mark
 underlined text instead of italic text. Use `*asterisks*` for italics in that
 setting.
@@ -83,6 +95,9 @@ The subscript digit selects the underline style:
 
 The style and color are controlled by Underline settings. The digits are
 subscript characters: `₀`, `₁`, `₂`, and `₃`.
+
+**Rendered:** _Solid underline_, _₀dotted underline_, _₁dashed underline_,
+_₂double underline_, and _₃wavy underline_.
 
 ### Wmdx highlighter and pen
 
@@ -105,6 +120,9 @@ The slot numbers identify settings; they do not lock a slot to a particular
 color. Keep the text snug against the markers: write `==text==`, not
 `== text ==`.
 
+**Rendered:** ==Highlight 1==, ==₀highlight 2==, ==₁highlight 3==,
+==₂highlight 4==; =Pen 1=, =₀pen 2=, =₁pen 3=, and =₂pen 4=.
+
 ### Inline code
 
 Use one backtick on each side. Code spans display their contents literally:
@@ -118,6 +136,8 @@ If the text itself contains a backtick, use a longer backtick delimiter:
 ```markdown
 `` Use `code` inside a code span ``
 ```
+
+**Rendered:** `**this stays literal**` and `` Use `code` inside a code span ``.
 
 ## Escaping Markdown and Wmdx markers
 
@@ -141,6 +161,9 @@ Escape Wmdx markers when they should not format the following text:
 You can also put syntax in inline code or a code block to show it literally.
 Backslash escapes do not apply inside code.
 
+**Rendered:** Literal markers: \*asterisks\*, \_underscores\_,
+\==highlight\==, and \=pen\=.
+
 For a literal wiki-link example such as `[[Target]]`, use code formatting.
 W.mdx's wiki-link recognizer does not treat a backslash as an escape for its
 opening brackets.
@@ -162,6 +185,14 @@ language is available. The closing fence must use the same character and at
 least as many marks as the opening fence. Indented code blocks are also part of
 Markdown, but fenced blocks are easier to edit and label.
 
+**Rendered:**
+
+```javascript
+function greet(name) {
+  return `Hello, ${name}`;
+}
+```
+
 ## Lists and tasks
 
 ### Bullet lists
@@ -176,6 +207,12 @@ Use `-`, `*`, or `+` followed by a space:
 
 Indent nested items consistently. Lists can be nested and mixed.
 
+**Rendered:**
+
+- First item
+- Second item
+  - Nested item
+
 ### Numbered lists
 
 Use a number, a period, and a space:
@@ -185,6 +222,12 @@ Use a number, a period, and a space:
 2. Second item
    1. Nested item
 ```
+
+**Rendered:**
+
+1. First item
+2. Second item
+   1. Nested item
 
 ### Task lists
 
@@ -198,6 +241,11 @@ Task lists use GFM checkbox syntax:
 Use a space inside the brackets for an unchecked task and `x` for a checked
 task.
 
+**Rendered:**
+
+- [ ] Not finished
+- [x] Finished
+
 ## Block quotes and callouts
 
 ### Block quotes
@@ -210,6 +258,11 @@ Start each quoted line with `>`:
 >
 > A second paragraph in the quote.
 ```
+
+**Rendered:**
+
+> This is a rendered block quote.
+> It can contain **formatted text**.
 
 ### W.mdx callouts
 
@@ -232,6 +285,11 @@ Add `-` to start collapsed or `+` to start expanded:
 > The body is initially visible.
 ```
 
+**Rendered:**
+
+> [!info] Example callout
+> This callout is displayed with the current **callout settings**.
+
 Nested callouts use additional quote markers:
 
 ```markdown
@@ -240,6 +298,13 @@ Nested callouts use additional quote markers:
 > > [!info] Nested callout
 > > Nested text.
 ```
+
+**Rendered:**
+
+> [!question] Outer callout
+> The outer message.
+> > [!info] Nested callout
+> > The nested message.
 
 The type is an identifier beginning with a letter; it may also contain digits,
 underscores, or hyphens. Common labels include `note`, `info`, `tip`, `warning`,
@@ -258,6 +323,8 @@ underscores, or hyphens. Common labels include `note`, `info`, `tip`, `warning`,
 For spaces in a URL or file path, use `%20`. In link text, escape a closing
 bracket as `\]` when necessary.
 
+**Rendered:** [W.mdx website](https://example.com)
+
 ### W.mdx wiki links
 
 W.mdx recognizes these Obsidian-style link forms:
@@ -271,6 +338,8 @@ W.mdx recognizes these Obsidian-style link forms:
 `[[#Heading]]` links to a heading in the current document. The `|` separates
 the target from its display text. Wiki links are an extension, not standard
 Markdown.
+
+**Rendered:** [[#Quick reference|Jump to the quick reference]].
 
 `![[Target]]` is Obsidian's embed syntax; W.mdx does not currently render it as
 an embedded file. Use a Markdown image for images instead.
@@ -292,6 +361,10 @@ W.mdx also accepts a pixel width after a vertical bar in the description:
 The width must be a whole number from 1 to 10,000. If no width is supplied, the
 image uses its natural size, subject to the editor's available width.
 
+**Rendered:**
+
+![Cyan sample image|120](data:image/svg+xml,%3Csvg%20xmlns%3D'http://www.w3.org/2000/svg'%20width%3D'120'%20height%3D'60'%3E%3Crect%20width%3D'120'%20height%3D'60'%20fill%3D'%2300bfc5'/%3E%3C/svg%3E)
+
 ## Tables
 
 Tables use GFM pipe syntax. The separator row divides the header from the body;
@@ -303,6 +376,13 @@ colons set alignment:
 | A    | B      | C     |
 | D    | E      | F     |
 ```
+
+**Rendered:**
+
+| Left | Center | Right |
+| :--- | :----: | ----: |
+| **Bold** | centered | right |
+| A | B | C |
 
 The outside pipes are optional. Escape a pipe that belongs inside a cell as
 `\|`. Basic inline Markdown can be used in cells; tables cannot contain
@@ -316,8 +396,17 @@ themselves:
 ```markdown
 ---
 ***
-___
 ```
+
+The underscore form is escaped here so its three marks stay visible: \_\_\_.
+
+**Rendered:**
+
+Text above the rule.
+
+---
+
+Text below the rule.
 
 Use a blank line before the rule. A line of hyphens directly below text creates
 a level-two Setext heading instead.
@@ -335,6 +424,12 @@ This sentence has a footnote.[^source]
 
 Text after the footnote definitions can continue here.
 ```
+
+**Rendered:**
+
+This sentence has a rendered footnote.[^rendered]
+
+[^rendered]: The footnote appears with the document's other footnotes.
 
 Labels must not contain spaces or closing brackets. Matching is
 case-insensitive. A reference is only treated as a footnote when a definition
