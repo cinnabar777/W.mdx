@@ -2727,7 +2727,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val density = card.resources.displayMetrics.density
         card.background = android.graphics.drawable.GradientDrawable().apply {
             setColor(panelBg)
-            setStroke((density.roundToInt()).coerceAtLeast(1), panelBorder)
+            setStroke((density + 0.5f).toInt().coerceAtLeast(1), panelBorder)
             cornerRadius = 8 * density
         }
 
