@@ -1,5 +1,6 @@
 const EMBEDDED_EDITOR_URL = './toolbar-settings-preview.html?embed=key-preferences';
 const CLOSE_MESSAGE_TYPE = 'wmdx-toolbar-key-preferences-close';
+const RESIZE_MESSAGE_TYPE = 'wmdx-toolbar-key-preferences-resize';
 
 export function openToolbarKeyPreferencesDialog({ keyId, keyTitle, surface, config }) {
   if (!keyId || !config || typeof document === 'undefined') return false;
@@ -26,11 +27,16 @@ export function openToolbarKeyPreferencesDialog({ keyId, keyTitle, surface, conf
   };
 
   const handleMessage = event => {
-    if (
-      event.source === frame.contentWindow &&
-      event.data?.type === CLOSE_MESSAGE_TYPE
-    ) {
+    if (event.source !== frame.contentWindow) return;
+    if (event.data?.type === CLOSE_MESSAGE_TYPE) {
       close();
+      return;
+    }
+    if (event.data?.type === RESIZE_MESSAGE_TYPE) {
+      const requestedHeight = Number(event.data.height);
+      if (!Number.isFinite(requestedHeight)) return;
+      const maxHeight = Math.max(1, window.innerHeight - 24);
+      frame.style.height = `${Math.max(1, Math.min(requestedHeight, maxHeight))}px`;
     }
   };
 

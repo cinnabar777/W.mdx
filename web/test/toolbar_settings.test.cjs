@@ -218,7 +218,16 @@ test('toolbar gestures can open and save the preferences for their own key', () 
   assert.match(keyPreferencesDialogSource, /openToolbarKeyPreferencesEditor/);
   assert.match(settingsSource, /window\.openToolbarKeyPreferencesEditor/);
   assert.match(settingsSource, /closeEmbeddedKeyPreferences/);
+  assert.match(settingsSource, /postEmbeddedEditorSize/);
   assert.match(html, /toolbar-key-preferences-embedded/);
+  assert.match(
+    html,
+    /html\.toolbar-key-preferences-embedded \.toolbar-preview-editor \{[\s\S]*?max-height: none;[\s\S]*?overflow: visible;/
+  );
+  assert.match(
+    settingsSource,
+    /if \(section\.open\) return;[\s\S]*?if \(other !== section\) other\.open = false;/
+  );
   assert.match(html, /data-toolbar-section="colors"/);
   assert.match(
     mainSource,
@@ -228,6 +237,9 @@ test('toolbar gestures can open and save the preferences for their own key', () 
   assert.match(mainActivitySource, /fun pickToolbarKeyColor\(surface: String, itemId: String, property: String\)/);
   assert.match(mainActivitySource, /fun pickToolbarKeySvg\(surface: String, itemId: String, property: String\)/);
   assert.match(androidSource, /"editToolbarKeyPreferences"/);
+  assert.match(keyPreferencesDialogSource, /RESIZE_MESSAGE_TYPE/);
+  assert.match(sharedCss, /width:\s*min\(100%,\s*520px\)/);
+  assert.match(sharedCss, /\.toolbar-key-preferences-overlay\s*\{[\s\S]*?align-items:\s*flex-start/);
   assert.match(sharedCss, /\.toolbar-key-preferences-frame\s*\{/);
 });
 
@@ -263,10 +275,17 @@ test('embedded preferences open the existing full key editor for the triggering 
     assert.equal(dom.window.document.querySelector('[data-toolbar-section="side-swipes"]') !== null, true);
     assert.equal(dom.window.document.querySelector('[data-toolbar-section="corner-swipes"]') !== null, true);
     assert.equal(dom.window.document.querySelector('[data-toolbar-section="colors"]') !== null, true);
+    const tapsSection = dom.window.document.querySelector('[data-toolbar-section="taps"]');
+    const sideSwipesSection = dom.window.document.querySelector('[data-toolbar-section="side-swipes"]');
+    tapsSection.open = true;
+    sideSwipesSection.querySelector('summary').click();
+    assert.equal(tapsSection.open, false);
+    assert.equal(sideSwipesSection.open, true);
     assert.match(
       dom.window.document.querySelector('[data-gesture-list="taps"]').textContent,
       /Bold/
     );
+    await new Promise(resolve => dom.window.setTimeout(resolve, 20));
   } finally {
     dom.window.close();
     if (previousWindow === undefined) delete global.window;

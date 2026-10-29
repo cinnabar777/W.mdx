@@ -21,6 +21,7 @@ import {
 } from './toolbarRenderer.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 
+const embeddedWindow = window;
 const toolbar = document.querySelector('#toolbar-preview');
 const tray = document.querySelector('#toolbar-holding-tray');
 const popup = document.querySelector('#toolbar-preview-popup');
@@ -57,11 +58,50 @@ let nextCustomGroupNumber = 1;
 const locallySavedToolbarLayouts = { bottom: null, floating: null };
 const hasAppliedToolbarConfig = { bottom: false, floating: false };
 let pendingDragCleanup = null;
+let embeddedResizeObserver = null;
 
 function closeEmbeddedKeyPreferences() {
   if (!embeddedKeyPreferences) return false;
   window.parent.postMessage({ type: 'wmdx-toolbar-key-preferences-close' }, '*');
   return true;
+}
+
+function postEmbeddedEditorSize() {
+  if (!embeddedKeyPreferences || !editor?.classList.contains('visible')) return;
+  const height = Math.ceil(Math.max(editor.scrollHeight, editor.offsetHeight));
+  const pickerOpen = iconPickerOpen || actionPickerOpen;
+  const parentHeight = Number(embeddedWindow.parent?.innerHeight) || embeddedWindow.innerHeight;
+  const requestedHeight = pickerOpen
+    ? Math.max(height, Math.floor(parentHeight * 0.82))
+    : height;
+  embeddedWindow.parent.postMessage({
+    type: 'wmdx-toolbar-key-preferences-resize',
+    height: requestedHeight
+  }, '*');
+}
+
+function scheduleEmbeddedEditorSize() {
+  if (typeof embeddedWindow.requestAnimationFrame === 'function') {
+    embeddedWindow.requestAnimationFrame(postEmbeddedEditorSize);
+  } else {
+    embeddedWindow.setTimeout(postEmbeddedEditorSize, 0);
+  }
+}
+
+function observeEmbeddedEditorSize() {
+  if (!embeddedKeyPreferences || embeddedResizeObserver || !editor) return;
+  embeddedResizeObserver = new embeddedWindow.MutationObserver(() => {
+    scheduleEmbeddedEditorSize();
+  });
+  embeddedResizeObserver.observe(document.body, {
+    attributes: true,
+    childList: true,
+    subtree: true
+  });
+  embeddedWindow.addEventListener('resize', postEmbeddedEditorSize);
+  document.addEventListener('click', () => {
+    scheduleEmbeddedEditorSize();
+  });
 }
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
@@ -2345,6 +2385,8 @@ window.openToolbarKeyPreferencesEditor = ({ keyId, surface, config: incomingConf
   selectedGestureId = null;
   editorKeyCache = null;
   render();
+  observeEmbeddedEditorSize();
+  scheduleEmbeddedEditorSize();
   return Boolean(editor?.classList.contains('visible'));
 };
 
@@ -2353,6 +2395,7 @@ window.updateToolbarKeyPreferencesConfig = (surface, incomingConfig) => {
   config = normalizeBottomToolbarConfig(incomingConfig);
   configsBySurface[surface] = config;
   render();
+  scheduleEmbeddedEditorSize();
   return true;
 };
 
