@@ -270,12 +270,15 @@ function moveButton(id, targetRow, targetId, placeAfter) {
 }
 
 function rowAtPoint(x, y) {
-  return Object.entries(rowElements).find(([, element]) => {
+  const rows = Object.entries(rowElements).flatMap(([rowId, element]) => {
     const line = element?.closest('.search-bar-row');
-    if (!line) return false;
+    if (!line) return [];
     const rect = line.getBoundingClientRect();
-    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
-  })?.[0] || null;
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return [];
+    return [{ rowId, centerY: rect.top + rect.height / 2 }];
+  });
+  rows.sort((a, b) => Math.abs(y - a.centerY) - Math.abs(y - b.centerY));
+  return rows[0]?.rowId || null;
 }
 
 function pointInside(element, x, y) {

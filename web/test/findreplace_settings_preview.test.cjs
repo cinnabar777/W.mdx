@@ -168,6 +168,17 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
   assert.equal(savedLayout[0].includes('case'), true);
   assert.equal(savedLayout[1].includes('case'), false);
 
+  const previous = document.querySelector('[data-button-id="prev"]');
+  dispatchPointer(dom.window, previous, 'pointerdown', { x: 110, y: 20 });
+  dispatchPointer(dom.window, previous, 'pointermove', { x: 145, y: 60 });
+  assert.ok(row2.querySelector('.findreplace-drop-marker'));
+  dispatchPointer(dom.window, previous, 'pointerup', { x: 145, y: 60 });
+
+  assert.equal(row1.contains(previous), false);
+  assert.equal(row2.contains(previous), true);
+  assert.equal(savedLayout[0].includes('prev'), false);
+  assert.equal(savedLayout[1].includes('prev'), true);
+
   const next = document.querySelector('[data-button-id="next"]');
   dispatchPointer(dom.window, next, 'pointerdown', { x: 10, y: 15 });
   dispatchPointer(dom.window, next, 'pointermove', { x: 150, y: 130 });
