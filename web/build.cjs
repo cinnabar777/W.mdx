@@ -40,13 +40,38 @@ async function build() {
     sourcemap: false
   });
 
+  await esbuild.build({
+    entryPoints: [path.join(webDir, 'src/findreplaceSettingsPreview.js')],
+    bundle: true,
+    outfile: path.join(outDir, 'findreplace-settings.js'),
+    format: 'iife',
+    target: ['es2020', 'chrome80'],
+    minify: false,
+    sourcemap: false
+  });
+
   // Copy index.html into www directory and reference bundle.js
   let htmlContent = fs.readFileSync(path.join(webDir, 'index.html'), 'utf8');
   htmlContent = htmlContent.replace('./src/main.js', './bundle.js');
   fs.writeFileSync(path.join(outDir, 'index.html'), htmlContent);
+  const findReplaceStart = htmlContent.indexOf(
+    '/* Custom Compact Phone-Optimized Find & Replace Bar */'
+  );
+  const findReplaceEnd = htmlContent.indexOf('/* CodeMirror Search Match Highlighting */');
+  if (findReplaceStart < 0 || findReplaceEnd <= findReplaceStart) {
+    throw new Error('Could not extract the live Find & Replace styles for settings preview.');
+  }
+  fs.writeFileSync(
+    path.join(outDir, 'findreplace.css'),
+    htmlContent.slice(findReplaceStart, findReplaceEnd).trim()
+  );
   fs.copyFileSync(
     path.join(webDir, 'toolbar-settings-preview.html'),
     path.join(outDir, 'toolbar-settings-preview.html')
+  );
+  fs.copyFileSync(
+    path.join(webDir, 'findreplace-settings-preview.html'),
+    path.join(outDir, 'findreplace-settings-preview.html')
   );
   fs.copyFileSync(path.join(webDir, 'toolbar.css'), path.join(outDir, 'toolbar.css'));
 

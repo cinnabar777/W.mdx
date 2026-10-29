@@ -238,7 +238,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
     private val createTextPackDocumentLauncher =
-        registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        registerForActivityResult(
+            ActivityResultContracts.CreateDocument("application/vnd.wmdx.textpack")
+        ) { uri ->
             handleCreateDocumentResult(uri)
         }
 

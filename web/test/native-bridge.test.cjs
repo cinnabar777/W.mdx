@@ -799,7 +799,10 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(mainActivitySource, /name\.endsWith\("\.wmdxsession", ignoreCase = true\)/);
   assert.doesNotMatch(sanitizerSource, /\.put\("markdown"/);
   assert.match(appManifestXml, /application\/vnd\.wmdx\.tabs-session\+json/);
-  assert.match(mainActivitySource, /CreateDocument\("application\/zip"\)/);
+  assert.match(
+    mainActivitySource,
+    /createTextPackDocumentLauncher[\s\S]*?CreateDocument\("application\/vnd\.wmdx\.textpack"\)/
+  );
   assert.match(
     mainActivitySource,
     /private fun defaultTextPackSaveAsName\(\)[\s\S]*?return "\$base\.mdx"/
