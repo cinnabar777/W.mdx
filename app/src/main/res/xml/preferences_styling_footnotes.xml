@@ -10,6 +10,15 @@
             app:disableDependentsState="true"
             android:defaultValue="true" />
 
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_footnote_font_family"
+            app:title="Footnote Font Family"
+            app:summary="Choose a device font instead of the custom font file"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default"
+            app:dependency="pref_footnote_inherit_body_typography" />
+
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_font_file_footnote"
             app:title="Footnote Font File"

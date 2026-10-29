@@ -1119,7 +1119,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "table" to "pref_table_font_family",
             "toc" to "pref_toc_font_family",
             "leftPanel" to "pref_left_panel_font_family",
-            "calloutHeader" to "pref_callout_header_font_family"
+            "calloutHeader" to "pref_callout_header_font_family",
+            "footnote" to "pref_footnote_font_family"
         )
         familyPreferenceKeys.forEach { (category, preferenceKey) ->
             var family = prefs.getString(preferenceKey, "default") ?: "default"
@@ -1128,9 +1129,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 "callout" -> prefs.getBoolean("pref_callout_inherit_body_typography", true)
                 "list" -> prefs.getBoolean("pref_list_inherit_body_typography", true)
                 "table" -> prefs.getBoolean("pref_table_inherit_body_typography", true)
+                "footnote" -> prefs.getBoolean("pref_footnote_inherit_body_typography", true)
                 else -> false
             }
-            if (inherited) family = "default"
+            if (inherited) family = if (category == "footnote") bodyFontFamily else "default"
             fontFamilies.put(category, family)
         }
         for (level in 1..6) {

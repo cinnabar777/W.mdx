@@ -7460,8 +7460,8 @@ window.editorBridge = {
       'cursor-blink-disabled',
       Number.parseFloat(cursorBlinkRate) === 0
     );
-    setCssVar('--selection-highlight-bg', prefs.pref_selection_highlight_bg_color);
-    setCssVar('--selection-highlight-text', prefs.pref_selection_highlight_text_color);
+    setCssVar('--selection-highlight-bg', androidArgbToCss(prefs.pref_selection_highlight_bg_color));
+    setCssVar('--selection-highlight-text', androidArgbToCss(prefs.pref_selection_highlight_text_color));
 
     // Body & Paragraph
     const paragraphAlignment = prefs.pref_justify_paragraph === true
@@ -7482,6 +7482,10 @@ window.editorBridge = {
     setCssVar('--paragraph-letter-spacing', prefs.pref_letter_spacing || prefs.pref_paragraph_letter_spacing, 'px');
     setCssVar('--paragraph-align', paragraphAlignment);
     setCssVar('--paragraph-hyphens', prefs.pref_paragraph_hyphenate === true ? 'auto' : 'none');
+    document.body.classList.toggle(
+      'paragraph-justify-hyphenate',
+      paragraphAlignment === 'justify' && prefs.pref_paragraph_hyphenate === true
+    );
     setCssVar('--paragraph-indent', prefs.pref_paragraph_first_line_indent, 'px');
     setCssVar('--paragraph-margin-top', prefs.pref_paragraph_margin_top, 'px');
     setCssVar('--paragraph-margin-bottom', prefs.pref_paragraph_margin_bottom, 'px');
@@ -7885,6 +7889,8 @@ window.editorBridge = {
     setCssVar('--hr-width', prefs.pref_hr_width_percent || prefs.pref_hr_width, '%');
     setCssVar('--hr-margin-top', prefs.pref_hr_margin_top, 'px');
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
+    document.body.classList.toggle('hr-gradient', prefs.pref_hr_gradient_enabled === true);
+    setCssVar('--hr-gradient-offset', prefs.pref_hr_gradient_offset_percent ?? 25, '%');
 
     // Toolbar
     floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled === true;
@@ -7984,6 +7990,32 @@ window.editorBridge = {
     setCssVar(
       '--toolbar-padding',
       Number.isFinite(toolbarPadding) ? Math.max(0, Math.min(16, toolbarPadding)) : 4,
+      'px'
+    );
+    setCssVar('--toolbar-floating-bg', androidArgbToCss(prefs.pref_toolbar_floating_bg_color));
+    setCssVar('--toolbar-floating-icon-color', androidArgbToCss(prefs.pref_toolbar_floating_icon_color));
+    setCssVar('--toolbar-floating-active-bg', androidArgbToCss(prefs.pref_toolbar_floating_active_key_bg_color));
+    setCssVar('--toolbar-floating-label-color', androidArgbToCss(prefs.pref_toolbar_floating_label_color));
+    setCssVar(
+      '--toolbar-floating-label-display',
+      prefs.pref_toolbar_floating_show_labels === true ? 'flex' : 'none'
+    );
+    const floatingKeyHeight = Number(prefs.pref_toolbar_floating_key_height ?? 36);
+    setCssVar(
+      '--toolbar-floating-key-height',
+      Number.isFinite(floatingKeyHeight) ? Math.max(20, Math.min(64, floatingKeyHeight)) : 36,
+      'px'
+    );
+    const floatingLabelSize = Number(prefs.pref_toolbar_floating_label_size ?? 8);
+    setCssVar(
+      '--toolbar-floating-label-size',
+      Number.isFinite(floatingLabelSize) ? Math.max(6, Math.min(16, floatingLabelSize)) : 8,
+      'px'
+    );
+    const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 4);
+    setCssVar(
+      '--toolbar-floating-padding',
+      Number.isFinite(floatingPadding) ? Math.max(0, Math.min(16, floatingPadding)) : 4,
       'px'
     );
     const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width ?? 48);
@@ -8436,7 +8468,7 @@ window.editorBridge = {
       }
     };
 
-    applyFontCategory('Body', fontBodyData, '--body-font-family');
+    applyFontCategory('Body', fontBodyData, '--body-font-family', bodyFontFamily);
     applyFontCategory('Heading', fontHeadingData, '--heading-font-family');
     applyFontCategory('Bold', fontBoldData, '--bold-font-family', fontFamilies.bold || 'default');
     applyFontCategory('Italic', fontItalicData, '--italic-font-family', fontFamilies.italic || 'default');
@@ -8444,7 +8476,12 @@ window.editorBridge = {
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family', fontFamilies.calloutHeader || 'default');
     applyFontCategory('Toc', fontTocData, '--toc-font-family', fontFamilies.toc || 'default');
     applyFontCategory('LeftPanel', fontFiles.leftPanel, '--left-panel-font-family', fontFamilies.leftPanel || 'default');
-    applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family', bodyFontFamily);
+    applyFontCategory(
+      'Footnote',
+      fontFootnoteData,
+      '--footnote-font-family',
+      fontFamilies.footnote || bodyFontFamily
+    );
     applyFontCategory('Blockquote', fontFiles.blockquote, '--blockquote-font-family', fontFamilies.blockquote || 'default');
     applyFontCategory('Callout', fontFiles.callout, '--callout-font-family', fontFamilies.callout || 'default');
     applyFontCategory('CodeBlock', fontFiles.codeBlock, '--code-block-font-family', fontFamilies.codeBlock || 'default');

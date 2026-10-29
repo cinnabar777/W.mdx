@@ -408,6 +408,38 @@ class ColorPickerDialog(
             if (hex.isNullOrEmpty() || hex == "default") return defaultColor
             return try {
                 val clean = hex.trim()
+                val rgbMatch = Regex(
+                    """rgba?\(\s*([0-9.]+%?)\s*,\s*([0-9.]+%?)\s*,\s*([0-9.]+%?)(?:\s*,\s*([0-9.]+%?))?\s*\)""",
+                    RegexOption.IGNORE_CASE
+                ).matchEntire(clean)
+                if (rgbMatch != null) {
+                    fun channel(value: String): Int {
+                        val number = value.removeSuffix("%").toFloat()
+                        return if (value.endsWith("%")) {
+                            (number * 2.55f).roundToInt().coerceIn(0, 255)
+                        } else {
+                            number.roundToInt().coerceIn(0, 255)
+                        }
+                    }
+
+                    val alphaText = rgbMatch.groups[4]?.value
+                    val alpha = if (alphaText == null) {
+                        255
+                    } else {
+                        val number = alphaText.removeSuffix("%").toFloat()
+                        if (alphaText.endsWith("%")) {
+                            (number * 2.55f).roundToInt().coerceIn(0, 255)
+                        } else {
+                            (number.coerceIn(0f, 1f) * 255f).roundToInt()
+                        }
+                    }
+                    return Color.argb(
+                        alpha,
+                        channel(rgbMatch.groupValues[1]),
+                        channel(rgbMatch.groupValues[2]),
+                        channel(rgbMatch.groupValues[3])
+                    )
+                }
                 val colorStr = if (clean.startsWith("#")) clean else "#$clean"
                 Color.parseColor(colorStr)
             } catch (e: Exception) {

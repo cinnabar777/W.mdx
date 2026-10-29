@@ -26,6 +26,21 @@
             app:summary="Color of horizontal dividers"
             app:defaultValue="default" />
 
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_hr_gradient_enabled"
+            app:title="Fade line edges"
+            app:summary="Fade horizontal-rule color toward transparent at both ends"
+            android:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_hr_gradient_offset_percent"
+            app:title="Fade Offset (%)"
+            app:summary="Distance from the center where the full line color begins"
+            android:defaultValue="25"
+            app:min="0"
+            android:max="50"
+            app:showSeekBarValue="true" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_hr_margin_left"
             app:title="Horizontal Rule Left Margin (%)"

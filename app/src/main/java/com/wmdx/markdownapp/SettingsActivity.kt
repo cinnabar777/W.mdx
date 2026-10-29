@@ -1391,6 +1391,14 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "pref_toolbar_toggle_closed_width",
             "pref_toolbar_toggle_closed_height",
             "pref_toolbar_floating_enabled",
+            "pref_toolbar_floating_bg_color",
+            "pref_toolbar_floating_icon_color",
+            "pref_toolbar_floating_key_height",
+            "pref_toolbar_floating_show_labels",
+            "pref_toolbar_floating_label_size",
+            "pref_toolbar_floating_label_color",
+            "pref_toolbar_floating_active_key_bg_color",
+            "pref_toolbar_floating_padding",
             "pref_toolbar_height",
             "pref_toolbar_padding",
             "pref_toolbar_floating_category",
@@ -1740,6 +1748,17 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "pref_toolbar_floating_enabled",
             prefs.getBoolean("pref_toolbar_floating_enabled", false)
         )
+        payload.put("pref_toolbar_floating_bg_color", prefs.getString("pref_toolbar_floating_bg_color", "default"))
+        payload.put("pref_toolbar_floating_icon_color", prefs.getString("pref_toolbar_floating_icon_color", "default"))
+        payload.put("pref_toolbar_floating_key_height", prefs.getInt("pref_toolbar_floating_key_height", 36))
+        payload.put("pref_toolbar_floating_show_labels", prefs.getBoolean("pref_toolbar_floating_show_labels", false))
+        payload.put("pref_toolbar_floating_label_size", prefs.getInt("pref_toolbar_floating_label_size", 8))
+        payload.put("pref_toolbar_floating_label_color", prefs.getString("pref_toolbar_floating_label_color", "default"))
+        payload.put(
+            "pref_toolbar_floating_active_key_bg_color",
+            prefs.getString("pref_toolbar_floating_active_key_bg_color", "default")
+        )
+        payload.put("pref_toolbar_floating_padding", prefs.getInt("pref_toolbar_floating_padding", 4))
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
         payload.put("pref_toolbar_floating_key_width", prefs.getInt("pref_toolbar_floating_key_width", 48))
@@ -2703,7 +2722,14 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val card = previewCardView ?: return
         val panelBgHex = prefs.getString("pref_findreplace_panel_bg", "default") ?: "default"
         val panelBg = if (panelBgHex == "default") Color.parseColor("#121212") else ColorPickerDialog.parseHexColor(panelBgHex, Color.parseColor("#121212"))
-        card.setBackgroundColor(panelBg)
+        val panelBorderHex = prefs.getString("pref_findreplace_panel_border", "default") ?: "default"
+        val panelBorder = if (panelBorderHex == "default") Color.parseColor("#282828") else ColorPickerDialog.parseHexColor(panelBorderHex, Color.parseColor("#282828"))
+        val density = card.resources.displayMetrics.density
+        card.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(panelBg)
+            setStroke((density.roundToInt()).coerceAtLeast(1), panelBorder)
+            cornerRadius = 8 * density
+        }
 
         val findBgHex = prefs.getString("pref_findreplace_field_find_bg", "default") ?: "default"
         val findColorHex = prefs.getString("pref_findreplace_field_find_color", "default") ?: "default"
@@ -2822,6 +2848,12 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             val customSvg = prefs.getString("pref_findreplace_btn_${suffix}_svg", "") ?: ""
             val density = btnView.context.resources.displayMetrics.density
             val iconWidth = prefs.getInt("pref_findreplace_btn_${suffix}_width", 28)
+            btnView.apply {
+                gravity = android.view.Gravity.CENTER
+                textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER
+                includeFontPadding = false
+                setPadding(0, 0, 0, 0)
+            }
             (btnView.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { params ->
                 params.width = (iconWidth * density).toInt()
                 btnView.layoutParams = params

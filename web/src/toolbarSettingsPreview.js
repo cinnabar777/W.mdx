@@ -443,6 +443,46 @@ function applySettings(payload) {
     '--toolbar-padding',
     `${Number.isFinite(padding) && padding >= 0 && padding <= 16 ? padding : 4}px`
   );
+  const floatingBgFallback =
+    prefs.pref_toolbar_bg_color && prefs.pref_toolbar_bg_color !== 'default'
+      ? prefs.pref_toolbar_bg_color
+      : (isLightTheme ? '#f8f9fa' : '#121212');
+  const floatingIconFallback =
+    prefs.pref_toolbar_icon_color && prefs.pref_toolbar_icon_color !== 'default'
+      ? prefs.pref_toolbar_icon_color
+      : (isLightTheme ? '#111111' : '#ffffff');
+  setCssVariable('--toolbar-floating-bg', prefs.pref_toolbar_floating_bg_color, floatingBgFallback);
+  setCssVariable('--toolbar-floating-icon-color', prefs.pref_toolbar_floating_icon_color, floatingIconFallback);
+  setCssVariable('--toolbar-floating-active-bg', prefs.pref_toolbar_floating_active_key_bg_color,
+    prefs.pref_toolbar_active_key_bg_color && prefs.pref_toolbar_active_key_bg_color !== 'default'
+      ? prefs.pref_toolbar_active_key_bg_color
+      : (isLightTheme ? '#e9ecef' : '#1f1f1f'));
+  setCssVariable('--toolbar-floating-label-color', prefs.pref_toolbar_floating_label_color, floatingIconFallback);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-label-display',
+    prefs.pref_toolbar_floating_show_labels === true ? 'flex' : 'none'
+  );
+  const floatingKeyHeight = Number(prefs.pref_toolbar_floating_key_height ?? 36);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-key-height',
+    `${Number.isFinite(floatingKeyHeight) && floatingKeyHeight >= 20 && floatingKeyHeight <= 64
+      ? floatingKeyHeight
+      : 36}px`
+  );
+  const floatingLabelSize = Number(prefs.pref_toolbar_floating_label_size ?? 8);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-label-size',
+    `${Number.isFinite(floatingLabelSize) && floatingLabelSize >= 6 && floatingLabelSize <= 16
+      ? floatingLabelSize
+      : 8}px`
+  );
+  const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 4);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-padding',
+    `${Number.isFinite(floatingPadding) && floatingPadding >= 0 && floatingPadding <= 16
+      ? floatingPadding
+      : 4}px`
+  );
   const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width);
   document.documentElement.style.setProperty(
     '--toolbar-floating-key-width',

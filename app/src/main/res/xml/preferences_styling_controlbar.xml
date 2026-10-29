@@ -108,6 +108,63 @@
             app:summary="Show the floating toolbar when text is selected"
             android:defaultValue="false" />
 
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_floating_bg_color"
+            app:title="Background Color"
+            app:summary="Floating toolbar background"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_floating_icon_color"
+            app:title="Icon Color"
+            app:summary="Floating toolbar icon color"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_floating_key_height"
+            app:title="Key Height (dp)"
+            app:summary="Height of each floating toolbar key"
+            android:defaultValue="36"
+            app:min="20"
+            android:max="64"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_toolbar_floating_show_labels"
+            app:title="Show Key Labels"
+            app:summary="Display action names below floating toolbar icons"
+            android:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_floating_label_size"
+            app:title="Key Label Font Size (sp)"
+            app:summary="Font size for floating toolbar labels"
+            android:defaultValue="8"
+            app:min="6"
+            android:max="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_floating_label_color"
+            app:title="Key Label Text Color"
+            app:summary="Floating toolbar label color"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_toolbar_floating_active_key_bg_color"
+            app:title="Active Background Color"
+            app:summary="Background color while a floating toolbar key is pressed"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_toolbar_floating_padding"
+            app:title="Toolbar Padding (dp)"
+            app:summary="Space around keys inside the floating toolbar"
+            android:defaultValue="4"
+            app:min="0"
+            android:max="16"
+            app:showSeekBarValue="true" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_toolbar_floating_key_width"
             app:title="Key Width (dp)"
