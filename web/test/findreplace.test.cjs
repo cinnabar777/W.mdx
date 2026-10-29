@@ -13,6 +13,7 @@ const settingsActivity = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
   'utf8'
 );
+const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
 test('main.js contains @codemirror/search imports and setup', () => {
   assert.ok(source.includes("@codemirror/search"), 'Missing @codemirror/search import');
@@ -40,11 +41,22 @@ test('applyAllPreferences maps --findreplace CSS variables', () => {
   assert.ok(source.includes("--findreplace-current-match-bg"), 'Missing --findreplace-current-match-bg mapping');
 });
 
+test('the hidden CodeMirror search host cannot leave a stale border behind', () => {
+  assert.match(indexHtml, /\.cm-panels-top\s*\{\s*border-bottom:\s*none\s*!important/s);
+  assert.match(
+    indexHtml,
+    /\.search-bar-container\s*\{[^}]*border-bottom:\s*1px solid var\(--findreplace-panel-border/s
+  );
+});
+
 test('Find & Replace exposes the requested sizing and counter colors without a tall empty tray', () => {
   assert.ok(findReplacePreferences.includes('app:title="Search Field Height (px)"'));
   assert.ok(findReplacePreferences.includes('app:key="pref_findreplace_counter_color"'));
   assert.ok(findReplacePreferences.includes('app:key="pref_findreplace_counter_bg"'));
   assert.equal((findReplacePreferences.match(/app:title="Icon Width \(px\)"/g) || []).length, 9);
+  assert.match(indexHtml, /\.search-icon-btn svg\s*\{[^}]*width:\s*var\(--findreplace-icon-size/s);
+  assert.match(source, /btnEl\.style\.setProperty\('--findreplace-icon-size'/);
+  assert.match(source, /Math\.min\(safeButtonWidth, safeFieldHeight\)/);
   assert.ok(settingsActivity.includes('listView?.post { listView?.scrollToPosition(0) }'));
   assert.ok(settingsActivity.includes('if (hiddenSet.isEmpty()) 24 else 120'));
   assert.ok(settingsActivity.includes('ACTION_DRAG_LOCATION'));

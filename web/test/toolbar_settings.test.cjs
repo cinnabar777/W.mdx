@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { JSDOM } = require('jsdom');
 
 const root = path.resolve(__dirname, '../..');
 const html = fs.readFileSync(path.join(root, 'web/toolbar-settings-preview.html'), 'utf8');
@@ -28,6 +29,12 @@ const resetSource = fs.readFileSync(
 );
 const mainSource = fs.readFileSync(path.join(root, 'web/src/main.js'), 'utf8');
 const toolbarConfigSource = fs.readFileSync(path.join(root, 'web/src/toolbarConfig.js'), 'utf8');
+const toolbarGesturesSource = fs.readFileSync(path.join(root, 'web/src/toolbarGestures.js'), 'utf8');
+const toolbarIconsSource = fs.readFileSync(path.join(root, 'web/src/toolbarIcons.js'), 'utf8');
+const keyPreferencesDialogSource = fs.readFileSync(
+  path.join(root, 'web/src/toolbarKeyPreferencesDialog.js'),
+  'utf8'
+);
 const colorPickerSource = fs.readFileSync(
   path.join(root, 'app/src/main/java/com/wmdx/markdownapp/ColorPickerDialog.kt'),
   'utf8'
@@ -44,6 +51,16 @@ test('bottom toolbar preview uses the same renderer, icon source, and toolbar st
   assert.match(html, /toolbar\.css/);
   assert.match(fs.readFileSync(path.join(root, 'web/index.html'), 'utf8'), /toolbar\.css/);
   assert.match(sharedCss, /\.grouped-control-bar\s*\{/);
+  assert.match(
+    sharedCss,
+    /\.grouped-control-bar\s*\{[^}]*column-gap:\s*var\(--toolbar-padding/s,
+    'toolbar padding controls spacing between keys'
+  );
+  assert.match(
+    sharedCss,
+    /\.grouped-control-bar\s*\{[^}]*padding:\s*4px[^}]*padding-right:\s*44px/s,
+    'toolbar padding does not shift the toolbar or remove its reserved toggle space'
+  );
   assert.match(sharedCss, /\.grouped-key-btn\s*\{/);
   assert.match(
     sharedCss,
@@ -91,7 +108,7 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /id="toolbar-delete-custom-group"[^>]*aria-label="Delete custom group"/);
   assert.match(html, /grid-template-columns: minmax\(0, 1fr\) 40px 30px/);
   assert.match(html, /border-radius: 50%/);
-  assert.match(html, /z-index: 10002/);
+  assert.match(html, /\.toolbar-preview-editor-layer\s*\{[^}]*z-index:\s*10030/s);
   assert.match(html, /popup-open/);
   assert.match(settingsSource, /layoutSignature/);
   assert.match(sharedCss, /--toolbar-label-display/);
@@ -182,6 +199,106 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(androidSource, /actionId\.startsWith\(LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX\)/);
 });
 
+test('toolbar gestures can open and save the preferences for their own key', () => {
+  assert.match(toolbarGesturesSource, /'editToolbarKeyPreferences'/);
+  assert.match(settingsSource, /id: 'editToolbarKeyPreferences'/);
+  assert.match(settingsSource, /icon: svgIcons\.wrench/);
+  assert.match(mainSource, /icon: svgIcons\.wrench/);
+  assert.match(toolbarIconsSource, /wrench: `<svg/);
+  assert.match(
+    mainSource,
+    /actionId === 'editToolbarKeyPreferences'[\s\S]*?openToolbarKeyPreferences\(sourceButton, toolbarConfig\)/
+  );
+  assert.match(
+    mainSource,
+    /sourceButton\?\.dataset\?\.toolbarStyleId[\s\S]*?sourceButton\?\.dataset\?\.toolbarKey/
+  );
+  assert.match(mainSource, /currentEditorMode !== 'wysiwyg'/);
+  assert.match(keyPreferencesDialogSource, /toolbar-settings-preview\.html\?embed=key-preferences/);
+  assert.match(keyPreferencesDialogSource, /openToolbarKeyPreferencesEditor/);
+  assert.match(settingsSource, /window\.openToolbarKeyPreferencesEditor/);
+  assert.match(settingsSource, /closeEmbeddedKeyPreferences/);
+  assert.match(settingsSource, /postEmbeddedEditorSize/);
+  assert.match(html, /toolbar-key-preferences-embedded/);
+  assert.match(
+    html,
+    /html\.toolbar-key-preferences-embedded \.toolbar-preview-editor \{[\s\S]*?max-height: none;[\s\S]*?overflow: visible;/
+  );
+  assert.match(
+    settingsSource,
+    /if \(section\.open\) return;[\s\S]*?if \(other !== section\) other\.open = false;/
+  );
+  assert.match(html, /data-toolbar-section="colors"/);
+  assert.match(
+    mainSource,
+    /save\(targetSurface, rawConfig\)/
+  );
+  assert.match(mainActivitySource, /fun saveToolbarKeyPreferences\(surface: String, rawConfig: String\)/);
+  assert.match(mainActivitySource, /fun pickToolbarKeyColor\(surface: String, itemId: String, property: String\)/);
+  assert.match(mainActivitySource, /fun pickToolbarKeySvg\(surface: String, itemId: String, property: String\)/);
+  assert.match(androidSource, /"editToolbarKeyPreferences"/);
+  assert.match(keyPreferencesDialogSource, /RESIZE_MESSAGE_TYPE/);
+  assert.match(sharedCss, /width:\s*min\(100%,\s*520px\)/);
+  assert.match(sharedCss, /\.toolbar-key-preferences-overlay\s*\{[\s\S]*?align-items:\s*flex-start/);
+  assert.match(sharedCss, /\.toolbar-key-preferences-frame\s*\{/);
+  assert.match(html, /\.toolbar-preview-editor-layer\s*\{[\s\S]*?z-index:\s*10030/);
+  assert.match(html, /\.toolbar-preview-icon-picker-modal\s*\{[\s\S]*?z-index:\s*10040/);
+});
+
+test('embedded preferences open the existing full key editor for the triggering key', async () => {
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html?embed=key-preferences'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?embedded-key-editor-test=${Date.now()}`);
+    const opened = dom.window.openToolbarKeyPreferencesEditor({
+      keyId: 'undo',
+      surface: 'bottom',
+      config: {
+        version: 6,
+        order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
+        hidden: [],
+        holding: [],
+        customGroups: {},
+        customKeys: {},
+        styles: { undo: { gestureActions: { tap1: 'bold' } } }
+      }
+    });
+    const editor = dom.window.document.querySelector('#toolbar-preview-editor');
+    const editorLayer = dom.window.document.querySelector('#toolbar-preview-editor-layer');
+    assert.equal(opened, true);
+    assert.equal(editor.classList.contains('visible'), true);
+    assert.equal(editorLayer.hidden, false);
+    assert.equal(dom.window.document.querySelector('#toolbar-open-icon-picker') !== null, true);
+    assert.equal(dom.window.document.querySelector('[data-toolbar-section="taps"]') !== null, true);
+    assert.equal(dom.window.document.querySelector('[data-toolbar-section="side-swipes"]') !== null, true);
+    assert.equal(dom.window.document.querySelector('[data-toolbar-section="corner-swipes"]') !== null, true);
+    assert.equal(dom.window.document.querySelector('[data-toolbar-section="colors"]') !== null, true);
+    const tapsSection = dom.window.document.querySelector('[data-toolbar-section="taps"]');
+    const sideSwipesSection = dom.window.document.querySelector('[data-toolbar-section="side-swipes"]');
+    tapsSection.open = true;
+    sideSwipesSection.querySelector('summary').click();
+    assert.equal(tapsSection.open, false);
+    assert.equal(sideSwipesSection.open, true);
+    assert.match(
+      dom.window.document.querySelector('[data-gesture-list="taps"]').textContent,
+      /Bold/
+    );
+    await new Promise(resolve => dom.window.setTimeout(resolve, 20));
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
 test('toolbar appearance refreshes preserve layout and editor overlays follow the configured theme', () => {
   assert.match(androidSource, /updateToolbarPreview\(includeToolbarConfig = false\)/);
   assert.match(androidSource, /toolbarSettingsJson\(includeToolbarConfig: Boolean = true\)/);
@@ -202,7 +319,7 @@ test('toolbar appearance refreshes preserve layout and editor overlays follow th
     settingsSource,
     /scrollStrip\.scrollLeft \+= lastX - pointerEvent\.clientX/
   );
-  assert.match(html, /height: min\(76dvh, calc\(100dvh - var\(--toolbar-height, 48px\) - 24px\)\)/);
+  assert.match(html, /\.toolbar-preview-editor-layer\s*\{[^}]*align-items:\s*flex-start/s);
   assert.match(html, /background: var\(--toolbar-preview-surface, var\(--bg-color, #000\)\)/);
   assert.doesNotMatch(html, /background:\s*#171717/i);
   assert.match(sharedCss, /\.toolbar-preview-holding\s*\{[^}]*margin-block:\s*auto/s);
@@ -326,8 +443,8 @@ test('global toolbar settings stay fixed while the key editor fits its content',
   assert.match(androidSource, /val top = preferenceBottom\.coerceIn\(0, host\.height\)/);
   assert.doesNotMatch(androidSource, /toolbarEditorOverlayExpanded|fun setToolbarEditorOverlay/);
   assert.match(html, /\.toolbar-preview-editor\s*\{[^}]*height:\s*auto/s);
-  assert.match(html, /min-height:\s*min\(76dvh,/);
-  assert.match(html, /max-height:\s*calc\(100dvh - var\(--toolbar-height/);
+  assert.match(html, /\.toolbar-preview-editor\s*\{[^}]*max-height:\s*none/s);
+  assert.match(html, /\.toolbar-preview-editor\s*\{[^}]*overflow:\s*visible/s);
   assert.match(androidSource, /baseLayout\.addView\(\s*android\.view\.View\(context\),\s*android\.widget\.LinearLayout\.LayoutParams\([\s\S]*?0,\s*1f/);
 });
 

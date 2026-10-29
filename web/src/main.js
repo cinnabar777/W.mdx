@@ -66,6 +66,7 @@ import {
   toToolbarCssColor
 } from './toolbarRenderer.js';
 import { getFloatingToolbarPosition } from './toolbarPositioning.js';
+import { openToolbarKeyPreferencesDialog } from './toolbarKeyPreferencesDialog.js';
 import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
@@ -4885,6 +4886,11 @@ function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
     { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
     { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
     { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough },
+    {
+      id: 'editToolbarKeyPreferences',
+      title: "Edit This Key's Preferences",
+      icon: svgIcons.wrench
+    },
     { id: OPEN_GROUP_ACTION_ID, title: 'Open group', icon: svgIcons.folder }
   ]) {
     registry.set(item.id, item);
@@ -4900,6 +4906,10 @@ function runToolbarGestureAction(
 ) {
   if (!actionId || visited.has(actionId)) return false;
   visited.add(actionId);
+  if (actionId === 'editToolbarKeyPreferences') {
+    hidePopupStrip();
+    return openToolbarKeyPreferences(sourceButton, toolbarConfig);
+  }
   if (actionId === OPEN_GROUP_ACTION_ID) {
     const toolbarGroupId = [
       sourceButton?.dataset?.toolbarKey,
@@ -4951,6 +4961,42 @@ function runToolbarGestureAction(
   if (typeof item.action !== 'function') return false;
   item.action();
   return true;
+}
+
+function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
+  if (currentEditorMode !== 'wysiwyg') return false;
+  const keyId =
+    sourceButton?.dataset?.toolbarStyleId ||
+    sourceButton?.dataset?.toolbarKey;
+  if (!keyId) return false;
+
+  const registry = createRuntimeToolbarItemRegistryForConfig(toolbarConfig);
+  const definition = registry.get(keyId);
+  const title =
+    toolbarConfig.styles?.[keyId]?.title ||
+    toolbarConfig.customGroups?.[keyId]?.title ||
+    toolbarConfig.customKeys?.[keyId]?.title ||
+    definition?.title ||
+    keyId;
+  const surface = toolbarConfig === floatingToolbarConfig ? 'floating' : 'bottom';
+  return openToolbarKeyPreferencesDialog({
+    keyId,
+    keyTitle: title,
+    surface,
+    config: toolbarConfig,
+    onSave: (targetSurface, nextConfig) => {
+      const save = window.AndroidNative?.saveToolbarKeyPreferences;
+      if (typeof save !== 'function') return false;
+      const rawConfig = JSON.stringify(nextConfig);
+      if (!save(targetSurface, rawConfig)) return false;
+      if (targetSurface === 'floating') {
+        window.editorBridge?.applyFloatingToolbarConfig?.(nextConfig);
+      } else {
+        window.editorBridge?.applyBottomToolbarConfig?.(nextConfig);
+      }
+      return true;
+    }
+  });
 }
 
 async function runToolbarClipboardAction(actionId) {
@@ -5992,10 +6038,14 @@ function refreshToolbarSyntaxState(view = activeAdapter?.view) {
     )
   };
   for (const [group, active] of Object.entries(groupStates)) {
-    const button = document.querySelector(`#grp-btn-${group}`);
-    if (!button) continue;
-    button.classList.toggle('has-active-syntax', active);
-    button.setAttribute('aria-pressed', String(active));
+    document
+      .querySelectorAll(
+        `#bottom-toolbar [data-toolbar-key="${group}"], #floating-selection-toolbar [data-toolbar-key="${group}"]`
+      )
+      .forEach(button => {
+        button.classList.toggle('has-active-syntax', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
   }
 }
 
@@ -7460,8 +7510,8 @@ window.editorBridge = {
       'cursor-blink-disabled',
       Number.parseFloat(cursorBlinkRate) === 0
     );
-    setCssVar('--selection-highlight-bg', prefs.pref_selection_highlight_bg_color);
-    setCssVar('--selection-highlight-text', prefs.pref_selection_highlight_text_color);
+    setCssVar('--selection-highlight-bg', androidArgbToCss(prefs.pref_selection_highlight_bg_color));
+    setCssVar('--selection-highlight-text', androidArgbToCss(prefs.pref_selection_highlight_text_color));
 
     // Body & Paragraph
     const paragraphAlignment = prefs.pref_justify_paragraph === true
@@ -7471,10 +7521,21 @@ window.editorBridge = {
     setCssVar('--body-font-family', toCssFontFamily(prefs.pref_body_font_family));
     setCssVar('--body-font-weight', prefs.pref_body_font_weight ?? 400);
     setCssVar('--body-text-color', androidArgbToCss(prefs.pref_body_text_color));
+    const bodyBackgroundColor = prefs.pref_body_background_color;
+    setCssVar(
+      '--body-background-color',
+      bodyBackgroundColor && bodyBackgroundColor !== 'default'
+        ? androidArgbToCss(bodyBackgroundColor)
+        : undefined
+    );
     setCssVar('--paragraph-line-height', prefs.pref_paragraph_line_height);
     setCssVar('--paragraph-letter-spacing', prefs.pref_letter_spacing || prefs.pref_paragraph_letter_spacing, 'px');
     setCssVar('--paragraph-align', paragraphAlignment);
     setCssVar('--paragraph-hyphens', prefs.pref_paragraph_hyphenate === true ? 'auto' : 'none');
+    document.body.classList.toggle(
+      'paragraph-justify-hyphenate',
+      paragraphAlignment === 'justify' && prefs.pref_paragraph_hyphenate === true
+    );
     setCssVar('--paragraph-indent', prefs.pref_paragraph_first_line_indent, 'px');
     setCssVar('--paragraph-margin-top', prefs.pref_paragraph_margin_top, 'px');
     setCssVar('--paragraph-margin-bottom', prefs.pref_paragraph_margin_bottom, 'px');
@@ -7878,6 +7939,8 @@ window.editorBridge = {
     setCssVar('--hr-width', prefs.pref_hr_width_percent || prefs.pref_hr_width, '%');
     setCssVar('--hr-margin-top', prefs.pref_hr_margin_top, 'px');
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
+    document.body.classList.toggle('hr-gradient', prefs.pref_hr_gradient_enabled === true);
+    setCssVar('--hr-gradient-offset', prefs.pref_hr_gradient_offset_percent ?? 25, '%');
 
     // Toolbar
     floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled === true;
@@ -7979,10 +8042,47 @@ window.editorBridge = {
       Number.isFinite(toolbarPadding) ? Math.max(0, Math.min(16, toolbarPadding)) : 4,
       'px'
     );
+    setCssVar('--toolbar-floating-bg', androidArgbToCss(prefs.pref_toolbar_floating_bg_color));
+    setCssVar('--toolbar-floating-icon-color', androidArgbToCss(prefs.pref_toolbar_floating_icon_color));
+    setCssVar('--toolbar-floating-active-bg', androidArgbToCss(prefs.pref_toolbar_floating_active_key_bg_color));
+    setCssVar('--toolbar-floating-label-color', androidArgbToCss(prefs.pref_toolbar_floating_label_color));
+    setCssVar(
+      '--toolbar-floating-label-display',
+      prefs.pref_toolbar_floating_show_labels === true ? 'flex' : 'none'
+    );
+    const floatingKeyHeight = Number(prefs.pref_toolbar_floating_key_height ?? 36);
+    setCssVar(
+      '--toolbar-floating-key-height',
+      Number.isFinite(floatingKeyHeight) ? Math.max(20, Math.min(64, floatingKeyHeight)) : 36,
+      'px'
+    );
+    const floatingLabelSize = Number(prefs.pref_toolbar_floating_label_size ?? 8);
+    setCssVar(
+      '--toolbar-floating-label-size',
+      Number.isFinite(floatingLabelSize) ? Math.max(6, Math.min(16, floatingLabelSize)) : 8,
+      'px'
+    );
+    const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 4);
+    setCssVar(
+      '--toolbar-floating-padding',
+      Number.isFinite(floatingPadding) ? Math.max(0, Math.min(16, floatingPadding)) : 4,
+      'px'
+    );
     const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width ?? 48);
     setCssVar(
       '--toolbar-floating-key-width',
       Number.isFinite(floatingKeyWidth) ? Math.max(36, Math.min(72, floatingKeyWidth)) : 48,
+      'px'
+    );
+    const safeFloatingKeyWidth = Number.isFinite(floatingKeyWidth)
+      ? Math.max(36, Math.min(72, floatingKeyWidth))
+      : 48;
+    const safeFloatingKeyHeight = Number.isFinite(floatingKeyHeight)
+      ? Math.max(20, Math.min(64, floatingKeyHeight))
+      : 36;
+    setCssVar(
+      '--toolbar-floating-icon-size',
+      Math.max(12, Math.round(Math.min(safeFloatingKeyWidth * 0.45, safeFloatingKeyHeight - 8))),
       'px'
     );
     const floatingCornerRadius = Number(prefs.pref_toolbar_floating_corner_radius ?? 24);
@@ -8102,11 +8202,28 @@ window.editorBridge = {
       setCssVar(`--findreplace-${bId}-active-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_active_bg`] || prefs.pref_findreplace_btn_active_bg));
       setCssVar(`--findreplace-${bId}-active-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_active_color`] || prefs.pref_findreplace_btn_active_color));
       setCssVar(`--findreplace-${bId}-pressed-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_pressed_bg`] || prefs.pref_findreplace_btn_pressed_bg));
-      setCssVar(`--findreplace-${bId}-width`, prefs[`pref_findreplace_btn_${bKey}_width`] || prefs.pref_findreplace_btn_width, 'px');
+      const buttonWidth = Number(
+        prefs[`pref_findreplace_btn_${bKey}_width`] ??
+        prefs.pref_findreplace_btn_width ??
+        28
+      );
+      const safeButtonWidth = Number.isFinite(buttonWidth)
+        ? Math.max(20, Math.min(64, buttonWidth))
+        : 28;
+      setCssVar(`--findreplace-${bId}-width`, safeButtonWidth, 'px');
 
       const customSvg = prefs[`pref_findreplace_btn_${bKey}_svg`];
       const btnEl = document.querySelector(`#search-btn-${bId}`);
       if (btnEl) {
+        const findReplaceFieldHeight = Number(prefs.pref_findreplace_field_height ?? 32);
+        const safeFieldHeight = Number.isFinite(findReplaceFieldHeight)
+          ? Math.max(24, Math.min(56, findReplaceFieldHeight))
+          : 32;
+        const iconSize = Math.max(
+          12,
+          Math.round(Math.min(safeButtonWidth, safeFieldHeight) - 8)
+        );
+        btnEl.style.setProperty('--findreplace-icon-size', `${iconSize}px`);
         if (!btnEl.dataset.defaultSvg) {
           btnEl.dataset.defaultSvg = btnEl.innerHTML;
         }
@@ -8429,7 +8546,7 @@ window.editorBridge = {
       }
     };
 
-    applyFontCategory('Body', fontBodyData, '--body-font-family');
+    applyFontCategory('Body', fontBodyData, '--body-font-family', bodyFontFamily);
     applyFontCategory('Heading', fontHeadingData, '--heading-font-family');
     applyFontCategory('Bold', fontBoldData, '--bold-font-family', fontFamilies.bold || 'default');
     applyFontCategory('Italic', fontItalicData, '--italic-font-family', fontFamilies.italic || 'default');
@@ -8437,7 +8554,12 @@ window.editorBridge = {
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family', fontFamilies.calloutHeader || 'default');
     applyFontCategory('Toc', fontTocData, '--toc-font-family', fontFamilies.toc || 'default');
     applyFontCategory('LeftPanel', fontFiles.leftPanel, '--left-panel-font-family', fontFamilies.leftPanel || 'default');
-    applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family', bodyFontFamily);
+    applyFontCategory(
+      'Footnote',
+      fontFootnoteData,
+      '--footnote-font-family',
+      fontFamilies.footnote || bodyFontFamily
+    );
     applyFontCategory('Blockquote', fontFiles.blockquote, '--blockquote-font-family', fontFamilies.blockquote || 'default');
     applyFontCategory('Callout', fontFiles.callout, '--callout-font-family', fontFamilies.callout || 'default');
     applyFontCategory('CodeBlock', fontFiles.codeBlock, '--code-block-font-family', fontFamilies.codeBlock || 'default');

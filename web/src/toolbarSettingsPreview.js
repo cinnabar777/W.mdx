@@ -21,13 +21,17 @@ import {
 } from './toolbarRenderer.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 
+const embeddedWindow = window;
 const toolbar = document.querySelector('#toolbar-preview');
 const tray = document.querySelector('#toolbar-holding-tray');
 const popup = document.querySelector('#toolbar-preview-popup');
+const editorLayer = document.querySelector('#toolbar-preview-editor-layer');
 const editor = document.querySelector('#toolbar-preview-editor');
 const iconPicker = document.querySelector('#toolbar-icon-picker-modal');
 const actionPicker = document.querySelector('#toolbar-action-picker-modal');
 const dropMarker = document.querySelector('#toolbar-preview-drop-marker');
+const embeddedKeyPreferences =
+  new URLSearchParams(window.location.search).get('embed') === 'key-preferences';
 if (dropMarker && document.body) document.body.appendChild(dropMarker);
 const DROP_MARKER_POINTER_OFFSET_Y = 50;
 const status = document.querySelector('#toolbar-preview-status');
@@ -55,6 +59,51 @@ let nextCustomGroupNumber = 1;
 const locallySavedToolbarLayouts = { bottom: null, floating: null };
 const hasAppliedToolbarConfig = { bottom: false, floating: false };
 let pendingDragCleanup = null;
+let embeddedResizeObserver = null;
+
+function closeEmbeddedKeyPreferences() {
+  if (!embeddedKeyPreferences) return false;
+  window.parent.postMessage({ type: 'wmdx-toolbar-key-preferences-close' }, '*');
+  return true;
+}
+
+function postEmbeddedEditorSize() {
+  if (!embeddedKeyPreferences || !editor?.classList.contains('visible')) return;
+  const height = Math.ceil(Math.max(editor.scrollHeight, editor.offsetHeight));
+  const pickerOpen = iconPickerOpen || actionPickerOpen;
+  const parentHeight = Number(embeddedWindow.parent?.innerHeight) || embeddedWindow.innerHeight;
+  const requestedHeight = pickerOpen
+    ? Math.max(height, Math.floor(parentHeight * 0.82))
+    : height;
+  embeddedWindow.parent.postMessage({
+    type: 'wmdx-toolbar-key-preferences-resize',
+    height: requestedHeight
+  }, '*');
+}
+
+function scheduleEmbeddedEditorSize() {
+  if (typeof embeddedWindow.requestAnimationFrame === 'function') {
+    embeddedWindow.requestAnimationFrame(postEmbeddedEditorSize);
+  } else {
+    embeddedWindow.setTimeout(postEmbeddedEditorSize, 0);
+  }
+}
+
+function observeEmbeddedEditorSize() {
+  if (!embeddedKeyPreferences || embeddedResizeObserver || !editor) return;
+  embeddedResizeObserver = new embeddedWindow.MutationObserver(() => {
+    scheduleEmbeddedEditorSize();
+  });
+  embeddedResizeObserver.observe(document.body, {
+    attributes: true,
+    childList: true,
+    subtree: true
+  });
+  embeddedWindow.addEventListener('resize', postEmbeddedEditorSize);
+  document.addEventListener('click', () => {
+    scheduleEmbeddedEditorSize();
+  });
+}
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 const RESET_ICON_MARKUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>';
@@ -135,7 +184,12 @@ const PREVIEW_SHORTCUT_ITEMS = [
   { id: 'historyBack', title: 'Back in Navigation History', icon: svgIcons.undo },
   { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
   { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
-  { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough }
+  { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough },
+  {
+    id: 'editToolbarKeyPreferences',
+    title: "Edit This Key's Preferences",
+    icon: svgIcons.wrench
+  }
 ];
 for (const item of PREVIEW_SHORTCUT_ITEMS) {
   PREVIEW_ITEM_DEFINITIONS.set(item.id, item);
@@ -443,12 +497,62 @@ function applySettings(payload) {
     '--toolbar-padding',
     `${Number.isFinite(padding) && padding >= 0 && padding <= 16 ? padding : 4}px`
   );
+  const floatingBgFallback =
+    prefs.pref_toolbar_bg_color && prefs.pref_toolbar_bg_color !== 'default'
+      ? prefs.pref_toolbar_bg_color
+      : (isLightTheme ? '#f8f9fa' : '#121212');
+  const floatingIconFallback =
+    prefs.pref_toolbar_icon_color && prefs.pref_toolbar_icon_color !== 'default'
+      ? prefs.pref_toolbar_icon_color
+      : (isLightTheme ? '#111111' : '#ffffff');
+  setCssVariable('--toolbar-floating-bg', prefs.pref_toolbar_floating_bg_color, floatingBgFallback);
+  setCssVariable('--toolbar-floating-icon-color', prefs.pref_toolbar_floating_icon_color, floatingIconFallback);
+  setCssVariable('--toolbar-floating-active-bg', prefs.pref_toolbar_floating_active_key_bg_color,
+    prefs.pref_toolbar_active_key_bg_color && prefs.pref_toolbar_active_key_bg_color !== 'default'
+      ? prefs.pref_toolbar_active_key_bg_color
+      : (isLightTheme ? '#e9ecef' : '#1f1f1f'));
+  setCssVariable('--toolbar-floating-label-color', prefs.pref_toolbar_floating_label_color, floatingIconFallback);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-label-display',
+    prefs.pref_toolbar_floating_show_labels === true ? 'flex' : 'none'
+  );
+  const floatingKeyHeight = Number(prefs.pref_toolbar_floating_key_height ?? 36);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-key-height',
+    `${Number.isFinite(floatingKeyHeight) && floatingKeyHeight >= 20 && floatingKeyHeight <= 64
+      ? floatingKeyHeight
+      : 36}px`
+  );
+  const floatingLabelSize = Number(prefs.pref_toolbar_floating_label_size ?? 8);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-label-size',
+    `${Number.isFinite(floatingLabelSize) && floatingLabelSize >= 6 && floatingLabelSize <= 16
+      ? floatingLabelSize
+      : 8}px`
+  );
+  const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 4);
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-padding',
+    `${Number.isFinite(floatingPadding) && floatingPadding >= 0 && floatingPadding <= 16
+      ? floatingPadding
+      : 4}px`
+  );
   const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width);
+  const safeFloatingKeyWidth =
+    Number.isFinite(floatingKeyWidth) && floatingKeyWidth >= 36 && floatingKeyWidth <= 72
+      ? floatingKeyWidth
+      : 48;
+  const safeFloatingKeyHeight =
+    Number.isFinite(floatingKeyHeight) && floatingKeyHeight >= 20 && floatingKeyHeight <= 64
+      ? floatingKeyHeight
+      : 36;
   document.documentElement.style.setProperty(
     '--toolbar-floating-key-width',
-    `${Number.isFinite(floatingKeyWidth) && floatingKeyWidth >= 36 && floatingKeyWidth <= 72
-      ? floatingKeyWidth
-      : 48}px`
+    `${safeFloatingKeyWidth}px`
+  );
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-icon-size',
+    `${Math.max(12, Math.round(Math.min(safeFloatingKeyWidth * 0.45, safeFloatingKeyHeight - 8)))}px`
   );
   const floatingCornerRadius = Number(prefs.pref_toolbar_floating_corner_radius);
   document.documentElement.style.setProperty(
@@ -761,6 +865,10 @@ function refreshSelectedKeyEditor() {
   }
   const addCustomButton = document.querySelector('#toolbar-add-custom');
   if (addCustomButton) addCustomButton.disabled = false;
+  if (editorLayer) {
+    editorLayer.hidden = !definition;
+    editorLayer.setAttribute('aria-hidden', String(!definition));
+  }
   editor.classList.toggle('visible', Boolean(definition));
   editor.setAttribute('aria-hidden', String(!definition));
   if (!definition) return;
@@ -2203,6 +2311,7 @@ document.querySelector('#toolbar-reset-layout')?.addEventListener('click', () =>
   saveConfig();
 });
 document.querySelector('#toolbar-preview-close-editor')?.addEventListener('click', () => {
+  if (closeEmbeddedKeyPreferences()) return;
   setIconPickerOpen(false);
   selectedKey = null;
   render();
@@ -2221,6 +2330,7 @@ document.addEventListener('click', event => {
   ) {
     return;
   }
+  if (closeEmbeddedKeyPreferences()) return;
   selectedKey = null;
   render();
 });
@@ -2259,10 +2369,40 @@ document.addEventListener('keydown', event => {
     return;
   }
   if (!editor?.classList.contains('visible')) return;
+  if (closeEmbeddedKeyPreferences()) {
+    event.preventDefault();
+    return;
+  }
   setIconPickerOpen(false);
   selectedKey = null;
   render();
 });
+
+window.openToolbarKeyPreferencesEditor = ({ keyId, surface, config: incomingConfig }) => {
+  if (!embeddedKeyPreferences || !keyId || !incomingConfig) return false;
+  if (surface !== 'bottom' && surface !== 'floating') return false;
+  activeToolbarSurface = surface;
+  config = normalizeBottomToolbarConfig(incomingConfig);
+  configsBySurface[surface] = config;
+  selectedKey = keyId;
+  openPopupGroup = null;
+  selectedPopupItem = null;
+  selectedGestureId = null;
+  editorKeyCache = null;
+  render();
+  observeEmbeddedEditorSize();
+  scheduleEmbeddedEditorSize();
+  return Boolean(editor?.classList.contains('visible'));
+};
+
+window.updateToolbarKeyPreferencesConfig = (surface, incomingConfig) => {
+  if (!embeddedKeyPreferences || surface !== activeToolbarSurface) return false;
+  config = normalizeBottomToolbarConfig(incomingConfig);
+  configsBySurface[surface] = config;
+  render();
+  scheduleEmbeddedEditorSize();
+  return true;
+};
 
 window.applyToolbarSettings = applySettings;
 window.saveToolbarLayout = () => saveConfig();
@@ -2279,6 +2419,12 @@ window.finishToolbarDragFromNative = (clientX, clientY) => {
 
 document.querySelectorAll('.toolbar-preview-surface-button').forEach(button => {
   button.addEventListener('click', () => setToolbarSurface(button.dataset.toolbarSurface));
+});
+
+editorLayer?.addEventListener('click', event => {
+  if (event.target !== editorLayer) return;
+  selectedKey = null;
+  render();
 });
 
 const toolbarHelpButton = document.querySelector('#toolbar-help-button');

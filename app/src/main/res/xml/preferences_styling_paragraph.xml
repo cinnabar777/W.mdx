@@ -35,6 +35,12 @@
             app:summary="Text color for paragraphs and body text"
             app:defaultValue="default" />
 
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_body_background_color"
+            app:title="Body Background Color"
+            app:summary="Background color behind the document"
+            app:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_paragraph_line_height"
             app:title="Paragraph Line Height"

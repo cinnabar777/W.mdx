@@ -255,6 +255,13 @@ test('table hyphenation wraps nested cell text without horizontal scrolling', ()
   assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table td \*[\s\S]*?overflow-wrap:\s*anywhere\s*!important/);
 });
 
+test('justified hyphenated paragraphs collapse leading source whitespace', () => {
+  assert.match(
+    indexHtml,
+    /body\.paragraph-justify-hyphenate \.cm-content \.cm-paragraph:not\(\.cm-list-item\)\s*\{[^}]*white-space:\s*normal[^}]*text-indent:\s*0[^}]*text-justify:\s*inter-word[^}]*word-spacing:\s*normal/s
+  );
+});
+
 test('Wikilinks rendering and refined link styling rules in main.js and index.html', () => {
   // Regex pattern test for wikilinks
   const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
