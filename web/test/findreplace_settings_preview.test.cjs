@@ -58,10 +58,17 @@ test('find and replace preview matches live icon sizing and saved button layout'
     document.querySelector('.findreplace-preview-hidden-button').textContent,
     '+ Regex'
   );
+  assert.equal(document.querySelector('#findreplace-hidden-tray').hidden, false);
+  assert.match(
+    document.querySelector('.findreplace-preview-hidden-label').textContent,
+    /drag here to remove/
+  );
 
   document.querySelector('.findreplace-preview-hidden-button').click();
   assert.ok(document.querySelector('#findreplace-row1').contains(document.querySelector('#search-btn-regex')));
   assert.deepEqual(savedLayout, ['next,prev,highlight,regex,close', 'case,word,replace-one,replace-all', '']);
+  assert.equal(document.querySelector('#findreplace-hidden-tray').hidden, false);
+  assert.equal(document.querySelector('.findreplace-preview-empty-hidden').textContent, '(No hidden buttons)');
 
   document.querySelector('#replace-input').click();
   assert.equal(selectedCategory, 'category_field_replace');

@@ -228,7 +228,12 @@ function renderLayout() {
     });
     tray.append(restore);
   }
-  tray.parentElement.hidden = state.hidden.size === 0;
+  if (state.hidden.size === 0) {
+    const emptyState = document.createElement('span');
+    emptyState.className = 'findreplace-preview-empty-hidden';
+    emptyState.textContent = '(No hidden buttons)';
+    tray.append(emptyState);
+  }
 }
 
 function saveLayout() {
