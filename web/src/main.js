@@ -5992,10 +5992,14 @@ function refreshToolbarSyntaxState(view = activeAdapter?.view) {
     )
   };
   for (const [group, active] of Object.entries(groupStates)) {
-    const button = document.querySelector(`#grp-btn-${group}`);
-    if (!button) continue;
-    button.classList.toggle('has-active-syntax', active);
-    button.setAttribute('aria-pressed', String(active));
+    document
+      .querySelectorAll(
+        `#bottom-toolbar [data-toolbar-key="${group}"], #floating-selection-toolbar [data-toolbar-key="${group}"]`
+      )
+      .forEach(button => {
+        button.classList.toggle('has-active-syntax', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
   }
 }
 
@@ -8024,6 +8028,17 @@ window.editorBridge = {
       Number.isFinite(floatingKeyWidth) ? Math.max(36, Math.min(72, floatingKeyWidth)) : 48,
       'px'
     );
+    const safeFloatingKeyWidth = Number.isFinite(floatingKeyWidth)
+      ? Math.max(36, Math.min(72, floatingKeyWidth))
+      : 48;
+    const safeFloatingKeyHeight = Number.isFinite(floatingKeyHeight)
+      ? Math.max(20, Math.min(64, floatingKeyHeight))
+      : 36;
+    setCssVar(
+      '--toolbar-floating-icon-size',
+      Math.max(12, Math.round(Math.min(safeFloatingKeyWidth * 0.45, safeFloatingKeyHeight - 8))),
+      'px'
+    );
     const floatingCornerRadius = Number(prefs.pref_toolbar_floating_corner_radius ?? 24);
     setCssVar(
       '--toolbar-floating-corner-radius',
@@ -8141,11 +8156,28 @@ window.editorBridge = {
       setCssVar(`--findreplace-${bId}-active-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_active_bg`] || prefs.pref_findreplace_btn_active_bg));
       setCssVar(`--findreplace-${bId}-active-color`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_active_color`] || prefs.pref_findreplace_btn_active_color));
       setCssVar(`--findreplace-${bId}-pressed-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_pressed_bg`] || prefs.pref_findreplace_btn_pressed_bg));
-      setCssVar(`--findreplace-${bId}-width`, prefs[`pref_findreplace_btn_${bKey}_width`] || prefs.pref_findreplace_btn_width, 'px');
+      const buttonWidth = Number(
+        prefs[`pref_findreplace_btn_${bKey}_width`] ??
+        prefs.pref_findreplace_btn_width ??
+        28
+      );
+      const safeButtonWidth = Number.isFinite(buttonWidth)
+        ? Math.max(20, Math.min(64, buttonWidth))
+        : 28;
+      setCssVar(`--findreplace-${bId}-width`, safeButtonWidth, 'px');
 
       const customSvg = prefs[`pref_findreplace_btn_${bKey}_svg`];
       const btnEl = document.querySelector(`#search-btn-${bId}`);
       if (btnEl) {
+        const findReplaceFieldHeight = Number(prefs.pref_findreplace_field_height ?? 32);
+        const safeFieldHeight = Number.isFinite(findReplaceFieldHeight)
+          ? Math.max(24, Math.min(56, findReplaceFieldHeight))
+          : 32;
+        const iconSize = Math.max(
+          12,
+          Math.round(Math.min(safeButtonWidth, safeFieldHeight) - 8)
+        );
+        btnEl.style.setProperty('--findreplace-icon-size', `${iconSize}px`);
         if (!btnEl.dataset.defaultSvg) {
           btnEl.dataset.defaultSvg = btnEl.innerHTML;
         }

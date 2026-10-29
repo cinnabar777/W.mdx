@@ -484,11 +484,21 @@ function applySettings(payload) {
       : 4}px`
   );
   const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width);
+  const safeFloatingKeyWidth =
+    Number.isFinite(floatingKeyWidth) && floatingKeyWidth >= 36 && floatingKeyWidth <= 72
+      ? floatingKeyWidth
+      : 48;
+  const safeFloatingKeyHeight =
+    Number.isFinite(floatingKeyHeight) && floatingKeyHeight >= 20 && floatingKeyHeight <= 64
+      ? floatingKeyHeight
+      : 36;
   document.documentElement.style.setProperty(
     '--toolbar-floating-key-width',
-    `${Number.isFinite(floatingKeyWidth) && floatingKeyWidth >= 36 && floatingKeyWidth <= 72
-      ? floatingKeyWidth
-      : 48}px`
+    `${safeFloatingKeyWidth}px`
+  );
+  document.documentElement.style.setProperty(
+    '--toolbar-floating-icon-size',
+    `${Math.max(12, Math.round(Math.min(safeFloatingKeyWidth * 0.45, safeFloatingKeyHeight - 8)))}px`
   );
   const floatingCornerRadius = Number(prefs.pref_toolbar_floating_corner_radius);
   document.documentElement.style.setProperty(

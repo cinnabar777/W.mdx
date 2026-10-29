@@ -167,7 +167,8 @@ body.light-theme .popup-toolbar-strip {
   max-width: calc(100vw - 24px) !important;
   justify-content: flex-start !important;
   height: calc(var(--toolbar-floating-key-height, 36px) + 12px) !important;
-  padding: var(--toolbar-floating-padding, 4px) !important;
+  padding: 4px !important;
+  gap: var(--toolbar-floating-padding, 4px) !important;
   background-color: var(--toolbar-floating-bg, var(--toolbar-bg, #121212)) !important;
   border-radius: var(--toolbar-floating-corner-radius, 24px) !important;
 }
@@ -181,7 +182,16 @@ body.light-theme .popup-toolbar-strip {
   color: var(--toolbar-floating-icon-color, var(--toolbar-icon-color, #fff)) !important;
 }
 
+.toolbar-preview-dock.is-floating #toolbar-preview .grouped-key-btn .toolbar-key-icon,
+.floating-selection-toolbar .grouped-key-btn .toolbar-key-icon {
+  width: var(--toolbar-floating-icon-size, 22px) !important;
+  height: var(--toolbar-floating-icon-size, 22px) !important;
+  flex: 0 0 var(--toolbar-floating-icon-size, 22px) !important;
+}
+
 .toolbar-preview-dock.is-floating #toolbar-preview .grouped-key-btn .toolbar-key-icon svg {
+  width: 100% !important;
+  height: 100% !important;
   color: var(--toolbar-floating-icon-color, var(--toolbar-icon-color, #fff)) !important;
 }
 
@@ -204,10 +214,10 @@ body.light-theme .popup-toolbar-strip {
   height: calc(var(--toolbar-floating-key-height, 36px) + 12px) !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  gap: 0 !important;
   overflow-x: auto !important;
   overflow-y: hidden !important;
-  padding: var(--toolbar-floating-padding, 4px) !important;
+  padding: 4px !important;
+  gap: var(--toolbar-floating-padding, 4px) !important;
   box-sizing: border-box !important;
   border-radius: var(--toolbar-floating-corner-radius, 24px) !important;
   background-color: var(--toolbar-floating-bg, var(--toolbar-bg, #121212)) !important;
@@ -240,6 +250,8 @@ body.light-theme .popup-toolbar-strip {
 }
 
 .floating-selection-toolbar .grouped-key-btn .toolbar-key-icon svg {
+  width: 100% !important;
+  height: 100% !important;
   color: var(--toolbar-floating-icon-color, var(--toolbar-icon-color, #fff)) !important;
 }
 
@@ -251,6 +263,10 @@ body.light-theme .popup-toolbar-strip {
 
 .floating-selection-toolbar .grouped-key-btn:active,
 .floating-selection-toolbar .grouped-key-btn.active {
+  background-color: var(--toolbar-floating-active-bg, var(--toolbar-key-active-bg-color, rgba(255, 255, 255, 0.2))) !important;
+}
+
+.floating-selection-toolbar .grouped-key-btn.has-active-syntax {
   background-color: var(--toolbar-floating-active-bg, var(--toolbar-key-active-bg-color, rgba(255, 255, 255, 0.2))) !important;
 }
 

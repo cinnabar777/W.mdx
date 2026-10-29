@@ -137,5 +137,20 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(activityLayout, /<com\.wmdx\.markdownapp\.EditorWebView/);
   assert.match(styles, /--toolbar-floating-key-width/);
   assert.match(styles, /--toolbar-floating-corner-radius/);
+  assert.match(
+    styles,
+    /\.floating-selection-toolbar\s*\{[^}]*padding:\s*4px[^}]*gap:\s*var\(--toolbar-floating-padding/s
+  );
+  assert.match(
+    styles,
+    /\.floating-selection-toolbar \.grouped-key-btn \.toolbar-key-icon[^}]*width:\s*var\(--toolbar-floating-icon-size/s
+  );
+  assert.match(main, /--toolbar-floating-icon-size/);
+  assert.match(settings, /--toolbar-floating-icon-size/);
+  assert.match(
+    main,
+    /#bottom-toolbar \[data-toolbar-key="\$\{group\}"\], #floating-selection-toolbar \[data-toolbar-key="\$\{group\}"\]/
+  );
+  assert.match(styles, /\.floating-selection-toolbar \.grouped-key-btn\.has-active-syntax/);
   assert.match(styles, /\.toolbar-preview-surface-switch\s*\{[^}]*position:\s*sticky/s);
 });

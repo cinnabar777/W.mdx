@@ -54,6 +54,9 @@ test('Find & Replace exposes the requested sizing and counter colors without a t
   assert.ok(findReplacePreferences.includes('app:key="pref_findreplace_counter_color"'));
   assert.ok(findReplacePreferences.includes('app:key="pref_findreplace_counter_bg"'));
   assert.equal((findReplacePreferences.match(/app:title="Icon Width \(px\)"/g) || []).length, 9);
+  assert.match(indexHtml, /\.search-icon-btn svg\s*\{[^}]*width:\s*var\(--findreplace-icon-size/s);
+  assert.match(source, /btnEl\.style\.setProperty\('--findreplace-icon-size'/);
+  assert.match(source, /Math\.min\(safeButtonWidth, safeFieldHeight\)/);
   assert.ok(settingsActivity.includes('listView?.post { listView?.scrollToPosition(0) }'));
   assert.ok(settingsActivity.includes('if (hiddenSet.isEmpty()) 24 else 120'));
   assert.ok(settingsActivity.includes('ACTION_DRAG_LOCATION'));
