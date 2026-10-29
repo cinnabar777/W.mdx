@@ -44,6 +44,16 @@ test('bottom toolbar preview uses the same renderer, icon source, and toolbar st
   assert.match(html, /toolbar\.css/);
   assert.match(fs.readFileSync(path.join(root, 'web/index.html'), 'utf8'), /toolbar\.css/);
   assert.match(sharedCss, /\.grouped-control-bar\s*\{/);
+  assert.match(
+    sharedCss,
+    /\.grouped-control-bar\s*\{[^}]*column-gap:\s*var\(--toolbar-padding/s,
+    'toolbar padding controls spacing between keys'
+  );
+  assert.match(
+    sharedCss,
+    /\.grouped-control-bar\s*\{[^}]*padding:\s*4px[^}]*padding-right:\s*44px/s,
+    'toolbar padding does not shift the toolbar or remove its reserved toggle space'
+  );
   assert.match(sharedCss, /\.grouped-key-btn\s*\{/);
   assert.match(
     sharedCss,

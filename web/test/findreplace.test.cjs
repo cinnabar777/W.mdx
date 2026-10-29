@@ -13,6 +13,7 @@ const settingsActivity = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
   'utf8'
 );
+const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 
 test('main.js contains @codemirror/search imports and setup', () => {
   assert.ok(source.includes("@codemirror/search"), 'Missing @codemirror/search import');
@@ -38,6 +39,14 @@ test('applyAllPreferences maps --findreplace CSS variables', () => {
   assert.ok(source.includes("--findreplace-counter-bg"), 'Missing --findreplace-counter-bg mapping');
   assert.ok(source.includes("--findreplace-match-bg"), 'Missing --findreplace-match-bg mapping');
   assert.ok(source.includes("--findreplace-current-match-bg"), 'Missing --findreplace-current-match-bg mapping');
+});
+
+test('the hidden CodeMirror search host cannot leave a stale border behind', () => {
+  assert.match(indexHtml, /\.cm-panels-top\s*\{\s*border-bottom:\s*none\s*!important/s);
+  assert.match(
+    indexHtml,
+    /\.search-bar-container\s*\{[^}]*border-bottom:\s*1px solid var\(--findreplace-panel-border/s
+  );
 });
 
 test('Find & Replace exposes the requested sizing and counter colors without a tall empty tray', () => {

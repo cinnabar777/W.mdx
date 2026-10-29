@@ -123,12 +123,13 @@ body.light-theme .popup-toolbar-strip {
   align-items: center !important;
   justify-content: space-around !important;
   height: var(--toolbar-height, 48px) !important;
-  padding: var(--toolbar-padding, 4px) !important;
+  padding: 4px !important;
+  column-gap: var(--toolbar-padding, 4px) !important;
   box-sizing: border-box !important;
   background-color: var(--toolbar-bg, #121212) !important;
   border: none !important;
   border-top: none !important;
-  padding-right: calc(var(--toolbar-padding, 4px) + 40px) !important;
+  padding-right: 44px !important;
 }
 
 .toolbar-preview-surface-switch {
@@ -555,7 +556,8 @@ body.light-theme .toolbar-preview-help-header {
 }
 
 .toolbar-preview-stage .grouped-control-bar {
-  padding-right: var(--toolbar-padding, 4px) !important;
+  padding-right: 4px !important;
+  column-gap: var(--toolbar-padding, 4px) !important;
   width: 100%;
   border-radius: 0;
 }

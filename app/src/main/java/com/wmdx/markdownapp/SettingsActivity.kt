@@ -2906,13 +2906,17 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                         setBounds(0, 0, sizePx, sizePx)
                     }
                     btnView.text = ""
-                    btnView.setCompoundDrawables(drawable, null, null, null)
+                    btnView.setCompoundDrawables(null, null, null, null)
+                    btnView.foreground = drawable
+                    btnView.foregroundGravity = android.view.Gravity.CENTER
                 } catch (e: Exception) {
                     btnView.text = originalText
+                    btnView.foreground = null
                     btnView.setCompoundDrawables(null, null, null, null)
                 }
             } else {
                 btnView.text = originalText
+                btnView.foreground = null
                 btnView.setCompoundDrawables(null, null, null, null)
             }
         }

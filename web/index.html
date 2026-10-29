@@ -101,6 +101,11 @@
       display: none !important;
     }
 
+    /* CodeMirror keeps the custom search panel host mounted after it is hidden. */
+    .cm-panels-top {
+      border-bottom: none !important;
+    }
+
     .search-bar-row {
       display: flex !important;
       align-items: center !important;
@@ -1359,8 +1364,11 @@
       text-indent: var(--paragraph-indent, 0px) !important;
       margin-top: var(--paragraph-margin-top, 0px) !important;
     }
-    body.paragraph-justify-hyphenate .cm-content .cm-paragraph-first:not(.cm-list-item) {
+    body.paragraph-justify-hyphenate .cm-content .cm-paragraph:not(.cm-list-item) {
+      white-space: normal !important;
       text-indent: 0 !important;
+      text-justify: inter-word !important;
+      word-spacing: normal !important;
     }
     .cm-content .cm-paragraph-last:not(.cm-list-item) {
       margin-bottom: var(--paragraph-margin-bottom, 8px) !important;
