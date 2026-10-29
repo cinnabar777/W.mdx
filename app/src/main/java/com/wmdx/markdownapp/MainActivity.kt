@@ -198,6 +198,35 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
+    private data class PendingToolbarKeySvgRequest(
+        val surface: String,
+        val itemId: String,
+        val property: String
+    )
+
+    private var pendingToolbarKeySvgRequest: PendingToolbarKeySvgRequest? = null
+
+    private val toolbarKeySvgPickerLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            val request = pendingToolbarKeySvgRequest
+            pendingToolbarKeySvgRequest = null
+            if (uri != null && request != null) {
+                val svg = runCatching {
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        input.readBytes().toString(Charsets.UTF_8)
+                    }
+                }.getOrNull()
+                if (svg != null) {
+                    updateToolbarKeyPreferenceStyle(
+                        request.surface,
+                        request.itemId,
+                        request.property,
+                        svg
+                    )
+                }
+            }
+        }
+
     private val renameFolderLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             handleRenameFolderSelection(result.resultCode, result.data)
@@ -2559,6 +2588,138 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun saveToolbarKeyPreferencesConfig(surface: String, rawConfig: String): Boolean {
+        if (surface != "bottom" && surface != "floating") return false
+        if (rawConfig.length > 256_000) return false
+        val config = runCatching { org.json.JSONObject(rawConfig) }.getOrNull()
+            ?: return false
+        if (config.optInt("version", 0) < 1 ||
+            config.optJSONArray("order") == null ||
+            config.optJSONObject("styles") == null) {
+            return false
+        }
+        val preferenceKey = if (surface == "floating") {
+            "pref_toolbar_floating_config"
+        } else {
+            "pref_toolbar_bottom_config"
+        }
+        val saved = PreferenceManager.getDefaultSharedPreferences(this)
+            .edit()
+            .putString(preferenceKey, config.toString())
+            .commit()
+        if (saved) runOnUiThread { refreshBottomToolbarFromPreferences() }
+        return saved
+    }
+
+    private fun isToolbarKeyInConfig(config: org.json.JSONObject, itemId: String): Boolean {
+        if (config.optJSONObject("customGroups")?.has(itemId) == true ||
+            config.optJSONObject("customKeys")?.has(itemId) == true) {
+            return true
+        }
+        fun contains(array: org.json.JSONArray?): Boolean {
+            return array != null &&
+                (0 until array.length()).any { array.optString(it) == itemId }
+        }
+        if (contains(config.optJSONArray("order")) ||
+            contains(config.optJSONArray("holding")) ||
+            contains(config.optJSONArray("hidden"))) {
+            return true
+        }
+        val popupGroups = config.optJSONObject("popupGroups") ?: return false
+        val keys = popupGroups.keys()
+        while (keys.hasNext()) {
+            val group = popupGroups.optJSONObject(keys.next()) ?: continue
+            if (contains(group.optJSONArray("order")) || contains(group.optJSONArray("hidden"))) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun isSafeToolbarKeySvg(svg: String): Boolean {
+        if (svg.toByteArray(Charsets.UTF_8).size > 64 * 1024) return false
+        val trimmed = svg.trim()
+        if (trimmed.isEmpty()) return true
+        val lower = trimmed.lowercase()
+        if (!lower.contains("<svg")) return false
+        if (listOf(
+                "<script", "foreignobject", "javascript:", "data:", "<embed", "<object",
+                "<iframe", "<image", "<style", "url("
+            ).any(lower::contains)) {
+            return false
+        }
+        if (Regex("""\bon[a-z]+\s*=""", RegexOption.IGNORE_CASE).containsMatchIn(trimmed)) {
+            return false
+        }
+        return runCatching { com.caverock.androidsvg.SVG.getFromString(trimmed) }.isSuccess
+    }
+
+    private fun updateToolbarKeyPreferenceStyle(
+        surface: String,
+        itemId: String,
+        property: String,
+        value: String
+    ): Boolean {
+        if (surface != "bottom" && surface != "floating") return false
+        val isColor = property in setOf("iconColor", "backgroundColor", "activeBackgroundColor")
+        val isSvg = property == "customSvg" ||
+            property == "gestureActionIconSvg" ||
+            Regex("""^gestureActionIconSvg:(longPress|tap1|tap2|tap3|swipeUp|swipeDown|swipeLeft|swipeRight|swipeUpLeft|swipeUpRight|swipeDownLeft|swipeDownRight)$""")
+                .matches(property)
+        if (!isColor && !isSvg) return false
+        if (isColor && !Regex(
+                """^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)|[A-Za-z]{1,20})$"""
+            ).matches(value.trim())) {
+            return false
+        }
+        if (isSvg && !isSafeToolbarKeySvg(value)) return false
+
+        val preferences = PreferenceManager.getDefaultSharedPreferences(this)
+        val preferenceKey = if (surface == "floating") {
+            "pref_toolbar_floating_config"
+        } else {
+            "pref_toolbar_bottom_config"
+        }
+        val config = runCatching {
+            org.json.JSONObject(preferences.getString(preferenceKey, null) ?: return false)
+        }.getOrNull() ?: return false
+        if (!isToolbarKeyInConfig(config, itemId)) return false
+
+        val styles = config.optJSONObject("styles") ?: org.json.JSONObject().also {
+            config.put("styles", it)
+        }
+        val style = styles.optJSONObject(itemId) ?: org.json.JSONObject()
+        when {
+            property in setOf("iconColor", "backgroundColor", "activeBackgroundColor") ->
+                style.put(property, value.trim())
+            property == "customSvg" -> {
+                if (value.isBlank()) style.remove("customSvg") else style.put("customSvg", value.trim())
+            }
+            property == "gestureActionIconSvg" ->
+                style.put("gestureActionIconSvg", value.trim())
+            else -> {
+                val gestureId = property.substringAfter(':')
+                val gestureIcons = style.optJSONObject("gestureActionIcons")
+                    ?: org.json.JSONObject().also { style.put("gestureActionIcons", it) }
+                if (value.isBlank()) gestureIcons.remove(gestureId)
+                else gestureIcons.put(gestureId, value.trim())
+                if (gestureIcons.length() == 0) style.remove("gestureActionIcons")
+            }
+        }
+        if (style.length() == 0) styles.remove(itemId) else styles.put(itemId, style)
+        val updatedConfig = config.toString()
+        if (!saveToolbarKeyPreferencesConfig(surface, updatedConfig)) return false
+        val surfaceLiteral = org.json.JSONObject.quote(surface)
+        val configLiteral = org.json.JSONObject.quote(updatedConfig)
+        runOnUiThread {
+            webView.evaluateJavascript(
+                "window.updateToolbarKeyPreferencesFrame?.($surfaceLiteral, $configLiteral)",
+                null
+            )
+        }
+        return true
+    }
+
     inner class WebAppInterface {
         @JavascriptInterface
         fun getLeftPanelContext(): String = leftPanelContextJson()
@@ -2567,31 +2728,88 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         fun getCurrentDocumentSessionId(): String = currentDocumentSessionId
 
         @JavascriptInterface
-        fun saveToolbarKeyPreferences(surface: String, rawConfig: String): Boolean {
+        fun saveToolbarKeyPreferences(surface: String, rawConfig: String): Boolean =
+            saveToolbarKeyPreferencesConfig(surface, rawConfig)
+
+        @JavascriptInterface
+        fun pickToolbarKeyColor(surface: String, itemId: String, property: String) {
+            if (surface != "bottom" && surface != "floating") return
+            if (property !in setOf("iconColor", "backgroundColor", "activeBackgroundColor")) return
+            runOnUiThread {
+                val preferenceKey = if (surface == "floating") {
+                    "pref_toolbar_floating_config"
+                } else {
+                    "pref_toolbar_bottom_config"
+                }
+                val config = runCatching {
+                    org.json.JSONObject(
+                        PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                            .getString(preferenceKey, null) ?: return@runOnUiThread
+                    )
+                }.getOrNull() ?: return@runOnUiThread
+                if (!isToolbarKeyInConfig(config, itemId)) return@runOnUiThread
+
+                val styleColor = config.optJSONObject("styles")
+                    ?.optJSONObject(itemId)
+                    ?.optString(property)
+                    ?.takeIf { it.isNotBlank() && it != "default" }
+                val preferenceDefaults = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                val inheritedColor = when (property) {
+                    "iconColor" -> preferenceDefaults.getString(
+                        if (surface == "floating") {
+                            "pref_toolbar_floating_icon_color"
+                        } else {
+                            "pref_toolbar_icon_color"
+                        },
+                        "#FFFFFF"
+                    )?.takeIf { it.isNotBlank() && it != "default" } ?: "#FFFFFF"
+                    else -> "#00000000"
+                }
+                ColorPickerDialog(
+                    this@MainActivity,
+                    styleColor ?: inheritedColor
+                ) { selected ->
+                    updateToolbarKeyPreferenceStyle(surface, itemId, property, selected)
+                }.show()
+            }
+        }
+
+        @JavascriptInterface
+        fun pickToolbarKeySvg(surface: String, itemId: String, property: String): Boolean {
             if (surface != "bottom" && surface != "floating") return false
-            if (rawConfig.length > 256_000) return false
-            val config = runCatching { org.json.JSONObject(rawConfig) }.getOrNull()
-                ?: return false
-            if (config.optInt("version", 0) < 1 ||
-                config.optJSONArray("order") == null ||
-                config.optJSONObject("styles") == null) {
+            if (property != "customSvg" &&
+                property != "gestureActionIconSvg" &&
+                !Regex("""^gestureActionIconSvg:(longPress|tap1|tap2|tap3|swipeUp|swipeDown|swipeLeft|swipeRight|swipeUpLeft|swipeUpRight|swipeDownLeft|swipeDownRight)$""")
+                    .matches(property)) {
                 return false
             }
-
             val preferenceKey = if (surface == "floating") {
                 "pref_toolbar_floating_config"
             } else {
                 "pref_toolbar_bottom_config"
             }
-            val saved = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
-                .edit()
-                .putString(preferenceKey, config.toString())
-                .commit()
-            if (saved) {
-                runOnUiThread { refreshBottomToolbarFromPreferences() }
+            val config = runCatching {
+                org.json.JSONObject(
+                    PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                        .getString(preferenceKey, null) ?: return false
+                )
+            }.getOrNull() ?: return false
+            if (!isToolbarKeyInConfig(config, itemId)) return false
+            runOnUiThread {
+                pendingToolbarKeySvgRequest =
+                    PendingToolbarKeySvgRequest(surface, itemId, property)
+                toolbarKeySvgPickerLauncher.launch(arrayOf("image/svg+xml", "text/xml"))
             }
-            return saved
+            return true
         }
+
+        @JavascriptInterface
+        fun setToolbarKeySvg(
+            surface: String,
+            itemId: String,
+            property: String,
+            svg: String
+        ): Boolean = updateToolbarKeyPreferenceStyle(surface, itemId, property, svg)
 
         @JavascriptInterface
         fun isAutoSaveOnLeaveEnabled(): Boolean =

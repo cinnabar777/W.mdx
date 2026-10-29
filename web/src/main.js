@@ -4889,7 +4889,7 @@ function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
     {
       id: 'editToolbarKeyPreferences',
       title: "Edit This Key's Preferences",
-      icon: svgIcons.settings
+      icon: svgIcons.wrench
     },
     { id: OPEN_GROUP_ACTION_ID, title: 'Open group', icon: svgIcons.folder }
   ]) {
@@ -4984,7 +4984,6 @@ function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
     keyTitle: title,
     surface,
     config: toolbarConfig,
-    actions: [...registry.values()],
     onSave: (targetSurface, nextConfig) => {
       const save = window.AndroidNative?.saveToolbarKeyPreferences;
       if (typeof save !== 'function') return false;

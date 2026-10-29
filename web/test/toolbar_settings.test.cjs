@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { JSDOM } = require('jsdom');
 
 const root = path.resolve(__dirname, '../..');
 const html = fs.readFileSync(path.join(root, 'web/toolbar-settings-preview.html'), 'utf8');
@@ -29,6 +30,7 @@ const resetSource = fs.readFileSync(
 const mainSource = fs.readFileSync(path.join(root, 'web/src/main.js'), 'utf8');
 const toolbarConfigSource = fs.readFileSync(path.join(root, 'web/src/toolbarConfig.js'), 'utf8');
 const toolbarGesturesSource = fs.readFileSync(path.join(root, 'web/src/toolbarGestures.js'), 'utf8');
+const toolbarIconsSource = fs.readFileSync(path.join(root, 'web/src/toolbarIcons.js'), 'utf8');
 const keyPreferencesDialogSource = fs.readFileSync(
   path.join(root, 'web/src/toolbarKeyPreferencesDialog.js'),
   'utf8'
@@ -200,6 +202,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
 test('toolbar gestures can open and save the preferences for their own key', () => {
   assert.match(toolbarGesturesSource, /'editToolbarKeyPreferences'/);
   assert.match(settingsSource, /id: 'editToolbarKeyPreferences'/);
+  assert.match(settingsSource, /icon: svgIcons\.wrench/);
+  assert.match(mainSource, /icon: svgIcons\.wrench/);
+  assert.match(toolbarIconsSource, /wrench: `<svg/);
   assert.match(
     mainSource,
     /actionId === 'editToolbarKeyPreferences'[\s\S]*?openToolbarKeyPreferences\(sourceButton, toolbarConfig\)/
@@ -209,16 +214,66 @@ test('toolbar gestures can open and save the preferences for their own key', () 
     /sourceButton\?\.dataset\?\.toolbarStyleId[\s\S]*?sourceButton\?\.dataset\?\.toolbarKey/
   );
   assert.match(mainSource, /currentEditorMode !== 'wysiwyg'/);
-  assert.match(keyPreferencesDialogSource, /TOOLBAR_GESTURE_GROUPS/);
-  assert.match(keyPreferencesDialogSource, /nextStyle\.gestureActions/);
+  assert.match(keyPreferencesDialogSource, /toolbar-settings-preview\.html\?embed=key-preferences/);
+  assert.match(keyPreferencesDialogSource, /openToolbarKeyPreferencesEditor/);
+  assert.match(settingsSource, /window\.openToolbarKeyPreferencesEditor/);
+  assert.match(settingsSource, /closeEmbeddedKeyPreferences/);
+  assert.match(html, /toolbar-key-preferences-embedded/);
+  assert.match(html, /data-toolbar-section="colors"/);
   assert.match(
     mainSource,
     /save\(targetSurface, rawConfig\)/
   );
   assert.match(mainActivitySource, /fun saveToolbarKeyPreferences\(surface: String, rawConfig: String\)/);
+  assert.match(mainActivitySource, /fun pickToolbarKeyColor\(surface: String, itemId: String, property: String\)/);
+  assert.match(mainActivitySource, /fun pickToolbarKeySvg\(surface: String, itemId: String, property: String\)/);
   assert.match(androidSource, /"editToolbarKeyPreferences"/);
-  assert.match(sharedCss, /\.toolbar-key-preferences-overlay\s*\{[^}]*z-index:\s*10030/s);
-  assert.doesNotMatch(mainSource, /customHotkeys\.toolbarKeyPreferences/);
+  assert.match(sharedCss, /\.toolbar-key-preferences-frame\s*\{/);
+});
+
+test('embedded preferences open the existing full key editor for the triggering key', async () => {
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html?embed=key-preferences'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?embedded-key-editor-test=${Date.now()}`);
+    const opened = dom.window.openToolbarKeyPreferencesEditor({
+      keyId: 'undo',
+      surface: 'bottom',
+      config: {
+        version: 6,
+        order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
+        hidden: [],
+        holding: [],
+        customGroups: {},
+        customKeys: {},
+        styles: { undo: { gestureActions: { tap1: 'bold' } } }
+      }
+    });
+    const editor = dom.window.document.querySelector('#toolbar-preview-editor');
+    assert.equal(opened, true);
+    assert.equal(editor.classList.contains('visible'), true);
+    assert.equal(dom.window.document.querySelector('#toolbar-open-icon-picker') !== null, true);
+    assert.equal(dom.window.document.querySelector('[data-toolbar-section="taps"]') !== null, true);
+    assert.equal(dom.window.document.querySelector('[data-toolbar-section="side-swipes"]') !== null, true);
+    assert.equal(dom.window.document.querySelector('[data-toolbar-section="corner-swipes"]') !== null, true);
+    assert.equal(dom.window.document.querySelector('[data-toolbar-section="colors"]') !== null, true);
+    assert.match(
+      dom.window.document.querySelector('[data-gesture-list="taps"]').textContent,
+      /Bold/
+    );
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
 });
 
 test('toolbar appearance refreshes preserve layout and editor overlays follow the configured theme', () => {

@@ -28,6 +28,8 @@ const editor = document.querySelector('#toolbar-preview-editor');
 const iconPicker = document.querySelector('#toolbar-icon-picker-modal');
 const actionPicker = document.querySelector('#toolbar-action-picker-modal');
 const dropMarker = document.querySelector('#toolbar-preview-drop-marker');
+const embeddedKeyPreferences =
+  new URLSearchParams(window.location.search).get('embed') === 'key-preferences';
 if (dropMarker && document.body) document.body.appendChild(dropMarker);
 const DROP_MARKER_POINTER_OFFSET_Y = 50;
 const status = document.querySelector('#toolbar-preview-status');
@@ -55,6 +57,12 @@ let nextCustomGroupNumber = 1;
 const locallySavedToolbarLayouts = { bottom: null, floating: null };
 const hasAppliedToolbarConfig = { bottom: false, floating: false };
 let pendingDragCleanup = null;
+
+function closeEmbeddedKeyPreferences() {
+  if (!embeddedKeyPreferences) return false;
+  window.parent.postMessage({ type: 'wmdx-toolbar-key-preferences-close' }, '*');
+  return true;
+}
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 const RESET_ICON_MARKUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>';
@@ -139,7 +147,7 @@ const PREVIEW_SHORTCUT_ITEMS = [
   {
     id: 'editToolbarKeyPreferences',
     title: "Edit This Key's Preferences",
-    icon: svgIcons.settings
+    icon: svgIcons.wrench
   }
 ];
 for (const item of PREVIEW_SHORTCUT_ITEMS) {
@@ -2258,6 +2266,7 @@ document.querySelector('#toolbar-reset-layout')?.addEventListener('click', () =>
   saveConfig();
 });
 document.querySelector('#toolbar-preview-close-editor')?.addEventListener('click', () => {
+  if (closeEmbeddedKeyPreferences()) return;
   setIconPickerOpen(false);
   selectedKey = null;
   render();
@@ -2276,6 +2285,7 @@ document.addEventListener('click', event => {
   ) {
     return;
   }
+  if (closeEmbeddedKeyPreferences()) return;
   selectedKey = null;
   render();
 });
@@ -2314,10 +2324,37 @@ document.addEventListener('keydown', event => {
     return;
   }
   if (!editor?.classList.contains('visible')) return;
+  if (closeEmbeddedKeyPreferences()) {
+    event.preventDefault();
+    return;
+  }
   setIconPickerOpen(false);
   selectedKey = null;
   render();
 });
+
+window.openToolbarKeyPreferencesEditor = ({ keyId, surface, config: incomingConfig }) => {
+  if (!embeddedKeyPreferences || !keyId || !incomingConfig) return false;
+  if (surface !== 'bottom' && surface !== 'floating') return false;
+  activeToolbarSurface = surface;
+  config = normalizeBottomToolbarConfig(incomingConfig);
+  configsBySurface[surface] = config;
+  selectedKey = keyId;
+  openPopupGroup = null;
+  selectedPopupItem = null;
+  selectedGestureId = null;
+  editorKeyCache = null;
+  render();
+  return Boolean(editor?.classList.contains('visible'));
+};
+
+window.updateToolbarKeyPreferencesConfig = (surface, incomingConfig) => {
+  if (!embeddedKeyPreferences || surface !== activeToolbarSurface) return false;
+  config = normalizeBottomToolbarConfig(incomingConfig);
+  configsBySurface[surface] = config;
+  render();
+  return true;
+};
 
 window.applyToolbarSettings = applySettings;
 window.saveToolbarLayout = () => saveConfig();
