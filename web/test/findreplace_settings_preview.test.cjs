@@ -174,7 +174,7 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
   dispatchPointer(dom.window, previous, 'pointerdown', { x: 110, y: 20 });
   dispatchPointer(dom.window, previous, 'pointermove', { x: 145, y: 75 });
   assert.ok(row2.querySelector('.findreplace-drop-marker'));
-  dispatchPointer(dom.window, previous, 'pointercancel', { x: 145, y: 75 });
+  dispatchPointer(dom.window, previous, 'pointerup', { x: 110, y: 20 });
 
   assert.equal(row1.contains(previous), false);
   assert.equal(row2.contains(previous), true);
@@ -185,7 +185,7 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
   dispatchPointer(dom.window, next, 'pointerdown', { x: 10, y: 15 });
   dispatchPointer(dom.window, next, 'pointermove', { x: 150, y: 130 });
   assert.ok(tray.classList.contains('drag-over'));
-  dispatchPointer(dom.window, next, 'pointerup', { x: 150, y: 130 });
+  dispatchPointer(dom.window, next, 'pointercancel', { x: 10, y: 15 });
 
   assert.equal(row1.contains(next), false);
   assert.equal(savedLayout[2], 'next');

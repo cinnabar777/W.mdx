@@ -335,10 +335,9 @@ function updateDropIndicator(x, y) {
   dropTarget = null;
 }
 
-function finishPointerDrag(button, event, moved) {
+function finishPointerDrag(button, moved) {
   const draggedId = state.dragging;
   if (!draggedId) return;
-  if (moved) updateDropIndicator(event.clientX, event.clientY);
   const destination = moved ? dropTarget : null;
   clearTimeout(pointerTimer);
   pointerTimer = 0;
@@ -379,8 +378,6 @@ for (const button of buttonElements.values()) {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      lastX: event.clientX,
-      lastY: event.clientY,
       moved: false,
       active: false
     };
@@ -398,8 +395,6 @@ for (const button of buttonElements.values()) {
 
 document.addEventListener('pointermove', event => {
   if (!pointerCandidate || pointerCandidate.pointerId !== event.pointerId) return;
-  pointerCandidate.lastX = event.clientX;
-  pointerCandidate.lastY = event.clientY;
   const deltaX = event.clientX - pointerCandidate.startX;
   const deltaY = event.clientY - pointerCandidate.startY;
   if (!pointerCandidate.active && Math.hypot(deltaX, deltaY) > 8) {
@@ -422,7 +417,7 @@ document.addEventListener('pointerup', event => {
     return;
   }
   event.preventDefault();
-  finishPointerDrag(candidate.button, event, candidate.moved);
+  finishPointerDrag(candidate.button, candidate.moved);
 });
 
 document.addEventListener('pointercancel', event => {
@@ -430,12 +425,7 @@ document.addEventListener('pointercancel', event => {
   const candidate = pointerCandidate;
   clearTimeout(pointerTimer);
   pointerTimer = 0;
-  if (candidate.active) {
-    finishPointerDrag(candidate.button, {
-      clientX: candidate.lastX,
-      clientY: candidate.lastY
-    }, candidate.moved);
-  }
+  if (candidate.active) finishPointerDrag(candidate.button, candidate.moved);
   else pointerCandidate = null;
 });
 
