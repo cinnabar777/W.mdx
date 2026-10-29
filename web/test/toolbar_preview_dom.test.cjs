@@ -227,7 +227,11 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     const picker = dom.window.document.querySelector('#toolbar-icon-picker-modal');
     const pickerButton = dom.window.document.querySelector('#toolbar-open-icon-picker');
     assert.equal(picker.hidden, true, 'the icon picker starts out of the way');
-    assert.equal(picker.parentElement, editor.parentElement, 'the picker is a separate popup, not editor content');
+    assert.equal(
+      picker.parentElement,
+      editor.parentElement.parentElement,
+      'the picker is a sibling popup, outside the editor overlay'
+    );
     assert.equal(pickerButton.parentElement, editor.querySelector('.toolbar-preview-editor-content'));
     assert.equal(dom.window.document.querySelector('#toolbar-current-key-preview'), null);
     assert.equal(dom.window.document.querySelector('#toolbar-current-icon'), null);
