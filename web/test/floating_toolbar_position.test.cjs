@@ -81,7 +81,8 @@ test('floating toolbar has an independent layout and restores Android selection 
     settingsHtml,
     /toolbar-preview-content">[\s\S]*?toolbar-preview-surface-switch[\s\S]*?toolbar-preview-holding/
   );
-  const dockMarkup = settingsHtml.slice(settingsHtml.indexOf('toolbar-preview-dock'));
+  const dockMarkupStart = settingsHtml.indexOf('<div class="toolbar-preview-dock"');
+  const dockMarkup = settingsHtml.slice(dockMarkupStart);
   assert.doesNotMatch(dockMarkup, /toolbar-preview-surface-switch/);
   assert.match(settings, /surface === activeToolbarSurface/);
   assert.match(settings, /content\.scrollTop = scrollTop/);
