@@ -379,6 +379,8 @@ for (const button of buttonElements.values()) {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
       moved: false,
       active: false
     };
@@ -396,6 +398,8 @@ for (const button of buttonElements.values()) {
 
 document.addEventListener('pointermove', event => {
   if (!pointerCandidate || pointerCandidate.pointerId !== event.pointerId) return;
+  pointerCandidate.lastX = event.clientX;
+  pointerCandidate.lastY = event.clientY;
   const deltaX = event.clientX - pointerCandidate.startX;
   const deltaY = event.clientY - pointerCandidate.startY;
   if (!pointerCandidate.active && Math.hypot(deltaX, deltaY) > 8) {
@@ -426,7 +430,12 @@ document.addEventListener('pointercancel', event => {
   const candidate = pointerCandidate;
   clearTimeout(pointerTimer);
   pointerTimer = 0;
-  if (candidate.active) finishPointerDrag(candidate.button, event, false);
+  if (candidate.active) {
+    finishPointerDrag(candidate.button, {
+      clientX: candidate.lastX,
+      clientY: candidate.lastY
+    }, candidate.moved);
+  }
   else pointerCandidate = null;
 });
 

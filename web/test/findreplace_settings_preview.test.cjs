@@ -174,7 +174,7 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
   dispatchPointer(dom.window, previous, 'pointerdown', { x: 110, y: 20 });
   dispatchPointer(dom.window, previous, 'pointermove', { x: 145, y: 75 });
   assert.ok(row2.querySelector('.findreplace-drop-marker'));
-  dispatchPointer(dom.window, previous, 'pointerup', { x: 145, y: 75 });
+  dispatchPointer(dom.window, previous, 'pointercancel', { x: 145, y: 75 });
 
   assert.equal(row1.contains(previous), false);
   assert.equal(row2.contains(previous), true);
