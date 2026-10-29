@@ -35,9 +35,15 @@ import androidx.core.view.ViewCompat
 import androidx.preference.PreferenceManager
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+
+private const val WMDX_TAB_SESSION_MIME = "application/vnd.wmdx.tabs-session+json"
+private const val MAX_WMDX_TAB_SESSION_BYTES = 512 * 1024
 
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -47,6 +53,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var imeHideGeneration = 0
 
     private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
+    private data class LeftPanelDocumentEntry(
+        val documentId: String,
+        val name: String,
+        val uri: Uri,
+        val isDirectory: Boolean,
+        val mimeType: String
+    )
     private val fontDataUriCache = object : LruCache<String, CachedFontData>(8 * 1024) {
         override fun sizeOf(key: String, value: CachedFontData): Int =
             maxOf(1, value.dataUri.length / 1024)
@@ -58,25 +71,110 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             WindowRegistry.register(this, value)
         }
     private var currentFileName: String = "Untitled.md"
-    private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
+    @Volatile private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
     @Volatile private var isDirty: Boolean = false
     private var isEditorReady: Boolean = false
     private var currentEditorMode: String = "rich_text"
     @Volatile private var currentRevision: Long = 0
+    @Volatile private var currentEmptyContentExplicitlyEdited: Boolean = false
     private var hasBom: Boolean = false
     private var hasCrlf: Boolean = false
     @Volatile private var latestMarkdownContent: String? = null
     private var pendingOpenUri: Uri? = null
     private var pendingOpenPermissionFlags: Int? = null
+    private var pendingExistingDocumentFocusUri: Uri? = null
+    private var isActivityResumed = false
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
+    private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
+    @Volatile private var leftPanelSearchFuture: Future<*>? = null
     private var currentTextPackSession: TextPackSession? = null
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
+    private var pendingCreateDocumentSessionId: String? = null
+    private var pendingWmdxTabSessionJson: String? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
     private var pendingRenamePermissionRequest: RenameAccessRequest? = null
     private val documentHistoryStack = java.util.ArrayDeque<Uri>()
     private val documentForwardStack = java.util.ArrayDeque<Uri>()
+    private val documentHistoryLock = Any()
+
+    fun requestExistingDocumentFocus(uriString: String) {
+        val uri = runCatching { Uri.parse(uriString).normalizeScheme() }.getOrNull() ?: return
+        runOnUiThread {
+            pendingExistingDocumentFocusUri = uri
+            dispatchPendingExistingDocumentFocus()
+        }
+    }
+
+    private fun dispatchPendingExistingDocumentFocus() {
+        val uri = pendingExistingDocumentFocusUri ?: return
+        if (!isActivityResumed || !isEditorReady || !::webView.isInitialized) return
+        val escapedUri = JSONObjectWrapper.quote(uri.toString())
+        webView.evaluateJavascript(
+            "(window.leftPanelController?.focusDocumentUri?.($escapedUri) === true)"
+        ) { focused ->
+            AppDiagnostics.record(
+                this,
+                "window_focus_tab_result",
+                "uri=${WindowPolicy.fingerprintUri(uri.toString())} focused=${focused == "true"}"
+            )
+            if (pendingExistingDocumentFocusUri == uri) {
+                pendingExistingDocumentFocusUri = null
+            }
+        }
+    }
+
+    private fun documentHistoryStateJson(): String = synchronized(documentHistoryLock) {
+        val back = JSONArray().apply {
+            documentHistoryStack.forEach { put(it.toString()) }
+        }
+        val forward = JSONArray().apply {
+            documentForwardStack.forEach { put(it.toString()) }
+        }
+        org.json.JSONObject()
+            .put("back", back)
+            .put("forward", forward)
+            .toString()
+    }
+
+    private fun restoreDocumentHistoryState(historyStateJson: String?) {
+        val state = runCatching {
+            org.json.JSONObject(historyStateJson ?: "{}")
+        }.getOrNull()
+        synchronized(documentHistoryLock) {
+            documentHistoryStack.clear()
+            documentForwardStack.clear()
+            if (state == null) return@synchronized
+            val back = state.optJSONArray("back") ?: JSONArray()
+            val forward = state.optJSONArray("forward") ?: JSONArray()
+            for (index in 0 until back.length()) {
+                back.optString(index).takeIf { it.isNotBlank() }?.let { value ->
+                    runCatching { Uri.parse(value).normalizeScheme() }
+                        .getOrNull()?.let(documentHistoryStack::addLast)
+                }
+            }
+            for (index in 0 until forward.length()) {
+                forward.optString(index).takeIf { it.isNotBlank() }?.let { value ->
+                    runCatching { Uri.parse(value).normalizeScheme() }
+                        .getOrNull()?.let(documentForwardStack::addLast)
+                }
+            }
+        }
+    }
+
+    private fun canNavigateDocumentBack(): Boolean =
+        synchronized(documentHistoryLock) { documentHistoryStack.isNotEmpty() }
+
+    private fun canNavigateDocumentForward(): Boolean =
+        synchronized(documentHistoryLock) { documentForwardStack.isNotEmpty() }
+
+    private fun beginTabHistoryNavigation() {
+        webView.evaluateJavascript(
+            "window.leftPanelController?.onTabHistoryNavigationStarted?.();",
+            null
+        )
+    }
 
     private fun showCustomToast(message: String) {
         runOnUiThread {
@@ -105,20 +203,38 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             handleRenameFolderSelection(result.resultCode, result.data)
         }
 
-    private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-        if (uri != null) {
-            pendingRenameFallbackName = null
-            val saveAsTextPack = pendingCreateDocumentAsTextPack
-            pendingCreateDocumentAsTextPack = null
-            saveFileToUri(uri, saveAsTextPack)
-        } else if (pendingRenameFallbackName != null) {
-            pendingCreateDocumentAsTextPack = null
-            pendingRenameFallbackName = null
-            updateTitle()
-        } else {
-            pendingCreateDocumentAsTextPack = null
+    private val createDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+            handleCreateDocumentResult(uri)
         }
-    }
+
+    private val createTextPackDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            handleCreateDocumentResult(uri)
+        }
+
+    private val saveWmdxTabSessionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.CreateDocument(WMDX_TAB_SESSION_MIME)
+        ) { uri ->
+            val sessionJson = pendingWmdxTabSessionJson
+            pendingWmdxTabSessionJson = null
+            if (uri == null || sessionJson == null) return@registerForActivityResult
+            runCatching {
+                val output = contentResolver.openOutputStream(uri, "w")
+                    ?: throw java.io.IOException("Could not create the selected session file.")
+                output.use { it.write(sessionJson.toByteArray(Charsets.UTF_8)) }
+                persistDocumentUriPermission(uri)
+            }.onSuccess {
+                ThemedToast.show(this, "Tab session saved.", Toast.LENGTH_SHORT)
+            }.onFailure {
+                ThemedToast.show(
+                    this,
+                    it.localizedMessage ?: "Could not save the tab session.",
+                    Toast.LENGTH_LONG
+                )
+            }
+        }
 
     private val exportDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         uri?.let { saveExportToUri(it) }
@@ -142,6 +258,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowRegistry.registerActivity(this)
+        val startupPreferences = PreferenceManager.getDefaultSharedPreferences(this)
+        if (!startupPreferences.getBoolean("pref_toolbar_default_corrected", false)) {
+            startupPreferences.edit()
+                .putBoolean("pref_toolbar_floating_enabled", false)
+                .putBoolean("pref_toolbar_default_corrected", true)
+                .apply()
+        }
         setContentView(R.layout.activity_main)
 
         applySystemBarDimming()
@@ -196,6 +320,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     override fun onDestroy() {
+        WindowRegistry.unregisterActivity(this)
+        if (
+            isFinishing &&
+            !isChangingConfigurations &&
+            !intent.getBooleanExtra("launcher_window", false) &&
+            ::webView.isInitialized
+        ) {
+            webView.evaluateJavascript("window.leftPanelController?.onWindowClosing?.();", null)
+        }
+        leftPanelSearchFuture?.cancel(true)
+        leftPanelSearchExecutor.shutdownNow()
         if (isFinishing && !isChangingConfigurations) {
             WindowRegistry.unregister(this)
         }
@@ -218,10 +353,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putStringArrayList("document_history",
-            ArrayList(documentHistoryStack.map { it.toString() }))
-        outState.putStringArrayList("document_forward_history",
-            ArrayList(documentForwardStack.map { it.toString() }))
+        synchronized(documentHistoryLock) {
+            outState.putStringArrayList(
+                "document_history",
+                ArrayList(documentHistoryStack.map { it.toString() })
+            )
+            outState.putStringArrayList(
+                "document_forward_history",
+                ArrayList(documentForwardStack.map { it.toString() })
+            )
+        }
         super.onSaveInstanceState(outState)
     }
 
@@ -311,30 +452,37 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onResume() {
         super.onResume()
+        isActivityResumed = true
+        WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
+            pendingExistingDocumentFocusUri = it
+        }
         AppDiagnostics.record(this, "window_resumed")
         PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(this)
         if (::webView.isInitialized) {
-            webView.onResume()
-            applyThemeAndFullscreenPreferences()
-            refreshBottomToolbarFromPreferences()
             suppressImeUntilUserTouch = true
             val generation = ++imeHideGeneration
             window.setSoftInputMode(
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING or
                     WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
             )
-            webView.post { hideImeWhileResumeIsSuppressed(generation) }
-            webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 180)
-            webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 500)
+            webView.onResume()
+            applyThemeAndFullscreenPreferences()
+            refreshBottomToolbarFromPreferences()
+            webView.post {
+                hideImeWhileResumeIsSuppressed(generation)
+                restoreImeResizeAfterResume(generation)
+            }
             AppDiagnostics.record(
                 this,
                 "ime_resume_suppression_started",
-                "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
+                "generation=${generation} adjust=nothing viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
             )
         }
+        dispatchPendingExistingDocumentFocus()
     }
 
     override fun onPause() {
+        isActivityResumed = false
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
@@ -402,6 +550,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "generation=${generation} visibleBefore=${visibleBefore} visibleAfter=${editorImeVisible()} viewFocused=${webView.isFocused}"
         )
     }
+
+    private fun restoreImeResizeAfterResume(
+        generation: Int,
+        attempts: Int = 0,
+        stableHiddenChecks: Int = 0
+    ) {
+        if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
+            return
+        }
+        if (editorImeVisible()) {
+            if (attempts >= 12) {
+                AppDiagnostics.record(
+                    this,
+                    "ime_resume_adjustment_still_suppressed",
+                    "generation=${generation} imeVisible=true"
+                )
+                return
+            }
+            hideImeWhileResumeIsSuppressed(generation)
+            webView.postDelayed({
+                restoreImeResizeAfterResume(generation, attempts + 1, 0)
+            }, 80L)
+            return
+        }
+        if (stableHiddenChecks < 2) {
+            webView.postDelayed({
+                restoreImeResizeAfterResume(generation, attempts + 1, stableHiddenChecks + 1)
+            }, 80L)
+            return
+        }
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+        )
+        AppDiagnostics.record(
+            this,
+            "ime_resume_resize_restored",
+            "generation=${generation} stableHiddenChecks=${stableHiddenChecks}"
+        )
+    }
+
     private fun performAutoSaveOnLeave() {
         if (!isDirty || currentFileUri == null) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -410,6 +599,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             currentFileUri?.let { uri ->
                 val cachedMarkdownContent = latestMarkdownContent
                 if (cachedMarkdownContent != null) {
+                    if (currentRevision == 0L) {
+                        AppDiagnostics.record(this, "save_skipped_unmodified_session")
+                        return
+                    }
                     saveFileToUri(uri, cachedMarkdownText = cachedMarkdownContent)
                 } else {
                     saveFileToUri(uri)
@@ -519,10 +712,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val titleText = "$currentFileName$dirtyIndicator"
         val escapedTitle = JSONObjectWrapper.quote(titleText)
         val escapedDocumentKey = JSONObjectWrapper.quote(currentDocumentHistoryKey())
-        val canGoBack = documentHistoryStack.isNotEmpty()
-        val canGoForward = documentForwardStack.isNotEmpty()
+        val escapedHistoryState = JSONObjectWrapper.quote(documentHistoryStateJson())
+        val canGoBack = canNavigateDocumentBack()
+        val canGoForward = canNavigateDocumentForward()
         webView.evaluateJavascript(
-            "if (window.editorBridge) { window.editorBridge.setDocumentTitle($escapedTitle, $escapedDocumentKey); window.editorBridge.setDocumentHistoryState($canGoBack, $canGoForward); }",
+            "if (window.editorBridge) { window.editorBridge.setDocumentTitle($escapedTitle, $escapedDocumentKey); window.editorBridge.setDocumentHistoryState($canGoBack, $canGoForward); window.leftPanelController?.onDocumentHistoryStateChanged?.($escapedHistoryState); }",
             null
         )
     }
@@ -810,8 +1004,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             stack.clear()
             entries.forEach { stack.addLast(it) }
         }
-        replaceIn(documentHistoryStack)
-        replaceIn(documentForwardStack)
+        synchronized(documentHistoryLock) {
+            replaceIn(documentHistoryStack)
+            replaceIn(documentForwardStack)
+        }
     }
 
     private fun saveCurrentStateBeforeSettings() {
@@ -922,6 +1118,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "list" to "pref_list_font_family",
             "table" to "pref_table_font_family",
             "toc" to "pref_toc_font_family",
+            "leftPanel" to "pref_left_panel_font_family",
             "calloutHeader" to "pref_callout_header_font_family"
         )
         familyPreferenceKeys.forEach { (category, preferenceKey) ->
@@ -947,7 +1144,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "callout" to Pair("pref_font_file_callout", !prefs.getBoolean("pref_callout_inherit_body_typography", true)),
             "codeBlock" to Pair("pref_font_file_code_block", true),
             "list" to Pair("pref_font_file_list", !prefs.getBoolean("pref_list_inherit_body_typography", true)),
-            "table" to Pair("pref_font_file_table", !prefs.getBoolean("pref_table_inherit_body_typography", true))
+            "table" to Pair("pref_font_file_table", !prefs.getBoolean("pref_table_inherit_body_typography", true)),
+            "leftPanel" to Pair("pref_font_file_left_panel", true)
         )
         customFontFiles.forEach { (category, target) ->
             val data = if (target.second) {
@@ -974,6 +1172,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "open" to prefs.getString("pref_hotkey_open", "ctrl+o"),
             "save" to prefs.getString("pref_hotkey_save", "ctrl+s"),
             "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
+            "save_tabs" to prefs.getString("pref_hotkey_save_tabs", ""),
             "save_as_textpack" to prefs.getString("pref_hotkey_save_as_textpack", "ctrl+shift+alt+s"),
             "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
             "image" to prefs.getString("pref_hotkey_image", "ctrl+shift+i"),
@@ -985,6 +1184,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "bold" to prefs.getString("pref_hotkey_bold", "ctrl+b"),
             "italic" to prefs.getString("pref_hotkey_italic", "ctrl+i"),
             "underline" to prefs.getString("pref_hotkey_underline", "ctrl+u"),
+            "underlineSolid" to prefs.getString("pref_hotkey_underlineSolid", ""),
+            "underlineDotted" to prefs.getString("pref_hotkey_underlineDotted", ""),
+            "underlineDashed" to prefs.getString("pref_hotkey_underlineDashed", ""),
+            "underlineDouble" to prefs.getString("pref_hotkey_underlineDouble", ""),
+            "underlineWavy" to prefs.getString("pref_hotkey_underlineWavy", ""),
             "strikethrough" to prefs.getString("pref_hotkey_strikethrough", "ctrl+shift+x"),
             "code" to prefs.getString("pref_hotkey_code", "ctrl+e"),
             "callout" to prefs.getString("pref_hotkey_callout", "ctrl+alt+q"),
@@ -1000,6 +1204,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "horizontalLine" to prefs.getString("pref_hotkey_horizontalLine", "ctrl+shift+h"),
             "findAndReplace" to prefs.getString("pref_hotkey_findAndReplace", "ctrl+f"),
             "sourceEditing" to prefs.getString("pref_hotkey_sourceEditing", "ctrl+shift+u"),
+            "autoHeading" to prefs.getString("pref_hotkey_auto_heading", ""),
             "heading_p" to prefs.getString("pref_hotkey_heading_p", "ctrl+alt+0"),
             "heading_1" to prefs.getString("pref_hotkey_heading_1", "ctrl+alt+1"),
             "heading_2" to prefs.getString("pref_hotkey_heading_2", "ctrl+alt+2"),
@@ -1007,14 +1212,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "heading_4" to prefs.getString("pref_hotkey_heading_4", "ctrl+alt+4"),
             "heading_5" to prefs.getString("pref_hotkey_heading_5", "ctrl+alt+5"),
             "heading_6" to prefs.getString("pref_hotkey_heading_6", "ctrl+alt+6"),
-            "highlight_yellow" to prefs.getString("pref_hotkey_highlight_yellow", "ctrl+alt+y"),
-            "highlight_green" to prefs.getString("pref_hotkey_highlight_green", "ctrl+alt+g"),
-            "highlight_pink" to prefs.getString("pref_hotkey_highlight_pink", "ctrl+alt+p"),
-            "highlight_blue" to prefs.getString("pref_hotkey_highlight_blue", "ctrl+alt+b"),
-            "highlight_red" to prefs.getString("pref_hotkey_highlight_red", "ctrl+alt+r"),
-            "highlight_red_pen" to prefs.getString("pref_hotkey_highlight_red_pen", "ctrl+alt+r"),
-            "highlight_green_pen" to prefs.getString("pref_hotkey_highlight_green_pen", "ctrl+alt+shift+g"),
-            "highlight_remove" to prefs.getString("pref_hotkey_highlight_remove", "ctrl+alt+x")
+            "highlightCycle" to prefs.getString("pref_hotkey_highlight_yellow", "ctrl+alt+y"),
+            "highlightYellow" to prefs.getString("pref_hotkey_marker_yellow", ""),
+            "highlightGreen" to prefs.getString("pref_hotkey_marker_green", ""),
+            "highlightPink" to prefs.getString("pref_hotkey_marker_pink", ""),
+            "highlightBlue" to prefs.getString("pref_hotkey_marker_blue", ""),
+            "penCycle" to prefs.getString("pref_hotkey_highlight_red_pen", "ctrl+alt+r"),
+            "penRed" to prefs.getString("pref_hotkey_pen_red", ""),
+            "penGreen" to prefs.getString("pref_hotkey_pen_green", ""),
+            "penBlue" to prefs.getString("pref_hotkey_pen_blue", ""),
+            "penPurple" to prefs.getString("pref_hotkey_pen_purple", "")
         )
         val hotkeysJson = org.json.JSONObject(hotkeys).toString()
         val escapedHotkeys = JSONObjectWrapper.quote(hotkeysJson)
@@ -1079,9 +1286,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun createNewDocument() {
-        currentFileUri?.let { documentHistoryStack.push(it) }
-        documentForwardStack.clear()
+        synchronized(documentHistoryLock) {
+            currentFileUri?.let { documentHistoryStack.push(it) }
+            documentForwardStack.clear()
+        }
         currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+        currentRevision = 0
+        currentEmptyContentExplicitlyEdited = false
         currentTextPackSession = null
         latestMarkdownContent = ""
         currentFileUri = null
@@ -1092,9 +1303,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun navigateBackOrFinish() {
-        if (documentHistoryStack.isNotEmpty()) {
-            val previousUri = documentHistoryStack.pop()
-            currentFileUri?.let { documentForwardStack.push(it) }
+        val previousUri = synchronized(documentHistoryLock) {
+            if (documentHistoryStack.isEmpty()) {
+                null
+            } else {
+                documentHistoryStack.pop().also {
+                    currentFileUri?.let { current -> documentForwardStack.push(current) }
+                }
+            }
+        }
+        if (previousUri != null) {
             openFileFromHistory(previousUri)
             updateTitle()
         } else {
@@ -1114,14 +1332,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (handled == "true") return@evaluateJavascript
 
             when {
-                direction == "back" && documentHistoryStack.isNotEmpty() -> {
+                direction == "back" && canNavigateDocumentBack() -> {
                     if (isDirty) {
                         showUnsavedChangesDialog { navigateBackOrFinish() }
                     } else {
                         navigateBackOrFinish()
                     }
                 }
-                direction == "forward" && documentForwardStack.isNotEmpty() -> {
+                direction == "forward" && canNavigateDocumentForward() -> {
                     if (isDirty) {
                         showUnsavedChangesDialog { navigateForwardDocument() }
                     } else {
@@ -1140,15 +1358,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun navigateForwardDocument() {
-        if (documentForwardStack.isEmpty()) return
-        val nextUri = documentForwardStack.pop()
-        currentFileUri?.let { documentHistoryStack.push(it) }
-        openFile(nextUri, rememberHistory = false)
+        val nextUri = synchronized(documentHistoryLock) {
+            if (documentForwardStack.isEmpty()) {
+                null
+            } else {
+                documentForwardStack.pop().also {
+                    currentFileUri?.let { current -> documentHistoryStack.push(current) }
+                }
+            }
+        } ?: return
+        beginTabHistoryNavigation()
+        openFile(nextUri, rememberHistory = false, skipExistingWindowFocus = true)
         updateTitle()
     }
 
     private fun openFileFromHistory(uri: Uri) {
-        openFile(uri, rememberHistory = false)
+        beginTabHistoryNavigation()
+        openFile(uri, rememberHistory = false, skipExistingWindowFocus = true)
     }
 
     private fun createOpenDocumentIntent(initialUri: Uri? = null): android.content.Intent {
@@ -1201,11 +1427,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        if (isWmdxTabSession(uri)) {
+            restoreWmdxTabSession(uri)
+            return
+        }
         if (!forceReload && currentFileUri == uri && !isDirty) return
-        if (!skipExistingWindowFocus && WindowRegistry.focus(this, uri, excludeTask = taskId)) return
-        if (rememberHistory && currentFileUri != null && currentFileUri != uri) {
-            documentHistoryStack.push(currentFileUri)
-            documentForwardStack.clear()
+        if (!skipExistingWindowFocus && WindowRegistry.focus(this, uri)) return
+        synchronized(documentHistoryLock) {
+            if (rememberHistory && currentFileUri != null && currentFileUri != uri) {
+                documentHistoryStack.push(currentFileUri)
+                documentForwardStack.clear()
+            }
         }
 
         AppDiagnostics.record(this, "native_read_start")
@@ -1224,6 +1456,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(this, "textpack_read_done", "chars=${text.length} lines=$lines ms=$readMs")
 
                 currentTextPackSession = session
+                currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+                currentRevision = 0
+                currentEmptyContentExplicitlyEdited = false
                 latestMarkdownContent = text
                 currentFileUri = uri
                 currentFileName = fileName
@@ -1234,7 +1469,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 val escaped = JSONObjectWrapper.quote(text)
                 webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
-                    restoreCursorAndScrollState()
                     webView.post {
                         webView.requestFocus()
                         webView.requestLayout()
@@ -1244,11 +1478,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             } else {
                 currentTextPackSession = null
-                contentResolver.openInputStream(uri)?.use { inputStream ->
+                val inputStream = contentResolver.openInputStream(uri)
+                    ?: throw java.io.FileNotFoundException("Could not read the selected file")
+                inputStream.use {
                     val reader = BufferedReader(InputStreamReader(inputStream))
                     val content = reader.readText()
                     hasBom = content.startsWith("\uFEFF")
                     hasCrlf = content.contains("\r\n")
+                    currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+                    currentRevision = 0
+                    currentEmptyContentExplicitlyEdited = false
                     latestMarkdownContent = content
                     val lines = content.lineSequence().count()
                     val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
@@ -1263,7 +1502,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                     val escaped = JSONObjectWrapper.quote(content)
                     webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
-                        restoreCursorAndScrollState()
                         webView.post {
                             webView.requestFocus()
                             webView.requestLayout()
@@ -1274,6 +1512,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             }
         } catch (e: Exception) {
+            webView.evaluateJavascript(
+                "window.leftPanelController?.onTabHistoryNavigationCancelled?.();",
+                null
+            )
             WindowRegistry.register(this, currentFileUri)
             AppDiagnostics.record(this, "file_load_error", "category=${e.javaClass.simpleName}")
             ThemedToast.show(this, "Failed to open file: ${e.localizedMessage}", Toast.LENGTH_LONG)
@@ -1284,9 +1526,166 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val fileName = currentFileName
         if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val key = "doc_$fileName"
-        val savedScroll = prefs.getInt("cursor_scroll_$key", 0)
+        val key = "cursor_scroll_${currentDocumentHistoryKey()}"
+        val legacyKey = "cursor_scroll_doc_$fileName"
+        val savedScroll = prefs.getInt(key, prefs.getInt(legacyKey, 0))
+        if (!prefs.contains(key) && prefs.contains(legacyKey)) {
+            prefs.edit().putInt(key, savedScroll).apply()
+        }
         webView.evaluateJavascript("window.editorBridge.setScrollPosition($savedScroll);", null)
+    }
+
+    private fun sanitizeWmdxTabSession(rawJson: String): String? {
+        if (rawJson.length > MAX_WMDX_TAB_SESSION_BYTES) return null
+        return try {
+            val source = org.json.JSONObject(rawJson)
+            if (
+                source.optString("format") != "wmdx-tabs-session" ||
+                source.optInt("version") != 1
+            ) return null
+            val sourceTabs = source.optJSONArray("tabs") ?: return null
+            if (sourceTabs.length() !in 1..200) return null
+
+            val sourceGroups = source.optJSONArray("groups") ?: JSONArray()
+            val groups = linkedMapOf<String, org.json.JSONObject>()
+            for (index in 0 until minOf(sourceGroups.length(), 200)) {
+                val group = sourceGroups.optJSONObject(index) ?: continue
+                val id = group.optString("id").trim().take(128)
+                if (id.isEmpty() || groups.containsKey(id)) continue
+                val name = group.optString("name", "Group").trim().take(80)
+                groups[id] = org.json.JSONObject()
+                    .put("id", id)
+                    .put("name", name.ifEmpty { "Group" })
+                    .put("collapsed", group.optBoolean("collapsed", false))
+            }
+
+            val tabs = JSONArray()
+            val ids = mutableSetOf<String>()
+            val uris = mutableSetOf<String>()
+            val usedGroups = mutableSetOf<String>()
+            for (index in 0 until sourceTabs.length()) {
+                val tab = sourceTabs.optJSONObject(index) ?: continue
+                val id = tab.optString("id").trim().take(512)
+                if (id.isEmpty() || !ids.add(id)) continue
+                val uriValue = tab.opt("uri")
+                val uriString = (uriValue as? String)?.takeIf { it.isNotBlank() }
+                if (uriString != null) {
+                    if (uriString.length > 8192) {
+                        ids.remove(id)
+                        continue
+                    }
+                    val scheme = runCatching { Uri.parse(uriString).scheme?.lowercase() }.getOrNull()
+                    if (scheme != "content" && scheme != "file") {
+                        ids.remove(id)
+                        continue
+                    }
+                    if (!uris.add(uriString)) {
+                        ids.remove(id)
+                        continue
+                    }
+                }
+                val requestedGroupId = (tab.opt("groupId") as? String)
+                    ?.takeIf { groups.containsKey(it) }
+                if (requestedGroupId != null) usedGroups.add(requestedGroupId)
+                val name = tab.optString("name", "Untitled").trim().take(240)
+                val scrollTop = if (tab.isNull("scrollTop")) null else {
+                    runCatching {
+                        tab.getDouble("scrollTop").toLong().coerceIn(0L, 20000000L)
+                    }.getOrNull()
+                }
+                tabs.put(
+                    org.json.JSONObject()
+                        .put("id", id)
+                        .put("uri", uriString ?: JSONObject.NULL)
+                        .put("name", name.ifEmpty { "Untitled" })
+                        .put("pinned", tab.optBoolean("pinned", false))
+                        .put("groupId", requestedGroupId ?: JSONObject.NULL)
+                        .put("scrollTop", scrollTop ?: JSONObject.NULL)
+                )
+            }
+            if (tabs.length() == 0) return null
+
+            val groupsJson = JSONArray()
+            groups.forEach { (id, group) ->
+                if (id in usedGroups) groupsJson.put(group)
+            }
+            val activeTabId = source.optString("activeTabId")
+                .takeIf { it in ids }
+                ?: tabs.getJSONObject(0).getString("id")
+            val sanitized = org.json.JSONObject()
+                .put("format", "wmdx-tabs-session")
+                .put("version", 1)
+                .put("activeTabId", activeTabId)
+                .put("groups", groupsJson)
+                .put("tabs", tabs)
+                .toString()
+            if (sanitized.toByteArray(Charsets.UTF_8).size > MAX_WMDX_TAB_SESSION_BYTES) {
+                null
+            } else {
+                sanitized
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun isWmdxTabSession(uri: Uri): Boolean {
+        val name = runCatching { getFileNameFromUri(uri) }.getOrNull().orEmpty()
+        val mimeType = runCatching { contentResolver.getType(uri) }.getOrNull()
+        return name.endsWith(".mds", ignoreCase = true) ||
+            name.endsWith(".wmdxsession", ignoreCase = true) ||
+            mimeType == WMDX_TAB_SESSION_MIME
+    }
+
+    private fun readWmdxTabSession(uri: Uri): org.json.JSONObject {
+        if (!isWmdxTabSession(uri)) return org.json.JSONObject().put("isSession", false)
+        return runCatching {
+            val input = contentResolver.openInputStream(uri)
+                ?: throw java.io.FileNotFoundException("Could not open the tab session.")
+            val output = java.io.ByteArrayOutputStream()
+            input.use { stream ->
+                val buffer = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > MAX_WMDX_TAB_SESSION_BYTES) {
+                        throw java.io.IOException("The tab session file is too large.")
+                    }
+                    output.write(buffer, 0, count)
+                }
+            }
+            val sessionJson = sanitizeWmdxTabSession(
+                String(output.toByteArray(), Charsets.UTF_8)
+            ) ?: throw java.io.IOException("This is not a supported W.mdx tab session.")
+            org.json.JSONObject()
+                .put("isSession", true)
+                .put("ok", true)
+                .put("session", org.json.JSONObject(sessionJson))
+        }.getOrElse {
+            org.json.JSONObject()
+                .put("isSession", true)
+                .put("ok", false)
+                .put("error", it.localizedMessage ?: "Could not read the tab session.")
+        }
+    }
+
+    private fun restoreWmdxTabSession(uri: Uri) {
+        val result = readWmdxTabSession(uri)
+        if (!result.optBoolean("ok")) {
+            ThemedToast.show(
+                this,
+                result.optString("error", "Could not read the tab session."),
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+        val sessionJson = JSONObjectWrapper.quote(result.optJSONObject("session")?.toString())
+        webView.evaluateJavascript(
+            "window.leftPanelController?.restorePortableSession?.($sessionJson);",
+            null
+        )
     }
 
     private fun handleSaveFile() {
@@ -1307,7 +1706,43 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun launchCreateDocument(fileName: String, asTextPack: Boolean?) {
         pendingCreateDocumentAsTextPack = asTextPack
-        createDocumentLauncher.launch(fileName)
+        pendingCreateDocumentSessionId = currentDocumentSessionId
+        if (asTextPack == true) {
+            createTextPackDocumentLauncher.launch(fileName)
+        } else {
+            createDocumentLauncher.launch(fileName)
+        }
+    }
+
+    private fun handleCreateDocumentResult(uri: Uri?) {
+        if (uri != null) {
+            pendingRenameFallbackName = null
+            val saveAsTextPack = pendingCreateDocumentAsTextPack
+            pendingCreateDocumentAsTextPack = null
+            val expectedSessionId = pendingCreateDocumentSessionId
+            pendingCreateDocumentSessionId = null
+            if (expectedSessionId != null && expectedSessionId != currentDocumentSessionId) {
+                ThemedToast.show(
+                    this,
+                    "The active document changed before Save As finished. Nothing was saved.",
+                    Toast.LENGTH_LONG
+                )
+            } else {
+                saveFileToUri(
+                    uri,
+                    saveAsTextPack,
+                    expectedDocumentSessionId = expectedSessionId
+                )
+            }
+        } else if (pendingRenameFallbackName != null) {
+            pendingCreateDocumentAsTextPack = null
+            pendingCreateDocumentSessionId = null
+            pendingRenameFallbackName = null
+            updateTitle()
+        } else {
+            pendingCreateDocumentAsTextPack = null
+            pendingCreateDocumentSessionId = null
+        }
     }
 
     private fun defaultMarkdownSaveAsName(): String {
@@ -1331,16 +1766,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun defaultTextPackSaveAsName(): String {
         val name = currentFileName.ifBlank { getString(R.string.untitled_document) }
         val lowerName = name.lowercase()
-        return when {
-            lowerName.endsWith(".textpack.zip") || lowerName.endsWith(".textpack") -> name
-            lowerName.endsWith(".markdown") || lowerName.endsWith(".md") ->
-                name.substringBeforeLast(".") + ".textpack"
+        val base = when {
+            lowerName.endsWith(".textpack.zip") ->
+                name.dropLast(".textpack.zip".length)
+            lowerName.endsWith(".textpack") ->
+                name.dropLast(".textpack".length)
             else -> {
                 val lastDot = name.lastIndexOf('.')
-                val base = if (lastDot > 0) name.substring(0, lastDot) else name
-                "$base.textpack"
+                if (lastDot > 0) name.substring(0, lastDot) else name
             }
         }
+        return "$base.mdx"
     }
 
     private fun renamedDocumentFileName(requestedName: String, originalName: String): String? {
@@ -1397,6 +1833,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun launchRenameSaveAs(targetName: String) {
         pendingRenameFallbackName = targetName
         pendingCreateDocumentAsTextPack = null
+        pendingCreateDocumentSessionId = currentDocumentSessionId
         createDocumentLauncher.launch(targetName)
     }
 
@@ -1532,14 +1969,49 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun saveFileToUri(
         uri: Uri,
         requestedAsTextPack: Boolean? = null,
-        cachedMarkdownText: String? = null
+        cachedMarkdownText: String? = null,
+        expectedDocumentSessionId: String? = null
     ) {
+        val saveSessionId = expectedDocumentSessionId ?: currentDocumentSessionId
+        if (saveSessionId != currentDocumentSessionId) {
+            ThemedToast.show(
+                this,
+                "The active document changed before saving. Nothing was saved.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
         val oldDocumentKey = currentDocumentHistoryKey()
+        val oldUriString = currentFileUri?.toString().orEmpty()
         val saveStarted = android.os.SystemClock.elapsedRealtime()
         val snapshotSource = if (cachedMarkdownText != null) "cached" else "webview"
         AppDiagnostics.record(this, "save_start", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision")
-        val persistSnapshot: (String) -> Unit = { snapshot ->
+        val persistSnapshot: (String) -> Unit = persistSnapshot@{ snapshot ->
+            if (saveSessionId != currentDocumentSessionId) {
+                AppDiagnostics.record(this, "save_skipped_stale_document_session")
+                ThemedToast.show(
+                    this,
+                    "The active document changed before saving. Nothing was saved.",
+                    Toast.LENGTH_LONG
+                )
+                return@persistSnapshot
+            }
             var markdownText = snapshot
+            if (
+                uri == currentFileUri &&
+                isDirty &&
+                markdownText.isEmpty() &&
+                currentRevision == 0L &&
+                !currentEmptyContentExplicitlyEdited
+            ) {
+                AppDiagnostics.record(this, "save_skipped_unconfirmed_empty_snapshot")
+                ThemedToast.show(
+                    this,
+                    "The empty snapshot was not confirmed as an intentional edit. The file was left unchanged.",
+                    Toast.LENGTH_LONG
+                )
+                return@persistSnapshot
+            }
             AppDiagnostics.record(this, "snapshot_taken", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length}")
 
             if (hasCrlf && !markdownText.contains("\r\n") && markdownText.contains("\n")) {
@@ -1580,7 +2052,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 currentFileName = targetFileName
                 latestMarkdownContent = markdownText
                 isDirty = false
+                currentRevision = 0
+                currentEmptyContentExplicitlyEdited = false
                 updateTitle()
+                val escapedSavedUri = JSONObjectWrapper.quote(uri.toString())
+                webView.evaluateJavascript(
+                    "window.leftPanelController?.onNativeDocumentSaved?.($escapedSavedUri);",
+                    null
+                )
+                val escapedOldUri = JSONObjectWrapper.quote(oldUriString)
+                val escapedUri = JSONObjectWrapper.quote(uri.toString())
+                val escapedName = JSONObjectWrapper.quote(targetFileName)
+                val escapedSessionId = JSONObjectWrapper.quote(saveSessionId)
+                webView.evaluateJavascript(
+                    "window.leftPanelController?.onDocumentSavedAs?.($escapedOldUri, $escapedUri, $escapedName, $escapedSessionId);",
+                    null
+                )
                 val saveMs = android.os.SystemClock.elapsedRealtime() - saveStarted
                 AppDiagnostics.record(this, "save_done", "status=success mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length} ms=$saveMs")
                 ThemedToast.show(this, "File saved successfully", Toast.LENGTH_SHORT)
@@ -1732,7 +2219,587 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun authorizedLeftPanelTrees(requireWrite: Boolean = false): List<Uri> {
+        val revoked = PreferenceManager.getDefaultSharedPreferences(this)
+            .getStringSet("locally_revoked_storage_folder_uris", emptySet())
+            .orEmpty()
+        return contentResolver.persistedUriPermissions
+            .filter {
+                it.isReadPermission &&
+                    (!requireWrite || it.isWritePermission) &&
+                    android.provider.DocumentsContract.isTreeUri(it.uri) &&
+                    it.uri.toString() !in revoked
+            }
+            .map { it.uri }
+    }
+
+    private fun authorizedLeftPanelTree(treeUri: Uri, requireWrite: Boolean = false): Uri? =
+        authorizedLeftPanelTrees(requireWrite).firstOrNull { it == treeUri }
+
+    private fun leftPanelTreeForDocument(documentUri: Uri, requireWrite: Boolean = false): Uri? {
+        if (!android.provider.DocumentsContract.isDocumentUri(this, documentUri)) return null
+        val documentTreeId = runCatching {
+            android.provider.DocumentsContract.getTreeDocumentId(documentUri)
+        }.getOrNull() ?: return null
+        return authorizedLeftPanelTrees(requireWrite).firstOrNull { treeUri ->
+            treeUri.authority == documentUri.authority &&
+                runCatching {
+                    android.provider.DocumentsContract.getTreeDocumentId(treeUri) == documentTreeId
+                }.getOrDefault(false)
+        }
+    }
+
+    private fun hasLeftPanelDocumentAccess(uri: Uri, write: Boolean = false): Boolean {
+        if (leftPanelTreeForDocument(uri, requireWrite = write) != null) return true
+        if (!write && uri == currentFileUri) return true
+        val flag = if (write) {
+            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        } else {
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        return checkUriPermission(
+            uri,
+            android.os.Process.myPid(),
+            android.os.Process.myUid(),
+            flag
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            contentResolver.persistedUriPermissions.any {
+                it.uri == uri && (if (write) it.isWritePermission else it.isReadPermission)
+            }
+    }
+
+    private fun queryLeftPanelChildren(treeUri: Uri, parentDocumentId: String): List<LeftPanelDocumentEntry> {
+        if (authorizedLeftPanelTree(treeUri) == null) return emptyList()
+        val childrenUri = runCatching {
+            android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId)
+        }.getOrNull() ?: return emptyList()
+        return runCatching {
+            contentResolver.query(
+                childrenUri,
+                arrayOf(
+                    android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE
+                ),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeIndex = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)
+                if (idIndex < 0 || nameIndex < 0 || mimeIndex < 0) return@use emptyList()
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val documentId = cursor.getString(idIndex) ?: continue
+                        val name = cursor.getString(nameIndex) ?: continue
+                        val mimeType = cursor.getString(mimeIndex).orEmpty()
+                        val documentUri = runCatching {
+                            android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+                        }.getOrNull() ?: continue
+                        add(
+                            LeftPanelDocumentEntry(
+                                documentId = documentId,
+                                name = name,
+                                uri = documentUri,
+                                isDirectory = mimeType == android.provider.DocumentsContract.Document.MIME_TYPE_DIR,
+                                mimeType = mimeType
+                            )
+                        )
+                    }
+                }.sortedWith(compareByDescending<LeftPanelDocumentEntry> { it.isDirectory }.thenBy { it.name.lowercase() })
+            } ?: emptyList()
+        }.getOrDefault(emptyList())
+    }
+
+    private fun leftPanelContextJson(): String {
+        val uri = currentFileUri
+        val name = currentFileName
+        val markdown = latestMarkdownContent.orEmpty()
+        return org.json.JSONObject()
+            .put("launcherWindow", intent.getBooleanExtra("launcher_window", false))
+            .put("taskId", taskId)
+            .put("uri", uri?.toString())
+            .put("name", name)
+            .put("markdown", markdown)
+            .put("dirty", isDirty)
+            .put("emptyContentExplicitlyEdited", currentEmptyContentExplicitlyEdited)
+            .put("isTextPack", currentTextPackSession != null || name.endsWith(".textpack", true) || name.endsWith(".textpack.zip", true))
+            .put("hasBom", hasBom)
+            .put("hasCrlf", hasCrlf)
+            .toString()
+    }
+
+    private fun readLeftPanelDocument(uri: Uri): org.json.JSONObject {
+        if (!hasLeftPanelDocumentAccess(uri)) {
+            return org.json.JSONObject().put("ok", false).put("error", "This file is outside the folders approved for the panel.")
+        }
+        return runCatching {
+            val name = getFileNameFromUri(uri)
+            val textPack = TextPackManager.isTextPackFile(this, uri, name)
+            val markdown = if (textPack) {
+                TextPackManager.openTextPack(this, uri).markdownContent
+            } else {
+                contentResolver.openInputStream(uri)?.use {
+                    BufferedReader(InputStreamReader(it, Charsets.UTF_8)).readText()
+                } ?: throw java.io.IOException("Could not read the selected file.")
+            }
+            org.json.JSONObject()
+                .put("ok", true)
+                .put("uri", uri.toString())
+                .put("name", name)
+                .put("markdown", markdown)
+                .put("dirty", false)
+                .put("isTextPack", textPack)
+                .put("hasBom", markdown.startsWith("\uFEFF"))
+                .put("hasCrlf", markdown.contains("\r\n"))
+        }.getOrElse {
+            org.json.JSONObject().put("ok", false).put("error", it.localizedMessage ?: "Could not read this file.")
+        }
+    }
+
+    private fun leftPanelFileContains(
+        uri: Uri,
+        needle: String,
+        wholeWordPattern: Regex?
+    ): Boolean = runCatching {
+        val input = contentResolver.openInputStream(uri) ?: return@runCatching false
+        BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { reader ->
+            var matched = false
+            while (!matched && !Thread.currentThread().isInterrupted) {
+                val line = reader.readLine() ?: break
+                matched = wholeWordPattern?.containsMatchIn(line)
+                    ?: line.contains(needle, ignoreCase = true)
+            }
+            matched
+        }
+    }.getOrDefault(false)
+
+    private fun searchLeftPanelDocuments(
+        query: String,
+        includeContents: Boolean,
+        wholeWords: Boolean,
+        markdownOnly: Boolean
+    ): String {
+        val needle = query.trim().lowercase()
+        if (needle.isEmpty()) return org.json.JSONObject().put("items", JSONArray()).toString()
+        val results = JSONArray()
+        var scannedFiles = 0
+        var truncated = false
+        val maxResults = 100
+        val maxScannedFiles = 2500
+        val textExtensions = setOf(".md", ".markdown", ".mdx", ".txt")
+        val wholeWordPattern = if (wholeWords) {
+            Regex(
+                "(^|[^\\p{L}\\p{N}_])${Regex.escape(needle)}(?![\\p{L}\\p{N}_])",
+                RegexOption.IGNORE_CASE
+            )
+        } else {
+            null
+        }
+        val markdownExtensions = setOf(".md", ".textpack", ".mdx", ".textpack.zip")
+
+        for (treeUri in authorizedLeftPanelTrees()) {
+            if (results.length() >= maxResults || scannedFiles >= maxScannedFiles) {
+                truncated = true
+                break
+            }
+            val rootId = runCatching { android.provider.DocumentsContract.getTreeDocumentId(treeUri) }
+                .getOrNull() ?: continue
+            val rootName = runCatching {
+                queryDocumentDisplayName(
+                    android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
+                )
+            }.getOrNull().orEmpty()
+            val pending = java.util.ArrayDeque<Triple<String, String, Int>>()
+            pending.add(Triple(rootId, rootName, 0))
+            while (
+                pending.isNotEmpty() &&
+                results.length() < maxResults &&
+                scannedFiles < maxScannedFiles &&
+                !Thread.currentThread().isInterrupted
+            ) {
+                val (parentId, parentPath, depth) = pending.removeLast()
+                if (depth > 14) {
+                    truncated = true
+                    continue
+                }
+                for (entry in queryLeftPanelChildren(treeUri, parentId)) {
+                    if (Thread.currentThread().isInterrupted) break
+                    if (results.length() >= maxResults) {
+                        truncated = true
+                        break
+                    }
+                    val path = listOf(parentPath, entry.name).filter { it.isNotBlank() }.joinToString("/")
+                    if (entry.isDirectory) {
+                        pending.add(Triple(entry.documentId, path, depth + 1))
+                        continue
+                    }
+                    scannedFiles++
+                    val hasTextPackExtension = entry.name.endsWith(".textpack", true) ||
+                        entry.name.endsWith(".textpack.zip", true)
+                    val hasPlainTextExtension = textExtensions.any { entry.name.endsWith(it, true) }
+                    val needsTextPackProbe = includeContents &&
+                        (
+                            entry.name.endsWith(".mdx", true) ||
+                                (!markdownOnly && !hasPlainTextExtension && !hasTextPackExtension)
+                            )
+                    val isTextPack = hasTextPackExtension ||
+                        (needsTextPackProbe &&
+                            TextPackManager.isTextPackFile(this, entry.uri, entry.name))
+                    val isMarkdownFile = markdownExtensions.any { entry.name.endsWith(it, true) } ||
+                        isTextPack
+                    if (markdownOnly && !isMarkdownFile) continue
+                    val nameMatches = wholeWordPattern?.containsMatchIn(entry.name)
+                        ?: entry.name.contains(needle, ignoreCase = true)
+                    var contentMatches = false
+                    if (
+                        !nameMatches &&
+                        includeContents &&
+                        (
+                            hasPlainTextExtension ||
+                                isTextPack
+                            )
+                    ) {
+                        contentMatches = runCatching {
+                            if (isTextPack) {
+                                TextPackManager.openTextPack(this, entry.uri)
+                                    .markdownContent.let { content ->
+                                        wholeWordPattern?.containsMatchIn(content)
+                                            ?: content.contains(needle, ignoreCase = true)
+                                    }
+                            } else {
+                                leftPanelFileContains(entry.uri, needle, wholeWordPattern)
+                            }
+                        }.getOrDefault(false)
+                    }
+                    if (nameMatches || contentMatches) {
+                        results.put(
+                            org.json.JSONObject()
+                                .put("uri", entry.uri.toString())
+                                .put("name", entry.name)
+                                .put("path", parentPath)
+                                .put("match", if (nameMatches) "name" else "content")
+                        )
+                    }
+                    if (results.length() >= maxResults) {
+                        truncated = true
+                        break
+                    }
+                    if (scannedFiles >= maxScannedFiles) break
+                }
+            }
+            if (
+                results.length() >= maxResults ||
+                scannedFiles >= maxScannedFiles ||
+                Thread.currentThread().isInterrupted
+            ) {
+                truncated = true
+            }
+        }
+        return org.json.JSONObject()
+            .put("items", results)
+            .put("truncated", truncated)
+            .put("scannedFiles", scannedFiles)
+            .toString()
+    }
+
+    private fun saveLeftPanelDocument(
+        uri: Uri,
+        markdown: String,
+        isTextPack: Boolean,
+        tabHasBom: Boolean,
+        tabHasCrlf: Boolean,
+        emptyContentExplicitlyEdited: Boolean
+    ): org.json.JSONObject {
+        if (!hasLeftPanelDocumentAccess(uri, write = true)) {
+            return org.json.JSONObject().put("ok", false).put("error", "This file is not writable.")
+        }
+        if (markdown.isEmpty() && !emptyContentExplicitlyEdited) {
+            return org.json.JSONObject()
+                .put("ok", false)
+                .put("error", "The empty snapshot was not confirmed as an intentional edit.")
+        }
+        return runCatching {
+            var content = markdown
+            if (tabHasCrlf && !content.contains("\r\n") && content.contains("\n")) {
+                content = content.replace("\r\n", "\n").replace("\n", "\r\n")
+            }
+            if (tabHasBom && !content.startsWith("\uFEFF")) content = "\uFEFF$content"
+            val name = getFileNameFromUri(uri)
+            val packTarget = isTextPack || TextPackManager.isTextPackFile(this, uri, name)
+            if (packTarget) {
+                val session = if (uri == currentFileUri) {
+                    currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
+                } else {
+                    TextPackManager.openTextPack(this, uri)
+                }
+                TextPackManager.saveTextPack(this, session, content, uri)
+                if (uri == currentFileUri) currentTextPackSession = session
+            } else {
+                val output = contentResolver.openOutputStream(uri, "rwt")
+                    ?: throw java.io.IOException("Could not open this file for writing.")
+                output.use { stream ->
+                    OutputStreamWriter(stream, Charsets.UTF_8).use { writer -> writer.write(content) }
+                }
+            }
+            persistDocumentUriPermission(uri)
+            if (uri == currentFileUri) {
+                latestMarkdownContent = markdown
+                isDirty = false
+                currentRevision = 0
+                currentEmptyContentExplicitlyEdited = false
+                runOnUiThread { updateTitle() }
+            }
+            org.json.JSONObject().put("ok", true)
+        }.getOrElse {
+            org.json.JSONObject().put("ok", false).put("error", it.localizedMessage ?: "Could not save this file.")
+        }
+    }
+
     inner class WebAppInterface {
+        @JavascriptInterface
+        fun getLeftPanelContext(): String = leftPanelContextJson()
+
+        @JavascriptInterface
+        fun getCurrentDocumentSessionId(): String = currentDocumentSessionId
+
+        @JavascriptInterface
+        fun isAutoSaveOnLeaveEnabled(): Boolean =
+            PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                .getBoolean("pref_auto_save_on_leave", true)
+
+        @JavascriptInterface
+        fun listLeftPanelFolderRoots(): String {
+            val roots = JSONArray()
+            for (treeUri in authorizedLeftPanelTrees()) {
+                val documentId = runCatching {
+                    android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+                }.getOrNull() ?: continue
+                val rootDocumentUri = runCatching {
+                    android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+                }.getOrNull() ?: continue
+                val name = queryDocumentDisplayName(rootDocumentUri) ?: "Folder"
+                roots.put(
+                    org.json.JSONObject()
+                        .put("treeUri", treeUri.toString())
+                        .put("documentId", documentId)
+                        .put("uri", rootDocumentUri.toString())
+                        .put("name", name)
+                        .put("isDirectory", true)
+                )
+            }
+            return roots.toString()
+        }
+
+        @JavascriptInterface
+        fun listLeftPanelFolderChildren(treeUriString: String, documentId: String): String {
+            val treeUri = runCatching { Uri.parse(treeUriString) }.getOrNull() ?: return "[]"
+            if (authorizedLeftPanelTree(treeUri) == null) return "[]"
+            val items = JSONArray()
+            queryLeftPanelChildren(treeUri, documentId).forEach { entry ->
+                items.put(
+                    org.json.JSONObject()
+                        .put("treeUri", treeUri.toString())
+                        .put("documentId", entry.documentId)
+                        .put("uri", entry.uri.toString())
+                        .put("name", entry.name)
+                        .put("isDirectory", entry.isDirectory)
+                )
+            }
+            return items.toString()
+        }
+
+        @JavascriptInterface
+        fun readLeftPanelDocument(uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
+            return this@MainActivity.readLeftPanelDocument(uri).toString()
+        }
+
+        @JavascriptInterface
+        fun readWmdxTabSession(uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject()
+                    .put("isSession", false)
+                    .toString()
+            return this@MainActivity.readWmdxTabSession(uri).toString()
+        }
+
+        @JavascriptInterface
+        fun saveWmdxTabSession(sessionJson: String): Boolean {
+            val sanitized = sanitizeWmdxTabSession(sessionJson) ?: return false
+            if (isFinishing) return false
+            runOnUiThread {
+                pendingWmdxTabSessionJson = sanitized
+                saveWmdxTabSessionLauncher.launch("Wmdx Session.mds")
+            }
+            return true
+        }
+
+        @JavascriptInterface
+        fun getDocumentNavigationHistory(): String =
+            this@MainActivity.documentHistoryStateJson()
+
+        @JavascriptInterface
+        fun registerLeftPanelOpenTabUris(urisJson: String) {
+            WindowRegistry.registerOpenTabUris(this@MainActivity, urisJson)
+        }
+
+        @JavascriptInterface
+        fun focusOpenDocument(uriString: String): Boolean {
+            val uri = runCatching { Uri.parse(uriString).normalizeScheme() }.getOrNull()
+                ?: return false
+            return WindowRegistry.focus(this@MainActivity, uri, excludeTask = taskId)
+        }
+
+        @JavascriptInterface
+        fun readLeftPanelDocumentForNavigation(uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
+            val document = this@MainActivity.readLeftPanelDocument(uri)
+            if (document.optBoolean("ok") && currentFileUri != uri) {
+                synchronized(documentHistoryLock) {
+                    currentFileUri?.let { current -> documentHistoryStack.push(current) }
+                    documentForwardStack.clear()
+                }
+            }
+            return document.toString()
+        }
+
+        @JavascriptInterface
+        fun searchLeftPanelFiles(
+            query: String,
+            includeContents: Boolean,
+            wholeWords: Boolean,
+            markdownOnly: Boolean,
+            requestId: Int
+        ) {
+            val safeQuery = query.take(240)
+            synchronized(this@MainActivity) {
+                leftPanelSearchFuture?.cancel(true)
+                leftPanelSearchFuture = leftPanelSearchExecutor.submit {
+                    val results = searchLeftPanelDocuments(
+                        safeQuery,
+                        includeContents,
+                        wholeWords,
+                        markdownOnly
+                    )
+                    if (!Thread.currentThread().isInterrupted && !isFinishing) {
+                        val escapedResults = JSONObjectWrapper.quote(results)
+                        webView.post {
+                            if (!isFinishing && webView.isAttachedToWindow) {
+                                webView.evaluateJavascript(
+                                    "window.leftPanelController?.onSearchResults?.($requestId, $escapedResults);",
+                                    null
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun activateLeftPanelTab(
+            uriString: String,
+            name: String,
+            markdown: String,
+            dirty: Boolean,
+            isTextPack: Boolean,
+            tabHasBom: Boolean,
+            tabHasCrlf: Boolean,
+            emptyContentExplicitlyEdited: Boolean,
+            historyStateJson: String
+        ): Boolean {
+            val uri = uriString.takeIf { it.isNotBlank() }?.let {
+                runCatching { Uri.parse(it) }.getOrNull()
+            }
+            if (uri != null && !hasLeftPanelDocumentAccess(uri)) return false
+            restoreDocumentHistoryState(historyStateJson)
+            currentFileUri = uri
+            currentFileName = name.ifBlank { "Untitled.md" }
+            currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+            currentRevision = 0
+            currentEmptyContentExplicitlyEdited = emptyContentExplicitlyEdited
+            currentTextPackSession = if (isTextPack && uri != null) {
+                runCatching { TextPackManager.openTextPack(this@MainActivity, uri) }.getOrNull()
+            } else null
+            hasBom = tabHasBom
+            hasCrlf = tabHasCrlf
+            latestMarkdownContent = markdown
+            isDirty = dirty
+            runOnUiThread { updateTitle() }
+            return true
+        }
+
+        @JavascriptInterface
+        fun saveLeftPanelTab(
+            uriString: String,
+            name: String,
+            markdown: String,
+            isTextPack: Boolean,
+            tabHasBom: Boolean,
+            tabHasCrlf: Boolean,
+            emptyContentExplicitlyEdited: Boolean
+        ): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "This tab has no saved file yet.").toString()
+            return saveLeftPanelDocument(
+                uri,
+                markdown,
+                isTextPack,
+                tabHasBom,
+                tabHasCrlf,
+                emptyContentExplicitlyEdited
+            ).toString()
+        }
+
+        @JavascriptInterface
+        fun renameLeftPanelDocument(uriString: String, requestedName: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
+            if (!hasLeftPanelDocumentAccess(uri, write = true)) {
+                return org.json.JSONObject().put("ok", false).put("error", "This file is not writable.").toString()
+            }
+            val newName = requestedName.trim().take(180)
+            if (newName.isBlank()) return org.json.JSONObject().put("ok", false).put("error", "Enter a file name.").toString()
+            if (newName.contains('/') || newName.contains('\\')) {
+                return org.json.JSONObject().put("ok", false).put("error", "File names cannot contain path separators.").toString()
+            }
+            val renamed = runCatching {
+                android.provider.DocumentsContract.renameDocument(contentResolver, uri, newName)
+            }.getOrNull() ?: return org.json.JSONObject().put("ok", false).put("error", "The storage provider could not rename this file.").toString()
+            val finalName = queryDocumentDisplayName(renamed) ?: newName
+            if (currentFileUri == uri) {
+                currentFileUri = renamed
+                currentFileName = finalName
+                runOnUiThread { updateTitle() }
+            }
+            return org.json.JSONObject()
+                .put("ok", true)
+                .put("uri", renamed.toString())
+                .put("name", finalName)
+                .toString()
+        }
+
+        @JavascriptInterface
+        fun deleteLeftPanelDocument(uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
+            if (!hasLeftPanelDocumentAccess(uri, write = true)) {
+                return org.json.JSONObject().put("ok", false).put("error", "This file is not writable.").toString()
+            }
+            val deleted = runCatching {
+                android.provider.DocumentsContract.deleteDocument(contentResolver, uri)
+            }.getOrDefault(false)
+            return if (deleted) {
+                org.json.JSONObject().put("ok", true).toString()
+            } else {
+                org.json.JSONObject().put("ok", false).put("error", "The storage provider could not delete this file.").toString()
+            }
+        }
+
         @JavascriptInterface
         fun showToast(message: String) {
             showCustomToast(message)
@@ -1751,7 +2818,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun onDirtyStateChanged(dirty: Boolean, revision: Long) {
+        fun onDirtyStateChanged(dirty: Boolean, revision: Long, documentSessionId: String?) {
+            if (documentSessionId != currentDocumentSessionId) return
             runOnUiThread {
                 currentRevision = revision
                 if (isDirty != dirty) {
@@ -1762,11 +2830,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun onContentChanged(markdownText: String?, revision: Long = 0) {
+        fun onContentChanged(markdownText: String?, revision: Long, documentSessionId: String?) {
+            if (documentSessionId != currentDocumentSessionId) {
+                AppDiagnostics.record(this@MainActivity, "stale_document_edit_ignored")
+                return
+            }
             if (markdownText != null) {
                 latestMarkdownContent = markdownText
             }
             currentRevision = revision
+            currentEmptyContentExplicitlyEdited =
+                revision > 0 && markdownText.isNullOrEmpty()
             val becameDirty = !isDirty
             isDirty = true
             if (becameDirty) runOnUiThread { updateTitle() }
@@ -1825,13 +2899,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
                 pendingSharedText?.let { text ->
                     pendingSharedText = null
+                    currentFileUri = null
+                    currentFileName = getString(R.string.untitled_document)
+                    currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+                    currentRevision = 0
+                    currentTextPackSession = null
+                    latestMarkdownContent = text
+                    isDirty = text.isNotEmpty()
                     val escaped = JSONObjectWrapper.quote(text)
                     webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
-                        latestMarkdownContent = text
-                        isDirty = text.isNotEmpty()
                         updateTitle()
                     }
                 }
+                dispatchPendingExistingDocumentFocus()
 
                 webView.post {
                     webView.requestLayout()
@@ -2008,27 +3088,34 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         @JavascriptInterface
         fun onInDocumentNavigationOccurred() {
             runOnUiThread {
-                if (documentForwardStack.isNotEmpty()) {
-                    documentForwardStack.clear()
-                    updateTitle()
+                val hadForwardHistory = synchronized(documentHistoryLock) {
+                    if (documentForwardStack.isEmpty()) {
+                        false
+                    } else {
+                        documentForwardStack.clear()
+                        true
+                    }
                 }
+                if (hadForwardHistory) updateTitle()
             }
         }
 
         @JavascriptInterface
-        fun restoreNativeCursorAndScrollState() {
+        fun restoreNativeCursorAndScrollState(documentSessionId: String?) {
             runOnUiThread {
+                if (documentSessionId != currentDocumentSessionId) return@runOnUiThread
                 restoreCursorAndScrollState()
             }
         }
 
         @JavascriptInterface
-        fun onScrollChanged(scrollTop: Int) {
+        fun onScrollChanged(scrollTop: Int, documentSessionId: String?) {
+            if (documentSessionId != currentDocumentSessionId) return
             val fileName = currentFileName
             if (fileName.isEmpty() || fileName == getString(R.string.untitled_document)) return
-            val key = "doc_$fileName"
+            val key = "cursor_scroll_${currentDocumentHistoryKey()}"
             val prefs = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
-            prefs.edit().putInt("cursor_scroll_$key", scrollTop).apply()
+            prefs.edit().putInt(key, scrollTop).apply()
         }
     }
 

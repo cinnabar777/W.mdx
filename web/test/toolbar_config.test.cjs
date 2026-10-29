@@ -31,6 +31,24 @@ test('bottom toolbar configuration ignores unknown and duplicate keys but restor
   );
 });
 
+test('obsolete Files & Tabs toolbar action is removed from saved layouts', async () => {
+  const { BOTTOM_TOOLBAR_GROUP_ITEM_IDS, normalizeBottomToolbarConfig } =
+    await import('../src/toolbarConfig.js');
+  const oldLayout = normalizeBottomToolbarConfig({
+    version: 4,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      menu: { order: ['newFile', 'leftPanel', 'settings'], hidden: [] }
+    },
+    holding: ['leftPanel'],
+    styles: { leftPanel: { backgroundColor: '#123456' } }
+  });
+  assert.deepEqual(oldLayout.popupGroups.menu.order, ['newFile', 'settings']);
+  assert.ok(!oldLayout.holding.includes('leftPanel'));
+  assert.equal(oldLayout.styles.leftPanel, undefined);
+  assert.ok(!BOTTOM_TOOLBAR_GROUP_ITEM_IDS.menu.includes('leftPanel'));
+});
+
 test('invalid saved configuration falls back to the current toolbar order', async () => {
   const { BOTTOM_TOOLBAR_GROUP_ITEM_IDS, normalizeBottomToolbarConfig } =
     await import('../src/toolbarConfig.js');
@@ -47,6 +65,55 @@ test('invalid saved configuration falls back to the current toolbar order', asyn
       ])
     )
   );
+});
+
+test('version 4 toolbar layouts migrate marker and pen actions without restoring hidden actions', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 4,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      format: {
+        order: ['bold', 'yellowMarker', 'greenMarker', 'redPen', 'greenPen'],
+        hidden: ['blueMarker']
+      }
+    }
+  });
+
+  assert.deepEqual(config.popupGroups.format.order, [
+    'bold',
+    'highlightYellow',
+    'highlightGreen',
+    'penRed',
+    'penGreen',
+    'highlightCycle',
+    'penCycle',
+    'penBlue',
+    'penPurple'
+  ]);
+  assert.ok(config.holding.includes('highlightBlue'));
+  assert.ok(!config.popupGroups.format.order.some(id =>
+    ['yellowMarker', 'greenMarker', 'blueMarker', 'redPen', 'greenPen'].includes(id)
+  ));
+});
+
+test('version 5 toolbar layouts add Auto Heading to the heading actions', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 5,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      heading: {
+        order: ['paragraph', 'heading1', 'heading2'],
+        hidden: []
+      }
+    }
+  });
+
+  assert.deepEqual(config.popupGroups.heading.order, [
+    'paragraph', 'heading1', 'heading2', 'autoHeading'
+  ]);
+  assert.ok(config.holding.includes('heading3'));
 });
 
 test('popup actions can be reordered and removed from their former group into the shared holding area', async () => {

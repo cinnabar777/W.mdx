@@ -210,6 +210,45 @@ test('cursor and selection styling page is configured', () => {
   assert.match(indexHtml, /cursor-blink-disabled[\s\S]*?animation:\s*none\s*!important/);
 });
 
+test('custom underline syntax, styles, toolbar actions, and shortcuts are wired together', () => {
+  const underlineSettings = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_underline.xml'),
+    'utf8'
+  );
+  const hotkeySettings = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_hotkeys.xml'),
+    'utf8'
+  );
+  const mainActivity = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'),
+    'utf8'
+  );
+  const toolbarConfig = fs.readFileSync(path.join(__dirname, '../src/toolbarConfig.js'), 'utf8');
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.match(underlineSettings, /app:key="pref_underline_use_wmdx_syntax"[\s\S]*?app:defaultValue="true"/);
+  assert.ok(resetSource.includes('key == "pref_underline_use_wmdx_syntax" -> true'));
+  assert.ok(settingsSource.includes('"pref_styling_page_underline" -> StylingUnderlineFragment()'));
+  assert.ok(source.includes('setWmdxUnderlineSyntaxEnabled(prefs.pref_underline_use_wmdx_syntax !== false)'));
+
+  for (const style of ['solid', 'dotted', 'dashed', 'double', 'wavy']) {
+    const key = style[0].toUpperCase() + style.slice(1);
+    assert.ok(underlineSettings.includes(`app:key="pref_underline_${style}_section"`));
+    assert.ok(underlineSettings.includes(`app:key="pref_underline_${style}_color"`));
+    assert.ok(underlineSettings.includes(`app:key="pref_underline_${style}_thickness"`));
+    assert.ok(hotkeySettings.includes(`app:key="pref_hotkey_underline${key}"`));
+    assert.ok(hotkeySettings.includes(`app:key="pref_hotkey_underline${key}"\n            app:title="Underline ${key}"\n            app:defaultValue=""`));
+    assert.ok(mainActivity.includes(`"underline${key}" to prefs.getString("pref_hotkey_underline${key}", "")`));
+    assert.ok(toolbarConfig.includes(`'underline${key}'`));
+    assert.ok(indexHtml.includes(`.cm-underline-${style}`));
+    assert.ok(indexHtml.includes(`--underline-${style}-color`));
+    assert.ok(indexHtml.includes(`--underline-${style}-thickness`));
+  }
+
+  assert.ok(hotkeySettings.includes('app:key="pref_hotkey_underline"\n            app:title="Cycle Underline Style"\n            app:defaultValue="ctrl+u"'));
+  assert.ok(source.includes('`--underline-${style}-color`'));
+});
+
 test('table hyphenation wraps nested cell text without horizontal scrolling', () => {
   assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table-container[\s\S]*?overflow-x:\s*hidden\s*!important/);
   assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table td \*[\s\S]*?white-space:\s*normal\s*!important/);

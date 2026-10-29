@@ -172,6 +172,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
         'Open File',
         'Save File',
         'Save As',
+        'Save Tabs',
         'Save as Text Pack',
         'Export HTML / MHTML',
         'Find & Replace',

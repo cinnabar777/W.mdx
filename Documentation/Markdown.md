@@ -1,635 +1,462 @@
-# MD CHEAT SHEET
+# W.mdx Markdown Cheat Sheet
 
-## MARKDOWN QR
+This guide covers standard Markdown, GitHub Flavored Markdown (GFM), and the
+additional syntax W.mdx recognizes. Settings can change the appearance of
+formatting, but do not change the syntax shown here. The code samples show what
+to type; the examples labeled **Rendered** show the result in the editor.
 
-1. Bold: ** or __ [[#BOLD|Link]]
-2. Code: ` [[#CODE|Link]]
-3. Embed: ![[]] [[#EMBED|Link]]
-4. Escape: \
-5. Footnote: ^[] [[#Footnotes|Link]]
-6. Headings: # [[#HEADINGS|Link]]
-7. Highlight: == [[#TEXT HIGHLIGHT|Link]]
-8. Horizontal line: 3+ of _ * -
-9. Image: ![]() [[#LINK IMAGES|Link]]
-10. Italic: * or _ [[#ITALICS|Link]]
-11. Links: []() [[#LINKS|Link]]
-12. Numbered list: 1. [[#ORDERED LISTS|Link]]
-13. Quote (block): > [[#BLOCK QUOTE|Link]]
-14. Strikethrough: ~~ [[#STRIKETHROUGH|Link]]
-15. Tables: [[#TABLES|Link]]
-16. Tags: # [[#TAGS|Link]]
-17. Tasks & Checkbox: - [ ] [[#Checklist|Link]]
-18. Unordered lists: - + * [[#UNORDERED LISTS|Link]]
-19. Underline; <u></u> → [[#UNDERLINE |Link]]
+## Quick reference
 
-## MARKDOWN SHORTCUTS
+| Result | Example |
+| --- | --- |
+| Heading | `# Heading` through `###### Heading` |
+| Bold | `**bold text**` |
+| Italic | `*italic text*` |
+| Strikethrough | `~~removed text~~` |
+| Inline code | `` `code` `` |
+| Link | `[label](https://example.com)` |
+| Image | `![description](image.png)` |
+| Quote | `> quoted text` |
+| Bullet list | `- item` |
+| Numbered list | `1. item` |
+| Task | `- [ ] unfinished` |
+| Footnote | `Text.[^1]` and `[^1]: Note text` |
+| Highlight | `==text==` |
+| Underline | `_text_` |
+| Horizontal rule | `---` on a line by itself |
 
-1. mdcal: > [!NOTE] Title
-2. mdcheck: - [ ]
-3. mdalign: <div align="">
-4. mdcode: ```
-5. mdcolor: <span style="color: lime; font-weight: bold;">
-6. mdive: </div>
-7. mdembed: ![[
-8. mdlink: [[
-9. mdq: >
-10. mdspane: </span>
-11. mdstrike: ~~
-12. mdsub: $_{
-13. mdsup: $^{
-14. mdsue: }$
-15. mdu: <u>
-16. mdue: </u>
-17. mdyellow: <span style="color: black; font-weight: bold; background-color: yellow;">
+## Headings and paragraphs
 
----
+Put one to six `#` characters and a space before a heading:
 
-# OBSIDIAN SPECIFIC
-
-Obsidian doesn't support Markdown syntax or blank lines **within** HTML blocks.
-
-OBSIDIAN uses a slightly **unorthodox** combination of flavors of _Markdown_, mainly CommonMark, with some functionality from GitHub Flavored Markdown and LaTeX.
-
-In addition, Obsidian adds the following syntax:
-
-| **Syntax**        | **Description**                 |
-| ----------------- | ------------------------------- |
-| [[File name]]   | Internal link to file           |
-| [[#Header]]     | Internal link to header         |
-| [[File#Header]] | link to header in internal file |
-| ![[File]]       | Embedding files                 |
-| %%. . .%%         | Comments                        |
-| > [!note]        | Callouts                        |
-
----
-
-# CODE
-
-**METHODS**
-
-1. Three tildes on the first and last line of the code block: ~~~
-2. Three backticks on the first and last line of the code block: ```
-3. Four spaces (not optimal)
-
-**EXAMPLES:**
-
-**TILDES**:
-
-```plaintext
-Code block with Tildes
+```markdown
+# Heading 1
+## Heading 2
+### Heading 3
+#### Heading 4
+##### Heading 5
+###### Heading 6
 ```
 
-**TICKS**:
+**Rendered:**
 
-```plaintext
-Code blocks with ticks
+# Heading level 1
+## Heading level 2
+### Heading level 3
+#### Heading level 4
+##### Heading level 5
+###### Heading level 6
+
+The alternate Setext form supports the first two levels:
+
+```markdown
+Heading 1
+=========
+
+Heading 2
+---------
 ```
 
-**SPACES:**
+Separate paragraphs with a blank line. A normal newline within a paragraph
+usually renders as a space. For a line break without a new paragraph, end the
+line with two spaces or use the HTML line-break tag, `<br>`, if the target renderer supports it.
 
-```plaintext
-Code Block with four spaces
-No spaces at the end
-Doesn't always work
-Notice no copy in right corner
+## Text formatting
+
+### Bold, italic, and strikethrough
+
+```markdown
+**Bold**
+__Bold also works__
+
+*Italic*
+***Bold and italic***
+
+~~Strikethrough~~
 ```
 
-## SYNTAX HIGHLIGHTING
+**Rendered:** **Bold**, *italic*, ***bold italic***, and ~~strikethrough~~.
 
-Add syntax highlighting by adding a language code after the first set of backticks.
+When **Use Wmdx syntax** is enabled in Underline settings, underscores mark
+underlined text instead of italic text. Use `*asterisks*` for italics in that
+setting.
 
-**EXAMPLE:**
+### Wmdx underline styles
+
+The subscript digit selects the underline style:
+
+| Style | Syntax |
+| --- | --- |
+| Solid | `_text_` |
+| Dotted | `_₀text_` |
+| Dashed | `_₁text_` |
+| Double | `_₂text_` |
+| Wavy | `_₃text_` |
+
+The style and color are controlled by Underline settings. The digits are
+subscript characters: `₀`, `₁`, `₂`, and `₃`.
+
+**Rendered:** _Solid underline_, _₀dotted underline_, _₁dashed underline_,
+_₂double underline_, and _₃wavy underline_.
+
+### Wmdx highlighter and pen
+
+These are Wmdx extensions, not standard Markdown. The subscript digit selects
+one of four configurable color slots. Set the slot colors in **Typography →
+Highlights & Pens**.
+
+| Tool | Slot | Syntax |
+| --- | --- | --- |
+| Highlighter | 1 | `==text==` |
+| Highlighter | 2 | `==₀text==` |
+| Highlighter | 3 | `==₁text==` |
+| Highlighter | 4 | `==₂text==` |
+| Pen | 1 | `=text=` |
+| Pen | 2 | `=₀text=` |
+| Pen | 3 | `=₁text=` |
+| Pen | 4 | `=₂text=` |
+
+The slot numbers identify settings; they do not lock a slot to a particular
+color. Keep the text snug against the markers: write `==text==`, not
+`== text ==`.
+
+**Rendered:** ==Highlight 1==, ==₀highlight 2==, ==₁highlight 3==,
+==₂highlight 4==; =Pen 1=, =₀pen 2=, =₁pen 3=, and =₂pen 4=.
+
+### Inline code
+
+Use one backtick on each side. Code spans display their contents literally:
+
+```markdown
+`**this is code, not bold**`
+```
+
+If the text itself contains a backtick, use a longer backtick delimiter:
+
+```markdown
+`` Use `code` inside a code span ``
+```
+
+**Rendered:** `**this stays literal**` and `` Use `code` inside a code span ``.
+
+## Escaping Markdown and Wmdx markers
+
+Place a backslash before Markdown punctuation when it should appear as ordinary
+text. For example:
+
+```markdown
+\*literal asterisks\*
+\_literal underscores\_
+\# This is not a heading
+```
+
+Escape Wmdx markers when they should not format the following text:
+
+```markdown
+\_literal underline markers\_
+\==literal highlight markers\==
+\=literal pen markers\=
+```
+
+You can also put syntax in inline code or a code block to show it literally.
+Backslash escapes do not apply inside code.
+
+**Rendered:** Literal markers: \*asterisks\*, \_underscores\_,
+\==highlight\==, and \=pen\=.
+
+For a literal wiki-link example such as `[[Target]]`, use code formatting.
+W.mdx's wiki-link recognizer does not treat a backslash as an escape for its
+opening brackets.
+
+## Code blocks
+
+Use three or more matching backticks or tildes on their own lines:
+
+````markdown
+```javascript
+function greet(name) {
+  return `Hello, ${name}`;
+}
+```
+````
+
+The language after the opening fence enables syntax highlighting when that
+language is available. The closing fence must use the same character and at
+least as many marks as the opening fence. Indented code blocks are also part of
+Markdown, but fenced blocks are easier to edit and label.
+
+**Rendered:**
 
 ```javascript
-function fancyAlert(arg) {
-	if (arg) {
-		$.facebox({ div: "#foo" });
-	}
+function greet(name) {
+  return `Hello, ${name}`;
 }
 ```
 
-## INLINE CODE
+## Lists and tasks
 
-```plaintext
-`Inline code`
+### Bullet lists
+
+Use `-`, `*`, or `+` followed by a space:
+
+```markdown
+- First item
+- Second item
+  - Nested item
 ```
 
----
+Indent nested items consistently. Lists can be nested and mixed.
 
-# COMMENTS
+**Rendered:**
 
-1. <!-- comment -->
-2. %% comment %% (Obsidian specific)
+- First item
+- Second item
+  - Nested item
 
-Comments are visible in Obsidian **edit mode** unless within another element. **EXAMPLES:**
+### Numbered lists
 
-%% comment here %%
+Use a number, a period, and a space:
 
----
-
-# HEADINGS
-
-Use the `#` with a space after it before the heading. Each `#` decreases the heading 1-6.
-
-**EXAMPLES:**
-
-# HEADING ONE
-
-## HEADING TWO
-
-### HEADING THREE
-
-#### HEADING FOUR
-
-##### HEADING FIVE
-
-###### HEADING SIX
-
----
-
-# TEXT FORMAT
-
-## ITALICS
-
-*Italic emphasis* = _Italic emphasis_
-OR
-_Alternative_ = _Alternative_
-
-## BOLD
-
-**Bold emphasis** = **Bold emphasis**
-
-OR
-__Alternative__ = **Alternative**
-
-## STRIKETHROUGH
-
-~~Strikethrough~~ = ~~strikethrough~~
-
-## UNDERLINE
-
-<u>Underline</u> = _underline_
-
-## LINE BREAKS
-
-two spaces at end of line
-Gives you no extra spacing
-And doesn't run text together
-In one long paragraph
-
-## BLOCK QUOTE
-
-Use > with a space after it at the beginning of a line (space isn't always necessary depending on app): > Block Quote =
-
-> Block quote
-> is good
-
-## TEXT HIGHLIGHT
-
-Text highlight in Obsidian
-
-==Highlight== ==highlight==
-
-**Using HTML**
-
-```plaintext
-<span style='background-color: red;'> Text highlight </span>
+```markdown
+1. First item
+2. Second item
+   1. Nested item
 ```
 
-Text with background color
+**Rendered:**
 
-## TEXT COLOR
+1. First item
+2. Second item
+   1. Nested item
 
-**Using HTML**
+### Task lists
 
-```plaintext
-<span style='color:red;'>Text color</span>
+Task lists use GFM checkbox syntax:
+
+```markdown
+- [ ] Not finished
+- [x] Finished
 ```
 
-Text foreground color
+Use a space inside the brackets for an unchecked task and `x` for a checked
+task.
 
-**Text with colored outline** (theme specific)
+**Rendered:**
 
-```plaintext
-<span style='text-shadow: 0px 0px 2px [[FF0000]];'>Text with colored outline</span>
-```
+- [ ] Not finished
+- [x] Finished
 
-## SUB & SUPERSCRIPT
+## Block quotes and callouts
 
-<sub>subscript</sub> <sup>superscript</sup>
+### Block quotes
 
-Example subscript superscript
+Start each quoted line with `>`:
 
-**OTHER OPTIONS**
-
-100m$_2$ = 100m$_2$
-100m$^2$ = 100m $^2$&#xA;_`H$_2$O`_&#x20;= H $*2$ O
-Word$^{label}$ = Word$^{label}$
-Word$_{label}$ = Word$_{label}$
-
-Super special characters: ⁰ ¹ ² ³ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹ ⁺ ⁻ ⁼ ⁽ ⁾ ⁿ ™ ® ℠
-
-# TEXT POSITIONING
-
-## ALIGN TEXT
-
-<div align='right'>text on the right</div>
-
-text on the right
-
-<div align='center'>text in the center</div>
-
-text in the center
-
-## BLOCK TEXT (JUSTIFY)
-
-<div style='text-align: justify; text-justify: inter-word;'>text here</div>
-
-lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.
-
-## DROPDOWN & CALLOUTS
-
-### CALLOUTS
-
-> [!info] header
-> The type identifier determines how the callout looks and feels.
-
-Example:
-
-> [!info] optional title
-> Here's a callout block.
-> It supports **Markdown**, [[Internal link|Wikilinks]], and embeds ![[Rich Solar panel.jpg]]
-
-#### FOLDABLE CALLOUTS
-
-+ for start expanded or a - for start closed
-**EXAMPLES:**
-
-> [!faq]- Start collapsed
-> Yes! In a foldable callout, the contents are hidden when the callout is collapsed.
-
-> [!faq]+ Start expanded
-> Yes! In a foldable callout, the contents are hidden when the callout is collapsed.
-
-#### NESTED CALLOUTS
-
-> [!question] Can callouts be nested?
-
-> > [!todo] Yes!, they can.
-
-> > > [!example] multiple levels
-
-> [!question] Can callouts be nested?
+```markdown
+> A quoted paragraph.
+> It can continue on another line.
 >
-> > [!todo] Yes!, they can.
-> >
-> > > [!example] multiple levels
-
-With +-
-
-> [!question]+ Can callouts be nested?
->
-> > [!todo]- Yes!, they can.
-> >
-> > > [!example]- multiple levels
-
-## DROPDOWN
-
-<details><summary> Click to Expand & Collapse </summary>
-
-Expanded content. Shows up and keeps visible when clicking expand. Hide again by clicking the dropdown button again.
-
-</details>
-
-Click to Expand & CollapseExpanded content. Shows up and keeps visible when clicking expand. Hide again by clicking the dropdown button again.
-
-# PAGE BREAK
-
-To break the page (start a new page), put the div below into its own line. Relevant for creating printable pages from the document (Print / PDF).
-
-```plaintext
-<div style="page-break-after: always;"></div>
+> A second paragraph in the quote.
 ```
 
----
+**Rendered:**
 
-# LISTS
+> This is a rendered block quote.
+> It can contain **formatted text**.
 
-## UNORDERED LISTS
+### W.mdx callouts
 
-Use - or * with space before list item:
-* Unordered list
-* ...with asterisk/star
-- Unordered list
-- ...with hyphen/minus
+Callouts extend block quotes. Put `[!type]` after the quote marker. An optional
+title follows the type:
 
-* Unordered list
-  * ...with asterisk/star
-    OR
-* Unordered list
-  * ...with hyphen/minus
-
-## ORDERED LISTS
-
-Line starts with a number and period (.)
-
-1. Ordered list
-
-2. Test
-3. Test
-4. Test
-
-## NESTED LISTS
-
-Indent the line next line by one or more spaces before the identifier, the more spaces the bigger the indent. Unordered can be mixed into the nested of an ordered list.
-
-1. Ordered nested list
-   * Test
-
-2. Test
-   1. Test
-   2. Test
-
-3. Test
-
-## CHECKLIST
-
-- [ ] dash (-), a space, brackets with space in middle, and a space after. Check lists can be ordered or unordered. Anything placed in the brackets toggles it marked, though different items give strikethrough and others don't.
-
-* [ ]  Salad
-* [x]  Potatoes
-
-- [?] what's this, ? Used in brackets
-
-* [ ] Clean
-* [ ] COOK 
-
----
-
-# TABLES
-
-Vertical bars separate columns, and hyphens define the column header. Each header row must have at least two hyphens. You can use basic formatting syntax to style content within a table. You can align text to the left, right, or center of a column by adding colons (:) to the header row.
-
-```plaintext
-| left | centered | right |
-| :-------- | :-------: | --------: |
-| Test      | Test      | Test      |
-| Test      | Test      | Test      |
+```markdown
+> [!info] Optional title
+> Callout body text.
+> **Markdown formatting** can be used in the body.
 ```
 
-| left | centered | right |
-| ---- | -------- | ----- |
-| Test | Test     | Test  |
-| Test | Test     | Test  |
+Add `-` to start collapsed or `+` to start expanded:
 
-Vertical bars on ends are optional
+```markdown
+> [!question]- Start collapsed
+> The body is initially folded.
 
-```plaintext
-Shorter | Table | Syntax
-:---: | ---: | :---
-Test | Test | Test
-Test | Test | Test
+> [!tip]+ Start expanded
+> The body is initially visible.
 ```
 
-| Shorter | Table | Syntax |
-| ------- | ----- | ------ |
-| Test    | Test  | Test   |
-| Test    | Test  | Test   |
+**Rendered:**
 
----
+> [!info] Example callout
+> This callout is displayed with the current **callout settings**.
 
-# LINKS
+Nested callouts use additional quote markers:
 
-## INTERNAL LINKS
-
-### OBSIDIAN
-
-Obsidian has the option to use wiki links which uses two brackets [[example]] for internal links:
-
-[[File name]] Internal link to file
-[[#Header]] Internal link to header
-[[File#Header]] links to header in internal file
-
-[[File#H 1#H 2]] links to sub heading
-[[file#^Block]] link to block in file
-[[file | display]] Change the Display text
-
-Link to file in different vault
-[Note](obsidian://open?vault=MainVault&file=Note.md)
-
-To escape blank spaces use %20 for spaces!
-You can also escape the URL by wrapping it with angled brackets < >.
-
-### MARKDOWN
-
-[Title of link ](file%20name.md)
-[File name](Three-laws-of-motion.md)
-Have to account for spaces!
-
-Link to a Block within a Note:
-[[QuickNote#^a124fc | water]] to make it readable
-
-Link to a Note but Change the Display text:
-[custom display text](Internal%20links.md)
-
-## EXTERNAL LINKS
-
-Create an inline link by surrounding the link text in brackets `[ ]`, and then the URL in parentheses `( )`.
-
-[Link]([https://duckduckgo.com/](https://duckduckgo.com/))
-
-[File in same folder as the document.](markor-markdown-reference.md)
-
-## LINK IMAGES
-
-You can add images with external URLs, by adding a ! symbol before an external link.
-
-![Engelbart]([https://history-computer.com/ModernComputer/Basis/images/Engelbart.jpg](https://history-computer.com/ModernComputer/Basis/images/Engelbart.jpg)
-
-Change image dimensions by adding |640x480 to the link destination, where 640 is the width and 480 is the height.
-
-![Engelbart|640x480]([https://history-computer.com/ModernComputer/Basis/images/Engelbart.jpg](https://history-computer.com/ModernComputer/Basis/images/Engelbart.jpg))
-
-If you only specify the width the image scales according to its original aspect ratio. For example:
-![[Engelbart.jpg|100]]
-
-# EMBED
-
-By embedding the original note into new notes, you only have to update the original and all will be updated.
-
-![[Note to Embed]]
-
-Blocks can also be embedded
-
-![[linkexample^Block]]
-
-Embed Headings
-
-![[linkexample#Heading]]
-
-**The trick for changing the display text will work when embedding too.**
-
-![[linkexample|Change Display Text]]
-
-## EMBEDDING IN OBSIDIAN
-
-Drag & drop if available or
-
-![[Image.jpg]]
-[Image]([https://facedragons.com/wp-content/uploads/2022/08/cropped-roundlogo-FD.png](https://facedragons.com/wp-content/uploads/2022/08/cropped-roundlogo-FD.png))
-![[Video.mp4]]
-
-![[Audio.mp3]]
-
-![[Document.pdf]]
-
-To link a file that's online
-![Image]([https://URL.com/image.png](https://URL.com/image.png))
-
----
-
-# FOOTNOTES
-
-You can add footnotes to your notes using the following syntax: [^1]
-[^1]: This is the referenced text.
-[^2]: Add 2 spaces at the start of each new line.
-
-Obsidian has a good built in tool for adding footnotes.
-
-[^note]: Named footnotes still appears as numbers, but can make it easier to identify and link references.
-
-You can also use inline footnotes. ^[This is an inline footnote.] Note that the caret goes outside the brackets.
-
----
-
-# OTHER OBSIDIAN SYNTAX
-
-## QUERIES
-
-Queries will embed a list of results into your note, the query below will return any notes with the tag `#Bible` for example. You can add more than one parameter, as shown further down.
-
-````plaintext
-```query
-#Bible
-````
-
-````plaintext
-```query
-#Bible + New Testament
-````
-
-## TEMPLATE SYNTAX
-
-```plaintext
-{{title}}
-{{date}}
-{{time}}
+```markdown
+> [!question] Outer callout
+> Outer text.
+> > [!info] Nested callout
+> > Nested text.
 ```
 
-## COMMENTS
+**Rendered:**
 
-Wrap text with %%
-Comments are only visible in Editing view.
+> [!question] Outer callout
+> The outer message.
+> > [!info] Nested callout
+> > The nested message.
 
-```plaintext
-This is an %%inline%% comment.
+The type is an identifier beginning with a letter; it may also contain digits,
+underscores, or hyphens. Common labels include `note`, `info`, `tip`, `warning`,
+`question`, `example`, and `todo`.
 
-%%
-This is a block comment.
+## Links and images
 
-Block comments can span multiple lines.
-%%
+### Markdown links
+
+```markdown
+[W.mdx](https://example.com)
+[A note in this folder](My%20Notes.md)
+[A link with a title](https://example.com "Optional title")
 ```
 
-## TAGS
+For spaces in a URL or file path, use `%20`. In link text, escape a closing
+bracket as `\]` when necessary.
 
-hashtag symbol (#) in the editor followed by a keyword. Can be used in the properties (at beginning of note):
+**Rendered:** [W.mdx website](https://example.com)
 
-```plaintext
----
-tag: meeting
----
-Or, add several tags:  
----
-tags:
-  - recipe
-  - cooking
----
-Or  
----
-tags: recipe, cooking
----
+### W.mdx wiki links
 
-Nested tags
-#inbox/processing
+W.mdx recognizes these Obsidian-style link forms:
+
+```markdown
+[[Target]]
+[[#Heading in this document]]
+[[Target|Display text]]
 ```
 
-Tags can use letters, numbers, hyphens, underscores with at least one non-number, and not spaces.
+`[[#Heading]]` links to a heading in the current document. The `|` separates
+the target from its display text. Wiki links are an extension, not standard
+Markdown.
 
-## ALIAS
+**Rendered:** [[#Quick reference|Jump to the quick reference]].
 
-An alias is an alternative name for a note, add an alias, or aliases, property in the note properties
+`![[Target]]` is Obsidian's embed syntax; W.mdx does not currently render it as
+an embedded file. Use a Markdown image for images instead.
 
-```plaintext
----
-alias: Doggo
----
+### Images
 
-multiple aliases:
----
-aliases: Doggo, Woofer, Yapper
----
+Standard Markdown image syntax:
 
-Or using a YAML array:
----
-aliases:
-  - Doggo
-  - Woofer
-  - Yapper
----
-
----
-Alias:
-Author:
-Status:
-ISBN:
-Cover:
----
+```markdown
+![Description of the image](images/diagram.png)
 ```
 
-### LINK USING AN ALIAS
+W.mdx also accepts a pixel width after a vertical bar in the description:
 
-Any alias shows up in the list of suggestions with a curved arrow icon next to it. Obsidian creates the link with the alias as its custom display text, for example `[[Levenson-KEYS TO THE ULTIMATE FREEDOM|keys to ultimate freedom]]`
+```markdown
+![Diagram|640](images/diagram.png)
+```
+
+The width must be a whole number from 1 to 10,000. If no width is supplied, the
+image uses its natural size, subject to the editor's available width.
+
+**Rendered:**
+
+![Cyan sample image|120](data:image/svg+xml,%3Csvg%20xmlns%3D'http://www.w3.org/2000/svg'%20width%3D'120'%20height%3D'60'%3E%3Crect%20width%3D'120'%20height%3D'60'%20fill%3D'%2300bfc5'/%3E%3C/svg%3E)
+
+## Tables
+
+Tables use GFM pipe syntax. The separator row divides the header from the body;
+colons set alignment:
+
+```markdown
+| Left | Center | Right |
+| :--- | :----: | ----: |
+| A    | B      | C     |
+| D    | E      | F     |
+```
+
+**Rendered:**
+
+| Left | Center | Right |
+| :--- | :----: | ----: |
+| **Bold** | centered | right |
+| A | B | C |
+
+The outside pipes are optional. Escape a pipe that belongs inside a cell as
+`\|`. Basic inline Markdown can be used in cells; tables cannot contain
+multi-paragraph cell content.
+
+## Horizontal rules
+
+Put at least three matching hyphens, asterisks, or underscores on a line by
+themselves:
+
+```markdown
+---
+***
+```
+
+The underscore form is escaped here so its three marks stay visible: \_\_\_.
+
+**Rendered:**
+
+Text above the rule.
 
 ---
 
-# MULTIMEDIA
+Text below the rule.
 
-## IMAGES
+Use a blank line before the rule. A line of hyphens directly below text creates
+a level-two Setext heading instead.
 
-![Image](file:///android_asset/img/schindelpattern.jpg)`
+## Footnotes
 
-## VIDEOS
+Add a reference in the text and a matching definition, preferably in a
+footnotes section near the end of the document:
 
-**Youtube** [Welcome to Upper Austria]([https://www.youtube.com/watch?v=RJREFH7Lmm8](https://www.youtube.com/watch?v=RJREFH7Lmm8))
+```markdown
+This sentence has a footnote.[^source]
 
-**Local video:**
+[^source]: The footnote text.
+    A continuation line starts with four spaces.
 
-```plaintext
-<div><video controls><source src='voice-parrot.mp4' </source></video></div>
+Text after the footnote definitions can continue here.
 ```
 
-## AUDIO & MUSIC
+**Rendered:**
 
-**Web audio**
+This sentence has a rendered footnote.[^rendered]
 
-```plaintext
-[Guifrog - Xia Yu](https://www.freemusicarchive.org/music/Guifrog/Xia_Yu)
-<audio controls src='https://files.freemusicarchive.org/storage-freemusicarchive-org/music/ccCommunity/Guifrog/Xia_Yu/Guifrog_-_Xia_Yu.mp3'></audio>
-```
+[^rendered]: The footnote appears with the document's other footnotes.
 
-**Local audio**
+Labels must not contain spaces or closing brackets. Matching is
+case-insensitive. A reference is only treated as a footnote when a definition
+with that label exists. Continuation lines need at least four leading spaces.
+Inline footnotes such as `^[footnote text]` are not supported.
 
-```plaintext
-Yellowcard - Lights up in the sky<audio controls src='../Music/mp3/Yellowcard/[2007]%20Paper%20Walls/Yellowcard%20-%2005%20-%20Light%20Up%20the%20Sky.mp3'></audio>
-```
+## HTML and other app-specific syntax
+
+The old `md...` entries were text-expansion abbreviations, not Markdown syntax.
+Any expansion depends on your keyboard or an external text expander; Wmdx does
+not define those abbreviations.
+
+HTML is not Markdown. Some renderers accept inline HTML such as
+`<u>underlined text</u>`, `<span style="color: red;">colored text</span>`,
+`<sub>2</sub>`, and
+`<sup>2</sup>`, but its appearance and support depend on the renderer. For
+consistent formatting in W.mdx, use the Wmdx underline, highlighter, and pen
+syntax above.
+
+The following are Obsidian or plugin features, not standard Markdown syntax:
+
+- `%% comments %%`
+- `![[file]]` embeds
+- Obsidian queries such as fenced `query` blocks
+- Template variables such as `{{title}}`
+- Obsidian tags and YAML properties
+
+W.mdx does not interpret these as Obsidian features. A `#tag` in ordinary text
+is just text here; a `#` followed by a space at the start of a line begins a
+Markdown heading.

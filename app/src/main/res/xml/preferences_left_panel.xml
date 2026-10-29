@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetSwitchPreference
+        app:key="pref_left_panel_enabled"
+        app:title="Enable Left Panel"
+        app:summary="Show the left workspace panel and allow edge-swipe access"
+        app:defaultValue="true" />
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Tabs">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_left_panel_tabs_enabled"
+            app:title="Enable Tabs"
+            app:summary="Keep files open in separate tabs instead of navigating in one tab"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_left_panel_hide_file_extension"
+            app:title="Hide File Extension in Tabs"
+            app:summary="Hide the extension in tab labels while keeping the full file name"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_left_panel_active_tab_text_color"
+            app:title="Active Tab Text Color"
+            app:summary="Text color for the selected tab"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_left_panel_active_tab_bg_color"
+            app:title="Active Tab Background Color"
+            app:summary="Background color for the selected tab"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Left Panel Appearance">
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_left_panel_width"
+            app:title="Panel Width (% of screen)"
+            app:summary="Width of the left workspace panel, up to 90%"
+            app:min="50"
+            android:max="90"
+            app:defaultValue="80"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_left_panel_bg_color"
+            app:title="Panel Background Color"
+            app:summary="Background color behind the workspace sections"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_left_panel_bg_opacity"
+            app:title="Panel Background Opacity (%)"
+            app:summary="Opacity of the panel background without fading its text"
+            app:min="10"
+            android:max="100"
+            app:defaultValue="100"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_left_panel_border_color"
+            app:title="Panel Border Color"
+            app:summary="Color of the panel edge and section dividers"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_left_panel_overlay_dim"
+            app:title="Background Dim (%)"
+            app:summary="How strongly the editor is dimmed behind the panel"
+            app:min="0"
+            android:max="90"
+            app:defaultValue="50"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Left Panel Text">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_left_panel_font_family"
+            app:title="Font Family"
+            app:summary="Choose a device font or use the custom font file"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            android:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_font_file_left_panel"
+            app:title="Font File"
+            app:summary="Tap to pick a custom font file (.ttf, .otf, .woff, .woff2)" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_left_panel_font_size"
+            app:title="Font Size (px)"
+            app:summary="Text size for section headings and file names"
+            app:min="10"
+            android:max="28"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_left_panel_font_weight"
+            app:title="Font Weight"
+            app:summary="Weight of section heading text"
+            app:min="100"
+            android:max="900"
+            app:defaultValue="600"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_left_panel_text_color"
+            app:title="Text Color"
+            app:summary="Color of section headings and file names"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_left_panel_row_spacing"
+            app:title="File Row Spacing (px)"
+            app:summary="Space between search results, folders, and tabs"
+            app:min="0"
+            android:max="20"
+            app:defaultValue="2"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Search">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_left_panel_show_search_path"
+            app:title="Show File Path in Search"
+            app:summary="Show each result's folder path below its file name"
+            app:defaultValue="false" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Section Behavior">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_left_panel_search_keep_open"
+            app:title="Keep Search Open"
+            app:summary="Keep Search expanded when another section is active"
+            app:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_left_panel_folders_keep_open"
+            app:title="Keep Folders Open"
+            app:summary="Keep Folders expanded when another section is active"
+            app:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_left_panel_tabs_keep_open"
+            app:title="Keep Tabs Open"
+            app:summary="Keep Tabs expanded when another section is active"
+            app:defaultValue="false" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+</androidx.preference.PreferenceScreen>

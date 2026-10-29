@@ -27,10 +27,10 @@ class SettingsActivity : AppCompatActivity() {
 
         if (savedInstanceState == null) {
             val directPage = intent.getStringExtra("settings_page")
-            val initialFragment = if (directPage == "toc") {
-                TocPanelSettingsFragment()
-            } else {
-                SettingsFragment()
+            val initialFragment = when (directPage) {
+                "toc" -> TocPanelSettingsFragment()
+                "left_panel" -> LeftPanelSettingsFragment()
+                else -> SettingsFragment()
             }
             supportFragmentManager
                 .beginTransaction()
@@ -40,6 +40,8 @@ class SettingsActivity : AppCompatActivity() {
 
         if (intent.getStringExtra("settings_page") == "toc") {
             supportActionBar?.title = "Table of Contents Panel"
+        } else if (intent.getStringExtra("settings_page") == "left_panel") {
+            supportActionBar?.title = "Left Side Panel"
         }
 
         supportFragmentManager.addOnBackStackChangedListener {
@@ -63,6 +65,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingCursorFragment -> "Cursor & Selection"
                 is StylingFindReplaceFragment -> "Find & Replace"
                 is TocPanelSettingsFragment -> "Table of Contents"
+                is LeftPanelSettingsFragment -> "Left Side Panel"
                 is StorageAccessSettingsFragment -> "File & Folder Access"
                 is StylingSettingsFragment -> "Typography"
                 is ExportSettingsFragment -> "HTML & MHTML Export"
@@ -252,6 +255,13 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_toc" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, TocPanelSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_left_panel" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, LeftPanelSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -924,6 +934,8 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_paragraph" -> StylingParagraphFragment()
             "pref_styling_page_bold" -> StylingBoldFragment()
             "pref_styling_page_italic" -> StylingItalicFragment()
+            "pref_styling_page_underline" -> StylingUnderlineFragment()
+            "pref_styling_page_highlights_pens" -> StylingHighlightsPensFragment()
             "pref_styling_page_links" -> StylingLinksFragment()
             "pref_styling_page_inline_code" -> StylingInlineCodeFragment()
             "pref_styling_page_footnotes" -> StylingFootnotesFragment()
@@ -1046,6 +1058,86 @@ class StylingBoldFragment : StylingInlineElementFragment() {
 
 class StylingItalicFragment : StylingInlineElementFragment() {
     override val categoryKey = "styling_inline_italic"
+}
+
+class StylingHighlightsPensFragment : StylingSettingsFragment() {
+    private val highlightColors = listOf("yellow", "green", "pink", "blue")
+    private val penColors = listOf("red", "green", "blue", "purple")
+
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_highlights_pens, rootKey)
+        for (color in highlightColors) configureColorSection("pref_highlight_${color}_section")
+        for (color in penColors) configureColorSection("pref_pen_${color}_section")
+        refreshColorSections()
+    }
+
+    private fun configureColorSection(sectionKey: String) {
+        val section = findPreference<ExpandablePreference>(sectionKey) ?: return
+        section.setOnPreferenceClickListener {
+            section.isExpanded = !section.isExpanded
+            refreshColorSections()
+            true
+        }
+    }
+
+    private fun refreshColorSections() {
+        for (color in highlightColors) {
+            updateColorSection("pref_highlight_${color}_section", "pref_highlight_${color}_controls")
+        }
+        for (color in penColors) {
+            updateColorSection("pref_pen_${color}_section", "pref_pen_${color}_controls")
+        }
+    }
+
+    private fun updateColorSection(sectionKey: String, controlsKey: String) {
+        val section = findPreference<ExpandablePreference>(sectionKey) ?: return
+        findPreference<androidx.preference.PreferenceCategory>(controlsKey)?.isVisible =
+            section.isExpanded
+    }
+}
+
+class StylingUnderlineFragment : StylingSettingsFragment() {
+    private val underlineSectionKeys = listOf(
+        "solid", "dotted", "dashed", "double", "wavy"
+    )
+
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_underline, rootKey)
+        for (style in underlineSectionKeys) {
+            val section = findPreference<ExpandablePreference>(
+                "pref_underline_${style}_section"
+            ) ?: continue
+            section.setOnPreferenceClickListener {
+                section.isExpanded = !section.isExpanded
+                refreshUnderlineSections()
+                true
+            }
+        }
+        refreshUnderlineSections()
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (key == "pref_underline_use_wmdx_syntax") refreshUnderlineSections()
+    }
+
+    private fun refreshUnderlineSections() {
+        val enabled = findPreference<androidx.preference.SwitchPreferenceCompat>(
+            "pref_underline_use_wmdx_syntax"
+        )?.isChecked == true
+        for (style in underlineSectionKeys) {
+            val section = findPreference<ExpandablePreference>(
+                "pref_underline_${style}_section"
+            )
+            val controls = findPreference<androidx.preference.PreferenceCategory>(
+                "pref_underline_${style}_controls"
+            )
+            section?.isVisible = enabled
+            controls?.isVisible = enabled && section?.isExpanded == true
+        }
+    }
 }
 
 class StylingLinksFragment : StylingInlineElementFragment() {
@@ -1315,14 +1407,16 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         private val TOOLBAR_GROUP_ITEM_IDS = linkedMapOf(
             "heading" to listOf(
                 "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5",
-                "heading6", "wrap", "line-numbers"
+                "heading6", "autoHeading", "wrap", "line-numbers"
             ),
             "lists" to listOf(
                 "bulletedList", "numberedList", "todoList", "indent", "outdent"
             ),
             "format" to listOf(
-                "bold", "italic", "strikethrough", "underline", "yellowMarker", "greenMarker",
-                "pinkMarker", "blueMarker", "redPen", "greenPen"
+                "bold", "italic", "strikethrough", "underline", "underlineSolid",
+                "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
+                "highlightCycle", "highlightYellow", "highlightGreen", "highlightPink",
+                "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple"
             ),
             "table" to listOf(
                 "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
@@ -1333,22 +1427,25 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "horizontalLine", "footnote"
             ),
             "menu" to listOf(
-                "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
+                "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
                 "exportHtml", "search", "switchView", "newWindow", "settings"
             )
         )
         private val TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS + listOf(
             "paragraph",
             "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
+            "autoHeading",
             "wrap", "line-numbers",
             "bulletedList", "numberedList", "todoList", "indent", "outdent",
-            "bold", "italic", "strikethrough", "underline",
-            "yellowMarker", "greenMarker", "pinkMarker", "blueMarker", "redPen", "greenPen",
+            "bold", "italic", "strikethrough", "underline", "underlineSolid",
+            "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
+            "highlightCycle", "highlightYellow", "highlightGreen", "highlightPink",
+            "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple",
             "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
             "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
             "horizontalLine", "footnote",
-            "newFile", "openFile", "saveFile", "saveAsFile", "saveAsTextPack",
+            "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "exportHtml", "search", "switchView", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll"
         )
@@ -1641,7 +1738,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         )
         payload.put(
             "pref_toolbar_floating_enabled",
-            prefs.getBoolean("pref_toolbar_floating_enabled", true)
+            prefs.getBoolean("pref_toolbar_floating_enabled", false)
         )
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
@@ -1812,8 +1909,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             }
         }
 
+        val rawHoldingActions = input.optJSONArray("holding") ?: org.json.JSONArray()
+
         val holding = mutableListOf<String>()
-        val rawHolding = input.optJSONArray("holding") ?: org.json.JSONArray()
+        val rawHolding = rawHoldingActions
         for (index in 0 until rawHolding.length()) {
             val id = rawHolding.optString(index)
             if (id in validKeyIds && id !in assignedActions && id !in holding) holding.add(id)
@@ -3266,6 +3365,13 @@ class SettingsThemeFragment : BaseSettingsFragment() {
 class TocPanelSettingsFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_toc, rootKey)
+        configureFontPreferences()
+    }
+}
+
+class LeftPanelSettingsFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_left_panel, rootKey)
         configureFontPreferences()
     }
 }

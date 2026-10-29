@@ -29,9 +29,22 @@ import {
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
+import { applyAutoHeading } from './autoHeading.js';
 import { toCssFontFamily } from './fontFamilies.js';
+import { setupLeftPanel } from './leftPanel.js';
+import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
-import { getMarkdownFormattingState, toggleMarkdownFormat } from './markdownFormatting.js';
+import {
+  getMarkdownFormattingState,
+  getMarkdownFormatRanges,
+  getWmdxUnderlineSyntaxDelimiterRanges,
+  getWmdxColorSyntaxRanges,
+  isWmdxUnderlineSyntaxEnabled,
+  setWmdxUnderlineSyntaxEnabled,
+  toggleMarkdownFormat,
+  toggleWmdxColorFormat,
+  toggleUnderlineFormat
+} from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
 import {
@@ -83,8 +96,9 @@ let activePopupSurface = 'bottom';
 let bottomToolbarConfig = normalizeBottomToolbarConfig(null);
 let floatingToolbarConfig = normalizeBottomToolbarConfig(null);
 let floatingToolbarSelectionFrame = 0;
-let floatingToolbarEnabled = true;
+let floatingToolbarEnabled = false;
 let tocHideFileExtension = false;
+let tocPanelEnabled = true;
 
 let customHotkeys = {
   new: 'ctrl+n',
@@ -93,6 +107,7 @@ let customHotkeys = {
   open: 'ctrl+o',
   save: 'ctrl+s',
   save_as: 'ctrl+shift+s',
+  save_tabs: '',
   save_as_textpack: 'ctrl+shift+alt+s',
   export: 'ctrl+shift+e',
   image: 'ctrl+shift+i',
@@ -104,6 +119,11 @@ let customHotkeys = {
   bold: 'ctrl+b',
   italic: 'ctrl+i',
   underline: 'ctrl+u',
+  underlineSolid: '',
+  underlineDotted: '',
+  underlineDashed: '',
+  underlineDouble: '',
+  underlineWavy: '',
   strikethrough: 'ctrl+shift+x',
   code: 'ctrl+e',
   link: 'ctrl+k',
@@ -118,6 +138,7 @@ let customHotkeys = {
   indent: 'tab',
   outdent: 'shift+tab',
   horizontalLine: 'ctrl+shift+h',
+  autoHeading: '',
   findAndReplace: 'ctrl+f',
   heading_p: 'ctrl+alt+0',
   heading_1: 'ctrl+alt+1',
@@ -126,14 +147,16 @@ let customHotkeys = {
   heading_4: 'ctrl+alt+4',
   heading_5: 'ctrl+alt+5',
   heading_6: 'ctrl+alt+6',
-  highlight_yellow: 'ctrl+alt+y',
-  highlight_green: 'ctrl+alt+g',
-  highlight_pink: 'ctrl+alt+p',
-  highlight_blue: 'ctrl+alt+b',
-  highlight_red: 'ctrl+alt+r',
-  highlight_red_pen: 'ctrl+alt+r',
-  highlight_green_pen: 'ctrl+alt+shift+g',
-  highlight_remove: 'ctrl+alt+x'
+  highlightCycle: 'ctrl+alt+y',
+  highlightYellow: '',
+  highlightGreen: '',
+  highlightPink: '',
+  highlightBlue: '',
+  penCycle: 'ctrl+alt+r',
+  penRed: '',
+  penGreen: '',
+  penBlue: '',
+  penPurple: ''
 };
 
 class ListMarkerWidget extends WidgetType {
@@ -1560,6 +1583,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
     const doc = view.state.doc;
     const decorationRanges = view.visibleRanges;
+    const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
+      ? [...new Map(decorationRanges
+        .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
+        .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()]
+      : [...new Map(decorationRanges
+        .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
+        .filter(range => range.kind === 'html')
+        .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
+    const colorSyntaxRanges = [...new Map(decorationRanges
+      .flatMap(range => getWmdxColorSyntaxRanges(view.state, range))
+      .map(range => [`${range.group}:${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
 
     const getQuotedLineInfo = (lineNum) => {
       if (lineNum < 1 || lineNum > doc.lines) return null;
@@ -1840,11 +1874,24 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             builder.push(Decoration.mark({ class: 'cm-bold' }).range(node.from, node.to));
           }
           if (node.name === 'EmphasisMark' && !isNodeActive) {
-            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
+            const isWmdxUnderlineDelimiter = underlineSyntaxRanges.some(range =>
+              range.kind === 'wmdx' && (
+                (node.from >= range.wrapperFrom && node.to <= range.contentFrom) ||
+                (node.from >= range.contentTo && node.to <= range.wrapperTo)
+              )
+            );
+            if (!isWmdxUnderlineDelimiter && !isPureWysiwyg) {
+              hideSyntax(node.from, node.to);
+            }
           }
 
           if (node.name === 'Emphasis') {
-            builder.push(Decoration.mark({ class: 'cm-italic' }).range(node.from, node.to));
+            const isWmdxUnderline = underlineSyntaxRanges.some(range =>
+              range.wrapperFrom === node.from && range.wrapperTo === node.to
+            );
+            if (!isWmdxUnderline) {
+              builder.push(Decoration.mark({ class: 'cm-italic' }).range(node.from, node.to));
+            }
           }
 
           if (node.name === 'Strikethrough') {
@@ -1998,6 +2045,45 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
         }
       });
+    }
+
+    for (const range of underlineSyntaxRanges) {
+      const isRangeActive = !isPureWysiwyg && (
+        selection.empty
+          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
+          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
+      );
+      if (range.kind === 'html' && !isRangeActive) {
+        hideSyntax(range.wrapperFrom, range.contentFrom);
+        hideSyntax(range.contentTo, range.wrapperTo);
+      } else if (range.kind === 'wmdx' && !isRangeActive) {
+        for (const delimiter of getWmdxUnderlineSyntaxDelimiterRanges(range)) {
+          hideSyntax(delimiter.from, delimiter.to);
+        }
+      }
+      if (range.kind === 'wmdx') {
+        builder.push(Decoration.mark({
+          class: 'cm-wmdx-underline-syntax'
+        }).range(range.wrapperFrom, range.wrapperTo));
+      }
+      builder.push(Decoration.mark({
+        class: `cm-underline cm-underline-${range.style}`
+      }).range(range.contentFrom, range.contentTo));
+    }
+
+    for (const range of colorSyntaxRanges) {
+      const isRangeActive = !isPureWysiwyg && (
+        selection.empty
+          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
+          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
+      );
+      if (!isRangeActive) {
+        hideSyntax(range.wrapperFrom, range.contentFrom);
+        hideSyntax(range.contentTo, range.wrapperTo);
+      }
+      builder.push(Decoration.mark({
+        class: `cm-wmdx-${range.group}-${range.color}`
+      }).range(range.contentFrom, range.contentTo));
     }
 
     const activeFolds = foldedRanges(view.state);
@@ -3611,6 +3697,7 @@ export const resetRenderedVerticalGoal = EditorView.domEventHandlers({
 class CodeMirrorAdapter {
   constructor() {
     this.mode = currentEditorMode;
+    this.documentSessionId = window.AndroidNative?.getCurrentDocumentSessionId?.() || null;
     this.view = null;
     this.lineWrapCompartment = new Compartment();
     this.lineNumbersCompartment = new Compartment();
@@ -3688,6 +3775,11 @@ class CodeMirrorAdapter {
     if (this.syntaxRefreshComplete) this.scheduleRestoredScrollTop();
   }
 
+  getScrollPosition() {
+    const scrollTop = this.view?.scrollDOM?.scrollTop;
+    return Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : null;
+  }
+
   scheduleRestoredScrollTop() {
     const view = this.view;
     const scrollTop = this.pendingRestoreScrollTop;
@@ -3700,7 +3792,7 @@ class CodeMirrorAdapter {
     });
   }
 
-  persistScrollPosition() {
+  persistScrollPosition(documentSessionId = this.documentSessionId) {
     if (this.scrollPersistTimer !== null) {
       clearTimeout(this.scrollPersistTimer);
       this.scrollPersistTimer = null;
@@ -3711,7 +3803,8 @@ class CodeMirrorAdapter {
     if (typeof bridge?.onScrollChanged !== 'function') return;
 
     bridge.onScrollChanged(
-      Math.max(0, Math.round(this.view.scrollDOM.scrollTop))
+      Math.max(0, Math.round(this.view.scrollDOM.scrollTop)),
+      documentSessionId
     );
   }
 
@@ -3721,9 +3814,10 @@ class CodeMirrorAdapter {
       clearTimeout(this.scrollPersistTimer);
     }
 
+    const documentSessionId = this.documentSessionId;
     this.scrollPersistTimer = setTimeout(() => {
       this.scrollPersistTimer = null;
-      this.persistScrollPosition();
+      this.persistScrollPosition(documentSessionId);
     }, 250);
     if (this.scrollPersistTimer && typeof this.scrollPersistTimer.unref === 'function') {
       this.scrollPersistTimer.unref();
@@ -3810,10 +3904,15 @@ class CodeMirrorAdapter {
         EditorView.updateListener.of(update => {
           if (update.docChanged && !this.isProgrammatic) {
             this.revision++;
+            window.leftPanelController?.onEditorChanged?.(update.state.doc.toString());
             if (window.AndroidNative && typeof window.AndroidNative.onContentChanged === 'function') {
-              window.AndroidNative.onContentChanged(update.state.doc.toString(), this.revision);
+              window.AndroidNative.onContentChanged(
+                update.state.doc.toString(),
+                this.revision,
+                this.documentSessionId
+              );
             } else if (window.AndroidNative && typeof window.AndroidNative.onDirtyStateChanged === 'function') {
-              window.AndroidNative.onDirtyStateChanged(true, this.revision);
+              window.AndroidNative.onDirtyStateChanged(true, this.revision, this.documentSessionId);
             }
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
@@ -3983,6 +4082,12 @@ class CodeMirrorAdapter {
 
   setMarkdown(text) {
     if (!this.view) return;
+    if (this.scrollPersistTimer !== null) {
+      clearTimeout(this.scrollPersistTimer);
+      this.scrollPersistTimer = null;
+    }
+    this.documentSessionId =
+      window.AndroidNative?.getCurrentDocumentSessionId?.() || this.documentSessionId;
     this.isProgrammatic = true;
     const currentDoc = this.view.state.doc.toString();
     if (currentDoc !== text) {
@@ -4124,6 +4229,7 @@ async function setEditorMode(mode) {
   if (activeAdapter) {
     activeAdapter.destroy();
     activeAdapter = null;
+    pendingMarkdown = null;
   }
 
   currentEditorMode = targetMode;
@@ -4143,6 +4249,11 @@ async function setEditorMode(mode) {
   const containerEl = document.querySelector('#editor');
   await adapter.init(containerEl, existingText, modeSnapshot);
   activeAdapter = adapter;
+  if (pendingMarkdown !== null) {
+    const latestPendingMarkdown = pendingMarkdown;
+    pendingMarkdown = null;
+    window.editorBridge?.setMarkdown?.(latestPendingMarkdown);
+  }
 
   if (document.querySelector('#toc-panel')?.classList.contains('open')) {
     tocExpansionState.centerOnNextUpdate = true;
@@ -4312,6 +4423,7 @@ function setupGroupedControlBar() {
         { title: 'Heading 4', icon: 'H4', command: 'heading4', action: () => execCmd('heading', { value: 'heading4' }) },
         { title: 'Heading 5', icon: 'H5', command: 'heading5', action: () => execCmd('heading', { value: 'heading5' }) },
         { title: 'Heading 6', icon: 'H6', command: 'heading6', action: () => execCmd('heading', { value: 'heading6' }) },
+        { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
         { id: 'wrap', icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
         { id: 'line-numbers', icon: '#', title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
       ]);
@@ -4340,13 +4452,22 @@ function setupGroupedControlBar() {
         { icon: svgIcons.bold, title: 'Bold', command: 'bold', action: () => execCmd('bold') },
         { icon: svgIcons.italic, title: 'Italic', command: 'italic', action: () => execCmd('italic') },
         { icon: svgIcons.strikethrough, title: 'Strikethrough', command: 'strikethrough', action: () => execCmd('strikethrough') },
-        { icon: svgIcons.underline, title: 'Underline', command: 'underline', action: () => execCmd('underline') },
-        { icon: svgIcons.squareMarker('#ffe066'), title: 'Yellow Marker', command: 'yellowMarker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
-        { icon: svgIcons.squareMarker('#a8f087'), title: 'Green Marker', command: 'greenMarker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
-        { icon: svgIcons.squareMarker('#ff99c8'), title: 'Pink Marker', command: 'pinkMarker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
-        { icon: svgIcons.squareMarker('#9bf6ff'), title: 'Blue Marker', command: 'blueMarker', action: () => execCmd('highlight', { value: 'blueMarker' }) },
-        { icon: svgIcons.circlePen('#ff595e'), title: 'Red Pen', command: 'redPen', action: () => execCmd('highlight', { value: 'redPen' }) },
-        { icon: svgIcons.circlePen('#2ec4b6'), title: 'Green Pen', command: 'greenPen', action: () => execCmd('highlight', { value: 'greenPen' }) }
+        { icon: svgIcons.underline, title: 'Cycle Underline Style', command: 'underline', action: () => execCmd('underline') },
+        { icon: svgIcons.underlineSolid, title: 'Solid Underline', command: 'underlineSolid', action: () => execCmd('underlineSolid') },
+        { icon: svgIcons.underlineDotted, title: 'Dotted Underline', command: 'underlineDotted', action: () => execCmd('underlineDotted') },
+        { icon: svgIcons.underlineDashed, title: 'Dashed Underline', command: 'underlineDashed', action: () => execCmd('underlineDashed') },
+        { icon: svgIcons.underlineDouble, title: 'Double Underline', command: 'underlineDouble', action: () => execCmd('underlineDouble') },
+        { icon: svgIcons.underlineWavy, title: 'Wavy Underline', command: 'underlineWavy', action: () => execCmd('underlineWavy') },
+        { icon: svgIcons.highlighter, title: 'Cycle Highlighter Color', command: 'highlightCycle', action: () => execCmd('highlight', { value: 'highlightCycle' }) },
+        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-yellow-background, #ffe066)'), title: 'Yellow Highlighter', command: 'highlightYellow', action: () => execCmd('highlight', { value: 'highlightYellow' }) },
+        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-green-background, #a8f087)'), title: 'Green Highlighter', command: 'highlightGreen', action: () => execCmd('highlight', { value: 'highlightGreen' }) },
+        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-pink-background, #ff99c8)'), title: 'Pink Highlighter', command: 'highlightPink', action: () => execCmd('highlight', { value: 'highlightPink' }) },
+        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-blue-background, #9bf6ff)'), title: 'Blue Highlighter', command: 'highlightBlue', action: () => execCmd('highlight', { value: 'highlightBlue' }) },
+        { icon: svgIcons.pen, title: 'Cycle Pen Color', command: 'penCycle', action: () => execCmd('highlight', { value: 'penCycle' }) },
+        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-red-text, #ff595e)'), title: 'Red Pen', command: 'penRed', action: () => execCmd('highlight', { value: 'penRed' }) },
+        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-green-text, #2ec4b6)'), title: 'Green Pen', command: 'penGreen', action: () => execCmd('highlight', { value: 'penGreen' }) },
+        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-blue-text, #4dabf7)'), title: 'Blue Pen', command: 'penBlue', action: () => execCmd('highlight', { value: 'penBlue' }) },
+        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-purple-text, #845ef7)'), title: 'Purple Pen', command: 'penPurple', action: () => execCmd('highlight', { value: 'penPurple' }) }
       ]);
     };
   }
@@ -4405,6 +4526,7 @@ function setupGroupedControlBar() {
         { id: 'openFile', icon: svgIcons.openFile, title: 'Open File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('open') },
         { id: 'saveFile', icon: svgIcons.saveFile, title: 'Save File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save') },
         { id: 'saveAsFile', icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
+        { id: 'saveTabs', icon: svgIcons.saveTabs, title: 'Save Tabs', action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
         { id: 'saveAsTextPack', icon: svgIcons.saveAsTextPack, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
         { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
@@ -4635,6 +4757,7 @@ function createToolbarActionRegistry() {
         command: `heading${index + 1}`,
         action: () => execCmd('heading', { value: `heading${index + 1}` })
       })),
+      { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
       { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap, action: () => window.editorBridge.toggleLineWrap() },
       { id: 'line-numbers', title: 'Toggle Line Numbers', icon: '#', action: () => window.editorBridge.toggleLineNumbers() }
     ],
@@ -4649,13 +4772,22 @@ function createToolbarActionRegistry() {
       { id: 'bold', title: 'Bold', icon: svgIcons.bold, command: 'bold', action: () => execCmd('bold') },
       { id: 'italic', title: 'Italic', icon: svgIcons.italic, command: 'italic', action: () => execCmd('italic') },
       { id: 'strikethrough', title: 'Strikethrough', icon: svgIcons.strikethrough, command: 'strikethrough', action: () => execCmd('strikethrough') },
-      { id: 'underline', title: 'Underline', icon: svgIcons.underline, command: 'underline', action: () => execCmd('underline') },
-      { id: 'yellowMarker', title: 'Yellow Marker', icon: svgIcons.squareMarker('#ffe066'), command: 'yellowMarker', action: () => execCmd('highlight', { value: 'yellowMarker' }) },
-      { id: 'greenMarker', title: 'Green Marker', icon: svgIcons.squareMarker('#a8f087'), command: 'greenMarker', action: () => execCmd('highlight', { value: 'greenMarker' }) },
-      { id: 'pinkMarker', title: 'Pink Marker', icon: svgIcons.squareMarker('#ff99c8'), command: 'pinkMarker', action: () => execCmd('highlight', { value: 'pinkMarker' }) },
-      { id: 'blueMarker', title: 'Blue Marker', icon: svgIcons.squareMarker('#9bf6ff'), command: 'blueMarker', action: () => execCmd('highlight', { value: 'blueMarker' }) },
-      { id: 'redPen', title: 'Red Pen', icon: svgIcons.circlePen('#ff595e'), command: 'redPen', action: () => execCmd('highlight', { value: 'redPen' }) },
-      { id: 'greenPen', title: 'Green Pen', icon: svgIcons.circlePen('#2ec4b6'), command: 'greenPen', action: () => execCmd('highlight', { value: 'greenPen' }) }
+      { id: 'underline', title: 'Cycle Underline Style', icon: svgIcons.underline, command: 'underline', action: () => execCmd('underline') },
+      { id: 'underlineSolid', title: 'Solid Underline', icon: svgIcons.underlineSolid, command: 'underlineSolid', action: () => execCmd('underlineSolid') },
+      { id: 'underlineDotted', title: 'Dotted Underline', icon: svgIcons.underlineDotted, command: 'underlineDotted', action: () => execCmd('underlineDotted') },
+      { id: 'underlineDashed', title: 'Dashed Underline', icon: svgIcons.underlineDashed, command: 'underlineDashed', action: () => execCmd('underlineDashed') },
+      { id: 'underlineDouble', title: 'Double Underline', icon: svgIcons.underlineDouble, command: 'underlineDouble', action: () => execCmd('underlineDouble') },
+      { id: 'underlineWavy', title: 'Wavy Underline', icon: svgIcons.underlineWavy, command: 'underlineWavy', action: () => execCmd('underlineWavy') },
+      { id: 'highlightCycle', title: 'Cycle Highlighter Color', icon: svgIcons.highlighter, command: 'highlightCycle', action: () => execCmd('highlight', { value: 'highlightCycle' }) },
+      { id: 'highlightYellow', title: 'Yellow Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-yellow-background, #ffe066)'), command: 'highlightYellow', action: () => execCmd('highlight', { value: 'highlightYellow' }) },
+      { id: 'highlightGreen', title: 'Green Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-green-background, #a8f087)'), command: 'highlightGreen', action: () => execCmd('highlight', { value: 'highlightGreen' }) },
+      { id: 'highlightPink', title: 'Pink Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-pink-background, #ff99c8)'), command: 'highlightPink', action: () => execCmd('highlight', { value: 'highlightPink' }) },
+      { id: 'highlightBlue', title: 'Blue Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-blue-background, #9bf6ff)'), command: 'highlightBlue', action: () => execCmd('highlight', { value: 'highlightBlue' }) },
+      { id: 'penCycle', title: 'Cycle Pen Color', icon: svgIcons.pen, command: 'penCycle', action: () => execCmd('highlight', { value: 'penCycle' }) },
+      { id: 'penRed', title: 'Red Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-red-text, #ff595e)'), command: 'penRed', action: () => execCmd('highlight', { value: 'penRed' }) },
+      { id: 'penGreen', title: 'Green Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-green-text, #2ec4b6)'), command: 'penGreen', action: () => execCmd('highlight', { value: 'penGreen' }) },
+      { id: 'penBlue', title: 'Blue Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-blue-text, #4dabf7)'), command: 'penBlue', action: () => execCmd('highlight', { value: 'penBlue' }) },
+      { id: 'penPurple', title: 'Purple Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-purple-text, #845ef7)'), command: 'penPurple', action: () => execCmd('highlight', { value: 'penPurple' }) }
     ],
     [
       { id: 'insertTable', title: 'Insert Table', icon: svgIcons.insertTable, action: () => {
@@ -4688,6 +4820,7 @@ function createToolbarActionRegistry() {
       { id: 'openFile', title: 'Open File', icon: svgIcons.openFile, action: () => window.AndroidNative?.onNativeAction('open') },
       { id: 'saveFile', title: 'Save File', icon: svgIcons.saveFile, action: () => window.AndroidNative?.onNativeAction('save') },
       { id: 'saveAsFile', title: 'Save As', icon: svgIcons.saveAsFile, action: () => window.AndroidNative?.onNativeAction('save_as') },
+      { id: 'saveTabs', title: 'Save Tabs', icon: svgIcons.saveTabs, action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
       { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack, action: () => window.AndroidNative?.onNativeAction('save_as_textpack') },
       { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
       { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
@@ -5611,10 +5744,16 @@ function execCmd(cmdName, options) {
       cmdName === 'bold' ||
       cmdName === 'italic' ||
       cmdName === 'strikethrough' ||
-      cmdName === 'underline' ||
       cmdName === 'code'
     ) {
       toggleMarkdownFormat(view, cmdName);
+    } else if (cmdName === 'underline') {
+      toggleUnderlineFormat(view, 'cycle');
+    } else if (cmdName.startsWith('underline')) {
+      toggleUnderlineFormat(
+        view,
+        cmdName.slice('underline'.length).toLowerCase()
+      );
     } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
     else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
@@ -5627,6 +5766,7 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'link') openLinkInsertionDialog();
     else if (cmdName === 'callout') openCalloutInsertionDialog();
     else if (cmdName === 'insertTable') cmWrapSelection(view, '\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '');
+    else if (cmdName === 'autoHeading') applyAutoHeading(view);
     else if (cmdName === 'heading') {
       const val = options ? options.value : '';
       if (val === 'paragraph') cmToggleLinePrefix(view, '');
@@ -5638,9 +5778,7 @@ function execCmd(cmdName, options) {
       else if (val === 'heading6') cmToggleLinePrefix(view, '###### ');
     } else if (cmdName === 'highlight') {
       const val = options ? options.value : null;
-      if (val === 'yellowMarker' || val === 'greenMarker' || val === 'pinkMarker' || val === 'blueMarker' || val === 'redPen' || val === 'greenPen') {
-        toggleMarkdownFormat(view, val);
-      }
+      toggleWmdxColorFormat(view, val);
     }
   }
 }
@@ -5850,8 +5988,7 @@ function refreshToolbarSyntaxState(view = activeAdapter?.view) {
     lists: Boolean(state.bulletedList || state.numberedList || state.todoList),
     format: Boolean(
       state.bold || state.italic || state.strikethrough || state.underline ||
-      state.code || state.yellowMarker || state.greenMarker || state.pinkMarker ||
-      state.blueMarker || state.redPen || state.greenPen
+      state.code || state.highlightCycle || state.penCycle
     )
   };
   for (const [group, active] of Object.entries(groupStates)) {
@@ -6501,6 +6638,8 @@ function setupTocGestureAndPanel(scrollDOM) {
   const documentStatsRow = document.querySelector('#toc-document-stats');
   const tocSearchInput = document.querySelector('#toc-search-input');
   if (!panel || !overlay) return () => {};
+  panel.classList.toggle('panel-disabled', !tocPanelEnabled);
+  overlay.classList.toggle('panel-disabled', !tocPanelEnabled);
 
   let pendingRefreshTimer = null;
   let tocScrollFrame = null;
@@ -6560,6 +6699,8 @@ function setupTocGestureAndPanel(scrollDOM) {
   };
 
   const openToc = () => {
+    if (!tocPanelEnabled) return;
+    window.leftPanelController?.close?.();
     if (activeAdapter?.view?.contentDOM) {
       activeAdapter.view.contentDOM.blur();
     }
@@ -6585,6 +6726,7 @@ function setupTocGestureAndPanel(scrollDOM) {
     panel.classList.remove('open');
     overlay.classList.remove('open');
   };
+  window.closeTocPanel = closeToc;
 
   overlay.onclick = closeToc;
   const onDocumentNameClick = () => beginDocumentNameEdit();
@@ -6663,44 +6805,16 @@ function setupTocGestureAndPanel(scrollDOM) {
     globalToggleBtn.onclick = globalToggleHandler;
   }
 
-  let touchStartX = 0;
-  let touchStartY = 0;
-  let isSwiping = false;
-
-  const onTouchStart = (e) => {
-    const popupStrip = document.querySelector('#popup-toolbar-strip');
-    if (popupStrip && popupStrip.contains(e.target)) {
-      isSwiping = false;
-      return;
-    }
-    if (e.touches.length === 1) {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-      isSwiping = true;
-    }
-  };
-
-  const onTouchEnd = (e) => {
-    if (!isSwiping || e.changedTouches.length !== 1) return;
-    isSwiping = false;
-    const deltaX = e.changedTouches[0].clientX - touchStartX;
-    const deltaY = e.changedTouches[0].clientY - touchStartY;
-
-    const isSelectionActive = window.getSelection() && window.getSelection().toString().length > 0;
-    if (!isSelectionActive && Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
-      const screenWidth = win.innerWidth;
-      const isRightEdgeTouch = touchStartX >= (screenWidth * 0.80);
-
-      if (deltaX < 0 && !panel.classList.contains('open') && isRightEdgeTouch) {
-        openToc();
-      } else if (deltaX > 0 && panel.classList.contains('open')) {
-        closeToc();
-      }
-    }
-  };
-  const touchListenerOptions = { passive: true };
-  win.addEventListener('touchstart', onTouchStart, touchListenerOptions);
-  win.addEventListener('touchend', onTouchEnd, touchListenerOptions);
+  const cleanupPanelSwipe = setupPanelSwipe({
+    panel,
+    overlay,
+    side: 'right',
+    windowObject: win,
+    isOpen: () => panel.classList.contains('open'),
+    isEnabled: () => tocPanelEnabled,
+    onOpen: openToc,
+    onClose: closeToc
+  });
 
   function buildTocTree() {
     if (!tocContent || !activeAdapter) return;
@@ -7016,8 +7130,7 @@ function setupTocGestureAndPanel(scrollDOM) {
   refreshOpenTocPanel = scheduleOpenPanelRefresh;
 
   return () => {
-    win.removeEventListener('touchstart', onTouchStart, touchListenerOptions);
-    win.removeEventListener('touchend', onTouchEnd, touchListenerOptions);
+    cleanupPanelSwipe();
     if (pendingRefreshTimer !== null) {
       win.clearTimeout(pendingRefreshTimer);
       pendingRefreshTimer = null;
@@ -7075,6 +7188,7 @@ function toggleBottomToolbar(forceState) {
     document.body.classList.add('toolbar-hidden');
     if (toggleBtn) toggleBtn.innerHTML = '⟨';
   }
+  window.leftPanelController?.refreshLayout?.();
 }
 
 function setupFloatingToggle() {
@@ -7129,6 +7243,9 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as');
+    } else if (parseAndMatchHotkey(e, customHotkeys.save_tabs)) {
+      e.preventDefault();
+      void window.leftPanelController?.saveTabSession?.();
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as_textpack)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack');
@@ -7168,6 +7285,11 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.bold)) { e.preventDefault(); execCmd('bold'); }
     else if (parseAndMatchHotkey(e, customHotkeys.italic)) { e.preventDefault(); execCmd('italic'); }
     else if (parseAndMatchHotkey(e, customHotkeys.underline)) { e.preventDefault(); execCmd('underline'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineSolid)) { e.preventDefault(); execCmd('underlineSolid'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineDotted)) { e.preventDefault(); execCmd('underlineDotted'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineDashed)) { e.preventDefault(); execCmd('underlineDashed'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineDouble)) { e.preventDefault(); execCmd('underlineDouble'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.underlineWavy)) { e.preventDefault(); execCmd('underlineWavy'); }
     else if (parseAndMatchHotkey(e, customHotkeys.strikethrough)) { e.preventDefault(); execCmd('strikethrough'); }
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
@@ -7183,6 +7305,7 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.horizontalLine)) { e.preventDefault(); execCmd('horizontalLine'); }
 
     // Headings shortcuts
+    else if (parseAndMatchHotkey(e, customHotkeys.autoHeading)) { e.preventDefault(); execCmd('autoHeading'); }
     else if (parseAndMatchHotkey(e, customHotkeys.heading_p)) { e.preventDefault(); execCmd('heading', { value: 'paragraph' }); }
     else if (parseAndMatchHotkey(e, customHotkeys.heading_1)) { e.preventDefault(); execCmd('heading', { value: 'heading1' }); }
     else if (parseAndMatchHotkey(e, customHotkeys.heading_2)) { e.preventDefault(); execCmd('heading', { value: 'heading2' }); }
@@ -7191,14 +7314,17 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.heading_5)) { e.preventDefault(); execCmd('heading', { value: 'heading5' }); }
     else if (parseAndMatchHotkey(e, customHotkeys.heading_6)) { e.preventDefault(); execCmd('heading', { value: 'heading6' }); }
 
-    // Highlight Markers & Pens
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_yellow)) { e.preventDefault(); execCmd('highlight', { value: 'yellowMarker' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_green)) { e.preventDefault(); execCmd('highlight', { value: 'greenMarker' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_pink)) { e.preventDefault(); execCmd('highlight', { value: 'pinkMarker' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_blue)) { e.preventDefault(); execCmd('highlight', { value: 'blueMarker' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_red_pen) || parseAndMatchHotkey(e, customHotkeys.highlight_red)) { e.preventDefault(); execCmd('highlight', { value: 'redPen' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_green_pen)) { e.preventDefault(); execCmd('highlight', { value: 'greenPen' }); }
-    else if (parseAndMatchHotkey(e, customHotkeys.highlight_remove)) { e.preventDefault(); execCmd('highlight', { value: null }); }
+    // Wmdx highlight and pen cycles, plus optional color-specific shortcuts.
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightCycle)) { e.preventDefault(); execCmd('highlight', { value: 'highlightCycle' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightYellow)) { e.preventDefault(); execCmd('highlight', { value: 'highlightYellow' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightGreen)) { e.preventDefault(); execCmd('highlight', { value: 'highlightGreen' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightPink)) { e.preventDefault(); execCmd('highlight', { value: 'highlightPink' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.highlightBlue)) { e.preventDefault(); execCmd('highlight', { value: 'highlightBlue' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penCycle)) { e.preventDefault(); execCmd('highlight', { value: 'penCycle' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penRed)) { e.preventDefault(); execCmd('highlight', { value: 'penRed' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penGreen)) { e.preventDefault(); execCmd('highlight', { value: 'penGreen' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penBlue)) { e.preventDefault(); execCmd('highlight', { value: 'penBlue' }); }
+    else if (parseAndMatchHotkey(e, customHotkeys.penPurple)) { e.preventDefault(); execCmd('highlight', { value: 'penPurple' }); }
   }, true);
 }
 
@@ -7212,6 +7338,9 @@ window.editorBridge = {
   },
   setScrollPosition: function(scrollTop) {
     if (activeAdapter) activeAdapter.setScrollPosition(scrollTop);
+  },
+  getScrollPosition: function() {
+    return activeAdapter?.getScrollPosition?.() ?? null;
   },
   openLinkInsertionDialog: function() {
     openLinkInsertionDialog();
@@ -7232,24 +7361,41 @@ window.editorBridge = {
     return currentEditorMode;
   },
   applyBottomToolbarConfig: function(rawConfig) {
-    bottomToolbarConfig = normalizeBottomToolbarConfig(rawConfig);
+    const nextConfig = normalizeBottomToolbarConfig(rawConfig);
+    if (JSON.stringify(nextConfig) === JSON.stringify(bottomToolbarConfig)) return;
+    bottomToolbarConfig = nextConfig;
     hidePopupStrip();
     setupGroupedControlBar();
   },
   applyFloatingToolbarConfig: function(rawConfig) {
-    floatingToolbarConfig = normalizeBottomToolbarConfig(rawConfig);
+    const nextConfig = normalizeBottomToolbarConfig(rawConfig);
+    if (JSON.stringify(nextConfig) === JSON.stringify(floatingToolbarConfig)) return;
+    floatingToolbarConfig = nextConfig;
     hidePopupStrip();
     setupFloatingSelectionToolbar();
   },
   applyToolbarConfigs: function(bottomRawConfig, floatingRawConfig) {
-    bottomToolbarConfig = normalizeBottomToolbarConfig(bottomRawConfig);
-    floatingToolbarConfig = normalizeBottomToolbarConfig(floatingRawConfig);
+    const nextBottomConfig = normalizeBottomToolbarConfig(bottomRawConfig);
+    const nextFloatingConfig = normalizeBottomToolbarConfig(floatingRawConfig);
+    const bottomChanged =
+      JSON.stringify(nextBottomConfig) !== JSON.stringify(bottomToolbarConfig);
+    const floatingChanged =
+      JSON.stringify(nextFloatingConfig) !== JSON.stringify(floatingToolbarConfig);
+    if (!bottomChanged && !floatingChanged) return;
+    bottomToolbarConfig = nextBottomConfig;
+    floatingToolbarConfig = nextFloatingConfig;
     hidePopupStrip();
-    setupGroupedControlBar();
+    if (bottomChanged) setupGroupedControlBar();
+    if (floatingChanged) setupFloatingSelectionToolbar();
   },
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
     const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
+    setWmdxUnderlineSyntaxEnabled(prefs.pref_underline_use_wmdx_syntax !== false);
+    if (activeAdapter?.view) {
+      activeAdapter.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
+      refreshToolbarSyntaxState(activeAdapter.view);
+    }
 
     // Set a CSS custom property; only append a unit to a plain numeric value.
     const setCssVar = (varName, value, unit = '') => {
@@ -7412,6 +7558,33 @@ window.editorBridge = {
     setCssVar('--link-decoration-line', linkStyle === 'none' ? 'none' : 'underline');
     setCssVar('--link-decoration-style', linkStyle === 'none' ? 'solid' : linkStyle);
     setCssVar('--link-decoration-thickness', prefs.pref_link_underline_thickness, 'px');
+    for (const style of ['solid', 'dotted', 'dashed', 'double', 'wavy']) {
+      setCssVar(
+        `--underline-${style}-color`,
+        androidArgbToCss(prefs[`pref_underline_${style}_color`])
+      );
+      setCssVar(
+        `--underline-${style}-thickness`,
+        prefs[`pref_underline_${style}_thickness`],
+        'px'
+      );
+    }
+    for (const color of ['yellow', 'green', 'pink', 'blue']) {
+      setCssVar(
+        `--highlight-${color}-background`,
+        androidArgbToCss(prefs[`pref_highlight_${color}_background_color`])
+      );
+      setCssVar(
+        `--highlight-${color}-text`,
+        androidArgbToCss(prefs[`pref_highlight_${color}_text_color`])
+      );
+    }
+    for (const color of ['red', 'green', 'blue', 'purple']) {
+      setCssVar(
+        `--pen-${color}-text`,
+        androidArgbToCss(prefs[`pref_pen_${color}_text_color`])
+      );
+    }
     setCssVar('--code-color', prefs.pref_code_color);
     setCssVar('--code-bg-color', prefs.pref_code_bg_color);
     setCssVar('--code-padding', prefs.pref_code_padding, 'px');
@@ -7707,25 +7880,31 @@ window.editorBridge = {
     setCssVar('--hr-margin-bottom', prefs.pref_hr_margin_bottom, 'px');
 
     // Toolbar
-    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled !== false;
+    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled === true;
     if (!floatingToolbarEnabled && activePopupSurface === 'floating') {
       hidePopupStrip();
     }
     if (Object.prototype.hasOwnProperty.call(prefs, 'pref_toolbar_bottom_config')) {
-      bottomToolbarConfig = normalizeBottomToolbarConfig(
+      const nextBottomConfig = normalizeBottomToolbarConfig(
         prefs.pref_toolbar_bottom_config
       );
-      hidePopupStrip();
-      setupGroupedControlBar();
+      if (JSON.stringify(nextBottomConfig) !== JSON.stringify(bottomToolbarConfig)) {
+        bottomToolbarConfig = nextBottomConfig;
+        hidePopupStrip();
+        setupGroupedControlBar();
+      }
     }
     const floatingConfigPreference = prefs.pref_toolbar_floating_config ??
       prefs.pref_toolbar_bottom_config;
     if (floatingConfigPreference !== undefined) {
-      floatingToolbarConfig = normalizeBottomToolbarConfig(
+      const nextFloatingConfig = normalizeBottomToolbarConfig(
         floatingConfigPreference
       );
-      hidePopupStrip();
-      setupFloatingSelectionToolbar();
+      if (JSON.stringify(nextFloatingConfig) !== JSON.stringify(floatingToolbarConfig)) {
+        floatingToolbarConfig = nextFloatingConfig;
+        hidePopupStrip();
+        setupFloatingSelectionToolbar();
+      }
     }
     setCssVar('--toolbar-bg', androidArgbToCss(prefs.pref_toolbar_bg_color));
     setCssVar('--toolbar-icon-color', prefs.pref_toolbar_icon_color);
@@ -7837,6 +8016,13 @@ window.editorBridge = {
     }
     tocExpandLevelsPerTap = nextTocExpandLevelsPerTap;
     tocHideFileExtension = prefs.pref_toc_hide_file_extension === true;
+    const nextTocPanelEnabled = prefs.pref_toc_panel_enabled !== false;
+    if (tocPanelEnabled && !nextTocPanelEnabled) window.closeTocPanel?.();
+    tocPanelEnabled = nextTocPanelEnabled;
+    document.querySelector('#toc-panel')
+      ?.classList.toggle('panel-disabled', !tocPanelEnabled);
+    document.querySelector('#toc-overlay')
+      ?.classList.toggle('panel-disabled', !tocPanelEnabled);
     refreshTocDocumentNameField();
     setCssVar('--toc-panel-bg-color', androidArgbToCss(prefs.pref_toc_panel_bg_color));
     setCssVar('--toc-panel-bg-opacity', prefs.pref_toc_panel_bg_opacity ?? 100, '%');
@@ -7857,6 +8043,26 @@ window.editorBridge = {
     setCssVar('--toc-toggle-active-bg-color', androidArgbToCss(prefs.pref_toc_toggle_active_bg_color));
     setCssVar('--toc-toggle-active-icon-color', androidArgbToCss(prefs.pref_toc_toggle_active_icon_color));
     setCssVar('--toc-row-spacing', prefs.pref_toc_row_spacing ?? 4, 'px');
+    const leftPanelWidth = Number(prefs.pref_left_panel_width ?? 80);
+    setCssVar('--left-panel-width', Math.max(50, Math.min(90, leftPanelWidth)), 'vw');
+    setCssVar('--left-panel-bg-color', androidArgbToCss(prefs.pref_left_panel_bg_color));
+    setCssVar('--left-panel-bg-opacity', prefs.pref_left_panel_bg_opacity ?? 100, '%');
+    setCssVar('--left-panel-border-color', androidArgbToCss(prefs.pref_left_panel_border_color));
+    setCssVar('--left-panel-text-color', androidArgbToCss(prefs.pref_left_panel_text_color));
+    setCssVar(
+      '--left-panel-active-tab-text-color',
+      androidArgbToCss(prefs.pref_left_panel_active_tab_text_color)
+    );
+    setCssVar(
+      '--left-panel-active-tab-bg-color',
+      androidArgbToCss(prefs.pref_left_panel_active_tab_bg_color)
+    );
+    setCssVar('--left-panel-font-size', prefs.pref_left_panel_font_size ?? 16, 'px');
+    setCssVar('--left-panel-font-weight', prefs.pref_left_panel_font_weight ?? 600);
+    setCssVar('--left-panel-row-spacing', prefs.pref_left_panel_row_spacing ?? 2, 'px');
+    const leftPanelOverlayDim = Number(prefs.pref_left_panel_overlay_dim ?? 50);
+    setCssVar('--left-panel-overlay-dim', Math.max(0, Math.min(90, leftPanelOverlayDim)) / 100);
+    window.leftPanelController?.applyPreferences?.(prefs);
     const tocIndentSpacing = Number(prefs.pref_toc_indent_spacing ?? 12);
     for (let level = 1; level <= 6; level++) {
       setCssVar(`--toc-level-${level}-indent`, 8 + ((level - 1) * tocIndentSpacing), 'px');
@@ -8026,22 +8232,33 @@ window.editorBridge = {
     if (activeOverlay) {
       activeOverlay.blur();
     }
-    if (pendingMarkdown !== null) return pendingMarkdown;
     if (typeof activeAdapter !== 'undefined' && activeAdapter) return activeAdapter.getMarkdown();
+    if (pendingMarkdown !== null) return pendingMarkdown;
     return '';
   },
   setMarkdown: function(markdownText) {
     if (typeof activeAdapter !== 'undefined' && activeAdapter) {
+      pendingMarkdown = null;
       isProgrammaticChange = true;
       try {
         activeAdapter.setMarkdown(markdownText || '');
       } catch (e) {
         console.error('Error setting markdown:', e);
       }
+      window.leftPanelController?.onNativeDocumentLoaded?.(markdownText || '');
+      window.AndroidNative?.restoreNativeCursorAndScrollState?.(
+        activeAdapter.documentSessionId
+      );
       setTimeout(() => { isProgrammaticChange = false; }, 50);
     } else {
       pendingMarkdown = markdownText;
     }
+  },
+  persistCurrentScrollPosition: function() {
+    activeAdapter?.persistScrollPosition?.();
+  },
+  dismissToolbarPopups: function() {
+    hidePopupStrip();
   },
   toggleLineWrap: function() {
     isLineWrapEnabled = !isLineWrapEnabled;
@@ -8219,6 +8436,7 @@ window.editorBridge = {
     applyFontCategory('Code', fontCodeData, '--code-font-family', fontFamilies.code || 'default');
     applyFontCategory('CalloutHeader', fontCalloutHeaderData, '--callout-header-font-family', fontFamilies.calloutHeader || 'default');
     applyFontCategory('Toc', fontTocData, '--toc-font-family', fontFamilies.toc || 'default');
+    applyFontCategory('LeftPanel', fontFiles.leftPanel, '--left-panel-font-family', fontFamilies.leftPanel || 'default');
     applyFontCategory('Footnote', fontFootnoteData, '--footnote-font-family', bodyFontFamily);
     applyFontCategory('Blockquote', fontFiles.blockquote, '--blockquote-font-family', fontFamilies.blockquote || 'default');
     applyFontCategory('Callout', fontFiles.callout, '--callout-font-family', fontFamilies.callout || 'default');
@@ -8892,6 +9110,7 @@ export function setupNavigationDiagnostics(view) {
 window.addEventListener('DOMContentLoaded', () => {
   setupFloatingToggle();
   setupKeyboardShortcuts();
+  setupLeftPanel();
   if (window.AndroidNative && typeof window.AndroidNative.onHostReady === 'function') {
     window.AndroidNative.onHostReady();
   } else {

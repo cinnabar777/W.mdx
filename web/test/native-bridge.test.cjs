@@ -10,6 +10,30 @@ const mainActivityPath = path.join(
   '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'
 );
 const mainActivitySource = fs.readFileSync(mainActivityPath, 'utf8');
+const textPackManagerSource = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/TextPackManager.kt'),
+  'utf8'
+);
+const leftPanelSource = fs.readFileSync(
+  path.join(__dirname, '../src/leftPanel.js'),
+  'utf8'
+);
+const leftPanelHtml = fs.readFileSync(
+  path.join(__dirname, '../index.html'),
+  'utf8'
+);
+const leftPanelSettingsXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_left_panel.xml'),
+  'utf8'
+);
+const tocSettingsXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_toc.xml'),
+  'utf8'
+);
+const resetPreferencesSource = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
+  'utf8'
+);
 const settingsActivityPath = path.join(
   __dirname,
   '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'
@@ -88,8 +112,10 @@ test('external-open URI permission flags survive until the editor is ready', () 
 test('returning to the app keeps the keyboard hidden until the user touches the editor', () => {
   assert.ok(mainActivitySource.includes('suppressImeUntilUserTouch = true'));
   assert.ok(mainActivitySource.includes('SOFT_INPUT_STATE_ALWAYS_HIDDEN'));
-  assert.ok(mainActivitySource.includes('webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 180)'));
-  assert.ok(mainActivitySource.includes('webView.postDelayed({ hideImeWhileResumeIsSuppressed(generation) }, 500)'));
+  assert.ok(mainActivitySource.includes('SOFT_INPUT_ADJUST_NOTHING'));
+  assert.match(mainActivitySource, /restoreImeResizeAfterResume\(generation\)/);
+  assert.match(mainActivitySource, /stableHiddenChecks < 2/);
+  assert.match(mainActivitySource, /SOFT_INPUT_ADJUST_RESIZE or/);
   assert.ok(mainActivitySource.includes('event.actionMasked == MotionEvent.ACTION_DOWN'));
   assert.ok(mainActivitySource.includes('suppressImeUntilUserTouch = false'));
   assert.ok(mainActivitySource.includes('SOFT_INPUT_STATE_UNSPECIFIED'));
@@ -115,7 +141,7 @@ test('auto-save snapshots the editor before pausing WebView and runs once per le
 });
 
 test('editor edits publish the latest Markdown snapshot before app lifecycle save', () => {
-  assert.match(source, /onContentChanged\(update\.state\.doc\.toString\(\), this\.revision\)/);
+  assert.match(source, /onContentChanged\(\s*update\.state\.doc\.toString\(\),\s*this\.revision,\s*this\.documentSessionId\s*\)/);
   assert.match(mainActivitySource, /@Volatile private var latestMarkdownContent: String\? = null/);
   assert.match(mainActivitySource, /@Volatile private var isDirty: Boolean = false/);
   assert.match(mainActivitySource, /saveFileToUri\(uri, cachedMarkdownText = cachedMarkdownContent\)/);
@@ -128,6 +154,98 @@ test('cached leave-save writes without waiting for evaluateJavascript callback',
   const saveBody = mainActivitySource.slice(saveStart, saveEnd);
   assert.ok(saveBody.indexOf('if (cachedMarkdownText != null)') < saveBody.indexOf('webView.evaluateJavascript'));
   assert.match(saveBody, /source=\$snapshotSource/);
+});
+
+test('asynchronous saves are rejected if the active document session changed', () => {
+  const saveStart = mainActivitySource.indexOf('private fun saveFileToUri(');
+  const saveEnd = mainActivitySource.indexOf('private fun handleNewWindow()', saveStart);
+  const saveBody = mainActivitySource.slice(saveStart, saveEnd);
+  assert.match(mainActivitySource, /pendingCreateDocumentSessionId = currentDocumentSessionId/);
+  assert.match(mainActivitySource, /pref_toolbar_default_corrected/);
+  assert.match(saveBody, /saveSessionId != currentDocumentSessionId/);
+  assert.match(saveBody, /return@persistSnapshot/);
+  assert.match(saveBody, /onDocumentSavedAs\?\.\(\$escapedOldUri, \$escapedUri, \$escapedName, \$escapedSessionId\)/);
+});
+
+test('save completion only clears the tab matching the saved file identity', () => {
+  const leftPanelSource = fs.readFileSync(
+    path.join(__dirname, '../src/leftPanel.js'),
+    'utf8'
+  );
+  assert.match(leftPanelSource, /onDocumentSavedAs\(oldUri, newUri, name, sessionId\)/);
+  const saveCallbackStart = leftPanelSource.indexOf('onNativeDocumentSaved(uri)');
+  const saveCallbackEnd = leftPanelSource.indexOf('onWindowClosing()', saveCallbackStart);
+  const saveCallback = leftPanelSource.slice(saveCallbackStart, saveCallbackEnd);
+  assert.match(saveCallback, /tabs\.find\(\(item\) => item\.uri === uri\)/);
+  assert.doesNotMatch(saveCallback, /activeTab\(\)/);
+  assert.match(mainActivitySource, /save_skipped_unconfirmed_empty_snapshot/);
+});
+
+test('dirty file tabs save on switch independently of the leave-autosave preference', () => {
+  const leftPanelSource = fs.readFileSync(
+    path.join(__dirname, '../src/leftPanel.js'),
+    'utf8'
+  );
+  const persistStart = leftPanelSource.indexOf('const persistDirtyTab =');
+  const leaveSaveStart = leftPanelSource.indexOf('const autoSaveDirtyTab =', persistStart);
+  const persistBody = leftPanelSource.slice(persistStart, leaveSaveStart);
+  const switchStart = leftPanelSource.indexOf('const activateTab =');
+  const switchEnd = leftPanelSource.indexOf('const activateUntitledTab =', switchStart);
+  const switchBody = leftPanelSource.slice(switchStart, switchEnd);
+
+  assert.doesNotMatch(persistBody, /isAutoSaveOnLeaveEnabled/);
+  assert.match(switchBody, /persistDirtyTab\(outgoingTab\)/);
+  assert.doesNotMatch(switchBody, /activeSection\s*=\s*'tabs'/);
+  assert.match(leftPanelSource, /const autoSaveDirtyTab = \(tab\) => \{\s*if \(native\?\.isAutoSaveOnLeaveEnabled/);
+});
+
+test('tab snapshots read the live editor and reject stale or empty state', () => {
+  const leftPanelSource = fs.readFileSync(
+    path.join(__dirname, '../src/leftPanel.js'),
+    'utf8'
+  );
+  const getMarkdownStart = source.indexOf('getMarkdown: function()');
+  const setMarkdownStart = source.indexOf('setMarkdown: function()', getMarkdownStart);
+  const getMarkdownBody = source.slice(getMarkdownStart, setMarkdownStart);
+  const syncStart = leftPanelSource.indexOf('const syncActiveTab =');
+  const syncEnd = leftPanelSource.indexOf('const refreshRestoredTabFromStorage', syncStart);
+  const syncBody = leftPanelSource.slice(syncStart, syncEnd);
+  const activateStart = leftPanelSource.indexOf('const activateTab =');
+  const activateEnd = leftPanelSource.indexOf('const activateUntitledTab =', activateStart);
+  const activateBody = leftPanelSource.slice(activateStart, activateEnd);
+
+  assert.ok(
+    getMarkdownBody.indexOf('return activeAdapter.getMarkdown()') <
+      getMarkdownBody.indexOf('if (pendingMarkdown !== null)')
+  );
+  assert.match(source, /activeAdapter = adapter;\s*if \(pendingMarkdown !== null\)/);
+  assert.match(source, /window\.editorBridge\?\.setMarkdown\?\.\(latestPendingMarkdown\)/);
+  assert.match(source, /pendingMarkdown = null;\s*isProgrammaticChange = true/);
+  assert.match(syncBody, /switchingTab \|\| loadedTabId !== activeTabId/);
+  assert.match(
+    syncBody,
+    /sameDocumentUri\(context\?\.uri \|\| null, tab\.uri \|\| null\)/
+  );
+  assert.match(syncBody, /markdown === '' && tab\.markdown !== ''/);
+  assert.match(activateBody, /switchingTab = false;\s*renderTabs\(\)/);
+  assert.doesNotMatch(activateBody, /requestAnimationFrame\(\(\) => \{\s*switchingTab = false/);
+});
+
+test('scroll positions are stored by file URI and reused across windows', () => {
+  const leftPanelSource = fs.readFileSync(
+    path.join(__dirname, '../src/leftPanel.js'),
+    'utf8'
+  );
+  const historyKeyStart = mainActivitySource.indexOf('private fun currentDocumentHistoryKey()');
+  const historyKeyEnd = mainActivitySource.indexOf('private fun persistDocumentUriPermission', historyKeyStart);
+  const historyKey = mainActivitySource.slice(historyKeyStart, historyKeyEnd);
+  const scrollSaveStart = mainActivitySource.indexOf('fun onScrollChanged(');
+  const scrollSaveEnd = mainActivitySource.indexOf('\n        }', scrollSaveStart);
+  const scrollSave = mainActivitySource.slice(scrollSaveStart, scrollSaveEnd);
+
+  assert.match(historyKey, /currentFileUri\?\.toString\(\)/);
+  assert.match(scrollSave, /cursor_scroll_\$\{currentDocumentHistoryKey\(\)\}/);
+  assert.match(leftPanelSource, /persistCurrentScrollPosition\?\.\(\)/);
 });
 
 test('native keyboard request gives WebView touch focus before showing IME', () => {
@@ -443,5 +561,223 @@ test('every visible hotkey preference reaches a matching editor action', () => {
   }
   assert.ok(keyboardHandler.includes("execCmd('InsertFootnote')"));
   assert.ok(keyboardHandler.includes("setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source')"));
+});
+
+test('left panel search options reach native search and the file filters', () => {
+  assert.match(leftPanelHtml, /id="left-panel-search-whole-words"[\s\S]*?<span>word<\/span>/);
+  assert.match(leftPanelHtml, /id="left-panel-search-contents"[\s\S]*?<span>in files<\/span>/);
+  assert.match(leftPanelHtml, /id="left-panel-search-markdown-only"[\s\S]*?<span>\*\.md<\/span>/);
+  assert.match(
+    leftPanelSource,
+    /searchLeftPanelFiles\(\s*query,\s*Boolean\(searchContents\?\.checked\),\s*Boolean\(searchWholeWords\?\.checked\),\s*Boolean\(searchMarkdownOnly\?\.checked\),\s*requestId/s
+  );
+  assert.match(
+    mainActivitySource,
+    /fun searchLeftPanelFiles\(\s*query: String,\s*includeContents: Boolean,\s*wholeWords: Boolean,\s*markdownOnly: Boolean,\s*requestId: Int/s
+  );
+  assert.match(
+    mainActivitySource,
+    /markdownExtensions = setOf\("\.md", "\.textpack", "\.mdx", "\.textpack\.zip"\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /Regex\(\s*"\(\^\|\[\^\\\\p\{L\}\\\\p\{N\}_\]\).*Regex\.escape\(needle\).*IGNORE_CASE/s
+  );
+});
+
+test('search paths are hidden by default and controlled by left panel settings', () => {
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_show_search_path"[\s\S]*?app:defaultValue="false"/
+  );
+  assert.match(
+    resetPreferencesSource,
+    /key == "pref_left_panel_show_search_path" -> false/
+  );
+  assert.match(leftPanelSource, /if \(showSearchPath && result\.path\)/);
+  assert.match(
+    leftPanelSource,
+    /prefs\?\.pref_left_panel_show_search_path === true/
+  );
+});
+
+test('left panel search checkboxes use list typography and todo checkbox colors', () => {
+  assert.match(
+    leftPanelHtml,
+    /\.left-panel-search-option\s*\{[\s\S]*?font-family:\s*var\(--list-font-family[\s\S]*?font-size:\s*var\(--list-font-size[\s\S]*?font-weight:\s*var\(--list-font-weight/
+  );
+  assert.match(leftPanelHtml, /border:\s*1\.5px solid var\(--todo-border-color/);
+  assert.match(leftPanelHtml, /background:\s*var\(--todo-accent-color/);
+  assert.match(leftPanelHtml, /border:\s*solid var\(--todo-checkmark-color/);
+});
+
+test('search options stay in one row', () => {
+  assert.match(leftPanelHtml, /class="left-panel-search-options"[\s\S]*?id="left-panel-search-whole-words"[\s\S]*?id="left-panel-search-contents"[\s\S]*?id="left-panel-search-markdown-only"/);
+  assert.match(leftPanelHtml, /\.left-panel-search-options\s*\{[\s\S]*?display:\s*flex/);
+  assert.match(leftPanelHtml, /\.left-panel-search-options\s*\{[\s\S]*?flex-wrap:\s*nowrap/);
+});
+
+test('panel and tab controls default enabled, and tab labels hide extensions', () => {
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_enabled"[\s\S]*?app:defaultValue="true"/
+  );
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_tabs_enabled"[\s\S]*?app:defaultValue="true"/
+  );
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_hide_file_extension"[\s\S]*?app:defaultValue="true"/
+  );
+  assert.match(
+    tocSettingsXml,
+    /app:key="pref_toc_panel_enabled"[\s\S]*?app:defaultValue="true"/
+  );
+  assert.match(
+    resetPreferencesSource,
+    /key == "pref_left_panel_hide_file_extension" -> true/
+  );
+  assert.match(
+    leftPanelSource,
+    /prefs\?\.pref_left_panel_tabs_enabled !== false/
+  );
+  assert.match(leftPanelSource, /displayTabName\(tab\.name\)/);
+  assert.match(leftPanelSource, /if \(!panelEnabled && panel\.classList\.contains\('open'\)\) closePanel\(\)/);
+  assert.match(source, /if \(!tocPanelEnabled\) return/);
+});
+
+test('active tab text and background colors are configurable with existing defaults preserved', () => {
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_active_tab_text_color"[\s\S]*?app:defaultValue="default"/
+  );
+  assert.match(
+    leftPanelSettingsXml,
+    /app:key="pref_left_panel_active_tab_bg_color"[\s\S]*?app:defaultValue="default"/
+  );
+  assert.match(
+    resetPreferencesSource,
+    /key == "pref_left_panel_active_tab_text_color" \|\|\s*key == "pref_left_panel_active_tab_bg_color" -> "default"/
+  );
+  assert.match(
+    resetPreferencesSource,
+    /"pref_left_panel_active_tab_bg_color" -> \{[\s\S]*?ColorPickerDialog\.parseHexColor\(panelTextColor, fallback\)/
+  );
+  assert.match(
+    leftPanelHtml,
+    /\.left-panel-row\.selected\s*\{[\s\S]*?--left-panel-active-tab-text-color[\s\S]*?--left-panel-active-tab-bg-color/
+  );
+  assert.match(source, /--left-panel-active-tab-text-color/);
+  assert.match(source, /--left-panel-active-tab-bg-color/);
+});
+
+test('folder file actions keep open, open-in-new-tab, rename, and delete distinct', () => {
+  assert.match(leftPanelSource, /\['Rename', \(\) => renameFolderFile\(entry\)\]/);
+  assert.match(leftPanelSource, /\['Open in new tab', \(\) => openDocument\(entry\.uri\)\]/);
+  assert.match(leftPanelSource, /\['Open', \(\) => openDocument\(entry\.uri, \{ replaceActive: true \}\)\]/);
+  assert.match(leftPanelSource, /deleteTabFile\(openTab \|\| \{/);
+  assert.match(
+    mainActivitySource,
+    /fun readLeftPanelDocumentForNavigation[\s\S]*?synchronized\(documentHistoryLock\)[\s\S]*?currentFileUri\?\.let \{ current -> documentHistoryStack\.push\(current\) \}[\s\S]*?documentForwardStack\.clear\(\)/
+  );
+});
+
+test('tab group membership persists alongside file tab state', () => {
+  assert.match(
+    leftPanelSource,
+    /JSON\.stringify\(\{ activeTabId, tabs, groups \}\)/
+  );
+  assert.match(leftPanelSource, /groupId: groups\.some\(\(group\) => group\.id === savedTab\.groupId\)/);
+  assert.match(leftPanelSource, /dissolveTabGroup\(tabs, groups, group\.id\)/);
+});
+
+test('document history is stored and restored with the active tab', () => {
+  assert.match(leftPanelSource, /documentHistoryBack: \[\]/);
+  assert.match(leftPanelSource, /documentHistoryBack: Array\.isArray\(savedTab\.documentHistoryBack\)/);
+  assert.match(leftPanelSource, /captureTabHistoryState\(tab\)/);
+  assert.match(leftPanelSource, /serializeTabHistoryState\(next\)/);
+  assert.match(leftPanelSource, /pendingTabHistoryNavigation && current/);
+  assert.match(mainActivitySource, /fun getDocumentNavigationHistory\(\)/);
+  assert.match(mainActivitySource, /restoreDocumentHistoryState\(historyStateJson\)/);
+  assert.match(
+    mainActivitySource,
+    /beginTabHistoryNavigation\(\)\s*openFile\(uri, rememberHistory = false, skipExistingWindowFocus = true\)/
+  );
+});
+
+test('opening a file already in another tab or window focuses its existing owner', () => {
+  const windowRegistrySource = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/WindowRegistry.kt'),
+    'utf8'
+  );
+  assert.match(leftPanelSource, /native\?\.focusOpenDocument\?\.\(uri\) === true/);
+  assert.match(leftPanelSource, /focusDocumentUri\(uri\)/);
+  assert.match(leftPanelSource, /sameDocumentUri\(tab\.uri, uri\)/);
+  assert.match(leftPanelSource, /normalizeDocumentUri/);
+  assert.match(mainActivitySource, /fun registerLeftPanelOpenTabUris\(urisJson: String\)/);
+  assert.match(windowRegistrySource, /openTabUris\(context, taskId\)/);
+  assert.match(windowRegistrySource, /activity\.requestExistingDocumentFocus\(targetUri\)/);
+  assert.match(windowRegistrySource, /matchedFocusUri = matchingTabUri \?\: currentUri/);
+  assert.match(windowRegistrySource, /Os\.fstat\(parcelFile\.fileDescriptor\)/);
+  assert.match(windowRegistrySource, /tab_file_identity/);
+  assert.match(windowRegistrySource, /via=\$matchedBy/);
+  assert.match(mainActivitySource, /window_focus_tab_result/);
+  assert.match(mainActivitySource, /if \(!isActivityResumed \|\| !isEditorReady/);
+});
+
+test('long-press menus stay above the bottom toolbar', () => {
+  assert.match(leftPanelSource, /const positionTabMenu = \(x, y\) =>/);
+  assert.match(leftPanelSource, /toolbarRect\.top/);
+  assert.match(leftPanelSource, /tabMenu\.style\.maxHeight/);
+  assert.match(leftPanelHtml, /\.left-panel-context-menu\s*\{[\s\S]*z-index:\s*10020 !important;[\s\S]*overflow-y:\s*auto;/);
+});
+
+test('launcher tabs persist while file-manager window tabs are temporary', () => {
+  assert.match(
+    leftPanelSource,
+    /const tabsStorageKey = launcherWindow\s*\? LAUNCHER_TABS_KEY\s*:\s*`\$\{TASK_TABS_KEY_PREFIX\}\$\{windowContext\.taskId \?\? 'untracked'\}`/
+  );
+  assert.match(
+    leftPanelSource,
+    /onWindowClosing\(\)\s*\{\s*if \(!launcherWindow\)\s*\{[\s\S]*?localStorage\.removeItem\(tabsStorageKey\)/
+  );
+});
+
+test('tab sessions save and restore tab references and scroll positions only', () => {
+  const toolbarConfigSource = fs.readFileSync(
+    path.join(__dirname, '../src/toolbarConfig.js'),
+    'utf8'
+  );
+  const toolbarIconsSource = fs.readFileSync(
+    path.join(__dirname, '../src/toolbarIcons.js'),
+    'utf8'
+  );
+  const sanitizerStart = mainActivitySource.indexOf('private fun sanitizeWmdxTabSession');
+  const sanitizerEnd = mainActivitySource.indexOf('private fun isWmdxTabSession', sanitizerStart);
+  const sanitizerSource = mainActivitySource.slice(sanitizerStart, sanitizerEnd);
+
+  assert.match(leftPanelSource, /format: 'wmdx-tabs-session'/);
+  assert.match(leftPanelSource, /restorePortableSession/);
+  assert.match(leftPanelSource, /scrollTop: Number\.isFinite\(tab\.scrollTop\)/);
+  assert.match(mainActivitySource, /saveWmdxTabSession\(sessionJson: String\)/);
+  assert.match(mainActivitySource, /readWmdxTabSession\(uriString: String\)/);
+  assert.match(mainActivitySource, /Wmdx Session\.mds/);
+  assert.match(mainActivitySource, /name\.endsWith\("\.mds", ignoreCase = true\)/);
+  assert.match(mainActivitySource, /name\.endsWith\("\.wmdxsession", ignoreCase = true\)/);
+  assert.doesNotMatch(sanitizerSource, /\.put\("markdown"/);
+  assert.match(appManifestXml, /application\/vnd\.wmdx\.tabs-session\+json/);
+  assert.match(mainActivitySource, /CreateDocument\("application\/zip"\)/);
+  assert.match(
+    mainActivitySource,
+    /private fun defaultTextPackSaveAsName\(\)[\s\S]*?return "\$base\.mdx"/
+  );
+  assert.match(textPackManagerSource, /ZipInputStream\(inputStream\)/);
+  assert.match(hotkeysXml, /pref_hotkey_save_tabs[\s\S]*app:defaultValue=""/);
+  assert.match(resetPreferencesSource, /pref_hotkey_save_tabs" -> ""/);
+  assert.match(mainActivitySource, /"save_tabs" to prefs\.getString\("pref_hotkey_save_tabs", ""\)/);
+  assert.match(source, /save_tabs: ''/);
+  assert.match(toolbarConfigSource, /'saveTabs'/);
+  assert.match(toolbarIconsSource, /saveTabs:/);
 });
 

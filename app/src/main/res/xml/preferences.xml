@@ -19,6 +19,11 @@
             app:summary="Panel appearance, heading list, and navigation controls" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_left_panel"
+            app:title="Left Side Panel"
+            app:summary="Folders, file search, tabs, and panel appearance" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_findreplace"
             app:title="Find &amp; Replace"
             app:summary="Search panel colors, fields, counter, and buttons" />

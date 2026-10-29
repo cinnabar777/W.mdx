@@ -100,6 +100,65 @@ class WindowPolicyTest {
     }
 
     @Test
+    fun windowPolicyMatchesDocumentsOpenInInactiveTabs() {
+        val requestedUri = "content://com.wmdx/second.md"
+
+        assertTrue(
+            WindowPolicy.matches(
+                launcherRequest = false,
+                requestedUri = requestedUri,
+                launcherTask = true,
+                currentUri = "content://com.wmdx/first.md",
+                taskId = 10,
+                excludedTask = -1,
+                openTabUris = setOf(requestedUri)
+            )
+        )
+
+        assertFalse(
+            WindowPolicy.matches(
+                launcherRequest = false,
+                requestedUri = requestedUri,
+                launcherTask = true,
+                currentUri = "content://com.wmdx/first.md",
+                taskId = 10,
+                excludedTask = 10,
+                openTabUris = setOf(requestedUri)
+            )
+        )
+    }
+
+    @Test
+    fun treeScopedAndDirectSafUrisMatchTheSameOpenTab() {
+        val treeUri =
+            "content://com.android.externalstorage.documents/tree/primary%3ADocuments/document/primary%3ADocuments%2Fnotes.md"
+        val directUri =
+            "content://com.android.externalstorage.documents/document/primary%3ADocuments%2Fnotes.md"
+        val differentDocument =
+            "content://com.android.externalstorage.documents/document/primary%3ADocuments%2Fother.md"
+
+        assertTrue(WindowPolicy.sameDocumentUri(treeUri, directUri))
+        assertTrue(
+            WindowPolicy.matches(
+                launcherRequest = false,
+                requestedUri = directUri,
+                launcherTask = true,
+                currentUri = "content://com.android.externalstorage.documents/document/primary%3ADocuments%2Ffirst.md",
+                taskId = 10,
+                excludedTask = -1,
+                openTabUris = setOf(treeUri)
+            )
+        )
+        assertFalse(WindowPolicy.sameDocumentUri(treeUri, differentDocument))
+        assertFalse(
+            WindowPolicy.sameDocumentUri(
+                "content://provider.example/files/one",
+                "content://provider.example/files/two"
+            )
+        )
+    }
+
+    @Test
     fun fingerprintUriReturnsEightCharHashOrNone() {
         assertEquals("none", WindowPolicy.fingerprintUri(null))
         assertEquals("none", WindowPolicy.fingerprintUri(""))

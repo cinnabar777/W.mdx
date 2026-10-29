@@ -50,6 +50,8 @@ object PreferenceResetHelper {
             "pref_toc_text_color" -> "#FFFFFF"
             "pref_toc_active_text_color" -> "#FFFF00"
             "pref_toc_active_bg_color" -> "#00000000"
+            "pref_left_panel_active_tab_text_color" -> "#FFFFFF"
+            "pref_left_panel_active_tab_bg_color" -> "#24FFFFFF"
             "pref_toc_search_highlight_bg_color" -> "#FFFFC107"
             "pref_toc_toggle_bg_color", "pref_toc_toggle_active_bg_color" -> "#26FFFFFF"
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> "#FFFFFF"
@@ -68,6 +70,18 @@ object PreferenceResetHelper {
             "pref_bold_color" -> "#FFFFFF"
             "pref_italic_color" -> "#FFFFFF"
             "pref_link_color" -> "#29B6F6"
+            "pref_highlight_yellow_background_color" -> "#ffe066"
+            "pref_highlight_green_background_color" -> "#a8f087"
+            "pref_highlight_pink_background_color" -> "#ff99c8"
+            "pref_highlight_blue_background_color" -> "#9bf6ff"
+            "pref_highlight_yellow_text_color",
+            "pref_highlight_green_text_color",
+            "pref_highlight_pink_text_color",
+            "pref_highlight_blue_text_color" -> "#111111"
+            "pref_pen_red_text_color" -> "#ff595e"
+            "pref_pen_green_text_color" -> "#2ec4b6"
+            "pref_pen_blue_text_color" -> "#4dabf7"
+            "pref_pen_purple_text_color" -> "#845ef7"
             "pref_code_color" -> "#FF80AB"
             "pref_code_bg_color" -> "#212121"
             "pref_code_block_color" -> "#E0E0E0"
@@ -160,6 +174,35 @@ object PreferenceResetHelper {
             }
             "pref_toc_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_left_panel_active_tab_text_color" -> {
+                val panelTextColor = prefs.getString("pref_left_panel_text_color", "default")
+                if (!panelTextColor.isNullOrBlank() && panelTextColor != "default") {
+                    panelTextColor
+                } else if (isLightTheme) {
+                    "#111111"
+                } else {
+                    "#FFFFFF"
+                }
+            }
+            "pref_left_panel_active_tab_bg_color" -> {
+                val panelTextColor = prefs.getString("pref_left_panel_text_color", "default")
+                    ?.takeIf { it.isNotBlank() && it != "default" }
+                    ?: if (isLightTheme) "#111111" else "#FFFFFF"
+                val fallback = android.graphics.Color.parseColor(
+                    if (isLightTheme) "#111111" else "#FFFFFF"
+                )
+                val color = ColorPickerDialog.parseHexColor(panelTextColor, fallback)
+                val alpha = Math.round(android.graphics.Color.alpha(color) * 0.14).toInt()
+                String.format(
+                    "#%08X",
+                    android.graphics.Color.argb(
+                        alpha,
+                        android.graphics.Color.red(color),
+                        android.graphics.Color.green(color),
+                        android.graphics.Color.blue(color)
+                    )
+                )
+            }
             "pref_toolbar_active_key_bg_color" ->
                 if (isLightTheme) "#E9ECEF" else "#1F1F1F"
             "pref_toc_toggle_icon_color", "pref_toc_toggle_active_icon_color" -> {
@@ -386,11 +429,12 @@ object PreferenceResetHelper {
             key == "pref_toolbar_toggle_closed_height" -> 34
             key == "pref_toolbar_height" -> 48
             key == "pref_toolbar_padding" -> 4
-            key == "pref_toolbar_floating_enabled" -> true
+            key == "pref_toolbar_floating_enabled" -> false
             key == "pref_toolbar_floating_key_width" -> 48
             key == "pref_toolbar_floating_corner_radius" -> 24
             key == "pref_app_theme" -> "amoled"
             key == "pref_toc_panel_width" -> 80
+            key == "pref_toc_panel_enabled" -> true
             key == "pref_toc_default_level" -> 2
             key == "pref_toc_expand_levels_per_tap" -> 1
             key == "pref_toc_hide_file_extension" -> false
@@ -414,6 +458,25 @@ object PreferenceResetHelper {
             key == "pref_toc_text_overflow" -> "truncate"
             key == "pref_toc_row_spacing" -> 4
             key == "pref_toc_indent_spacing" -> 12
+            key == "pref_left_panel_width" -> 80
+            key == "pref_left_panel_enabled" ||
+                key == "pref_left_panel_tabs_enabled" -> true
+            key == "pref_left_panel_hide_file_extension" -> true
+            key == "pref_left_panel_bg_color" -> "default"
+            key == "pref_left_panel_bg_opacity" -> 100
+            key == "pref_left_panel_border_color" -> "default"
+            key == "pref_left_panel_overlay_dim" -> 50
+            key == "pref_left_panel_font_family" -> "default"
+            key == "pref_left_panel_font_size" -> 16
+            key == "pref_left_panel_font_weight" -> 600
+            key == "pref_left_panel_text_color" -> "default"
+            key == "pref_left_panel_active_tab_text_color" ||
+                key == "pref_left_panel_active_tab_bg_color" -> "default"
+            key == "pref_left_panel_row_spacing" -> 2
+            key == "pref_left_panel_show_search_path" -> false
+            key == "pref_left_panel_search_keep_open" ||
+                key == "pref_left_panel_folders_keep_open" ||
+                key == "pref_left_panel_tabs_keep_open" -> false
             key == "pref_image_mode" -> "picker"
             key == "pref_settings_category_title_color" -> "#00E5FF"
             key == "pref_settings_title_color" -> "#FFFFFF"
@@ -452,6 +515,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_open" -> "ctrl+o"
             key == "pref_hotkey_save" -> "ctrl+s"
             key == "pref_hotkey_save_as" -> "ctrl+shift+s"
+            key == "pref_hotkey_save_tabs" -> ""
             key == "pref_hotkey_save_as_textpack" -> "ctrl+shift+alt+s"
             key == "pref_hotkey_image" -> "ctrl+shift+i"
             key == "pref_hotkey_settings" -> "ctrl+,"
@@ -460,6 +524,11 @@ object PreferenceResetHelper {
             key == "pref_hotkey_bold" -> "ctrl+b"
             key == "pref_hotkey_italic" -> "ctrl+i"
             key == "pref_hotkey_underline" -> "ctrl+u"
+            key == "pref_hotkey_underlineSolid" ||
+                key == "pref_hotkey_underlineDotted" ||
+                key == "pref_hotkey_underlineDashed" ||
+                key == "pref_hotkey_underlineDouble" ||
+                key == "pref_hotkey_underlineWavy" -> ""
             key == "pref_hotkey_strikethrough" -> "ctrl+shift+x"
             key == "pref_hotkey_code" -> "ctrl+e"
             key == "pref_hotkey_link" -> "ctrl+k"
@@ -481,14 +550,29 @@ object PreferenceResetHelper {
             key == "pref_hotkey_heading_4" -> "ctrl+alt+4"
             key == "pref_hotkey_heading_5" -> "ctrl+alt+5"
             key == "pref_hotkey_heading_6" -> "ctrl+alt+6"
+            key == "pref_hotkey_auto_heading" -> ""
             key == "pref_hotkey_highlight_yellow" -> "ctrl+alt+y"
-            key == "pref_hotkey_highlight_green" -> "ctrl+alt+g"
-            key == "pref_hotkey_highlight_pink" -> "ctrl+alt+p"
-            key == "pref_hotkey_highlight_blue" -> "ctrl+alt+b"
-            key == "pref_hotkey_highlight_red" -> "ctrl+alt+r"
             key == "pref_hotkey_highlight_red_pen" -> "ctrl+alt+r"
-            key == "pref_hotkey_highlight_green_pen" -> "ctrl+alt+shift+g"
-            key == "pref_hotkey_highlight_remove" -> "ctrl+alt+x"
+            key.startsWith("pref_hotkey_marker_") -> ""
+            key.startsWith("pref_hotkey_pen_") -> ""
+            key.startsWith("pref_highlight_") && key.endsWith("_background_color") ->
+                mapOf(
+                    "pref_highlight_yellow_background_color" to "#ffe066",
+                    "pref_highlight_green_background_color" to "#a8f087",
+                    "pref_highlight_pink_background_color" to "#ff99c8",
+                    "pref_highlight_blue_background_color" to "#9bf6ff"
+                )[key]
+            key.startsWith("pref_highlight_") && key.endsWith("_text_color") -> "#111111"
+            key.startsWith("pref_pen_") && key.endsWith("_text_color") ->
+                mapOf(
+                    "pref_pen_red_text_color" to "#ff595e",
+                    "pref_pen_green_text_color" to "#2ec4b6",
+                    "pref_pen_blue_text_color" to "#4dabf7",
+                    "pref_pen_purple_text_color" to "#845ef7"
+                )[key]
+            key == "pref_underline_use_wmdx_syntax" -> true
+            key.startsWith("pref_underline_") && key.endsWith("_color") -> "default"
+            key.startsWith("pref_underline_") && key.endsWith("_thickness") -> 1
             else -> null
         }
     }
