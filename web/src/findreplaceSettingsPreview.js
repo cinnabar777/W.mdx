@@ -37,6 +37,10 @@ const state = {
 let pointerCandidate = null;
 let pointerTimer = 0;
 let suppressClickUntil = 0;
+let dropTarget = null;
+const dropMarker = document.createElement('span');
+dropMarker.className = 'findreplace-drop-marker';
+dropMarker.setAttribute('aria-hidden', 'true');
 
 function colorValue(value, fallback) {
   if (typeof value !== 'string' || !value.trim() || value === 'default') return fallback;
@@ -265,40 +269,79 @@ function moveButton(id, targetRow, targetId, placeAfter) {
   saveLayout();
 }
 
+function rowAtPoint(x, y) {
+  return Object.entries(rowElements).find(([, element]) => {
+    const line = element?.closest('.search-bar-row');
+    if (!line) return false;
+    const rect = line.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  })?.[0] || null;
+}
+
+function pointInside(element, x, y) {
+  if (!element) return false;
+  const rect = element.getBoundingClientRect();
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+function updateDropIndicator(x, y) {
+  const tray = document.querySelector('#findreplace-hidden-tray');
+  tray?.classList.remove('drag-over');
+  const rowId = rowAtPoint(x, y);
+
+  if (rowId) {
+    const row = rowElements[rowId];
+    const buttons = [...row.children]
+      .filter(child => child.matches('.search-icon-btn'))
+      .filter(button => button.dataset.buttonId !== state.dragging);
+    const before = buttons.find(button => {
+      const rect = button.getBoundingClientRect();
+      return x < rect.left + rect.width / 2;
+    }) || null;
+    const last = buttons[buttons.length - 1] || null;
+    const targetId = before?.dataset.buttonId || last?.dataset.buttonId || null;
+    const placeAfter = !before && Boolean(last);
+    const rowHeight = row.getBoundingClientRect().height;
+
+    dropMarker.style.height = `${Math.max(20, rowHeight)}px`;
+    row.insertBefore(dropMarker, before);
+    dropTarget = { rowId, targetId, placeAfter };
+    return;
+  }
+
+  dropMarker.remove();
+  if (pointInside(tray, x, y)) {
+    tray.classList.add('drag-over');
+    dropTarget = { hidden: true };
+  } else {
+    dropTarget = null;
+  }
+}
+
 function finishPointerDrag(button, event, moved) {
   const draggedId = state.dragging;
   if (!draggedId) return;
+  if (moved) updateDropIndicator(event.clientX, event.clientY);
+  const destination = moved ? dropTarget : null;
   clearTimeout(pointerTimer);
   pointerTimer = 0;
   pointerCandidate = null;
   state.dragging = null;
   suppressClickUntil = Date.now() + 350;
   button.classList.remove('dragging');
+  dropMarker.remove();
+  document.querySelector('#findreplace-hidden-tray')?.classList.remove('drag-over');
+  dropTarget = null;
 
-  if (moved) {
-    const target = document.elementFromPoint(event.clientX, event.clientY);
-    const targetRow = target?.closest('.search-icon-group');
-    if (targetRow) {
-      const rowId = targetRow.id === 'findreplace-row1' ? 'row1' : 'row2';
-      const targetButton = target.closest('.search-icon-btn');
-      const targetId = targetButton?.dataset.buttonId === draggedId
-        ? null
-        : targetButton?.dataset.buttonId || null;
-      const placeAfter = targetButton
-        ? event.clientX > targetButton.getBoundingClientRect().left + targetButton.offsetWidth / 2
-        : true;
-      moveButton(draggedId, rowId, targetId, placeAfter);
-    } else if (target?.closest('#findreplace-hidden-tray')) {
-      state.hidden.add(draggedId);
-      renderLayout();
-      saveLayout();
-    } else {
-      renderLayout();
-    }
+  if (destination?.rowId) {
+    moveButton(draggedId, destination.rowId, destination.targetId, destination.placeAfter);
+  } else if (destination?.hidden) {
+    state.hidden.add(draggedId);
+    renderLayout();
+    saveLayout();
   } else {
     renderLayout();
   }
-  document.querySelector('#findreplace-hidden-tray')?.classList.remove('drag-over');
 }
 
 for (const button of buttonElements.values()) {
@@ -343,9 +386,7 @@ for (const button of buttonElements.values()) {
     if (!pointerCandidate.active) return;
     pointerCandidate.moved ||= Math.hypot(deltaX, deltaY) > 8;
     event.preventDefault();
-    const target = document.elementFromPoint(event.clientX, event.clientY);
-    document.querySelector('#findreplace-hidden-tray')
-      ?.classList.toggle('drag-over', Boolean(target?.closest('#findreplace-hidden-tray')));
+    if (pointerCandidate.moved) updateDropIndicator(event.clientX, event.clientY);
   });
   button.addEventListener('pointerup', event => {
     if (!pointerCandidate || pointerCandidate.pointerId !== event.pointerId) return;

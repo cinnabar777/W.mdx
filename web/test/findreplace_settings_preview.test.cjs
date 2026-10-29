@@ -13,6 +13,30 @@ const previewScript = fs.readFileSync(
   'utf8'
 );
 
+function setRect(element, { left, top, width, height }) {
+  element.getBoundingClientRect = () => ({
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height
+  });
+}
+
+function dispatchPointer(window, element, type, { x, y, pointerId = 1, button = 0 }) {
+  const event = new window.Event(type, { bubbles: true, cancelable: true });
+  for (const [key, value] of Object.entries({
+    clientX: x,
+    clientY: y,
+    pointerId,
+    button
+  })) {
+    Object.defineProperty(event, key, { value });
+  }
+  element.dispatchEvent(event);
+}
+
 test('find and replace preview matches live icon sizing and saved button layout', () => {
   const dom = new JSDOM(previewHtml, { runScripts: 'outside-only' });
   const { document } = dom.window;
@@ -74,5 +98,70 @@ test('find and replace preview matches live icon sizing and saved button layout'
   assert.equal(selectedCategory, 'category_field_replace');
   document.querySelector('#search-btn-prev').click();
   assert.equal(selectedCategory, 'category_btn_prev');
+  dom.window.close();
+});
+
+test('drag feedback allows moving buttons between rows and into the hidden tray', async () => {
+  const dom = new JSDOM(previewHtml, { runScripts: 'outside-only' });
+  const { document } = dom.window;
+  dom.window.eval(previewScript);
+
+  let savedLayout = null;
+  dom.window.FindReplaceSettings = {
+    saveButtonLayout: (...args) => {
+      savedLayout = args;
+      return 'saved';
+    }
+  };
+  dom.window.applyFindReplaceSettings({});
+
+  const row1 = document.querySelector('#findreplace-row1');
+  const row2 = document.querySelector('#findreplace-row2');
+  const tray = document.querySelector('#findreplace-hidden-tray');
+  setRect(row1.closest('.search-bar-row'), { left: 0, top: 0, width: 300, height: 40 });
+  setRect(row2.closest('.search-bar-row'), { left: 0, top: 50, width: 300, height: 40 });
+  setRect(row2, { left: 100, top: 54, width: 128, height: 32 });
+  setRect(tray, { left: 0, top: 110, width: 300, height: 50 });
+  for (const [id, left] of [
+    ['replace-one', 100],
+    ['replace-all', 132],
+    ['case', 164],
+    ['word', 196]
+  ]) {
+    setRect(document.querySelector(`[data-button-id="${id}"]`), {
+      left,
+      top: 54,
+      width: 28,
+      height: 32
+    });
+  }
+
+  const previous = document.querySelector('[data-button-id="prev"]');
+  dispatchPointer(dom.window, previous, 'pointerdown', { x: 10, y: 15 });
+  await new Promise(resolve => setTimeout(resolve, 380));
+  dispatchPointer(dom.window, previous, 'pointermove', { x: 160, y: 60 });
+  assert.ok(row2.querySelector('.findreplace-drop-marker'));
+  dispatchPointer(dom.window, previous, 'pointerup', { x: 160, y: 60 });
+
+  assert.equal(row1.contains(previous), false);
+  assert.deepEqual(
+    [...row2.children]
+      .filter(element => element.matches('.search-icon-btn'))
+      .map(element => element.dataset.buttonId),
+    ['replace-one', 'replace-all', 'prev', 'case', 'word']
+  );
+  assert.equal(savedLayout[0].includes('prev'), false);
+  assert.equal(savedLayout[1].includes('prev'), true);
+
+  const next = document.querySelector('[data-button-id="next"]');
+  dispatchPointer(dom.window, next, 'pointerdown', { x: 10, y: 15 });
+  await new Promise(resolve => setTimeout(resolve, 380));
+  dispatchPointer(dom.window, next, 'pointermove', { x: 150, y: 130 });
+  assert.ok(tray.classList.contains('drag-over'));
+  dispatchPointer(dom.window, next, 'pointerup', { x: 150, y: 130 });
+
+  assert.equal(row1.contains(next), false);
+  assert.equal(savedLayout[2], 'next');
+  assert.match(document.querySelector('#findreplace-hidden-buttons').textContent, /\+ Next/);
   dom.window.close();
 });
