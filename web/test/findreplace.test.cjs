@@ -14,6 +14,15 @@ const settingsActivity = fs.readFileSync(
   'utf8'
 );
 const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+const findReplacePreviewHtml = fs.readFileSync(
+  path.join(__dirname, '../findreplace-settings-preview.html'),
+  'utf8'
+);
+const findReplacePreviewScript = fs.readFileSync(
+  path.join(__dirname, '../src/findreplaceSettingsPreview.js'),
+  'utf8'
+);
+const buildScript = fs.readFileSync(path.join(__dirname, '../build.cjs'), 'utf8');
 
 test('main.js contains @codemirror/search imports and setup', () => {
   assert.ok(source.includes("@codemirror/search"), 'Missing @codemirror/search import');
@@ -60,6 +69,20 @@ test('Find & Replace exposes the requested sizing and counter colors without a t
   assert.ok(settingsActivity.includes('listView?.post { listView?.scrollToPosition(0) }'));
   assert.ok(settingsActivity.includes('if (hiddenSet.isEmpty()) 24 else 120'));
   assert.ok(settingsActivity.includes('ACTION_DRAG_LOCATION'));
+});
+
+test('Find & Replace settings preview reuses live panel styles, sizing, and autosaved layout', () => {
+  assert.match(findReplacePreviewHtml, /href="\.\/findreplace\.css"/);
+  assert.match(findReplacePreviewHtml, /src="\.\/findreplace-settings\.js"/);
+  assert.match(findReplacePreviewHtml, /id="search-btn-prev"/);
+  assert.match(findReplacePreviewHtml, /id="search-btn-replace-all"/);
+  assert.match(buildScript, /Custom Compact Phone-Optimized Find & Replace Bar/);
+  assert.match(buildScript, /CodeMirror Search Match Highlighting/);
+  assert.match(findReplacePreviewScript, /Math\.round\(Math\.min\(buttonWidth, safeFieldHeight\) - 8\)/);
+  assert.match(source, /Math\.round\(Math\.min\(safeButtonWidth, safeFieldHeight\) - 8\)/);
+  assert.match(settingsActivity, /findReplacePreviewWebView/);
+  assert.match(settingsActivity, /saveButtonLayout\(row1Value: String/);
+  assert.match(settingsActivity, /\.putString\(PREF_KEY_BUTTON_ROW1[\s\S]*?\.commit\(\)/);
 });
 
 test('literal search vs regex search pattern logic', () => {

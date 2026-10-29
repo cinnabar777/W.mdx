@@ -2492,6 +2492,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     private var row2GroupView: android.widget.LinearLayout? = null
     private var hiddenTrayView: android.widget.LinearLayout? = null
     private var hiddenChipsContainer: android.view.View? = null
+    private var findReplacePreviewWebView: android.webkit.WebView? = null
 
     private val previewButtonMap = mutableMapOf<String, android.widget.TextView>()
     private val originalButtonTextMap = mutableMapOf<String, String>()
@@ -2720,6 +2721,16 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     }
 
     private fun refreshFindReplacePreview(prefs: SharedPreferences) {
+        findReplacePreviewWebView?.let { preview ->
+            val payload = org.json.JSONObject.quote(findReplaceSettingsJson(prefs))
+            preview.post {
+                preview.evaluateJavascript(
+                    "window.applyFindReplaceSettings && window.applyFindReplaceSettings($payload);",
+                    null
+                )
+            }
+            return
+        }
         val card = previewCardView ?: return
         val panelBgHex = prefs.getString("pref_findreplace_panel_bg", "default") ?: "default"
         val panelBg = if (panelBgHex == "default") Color.parseColor("#121212") else ColorPickerDialog.parseHexColor(panelBgHex, Color.parseColor("#121212"))
@@ -2929,6 +2940,152 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         }
     }
 
+    private fun findReplaceSettingsJson(prefs: SharedPreferences): String {
+        val payload = org.json.JSONObject()
+        prefs.all.forEach { (key, value) ->
+            if (key.startsWith("pref_findreplace_")) {
+                when (value) {
+                    is String, is Boolean, is Int, is Long, is Float, is Double ->
+                        payload.put(key, value)
+                }
+            }
+        }
+        return payload.toString()
+    }
+
+    private fun setupFindReplaceWebPreview(fragmentRootView: android.view.View): Boolean {
+        if (findReplacePreviewWebView != null) return true
+        fragmentRootView.findViewWithTag<android.webkit.WebView>("findreplace-preview-webview")
+            ?.let {
+                findReplacePreviewWebView = it
+                isPreviewAttached = true
+                return true
+            }
+        val listView = listView ?: return false
+        val parentView = listView.parent as? android.view.ViewGroup ?: return false
+        val context = context ?: return false
+        val density = context.resources.displayMetrics.density
+        val preview = android.webkit.WebView(context).apply {
+            tag = "findreplace-preview-webview"
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = false
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            setBackgroundColor(Color.TRANSPARENT)
+            addJavascriptInterface(FindReplacePreviewBridge(), "FindReplaceSettings")
+        }
+        val assetLoader = androidx.webkit.WebViewAssetLoader.Builder()
+            .addPathHandler(
+                "/assets/",
+                androidx.webkit.WebViewAssetLoader.AssetsPathHandler(context)
+            )
+            .build()
+        preview.webViewClient = object : android.webkit.WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: android.webkit.WebView?,
+                request: android.webkit.WebResourceRequest?
+            ): android.webkit.WebResourceResponse? =
+                request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+                refreshFindReplacePreview(prefs)
+            }
+        }
+        val previewParams = android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            (248 * density).toInt()
+        ).apply {
+            bottomMargin = (4 * density).toInt()
+        }
+        if (parentView is android.widget.LinearLayout) {
+            parentView.addView(preview, 0, previewParams)
+        } else {
+            val index = parentView.indexOfChild(listView)
+            if (index < 0) return false
+            parentView.removeView(listView)
+            val container = android.widget.LinearLayout(context).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+                )
+            }
+            container.addView(preview, previewParams)
+            container.addView(
+                listView,
+                android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
+            parentView.addView(container, index)
+        }
+        findReplacePreviewWebView = preview
+        isPreviewAttached = true
+        preview.loadUrl(
+            "https://appassets.androidplatform.net/assets/www/findreplace-settings-preview.html"
+        )
+        return true
+    }
+
+    override fun onDestroyView() {
+        findReplacePreviewWebView?.apply {
+            stopLoading()
+            destroy()
+        }
+        findReplacePreviewWebView = null
+        super.onDestroyView()
+    }
+
+    inner class FindReplacePreviewBridge {
+        @android.webkit.JavascriptInterface
+        fun selectCategory(key: String) {
+            val validCategories = setOf(
+                "category_panel",
+                "category_field_find",
+                "category_field_replace",
+                "category_counter"
+            ) + KNOWN_BUTTON_IDS.map { id ->
+                "category_btn_${buttonPreferenceSuffix[id] ?: id.replace("-", "_")}"
+            }
+            if (key !in validCategories) return
+            activity?.runOnUiThread {
+                selectedCategoryKey = key
+                filterCategories()
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun saveButtonLayout(row1Value: String, row2Value: String, hiddenValue: String): String {
+            val seen = mutableSetOf<String>()
+            fun validItems(raw: String) = raw.split(",")
+                .map { it.trim() }
+                .filter { it in KNOWN_BUTTON_IDS && seen.add(it) }
+                .toMutableList()
+
+            val row1 = validItems(row1Value)
+            val row2 = validItems(row2Value)
+            KNOWN_ROW1_DEFAULTS.forEach { if (seen.add(it)) row1.add(it) }
+            KNOWN_ROW2_DEFAULTS.forEach { if (seen.add(it)) row2.add(it) }
+            val hidden = parseHiddenButtons(hiddenValue)
+            val context = context ?: return "no_context"
+            val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+            val saved = prefs.edit()
+                .putString(PREF_KEY_BUTTON_ROW1, row1.joinToString(","))
+                .putString(PREF_KEY_BUTTON_ROW2, row2.joinToString(","))
+                .putString(PREF_KEY_HIDDEN_BUTTONS, hidden.joinToString(","))
+                .commit()
+            if (!saved) return "save_failed"
+            activity?.runOnUiThread { refreshFindReplacePreview(prefs) }
+            return "saved"
+        }
+    }
+
     private fun filterCategories() {
         val screen = preferenceScreen ?: return
         if (!isPreviewAttached) {
@@ -2948,6 +3105,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     }
 
     private fun setupInteractivePreview(fragmentRootView: android.view.View) {
+        if (setupFindReplaceWebPreview(fragmentRootView)) return
         val listView = listView ?: return
         val context = context ?: return
         val density = context.resources.displayMetrics.density

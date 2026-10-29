@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="./findreplace.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: transparent; }
+    body { color: #fff; font-family: system-ui, sans-serif; }
+    .findreplace-preview-card {
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 9px;
+      background: #000;
+    }
+    .findreplace-preview-hint {
+      padding: 7px 9px 4px;
+      color: #888;
+      font-size: 11px;
+    }
+    .findreplace-preview-card .search-bar-container {
+      z-index: auto !important;
+      box-shadow: none !important;
+    }
+    .findreplace-preview-hidden-tray {
+      margin: 0 10px 10px;
+      padding: 7px;
+      border: 1px dashed #383838;
+      border-radius: 6px;
+      background: #181818;
+    }
+    .findreplace-preview-hidden-tray.drag-over {
+      border-color: #0078d4;
+      background: rgba(0,120,212,.12);
+    }
+    .findreplace-preview-hidden-label {
+      margin-bottom: 5px;
+      color: #888;
+      font-size: 11px;
+    }
+    .findreplace-preview-hidden-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      min-height: 16px;
+    }
+    .findreplace-preview-hidden-button {
+      padding: 4px 7px;
+      border: 0;
+      border-radius: 3px;
+      color: #fff;
+      background: #0078d4;
+      font: inherit;
+      font-size: 11px;
+    }
+    .search-icon-btn.dragging { opacity: .35; pointer-events: none; }
+    .search-icon-btn { touch-action: none; }
+    .findreplace-drop-marker {
+      width: 3px;
+      min-width: 3px;
+      height: 28px;
+      margin: 0 2px;
+      border-radius: 2px;
+      background: #0078d4;
+    }
+  </style>
+</head>
+<body>
+  <div class="findreplace-preview-card">
+    <div class="findreplace-preview-hint">Tap a field or button to edit it · hold and drag buttons to rearrange</div>
+    <div id="custom-search-bar" class="search-bar-container">
+      <div class="search-bar-row">
+        <input id="search-input" class="search-input" type="text" placeholder="Find..." readonly aria-label="Find field settings">
+        <span id="search-counter" class="search-counter">1/12</span>
+        <span id="search-error-msg" class="search-error-msg hidden"></span>
+        <div id="findreplace-row1" class="search-icon-group">
+          <button id="search-btn-prev" class="search-icon-btn" data-button-id="prev" data-category="category_btn_prev" title="Find Previous" aria-label="Find Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></button>
+          <button id="search-btn-next" class="search-icon-btn" data-button-id="next" data-category="category_btn_next" title="Find Next" aria-label="Find Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+          <button id="search-btn-highlight" class="search-icon-btn active" data-button-id="highlight" data-category="category_btn_highlight" title="Highlight All Instances" aria-label="Highlight All Instances"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg></button>
+          <button id="search-btn-regex" class="search-icon-btn" data-button-id="regex" data-category="category_btn_regex" title="Regular Expression" aria-label="Regular Expression"><svg viewBox="0 0 24 24" fill="currentColor"><text x="12" y="16" text-anchor="middle" font-size="14" font-weight="bold" font-family="monospace">.*</text></svg></button>
+          <button id="search-btn-close" class="search-icon-btn" data-button-id="close" data-category="category_btn_close" title="Close Search" aria-label="Close Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+      <div id="search-replace-row" class="search-bar-row replace-row">
+        <input id="replace-input" class="search-input" type="text" placeholder="Replace..." readonly aria-label="Replace field settings">
+        <div id="findreplace-row2" class="search-icon-group">
+          <button id="search-btn-replace-one" class="search-icon-btn" data-button-id="replace-one" data-category="category_btn_replace_one" title="Replace One" aria-label="Replace One"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="13 18 19 12 13 6"/></svg></button>
+          <button id="search-btn-replace-all" class="search-icon-btn" data-button-id="replace-all" data-category="category_btn_replace_all" title="Replace All" aria-label="Replace All"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h12"/><polyline points="11 11 15 7 11 3"/><path d="M3 17h18"/><polyline points="17 21 21 17 17 13"/></svg></button>
+          <button id="search-btn-case" class="search-icon-btn" data-button-id="case" data-category="category_btn_case" title="Match Case" aria-label="Match Case"><svg viewBox="0 0 24 24" fill="currentColor"><text x="12" y="17" text-anchor="middle" font-size="15" font-weight="bold">Aa</text></svg></button>
+          <button id="search-btn-word" class="search-icon-btn" data-button-id="word" data-category="category_btn_word" title="Match Whole Word" aria-label="Match Whole Word"><svg viewBox="0 0 24 24" fill="currentColor"><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="bold">\b</text></svg></button>
+        </div>
+      </div>
+    </div>
+    <div id="findreplace-hidden-tray" class="findreplace-preview-hidden-tray">
+      <div class="findreplace-preview-hidden-label">Hidden buttons — tap to restore</div>
+      <div id="findreplace-hidden-buttons" class="findreplace-preview-hidden-buttons"></div>
+    </div>
+  </div>
+  <script src="./findreplace-settings.js"></script>
+</body>
+</html>
