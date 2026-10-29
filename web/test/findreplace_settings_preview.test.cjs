@@ -118,10 +118,12 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
 
   const row1 = document.querySelector('#findreplace-row1');
   const row2 = document.querySelector('#findreplace-row2');
+  const panel = document.querySelector('#custom-search-bar');
   const tray = document.querySelector('#findreplace-hidden-tray');
-  setRect(row1.closest('.search-bar-row'), { left: 0, top: 0, width: 300, height: 40 });
-  setRect(row2.closest('.search-bar-row'), { left: 0, top: 50, width: 300, height: 40 });
-  setRect(row2, { left: 100, top: 54, width: 128, height: 32 });
+  setRect(panel, { left: 0, top: 0, width: 300, height: 100 });
+  setRect(row1.closest('.search-bar-row'), { left: 0, top: 0, width: 300, height: 100 });
+  setRect(row2.closest('.search-bar-row'), { left: 0, top: 80, width: 300, height: 20 });
+  setRect(row2, { left: 100, top: 80, width: 128, height: 20 });
   setRect(tray, { left: 0, top: 110, width: 300, height: 50 });
   for (const [id, left] of [
     ['prev', 100],
@@ -145,14 +147,14 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
   ]) {
     setRect(document.querySelector(`[data-button-id="${id}"]`), {
       left,
-      top: 54,
+      top: 80,
       width: 28,
-      height: 32
+      height: 20
     });
   }
 
   const caseButton = document.querySelector('[data-button-id="case"]');
-  dispatchPointer(dom.window, caseButton, 'pointerdown', { x: 175, y: 60 });
+  dispatchPointer(dom.window, caseButton, 'pointerdown', { x: 175, y: 90 });
   await new Promise(resolve => setTimeout(resolve, 380));
   dispatchPointer(dom.window, caseButton, 'pointermove', { x: 200, y: 20 });
   assert.ok(row1.querySelector('.findreplace-drop-marker'));
@@ -170,9 +172,9 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
 
   const previous = document.querySelector('[data-button-id="prev"]');
   dispatchPointer(dom.window, previous, 'pointerdown', { x: 110, y: 20 });
-  dispatchPointer(dom.window, previous, 'pointermove', { x: 145, y: 60 });
+  dispatchPointer(dom.window, previous, 'pointermove', { x: 145, y: 75 });
   assert.ok(row2.querySelector('.findreplace-drop-marker'));
-  dispatchPointer(dom.window, previous, 'pointerup', { x: 145, y: 60 });
+  dispatchPointer(dom.window, previous, 'pointerup', { x: 145, y: 75 });
 
   assert.equal(row1.contains(previous), false);
   assert.equal(row2.contains(previous), true);

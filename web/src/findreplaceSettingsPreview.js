@@ -270,11 +270,12 @@ function moveButton(id, targetRow, targetId, placeAfter) {
 }
 
 function rowAtPoint(x, y) {
+  const panel = document.querySelector('#custom-search-bar');
+  if (!pointInside(panel, x, y)) return null;
   const rows = Object.entries(rowElements).flatMap(([rowId, element]) => {
     const line = element?.closest('.search-bar-row');
     if (!line) return [];
     const rect = line.getBoundingClientRect();
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return [];
     return [{ rowId, centerY: rect.top + rect.height / 2 }];
   });
   rows.sort((a, b) => Math.abs(y - a.centerY) - Math.abs(y - b.centerY));
@@ -302,6 +303,13 @@ function startPointerDrag(candidate) {
 function updateDropIndicator(x, y) {
   const tray = document.querySelector('#findreplace-hidden-tray');
   tray?.classList.remove('drag-over');
+  dropMarker.remove();
+  if (pointInside(tray, x, y)) {
+    tray.classList.add('drag-over');
+    dropTarget = { hidden: true };
+    return;
+  }
+
   const rowId = rowAtPoint(x, y);
 
   if (rowId) {
@@ -324,13 +332,7 @@ function updateDropIndicator(x, y) {
     return;
   }
 
-  dropMarker.remove();
-  if (pointInside(tray, x, y)) {
-    tray.classList.add('drag-over');
-    dropTarget = { hidden: true };
-  } else {
-    dropTarget = null;
-  }
+  dropTarget = null;
 }
 
 function finishPointerDrag(button, event, moved) {
