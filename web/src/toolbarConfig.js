@@ -47,6 +47,10 @@ export const BOTTOM_TOOLBAR_POPUP_ITEM_IDS = Object.freeze(
   Object.values(BOTTOM_TOOLBAR_GROUP_ITEM_IDS).flat()
 );
 
+// The floating show/hide control has editable gestures but is not a
+// replaceable key in the toolbar layout.
+export const TOOLBAR_TOGGLE_STYLE_ID = 'toolbarToggleControl';
+
 export const BUILT_IN_HOLDING_ITEMS = Object.freeze([
   { id: 'cut', title: 'Cut', icon: 'cut', kind: 'action' },
   { id: 'copy', title: 'Copy', icon: 'copy', kind: 'action' },
@@ -395,6 +399,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   if (parsed.styles && typeof parsed.styles === 'object' && !Array.isArray(parsed.styles)) {
     const allowedStyleIds = new Set([
       ...BOTTOM_TOOLBAR_STYLE_IDS,
+      TOOLBAR_TOGGLE_STYLE_ID,
       ...Object.keys(customGroups),
       ...Object.keys(customKeys)
     ]);

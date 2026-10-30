@@ -1379,6 +1379,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         private const val TOOLBAR_CONFIG_KEY = "pref_toolbar_bottom_config"
         private const val TOOLBAR_FLOATING_CONFIG_KEY = "pref_toolbar_floating_config"
         private const val TOOLBAR_APPEARANCE_HEADER_KEY = "pref_toolbar_global_settings"
+        private const val TOOLBAR_TOGGLE_GESTURES_KEY = "pref_toolbar_toggle_gestures"
+        private const val TOOLBAR_TOGGLE_STYLE_ID = "toolbarToggleControl"
         private const val TOOLBAR_OPEN_GROUP_ACTION_ID = "openGroup"
         private const val LEGACY_TOOLBAR_OPEN_GROUP_ACTION_PREFIX = "openToolbarGroup:"
         private val TOOLBAR_APPEARANCE_PREFERENCE_KEYS = listOf(
@@ -1455,7 +1457,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "horizontalLine", "footnote",
             "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "exportHtml", "search", "switchView", "newWindow", "settings",
-            "cut", "copy", "paste", "selectAll"
+            "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID
         )
         private val TOOLBAR_GESTURE_IDS = listOf(
             "longPress", "tap1", "tap2", "tap3",
@@ -1516,6 +1518,13 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             appearanceHeader.isExpanded = toolbarAppearanceExpanded
             toolbarAppearancePreferences.forEach { it.isVisible = toolbarAppearanceExpanded }
             view?.parent?.requestLayout()
+            true
+        }
+        findPreference<Preference>(TOOLBAR_TOGGLE_GESTURES_KEY)?.setOnPreferenceClickListener {
+            toolbarPreviewWebView?.evaluateJavascript(
+                "window.openToolbarTogglePreferences?.();",
+                null
+            )
             true
         }
     }

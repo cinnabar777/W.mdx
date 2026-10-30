@@ -5,7 +5,8 @@ import {
   BUILT_IN_HOLDING_ITEMS,
   normalizeBottomToolbarConfig,
   OPEN_GROUP_ACTION_ID,
-  orderBottomToolbarPopupItems
+  orderBottomToolbarPopupItems,
+  TOOLBAR_TOGGLE_STYLE_ID
 } from './toolbarConfig.js';
 import {
   BUILT_IN_GESTURE_ACTION_IDS,
@@ -107,6 +108,12 @@ function observeEmbeddedEditorSize() {
 
 const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 const RESET_ICON_MARKUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>';
+const TOOLBAR_TOGGLE_ITEM = {
+  id: TOOLBAR_TOGGLE_STYLE_ID,
+  title: 'Toolbar toggle',
+  icon: svgIcons.menu,
+  kind: 'action'
+};
 const PREVIEW_GROUP_ITEMS = {
   heading: [
     { id: 'paragraph', title: 'Paragraph', icon: 'P' },
@@ -136,16 +143,16 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'underlineDashed', title: 'Dashed Underline', icon: svgIcons.underlineDashed },
     { id: 'underlineDouble', title: 'Double Underline', icon: svgIcons.underlineDouble },
     { id: 'underlineWavy', title: 'Wavy Underline', icon: svgIcons.underlineWavy },
-    { id: 'highlightCycle', title: 'Cycle Highlighter Color', icon: svgIcons.highlighter },
-    { id: 'highlightYellow', title: 'Yellow Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-yellow-background, #ffe066)') },
-    { id: 'highlightGreen', title: 'Green Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-green-background, #a8f087)') },
-    { id: 'highlightPink', title: 'Pink Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-pink-background, #ff99c8)') },
-    { id: 'highlightBlue', title: 'Blue Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-blue-background, #9bf6ff)') },
-    { id: 'penCycle', title: 'Cycle Pen Color', icon: svgIcons.pen },
-    { id: 'penRed', title: 'Red Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-red-text, #ff595e)') },
-    { id: 'penGreen', title: 'Green Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-green-text, #2ec4b6)') },
-    { id: 'penBlue', title: 'Blue Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-blue-text, #4dabf7)') },
-    { id: 'penPurple', title: 'Purple Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-purple-text, #845ef7)') }
+    { id: 'highlightCycle', title: 'Cycle Markers', icon: svgIcons.highlighter },
+    { id: 'highlightYellow', title: 'Marker 1', icon: svgIcons.highlighter },
+    { id: 'highlightGreen', title: 'Marker 2', icon: svgIcons.highlighter },
+    { id: 'highlightPink', title: 'Marker 3', icon: svgIcons.highlighter },
+    { id: 'highlightBlue', title: 'Marker 4', icon: svgIcons.highlighter },
+    { id: 'penCycle', title: 'Cycle Pens', icon: svgIcons.pen },
+    { id: 'penRed', title: 'Pen 1', icon: svgIcons.pen },
+    { id: 'penGreen', title: 'Pen 2', icon: svgIcons.pen },
+    { id: 'penBlue', title: 'Pen 3', icon: svgIcons.pen },
+    { id: 'penPurple', title: 'Pen 4', icon: svgIcons.pen }
   ],
   table: [
     { id: 'insertTable', title: 'Insert Table', icon: svgIcons.insertTable },
@@ -834,7 +841,9 @@ function renderHeldPopupKeys() {
 
 function refreshSelectedKeyEditor() {
   if (!editor) return;
-  const definition = PREVIEW_ITEM_DEFINITIONS.get(selectedKey) ||
+  const definition = selectedKey === TOOLBAR_TOGGLE_STYLE_ID
+    ? TOOLBAR_TOGGLE_ITEM
+    : PREVIEW_ITEM_DEFINITIONS.get(selectedKey) ||
     BOTTOM_TOOLBAR_ITEMS.find(item => item.id === selectedKey) ||
     (config.customGroups[selectedKey]
       ? { id: selectedKey, title: config.customGroups[selectedKey].title, kind: 'group' }
@@ -877,6 +886,7 @@ function refreshSelectedKeyEditor() {
     config.customKeys?.[selectedKey]?.title ||
     config.styles[selectedKey]?.title ||
     definition.title;
+  const isToolbarToggle = selectedKey === TOOLBAR_TOGGLE_STYLE_ID;
   selectedTitle.textContent = title;
   selectedTitle.hidden = editingKeyName;
   const nameInput = document.querySelector('#toolbar-preview-title-input');
@@ -886,8 +896,12 @@ function refreshSelectedKeyEditor() {
     nameInput.hidden = !editingKeyName;
     if (!editingKeyName) nameInput.value = title;
   }
-  if (editNameButton) editNameButton.hidden = editingKeyName;
-  if (saveNameButton) saveNameButton.hidden = !editingKeyName;
+  if (editNameButton) editNameButton.hidden = editingKeyName || isToolbarToggle;
+  if (saveNameButton) saveNameButton.hidden = !editingKeyName || isToolbarToggle;
+  const iconPickerTrigger = document.querySelector('#toolbar-open-icon-picker');
+  if (iconPickerTrigger) iconPickerTrigger.hidden = isToolbarToggle;
+  const colorsSection = document.querySelector('[data-toolbar-section="colors"]');
+  if (colorsSection) colorsSection.hidden = isToolbarToggle;
 
   const style = config.styles[selectedKey] || {};
   const iconButton = document.querySelector('#toolbar-icon-color');
@@ -2402,6 +2416,19 @@ window.updateToolbarKeyPreferencesConfig = (surface, incomingConfig) => {
   render();
   scheduleEmbeddedEditorSize();
   return true;
+};
+
+window.openToolbarTogglePreferences = () => {
+  window.ToolbarSettings?.collapseToolbarAppearance?.();
+  if (activeToolbarSurface !== 'bottom') setToolbarSurface('bottom');
+  selectedKey = TOOLBAR_TOGGLE_STYLE_ID;
+  openPopupGroup = null;
+  selectedPopupItem = null;
+  selectedGestureId = null;
+  iconPickerOpen = false;
+  actionPickerOpen = false;
+  render();
+  return Boolean(editor?.classList.contains('visible'));
 };
 
 window.applyToolbarSettings = applySettings;

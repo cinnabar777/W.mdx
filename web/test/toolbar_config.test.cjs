@@ -253,6 +253,34 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
   assert.equal(config.styles.undo.title, 'Invalid target');
 });
 
+test('toolbar toggle gestures persist without making the toggle replaceable', async () => {
+  const {
+    BOTTOM_TOOLBAR_ITEM_IDS,
+    normalizeBottomToolbarConfig,
+    TOOLBAR_TOGGLE_STYLE_ID
+  } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 6,
+    order: [...BOTTOM_TOOLBAR_ITEM_IDS],
+    styles: {
+      [TOOLBAR_TOGGLE_STYLE_ID]: {
+        gestureActions: {
+          tap2: 'bold',
+          swipeLeft: 'undo'
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(config.styles[TOOLBAR_TOGGLE_STYLE_ID].gestureActions, {
+    tap2: 'bold',
+    swipeLeft: 'undo'
+  });
+  assert.ok(!config.order.includes(TOOLBAR_TOGGLE_STYLE_ID));
+  assert.ok(!config.holding.includes(TOOLBAR_TOGGLE_STYLE_ID));
+  assert.ok(!config.customKeys[TOOLBAR_TOGGLE_STYLE_ID]);
+});
+
 test('toolbar gesture indicators occupy directional positions and use tap fallbacks only without corner swipes', async () => {
   const { getToolbarGestureIndicatorEntries } = await import('../src/toolbarGestures.js');
   assert.deepEqual(

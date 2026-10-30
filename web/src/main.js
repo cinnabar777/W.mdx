@@ -52,7 +52,8 @@ import {
   BOTTOM_TOOLBAR_ITEMS,
   OPEN_GROUP_ACTION_ID,
   normalizeBottomToolbarConfig,
-  orderBottomToolbarPopupItems
+  orderBottomToolbarPopupItems,
+  TOOLBAR_TOGGLE_STYLE_ID
 } from './toolbarConfig.js';
 import {
   getToolbarGestureActionId,
@@ -4459,16 +4460,16 @@ function setupGroupedControlBar() {
         { icon: svgIcons.underlineDashed, title: 'Dashed Underline', command: 'underlineDashed', action: () => execCmd('underlineDashed') },
         { icon: svgIcons.underlineDouble, title: 'Double Underline', command: 'underlineDouble', action: () => execCmd('underlineDouble') },
         { icon: svgIcons.underlineWavy, title: 'Wavy Underline', command: 'underlineWavy', action: () => execCmd('underlineWavy') },
-        { icon: svgIcons.highlighter, title: 'Cycle Highlighter Color', command: 'highlightCycle', action: () => execCmd('highlight', { value: 'highlightCycle' }) },
-        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-yellow-background, #ffe066)'), title: 'Yellow Highlighter', command: 'highlightYellow', action: () => execCmd('highlight', { value: 'highlightYellow' }) },
-        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-green-background, #a8f087)'), title: 'Green Highlighter', command: 'highlightGreen', action: () => execCmd('highlight', { value: 'highlightGreen' }) },
-        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-pink-background, #ff99c8)'), title: 'Pink Highlighter', command: 'highlightPink', action: () => execCmd('highlight', { value: 'highlightPink' }) },
-        { icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-blue-background, #9bf6ff)'), title: 'Blue Highlighter', command: 'highlightBlue', action: () => execCmd('highlight', { value: 'highlightBlue' }) },
-        { icon: svgIcons.pen, title: 'Cycle Pen Color', command: 'penCycle', action: () => execCmd('highlight', { value: 'penCycle' }) },
-        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-red-text, #ff595e)'), title: 'Red Pen', command: 'penRed', action: () => execCmd('highlight', { value: 'penRed' }) },
-        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-green-text, #2ec4b6)'), title: 'Green Pen', command: 'penGreen', action: () => execCmd('highlight', { value: 'penGreen' }) },
-        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-blue-text, #4dabf7)'), title: 'Blue Pen', command: 'penBlue', action: () => execCmd('highlight', { value: 'penBlue' }) },
-        { icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-purple-text, #845ef7)'), title: 'Purple Pen', command: 'penPurple', action: () => execCmd('highlight', { value: 'penPurple' }) }
+        { icon: svgIcons.highlighter, title: 'Cycle Markers', command: 'highlightCycle', action: () => execCmd('highlight', { value: 'highlightCycle' }) },
+        { icon: svgIcons.highlighter, title: 'Marker 1', command: 'highlightYellow', action: () => execCmd('highlight', { value: 'highlightYellow' }) },
+        { icon: svgIcons.highlighter, title: 'Marker 2', command: 'highlightGreen', action: () => execCmd('highlight', { value: 'highlightGreen' }) },
+        { icon: svgIcons.highlighter, title: 'Marker 3', command: 'highlightPink', action: () => execCmd('highlight', { value: 'highlightPink' }) },
+        { icon: svgIcons.highlighter, title: 'Marker 4', command: 'highlightBlue', action: () => execCmd('highlight', { value: 'highlightBlue' }) },
+        { icon: svgIcons.pen, title: 'Cycle Pens', command: 'penCycle', action: () => execCmd('highlight', { value: 'penCycle' }) },
+        { icon: svgIcons.pen, title: 'Pen 1', command: 'penRed', action: () => execCmd('highlight', { value: 'penRed' }) },
+        { icon: svgIcons.pen, title: 'Pen 2', command: 'penGreen', action: () => execCmd('highlight', { value: 'penGreen' }) },
+        { icon: svgIcons.pen, title: 'Pen 3', command: 'penBlue', action: () => execCmd('highlight', { value: 'penBlue' }) },
+        { icon: svgIcons.pen, title: 'Pen 4', command: 'penPurple', action: () => execCmd('highlight', { value: 'penPurple' }) }
       ]);
     };
   }
@@ -4779,16 +4780,16 @@ function createToolbarActionRegistry() {
       { id: 'underlineDashed', title: 'Dashed Underline', icon: svgIcons.underlineDashed, command: 'underlineDashed', action: () => execCmd('underlineDashed') },
       { id: 'underlineDouble', title: 'Double Underline', icon: svgIcons.underlineDouble, command: 'underlineDouble', action: () => execCmd('underlineDouble') },
       { id: 'underlineWavy', title: 'Wavy Underline', icon: svgIcons.underlineWavy, command: 'underlineWavy', action: () => execCmd('underlineWavy') },
-      { id: 'highlightCycle', title: 'Cycle Highlighter Color', icon: svgIcons.highlighter, command: 'highlightCycle', action: () => execCmd('highlight', { value: 'highlightCycle' }) },
-      { id: 'highlightYellow', title: 'Yellow Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-yellow-background, #ffe066)'), command: 'highlightYellow', action: () => execCmd('highlight', { value: 'highlightYellow' }) },
-      { id: 'highlightGreen', title: 'Green Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-green-background, #a8f087)'), command: 'highlightGreen', action: () => execCmd('highlight', { value: 'highlightGreen' }) },
-      { id: 'highlightPink', title: 'Pink Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-pink-background, #ff99c8)'), command: 'highlightPink', action: () => execCmd('highlight', { value: 'highlightPink' }) },
-      { id: 'highlightBlue', title: 'Blue Highlighter', icon: svgIcons.highlighter.replaceAll('currentColor', 'var(--highlight-blue-background, #9bf6ff)'), command: 'highlightBlue', action: () => execCmd('highlight', { value: 'highlightBlue' }) },
-      { id: 'penCycle', title: 'Cycle Pen Color', icon: svgIcons.pen, command: 'penCycle', action: () => execCmd('highlight', { value: 'penCycle' }) },
-      { id: 'penRed', title: 'Red Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-red-text, #ff595e)'), command: 'penRed', action: () => execCmd('highlight', { value: 'penRed' }) },
-      { id: 'penGreen', title: 'Green Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-green-text, #2ec4b6)'), command: 'penGreen', action: () => execCmd('highlight', { value: 'penGreen' }) },
-      { id: 'penBlue', title: 'Blue Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-blue-text, #4dabf7)'), command: 'penBlue', action: () => execCmd('highlight', { value: 'penBlue' }) },
-      { id: 'penPurple', title: 'Purple Pen', icon: svgIcons.pen.replaceAll('currentColor', 'var(--pen-purple-text, #845ef7)'), command: 'penPurple', action: () => execCmd('highlight', { value: 'penPurple' }) }
+      { id: 'highlightCycle', title: 'Cycle Markers', icon: svgIcons.highlighter, command: 'highlightCycle', action: () => execCmd('highlight', { value: 'highlightCycle' }) },
+      { id: 'highlightYellow', title: 'Marker 1', icon: svgIcons.highlighter, command: 'highlightYellow', action: () => execCmd('highlight', { value: 'highlightYellow' }) },
+      { id: 'highlightGreen', title: 'Marker 2', icon: svgIcons.highlighter, command: 'highlightGreen', action: () => execCmd('highlight', { value: 'highlightGreen' }) },
+      { id: 'highlightPink', title: 'Marker 3', icon: svgIcons.highlighter, command: 'highlightPink', action: () => execCmd('highlight', { value: 'highlightPink' }) },
+      { id: 'highlightBlue', title: 'Marker 4', icon: svgIcons.highlighter, command: 'highlightBlue', action: () => execCmd('highlight', { value: 'highlightBlue' }) },
+      { id: 'penCycle', title: 'Cycle Pens', icon: svgIcons.pen, command: 'penCycle', action: () => execCmd('highlight', { value: 'penCycle' }) },
+      { id: 'penRed', title: 'Pen 1', icon: svgIcons.pen, command: 'penRed', action: () => execCmd('highlight', { value: 'penRed' }) },
+      { id: 'penGreen', title: 'Pen 2', icon: svgIcons.pen, command: 'penGreen', action: () => execCmd('highlight', { value: 'penGreen' }) },
+      { id: 'penBlue', title: 'Pen 3', icon: svgIcons.pen, command: 'penBlue', action: () => execCmd('highlight', { value: 'penBlue' }) },
+      { id: 'penPurple', title: 'Pen 4', icon: svgIcons.pen, command: 'penPurple', action: () => execCmd('highlight', { value: 'penPurple' }) }
     ],
     [
       { id: 'insertTable', title: 'Insert Table', icon: svgIcons.insertTable, action: () => {
@@ -4973,6 +4974,7 @@ function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
   const registry = createRuntimeToolbarItemRegistryForConfig(toolbarConfig);
   const definition = registry.get(keyId);
   const title =
+    (keyId === TOOLBAR_TOGGLE_STYLE_ID ? 'Toolbar toggle' : '') ||
     toolbarConfig.styles?.[keyId]?.title ||
     toolbarConfig.customGroups?.[keyId]?.title ||
     toolbarConfig.customKeys?.[keyId]?.title ||
@@ -5075,8 +5077,12 @@ async function runToolbarClipboardAction(actionId) {
 function installPopupToolbarSwipeUp(
   button,
   styleId,
-  toolbarConfig = getToolbarConfigForElement(button)
+  toolbarConfigSource = null
 ) {
+  const getToolbarConfig = () => {
+    if (typeof toolbarConfigSource === 'function') return toolbarConfigSource();
+    return toolbarConfigSource || getToolbarConfigForElement(button);
+  };
   let pointerStart = null;
   let longPressTimer = null;
   let longPressHandled = false;
@@ -5096,10 +5102,11 @@ function installPopupToolbarSwipeUp(
     } catch {
       // Pointer capture is not available in every embedded WebView version.
     }
-    if (toolbarConfig.styles[styleId]?.gestureActions?.longPress) {
+    if (getToolbarConfig().styles[styleId]?.gestureActions?.longPress) {
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
         if (!pointerStart) return;
+        const toolbarConfig = getToolbarConfig();
         const actionId = toolbarConfig.styles[styleId]?.gestureActions?.longPress;
         longPressHandled = Boolean(
           actionId && runToolbarGestureAction(actionId, button, new Set(), toolbarConfig)
@@ -5134,6 +5141,7 @@ function installPopupToolbarSwipeUp(
     pointerStart = null;
     const gestureId = getToolbarSwipeGesture(deltaX, deltaY);
     if (!gestureId) return;
+    const toolbarConfig = getToolbarConfig();
     const style = toolbarConfig.styles[styleId] || {};
     const actionId = getToolbarGestureActionId(style, gestureId);
     if (!actionId ||
@@ -7244,6 +7252,9 @@ function toggleBottomToolbar(forceState) {
 function setupFloatingToggle() {
   const toggleBtn = document.querySelector('#floating-toggle-btn');
   if (toggleBtn) {
+    toggleBtn.dataset.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;
+    installToolbarTapActions(toggleBtn);
+    installPopupToolbarSwipeUp(toggleBtn, TOOLBAR_TOGGLE_STYLE_ID);
     toggleBtn.onclick = () => {
       toggleBottomToolbar();
     };
