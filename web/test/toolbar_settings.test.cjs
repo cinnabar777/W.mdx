@@ -284,8 +284,21 @@ test('toolbar toggle gestures are configurable separately and run on the floatin
   assert.match(mainActivitySource, /itemId == "toolbarToggleControl"/);
   assert.match(
     mainSource,
-    /toggleBtn\.dataset\.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;[\s\S]*?installToolbarTapActions\(toggleBtn\);[\s\S]*?installPopupToolbarSwipeUp\(toggleBtn, TOOLBAR_TOGGLE_STYLE_ID\)/
+    /toggleBtn\.dataset\.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;[\s\S]*?installToolbarTapActions\(document\.body\);[\s\S]*?installPopupToolbarSwipeUp\(toggleBtn, TOOLBAR_TOGGLE_STYLE_ID\)/
   );
+  assert.match(
+    fs.readFileSync(path.join(root, 'web/index.html'), 'utf8'),
+    /\.floating-toggle-btn\s*\{[^}]*touch-action:\s*none/s
+  );
+});
+
+test('no-icon gesture choices persist while suppressing their parent-key indicator', () => {
+  assert.match(toolbarConfigSource, /NO_GESTURE_ICON = 'none'/);
+  assert.match(toolbarConfigSource, /svg === NO_GESTURE_ICON/);
+  assert.match(settingsSource, /aria-label', 'No icon'/);
+  assert.match(settingsSource, /style\.gestureActionIcons\[selectedGestureId\] = NO_GESTURE_ICON/);
+  assert.match(mainSource, /customSvg === NO_GESTURE_ICON\) return ''/);
+  assert.match(androidSource, /if \(iconSvg == "none"\)/);
 });
 
 test('toolbar toggle gestures have a separate editor and remain outside the replaceable preview', async () => {

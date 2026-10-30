@@ -3,6 +3,7 @@ import {
   BOTTOM_TOOLBAR_ITEMS,
   BOTTOM_TOOLBAR_ITEM_IDS,
   BUILT_IN_HOLDING_ITEMS,
+  NO_GESTURE_ICON,
   normalizeBottomToolbarConfig,
   OPEN_GROUP_ACTION_ID,
   orderBottomToolbarPopupItems,
@@ -294,6 +295,7 @@ function getActionIconMarkup(item) {
 function getAssignedGestureIconMarkup(style, gestureId, contextKey = selectedKey) {
   const svg = style?.gestureActionIcons?.[gestureId] ||
     (gestureId === 'swipeUp' ? style?.gestureActionIconSvg : '');
+  if (svg === NO_GESTURE_ICON) return '';
   if (svg) return sanitizeToolbarSvg(svg, false, document);
   return getActionIconMarkup(
     getActionDefinition(getToolbarGestureActionId(style, gestureId), contextKey)
@@ -979,13 +981,24 @@ function renderGestureSections(style) {
       iconButton.className = 'toolbar-preview-gesture-icon';
       iconButton.dataset.gestureId = gesture.id;
       iconButton.disabled = !action;
+      const noIconSelected =
+        style.gestureActionIcons?.[gesture.id] === NO_GESTURE_ICON;
       iconButton.setAttribute(
         'aria-label',
-        action
+        noIconSelected
+          ? `No parent icon for ${gesture.title}: ${action.title}. Choose icon`
+          : action
           ? `Choose icon for ${gesture.title}: ${action.title}`
           : `Choose an action for ${gesture.title} first`
       );
-      iconButton.innerHTML = getAssignedGestureIconMarkup(style, gesture.id) || '◇';
+      iconButton.title = noIconSelected
+        ? 'No icon is shown on the parent key'
+        : 'Choose an icon for this action';
+      iconButton.textContent = noIconSelected ? '∅' : '';
+      if (!noIconSelected) {
+        iconButton.innerHTML = getAssignedGestureIconMarkup(style, gesture.id) || '◇';
+      }
+      iconButton.classList.toggle('is-no-icon', noIconSelected);
       iconButton.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
@@ -1055,9 +1068,39 @@ function renderIconCatalog() {
   const query = search.value.trim().toLowerCase();
   const style = config.styles[selectedKey] || {};
   const selectedSvg = iconPickerTarget === 'gesture-action'
-    ? getAssignedGestureIconMarkup(style, selectedGestureId)
+    ? style.gestureActionIcons?.[selectedGestureId] === NO_GESTURE_ICON
+      ? NO_GESTURE_ICON
+      : getAssignedGestureIconMarkup(style, selectedGestureId)
     : style.customSvg;
   list.replaceChildren();
+  const initialChoiceCount = list.children.length;
+  const showNoIconChoice =
+    iconPickerTarget === 'gesture-action' &&
+    (!query || ['no icon', 'none'].some(label => label.includes(query)));
+  if (showNoIconChoice) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toolbar-preview-icon-choice toolbar-preview-no-icon-choice';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-label', 'No icon');
+    button.setAttribute('aria-pressed', String(selectedSvg === NO_GESTURE_ICON));
+    button.innerHTML =
+      '<span class="toolbar-preview-no-icon-mark" aria-hidden="true">∅</span><span>No icon</span>';
+    button.addEventListener('pointerdown', event => event.preventDefault());
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!selectedKey || !selectedGestureId) return;
+      const style = config.styles[selectedKey] || {};
+      style.gestureActionIcons = style.gestureActionIcons || {};
+      style.gestureActionIcons[selectedGestureId] = NO_GESTURE_ICON;
+      config.styles[selectedKey] = style;
+      setIconPickerOpen(false);
+      render();
+      saveConfig();
+    });
+    list.appendChild(button);
+  }
   const icons = Object.entries(svgIcons)
     .map(([name, value]) => [
       name,
@@ -1100,7 +1143,7 @@ function renderIconCatalog() {
     });
     list.appendChild(button);
   }
-  if (!list.children.length) {
+  if (list.children.length === initialChoiceCount) {
     const empty = document.createElement('span');
     empty.className = 'toolbar-preview-icon-empty';
     empty.textContent = 'No matching icons';

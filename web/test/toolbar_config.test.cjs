@@ -267,6 +267,9 @@ test('toolbar toggle gestures persist without making the toggle replaceable', as
         gestureActions: {
           tap2: 'bold',
           swipeLeft: 'undo'
+        },
+        gestureActionIcons: {
+          swipeLeft: 'none'
         }
       }
     }
@@ -276,6 +279,10 @@ test('toolbar toggle gestures persist without making the toggle replaceable', as
     tap2: 'bold',
     swipeLeft: 'undo'
   });
+  assert.equal(
+    config.styles[TOOLBAR_TOGGLE_STYLE_ID].gestureActionIcons.swipeLeft,
+    'none'
+  );
   assert.ok(!config.order.includes(TOOLBAR_TOGGLE_STYLE_ID));
   assert.ok(!config.holding.includes(TOOLBAR_TOGGLE_STYLE_ID));
   assert.ok(!config.customKeys[TOOLBAR_TOGGLE_STYLE_ID]);

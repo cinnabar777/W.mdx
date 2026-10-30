@@ -50,6 +50,7 @@ export const BOTTOM_TOOLBAR_POPUP_ITEM_IDS = Object.freeze(
 // The floating show/hide control has editable gestures but is not a
 // replaceable key in the toolbar layout.
 export const TOOLBAR_TOGGLE_STYLE_ID = 'toolbarToggleControl';
+export const NO_GESTURE_ICON = 'none';
 
 export const BUILT_IN_HOLDING_ITEMS = Object.freeze([
   { id: 'cut', title: 'Cut', icon: 'cut', kind: 'action' },
@@ -456,7 +457,8 @@ export function normalizeBottomToolbarConfig(rawConfig) {
           !Array.isArray(style.gestureActionIcons)) {
         for (const [gestureId, svg] of Object.entries(style.gestureActionIcons)) {
           if (TOOLBAR_GESTURE_IDS.includes(gestureId) &&
-              typeof svg === 'string' && svg.length <= 65536 &&
+              (svg === NO_GESTURE_ICON ||
+                (typeof svg === 'string' && svg.length <= 65536)) &&
               gestureActions[gestureId]) {
             gestureActionIcons[gestureId] = svg;
           }

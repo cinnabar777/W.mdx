@@ -2067,7 +2067,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             for (gestureId in TOOLBAR_GESTURE_IDS) {
                 if (!gestureActions.has(gestureId)) continue
                 val iconSvg = rawGestureIcons.optString(gestureId, "")
-                if (iconSvg.isNotBlank() && isSafeToolbarSvg(iconSvg)) {
+                if (iconSvg == "none") {
+                    gestureActionIcons.put(gestureId, "none")
+                } else if (iconSvg.isNotBlank() && isSafeToolbarSvg(iconSvg)) {
                     gestureActionIcons.put(gestureId, iconSvg)
                 }
             }

@@ -50,6 +50,7 @@ import { svgIcons } from './toolbarIcons.js';
 import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
+  NO_GESTURE_ICON,
   OPEN_GROUP_ACTION_ID,
   normalizeBottomToolbarConfig,
   orderBottomToolbarPopupItems,
@@ -4278,7 +4279,10 @@ function installToolbarTapActions(container) {
   container.dataset.toolbarTapActionsInstalled = 'true';
   const pendingTaps = new WeakMap();
   container.addEventListener('click', event => {
-    const button = event.target?.closest?.('[data-toolbar-key], [data-toolbar-style-id]');
+    const target = event.target?.nodeType === 1
+      ? event.target
+      : event.target?.parentElement;
+    const button = target?.closest?.('[data-toolbar-key], [data-toolbar-style-id]');
     if (!button || !container.contains(button)) return;
     if (button.dataset.toolbarGestureSuppressClick === 'true') {
       delete button.dataset.toolbarGestureSuppressClick;
@@ -5163,6 +5167,7 @@ function installPopupToolbarSwipeUp(
 }
 
 function getToolbarGestureIcon(actionId, customSvg, toolbarConfig = bottomToolbarConfig) {
+  if (customSvg === NO_GESTURE_ICON) return '';
   if (customSvg) return sanitizeToolbarSvg(customSvg, false);
   const icon = createRuntimeToolbarItemRegistryForConfig(toolbarConfig).get(actionId)?.icon;
   return typeof icon === 'string' && icon.includes('<svg')
@@ -7253,7 +7258,9 @@ function setupFloatingToggle() {
   const toggleBtn = document.querySelector('#floating-toggle-btn');
   if (toggleBtn) {
     toggleBtn.dataset.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;
-    installToolbarTapActions(toggleBtn);
+    // Delegate from the body so the toggle and dynamically recreated toolbar
+    // keys use the same capture-phase tap-action path.
+    installToolbarTapActions(document.body);
     installPopupToolbarSwipeUp(toggleBtn, TOOLBAR_TOGGLE_STYLE_ID);
     toggleBtn.onclick = () => {
       toggleBottomToolbar();
