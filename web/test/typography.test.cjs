@@ -203,11 +203,23 @@ test('cursor and selection styling page is configured', () => {
   assert.match(cursorSettings, /app:key="pref_cursor_color"/);
   assert.match(cursorSettings, /app:key="pref_cursor_width"/);
   assert.match(cursorSettings, /app:key="pref_selection_highlight_bg_color"/);
+  assert.match(cursorSettings, /app:key="pref_active_line_bg_color"/);
   assert.match(source, /setCssVar\('--cursor-color', prefs\.pref_cursor_color\)/);
   assert.match(source, /setCssVar\('--cursor-width', prefs\.pref_cursor_width, 'px'\)/);
+  assert.match(source, /setCssVar\('--active-line-bg', androidArgbToCss\(prefs\.pref_active_line_bg_color\)\)/);
+  assert.match(indexHtml, /background-color:\s*var\(--active-line-bg,\s*rgba\(255,\s*255,\s*255,\s*0\.05\)\)\s*!important/);
   assert.match(source, /Number\.parseFloat\(cursorBlinkRate\) === 0/);
   assert.match(indexHtml, /body\.cursor-blink-disabled \.cm-editor \.cm-cursorLayer/);
   assert.match(indexHtml, /cursor-blink-disabled[\s\S]*?animation:\s*none\s*!important/);
+});
+
+test('active-line color resets to its existing translucent default', () => {
+  const resetPreferences = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
+    'utf8'
+  );
+  assert.match(resetPreferences, /"pref_active_line_bg_color" -> "#0DFFFFFF"/);
+  assert.match(resetPreferences, /key == "pref_active_line_bg_color" -> "default"/);
 });
 
 test('custom underline syntax, styles, toolbar actions, and shortcuts are wired together', () => {

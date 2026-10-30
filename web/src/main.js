@@ -7522,6 +7522,7 @@ window.editorBridge = {
     // Cursor & Selection
     setCssVar('--cursor-color', prefs.pref_cursor_color);
     setCssVar('--cursor-width', prefs.pref_cursor_width, 'px');
+    setCssVar('--active-line-bg', androidArgbToCss(prefs.pref_active_line_bg_color));
     const cursorBlinkRate = String(prefs.pref_cursor_blink_rate ?? '0.8s').trim();
     setCssVar('--cursor-blink-rate', cursorBlinkRate);
     document.body.classList.toggle(

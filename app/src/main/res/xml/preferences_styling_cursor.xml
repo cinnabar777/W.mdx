@@ -9,6 +9,12 @@
             app:summary="Color of the blinking text insertion cursor"
             app:defaultValue="default" />
 
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_active_line_bg_color"
+            app:title="Active Line Background Color"
+            app:summary="Background color of the line containing the cursor"
+            app:defaultValue="default" />
+
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_cursor_width"
             app:title="Cursor Thickness (px)"
