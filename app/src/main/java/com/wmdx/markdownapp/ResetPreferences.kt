@@ -60,6 +60,7 @@ object PreferenceResetHelper {
             "pref_body_background_color" -> "#000000"
             "pref_selection_highlight_bg_color" -> "#660078D4"
             "pref_selection_highlight_text_color" -> "#FFFFFF"
+            "pref_active_line_bg_color" -> "#0DFFFFFF"
             "pref_blockquote_line_color" -> "#444444"
             "pref_blockquote_bg_color" -> "#1A1A1A"
             "pref_blockquote_text_color" -> "#FFFFFF"
@@ -454,6 +455,7 @@ object PreferenceResetHelper {
             key == "pref_code_color" -> "default"
             key == "pref_code_bg_color" -> "default"
             key == "pref_cursor_color" -> "default"
+            key == "pref_active_line_bg_color" -> "default"
             key == "pref_cursor_width" -> 2
             key == "pref_cursor_blink_rate" -> "0.8s"
             key == "pref_selection_highlight_bg_color" -> "default"

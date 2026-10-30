@@ -2614,6 +2614,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun isToolbarKeyInConfig(config: org.json.JSONObject, itemId: String): Boolean {
+        if (itemId == "toolbarToggleControl") return true
         if (config.optJSONObject("customGroups")?.has(itemId) == true ||
             config.optJSONObject("customKeys")?.has(itemId) == true) {
             return true

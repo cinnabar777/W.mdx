@@ -62,8 +62,12 @@ test('highlight and pen colors, syntax, and replacement shortcuts stay connected
     assert.ok(highlightsPens.includes(`pref_pen_${color}_text_color`));
     assert.ok(styles.includes(`.cm-wmdx-pen-${color}`));
   }
-  assert.match(hotkeys, /app:title="Cycle Highlighter Colors"\s+app:defaultValue="ctrl\+alt\+y"/);
-  assert.match(hotkeys, /app:title="Cycle Pen Colors"\s+app:defaultValue="ctrl\+alt\+r"/);
+  assert.match(hotkeys, /app:title="Cycle Markers"\s+app:defaultValue="ctrl\+alt\+y"/);
+  assert.match(hotkeys, /app:title="Cycle Pens"\s+app:defaultValue="ctrl\+alt\+r"/);
+  for (let slot = 1; slot <= 4; slot += 1) {
+    assert.match(hotkeys, new RegExp(`app:title="Marker ${slot}"`));
+    assert.match(hotkeys, new RegExp(`app:title="Pen ${slot}"`));
+  }
   for (const key of [
     'pref_hotkey_marker_yellow',
     'pref_hotkey_marker_green',

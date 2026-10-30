@@ -245,6 +245,137 @@ test('toolbar gestures can open and save the preferences for their own key', () 
   assert.match(html, /\.toolbar-preview-icon-picker-modal\s*\{[\s\S]*?z-index:\s*10040/);
 });
 
+test('marker and pen toolbar actions use numbered slots and the generic tintable icon', () => {
+  for (const [id, title] of [
+    ['highlightYellow', 'Marker 1'],
+    ['highlightGreen', 'Marker 2'],
+    ['highlightPink', 'Marker 3'],
+    ['highlightBlue', 'Marker 4'],
+    ['penRed', 'Pen 1'],
+    ['penGreen', 'Pen 2'],
+    ['penBlue', 'Pen 3'],
+    ['penPurple', 'Pen 4']
+  ]) {
+    assert.match(
+      settingsSource,
+      new RegExp(`id: '${id}', title: '${title}', icon: svgIcons\\.(?:highlighter|pen)`)
+    );
+  }
+  assert.doesNotMatch(
+    settingsSource,
+    /title: '(?:Yellow|Green|Pink|Blue|Red|Purple) (?:Highlighter|Pen)'/
+  );
+  assert.doesNotMatch(
+    mainSource,
+    /title: '(?:Yellow|Green|Pink|Blue|Red|Purple) (?:Highlighter|Pen)'/
+  );
+});
+
+test('toolbar toggle gestures are configurable separately and run on the floating toggle', () => {
+  assert.match(
+    preferenceXml,
+    /app:key="pref_toolbar_toggle_gestures"[\s\S]*?app:title="Tap and swipe actions"/
+  );
+  assert.match(androidSource, /TOOLBAR_TOGGLE_STYLE_ID = "toolbarToggleControl"/);
+  assert.match(androidSource, /window\.openToolbarTogglePreferences\?\.\(\)/);
+  assert.match(settingsSource, /window\.openToolbarTogglePreferences = \(\) =>/);
+  assert.match(settingsSource, /collapseToolbarAppearance\?\.\(\)/);
+  assert.match(toolbarConfigSource, /TOOLBAR_TOGGLE_STYLE_ID = 'toolbarToggleControl'/);
+  assert.match(mainActivitySource, /itemId == "toolbarToggleControl"/);
+  assert.match(
+    mainSource,
+    /toggleBtn\.dataset\.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;[\s\S]*?installToolbarTapActions\(document\.body\);[\s\S]*?installPopupToolbarSwipeUp\(toggleBtn, TOOLBAR_TOGGLE_STYLE_ID\)/
+  );
+  assert.match(
+    fs.readFileSync(path.join(root, 'web/index.html'), 'utf8'),
+    /\.floating-toggle-btn\s*\{[^}]*touch-action:\s*none/s
+  );
+});
+
+test('no-icon gesture choices persist while suppressing their parent-key indicator', () => {
+  assert.match(toolbarConfigSource, /NO_GESTURE_ICON = 'none'/);
+  assert.match(toolbarConfigSource, /svg === NO_GESTURE_ICON/);
+  assert.match(settingsSource, /aria-label', 'No icon'/);
+  assert.match(settingsSource, /style\.gestureActionIcons\[selectedGestureId\] = NO_GESTURE_ICON/);
+  assert.match(mainSource, /customSvg === NO_GESTURE_ICON\) return ''/);
+  assert.match(androidSource, /if \(iconSvg == "none"\)/);
+});
+
+test('toolbar toggle gestures have a separate editor and remain outside the replaceable preview', async () => {
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const saves = [];
+  let collapseCalled = false;
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({}),
+    setToolbarSurface: () => true,
+    collapseToolbarAppearance: () => {
+      collapseCalled = true;
+    },
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?toolbar-toggle-editor=${Date.now()}`);
+    assert.equal(dom.window.openToolbarTogglePreferences(), true);
+    assert.equal(collapseCalled, true);
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview-selected-title').textContent,
+      'Toolbar toggle'
+    );
+    assert.equal(dom.window.document.querySelector('#toolbar-open-icon-picker').hidden, true);
+    assert.equal(dom.window.document.querySelector('[data-toolbar-section="colors"]').hidden, true);
+    assert.ok(
+      dom.window.document.querySelector('[data-toolbar-section="taps"]')
+    );
+    assert.ok(
+      dom.window.document.querySelector('[data-toolbar-section="side-swipes"]')
+    );
+    assert.ok(
+      dom.window.document.querySelector('[data-toolbar-section="corner-swipes"]')
+    );
+    assert.equal(
+      dom.window.document.querySelector('#toolbar-preview [data-toolbar-key="toolbarToggleControl"]'),
+      null,
+      'the toggle is configured separately, not shown as a replaceable toolbar key'
+    );
+
+    dom.window.document
+      .querySelector('.toolbar-preview-gesture-action[data-gesture-id="tap2"]')
+      .click();
+    assert.equal(
+      dom.window.document.querySelector(
+        '#toolbar-action-picker-modal [role="option"][aria-label="Toolbar toggle"]'
+      ),
+      null,
+      'the toggle is not offered as a regular toolbar action'
+    );
+    dom.window.document
+      .querySelector('#toolbar-action-picker-modal [role="option"][aria-label="Bold"]')
+      .click();
+    assert.equal(
+      saves.at(-1).styles.toolbarToggleControl.gestureActions.tap2,
+      'bold'
+    );
+    assert.ok(!saves.at(-1).order.includes('toolbarToggleControl'));
+    assert.ok(!saves.at(-1).holding.includes('toolbarToggleControl'));
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
 test('embedded preferences open the existing full key editor for the triggering key', async () => {
   const dom = new JSDOM(html, {
     url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html?embed=key-preferences'

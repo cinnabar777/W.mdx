@@ -68,6 +68,11 @@
     <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="pref_toolbar_toggle_category"
         app:title="Toolbar toggle">
+        <androidx.preference.Preference
+            app:key="pref_toolbar_toggle_gestures"
+            app:title="Tap and swipe actions"
+            app:summary="Configure multi-tap and swipe actions for the show/hide button" />
+
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_toolbar_toggle_bg_color"
             app:title="Toggle Background Color"
