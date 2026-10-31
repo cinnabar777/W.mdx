@@ -190,7 +190,8 @@ object TextPackManager {
                 when {
                     segment == "." || segment == ".." -> segment
                     segment.matches(Regex("[A-Za-z0-9._~-]+")) -> segment
-                    else -> Uri.encode(segment)
+                    else -> java.net.URLEncoder.encode(segment, Charsets.UTF_8.name())
+                        .replace("+", "%20")
                 }
             }
     }
@@ -314,8 +315,17 @@ object TextPackManager {
         return resolveMdzipLinkPath(session.documentPath, linkTarget, availablePaths)
     }
 
-    fun resolveAssetFile(session: TextPackSession, relativePath: String): File? =
-        resolveArchiveFile(session.sessionDir, relativePath)
+    fun resolveAssetFile(session: TextPackSession, relativePath: String): File? {
+        val directFile = resolveArchiveFile(session.sessionDir, relativePath)
+        if (directFile?.isFile == true) return directFile
+        val decodedPath = runCatching {
+            java.net.URLDecoder.decode(
+                relativePath.replace("+", "%2B"),
+                Charsets.UTF_8.name()
+            )
+        }.getOrNull() ?: return directFile
+        return resolveArchiveFile(session.sessionDir, decodedPath) ?: directFile
+    }
 
     internal fun resolveMdzipEntryPoint(
         archivePaths: Set<String>,

@@ -86,6 +86,7 @@ class TextPackManagerTest {
                 markdownContent = "",
                 sourceUri = null
             )
+            TextPackManager.writeMdzipDocument(sessionDir, "index.md", "")
             val assetPath = TextPackManager.addAssetMedia(
                 session,
                 ByteArrayInputStream(byteArrayOf(1, 2, 3)),
