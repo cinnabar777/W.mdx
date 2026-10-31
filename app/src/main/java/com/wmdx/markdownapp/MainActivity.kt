@@ -2340,7 +2340,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 recordMdzipVideoAsset(
                     archivePath.substringAfterLast('.').lowercase(),
                     404,
-                    "video/mp4",
+                    mdzipVideoMimeType(archivePath.substringAfterLast('.')),
                     rangeHeader = request.requestHeaders.entries
                         .firstOrNull { it.key.equals("Range", ignoreCase = true) }
                         ?.value,
@@ -2364,7 +2364,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return mdzipAssetError(404, "Not Found")
         }
         val extension = file.extension.lowercase()
-        val mimeType = if (isVideoAsset) "video/mp4" else mdzipAudioMimeType(extension)
+        val mimeType = if (isVideoAsset) mdzipVideoMimeType(extension) else mdzipAudioMimeType(extension)
         val fileLength = file.length()
         val range = request.requestHeaders.entries
             .firstOrNull { it.key.equals("Range", ignoreCase = true) }
@@ -2511,6 +2511,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             else -> "audio/mpeg"
         }
 
+    private fun mdzipVideoMimeType(extension: String): String =
+        when (extension.lowercase()) {
+            "webm" -> "video/webm"
+            else -> "video/mp4"
+        }
+
     private fun recordMdzipAudioAsset(
         extension: String,
         status: Int,
@@ -2630,7 +2636,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val originalName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedVideoFileName(originalName)) {
-                throw java.io.IOException("Choose an MP4 or M4V video file.")
+                throw java.io.IOException("Choose an MP4, M4V, or WebM video file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected video file.")
