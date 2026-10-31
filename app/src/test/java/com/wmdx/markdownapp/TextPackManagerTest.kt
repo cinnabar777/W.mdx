@@ -10,6 +10,8 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -128,6 +130,40 @@ class TextPackManagerTest {
         } finally {
             initialSessionDir.deleteRecursively()
             reopenedSessionDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun writeMdzipDocumentRejectsTraversalWithoutTouchingFilesOutsideSession() {
+        val rootDir = java.nio.file.Files.createTempDirectory("mdzip-path-safety").toFile()
+        val sessionDir = File(rootDir, "sessions/session").apply { mkdirs() }
+        val existingOutsideFile = File(rootDir, "sessions/outside.md").apply {
+            writeText("Keep this file unchanged.\n", Charsets.UTF_8)
+        }
+        val missingOutsideFile = File(rootDir, "sessions/not-created.md")
+        val originalOutsideContents = existingOutsideFile.readBytes()
+
+        try {
+            assertThrows(IOException::class.java) {
+                TextPackManager.writeMdzipDocument(
+                    sessionDir,
+                    "../outside.md",
+                    "# Overwrite outside session\n"
+                )
+            }
+            assertThrows(IOException::class.java) {
+                TextPackManager.writeMdzipDocument(
+                    sessionDir,
+                    "nested/../../not-created.md",
+                    "# Create outside session\n"
+                )
+            }
+
+            assertArrayEquals(originalOutsideContents, existingOutsideFile.readBytes())
+            assertFalse("A traversal target must not be created.", missingOutsideFile.exists())
+            assertFalse("Rejected paths must not create parent directories.", File(sessionDir, "nested").exists())
+        } finally {
+            rootDir.deleteRecursively()
         }
     }
 
