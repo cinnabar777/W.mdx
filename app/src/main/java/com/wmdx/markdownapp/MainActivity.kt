@@ -2321,36 +2321,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
         }
 
-        val match = Regex("^bytes=(\\d*)-(\\d*)$", RegexOption.IGNORE_CASE).matchEntire(range.trim())
-        if (match == null || fileLength <= 0) {
-            return mdzipRangeError(fileLength, mimeType)
-        }
-        val rawStart = match.groupValues[1]
-        val rawEnd = match.groupValues[2]
-        if (rawStart.isEmpty() && rawEnd.isEmpty()) return mdzipRangeError(fileLength, mimeType)
-        val start = if (rawStart.isEmpty()) {
-            val suffixLength = rawEnd.toLongOrNull()?.coerceAtLeast(1)
-                ?: return mdzipRangeError(fileLength, mimeType)
-            (fileLength - suffixLength).coerceAtLeast(0)
-        } else {
-            rawStart.toLongOrNull() ?: return mdzipRangeError(fileLength, mimeType)
-        }
-        val end = if (rawEnd.isEmpty()) {
-            fileLength - 1
-        } else {
-            (rawEnd.toLongOrNull() ?: return mdzipRangeError(fileLength, mimeType))
-                .coerceAtMost(fileLength - 1)
-        }
-        if (start >= fileLength || end < start) return mdzipRangeError(fileLength, mimeType)
-
-        val length = end - start + 1
-        headers["Content-Length"] = length.toString()
-        headers["Content-Range"] = "bytes $start-$end/$fileLength"
+        val byteRange = parseMdzipByteRange(range, fileLength)
+            ?: return mdzipRangeError(fileLength, mimeType)
+        headers["Content-Length"] = byteRange.length.toString()
+        headers["Content-Range"] =
+            "bytes ${byteRange.start}-${byteRange.endInclusive}/$fileLength"
         recordMdzipAudioAsset(extension, 206, mimeType, true)
         val body = if (request.method.equals("HEAD", ignoreCase = true)) {
             ByteArrayInputStream(ByteArray(0))
         } else {
-            limitedFileInputStream(file, start, length)
+            limitedFileInputStream(file, byteRange.start, byteRange.length)
         }
         return WebResourceResponse(mimeType, null, 206, "Partial Content", headers, body)
     }
