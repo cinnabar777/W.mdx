@@ -102,8 +102,8 @@ class TextPackManagerTest {
             val assetFile = TextPackManager.resolveAssetFile(session, assetPath)!!
 
             assertFalse(
-                TextPackManager.removeUnreferencedMediaAsset(session, assetPath, ""),
-                "an asset referenced by another document must be kept"
+                "an asset referenced by another document must be kept",
+                TextPackManager.removeUnreferencedMediaAsset(session, assetPath, "")
             )
             assertTrue(assetFile.exists())
 
