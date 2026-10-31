@@ -36,6 +36,9 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const editor = read('src/main.js');
+  const toolbarConfig = read('src/toolbarConfig.js');
+  const settingsPreview = read('src/toolbarSettingsPreview.js');
+  const settingsActivity = read('../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
   const widget = read('src/videoPreviewWidget.js');
   const icons = read('src/toolbarIcons.js');
 
@@ -49,7 +52,11 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   assert.match(activity, /fun syncMdzipVideoReferences\(/);
   assert.match(editor, /new VideoPreviewWidget/);
   assert.match(editor, /syncMdzipVideoReferences\?\./);
-  assert.match(editor, /id: 'video', icon: svgIcons\.video/);
+  assert.match(editor, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video/);
+  assert.match(toolbarConfig, /'image', 'audio', 'video', 'link'/);
+  assert.match(toolbarConfig, /parsedVersion > 0 && parsedVersion < 8/);
+  assert.match(settingsPreview, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video \}/);
+  assert.match(settingsActivity, /"image", "audio", "video", "link"/);
   assert.match(widget, /video\.controls = true/);
   assert.match(widget, /userEvent: 'delete\.mdzip-video'/);
   assert.match(icons, /video: `<svg/);

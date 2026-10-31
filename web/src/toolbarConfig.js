@@ -34,8 +34,8 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   ]),
   table: Object.freeze(['insertTable', ...TABLE_ACTIONS.map(item => item.id)]),
   insert: Object.freeze([
-    'image', 'audio', 'link', 'callout', 'inlineCode', 'blockQuote', 'codeBlock',
-    'horizontalLine', 'footnote'
+    'image', 'audio', 'video', 'link', 'callout', 'inlineCode', 'blockQuote',
+    'codeBlock', 'horizontalLine', 'footnote'
   ]),
   menu: Object.freeze([
     'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack', 'saveAsMdzip',
@@ -82,7 +82,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 7,
+  version: 8,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -331,6 +331,17 @@ export function normalizeBottomToolbarConfig(rawConfig) {
         popupGroups[groupId].order.push(actionId);
         assignedActions.add(actionId);
       }
+    }
+  }
+
+  if (parsedVersion > 0 && parsedVersion < 8) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    if (
+      !assignedActions.has('video') &&
+      !legacyHeldKeys.includes('video') &&
+      !legacyHidden.includes('video')
+    ) {
+      popupGroups.insert.order.push('video');
     }
   }
 

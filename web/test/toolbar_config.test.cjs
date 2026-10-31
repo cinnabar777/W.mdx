@@ -116,6 +116,22 @@ test('version 5 toolbar layouts add Auto Heading to the heading actions', async 
   assert.ok(config.holding.includes('heading3'));
 });
 
+test('version 7 toolbar layouts add Video to the Insert actions', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 7,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      insert: {
+        order: ['image', 'audio', 'link'],
+        hidden: []
+      }
+    }
+  });
+
+  assert.deepEqual(config.popupGroups.insert.order, ['image', 'audio', 'link', 'video']);
+});
+
 test('popup actions can be reordered and removed from their former group into the shared holding area', async () => {
   const {
     BOTTOM_TOOLBAR_GROUP_ITEM_IDS,

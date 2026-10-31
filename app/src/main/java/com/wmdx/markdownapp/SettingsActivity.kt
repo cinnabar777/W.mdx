@@ -1441,8 +1441,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell"
             ),
             "insert" to listOf(
-                "image", "audio", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
-                "horizontalLine", "footnote"
+                "image", "audio", "video", "link", "callout", "inlineCode", "blockQuote",
+                "codeBlock", "horizontalLine", "footnote"
             ),
             "menu" to listOf(
                 "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
@@ -1462,8 +1462,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple",
             "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
-            "image", "audio", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
-            "horizontalLine", "footnote",
+            "image", "audio", "video", "link", "callout", "inlineCode", "blockQuote",
+            "codeBlock", "horizontalLine", "footnote",
             "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "saveAsMdzip",
             "exportHtml", "search", "switchView", "newWindow", "settings",
