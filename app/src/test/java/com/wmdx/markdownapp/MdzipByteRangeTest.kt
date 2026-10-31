@@ -154,13 +154,15 @@ class MdzipByteRangeTest {
             var stats: MdzipByteRangeStreamStats? = null
             openMdzipByteRangeStream(file, 0, 5) { stats = it }.use { stream ->
                 assertEquals(1, stream.read())
+                assertEquals(2, stream.read())
+                assertEquals(3, stream.read())
                 assertEquals(-1, stream.read())
             }
 
             assertEquals(
                 MdzipByteRangeStreamStats(
                     expectedBytes = 5,
-                    readBytes = 1,
+                    readBytes = 3,
                     skippedBytes = 0,
                     sourceEndedEarly = true
                 ),
