@@ -2,7 +2,9 @@ package com.wmdx.markdownapp
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MdzipByteRangeTest {
@@ -36,6 +38,14 @@ class MdzipByteRangeTest {
             MdzipByteRange(90, 99),
             parseMdzipByteRange("bytes=90-150", 100)
         )
+    }
+
+    @Test
+    fun servesM4aAsAWholeFileButRetainsMp3RangeSupport() {
+        assertTrue(shouldServeMdzipAudioAsWholeFile("m4a", "bytes=1703936-"))
+        assertTrue(shouldServeMdzipAudioAsWholeFile("M4A", "bytes=-19007"))
+        assertTrue(shouldServeMdzipAudioAsWholeFile("mp3", null))
+        assertFalse(shouldServeMdzipAudioAsWholeFile("mp3", "bytes=100-200"))
     }
 
     @Test
