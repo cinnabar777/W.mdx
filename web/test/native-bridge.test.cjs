@@ -609,7 +609,7 @@ test('left panel search options reach native search and the file filters', () =>
   );
   assert.match(
     mainActivitySource,
-    /markdownExtensions = setOf\("\.md", "\.textpack", "\.mdx", "\.textpack\.zip"\)/
+    /markdownExtensions = setOf\("\.md", "\.textpack", "\.mdx", "\.textpack\.zip", "\.mdz"\)/
   );
   assert.match(
     mainActivitySource,

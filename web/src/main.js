@@ -34,6 +34,8 @@ import { toCssFontFamily } from './fontFamilies.js';
 import { setupLeftPanel } from './leftPanel.js';
 import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
+import { formatMarkdownAudioLink, parseMarkdownAudioLink } from './markdownMedia.js';
+import { AudioPreviewWidget } from './audioPreviewWidget.js';
 import {
   getMarkdownFormattingState,
   getMarkdownFormatRanges,
@@ -2012,6 +2014,22 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'Link' || node.name === 'URL') {
             const raw = view.state.doc.sliceString(node.from, node.to);
+            const audioLink = node.name === 'Link' ? parseMarkdownAudioLink(raw) : null;
+            const audioUrl = audioLink
+              ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
+              : null;
+            if (audioLink && audioUrl && !isNodeActive && !isPureWysiwyg) {
+              builder.push(Decoration.replace({
+                widget: new AudioPreviewWidget(
+                  audioUrl,
+                  audioLink.label,
+                  audioLink.url,
+                  node.from,
+                  node.to
+                )
+              }).range(node.from, node.to));
+              return false;
+            }
             const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
             if (match) {
               const labelFrom = node.from + 1;
@@ -3104,6 +3122,22 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'Link' || node.name === 'URL') {
         const raw = doc.sliceString(node.from, node.to);
+        const audioLink = node.name === 'Link' ? parseMarkdownAudioLink(raw) : null;
+        const audioUrl = audioLink
+          ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
+          : null;
+        if (audioLink && audioUrl) {
+          replacements.push(Decoration.replace({
+            widget: new AudioPreviewWidget(
+              audioUrl,
+              audioLink.label,
+              audioLink.url,
+              node.from,
+              node.to
+            )
+          }).range(node.from, node.to));
+          return false;
+        }
         const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         if (match) {
           const labelFrom = node.from + 1;
@@ -4169,6 +4203,28 @@ class CodeMirrorAdapter {
     }
   }
 
+  insertAudioLink(relativeUrl, label) {
+    if (!this.view) return;
+    const markdown = formatMarkdownAudioLink(label, relativeUrl);
+    const selection = this.view.state.selection.main;
+    const before = this.view.state.doc.sliceString(0, selection.from);
+    const after = this.view.state.doc.sliceString(selection.to);
+    const prefix = before.length === 0 || before.endsWith('\n\n')
+      ? ''
+      : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = after.startsWith('\n\n')
+      ? ''
+      : after.startsWith('\n') ? '\n' : '\n\n';
+    const insertion = `${prefix}${markdown}${suffix}`;
+    const cursor = selection.from + insertion.length;
+    this.view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: insertion },
+      selection: { anchor: cursor, head: cursor },
+      userEvent: 'input.mdzip-audio'
+    });
+    this.view.focus();
+  }
+
   destroy() {
     this.persistScrollPosition();
 
@@ -4512,6 +4568,7 @@ function setupGroupedControlBar() {
       e.stopPropagation();
       togglePopupStrip('insert', insertBtn, [
         { id: 'image', icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
+        { id: 'audio', icon: svgIcons.audio, title: 'Insert MP3 Audio', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('audio') },
         { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
@@ -4534,6 +4591,7 @@ function setupGroupedControlBar() {
         { id: 'saveAsFile', icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
         { id: 'saveTabs', icon: svgIcons.saveTabs, title: 'Save Tabs', action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
         { id: 'saveAsTextPack', icon: svgIcons.saveAsTextPack, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
+        { id: 'saveAsMdzip', icon: svgIcons.saveAsMdzip, title: 'Save as MDZip', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_mdzip') },
         { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
         { id: 'switchView', icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
@@ -4813,6 +4871,7 @@ function createToolbarActionRegistry() {
     ],
     [
       { id: 'image', title: 'Insert Image', icon: svgIcons.image, action: () => window.AndroidNative?.onNativeAction('image') },
+      { id: 'audio', title: 'Insert MP3 Audio', icon: svgIcons.audio, action: () => window.AndroidNative?.onNativeAction('audio') },
       { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
       { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
@@ -4828,6 +4887,7 @@ function createToolbarActionRegistry() {
       { id: 'saveAsFile', title: 'Save As', icon: svgIcons.saveAsFile, action: () => window.AndroidNative?.onNativeAction('save_as') },
       { id: 'saveTabs', title: 'Save Tabs', icon: svgIcons.saveTabs, action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
       { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack, action: () => window.AndroidNative?.onNativeAction('save_as_textpack') },
+      { id: 'saveAsMdzip', title: 'Save as MDZip', icon: svgIcons.saveAsMdzip, action: () => window.AndroidNative?.onNativeAction('save_as_mdzip') },
       { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
       { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
       { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView, action: () => openWithOtherEngine() },
@@ -8439,6 +8499,11 @@ window.editorBridge = {
       const imgMarkdown = `![${altText}](${imageUrl})`;
       const cur = activeAdapter.getMarkdown();
       activeAdapter.setMarkdown(cur ? `${cur}\n${imgMarkdown}` : imgMarkdown);
+    }
+  },
+  insertAudioLink: function(relativeUrl, label = 'audio.mp3') {
+    if (activeAdapter && typeof activeAdapter.insertAudioLink === 'function') {
+      activeAdapter.insertAudioLink(relativeUrl, label);
     }
   },
   setTheme: function(themeName) {

@@ -1433,11 +1433,12 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell"
             ),
             "insert" to listOf(
-                "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
+                "image", "audio", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
                 "horizontalLine", "footnote"
             ),
             "menu" to listOf(
                 "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
+                "saveAsMdzip",
                 "exportHtml", "search", "switchView", "newWindow", "settings"
             )
         )
@@ -1453,9 +1454,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple",
             "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
-            "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
+            "image", "audio", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
             "horizontalLine", "footnote",
             "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
+            "saveAsMdzip",
             "exportHtml", "search", "switchView", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID
         )

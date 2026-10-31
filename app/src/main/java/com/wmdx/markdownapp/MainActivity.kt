@@ -37,6 +37,10 @@ import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.ByteArrayInputStream
+import java.io.FileInputStream
+import java.io.FilterInputStream
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.util.concurrent.Executors
@@ -89,9 +93,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var leftPanelSearchFuture: Future<*>? = null
     private var currentTextPackSession: TextPackSession? = null
+    @Volatile private var currentMdzipSession: MdzipSession? = null
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
+    private var pendingCreateDocumentAsMdzip: Boolean? = null
     private var pendingCreateDocumentSessionId: String? = null
+    private var pendingInsertAudioDocumentSessionId: String? = null
     private var pendingWmdxTabSessionJson: String? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
     private var pendingRenamePermissionRequest: RenameAccessRequest? = null
@@ -244,6 +251,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             handleCreateDocumentResult(uri)
         }
 
+    private val createMdzipDocumentLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.CreateDocument(MdzipManager.MIME_TYPE)
+        ) { uri ->
+            handleCreateDocumentResult(uri)
+        }
+
     private val saveWmdxTabSessionLauncher =
         registerForActivityResult(
             ActivityResultContracts.CreateDocument(WMDX_TAB_SESSION_MIME)
@@ -273,6 +287,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { insertImageFromUri(it) }
+    }
+
+    private val pickAudioLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val expectedSessionId = pendingInsertAudioDocumentSessionId
+        pendingInsertAudioDocumentSessionId = null
+        if (uri != null && expectedSessionId == currentDocumentSessionId) {
+            insertAudioFromUri(uri)
+        } else if (uri != null) {
+            ThemedToast.show(this, "The active document changed. The MP3 was not inserted.", Toast.LENGTH_LONG)
+        }
     }
 
     private val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -660,7 +684,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                return request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+                val url = request?.url ?: return null
+                if (url.path?.startsWith("/mdzip-assets/") == true && request != null) {
+                    return interceptMdzipAssetRequest(request)
+                }
+                return assetLoader.shouldInterceptRequest(url)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -1293,12 +1321,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 handleSaveAsTextPackFile()
                 true
             }
+            R.id.action_save_as_mdzip -> {
+                handleSaveAsMdzipFile()
+                true
+            }
             R.id.action_export -> {
                 handleExportDocument()
                 true
             }
             R.id.action_insert_image -> {
                 handleInsertImage()
+                true
+            }
+            R.id.action_insert_audio -> {
+                handleInsertAudio()
                 true
             }
             R.id.action_settings -> {
@@ -1327,6 +1363,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         currentRevision = 0
         currentEmptyContentExplicitlyEdited = false
         currentTextPackSession = null
+        currentMdzipSession = null
         latestMarkdownContent = ""
         currentFileUri = null
         currentFileName = getString(R.string.untitled_document)
@@ -1479,7 +1516,38 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val fileName = getFileNameFromUri(uri)
 
-            if (TextPackManager.isTextPackFile(this, uri, fileName)) {
+            if (MdzipManager.isMdzipFileName(fileName)) {
+                val session = MdzipManager.open(this, uri)
+                val text = session.markdownContent
+                hasBom = text.startsWith("\uFEFF")
+                hasCrlf = text.contains("\r\n")
+                val lines = text.lineSequence().count()
+                val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
+                AppDiagnostics.record(this, "mdzip_read_done", "chars=${text.length} lines=$lines ms=$readMs")
+
+                currentTextPackSession = null
+                currentMdzipSession = session
+                currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+                currentRevision = 0
+                currentEmptyContentExplicitlyEdited = false
+                latestMarkdownContent = text
+                currentFileUri = uri
+                currentFileName = fileName
+                isDirty = false
+                updateTitle()
+
+                prefs.edit().putString("last_opened_uri", uri.toString()).apply()
+
+                val escaped = JSONObjectWrapper.quote(text)
+                webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
+                    webView.post {
+                        webView.requestFocus()
+                        webView.requestLayout()
+                        webView.invalidate()
+                        webView.postInvalidate()
+                    }
+                }
+            } else if (TextPackManager.isTextPackFile(this, uri, fileName)) {
                 val session = TextPackManager.openTextPack(this, uri)
                 val text = session.markdownContent
                 hasBom = text.startsWith("\uFEFF")
@@ -1489,6 +1557,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(this, "textpack_read_done", "chars=${text.length} lines=$lines ms=$readMs")
 
                 currentTextPackSession = session
+                currentMdzipSession = null
                 currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                 currentRevision = 0
                 currentEmptyContentExplicitlyEdited = false
@@ -1511,6 +1580,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             } else {
                 currentTextPackSession = null
+                currentMdzipSession = null
                 val inputStream = contentResolver.openInputStream(uri)
                     ?: throw java.io.FileNotFoundException("Could not read the selected file")
                 inputStream.use {
@@ -1738,11 +1808,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         launchCreateDocument(defaultTextPackSaveAsName(), asTextPack = true)
     }
 
-    private fun launchCreateDocument(fileName: String, asTextPack: Boolean?) {
+    private fun handleSaveAsMdzipFile() {
+        launchCreateDocument(defaultMdzipSaveAsName(), asTextPack = false, asMdzip = true)
+    }
+
+    private fun launchCreateDocument(
+        fileName: String,
+        asTextPack: Boolean?,
+        asMdzip: Boolean? = null
+    ) {
         pendingCreateDocumentAsTextPack = asTextPack
+        pendingCreateDocumentAsMdzip = asMdzip
         pendingCreateDocumentSessionId = currentDocumentSessionId
         if (asTextPack == true) {
             createTextPackDocumentLauncher.launch(fileName)
+        } else if (asMdzip == true) {
+            createMdzipDocumentLauncher.launch(fileName)
         } else {
             createDocumentLauncher.launch(fileName)
         }
@@ -1753,6 +1834,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             pendingRenameFallbackName = null
             val saveAsTextPack = pendingCreateDocumentAsTextPack
             pendingCreateDocumentAsTextPack = null
+            val saveAsMdzip = pendingCreateDocumentAsMdzip
+            pendingCreateDocumentAsMdzip = null
             val expectedSessionId = pendingCreateDocumentSessionId
             pendingCreateDocumentSessionId = null
             if (expectedSessionId != null && expectedSessionId != currentDocumentSessionId) {
@@ -1765,16 +1848,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 saveFileToUri(
                     uri,
                     saveAsTextPack,
+                    requestedAsMdzip = saveAsMdzip,
                     expectedDocumentSessionId = expectedSessionId
                 )
             }
         } else if (pendingRenameFallbackName != null) {
             pendingCreateDocumentAsTextPack = null
+            pendingCreateDocumentAsMdzip = null
             pendingCreateDocumentSessionId = null
             pendingRenameFallbackName = null
             updateTitle()
         } else {
             pendingCreateDocumentAsTextPack = null
+            pendingCreateDocumentAsMdzip = null
             pendingCreateDocumentSessionId = null
         }
     }
@@ -1811,6 +1897,28 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
         return "$base.textpack"
+    }
+
+    private fun defaultMdzipSaveAsName(): String {
+        val name = currentFileName.ifBlank { getString(R.string.untitled_document) }
+        val lowerName = name.lowercase()
+        val base = when {
+            lowerName.endsWith(".textpack.zip") ->
+                name.dropLast(".textpack.zip".length)
+            lowerName.endsWith(".textpack") ->
+                name.dropLast(".textpack".length)
+            lowerName.endsWith(".mdz") ->
+                name.dropLast(".mdz".length)
+            lowerName.endsWith(".markdown") ->
+                name.dropLast(".markdown".length)
+            lowerName.endsWith(".md") ->
+                name.dropLast(".md".length)
+            else -> {
+                val lastDot = name.lastIndexOf('.')
+                if (lastDot > 0) name.substring(0, lastDot) else name
+            }
+        }
+        return "${base.ifBlank { "Untitled" }}.mdz"
     }
 
     private fun renamedDocumentFileName(requestedName: String, originalName: String): String? {
@@ -2003,6 +2111,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun saveFileToUri(
         uri: Uri,
         requestedAsTextPack: Boolean? = null,
+        requestedAsMdzip: Boolean? = null,
         cachedMarkdownText: String? = null,
         expectedDocumentSessionId: String? = null
     ) {
@@ -2060,14 +2169,34 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val hasTextPackExtension =
                     targetFileName.endsWith(".textpack", ignoreCase = true) ||
                     targetFileName.endsWith(".textpack.zip", ignoreCase = true)
+                val isMdzipTarget = when {
+                    requestedAsMdzip != null -> requestedAsMdzip
+                    requestedAsTextPack == true -> false
+                    MdzipManager.isMdzipFileName(targetFileName) -> true
+                    uri == currentFileUri && currentMdzipSession != null -> true
+                    else -> false
+                }
                 val isTextPackTarget = requestedAsTextPack ?: (
-                    hasTextPackExtension ||
-                        (uri == currentFileUri && currentTextPackSession != null)
+                    !isMdzipTarget &&
+                        (hasTextPackExtension ||
+                            (uri == currentFileUri && currentTextPackSession != null))
                     )
 
-                if (isTextPackTarget) {
+                if (isMdzipTarget) {
+                    if (currentTextPackSession != null && currentMdzipSession == null) {
+                        throw java.io.IOException(
+                            "Save as MDZip from TextPack is not supported yet. Open a Markdown document first."
+                        )
+                    }
+                    val session = currentMdzipSession
+                        ?: MdzipManager.create(this, markdownText, targetFileName)
+                    currentMdzipSession = session
+                    currentTextPackSession = null
+                    MdzipManager.save(this, session, markdownText, uri)
+                } else if (isTextPackTarget) {
                     val session = currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
                     currentTextPackSession = session
+                    currentMdzipSession = null
                     TextPackManager.saveTextPack(this, session, markdownText, uri)
                 } else {
                     val output = contentResolver.openOutputStream(uri, "rwt")
@@ -2078,6 +2207,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         writer.flush()
                     }
                     currentTextPackSession = null
+                    currentMdzipSession = null
                 }
 
                 persistDocumentUriPermission(uri)
@@ -2142,6 +2272,116 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
 
+    private fun interceptMdzipAssetRequest(request: WebResourceRequest): WebResourceResponse {
+        val segments = request.url.pathSegments
+        val session = currentMdzipSession
+        if (
+            session == null ||
+            segments.size < 3 ||
+            segments[0] != "mdzip-assets" ||
+            segments[1] != session.sessionDir.name
+        ) {
+            return mdzipAssetError(404, "Not Found")
+        }
+
+        val archivePath = segments.drop(2).joinToString("/")
+        val file = MdzipManager.audioArchiveFile(session, archivePath)
+            ?: return mdzipAssetError(404, "Not Found")
+        val fileLength = file.length()
+        val range = request.requestHeaders.entries
+            .firstOrNull { it.key.equals("Range", ignoreCase = true) }
+            ?.value
+        val headers = mutableMapOf(
+            "Accept-Ranges" to "bytes",
+            "Cache-Control" to "no-cache"
+        )
+
+        if (range == null) {
+            headers["Content-Length"] = fileLength.toString()
+            val body = if (request.method.equals("HEAD", ignoreCase = true)) {
+                ByteArrayInputStream(ByteArray(0))
+            } else {
+                limitedFileInputStream(file, 0, fileLength)
+            }
+            return WebResourceResponse("audio/mpeg", null, 200, "OK", headers, body)
+        }
+
+        val match = Regex("^bytes=(\\d*)-(\\d*)$", RegexOption.IGNORE_CASE).matchEntire(range.trim())
+        if (match == null || fileLength <= 0) {
+            return mdzipRangeError(fileLength)
+        }
+        val rawStart = match.groupValues[1]
+        val rawEnd = match.groupValues[2]
+        if (rawStart.isEmpty() && rawEnd.isEmpty()) return mdzipRangeError(fileLength)
+        val start = if (rawStart.isEmpty()) {
+            val suffixLength = rawEnd.toLongOrNull()?.coerceAtLeast(1)
+                ?: return mdzipRangeError(fileLength)
+            (fileLength - suffixLength).coerceAtLeast(0)
+        } else {
+            rawStart.toLongOrNull() ?: return mdzipRangeError(fileLength)
+        }
+        val end = if (rawEnd.isEmpty()) {
+            fileLength - 1
+        } else {
+            (rawEnd.toLongOrNull() ?: return mdzipRangeError(fileLength))
+                .coerceAtMost(fileLength - 1)
+        }
+        if (start >= fileLength || end < start) return mdzipRangeError(fileLength)
+
+        val length = end - start + 1
+        headers["Content-Length"] = length.toString()
+        headers["Content-Range"] = "bytes $start-$end/$fileLength"
+        val body = if (request.method.equals("HEAD", ignoreCase = true)) {
+            ByteArrayInputStream(ByteArray(0))
+        } else {
+            limitedFileInputStream(file, start, length)
+        }
+        return WebResourceResponse("audio/mpeg", null, 206, "Partial Content", headers, body)
+    }
+
+    private fun limitedFileInputStream(file: java.io.File, start: Long, length: Long): InputStream {
+        val stream = FileInputStream(file)
+        stream.channel.position(start)
+        return object : FilterInputStream(stream) {
+            private var remaining = length
+
+            override fun read(): Int {
+                if (remaining <= 0) return -1
+                val value = super.read()
+                if (value >= 0) remaining -= 1
+                return value
+            }
+
+            override fun read(buffer: ByteArray, offset: Int, requestedLength: Int): Int {
+                if (remaining <= 0) return -1
+                val boundedLength = minOf(requestedLength.toLong(), remaining).toInt()
+                val count = super.read(buffer, offset, boundedLength)
+                if (count > 0) remaining -= count
+                return count
+            }
+        }
+    }
+
+    private fun mdzipRangeError(fileLength: Long): WebResourceResponse =
+        WebResourceResponse(
+            "audio/mpeg",
+            null,
+            416,
+            "Range Not Satisfiable",
+            mapOf("Accept-Ranges" to "bytes", "Content-Range" to "bytes */$fileLength"),
+            ByteArrayInputStream(ByteArray(0))
+        )
+
+    private fun mdzipAssetError(status: Int, reason: String): WebResourceResponse =
+        WebResourceResponse(
+            "text/plain",
+            "UTF-8",
+            status,
+            reason,
+            mapOf("Content-Length" to "0"),
+            ByteArrayInputStream(ByteArray(0))
+        )
+
     private fun handleInsertImage() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val imageMode = prefs.getString("pref_image_mode", "picker")
@@ -2149,6 +2389,48 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             showImageUrlDialog()
         } else {
             pickImageLauncher.launch("image/*")
+        }
+    }
+
+    private fun handleInsertAudio() {
+        if (currentMdzipSession == null) {
+            ThemedToast.show(
+                this,
+                "Open or save a document as MDZip (.mdz) before inserting MP3 audio.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+        pendingInsertAudioDocumentSessionId = currentDocumentSessionId
+        pickAudioLauncher.launch("audio/mpeg")
+    }
+
+    private fun insertAudioFromUri(uri: Uri) {
+        val session = currentMdzipSession
+        if (session == null) {
+            ThemedToast.show(this, "The active document is no longer an MDZip package.", Toast.LENGTH_LONG)
+            return
+        }
+        try {
+            val originalName = getFileNameFromUri(uri)
+            if (!originalName.endsWith(".mp3", ignoreCase = true)) {
+                throw java.io.IOException("Choose an MP3 file for this first MDZip audio step.")
+            }
+            val input = contentResolver.openInputStream(uri)
+                ?: throw java.io.IOException("Could not read the selected MP3.")
+            val relativeLink = MdzipManager.addMp3(session, input, originalName)
+            val escapedLink = JSONObjectWrapper.quote(relativeLink)
+            val escapedName = JSONObjectWrapper.quote(originalName)
+            webView.evaluateJavascript(
+                "window.editorBridge?.insertAudioLink?.($escapedLink, $escapedName);",
+                null
+            )
+        } catch (error: Exception) {
+            ThemedToast.show(
+                this,
+                "Could not add the MP3: ${error.localizedMessage ?: "unknown error"}",
+                Toast.LENGTH_LONG
+            )
         }
     }
 
@@ -2359,6 +2641,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .put("dirty", isDirty)
             .put("emptyContentExplicitlyEdited", currentEmptyContentExplicitlyEdited)
             .put("isTextPack", currentTextPackSession != null || name.endsWith(".textpack", true) || name.endsWith(".textpack.zip", true))
+            .put("isMdzip", currentMdzipSession != null || MdzipManager.isMdzipFileName(name))
             .put("hasBom", hasBom)
             .put("hasCrlf", hasCrlf)
             .toString()
@@ -2370,11 +2653,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         return runCatching {
             val name = getFileNameFromUri(uri)
-            val textPack = TextPackManager.isTextPackFile(this, uri, name)
-            val markdown = if (textPack) {
-                TextPackManager.openTextPack(this, uri).markdownContent
-            } else {
-                contentResolver.openInputStream(uri)?.use {
+            val mdzip = MdzipManager.isMdzipFileName(name)
+            val textPack = !mdzip && TextPackManager.isTextPackFile(this, uri, name)
+            val markdown = when {
+                mdzip -> MdzipManager.open(this, uri).markdownContent
+                textPack -> TextPackManager.openTextPack(this, uri).markdownContent
+                else -> contentResolver.openInputStream(uri)?.use {
                     BufferedReader(InputStreamReader(it, Charsets.UTF_8)).readText()
                 } ?: throw java.io.IOException("Could not read the selected file.")
             }
@@ -2385,6 +2669,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 .put("markdown", markdown)
                 .put("dirty", false)
                 .put("isTextPack", textPack)
+                .put("isMdzip", mdzip)
                 .put("hasBom", markdown.startsWith("\uFEFF"))
                 .put("hasCrlf", markdown.contains("\r\n"))
         }.getOrElse {
@@ -2431,7 +2716,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } else {
             null
         }
-        val markdownExtensions = setOf(".md", ".textpack", ".mdx", ".textpack.zip")
+        val markdownExtensions = setOf(".md", ".textpack", ".mdx", ".textpack.zip", ".mdz")
 
         for (treeUri in authorizedLeftPanelTrees()) {
             if (results.length() >= maxResults || scannedFiles >= maxScannedFiles) {
@@ -2472,17 +2757,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     scannedFiles++
                     val hasTextPackExtension = entry.name.endsWith(".textpack", true) ||
                         entry.name.endsWith(".textpack.zip", true)
+                    val hasMdzipExtension = MdzipManager.isMdzipFileName(entry.name)
                     val hasPlainTextExtension = textExtensions.any { entry.name.endsWith(it, true) }
                     val needsTextPackProbe = includeContents &&
+                        !hasMdzipExtension &&
                         (
                             entry.name.endsWith(".mdx", true) ||
                                 (!markdownOnly && !hasPlainTextExtension && !hasTextPackExtension)
                             )
-                    val isTextPack = hasTextPackExtension ||
+                    val isTextPack = !hasMdzipExtension && (hasTextPackExtension ||
                         (needsTextPackProbe &&
-                            TextPackManager.isTextPackFile(this, entry.uri, entry.name))
+                            TextPackManager.isTextPackFile(this, entry.uri, entry.name)))
                     val isMarkdownFile = markdownExtensions.any { entry.name.endsWith(it, true) } ||
-                        isTextPack
+                        isTextPack || hasMdzipExtension
                     if (markdownOnly && !isMarkdownFile) continue
                     val nameMatches = wholeWordPattern?.containsMatchIn(entry.name)
                         ?: entry.name.contains(needle, ignoreCase = true)
@@ -2492,11 +2779,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         includeContents &&
                         (
                             hasPlainTextExtension ||
-                                isTextPack
+                                isTextPack ||
+                                hasMdzipExtension
                             )
                     ) {
                         contentMatches = runCatching {
-                            if (isTextPack) {
+                            if (hasMdzipExtension) {
+                                MdzipManager.open(this, entry.uri).markdownContent.let { content ->
+                                    wholeWordPattern?.containsMatchIn(content)
+                                        ?: content.contains(needle, ignoreCase = true)
+                                }
+                            } else if (isTextPack) {
                                 TextPackManager.openTextPack(this, entry.uri)
                                     .markdownContent.let { content ->
                                         wholeWordPattern?.containsMatchIn(content)
@@ -2561,15 +2854,31 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             if (tabHasBom && !content.startsWith("\uFEFF")) content = "\uFEFF$content"
             val name = getFileNameFromUri(uri)
-            val packTarget = isTextPack || TextPackManager.isTextPackFile(this, uri, name)
-            if (packTarget) {
+            val mdzipTarget = MdzipManager.isMdzipFileName(name)
+            val packTarget = !mdzipTarget &&
+                (isTextPack || TextPackManager.isTextPackFile(this, uri, name))
+            if (mdzipTarget) {
+                val session = if (uri == currentFileUri) {
+                    currentMdzipSession ?: MdzipManager.open(this, uri)
+                } else {
+                    MdzipManager.open(this, uri)
+                }
+                MdzipManager.save(this, session, content, uri)
+                if (uri == currentFileUri) {
+                    currentMdzipSession = session
+                    currentTextPackSession = null
+                }
+            } else if (packTarget) {
                 val session = if (uri == currentFileUri) {
                     currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
                 } else {
                     TextPackManager.openTextPack(this, uri)
                 }
                 TextPackManager.saveTextPack(this, session, content, uri)
-                if (uri == currentFileUri) currentTextPackSession = session
+                if (uri == currentFileUri) {
+                    currentTextPackSession = session
+                    currentMdzipSession = null
+                }
             } else {
                 val output = contentResolver.openOutputStream(uri, "rwt")
                     ?: throw java.io.IOException("Could not open this file for writing.")
@@ -2973,9 +3282,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             currentDocumentSessionId = java.util.UUID.randomUUID().toString()
             currentRevision = 0
             currentEmptyContentExplicitlyEdited = emptyContentExplicitlyEdited
-            currentTextPackSession = if (isTextPack && uri != null) {
+            val isMdzipFile = uri != null && MdzipManager.isMdzipFileName(name)
+            currentTextPackSession = if (isTextPack && uri != null && !isMdzipFile) {
                 runCatching { TextPackManager.openTextPack(this@MainActivity, uri) }.getOrNull()
             } else null
+            currentMdzipSession = if (isMdzipFile && uri != null) {
+                runCatching { MdzipManager.open(this@MainActivity, uri) }.getOrNull()
+            } else null
+            if (currentMdzipSession != null) currentTextPackSession = null
             hasBom = tabHasBom
             hasCrlf = tabHasCrlf
             latestMarkdownContent = markdown
@@ -3155,6 +3469,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                     currentRevision = 0
                     currentTextPackSession = null
+                    currentMdzipSession = null
                     latestMarkdownContent = text
                     isDirty = text.isNotEmpty()
                     val escaped = JSONObjectWrapper.quote(text)
@@ -3180,8 +3495,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "save" -> handleSaveFile()
                     "save_as" -> handleSaveAsFile()
                     "save_as_textpack" -> handleSaveAsTextPackFile()
+                    "save_as_mdzip" -> handleSaveAsMdzipFile()
                     "export" -> handleExportDocument()
                     "image" -> handleInsertImage()
+                    "audio" -> handleInsertAudio()
                     "new_window" -> handleNewWindow()
                     "settings" -> settingsLauncher.launch(android.content.Intent(this@MainActivity, SettingsActivity::class.java))
                     "toc_settings" -> settingsLauncher.launch(
@@ -3192,6 +3509,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "history_forward" -> navigateCombinedHistory("forward")
                 }
             }
+        }
+
+        @JavascriptInterface
+        fun resolveMdzipMediaUrl(relativeLink: String): String {
+            val session = currentMdzipSession ?: return ""
+            return runCatching { MdzipManager.audioUrl(session, relativeLink) }
+                .getOrNull()
+                .orEmpty()
+        }
+
+        @JavascriptInterface
+        fun removeMdzipAudio(relativeLink: String): Boolean {
+            val session = currentMdzipSession ?: return false
+            return runCatching { MdzipManager.removeAudio(session, relativeLink) }
+                .getOrDefault(false)
         }
 
         @JavascriptInterface

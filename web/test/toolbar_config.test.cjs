@@ -43,7 +43,7 @@ test('obsolete Files & Tabs toolbar action is removed from saved layouts', async
     holding: ['leftPanel'],
     styles: { leftPanel: { backgroundColor: '#123456' } }
   });
-  assert.deepEqual(oldLayout.popupGroups.menu.order, ['newFile', 'settings']);
+  assert.deepEqual(oldLayout.popupGroups.menu.order, ['newFile', 'settings', 'saveAsMdzip']);
   assert.ok(!oldLayout.holding.includes('leftPanel'));
   assert.equal(oldLayout.styles.leftPanel, undefined);
   assert.ok(!BOTTOM_TOOLBAR_GROUP_ITEM_IDS.menu.includes('leftPanel'));

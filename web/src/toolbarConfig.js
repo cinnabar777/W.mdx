@@ -34,11 +34,11 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   ]),
   table: Object.freeze(['insertTable', ...TABLE_ACTIONS.map(item => item.id)]),
   insert: Object.freeze([
-    'image', 'link', 'callout', 'inlineCode', 'blockQuote', 'codeBlock',
+    'image', 'audio', 'link', 'callout', 'inlineCode', 'blockQuote', 'codeBlock',
     'horizontalLine', 'footnote'
   ]),
   menu: Object.freeze([
-    'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack',
+    'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack', 'saveAsMdzip',
     'exportHtml', 'search', 'switchView', 'newWindow', 'settings'
   ])
 });
@@ -82,7 +82,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 6,
+  version: 7,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -317,6 +317,20 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       !legacyHidden.includes('autoHeading')
     ) {
       popupGroups.heading.order.push('autoHeading');
+    }
+  }
+
+  if (parsedVersion > 0 && parsedVersion < 7) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    for (const [groupId, actionId] of [['insert', 'audio'], ['menu', 'saveAsMdzip']]) {
+      if (
+        !assignedActions.has(actionId) &&
+        !legacyHeldKeys.includes(actionId) &&
+        !legacyHidden.includes(actionId)
+      ) {
+        popupGroups[groupId].order.push(actionId);
+        assignedActions.add(actionId);
+      }
     }
   }
 
