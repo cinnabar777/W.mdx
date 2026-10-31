@@ -135,6 +135,41 @@ object TextPackManager {
         return relativeMarkdownPath(session.documentPath, archivePath)
     }
 
+    fun addAssetMedia(
+        session: TextPackSession,
+        mediaInputStream: InputStream,
+        originalFileName: String?,
+        mediaType: String,
+        fallbackExtension: String
+    ): String {
+        val directory = when (mediaType.lowercase(java.util.Locale.ROOT)) {
+            "audio" -> "audio"
+            "video" -> "video"
+            else -> throw IOException("Only audio and video assets are supported.")
+        }
+        val originalExtension = originalFileName
+            ?.substringAfterLast('/', "")
+            ?.substringAfterLast('\\', "")
+            ?.substringAfterLast('.', "")
+            ?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) }
+        val extension = (originalExtension ?: fallbackExtension)
+            .takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) }
+            ?: if (directory == "audio") "m4a" else "mp4"
+        val assetName = "${directory}_${UUID.randomUUID()}.$extension"
+        val archivePath = "${contentDirectoryName(session.sessionDir, directory)}/$assetName"
+        val targetFile = resolveArchiveFile(session.sessionDir, archivePath)
+            ?: throw IOException("The $directory asset path is not safe.")
+        targetFile.parentFile?.mkdirs()
+        FileOutputStream(targetFile).use { out ->
+            mediaInputStream.copyTo(out)
+        }
+        return relativeMarkdownPath(session.documentPath, archivePath)
+            .split('/')
+            .joinToString("/") { segment ->
+                if (segment == "." || segment == "..") segment else Uri.encode(segment)
+            }
+    }
+
     fun saveTextPack(
         context: Context,
         session: TextPackSession,

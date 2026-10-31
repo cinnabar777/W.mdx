@@ -276,6 +276,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         uri?.let { insertImageFromUri(it) }
     }
 
+    private val pickAudioLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { insertMediaFromUri(it, "audio") }
+    }
+
+    private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { insertMediaFromUri(it, "video") }
+    }
+
     private val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (isEditorReady) {
             applyThemeAndFullscreenPreferences()
@@ -663,7 +671,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             ): WebResourceResponse? {
                 val uri = request?.url ?: return null
                 if (uri.pathSegments.firstOrNull() == "mdzip-assets") {
-                    return interceptArchiveAssetRequest(uri)
+                    return interceptArchiveAssetRequest(request)
                 }
                 return assetLoader.shouldInterceptRequest(uri)
             }
@@ -754,7 +762,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "${Uri.encode(session.sessionDir.name)}/$parentPath"
     }
 
-    private fun interceptArchiveAssetRequest(uri: Uri): WebResourceResponse {
+    private fun interceptArchiveAssetRequest(request: WebResourceRequest?): WebResourceResponse {
+        val uri = request?.url ?: return missingArchiveAssetResponse()
         val segments = uri.pathSegments
         val session = currentTextPackSession
         if (segments.size < 3 || session == null || segments[1] != session.sessionDir.name) {
@@ -767,9 +776,101 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .getMimeTypeFromExtension(file.extension.lowercase())
             ?: "application/octet-stream"
         return runCatching {
-            WebResourceResponse(mimeType, null, java.io.FileInputStream(file))
+            archiveAssetResponse(file, mimeType, request)
         }.getOrElse { missingArchiveAssetResponse() }
     }
+
+    private fun archiveAssetResponse(
+        file: java.io.File,
+        mimeType: String,
+        request: WebResourceRequest?
+    ): WebResourceResponse {
+        val fileLength = file.length()
+        val rangeHeader = request?.requestHeaders
+            ?.entries
+            ?.firstOrNull { it.key.equals("Range", ignoreCase = true) }
+            ?.value
+        val rangeMatch = rangeHeader?.let { Regex("bytes=(\\d*)-(\\d*)").matchEntire(it) }
+        if (rangeMatch != null && fileLength > 0L) {
+            val requestedStart = rangeMatch.groupValues[1].toLongOrNull()
+            val requestedEnd = rangeMatch.groupValues[2].toLongOrNull()
+            if (requestedStart == null && requestedEnd == null) {
+                return rangeNotSatisfiableResponse(fileLength)
+            }
+            val rangeStart = if (requestedStart == null) {
+                (fileLength - requestedEnd!!).coerceAtLeast(0L)
+            } else {
+                requestedStart
+            }
+            val rangeEnd = if (requestedStart == null || requestedEnd == null) {
+                fileLength - 1L
+            } else {
+                requestedEnd
+            }.coerceAtMost(fileLength - 1L)
+            if (rangeStart >= fileLength || rangeEnd < rangeStart) {
+                return rangeNotSatisfiableResponse(fileLength)
+            }
+
+            val contentLength = rangeEnd - rangeStart + 1L
+            val stream = java.io.FileInputStream(file)
+            stream.channel.position(rangeStart)
+            val limitedStream = object : java.io.FilterInputStream(stream) {
+                private var remaining = contentLength
+
+                override fun read(): Int {
+                    if (remaining <= 0L) return -1
+                    val value = super.read()
+                    if (value >= 0) remaining--
+                    return value
+                }
+
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                    if (remaining <= 0L) return -1
+                    val count = super.read(buffer, offset, minOf(length.toLong(), remaining).toInt())
+                    if (count > 0) remaining -= count
+                    return count
+                }
+            }
+            return WebResourceResponse(
+                mimeType,
+                null,
+                206,
+                "Partial Content",
+                mapOf(
+                    "Accept-Ranges" to "bytes",
+                    "Content-Length" to contentLength.toString(),
+                    "Content-Range" to "bytes $rangeStart-$rangeEnd/$fileLength"
+                ),
+                limitedStream
+            )
+        }
+
+        return WebResourceResponse(
+            mimeType,
+            null,
+            200,
+            "OK",
+            mapOf(
+                "Accept-Ranges" to "bytes",
+                "Content-Length" to fileLength.toString()
+            ),
+            java.io.FileInputStream(file)
+        )
+    }
+
+    private fun rangeNotSatisfiableResponse(fileLength: Long): WebResourceResponse =
+        WebResourceResponse(
+            "application/octet-stream",
+            null,
+            416,
+            "Range Not Satisfiable",
+            mapOf(
+                "Accept-Ranges" to "bytes",
+                "Content-Range" to "bytes */$fileLength",
+                "Content-Length" to "0"
+            ),
+            java.io.ByteArrayInputStream(ByteArray(0))
+        )
 
     private fun missingArchiveAssetResponse(): WebResourceResponse =
         WebResourceResponse(
@@ -1343,6 +1444,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             R.id.action_insert_image -> {
                 handleInsertImage()
+                true
+            }
+            R.id.action_insert_audio -> {
+                handleInsertMedia("audio")
+                true
+            }
+            R.id.action_insert_video -> {
+                handleInsertMedia("video")
                 true
             }
             R.id.action_settings -> {
@@ -2244,6 +2353,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun handleInsertMedia(mediaType: String) {
+        if (currentTextPackSession == null) {
+            ThemedToast.show(
+                this,
+                "Open or create an MDZip package before adding media.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+        when (mediaType) {
+            "audio" -> pickAudioLauncher.launch("audio/*")
+            "video" -> pickVideoLauncher.launch("video/*")
+        }
+    }
+
     private fun showImageUrlDialog() {
         val input = EditText(this)
         input.hint = "https://example.com/image.png"
@@ -2285,6 +2409,46 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         } catch (e: Exception) {
             ThemedToast.show(this, "Failed to insert image: ${e.localizedMessage}", Toast.LENGTH_LONG)
+        }
+    }
+
+    private fun insertMediaFromUri(uri: Uri, mediaType: String) {
+        try {
+            val session = currentTextPackSession
+                ?: throw java.io.IOException("Open or create an MDZip package before adding media.")
+            val originalName = getFileNameFromUri(uri)
+            val extensionFromMimeType = contentResolver.getType(uri)
+                ?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+            val fallbackExtension = extensionFromMimeType
+                ?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) }
+                ?: if (mediaType == "audio") "m4a" else "mp4"
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: throw java.io.IOException("Could not read the selected media file.")
+            inputStream.use {
+                val assetPath = TextPackManager.addAssetMedia(
+                    session,
+                    it,
+                    originalName,
+                    mediaType,
+                    fallbackExtension
+                )
+                val label = originalName?.takeIf { name -> name.isNotBlank() }
+                    ?: if (mediaType == "audio") "Audio" else "Video"
+                webView.evaluateJavascript(
+                    "window.editorBridge.insertMedia(" +
+                        "${JSONObjectWrapper.quote(mediaType)}," +
+                        "${JSONObjectWrapper.quote(assetPath)}," +
+                        "${JSONObjectWrapper.quote(label)}" +
+                        ");",
+                    null
+                )
+            }
+        } catch (e: Exception) {
+            ThemedToast.show(
+                this,
+                "Failed to add $mediaType: ${e.localizedMessage}",
+                Toast.LENGTH_LONG
+            )
         }
     }
 
@@ -3471,6 +3635,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "save_as_textpack" -> handleSaveAsTextPackFile()
                     "export" -> handleExportDocument()
                     "image" -> handleInsertImage()
+                    "audio" -> handleInsertMedia("audio")
+                    "video" -> handleInsertMedia("video")
                     "new_window" -> handleNewWindow()
                     "settings" -> settingsLauncher.launch(android.content.Intent(this@MainActivity, SettingsActivity::class.java))
                     "toc_settings" -> settingsLauncher.launch(

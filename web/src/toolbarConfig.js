@@ -34,7 +34,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   ]),
   table: Object.freeze(['insertTable', ...TABLE_ACTIONS.map(item => item.id)]),
   insert: Object.freeze([
-    'image', 'link', 'callout', 'inlineCode', 'blockQuote', 'codeBlock',
+    'image', 'audio', 'video', 'link', 'callout', 'inlineCode', 'blockQuote', 'codeBlock',
     'horizontalLine', 'footnote'
   ]),
   menu: Object.freeze([

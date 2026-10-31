@@ -35,6 +35,10 @@ import { setupLeftPanel } from './leftPanel.js';
 import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import {
+  formatMarkdownMediaLink,
+  parseMarkdownMediaLink
+} from './markdownMedia.js';
+import {
   getMarkdownFormattingState,
   getMarkdownFormatRanges,
   getWmdxUnderlineSyntaxDelimiterRanges,
@@ -1040,6 +1044,73 @@ function resolveArchiveImageUrl(url, baseUrl) {
     return new URL(url, baseUrl).href;
   } catch {
     return url;
+  }
+}
+
+function resolveArchiveMediaUrl(url, baseUrl) {
+  return resolveArchiveImageUrl(url, baseUrl);
+}
+
+class MediaPreviewWidget extends WidgetType {
+  constructor(type, url, label, from, to) {
+    super();
+    this.type = type;
+    this.url = url;
+    this.renderUrl = resolveArchiveMediaUrl(url, activeArchiveAssetBaseUrl);
+    this.label = label || (type === 'audio' ? 'Audio' : 'Video');
+    this.from = from;
+    this.to = to;
+    this.heightKey = measuredWidgetHeightKey(
+      'media-preview',
+      `${this.type}:${this.renderUrl}`,
+      activeContentWidth(),
+      activeTypographySignature()
+    );
+    this.heightEstimate = estimatedWidgetHeight(
+      this.heightKey,
+      type === 'video' ? 240 : 64
+    );
+  }
+
+  get estimatedHeight() {
+    return this.heightEstimate;
+  }
+
+  eq(other) {
+    return other instanceof MediaPreviewWidget &&
+      other.type === this.type &&
+      other.renderUrl === this.renderUrl &&
+      other.label === this.label &&
+      other.from === this.from &&
+      other.to === this.to &&
+      other.heightEstimate === this.heightEstimate;
+  }
+
+  toDOM(view) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cm-media-preview-wrapper';
+    wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 8px 0; display: block; box-sizing: border-box;`;
+
+    const media = document.createElement(this.type);
+    media.controls = true;
+    media.preload = 'metadata';
+    media.setAttribute('aria-label', this.label);
+    media.src = this.renderUrl;
+    media.style.cssText = this.type === 'video'
+      ? 'display: block; width: 100%; max-width: 100%; max-height: 420px; border-radius: 6px; background: #000;'
+      : 'display: block; width: 100%; max-width: 560px;';
+    media.addEventListener('loadedmetadata', () => {
+      const renderedHeight = Math.ceil(media.getBoundingClientRect().height);
+      if (renderedHeight > 0) wrapper.style.minHeight = `${renderedHeight}px`;
+      view.requestMeasure();
+      rememberWidgetHeight(view, this.heightKey, wrapper, 'media_preview', this.heightEstimate);
+    });
+    wrapper.appendChild(media);
+    return wrapper;
+  }
+
+  ignoreEvent(event) {
+    return Boolean(event.target?.closest?.('.cm-media-preview-wrapper'));
   }
 }
 
@@ -2053,7 +2124,18 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'Link' || node.name === 'URL') {
             const raw = view.state.doc.sliceString(node.from, node.to);
             const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-            if (match) {
+            const media = parseMarkdownMediaLink(raw);
+            if (media && !isNodeActive && !isPureWysiwyg) {
+              builder.push(Decoration.replace({
+                widget: new MediaPreviewWidget(
+                  media.type,
+                  media.url,
+                  media.label,
+                  node.from,
+                  node.to
+                )
+              }).range(node.from, node.to));
+            } else if (match) {
               const labelFrom = node.from + 1;
               const labelTo = labelFrom + match[1].length;
               builder.push(
@@ -3145,7 +3227,18 @@ function buildHeightMapValue(state) {
       if (node.name === 'Link' || node.name === 'URL') {
         const raw = doc.sliceString(node.from, node.to);
         const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-        if (match) {
+        const media = parseMarkdownMediaLink(raw);
+        if (media) {
+          replacements.push(Decoration.replace({
+            widget: new MediaPreviewWidget(
+              media.type,
+              media.url,
+              media.label,
+              node.from,
+              node.to
+            )
+          }).range(node.from, node.to));
+        } else if (match) {
           const labelFrom = node.from + 1;
           const labelTo = labelFrom + match[1].length;
           if (labelFrom > node.from) {
@@ -4235,6 +4328,17 @@ class CodeMirrorAdapter {
     }
   }
 
+  insertMedia(mediaType, mediaUrl, label = '') {
+    if (!this.view) return;
+    const markdown = formatMarkdownMediaLink(mediaType, mediaUrl, label);
+    const sel = this.view.state.selection.main;
+    this.view.dispatch({
+      changes: { from: sel.from, to: sel.to, insert: markdown },
+      selection: { anchor: sel.from + markdown.length, head: sel.from + markdown.length }
+    });
+    this.view.focus();
+  }
+
   destroy() {
     this.persistScrollPosition();
 
@@ -4578,6 +4682,8 @@ function setupGroupedControlBar() {
       e.stopPropagation();
       togglePopupStrip('insert', insertBtn, [
         { id: 'image', icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
+        { id: 'audio', icon: svgIcons.audio, title: 'Insert Audio', action: () => window.AndroidNative?.onNativeAction('audio') },
+        { id: 'video', icon: svgIcons.video, title: 'Insert Video', action: () => window.AndroidNative?.onNativeAction('video') },
         { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
@@ -4879,6 +4985,8 @@ function createToolbarActionRegistry() {
     ],
     [
       { id: 'image', title: 'Insert Image', icon: svgIcons.image, action: () => window.AndroidNative?.onNativeAction('image') },
+      { id: 'audio', title: 'Insert Audio', icon: svgIcons.audio, action: () => window.AndroidNative?.onNativeAction('audio') },
+      { id: 'video', title: 'Insert Video', icon: svgIcons.video, action: () => window.AndroidNative?.onNativeAction('video') },
       { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
       { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
@@ -8512,6 +8620,12 @@ window.editorBridge = {
       const imgMarkdown = `![${altText}](${imageUrl})`;
       const cur = activeAdapter.getMarkdown();
       activeAdapter.setMarkdown(cur ? `${cur}\n${imgMarkdown}` : imgMarkdown);
+    }
+  },
+  insertMedia: function(mediaType, mediaUrl, label = '') {
+    refreshArchiveAssetBaseUrl();
+    if (activeAdapter && typeof activeAdapter.insertMedia === 'function') {
+      activeAdapter.insertMedia(mediaType, mediaUrl, label);
     }
   },
   setTheme: function(themeName) {

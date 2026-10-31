@@ -26,6 +26,14 @@
         android:title="@string/action_insert_image"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/action_insert_audio"
+        android:title="@string/action_insert_audio"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_insert_video"
+        android:title="@string/action_insert_video"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_export"
         android:title="Export HTML / MHTML"
         app:showAsAction="never" />
