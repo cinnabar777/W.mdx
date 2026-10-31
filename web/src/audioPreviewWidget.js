@@ -3,6 +3,7 @@ import {
   fetchAudioSeekBlob,
   MAX_AUDIO_SEEK_BYTES
 } from './mdzipAudioBlobSeek.js';
+import { getOggOpusDuration } from './oggOpusDuration.js';
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -218,8 +219,12 @@ export class AudioPreviewWidget extends WidgetType {
         ? 'audio/ogg'
         : 'audio/mp4';
     let seekBlobUrl = null;
+    let preparedSeekBlob = null;
     let seekAbortController = null;
     let isPreparingBlobSeek = false;
+    let isPreparingOpusMetadata = false;
+    let hasTriedOpusDuration = false;
+    let knownDuration = 0;
     let disposed = false;
     audio.preload = isBlobSeekSource ? 'auto' : 'metadata';
     audio.src = this.src;
@@ -451,15 +456,74 @@ export class AudioPreviewWidget extends WidgetType {
       }
     };
     let isDraggingSeek = false;
+    const getAudioDuration = () => {
+      const nativeDuration = Number(audio.duration);
+      return Number.isFinite(nativeDuration) && nativeDuration > 0
+        ? nativeDuration
+        : knownDuration;
+    };
     const updateTime = () => {
-      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      const duration = getAudioDuration();
       const displayedTime = isDraggingSeek
         ? Number(seek.value)
         : audio.currentTime;
       timeLabel.textContent = `${formatTime(displayedTime)} / ${formatTime(duration)}`;
       seek.max = String(Math.max(1, duration));
-      if (!isDraggingSeek) {
+      seek.disabled =
+        isPreparingBlobSeek ||
+        isPreparingOpusMetadata ||
+        duration <= 0;
+      if (!isDraggingSeek && duration > 0) {
         seek.value = String(Math.min(audio.currentTime || 0, duration || 1));
+      } else if (!isDraggingSeek) {
+        seek.value = '0';
+      }
+    };
+    const prepareOpusDuration = async () => {
+      if (
+        !isOpusSource ||
+        getAudioDuration() > 0 ||
+        preparedSeekBlob ||
+        hasTriedOpusDuration ||
+        isPreparingOpusMetadata ||
+        disposed
+      ) return;
+
+      hasTriedOpusDuration = true;
+      isPreparingOpusMetadata = true;
+      const controller = new AbortController();
+      seekAbortController = controller;
+      status.textContent = 'Preparing Opus seek controls…';
+      status.style.display = 'block';
+      updateTime();
+
+      try {
+        const blob = await fetchAudioSeekBlob(this.src, {
+          signal: controller.signal,
+          mimeType: seekBlobMimeType
+        });
+        if (disposed) return;
+        const duration = await getOggOpusDuration(blob);
+        if (!Number.isFinite(duration) || duration <= 0) {
+          throw new Error('The Opus file has no usable duration.');
+        }
+        knownDuration = duration;
+        preparedSeekBlob = blob;
+        status.textContent = '';
+        status.style.display = 'none';
+      } catch (error) {
+        if (disposed || error?.name === 'AbortError') return;
+        if (error?.code === 'AUDIO_SEEK_TOO_LARGE') {
+          status.textContent =
+            `This file exceeds the ${Math.round(MAX_AUDIO_SEEK_BYTES / (1024 * 1024))} MB seek limit. Playback remains available, but seeking is unavailable.`;
+        } else {
+          status.textContent = 'Could not determine the Opus duration. Seeking is unavailable.';
+        }
+        status.style.display = 'block';
+      } finally {
+        if (seekAbortController === controller) seekAbortController = null;
+        isPreparingOpusMetadata = false;
+        if (!disposed) updateTime();
       }
     };
     const seekAudioWithBlob = async targetTime => {
@@ -468,7 +532,7 @@ export class AudioPreviewWidget extends WidgetType {
         updateTime();
         return;
       }
-      if (isPreparingBlobSeek) return;
+      if (isPreparingBlobSeek || isPreparingOpusMetadata) return;
 
       isPreparingBlobSeek = true;
       const controller = new AbortController();
@@ -486,7 +550,7 @@ export class AudioPreviewWidget extends WidgetType {
       status.style.display = 'block';
 
       try {
-        const blob = await fetchAudioSeekBlob(this.src, {
+        const blob = preparedSeekBlob || await fetchAudioSeekBlob(this.src, {
           signal: controller.signal,
           mimeType: seekBlobMimeType
         });
@@ -504,10 +568,15 @@ export class AudioPreviewWidget extends WidgetType {
         probe.load();
         await probeMetadataReady;
 
-        if (!Number.isFinite(probe.duration) || probe.duration <= 0) {
+        const probeDuration =
+          Number.isFinite(probe.duration) && probe.duration > 0
+            ? probe.duration
+            : knownDuration;
+        if (!Number.isFinite(probeDuration) || probeDuration <= 0) {
           throw new Error('The buffered audio has no usable duration.');
         }
-        const probeTarget = Math.max(0, Math.min(targetTime, probe.duration));
+        knownDuration = probeDuration;
+        const probeTarget = Math.max(0, Math.min(targetTime, probeDuration));
         if (probeTarget > 0.05) {
           const probeSeeked = waitForMediaEvent(
             probe,
@@ -535,10 +604,11 @@ export class AudioPreviewWidget extends WidgetType {
 
         seekBlobUrl = blobUrl;
         blobUrl = null;
+        preparedSeekBlob = null;
         audio.playbackRate = playbackRate;
         audio.volume = volumeLevel;
         audio.muted = wasMuted;
-        const audioTarget = Math.max(0, Math.min(targetTime, audio.duration));
+        const audioTarget = Math.max(0, Math.min(targetTime, getAudioDuration()));
         if (audioTarget > 0.05) {
           const audioSeeked = waitForMediaEvent(
             audio,
@@ -605,7 +675,7 @@ export class AudioPreviewWidget extends WidgetType {
         if (seekAbortController === controller) seekAbortController = null;
         isPreparingBlobSeek = false;
         playButton.disabled = false;
-        seek.disabled = false;
+        seek.disabled = isPreparingOpusMetadata || getAudioDuration() <= 0;
         if (!disposed) {
           updateTime();
           syncPlayButton();
@@ -615,8 +685,9 @@ export class AudioPreviewWidget extends WidgetType {
     const commitSeek = () => {
       if (!isDraggingSeek) return;
       isDraggingSeek = false;
-      if (Number.isFinite(audio.duration)) {
-        const targetTime = Math.max(0, Math.min(Number(seek.value), audio.duration));
+      const duration = getAudioDuration();
+      if (duration > 0) {
+        const targetTime = Math.max(0, Math.min(Number(seek.value), duration));
         if (isBlobSeekSource) {
           void seekAudioWithBlob(targetTime);
           return;
@@ -679,8 +750,14 @@ export class AudioPreviewWidget extends WidgetType {
       else showPopup(speedMenu, { anchor: speedButton });
     });
     audio.addEventListener('timeupdate', updateTime);
-    audio.addEventListener('durationchange', updateTime);
-    audio.addEventListener('loadedmetadata', updateTime);
+    audio.addEventListener('durationchange', () => {
+      updateTime();
+      void prepareOpusDuration();
+    });
+    audio.addEventListener('loadedmetadata', () => {
+      updateTime();
+      void prepareOpusDuration();
+    });
     audio.addEventListener('play', syncPlayButton);
     audio.addEventListener('pause', syncPlayButton);
     audio.addEventListener('ended', syncPlayButton);
@@ -775,6 +852,7 @@ export class AudioPreviewWidget extends WidgetType {
       audio.pause();
       if (seekBlobUrl) URL.revokeObjectURL(seekBlobUrl);
       seekBlobUrl = null;
+      preparedSeekBlob = null;
       delete audio._syncMdzipPlaybackRate;
     };
     return wrapper;

@@ -37,6 +37,16 @@ object MdzipManager {
     fun isMdzipFileName(fileName: String): Boolean =
         fileName.endsWith(".mdz", ignoreCase = true)
 
+    fun normalizeDuplicateMdzipFileName(fileName: String): String? {
+        val match = Regex(
+            "^(.*)\\.mdz\\s*\\((\\d+)\\)$",
+            RegexOption.IGNORE_CASE
+        ).matchEntire(fileName) ?: return null
+        val baseName = match.groupValues[1].trimEnd()
+        if (baseName.isBlank()) return null
+        return "$baseName (${match.groupValues[2]}).mdz"
+    }
+
     fun open(context: Context, uri: Uri): MdzipSession {
         val parent = File(context.cacheDir, "mdzip_sessions")
         if (!parent.exists() && !parent.mkdirs()) {

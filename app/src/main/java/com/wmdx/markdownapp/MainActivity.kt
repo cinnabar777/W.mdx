@@ -1847,8 +1847,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     Toast.LENGTH_LONG
                 )
             } else {
+                val targetUri = if (saveAsMdzip == true) {
+                    normalizeDuplicateMdzipUri(uri)
+                } else {
+                    uri
+                }
                 saveFileToUri(
-                    uri,
+                    targetUri,
                     saveAsTextPack,
                     requestedAsMdzip = saveAsMdzip,
                     expectedDocumentSessionId = expectedSessionId
@@ -1865,6 +1870,31 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             pendingCreateDocumentAsMdzip = null
             pendingCreateDocumentSessionId = null
         }
+    }
+
+    private fun normalizeDuplicateMdzipUri(uri: Uri): Uri {
+        val correctedName =
+            MdzipManager.normalizeDuplicateMdzipFileName(getFileNameFromUri(uri))
+                ?: return uri
+        val renamedUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            runCatching {
+                android.provider.DocumentsContract.renameDocument(
+                    contentResolver,
+                    uri,
+                    correctedName
+                )
+            }.getOrNull()
+        } else {
+            null
+        }
+        if (renamedUri != null) return renamedUri
+
+        ThemedToast.show(
+            this,
+            "The storage provider could not correct the duplicate MDZip filename.",
+            Toast.LENGTH_LONG
+        )
+        return uri
     }
 
     private fun defaultMarkdownSaveAsName(): String {

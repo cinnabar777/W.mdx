@@ -34,6 +34,20 @@ class MdzipManagerTest {
     }
 
     @Test
+    fun normalizesProviderDuplicateSuffixesBeforeTheMdzExtension() {
+        assertEquals(
+            "untitled (1).mdz",
+            MdzipManager.normalizeDuplicateMdzipFileName("untitled.mdz (1)")
+        )
+        assertEquals(
+            "notes.with.dots (2).mdz",
+            MdzipManager.normalizeDuplicateMdzipFileName("notes.with.dots.MDZ (2)")
+        )
+        assertEquals(null, MdzipManager.normalizeDuplicateMdzipFileName("untitled.mdz"))
+        assertEquals(null, MdzipManager.normalizeDuplicateMdzipFileName("untitled.mdz backup"))
+    }
+
+    @Test
     fun acceptsMp3M4aFlacAndOpusButNotOggAudioFiles() {
         assertEquals(true, MdzipManager.isSupportedAudioFileName("voice.mp3"))
         assertEquals(true, MdzipManager.isSupportedAudioFileName("VOICE.M4A"))

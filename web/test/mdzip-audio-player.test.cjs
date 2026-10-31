@@ -40,7 +40,7 @@ test('M4A, FLAC, and Opus files are accepted and served with the correct MIME ty
   assert.match(capture, /mediaErrorCode:/);
 });
 
-test('M4A, FLAC, and Opus prepare bounded Blob sources only when seeking', () => {
+test('M4A and FLAC use bounded Blob seeking; Opus prepares duration when WebView omits it', () => {
   const player = read('src/audioPreviewWidget.js');
   const blobLoader = read('src/mdzipAudioBlobSeek.js');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
@@ -48,6 +48,9 @@ test('M4A, FLAC, and Opus prepare bounded Blob sources only when seeking', () =>
   assert.match(player, /audio\.preload = isBlobSeekSource \? 'auto' : 'metadata'/);
   assert.match(player, /void seekAudioWithBlob\(targetTime\)/);
   assert.match(player, /fetchAudioSeekBlob\(this\.src/);
+  assert.match(player, /prepareOpusDuration/);
+  assert.match(player, /getOggOpusDuration\(blob\)/);
+  assert.match(player, /duration <= 0/);
   assert.match(player, /isFlacSource[\s\S]*'audio\/flac'[\s\S]*isOpusSource[\s\S]*'audio\/ogg'/);
   assert.match(player, /URL\.revokeObjectURL\(seekBlobUrl\)/);
   assert.match(blobLoader, /MAX_AUDIO_SEEK_BYTES = 32 \* 1024 \* 1024/);
@@ -59,6 +62,57 @@ test('M4A, FLAC, and Opus prepare bounded Blob sources only when seeking', () =>
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);
   assert.match(seekCommit, /void seekAudioWithBlob\(targetTime\)/);
+});
+
+test('Opus duration is recovered from the final Ogg granule position', async () => {
+  const { getOggOpusDuration } = await import('../src/oggOpusDuration.js');
+  const makePage = ({ flags, serial, sequence, granule, packet }) => {
+    const page = new Uint8Array(28 + packet.length);
+    page.set([0x4f, 0x67, 0x67, 0x53], 0);
+    page[4] = 0;
+    page[5] = flags;
+    const view = new DataView(page.buffer);
+    view.setBigUint64(6, BigInt(granule), true);
+    view.setUint32(14, serial, true);
+    view.setUint32(18, sequence, true);
+    page[26] = 1;
+    page[27] = packet.length;
+    page.set(packet, 28);
+    return page;
+  };
+  const opusHead = new Uint8Array(19);
+  opusHead.set(new TextEncoder().encode('OpusHead'));
+  opusHead[8] = 1;
+  opusHead[9] = 2;
+  opusHead[11] = 15; // 3840 pre-skip samples
+  const headPage = makePage({
+    flags: 2,
+    serial: 7,
+    sequence: 0,
+    granule: 0,
+    packet: opusHead
+  });
+  const endPage = makePage({
+    flags: 4,
+    serial: 7,
+    sequence: 1,
+    granule: 480000 + 3840,
+    packet: new Uint8Array([0])
+  });
+
+  assert.equal(
+    await getOggOpusDuration(new Blob([headPage, endPage], { type: 'audio/ogg' })),
+    10
+  );
+  assert.equal(await getOggOpusDuration(new Blob(['not an Ogg stream'])), null);
+});
+
+test('MDZip duplicate Save As moves the generated number before the extension', () => {
+  const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
+  assert.match(activity, /if \(saveAsMdzip == true\) \{\s*normalizeDuplicateMdzipUri\(uri\)/);
+  assert.match(activity, /DocumentsContract\.renameDocument\([\s\S]*?correctedName/);
+  assert.match(manager, /fun normalizeDuplicateMdzipFileName/);
 });
 
 test('audio seek buffering enforces the size limit before reading large bodies', async () => {
