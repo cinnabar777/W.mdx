@@ -36,6 +36,7 @@ import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import {
   formatMarkdownMediaLink,
+  getMarkdownMediaType,
   parseMarkdownMediaLink,
   resolveArchiveMediaUrl
 } from './markdownMedia.js';
@@ -1102,6 +1103,42 @@ class MediaPreviewWidget extends WidgetType {
       rememberWidgetHeight(view, this.heightKey, wrapper, 'media_preview', this.heightEstimate);
     });
     wrapper.appendChild(media);
+
+    const actions = document.createElement('div');
+    actions.className = 'cm-media-actions';
+    actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', `${this.type === 'audio' ? 'Audio' : 'Video'} reference actions`);
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'cm-media-action-edit';
+    editButton.setAttribute('aria-label', `Edit ${this.type} reference`);
+    editButton.textContent = 'Edit';
+    editButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openMediaEditDialog(view, this.from, this.to, this.type, this.label, this.url);
+    });
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'cm-media-action-remove';
+    removeButton.setAttribute('aria-label', `Remove ${this.type} reference`);
+    removeButton.textContent = 'Remove';
+    removeButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openMediaDeleteConfirmation(
+        view,
+        this.from,
+        this.to,
+        this.type,
+        this.label,
+        this.url
+      );
+    });
+    actions.append(editButton, removeButton);
+    wrapper.appendChild(actions);
     return wrapper;
   }
 
@@ -5659,6 +5696,120 @@ export function openFootnoteInsertionDialog(options = {}) {
 
   overlay.classList.add('open');
   requestAnimationFrame(() => textInput.focus());
+}
+
+function isCurrentMarkdownMediaReference(view, from, to, type, label, url) {
+  if (!view || from < 0 || to > view.state.doc.length || from >= to) return false;
+  const current = parseMarkdownMediaLink(view.state.doc.sliceString(from, to));
+  return current?.type === type && current.label === label && current.url === url;
+}
+
+function openMediaEditDialog(view, from, to, mediaType, label, url) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit ${mediaType === 'audio' ? 'Audio' : 'Video'}</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-media-label">Label</label>
+      <input id="modal-media-label" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-media-url">Media location</label>
+      <input id="modal-media-url" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-media-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-media-save">Save</button>
+    </div>
+  `;
+
+  const labelInput = dialog.querySelector('#modal-media-label');
+  const urlInput = dialog.querySelector('#modal-media-url');
+  const error = document.createElement('p');
+  error.className = 'modal-error';
+  error.setAttribute('role', 'alert');
+  error.hidden = true;
+  dialog.querySelector('.modal-actions').before(error);
+  labelInput.value = label;
+  urlInput.value = url;
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-media-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-media-save').addEventListener('click', event => {
+    event.preventDefault();
+    const newUrl = urlInput.value.trim();
+    const newMediaType = getMarkdownMediaType(newUrl);
+    if (!newUrl || !newMediaType) {
+      error.textContent = 'Enter a location ending in a supported audio or video file extension.';
+      error.hidden = false;
+      urlInput.focus();
+      return;
+    }
+    if (!isCurrentMarkdownMediaReference(view, from, to, mediaType, label, url)) {
+      error.textContent = 'This media reference is no longer in the document.';
+      error.hidden = false;
+      return;
+    }
+
+    const markdown = formatMarkdownMediaLink(newMediaType, newUrl, labelInput.value);
+    view.dispatch({
+      changes: { from, to, insert: markdown },
+      selection: { anchor: from + markdown.length, head: from + markdown.length }
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => labelInput.focus());
+}
+
+function openMediaDeleteConfirmation(view, from, to, mediaType, label, url) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  const mediaName = mediaType === 'audio' ? 'audio' : 'video';
+  dialog.innerHTML = `
+    <h3 class="modal-title">Remove ${mediaName} reference?</h3>
+    <p class="modal-message">
+      This removes the reference from the document only. The media file in the package will not be deleted.
+    </p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-media-keep">Keep reference</button>
+      <button type="button" class="modal-btn modal-btn-delete" id="modal-media-confirm-remove">Remove</button>
+    </div>
+  `;
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-media-keep').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-media-confirm-remove').addEventListener('click', event => {
+    event.preventDefault();
+    if (!isCurrentMarkdownMediaReference(view, from, to, mediaType, label, url)) {
+      close();
+      return;
+    }
+    view.dispatch({
+      changes: { from, to, insert: '' },
+      selection: { anchor: from, head: from }
+    });
+    close();
+  });
+  overlay.classList.add('open');
 }
 
 function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
