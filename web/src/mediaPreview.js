@@ -36,35 +36,6 @@ function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(value, maximum));
 }
 
-function mediaMimeType(type, label) {
-  const extension = /\.([a-z0-9]+)$/i.exec(String(label).trim())?.[1]?.toLowerCase();
-  const audioTypes = {
-    aac: 'audio/aac',
-    flac: 'audio/flac',
-    m4a: 'audio/mp4',
-    mp3: 'audio/mpeg',
-    oga: 'audio/ogg',
-    ogg: 'audio/ogg',
-    opus: 'audio/ogg',
-    wav: 'audio/wav',
-    webm: 'audio/webm'
-  };
-  const videoTypes = {
-    '3gp': 'video/3gpp',
-    avi: 'video/x-msvideo',
-    m4v: 'video/mp4',
-    mkv: 'video/x-matroska',
-    mov: 'video/quicktime',
-    mp4: 'video/mp4',
-    mpeg: 'video/mpeg',
-    mpg: 'video/mpeg',
-    ogv: 'video/ogg',
-    webm: 'video/webm',
-    wmv: 'video/x-ms-wmv'
-  };
-  return (type === 'audio' ? audioTypes : videoTypes)[extension] || '';
-}
-
 export function createMediaPreviewElement(document, type, src, label, reference = src) {
   const view = document.defaultView || globalThis.window;
   const root = document.createElement('div');
@@ -264,15 +235,9 @@ export function createMediaPreviewElement(document, type, src, label, reference 
     );
   };
 
-  const mimeType = mediaMimeType(type, label);
-  const canPlay = mimeType && typeof media.canPlayType === 'function'
-    ? media.canPlayType(mimeType)
-    : 'maybe';
-  if (canPlay === '') {
-    showMediaLoadError();
-  } else {
-    media.src = src;
-  }
+  // canPlayType() may return an empty string for formats the device can still
+  // decode. Let the media element try the source and report an actual load error.
+  media.src = src;
 
   media.playbackRate = readPlaybackRate(view);
   updateSpeedButton();

@@ -28,6 +28,14 @@ test('media link formatter and parser preserve package-relative destinations', a
   assert.equal(getMarkdownMediaType('audio/voice.ogg#chapter=2'), 'audio');
   assert.equal(getMarkdownMediaType('../audio/voice.webm'), 'audio');
   assert.equal(getMarkdownMediaType('../video/clip.webm'), 'video');
+  assert.equal(
+    getMarkdownMediaType('../audio/voice.unknown?wmdx_media_type=audio&wmdx_media_mime=audio%2Fx-flac'),
+    'audio'
+  );
+  assert.equal(
+    getMarkdownMediaType('../video/clip.unknown?wmdx_media_type=video&wmdx_media_mime=video%2Fx-custom'),
+    'video'
+  );
   assert.equal(getMarkdownMediaType('content://provider/document/123', 'voice.mp3'), 'audio');
   assert.equal(
     parseMarkdownMediaLink('[voice.mp3](<content://provider/document/123>)')?.type,
@@ -73,23 +81,36 @@ test('custom audio and video players point to the resolved packaged media URL', 
   }
 });
 
-test('unsupported formats explain the problem and disable inactive player controls', async () => {
+test('player tries formats even when canPlayType reports no support', async () => {
   const { createMediaPreviewElement } = await import('../src/mediaPreview.js');
   const document = new JSDOM('', { url: 'https://wmdx.test/' }).window.document;
+  const createElement = document.createElement.bind(document);
+  document.createElement = tagName => {
+    const element = createElement(tagName);
+    if (tagName === 'audio' || tagName === 'video') {
+      element.canPlayType = () => '';
+    }
+    return element;
+  };
   const player = createMediaPreviewElement(
     document,
-    'video',
-    'content://provider/document/789?wmdx_media_type=video',
-    'old-film.avi',
-    'content://provider/document/789?wmdx_media_type=video'
+    'audio',
+    'content://provider/document/789?wmdx_media_type=audio&wmdx_media_mime=audio%2Fx-flac',
+    'recording.flac',
+    'content://provider/document/789?wmdx_media_type=audio&wmdx_media_mime=audio%2Fx-flac'
   );
 
   const error = player.querySelector('.wmdx-media-error');
-  assert.equal(error.hidden, false);
+  assert.equal(error.hidden, true, 'do not reject before attempting playback');
+  assert.equal(
+    player.mediaElement.getAttribute('src'),
+    'content://provider/document/789?wmdx_media_type=audio&wmdx_media_mime=audio%2Fx-flac'
+  );
+
+  player.mediaElement.dispatchEvent(new document.defaultView.Event('error'));
+  assert.equal(error.hidden, false, 'show an error only after the media element fails');
   assert.equal(error.getAttribute('role'), 'alert');
-  assert.match(error.textContent, /unsupported/);
   assert.match(error.textContent, /content:\/\/provider\/document\/789/);
-  assert.equal(player.mediaElement.hasAttribute('src'), false);
   assert.ok(
     [...player.querySelectorAll('.wmdx-media-controls button, .wmdx-media-controls input')]
       .every(control => control.disabled)

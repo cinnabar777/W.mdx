@@ -48,6 +48,7 @@ private const val MAX_WMDX_TAB_SESSION_BYTES = 512 * 1024
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
     private companion object {
         const val WMDX_MEDIA_TYPE_PARAM = "wmdx_media_type"
+        const val WMDX_MEDIA_MIME_PARAM = "wmdx_media_mime"
     }
 
 
@@ -285,14 +286,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private val pickAudioLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
-            persistMediaReadPermission(it)
+            if (currentTextPackSession == null) persistMediaReadPermission(it)
             insertMediaFromUri(it, "audio")
         }
     }
 
     private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
-            persistMediaReadPermission(it)
+            if (currentTextPackSession == null) persistMediaReadPermission(it)
             insertMediaFromUri(it, "video")
         }
     }
@@ -831,7 +832,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     ): WebResourceResponse? {
         val requestUri = request?.url?.let { Uri.parse(it.toString()) } ?: return null
         val mediaTypeHint = requestUri.getQueryParameter(WMDX_MEDIA_TYPE_PARAM)
-        val contentUri = stripWmdxMediaTypeHint(requestUri)
+        val mediaMimeHint = requestUri.getQueryParameter(WMDX_MEDIA_MIME_PARAM)
+        val contentUri = stripWmdxMediaHints(requestUri)
         val hasReadAccess = checkUriPermission(
             contentUri,
             android.os.Process.myPid(),
@@ -840,7 +842,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         if (!hasReadAccess) return null
 
-        val mimeType = mediaMimeType(contentUri, mediaTypeHint) ?: return null
+        val mimeType = mediaMimeType(contentUri, mediaTypeHint, mediaMimeHint) ?: return null
 
         val descriptor = runCatching {
             contentResolver.openAssetFileDescriptor(contentUri, "r")
@@ -946,11 +948,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun stripWmdxMediaTypeHint(uri: Uri): Uri {
-        if (!uri.queryParameterNames.contains(WMDX_MEDIA_TYPE_PARAM)) return uri
+    private fun stripWmdxMediaHints(uri: Uri): Uri {
+        if (
+            !uri.queryParameterNames.contains(WMDX_MEDIA_TYPE_PARAM) &&
+            !uri.queryParameterNames.contains(WMDX_MEDIA_MIME_PARAM)
+        ) {
+            return uri
+        }
         return uri.buildUpon().clearQuery().apply {
             uri.queryParameterNames.forEach { key ->
-                if (key != WMDX_MEDIA_TYPE_PARAM) {
+                if (key != WMDX_MEDIA_TYPE_PARAM && key != WMDX_MEDIA_MIME_PARAM) {
                     uri.getQueryParameters(key).forEach { value ->
                         appendQueryParameter(key, value)
                     }
@@ -959,25 +966,76 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }.build()
     }
 
-    private fun mediaMimeType(uri: Uri, expectedMediaType: String? = null): String? {
+    private fun appendWmdxMediaHints(uri: Uri, mediaType: String, mimeType: String): Uri =
+        uri.buildUpon().clearQuery().apply {
+            uri.queryParameterNames.forEach { key ->
+                if (key != WMDX_MEDIA_TYPE_PARAM && key != WMDX_MEDIA_MIME_PARAM) {
+                    uri.getQueryParameters(key).forEach { value ->
+                        appendQueryParameter(key, value)
+                    }
+                }
+            }
+            appendQueryParameter(WMDX_MEDIA_TYPE_PARAM, mediaType)
+            appendQueryParameter(WMDX_MEDIA_MIME_PARAM, mimeType)
+        }.build()
+
+    private fun validatedMediaMimeHint(mimeType: String?, expectedMediaType: String?): String? {
+        val expected = expectedMediaType?.lowercase(java.util.Locale.ROOT)
+            ?.takeIf { it == "audio" || it == "video" }
+            ?: return null
+        val normalized = mimeType
+            ?.substringBefore(';')
+            ?.trim()
+            ?.lowercase(java.util.Locale.ROOT)
+            ?: return null
+        if (normalized == "application/octet-stream") return normalized
+        if (!normalized.startsWith("$expected/")) return null
+        return normalized.takeIf {
+            Regex("^(audio|video)/[a-z0-9][a-z0-9.+_-]*$").matches(it)
+        }
+    }
+
+    private fun mediaMimeType(
+        uri: Uri,
+        expectedMediaType: String? = null,
+        explicitMimeHint: String? = null
+    ): String? {
+        fun matchesExpectedType(mimeType: String): Boolean {
+            val normalized = mimeType.lowercase(java.util.Locale.ROOT)
+            return when (expectedMediaType?.lowercase(java.util.Locale.ROOT)) {
+                "audio" -> normalized.startsWith("audio/")
+                "video" -> normalized.startsWith("video/")
+                else -> normalized.startsWith("audio/") || normalized.startsWith("video/")
+            }
+        }
+
         val providerMime = runCatching { contentResolver.getType(uri) }.getOrNull()
-            ?.takeIf { it.startsWith("audio/") || it.startsWith("video/") }
+            ?.takeIf(::matchesExpectedType)
         if (providerMime != null) return providerMime
+        validatedMediaMimeHint(explicitMimeHint, expectedMediaType)?.let { return it }
 
         val extension = getFileNameFromUri(uri)
             ?.substringAfterLast('.', "")
             ?.lowercase(java.util.Locale.ROOT)
             ?.takeIf { it.isNotBlank() }
-            ?: return null
-        return knownMediaMimeType(extension, expectedMediaType)
+        if (extension == null) {
+            return "application/octet-stream".takeIf {
+                expectedMediaType == "audio" || expectedMediaType == "video"
+            }
+        }
+        return (knownMediaMimeType(extension, expectedMediaType)
             ?: android.webkit.MimeTypeMap.getSingleton()
                 .getMimeTypeFromExtension(extension)
-                ?.takeIf { it.startsWith("audio/") || it.startsWith("video/") }
+                ?.takeIf { it.startsWith("audio/") || it.startsWith("video/") })
+            ?.takeIf(::matchesExpectedType)
+            ?: "application/octet-stream".takeIf {
+                expectedMediaType == "audio" || expectedMediaType == "video"
+            }
     }
 
     private fun knownMediaMimeType(extension: String, expectedMediaType: String?): String? =
         when (extension.lowercase(java.util.Locale.ROOT)) {
-            "3gp" -> "video/3gpp"
+            "3gp" -> if (expectedMediaType == "audio") "audio/3gpp" else "video/3gpp"
             "aac" -> "audio/aac"
             "avi" -> "video/x-msvideo"
             "flac" -> "audio/flac"
@@ -986,7 +1044,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "mkv" -> "video/x-matroska"
             "mov" -> "video/quicktime"
             "mp3" -> "audio/mpeg"
-            "mp4" -> "video/mp4"
+            "mp4" -> if (expectedMediaType == "audio") "audio/mp4" else "video/mp4"
             "oga", "ogg", "opus" -> "audio/ogg"
             "ogv" -> "video/ogg"
             "wav" -> "audio/wav"
@@ -1009,7 +1067,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val expectedMediaType = assetFolder
             .takeIf { it.equals("audio", ignoreCase = true) || it.equals("video", ignoreCase = true) }
             ?.lowercase(java.util.Locale.ROOT)
-        val mimeType = expectedMediaType?.let {
+        val mimeType = validatedMediaMimeHint(
+            uri.getQueryParameter(WMDX_MEDIA_MIME_PARAM),
+            expectedMediaType
+        ) ?: expectedMediaType?.let {
             knownMediaMimeType(file.extension, it)
         } ?: android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(file.extension.lowercase(java.util.Locale.ROOT))
@@ -2595,7 +2656,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun insertMediaFromUri(uri: Uri, mediaType: String) {
         try {
             val mimeType = mediaMimeType(uri, mediaType)
-            if (mimeType == null || !mimeType.startsWith("$mediaType/")) {
+            if (
+                mimeType == null ||
+                (!mimeType.startsWith("$mediaType/") && mimeType != "application/octet-stream")
+            ) {
                 val expected = if (mediaType == "audio") "audio" else "video"
                 ThemedToast.show(this, "Choose a supported $expected file.", Toast.LENGTH_LONG)
                 return
@@ -2613,19 +2677,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val inputStream = contentResolver.openInputStream(uri)
                     ?: throw java.io.IOException("Could not read the selected media file.")
                 inputStream.use {
-                    TextPackManager.addAssetMedia(
+                    val assetPath = TextPackManager.addAssetMedia(
                         session,
                         it,
                         originalName,
                         mediaType,
                         fallbackExtension
                     )
+                    appendWmdxMediaHints(
+                        Uri.parse(assetPath),
+                        mediaType,
+                        mimeType
+                    ).toString()
                 }
             } else {
-                uri.buildUpon()
-                    .appendQueryParameter(WMDX_MEDIA_TYPE_PARAM, mediaType)
-                    .build()
-                    .toString()
+                appendWmdxMediaHints(uri, mediaType, mimeType).toString()
             }
             webView.evaluateJavascript(
                 "window.editorBridge.insertMedia(" +
