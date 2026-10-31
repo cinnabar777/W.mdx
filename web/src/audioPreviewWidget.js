@@ -168,7 +168,8 @@ export class AudioPreviewWidget extends WidgetType {
     wrapper.appendChild(labelRow);
 
     const audio = document.createElement('audio');
-    audio.preload = 'metadata';
+    const isM4aSource = /\.m4a(?:$|[?#])/i.test(this.relativeLink || this.src);
+    audio.preload = isM4aSource ? 'auto' : 'metadata';
     audio.src = this.src;
     audio.dataset.mdzipAudio = 'true';
     audio.dataset.mdzipLink = this.relativeLink;

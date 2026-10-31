@@ -38,6 +38,14 @@ test('M4A files are accepted and served with an MP4 audio MIME type', () => {
   assert.match(capture, /mediaErrorCode:/);
 });
 
+test('M4A requests full preload so its timeline can be seeked without byte ranges', () => {
+  const player = read('src/audioPreviewWidget.js');
+  const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  assert.match(player, /isM4aSource =/);
+  assert.match(player, /audio\.preload = isM4aSource \? 'auto' : 'metadata'/);
+  assert.match(activity, /if \(extension == "m4a"\) headers\.remove\("Accept-Ranges"\)/);
+});
+
 test('audio edit controls save width and alignment, and the keyboard requests sentence caps', () => {
   const editor = read('src/main.js');
   const player = read('src/audioPreviewWidget.js');
