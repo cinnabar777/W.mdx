@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingCreateDocumentAsMdzip: Boolean? = null
     private var pendingCreateDocumentSessionId: String? = null
     private var pendingInsertAudioDocumentSessionId: String? = null
+    private var pendingReplaceMdzipAudioLink: String? = null
     private var pendingWmdxTabSessionJson: String? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
     private var pendingRenamePermissionRequest: RenameAccessRequest? = null
@@ -292,10 +293,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private val pickAudioLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val expectedSessionId = pendingInsertAudioDocumentSessionId
         pendingInsertAudioDocumentSessionId = null
+        val replacementLink = pendingReplaceMdzipAudioLink
+        pendingReplaceMdzipAudioLink = null
         if (uri != null && expectedSessionId == currentDocumentSessionId) {
-            insertAudioFromUri(uri)
+            if (replacementLink != null) replaceAudioFromUri(uri, replacementLink)
+            else insertAudioFromUri(uri)
         } else if (uri != null) {
-            ThemedToast.show(this, "The active document changed. The MP3 was not inserted.", Toast.LENGTH_LONG)
+            ThemedToast.show(this, "The active document changed. The MP3 change was not applied.", Toast.LENGTH_LONG)
         }
     }
 
@@ -2293,7 +2297,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             ?.value
         val headers = mutableMapOf(
             "Accept-Ranges" to "bytes",
-            "Cache-Control" to "no-cache"
+            "Cache-Control" to "no-store"
         )
 
         if (range == null) {
@@ -2368,7 +2372,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             null,
             416,
             "Range Not Satisfiable",
-            mapOf("Accept-Ranges" to "bytes", "Content-Range" to "bytes */$fileLength"),
+            mapOf(
+                "Accept-Ranges" to "bytes",
+                "Cache-Control" to "no-store",
+                "Content-Range" to "bytes */$fileLength"
+            ),
             ByteArrayInputStream(ByteArray(0))
         )
 
@@ -2401,6 +2409,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             )
             return
         }
+        pendingReplaceMdzipAudioLink = null
         pendingInsertAudioDocumentSessionId = currentDocumentSessionId
         pickAudioLauncher.launch("audio/mpeg")
     }
@@ -2429,6 +2438,41 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             ThemedToast.show(
                 this,
                 "Could not add the MP3: ${error.localizedMessage ?: "unknown error"}",
+                Toast.LENGTH_LONG
+            )
+        }
+    }
+
+    private fun replaceAudioFromUri(uri: Uri, relativeLink: String) {
+        val session = currentMdzipSession
+        if (session == null) {
+            ThemedToast.show(this, "The active document is no longer an MDZip package.", Toast.LENGTH_LONG)
+            return
+        }
+        try {
+            val selectedName = getFileNameFromUri(uri)
+            if (!selectedName.endsWith(".mp3", ignoreCase = true)) {
+                throw java.io.IOException("Choose an MP3 file.")
+            }
+            val input = contentResolver.openInputStream(uri)
+                ?: throw java.io.IOException("Could not read the selected MP3.")
+            MdzipManager.replaceMp3(session, relativeLink, input)
+            isDirty = true
+            updateTitle()
+            val escapedLink = JSONObjectWrapper.quote(relativeLink)
+            webView.evaluateJavascript(
+                "window.editorBridge?.reloadMdzipAudio?.($escapedLink);",
+                null
+            )
+            ThemedToast.show(
+                this,
+                "Audio replaced. Save the MDZip document to keep the change.",
+                Toast.LENGTH_LONG
+            )
+        } catch (error: Exception) {
+            ThemedToast.show(
+                this,
+                "Could not replace the MP3: ${error.localizedMessage ?: "unknown error"}",
                 Toast.LENGTH_LONG
             )
         }
@@ -3520,10 +3564,46 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun editMdzipAudio(relativeLink: String): Boolean {
+            val session = currentMdzipSession ?: return false
+            if (MdzipManager.resolveAudioFile(session, relativeLink) == null) return false
+            val sessionId = currentDocumentSessionId
+            runOnUiThread {
+                if (currentDocumentSessionId != sessionId || currentMdzipSession !== session) {
+                    ThemedToast.show(
+                        this@MainActivity,
+                        "The active document changed. The MP3 was not edited.",
+                        Toast.LENGTH_LONG
+                    )
+                    return@runOnUiThread
+                }
+                pendingReplaceMdzipAudioLink = relativeLink
+                pendingInsertAudioDocumentSessionId = sessionId
+                pickAudioLauncher.launch("audio/mpeg")
+            }
+            return true
+        }
+
+        @JavascriptInterface
         fun removeMdzipAudio(relativeLink: String): Boolean {
             val session = currentMdzipSession ?: return false
             return runCatching { MdzipManager.removeAudio(session, relativeLink) }
                 .getOrDefault(false)
+        }
+
+        @JavascriptInterface
+        fun setMediaPlaybackSpeed(speedText: String): Boolean {
+            val speed = speedText.toFloatOrNull() ?: return false
+            val allowedSpeeds = setOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+            if (speed !in allowedSpeeds) return false
+            val storedSpeed = if (speed == 1f) "1.0" else speed.toString()
+            runOnUiThread {
+                PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                    .edit()
+                    .putString("pref_media_playback_speed", storedSpeed)
+                    .apply()
+            }
+            return true
         }
 
         @JavascriptInterface

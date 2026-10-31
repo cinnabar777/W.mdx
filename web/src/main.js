@@ -2019,7 +2019,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
               : null;
             if (audioLink && audioUrl && !isNodeActive && !isPureWysiwyg) {
-              builder.push(Decoration.replace({
+              const audioDecoration = Decoration.replace({
                 widget: new AudioPreviewWidget(
                   audioUrl,
                   audioLink.label,
@@ -2027,7 +2027,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   node.from,
                   node.to
                 )
-              }).range(node.from, node.to));
+              }).range(node.from, node.to);
+              builder.push(audioDecoration);
+              hiddenSyntaxRanges.push(audioDecoration);
               return false;
             }
             const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
@@ -3127,7 +3129,7 @@ function buildHeightMapValue(state) {
           ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
           : null;
         if (audioLink && audioUrl) {
-          replacements.push(Decoration.replace({
+          const audioDecoration = Decoration.replace({
             widget: new AudioPreviewWidget(
               audioUrl,
               audioLink.label,
@@ -3135,7 +3137,9 @@ function buildHeightMapValue(state) {
               node.from,
               node.to
             )
-          }).range(node.from, node.to));
+          }).range(node.from, node.to);
+          replacements.push(audioDecoration);
+          hiddenSyntaxRanges.push(audioDecoration);
           return false;
         }
         const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
@@ -7561,6 +7565,32 @@ window.editorBridge = {
       document.body.classList.remove('light-theme');
     }
 
+    setCssVar(
+      '--media-player-bg',
+      androidArgbToCss(prefs.pref_media_player_background_color)
+    );
+    setCssVar(
+      '--media-controls-bg',
+      androidArgbToCss(prefs.pref_media_controls_background_color)
+    );
+    setCssVar(
+      '--media-controls-text',
+      androidArgbToCss(prefs.pref_media_controls_text_color)
+    );
+    setCssVar(
+      '--media-controls-accent',
+      androidArgbToCss(prefs.pref_media_controls_accent_color)
+    );
+    const requestedMediaRate = Number(prefs.pref_media_playback_speed ?? '1.0');
+    const availableMediaRates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+    window.mdzipAudioPlaybackRate = availableMediaRates.includes(requestedMediaRate)
+      ? requestedMediaRate
+      : 1;
+    document.querySelectorAll('audio[data-mdzip-audio="true"]').forEach(audio => {
+      audio.playbackRate = window.mdzipAudioPlaybackRate;
+      audio._syncMdzipPlaybackRate?.();
+    });
+
     if (prefs.pref_line_wrap === false) {
       document.body.classList.add('no-line-wrap');
     } else if (prefs.pref_line_wrap === true) {
@@ -8504,6 +8534,21 @@ window.editorBridge = {
   insertAudioLink: function(relativeUrl, label = 'audio.mp3') {
     if (activeAdapter && typeof activeAdapter.insertAudioLink === 'function') {
       activeAdapter.insertAudioLink(relativeUrl, label);
+    }
+  },
+  reloadMdzipAudio: function(relativeUrl) {
+    for (const audio of document.querySelectorAll('audio[data-mdzip-audio="true"]')) {
+      if (audio.dataset.mdzipLink !== relativeUrl) continue;
+      const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+      const wasPlaying = !audio.paused && !audio.ended;
+      audio.pause();
+      audio.addEventListener('loadedmetadata', () => {
+        if (Number.isFinite(audio.duration)) {
+          audio.currentTime = Math.min(currentTime, audio.duration);
+        }
+        if (wasPlaying) audio.play().catch(() => {});
+      }, { once: true });
+      audio.load();
     }
   },
   setTheme: function(themeName) {

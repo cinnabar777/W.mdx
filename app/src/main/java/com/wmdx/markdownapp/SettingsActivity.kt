@@ -48,6 +48,7 @@ class SettingsActivity : AppCompatActivity() {
             val currentFragment = supportFragmentManager.findFragmentById(R.id.settings_container)
             supportActionBar?.title = when (currentFragment) {
                 is SettingsThemeFragment -> "Settings Appearance"
+                is MediaPlaybackSettingsFragment -> "Media Playback"
                 is StylingHeadingsFragment -> "Headings"
                 is StylingParagraphFragment -> "Paragraph & Body"
                 is StylingBoldFragment -> "Bold"
@@ -276,6 +277,13 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_settings_theme" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, SettingsThemeFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_media" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, MediaPlaybackSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -3583,5 +3591,11 @@ class LeftPanelSettingsFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_left_panel, rootKey)
         configureFontPreferences()
+    }
+}
+
+class MediaPlaybackSettingsFragment : BaseSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_media, rootKey)
     }
 }

@@ -36,6 +36,24 @@
         <item>amoled</item>
         <item>light</item>
     </string-array>
+    <string-array name="media_playback_speed_entries">
+        <item>0.5×</item>
+        <item>0.75×</item>
+        <item>Normal (1×)</item>
+        <item>1.25×</item>
+        <item>1.5×</item>
+        <item>1.75×</item>
+        <item>2×</item>
+    </string-array>
+    <string-array name="media_playback_speed_values">
+        <item>0.5</item>
+        <item>0.75</item>
+        <item>1.0</item>
+        <item>1.25</item>
+        <item>1.5</item>
+        <item>1.75</item>
+        <item>2.0</item>
+    </string-array>
     <string-array name="pref_image_mode_entries">
         <item>Android Local File Picker</item>
         <item>URL / Base64 Data Input</item>

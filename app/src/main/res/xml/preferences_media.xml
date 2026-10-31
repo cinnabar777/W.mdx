@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Player Theme">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_media_player_background_color"
+            app:title="Player Background"
+            app:summary="Background behind the audio name and controls"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_media_controls_background_color"
+            app:title="Controls Background"
+            app:summary="Background behind the playback controls"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_media_controls_text_color"
+            app:title="Controls Text and Icons"
+            app:summary="Color of control labels, icons, and time"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_media_controls_accent_color"
+            app:title="Progress and Volume Color"
+            app:summary="Color of the playback and volume sliders"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Playback">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_media_playback_speed"
+            app:title="Default Playback Speed"
+            app:summary="Choosing a speed in the player saves it here"
+            app:entries="@array/media_playback_speed_entries"
+            app:entryValues="@array/media_playback_speed_values"
+            app:defaultValue="1.0" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

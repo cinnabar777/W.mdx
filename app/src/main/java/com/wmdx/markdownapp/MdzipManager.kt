@@ -210,6 +210,35 @@ object MdzipManager {
         return relativeMarkdownPath(session.entryPoint, archivePath)
     }
 
+    fun replaceMp3(session: MdzipSession, markdownLink: String, input: InputStream) {
+        val target = resolveAudioFile(session, markdownLink)
+            ?: throw IOException("The linked MP3 is no longer in this MDZip package.")
+        val temporary = File.createTempFile("mdzip-audio-replacement-", ".mp3", target.parentFile)
+        try {
+            var bytesCopied = 0L
+            input.use { source ->
+                FileOutputStream(temporary).use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = source.read(buffer)
+                        if (read < 0) break
+                        bytesCopied += read
+                        if (bytesCopied > MAX_AUDIO_BYTES) {
+                            throw IOException("This MP3 is too large to add to the MDZip package.")
+                        }
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+            if (bytesCopied == 0L) throw IOException("The selected MP3 is empty.")
+            if (!temporary.renameTo(target)) {
+                throw IOException("Could not replace the MP3 inside the MDZip package.")
+            }
+        } finally {
+            temporary.delete()
+        }
+    }
+
     fun resolveAudioArchivePath(session: MdzipSession, markdownLink: String): String? {
         val target = markdownLink.trim().removePrefix("<").removeSuffix(">")
         if (target.isBlank() || target.startsWith("/") || target.startsWith("//")) return null
@@ -252,8 +281,7 @@ object MdzipManager {
 
     fun audioUrl(session: MdzipSession, markdownLink: String): String? {
         val archivePath = resolveAudioArchivePath(session, markdownLink) ?: return null
-        val file = audioArchiveFile(session, archivePath) ?: return null
-            ?: return null
+        if (audioArchiveFile(session, archivePath) == null) return null
         return "$ASSET_BASE_URL/${session.sessionDir.name}/${Uri.encode(archivePath, "/")}"
     }
 

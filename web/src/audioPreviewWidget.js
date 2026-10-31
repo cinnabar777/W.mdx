@@ -1,18 +1,103 @@
 import { WidgetType } from '@codemirror/view';
 
-function styleActionButton(button) {
+const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainder = total % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
+
+function formatRate(rate) {
+  const value = Number(rate);
+  return `${Number.isInteger(value) ? value : String(value).replace(/0+$/, '').replace(/\.$/, '')}×`;
+}
+
+function makeIcon(name) {
+  const icons = {
+    play: '<path d="M8 5v14l11-7z" fill="currentColor"/>',
+    pause: '<path d="M6 5h4v14H6zm8 0h4v14h-4z" fill="currentColor"/>',
+    volume: '<path d="M3 9v6h4l5 4V5L7 9H3zm12.5 3a3.5 3.5 0 0 0-2-3.16v6.31a3.5 3.5 0 0 0 2-3.15zm-2-8.77v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z" fill="currentColor"/>',
+    muted: '<path d="M3 9v6h4l5 4V5L7 9H3zm11.6 0L13.2 10.4 15.8 13l-2.6 2.6 1.4 1.4 2.6-2.6 2.6 2.6 1.4-1.4-2.6-2.6 2.6-2.6-1.4-1.4-2.6 2.6z" fill="currentColor"/>'
+  };
+  return `<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">${icons[name]}</svg>`;
+}
+
+function styleButton(button, { compact = false } = {}) {
   button.style.cssText = [
     'appearance:none',
-    'border:0',
-    'border-radius:6px',
+    'display:inline-flex',
+    'align-items:center',
+    'justify-content:center',
+    'box-sizing:border-box',
+    'min-width:38px',
+    'min-height:38px',
+    `padding:${compact ? '7px 10px' : '8px'}`,
+    'border:1px solid var(--border-color, #444)',
+    'border-radius:8px',
     'background:transparent',
-    'color:var(--text-color, #fff)',
+    'color:var(--media-controls-text, #fff)',
     'font:inherit',
-    'text-align:left',
-    'padding:10px 14px',
-    'min-height:40px',
-    'cursor:pointer'
+    'font-size:14px',
+    'line-height:1',
+    'white-space:nowrap',
+    'cursor:pointer',
+    'touch-action:manipulation'
   ].join(';');
+}
+
+function stylePopup(popup) {
+  popup.style.cssText = [
+    'position:fixed',
+    'z-index:100000',
+    'display:none',
+    'min-width:160px',
+    'max-width:calc(100vw - 16px)',
+    'box-sizing:border-box',
+    'padding:5px',
+    'border:1px solid var(--border-color, #444)',
+    'border-radius:10px',
+    'background:var(--media-controls-bg, #242424)',
+    'color:var(--media-controls-text, #fff)',
+    'box-shadow:0 5px 22px rgba(0,0,0,.48)'
+  ].join(';');
+}
+
+function stylePopupButton(button) {
+  button.style.cssText = [
+    'appearance:none',
+    'display:block',
+    'width:100%',
+    'min-height:42px',
+    'box-sizing:border-box',
+    'padding:10px 12px',
+    'border:0',
+    'border-radius:7px',
+    'background:transparent',
+    'color:var(--media-controls-text, #fff)',
+    'font:inherit',
+    'font-size:14px',
+    'text-align:left',
+    'cursor:pointer',
+    'touch-action:manipulation'
+  ].join(';');
+}
+
+function viewportBounds() {
+  const viewport = window.visualViewport;
+  const left = viewport?.offsetLeft ?? 0;
+  const top = viewport?.offsetTop ?? 0;
+  return {
+    left,
+    top,
+    right: left + (viewport?.width ?? window.innerWidth),
+    bottom: top + (viewport?.height ?? window.innerHeight)
+  };
 }
 
 export class AudioPreviewWidget extends WidgetType {
@@ -45,7 +130,8 @@ export class AudioPreviewWidget extends WidgetType {
       'padding:10px',
       'border:1px solid var(--border-color, #444)',
       'border-radius:8px',
-      'background:var(--body-background, rgba(255,255,255,.04))',
+      'background:var(--media-player-bg, #111)',
+      'color:var(--media-controls-text, #fff)',
       'touch-action:manipulation',
       'user-select:none',
       '-webkit-user-select:none'
@@ -60,49 +146,167 @@ export class AudioPreviewWidget extends WidgetType {
       'line-height:1.4',
       'margin:0 0 8px',
       'overflow-wrap:anywhere',
-      'color:var(--text-color, #fff)',
+      'color:var(--media-controls-text, #fff)',
       'touch-action:manipulation'
     ].join(';');
     wrapper.appendChild(labelRow);
 
     const audio = document.createElement('audio');
-    audio.controls = true;
     audio.preload = 'metadata';
     audio.src = this.src;
-    audio.style.cssText = 'display:block;width:100%;max-width:100%;';
+    audio.dataset.mdzipAudio = 'true';
+    audio.dataset.mdzipLink = this.relativeLink;
+    audio.hidden = true;
+    const initialRate = Number(window.mdzipAudioPlaybackRate ?? 1);
+    audio.playbackRate = PLAYBACK_RATES.includes(initialRate) ? initialRate : 1;
     wrapper.appendChild(audio);
+
+    const controls = document.createElement('div');
+    controls.className = 'cm-mdzip-audio-controls';
+    controls.style.cssText = [
+      'display:flex',
+      'flex-wrap:wrap',
+      'align-items:center',
+      'gap:8px',
+      'box-sizing:border-box',
+      'max-width:100%',
+      'padding:8px',
+      'border-radius:999px',
+      'background:var(--media-controls-bg, #242424)',
+      'color:var(--media-controls-text, #fff)'
+    ].join(';');
+    wrapper.appendChild(controls);
+
+    const playButton = document.createElement('button');
+    playButton.type = 'button';
+    playButton.setAttribute('aria-label', 'Play audio');
+    styleButton(playButton);
+    playButton.innerHTML = makeIcon('play');
+    controls.appendChild(playButton);
+
+    const timeLabel = document.createElement('span');
+    timeLabel.setAttribute('aria-live', 'off');
+    timeLabel.style.cssText = [
+      'flex:0 0 auto',
+      'min-width:72px',
+      'color:var(--media-controls-text, #fff)',
+      'font-size:12px',
+      'font-variant-numeric:tabular-nums',
+      'text-align:center'
+    ].join(';');
+    timeLabel.textContent = '0:00 / 0:00';
+    controls.appendChild(timeLabel);
+
+    const seek = document.createElement('input');
+    seek.type = 'range';
+    seek.min = '0';
+    seek.max = '1';
+    seek.value = '0';
+    seek.setAttribute('aria-label', 'Seek audio');
+    seek.style.cssText = [
+      'flex:1 1 54px',
+      'min-width:54px',
+      'height:24px',
+      'margin:0',
+      'accent-color:var(--media-controls-accent, #00d6c9)'
+    ].join(';');
+    controls.appendChild(seek);
+
+    const speedButton = document.createElement('button');
+    speedButton.type = 'button';
+    speedButton.setAttribute('aria-label', 'Playback speed');
+    styleButton(speedButton, { compact: true });
+    speedButton.textContent = formatRate(audio.playbackRate);
+    controls.appendChild(speedButton);
+
+    const muteButton = document.createElement('button');
+    muteButton.type = 'button';
+    muteButton.setAttribute('aria-label', 'Mute audio');
+    styleButton(muteButton);
+    muteButton.innerHTML = makeIcon('volume');
+    controls.appendChild(muteButton);
+
+    const volume = document.createElement('input');
+    volume.type = 'range';
+    volume.min = '0';
+    volume.max = '1';
+    volume.step = '0.01';
+    volume.value = String(audio.volume);
+    volume.setAttribute('aria-label', 'Volume');
+    volume.style.cssText = [
+      'flex:1 1 120px',
+      'min-width:100px',
+      'height:20px',
+      'accent-color:var(--media-controls-accent, #00d6c9)'
+    ].join(';');
+    const volumeRow = document.createElement('div');
+    volumeRow.style.cssText = [
+      'display:flex',
+      'flex:1 0 100%',
+      'align-items:center',
+      'gap:8px',
+      'padding:0 8px',
+      'color:var(--media-controls-text, #fff)',
+      'font-size:12px'
+    ].join(';');
+    const volumeLabel = document.createElement('span');
+    volumeLabel.textContent = 'Volume';
+    volumeRow.append(volumeLabel, volume);
+    controls.appendChild(volumeRow);
 
     const status = document.createElement('div');
     status.setAttribute('role', 'status');
-    status.style.cssText = 'display:none;margin-top:8px;color:var(--text-color, #aaa);font-size:13px;';
-    audio.addEventListener('error', () => {
-      status.textContent = 'Unable to play this MP3 on this device.';
-      status.style.display = 'block';
-    });
+    status.style.cssText = [
+      'display:none',
+      'margin-top:8px',
+      'color:var(--media-controls-text, #fff)',
+      'font-size:13px'
+    ].join(';');
     wrapper.appendChild(status);
+
+    const speedMenu = document.createElement('div');
+    speedMenu.setAttribute('role', 'menu');
+    speedMenu.setAttribute('aria-label', 'Playback speed');
+    stylePopup(speedMenu);
+    for (const rate of PLAYBACK_RATES) {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.setAttribute('role', 'menuitemradio');
+      option.setAttribute('aria-checked', String(rate === audio.playbackRate));
+      option.textContent = rate === 1 ? 'Normal (1×)' : formatRate(rate);
+      stylePopupButton(option);
+      option.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        setPlaybackRate(rate, true);
+        hidePopup(speedMenu);
+      });
+      speedMenu.appendChild(option);
+    }
 
     const actions = document.createElement('div');
     actions.setAttribute('role', 'menu');
-    actions.setAttribute('aria-label', 'Audio options');
-    actions.style.cssText = [
-      'position:fixed',
-      'z-index:100000',
-      'display:none',
-      'min-width:180px',
-      'padding:4px',
-      'border:1px solid var(--border-color, #555)',
-      'border-radius:8px',
-      'background:var(--panel-background, #202020)',
-      'box-shadow:0 4px 18px rgba(0,0,0,.45)'
-    ].join(';');
-    const removeButton = document.createElement('button');
-    removeButton.type = 'button';
-    removeButton.setAttribute('role', 'menuitem');
-    removeButton.textContent = 'Remove audio from MDZip';
-    styleActionButton(removeButton);
-    actions.appendChild(removeButton);
+    actions.setAttribute('aria-label', 'Audio actions');
+    stylePopup(actions);
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.setAttribute('role', 'menuitem');
+    editButton.textContent = 'Edit';
+    stylePopupButton(editButton);
+    actions.appendChild(editButton);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.setAttribute('role', 'menuitem');
+    deleteButton.textContent = 'Delete from MDZip';
+    stylePopupButton(deleteButton);
+    actions.appendChild(deleteButton);
 
     let lastPressPoint = null;
+    let activePopup = null;
+    let popupAnchor = null;
+    let popupPoint = null;
     let pressTimer = null;
     const clearPressTimer = () => {
       if (pressTimer !== null) {
@@ -110,43 +314,145 @@ export class AudioPreviewWidget extends WidgetType {
         pressTimer = null;
       }
     };
-    const positionActions = () => {
-      if (!actions.isConnected || !lastPressPoint) return;
-      const viewport = window.visualViewport;
-      const leftEdge = viewport?.offsetLeft ?? 0;
-      const topEdge = viewport?.offsetTop ?? 0;
-      const viewportWidth = viewport?.width ?? window.innerWidth;
-      const viewportHeight = viewport?.height ?? window.innerHeight;
-      const width = actions.offsetWidth || 200;
-      const height = actions.offsetHeight || 52;
-      const minLeft = leftEdge + 8;
-      const maxLeft = Math.max(minLeft, leftEdge + viewportWidth - width - 8);
-      const left = Math.max(minLeft, Math.min(lastPressPoint.x - width / 2, maxLeft));
-      const minTop = topEdge + 8;
-      const maxTop = Math.max(minTop, topEdge + viewportHeight - height - 8);
-      const above = lastPressPoint.y - height - 12;
-      const below = lastPressPoint.y + 12;
-      const top = above >= minTop ? above : below <= maxTop ? below : Math.max(minTop, Math.min(above, maxTop));
-      actions.style.left = `${left}px`;
-      actions.style.top = `${Math.max(minTop, Math.min(top, maxTop))}px`;
+    const positionPopup = () => {
+      const popup = activePopup;
+      if (!popup?.isConnected) return;
+      const bounds = viewportBounds();
+      const rect = popupAnchor?.isConnected
+        ? popupAnchor.getBoundingClientRect()
+        : null;
+      const anchorX = rect ? rect.left : (popupPoint?.x ?? bounds.left + 8);
+      const anchorY = rect ? rect.bottom : (popupPoint?.y ?? bounds.top + 8);
+      const width = popup.offsetWidth || 190;
+      const height = popup.offsetHeight || 100;
+      const minLeft = bounds.left + 8;
+      const maxLeft = Math.max(minLeft, bounds.right - width - 8);
+      const left = rect
+        ? Math.min(Math.max(minLeft, rect.right - width), maxLeft)
+        : Math.min(Math.max(minLeft, anchorX - width / 2), maxLeft);
+      const below = anchorY + 8;
+      const above = (rect ? rect.top : anchorY) - height - 8;
+      const minTop = bounds.top + 8;
+      const maxTop = Math.max(minTop, bounds.bottom - height - 8);
+      const top = below + height <= bounds.bottom - 8
+        ? below
+        : Math.max(minTop, Math.min(above, maxTop));
+      popup.style.left = `${left}px`;
+      popup.style.top = `${top}px`;
     };
-    const hideActions = () => {
-      actions.style.display = 'none';
-      actions.remove();
+    const hidePopup = popup => {
+      popup?.remove();
+      if (popup === activePopup) {
+        activePopup = null;
+        popupAnchor = null;
+        popupPoint = null;
+      }
     };
-    const showActions = point => {
-      lastPressPoint = point;
-      if (!actions.isConnected) document.body.appendChild(actions);
-      actions.style.display = 'block';
-      positionActions();
+    const showPopup = (popup, { anchor = null, point = null } = {}) => {
+      if (activePopup && activePopup !== popup) hidePopup(activePopup);
+      activePopup = popup;
+      popupAnchor = anchor;
+      popupPoint = point;
+      if (!popup.isConnected) document.body.appendChild(popup);
+      popup.style.display = 'block';
+      positionPopup();
     };
+    const dismissPopup = event => {
+      if (
+        activePopup &&
+        !wrapper.contains(event.target) &&
+        !activePopup.contains(event.target)
+      ) {
+        hidePopup(activePopup);
+      }
+    };
+    const setPlaybackRate = (rate, persist) => {
+      audio.playbackRate = rate;
+      window.mdzipAudioPlaybackRate = rate;
+      speedButton.textContent = formatRate(rate);
+      speedButton.setAttribute('aria-label', `Playback speed ${formatRate(rate)}`);
+      for (const option of speedMenu.querySelectorAll('[role="menuitemradio"]')) {
+        const selected = option.textContent === (rate === 1 ? 'Normal (1×)' : formatRate(rate));
+        option.setAttribute('aria-checked', String(selected));
+      }
+      if (persist && window.AndroidNative?.setMediaPlaybackSpeed?.(String(rate)) !== true) {
+        status.textContent = 'Playback speed changed but could not be saved.';
+        status.style.display = 'block';
+      }
+    };
+    const updateTime = () => {
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      timeLabel.textContent = `${formatTime(audio.currentTime)} / ${formatTime(duration)}`;
+      seek.max = String(Math.max(1, duration));
+      seek.value = String(Math.min(audio.currentTime || 0, duration || 1));
+    };
+    const syncPlayButton = () => {
+      const playing = !audio.paused && !audio.ended;
+      playButton.innerHTML = makeIcon(playing ? 'pause' : 'play');
+      playButton.setAttribute('aria-label', playing ? 'Pause audio' : 'Play audio');
+    };
+    const syncMuteButton = () => {
+      const muted = audio.muted || audio.volume === 0;
+      muteButton.innerHTML = makeIcon(muted ? 'muted' : 'volume');
+      muteButton.setAttribute('aria-label', muted ? 'Unmute audio' : 'Mute audio');
+    };
+    audio._syncMdzipPlaybackRate = () => {
+      const rate = Number(window.mdzipAudioPlaybackRate ?? audio.playbackRate);
+      if (PLAYBACK_RATES.includes(rate)) setPlaybackRate(rate, false);
+    };
+
+    playButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (audio.paused) {
+        audio.play().catch(() => {
+          status.textContent = 'Unable to play this MP3 on this device.';
+          status.style.display = 'block';
+        });
+      } else {
+        audio.pause();
+      }
+    });
+    seek.addEventListener('input', () => {
+      if (Number.isFinite(audio.duration)) audio.currentTime = Number(seek.value);
+    });
+    muteButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      audio.muted = !audio.muted;
+      syncMuteButton();
+    });
+    volume.addEventListener('input', () => {
+      audio.volume = Number(volume.value);
+      audio.muted = audio.volume === 0;
+      syncMuteButton();
+    });
+    speedButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (activePopup === speedMenu) hidePopup(speedMenu);
+      else showPopup(speedMenu, { anchor: speedButton });
+    });
+    audio.addEventListener('timeupdate', updateTime);
+    audio.addEventListener('durationchange', updateTime);
+    audio.addEventListener('loadedmetadata', updateTime);
+    audio.addEventListener('play', syncPlayButton);
+    audio.addEventListener('pause', syncPlayButton);
+    audio.addEventListener('ended', syncPlayButton);
+    audio.addEventListener('volumechange', syncMuteButton);
+    audio.addEventListener('error', () => {
+      status.textContent = 'Unable to play this MP3 on this device.';
+      status.style.display = 'block';
+    });
+
     const onLabelPointerDown = event => {
       if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
       const point = { x: event.clientX, y: event.clientY };
+      lastPressPoint = point;
       clearPressTimer();
       pressTimer = setTimeout(() => {
         pressTimer = null;
-        showActions(point);
+        showPopup(actions, { point });
       }, 550);
       labelRow._pressStart = point;
     };
@@ -164,18 +470,26 @@ export class AudioPreviewWidget extends WidgetType {
     const onContextMenu = event => {
       event.preventDefault();
       event.stopPropagation();
-      showActions({ x: event.clientX, y: event.clientY });
+      const point = { x: event.clientX, y: event.clientY };
+      lastPressPoint = point;
+      showPopup(actions, { point });
     };
-    const dismissActions = event => {
-      if (!wrapper.contains(event.target) && !actions.contains(event.target)) hideActions();
-    };
-    const removeAudio = event => {
+    const editAudio = event => {
       event.preventDefault();
       event.stopPropagation();
-      hideActions();
-      const removed = window.AndroidNative?.removeMdzipAudio?.(this.relativeLink) === true;
-      if (!removed) {
-        status.textContent = 'The MP3 could not be removed from this package.';
+      hidePopup(actions);
+      if (window.AndroidNative?.editMdzipAudio?.(this.relativeLink) !== true) {
+        status.textContent = 'Could not open the MP3 replacement picker.';
+        status.style.display = 'block';
+      }
+    };
+    const deleteAudio = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      hidePopup(actions);
+      const deleted = window.AndroidNative?.removeMdzipAudio?.(this.relativeLink) === true;
+      if (!deleted) {
+        status.textContent = 'The MP3 could not be deleted from this package.';
         status.style.display = 'block';
         return;
       }
@@ -192,18 +506,25 @@ export class AudioPreviewWidget extends WidgetType {
     labelRow.addEventListener('pointerup', onLabelPointerEnd);
     labelRow.addEventListener('pointercancel', onLabelPointerEnd);
     labelRow.addEventListener('contextmenu', onContextMenu);
-    removeButton.addEventListener('click', removeAudio);
-    document.addEventListener('pointerdown', dismissActions, true);
-    window.visualViewport?.addEventListener('resize', positionActions);
+    editButton.addEventListener('click', editAudio);
+    deleteButton.addEventListener('click', deleteAudio);
+    document.addEventListener('pointerdown', dismissPopup, true);
+    window.addEventListener('resize', positionPopup);
+    window.addEventListener('scroll', positionPopup, true);
+    window.visualViewport?.addEventListener('resize', positionPopup);
+    window.visualViewport?.addEventListener('scroll', positionPopup);
 
     wrapper._audioCleanup = () => {
       clearPressTimer();
-      hideActions();
-      document.removeEventListener('pointerdown', dismissActions, true);
-      window.visualViewport?.removeEventListener('resize', positionActions);
+      hidePopup(activePopup);
+      document.removeEventListener('pointerdown', dismissPopup, true);
+      window.removeEventListener('resize', positionPopup);
+      window.removeEventListener('scroll', positionPopup, true);
+      window.visualViewport?.removeEventListener('resize', positionPopup);
+      window.visualViewport?.removeEventListener('scroll', positionPopup);
+      audio.pause();
+      delete audio._syncMdzipPlaybackRate;
     };
-    wrapper._audioActions = actions;
-    wrapper._audioDismiss = dismissActions;
     return wrapper;
   }
 
