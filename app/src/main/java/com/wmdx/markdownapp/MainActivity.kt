@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingCreateDocumentAsMdzip: Boolean? = null
     private var pendingCreateDocumentSessionId: String? = null
     private var pendingInsertAudioDocumentSessionId: String? = null
+    private var pendingInsertVideoDocumentSessionId: String? = null
     private var pendingReplaceMdzipAudioLink: String? = null
     private var pendingWmdxTabSessionJson: String? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
@@ -298,6 +299,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             else insertAudioFromUri(uri)
         } else if (uri != null) {
             ThemedToast.show(this, "The active document changed. The audio change was not applied.", Toast.LENGTH_LONG)
+        }
+    }
+
+    private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val expectedSessionId = pendingInsertVideoDocumentSessionId
+        pendingInsertVideoDocumentSessionId = null
+        if (uri != null && expectedSessionId == currentDocumentSessionId) {
+            insertVideoFromUri(uri)
+        } else if (uri != null) {
+            ThemedToast.show(this, "The active document changed. The video was not added.", Toast.LENGTH_LONG)
         }
     }
 
@@ -2317,9 +2328,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val archivePath = segments.drop(2).joinToString("/")
-        val file = MdzipManager.audioArchiveFile(session, archivePath)
+        val isVideoAsset = archivePath.startsWith("video/", ignoreCase = true)
+        val file = if (isVideoAsset) {
+            MdzipManager.videoArchiveFile(session, archivePath)
+        } else {
+            MdzipManager.audioArchiveFile(session, archivePath)
+        }
         if (file == null) {
-            if (archivePath.startsWith("audio/", ignoreCase = true) &&
+            if (!isVideoAsset && archivePath.startsWith("audio/", ignoreCase = true) &&
                 MdzipManager.isSupportedAudioFileName(archivePath)
             ) {
                 val extension = archivePath.substringAfterLast('.').lowercase()
@@ -2335,7 +2351,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return mdzipAssetError(404, "Not Found")
         }
         val extension = file.extension.lowercase()
-        val mimeType = mdzipAudioMimeType(extension)
+        val mimeType = if (isVideoAsset) "video/mp4" else mdzipAudioMimeType(extension)
         val fileLength = file.length()
         val range = request.requestHeaders.entries
             .firstOrNull { it.key.equals("Range", ignoreCase = true) }
@@ -2344,19 +2360,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "Accept-Ranges" to "bytes",
             "Cache-Control" to "no-store"
         )
-        if (extension in setOf("m4a", "flac", "opus", "ogg")) {
+        if (!isVideoAsset && extension in setOf("m4a", "flac", "opus", "ogg")) {
             headers.remove("Accept-Ranges")
         }
 
         if (shouldServeMdzipAudioAsWholeFile(extension, range)) {
-            recordMdzipAudioAsset(
-                extension,
-                200,
-                mimeType,
-                rangeHeader = range,
-                contentRange = null,
-                contentLength = fileLength
-            )
+            if (!isVideoAsset) {
+                recordMdzipAudioAsset(
+                    extension,
+                    200,
+                    mimeType,
+                    rangeHeader = range,
+                    contentRange = null,
+                    contentLength = fileLength
+                )
+            }
             headers["Content-Length"] = fileLength.toString()
             val body = if (request.method.equals("HEAD", ignoreCase = true)) {
                 ByteArrayInputStream(ByteArray(0))
@@ -2366,20 +2384,23 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
         }
 
-        val rangeHeader = range ?: return mdzipRangeError(fileLength, mimeType, range, extension)
+        val rangeHeader = range
+            ?: return mdzipRangeError(fileLength, mimeType, range, extension, isVideoAsset)
         val byteRange = parseMdzipByteRange(rangeHeader, fileLength)
-            ?: return mdzipRangeError(fileLength, mimeType, rangeHeader, extension)
+            ?: return mdzipRangeError(fileLength, mimeType, rangeHeader, extension, isVideoAsset)
         headers["Content-Length"] = byteRange.length.toString()
         val contentRange = "bytes ${byteRange.start}-${byteRange.endInclusive}/$fileLength"
         headers["Content-Range"] = contentRange
-        recordMdzipAudioAsset(
-            extension,
-            206,
-            mimeType,
-            rangeHeader = rangeHeader,
-            contentRange = contentRange,
-            contentLength = byteRange.length
-        )
+        if (!isVideoAsset) {
+            recordMdzipAudioAsset(
+                extension,
+                206,
+                mimeType,
+                rangeHeader = rangeHeader,
+                contentRange = contentRange,
+                contentLength = byteRange.length
+            )
+        }
         val body = if (request.method.equals("HEAD", ignoreCase = true)) {
             ByteArrayInputStream(ByteArray(0))
         } else {
@@ -2421,16 +2442,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         fileLength: Long,
         mimeType: String,
         rangeHeader: String?,
-        extension: String
+        extension: String,
+        isVideoAsset: Boolean = false
     ): WebResourceResponse {
-        recordMdzipAudioAsset(
-            extension,
-            416,
-            mimeType,
-            rangeHeader = rangeHeader,
-            contentRange = "bytes */$fileLength",
-            contentLength = 0
-        )
+        if (!isVideoAsset) {
+            recordMdzipAudioAsset(
+                extension,
+                416,
+                mimeType,
+                rangeHeader = rangeHeader,
+                contentRange = "bytes */$fileLength",
+                contentLength = 0
+            )
+        }
         return WebResourceResponse(
             mimeType,
             null,
@@ -2477,6 +2501,48 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         pendingReplaceMdzipAudioLink = null
         pendingInsertAudioDocumentSessionId = currentDocumentSessionId
         pickAudioLauncher.launch("audio/*")
+    }
+
+    private fun handleInsertVideo() {
+        if (currentMdzipSession == null) {
+            ThemedToast.show(
+                this,
+                "Open or save a document as MDZip (.mdz) before inserting video.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+        pendingInsertVideoDocumentSessionId = currentDocumentSessionId
+        pickVideoLauncher.launch("video/mp4")
+    }
+
+    private fun insertVideoFromUri(uri: Uri) {
+        val session = currentMdzipSession
+        if (session == null) {
+            ThemedToast.show(this, "The active document is no longer an MDZip package.", Toast.LENGTH_LONG)
+            return
+        }
+        try {
+            val originalName = getFileNameFromUri(uri)
+            if (!MdzipManager.isSupportedVideoFileName(originalName)) {
+                throw java.io.IOException("Choose an MP4 video file.")
+            }
+            val input = contentResolver.openInputStream(uri)
+                ?: throw java.io.IOException("Could not read the selected video file.")
+            val relativeLink = MdzipManager.addVideo(session, input, originalName)
+            val escapedLink = JSONObjectWrapper.quote(relativeLink)
+            val escapedName = JSONObjectWrapper.quote(originalName)
+            webView.evaluateJavascript(
+                "window.editorBridge?.insertVideoLink?.($escapedLink, $escapedName);",
+                null
+            )
+        } catch (error: Exception) {
+            ThemedToast.show(
+                this,
+                "Could not add the video file: ${error.localizedMessage ?: "unknown error"}",
+                Toast.LENGTH_LONG
+            )
+        }
     }
 
     private fun insertAudioFromUri(uri: Uri) {
@@ -3608,6 +3674,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "export" -> handleExportDocument()
                     "image" -> handleInsertImage()
                     "audio" -> handleInsertAudio()
+                    "video" -> handleInsertVideo()
                     "new_window" -> handleNewWindow()
                     "settings" -> settingsLauncher.launch(android.content.Intent(this@MainActivity, SettingsActivity::class.java))
                     "toc_settings" -> settingsLauncher.launch(
@@ -3623,7 +3690,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         @JavascriptInterface
         fun resolveMdzipMediaUrl(relativeLink: String): String {
             val session = currentMdzipSession ?: return ""
-            return runCatching { MdzipManager.audioUrl(session, relativeLink) }
+            return runCatching {
+                MdzipManager.audioUrl(session, relativeLink)
+                    ?: MdzipManager.videoUrl(session, relativeLink)
+            }
                 .getOrNull()
                 .orEmpty()
         }
@@ -3683,6 +3753,39 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     AppDiagnostics.record(
                         this@MainActivity,
                         "mdzip_audio_reference_sync_failed",
+                        error.javaClass.simpleName
+                    )
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun syncMdzipVideoReferences(
+            previousLinksJson: String?,
+            currentLinksJson: String?,
+            documentSessionId: String?
+        ) {
+            if (documentSessionId != currentDocumentSessionId) return
+            val session = currentMdzipSession ?: return
+            val previousLinks = runCatching {
+                val values = org.json.JSONArray(previousLinksJson ?: "[]")
+                (0 until values.length()).mapNotNull { index ->
+                    values.optString(index).takeIf { it.isNotBlank() }
+                }
+            }.getOrNull() ?: return
+            val currentLinks = runCatching {
+                val values = org.json.JSONArray(currentLinksJson ?: "[]")
+                (0 until values.length()).mapNotNull { index ->
+                    values.optString(index).takeIf { it.isNotBlank() }
+                }
+            }.getOrNull() ?: return
+            runCatching {
+                MdzipManager.syncVideoReferences(session, previousLinks, currentLinks)
+            }.onFailure { error ->
+                if (BuildConfig.DEBUG) {
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "mdzip_video_reference_sync_failed",
                         error.javaClass.simpleName
                     )
                 }

@@ -36,10 +36,14 @@ import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import {
   extractMarkdownAudioLinks,
+  extractMarkdownVideoLinks,
   formatMarkdownAudioLink,
-  parseMarkdownAudioLink
+  formatMarkdownVideoLink,
+  parseMarkdownAudioLink,
+  parseMarkdownVideoLink
 } from './markdownMedia.js';
 import { AudioPreviewWidget } from './audioPreviewWidget.js';
+import { VideoPreviewWidget } from './videoPreviewWidget.js';
 import {
   getMarkdownFormattingState,
   getMarkdownFormatRanges,
@@ -2018,6 +2022,25 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'Link' || node.name === 'URL') {
             const raw = view.state.doc.sliceString(node.from, node.to);
+            const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
+            const videoUrl = videoLink
+              ? window.AndroidNative?.resolveMdzipMediaUrl?.(videoLink.url)
+              : null;
+            if (videoLink && videoUrl && !isNodeActive && !isPureWysiwyg) {
+              const videoDecoration = Decoration.replace({
+                widget: new VideoPreviewWidget(
+                  videoUrl,
+                  videoLink.label,
+                  videoLink.url,
+                  raw,
+                  node.from,
+                  node.to
+                )
+              }).range(node.from, node.to);
+              builder.push(videoDecoration);
+              hiddenSyntaxRanges.push(videoDecoration);
+              return false;
+            }
             const audioLink = node.name === 'Link' ? parseMarkdownAudioLink(raw) : null;
             const audioUrl = audioLink
               ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
@@ -3130,6 +3153,25 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'Link' || node.name === 'URL') {
         const raw = doc.sliceString(node.from, node.to);
+        const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
+        const videoUrl = videoLink
+          ? window.AndroidNative?.resolveMdzipMediaUrl?.(videoLink.url)
+          : null;
+        if (videoLink && videoUrl) {
+          const videoDecoration = Decoration.replace({
+            widget: new VideoPreviewWidget(
+              videoUrl,
+              videoLink.label,
+              videoLink.url,
+              raw,
+              node.from,
+              node.to
+            )
+          }).range(node.from, node.to);
+          decorations.push(videoDecoration);
+          hiddenSyntaxRanges.push(videoDecoration);
+          return false;
+        }
         const audioLink = node.name === 'Link' ? parseMarkdownAudioLink(raw) : null;
         const audioUrl = audioLink
           ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
@@ -3763,6 +3805,7 @@ class CodeMirrorAdapter {
     this.syntaxRefreshComplete = false;
     this.pendingRestoreScrollTop = null;
     this.mdzipAudioLinkRanges = [];
+    this.mdzipVideoLinkRanges = [];
   }
 
   scheduleSyntaxRefresh() {
@@ -3910,6 +3953,57 @@ class CodeMirrorAdapter {
     }
   }
 
+  syncMdzipVideoReferences(update) {
+    const previousLinks = this.mdzipVideoLinkRanges;
+    let linksMayHaveChanged = false;
+    update.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+      const touchesExistingLink = previousLinks.some(link =>
+        fromA === toA
+          ? fromA >= link.from && fromA <= link.to
+          : fromA < link.to && toA > link.from
+      );
+      const changedText =
+        update.startState.doc.sliceString(fromA, toA) +
+        update.state.doc.sliceString(fromB, toB);
+      if (touchesExistingLink || /(?:video\/|\.mp4)/i.test(changedText)) {
+        linksMayHaveChanged = true;
+      }
+    });
+
+    if (!linksMayHaveChanged) {
+      this.mdzipVideoLinkRanges = previousLinks.map(link => ({
+        ...link,
+        from: update.changes.mapPos(link.from, 1),
+        to: update.changes.mapPos(link.to, -1)
+      }));
+      return;
+    }
+
+    const currentLinks = extractMarkdownVideoLinks(update.state.doc.toString());
+    const previousUrls = new Set(previousLinks.map(link => link.url));
+    const currentUrls = new Set(currentLinks.map(link => link.url));
+    this.mdzipVideoLinkRanges = currentLinks;
+    if (
+      previousUrls.size === currentUrls.size &&
+      [...previousUrls].every(url => currentUrls.has(url))
+    ) {
+      return;
+    }
+
+    try {
+      window.AndroidNative?.syncMdzipVideoReferences?.(
+        JSON.stringify([...previousUrls]),
+        JSON.stringify([...currentUrls]),
+        this.documentSessionId
+      );
+    } catch (error) {
+      window.AndroidNative?.reportDiagnostic?.(
+        'mdzip_video_reference_sync_failed',
+        error?.message || 'bridge call failed'
+      );
+    }
+  }
+
   queueScrollPositionSave() {
     if (!this.view || this.isProgrammatic) return;
     if (this.scrollPersistTimer !== null) {
@@ -4008,8 +4102,12 @@ class CodeMirrorAdapter {
               this.mdzipAudioLinkRanges = extractMarkdownAudioLinks(
                 update.state.doc.toString()
               );
+              this.mdzipVideoLinkRanges = extractMarkdownVideoLinks(
+                update.state.doc.toString()
+              );
             } else {
               this.syncMdzipAudioReferences(update);
+              this.syncMdzipVideoReferences(update);
             }
           }
           if (update.docChanged && !this.isProgrammatic) {
@@ -4073,6 +4171,9 @@ class CodeMirrorAdapter {
     }
     if (!startState) startState = EditorState.create(stateConfig);
     this.mdzipAudioLinkRanges = extractMarkdownAudioLinks(
+      startState.doc.toString()
+    );
+    this.mdzipVideoLinkRanges = extractMarkdownVideoLinks(
       startState.doc.toString()
     );
 
@@ -4319,6 +4420,28 @@ class CodeMirrorAdapter {
       changes: { from: selection.from, to: selection.to, insert: insertion },
       selection: { anchor: cursor, head: cursor },
       userEvent: 'input.mdzip-audio'
+    });
+    this.view.focus();
+  }
+
+  insertVideoLink(relativeUrl, label) {
+    if (!this.view) return;
+    const markdown = formatMarkdownVideoLink(label, relativeUrl);
+    const selection = this.view.state.selection.main;
+    const before = this.view.state.doc.sliceString(0, selection.from);
+    const after = this.view.state.doc.sliceString(selection.to);
+    const prefix = before.length === 0 || before.endsWith('\n\n')
+      ? ''
+      : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = after.startsWith('\n\n')
+      ? ''
+      : after.startsWith('\n') ? '\n' : '\n\n';
+    const insertion = `${prefix}${markdown}${suffix}`;
+    const cursor = selection.from + insertion.length;
+    this.view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: insertion },
+      selection: { anchor: cursor, head: cursor },
+      userEvent: 'input.mdzip-video'
     });
     this.view.focus();
   }
@@ -4670,6 +4793,7 @@ function setupGroupedControlBar() {
       togglePopupStrip('insert', insertBtn, [
         { id: 'image', icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
         { id: 'audio', icon: svgIcons.audio, title: 'Insert Audio', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('audio') },
+        { id: 'video', icon: svgIcons.video, title: 'Insert Video', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('video') },
         { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
@@ -8718,6 +8842,11 @@ window.editorBridge = {
   insertAudioLink: function(relativeUrl, label = 'audio file') {
     if (activeAdapter && typeof activeAdapter.insertAudioLink === 'function') {
       activeAdapter.insertAudioLink(relativeUrl, label);
+    }
+  },
+  insertVideoLink: function(relativeUrl, label = 'video file') {
+    if (activeAdapter && typeof activeAdapter.insertVideoLink === 'function') {
+      activeAdapter.insertVideoLink(relativeUrl, label);
     }
   },
   reloadMdzipAudio: function(relativeUrl) {

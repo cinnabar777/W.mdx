@@ -20,7 +20,8 @@ data class MdzipSession(
     val manifest: JSONObject,
     var markdownContent: String,
     var sourceUri: Uri?,
-    val pendingAudioDeletions: MutableSet<String> = linkedSetOf()
+    val pendingAudioDeletions: MutableSet<String> = linkedSetOf(),
+    val pendingVideoDeletions: MutableSet<String> = linkedSetOf()
 )
 
 object MdzipManager {
@@ -31,8 +32,10 @@ object MdzipManager {
     private const val MAX_ENTRY_BYTES = 256L * 1024L * 1024L
     private const val MAX_TOTAL_BYTES = 512L * 1024L * 1024L
     private const val MAX_AUDIO_BYTES = 256L * 1024L * 1024L
+    private const val MAX_VIDEO_BYTES = 256L * 1024L * 1024L
     private const val ASSET_BASE_URL = "https://appassets.androidplatform.net/mdzip-assets"
     private val SUPPORTED_AUDIO_EXTENSIONS = setOf("mp3", "m4a", "flac", "opus", "ogg")
+    private val SUPPORTED_VIDEO_EXTENSIONS = setOf("mp4")
 
     fun isMdzipFileName(fileName: String): Boolean =
         fileName.endsWith(".mdz", ignoreCase = true)
@@ -166,7 +169,7 @@ object MdzipManager {
             resolveArchiveFile(session.sessionDir, MANIFEST_NAME)
                 .writeText(session.manifest.toString(2), Charsets.UTF_8)
 
-            val pendingDeletions = session.pendingAudioDeletions.toSet()
+            val pendingDeletions = session.pendingAudioDeletions + session.pendingVideoDeletions
             val output = context.contentResolver.openOutputStream(targetUri, "rwt")
                 ?: throw IOException("Could not open the selected file for writing.")
             output.use { stream ->
@@ -205,6 +208,12 @@ object MdzipManager {
         return extension in SUPPORTED_AUDIO_EXTENSIONS
     }
 
+    fun isSupportedVideoFileName(fileName: String): Boolean {
+        val basename = fileName.substringAfterLast('/').substringAfterLast('\\')
+        val extension = basename.substringAfterLast('.', "").lowercase()
+        return extension in SUPPORTED_VIDEO_EXTENSIONS
+    }
+
     fun addAudio(session: MdzipSession, input: InputStream, originalName: String): String {
         val basename = originalName.substringAfterLast('/').substringAfterLast('\\')
         val extension = basename.substringAfterLast('.', "").lowercase()
@@ -235,6 +244,44 @@ object MdzipManager {
                     output.write(buffer, 0, read)
                 }
             }
+        }
+        return relativeMarkdownPath(session.entryPoint, archivePath)
+    }
+
+    fun addVideo(session: MdzipSession, input: InputStream, originalName: String): String {
+        val basename = originalName.substringAfterLast('/').substringAfterLast('\\')
+        val extension = basename.substringAfterLast('.', "").lowercase()
+        if (extension !in SUPPORTED_VIDEO_EXTENSIONS) {
+            throw IOException("Choose an MP4 video file.")
+        }
+        val cleanName = sanitizeVideoFileName(basename)
+        val stem = cleanName.removeSuffix(".$extension").ifBlank { "video" }
+        val candidateName = uniqueVideoName(session.sessionDir, stem, extension)
+        val archivePath = "video/$candidateName"
+        val target = resolveArchiveFile(session.sessionDir, archivePath)
+        target.parentFile?.let {
+            if (!it.exists() && !it.mkdirs()) throw IOException("Could not create the video folder.")
+        }
+
+        var bytesCopied = 0L
+        input.use { source ->
+            FileOutputStream(target).use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val read = source.read(buffer)
+                    if (read < 0) break
+                    bytesCopied += read
+                    if (bytesCopied > MAX_VIDEO_BYTES) {
+                        target.delete()
+                        throw IOException("This video file is too large to add to the MDZip package.")
+                    }
+                    output.write(buffer, 0, read)
+                }
+            }
+        }
+        if (bytesCopied == 0L) {
+            target.delete()
+            throw IOException("The selected video file is empty.")
         }
         return relativeMarkdownPath(session.entryPoint, archivePath)
     }
@@ -353,6 +400,64 @@ object MdzipManager {
         }
     }
 
+    fun resolveVideoArchivePath(session: MdzipSession, markdownLink: String): String? {
+        val target = markdownLink.trim().removePrefix("<").removeSuffix(">")
+        if (target.isBlank() || target.startsWith("/") || target.startsWith("//")) return null
+        if (target.contains("://") || target.startsWith("data:", ignoreCase = true)) return null
+        val pathOnly = target.substringBefore('#').substringBefore('?')
+        val decoded = Uri.decode(pathOnly)
+        val parts = ArrayList<String>()
+        val base = session.entryPoint.substringBeforeLast('/', "")
+        if (base.isNotEmpty()) parts.addAll(base.split('/'))
+        for (part in decoded.split('/')) {
+            when (part) {
+                "", "." -> Unit
+                ".." -> if (parts.isEmpty()) return null else parts.removeAt(parts.lastIndex)
+                else -> parts.add(part)
+            }
+        }
+        if (parts.isEmpty()) return null
+        val archivePath = runCatching { safeArchivePath(parts.joinToString("/")) }.getOrNull()
+            ?: return null
+        if (!archivePath.startsWith("video/", ignoreCase = true) ||
+            !isSupportedVideoFileName(archivePath)
+        ) return null
+        return archivePath
+    }
+
+    fun videoArchiveFile(session: MdzipSession, archivePath: String): File? {
+        val safePath = runCatching { safeArchivePath(archivePath) }.getOrNull() ?: return null
+        if (!safePath.startsWith("video/", ignoreCase = true) ||
+            !isSupportedVideoFileName(safePath)
+        ) return null
+        return runCatching { resolveArchiveFile(session.sessionDir, safePath) }
+            .getOrNull()
+            ?.takeIf { it.isFile }
+    }
+
+    fun videoUrl(session: MdzipSession, markdownLink: String): String? {
+        val archivePath = resolveVideoArchivePath(session, markdownLink) ?: return null
+        if (videoArchiveFile(session, archivePath) == null) return null
+        return "$ASSET_BASE_URL/${session.sessionDir.name}/${Uri.encode(archivePath, "/")}"
+    }
+
+    fun syncVideoReferences(
+        session: MdzipSession,
+        previousLinks: Collection<String>,
+        currentLinks: Collection<String>
+    ) {
+        val previousPaths = previousLinks.mapNotNull { resolveVideoArchivePath(session, it) }.toSet()
+        val currentPaths = currentLinks.mapNotNull { resolveVideoArchivePath(session, it) }.toSet()
+        synchronized(session) {
+            for (path in previousPaths - currentPaths) {
+                if (videoArchiveFile(session, path) != null) {
+                    session.pendingVideoDeletions.add(path)
+                }
+            }
+            session.pendingVideoDeletions.removeAll(currentPaths)
+        }
+    }
+
     internal fun safeArchivePath(rawPath: String): String {
         if (rawPath.isBlank() || rawPath.startsWith("/") || rawPath.contains('\\') ||
             rawPath.contains('\u0000')
@@ -429,6 +534,32 @@ object MdzipManager {
             suffix += 1
         }
         throw IOException("Could not assign a unique name to the audio file.")
+    }
+
+    private fun sanitizeVideoFileName(name: String): String {
+        val extension = name.substringAfterLast('.', "").lowercase()
+        if (extension !in SUPPORTED_VIDEO_EXTENSIONS) {
+            throw IOException("Choose an MP4 video file.")
+        }
+        val stem = name.substringBeforeLast('.', name)
+            .replace(Regex("[^\\p{L}\\p{N} ._()\\-]"), "_")
+            .trim()
+            .trim('.')
+            .ifBlank { "video" }
+        return "$stem.$extension"
+    }
+
+    private fun uniqueVideoName(root: File, stem: String, extension: String): String {
+        var suffix = 1
+        while (suffix < 10000) {
+            val numberedStem = if (suffix == 1) stem else "$stem ($suffix)"
+            val candidate = "video/$numberedStem.$extension"
+            if (!resolveArchiveFile(root, candidate).exists()) {
+                return "$numberedStem.$extension"
+            }
+            suffix += 1
+        }
+        throw IOException("Could not assign a unique name to the video file.")
     }
 
     private fun relativeMarkdownPath(entryPoint: String, assetPath: String): String {

@@ -65,6 +65,19 @@ export function parseMarkdownAudioLink(text) {
   return parsed;
 }
 
+export function parseMarkdownVideoLink(text) {
+  const link = markdownLinkParts(text);
+  if (!link) return null;
+  let decodedPath = link.url.split(/[?#]/, 1)[0];
+  try {
+    decodedPath = decodeURIComponent(decodedPath);
+  } catch {
+    // Keep the encoded value; the native resolver validates and decodes it.
+  }
+  if (!/\.mp4$/i.test(decodedPath)) return null;
+  return { label: link.label, url: link.url };
+}
+
 function markdownCodeRanges(text) {
   const ranges = [];
   const lines = text.split('\n');
@@ -120,7 +133,7 @@ function markdownCodeRanges(text) {
   return ranges;
 }
 
-export function extractMarkdownAudioLinks(markdown) {
+function extractMarkdownLinks(markdown, parser) {
   const text = String(markdown ?? '');
   const codeRanges = markdownCodeRanges(text);
   const links = [];
@@ -133,11 +146,19 @@ export function extractMarkdownAudioLinks(markdown) {
     if (from > 0 && text[from - 1] === '!') continue;
     if (codeRanges.some(range => from < range.to && to > range.from)) continue;
 
-    const parsed = parseMarkdownAudioLink(match[0]);
+    const parsed = parser(match[0]);
     if (parsed) links.push({ ...parsed, from, to });
   }
 
   return links;
+}
+
+export function extractMarkdownAudioLinks(markdown) {
+  return extractMarkdownLinks(markdown, parseMarkdownAudioLink);
+}
+
+export function extractMarkdownVideoLinks(markdown) {
+  return extractMarkdownLinks(markdown, parseMarkdownVideoLink);
 }
 
 export function formatMarkdownAudioLink(label, url, layout = null) {
@@ -185,4 +206,29 @@ export function formatMarkdownAudioLink(label, url, layout = null) {
     ? ''
     : ` "wmdx-audio:width=${width};align=${alignment}"`;
   return `[${safeLabel}](${safePath}${suffix}${title})`;
+}
+
+export function formatMarkdownVideoLink(label, url) {
+  const safeLabel = String(label ?? 'video')
+    .replace(/\\/g, '\\\\')
+    .replace(/\]/g, '\\]');
+  const rawUrl = String(url ?? '').trim();
+  const suffixIndices = ['?', '#']
+    .map(character => rawUrl.indexOf(character))
+    .filter(index => index >= 0 && /\.mp4$/i.test(rawUrl.slice(0, index)));
+  const suffixIndex = suffixIndices.length ? Math.min(...suffixIndices) : -1;
+  const path = suffixIndex === -1 ? rawUrl : rawUrl.slice(0, suffixIndex);
+  const suffix = suffixIndex === -1 ? '' : rawUrl.slice(suffixIndex);
+  const safePath = path.split('/').map(segment => {
+    let decoded = segment;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      // Encode malformed percent signs as literal filename characters.
+    }
+    return encodeURIComponent(decoded).replace(/[!'()*]/g, character =>
+      `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+    );
+  }).join('/');
+  return `[${safeLabel}](${safePath}${suffix})`;
 }

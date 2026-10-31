@@ -55,4 +55,11 @@ class MdzipManagerTest {
         assertEquals(true, MdzipManager.isSupportedAudioFileName("voice.opus"))
         assertEquals(true, MdzipManager.isSupportedAudioFileName("voice.ogg"))
     }
+
+    @Test
+    fun acceptsMp4VideoAndRejectsOtherVideoFormats() {
+        assertEquals(true, MdzipManager.isSupportedVideoFileName("phone clip.MP4"))
+        assertFalse(MdzipManager.isSupportedVideoFileName("phone clip.webm"))
+        assertFalse(MdzipManager.isSupportedVideoFileName("phone clip.mov"))
+    }
 }

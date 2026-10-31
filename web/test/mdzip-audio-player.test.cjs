@@ -57,7 +57,7 @@ test('M4A, FLAC, Opus, and OGG use bounded Blob seeking when needed', () => {
   assert.doesNotMatch(player, /enableMdzipAudioRangeRequests/);
   assert.match(
     activity,
-    /if \(extension in setOf\("m4a", "flac", "opus", "ogg"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
+    /if \(!isVideoAsset && extension in setOf\("m4a", "flac", "opus", "ogg"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
   );
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);

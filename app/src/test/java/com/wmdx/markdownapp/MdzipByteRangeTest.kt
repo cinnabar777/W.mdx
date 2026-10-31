@@ -52,6 +52,8 @@ class MdzipByteRangeTest {
         assertTrue(shouldServeMdzipAudioAsWholeFile("ogg", "bytes=0-"))
         assertTrue(shouldServeMdzipAudioAsWholeFile("mp3", null))
         assertFalse(shouldServeMdzipAudioAsWholeFile("mp3", "bytes=100-200"))
+        assertTrue(shouldServeMdzipAudioAsWholeFile("mp4", null))
+        assertFalse(shouldServeMdzipAudioAsWholeFile("mp4", "bytes=0-"))
     }
 
     @Test
