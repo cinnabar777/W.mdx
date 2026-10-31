@@ -2335,7 +2335,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             MdzipManager.audioArchiveFile(session, archivePath)
         }
         if (file == null) {
-            if (!isVideoAsset && archivePath.startsWith("audio/", ignoreCase = true) &&
+            if (isVideoAsset && archivePath.startsWith("video/", ignoreCase = true)) {
+                recordMdzipVideoAsset(
+                    archivePath.substringAfterLast('.').lowercase(),
+                    404,
+                    "video/mp4",
+                    rangeHeader = request.requestHeaders.entries
+                        .firstOrNull { it.key.equals("Range", ignoreCase = true) }
+                        ?.value,
+                    contentRange = null,
+                    contentLength = 0,
+                    method = request.method
+                )
+            } else if (archivePath.startsWith("audio/", ignoreCase = true) &&
                 MdzipManager.isSupportedAudioFileName(archivePath)
             ) {
                 val extension = archivePath.substringAfterLast('.').lowercase()
@@ -2365,7 +2377,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         if (shouldServeMdzipAudioAsWholeFile(extension, range)) {
-            if (!isVideoAsset) {
+            if (isVideoAsset) {
+                recordMdzipVideoAsset(
+                    extension,
+                    200,
+                    mimeType,
+                    rangeHeader = range,
+                    contentRange = null,
+                    contentLength = fileLength,
+                    method = request.method
+                )
+            } else {
                 recordMdzipAudioAsset(
                     extension,
                     200,
@@ -2385,13 +2407,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val rangeHeader = range
-            ?: return mdzipRangeError(fileLength, mimeType, range, extension, isVideoAsset)
+            ?: return mdzipRangeError(
+                fileLength, mimeType, range, extension, isVideoAsset, request.method
+            )
         val byteRange = parseMdzipByteRange(rangeHeader, fileLength)
-            ?: return mdzipRangeError(fileLength, mimeType, rangeHeader, extension, isVideoAsset)
+            ?: return mdzipRangeError(
+                fileLength, mimeType, rangeHeader, extension, isVideoAsset, request.method
+            )
         headers["Content-Length"] = byteRange.length.toString()
         val contentRange = "bytes ${byteRange.start}-${byteRange.endInclusive}/$fileLength"
         headers["Content-Range"] = contentRange
-        if (!isVideoAsset) {
+        if (isVideoAsset) {
+            recordMdzipVideoAsset(
+                extension,
+                206,
+                mimeType,
+                rangeHeader = rangeHeader,
+                contentRange = contentRange,
+                contentLength = byteRange.length,
+                method = request.method
+            )
+        } else {
             recordMdzipAudioAsset(
                 extension,
                 206,
@@ -2407,6 +2443,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             openMdzipByteRangeStream(file, byteRange.start, byteRange.length)
         }
         return WebResourceResponse(mimeType, null, 206, "Partial Content", headers, body)
+    }
+
+    private fun recordMdzipVideoAsset(
+        extension: String,
+        status: Int,
+        mimeType: String,
+        rangeHeader: String?,
+        contentRange: String?,
+        contentLength: Long?,
+        method: String
+    ) {
+        val requestedRange = rangeHeader
+            ?.replace(Regex("[^A-Za-z0-9=,-]"), "")
+            ?.take(48)
+            ?: "none"
+        AppDiagnostics.record(
+            this,
+            "mdzip_video_asset",
+            "method=$method ext=$extension status=$status mime=$mimeType range=$requestedRange " +
+                "contentRange=${contentRange?.take(56) ?: "none"} bytes=${contentLength ?: "unknown"}"
+        )
     }
 
     private fun mdzipAudioMimeType(extension: String): String =
@@ -2445,9 +2502,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         mimeType: String,
         rangeHeader: String?,
         extension: String,
-        isVideoAsset: Boolean = false
+        isVideoAsset: Boolean = false,
+        method: String = "GET"
     ): WebResourceResponse {
-        if (!isVideoAsset) {
+        if (isVideoAsset) {
+            recordMdzipVideoAsset(
+                extension,
+                416,
+                mimeType,
+                rangeHeader = rangeHeader,
+                contentRange = "bytes */$fileLength",
+                contentLength = 0,
+                method = method
+            )
+        } else {
             recordMdzipAudioAsset(
                 extension,
                 416,
