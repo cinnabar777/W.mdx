@@ -2514,6 +2514,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun mdzipVideoMimeType(extension: String): String =
         when (extension.lowercase()) {
             "webm" -> "video/webm"
+            "3gp" -> "video/3gpp"
             else -> "video/mp4"
         }
 
@@ -2636,7 +2637,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val originalName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedVideoFileName(originalName)) {
-                throw java.io.IOException("Choose an MP4, M4V, or WebM video file.")
+                throw java.io.IOException("Choose an MP4, M4V, WebM, or 3GP video file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected video file.")

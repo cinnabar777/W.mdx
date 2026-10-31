@@ -74,7 +74,7 @@ export function parseMarkdownVideoLink(text) {
   } catch {
     // Keep the encoded value; the native resolver validates and decodes it.
   }
-  if (!/\.(?:mp4|m4v|webm)$/i.test(decodedPath)) return null;
+  if (!/\.(?:mp4|m4v|webm|3gp)$/i.test(decodedPath)) return null;
   return { label: link.label, url: link.url };
 }
 
@@ -215,7 +215,7 @@ export function formatMarkdownVideoLink(label, url) {
   const rawUrl = String(url ?? '').trim();
   const suffixIndices = ['?', '#']
     .map(character => rawUrl.indexOf(character))
-    .filter(index => index >= 0 && /\.(?:mp4|m4v|webm)$/i.test(rawUrl.slice(0, index)));
+    .filter(index => index >= 0 && /\.(?:mp4|m4v|webm|3gp)$/i.test(rawUrl.slice(0, index)));
   const suffixIndex = suffixIndices.length ? Math.min(...suffixIndices) : -1;
   const path = suffixIndex === -1 ? rawUrl : rawUrl.slice(0, suffixIndex);
   const suffix = suffixIndex === -1 ? '' : rawUrl.slice(suffixIndex);
