@@ -51,6 +51,8 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   assert.match(activity, /if \(isVideoAsset\) "video\/mp4"/);
   assert.match(activity, /fun syncMdzipVideoReferences\(/);
   assert.match(editor, /new VideoPreviewWidget/);
+  assert.match(editor, /replacements\.push\(videoDecoration\)/);
+  assert.doesNotMatch(editor, /decorations\.push\(videoDecoration\)/);
   assert.match(editor, /syncMdzipVideoReferences\?\./);
   assert.match(editor, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video/);
   assert.match(toolbarConfig, /'image', 'audio', 'video', 'link'/);

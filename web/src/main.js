@@ -3168,7 +3168,7 @@ function buildHeightMapValue(state) {
               node.to
             )
           }).range(node.from, node.to);
-          decorations.push(videoDecoration);
+          replacements.push(videoDecoration);
           hiddenSyntaxRanges.push(videoDecoration);
           return false;
         }
