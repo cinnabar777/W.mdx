@@ -1,5 +1,6 @@
 package com.wmdx.markdownapp
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -50,5 +51,26 @@ class MdzipByteRangeTest {
             assertNull(header, parseMdzipByteRange(header, 100))
         }
         assertNull(parseMdzipByteRange("bytes=0-1", 0))
+    }
+
+    @Test
+    fun rangeStreamBoundsReadSkipAndAvailableToTheRequestedBytes() {
+        val file = File.createTempFile("mdzip-range-", ".bin")
+        try {
+            file.writeBytes(ByteArray(10) { it.toByte() })
+            openMdzipByteRangeStream(file, 3, 4).use { stream ->
+                assertEquals(4, stream.available())
+                assertEquals(2L, stream.skip(2))
+                assertEquals(2, stream.available())
+                assertEquals(5, stream.read())
+                assertEquals(1, stream.available())
+                assertEquals(1L, stream.skip(10))
+                assertEquals(0, stream.available())
+                assertEquals(-1, stream.read())
+                assertEquals(0, stream.read(ByteArray(1), 0, 0))
+            }
+        } finally {
+            file.delete()
+        }
     }
 }
