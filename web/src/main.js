@@ -1094,7 +1094,8 @@ class MediaPreviewWidget extends WidgetType {
       document,
       this.type,
       this.renderUrl,
-      this.label
+      this.label,
+      this.url
     );
     const mediaElement = media.mediaElement || media;
     mediaElement.addEventListener('loadedmetadata', () => {

@@ -80,17 +80,44 @@ test('unsupported formats explain the problem and disable inactive player contro
     document,
     'video',
     'content://provider/document/789?wmdx_media_type=video',
-    'old-film.avi'
+    'old-film.avi',
+    'content://provider/document/789?wmdx_media_type=video'
   );
 
   const error = player.querySelector('.wmdx-media-error');
   assert.equal(error.hidden, false);
-  assert.match(error.textContent, /could not play/);
+  assert.equal(error.getAttribute('role'), 'alert');
+  assert.match(error.textContent, /unsupported/);
+  assert.match(error.textContent, /content:\/\/provider\/document\/789/);
   assert.equal(player.mediaElement.hasAttribute('src'), false);
   assert.ok(
     [...player.querySelectorAll('.wmdx-media-controls button, .wmdx-media-controls input')]
       .every(control => control.disabled)
   );
+});
+
+test('audio and video load errors announce the media reference without removing the player', async () => {
+  const { createMediaPreviewElement } = await import('../src/mediaPreview.js');
+  const document = new JSDOM('', { url: 'https://wmdx.test/' }).window.document;
+
+  for (const [type, src, reference, label] of [
+    ['audio', 'https://wmdx.test/assets/voice.ogg', '../audio/voice note.ogg', 'Voice memo'],
+    ['video', 'https://wmdx.test/assets/reference.webm', '../video/reference.webm', 'Reference clip']
+  ]) {
+    const player = createMediaPreviewElement(document, type, src, label, reference);
+    document.body.appendChild(player);
+    player.mediaElement.dispatchEvent(new document.defaultView.Event('error'));
+
+    const error = player.querySelector('.wmdx-media-error');
+    assert.equal(error.hidden, false);
+    assert.equal(error.getAttribute('role'), 'alert');
+    assert.equal(error.getAttribute('aria-live'), 'assertive');
+    assert.ok(error.textContent.includes(label));
+    assert.ok(error.textContent.includes(reference));
+    assert.match(error.textContent, /missing, unreadable, or unsupported/);
+    assert.equal(player.mediaElement.isConnected, true);
+    assert.equal(player.mediaElement.getAttribute('src'), src);
+  }
 });
 
 test('playback speed persists and the menu stays above a player near the viewport bottom', async () => {

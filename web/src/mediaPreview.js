@@ -65,7 +65,7 @@ function mediaMimeType(type, label) {
   return (type === 'audio' ? audioTypes : videoTypes)[extension] || '';
 }
 
-export function createMediaPreviewElement(document, type, src, label) {
+export function createMediaPreviewElement(document, type, src, label, reference = src) {
   const view = document.defaultView || globalThis.window;
   const root = document.createElement('div');
   root.className = `wmdx-media-player wmdx-media-player--${type}`;
@@ -143,7 +143,8 @@ export function createMediaPreviewElement(document, type, src, label) {
 
   const error = document.createElement('div');
   error.className = 'wmdx-media-error';
-  error.setAttribute('role', 'status');
+  error.setAttribute('role', 'alert');
+  error.setAttribute('aria-live', 'assertive');
   error.hidden = true;
   root.appendChild(error);
 
@@ -241,8 +242,8 @@ export function createMediaPreviewElement(document, type, src, label) {
       ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zm6 0h4v14h-4z" fill="currentColor" stroke="none"/></svg>'
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></svg>';
   };
-  const showPlaybackError = () => {
-    error.textContent = `This device could not play “${label || (type === 'audio' ? 'audio' : 'video')}”. The file is still attached; try opening it in another player.`;
+  const showPlaybackError = (message = `This device could not play “${label || (type === 'audio' ? 'audio' : 'video')}”. The file is still attached; try opening it in another player.`) => {
+    error.textContent = message;
     error.hidden = false;
     root.classList.add('wmdx-media-player--error');
     [
@@ -256,13 +257,19 @@ export function createMediaPreviewElement(document, type, src, label) {
       if (control) control.disabled = true;
     });
   };
+  const showMediaLoadError = () => {
+    const mediaName = label || (type === 'audio' ? 'Audio' : 'Video');
+    showPlaybackError(
+      `Unable to play ${type} “${mediaName}” (${reference || src}). The file may be missing, unreadable, or unsupported by this device.`
+    );
+  };
 
   const mimeType = mediaMimeType(type, label);
   const canPlay = mimeType && typeof media.canPlayType === 'function'
     ? media.canPlayType(mimeType)
     : 'maybe';
   if (canPlay === '') {
-    showPlaybackError();
+    showMediaLoadError();
   } else {
     media.src = src;
   }
@@ -278,7 +285,7 @@ export function createMediaPreviewElement(document, type, src, label) {
   media.addEventListener('pause', updatePlayButton);
   media.addEventListener('ended', updatePlayButton);
   media.addEventListener('ratechange', updateSpeedButton);
-  media.addEventListener('error', showPlaybackError);
+  media.addEventListener('error', showMediaLoadError);
   playButton.addEventListener('click', async () => {
     if (media.paused) {
       try {
