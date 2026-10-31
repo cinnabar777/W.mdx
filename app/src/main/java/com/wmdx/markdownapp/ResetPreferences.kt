@@ -526,6 +526,7 @@ object PreferenceResetHelper {
             key == "pref_toolbar_floating_padding" -> 4
             key == "pref_toolbar_floating_key_width" -> 48
             key == "pref_toolbar_floating_corner_radius" -> 24
+            key == "pref_media_controls_corner_radius" -> 24
             key == "pref_app_theme" -> "amoled"
             key == "pref_toc_panel_width" -> 80
             key == "pref_toc_panel_enabled" -> true

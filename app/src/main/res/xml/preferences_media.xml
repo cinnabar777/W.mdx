@@ -26,6 +26,15 @@
             app:title="Progress and Volume Color"
             app:summary="Color of the playback and volume sliders"
             app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_media_controls_corner_radius"
+            app:title="Controls Corner Radius (dp)"
+            app:summary="Adjust the rounding around the player controls"
+            android:defaultValue="24"
+            app:min="0"
+            android:max="36"
+            app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Playback">

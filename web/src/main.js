@@ -34,7 +34,11 @@ import { toCssFontFamily } from './fontFamilies.js';
 import { setupLeftPanel } from './leftPanel.js';
 import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
-import { formatMarkdownAudioLink, parseMarkdownAudioLink } from './markdownMedia.js';
+import {
+  extractMarkdownAudioLinks,
+  formatMarkdownAudioLink,
+  parseMarkdownAudioLink
+} from './markdownMedia.js';
 import { AudioPreviewWidget } from './audioPreviewWidget.js';
 import {
   getMarkdownFormattingState,
@@ -71,7 +75,7 @@ import {
 } from './toolbarRenderer.js';
 import { getFloatingToolbarPosition } from './toolbarPositioning.js';
 import { openToolbarKeyPreferencesDialog } from './toolbarKeyPreferencesDialog.js';
-import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
+import { defaultKeymap, history, historyField, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
   SearchQuery,
@@ -3740,6 +3744,7 @@ class CodeMirrorAdapter {
     this.mode = currentEditorMode;
     this.documentSessionId = window.AndroidNative?.getCurrentDocumentSessionId?.() || null;
     this.view = null;
+    this.historyCompartment = new Compartment();
     this.lineWrapCompartment = new Compartment();
     this.lineNumbersCompartment = new Compartment();
     this.showLineNumbers = false;
@@ -3753,6 +3758,7 @@ class CodeMirrorAdapter {
     this.syntaxRefreshAttempts = 0;
     this.syntaxRefreshComplete = false;
     this.pendingRestoreScrollTop = null;
+    this.mdzipAudioLinkRanges = [];
   }
 
   scheduleSyntaxRefresh() {
@@ -3849,6 +3855,57 @@ class CodeMirrorAdapter {
     );
   }
 
+  syncMdzipAudioReferences(update) {
+    const previousLinks = this.mdzipAudioLinkRanges;
+    let linksMayHaveChanged = false;
+    update.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+      const touchesExistingLink = previousLinks.some(link =>
+        fromA === toA
+          ? fromA >= link.from && fromA <= link.to
+          : fromA < link.to && toA > link.from
+      );
+      const changedText =
+        update.startState.doc.sliceString(fromA, toA) +
+        update.state.doc.sliceString(fromB, toB);
+      if (touchesExistingLink || /(?:audio\/|\.mp3)/i.test(changedText)) {
+        linksMayHaveChanged = true;
+      }
+    });
+
+    if (!linksMayHaveChanged) {
+      this.mdzipAudioLinkRanges = previousLinks.map(link => ({
+        ...link,
+        from: update.changes.mapPos(link.from, 1),
+        to: update.changes.mapPos(link.to, -1)
+      }));
+      return;
+    }
+
+    const currentLinks = extractMarkdownAudioLinks(update.state.doc.toString());
+    const previousUrls = new Set(previousLinks.map(link => link.url));
+    const currentUrls = new Set(currentLinks.map(link => link.url));
+    this.mdzipAudioLinkRanges = currentLinks;
+    if (
+      previousUrls.size === currentUrls.size &&
+      [...previousUrls].every(url => currentUrls.has(url))
+    ) {
+      return;
+    }
+
+    try {
+      window.AndroidNative?.syncMdzipAudioReferences?.(
+        JSON.stringify([...previousUrls]),
+        JSON.stringify([...currentUrls]),
+        this.documentSessionId
+      );
+    } catch (error) {
+      window.AndroidNative?.reportDiagnostic?.(
+        'mdzip_audio_reference_sync_failed',
+        error?.message || 'bridge call failed'
+      );
+    }
+  }
+
   queueScrollPositionSave() {
     if (!this.view || this.isProgrammatic) return;
     if (this.scrollPersistTimer !== null) {
@@ -3867,11 +3924,9 @@ class CodeMirrorAdapter {
 
   async init(containerEl, initialMarkdown = '', modeSnapshot = null) {
     containerEl.innerHTML = '';
-    let startState = EditorState.create({
-      doc: initialMarkdown || '',
-      extensions: [
+    const extensions = [
         highlightSpecialChars(),
-        history(),
+        this.historyCompartment.of(history()),
         drawSelection(),
         dropCursor(),
         rectangularSelection(),
@@ -3943,6 +3998,15 @@ class CodeMirrorAdapter {
           }
         }),
         EditorView.updateListener.of(update => {
+          if (update.docChanged) {
+            if (this.isProgrammatic) {
+              this.mdzipAudioLinkRanges = extractMarkdownAudioLinks(
+                update.state.doc.toString()
+              );
+            } else {
+              this.syncMdzipAudioReferences(update);
+            }
+          }
           if (update.docChanged && !this.isProgrammatic) {
             this.revision++;
             window.leftPanelController?.onEditorChanged?.(update.state.doc.toString());
@@ -3985,8 +4049,27 @@ class CodeMirrorAdapter {
           ...defaultKeymap,
           ...historyKeymap
         ])
-      ]
-    });
+      ];
+    const stateConfig = { doc: initialMarkdown || '', extensions };
+    let startState;
+    if (modeSnapshot?.historyState) {
+      try {
+        startState = EditorState.fromJSON(
+          modeSnapshot.historyState,
+          stateConfig,
+          { history: historyField }
+        );
+      } catch (error) {
+        window.AndroidNative?.reportDiagnostic?.(
+          'history_restore_failed',
+          error?.message || 'history state could not be restored'
+        );
+      }
+    }
+    if (!startState) startState = EditorState.create(stateConfig);
+    this.mdzipAudioLinkRanges = extractMarkdownAudioLinks(
+      startState.doc.toString()
+    );
 
     if (modeSnapshot?.selection) {
       let selection = modeSnapshot.selection;
@@ -4132,6 +4215,12 @@ class CodeMirrorAdapter {
     this.isProgrammatic = true;
     const currentDoc = this.view.state.doc.toString();
     if (currentDoc !== text) {
+      this.view.dispatch({
+        effects: this.historyCompartment.reconfigure([])
+      });
+      this.view.dispatch({
+        effects: this.historyCompartment.reconfigure(history())
+      });
       this.view.dispatch({
         changes: { from: 0, to: currentDoc.length, insert: text || '' },
         annotations: Transaction.addToHistory.of(false)
@@ -4285,7 +4374,10 @@ async function setEditorMode(mode) {
   const modeSnapshot = activeAdapter?.view
     ? {
         selection: activeAdapter.view.state.selection,
-        scroll: activeAdapter.view.scrollSnapshot()
+        scroll: activeAdapter.view.scrollSnapshot(),
+        historyState: activeAdapter.view.state.toJSON({
+          history: historyField
+        })
       }
     : null;
 
@@ -7580,6 +7672,11 @@ window.editorBridge = {
     setCssVar(
       '--media-controls-accent',
       androidArgbToCss(prefs.pref_media_controls_accent_color)
+    );
+    setCssVar(
+      '--media-controls-radius',
+      prefs.pref_media_controls_corner_radius ?? 24,
+      'px'
     );
     const requestedMediaRate = Number(prefs.pref_media_playback_speed ?? '1.0');
     const availableMediaRates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];

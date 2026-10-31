@@ -19,7 +19,8 @@ data class MdzipSession(
     val entryPoint: String,
     val manifest: JSONObject,
     var markdownContent: String,
-    var sourceUri: Uri?
+    var sourceUri: Uri?,
+    val pendingAudioDeletions: MutableSet<String> = linkedSetOf()
 )
 
 object MdzipManager {
@@ -143,38 +144,48 @@ object MdzipManager {
     }
 
     fun save(context: Context, session: MdzipSession, markdown: String, targetUri: Uri) {
-        val entryFile = resolveArchiveFile(session.sessionDir, session.entryPoint)
-        entryFile.parentFile?.let { parent ->
-            if (!parent.exists() && !parent.mkdirs()) {
-                throw IOException("Could not write the MDZip entry-point file.")
-            }
-        }
-        entryFile.writeText(markdown, Charsets.UTF_8)
-        resolveArchiveFile(session.sessionDir, MANIFEST_NAME)
-            .writeText(session.manifest.toString(2), Charsets.UTF_8)
-
-        val output = context.contentResolver.openOutputStream(targetUri, "rwt")
-            ?: throw IOException("Could not open the selected file for writing.")
-        output.use { stream ->
-            ZipOutputStream(stream).use { zip ->
-                val files = session.sessionDir.walkTopDown()
-                    .filter { it.isFile }
-                    .sortedBy { session.sessionDir.toPath().relativize(it.toPath()).toString() }
-                for (file in files) {
-                    val name = session.sessionDir.toPath()
-                        .relativize(file.toPath())
-                        .toString()
-                        .replace(File.separatorChar, '/')
-                    val path = safeArchivePath(name)
-                    zip.putNextEntry(ZipEntry(path))
-                    FileInputStream(file).use { it.copyTo(zip) }
-                    zip.closeEntry()
+        synchronized(session) {
+            val entryFile = resolveArchiveFile(session.sessionDir, session.entryPoint)
+            entryFile.parentFile?.let { parent ->
+                if (!parent.exists() && !parent.mkdirs()) {
+                    throw IOException("Could not write the MDZip entry-point file.")
                 }
-                zip.finish()
             }
+            entryFile.writeText(markdown, Charsets.UTF_8)
+            resolveArchiveFile(session.sessionDir, MANIFEST_NAME)
+                .writeText(session.manifest.toString(2), Charsets.UTF_8)
+
+            val pendingDeletions = session.pendingAudioDeletions.toSet()
+            val output = context.contentResolver.openOutputStream(targetUri, "rwt")
+                ?: throw IOException("Could not open the selected file for writing.")
+            output.use { stream ->
+                ZipOutputStream(stream).use { zip ->
+                    val files = session.sessionDir.walkTopDown()
+                        .filter { it.isFile }
+                        .filter { file ->
+                            val name = session.sessionDir.toPath()
+                                .relativize(file.toPath())
+                                .toString()
+                                .replace(File.separatorChar, '/')
+                            name !in pendingDeletions
+                        }
+                        .sortedBy { session.sessionDir.toPath().relativize(it.toPath()).toString() }
+                    for (file in files) {
+                        val name = session.sessionDir.toPath()
+                            .relativize(file.toPath())
+                            .toString()
+                            .replace(File.separatorChar, '/')
+                        val path = safeArchivePath(name)
+                        zip.putNextEntry(ZipEntry(path))
+                        FileInputStream(file).use { it.copyTo(zip) }
+                        zip.closeEntry()
+                    }
+                    zip.finish()
+                }
+            }
+            session.markdownContent = markdown
+            session.sourceUri = targetUri
         }
-        session.markdownContent = markdown
-        session.sourceUri = targetUri
     }
 
     fun addMp3(session: MdzipSession, input: InputStream, originalName: String): String {
@@ -286,8 +297,29 @@ object MdzipManager {
     }
 
     fun removeAudio(session: MdzipSession, markdownLink: String): Boolean {
-        val file = resolveAudioFile(session, markdownLink) ?: return false
-        return file.delete()
+        val archivePath = resolveAudioArchivePath(session, markdownLink) ?: return false
+        synchronized(session) {
+            if (audioArchiveFile(session, archivePath) == null) return false
+            session.pendingAudioDeletions.add(archivePath)
+            return true
+        }
+    }
+
+    fun syncAudioReferences(
+        session: MdzipSession,
+        previousLinks: Collection<String>,
+        currentLinks: Collection<String>
+    ) {
+        val previousPaths = previousLinks.mapNotNull { resolveAudioArchivePath(session, it) }.toSet()
+        val currentPaths = currentLinks.mapNotNull { resolveAudioArchivePath(session, it) }.toSet()
+        synchronized(session) {
+            for (path in previousPaths - currentPaths) {
+                if (audioArchiveFile(session, path) != null) {
+                    session.pendingAudioDeletions.add(path)
+                }
+            }
+            session.pendingAudioDeletions.removeAll(currentPaths)
+        }
     }
 
     internal fun safeArchivePath(rawPath: String): String {

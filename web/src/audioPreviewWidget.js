@@ -171,7 +171,7 @@ export class AudioPreviewWidget extends WidgetType {
       'box-sizing:border-box',
       'max-width:100%',
       'padding:8px',
-      'border-radius:999px',
+      'border-radius:var(--media-controls-radius, 24px)',
       'background:var(--media-controls-bg, #242424)',
       'color:var(--media-controls-text, #fff)'
     ].join(';');
@@ -487,12 +487,6 @@ export class AudioPreviewWidget extends WidgetType {
       event.preventDefault();
       event.stopPropagation();
       hidePopup(actions);
-      const deleted = window.AndroidNative?.removeMdzipAudio?.(this.relativeLink) === true;
-      if (!deleted) {
-        status.textContent = 'The MP3 could not be deleted from this package.';
-        status.style.display = 'block';
-        return;
-      }
       view.dispatch({
         changes: { from: this.from, to: this.to, insert: '' },
         selection: { anchor: this.from },

@@ -3592,6 +3592,39 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun syncMdzipAudioReferences(
+            previousLinksJson: String?,
+            currentLinksJson: String?,
+            documentSessionId: String?
+        ) {
+            if (documentSessionId != currentDocumentSessionId) return
+            val session = currentMdzipSession ?: return
+            val previousLinks = runCatching {
+                val values = org.json.JSONArray(previousLinksJson ?: "[]")
+                (0 until values.length()).mapNotNull { index ->
+                    values.optString(index).takeIf { it.isNotBlank() }
+                }
+            }.getOrNull() ?: return
+            val currentLinks = runCatching {
+                val values = org.json.JSONArray(currentLinksJson ?: "[]")
+                (0 until values.length()).mapNotNull { index ->
+                    values.optString(index).takeIf { it.isNotBlank() }
+                }
+            }.getOrNull() ?: return
+            runCatching {
+                MdzipManager.syncAudioReferences(session, previousLinks, currentLinks)
+            }.onFailure { error ->
+                if (BuildConfig.DEBUG) {
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "mdzip_audio_reference_sync_failed",
+                        error.javaClass.simpleName
+                    )
+                }
+            }
+        }
+
+        @JavascriptInterface
         fun setMediaPlaybackSpeed(speedText: String): Boolean {
             val speed = speedText.toFloatOrNull() ?: return false
             val allowedSpeeds = setOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)

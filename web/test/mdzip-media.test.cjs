@@ -35,6 +35,23 @@ test('unescapes a closing bracket in the displayed MP3 filename', async () => {
   });
 });
 
+test('extracts linked MP3s without treating images or code samples as attachments', async () => {
+  const { extractMarkdownAudioLinks } = await import('../src/markdownMedia.js');
+  const markdown = [
+    '[Voice](audio/voice.mp3)',
+    '![Artwork](audio/image.mp3)',
+    '`[Inline example](audio/inline.mp3)`',
+    '```md',
+    '[Fenced example](audio/fenced.mp3)',
+    '```'
+  ].join('\n');
+
+  assert.deepEqual(
+    extractMarkdownAudioLinks(markdown).map(({ url }) => url),
+    ['audio/voice.mp3']
+  );
+});
+
 test('migrates existing toolbar layouts to include the MDZip actions', async () => {
   const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
   const config = normalizeBottomToolbarConfig({
