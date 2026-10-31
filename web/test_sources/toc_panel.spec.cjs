@@ -288,8 +288,10 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   assert.equal(nameInput.value, 'Untitled.md', 'the setting does not strip an unsaved document suffix');
   window.editorBridge.setDocumentTitle('Archive.textpack.zip', 'doc-archive');
   assert.equal(nameInput.value, 'Archive', 'compound textpack extensions are hidden as one suffix');
+  window.editorBridge.setDocumentTitle('Archive.textpack', 'doc-textpack');
+  assert.equal(nameInput.value, 'Archive', 'the canonical textpack extension is hidden');
   window.editorBridge.setDocumentTitle('Archive.mdx', 'doc-textpack');
-  assert.equal(nameInput.value, 'Archive', 'the short textpack extension is hidden');
+  assert.equal(nameInput.value, 'Archive', 'the legacy MDX extension is hidden');
   window.editorBridge.setDocumentTitle('Guide.md', 'doc-1');
   assert.equal(nameInput.value, 'Guide');
 

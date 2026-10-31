@@ -1665,7 +1665,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun isWmdxTabSession(uri: Uri): Boolean {
         val name = runCatching { getFileNameFromUri(uri) }.getOrNull().orEmpty()
         val mimeType = runCatching { contentResolver.getType(uri) }.getOrNull()
-        return name.endsWith(".mds", ignoreCase = true) ||
+        return name.endsWith(".wmds", ignoreCase = true) ||
+            name.endsWith(".mds", ignoreCase = true) ||
             name.endsWith(".wmdxsession", ignoreCase = true) ||
             mimeType == WMDX_TAB_SESSION_MIME
     }
@@ -1809,7 +1810,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 if (lastDot > 0) name.substring(0, lastDot) else name
             }
         }
-        return "$base.mdx"
+        return "$base.textpack"
     }
 
     private fun renamedDocumentFileName(requestedName: String, originalName: String): String? {
@@ -2882,7 +2883,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (isFinishing) return false
             runOnUiThread {
                 pendingWmdxTabSessionJson = sanitized
-                saveWmdxTabSessionLauncher.launch("Wmdx Session.mds")
+                saveWmdxTabSessionLauncher.launch("Wmdx Session.wmds")
             }
             return true
         }

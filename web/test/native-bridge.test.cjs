@@ -794,7 +794,8 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(leftPanelSource, /scrollTop: Number\.isFinite\(tab\.scrollTop\)/);
   assert.match(mainActivitySource, /saveWmdxTabSession\(sessionJson: String\)/);
   assert.match(mainActivitySource, /readWmdxTabSession\(uriString: String\)/);
-  assert.match(mainActivitySource, /Wmdx Session\.mds/);
+  assert.match(mainActivitySource, /Wmdx Session\.wmds/);
+  assert.match(mainActivitySource, /name\.endsWith\("\.wmds", ignoreCase = true\)/);
   assert.match(mainActivitySource, /name\.endsWith\("\.mds", ignoreCase = true\)/);
   assert.match(mainActivitySource, /name\.endsWith\("\.wmdxsession", ignoreCase = true\)/);
   assert.doesNotMatch(sanitizerSource, /\.put\("markdown"/);
@@ -805,7 +806,7 @@ test('tab sessions save and restore tab references and scroll positions only', (
   );
   assert.match(
     mainActivitySource,
-    /private fun defaultTextPackSaveAsName\(\)[\s\S]*?return "\$base\.mdx"/
+    /private fun defaultTextPackSaveAsName\(\)[\s\S]*?return "\$base\.textpack"/
   );
   assert.match(textPackManagerSource, /ZipInputStream\(inputStream\)/);
   assert.match(hotkeysXml, /pref_hotkey_save_tabs[\s\S]*app:defaultValue=""/);
