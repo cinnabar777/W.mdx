@@ -940,12 +940,22 @@ function navigateTocHistory(direction) {
 export function scrollToHeading(view, targetHeading) {
   if (!view || !targetHeading) return false;
   const targetClean = cleanHeadingText(targetHeading).toLowerCase();
+  const normalizeAnchor = text => cleanHeadingText(text)
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}_-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const targetAnchor = normalizeAnchor(targetHeading);
   const doc = view.state.doc;
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     if (/^#{1,6}\s+/.test(line.text.trim())) {
       const lineClean = cleanHeadingText(line.text).toLowerCase();
-      if (lineClean === targetClean) {
+      if (
+        lineClean === targetClean ||
+        normalizeAnchor(line.text) === targetAnchor
+      ) {
         recordTocNavigation(view, line.from);
         return scrollToPositionUpperMiddle(view, line.from);
       }
@@ -982,6 +992,8 @@ class WikilinkWidget extends WidgetType {
         e.stopPropagation();
         if (this.target.startsWith('#')) {
           scrollToHeading(view, this.target.slice(1));
+        } else {
+          window.leftPanelController?.openMdzipLink?.(this.target);
         }
       });
       span.addEventListener('keydown', (e) => {
@@ -990,6 +1002,8 @@ class WikilinkWidget extends WidgetType {
           e.stopPropagation();
           if (this.target.startsWith('#')) {
             scrollToHeading(view, this.target.slice(1));
+          } else {
+            window.leftPanelController?.openMdzipLink?.(this.target);
           }
         }
       });
@@ -3720,6 +3734,31 @@ export const resetRenderedVerticalGoal = EditorView.domEventHandlers({
   }
 });
 
+const mdzipLinkNavigation = EditorView.domEventHandlers({
+  click(event, view) {
+    const targetElement = event.target?.nodeType === 1
+      ? event.target
+      : event.target?.parentElement;
+    const linkElement = targetElement?.closest?.('.cm-link');
+    if (!linkElement || linkElement.classList.contains('cm-wikilink')) return false;
+    const position = view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
+      view.posAtDOM(linkElement, 0);
+    if (position == null) return false;
+    let node = syntaxTree(view.state).resolveInner(position, 1);
+    while (node && node.name !== 'Link') node = node.parent;
+    if (!node) return false;
+    const rawLink = view.state.doc.sliceString(node.from, node.to);
+    const match = rawLink.match(
+      /^\[([^\]]*)\]\(\s*(?:<([^>]*)>|([^\s)]+))(?:\s+["'][^"']*["'])?\s*\)$/
+    );
+    const path = match?.[2] ?? match?.[3];
+    if (!path) return false;
+    if (window.leftPanelController?.openMdzipLink?.(path) !== true) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  }
+});
 
 
 
@@ -3969,6 +4008,7 @@ class CodeMirrorAdapter {
         tableNavigationKeymap,
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
+        mdzipLinkNavigation,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap
@@ -8416,6 +8456,10 @@ window.editorBridge = {
     } else {
       pendingMarkdown = markdownText;
     }
+  },
+  navigateToHeading: heading => {
+    if (!activeAdapter?.view) return false;
+    return scrollToHeading(activeAdapter.view, heading);
   },
   persistCurrentScrollPosition: function() {
     activeAdapter?.persistScrollPosition?.();

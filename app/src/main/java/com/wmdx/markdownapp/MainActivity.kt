@@ -745,7 +745,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun archiveAssetBaseUrl(session: TextPackSession?): String {
         session ?: return ""
-        val parent = session.entryPointPath.substringBeforeLast('/', "")
+        val parent = session.documentPath.substringBeforeLast('/', "")
             .split('/')
             .filter { it.isNotBlank() }
             .joinToString("/") { Uri.encode(it) }
@@ -800,6 +800,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun persistDocumentUriPermission(uri: Uri, grantedFlags: Int? = null) {
+        val documentUri = archiveUriForDocument(uri)
         val readWriteFlags =
             android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                 android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
@@ -808,7 +809,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         try {
             contentResolver.takePersistableUriPermission(
-                uri,
+                documentUri,
                 flagsToPersist
             )
         } catch (_: Exception) {
@@ -1520,7 +1521,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val readStarted = android.os.SystemClock.elapsedRealtime()
 
         try {
-            val fileName = getFileNameFromUri(uri)
+            val archiveUri = archiveUriForDocument(uri)
+            val requestedMdzipPath = mdzipDocumentPath(uri)
+            val fileName = getFileNameFromUri(archiveUri)
 
             if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, uri, fileName)) {
                 throw java.io.IOException(
@@ -1529,10 +1532,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
 
             if (TextPackManager.isTextPackFile(this, uri, fileName)) {
-                val session = TextPackManager.openTextPack(this, uri, fileName)
+                val session = TextPackManager.openTextPack(this, archiveUri, fileName)
+                requestedMdzipPath?.let { path ->
+                    TextPackManager.selectMarkdownDocument(session, path)
+                }
                 val text = session.markdownContent
                 hasBom = text.startsWith("\uFEFF")
                 hasCrlf = text.contains("\r\n")
+                val activeUri = if (session.manifest?.optString("mode") == "project") {
+                    mdzipDocumentUri(archiveUri, session.documentPath)
+                } else {
+                    uri
+                }
                 val lines = text.lineSequence().count()
                 val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
                 AppDiagnostics.record(this, "textpack_read_done", "chars=${text.length} lines=$lines ms=$readMs")
@@ -1542,12 +1553,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 currentRevision = 0
                 currentEmptyContentExplicitlyEdited = false
                 latestMarkdownContent = text
-                currentFileUri = uri
-                currentFileName = fileName
+                currentFileUri = activeUri
+                currentFileName = if (session.manifest?.optString("mode") == "project") {
+                    session.documentPath
+                } else {
+                    requestedMdzipPath ?: fileName
+                }
                 isDirty = false
                 updateTitle()
 
-                prefs.edit().putString("last_opened_uri", uri.toString()).apply()
+                prefs.edit().putString("last_opened_uri", activeUri.toString()).apply()
 
                 val escaped = JSONObjectWrapper.quote(text)
                 webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
@@ -1560,7 +1575,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             } else {
                 currentTextPackSession = null
-                val inputStream = contentResolver.openInputStream(uri)
+                val inputStream = contentResolver.openInputStream(archiveUri)
                     ?: throw java.io.FileNotFoundException("Could not read the selected file")
                 inputStream.use {
                     val reader = BufferedReader(InputStreamReader(inputStream))
@@ -2113,34 +2128,41 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
 
             try {
-                val targetFileName = getFileNameFromUri(uri)
+                val targetUri = archiveUriForDocument(uri)
+                val requestedMdzipPath = mdzipDocumentPath(uri)
+                val targetFileName = getFileNameFromUri(targetUri)
                 val hasMdzipExtension = targetFileName.endsWith(".mdz", ignoreCase = true)
-                if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, uri, targetFileName)) {
+                if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, targetUri, targetFileName)) {
                     throw java.io.IOException(
                         "Legacy TextPack archives are not supported. Save this document as an MDZip .mdz file."
                     )
                 }
                 val isMdzipTarget = requestedAsTextPack == true ||
                     hasMdzipExtension ||
-                    (uri == currentFileUri && currentTextPackSession != null)
+                    (sameArchiveUri(uri, currentFileUri) && currentTextPackSession?.format == TextPackFormat.MDZIP)
                 val isTextPackTarget = isMdzipTarget
 
                 if (isTextPackTarget) {
                     val packageTitle = targetFileName.substringBeforeLast('.', targetFileName)
-                    val session = currentTextPackSession ?: if (isMdzipTarget) {
+                    val session = currentTextPackSession
+                        ?.takeIf { sameArchiveUri(uri, currentFileUri) }
+                        ?: if (isMdzipTarget) {
                         TextPackManager.createMdzipSession(this, markdownText, packageTitle)
                     } else {
-                        TextPackManager.openTextPack(this, uri, targetFileName)
+                        TextPackManager.openTextPack(this, targetUri, targetFileName)
+                    }
+                    if (requestedMdzipPath != null) {
+                        TextPackManager.selectMarkdownDocument(session, requestedMdzipPath)
                     }
                     currentTextPackSession = TextPackManager.saveTextPack(
                         this,
                         session,
                         markdownText,
-                        uri,
+                        targetUri,
                         title = packageTitle
                     )
                 } else {
-                    val output = contentResolver.openOutputStream(uri, "rwt")
+                    val output = contentResolver.openOutputStream(targetUri, "rwt")
                         ?: throw java.io.IOException("Could not open document for writing")
                     output.use { outputStream ->
                         val writer = OutputStreamWriter(outputStream, Charsets.UTF_8)
@@ -2150,10 +2172,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     currentTextPackSession = null
                 }
 
-                persistDocumentUriPermission(uri)
+                persistDocumentUriPermission(targetUri)
                 remapDocumentNavigationHistory(oldDocumentKey, uri.toString())
                 currentFileUri = uri
-                currentFileName = targetFileName
+                currentFileName = requestedMdzipPath ?: targetFileName
                 latestMarkdownContent = markdownText
                 isDirty = false
                 currentRevision = 0
@@ -2166,7 +2188,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 )
                 val escapedOldUri = JSONObjectWrapper.quote(oldUriString)
                 val escapedUri = JSONObjectWrapper.quote(uri.toString())
-                val escapedName = JSONObjectWrapper.quote(targetFileName)
+                val escapedName = JSONObjectWrapper.quote(requestedMdzipPath ?: targetFileName)
                 val escapedSessionId = JSONObjectWrapper.quote(saveSessionId)
                 webView.evaluateJavascript(
                     "window.leftPanelController?.onDocumentSavedAs?.($escapedOldUri, $escapedUri, $escapedName, $escapedSessionId);",
@@ -2278,8 +2300,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun getFileNameFromUri(uri: Uri): String {
         var result: String? = null
-        if (uri.scheme == "content") {
-            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val resolvedUri = archiveUriForDocument(uri)
+        if (resolvedUri.scheme == "content") {
+            contentResolver.query(resolvedUri, null, null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
                     val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
                     if (nameIndex != -1) {
@@ -2289,13 +2312,46 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
         if (result == null) {
-            result = uri.path
+            result = resolvedUri.path
             val cut = result?.lastIndexOf('/') ?: -1
             if (cut != -1) {
                 result = result?.substring(cut + 1)
             }
         }
         return result ?: "Document.md"
+    }
+
+    private fun archiveUriForDocument(uri: Uri): Uri =
+        uri.buildUpon().fragment(null).build()
+
+    private fun mdzipDocumentPath(uri: Uri): String? =
+        uri.fragment
+            ?.takeIf { it.startsWith("wmdx-mdzip-entry=") }
+            ?.removePrefix("wmdx-mdzip-entry=")
+            ?.takeIf { it.isNotBlank() }
+
+    private fun mdzipDocumentUri(archiveUri: Uri, documentPath: String): Uri =
+        archiveUriForDocument(archiveUri)
+            .buildUpon()
+            .encodedFragment("wmdx-mdzip-entry=${Uri.encode(documentPath)}")
+            .build()
+
+    private fun sameArchiveUri(left: Uri?, right: Uri?): Boolean =
+        left != null && right != null &&
+            archiveUriForDocument(left) == archiveUriForDocument(right)
+
+    private fun openMdzipSession(archiveUri: Uri): TextPackSession {
+        val current = currentTextPackSession
+            ?.takeIf { sameArchiveUri(archiveUri, currentFileUri) }
+        val session = current ?: TextPackManager.openTextPack(
+            this,
+            archiveUri,
+            getFileNameFromUri(archiveUri)
+        )
+        if (session.format != TextPackFormat.MDZIP) {
+            throw java.io.IOException("This package does not support internal document navigation.")
+        }
+        return session
     }
 
     private fun loadFontDataUri(path: String?): String {
@@ -2357,21 +2413,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun hasLeftPanelDocumentAccess(uri: Uri, write: Boolean = false): Boolean {
-        if (leftPanelTreeForDocument(uri, requireWrite = write) != null) return true
-        if (!write && uri == currentFileUri) return true
+        val documentUri = archiveUriForDocument(uri)
+        if (leftPanelTreeForDocument(documentUri, requireWrite = write) != null) return true
+        if (!write && sameArchiveUri(documentUri, currentFileUri)) return true
         val flag = if (write) {
             android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         } else {
             android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
         return checkUriPermission(
-            uri,
+            documentUri,
             android.os.Process.myPid(),
             android.os.Process.myUid(),
             flag
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
             contentResolver.persistedUriPermissions.any {
-                it.uri == uri && (if (write) it.isWritePermission else it.isReadPermission)
+                it.uri == documentUri && (if (write) it.isWritePermission else it.isReadPermission)
             }
     }
 
@@ -2423,6 +2480,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val uri = currentFileUri
         val name = currentFileName
         val markdown = latestMarkdownContent.orEmpty()
+        val mdzipSession = currentTextPackSession
         return org.json.JSONObject()
             .put("launcherWindow", intent.getBooleanExtra("launcher_window", false))
             .put("taskId", taskId)
@@ -2433,9 +2491,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .put("emptyContentExplicitlyEdited", currentEmptyContentExplicitlyEdited)
             .put(
                 "isTextPack",
-                currentTextPackSession != null ||
+                mdzipSession != null ||
                     name.endsWith(".mdz", true)
             )
+            .put("isMdzipProject", mdzipSession?.manifest?.optString("mode") == "project")
+            .put("mdzipDocumentPath", uri?.let { mdzipDocumentPath(it) })
             .put("hasBom", hasBom)
             .put("hasCrlf", hasCrlf)
             .toString()
@@ -2446,32 +2506,108 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return org.json.JSONObject().put("ok", false).put("error", "This file is outside the folders approved for the panel.")
         }
         return runCatching {
-            val name = getFileNameFromUri(uri)
-            if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, uri, name)) {
+            val archiveUri = archiveUriForDocument(uri)
+            val requestedPath = mdzipDocumentPath(uri)
+            val archiveName = getFileNameFromUri(archiveUri)
+            if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, archiveUri, archiveName)) {
                 throw java.io.IOException(
                     "This older TextPack archive is not supported. Open or create an MDZip .mdz file instead."
                 )
             }
-            val textPack = TextPackManager.isTextPackFile(this, uri, name)
-            val markdown = if (textPack) {
-                TextPackManager.openTextPack(this, uri, name).markdownContent
-            } else {
-                contentResolver.openInputStream(uri)?.use {
-                    BufferedReader(InputStreamReader(it, Charsets.UTF_8)).readText()
-                } ?: throw java.io.IOException("Could not read the selected file.")
+            val name = requestedPath ?: archiveName
+            val textPack = requestedPath != null ||
+                TextPackManager.isTextPackFile(this, archiveUri, archiveName)
+            val currentSession = currentTextPackSession
+            val activeSession = currentSession?.takeIf {
+                textPack && sameArchiveUri(archiveUri, currentFileUri)
             }
-            org.json.JSONObject()
-                .put("ok", true)
-                .put("uri", uri.toString())
-                .put("name", name)
-                .put("markdown", markdown)
-                .put("dirty", false)
-                .put("isTextPack", textPack)
-                .put("hasBom", markdown.startsWith("\uFEFF"))
-                .put("hasCrlf", markdown.contains("\r\n"))
+            val session = if (textPack) {
+                activeSession ?: TextPackManager.openTextPack(this, archiveUri, archiveName)
+            } else null
+            try {
+                val markdown = if (session != null) {
+                    if (requestedPath == null) {
+                        session.markdownContent
+                    } else {
+                        if (session.format != TextPackFormat.MDZIP) {
+                            throw java.io.IOException("This package does not contain internal Markdown documents.")
+                        }
+                        TextPackManager.selectMarkdownDocument(session, requestedPath)
+                    }
+                } else {
+                    contentResolver.openInputStream(archiveUri)?.use {
+                        BufferedReader(InputStreamReader(it, Charsets.UTF_8)).readText()
+                    } ?: throw java.io.IOException("Could not read the selected file.")
+                }
+                org.json.JSONObject()
+                    .put("ok", true)
+                    .put("uri", uri.toString())
+                    .put("name", name)
+                    .put("markdown", markdown)
+                    .put("dirty", false)
+                    .put("isTextPack", textPack)
+                    .put("isMdzipEntry", requestedPath != null)
+                    .put("mdzipEntryPath", requestedPath)
+                    .put("hasBom", markdown.startsWith("\uFEFF"))
+                    .put("hasCrlf", markdown.contains("\r\n"))
+            } finally {
+                if (session != null && session !== activeSession) session.sessionDir.deleteRecursively()
+            }
         }.getOrElse {
             org.json.JSONObject().put("ok", false).put("error", it.localizedMessage ?: "Could not read this file.")
         }
+    }
+
+    private fun listMdzipProjectFiles(archiveUri: Uri): String {
+        if (!hasLeftPanelDocumentAccess(archiveUri)) {
+            return org.json.JSONObject()
+                .put("ok", false)
+                .put("error", "This package is outside the folders approved for the panel.")
+                .toString()
+        }
+        return runCatching {
+            val baseUri = archiveUriForDocument(archiveUri)
+            val activeSession = currentTextPackSession
+                ?.takeIf { sameArchiveUri(baseUri, currentFileUri) }
+            val session = openMdzipSession(baseUri)
+            try {
+                if (session.manifest?.optString("mode") != "project") {
+                    return@runCatching org.json.JSONObject()
+                        .put("ok", true)
+                        .put("packageName", getFileNameFromUri(baseUri))
+                        .put("items", JSONArray())
+                        .toString()
+                }
+                val items = JSONArray()
+                TextPackManager.markdownDocumentPaths(session).forEach { path ->
+                    items.put(
+                        org.json.JSONObject()
+                            .put("path", path)
+                            .put("name", path.substringAfterLast('/'))
+                            .put("uri", mdzipDocumentUri(baseUri, path).toString())
+                    )
+                }
+                org.json.JSONObject()
+                    .put("ok", true)
+                    .put("packageName", getFileNameFromUri(baseUri))
+                    .put("items", items)
+                    .toString()
+            } finally {
+                if (session !== activeSession) session.sessionDir.deleteRecursively()
+            }
+        }.getOrElse {
+            org.json.JSONObject()
+                .put("ok", false)
+                .put("error", it.localizedMessage ?: "Could not list this MDZip project.")
+                .toString()
+        }
+    }
+
+    private fun resolveMdzipLinkTarget(linkTarget: String): String {
+        val archiveUri = currentFileUri ?: return ""
+        val session = currentTextPackSession ?: return ""
+        val path = TextPackManager.resolveProjectLink(session, linkTarget) ?: return ""
+        return mdzipDocumentUri(archiveUri, path).toString()
     }
 
     private fun leftPanelFileContains(
@@ -2644,35 +2780,58 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 content = content.replace("\r\n", "\n").replace("\n", "\r\n")
             }
             if (tabHasBom && !content.startsWith("\uFEFF")) content = "\uFEFF$content"
-            val name = getFileNameFromUri(uri)
-            if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, uri, name)) {
+            val targetUri = archiveUriForDocument(uri)
+            val requestedMdzipPath = mdzipDocumentPath(uri)
+            val name = getFileNameFromUri(targetUri)
+            if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, targetUri, name)) {
                 throw java.io.IOException(
                     "Legacy TextPack archives are not supported. Save this document as an MDZip .mdz file."
                 )
             }
-            val packTarget = isTextPack || TextPackManager.isTextPackFile(this, uri, name)
+            val packTarget = isTextPack ||
+                TextPackManager.isTextPackFile(this, targetUri, name)
             if (packTarget) {
-                val session = if (uri == currentFileUri) {
-                    currentTextPackSession ?: TextPackManager.openTextPack(this, uri, name)
+                val sharesActiveArchive = sameArchiveUri(targetUri, currentFileUri)
+                val activeSession = currentTextPackSession
+                    ?.takeIf { sharesActiveArchive }
+                val session = activeSession
+                    ?: TextPackManager.openTextPack(this, targetUri, name)
+                val activeDocumentPath = if (sharesActiveArchive) {
+                    currentFileUri?.let { mdzipDocumentPath(it) } ?: session.entryPointPath
                 } else {
-                    TextPackManager.openTextPack(this, uri, name)
+                    null
                 }
-                val savedSession = TextPackManager.saveTextPack(
-                    this,
-                    session,
-                    content,
-                    uri,
-                    title = name.substringBeforeLast('.', name)
-                )
-                if (uri == currentFileUri) currentTextPackSession = savedSession
+                try {
+                    if (requestedMdzipPath != null) {
+                        TextPackManager.selectMarkdownDocument(session, requestedMdzipPath)
+                    }
+                    val savedSession = TextPackManager.saveTextPack(
+                        this,
+                        session,
+                        content,
+                        targetUri,
+                        title = name.substringBeforeLast('.', name)
+                    )
+                    if (sharesActiveArchive) {
+                        if (
+                            savedSession.format == TextPackFormat.MDZIP &&
+                            activeDocumentPath != null
+                        ) {
+                            TextPackManager.selectMarkdownDocument(savedSession, activeDocumentPath)
+                        }
+                        currentTextPackSession = savedSession
+                    }
+                } finally {
+                    if (!sharesActiveArchive) session.sessionDir.deleteRecursively()
+                }
             } else {
-                val output = contentResolver.openOutputStream(uri, "rwt")
+                val output = contentResolver.openOutputStream(targetUri, "rwt")
                     ?: throw java.io.IOException("Could not open this file for writing.")
                 output.use { stream ->
                     OutputStreamWriter(stream, Charsets.UTF_8).use { writer -> writer.write(content) }
                 }
             }
-            persistDocumentUriPermission(uri)
+            persistDocumentUriPermission(targetUri)
             if (uri == currentFileUri) {
                 latestMarkdownContent = markdown
                 isDirty = false
@@ -2960,6 +3119,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun listMdzipProjectFiles(uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject()
+                    .put("ok", false)
+                    .put("error", "Invalid package.")
+                    .toString()
+            return this@MainActivity.listMdzipProjectFiles(uri)
+        }
+
+        @JavascriptInterface
+        fun resolveMdzipLinkTarget(target: String): String =
+            this@MainActivity.resolveMdzipLinkTarget(target)
+
+        @JavascriptInterface
         fun readLeftPanelDocument(uriString: String): String {
             val uri = runCatching { Uri.parse(uriString) }.getOrNull()
                 ?: return org.json.JSONObject().put("ok", false).put("error", "Invalid file.").toString()
@@ -3065,15 +3238,33 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 runCatching { Uri.parse(it) }.getOrNull()
             }
             if (uri != null && !hasLeftPanelDocumentAccess(uri)) return false
+            val nextTextPackSession = if (isTextPack && uri != null) {
+                runCatching {
+                    val archiveUri = archiveUriForDocument(uri)
+                    val session = currentTextPackSession
+                        ?.takeIf { sameArchiveUri(archiveUri, currentFileUri) }
+                        ?: TextPackManager.openTextPack(
+                            this@MainActivity,
+                            archiveUri,
+                            getFileNameFromUri(archiveUri)
+                        )
+                    TextPackManager.selectMarkdownDocument(
+                        session,
+                        mdzipDocumentPath(uri) ?: session.entryPointPath
+                    )
+                    session
+                }.getOrNull()
+            } else {
+                null
+            }
+            if (isTextPack && uri != null && nextTextPackSession == null) return false
             restoreDocumentHistoryState(historyStateJson)
             currentFileUri = uri
             currentFileName = name.ifBlank { "Untitled.md" }
             currentDocumentSessionId = java.util.UUID.randomUUID().toString()
             currentRevision = 0
             currentEmptyContentExplicitlyEdited = emptyContentExplicitlyEdited
-            currentTextPackSession = if (isTextPack && uri != null) {
-                runCatching { TextPackManager.openTextPack(this@MainActivity, uri, name) }.getOrNull()
-            } else null
+            currentTextPackSession = nextTextPackSession
             hasBom = tabHasBom
             hasCrlf = tabHasCrlf
             latestMarkdownContent = markdown

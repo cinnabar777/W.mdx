@@ -80,4 +80,76 @@ class TextPackManagerTest {
             "../outside.md"
         )
     }
+
+    @Test
+    fun projectEntryPointUsesDeclaredPathOrFirstMarkdownFile() {
+        assertEquals(
+            "docs/start.markdown",
+            TextPackManager.resolveMdzipProjectEntryPoint(
+                setOf("docs/start.markdown", "guide/intro.md", "images/cover.png"),
+                null
+            )
+        )
+        assertEquals(
+            "guide/intro.md",
+            TextPackManager.resolveMdzipProjectEntryPoint(
+                setOf("index.md", "guide/intro.md"),
+                "guide/intro.md"
+            )
+        )
+    }
+
+    @Test
+    fun internalDocumentAndLinkPathsKeepTheirPackageFolders() {
+        val available = setOf("index.md", "docs/intro.md", "docs/chapters/one.md")
+        assertEquals(
+            "docs/chapters/one.md",
+            TextPackManager.resolveMdzipDocumentPath("docs/chapters/one.md", available)
+        )
+        assertEquals(
+            "docs/chapters/one.md",
+            TextPackManager.resolveMdzipLinkPath(
+                "docs/intro.md",
+                "chapters/one.md#section",
+                available
+            )
+        )
+        assertEquals(
+            "index.md",
+            TextPackManager.resolveMdzipLinkPath(
+                "docs/intro.md",
+                "../index.md?view=full",
+                available
+            )
+        )
+    }
+
+    @Test
+    fun internalLinkResolutionRejectsEscapesAndExternalTargets() {
+        val available = setOf("index.md", "docs/intro.md", "docs/chapter one.md")
+        assertEquals(
+            "docs/chapter one.md",
+            TextPackManager.resolveMdzipLinkPath(
+                "docs/intro.md",
+                "chapter%20one.md",
+                available
+            )
+        )
+        assertEquals(
+            null,
+            TextPackManager.resolveMdzipLinkPath(
+                "index.md",
+                "../../outside.md",
+                available
+            )
+        )
+        assertEquals(
+            null,
+            TextPackManager.resolveMdzipLinkPath(
+                "index.md",
+                "https://example.com/guide.md",
+                available
+            )
+        )
+    }
 }

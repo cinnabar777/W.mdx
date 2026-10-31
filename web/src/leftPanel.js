@@ -594,6 +594,7 @@ export function setupLeftPanel() {
       tab.dirty = false;
       tab.emptyContentExplicitlyEdited = false;
       tab.isTextPack = Boolean(documentData.isTextPack);
+      tab.isMdzipEntry = Boolean(documentData.isMdzipEntry);
       tab.hasBom = Boolean(documentData.hasBom);
       tab.hasCrlf = Boolean(documentData.hasCrlf);
       unverifiedRestoredTabIds.delete(tab.id);
@@ -667,6 +668,7 @@ export function setupLeftPanel() {
       documentHistoryForward: [],
       emptyContentExplicitlyEdited: Boolean(documentData.emptyContentExplicitlyEdited),
       isTextPack: Boolean(documentData.isTextPack),
+      isMdzipEntry: Boolean(documentData.isMdzipEntry),
       scrollTop: Number.isFinite(documentData.scrollTop)
         ? Math.max(0, Math.round(documentData.scrollTop))
         : null,
@@ -740,6 +742,10 @@ export function setupLeftPanel() {
     switchingTab = false;
     renderTabs();
     persistTabs();
+    if (panel.classList.contains('open') && wantedExpanded.folders) {
+      folderRootsLoaded = false;
+      loadFolderRoots();
+    }
   };
 
   const activateUntitledTab = () => {
@@ -1060,6 +1066,7 @@ export function setupLeftPanel() {
     target.scrollTop = null;
     target.emptyContentExplicitlyEdited = false;
     target.isTextPack = Boolean(documentData.isTextPack);
+    target.isMdzipEntry = Boolean(documentData.isMdzipEntry);
     target.hasBom = Boolean(documentData.hasBom);
     target.hasCrlf = Boolean(documentData.hasCrlf);
     target.documentSessionId = native.getCurrentDocumentSessionId?.() || null;
@@ -1150,10 +1157,12 @@ export function setupLeftPanel() {
         label.textContent = `⌄ ${entry.name || 'Folder'}`;
         if (!loaded) {
           loaded = true;
-          const result = parseBridgeResult(
-            native?.listLeftPanelFolderChildren?.(treeUri, entry.documentId),
-            []
-          );
+          const result = Array.isArray(entry.children)
+            ? entry.children
+            : parseBridgeResult(
+              native?.listLeftPanelFolderChildren?.(treeUri, entry.documentId),
+              []
+            );
           const items = Array.isArray(result) ? result : result?.items || [];
           if (!items.length) {
             const empty = document.createElement('div');
@@ -1173,6 +1182,47 @@ export function setupLeftPanel() {
     });
   };
 
+  const buildMdzipProjectTree = (files, name) => {
+    const root = { name: name || 'MDZip project', isDirectory: true, children: [] };
+    for (const file of files) {
+      if (typeof file?.path !== 'string' || typeof file.uri !== 'string') continue;
+      const segments = file.path.split('/').filter(Boolean);
+      if (!segments.length) continue;
+      let siblings = root.children;
+      let parentPath = '';
+      for (let index = 0; index < segments.length; index++) {
+        const segment = segments[index];
+        parentPath = parentPath ? `${parentPath}/${segment}` : segment;
+        let node = siblings.find((item) => item.name === segment);
+        if (!node) {
+          const isDirectory = index < segments.length - 1;
+          node = {
+            name: segment,
+            path: parentPath,
+            isDirectory,
+            ...(isDirectory ? { children: [] } : { uri: file.uri, isMdzipEntry: true })
+          };
+          siblings.push(node);
+        }
+        if (index < segments.length - 1) {
+          if (!node.isDirectory) break;
+          siblings = node.children;
+        }
+      }
+    }
+    const sortNodes = (nodes) => {
+      nodes.sort((left, right) =>
+        Number(right.isDirectory) - Number(left.isDirectory) ||
+        left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
+      );
+      nodes.forEach((node) => {
+        if (Array.isArray(node.children)) sortNodes(node.children);
+      });
+    };
+    sortNodes(root.children);
+    return root;
+  };
+
   const loadFolderRoots = () => {
     if (folderRootsLoaded) return;
     folderRootsLoaded = true;
@@ -1185,15 +1235,34 @@ export function setupLeftPanel() {
     folderTree.replaceChildren();
     if (!roots.length) {
       folderStatus.textContent = 'No approved folders. Add a folder in Storage & Access settings.';
-      requestAnimationFrame(reflowSections);
-      return;
     }
-    folderStatus.textContent = '';
+    let hasRoot = false;
     roots.forEach((root) => {
       const wrapper = document.createElement('div');
       folderTree.appendChild(wrapper);
       renderFolderEntry(root, root.treeUri, wrapper);
+      hasRoot = true;
     });
+    const context = parseBridgeResult(native?.getLeftPanelContext?.(), {});
+    if (context?.isMdzipProject && context.uri && native?.listMdzipProjectFiles) {
+      const projectResult = parseBridgeResult(
+        native.listMdzipProjectFiles(context.uri),
+        {}
+      );
+      if (projectResult?.ok && Array.isArray(projectResult.items)) {
+        const projectRoot = buildMdzipProjectTree(
+          projectResult.items,
+          projectResult.packageName || context.name
+        );
+        const wrapper = document.createElement('div');
+        folderTree.appendChild(wrapper);
+        renderFolderEntry(projectRoot, 'mdzip-project', wrapper);
+        hasRoot = true;
+      } else if (!projectResult?.ok && projectResult?.error) {
+        folderStatus.textContent = projectResult.error;
+      }
+    }
+    if (hasRoot) folderStatus.textContent = '';
     requestAnimationFrame(reflowSections);
   };
 
@@ -1657,14 +1726,14 @@ export function setupLeftPanel() {
         renderTabs();
         persistTabs();
       }],
-      ...(tab.uri ? [['Rename', () => renameTab(tab)]] : []),
+      ...(tab.uri && !tab.isMdzipEntry ? [['Rename', () => renameTab(tab)]] : []),
       ...(!tab.pinned ? [['Close', () => closeTabs([tab.id])]] : []),
       ['Save tabs', () => { void saveTabSession(); }],
       ['Close other tabs', () => {
         activateTab(tab.id);
         closeTabs(tabs.filter((item) => item.id !== tab.id && !item.pinned).map((item) => item.id));
       }],
-      ...(tab.uri ? [['Delete file', () => deleteTabFile(tab)]] : [])
+      ...(tab.uri && !tab.isMdzipEntry ? [['Delete file', () => deleteTabFile(tab)]] : [])
     ];
     actions.forEach(([label, action]) => {
       const button = document.createElement('button');
@@ -1685,8 +1754,8 @@ export function setupLeftPanel() {
     if (!tabMenu) return;
     tabMenu.replaceChildren();
     const actions = [
-      ['Rename', () => renameFolderFile(entry)],
-      ['Delete', () => {
+      ...(!entry.isMdzipEntry ? [['Rename', () => renameFolderFile(entry)]] : []),
+      ...(!entry.isMdzipEntry ? [['Delete', () => {
         const openTab = tabs.find((tab) => tab.uri === entry.uri);
         deleteTabFile(openTab || {
           id: entry.uri,
@@ -1694,7 +1763,7 @@ export function setupLeftPanel() {
           name: entry.name || 'Untitled',
           dirty: false
         });
-      }],
+      }]] : []),
       ...(tabsEnabled ? [['Open in new tab', () => openDocument(entry.uri)]] : []),
       ['Open', () => openDocument(entry.uri, { replaceActive: true })]
     ];
@@ -2150,6 +2219,7 @@ export function setupLeftPanel() {
       current.markdown = String(markdown ?? context.markdown ?? '');
       current.dirty = Boolean(context.dirty);
       current.isTextPack = Boolean(context.isTextPack);
+      current.isMdzipEntry = Boolean(context.mdzipDocumentPath);
       current.hasBom = Boolean(context.hasBom);
       current.hasCrlf = Boolean(context.hasCrlf);
       current.emptyContentExplicitlyEdited =
@@ -2177,6 +2247,7 @@ export function setupLeftPanel() {
       target.markdown = String(markdown ?? context.markdown ?? '');
       target.dirty = Boolean(context.dirty);
       target.isTextPack = Boolean(context.isTextPack);
+      target.isMdzipEntry = Boolean(context.mdzipDocumentPath);
       target.hasBom = Boolean(context.hasBom);
       target.hasCrlf = Boolean(context.hasCrlf);
       target.emptyContentExplicitlyEdited =
@@ -2189,6 +2260,10 @@ export function setupLeftPanel() {
       loadedTabId = target.id;
       renderTabs();
       persistTabs();
+      if (panel.classList.contains('open') && wantedExpanded.folders) {
+        folderRootsLoaded = false;
+        loadFolderRoots();
+      }
       return;
     }
     const replaceEmptyPlaceholder = context.uri &&
@@ -2204,6 +2279,7 @@ export function setupLeftPanel() {
       current.markdown = String(markdown ?? context.markdown ?? '');
       current.dirty = Boolean(context.dirty);
       current.isTextPack = Boolean(context.isTextPack);
+      current.isMdzipEntry = Boolean(context.mdzipDocumentPath);
       current.hasBom = Boolean(context.hasBom);
       current.hasCrlf = Boolean(context.hasCrlf);
       current.emptyContentExplicitlyEdited =
@@ -2218,6 +2294,7 @@ export function setupLeftPanel() {
         existing.markdown = String(markdown ?? context.markdown ?? '');
         existing.dirty = Boolean(context.dirty);
         existing.isTextPack = Boolean(context.isTextPack);
+        existing.isMdzipEntry = Boolean(context.mdzipDocumentPath);
         existing.hasBom = Boolean(context.hasBom);
         existing.hasCrlf = Boolean(context.hasCrlf);
         existing.emptyContentExplicitlyEdited =
@@ -2235,6 +2312,7 @@ export function setupLeftPanel() {
           documentHistoryBack: [],
           documentHistoryForward: [],
           isTextPack: Boolean(context.isTextPack),
+          isMdzipEntry: Boolean(context.mdzipDocumentPath),
           hasBom: Boolean(context.hasBom),
           hasCrlf: Boolean(context.hasCrlf),
           emptyContentExplicitlyEdited:
@@ -2248,6 +2326,8 @@ export function setupLeftPanel() {
       current.name = context.name || current.name;
       current.markdown = String(markdown ?? context.markdown ?? '');
       current.dirty = Boolean(context.dirty);
+      current.isTextPack = Boolean(context.isTextPack);
+      current.isMdzipEntry = Boolean(context.mdzipDocumentPath);
       if (current.markdown || !current.dirty) current.emptyContentExplicitlyEdited = false;
     }
     const loadedTab = activeTab();
@@ -2260,6 +2340,10 @@ export function setupLeftPanel() {
     loadedTabId = activeTabId;
     renderTabs();
     persistTabs();
+    if (panel.classList.contains('open') && wantedExpanded.folders) {
+      folderRootsLoaded = false;
+      loadFolderRoots();
+    }
   };
 
   const controller = {
@@ -2267,6 +2351,39 @@ export function setupLeftPanel() {
     close: closePanel,
     onEditorChanged,
     onNativeDocumentLoaded,
+    openMdzipLink(target) {
+      const link = String(target || '');
+      const path = link.split('#', 1)[0];
+      const anchor = link.includes('#') ? link.slice(link.indexOf('#') + 1) : '';
+      const scrollToAnchor = () => {
+        if (!anchor) return;
+        let heading = anchor;
+        try {
+          heading = decodeURIComponent(anchor);
+        } catch {
+          // Keep the literal anchor when it is not valid URL encoding.
+        }
+        window.editorBridge?.navigateToHeading?.(heading);
+      };
+      if (!path) {
+        if (!anchor) return false;
+        scrollToAnchor();
+        return true;
+      }
+      const uri = native?.resolveMdzipLinkTarget?.(link);
+      if (typeof uri !== 'string' || !uri) return false;
+      const opened = openDocument(uri);
+      if (anchor) {
+        if (opened && typeof opened.then === 'function') {
+          opened.then((success) => {
+            if (success) scrollToAnchor();
+          });
+        } else {
+          requestAnimationFrame(scrollToAnchor);
+        }
+      }
+      return true;
+    },
     focusDocumentUri(uri) {
       const current = activeTab();
       const target = sameDocumentUri(current?.uri || null, uri)

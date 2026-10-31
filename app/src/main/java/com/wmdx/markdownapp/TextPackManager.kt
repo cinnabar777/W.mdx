@@ -13,11 +13,17 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+enum class TextPackFormat {
+    MDZIP
+}
+
 data class TextPackSession(
     val sessionDir: File,
     var markdownContent: String,
     var sourceUri: Uri?,
+    var format: TextPackFormat = TextPackFormat.MDZIP,
     var entryPointPath: String = "index.md",
+    var documentPath: String = entryPointPath,
     var manifest: JSONObject? = null
 )
 
@@ -102,6 +108,7 @@ object TextPackManager {
                 markdownContent = markdownContent,
                 sourceUri = null,
                 entryPointPath = entryPointPath,
+                documentPath = entryPointPath,
                 manifest = manifest
             )
         } catch (error: Exception) {
@@ -125,7 +132,7 @@ object TextPackManager {
         FileOutputStream(targetFile).use { out ->
             imageInputStream.copyTo(out)
         }
-        return relativeMarkdownPath(session.entryPointPath, archivePath)
+        return relativeMarkdownPath(session.documentPath, archivePath)
     }
 
     fun saveTextPack(
@@ -135,14 +142,19 @@ object TextPackManager {
         targetUri: Uri,
         title: String = ""
     ): TextPackSession {
-        val entryPoint = resolveArchiveFile(session.sessionDir, session.entryPointPath)
-            ?: throw IOException("The MDZip entry point path is invalid.")
-        entryPoint.parentFile?.mkdirs()
-        entryPoint.writeText(markdownContent, Charsets.UTF_8)
+        if (session.format != TextPackFormat.MDZIP) {
+            throw IOException("Only MDZip .mdz packages are supported.")
+        }
+        val markdownFile = resolveArchiveFile(session.sessionDir, session.documentPath)
+            ?: throw IOException("The MDZip document path is invalid.")
+        markdownFile.parentFile?.mkdirs()
+        markdownFile.writeText(markdownContent, Charsets.UTF_8)
         val manifest = session.manifest ?: readManifest(session.sessionDir)
             ?: newMdzipManifest(session.entryPointPath, title)
-        ensureProducerManifest(manifest, session.entryPointPath, title)
-        writeManifest(session.sessionDir, manifest)
+        if (manifest.optString("mode") != "project") {
+            ensureProducerManifest(manifest, session.entryPointPath, title)
+            writeManifest(session.sessionDir, manifest)
+        }
         session.manifest = manifest
 
         val output = context.contentResolver.openOutputStream(targetUri, "rwt")
@@ -157,6 +169,40 @@ object TextPackManager {
         session.sourceUri = targetUri
         session.markdownContent = markdownContent
         return session
+    }
+
+    fun markdownDocumentPaths(session: TextPackSession): List<String> =
+        session.sessionDir.walkTopDown()
+            .filter { it.isFile && isMarkdownPath(it.name) }
+            .mapNotNull { file ->
+                val sessionRoot = session.sessionDir.absolutePath
+                    .trimEnd(File.separatorChar) + File.separator
+                val relativePath = file.absolutePath
+                    .removePrefix(sessionRoot)
+                    .replace(File.separatorChar, '/')
+                validateArchivePath(relativePath)
+            }
+            .sorted()
+            .toList()
+
+    fun selectMarkdownDocument(session: TextPackSession, documentPath: String): String {
+        val availablePaths = markdownDocumentPaths(session).toSet()
+        val normalizedPath = resolveMdzipDocumentPath(documentPath, availablePaths)
+            ?: throw IOException("This Markdown document is not in the package.")
+        val markdownFile = resolveArchiveFile(session.sessionDir, normalizedPath)
+            ?: throw IOException("The Markdown document path is invalid.")
+        if (markdownFile.length() > MAX_MARKDOWN_BYTES) {
+            throw IOException("The Markdown document is too large to open.")
+        }
+        session.documentPath = normalizedPath
+        session.markdownContent = markdownFile.readText(Charsets.UTF_8)
+        return session.markdownContent
+    }
+
+    fun resolveProjectLink(session: TextPackSession, linkTarget: String): String? {
+        if (session.manifest?.optString("mode") != "project") return null
+        val availablePaths = markdownDocumentPaths(session).toSet()
+        return resolveMdzipLinkPath(session.documentPath, linkTarget, availablePaths)
     }
 
     fun resolveAssetFile(session: TextPackSession, relativePath: String): File? =
@@ -197,6 +243,77 @@ object TextPackManager {
                 "This MDZip package has multiple possible entry points. Add a manifest entryPoint or root index.md."
             }
         )
+    }
+
+    internal fun resolveMdzipProjectEntryPoint(
+        archivePaths: Set<String>,
+        declaredEntryPoint: String?
+    ): String {
+        if (declaredEntryPoint != null) {
+            return resolveMdzipEntryPoint(archivePaths, declaredEntryPoint)
+        }
+        val normalizedPaths = archivePaths.map {
+            java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFC)
+        }.toSet()
+        if ("index.md" in normalizedPaths) return "index.md"
+        return normalizedPaths.filter(::isMarkdownPath).sorted().firstOrNull()
+            ?: throw IOException("This MDZip project does not contain a Markdown document.")
+    }
+
+    internal fun resolveMdzipDocumentPath(
+        documentPath: String,
+        availablePaths: Set<String>
+    ): String? {
+        val normalizedPaths = availablePaths.map {
+            java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFC)
+        }.toSet()
+        val safePath = validateArchivePath(documentPath)
+            ?: return null
+        return safePath.takeIf { it in normalizedPaths && isMarkdownPath(it) }
+    }
+
+    internal fun resolveMdzipLinkPath(
+        currentDocumentPath: String,
+        linkTarget: String,
+        availablePaths: Set<String>
+    ): String? {
+        val targetWithoutSuffix = linkTarget.trim()
+            .substringBefore('#')
+            .substringBefore('?')
+        if (
+            targetWithoutSuffix.isBlank() ||
+            targetWithoutSuffix.startsWith('/') ||
+            targetWithoutSuffix.startsWith('\\') ||
+            Regex("^[A-Za-z][A-Za-z0-9+.-]*:").containsMatchIn(targetWithoutSuffix) ||
+            targetWithoutSuffix.startsWith("//")
+        ) {
+            return null
+        }
+        val decodedTarget = runCatching {
+            java.net.URLDecoder.decode(
+                targetWithoutSuffix.replace("+", "%2B"),
+                Charsets.UTF_8.name()
+            )
+        }.getOrNull() ?: return null
+        if (decodedTarget.contains('\\') || decodedTarget.contains('\u0000')) return null
+
+        val segments = currentDocumentPath.substringBeforeLast('/', "")
+            .split('/')
+            .filter { it.isNotBlank() }
+            .toMutableList()
+        for (segment in decodedTarget.split('/')) {
+            when (segment) {
+                "", "." -> Unit
+                ".." -> if (segments.isEmpty()) return null else segments.removeAt(segments.lastIndex)
+                else -> segments.add(segment)
+            }
+        }
+        if (segments.isEmpty()) return null
+        val resolved = java.text.Normalizer.normalize(segments.joinToString("/"), java.text.Normalizer.Form.NFC)
+        resolveMdzipDocumentPath(resolved, availablePaths)?.let { return it }
+        if (resolved.substringAfterLast('/').contains('.')) return null
+        return listOf("$resolved.md", "$resolved.markdown")
+            .firstNotNullOfOrNull { resolveMdzipDocumentPath(it, availablePaths) }
     }
 
     private fun extractArchive(
@@ -314,9 +431,6 @@ object TextPackManager {
         if (mode != null && mode !in setOf("document", "project")) {
             throw IOException("This MDZip package uses an unsupported mode: $mode")
         }
-        if (mode == "project") {
-            throw IOException("Wmdx does not yet support MDZip project mode.")
-        }
         val declaredEntryPoint = manifest?.let {
             if (!it.has("entryPoint")) {
                 null
@@ -325,7 +439,11 @@ object TextPackManager {
                     ?: throw IOException("The MDZip manifest entryPoint must be a string.")
             }
         }
-        val entryPointPath = resolveMdzipEntryPoint(extractedFiles, declaredEntryPoint)
+        val entryPointPath = if (mode == "project") {
+            resolveMdzipProjectEntryPoint(extractedFiles, declaredEntryPoint)
+        } else {
+            resolveMdzipEntryPoint(extractedFiles, declaredEntryPoint)
+        }
         val markdownFile = resolveArchiveFile(sessionDir, entryPointPath)
             ?: throw IOException("The MDZip entry point path is invalid.")
         if (markdownFile.length() > MAX_MARKDOWN_BYTES) {
@@ -336,6 +454,7 @@ object TextPackManager {
             markdownContent = markdownFile.readText(Charsets.UTF_8),
             sourceUri = uri,
             entryPointPath = entryPointPath,
+            documentPath = entryPointPath,
             manifest = manifest
         )
     }
