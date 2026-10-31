@@ -42,11 +42,10 @@ internal fun parseMdzipByteRange(header: String, fileLength: Long): MdzipByteRan
 
 internal fun shouldServeMdzipAudioAsWholeFile(
     extension: String,
-    rangeHeader: String?,
-    m4aRangeRequestsEnabled: Boolean
+    rangeHeader: String?
 ): Boolean =
     rangeHeader == null ||
-        (extension.equals("m4a", ignoreCase = true) && !m4aRangeRequestsEnabled)
+        extension.equals("m4a", ignoreCase = true)
 
 internal fun openMdzipByteRangeStream(
     file: File,

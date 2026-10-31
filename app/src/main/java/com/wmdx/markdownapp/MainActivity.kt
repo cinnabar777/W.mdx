@@ -92,8 +92,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     @Volatile private var leftPanelSearchFuture: Future<*>? = null
     private var currentTextPackSession: TextPackSession? = null
     @Volatile private var currentMdzipSession: MdzipSession? = null
-    private val mdzipAudioRangeEnabledFiles =
-        java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
     private var pendingCreateDocumentAsMdzip: Boolean? = null
@@ -2312,17 +2310,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val range = request.requestHeaders.entries
             .firstOrNull { it.key.equals("Range", ignoreCase = true) }
             ?.value
-        val m4aRangeRequestsEnabled = extension != "m4a" ||
-            (mdzipAudioRangeKey(file)?.let { mdzipAudioRangeEnabledFiles.contains(it) } == true)
         val headers = mutableMapOf(
             "Accept-Ranges" to "bytes",
             "Cache-Control" to "no-store"
         )
-        if (extension == "m4a" && !m4aRangeRequestsEnabled) {
-            headers.remove("Accept-Ranges")
-        }
+        if (extension == "m4a") headers.remove("Accept-Ranges")
 
-        if (shouldServeMdzipAudioAsWholeFile(extension, range, m4aRangeRequestsEnabled)) {
+        if (shouldServeMdzipAudioAsWholeFile(extension, range)) {
             recordMdzipAudioAsset(
                 extension,
                 200,
@@ -2360,11 +2354,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             openMdzipByteRangeStream(file, byteRange.start, byteRange.length)
         }
         return WebResourceResponse(mimeType, null, 206, "Partial Content", headers, body)
-    }
-
-    private fun mdzipAudioRangeKey(file: java.io.File): String? {
-        val path = runCatching { file.canonicalPath }.getOrNull() ?: return null
-        return "$currentDocumentSessionId:$path"
     }
 
     private fun mdzipAudioMimeType(extension: String): String =
@@ -3600,17 +3589,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return runCatching { MdzipManager.audioUrl(session, relativeLink) }
                 .getOrNull()
                 .orEmpty()
-        }
-
-        @JavascriptInterface
-        fun enableMdzipAudioRangeRequests(relativeLink: String): Boolean {
-            val session = currentMdzipSession ?: return false
-            val file = MdzipManager.resolveAudioFile(session, relativeLink) ?: return false
-            if (!file.extension.equals("m4a", ignoreCase = true)) return false
-            val key = mdzipAudioRangeKey(file) ?: return false
-            mdzipAudioRangeEnabledFiles.add(key)
-            AppDiagnostics.record(this@MainActivity, "mdzip_audio_range_enabled", "m4a")
-            return true
         }
 
         @JavascriptInterface

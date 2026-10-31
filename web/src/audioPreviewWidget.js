@@ -1,4 +1,5 @@
 import { WidgetType } from '@codemirror/view';
+import { fetchM4aSeekBlob, MAX_M4A_SEEK_BYTES } from './mdzipAudioBlobSeek.js';
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -16,6 +17,42 @@ function formatTime(seconds) {
 function formatRate(rate) {
   const value = Number(rate);
   return `${Number.isInteger(value) ? value : String(value).replace(/0+$/, '').replace(/\.$/, '')}×`;
+}
+
+function waitForMediaEvent(media, eventName, { signal, timeoutMs = 15000 } = {}) {
+  return new Promise((resolve, reject) => {
+    let timeoutId;
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      media.removeEventListener(eventName, onSuccess);
+      media.removeEventListener('error', onError);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const settle = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback(value);
+    };
+    const onSuccess = () => settle(resolve);
+    const onError = () => settle(reject, new Error('The audio source failed to load.'));
+    const onAbort = () => settle(
+      reject,
+      signal.reason instanceof Error
+        ? signal.reason
+        : new DOMException('Audio seek preparation was cancelled.', 'AbortError')
+    );
+
+    media.addEventListener(eventName, onSuccess, { once: true });
+    media.addEventListener('error', onError, { once: true });
+    signal?.addEventListener('abort', onAbort, { once: true });
+    timeoutId = setTimeout(
+      () => settle(reject, new Error('Timed out preparing audio seeking.')),
+      timeoutMs
+    );
+    if (signal?.aborted) onAbort();
+  });
 }
 
 function makeIcon(name) {
@@ -169,6 +206,10 @@ export class AudioPreviewWidget extends WidgetType {
 
     const audio = document.createElement('audio');
     const isM4aSource = /\.m4a(?:$|[?#])/i.test(this.relativeLink || this.src);
+    let seekBlobUrl = null;
+    let seekAbortController = null;
+    let isPreparingM4aSeek = false;
+    let disposed = false;
     audio.preload = isM4aSource ? 'auto' : 'metadata';
     audio.src = this.src;
     audio.dataset.mdzipAudio = 'true';
@@ -410,13 +451,161 @@ export class AudioPreviewWidget extends WidgetType {
         seek.value = String(Math.min(audio.currentTime || 0, duration || 1));
       }
     };
+    const seekM4aWithBlob = async targetTime => {
+      if (seekBlobUrl) {
+        audio.currentTime = targetTime;
+        updateTime();
+        return;
+      }
+      if (isPreparingM4aSeek) return;
+
+      isPreparingM4aSeek = true;
+      const controller = new AbortController();
+      seekAbortController = controller;
+      const wasPlaying = !audio.paused && !audio.ended;
+      const playbackRate = audio.playbackRate;
+      const volumeLevel = audio.volume;
+      const wasMuted = audio.muted;
+      let blobUrl = null;
+      let probe = null;
+      let switchedToBlob = false;
+      playButton.disabled = true;
+      seek.disabled = true;
+      status.textContent = 'Preparing audio for seeking…';
+      status.style.display = 'block';
+
+      try {
+        const blob = await fetchM4aSeekBlob(this.src, { signal: controller.signal });
+        if (disposed) return;
+
+        blobUrl = URL.createObjectURL(blob);
+        probe = document.createElement('audio');
+        probe.preload = 'metadata';
+        const probeMetadataReady = waitForMediaEvent(
+          probe,
+          'loadedmetadata',
+          { signal: controller.signal }
+        );
+        probe.src = blobUrl;
+        probe.load();
+        await probeMetadataReady;
+
+        if (!Number.isFinite(probe.duration) || probe.duration <= 0) {
+          throw new Error('The buffered M4A has no usable duration.');
+        }
+        const probeTarget = Math.max(0, Math.min(targetTime, probe.duration));
+        if (probeTarget > 0.05) {
+          const probeSeeked = waitForMediaEvent(
+            probe,
+            'seeked',
+            { signal: controller.signal }
+          );
+          probe.currentTime = probeTarget;
+          await probeSeeked;
+          if (Math.abs(probe.currentTime - probeTarget) > 1) {
+            throw new Error('The buffered M4A did not seek to the requested position.');
+          }
+        }
+        if (disposed) return;
+
+        audio.pause();
+        const audioMetadataReady = waitForMediaEvent(
+          audio,
+          'loadedmetadata',
+          { signal: controller.signal }
+        );
+        audio.src = blobUrl;
+        audio.load();
+        switchedToBlob = true;
+        await audioMetadataReady;
+
+        seekBlobUrl = blobUrl;
+        blobUrl = null;
+        audio.playbackRate = playbackRate;
+        audio.volume = volumeLevel;
+        audio.muted = wasMuted;
+        const audioTarget = Math.max(0, Math.min(targetTime, audio.duration));
+        if (audioTarget > 0.05) {
+          const audioSeeked = waitForMediaEvent(
+            audio,
+            'seeked',
+            { signal: controller.signal }
+          );
+          audio.currentTime = audioTarget;
+          await audioSeeked;
+          if (Math.abs(audio.currentTime - audioTarget) > 1) {
+            throw new Error('Audio did not reach the requested position.');
+          }
+        } else {
+          audio.currentTime = audioTarget;
+        }
+        let resumeFailed = false;
+        if (wasPlaying) {
+          try {
+            await audio.play();
+          } catch {
+            resumeFailed = true;
+          }
+        }
+        if (resumeFailed) {
+          status.textContent = 'The seek is ready. Tap Play to resume audio.';
+          status.style.display = 'block';
+        } else {
+          status.textContent = '';
+          status.style.display = 'none';
+        }
+      } catch (error) {
+        if (disposed || error?.name === 'AbortError') return;
+        if (switchedToBlob && !seekBlobUrl) {
+          try {
+            const originalSourceReady = waitForMediaEvent(
+              audio,
+              'loadedmetadata',
+              { signal: controller.signal }
+            );
+            audio.src = this.src;
+            audio.load();
+            await originalSourceReady;
+            audio.playbackRate = playbackRate;
+            audio.volume = volumeLevel;
+            audio.muted = wasMuted;
+            if (wasPlaying) await audio.play();
+          } catch {
+            // Keep the seek error visible if restoring the original source also fails.
+          }
+        }
+        if (error?.code === 'M4A_SEEK_TOO_LARGE') {
+          status.textContent =
+            `This file exceeds the ${Math.round(MAX_M4A_SEEK_BYTES / (1024 * 1024))} MB seek limit. Playback remains available, but seeking is unavailable.`;
+        } else {
+          status.textContent = 'Could not prepare seeking. Playback remains available.';
+        }
+        status.style.display = 'block';
+      } finally {
+        probe?.pause();
+        if (probe) {
+          probe.removeAttribute('src');
+          probe.load();
+        }
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        if (seekAbortController === controller) seekAbortController = null;
+        isPreparingM4aSeek = false;
+        playButton.disabled = false;
+        seek.disabled = false;
+        if (!disposed) {
+          updateTime();
+          syncPlayButton();
+        }
+      }
+    };
     const commitSeek = () => {
       if (!isDraggingSeek) return;
       isDraggingSeek = false;
       if (Number.isFinite(audio.duration)) {
         const targetTime = Math.max(0, Math.min(Number(seek.value), audio.duration));
         if (isM4aSource) {
-          window.AndroidNative?.enableMdzipAudioRangeRequests?.(this.relativeLink);
+          void seekM4aWithBlob(targetTime);
+          return;
         }
         audio.currentTime = targetTime;
       }
@@ -483,6 +672,7 @@ export class AudioPreviewWidget extends WidgetType {
     audio.addEventListener('ended', syncPlayButton);
     audio.addEventListener('volumechange', syncMuteButton);
     audio.addEventListener('error', () => {
+      if (isPreparingM4aSeek) return;
       status.textContent = 'Unable to play this audio file on this device.';
       status.style.display = 'block';
     });
@@ -559,6 +749,8 @@ export class AudioPreviewWidget extends WidgetType {
     window.visualViewport?.addEventListener('scroll', positionPopup);
 
     wrapper._audioCleanup = () => {
+      disposed = true;
+      seekAbortController?.abort();
       clearPressTimer();
       hidePopup(activePopup);
       document.removeEventListener('pointerdown', dismissPopup, true);
@@ -567,6 +759,8 @@ export class AudioPreviewWidget extends WidgetType {
       window.visualViewport?.removeEventListener('resize', positionPopup);
       window.visualViewport?.removeEventListener('scroll', positionPopup);
       audio.pause();
+      if (seekBlobUrl) URL.revokeObjectURL(seekBlobUrl);
+      seekBlobUrl = null;
       delete audio._syncMdzipPlaybackRate;
     };
     return wrapper;

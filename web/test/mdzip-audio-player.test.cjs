@@ -38,22 +38,73 @@ test('M4A files are accepted and served with an MP4 audio MIME type', () => {
   assert.match(capture, /mediaErrorCode:/);
 });
 
-test('M4A requests full preload so its timeline can be seeked without byte ranges', () => {
+test('M4A prepares a bounded Blob source only when seeking', () => {
   const player = read('src/audioPreviewWidget.js');
+  const blobLoader = read('src/mdzipAudioBlobSeek.js');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   assert.match(player, /isM4aSource =/);
   assert.match(player, /audio\.preload = isM4aSource \? 'auto' : 'metadata'/);
-  assert.match(activity, /enableMdzipAudioRangeRequests\(relativeLink: String\)/);
+  assert.match(player, /void seekM4aWithBlob\(targetTime\)/);
+  assert.match(player, /fetchM4aSeekBlob\(this\.src/);
+  assert.match(player, /URL\.revokeObjectURL\(seekBlobUrl\)/);
+  assert.match(blobLoader, /MAX_M4A_SEEK_BYTES = 32 \* 1024 \* 1024/);
+  assert.doesNotMatch(player, /enableMdzipAudioRangeRequests/);
   assert.match(
     activity,
-    /if \(extension == "m4a" && !m4aRangeRequestsEnabled\) \{\s*headers\.remove\("Accept-Ranges"\)/
+    /if \(extension == "m4a"\) headers\.remove\("Accept-Ranges"\)/
   );
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);
-  assert.ok(
-    seekCommit.indexOf('enableMdzipAudioRangeRequests') <
-      seekCommit.indexOf('audio.currentTime = targetTime')
-  );
+  assert.match(seekCommit, /void seekM4aWithBlob\(targetTime\)/);
+});
+
+test('M4A seek buffering enforces the size limit before reading large bodies', async () => {
+  const { fetchM4aSeekBlob } = await import('../src/mdzipAudioBlobSeek.js');
+  const originalFetch = global.fetch;
+  let bodyCancelled = false;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => '33' },
+    body: {
+      cancel: async () => {
+        bodyCancelled = true;
+      }
+    },
+    blob: async () => {
+      throw new Error('Large response body should not be read.');
+    }
+  });
+  try {
+    await assert.rejects(
+      fetchM4aSeekBlob('https://example.test/audio.m4a', { maxBytes: 32 }),
+      error => error.code === 'M4A_SEEK_TOO_LARGE'
+    );
+    assert.equal(bodyCancelled, true);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('M4A seek buffering returns a playable audio Blob within the limit', async () => {
+  const { fetchM4aSeekBlob } = await import('../src/mdzipAudioBlobSeek.js');
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => '4' },
+    blob: async () => new Blob(['m4a!'], { type: 'audio/mp4' })
+  });
+  try {
+    const blob = await fetchM4aSeekBlob(
+      'https://example.test/audio.m4a',
+      { maxBytes: 4 }
+    );
+    assert.equal(blob.size, 4);
+    assert.equal(blob.type, 'audio/mp4');
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 test('audio scrubbing commits one seek on release instead of on every input event', () => {
