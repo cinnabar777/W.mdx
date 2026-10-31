@@ -1,11 +1,76 @@
 package com.wmdx.markdownapp
 
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
 import java.text.Normalizer
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TextPackManagerTest {
+    @Test
+    fun projectArchiveRoundTripPreservesUntouchedEntriesWhenNestedMarkdownIsEdited() {
+        val manifest = """
+            {
+              "spec": { "name": "mdzip-spec", "version": "1.2.1" },
+              "mode": "project",
+              "entryPoint": "docs/chapters/start.md",
+              "projectMetadata": { "keepSpacing": true }
+            }
+        """.trimIndent().toByteArray(Charsets.UTF_8)
+        val untouchedMarkdown = "## Reference\r\n\nKeep this exact text: café.\r\n"
+            .toByteArray(Charsets.UTF_8)
+        val otherMarkdown = "# Root notes\n\nDo not change this file.\n".toByteArray(Charsets.UTF_8)
+        val binaryAsset = byteArrayOf(0, 1, 0x7f, 0x80.toByte(), 0xff.toByte(), 0x0a)
+        val sourceArchive = createArchive(
+            linkedMapOf(
+                "manifest.json" to manifest,
+                "docs/chapters/start.md" to "# Original\n".toByteArray(Charsets.UTF_8),
+                "docs/reference.md" to untouchedMarkdown,
+                "README.md" to otherMarkdown,
+                "assets/sample.bin" to binaryAsset
+            )
+        )
+        val initialSessionDir = java.nio.file.Files.createTempDirectory("mdzip-source").toFile()
+        val reopenedSessionDir = java.nio.file.Files.createTempDirectory("mdzip-reopened").toFile()
+
+        try {
+            val extractedEntries = TextPackManager.extractArchive(
+                ByteArrayInputStream(sourceArchive),
+                initialSessionDir
+            )
+            assertTrue("manifest.json" in extractedEntries)
+            assertTrue("docs/chapters/start.md" in extractedEntries)
+
+            TextPackManager.writeMdzipDocument(
+                initialSessionDir,
+                "docs/chapters/start.md",
+                "# Edited chapter\n\nOnly this document changed.\n"
+            )
+            val savedArchive = ByteArrayOutputStream().also { output ->
+                TextPackManager.writeMdzipArchive(initialSessionDir, output)
+            }.toByteArray()
+            TextPackManager.extractArchive(ByteArrayInputStream(savedArchive), reopenedSessionDir)
+
+            assertArrayEquals(manifest, File(reopenedSessionDir, "manifest.json").readBytes())
+            assertArrayEquals(untouchedMarkdown, File(reopenedSessionDir, "docs/reference.md").readBytes())
+            assertArrayEquals(otherMarkdown, File(reopenedSessionDir, "README.md").readBytes())
+            assertArrayEquals(binaryAsset, File(reopenedSessionDir, "assets/sample.bin").readBytes())
+            assertEquals(
+                "# Edited chapter\n\nOnly this document changed.\n",
+                File(reopenedSessionDir, "docs/chapters/start.md").readText(Charsets.UTF_8)
+            )
+        } finally {
+            initialSessionDir.deleteRecursively()
+            reopenedSessionDir.deleteRecursively()
+        }
+    }
+
     @Test
     fun manifestEntryPointTakesPrecedenceOverIndex() {
         assertEquals(
@@ -151,5 +216,17 @@ class TextPackManagerTest {
                 available
             )
         )
+    }
+
+    private fun createArchive(entries: Map<String, ByteArray>): ByteArray {
+        val output = ByteArrayOutputStream()
+        ZipOutputStream(output).use { zip ->
+            entries.forEach { (path, bytes) ->
+                zip.putNextEntry(ZipEntry(path))
+                zip.write(bytes)
+                zip.closeEntry()
+            }
+        }
+        return output.toByteArray()
     }
 }

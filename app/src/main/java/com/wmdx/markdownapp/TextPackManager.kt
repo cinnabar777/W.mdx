@@ -8,6 +8,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -180,10 +181,7 @@ object TextPackManager {
         if (session.format != TextPackFormat.MDZIP) {
             throw IOException("Only MDZip .mdz packages are supported.")
         }
-        val markdownFile = resolveArchiveFile(session.sessionDir, session.documentPath)
-            ?: throw IOException("The MDZip document path is invalid.")
-        markdownFile.parentFile?.mkdirs()
-        markdownFile.writeText(markdownContent, Charsets.UTF_8)
+        writeMdzipDocument(session.sessionDir, session.documentPath, markdownContent)
         val manifest = session.manifest ?: readManifest(session.sessionDir)
             ?: newMdzipManifest(session.entryPointPath, title)
         if (manifest.optString("mode") != "project") {
@@ -195,10 +193,7 @@ object TextPackManager {
         val output = context.contentResolver.openOutputStream(targetUri, "rwt")
             ?: throw IOException("Could not open the Markdown package for writing.")
         output.use { outputStream ->
-            ZipOutputStream(outputStream).use { zipOut ->
-                compressFolder(session.sessionDir, session.sessionDir, zipOut)
-                zipOut.flush()
-            }
+            writeMdzipArchive(session.sessionDir, outputStream)
         }
 
         session.sourceUri = targetUri
@@ -356,66 +351,73 @@ object TextPackManager {
         uri: Uri,
         sessionDir: File
     ): Set<String> {
+        val input = context.contentResolver.openInputStream(uri)
+            ?: throw IOException("Could not read the selected Markdown package.")
+        return input.use { inputStream ->
+            extractArchive(inputStream, sessionDir)
+        }
+    }
+
+    internal fun extractArchive(
+        inputStream: InputStream,
+        sessionDir: File
+    ): Set<String> {
         val extractedFiles = linkedSetOf<String>()
         val seenEntries = hashMapOf<String, Boolean>()
         var entryCount = 0
         var totalBytes = 0L
-        val input = context.contentResolver.openInputStream(uri)
-            ?: throw IOException("Could not read the selected Markdown package.")
-        input.use { inputStream ->
-            ZipInputStream(inputStream).use { zip ->
-                var entry = zip.nextEntry
-                while (entry != null) {
-                    if (++entryCount > MAX_ARCHIVE_ENTRIES) {
-                        throw IOException("The package contains too many files.")
-                    }
-                    val archivePath = validateArchivePath(entry.name)
-                        ?: throw IOException("The package contains an unsafe file path.")
-                    if (archivePath in seenEntries) {
-                        throw IOException("The package contains a duplicate path: $archivePath")
-                    }
-                    seenEntries[archivePath] = entry.isDirectory
-                    val target = resolveArchiveFile(sessionDir, archivePath)
-                        ?: throw IOException("The package contains an unsafe file path.")
+        ZipInputStream(inputStream).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (++entryCount > MAX_ARCHIVE_ENTRIES) {
+                    throw IOException("The package contains too many files.")
+                }
+                val archivePath = validateArchivePath(entry.name)
+                    ?: throw IOException("The package contains an unsafe file path.")
+                if (archivePath in seenEntries) {
+                    throw IOException("The package contains a duplicate path: $archivePath")
+                }
+                seenEntries[archivePath] = entry.isDirectory
+                val target = resolveArchiveFile(sessionDir, archivePath)
+                    ?: throw IOException("The package contains an unsafe file path.")
 
-                    if (entry.isDirectory) {
-                        if (entry.size > 0L || zip.read() != -1) {
-                            throw IOException("A package directory entry contains file data.")
-                        }
-                        if (!target.exists() && !target.mkdirs()) {
+                if (entry.isDirectory) {
+                    if (entry.size > 0L || zip.read() != -1) {
+                        throw IOException("A package directory entry contains file data.")
+                    }
+                    if (!target.exists() && !target.mkdirs()) {
+                        throw IOException("Could not create a package folder.")
+                    }
+                } else {
+                    target.parentFile?.let { parent ->
+                        if (!parent.exists() && !parent.mkdirs()) {
                             throw IOException("Could not create a package folder.")
                         }
-                    } else {
-                        target.parentFile?.let { parent ->
-                            if (!parent.exists() && !parent.mkdirs()) {
-                                throw IOException("Could not create a package folder.")
-                            }
-                        }
-                        var entryBytes = 0L
-                        FileOutputStream(target).use { out ->
-                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                            while (true) {
-                                val count = zip.read(buffer)
-                                if (count < 0) break
-                                entryBytes += count
-                                totalBytes += count
-                                if (entryBytes > MAX_ENTRY_BYTES || totalBytes > MAX_ARCHIVE_BYTES) {
-                                    throw IOException("The package expands beyond the supported size.")
-                                }
-                                if (archivePath == "manifest.json" && entryBytes > MAX_MANIFEST_BYTES) {
-                                    throw IOException("The package manifest is too large.")
-                                }
-                                if (isMarkdownPath(archivePath) && entryBytes > MAX_MARKDOWN_BYTES) {
-                                    throw IOException("A Markdown file in this package is too large.")
-                                }
-                                out.write(buffer, 0, count)
-                            }
-                        }
-                        extractedFiles.add(archivePath)
                     }
-                    zip.closeEntry()
-                    entry = zip.nextEntry
+                    var entryBytes = 0L
+                    FileOutputStream(target).use { out ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val count = zip.read(buffer)
+                            if (count < 0) break
+                            entryBytes += count
+                            totalBytes += count
+                            if (entryBytes > MAX_ENTRY_BYTES || totalBytes > MAX_ARCHIVE_BYTES) {
+                                throw IOException("The package expands beyond the supported size.")
+                            }
+                            if (archivePath == "manifest.json" && entryBytes > MAX_MANIFEST_BYTES) {
+                                throw IOException("The package manifest is too large.")
+                            }
+                            if (isMarkdownPath(archivePath) && entryBytes > MAX_MARKDOWN_BYTES) {
+                                throw IOException("A Markdown file in this package is too large.")
+                            }
+                            out.write(buffer, 0, count)
+                        }
+                    }
+                    extractedFiles.add(archivePath)
                 }
+                zip.closeEntry()
+                entry = zip.nextEntry
             }
         }
         for (path in seenEntries.keys) {
@@ -428,6 +430,23 @@ object TextPackManager {
             }
         }
         return extractedFiles
+    }
+
+    internal fun writeMdzipArchive(
+        sessionDir: File,
+        outputStream: OutputStream
+    ) {
+        ZipOutputStream(outputStream).use { zipOut ->
+            compressFolder(sessionDir, sessionDir, zipOut)
+            zipOut.flush()
+        }
+    }
+
+    internal fun writeMdzipDocument(sessionDir: File, documentPath: String, markdownContent: String) {
+        val markdownFile = resolveArchiveFile(sessionDir, documentPath)
+            ?: throw IOException("The MDZip document path is invalid.")
+        markdownFile.parentFile?.mkdirs()
+        markdownFile.writeText(markdownContent, Charsets.UTF_8)
     }
 
     private fun openMdzipSession(
