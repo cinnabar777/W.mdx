@@ -19,9 +19,14 @@ test('formats MP3 links with URL-encoded filenames and readable labels', async (
   });
 });
 
-test('does not treat non-MP3 links as the first MDZip audio format', async () => {
+test('recognizes M4A links and rejects unsupported audio formats', async () => {
   const { parseMarkdownAudioLink } = await import('../src/markdownMedia.js');
+  assert.deepEqual(parseMarkdownAudioLink('[Voice memo](audio/voice.m4a)'), {
+    label: 'Voice memo',
+    url: 'audio/voice.m4a'
+  });
   assert.equal(parseMarkdownAudioLink('[Voice](audio/voice.flac)'), null);
+  assert.equal(parseMarkdownAudioLink('[Voice](audio/voice.opus)'), null);
   assert.equal(parseMarkdownAudioLink('![Voice](audio/voice.mp3)'), null);
 });
 
@@ -67,10 +72,11 @@ test('stores audio width and alignment in standard Markdown link titles', async 
   );
 });
 
-test('extracts linked MP3s without treating images or code samples as attachments', async () => {
+test('extracts MP3 and M4A links without treating images or code samples as attachments', async () => {
   const { extractMarkdownAudioLinks } = await import('../src/markdownMedia.js');
   const markdown = [
     '[Voice](audio/voice.mp3)',
+    '[Recording](audio/recording.m4a)',
     '![Artwork](audio/image.mp3)',
     '`[Inline example](audio/inline.mp3)`',
     '```md',
@@ -80,7 +86,7 @@ test('extracts linked MP3s without treating images or code samples as attachment
 
   assert.deepEqual(
     extractMarkdownAudioLinks(markdown).map(({ url }) => url),
-    ['audio/voice.mp3']
+    ['audio/voice.mp3', 'audio/recording.m4a']
   );
 });
 

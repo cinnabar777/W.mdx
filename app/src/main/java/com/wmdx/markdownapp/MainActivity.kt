@@ -299,7 +299,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (replacementLink != null) replaceAudioFromUri(uri, replacementLink)
             else insertAudioFromUri(uri)
         } else if (uri != null) {
-            ThemedToast.show(this, "The active document changed. The MP3 change was not applied.", Toast.LENGTH_LONG)
+            ThemedToast.show(this, "The active document changed. The audio change was not applied.", Toast.LENGTH_LONG)
         }
     }
 
@@ -2291,6 +2291,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val archivePath = segments.drop(2).joinToString("/")
         val file = MdzipManager.audioArchiveFile(session, archivePath)
             ?: return mdzipAssetError(404, "Not Found")
+        val mimeType = mdzipAudioMimeType(file)
         val fileLength = file.length()
         val range = request.requestHeaders.entries
             .firstOrNull { it.key.equals("Range", ignoreCase = true) }
@@ -2307,30 +2308,30 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             } else {
                 limitedFileInputStream(file, 0, fileLength)
             }
-            return WebResourceResponse("audio/mpeg", null, 200, "OK", headers, body)
+            return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
         }
 
         val match = Regex("^bytes=(\\d*)-(\\d*)$", RegexOption.IGNORE_CASE).matchEntire(range.trim())
         if (match == null || fileLength <= 0) {
-            return mdzipRangeError(fileLength)
+            return mdzipRangeError(fileLength, mimeType)
         }
         val rawStart = match.groupValues[1]
         val rawEnd = match.groupValues[2]
-        if (rawStart.isEmpty() && rawEnd.isEmpty()) return mdzipRangeError(fileLength)
+        if (rawStart.isEmpty() && rawEnd.isEmpty()) return mdzipRangeError(fileLength, mimeType)
         val start = if (rawStart.isEmpty()) {
             val suffixLength = rawEnd.toLongOrNull()?.coerceAtLeast(1)
-                ?: return mdzipRangeError(fileLength)
+                ?: return mdzipRangeError(fileLength, mimeType)
             (fileLength - suffixLength).coerceAtLeast(0)
         } else {
-            rawStart.toLongOrNull() ?: return mdzipRangeError(fileLength)
+            rawStart.toLongOrNull() ?: return mdzipRangeError(fileLength, mimeType)
         }
         val end = if (rawEnd.isEmpty()) {
             fileLength - 1
         } else {
-            (rawEnd.toLongOrNull() ?: return mdzipRangeError(fileLength))
+            (rawEnd.toLongOrNull() ?: return mdzipRangeError(fileLength, mimeType))
                 .coerceAtMost(fileLength - 1)
         }
-        if (start >= fileLength || end < start) return mdzipRangeError(fileLength)
+        if (start >= fileLength || end < start) return mdzipRangeError(fileLength, mimeType)
 
         val length = end - start + 1
         headers["Content-Length"] = length.toString()
@@ -2340,8 +2341,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } else {
             limitedFileInputStream(file, start, length)
         }
-        return WebResourceResponse("audio/mpeg", null, 206, "Partial Content", headers, body)
+        return WebResourceResponse(mimeType, null, 206, "Partial Content", headers, body)
     }
+
+    private fun mdzipAudioMimeType(file: java.io.File): String =
+        if (file.extension.equals("m4a", ignoreCase = true)) "audio/mp4" else "audio/mpeg"
 
     private fun limitedFileInputStream(file: java.io.File, start: Long, length: Long): InputStream {
         val stream = FileInputStream(file)
@@ -2366,9 +2370,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun mdzipRangeError(fileLength: Long): WebResourceResponse =
+    private fun mdzipRangeError(fileLength: Long, mimeType: String): WebResourceResponse =
         WebResourceResponse(
-            "audio/mpeg",
+            mimeType,
             null,
             416,
             "Range Not Satisfiable",
@@ -2404,14 +2408,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (currentMdzipSession == null) {
             ThemedToast.show(
                 this,
-                "Open or save a document as MDZip (.mdz) before inserting MP3 audio.",
+                "Open or save a document as MDZip (.mdz) before inserting audio.",
                 Toast.LENGTH_LONG
             )
             return
         }
         pendingReplaceMdzipAudioLink = null
         pendingInsertAudioDocumentSessionId = currentDocumentSessionId
-        pickAudioLauncher.launch("audio/mpeg")
+        pickAudioLauncher.launch("audio/*")
     }
 
     private fun insertAudioFromUri(uri: Uri) {
@@ -2422,12 +2426,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         try {
             val originalName = getFileNameFromUri(uri)
-            if (!originalName.endsWith(".mp3", ignoreCase = true)) {
-                throw java.io.IOException("Choose an MP3 file for this first MDZip audio step.")
+            if (!MdzipManager.isSupportedAudioFileName(originalName)) {
+                throw java.io.IOException("Choose an MP3 or M4A file.")
             }
             val input = contentResolver.openInputStream(uri)
-                ?: throw java.io.IOException("Could not read the selected MP3.")
-            val relativeLink = MdzipManager.addMp3(session, input, originalName)
+                ?: throw java.io.IOException("Could not read the selected audio file.")
+            val relativeLink = MdzipManager.addAudio(session, input, originalName)
             val escapedLink = JSONObjectWrapper.quote(relativeLink)
             val escapedName = JSONObjectWrapper.quote(originalName)
             webView.evaluateJavascript(
@@ -2437,7 +2441,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } catch (error: Exception) {
             ThemedToast.show(
                 this,
-                "Could not add the MP3: ${error.localizedMessage ?: "unknown error"}",
+                "Could not add the audio file: ${error.localizedMessage ?: "unknown error"}",
                 Toast.LENGTH_LONG
             )
         }
@@ -2451,12 +2455,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         try {
             val selectedName = getFileNameFromUri(uri)
-            if (!selectedName.endsWith(".mp3", ignoreCase = true)) {
-                throw java.io.IOException("Choose an MP3 file.")
+            if (!MdzipManager.isSupportedAudioFileName(selectedName)) {
+                throw java.io.IOException("Choose an MP3 or M4A file.")
             }
             val input = contentResolver.openInputStream(uri)
-                ?: throw java.io.IOException("Could not read the selected MP3.")
-            MdzipManager.replaceMp3(session, relativeLink, input)
+                ?: throw java.io.IOException("Could not read the selected audio file.")
+            MdzipManager.replaceAudio(session, relativeLink, input, selectedName)
             isDirty = true
             updateTitle()
             val escapedLink = JSONObjectWrapper.quote(relativeLink)
@@ -2472,7 +2476,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } catch (error: Exception) {
             ThemedToast.show(
                 this,
-                "Could not replace the MP3: ${error.localizedMessage ?: "unknown error"}",
+                "Could not replace the audio file: ${error.localizedMessage ?: "unknown error"}",
                 Toast.LENGTH_LONG
             )
         }
@@ -3572,14 +3576,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 if (currentDocumentSessionId != sessionId || currentMdzipSession !== session) {
                     ThemedToast.show(
                         this@MainActivity,
-                        "The active document changed. The MP3 was not edited.",
+                        "The active document changed. The audio file was not edited.",
                         Toast.LENGTH_LONG
                     )
                     return@runOnUiThread
                 }
                 pendingReplaceMdzipAudioLink = relativeLink
                 pendingInsertAudioDocumentSessionId = sessionId
-                pickAudioLauncher.launch("audio/mpeg")
+                pickAudioLauncher.launch("audio/*")
             }
             return true
         }

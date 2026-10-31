@@ -3871,7 +3871,7 @@ class CodeMirrorAdapter {
       const changedText =
         update.startState.doc.sliceString(fromA, toA) +
         update.state.doc.sliceString(fromB, toB);
-      if (touchesExistingLink || /(?:audio\/|\.mp3)/i.test(changedText)) {
+      if (touchesExistingLink || /(?:audio\/|\.(?:mp3|m4a))/i.test(changedText)) {
         linksMayHaveChanged = true;
       }
     });
@@ -4669,7 +4669,7 @@ function setupGroupedControlBar() {
       e.stopPropagation();
       togglePopupStrip('insert', insertBtn, [
         { id: 'image', icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
-        { id: 'audio', icon: svgIcons.audio, title: 'Insert MP3 Audio', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('audio') },
+        { id: 'audio', icon: svgIcons.audio, title: 'Insert Audio', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('audio') },
         { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
@@ -4972,7 +4972,7 @@ function createToolbarActionRegistry() {
     ],
     [
       { id: 'image', title: 'Insert Image', icon: svgIcons.image, action: () => window.AndroidNative?.onNativeAction('image') },
-      { id: 'audio', title: 'Insert MP3 Audio', icon: svgIcons.audio, action: () => window.AndroidNative?.onNativeAction('audio') },
+      { id: 'audio', title: 'Insert Audio', icon: svgIcons.audio, action: () => window.AndroidNative?.onNativeAction('audio') },
       { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
       { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
@@ -8715,7 +8715,7 @@ window.editorBridge = {
       activeAdapter.setMarkdown(cur ? `${cur}\n${imgMarkdown}` : imgMarkdown);
     }
   },
-  insertAudioLink: function(relativeUrl, label = 'audio.mp3') {
+  insertAudioLink: function(relativeUrl, label = 'audio file') {
     if (activeAdapter && typeof activeAdapter.insertAudioLink === 'function') {
       activeAdapter.insertAudioLink(relativeUrl, label);
     }

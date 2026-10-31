@@ -32,6 +32,7 @@ object MdzipManager {
     private const val MAX_TOTAL_BYTES = 512L * 1024L * 1024L
     private const val MAX_AUDIO_BYTES = 256L * 1024L * 1024L
     private const val ASSET_BASE_URL = "https://appassets.androidplatform.net/mdzip-assets"
+    private val SUPPORTED_AUDIO_EXTENSIONS = setOf("mp3", "m4a")
 
     fun isMdzipFileName(fileName: String): Boolean =
         fileName.endsWith(".mdz", ignoreCase = true)
@@ -188,14 +189,21 @@ object MdzipManager {
         }
     }
 
-    fun addMp3(session: MdzipSession, input: InputStream, originalName: String): String {
+    fun isSupportedAudioFileName(fileName: String): Boolean {
+        val basename = fileName.substringAfterLast('/').substringAfterLast('\\')
+        val extension = basename.substringAfterLast('.', "").lowercase()
+        return extension in SUPPORTED_AUDIO_EXTENSIONS
+    }
+
+    fun addAudio(session: MdzipSession, input: InputStream, originalName: String): String {
         val basename = originalName.substringAfterLast('/').substringAfterLast('\\')
-        if (!basename.endsWith(".mp3", ignoreCase = true)) {
-            throw IOException("Only MP3 audio is supported in this first MDZip pass.")
+        val extension = basename.substringAfterLast('.', "").lowercase()
+        if (extension !in SUPPORTED_AUDIO_EXTENSIONS) {
+            throw IOException("Choose an MP3 or M4A audio file.")
         }
         val cleanName = sanitizeAudioFileName(basename)
-        val stem = cleanName.dropLast(4).ifBlank { "audio" }
-        val candidateName = uniqueAudioName(session.sessionDir, stem)
+        val stem = cleanName.removeSuffix(".$extension").ifBlank { "audio" }
+        val candidateName = uniqueAudioName(session.sessionDir, stem, extension)
         val archivePath = "audio/$candidateName"
         val target = resolveArchiveFile(session.sessionDir, archivePath)
         target.parentFile?.let {
@@ -212,7 +220,7 @@ object MdzipManager {
                     bytesCopied += read
                     if (bytesCopied > MAX_AUDIO_BYTES) {
                         target.delete()
-                        throw IOException("This MP3 is too large to add to the MDZip package.")
+                        throw IOException("This audio file is too large to add to the MDZip package.")
                     }
                     output.write(buffer, 0, read)
                 }
@@ -221,10 +229,23 @@ object MdzipManager {
         return relativeMarkdownPath(session.entryPoint, archivePath)
     }
 
-    fun replaceMp3(session: MdzipSession, markdownLink: String, input: InputStream) {
+    fun replaceAudio(
+        session: MdzipSession,
+        markdownLink: String,
+        input: InputStream,
+        originalName: String
+    ) {
         val target = resolveAudioFile(session, markdownLink)
-            ?: throw IOException("The linked MP3 is no longer in this MDZip package.")
-        val temporary = File.createTempFile("mdzip-audio-replacement-", ".mp3", target.parentFile)
+            ?: throw IOException("The linked audio is no longer in this MDZip package.")
+        val extension = originalName.substringAfterLast('.').lowercase()
+        if (!isSupportedAudioFileName(originalName) || extension != target.extension.lowercase()) {
+            throw IOException("Replacement audio must use the same supported format as the linked file.")
+        }
+        val temporary = File.createTempFile(
+            "mdzip-audio-replacement-",
+            ".$extension",
+            target.parentFile
+        )
         try {
             var bytesCopied = 0L
             input.use { source ->
@@ -235,15 +256,15 @@ object MdzipManager {
                         if (read < 0) break
                         bytesCopied += read
                         if (bytesCopied > MAX_AUDIO_BYTES) {
-                            throw IOException("This MP3 is too large to add to the MDZip package.")
+                            throw IOException("This audio file is too large to add to the MDZip package.")
                         }
                         output.write(buffer, 0, read)
                     }
                 }
             }
-            if (bytesCopied == 0L) throw IOException("The selected MP3 is empty.")
+            if (bytesCopied == 0L) throw IOException("The selected audio file is empty.")
             if (!temporary.renameTo(target)) {
-                throw IOException("Could not replace the MP3 inside the MDZip package.")
+                throw IOException("Could not replace the audio file inside the MDZip package.")
             }
         } finally {
             temporary.delete()
@@ -270,7 +291,7 @@ object MdzipManager {
         val archivePath = runCatching { safeArchivePath(parts.joinToString("/")) }.getOrNull()
             ?: return null
         if (!archivePath.startsWith("audio/", ignoreCase = true) ||
-            !archivePath.endsWith(".mp3", ignoreCase = true)
+            !isSupportedAudioFileName(archivePath)
         ) return null
         return archivePath
     }
@@ -283,7 +304,7 @@ object MdzipManager {
     fun audioArchiveFile(session: MdzipSession, archivePath: String): File? {
         val safePath = runCatching { safeArchivePath(archivePath) }.getOrNull() ?: return null
         if (!safePath.startsWith("audio/", ignoreCase = true) ||
-            !safePath.endsWith(".mp3", ignoreCase = true)
+            !isSupportedAudioFileName(safePath)
         ) return null
         return runCatching { resolveArchiveFile(session.sessionDir, safePath) }
             .getOrNull()
@@ -375,25 +396,29 @@ object MdzipManager {
     }
 
     private fun sanitizeAudioFileName(name: String): String {
-        val stem = name.dropLast(4)
+        val extension = name.substringAfterLast('.', "").lowercase()
+        if (extension !in SUPPORTED_AUDIO_EXTENSIONS) {
+            throw IOException("Choose an MP3 or M4A audio file.")
+        }
+        val stem = name.substringBeforeLast('.', name)
             .replace(Regex("[^\\p{L}\\p{N} ._()\\-]"), "_")
             .trim()
             .trim('.')
             .ifBlank { "audio" }
-        return "$stem.mp3"
+        return "$stem.$extension"
     }
 
-    private fun uniqueAudioName(root: File, stem: String): String {
+    private fun uniqueAudioName(root: File, stem: String, extension: String): String {
         var suffix = 1
         while (suffix < 10000) {
             val numberedStem = if (suffix == 1) stem else "$stem ($suffix)"
-            val candidate = "audio/$numberedStem.mp3"
+            val candidate = "audio/$numberedStem.$extension"
             if (!resolveArchiveFile(root, candidate).exists()) {
-                return "$numberedStem.mp3"
+                return "$numberedStem.$extension"
             }
             suffix += 1
         }
-        throw IOException("Could not assign a unique name to the MP3.")
+        throw IOException("Could not assign a unique name to the audio file.")
     }
 
     private fun relativeMarkdownPath(entryPoint: String, assetPath: String): String {

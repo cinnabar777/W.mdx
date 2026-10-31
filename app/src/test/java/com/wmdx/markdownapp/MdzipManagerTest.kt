@@ -32,4 +32,12 @@ class MdzipManagerTest {
         assertFalse(MdzipManager.isMdzipFileName("notes.textpack"))
         assertFalse(MdzipManager.isMdzipFileName("notes.md"))
     }
+
+    @Test
+    fun acceptsOnlyMp3AndM4aAudioFiles() {
+        assertEquals(true, MdzipManager.isSupportedAudioFileName("voice.mp3"))
+        assertEquals(true, MdzipManager.isSupportedAudioFileName("VOICE.M4A"))
+        assertFalse(MdzipManager.isSupportedAudioFileName("voice.flac"))
+        assertFalse(MdzipManager.isSupportedAudioFileName("voice.opus"))
+    }
 }

@@ -104,7 +104,7 @@ export class AudioPreviewWidget extends WidgetType {
   constructor(src, label, relativeLink, from, to, layout = null, onEdit = null) {
     super();
     this.src = src;
-    this.label = label || 'audio.mp3';
+    this.label = label || 'audio file';
     this.relativeLink = relativeLink;
     this.from = from;
     this.to = to;
@@ -423,7 +423,7 @@ export class AudioPreviewWidget extends WidgetType {
       event.stopPropagation();
       if (audio.paused) {
         audio.play().catch(() => {
-          status.textContent = 'Unable to play this MP3 on this device.';
+          status.textContent = 'Unable to play this audio file on this device.';
           status.style.display = 'block';
         });
       } else {
@@ -458,7 +458,7 @@ export class AudioPreviewWidget extends WidgetType {
     audio.addEventListener('ended', syncPlayButton);
     audio.addEventListener('volumechange', syncMuteButton);
     audio.addEventListener('error', () => {
-      status.textContent = 'Unable to play this MP3 on this device.';
+      status.textContent = 'Unable to play this audio file on this device.';
       status.style.display = 'block';
     });
 
