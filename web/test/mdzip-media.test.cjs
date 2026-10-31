@@ -19,7 +19,7 @@ test('formats MP3 links with URL-encoded filenames and readable labels', async (
   });
 });
 
-test('recognizes M4A and FLAC links and rejects unsupported audio formats', async () => {
+test('recognizes M4A, FLAC, and Opus links and rejects unsupported audio formats', async () => {
   const { parseMarkdownAudioLink } = await import('../src/markdownMedia.js');
   assert.deepEqual(parseMarkdownAudioLink('[Voice memo](audio/voice.m4a)'), {
     label: 'Voice memo',
@@ -29,7 +29,11 @@ test('recognizes M4A and FLAC links and rejects unsupported audio formats', asyn
     label: 'Voice',
     url: 'audio/voice.flac'
   });
-  assert.equal(parseMarkdownAudioLink('[Voice](audio/voice.opus)'), null);
+  assert.deepEqual(parseMarkdownAudioLink('[Voice](audio/voice.opus)'), {
+    label: 'Voice',
+    url: 'audio/voice.opus'
+  });
+  assert.equal(parseMarkdownAudioLink('[Voice](audio/voice.ogg)'), null);
   assert.equal(parseMarkdownAudioLink('![Voice](audio/voice.mp3)'), null);
 });
 
@@ -77,14 +81,19 @@ test('stores audio width and alignment in standard Markdown link titles', async 
     formatMarkdownAudioLink('Lossless', 'audio/track.flac?source=local'),
     '[Lossless](audio/track.flac?source=local)'
   );
+  assert.equal(
+    formatMarkdownAudioLink('Voice', 'audio/track.opus?source=local'),
+    '[Voice](audio/track.opus?source=local)'
+  );
 });
 
-test('extracts MP3, M4A, and FLAC links without treating images or code as attachments', async () => {
+test('extracts MP3, M4A, FLAC, and Opus links without treating images or code as attachments', async () => {
   const { extractMarkdownAudioLinks } = await import('../src/markdownMedia.js');
   const markdown = [
     '[Voice](audio/voice.mp3)',
     '[Recording](audio/recording.m4a)',
     '[Lossless](audio/recording.flac)',
+    '[Voice](audio/recording.opus)',
     '![Artwork](audio/image.mp3)',
     '`[Inline example](audio/inline.mp3)`',
     '```md',
@@ -94,7 +103,7 @@ test('extracts MP3, M4A, and FLAC links without treating images or code as attac
 
   assert.deepEqual(
     extractMarkdownAudioLinks(markdown).map(({ url }) => url),
-    ['audio/voice.mp3', 'audio/recording.m4a', 'audio/recording.flac']
+    ['audio/voice.mp3', 'audio/recording.m4a', 'audio/recording.flac', 'audio/recording.opus']
   );
 });
 

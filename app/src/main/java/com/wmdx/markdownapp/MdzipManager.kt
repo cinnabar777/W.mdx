@@ -32,7 +32,7 @@ object MdzipManager {
     private const val MAX_TOTAL_BYTES = 512L * 1024L * 1024L
     private const val MAX_AUDIO_BYTES = 256L * 1024L * 1024L
     private const val ASSET_BASE_URL = "https://appassets.androidplatform.net/mdzip-assets"
-    private val SUPPORTED_AUDIO_EXTENSIONS = setOf("mp3", "m4a", "flac")
+    private val SUPPORTED_AUDIO_EXTENSIONS = setOf("mp3", "m4a", "flac", "opus")
 
     fun isMdzipFileName(fileName: String): Boolean =
         fileName.endsWith(".mdz", ignoreCase = true)
@@ -199,7 +199,7 @@ object MdzipManager {
         val basename = originalName.substringAfterLast('/').substringAfterLast('\\')
         val extension = basename.substringAfterLast('.', "").lowercase()
         if (extension !in SUPPORTED_AUDIO_EXTENSIONS) {
-            throw IOException("Choose an MP3, M4A, or FLAC audio file.")
+            throw IOException("Choose an MP3, M4A, FLAC, or Opus audio file.")
         }
         val cleanName = sanitizeAudioFileName(basename)
         val stem = cleanName.removeSuffix(".$extension").ifBlank { "audio" }
@@ -398,7 +398,7 @@ object MdzipManager {
     private fun sanitizeAudioFileName(name: String): String {
         val extension = name.substringAfterLast('.', "").lowercase()
         if (extension !in SUPPORTED_AUDIO_EXTENSIONS) {
-            throw IOException("Choose an MP3, M4A, or FLAC audio file.")
+            throw IOException("Choose an MP3, M4A, FLAC, or Opus audio file.")
         }
         val stem = name.substringBeforeLast('.', name)
             .replace(Regex("[^\\p{L}\\p{N} ._()\\-]"), "_")

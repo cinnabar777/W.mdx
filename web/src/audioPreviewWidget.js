@@ -210,8 +210,13 @@ export class AudioPreviewWidget extends WidgetType {
     const audio = document.createElement('audio');
     const audioPath = this.relativeLink || this.src;
     const isFlacSource = /\.flac(?:$|[?#])/i.test(audioPath);
-    const isBlobSeekSource = /\.(?:m4a|flac)(?:$|[?#])/i.test(audioPath);
-    const seekBlobMimeType = isFlacSource ? 'audio/flac' : 'audio/mp4';
+    const isOpusSource = /\.opus(?:$|[?#])/i.test(audioPath);
+    const isBlobSeekSource = /\.(?:m4a|flac|opus)(?:$|[?#])/i.test(audioPath);
+    const seekBlobMimeType = isFlacSource
+      ? 'audio/flac'
+      : isOpusSource
+        ? 'audio/ogg'
+        : 'audio/mp4';
     let seekBlobUrl = null;
     let seekAbortController = null;
     let isPreparingBlobSeek = false;
@@ -500,7 +505,7 @@ export class AudioPreviewWidget extends WidgetType {
         await probeMetadataReady;
 
         if (!Number.isFinite(probe.duration) || probe.duration <= 0) {
-          throw new Error('The buffered M4A has no usable duration.');
+          throw new Error('The buffered audio has no usable duration.');
         }
         const probeTarget = Math.max(0, Math.min(targetTime, probe.duration));
         if (probeTarget > 0.05) {
@@ -512,7 +517,7 @@ export class AudioPreviewWidget extends WidgetType {
           probe.currentTime = probeTarget;
           await probeSeeked;
           if (Math.abs(probe.currentTime - probeTarget) > 1) {
-            throw new Error('The buffered M4A did not seek to the requested position.');
+            throw new Error('The buffered audio did not seek to the requested position.');
           }
         }
         if (disposed) return;

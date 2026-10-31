@@ -34,10 +34,11 @@ class MdzipManagerTest {
     }
 
     @Test
-    fun acceptsMp3M4aAndFlacButNotOpusAudioFiles() {
+    fun acceptsMp3M4aFlacAndOpusButNotOggAudioFiles() {
         assertEquals(true, MdzipManager.isSupportedAudioFileName("voice.mp3"))
         assertEquals(true, MdzipManager.isSupportedAudioFileName("VOICE.M4A"))
         assertEquals(true, MdzipManager.isSupportedAudioFileName("voice.flac"))
-        assertFalse(MdzipManager.isSupportedAudioFileName("voice.opus"))
+        assertEquals(true, MdzipManager.isSupportedAudioFileName("voice.opus"))
+        assertFalse(MdzipManager.isSupportedAudioFileName("voice.ogg"))
     }
 }

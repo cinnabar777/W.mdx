@@ -2314,7 +2314,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "Accept-Ranges" to "bytes",
             "Cache-Control" to "no-store"
         )
-        if (extension == "m4a" || extension == "flac") {
+        if (extension in setOf("m4a", "flac", "opus")) {
             headers.remove("Accept-Ranges")
         }
 
@@ -2362,6 +2362,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         when (extension.lowercase()) {
             "m4a" -> "audio/mp4"
             "flac" -> "audio/flac"
+            "opus" -> "audio/ogg"
             else -> "audio/mpeg"
         }
 
@@ -2394,6 +2395,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val extension = when (mimeType) {
             "audio/mp4" -> "m4a"
             "audio/flac" -> "flac"
+            "audio/ogg" -> "opus"
             else -> "mp3"
         }
         recordMdzipAudioAsset(
@@ -2461,7 +2463,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val originalName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedAudioFileName(originalName)) {
-                throw java.io.IOException("Choose an MP3, M4A, or FLAC file.")
+                throw java.io.IOException("Choose an MP3, M4A, FLAC, or Opus file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected audio file.")
@@ -2490,7 +2492,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val selectedName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedAudioFileName(selectedName)) {
-                throw java.io.IOException("Choose an MP3, M4A, or FLAC file.")
+                throw java.io.IOException("Choose an MP3, M4A, FLAC, or Opus file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected audio file.")

@@ -24,22 +24,23 @@ test('long-press exposes edit and explicit package delete actions', () => {
   assert.match(player, /userEvent: 'delete\.mdzip-audio'/);
 });
 
-test('M4A and FLAC files are accepted and served with the correct MIME types', () => {
+test('M4A, FLAC, and Opus files are accepted and served with the correct MIME types', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const capture = read('src/navigationCapture.js');
-  assert.match(manager, /setOf\("mp3", "m4a", "flac"\)/);
+  assert.match(manager, /setOf\("mp3", "m4a", "flac", "opus"\)/);
   assert.match(manager, /fun addAudio\(/);
   assert.match(manager, /fun isSupportedAudioFileName\(/);
   assert.match(activity, /pickAudioLauncher\.launch\("audio\/\*"\)/);
   assert.match(activity, /"m4a" -> "audio\/mp4"/);
   assert.match(activity, /"flac" -> "audio\/flac"/);
+  assert.match(activity, /"opus" -> "audio\/ogg"/);
   assert.match(activity, /"mdzip_audio_asset"/);
   assert.match(capture, /enqueue\('media_event'/);
   assert.match(capture, /mediaErrorCode:/);
 });
 
-test('M4A and FLAC prepare bounded Blob sources only when seeking', () => {
+test('M4A, FLAC, and Opus prepare bounded Blob sources only when seeking', () => {
   const player = read('src/audioPreviewWidget.js');
   const blobLoader = read('src/mdzipAudioBlobSeek.js');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
@@ -47,13 +48,13 @@ test('M4A and FLAC prepare bounded Blob sources only when seeking', () => {
   assert.match(player, /audio\.preload = isBlobSeekSource \? 'auto' : 'metadata'/);
   assert.match(player, /void seekAudioWithBlob\(targetTime\)/);
   assert.match(player, /fetchAudioSeekBlob\(this\.src/);
-  assert.match(player, /isFlacSource \? 'audio\/flac' : 'audio\/mp4'/);
+  assert.match(player, /isFlacSource[\s\S]*'audio\/flac'[\s\S]*isOpusSource[\s\S]*'audio\/ogg'/);
   assert.match(player, /URL\.revokeObjectURL\(seekBlobUrl\)/);
   assert.match(blobLoader, /MAX_AUDIO_SEEK_BYTES = 32 \* 1024 \* 1024/);
   assert.doesNotMatch(player, /enableMdzipAudioRangeRequests/);
   assert.match(
     activity,
-    /if \(extension == "m4a" \|\| extension == "flac"\) \{\s*headers\.remove\("Accept-Ranges"\)/
+    /if \(extension in setOf\("m4a", "flac", "opus"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
   );
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);
@@ -125,6 +126,27 @@ test('FLAC seek buffering applies the FLAC MIME type when needed', async () => {
     );
     assert.equal(blob.size, 5);
     assert.equal(blob.type, 'audio/flac');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('Opus seek buffering applies the Ogg MIME type when needed', async () => {
+  const { fetchAudioSeekBlob } = await import('../src/mdzipAudioBlobSeek.js');
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => '5' },
+    blob: async () => new Blob(['opus!'])
+  });
+  try {
+    const blob = await fetchAudioSeekBlob(
+      'https://example.test/audio.opus',
+      { maxBytes: 5, mimeType: 'audio/ogg' }
+    );
+    assert.equal(blob.size, 5);
+    assert.equal(blob.type, 'audio/ogg');
   } finally {
     global.fetch = originalFetch;
   }
