@@ -147,6 +147,39 @@ class MdzipByteRangeTest {
     }
 
     @Test
+    fun videoRangeStreamAppliesTheOffsetOnceAndStopsAtTheRangeEnd() {
+        val file = File.createTempFile("mdzip-range-", ".bin")
+        try {
+            val source = ByteArray(10) { it.toByte() }
+            file.writeBytes(source)
+            var stats: MdzipByteRangeStreamStats? = null
+            val actual = ByteArrayOutputStream()
+            openMdzipVideoByteRangeStream(file, 3, 4) { stats = it }.use { stream ->
+                assertEquals(3L, stream.skip(3))
+                val buffer = ByteArray(8)
+                val count = stream.read(buffer)
+                assertEquals(4, count)
+                actual.write(buffer, 0, count)
+                assertEquals(-1, stream.read())
+            }
+
+            assertEquals(source.copyOfRange(3, 7).toList(), actual.toByteArray().toList())
+            assertEquals(
+                MdzipByteRangeStreamStats(
+                    expectedBytes = 7,
+                    readBytes = 4,
+                    skippedBytes = 3,
+                    sourceEndedEarly = false
+                ),
+                stats
+            )
+            assertEquals(true, stats?.complete)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
     fun rangeStreamReportsAnIncompleteReadAndPrematureSourceEnd() {
         val file = File.createTempFile("mdzip-range-", ".bin")
         try {

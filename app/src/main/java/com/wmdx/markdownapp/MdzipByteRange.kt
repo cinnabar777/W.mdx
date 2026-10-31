@@ -149,3 +149,18 @@ internal fun openMdzipByteRangeStream(
         }
     }
 }
+
+internal fun openMdzipVideoByteRangeStream(
+    file: File,
+    start: Long,
+    length: Long,
+    onClose: (MdzipByteRangeStreamStats) -> Unit = {}
+): InputStream {
+    val fileLength = file.length()
+    require(start >= 0 && length > 0)
+    require(start <= fileLength && length <= fileLength - start)
+
+    // The intercepted-media reader applies the Range start with InputStream.skip().
+    // Start at byte zero so the requested offset is applied exactly once.
+    return openMdzipByteRangeStream(file, 0, start + length, onClose)
+}

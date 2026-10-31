@@ -2456,8 +2456,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         length: Long,
         status: Int,
         rangeHeader: String?
-    ): InputStream =
-        openMdzipByteRangeStream(file, start, length) { stats ->
+    ): InputStream {
+        val onClose: (MdzipByteRangeStreamStats) -> Unit = { stats ->
             if (AppDiagnostics.isNavigationCaptureActive(this)) {
                 val requestedRange = rangeHeader
                     ?.replace(Regex("[^A-Za-z0-9=,-]"), "")
@@ -2466,12 +2466,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 AppDiagnostics.record(
                     this,
                     "mdzip_video_stream",
-                    "status=$status range=$requestedRange start=$start expected=${stats.expectedBytes} " +
+                    "status=$status range=$requestedRange start=$start responseBytes=$length " +
+                        "streamLimit=${stats.expectedBytes} " +
                         "read=${stats.readBytes} skipped=${stats.skippedBytes} " +
                         "complete=${stats.complete} earlyEof=${stats.sourceEndedEarly}"
                 )
             }
         }
+        return if (status == 206) {
+            openMdzipVideoByteRangeStream(file, start, length, onClose)
+        } else {
+            openMdzipByteRangeStream(file, start, length, onClose)
+        }
+    }
 
     private fun recordMdzipVideoAsset(
         extension: String,
