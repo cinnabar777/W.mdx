@@ -24,42 +24,44 @@ test('long-press exposes edit and explicit package delete actions', () => {
   assert.match(player, /userEvent: 'delete\.mdzip-audio'/);
 });
 
-test('M4A files are accepted and served with an MP4 audio MIME type', () => {
+test('M4A and FLAC files are accepted and served with the correct MIME types', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const capture = read('src/navigationCapture.js');
-  assert.match(manager, /setOf\("mp3", "m4a"\)/);
+  assert.match(manager, /setOf\("mp3", "m4a", "flac"\)/);
   assert.match(manager, /fun addAudio\(/);
   assert.match(manager, /fun isSupportedAudioFileName\(/);
   assert.match(activity, /pickAudioLauncher\.launch\("audio\/\*"\)/);
-  assert.match(activity, /"audio\/mp4" else "audio\/mpeg"/);
+  assert.match(activity, /"m4a" -> "audio\/mp4"/);
+  assert.match(activity, /"flac" -> "audio\/flac"/);
   assert.match(activity, /"mdzip_audio_asset"/);
   assert.match(capture, /enqueue\('media_event'/);
   assert.match(capture, /mediaErrorCode:/);
 });
 
-test('M4A prepares a bounded Blob source only when seeking', () => {
+test('M4A and FLAC prepare bounded Blob sources only when seeking', () => {
   const player = read('src/audioPreviewWidget.js');
   const blobLoader = read('src/mdzipAudioBlobSeek.js');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
-  assert.match(player, /isM4aSource =/);
-  assert.match(player, /audio\.preload = isM4aSource \? 'auto' : 'metadata'/);
-  assert.match(player, /void seekM4aWithBlob\(targetTime\)/);
-  assert.match(player, /fetchM4aSeekBlob\(this\.src/);
+  assert.match(player, /isBlobSeekSource =/);
+  assert.match(player, /audio\.preload = isBlobSeekSource \? 'auto' : 'metadata'/);
+  assert.match(player, /void seekAudioWithBlob\(targetTime\)/);
+  assert.match(player, /fetchAudioSeekBlob\(this\.src/);
+  assert.match(player, /isFlacSource \? 'audio\/flac' : 'audio\/mp4'/);
   assert.match(player, /URL\.revokeObjectURL\(seekBlobUrl\)/);
-  assert.match(blobLoader, /MAX_M4A_SEEK_BYTES = 32 \* 1024 \* 1024/);
+  assert.match(blobLoader, /MAX_AUDIO_SEEK_BYTES = 32 \* 1024 \* 1024/);
   assert.doesNotMatch(player, /enableMdzipAudioRangeRequests/);
   assert.match(
     activity,
-    /if \(extension == "m4a"\) headers\.remove\("Accept-Ranges"\)/
+    /if \(extension == "m4a" \|\| extension == "flac"\) \{\s*headers\.remove\("Accept-Ranges"\)/
   );
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);
-  assert.match(seekCommit, /void seekM4aWithBlob\(targetTime\)/);
+  assert.match(seekCommit, /void seekAudioWithBlob\(targetTime\)/);
 });
 
-test('M4A seek buffering enforces the size limit before reading large bodies', async () => {
-  const { fetchM4aSeekBlob } = await import('../src/mdzipAudioBlobSeek.js');
+test('audio seek buffering enforces the size limit before reading large bodies', async () => {
+  const { fetchAudioSeekBlob } = await import('../src/mdzipAudioBlobSeek.js');
   const originalFetch = global.fetch;
   let bodyCancelled = false;
   global.fetch = async () => ({
@@ -77,8 +79,8 @@ test('M4A seek buffering enforces the size limit before reading large bodies', a
   });
   try {
     await assert.rejects(
-      fetchM4aSeekBlob('https://example.test/audio.m4a', { maxBytes: 32 }),
-      error => error.code === 'M4A_SEEK_TOO_LARGE'
+      fetchAudioSeekBlob('https://example.test/audio.m4a', { maxBytes: 32 }),
+      error => error.code === 'AUDIO_SEEK_TOO_LARGE'
     );
     assert.equal(bodyCancelled, true);
   } finally {
@@ -86,8 +88,8 @@ test('M4A seek buffering enforces the size limit before reading large bodies', a
   }
 });
 
-test('M4A seek buffering returns a playable audio Blob within the limit', async () => {
-  const { fetchM4aSeekBlob } = await import('../src/mdzipAudioBlobSeek.js');
+test('audio seek buffering returns a playable audio Blob within the limit', async () => {
+  const { fetchAudioSeekBlob } = await import('../src/mdzipAudioBlobSeek.js');
   const originalFetch = global.fetch;
   global.fetch = async () => ({
     ok: true,
@@ -96,12 +98,33 @@ test('M4A seek buffering returns a playable audio Blob within the limit', async 
     blob: async () => new Blob(['m4a!'], { type: 'audio/mp4' })
   });
   try {
-    const blob = await fetchM4aSeekBlob(
+    const blob = await fetchAudioSeekBlob(
       'https://example.test/audio.m4a',
       { maxBytes: 4 }
     );
     assert.equal(blob.size, 4);
     assert.equal(blob.type, 'audio/mp4');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('FLAC seek buffering applies the FLAC MIME type when needed', async () => {
+  const { fetchAudioSeekBlob } = await import('../src/mdzipAudioBlobSeek.js');
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => '5' },
+    blob: async () => new Blob(['flac!'])
+  });
+  try {
+    const blob = await fetchAudioSeekBlob(
+      'https://example.test/audio.flac',
+      { maxBytes: 5, mimeType: 'audio/flac' }
+    );
+    assert.equal(blob.size, 5);
+    assert.equal(blob.type, 'audio/flac');
   } finally {
     global.fetch = originalFetch;
   }

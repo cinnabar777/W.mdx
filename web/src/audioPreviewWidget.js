@@ -1,5 +1,8 @@
 import { WidgetType } from '@codemirror/view';
-import { fetchM4aSeekBlob, MAX_M4A_SEEK_BYTES } from './mdzipAudioBlobSeek.js';
+import {
+  fetchAudioSeekBlob,
+  MAX_AUDIO_SEEK_BYTES
+} from './mdzipAudioBlobSeek.js';
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -205,12 +208,15 @@ export class AudioPreviewWidget extends WidgetType {
     wrapper.appendChild(labelRow);
 
     const audio = document.createElement('audio');
-    const isM4aSource = /\.m4a(?:$|[?#])/i.test(this.relativeLink || this.src);
+    const audioPath = this.relativeLink || this.src;
+    const isFlacSource = /\.flac(?:$|[?#])/i.test(audioPath);
+    const isBlobSeekSource = /\.(?:m4a|flac)(?:$|[?#])/i.test(audioPath);
+    const seekBlobMimeType = isFlacSource ? 'audio/flac' : 'audio/mp4';
     let seekBlobUrl = null;
     let seekAbortController = null;
-    let isPreparingM4aSeek = false;
+    let isPreparingBlobSeek = false;
     let disposed = false;
-    audio.preload = isM4aSource ? 'auto' : 'metadata';
+    audio.preload = isBlobSeekSource ? 'auto' : 'metadata';
     audio.src = this.src;
     audio.dataset.mdzipAudio = 'true';
     audio.dataset.mdzipLink = this.relativeLink;
@@ -451,15 +457,15 @@ export class AudioPreviewWidget extends WidgetType {
         seek.value = String(Math.min(audio.currentTime || 0, duration || 1));
       }
     };
-    const seekM4aWithBlob = async targetTime => {
+    const seekAudioWithBlob = async targetTime => {
       if (seekBlobUrl) {
         audio.currentTime = targetTime;
         updateTime();
         return;
       }
-      if (isPreparingM4aSeek) return;
+      if (isPreparingBlobSeek) return;
 
-      isPreparingM4aSeek = true;
+      isPreparingBlobSeek = true;
       const controller = new AbortController();
       seekAbortController = controller;
       const wasPlaying = !audio.paused && !audio.ended;
@@ -475,7 +481,10 @@ export class AudioPreviewWidget extends WidgetType {
       status.style.display = 'block';
 
       try {
-        const blob = await fetchM4aSeekBlob(this.src, { signal: controller.signal });
+        const blob = await fetchAudioSeekBlob(this.src, {
+          signal: controller.signal,
+          mimeType: seekBlobMimeType
+        });
         if (disposed) return;
 
         blobUrl = URL.createObjectURL(blob);
@@ -574,9 +583,9 @@ export class AudioPreviewWidget extends WidgetType {
             // Keep the seek error visible if restoring the original source also fails.
           }
         }
-        if (error?.code === 'M4A_SEEK_TOO_LARGE') {
+        if (error?.code === 'AUDIO_SEEK_TOO_LARGE') {
           status.textContent =
-            `This file exceeds the ${Math.round(MAX_M4A_SEEK_BYTES / (1024 * 1024))} MB seek limit. Playback remains available, but seeking is unavailable.`;
+            `This file exceeds the ${Math.round(MAX_AUDIO_SEEK_BYTES / (1024 * 1024))} MB seek limit. Playback remains available, but seeking is unavailable.`;
         } else {
           status.textContent = 'Could not prepare seeking. Playback remains available.';
         }
@@ -589,7 +598,7 @@ export class AudioPreviewWidget extends WidgetType {
         }
         if (blobUrl) URL.revokeObjectURL(blobUrl);
         if (seekAbortController === controller) seekAbortController = null;
-        isPreparingM4aSeek = false;
+        isPreparingBlobSeek = false;
         playButton.disabled = false;
         seek.disabled = false;
         if (!disposed) {
@@ -603,8 +612,8 @@ export class AudioPreviewWidget extends WidgetType {
       isDraggingSeek = false;
       if (Number.isFinite(audio.duration)) {
         const targetTime = Math.max(0, Math.min(Number(seek.value), audio.duration));
-        if (isM4aSource) {
-          void seekM4aWithBlob(targetTime);
+        if (isBlobSeekSource) {
+          void seekAudioWithBlob(targetTime);
           return;
         }
         audio.currentTime = targetTime;
@@ -672,7 +681,7 @@ export class AudioPreviewWidget extends WidgetType {
     audio.addEventListener('ended', syncPlayButton);
     audio.addEventListener('volumechange', syncMuteButton);
     audio.addEventListener('error', () => {
-      if (isPreparingM4aSeek) return;
+      if (isPreparingBlobSeek) return;
       status.textContent = 'Unable to play this audio file on this device.';
       status.style.display = 'block';
     });

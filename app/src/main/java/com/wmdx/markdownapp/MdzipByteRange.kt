@@ -45,7 +45,8 @@ internal fun shouldServeMdzipAudioAsWholeFile(
     rangeHeader: String?
 ): Boolean =
     rangeHeader == null ||
-        extension.equals("m4a", ignoreCase = true)
+        extension.equals("m4a", ignoreCase = true) ||
+        extension.equals("flac", ignoreCase = true)
 
 internal fun openMdzipByteRangeStream(
     file: File,

@@ -2314,7 +2314,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "Accept-Ranges" to "bytes",
             "Cache-Control" to "no-store"
         )
-        if (extension == "m4a") headers.remove("Accept-Ranges")
+        if (extension == "m4a" || extension == "flac") {
+            headers.remove("Accept-Ranges")
+        }
 
         if (shouldServeMdzipAudioAsWholeFile(extension, range)) {
             recordMdzipAudioAsset(
@@ -2357,7 +2359,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun mdzipAudioMimeType(extension: String): String =
-        if (extension.equals("m4a", ignoreCase = true)) "audio/mp4" else "audio/mpeg"
+        when (extension.lowercase()) {
+            "m4a" -> "audio/mp4"
+            "flac" -> "audio/flac"
+            else -> "audio/mpeg"
+        }
 
     private fun recordMdzipAudioAsset(
         extension: String,
@@ -2385,7 +2391,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         mimeType: String,
         rangeHeader: String?
     ): WebResourceResponse {
-        val extension = if (mimeType == "audio/mp4") "m4a" else "mp3"
+        val extension = when (mimeType) {
+            "audio/mp4" -> "m4a"
+            "audio/flac" -> "flac"
+            else -> "mp3"
+        }
         recordMdzipAudioAsset(
             extension,
             416,
@@ -2451,7 +2461,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val originalName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedAudioFileName(originalName)) {
-                throw java.io.IOException("Choose an MP3 or M4A file.")
+                throw java.io.IOException("Choose an MP3, M4A, or FLAC file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected audio file.")
@@ -2480,7 +2490,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val selectedName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedAudioFileName(selectedName)) {
-                throw java.io.IOException("Choose an MP3 or M4A file.")
+                throw java.io.IOException("Choose an MP3, M4A, or FLAC file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected audio file.")

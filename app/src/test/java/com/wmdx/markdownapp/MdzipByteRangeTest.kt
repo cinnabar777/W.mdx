@@ -41,10 +41,12 @@ class MdzipByteRangeTest {
     }
 
     @Test
-    fun servesM4aAsAWholeFileAndRetainsMp3RangeSupport() {
+    fun servesM4aAndFlacAsWholeFilesAndRetainsMp3RangeSupport() {
         assertTrue(shouldServeMdzipAudioAsWholeFile("m4a", "bytes=1703936-"))
         assertTrue(shouldServeMdzipAudioAsWholeFile("M4A", "bytes=-19007"))
         assertTrue(shouldServeMdzipAudioAsWholeFile("m4a", null))
+        assertTrue(shouldServeMdzipAudioAsWholeFile("flac", "bytes=65536-"))
+        assertTrue(shouldServeMdzipAudioAsWholeFile("FLAC", null))
         assertTrue(shouldServeMdzipAudioAsWholeFile("mp3", null))
         assertFalse(shouldServeMdzipAudioAsWholeFile("mp3", "bytes=100-200"))
     }
