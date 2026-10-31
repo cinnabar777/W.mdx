@@ -2031,7 +2031,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                 widget: new VideoPreviewWidget(
                   videoUrl,
                   videoLink.label,
-                  videoLink.url
+                  videoLink.url,
+                  node.from,
+                  node.to,
+                  videoLink.layout,
+                  (editView, item) => openVideoEditDialog(editView, item)
                 )
               }).range(node.from, node.to);
               builder.push(videoDecoration);
@@ -3159,7 +3163,11 @@ function buildHeightMapValue(state) {
             widget: new VideoPreviewWidget(
               videoUrl,
               videoLink.label,
-              videoLink.url
+              videoLink.url,
+              node.from,
+              node.to,
+              videoLink.layout,
+              (editView, item) => openVideoEditDialog(editView, item)
             )
           }).range(node.from, node.to);
           replacements.push(videoDecoration);
@@ -5845,6 +5853,88 @@ function openAudioEditDialog(view, audioItem) {
       changes: { from, to, insert: markdown },
       selection: { anchor: from + markdown.length, head: from + markdown.length },
       userEvent: 'input.mdzip-audio-layout'
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => widthInput.focus());
+}
+
+function openVideoEditDialog(view, videoItem) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Video Layout</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-video-width">Video width (% of text area)</label>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <input id="modal-video-width" class="modal-input" type="range" min="40" max="100" step="5"
+          style="flex:1;min-width:0;width:auto;padding:0;border:0;background:transparent;accent-color:var(--accent-color,#00d6c9);" />
+        <output id="modal-video-width-value" aria-live="polite" style="min-width:42px;text-align:right;"></output>
+      </div>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-video-alignment">Alignment</label>
+      <select id="modal-video-alignment" class="modal-input">
+        <option value="left">Left</option>
+        <option value="center">Center</option>
+        <option value="right">Right</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-video-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-video-save">Save</button>
+    </div>
+  `;
+
+  const widthInput = dialog.querySelector('#modal-video-width');
+  const widthValue = dialog.querySelector('#modal-video-width-value');
+  const alignmentInput = dialog.querySelector('#modal-video-alignment');
+  widthInput.value = String(videoItem.layout?.width ?? 100);
+  alignmentInput.value = videoItem.layout?.alignment ?? 'left';
+  const updateWidthValue = () => {
+    widthValue.textContent = `${widthInput.value}%`;
+  };
+  updateWidthValue();
+  widthInput.addEventListener('input', updateWidthValue);
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-video-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-video-save').addEventListener('click', event => {
+    event.preventDefault();
+    const { from, to } = videoItem;
+    if (from < 0 || to > view.state.doc.length || from >= to) {
+      close();
+      return;
+    }
+    const currentVideo = parseMarkdownVideoLink(view.state.doc.sliceString(from, to));
+    if (!currentVideo || currentVideo.url !== videoItem.url) {
+      close();
+      return;
+    }
+
+    const markdown = formatMarkdownVideoLink(
+      videoItem.label,
+      videoItem.url,
+      {
+        width: Number(widthInput.value),
+        alignment: alignmentInput.value
+      }
+    );
+    view.dispatch({
+      changes: { from, to, insert: markdown },
+      selection: { anchor: from + markdown.length, head: from + markdown.length },
+      userEvent: 'input.mdzip-video-layout'
     });
     close();
   });

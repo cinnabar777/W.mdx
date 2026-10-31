@@ -49,6 +49,28 @@ function parseAudioLayoutTitle(title) {
   return { width, alignment: values.align };
 }
 
+function parseVideoLayoutTitle(title) {
+  if (!title?.startsWith('wmdx-video:')) return null;
+  const values = Object.fromEntries(
+    title.slice('wmdx-video:'.length).split(';').map(pair => {
+      const separator = pair.indexOf('=');
+      return separator === -1
+        ? [pair, '']
+        : [pair.slice(0, separator), pair.slice(separator + 1)];
+    })
+  );
+  const width = Number(values.width);
+  if (
+    !Number.isInteger(width) ||
+    width < 40 ||
+    width > 100 ||
+    !['left', 'center', 'right'].includes(values.align)
+  ) {
+    return null;
+  }
+  return { width, alignment: values.align };
+}
+
 export function parseMarkdownAudioLink(text) {
   const link = markdownLinkParts(text);
   if (!link) return null;
@@ -75,7 +97,10 @@ export function parseMarkdownVideoLink(text) {
     // Keep the encoded value; the native resolver validates and decodes it.
   }
   if (!/\.(?:mp4|m4v|webm|3gp)$/i.test(decodedPath)) return null;
-  return { label: link.label, url: link.url };
+  const parsed = { label: link.label, url: link.url };
+  const layout = parseVideoLayoutTitle(link.title);
+  if (layout) parsed.layout = layout;
+  return parsed;
 }
 
 function markdownCodeRanges(text) {
@@ -208,7 +233,7 @@ export function formatMarkdownAudioLink(label, url, layout = null) {
   return `[${safeLabel}](${safePath}${suffix}${title})`;
 }
 
-export function formatMarkdownVideoLink(label, url) {
+export function formatMarkdownVideoLink(label, url, layout = null) {
   const safeLabel = String(label ?? 'video')
     .replace(/\\/g, '\\\\')
     .replace(/\]/g, '\\]');
@@ -230,5 +255,19 @@ export function formatMarkdownVideoLink(label, url) {
       `%${character.charCodeAt(0).toString(16).toUpperCase()}`
     );
   }).join('/');
-  return `[${safeLabel}](${safePath}${suffix})`;
+
+  if (layout == null) return `[${safeLabel}](${safePath}${suffix})`;
+
+  const width = Number(layout.width ?? 100);
+  const alignment = layout.alignment ?? 'left';
+  if (!Number.isInteger(width) || width < 40 || width > 100) {
+    throw new RangeError('Video width must be a whole-number percentage from 40 to 100.');
+  }
+  if (!['left', 'center', 'right'].includes(alignment)) {
+    throw new RangeError('Video alignment must be left, center, or right.');
+  }
+  const title = width === 100 && alignment === 'left'
+    ? ''
+    : ` "wmdx-video:width=${width};align=${alignment}"`;
+  return `[${safeLabel}](${safePath}${suffix}${title})`;
 }

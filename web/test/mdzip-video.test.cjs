@@ -35,6 +35,28 @@ test('MP4, M4V, WebM, and 3GP Markdown links format, parse, and extract outside 
     label: 'Older phone clip.3gp',
     url: 'video/Older%20phone%20clip.3gp'
   });
+  const layoutMarkdown = formatMarkdownVideoLink(
+    'Framed clip.mp4',
+    'video/Framed clip.mp4',
+    { width: 65, alignment: 'center' }
+  );
+  assert.equal(
+    layoutMarkdown,
+    '[Framed clip.mp4](video/Framed%20clip.mp4 "wmdx-video:width=65;align=center")'
+  );
+  assert.deepEqual(parseMarkdownVideoLink(layoutMarkdown), {
+    label: 'Framed clip.mp4',
+    url: 'video/Framed%20clip.mp4',
+    layout: { width: 65, alignment: 'center' }
+  });
+  assert.equal(
+    formatMarkdownVideoLink('Clip.mp4', 'video/Clip.mp4', { width: 100, alignment: 'left' }),
+    '[Clip.mp4](video/Clip.mp4)'
+  );
+  assert.throws(
+    () => formatMarkdownVideoLink('Clip.mp4', 'video/Clip.mp4', { width: 35, alignment: 'left' }),
+    RangeError
+  );
   assert.equal(
     formatMarkdownVideoLink('Clip', 'video/clip.mp4?download=1'),
     '[Clip](video/clip.mp4?download=1)'
@@ -107,4 +129,21 @@ test('MP4, M4V, WebM, and 3GP insertion, package serving, and default rendering 
   assert.match(read('index.html'), /body\.light-theme \{\s*color-scheme: light;/);
   assert.doesNotMatch(editor, /video\[data-mdzip-video="true"\]/);
   assert.match(icons, /video: `<svg/);
+});
+
+test('video preview keeps native controls and safely edits or deletes the entire link', () => {
+  const widget = read('src/videoPreviewWidget.js');
+  const editor = read('src/main.js');
+
+  assert.match(widget, /video\.controls = true/);
+  assert.match(widget, /Long-press for video options/);
+  assert.match(widget, /}, 550\)/);
+  assert.match(widget, /editButton\.textContent = 'Edit'/);
+  assert.match(widget, /deleteButton\.textContent = 'Delete from MDZip'/);
+  assert.match(widget, /changes: \{ from: this\.from, to: this\.to, insert: '' \}/);
+  assert.match(widget, /userEvent: 'delete\.mdzip-video'/);
+  assert.match(widget, /this\.onEdit\(view/);
+  assert.equal((editor.match(/new VideoPreviewWidget\(/g) || []).length, 2);
+  assert.equal((editor.match(/openVideoEditDialog\(editView, item\)/g) || []).length, 2);
+  assert.match(editor, /input\.mdzip-video-layout/);
 });
