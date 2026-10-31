@@ -7681,7 +7681,6 @@ function setupTocGestureAndPanel(scrollDOM) {
     if (globalToggleBtn && globalToggleBtn.onclick === globalToggleHandler) {
       globalToggleBtn.onclick = null;
     }
-    isSwiping = false;
   };
 }
 

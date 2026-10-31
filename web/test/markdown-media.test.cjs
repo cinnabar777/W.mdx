@@ -58,6 +58,24 @@ test('media link formatter and parser preserve package-relative destinations', a
   );
 });
 
+test('MDZip audio and video extensions are classified into their media folders', async () => {
+  const { getMarkdownMediaType } = await import('../src/markdownMedia.js');
+  const formatGroups = [
+    ['audio', ['aac', 'flac', 'm4a', 'mp3', 'oga', 'ogg', 'opus', 'wav', 'webm']],
+    ['video', ['3gp', 'avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ogv', 'webm', 'wmv']]
+  ];
+
+  for (const [expectedType, extensions] of formatGroups) {
+    for (const extension of extensions) {
+      assert.equal(
+        getMarkdownMediaType(`../${expectedType}/sample.${extension}`),
+        expectedType,
+        `${expectedType}/${extension} remains a media player link`
+      );
+    }
+  }
+});
+
 test('custom audio and video players point to the resolved packaged media URL', async () => {
   const { resolveArchiveMediaUrl } = await import('../src/markdownMedia.js');
   const { createMediaPreviewElement } = await import('../src/mediaPreview.js');
