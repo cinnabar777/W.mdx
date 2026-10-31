@@ -46,6 +46,7 @@ internal fun shouldServeMdzipAudioAsWholeFile(
 ): Boolean =
     rangeHeader == null ||
         extension.equals("m4a", ignoreCase = true) ||
+        extension.equals("wav", ignoreCase = true) ||
         extension.equals("aac", ignoreCase = true) ||
         extension.equals("flac", ignoreCase = true) ||
         extension.equals("opus", ignoreCase = true) ||

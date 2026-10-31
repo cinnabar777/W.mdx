@@ -2360,7 +2360,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "Accept-Ranges" to "bytes",
             "Cache-Control" to "no-store"
         )
-        if (!isVideoAsset && extension in setOf("aac", "m4a", "flac", "opus", "ogg", "oga")) {
+        if (!isVideoAsset && extension in setOf("aac", "m4a", "wav", "flac", "opus", "ogg", "oga")) {
             headers.remove("Accept-Ranges")
         }
 
@@ -2413,6 +2413,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         when (extension.lowercase()) {
             "aac" -> "audio/aac"
             "m4a" -> "audio/mp4"
+            "wav" -> "audio/wav"
             "flac" -> "audio/flac"
             "opus", "ogg", "oga" -> "audio/ogg"
             else -> "audio/mpeg"
@@ -2555,7 +2556,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val originalName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedAudioFileName(originalName)) {
-                throw java.io.IOException("Choose an MP3, AAC, M4A, FLAC, Opus, OGG, or OGA file.")
+                throw java.io.IOException("Choose an MP3, AAC, M4A, WAV, FLAC, Opus, OGG, or OGA file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected audio file.")
@@ -2584,7 +2585,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val selectedName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedAudioFileName(selectedName)) {
-                throw java.io.IOException("Choose an MP3, AAC, M4A, FLAC, Opus, OGG, or OGA file.")
+                throw java.io.IOException("Choose an MP3, AAC, M4A, WAV, FLAC, Opus, OGG, or OGA file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected audio file.")

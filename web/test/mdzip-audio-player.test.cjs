@@ -24,16 +24,17 @@ test('long-press exposes edit and explicit package delete actions', () => {
   assert.match(player, /userEvent: 'delete\.mdzip-audio'/);
 });
 
-test('AAC, M4A, FLAC, Opus, OGG, and OGA files are accepted and served with the correct MIME types', () => {
+test('AAC, M4A, WAV, FLAC, Opus, OGG, and OGA files are accepted and served with the correct MIME types', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const capture = read('src/navigationCapture.js');
-  assert.match(manager, /setOf\("mp3", "aac", "m4a", "flac", "opus", "ogg", "oga"\)/);
+  assert.match(manager, /setOf\([\s\S]*"mp3", "aac", "m4a", "wav", "flac", "opus", "ogg", "oga"\)/);
   assert.match(manager, /fun addAudio\(/);
   assert.match(manager, /fun isSupportedAudioFileName\(/);
   assert.match(activity, /pickAudioLauncher\.launch\("audio\/\*"\)/);
   assert.match(activity, /"aac" -> "audio\/aac"/);
   assert.match(activity, /"m4a" -> "audio\/mp4"/);
+  assert.match(activity, /"wav" -> "audio\/wav"/);
   assert.match(activity, /"flac" -> "audio\/flac"/);
   assert.match(activity, /"opus", "ogg", "oga" -> "audio\/ogg"/);
   assert.match(activity, /"mdzip_audio_asset"/);
@@ -41,7 +42,7 @@ test('AAC, M4A, FLAC, Opus, OGG, and OGA files are accepted and served with the 
   assert.match(capture, /mediaErrorCode:/);
 });
 
-test('AAC, M4A, FLAC, Opus, OGG, and OGA use bounded Blob seeking when needed', () => {
+test('AAC, M4A, WAV, FLAC, Opus, OGG, and OGA use bounded Blob seeking when needed', () => {
   const player = read('src/audioPreviewWidget.js');
   const blobLoader = read('src/mdzipAudioBlobSeek.js');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
@@ -49,7 +50,9 @@ test('AAC, M4A, FLAC, Opus, OGG, and OGA use bounded Blob seeking when needed', 
   assert.match(player, /audio\.preload = isBlobSeekSource \? 'auto' : 'metadata'/);
   assert.match(player, /isOggSource = .*oga/);
   assert.match(player, /isAacSource = .*aac/);
-  assert.match(player, /isBlobSeekSource = .*aac.*oga/);
+  assert.match(player, /isWavSource = .*wav/);
+  assert.match(player, /isBlobSeekSource = .*aac.*wav.*oga/);
+  assert.match(player, /getWavDuration\(blob\)/);
   assert.match(player, /void seekAudioWithBlob\(targetTime\)/);
   assert.match(player, /fetchAudioSeekBlob\(this\.src/);
   assert.match(player, /prepareSeekDurationFromBlob/);
@@ -61,11 +64,45 @@ test('AAC, M4A, FLAC, Opus, OGG, and OGA use bounded Blob seeking when needed', 
   assert.doesNotMatch(player, /enableMdzipAudioRangeRequests/);
   assert.match(
     activity,
-    /if \(!isVideoAsset && extension in setOf\("aac", "m4a", "flac", "opus", "ogg", "oga"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
+    /if \(!isVideoAsset && extension in setOf\("aac", "m4a", "wav", "flac", "opus", "ogg", "oga"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
   );
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);
   assert.match(seekCommit, /void seekAudioWithBlob\(targetTime\)/);
+});
+
+test('WAV duration is read from RIFF chunks and tolerates padded unknown chunks', async () => {
+  const { getWavDuration } = await import('../src/wavDuration.js');
+  const makeChunk = (name, payload) => {
+    const chunk = new Uint8Array(8 + payload.length + (payload.length & 1));
+    chunk.set([...name].map(character => character.charCodeAt(0)), 0);
+    new DataView(chunk.buffer).setUint32(4, payload.length, true);
+    chunk.set(payload, 8);
+    return chunk;
+  };
+  const junkChunk = makeChunk('JUNK', new Uint8Array([1, 2, 3]));
+  const format = new Uint8Array(16);
+  const formatView = new DataView(format.buffer);
+  formatView.setUint16(0, 1, true);
+  formatView.setUint16(2, 1, true);
+  formatView.setUint32(4, 8, true);
+  formatView.setUint32(8, 8, true);
+  formatView.setUint16(12, 1, true);
+  formatView.setUint16(14, 8, true);
+  const formatChunk = makeChunk('fmt ', format);
+  const dataChunk = makeChunk('data', new Uint8Array(16));
+  const file = new Uint8Array(12 + junkChunk.length + formatChunk.length + dataChunk.length);
+  file.set([0x52, 0x49, 0x46, 0x46], 0);
+  new DataView(file.buffer).setUint32(4, file.length - 8, true);
+  file.set([0x57, 0x41, 0x56, 0x45], 8);
+  let offset = 12;
+  for (const chunk of [junkChunk, formatChunk, dataChunk]) {
+    file.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  assert.equal(await getWavDuration(new Blob([file], { type: 'audio/wav' })), 2);
+  assert.equal(await getWavDuration(new Blob(['not WAV'])), null);
 });
 
 test('AAC ADTS duration counts frames and skips leading ID3 tags', async () => {

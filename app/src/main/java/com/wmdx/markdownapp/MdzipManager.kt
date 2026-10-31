@@ -34,7 +34,8 @@ object MdzipManager {
     private const val MAX_AUDIO_BYTES = 256L * 1024L * 1024L
     private const val MAX_VIDEO_BYTES = 256L * 1024L * 1024L
     private const val ASSET_BASE_URL = "https://appassets.androidplatform.net/mdzip-assets"
-    private val SUPPORTED_AUDIO_EXTENSIONS = setOf("mp3", "aac", "m4a", "flac", "opus", "ogg", "oga")
+    private val SUPPORTED_AUDIO_EXTENSIONS =
+        setOf("mp3", "aac", "m4a", "wav", "flac", "opus", "ogg", "oga")
     private val SUPPORTED_VIDEO_EXTENSIONS = setOf("mp4")
 
     fun isMdzipFileName(fileName: String): Boolean =
@@ -218,7 +219,7 @@ object MdzipManager {
         val basename = originalName.substringAfterLast('/').substringAfterLast('\\')
         val extension = basename.substringAfterLast('.', "").lowercase()
         if (extension !in SUPPORTED_AUDIO_EXTENSIONS) {
-            throw IOException("Choose an MP3, AAC, M4A, FLAC, Opus, OGG, or OGA audio file.")
+            throw IOException("Choose an MP3, AAC, M4A, WAV, FLAC, Opus, OGG, or OGA audio file.")
         }
         val cleanName = sanitizeAudioFileName(basename)
         val stem = cleanName.removeSuffix(".$extension").ifBlank { "audio" }
@@ -513,7 +514,7 @@ object MdzipManager {
     private fun sanitizeAudioFileName(name: String): String {
         val extension = name.substringAfterLast('.', "").lowercase()
         if (extension !in SUPPORTED_AUDIO_EXTENSIONS) {
-            throw IOException("Choose an MP3, AAC, M4A, FLAC, Opus, OGG, or OGA audio file.")
+            throw IOException("Choose an MP3, AAC, M4A, WAV, FLAC, Opus, OGG, or OGA audio file.")
         }
         val stem = name.substringBeforeLast('.', name)
             .replace(Regex("[^\\p{L}\\p{N} ._()\\-]"), "_")

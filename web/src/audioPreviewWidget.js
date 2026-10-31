@@ -5,6 +5,7 @@ import {
 } from './mdzipAudioBlobSeek.js';
 import { getAdtsAacDuration } from './aacAdtsDuration.js';
 import { getOggAudioMetadata } from './oggOpusDuration.js';
+import { getWavDuration } from './wavDuration.js';
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -212,17 +213,20 @@ export class AudioPreviewWidget extends WidgetType {
     const audio = document.createElement('audio');
     const audioPath = this.relativeLink || this.src;
     const isAacSource = /\.aac(?:$|[?#])/i.test(audioPath);
+    const isWavSource = /\.wav(?:$|[?#])/i.test(audioPath);
     const isFlacSource = /\.flac(?:$|[?#])/i.test(audioPath);
     const isOpusSource = /\.opus(?:$|[?#])/i.test(audioPath);
     const isOggSource = /\.(?:opus|ogg|oga)(?:$|[?#])/i.test(audioPath);
-    const isBlobSeekSource = /\.(?:aac|m4a|flac|opus|ogg|oga)(?:$|[?#])/i.test(audioPath);
+    const isBlobSeekSource = /\.(?:aac|m4a|wav|flac|opus|ogg|oga)(?:$|[?#])/i.test(audioPath);
     const seekBlobMimeType = isFlacSource
       ? 'audio/flac'
       : isOggSource
         ? 'audio/ogg'
         : isAacSource
           ? 'audio/aac'
-          : 'audio/mp4';
+          : isWavSource
+            ? 'audio/wav'
+            : 'audio/mp4';
     let seekBlobUrl = null;
     let preparedSeekBlob = null;
     let seekAbortController = null;
@@ -486,7 +490,7 @@ export class AudioPreviewWidget extends WidgetType {
     };
     const prepareSeekDurationFromBlob = async () => {
       if (
-        (!isOggSource && !isAacSource) ||
+        (!isOggSource && !isAacSource && !isWavSource) ||
         getAudioDuration() > 0 ||
         preparedSeekBlob ||
         hasTriedSeekDuration ||
@@ -498,7 +502,7 @@ export class AudioPreviewWidget extends WidgetType {
       isPreparingSeekMetadata = true;
       const controller = new AbortController();
       seekAbortController = controller;
-      const formatName = isAacSource ? 'AAC' : 'OGG';
+      const formatName = isAacSource ? 'AAC' : isWavSource ? 'WAV' : 'OGG';
       status.textContent = `Preparing ${formatName} seek controls…`;
       status.style.display = 'block';
       updateTime();
@@ -511,7 +515,9 @@ export class AudioPreviewWidget extends WidgetType {
         if (disposed) return;
         const metadata = isAacSource
           ? { codec: 'aac', duration: await getAdtsAacDuration(blob) }
-          : await getOggAudioMetadata(blob);
+          : isWavSource
+            ? { codec: 'wav', duration: await getWavDuration(blob) }
+            : await getOggAudioMetadata(blob);
         if (
           !metadata ||
           !Number.isFinite(metadata.duration) ||
