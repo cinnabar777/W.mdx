@@ -24,14 +24,15 @@ test('long-press exposes edit and explicit package delete actions', () => {
   assert.match(player, /userEvent: 'delete\.mdzip-audio'/);
 });
 
-test('M4A, FLAC, Opus, OGG, and OGA files are accepted and served with the correct MIME types', () => {
+test('AAC, M4A, FLAC, Opus, OGG, and OGA files are accepted and served with the correct MIME types', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const capture = read('src/navigationCapture.js');
-  assert.match(manager, /setOf\("mp3", "m4a", "flac", "opus", "ogg", "oga"\)/);
+  assert.match(manager, /setOf\("mp3", "aac", "m4a", "flac", "opus", "ogg", "oga"\)/);
   assert.match(manager, /fun addAudio\(/);
   assert.match(manager, /fun isSupportedAudioFileName\(/);
   assert.match(activity, /pickAudioLauncher\.launch\("audio\/\*"\)/);
+  assert.match(activity, /"aac" -> "audio\/aac"/);
   assert.match(activity, /"m4a" -> "audio\/mp4"/);
   assert.match(activity, /"flac" -> "audio\/flac"/);
   assert.match(activity, /"opus", "ogg", "oga" -> "audio\/ogg"/);
@@ -40,17 +41,18 @@ test('M4A, FLAC, Opus, OGG, and OGA files are accepted and served with the corre
   assert.match(capture, /mediaErrorCode:/);
 });
 
-test('M4A, FLAC, Opus, OGG, and OGA use bounded Blob seeking when needed', () => {
+test('AAC, M4A, FLAC, Opus, OGG, and OGA use bounded Blob seeking when needed', () => {
   const player = read('src/audioPreviewWidget.js');
   const blobLoader = read('src/mdzipAudioBlobSeek.js');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   assert.match(player, /isBlobSeekSource =/);
   assert.match(player, /audio\.preload = isBlobSeekSource \? 'auto' : 'metadata'/);
   assert.match(player, /isOggSource = .*oga/);
-  assert.match(player, /isBlobSeekSource = .*oga/);
+  assert.match(player, /isAacSource = .*aac/);
+  assert.match(player, /isBlobSeekSource = .*aac.*oga/);
   assert.match(player, /void seekAudioWithBlob\(targetTime\)/);
   assert.match(player, /fetchAudioSeekBlob\(this\.src/);
-  assert.match(player, /prepareOggDuration/);
+  assert.match(player, /prepareSeekDurationFromBlob/);
   assert.match(player, /getOggAudioMetadata\(blob\)/);
   assert.match(player, /duration <= 0/);
   assert.match(player, /isFlacSource[\s\S]*'audio\/flac'[\s\S]*isOggSource[\s\S]*'audio\/ogg'/);
@@ -59,11 +61,38 @@ test('M4A, FLAC, Opus, OGG, and OGA use bounded Blob seeking when needed', () =>
   assert.doesNotMatch(player, /enableMdzipAudioRangeRequests/);
   assert.match(
     activity,
-    /if \(!isVideoAsset && extension in setOf\("m4a", "flac", "opus", "ogg", "oga"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
+    /if \(!isVideoAsset && extension in setOf\("aac", "m4a", "flac", "opus", "ogg", "oga"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
   );
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);
   assert.match(seekCommit, /void seekAudioWithBlob\(targetTime\)/);
+});
+
+test('AAC ADTS duration counts frames and skips leading ID3 tags', async () => {
+  const { getAdtsAacDuration } = await import('../src/aacAdtsDuration.js');
+  const makeFrame = ({ hasCrc = false, rawDataBlocks = 1 } = {}) => {
+    const headerLength = hasCrc ? 9 : 7;
+    const frameLength = headerLength + 5;
+    const frame = new Uint8Array(frameLength);
+    frame[0] = 0xff;
+    frame[1] = hasCrc ? 0xf0 : 0xf1;
+    frame[2] = 0x50; // AAC-LC, 44.1 kHz
+    frame[3] = (frameLength >> 11) & 0x03;
+    frame[4] = (frameLength >> 3) & 0xff;
+    frame[5] = ((frameLength & 0x07) << 5) | 0x1f;
+    frame[6] = 0xfc | (rawDataBlocks - 1);
+    return frame;
+  };
+  const id3Tag = new Uint8Array(10);
+  id3Tag.set([0x49, 0x44, 0x33, 4, 0, 0]);
+  const blob = new Blob([
+    id3Tag,
+    makeFrame(),
+    makeFrame({ hasCrc: true, rawDataBlocks: 2 })
+  ], { type: 'audio/aac' });
+
+  assert.equal(await getAdtsAacDuration(blob), (1024 * 3) / 44100);
+  assert.equal(await getAdtsAacDuration(new Blob(['not ADTS'])), null);
 });
 
 test('Opus duration is recovered from the final Ogg granule position', async () => {

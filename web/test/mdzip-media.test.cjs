@@ -19,11 +19,15 @@ test('formats MP3 links with URL-encoded filenames and readable labels', async (
   });
 });
 
-test('recognizes M4A, FLAC, Opus, OGG, and OGA links and rejects unsupported audio formats', async () => {
+test('recognizes AAC, M4A, FLAC, Opus, OGG, and OGA links and rejects unsupported audio formats', async () => {
   const { parseMarkdownAudioLink } = await import('../src/markdownMedia.js');
   assert.deepEqual(parseMarkdownAudioLink('[Voice memo](audio/voice.m4a)'), {
     label: 'Voice memo',
     url: 'audio/voice.m4a'
+  });
+  assert.deepEqual(parseMarkdownAudioLink('[AAC](audio/voice.aac)'), {
+    label: 'AAC',
+    url: 'audio/voice.aac'
   });
   assert.deepEqual(parseMarkdownAudioLink('[Voice](audio/voice.flac)'), {
     label: 'Voice',
@@ -94,6 +98,10 @@ test('stores audio width and alignment in standard Markdown link titles', async 
     '[Voice](audio/track.opus?source=local)'
   );
   assert.equal(
+    formatMarkdownAudioLink('AAC', 'audio/track.aac?source=local'),
+    '[AAC](audio/track.aac?source=local)'
+  );
+  assert.equal(
     formatMarkdownAudioLink('Ogg', 'audio/track.ogg?source=local'),
     '[Ogg](audio/track.ogg?source=local)'
   );
@@ -103,11 +111,12 @@ test('stores audio width and alignment in standard Markdown link titles', async 
   );
 });
 
-test('extracts MP3, M4A, FLAC, Opus, OGG, and OGA links without treating images or code as attachments', async () => {
+test('extracts MP3, AAC, M4A, FLAC, Opus, OGG, and OGA links without treating images or code as attachments', async () => {
   const { extractMarkdownAudioLinks } = await import('../src/markdownMedia.js');
   const markdown = [
     '[Voice](audio/voice.mp3)',
     '[Recording](audio/recording.m4a)',
+    '[AAC](audio/recording.aac)',
     '[Lossless](audio/recording.flac)',
     '[Voice](audio/recording.opus)',
     '[Ogg](audio/recording.ogg)',
@@ -124,6 +133,7 @@ test('extracts MP3, M4A, FLAC, Opus, OGG, and OGA links without treating images 
     [
       'audio/voice.mp3',
       'audio/recording.m4a',
+      'audio/recording.aac',
       'audio/recording.flac',
       'audio/recording.opus',
       'audio/recording.ogg',

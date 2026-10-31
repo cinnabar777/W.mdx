@@ -3,6 +3,7 @@ import {
   fetchAudioSeekBlob,
   MAX_AUDIO_SEEK_BYTES
 } from './mdzipAudioBlobSeek.js';
+import { getAdtsAacDuration } from './aacAdtsDuration.js';
 import { getOggAudioMetadata } from './oggOpusDuration.js';
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -210,21 +211,24 @@ export class AudioPreviewWidget extends WidgetType {
 
     const audio = document.createElement('audio');
     const audioPath = this.relativeLink || this.src;
+    const isAacSource = /\.aac(?:$|[?#])/i.test(audioPath);
     const isFlacSource = /\.flac(?:$|[?#])/i.test(audioPath);
     const isOpusSource = /\.opus(?:$|[?#])/i.test(audioPath);
     const isOggSource = /\.(?:opus|ogg|oga)(?:$|[?#])/i.test(audioPath);
-    const isBlobSeekSource = /\.(?:m4a|flac|opus|ogg|oga)(?:$|[?#])/i.test(audioPath);
+    const isBlobSeekSource = /\.(?:aac|m4a|flac|opus|ogg|oga)(?:$|[?#])/i.test(audioPath);
     const seekBlobMimeType = isFlacSource
       ? 'audio/flac'
       : isOggSource
         ? 'audio/ogg'
-        : 'audio/mp4';
+        : isAacSource
+          ? 'audio/aac'
+          : 'audio/mp4';
     let seekBlobUrl = null;
     let preparedSeekBlob = null;
     let seekAbortController = null;
     let isPreparingBlobSeek = false;
-    let isPreparingOggMetadata = false;
-    let hasTriedOggDuration = false;
+    let isPreparingSeekMetadata = false;
+    let hasTriedSeekDuration = false;
     let knownDuration = 0;
     let disposed = false;
     audio.preload = isBlobSeekSource ? 'auto' : 'metadata';
@@ -472,7 +476,7 @@ export class AudioPreviewWidget extends WidgetType {
       seek.max = String(Math.max(1, duration));
       seek.disabled =
         isPreparingBlobSeek ||
-        isPreparingOggMetadata ||
+        isPreparingSeekMetadata ||
         duration <= 0;
       if (!isDraggingSeek && duration > 0) {
         seek.value = String(Math.min(audio.currentTime || 0, duration || 1));
@@ -480,21 +484,22 @@ export class AudioPreviewWidget extends WidgetType {
         seek.value = '0';
       }
     };
-    const prepareOggDuration = async () => {
+    const prepareSeekDurationFromBlob = async () => {
       if (
-        !isOggSource ||
+        (!isOggSource && !isAacSource) ||
         getAudioDuration() > 0 ||
         preparedSeekBlob ||
-        hasTriedOggDuration ||
-        isPreparingOggMetadata ||
+        hasTriedSeekDuration ||
+        isPreparingSeekMetadata ||
         disposed
       ) return;
 
-      hasTriedOggDuration = true;
-      isPreparingOggMetadata = true;
+      hasTriedSeekDuration = true;
+      isPreparingSeekMetadata = true;
       const controller = new AbortController();
       seekAbortController = controller;
-      status.textContent = 'Preparing OGG seek controls…';
+      const formatName = isAacSource ? 'AAC' : 'OGG';
+      status.textContent = `Preparing ${formatName} seek controls…`;
       status.style.display = 'block';
       updateTime();
 
@@ -504,7 +509,9 @@ export class AudioPreviewWidget extends WidgetType {
           mimeType: seekBlobMimeType
         });
         if (disposed) return;
-        const metadata = await getOggAudioMetadata(blob);
+        const metadata = isAacSource
+          ? { codec: 'aac', duration: await getAdtsAacDuration(blob) }
+          : await getOggAudioMetadata(blob);
         if (
           !metadata ||
           !Number.isFinite(metadata.duration) ||
@@ -523,12 +530,13 @@ export class AudioPreviewWidget extends WidgetType {
           status.textContent =
             `This file exceeds the ${Math.round(MAX_AUDIO_SEEK_BYTES / (1024 * 1024))} MB seek limit. Playback remains available, but seeking is unavailable.`;
         } else {
-          status.textContent = 'Could not determine the OGG duration. Seeking is unavailable.';
+          status.textContent =
+            `Could not determine the ${formatName} duration. Seeking is unavailable.`;
         }
         status.style.display = 'block';
       } finally {
         if (seekAbortController === controller) seekAbortController = null;
-        isPreparingOggMetadata = false;
+        isPreparingSeekMetadata = false;
         if (!disposed) updateTime();
       }
     };
@@ -538,7 +546,7 @@ export class AudioPreviewWidget extends WidgetType {
         updateTime();
         return;
       }
-      if (isPreparingBlobSeek || isPreparingOggMetadata) return;
+      if (isPreparingBlobSeek || isPreparingSeekMetadata) return;
 
       isPreparingBlobSeek = true;
       const controller = new AbortController();
@@ -683,7 +691,7 @@ export class AudioPreviewWidget extends WidgetType {
         if (seekAbortController === controller) seekAbortController = null;
         isPreparingBlobSeek = false;
         playButton.disabled = false;
-        seek.disabled = isPreparingOggMetadata || getAudioDuration() <= 0;
+        seek.disabled = isPreparingSeekMetadata || getAudioDuration() <= 0;
         if (!disposed) {
           updateTime();
           syncPlayButton();
@@ -760,11 +768,11 @@ export class AudioPreviewWidget extends WidgetType {
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('durationchange', () => {
       updateTime();
-      void prepareOggDuration();
+      void prepareSeekDurationFromBlob();
     });
     audio.addEventListener('loadedmetadata', () => {
       updateTime();
-      void prepareOggDuration();
+      void prepareSeekDurationFromBlob();
     });
     audio.addEventListener('play', syncPlayButton);
     audio.addEventListener('pause', syncPlayButton);
