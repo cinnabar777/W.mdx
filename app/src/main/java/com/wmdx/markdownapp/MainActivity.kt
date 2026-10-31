@@ -88,6 +88,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var currentToast: Toast? = null
     private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var leftPanelSearchFuture: Future<*>? = null
+    @Volatile
     private var currentTextPackSession: TextPackSession? = null
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
@@ -239,7 +240,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private val createTextPackDocumentLauncher =
         registerForActivityResult(
-            ActivityResultContracts.CreateDocument("application/vnd.wmdx.textpack")
+            ActivityResultContracts.CreateDocument("*/*")
         ) { uri ->
             handleCreateDocumentResult(uri)
         }
@@ -660,7 +661,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                return request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+                val uri = request?.url ?: return null
+                if (uri.pathSegments.firstOrNull() == "mdzip-assets") {
+                    return interceptArchiveAssetRequest(uri)
+                }
+                return assetLoader.shouldInterceptRequest(uri)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -737,6 +742,44 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
     }
+
+    private fun archiveAssetBaseUrl(session: TextPackSession?): String {
+        session ?: return ""
+        val parent = session.entryPointPath.substringBeforeLast('/', "")
+            .split('/')
+            .filter { it.isNotBlank() }
+            .joinToString("/") { Uri.encode(it) }
+        val parentPath = if (parent.isBlank()) "" else "$parent/"
+        return "https://appassets.androidplatform.net/mdzip-assets/" +
+            "${Uri.encode(session.sessionDir.name)}/$parentPath"
+    }
+
+    private fun interceptArchiveAssetRequest(uri: Uri): WebResourceResponse {
+        val segments = uri.pathSegments
+        val session = currentTextPackSession
+        if (segments.size < 3 || session == null || segments[1] != session.sessionDir.name) {
+            return missingArchiveAssetResponse()
+        }
+        val relativePath = segments.drop(2).joinToString("/")
+        val file = TextPackManager.resolveAssetFile(session, relativePath)
+        if (file == null || !file.isFile) return missingArchiveAssetResponse()
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(file.extension.lowercase())
+            ?: "application/octet-stream"
+        return runCatching {
+            WebResourceResponse(mimeType, null, java.io.FileInputStream(file))
+        }.getOrElse { missingArchiveAssetResponse() }
+    }
+
+    private fun missingArchiveAssetResponse(): WebResourceResponse =
+        WebResourceResponse(
+            "text/plain",
+            "UTF-8",
+            404,
+            "Not Found",
+            emptyMap(),
+            java.io.ByteArrayInputStream("Not found".toByteArray(Charsets.UTF_8))
+        )
 
     private fun updateTitle() {
         val dirtyIndicator = if (isDirty) " *" else ""
@@ -1480,7 +1523,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val fileName = getFileNameFromUri(uri)
 
             if (TextPackManager.isTextPackFile(this, uri, fileName)) {
-                val session = TextPackManager.openTextPack(this, uri)
+                val session = TextPackManager.openTextPack(this, uri, fileName)
                 val text = session.markdownContent
                 hasBom = text.startsWith("\uFEFF")
                 hasCrlf = text.contains("\r\n")
@@ -1665,7 +1708,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun isWmdxTabSession(uri: Uri): Boolean {
         val name = runCatching { getFileNameFromUri(uri) }.getOrNull().orEmpty()
         val mimeType = runCatching { contentResolver.getType(uri) }.getOrNull()
-        return name.endsWith(".mds", ignoreCase = true) ||
+        return name.endsWith(".wmds", ignoreCase = true) ||
             name.endsWith(".wmdxsession", ignoreCase = true) ||
             mimeType == WMDX_TAB_SESSION_MIME
     }
@@ -1782,6 +1825,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val name = currentFileName.ifBlank { getString(R.string.untitled_document) }
         val lowerName = name.lowercase()
         val markdownName = when {
+            lowerName.endsWith(".mdx.zip") ->
+                name.dropLast(".mdx.zip".length) + ".md"
+            lowerName.endsWith(".mdz.zip") ->
+                name.dropLast(".mdz.zip".length) + ".md"
             lowerName.endsWith(".textpack.zip") ->
                 name.dropLast(".textpack.zip".length) + ".md"
             lowerName.endsWith(".textpack") ->
@@ -1800,6 +1847,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val name = currentFileName.ifBlank { getString(R.string.untitled_document) }
         val lowerName = name.lowercase()
         val base = when {
+            lowerName.endsWith(".mdx.zip") ->
+                name.dropLast(".mdx.zip".length)
+            lowerName.endsWith(".mdz.zip") ->
+                name.dropLast(".mdz.zip".length)
             lowerName.endsWith(".textpack.zip") ->
                 name.dropLast(".textpack.zip".length)
             lowerName.endsWith(".textpack") ->
@@ -1809,7 +1860,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 if (lastDot > 0) name.substring(0, lastDot) else name
             }
         }
-        return "$base.mdx"
+        return "$base.mdz"
     }
 
     private fun renamedDocumentFileName(requestedName: String, originalName: String): String? {
@@ -1822,6 +1873,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (currentFileUri == null) return sanitized
 
         val extension = when {
+            originalName.endsWith(".mdz", ignoreCase = true) -> ".mdz"
             originalName.endsWith(".textpack.zip", ignoreCase = true) -> ".textpack.zip"
             originalName.endsWith(".textpack", ignoreCase = true) -> ".textpack"
             else -> {
@@ -2059,15 +2111,32 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val hasTextPackExtension =
                     targetFileName.endsWith(".textpack", ignoreCase = true) ||
                     targetFileName.endsWith(".textpack.zip", ignoreCase = true)
-                val isTextPackTarget = requestedAsTextPack ?: (
-                    hasTextPackExtension ||
-                        (uri == currentFileUri && currentTextPackSession != null)
+                val hasMdzipExtension = targetFileName.endsWith(".mdz", ignoreCase = true)
+                val isMdzipTarget = requestedAsTextPack == true ||
+                    hasMdzipExtension ||
+                    (uri == currentFileUri && currentTextPackSession?.format == TextPackFormat.MDZIP)
+                val isTextPackTarget = isMdzipTarget || (
+                    requestedAsTextPack ?: (
+                        hasTextPackExtension ||
+                            (uri == currentFileUri && currentTextPackSession != null)
+                        )
                     )
 
                 if (isTextPackTarget) {
-                    val session = currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
-                    currentTextPackSession = session
-                    TextPackManager.saveTextPack(this, session, markdownText, uri)
+                    val packageTitle = targetFileName.substringBeforeLast('.', targetFileName)
+                    val session = currentTextPackSession ?: if (isMdzipTarget) {
+                        TextPackManager.createMdzipSession(this, markdownText, packageTitle)
+                    } else {
+                        TextPackManager.openTextPack(this, uri, targetFileName)
+                    }
+                    currentTextPackSession = TextPackManager.saveTextPack(
+                        this,
+                        session,
+                        markdownText,
+                        uri,
+                        writeMdzip = isMdzipTarget,
+                        title = packageTitle
+                    )
                 } else {
                     val output = contentResolver.openOutputStream(uri, "rwt")
                         ?: throw java.io.IOException("Could not open document for writing")
@@ -2357,7 +2426,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .put("markdown", markdown)
             .put("dirty", isDirty)
             .put("emptyContentExplicitlyEdited", currentEmptyContentExplicitlyEdited)
-            .put("isTextPack", currentTextPackSession != null || name.endsWith(".textpack", true) || name.endsWith(".textpack.zip", true))
+            .put(
+                "isTextPack",
+                currentTextPackSession != null ||
+                    name.endsWith(".textpack", true) ||
+                    name.endsWith(".textpack.zip", true) ||
+                    name.endsWith(".mdz", true)
+            )
             .put("hasBom", hasBom)
             .put("hasCrlf", hasCrlf)
             .toString()
@@ -2371,7 +2446,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val name = getFileNameFromUri(uri)
             val textPack = TextPackManager.isTextPackFile(this, uri, name)
             val markdown = if (textPack) {
-                TextPackManager.openTextPack(this, uri).markdownContent
+                TextPackManager.openTextPack(this, uri, name).markdownContent
             } else {
                 contentResolver.openInputStream(uri)?.use {
                     BufferedReader(InputStreamReader(it, Charsets.UTF_8)).readText()
@@ -2430,7 +2505,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } else {
             null
         }
-        val markdownExtensions = setOf(".md", ".textpack", ".mdx", ".textpack.zip")
+        val markdownExtensions = setOf(".md", ".textpack", ".mdx", ".textpack.zip", ".mdz")
 
         for (treeUri in authorizedLeftPanelTrees()) {
             if (results.length() >= maxResults || scannedFiles >= maxScannedFiles) {
@@ -2470,7 +2545,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     }
                     scannedFiles++
                     val hasTextPackExtension = entry.name.endsWith(".textpack", true) ||
-                        entry.name.endsWith(".textpack.zip", true)
+                        entry.name.endsWith(".textpack.zip", true) ||
+                        entry.name.endsWith(".mdz", true)
                     val hasPlainTextExtension = textExtensions.any { entry.name.endsWith(it, true) }
                     val needsTextPackProbe = includeContents &&
                         (
@@ -2496,7 +2572,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     ) {
                         contentMatches = runCatching {
                             if (isTextPack) {
-                                TextPackManager.openTextPack(this, entry.uri)
+                                TextPackManager.openTextPack(this, entry.uri, entry.name)
                                     .markdownContent.let { content ->
                                         wholeWordPattern?.containsMatchIn(content)
                                             ?: content.contains(needle, ignoreCase = true)
@@ -2563,12 +2639,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val packTarget = isTextPack || TextPackManager.isTextPackFile(this, uri, name)
             if (packTarget) {
                 val session = if (uri == currentFileUri) {
-                    currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
+                    currentTextPackSession ?: TextPackManager.openTextPack(this, uri, name)
                 } else {
-                    TextPackManager.openTextPack(this, uri)
+                    TextPackManager.openTextPack(this, uri, name)
                 }
-                TextPackManager.saveTextPack(this, session, content, uri)
-                if (uri == currentFileUri) currentTextPackSession = session
+                val savedSession = TextPackManager.saveTextPack(
+                    this,
+                    session,
+                    content,
+                    uri,
+                    writeMdzip = session.format == TextPackFormat.MDZIP ||
+                        name.endsWith(".mdz", ignoreCase = true),
+                    title = name.substringBeforeLast('.', name)
+                )
+                if (uri == currentFileUri) currentTextPackSession = savedSession
             } else {
                 val output = contentResolver.openOutputStream(uri, "rwt")
                     ?: throw java.io.IOException("Could not open this file for writing.")
@@ -2731,6 +2815,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         fun getCurrentDocumentSessionId(): String = currentDocumentSessionId
 
         @JavascriptInterface
+        fun getArchiveAssetBaseUrl(): String = archiveAssetBaseUrl(currentTextPackSession)
+
+        @JavascriptInterface
         fun saveToolbarKeyPreferences(surface: String, rawConfig: String): Boolean =
             saveToolbarKeyPreferencesConfig(surface, rawConfig)
 
@@ -2882,7 +2969,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (isFinishing) return false
             runOnUiThread {
                 pendingWmdxTabSessionJson = sanitized
-                saveWmdxTabSessionLauncher.launch("Wmdx Session.mds")
+                saveWmdxTabSessionLauncher.launch("Wmdx Session.wmds")
             }
             return true
         }
@@ -2973,7 +3060,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             currentRevision = 0
             currentEmptyContentExplicitlyEdited = emptyContentExplicitlyEdited
             currentTextPackSession = if (isTextPack && uri != null) {
-                runCatching { TextPackManager.openTextPack(this@MainActivity, uri) }.getOrNull()
+                runCatching { TextPackManager.openTextPack(this@MainActivity, uri, name) }.getOrNull()
             } else null
             hasBom = tabHasBom
             hasCrlf = tabHasCrlf

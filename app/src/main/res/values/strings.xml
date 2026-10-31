@@ -11,7 +11,7 @@
     <string name="action_open">Open</string>
     <string name="action_save">Save</string>
     <string name="action_save_as">Save As</string>
-    <string name="action_save_as_textpack">Save as Text Pack</string>
+    <string name="action_save_as_textpack">Save as MDZip</string>
     <string name="action_insert_image">Insert Image</string>
     <string name="action_settings">Settings</string>
     <string name="unsaved_changes_title">Unsaved Changes</string>

@@ -1003,11 +1003,37 @@ export const typographySettingsEffect = StateEffect.define();
 
 
 const imageAspectCache = new Map();
+let activeArchiveAssetBaseUrl = '';
+
+function refreshArchiveAssetBaseUrl() {
+  try {
+    const archiveBaseUrl = window.AndroidNative?.getArchiveAssetBaseUrl?.();
+    activeArchiveAssetBaseUrl = typeof archiveBaseUrl === 'string' ? archiveBaseUrl : '';
+  } catch {
+    activeArchiveAssetBaseUrl = '';
+  }
+}
+
+function resolveArchiveImageUrl(url, baseUrl) {
+  if (
+    !baseUrl ||
+    typeof url !== 'string' ||
+    /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(url)
+  ) {
+    return url;
+  }
+  try {
+    return new URL(url, baseUrl).href;
+  } catch {
+    return url;
+  }
+}
 
 class ImagePreviewWidget extends WidgetType {
   constructor(url, alt, from, to, imageWidth = null) {
     super();
     this.url = url;
+    this.renderUrl = resolveArchiveImageUrl(url, activeArchiveAssetBaseUrl);
     this.alt = alt || 'image';
     this.from = from;
     this.to = to;
@@ -1016,11 +1042,11 @@ class ImagePreviewWidget extends WidgetType {
     const sig = activeTypographySignature();
     this.heightKey = measuredWidgetHeightKey(
       'image-preview',
-      `${this.url}:${this.imageWidth ?? 'auto'}`,
+      `${this.renderUrl}:${this.imageWidth ?? 'auto'}`,
       contentWidth,
       sig
     );
-    const aspect = imageAspectCache.get(this.url);
+    const aspect = imageAspectCache.get(this.renderUrl);
     const estimatedWidth = this.imageWidth
       ? Math.min(this.imageWidth, contentWidth)
       : contentWidth;
@@ -1035,7 +1061,7 @@ class ImagePreviewWidget extends WidgetType {
   eq(other) {
     return (
       other instanceof ImagePreviewWidget &&
-      other.url === this.url &&
+      other.renderUrl === this.renderUrl &&
       other.alt === this.alt &&
       other.imageWidth === this.imageWidth &&
       other.from === this.from &&
@@ -1050,7 +1076,7 @@ class ImagePreviewWidget extends WidgetType {
     wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 6px 0; display: block; box-sizing: border-box; touch-action: manipulation; user-select: none; -webkit-user-select: none;`;
 
     const img = document.createElement('img');
-    img.src = this.url;
+    img.src = this.renderUrl;
     img.alt = this.alt;
     img.draggable = false;
     img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;
@@ -1058,7 +1084,7 @@ class ImagePreviewWidget extends WidgetType {
     img.onload = () => {
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
         const aspect = img.naturalWidth / img.naturalHeight;
-        imageAspectCache.set(this.url, aspect);
+        imageAspectCache.set(this.renderUrl, aspect);
         const renderedHeight = Math.ceil(img.getBoundingClientRect().height);
         if (renderedHeight > 0) {
           wrapper.style.minHeight = `${renderedHeight}px`;
@@ -1069,7 +1095,7 @@ class ImagePreviewWidget extends WidgetType {
     };
 
     img.onerror = () => {
-      imageAspectCache.delete(this.url);
+      imageAspectCache.delete(this.renderUrl);
       img.remove();
       const fallbackBox = document.createElement('div');
       fallbackBox.className = 'cm-image-error-fallback';
@@ -4533,7 +4559,7 @@ function setupGroupedControlBar() {
         { id: 'saveFile', icon: svgIcons.saveFile, title: 'Save File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save') },
         { id: 'saveAsFile', icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
         { id: 'saveTabs', icon: svgIcons.saveTabs, title: 'Save Tabs', action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
-        { id: 'saveAsTextPack', icon: svgIcons.saveAsTextPack, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
+        { id: 'saveAsTextPack', icon: svgIcons.saveAsTextPack, title: 'Save as MDZip', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
         { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
         { id: 'switchView', icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
@@ -4827,7 +4853,7 @@ function createToolbarActionRegistry() {
       { id: 'saveFile', title: 'Save File', icon: svgIcons.saveFile, action: () => window.AndroidNative?.onNativeAction('save') },
       { id: 'saveAsFile', title: 'Save As', icon: svgIcons.saveAsFile, action: () => window.AndroidNative?.onNativeAction('save_as') },
       { id: 'saveTabs', title: 'Save Tabs', icon: svgIcons.saveTabs, action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
-      { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack, action: () => window.AndroidNative?.onNativeAction('save_as_textpack') },
+      { id: 'saveAsTextPack', title: 'Save as MDZip', icon: svgIcons.saveAsTextPack, action: () => window.AndroidNative?.onNativeAction('save_as_textpack') },
       { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
       { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
       { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView, action: () => openWithOtherEngine() },
@@ -8373,6 +8399,7 @@ window.editorBridge = {
     return '';
   },
   setMarkdown: function(markdownText) {
+    refreshArchiveAssetBaseUrl();
     if (typeof activeAdapter !== 'undefined' && activeAdapter) {
       pendingMarkdown = null;
       isProgrammaticChange = true;
@@ -8434,6 +8461,7 @@ window.editorBridge = {
     if (activeAdapter) activeAdapter.setSelectionState(stateJson, scrollTop);
   },
   insertImage: function(imageUrl, altText = '') {
+    refreshArchiveAssetBaseUrl();
     if (activeAdapter && typeof activeAdapter.insertImage === 'function') {
       activeAdapter.insertImage(imageUrl, altText);
     } else if (activeAdapter) {

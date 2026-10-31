@@ -175,7 +175,7 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'saveFile', title: 'Save File', icon: svgIcons.saveFile },
     { id: 'saveAsFile', title: 'Save As', icon: svgIcons.saveAsFile },
     { id: 'saveTabs', title: 'Save Tabs', icon: svgIcons.saveTabs },
-    { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack },
+    { id: 'saveAsTextPack', title: 'Save as MDZip', icon: svgIcons.saveAsTextPack },
     { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml },
     { id: 'search', title: 'Find & Replace', icon: svgIcons.search },
     { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView },

@@ -94,6 +94,15 @@ test('editorBridge exposes required methods', () => {
   assert.ok(source.includes('toggleLineNumbers'));
 });
 
+test('archive image base refreshes before Markdown images are inserted', () => {
+  assert.match(source, /function refreshArchiveAssetBaseUrl\(\)/);
+  assert.match(source, /getArchiveAssetBaseUrl/);
+  assert.match(
+    source,
+    /insertImage: function\(imageUrl, altText = ''\) \{\s*refreshArchiveAssetBaseUrl\(\);/
+  );
+});
+
 test('CodeMirror caret bounds are forwarded to Android input methods', () => {
   assert.match(source, /scheduleNativeCursorAnchor\(update\.view\)/);
   assert.match(source, /bridge\.onSelectionChanged\(JSON\.stringify\(\{/);
@@ -609,7 +618,7 @@ test('left panel search options reach native search and the file filters', () =>
   );
   assert.match(
     mainActivitySource,
-    /markdownExtensions = setOf\("\.md", "\.textpack", "\.mdx", "\.textpack\.zip"\)/
+    /markdownExtensions = setOf\("\.md", "\.textpack", "\.mdx", "\.textpack\.zip", "\.mdz"\)/
   );
   assert.match(
     mainActivitySource,
@@ -794,18 +803,18 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(leftPanelSource, /scrollTop: Number\.isFinite\(tab\.scrollTop\)/);
   assert.match(mainActivitySource, /saveWmdxTabSession\(sessionJson: String\)/);
   assert.match(mainActivitySource, /readWmdxTabSession\(uriString: String\)/);
-  assert.match(mainActivitySource, /Wmdx Session\.mds/);
-  assert.match(mainActivitySource, /name\.endsWith\("\.mds", ignoreCase = true\)/);
+  assert.match(mainActivitySource, /Wmdx Session\.wmds/);
+  assert.match(mainActivitySource, /name\.endsWith\("\.wmds", ignoreCase = true\)/);
   assert.match(mainActivitySource, /name\.endsWith\("\.wmdxsession", ignoreCase = true\)/);
   assert.doesNotMatch(sanitizerSource, /\.put\("markdown"/);
   assert.match(appManifestXml, /application\/vnd\.wmdx\.tabs-session\+json/);
   assert.match(
     mainActivitySource,
-    /createTextPackDocumentLauncher[\s\S]*?CreateDocument\("application\/vnd\.wmdx\.textpack"\)/
+    /createTextPackDocumentLauncher[\s\S]*?CreateDocument\("\*\/\*"\)/
   );
   assert.match(
     mainActivitySource,
-    /private fun defaultTextPackSaveAsName\(\)[\s\S]*?return "\$base\.mdx"/
+    /private fun defaultTextPackSaveAsName\(\)[\s\S]*?return "\$base\.mdz"/
   );
   assert.match(textPackManagerSource, /ZipInputStream\(inputStream\)/);
   assert.match(hotkeysXml, /pref_hotkey_save_tabs[\s\S]*app:defaultValue=""/);
