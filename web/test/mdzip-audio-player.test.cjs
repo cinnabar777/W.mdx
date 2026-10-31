@@ -46,6 +46,19 @@ test('M4A requests full preload so its timeline can be seeked without byte range
   assert.match(activity, /if \(extension == "m4a"\) headers\.remove\("Accept-Ranges"\)/);
 });
 
+test('audio scrubbing commits one seek on release instead of on every input event', () => {
+  const player = read('src/audioPreviewWidget.js');
+  const capture = read('src/navigationCapture.js');
+  const inputHandler = player.match(
+    /seek\.addEventListener\('input', \(\) => \{([\s\S]*?)\n    \}\);/
+  )?.[1];
+  assert.ok(inputHandler);
+  assert.doesNotMatch(inputHandler, /audio\.currentTime\s*=/);
+  assert.match(player, /seek\.addEventListener\('pointerup', commitSeek\)/);
+  assert.match(player, /seek\.addEventListener\('change', commitSeek\)/);
+  assert.match(capture, /'seeking', 'seeked'/);
+});
+
 test('audio edit controls save width and alignment, and the keyboard requests sentence caps', () => {
   const editor = read('src/main.js');
   const player = read('src/audioPreviewWidget.js');

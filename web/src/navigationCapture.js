@@ -501,7 +501,8 @@ export function setupFullNavigationCapture(view) {
 
   const mediaEventTypes = [
     'loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'play', 'playing',
-    'pause', 'ended', 'waiting', 'stalled', 'suspend', 'error', 'abort', 'emptied'
+    'pause', 'ended', 'waiting', 'stalled', 'suspend', 'error', 'abort', 'emptied',
+    'seeking', 'seeked'
   ];
   for (const type of mediaEventTypes) {
     doc.addEventListener(type, onMediaEvent, true);

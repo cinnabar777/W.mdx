@@ -398,11 +398,25 @@ export class AudioPreviewWidget extends WidgetType {
         status.style.display = 'block';
       }
     };
+    let isDraggingSeek = false;
     const updateTime = () => {
       const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-      timeLabel.textContent = `${formatTime(audio.currentTime)} / ${formatTime(duration)}`;
+      const displayedTime = isDraggingSeek
+        ? Number(seek.value)
+        : audio.currentTime;
+      timeLabel.textContent = `${formatTime(displayedTime)} / ${formatTime(duration)}`;
       seek.max = String(Math.max(1, duration));
-      seek.value = String(Math.min(audio.currentTime || 0, duration || 1));
+      if (!isDraggingSeek) {
+        seek.value = String(Math.min(audio.currentTime || 0, duration || 1));
+      }
+    };
+    const commitSeek = () => {
+      if (!isDraggingSeek) return;
+      isDraggingSeek = false;
+      if (Number.isFinite(audio.duration)) {
+        const targetTime = Math.max(0, Math.min(Number(seek.value), audio.duration));
+        audio.currentTime = targetTime;
+      }
     };
     const syncPlayButton = () => {
       const playing = !audio.paused && !audio.ended;
@@ -431,9 +445,16 @@ export class AudioPreviewWidget extends WidgetType {
         audio.pause();
       }
     });
-    seek.addEventListener('input', () => {
-      if (Number.isFinite(audio.duration)) audio.currentTime = Number(seek.value);
+    seek.addEventListener('pointerdown', () => {
+      isDraggingSeek = true;
     });
+    seek.addEventListener('input', () => {
+      isDraggingSeek = true;
+      updateTime();
+    });
+    seek.addEventListener('pointerup', commitSeek);
+    seek.addEventListener('pointercancel', commitSeek);
+    seek.addEventListener('change', commitSeek);
     muteButton.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
