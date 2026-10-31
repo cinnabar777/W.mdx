@@ -19,13 +19,16 @@ test('formats MP3 links with URL-encoded filenames and readable labels', async (
   });
 });
 
-test('recognizes M4A links and rejects unsupported audio formats', async () => {
+test('recognizes M4A and FLAC links and rejects unsupported audio formats', async () => {
   const { parseMarkdownAudioLink } = await import('../src/markdownMedia.js');
   assert.deepEqual(parseMarkdownAudioLink('[Voice memo](audio/voice.m4a)'), {
     label: 'Voice memo',
     url: 'audio/voice.m4a'
   });
-  assert.equal(parseMarkdownAudioLink('[Voice](audio/voice.flac)'), null);
+  assert.deepEqual(parseMarkdownAudioLink('[Voice](audio/voice.flac)'), {
+    label: 'Voice',
+    url: 'audio/voice.flac'
+  });
   assert.equal(parseMarkdownAudioLink('[Voice](audio/voice.opus)'), null);
   assert.equal(parseMarkdownAudioLink('![Voice](audio/voice.mp3)'), null);
 });
@@ -70,13 +73,18 @@ test('stores audio width and alignment in standard Markdown link titles', async 
     formatMarkdownAudioLink('Download.mp3', 'audio/download.mp3?source=local'),
     '[Download.mp3](audio/download.mp3?source=local)'
   );
+  assert.equal(
+    formatMarkdownAudioLink('Lossless', 'audio/track.flac?source=local'),
+    '[Lossless](audio/track.flac?source=local)'
+  );
 });
 
-test('extracts MP3 and M4A links without treating images or code samples as attachments', async () => {
+test('extracts MP3, M4A, and FLAC links without treating images or code as attachments', async () => {
   const { extractMarkdownAudioLinks } = await import('../src/markdownMedia.js');
   const markdown = [
     '[Voice](audio/voice.mp3)',
     '[Recording](audio/recording.m4a)',
+    '[Lossless](audio/recording.flac)',
     '![Artwork](audio/image.mp3)',
     '`[Inline example](audio/inline.mp3)`',
     '```md',
@@ -86,7 +94,7 @@ test('extracts MP3 and M4A links without treating images or code samples as atta
 
   assert.deepEqual(
     extractMarkdownAudioLinks(markdown).map(({ url }) => url),
-    ['audio/voice.mp3', 'audio/recording.m4a']
+    ['audio/voice.mp3', 'audio/recording.m4a', 'audio/recording.flac']
   );
 });
 
