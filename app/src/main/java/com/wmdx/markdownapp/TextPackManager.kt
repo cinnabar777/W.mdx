@@ -194,11 +194,13 @@ object TextPackManager {
         }
         session.manifest = manifest
 
-        val output = context.contentResolver.openOutputStream(targetUri, "rwt")
-            ?: throw IOException("Could not open the Markdown package for writing.")
-        output.use { outputStream ->
-            writeMdzipArchive(session.sessionDir, outputStream)
-        }
+        writeMdzipArchiveSafely(
+            session.sessionDir,
+            openExistingArchive = { context.contentResolver.openInputStream(targetUri) },
+            openDestination = {
+                context.contentResolver.openOutputStream(targetUri, "rwt")
+            }
+        )
 
         session.sourceUri = targetUri
         session.markdownContent = markdownContent
@@ -443,6 +445,60 @@ object TextPackManager {
         ZipOutputStream(outputStream).use { zipOut ->
             compressFolder(sessionDir, sessionDir, zipOut)
             zipOut.flush()
+        }
+    }
+
+    internal fun writeMdzipArchiveSafely(
+        sessionDir: File,
+        openExistingArchive: () -> InputStream?,
+        openDestination: () -> OutputStream?
+    ) {
+        val tempDirectory = sessionDir.absoluteFile.parentFile
+            ?: throw IOException("Could not prepare a temporary Markdown package.")
+        val stagedArchive = File.createTempFile("mdzip-save-", ".mdz", tempDirectory)
+        var backupArchive: File? = null
+        try {
+            FileOutputStream(stagedArchive).use { output ->
+                writeMdzipArchive(sessionDir, output)
+            }
+
+            val backup = File.createTempFile("mdzip-backup-", ".mdz", tempDirectory)
+            backupArchive = backup
+            val existingArchive = openExistingArchive()
+            val hadExistingArchive = existingArchive != null
+            existingArchive?.use { input ->
+                FileOutputStream(backup).use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            try {
+                val destination = openDestination()
+                    ?: throw IOException("Could not open the Markdown package for writing.")
+                destination.use { output ->
+                    FileInputStream(stagedArchive).use { input ->
+                        input.copyTo(output)
+                    }
+                }
+            } catch (saveError: Exception) {
+                if (hadExistingArchive) {
+                    try {
+                        val destination = openDestination()
+                            ?: throw IOException("Could not restore the previous Markdown package.")
+                        destination.use { output ->
+                            FileInputStream(backup).use { input ->
+                                input.copyTo(output)
+                            }
+                        }
+                    } catch (restoreError: Exception) {
+                        saveError.addSuppressed(restoreError)
+                    }
+                }
+                throw saveError
+            }
+        } finally {
+            stagedArchive.delete()
+            backupArchive?.delete()
         }
     }
 

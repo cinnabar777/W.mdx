@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.io.OutputStream
 import java.text.Normalizer
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -127,6 +128,67 @@ class TextPackManagerTest {
         } finally {
             initialSessionDir.deleteRecursively()
             reopenedSessionDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failedMdzipSaveRestoresExistingArchiveAfterOutputFailure() {
+        val sessionDir = java.nio.file.Files.createTempDirectory("mdzip-save-session").toFile()
+        val priorDocument = "# Last saved version\n".toByteArray(Charsets.UTF_8)
+        val priorArchive = createArchive(mapOf("index.md" to priorDocument))
+        var destinationContents = priorArchive
+        var destinationOpenCount = 0
+        val failureAfterBytes = 64
+
+        try {
+            TextPackManager.writeMdzipDocument(
+                sessionDir,
+                "index.md",
+                "# Unsaved replacement\n".repeat(100)
+            )
+
+            TextPackManager.writeMdzipArchiveSafely(
+                sessionDir,
+                openExistingArchive = { ByteArrayInputStream(destinationContents) },
+                openDestination = {
+                    destinationOpenCount++
+                    destinationContents = byteArrayOf()
+                    val shouldFail = destinationOpenCount == 1
+                    object : OutputStream() {
+                        private val written = ByteArrayOutputStream()
+
+                        override fun write(value: Int) {
+                            if (shouldFail && written.size() >= failureAfterBytes) {
+                                throw IOException("Simulated destination write failure.")
+                            }
+                            written.write(value)
+                            destinationContents = written.toByteArray()
+                        }
+
+                        override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                            for (index in offset until offset + length) {
+                                write(bytes[index].toInt())
+                            }
+                        }
+                    }
+                }
+            )
+            throw AssertionError("Expected the simulated output failure.")
+        } catch (error: IOException) {
+            assertEquals("Simulated destination write failure.", error.message)
+        } finally {
+            sessionDir.deleteRecursively()
+        }
+
+        assertEquals("The destination should be reopened once for restoration.", 2, destinationOpenCount)
+        assertArrayEquals(priorArchive, destinationContents)
+
+        val extracted = java.nio.file.Files.createTempDirectory("mdzip-save-verify").toFile()
+        try {
+            TextPackManager.extractArchive(ByteArrayInputStream(destinationContents), extracted)
+            assertArrayEquals(priorDocument, File(extracted, "index.md").readBytes())
+        } finally {
+            extracted.deleteRecursively()
         }
     }
 
