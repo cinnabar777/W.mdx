@@ -2618,7 +2618,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return
         }
         pendingInsertVideoDocumentSessionId = currentDocumentSessionId
-        pickVideoLauncher.launch("video/mp4")
+        pickVideoLauncher.launch("video/*")
     }
 
     private fun insertVideoFromUri(uri: Uri) {
@@ -2630,7 +2630,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val originalName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedVideoFileName(originalName)) {
-                throw java.io.IOException("Choose an MP4 video file.")
+                throw java.io.IOException("Choose an MP4 or M4V video file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected video file.")

@@ -42,7 +42,7 @@ export class VideoPreviewWidget extends WidgetType {
     const status = document.createElement('div');
     status.className = 'cm-mdzip-video-status';
     status.hidden = true;
-    status.textContent = 'Unable to play this MP4 video on this device.';
+    status.textContent = 'Unable to play this video on this device.';
     status.style.cssText = 'font-size:13px;line-height:1.5;margin-top:8px;color:var(--media-controls-text,#fff)';
     wrapper.appendChild(status);
     let widgetDisposed = false;

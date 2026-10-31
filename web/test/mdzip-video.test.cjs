@@ -6,7 +6,7 @@ const path = require('node:path');
 const read = relativePath =>
   fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 
-test('MP4 Markdown links format, parse, and extract outside code blocks', async () => {
+test('MP4 and M4V Markdown links format, parse, and extract outside code blocks', async () => {
   const {
     extractMarkdownVideoLinks,
     formatMarkdownVideoLink,
@@ -20,19 +20,28 @@ test('MP4 Markdown links format, parse, and extract outside code blocks', async 
     url: 'video/Phone%20clip.mp4'
   });
   assert.equal(parseMarkdownVideoLink('[Audio](audio/track.mp3)'), null);
+  const m4vMarkdown = formatMarkdownVideoLink('Camera clip.m4v', 'video/Camera clip.m4v');
+  assert.deepEqual(parseMarkdownVideoLink(m4vMarkdown), {
+    label: 'Camera clip.m4v',
+    url: 'video/Camera%20clip.m4v'
+  });
   assert.equal(
     formatMarkdownVideoLink('Clip', 'video/clip.mp4?download=1'),
     '[Clip](video/clip.mp4?download=1)'
   );
+  assert.equal(
+    formatMarkdownVideoLink('Clip', 'video/clip.m4v?download=1'),
+    '[Clip](video/clip.m4v?download=1)'
+  );
   assert.deepEqual(
     extractMarkdownVideoLinks(
-      '[Clip](video/clip.mp4)\n\n`[Example](video/example.mp4)`'
+      '[Clip](video/clip.mp4)\n[Camera](video/camera.m4v)\n\n`[Example](video/example.mp4)`'
     ).map(link => link.url),
-    ['video/clip.mp4']
+    ['video/clip.mp4', 'video/camera.m4v']
   );
 });
 
-test('MP4 insertion, package serving, and default rendering are connected', () => {
+test('MP4 and M4V insertion, package serving, and default rendering are connected', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const editor = read('src/main.js');
@@ -43,11 +52,11 @@ test('MP4 insertion, package serving, and default rendering are connected', () =
   const byteRanges = read('../app/src/main/java/com/wmdx/markdownapp/MdzipByteRange.kt');
   const icons = read('src/toolbarIcons.js');
 
-  assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS = setOf\("mp4"\)/);
+  assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS = setOf\("mp4", "m4v"\)/);
   assert.match(manager, /fun addVideo\(/);
   assert.match(manager, /fun syncVideoReferences\(/);
   assert.match(manager, /pendingAudioDeletions \+ session\.pendingVideoDeletions/);
-  assert.match(activity, /pickVideoLauncher\.launch\("video\/mp4"\)/);
+  assert.match(activity, /pickVideoLauncher\.launch\("video\/\*"\)/);
   assert.match(activity, /MdzipManager\.videoArchiveFile/);
   assert.match(activity, /if \(isVideoAsset\) "video\/mp4"/);
   assert.match(activity, /shouldServeMdzipAssetAsWholeFile\(isVideoAsset, extension, range\)/);
