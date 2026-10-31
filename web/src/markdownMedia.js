@@ -2,13 +2,17 @@ const AUDIO_EXTENSIONS = new Set([
   'aac', 'flac', 'm4a', 'mp3', 'oga', 'ogg', 'opus', 'wav', 'webm'
 ]);
 const VIDEO_EXTENSIONS = new Set([
-  '3gp', 'avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ogv', 'webm'
+  '3gp', 'avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ogv', 'webm', 'wmv'
 ]);
 
-export function getMarkdownMediaType(url) {
+export function getMarkdownMediaType(url, label = '') {
   if (typeof url !== 'string') return null;
+  const declaredType = /(?:[?&])wmdx_media_type=(audio|video)(?:[&#]|$)/i.exec(url)?.[1]
+    ?.toLowerCase();
+  if (declaredType) return declaredType;
   const path = url.trim().split(/[?#]/, 1)[0];
-  const extension = /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase();
+  const extension = /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase() ||
+    /\.([a-z0-9]+)$/i.exec(String(label).trim())?.[1]?.toLowerCase();
   if (!extension) return null;
   const parentFolder = path.split('/').at(-2)?.toLowerCase();
   if (AUDIO_EXTENSIONS.has(extension) || VIDEO_EXTENSIONS.has(extension)) {
@@ -43,11 +47,12 @@ export function parseMarkdownMediaLink(markdown) {
   if (!match) return null;
 
   const url = match[2] ?? match[3];
-  const type = getMarkdownMediaType(url);
+  const label = match[1].replace(/\\([\\[\]])/g, '$1');
+  const type = getMarkdownMediaType(url, label);
   if (!type) return null;
   return {
     type,
-    label: match[1].replace(/\\([\\[\]])/g, '$1'),
+    label,
     url
   };
 }

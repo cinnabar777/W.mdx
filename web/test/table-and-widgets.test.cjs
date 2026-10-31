@@ -37,15 +37,20 @@ test('Widget classes implement eq for DOM reuse', () => {
     code.includes("if (event.target?.closest?.('.cm-image-preview-wrapper')) return true;"),
     'the editor-level pointer handler prevents image taps from placing the text cursor'
   );
-  assert.ok(code.includes("actions.className = 'cm-media-actions'"), 'media previews expose a persistent action row');
+  assert.ok(code.includes("actions.className = 'cm-media-actions'"), 'media previews expose an action menu');
+  assert.ok(code.includes("actions.classList.add('visible')"), 'media actions are shown only after the action menu is opened');
   assert.ok(code.includes("editButton.setAttribute('aria-label', `Edit ${this.type} reference`)"), 'media edit controls have accessible labels');
   assert.ok(code.includes("removeButton.setAttribute('aria-label', `Remove ${this.type} reference`)"), 'media remove controls have accessible labels');
+  assert.ok(code.includes("}, 550);"), 'media actions require a long press');
   assert.ok(code.includes('openMediaEditDialog(view, this.from, this.to, this.type, this.label, this.url)'), 'media can be edited from its preview');
   assert.ok(code.includes('openMediaDeleteConfirmation('), 'media references can be removed from their preview');
-  assert.ok(code.includes('This removes the reference from the document only. The media file in the package will not be deleted.'), 'removing a media reference preserves the package asset');
+  assert.ok(code.includes('removeUnreferencedMediaAsset?.('), 'removing an unused embedded asset cleans it from the MDZip workspace');
+  assert.ok(code.includes('deletes its embedded MDZip file if no other document uses it'), 'removal preserves assets shared by other documents');
   assert.ok(code.includes('isCurrentMarkdownMediaReference(view, from, to, mediaType, label, url)'), 'stale media actions cannot change a different reference');
   const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   assert.ok(html.includes('.cm-media-actions button') && html.includes('min-height: 40px'), 'media actions remain touch-friendly');
+  assert.ok(html.includes('.cm-media-actions {') && html.includes('display: none;'), 'media action controls are hidden until long press');
+  assert.ok(html.includes('.wmdx-media-speed-menu'), 'the in-app playback speed menu is viewport-aware and themeable');
   assert.ok(
     code.includes('image.url,\n                  image.alt,\n                  node.from,\n                  node.to,'),
     'Live Preview image controls receive the source range they edit'

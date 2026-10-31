@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Playback">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_media_playback_rate"
+            app:title="Default Playback Speed"
+            app:summary="Starting speed for audio and video; the last selected speed is remembered"
+            app:entries="@array/media_playback_speed_entries"
+            app:entryValues="@array/media_playback_speed_values"
+            app:defaultValue="1.0" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Player Controls">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_media_player_background"
+            app:title="Player Background"
+            app:summary="Background behind media and controls"
+            app:defaultValue="#090909" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_media_control_background"
+            app:title="Control Background"
+            app:summary="Background of playback buttons"
+            app:defaultValue="#252525" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_media_control_color"
+            app:title="Control Icon and Text Color"
+            app:summary="Color of icons, labels, and playback speed"
+            app:defaultValue="#F7F7F7" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_media_control_accent"
+            app:title="Progress and Active Color"
+            app:summary="Seek bar, volume, and selected playback speed"
+            app:defaultValue="#00CBBB" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_media_control_border"
+            app:title="Player and Button Border"
+            app:summary="Border around the player and its controls"
+            app:defaultValue="#555555" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+</androidx.preference.PreferenceScreen>

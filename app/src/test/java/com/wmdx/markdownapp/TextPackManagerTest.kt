@@ -43,6 +43,8 @@ class TextPackManagerTest {
                 "video",
                 "webm"
             )
+            assertTrue("the source media name is retained", audioPath.contains("voice%20note.ogg"))
+            assertTrue("the video source name is retained", videoPath.endsWith("clip.webm"))
             val markdown = "[Voice](<$audioPath>)\n\n[Clip](<$videoPath>)\n"
             TextPackManager.writeMdzipDocument(sourceSessionDir, "index.md", markdown)
             File(sourceSessionDir, "manifest.json").writeText(
@@ -72,6 +74,44 @@ class TextPackManagerTest {
         } finally {
             sourceSessionDir.deleteRecursively()
             reopenedSessionDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun removingMediaDeletesOnlyWhenNoMarkdownDocumentReferencesTheAsset() {
+        val sessionDir = java.nio.file.Files.createTempDirectory("mdzip-media-cleanup").toFile()
+        try {
+            val session = TextPackSession(
+                sessionDir = sessionDir,
+                markdownContent = "",
+                sourceUri = null
+            )
+            val assetPath = TextPackManager.addAssetMedia(
+                session,
+                ByteArrayInputStream(byteArrayOf(1, 2, 3)),
+                "voice note.mp3",
+                "audio",
+                "mp3"
+            )
+            val otherDocumentReference = assetPath.replaceFirst("audio/", "../audio/")
+            TextPackManager.writeMdzipDocument(
+                sessionDir,
+                "docs/other.md",
+                "[Shared](<$otherDocumentReference>)"
+            )
+            val assetFile = TextPackManager.resolveAssetFile(session, assetPath)!!
+
+            assertFalse(
+                TextPackManager.removeUnreferencedMediaAsset(session, assetPath, ""),
+                "an asset referenced by another document must be kept"
+            )
+            assertTrue(assetFile.exists())
+
+            TextPackManager.writeMdzipDocument(sessionDir, "docs/other.md", "No media here.")
+            assertTrue(TextPackManager.removeUnreferencedMediaAsset(session, assetPath, ""))
+            assertFalse(assetFile.exists())
+        } finally {
+            sessionDir.deleteRecursively()
         }
     }
 

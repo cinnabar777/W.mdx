@@ -1096,7 +1096,8 @@ class MediaPreviewWidget extends WidgetType {
       this.renderUrl,
       this.label
     );
-    media.addEventListener('loadedmetadata', () => {
+    const mediaElement = media.mediaElement || media;
+    mediaElement.addEventListener('loadedmetadata', () => {
       const renderedHeight = Math.ceil(media.getBoundingClientRect().height);
       if (renderedHeight > 0) wrapper.style.minHeight = `${renderedHeight}px`;
       view.requestMeasure();
@@ -1117,6 +1118,7 @@ class MediaPreviewWidget extends WidgetType {
     editButton.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
+      hideActions();
       openMediaEditDialog(view, this.from, this.to, this.type, this.label, this.url);
     });
 
@@ -1128,6 +1130,7 @@ class MediaPreviewWidget extends WidgetType {
     removeButton.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
+      hideActions();
       openMediaDeleteConfirmation(
         view,
         this.from,
@@ -1138,12 +1141,124 @@ class MediaPreviewWidget extends WidgetType {
       );
     });
     actions.append(editButton, removeButton);
-    wrapper.appendChild(actions);
+
+    let lastPressPoint = null;
+    let pressTimer = null;
+    let suppressNextMediaClick = false;
+    const positionActions = () => {
+      if (!actions.isConnected || !lastPressPoint) return;
+      const viewport = window.visualViewport;
+      const leftBound = viewport?.offsetLeft ?? 0;
+      const topBound = viewport?.offsetTop ?? 0;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const width = actions.offsetWidth || 160;
+      const height = actions.offsetHeight || 52;
+      const minLeft = leftBound + 8;
+      const maxLeft = Math.max(minLeft, leftBound + viewportWidth - width - 8);
+      const minTop = topBound + 8;
+      const maxTop = Math.max(minTop, topBound + viewportHeight - height - 8);
+      const centeredLeft = lastPressPoint.x - width / 2;
+      const aboveTop = lastPressPoint.y - height - 12;
+      const belowTop = lastPressPoint.y + 12;
+      const top = aboveTop >= minTop
+        ? aboveTop
+        : belowTop <= maxTop
+          ? belowTop
+          : Math.max(minTop, Math.min(aboveTop, maxTop));
+      actions.style.left = `${Math.max(minLeft, Math.min(centeredLeft, maxLeft))}px`;
+      actions.style.top = `${Math.max(minTop, Math.min(top, maxTop))}px`;
+    };
+    const showActions = point => {
+      lastPressPoint = point && Number.isFinite(point.x) && Number.isFinite(point.y)
+        ? point
+        : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      if (!actions.isConnected) document.body.appendChild(actions);
+      actions.classList.add('visible');
+      positionActions();
+      view.requestMeasure();
+    };
+    const hideActions = () => {
+      actions.classList.remove('visible');
+      actions.remove();
+      lastPressPoint = null;
+    };
+    const clearPressTimer = () => {
+      if (pressTimer !== null) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+    const dismissActions = event => {
+      if (!actions.classList.contains('visible')) return;
+      if (wrapper.contains(event.target) || actions.contains(event.target)) return;
+      hideActions();
+    };
+    wrapper.addEventListener('pointerdown', event => {
+      if (event.target.closest('.cm-media-actions')) return;
+      if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      wrapper._mediaPressStart = { x: startX, y: startY };
+      suppressNextMediaClick = false;
+      clearPressTimer();
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        suppressNextMediaClick = true;
+        showActions({ x: startX, y: startY });
+      }, 550);
+    });
+    wrapper.addEventListener('pointermove', event => {
+      const start = wrapper._mediaPressStart;
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) {
+        clearPressTimer();
+        wrapper._mediaPressStart = null;
+      }
+    });
+    wrapper.addEventListener('pointerup', () => {
+      clearPressTimer();
+      wrapper._mediaPressStart = null;
+    });
+    wrapper.addEventListener('pointercancel', () => {
+      clearPressTimer();
+      wrapper._mediaPressStart = null;
+    });
+    wrapper.addEventListener('click', event => {
+      if (!suppressNextMediaClick) return;
+      suppressNextMediaClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
+    wrapper.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextMediaClick = true;
+      showActions({ x: event.clientX, y: event.clientY });
+    });
+    document.addEventListener('pointerdown', dismissActions, true);
+    window.visualViewport?.addEventListener('resize', positionActions);
+    wrapper._clearMediaPressTimer = clearPressTimer;
+    wrapper._hideMediaActions = hideActions;
+    wrapper._dismissMediaActions = dismissActions;
+    wrapper._positionMediaActions = positionActions;
+    wrapper._mediaPlayerRoot = media;
     return wrapper;
   }
 
   ignoreEvent(event) {
     return Boolean(event.target?.closest?.('.cm-media-preview-wrapper'));
+  }
+
+  destroy(dom) {
+    dom?._clearMediaPressTimer?.();
+    dom?._hideMediaActions?.();
+    dom?._mediaPlayerRoot?.destroyMediaPlayer?.();
+    if (dom?._dismissMediaActions) {
+      document.removeEventListener('pointerdown', dom._dismissMediaActions, true);
+    }
+    if (dom?._positionMediaActions) {
+      window.visualViewport?.removeEventListener('resize', dom._positionMediaActions);
+    }
   }
 }
 
@@ -4365,9 +4480,16 @@ class CodeMirrorAdapter {
     if (!this.view) return;
     const markdown = formatMarkdownMediaLink(mediaType, mediaUrl, label);
     const sel = this.view.state.selection.main;
+    const before = this.view.state.doc.sliceString(0, sel.from);
+    const after = this.view.state.doc.sliceString(sel.to);
+    const prefix = before.length > 0 && !before.endsWith('\n') ? '\n\n' : '';
+    const suffix = after.startsWith('\n') ? '' : '\n\n';
+    const insertion = `${prefix}${markdown}${suffix}`;
+    const cursorAfter = sel.from + prefix.length + markdown.length +
+      (after.startsWith('\n') ? 1 : suffix.length);
     this.view.dispatch({
-      changes: { from: sel.from, to: sel.to, insert: markdown },
-      selection: { anchor: sel.from + markdown.length, head: sel.from + markdown.length }
+      changes: { from: sel.from, to: sel.to, insert: insertion },
+      selection: { anchor: cursorAfter, head: cursorAfter }
     });
     this.view.focus();
   }
@@ -5152,6 +5274,11 @@ function runToolbarGestureAction(
     toggleBottomToolbar();
     return true;
   }
+  if (actionId === 'switchView') {
+    hidePopupStrip();
+    void openWithOtherEngine();
+    return true;
+  }
   if (actionId === 'removeHighlight') {
     execCmd('highlight', { value: null });
     return true;
@@ -5747,7 +5874,7 @@ function openMediaEditDialog(view, from, to, mediaType, label, url) {
   dialog.querySelector('#modal-media-save').addEventListener('click', event => {
     event.preventDefault();
     const newUrl = urlInput.value.trim();
-    const newMediaType = getMarkdownMediaType(newUrl);
+    const newMediaType = getMarkdownMediaType(newUrl, labelInput.value);
     if (!newUrl || !newMediaType) {
       error.textContent = 'Enter a location ending in a supported audio or video file extension.';
       error.hidden = false;
@@ -5765,6 +5892,12 @@ function openMediaEditDialog(view, from, to, mediaType, label, url) {
       changes: { from, to, insert: markdown },
       selection: { anchor: from + markdown.length, head: from + markdown.length }
     });
+    if (newUrl !== url) {
+      window.AndroidNative?.removeUnreferencedMediaAsset?.(
+        url,
+        view.state.doc.toString()
+      );
+    }
     close();
   });
 
@@ -5781,7 +5914,8 @@ function openMediaDeleteConfirmation(view, from, to, mediaType, label, url) {
   dialog.innerHTML = `
     <h3 class="modal-title">Remove ${mediaName} reference?</h3>
     <p class="modal-message">
-      This removes the reference from the document only. The media file in the package will not be deleted.
+      This removes the reference and deletes its embedded MDZip file if no other document uses it.
+      Media linked from a regular Markdown file stays in its original location.
     </p>
     <div class="modal-actions">
       <button type="button" class="modal-btn modal-btn-cancel" id="modal-media-keep">Keep reference</button>
@@ -5807,6 +5941,10 @@ function openMediaDeleteConfirmation(view, from, to, mediaType, label, url) {
       changes: { from, to, insert: '' },
       selection: { anchor: from, head: from }
     });
+    window.AndroidNative?.removeUnreferencedMediaAsset?.(
+      url,
+      view.state.doc.toString()
+    );
     close();
   });
   overlay.classList.add('open');
@@ -7546,18 +7684,36 @@ function setupTocGestureAndPanel(scrollDOM) {
   };
 }
 
+let editorModeSwitchInProgress = false;
+
 function openWithOtherEngine() {
+  if (editorModeSwitchInProgress) return Promise.resolve(false);
   const modes = ['wysiwyg', 'live_preview', 'source'];
   const nextIdx = (modes.indexOf(currentEditorMode) + 1) % modes.length;
   const targetMode = modes[nextIdx];
 
-  setEditorMode(targetMode).then(() => {
-    toggleBottomToolbar(true);
-    if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
-      const names = { wysiwyg: 'Pure WYSIWYG', live_preview: 'Obsidian Live Preview', source: 'Raw Source View' };
-      window.AndroidNative.showToast(`Switched to ${names[targetMode]}`);
-    }
-  });
+  editorModeSwitchInProgress = true;
+  return setEditorMode(targetMode)
+    .then(() => {
+      toggleBottomToolbar(true);
+      if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
+        const names = {
+          wysiwyg: 'Pure WYSIWYG',
+          live_preview: 'Obsidian Live Preview',
+          source: 'Raw Source View'
+        };
+        window.AndroidNative.showToast(`Switched to ${names[targetMode]}`);
+      }
+      return true;
+    })
+    .catch(error => {
+      console.error('Could not switch editor view:', error);
+      window.AndroidNative?.showToast?.('Could not switch editor view');
+      return false;
+    })
+    .finally(() => {
+      editorModeSwitchInProgress = false;
+    });
 }
 
 function toggleBottomToolbar(forceState) {
@@ -7816,6 +7972,33 @@ window.editorBridge = {
 
       return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
     };
+
+    const configuredPlaybackRate = Number(prefs.pref_media_playback_rate);
+    window.__wmdxMediaSettings = {
+      playbackRate: [0.5, 0.75, 1, 1.25, 1.5, 2].includes(configuredPlaybackRate)
+        ? configuredPlaybackRate
+        : 1
+    };
+    setCssVar(
+      '--media-player-background',
+      androidArgbToCss(prefs.pref_media_player_background)
+    );
+    setCssVar(
+      '--media-control-background',
+      androidArgbToCss(prefs.pref_media_control_background)
+    );
+    setCssVar(
+      '--media-control-color',
+      androidArgbToCss(prefs.pref_media_control_color)
+    );
+    setCssVar(
+      '--media-control-accent',
+      androidArgbToCss(prefs.pref_media_control_accent)
+    );
+    setCssVar(
+      '--media-control-border',
+      androidArgbToCss(prefs.pref_media_control_border)
+    );
 
     if (prefs.pref_app_theme === 'light') {
       document.body.classList.add('light-theme');

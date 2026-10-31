@@ -46,6 +46,10 @@ private const val WMDX_TAB_SESSION_MIME = "application/vnd.wmdx.tabs-session+jso
 private const val MAX_WMDX_TAB_SESSION_BYTES = 512 * 1024
 
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
+    private companion object {
+        const val WMDX_MEDIA_TYPE_PARAM = "wmdx_media_type"
+    }
+
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
@@ -90,6 +94,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     @Volatile private var leftPanelSearchFuture: Future<*>? = null
     @Volatile
     private var currentTextPackSession: TextPackSession? = null
+    private var fullscreenMediaView: View? = null
+    private var fullscreenMediaViewCallback: android.webkit.WebChromeClient.CustomViewCallback? = null
+    private var previousSystemUiVisibility: Int = 0
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
     private var pendingCreateDocumentSessionId: String? = null
@@ -276,12 +283,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         uri?.let { insertImageFromUri(it) }
     }
 
-    private val pickAudioLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { insertMediaFromUri(it, "audio") }
+    private val pickAudioLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            persistMediaReadPermission(it)
+            insertMediaFromUri(it, "audio")
+        }
     }
 
-    private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { insertMediaFromUri(it, "video") }
+    private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            persistMediaReadPermission(it)
+            insertMediaFromUri(it, "video")
+        }
     }
 
     private val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -351,6 +364,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                if (fullscreenMediaView != null) {
+                    dismissFullscreenMediaView()
+                    return
+                }
                 navigateCombinedHistory("back", finishWhenBackUnavailable = true)
             }
         })
@@ -670,6 +687,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 request: WebResourceRequest?
             ): WebResourceResponse? {
                 val uri = request?.url ?: return null
+                if (uri.scheme.equals("content", ignoreCase = true)) {
+                    return interceptContentMediaRequest(request)
+                }
                 if (uri.pathSegments.firstOrNull() == "mdzip-assets") {
                     return interceptArchiveAssetRequest(request)
                 }
@@ -711,6 +731,40 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         webView.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onShowCustomView(
+                view: View?,
+                callback: android.webkit.WebChromeClient.CustomViewCallback?
+            ) {
+                if (view == null || callback == null) return
+                if (fullscreenMediaView != null) {
+                    callback.onCustomViewHidden()
+                    return
+                }
+                val decor = window.decorView as? android.view.ViewGroup
+                if (decor == null) {
+                    callback.onCustomViewHidden()
+                    return
+                }
+                previousSystemUiVisibility = decor.systemUiVisibility
+                fullscreenMediaView = view
+                fullscreenMediaViewCallback = callback
+                decor.addView(
+                    view,
+                    android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+                decor.systemUiVisibility =
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            }
+
+            override fun onHideCustomView() {
+                dismissFullscreenMediaView()
+            }
+
             override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
                 if (consoleMessage?.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
                     AppDiagnostics.record(
@@ -751,6 +805,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
     }
 
+    private fun dismissFullscreenMediaView() {
+        val customView = fullscreenMediaView ?: return
+        (customView.parent as? android.view.ViewGroup)?.removeView(customView)
+        fullscreenMediaView = null
+        val callback = fullscreenMediaViewCallback
+        fullscreenMediaViewCallback = null
+        window.decorView.systemUiVisibility = previousSystemUiVisibility
+        callback?.onCustomViewHidden()
+    }
+
     private fun archiveAssetBaseUrl(session: TextPackSession?): String {
         session ?: return ""
         val parent = session.documentPath.substringBeforeLast('/', "")
@@ -762,6 +826,175 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "${Uri.encode(session.sessionDir.name)}/$parentPath"
     }
 
+    private fun interceptContentMediaRequest(
+        request: WebResourceRequest?
+    ): WebResourceResponse? {
+        val requestUri = request?.url?.let { Uri.parse(it.toString()) } ?: return null
+        val mediaTypeHint = requestUri.getQueryParameter(WMDX_MEDIA_TYPE_PARAM)
+        val contentUri = stripWmdxMediaTypeHint(requestUri)
+        val hasReadAccess = checkUriPermission(
+            contentUri,
+            android.os.Process.myPid(),
+            android.os.Process.myUid(),
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!hasReadAccess) return null
+
+        val mimeType = mediaMimeType(contentUri, mediaTypeHint) ?: return null
+
+        val descriptor = runCatching {
+            contentResolver.openAssetFileDescriptor(contentUri, "r")
+        }.getOrNull() ?: return null
+        return runCatching {
+            val totalLength = descriptor.length
+            val rangeHeader = request.requestHeaders.entries
+                .firstOrNull { it.key.equals("Range", ignoreCase = true) }
+                ?.value
+            val rangeMatch = rangeHeader?.let { Regex("^bytes=(\\d+)-(\\d*)$").matchEntire(it.trim()) }
+            val isPartial = rangeMatch != null && totalLength >= 0
+            val start = if (isPartial) rangeMatch!!.groupValues[1].toLong() else 0L
+            val requestedEnd = if (isPartial) {
+                rangeMatch!!.groupValues[2].takeIf { it.isNotEmpty() }?.toLongOrNull()
+            } else {
+                null
+            }
+            if (requestedEnd != null && requestedEnd < start) {
+                descriptor.close()
+                return WebResourceResponse(
+                    mimeType,
+                    null,
+                    416,
+                    "Range Not Satisfiable",
+                    mapOf("Content-Range" to "bytes */$totalLength"),
+                    java.io.ByteArrayInputStream(ByteArray(0))
+                )
+            }
+            if (totalLength >= 0 && start >= totalLength) {
+                descriptor.close()
+                return WebResourceResponse(
+                    mimeType,
+                    null,
+                    416,
+                    "Range Not Satisfiable",
+                    mapOf("Content-Range" to "bytes */$totalLength"),
+                    java.io.ByteArrayInputStream(ByteArray(0))
+                )
+            }
+            val end = if (isPartial) {
+                (requestedEnd ?: (totalLength - 1)).coerceAtMost(totalLength - 1)
+            } else if (totalLength >= 0) {
+                totalLength - 1
+            } else {
+                -1L
+            }
+            val stream = descriptor.createInputStream()
+            var toSkip = start
+            while (toSkip > 0) {
+                val skipped = stream.skip(toSkip)
+                if (skipped > 0) {
+                    toSkip -= skipped
+                } else if (stream.read() < 0) {
+                    throw java.io.IOException("Could not seek in the selected media file.")
+                } else {
+                    toSkip--
+                }
+            }
+            val bytesToServe = if (end >= start) end - start + 1 else -1L
+            val body = if (bytesToServe >= 0) {
+                object : java.io.FilterInputStream(stream) {
+                    private var remaining = bytesToServe
+
+                    override fun read(): Int {
+                        if (remaining <= 0) return -1
+                        val value = super.read()
+                        if (value >= 0) remaining--
+                        return value
+                    }
+
+                    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                        if (remaining <= 0) return -1
+                        val boundedLength = minOf(length.toLong(), remaining).toInt()
+                        val count = super.read(buffer, offset, boundedLength)
+                        if (count > 0) remaining -= count
+                        return count
+                    }
+                }
+            } else {
+                stream
+            }
+            val responseHeaders = mutableMapOf("Accept-Ranges" to "bytes")
+            if (bytesToServe >= 0) responseHeaders["Content-Length"] = bytesToServe.toString()
+            if (isPartial) {
+                responseHeaders["Content-Range"] = "bytes $start-$end/$totalLength"
+            }
+            WebResourceResponse(
+                mimeType,
+                null,
+                if (isPartial) 206 else 200,
+                if (isPartial) "Partial Content" else "OK",
+                responseHeaders,
+                body
+            )
+        }.getOrElse { error ->
+            runCatching { descriptor.close() }
+            AppDiagnostics.record(
+                this,
+                "content_media_read_error",
+                error.localizedMessage ?: "unknown error"
+            )
+            null
+        }
+    }
+
+    private fun stripWmdxMediaTypeHint(uri: Uri): Uri {
+        if (!uri.queryParameterNames.contains(WMDX_MEDIA_TYPE_PARAM)) return uri
+        return uri.buildUpon().clearQuery().apply {
+            uri.queryParameterNames.forEach { key ->
+                if (key != WMDX_MEDIA_TYPE_PARAM) {
+                    uri.getQueryParameters(key).forEach { value ->
+                        appendQueryParameter(key, value)
+                    }
+                }
+            }
+        }.build()
+    }
+
+    private fun mediaMimeType(uri: Uri, expectedMediaType: String? = null): String? {
+        val providerMime = runCatching { contentResolver.getType(uri) }.getOrNull()
+            ?.takeIf { it.startsWith("audio/") || it.startsWith("video/") }
+        if (providerMime != null) return providerMime
+
+        val extension = getFileNameFromUri(uri)
+            ?.substringAfterLast('.', "")
+            ?.lowercase(java.util.Locale.ROOT)
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return knownMediaMimeType(extension, expectedMediaType)
+            ?: android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(extension)
+                ?.takeIf { it.startsWith("audio/") || it.startsWith("video/") }
+    }
+
+    private fun knownMediaMimeType(extension: String, expectedMediaType: String?): String? =
+        when (extension.lowercase(java.util.Locale.ROOT)) {
+            "3gp" -> "video/3gpp"
+            "aac" -> "audio/aac"
+            "avi" -> "video/x-msvideo"
+            "flac" -> "audio/flac"
+            "m4a" -> "audio/mp4"
+            "m4v" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            "mov" -> "video/quicktime"
+            "mp3" -> "audio/mpeg"
+            "mp4" -> "video/mp4"
+            "oga", "ogg", "opus" -> "audio/ogg"
+            "ogv" -> "video/ogg"
+            "wav" -> "audio/wav"
+            "webm" -> if (expectedMediaType == "audio") "audio/webm" else "video/webm"
+            "wmv" -> "video/x-ms-wmv"
+            else -> null
+        }
+
     private fun interceptArchiveAssetRequest(request: WebResourceRequest?): WebResourceResponse {
         val uri = request?.url ?: return missingArchiveAssetResponse()
         val segments = uri.pathSegments
@@ -772,8 +1005,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val relativePath = segments.drop(2).joinToString("/")
         val file = TextPackManager.resolveAssetFile(session, relativePath)
         if (file == null || !file.isFile) return missingArchiveAssetResponse()
-        val mimeType = android.webkit.MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(file.extension.lowercase())
+        val assetFolder = relativePath.substringBefore('/')
+        val expectedMediaType = assetFolder
+            .takeIf { it.equals("audio", ignoreCase = true) || it.equals("video", ignoreCase = true) }
+            ?.lowercase(java.util.Locale.ROOT)
+        val mimeType = expectedMediaType?.let {
+            knownMediaMimeType(file.extension, it)
+        } ?: android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(file.extension.lowercase(java.util.Locale.ROOT))
             ?: "application/octet-stream"
         return runCatching {
             archiveAssetResponse(file, mimeType, request)
@@ -2282,19 +2521,32 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun handleInsertMedia(mediaType: String) {
-        if (currentTextPackSession == null) {
-            ThemedToast.show(
-                this,
-                "Open or create an MDZip package before adding media.",
-                Toast.LENGTH_LONG
-            )
-            return
-        }
         when (mediaType) {
-            "audio" -> pickAudioLauncher.launch("audio/*")
-            "video" -> pickVideoLauncher.launch("video/*")
+            "audio" -> pickAudioLauncher.launch(arrayOf("audio/*", "application/octet-stream"))
+            "video" -> pickVideoLauncher.launch(arrayOf("video/*", "application/octet-stream"))
         }
     }
+
+    private fun persistMediaReadPermission(uri: Uri): Boolean =
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            true
+        } catch (error: Exception) {
+            AppDiagnostics.record(
+                this,
+                "media_permission_not_persisted",
+                error.localizedMessage ?: "unknown error"
+            )
+            ThemedToast.show(
+                this,
+                "This file provider may not keep media access after Wmdx closes.",
+                Toast.LENGTH_LONG
+            )
+            false
+        }
 
     private fun showImageUrlDialog() {
         val input = EditText(this)
@@ -2342,35 +2594,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun insertMediaFromUri(uri: Uri, mediaType: String) {
         try {
-            val session = currentTextPackSession
-                ?: throw java.io.IOException("Open or create an MDZip package before adding media.")
-            val originalName = getFileNameFromUri(uri)
-            val extensionFromMimeType = contentResolver.getType(uri)
-                ?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
-            val fallbackExtension = extensionFromMimeType
-                ?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) }
-                ?: if (mediaType == "audio") "m4a" else "mp4"
-            val inputStream = contentResolver.openInputStream(uri)
-                ?: throw java.io.IOException("Could not read the selected media file.")
-            inputStream.use {
-                val assetPath = TextPackManager.addAssetMedia(
-                    session,
-                    it,
-                    originalName,
-                    mediaType,
-                    fallbackExtension
-                )
-                val label = originalName?.takeIf { name -> name.isNotBlank() }
-                    ?: if (mediaType == "audio") "Audio" else "Video"
-                webView.evaluateJavascript(
-                    "window.editorBridge.insertMedia(" +
-                        "${JSONObjectWrapper.quote(mediaType)}," +
-                        "${JSONObjectWrapper.quote(assetPath)}," +
-                        "${JSONObjectWrapper.quote(label)}" +
-                        ");",
-                    null
-                )
+            val mimeType = mediaMimeType(uri, mediaType)
+            if (mimeType == null || !mimeType.startsWith("$mediaType/")) {
+                val expected = if (mediaType == "audio") "audio" else "video"
+                ThemedToast.show(this, "Choose a supported $expected file.", Toast.LENGTH_LONG)
+                return
             }
+            val originalName = getFileNameFromUri(uri)
+            val label = originalName?.takeIf { name -> name.isNotBlank() }
+                ?: if (mediaType == "audio") "Audio" else "Video"
+            val session = currentTextPackSession
+            val mediaUrl = if (session != null) {
+                val extensionFromMimeType = mimeType
+                    ?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+                val fallbackExtension = extensionFromMimeType
+                    ?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) }
+                    ?: if (mediaType == "audio") "m4a" else "mp4"
+                val inputStream = contentResolver.openInputStream(uri)
+                    ?: throw java.io.IOException("Could not read the selected media file.")
+                inputStream.use {
+                    TextPackManager.addAssetMedia(
+                        session,
+                        it,
+                        originalName,
+                        mediaType,
+                        fallbackExtension
+                    )
+                }
+            } else {
+                uri.buildUpon()
+                    .appendQueryParameter(WMDX_MEDIA_TYPE_PARAM, mediaType)
+                    .build()
+                    .toString()
+            }
+            webView.evaluateJavascript(
+                "window.editorBridge.insertMedia(" +
+                    "${JSONObjectWrapper.quote(mediaType)}," +
+                    "${JSONObjectWrapper.quote(mediaUrl)}," +
+                    "${JSONObjectWrapper.quote(label)}" +
+                    ");",
+                null
+            )
         } catch (e: Exception) {
             ThemedToast.show(
                 this,
@@ -3079,6 +3343,24 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun getArchiveAssetBaseUrl(): String = archiveAssetBaseUrl(currentTextPackSession)
+
+        @JavascriptInterface
+        fun removeUnreferencedMediaAsset(mediaUrl: String, updatedMarkdown: String): Boolean {
+            val session = currentTextPackSession ?: return false
+            return runCatching {
+                TextPackManager.removeUnreferencedMediaAsset(
+                    session,
+                    mediaUrl,
+                    updatedMarkdown
+                )
+            }.onFailure { error ->
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "mdzip_media_cleanup_error",
+                    error.localizedMessage ?: "unknown error"
+                )
+            }.getOrDefault(false)
+        }
 
         @JavascriptInterface
         fun saveToolbarKeyPreferences(surface: String, rawConfig: String): Boolean =

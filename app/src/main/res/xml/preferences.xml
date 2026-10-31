@@ -34,6 +34,11 @@
             app:summary="Edit bottom and floating toolbar layouts and appearance" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_media"
+            app:title="Media"
+            app:summary="Playback speed and player controls" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_hotkeys"
             app:title="Keyboard Shortcuts"
             app:summary="Choose keys for app actions, formatting, headings, and highlights" />

@@ -156,8 +156,28 @@ object TextPackManager {
         val extension = (originalExtension ?: fallbackExtension)
             .takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) }
             ?: if (directory == "audio") "m4a" else "mp4"
-        val assetName = "${directory}_${UUID.randomUUID()}.$extension"
-        val archivePath = "${contentDirectoryName(session.sessionDir, directory)}/$assetName"
+        val directoryPath = contentDirectoryName(session.sessionDir, directory)
+        val originalName = originalFileName
+            ?.substringAfterLast('/')
+            ?.substringAfterLast('\\')
+            ?.trim()
+            .orEmpty()
+        val rawStem = originalName.substringBeforeLast('.', originalName)
+        val safeStem = rawStem
+            .replace(Regex("[^\\p{L}\\p{N} _().-]"), "_")
+            .trim(' ', '.', '_')
+            .take(120)
+            .ifBlank { if (directory == "audio") "Audio" else "Video" }
+        val safeExtension = extension.lowercase(java.util.Locale.ROOT)
+        val targetDirectory = resolveArchiveFile(session.sessionDir, directoryPath)
+            ?: throw IOException("The $directory directory is not safe.")
+        var assetName = "$safeStem.$safeExtension"
+        var suffix = 2
+        while (File(targetDirectory, assetName).exists()) {
+            assetName = "$safeStem ($suffix).$safeExtension"
+            suffix++
+        }
+        val archivePath = "$directoryPath/$assetName"
         val targetFile = resolveArchiveFile(session.sessionDir, archivePath)
             ?: throw IOException("The $directory asset path is not safe.")
         targetFile.parentFile?.mkdirs()
@@ -173,6 +193,59 @@ object TextPackManager {
                     else -> Uri.encode(segment)
                 }
             }
+    }
+
+    /**
+     * Removes an embedded media asset only when no Markdown document in this
+     * MDZip still references it. The active document's unsaved text is supplied
+     * by the editor so cleanup does not depend on the last save.
+     */
+    fun removeUnreferencedMediaAsset(
+        session: TextPackSession,
+        mediaUrl: String,
+        updatedDocumentMarkdown: String
+    ): Boolean {
+        val availablePaths = session.sessionDir.walkTopDown()
+            .filter { it.isFile }
+            .map { it.relativeTo(session.sessionDir).invariantSeparatorsPath }
+            .map { java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFC) }
+            .toList()
+        val targetPath = resolveMdzipAssetPath(session.documentPath, mediaUrl, availablePaths)
+            ?: return false
+        val assetFolder = targetPath.substringBefore('/')
+        if (!assetFolder.equals("audio", ignoreCase = true) &&
+            !assetFolder.equals("video", ignoreCase = true)
+        ) {
+            return false
+        }
+        val targetFile = resolveArchiveFile(session.sessionDir, targetPath)
+            ?: return false
+        if (!targetFile.isFile) return false
+
+        val currentDocumentPath = java.text.Normalizer.normalize(
+            session.documentPath,
+            java.text.Normalizer.Form.NFC
+        )
+        val documentPaths = availablePaths.filter(::isMarkdownPath)
+        if (currentDocumentPath !in documentPaths) return false
+        val markdownLinkPattern = Regex(
+            """\]\(\s*(?:<([^>]*)>|([^\s)]+))(?:\s+["'][^"']*["'])?\s*\)"""
+        )
+        for (documentPath in documentPaths) {
+            val markdown = if (documentPath == currentDocumentPath) {
+                updatedDocumentMarkdown
+            } else {
+                val documentFile = resolveArchiveFile(session.sessionDir, documentPath) ?: return false
+                runCatching { documentFile.readText(Charsets.UTF_8) }.getOrNull() ?: return false
+            }
+            for (match in markdownLinkPattern.findAll(markdown)) {
+                val reference = match.groups[1]?.value ?: match.groups[2]?.value ?: continue
+                if (resolveMdzipAssetPath(documentPath, reference, availablePaths) == targetPath) {
+                    return false
+                }
+            }
+        }
+        return targetFile.delete()
     }
 
     fun saveTextPack(
@@ -647,6 +720,55 @@ object TextPackManager {
             return existing.name
         }
         return preferredName
+    }
+
+    private fun resolveMdzipAssetPath(
+        documentPath: String,
+        linkTarget: String,
+        availablePaths: List<String>
+    ): String? {
+        val rawTarget = linkTarget.trim().substringBefore('#').substringBefore('?')
+        if (
+            rawTarget.isEmpty() ||
+            rawTarget.startsWith('/') ||
+            rawTarget.startsWith("//") ||
+            rawTarget.contains('\\') ||
+            rawTarget.contains('\u0000') ||
+            Regex("^[A-Za-z][A-Za-z0-9+.-]*:").containsMatchIn(rawTarget)
+        ) {
+            return null
+        }
+        val decodedTarget = runCatching {
+            java.net.URLDecoder.decode(
+                rawTarget.replace("+", "%2B"),
+                Charsets.UTF_8.name()
+            )
+        }.getOrNull() ?: return null
+        if (decodedTarget.contains('\\') || decodedTarget.contains('\u0000')) return null
+
+        val segments = mutableListOf<String>()
+        val documentDirectory = documentPath.substringBeforeLast('/', "")
+        val combined = if (documentDirectory.isEmpty()) {
+            decodedTarget
+        } else {
+            "$documentDirectory/$decodedTarget"
+        }
+        for (segment in combined.split('/')) {
+            when (segment) {
+                "", "." -> Unit
+                ".." -> {
+                    if (segments.isEmpty()) return null
+                    segments.removeAt(segments.lastIndex)
+                }
+                else -> segments.add(segment)
+            }
+        }
+        if (segments.isEmpty()) return null
+        val normalized = java.text.Normalizer.normalize(
+            segments.joinToString("/"),
+            java.text.Normalizer.Form.NFC
+        )
+        return normalized.takeIf { it in availablePaths }
     }
 
     private fun availableEntryPointPath(sessionDir: File): String {

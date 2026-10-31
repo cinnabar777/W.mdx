@@ -64,6 +64,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingControlbarFragment -> "Toolbars"
                 is StylingCursorFragment -> "Cursor & Selection"
                 is StylingFindReplaceFragment -> "Find & Replace"
+                is MediaSettingsFragment -> "Media"
                 is TocPanelSettingsFragment -> "Table of Contents"
                 is LeftPanelSettingsFragment -> "Left Side Panel"
                 is StorageAccessSettingsFragment -> "File & Folder Access"
@@ -290,6 +291,13 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_bottom_toolbar" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, StylingControlbarFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_media" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, MediaSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -641,6 +649,12 @@ class StorageAccessSettingsFragment : BaseSettingsFragment() {
             }
             .setNegativeButton("Keep", null)
             .show()
+    }
+}
+
+class MediaSettingsFragment : BaseSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_media, rootKey)
     }
 }
 

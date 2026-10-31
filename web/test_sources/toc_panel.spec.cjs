@@ -173,7 +173,8 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   };
   const swipeStartX = window.innerWidth - 2;
   dispatchTouch('touchstart', 'touches', { clientX: swipeStartX, clientY: 100 });
-  dispatchTouch('touchend', 'changedTouches', { clientX: swipeStartX - 100, clientY: 100 });
+  dispatchTouch('touchmove', 'touches', { clientX: swipeStartX - 400, clientY: 100 });
+  dispatchTouch('touchend', 'changedTouches', { clientX: swipeStartX - 400, clientY: 100 });
 
   assert.ok(panel.classList.contains('open'), 'right-edge swipe opens the TOC panel');
   assert.equal(keyboardHideCalls, 1, 'opening the panel hides the software keyboard');
