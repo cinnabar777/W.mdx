@@ -3,3 +3,7 @@ modules = ["nodejs-24", "python-base-3.13"]
 [nix]
 channel = "stable-25_05"
 packages = ["jdk17"]
+
+[postMerge]
+path = "tools/post-merge-setup.sh"
+timeoutMs = 180000

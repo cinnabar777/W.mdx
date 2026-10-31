@@ -123,9 +123,12 @@ test('legacy TextPack archives are rejected instead of rendered as plain text', 
     mainActivitySource,
     /TextPackManager\.isUnsupportedLegacyTextPackArchive\(this, uri, fileName\)/
   );
+  const leftPanelReadStart = mainActivitySource.indexOf('private fun readLeftPanelDocument(uri: Uri)');
+  const leftPanelReadEnd = mainActivitySource.indexOf('\n    private fun ', leftPanelReadStart + 1);
+  const leftPanelReadSource = mainActivitySource.slice(leftPanelReadStart, leftPanelReadEnd);
   assert.match(
-    mainActivitySource,
-    /TextPackManager\.isUnsupportedLegacyTextPackArchive\(this, uri, name\)/
+    leftPanelReadSource,
+    /TextPackManager\.isUnsupportedLegacyTextPackArchive\(this, archiveUri, archiveName\)/
   );
 });
 
