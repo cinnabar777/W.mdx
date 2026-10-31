@@ -60,12 +60,12 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   assert.match(toolbarConfig, /parsedVersion > 0 && parsedVersion < 8/);
   assert.match(settingsPreview, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video \}/);
   assert.match(settingsActivity, /"image", "audio", "video", "link"/);
-  assert.match(widget, /video\.controls = false/);
-  assert.match(widget, /createVideoPlayerControls\(video, wrapper, status\)/);
+  assert.match(widget, /video\.controls = true/);
+  assert.match(widget, /createVideoPlayerControls\(video, wrapper\)/);
   assert.match(controls, /--media-controls-bg/);
   assert.match(controls, /--media-controls-accent/);
-  assert.match(controls, /const initialRate = 1/);
   assert.doesNotMatch(controls, /mdzipAudioPlaybackRate|mdzipVideoPlaybackRate|setMediaPlaybackSpeed/);
+  assert.doesNotMatch(controls, /video\.play\(\)|video\.pause\(\)/);
   assert.doesNotMatch(editor, /video\[data-mdzip-video="true"\]/);
   assert.match(widget, /userEvent: 'delete\.mdzip-video'/);
   assert.match(icons, /video: `<svg/);
