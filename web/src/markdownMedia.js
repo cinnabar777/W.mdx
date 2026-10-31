@@ -7,6 +7,14 @@ function markdownLinkParts(text) {
   if (!match) return null;
 
   let target = match[2].trim();
+  let title = null;
+  const titleMatch = target.match(
+    /\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|\(((?:[^)\\]|\\.)*)\))$/
+  );
+  if (titleMatch) {
+    title = titleMatch[1] ?? titleMatch[2] ?? titleMatch[3] ?? '';
+    target = target.slice(0, titleMatch.index).trim();
+  }
   if (target.startsWith('<') && target.endsWith('>')) {
     target = target.slice(1, -1);
   } else {
@@ -14,8 +22,31 @@ function markdownLinkParts(text) {
   }
   return {
     label: unescapeMarkdown(match[1]),
-    url: unescapeMarkdown(target)
+    url: unescapeMarkdown(target),
+    title
   };
+}
+
+function parseAudioLayoutTitle(title) {
+  if (!title?.startsWith('wmdx-audio:')) return null;
+  const values = Object.fromEntries(
+    title.slice('wmdx-audio:'.length).split(';').map(pair => {
+      const separator = pair.indexOf('=');
+      return separator === -1
+        ? [pair, '']
+        : [pair.slice(0, separator), pair.slice(separator + 1)];
+    })
+  );
+  const width = Number(values.width);
+  if (
+    !Number.isInteger(width) ||
+    width < 40 ||
+    width > 100 ||
+    !['left', 'center', 'right'].includes(values.align)
+  ) {
+    return null;
+  }
+  return { width, alignment: values.align };
 }
 
 export function parseMarkdownAudioLink(text) {
@@ -28,7 +59,10 @@ export function parseMarkdownAudioLink(text) {
     // Keep the encoded value; the native resolver validates and decodes it.
   }
   if (!decodedPath.toLowerCase().endsWith('.mp3')) return null;
-  return link;
+  const parsed = { label: link.label, url: link.url };
+  const layout = parseAudioLayoutTitle(link.title);
+  if (layout) parsed.layout = layout;
+  return parsed;
 }
 
 function markdownCodeRanges(text) {
@@ -106,14 +140,49 @@ export function extractMarkdownAudioLinks(markdown) {
   return links;
 }
 
-export function formatMarkdownAudioLink(label, url) {
+export function formatMarkdownAudioLink(label, url, layout = null) {
   const safeLabel = String(label ?? 'audio')
     .replace(/\\/g, '\\\\')
     .replace(/\]/g, '\\]');
-  const safeUrl = String(url ?? '').trim().split('/').map(segment =>
-    encodeURIComponent(segment).replace(/[!'()*]/g, character =>
+  const rawUrl = String(url ?? '').trim();
+  const queryIndex = rawUrl.indexOf('?');
+  const fragmentIndex = rawUrl.indexOf('#');
+  const suffixCandidates = [
+    queryIndex >= 0 && rawUrl.slice(0, queryIndex).toLowerCase().endsWith('.mp3')
+      ? queryIndex
+      : -1,
+    fragmentIndex >= 0 &&
+    rawUrl.slice(0, fragmentIndex).toLowerCase().endsWith('.mp3')
+      ? fragmentIndex
+      : -1
+  ].filter(index => index >= 0);
+  const suffixIndex = suffixCandidates.length ? Math.min(...suffixCandidates) : -1;
+  const path = suffixIndex === -1 ? rawUrl : rawUrl.slice(0, suffixIndex);
+  const suffix = suffixIndex === -1 ? '' : rawUrl.slice(suffixIndex);
+  const safePath = path.split('/').map(segment => {
+    let decoded = segment;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      // Encode any malformed percent signs as literal filename characters.
+    }
+    return encodeURIComponent(decoded).replace(/[!'()*]/g, character =>
       `%${character.charCodeAt(0).toString(16).toUpperCase()}`
-    )
-  ).join('/');
-  return `[${safeLabel}](${safeUrl})`;
+    );
+  }).join('/');
+
+  if (layout == null) return `[${safeLabel}](${safePath}${suffix})`;
+
+  const width = Number(layout.width ?? 100);
+  const alignment = layout.alignment ?? 'left';
+  if (!Number.isInteger(width) || width < 40 || width > 100) {
+    throw new RangeError('Audio width must be a whole-number percentage from 40 to 100.');
+  }
+  if (!['left', 'center', 'right'].includes(alignment)) {
+    throw new RangeError('Audio alignment must be left, center, or right.');
+  }
+  const title = width === 100 && alignment === 'left'
+    ? ''
+    : ` "wmdx-audio:width=${width};align=${alignment}"`;
+  return `[${safeLabel}](${safePath}${suffix}${title})`;
 }

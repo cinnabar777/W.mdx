@@ -19,8 +19,19 @@ test('long-press exposes edit and explicit package delete actions', () => {
   const player = read('src/audioPreviewWidget.js');
   assert.match(player, /editButton\.textContent = 'Edit'/);
   assert.match(player, /deleteButton\.textContent = 'Delete from MDZip'/);
-  assert.match(player, /AndroidNative\?\.editMdzipAudio/);
+  assert.match(player, /this\.onEdit\(view/);
+  assert.doesNotMatch(player, /editMdzipAudio/);
   assert.match(player, /userEvent: 'delete\.mdzip-audio'/);
+});
+
+test('audio edit controls save width and alignment, and the keyboard requests sentence caps', () => {
+  const editor = read('src/main.js');
+  const player = read('src/audioPreviewWidget.js');
+  assert.match(editor, /function openAudioEditDialog/);
+  assert.match(editor, /formatMarkdownAudioLink\([\s\S]*?alignment: alignmentInput\.value/);
+  assert.match(editor, /EditorView\.contentAttributes\.of\(\{\s*autocapitalize: 'sentences'/);
+  assert.match(player, /width:\$\{this\.layout\.width\}%/);
+  assert.match(player, /this\.layout\.alignment === 'center'/);
 });
 
 test('audio link edits synchronize packaged assets and retain their bytes for undo', () => {

@@ -101,13 +101,21 @@ function viewportBounds() {
 }
 
 export class AudioPreviewWidget extends WidgetType {
-  constructor(src, label, relativeLink, from, to) {
+  constructor(src, label, relativeLink, from, to, layout = null, onEdit = null) {
     super();
     this.src = src;
     this.label = label || 'audio.mp3';
     this.relativeLink = relativeLink;
     this.from = from;
     this.to = to;
+    const width = Number(layout?.width ?? 100);
+    this.layout = {
+      width: Number.isInteger(width) && width >= 40 && width <= 100 ? width : 100,
+      alignment: ['left', 'center', 'right'].includes(layout?.alignment)
+        ? layout.alignment
+        : 'left'
+    };
+    this.onEdit = onEdit;
   }
 
   eq(other) {
@@ -116,17 +124,25 @@ export class AudioPreviewWidget extends WidgetType {
       other.label === this.label &&
       other.relativeLink === this.relativeLink &&
       other.from === this.from &&
-      other.to === this.to;
+      other.to === this.to &&
+      other.layout.width === this.layout.width &&
+      other.layout.alignment === this.layout.alignment;
   }
 
   toDOM(view) {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-mdzip-audio-preview-wrapper';
+    const alignmentMargin = this.layout.alignment === 'center'
+      ? '10px auto'
+      : this.layout.alignment === 'right'
+        ? '10px 0 10px auto'
+        : '10px auto 10px 0';
     wrapper.style.cssText = [
       'display:block',
       'box-sizing:border-box',
       'max-width:100%',
-      'margin:10px 0',
+      `width:${this.layout.width}%`,
+      `margin:${alignmentMargin}`,
       'padding:10px',
       'border:1px solid var(--border-color, #444)',
       'border-radius:8px',
@@ -169,6 +185,7 @@ export class AudioPreviewWidget extends WidgetType {
       'align-items:center',
       'gap:8px',
       'box-sizing:border-box',
+      'width:100%',
       'max-width:100%',
       'padding:8px',
       'border-radius:var(--media-controls-radius, 24px)',
@@ -478,10 +495,18 @@ export class AudioPreviewWidget extends WidgetType {
       event.preventDefault();
       event.stopPropagation();
       hidePopup(actions);
-      if (window.AndroidNative?.editMdzipAudio?.(this.relativeLink) !== true) {
-        status.textContent = 'Could not open the MP3 replacement picker.';
+      if (typeof this.onEdit !== 'function') {
+        status.textContent = 'Audio layout editing is unavailable.';
         status.style.display = 'block';
+        return;
       }
+      this.onEdit(view, {
+        from: this.from,
+        to: this.to,
+        label: this.label,
+        url: this.relativeLink,
+        layout: this.layout
+      });
     };
     const deleteAudio = event => {
       event.preventDefault();

@@ -2029,7 +2029,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   audioLink.label,
                   audioLink.url,
                   node.from,
-                  node.to
+                  node.to,
+                  audioLink.layout,
+                  (editView, item) => openAudioEditDialog(editView, item)
                 )
               }).range(node.from, node.to);
               builder.push(audioDecoration);
@@ -3139,7 +3141,9 @@ function buildHeightMapValue(state) {
               audioLink.label,
               audioLink.url,
               node.from,
-              node.to
+              node.to,
+              audioLink.layout,
+              (editView, item) => openAudioEditDialog(editView, item)
             )
           }).range(node.from, node.to);
           replacements.push(audioDecoration);
@@ -3927,6 +3931,7 @@ class CodeMirrorAdapter {
     const extensions = [
         highlightSpecialChars(),
         this.historyCompartment.of(history()),
+        EditorView.contentAttributes.of({ autocapitalize: 'sentences' }),
         drawSelection(),
         dropCursor(),
         rectangularSelection(),
@@ -5645,6 +5650,88 @@ export function openFootnoteInsertionDialog(options = {}) {
 
   overlay.classList.add('open');
   requestAnimationFrame(() => textInput.focus());
+}
+
+function openAudioEditDialog(view, audioItem) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Audio Layout</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-audio-width">Player width (% of text area)</label>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <input id="modal-audio-width" class="modal-input" type="range" min="40" max="100" step="5"
+          style="flex:1;min-width:0;width:auto;padding:0;border:0;background:transparent;accent-color:var(--accent-color,#00d6c9);" />
+        <output id="modal-audio-width-value" aria-live="polite" style="min-width:42px;text-align:right;"></output>
+      </div>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-audio-alignment">Alignment</label>
+      <select id="modal-audio-alignment" class="modal-input">
+        <option value="left">Left</option>
+        <option value="center">Center</option>
+        <option value="right">Right</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-audio-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-audio-save">Save</button>
+    </div>
+  `;
+
+  const widthInput = dialog.querySelector('#modal-audio-width');
+  const widthValue = dialog.querySelector('#modal-audio-width-value');
+  const alignmentInput = dialog.querySelector('#modal-audio-alignment');
+  widthInput.value = String(audioItem.layout?.width ?? 100);
+  alignmentInput.value = audioItem.layout?.alignment ?? 'left';
+  const updateWidthValue = () => {
+    widthValue.textContent = `${widthInput.value}%`;
+  };
+  updateWidthValue();
+  widthInput.addEventListener('input', updateWidthValue);
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-audio-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-audio-save').addEventListener('click', event => {
+    event.preventDefault();
+    const { from, to } = audioItem;
+    if (from < 0 || to > view.state.doc.length || from >= to) {
+      close();
+      return;
+    }
+    const currentAudio = parseMarkdownAudioLink(view.state.doc.sliceString(from, to));
+    if (!currentAudio || currentAudio.url !== audioItem.url) {
+      close();
+      return;
+    }
+
+    const markdown = formatMarkdownAudioLink(
+      audioItem.label,
+      audioItem.url,
+      {
+        width: Number(widthInput.value),
+        alignment: alignmentInput.value
+      }
+    );
+    view.dispatch({
+      changes: { from, to, insert: markdown },
+      selection: { anchor: from + markdown.length, head: from + markdown.length },
+      userEvent: 'input.mdzip-audio-layout'
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => widthInput.focus());
 }
 
 function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {

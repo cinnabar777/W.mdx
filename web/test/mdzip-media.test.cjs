@@ -35,6 +35,38 @@ test('unescapes a closing bracket in the displayed MP3 filename', async () => {
   });
 });
 
+test('stores audio width and alignment in standard Markdown link titles', async () => {
+  const { formatMarkdownAudioLink, parseMarkdownAudioLink } =
+    await import('../src/markdownMedia.js');
+  const markdown = formatMarkdownAudioLink(
+    'Voice memo.mp3',
+    'audio/Voice%20memo.mp3',
+    { width: 65, alignment: 'right' }
+  );
+
+  assert.equal(
+    markdown,
+    '[Voice memo.mp3](audio/Voice%20memo.mp3 "wmdx-audio:width=65;align=right")'
+  );
+  assert.deepEqual(parseMarkdownAudioLink(markdown), {
+    label: 'Voice memo.mp3',
+    url: 'audio/Voice%20memo.mp3',
+    layout: { width: 65, alignment: 'right' }
+  });
+  assert.equal(
+    formatMarkdownAudioLink('Hash track.mp3', 'audio/hash#track.mp3'),
+    '[Hash track.mp3](audio/hash%23track.mp3)'
+  );
+  assert.equal(
+    formatMarkdownAudioLink('Question track.mp3', 'audio/name?mix.mp3'),
+    '[Question track.mp3](audio/name%3Fmix.mp3)'
+  );
+  assert.equal(
+    formatMarkdownAudioLink('Download.mp3', 'audio/download.mp3?source=local'),
+    '[Download.mp3](audio/download.mp3?source=local)'
+  );
+});
+
 test('extracts linked MP3s without treating images or code samples as attachments', async () => {
   const { extractMarkdownAudioLinks } = await import('../src/markdownMedia.js');
   const markdown = [
