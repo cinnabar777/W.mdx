@@ -24,23 +24,23 @@ test('long-press exposes edit and explicit package delete actions', () => {
   assert.match(player, /userEvent: 'delete\.mdzip-audio'/);
 });
 
-test('M4A, FLAC, and Opus files are accepted and served with the correct MIME types', () => {
+test('M4A, FLAC, Opus, and OGG files are accepted and served with the correct MIME types', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const capture = read('src/navigationCapture.js');
-  assert.match(manager, /setOf\("mp3", "m4a", "flac", "opus"\)/);
+  assert.match(manager, /setOf\("mp3", "m4a", "flac", "opus", "ogg"\)/);
   assert.match(manager, /fun addAudio\(/);
   assert.match(manager, /fun isSupportedAudioFileName\(/);
   assert.match(activity, /pickAudioLauncher\.launch\("audio\/\*"\)/);
   assert.match(activity, /"m4a" -> "audio\/mp4"/);
   assert.match(activity, /"flac" -> "audio\/flac"/);
-  assert.match(activity, /"opus" -> "audio\/ogg"/);
+  assert.match(activity, /"opus", "ogg" -> "audio\/ogg"/);
   assert.match(activity, /"mdzip_audio_asset"/);
   assert.match(capture, /enqueue\('media_event'/);
   assert.match(capture, /mediaErrorCode:/);
 });
 
-test('M4A and FLAC use bounded Blob seeking; Opus prepares duration when WebView omits it', () => {
+test('M4A, FLAC, Opus, and OGG use bounded Blob seeking when needed', () => {
   const player = read('src/audioPreviewWidget.js');
   const blobLoader = read('src/mdzipAudioBlobSeek.js');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
@@ -48,16 +48,16 @@ test('M4A and FLAC use bounded Blob seeking; Opus prepares duration when WebView
   assert.match(player, /audio\.preload = isBlobSeekSource \? 'auto' : 'metadata'/);
   assert.match(player, /void seekAudioWithBlob\(targetTime\)/);
   assert.match(player, /fetchAudioSeekBlob\(this\.src/);
-  assert.match(player, /prepareOpusDuration/);
-  assert.match(player, /getOggOpusDuration\(blob\)/);
+  assert.match(player, /prepareOggDuration/);
+  assert.match(player, /getOggAudioMetadata\(blob\)/);
   assert.match(player, /duration <= 0/);
-  assert.match(player, /isFlacSource[\s\S]*'audio\/flac'[\s\S]*isOpusSource[\s\S]*'audio\/ogg'/);
+  assert.match(player, /isFlacSource[\s\S]*'audio\/flac'[\s\S]*isOggSource[\s\S]*'audio\/ogg'/);
   assert.match(player, /URL\.revokeObjectURL\(seekBlobUrl\)/);
   assert.match(blobLoader, /MAX_AUDIO_SEEK_BYTES = 32 \* 1024 \* 1024/);
   assert.doesNotMatch(player, /enableMdzipAudioRangeRequests/);
   assert.match(
     activity,
-    /if \(extension in setOf\("m4a", "flac", "opus"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
+    /if \(extension in setOf\("m4a", "flac", "opus", "ogg"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
   );
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);
@@ -105,6 +105,44 @@ test('Opus duration is recovered from the final Ogg granule position', async () 
     10
   );
   assert.equal(await getOggOpusDuration(new Blob(['not an Ogg stream'])), null);
+});
+
+test('Vorbis duration is recovered from the Ogg sample rate and final granule', async () => {
+  const { getOggAudioMetadata } = await import('../src/oggOpusDuration.js');
+  const makePage = ({ flags, sequence, granule, packet }) => {
+    const page = new Uint8Array(28 + packet.length);
+    page.set([0x4f, 0x67, 0x67, 0x53], 0);
+    page[4] = 0;
+    page[5] = flags;
+    const view = new DataView(page.buffer);
+    view.setBigUint64(6, BigInt(granule), true);
+    view.setUint32(14, 9, true);
+    view.setUint32(18, sequence, true);
+    page[26] = 1;
+    page[27] = packet.length;
+    page.set(packet, 28);
+    return page;
+  };
+  const identification = new Uint8Array(30);
+  identification.set([0x01, 0x76, 0x6f, 0x72, 0x62, 0x69, 0x73]);
+  new DataView(identification.buffer).setUint32(12, 44100, true);
+  const headerPage = makePage({
+    flags: 2,
+    sequence: 0,
+    granule: 0,
+    packet: identification
+  });
+  const endPage = makePage({
+    flags: 4,
+    sequence: 1,
+    granule: 44100 * 3,
+    packet: new Uint8Array([0])
+  });
+
+  assert.deepEqual(
+    await getOggAudioMetadata(new Blob([headerPage, endPage], { type: 'audio/ogg' })),
+    { codec: 'vorbis', duration: 3 }
+  );
 });
 
 test('MDZip duplicate Save As moves the generated number before the extension', () => {

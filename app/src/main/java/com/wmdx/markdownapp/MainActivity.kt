@@ -2344,7 +2344,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "Accept-Ranges" to "bytes",
             "Cache-Control" to "no-store"
         )
-        if (extension in setOf("m4a", "flac", "opus")) {
+        if (extension in setOf("m4a", "flac", "opus", "ogg")) {
             headers.remove("Accept-Ranges")
         }
 
@@ -2366,9 +2366,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
         }
 
-        val rangeHeader = range ?: return mdzipRangeError(fileLength, mimeType, range)
+        val rangeHeader = range ?: return mdzipRangeError(fileLength, mimeType, range, extension)
         val byteRange = parseMdzipByteRange(rangeHeader, fileLength)
-            ?: return mdzipRangeError(fileLength, mimeType, rangeHeader)
+            ?: return mdzipRangeError(fileLength, mimeType, rangeHeader, extension)
         headers["Content-Length"] = byteRange.length.toString()
         val contentRange = "bytes ${byteRange.start}-${byteRange.endInclusive}/$fileLength"
         headers["Content-Range"] = contentRange
@@ -2392,7 +2392,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         when (extension.lowercase()) {
             "m4a" -> "audio/mp4"
             "flac" -> "audio/flac"
-            "opus" -> "audio/ogg"
+            "opus", "ogg" -> "audio/ogg"
             else -> "audio/mpeg"
         }
 
@@ -2420,14 +2420,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun mdzipRangeError(
         fileLength: Long,
         mimeType: String,
-        rangeHeader: String?
+        rangeHeader: String?,
+        extension: String
     ): WebResourceResponse {
-        val extension = when (mimeType) {
-            "audio/mp4" -> "m4a"
-            "audio/flac" -> "flac"
-            "audio/ogg" -> "opus"
-            else -> "mp3"
-        }
         recordMdzipAudioAsset(
             extension,
             416,
@@ -2493,7 +2488,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val originalName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedAudioFileName(originalName)) {
-                throw java.io.IOException("Choose an MP3, M4A, FLAC, or Opus file.")
+                throw java.io.IOException("Choose an MP3, M4A, FLAC, Opus, or OGG file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected audio file.")
@@ -2522,7 +2517,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val selectedName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedAudioFileName(selectedName)) {
-                throw java.io.IOException("Choose an MP3, M4A, FLAC, or Opus file.")
+                throw java.io.IOException("Choose an MP3, M4A, FLAC, Opus, or OGG file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected audio file.")
