@@ -475,6 +475,38 @@ export function setupFullNavigationCapture(view) {
     });
   };
 
+  const onMediaEvent = (event) => {
+    const media = event.target;
+    if (media?.dataset?.mdzipAudio !== 'true') return;
+
+    const source = String(media.currentSrc || media.src || '');
+    let path = '';
+    try {
+      path = new win.URL(source, win.location.href).pathname;
+    } catch (_) {
+      // Keep the source private; record only its route and extension below.
+    }
+    const extension = path.match(/\.([a-z0-9]{1,8})$/i)?.[1]?.toLowerCase() || null;
+    enqueue('media_event', {
+      eventType: event.type,
+      sourceKind: path.includes('/mdzip-assets/') ? 'mdzip' : source ? 'other' : 'unset',
+      extension,
+      mediaErrorCode: Number.isFinite(media.error?.code) ? media.error.code : null,
+      networkState: Number.isFinite(media.networkState) ? media.networkState : null,
+      readyState: Number.isFinite(media.readyState) ? media.readyState : null,
+      duration: Number.isFinite(media.duration) ? round(media.duration) : null,
+      currentTime: Number.isFinite(media.currentTime) ? round(media.currentTime) : null
+    });
+  };
+
+  const mediaEventTypes = [
+    'loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'play', 'playing',
+    'pause', 'ended', 'waiting', 'stalled', 'suspend', 'error', 'abort', 'emptied'
+  ];
+  for (const type of mediaEventTypes) {
+    doc.addEventListener(type, onMediaEvent, true);
+  }
+
   const onKeyDown = keyHandler('down');
   const onKeyUp = keyHandler('up');
   win.addEventListener('keydown', onKeyDown, true);
@@ -617,6 +649,9 @@ export function setupFullNavigationCapture(view) {
     win.visualViewport?.removeEventListener('scroll', onViewport);
     win.removeEventListener('error', onError, true);
     win.removeEventListener('unhandledrejection', onUnhandledRejection);
+    for (const type of mediaEventTypes) {
+      doc.removeEventListener(type, onMediaEvent, true);
+    }
     win.removeEventListener('pagehide', onPageHide);
     activePointerIds.clear();
     queue = [];

@@ -133,6 +133,31 @@ test('full navigation capture records every key, pointer, scroll, and selection 
   dom.window.close();
 });
 
+test('full navigation capture records MDZip audio load errors without filenames', async () => {
+  const { dom, win, editor, view } = makeView();
+  const stop = setupFullNavigationCapture(view);
+  const audio = win.document.createElement('audio');
+  audio.dataset.mdzipAudio = 'true';
+  audio.src = 'https://appassets.androidplatform.net/mdzip-assets/session/audio/recording.m4a';
+  Object.defineProperty(audio, 'error', { configurable: true, value: { code: 4 } });
+  Object.defineProperty(audio, 'networkState', { configurable: true, value: 3 });
+  editor.appendChild(audio);
+  audio.dispatchEvent(new win.Event('error'));
+
+  await new Promise((resolve) => win.setTimeout(resolve, 180));
+  stop();
+
+  const mediaError = win.AndroidNative.batches.flat()
+    .find((record) => record.kind === 'media_event' && record.eventType === 'error');
+  assert.ok(mediaError);
+  assert.equal(mediaError.sourceKind, 'mdzip');
+  assert.equal(mediaError.extension, 'm4a');
+  assert.equal(mediaError.mediaErrorCode, 4);
+  assert.equal(mediaError.networkState, 3);
+  assert.doesNotMatch(JSON.stringify(mediaError), /recording\.m4a/);
+  dom.window.close();
+});
+
 test('capture batches more than one native bridge payload without dropping pointer samples', async () => {
   const { dom, win, editor, view } = makeView();
   const stop = setupFullNavigationCapture(view);

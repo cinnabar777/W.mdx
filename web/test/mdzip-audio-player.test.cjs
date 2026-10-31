@@ -27,11 +27,15 @@ test('long-press exposes edit and explicit package delete actions', () => {
 test('M4A files are accepted and served with an MP4 audio MIME type', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  const capture = read('src/navigationCapture.js');
   assert.match(manager, /setOf\("mp3", "m4a"\)/);
   assert.match(manager, /fun addAudio\(/);
   assert.match(manager, /fun isSupportedAudioFileName\(/);
   assert.match(activity, /pickAudioLauncher\.launch\("audio\/\*"\)/);
   assert.match(activity, /"audio\/mp4" else "audio\/mpeg"/);
+  assert.match(activity, /"mdzip_audio_asset"/);
+  assert.match(capture, /enqueue\('media_event'/);
+  assert.match(capture, /mediaErrorCode:/);
 });
 
 test('audio edit controls save width and alignment, and the keyboard requests sentence caps', () => {

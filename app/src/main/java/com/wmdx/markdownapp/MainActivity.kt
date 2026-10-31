@@ -2290,8 +2290,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         val archivePath = segments.drop(2).joinToString("/")
         val file = MdzipManager.audioArchiveFile(session, archivePath)
-            ?: return mdzipAssetError(404, "Not Found")
-        val mimeType = mdzipAudioMimeType(file)
+        if (file == null) {
+            if (archivePath.startsWith("audio/", ignoreCase = true) &&
+                MdzipManager.isSupportedAudioFileName(archivePath)
+            ) {
+                val extension = archivePath.substringAfterLast('.').lowercase()
+                recordMdzipAudioAsset(extension, 404, mdzipAudioMimeType(extension), false)
+            }
+            return mdzipAssetError(404, "Not Found")
+        }
+        val extension = file.extension.lowercase()
+        val mimeType = mdzipAudioMimeType(extension)
         val fileLength = file.length()
         val range = request.requestHeaders.entries
             .firstOrNull { it.key.equals("Range", ignoreCase = true) }
@@ -2302,6 +2311,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         )
 
         if (range == null) {
+            recordMdzipAudioAsset(extension, 200, mimeType, false)
             headers["Content-Length"] = fileLength.toString()
             val body = if (request.method.equals("HEAD", ignoreCase = true)) {
                 ByteArrayInputStream(ByteArray(0))
@@ -2336,6 +2346,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val length = end - start + 1
         headers["Content-Length"] = length.toString()
         headers["Content-Range"] = "bytes $start-$end/$fileLength"
+        recordMdzipAudioAsset(extension, 206, mimeType, true)
         val body = if (request.method.equals("HEAD", ignoreCase = true)) {
             ByteArrayInputStream(ByteArray(0))
         } else {
@@ -2344,8 +2355,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         return WebResourceResponse(mimeType, null, 206, "Partial Content", headers, body)
     }
 
-    private fun mdzipAudioMimeType(file: java.io.File): String =
-        if (file.extension.equals("m4a", ignoreCase = true)) "audio/mp4" else "audio/mpeg"
+    private fun mdzipAudioMimeType(extension: String): String =
+        if (extension.equals("m4a", ignoreCase = true)) "audio/mp4" else "audio/mpeg"
+
+    private fun recordMdzipAudioAsset(
+        extension: String,
+        status: Int,
+        mimeType: String,
+        rangeRequested: Boolean
+    ) {
+        if (!AppDiagnostics.isNavigationCaptureActive(this)) return
+        AppDiagnostics.record(
+            this,
+            "mdzip_audio_asset",
+            "ext=$extension status=$status mime=$mimeType range=$rangeRequested"
+        )
+    }
 
     private fun limitedFileInputStream(file: java.io.File, start: Long, length: Long): InputStream {
         val stream = FileInputStream(file)
@@ -2370,8 +2395,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun mdzipRangeError(fileLength: Long, mimeType: String): WebResourceResponse =
-        WebResourceResponse(
+    private fun mdzipRangeError(fileLength: Long, mimeType: String): WebResourceResponse {
+        val extension = if (mimeType == "audio/mp4") "m4a" else "mp3"
+        recordMdzipAudioAsset(extension, 416, mimeType, true)
+        return WebResourceResponse(
             mimeType,
             null,
             416,
@@ -2383,6 +2410,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             ),
             ByteArrayInputStream(ByteArray(0))
         )
+    }
 
     private fun mdzipAssetError(status: Int, reason: String): WebResourceResponse =
         WebResourceResponse(
