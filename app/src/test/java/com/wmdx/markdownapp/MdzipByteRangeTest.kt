@@ -1,5 +1,6 @@
 package com.wmdx.markdownapp
 
+import java.io.ByteArrayOutputStream
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -85,7 +86,8 @@ class MdzipByteRangeTest {
         val file = File.createTempFile("mdzip-range-", ".bin")
         try {
             file.writeBytes(ByteArray(10) { it.toByte() })
-            openMdzipByteRangeStream(file, 3, 4).use { stream ->
+            var stats: MdzipByteRangeStreamStats? = null
+            openMdzipByteRangeStream(file, 3, 4) { stats = it }.use { stream ->
                 assertEquals(4, stream.available())
                 assertEquals(2L, stream.skip(2))
                 assertEquals(2, stream.available())
@@ -96,6 +98,101 @@ class MdzipByteRangeTest {
                 assertEquals(-1, stream.read())
                 assertEquals(0, stream.read(ByteArray(1), 0, 0))
             }
+            assertEquals(
+                MdzipByteRangeStreamStats(
+                    expectedBytes = 4,
+                    readBytes = 1,
+                    skippedBytes = 3,
+                    sourceEndedEarly = false
+                ),
+                stats
+            )
+            assertEquals(true, stats?.complete)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun rangeStreamReportsTheExactBytesReturnedToTheCaller() {
+        val file = File.createTempFile("mdzip-range-", ".bin")
+        try {
+            val source = ByteArray(10) { it.toByte() }
+            file.writeBytes(source)
+            var stats: MdzipByteRangeStreamStats? = null
+            val actual = ByteArrayOutputStream()
+            openMdzipByteRangeStream(file, 3, 4) { stats = it }.use { stream ->
+                val buffer = ByteArray(8)
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    actual.write(buffer, 0, count)
+                }
+            }
+
+            assertEquals(listOf<Byte>(3, 4, 5, 6), actual.toByteArray().toList())
+            assertEquals(
+                MdzipByteRangeStreamStats(
+                    expectedBytes = 4,
+                    readBytes = 4,
+                    skippedBytes = 0,
+                    sourceEndedEarly = false
+                ),
+                stats
+            )
+            assertEquals(true, stats?.complete)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun rangeStreamReportsAnIncompleteReadAndPrematureSourceEnd() {
+        val file = File.createTempFile("mdzip-range-", ".bin")
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3))
+            var stats: MdzipByteRangeStreamStats? = null
+            openMdzipByteRangeStream(file, 0, 5) { stats = it }.use { stream ->
+                assertEquals(1, stream.read())
+                assertEquals(-1, stream.read())
+            }
+
+            assertEquals(
+                MdzipByteRangeStreamStats(
+                    expectedBytes = 5,
+                    readBytes = 1,
+                    skippedBytes = 0,
+                    sourceEndedEarly = true
+                ),
+                stats
+            )
+            assertEquals(false, stats?.complete)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun rangeStreamDistinguishesAnEarlyCloseFromSourceEnd() {
+        val file = File.createTempFile("mdzip-range-", ".bin")
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3, 4, 5))
+            var stats: MdzipByteRangeStreamStats? = null
+            openMdzipByteRangeStream(file, 0, 5) { stats = it }.use { stream ->
+                assertEquals(1, stream.read())
+                assertEquals(2, stream.read())
+            }
+
+            assertEquals(
+                MdzipByteRangeStreamStats(
+                    expectedBytes = 5,
+                    readBytes = 2,
+                    skippedBytes = 0,
+                    sourceEndedEarly = false
+                ),
+                stats
+            )
+            assertEquals(false, stats?.complete)
         } finally {
             file.delete()
         }

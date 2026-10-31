@@ -150,11 +150,47 @@ test('full navigation capture records MDZip audio load errors without filenames'
   const mediaError = win.AndroidNative.batches.flat()
     .find((record) => record.kind === 'media_event' && record.eventType === 'error');
   assert.ok(mediaError);
+  assert.equal(mediaError.mediaKind, 'audio');
   assert.equal(mediaError.sourceKind, 'mdzip');
   assert.equal(mediaError.extension, 'm4a');
   assert.equal(mediaError.mediaErrorCode, 4);
   assert.equal(mediaError.networkState, 3);
   assert.doesNotMatch(JSON.stringify(mediaError), /recording\.m4a/);
+  dom.window.close();
+});
+
+test('full navigation capture records sanitized MDZip video decode details', async () => {
+  const { dom, win, editor, view } = makeView();
+  const stop = setupFullNavigationCapture(view);
+  const video = win.document.createElement('video');
+  video.dataset.mdzipVideo = 'true';
+  video.src = 'https://appassets.androidplatform.net/mdzip-assets/session/video/private-clip.mp4';
+  Object.defineProperty(video, 'error', {
+    configurable: true,
+    value: {
+      code: 3,
+      message: 'Decode failed for private-clip.mp4 at https://appassets.androidplatform.net/mdzip-assets/session/video/private-clip.mp4'
+    }
+  });
+  Object.defineProperty(video, 'networkState', { configurable: true, value: 3 });
+  Object.defineProperty(video, 'readyState', { configurable: true, value: 1 });
+  editor.appendChild(video);
+  video.dispatchEvent(new win.Event('error'));
+
+  await new Promise((resolve) => win.setTimeout(resolve, 180));
+  stop();
+
+  const mediaError = win.AndroidNative.batches.flat()
+    .find((record) => record.kind === 'media_event' && record.eventType === 'error');
+  assert.ok(mediaError);
+  assert.equal(mediaError.mediaKind, 'video');
+  assert.equal(mediaError.sourceKind, 'mdzip');
+  assert.equal(mediaError.extension, 'mp4');
+  assert.equal(mediaError.mediaErrorCode, 3);
+  assert.equal(mediaError.mediaErrorMessage, 'Decode failed for [media] at [source]');
+  assert.equal(mediaError.networkState, 3);
+  assert.equal(mediaError.readyState, 1);
+  assert.doesNotMatch(JSON.stringify(mediaError), /private-clip\.mp4|appassets\.androidplatform\.net/);
   dom.window.close();
 });
 

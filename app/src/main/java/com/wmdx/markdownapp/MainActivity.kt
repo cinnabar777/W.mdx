@@ -2400,6 +2400,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             headers["Content-Length"] = fileLength.toString()
             val body = if (request.method.equals("HEAD", ignoreCase = true)) {
                 ByteArrayInputStream(ByteArray(0))
+            } else if (isVideoAsset) {
+                openMdzipVideoStream(file, 0, fileLength, 200, range)
             } else {
                 openMdzipByteRangeStream(file, 0, fileLength)
             }
@@ -2439,11 +2441,36 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         val body = if (request.method.equals("HEAD", ignoreCase = true)) {
             ByteArrayInputStream(ByteArray(0))
+        } else if (isVideoAsset) {
+            openMdzipVideoStream(file, byteRange.start, byteRange.length, 206, rangeHeader)
         } else {
             openMdzipByteRangeStream(file, byteRange.start, byteRange.length)
         }
         return WebResourceResponse(mimeType, null, 206, "Partial Content", headers, body)
     }
+
+    private fun openMdzipVideoStream(
+        file: File,
+        start: Long,
+        length: Long,
+        status: Int,
+        rangeHeader: String?
+    ): InputStream =
+        openMdzipByteRangeStream(file, start, length) { stats ->
+            if (AppDiagnostics.isNavigationCaptureActive(this)) {
+                val requestedRange = rangeHeader
+                    ?.replace(Regex("[^A-Za-z0-9=,-]"), "")
+                    ?.take(48)
+                    ?: "none"
+                AppDiagnostics.record(
+                    this,
+                    "mdzip_video_stream",
+                    "status=$status range=$requestedRange start=$start expected=${stats.expectedBytes} " +
+                        "read=${stats.readBytes} skipped=${stats.skippedBytes} " +
+                        "complete=${stats.complete} earlyEof=${stats.sourceEndedEarly}"
+                )
+            }
+        }
 
     private fun recordMdzipVideoAsset(
         extension: String,
