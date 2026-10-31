@@ -40,6 +40,7 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   const settingsPreview = read('src/toolbarSettingsPreview.js');
   const settingsActivity = read('../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
   const widget = read('src/videoPreviewWidget.js');
+  const controls = read('src/videoPlayerControls.js');
   const icons = read('src/toolbarIcons.js');
 
   assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS = setOf\("mp4"\)/);
@@ -59,7 +60,37 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   assert.match(toolbarConfig, /parsedVersion > 0 && parsedVersion < 8/);
   assert.match(settingsPreview, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video \}/);
   assert.match(settingsActivity, /"image", "audio", "video", "link"/);
-  assert.match(widget, /video\.controls = true/);
+  assert.match(widget, /video\.controls = false/);
+  assert.match(widget, /createVideoPlayerControls\(video, wrapper, status\)/);
+  assert.match(controls, /--media-controls-bg/);
+  assert.match(controls, /--media-controls-accent/);
+  assert.match(controls, /setMediaPlaybackSpeed/);
   assert.match(widget, /userEvent: 'delete\.mdzip-video'/);
   assert.match(icons, /video: `<svg/);
+  assert.match(editor, /video\[data-mdzip-video="true"\]/);
+});
+
+test('video speed popup stays within the visible viewport', async () => {
+  const { calculateViewportClampedPopupPosition } =
+    await import('../src/mediaPopupPosition.js');
+  const bounds = { left: 0, top: 24, right: 411, bottom: 800 };
+
+  assert.deepEqual(
+    calculateViewportClampedPopupPosition({
+      bounds,
+      anchorRect: { left: 350, right: 390, top: 32, bottom: 60 },
+      width: 200,
+      height: 300
+    }),
+    { left: 190, top: 68 }
+  );
+  assert.deepEqual(
+    calculateViewportClampedPopupPosition({
+      bounds,
+      anchorRect: { left: 180, right: 220, top: 740, bottom: 780 },
+      width: 200,
+      height: 300
+    }),
+    { left: 20, top: 432 }
+  );
 });

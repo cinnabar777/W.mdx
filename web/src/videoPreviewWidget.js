@@ -1,4 +1,5 @@
 import { WidgetType } from '@codemirror/view';
+import { createVideoPlayerControls } from './videoPlayerControls.js';
 
 export class VideoPreviewWidget extends WidgetType {
   constructor(src, label, relativeLink, markdown, from, to) {
@@ -55,7 +56,7 @@ export class VideoPreviewWidget extends WidgetType {
 
     const video = document.createElement('video');
     video.src = this.src;
-    video.controls = true;
+    video.controls = false;
     video.playsInline = true;
     video.preload = 'metadata';
     video.dataset.mdzipVideo = 'true';
@@ -77,6 +78,7 @@ export class VideoPreviewWidget extends WidgetType {
     status.hidden = true;
     status.textContent = 'Unable to play this MP4 video on this device.';
     status.style.cssText = 'font-size:13px;line-height:1.5;margin-top:8px;color:var(--media-controls-text,#fff)';
+    const cleanupControls = createVideoPlayerControls(video, wrapper, status);
     wrapper.appendChild(status);
     video.addEventListener('error', () => {
       status.hidden = false;
@@ -145,6 +147,7 @@ export class VideoPreviewWidget extends WidgetType {
     wrapper._cleanupVideoWidget = () => {
       cancelLongPress();
       removeMenu();
+      cleanupControls();
       video.pause();
       video.removeAttribute('src');
       video.load();
