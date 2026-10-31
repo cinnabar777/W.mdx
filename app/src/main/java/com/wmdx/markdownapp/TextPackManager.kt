@@ -13,17 +13,11 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
-enum class TextPackFormat {
-    LEGACY,
-    MDZIP
-}
-
 data class TextPackSession(
     val sessionDir: File,
     var markdownContent: String,
     var sourceUri: Uri?,
-    var format: TextPackFormat = TextPackFormat.LEGACY,
-    var entryPointPath: String = "text.md",
+    var entryPointPath: String = "index.md",
     var manifest: JSONObject? = null
 )
 
@@ -51,18 +45,35 @@ object TextPackManager {
 
     @Suppress("UNUSED_PARAMETER")
     fun isTextPackFile(context: Context, uri: Uri, fileName: String): Boolean =
-        detectFormat(fileName) != null
+        fileName.endsWith(MDZIP_EXTENSION, ignoreCase = true)
+
+    fun isUnsupportedLegacyTextPackArchive(context: Context, uri: Uri, fileName: String): Boolean {
+        val lowerName = fileName.lowercase(java.util.Locale.ROOT)
+        if (
+            lowerName.endsWith(".mdx.zip") ||
+            lowerName.endsWith(".textpack") ||
+            lowerName.endsWith(".textpack.zip")
+        ) return true
+        if (!lowerName.endsWith(".mdx")) return false
+        return runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val signature = IntArray(4) { input.read() }
+                signature[0] == 0x50 &&
+                    signature[1] == 0x4b &&
+                    signature[2] in setOf(0x03, 0x05, 0x07) &&
+                    signature[3] in setOf(0x04, 0x06, 0x08)
+            } ?: false
+        }.getOrDefault(false)
+    }
 
     fun openTextPack(context: Context, uri: Uri, fileName: String): TextPackSession {
-        val archiveFormat = detectFormat(fileName)
-            ?: throw IOException("This file is not a supported Markdown package.")
+        if (!fileName.endsWith(MDZIP_EXTENSION, ignoreCase = true)) {
+            throw IOException("Only MDZip .mdz packages are supported.")
+        }
         val sessionDir = newSessionDirectory(context)
         try {
-            val extractedFiles = extractArchive(context, uri, sessionDir, archiveFormat)
-            return when (archiveFormat) {
-                TextPackFormat.LEGACY -> openLegacySession(sessionDir, uri, extractedFiles)
-                TextPackFormat.MDZIP -> openMdzipSession(sessionDir, uri, extractedFiles)
-            }
+            val extractedFiles = extractArchive(context, uri, sessionDir)
+            return openMdzipSession(sessionDir, uri, extractedFiles)
         } catch (error: Exception) {
             sessionDir.deleteRecursively()
             throw error
@@ -72,14 +83,10 @@ object TextPackManager {
     fun createMdzipSession(
         context: Context,
         markdownContent: String,
-        title: String,
-        sourceSession: TextPackSession? = null
+        title: String
     ): TextPackSession {
         val sessionDir = newSessionDirectory(context)
         try {
-            if (sourceSession != null) {
-                copySessionContents(sourceSession, sessionDir)
-            }
             createDefaultContentDirectories(sessionDir)
 
             val entryPointPath = availableEntryPointPath(sessionDir)
@@ -94,7 +101,6 @@ object TextPackManager {
                 sessionDir = sessionDir,
                 markdownContent = markdownContent,
                 sourceUri = null,
-                format = TextPackFormat.MDZIP,
                 entryPointPath = entryPointPath,
                 manifest = manifest
             )
@@ -112,11 +118,7 @@ object TextPackManager {
             ?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) }
             ?: "png"
         val assetName = "img_${UUID.randomUUID()}.$extension"
-        val archivePath = if (session.format == TextPackFormat.MDZIP) {
-            "${contentDirectoryName(session.sessionDir, "images")}/$assetName"
-        } else {
-            "assets/$assetName"
-        }
+        val archivePath = "${contentDirectoryName(session.sessionDir, "images")}/$assetName"
         val targetFile = resolveArchiveFile(session.sessionDir, archivePath)
             ?: throw IOException("The image path is not safe.")
         targetFile.parentFile?.mkdirs()
@@ -131,45 +133,30 @@ object TextPackManager {
         session: TextPackSession,
         markdownContent: String,
         targetUri: Uri,
-        writeMdzip: Boolean = session.format == TextPackFormat.MDZIP,
         title: String = ""
     ): TextPackSession {
-        val shouldWriteMdzip = writeMdzip || session.format == TextPackFormat.MDZIP
-        val writableSession = if (shouldWriteMdzip && session.format != TextPackFormat.MDZIP) {
-            createMdzipSession(context, markdownContent, title, session)
-        } else {
-            session
-        }
-
-        if (writableSession.format == TextPackFormat.MDZIP) {
-            val entryPoint = resolveArchiveFile(writableSession.sessionDir, writableSession.entryPointPath)
-                ?: throw IOException("The MDZip entry point path is invalid.")
-            entryPoint.parentFile?.mkdirs()
-            entryPoint.writeText(markdownContent, Charsets.UTF_8)
-            val manifest = writableSession.manifest ?: readManifest(writableSession.sessionDir)
-                ?: newMdzipManifest(writableSession.entryPointPath, title)
-            ensureProducerManifest(manifest, writableSession.entryPointPath, title)
-            writeManifest(writableSession.sessionDir, manifest)
-            writableSession.manifest = manifest
-        } else {
-            val textFile = File(writableSession.sessionDir, "text.md")
-            textFile.writeText(markdownContent, Charsets.UTF_8)
-            writableSession.entryPointPath = "text.md"
-            ensureLegacyInfoFile(writableSession.sessionDir)
-        }
+        val entryPoint = resolveArchiveFile(session.sessionDir, session.entryPointPath)
+            ?: throw IOException("The MDZip entry point path is invalid.")
+        entryPoint.parentFile?.mkdirs()
+        entryPoint.writeText(markdownContent, Charsets.UTF_8)
+        val manifest = session.manifest ?: readManifest(session.sessionDir)
+            ?: newMdzipManifest(session.entryPointPath, title)
+        ensureProducerManifest(manifest, session.entryPointPath, title)
+        writeManifest(session.sessionDir, manifest)
+        session.manifest = manifest
 
         val output = context.contentResolver.openOutputStream(targetUri, "rwt")
             ?: throw IOException("Could not open the Markdown package for writing.")
         output.use { outputStream ->
             ZipOutputStream(outputStream).use { zipOut ->
-                compressFolder(writableSession.sessionDir, writableSession.sessionDir, zipOut)
+                compressFolder(session.sessionDir, session.sessionDir, zipOut)
                 zipOut.flush()
             }
         }
 
-        writableSession.sourceUri = targetUri
-        writableSession.markdownContent = markdownContent
-        return writableSession
+        session.sourceUri = targetUri
+        session.markdownContent = markdownContent
+        return session
     }
 
     fun resolveAssetFile(session: TextPackSession, relativePath: String): File? =
@@ -186,7 +173,7 @@ object TextPackManager {
                 throw IOException("The MDZip manifest entryPoint cannot name a directory.")
             }
             val withoutOptionalDotPrefix = declaredEntryPoint.removePrefix("./")
-            val path = validateArchivePath(withoutOptionalDotPrefix, allowLegacySeparators = false)
+            val path = validateArchivePath(withoutOptionalDotPrefix)
                 ?: throw IOException("The MDZip manifest has an invalid entryPoint.")
             if (!isMarkdownPath(path) || path !in normalizedPaths) {
                 throw IOException("The MDZip manifest entryPoint does not identify a Markdown file.")
@@ -212,17 +199,10 @@ object TextPackManager {
         )
     }
 
-    private fun detectFormat(fileName: String): TextPackFormat? {
-        if (fileName.endsWith(MDZIP_EXTENSION, ignoreCase = true)) return TextPackFormat.MDZIP
-        if (isLegacyTextPackName(fileName)) return TextPackFormat.LEGACY
-        return null
-    }
-
     private fun extractArchive(
         context: Context,
         uri: Uri,
-        sessionDir: File,
-        format: TextPackFormat
+        sessionDir: File
     ): Set<String> {
         val extractedFiles = linkedSetOf<String>()
         val seenEntries = hashMapOf<String, Boolean>()
@@ -237,10 +217,8 @@ object TextPackManager {
                     if (++entryCount > MAX_ARCHIVE_ENTRIES) {
                         throw IOException("The package contains too many files.")
                     }
-                    val archivePath = validateArchivePath(
-                        entry.name,
-                        allowLegacySeparators = format == TextPackFormat.LEGACY
-                    ) ?: throw IOException("The package contains an unsafe file path.")
+                    val archivePath = validateArchivePath(entry.name)
+                        ?: throw IOException("The package contains an unsafe file path.")
                     if (archivePath in seenEntries) {
                         throw IOException("The package contains a duplicate path: $archivePath")
                     }
@@ -300,34 +278,6 @@ object TextPackManager {
         return extractedFiles
     }
 
-    private fun openLegacySession(
-        sessionDir: File,
-        uri: Uri,
-        extractedFiles: Set<String>
-    ): TextPackSession {
-        val markdownPath = when {
-            "text.md" in extractedFiles -> "text.md"
-            else -> extractedFiles
-                .filter { isMarkdownPath(it) }
-                .sorted()
-                .firstOrNull() ?: "text.md"
-        }
-        val markdownFile = resolveArchiveFile(sessionDir, markdownPath)
-            ?: throw IOException("The legacy package entry point is invalid.")
-        if (!markdownFile.exists()) markdownFile.writeText("", Charsets.UTF_8)
-        if (markdownFile.length() > MAX_MARKDOWN_BYTES) {
-            throw IOException("The Markdown document is too large to open.")
-        }
-        ensureLegacyInfoFile(sessionDir)
-        return TextPackSession(
-            sessionDir = sessionDir,
-            markdownContent = markdownFile.readText(Charsets.UTF_8),
-            sourceUri = uri,
-            format = TextPackFormat.LEGACY,
-            entryPointPath = markdownPath
-        )
-    }
-
     private fun openMdzipSession(
         sessionDir: File,
         uri: Uri,
@@ -385,7 +335,6 @@ object TextPackManager {
             sessionDir = sessionDir,
             markdownContent = markdownFile.readText(Charsets.UTF_8),
             sourceUri = uri,
-            format = TextPackFormat.MDZIP,
             entryPointPath = entryPointPath,
             manifest = manifest
         )
@@ -442,43 +391,6 @@ object TextPackManager {
         File(sessionDir, "manifest.json").writeText(manifest.toString(2) + "\n", Charsets.UTF_8)
     }
 
-    private fun ensureLegacyInfoFile(sessionDir: File) {
-        val infoFile = File(sessionDir, "info.json")
-        if (infoFile.exists()) return
-        val json = JSONObject()
-            .put("version", 2)
-            .put("type", "net.daringfireball.markdown")
-            .put("transient", false)
-        infoFile.writeText(json.toString(2), Charsets.UTF_8)
-    }
-
-    private fun copySessionContents(sourceSession: TextPackSession, destination: File) {
-        val sourceRoot = sourceSession.sessionDir
-        val files = sourceRoot.walkTopDown().filter { it.isFile }.toList()
-        val copiedPaths = hashSetOf<String>()
-        for (sourceFile in files) {
-            val relativePath = sourceRoot.toPath().relativize(sourceFile.toPath())
-                .toString().replace('\\', '/')
-            if (relativePath == sourceSession.entryPointPath ||
-                relativePath == "info.json" ||
-                relativePath == "manifest.json"
-            ) {
-                continue
-            }
-            val safeRelativePath = validateArchivePath(relativePath, allowLegacySeparators = false)
-                ?: throw IOException("A package file has a path that MDZip cannot represent: $relativePath")
-            if (!copiedPaths.add(safeRelativePath)) {
-                throw IOException("Multiple package files use the same MDZip path: $safeRelativePath")
-            }
-            val destinationFile = resolveArchiveFile(destination, safeRelativePath)
-                ?: throw IOException("Could not preserve a package file.")
-            destinationFile.parentFile?.mkdirs()
-            FileInputStream(sourceFile).use { input ->
-                FileOutputStream(destinationFile).use { output -> input.copyTo(output) }
-            }
-        }
-    }
-
     private fun createDefaultContentDirectories(sessionDir: File) {
         val existingNames = sessionDir.listFiles()
             ?.map { it.name.lowercase(java.util.Locale.ROOT) }
@@ -530,36 +442,24 @@ object TextPackManager {
         return sessionDir
     }
 
-    private fun isLegacyTextPackName(fileName: String): Boolean =
-        fileName.endsWith(".textpack", ignoreCase = true) ||
-            fileName.endsWith(".textpack.zip", ignoreCase = true)
-
     private fun isMarkdownPath(path: String): Boolean =
         path.endsWith(".md", ignoreCase = true) ||
             path.endsWith(".markdown", ignoreCase = true)
 
-    private fun validateArchivePath(rawPath: String, allowLegacySeparators: Boolean): String? {
+    private fun validateArchivePath(rawPath: String): String? {
         if (rawPath.isBlank() || rawPath.contains('\u0000')) return null
-        if (!allowLegacySeparators && rawPath.contains('\\')) return null
-        val separatorNormalized = if (allowLegacySeparators) rawPath.replace('\\', '/') else rawPath
-        val path = if (separatorNormalized.endsWith('/')) separatorNormalized.dropLast(1) else separatorNormalized
+        if (rawPath.contains('\\')) return null
+        val path = if (rawPath.endsWith('/')) rawPath.dropLast(1) else rawPath
         if (path.isBlank() || path.startsWith('/') || Regex("^[A-Za-z]:").containsMatchIn(path)) return null
         val segments = path.split('/')
         if (segments.any { it.isBlank() || it == "." || it == ".." }) return null
         if (segments.any { segment -> segment.any { it.code < 0x20 || it.code == 0x7f } }) return null
-        if (!allowLegacySeparators && segments.any { segment ->
-                segment.any { it in ":*?\"<>|" }
-            }
-        ) return null
-        return if (allowLegacySeparators) {
-            path
-        } else {
-            java.text.Normalizer.normalize(path, java.text.Normalizer.Form.NFC)
-        }
+        if (segments.any { segment -> segment.any { it in ":*?\"<>|" } }) return null
+        return java.text.Normalizer.normalize(path, java.text.Normalizer.Form.NFC)
     }
 
     private fun resolveArchiveFile(root: File, relativePath: String): File? {
-        val safePath = validateArchivePath(relativePath, allowLegacySeparators = false) ?: return null
+        val safePath = validateArchivePath(relativePath) ?: return null
         val rootPath = root.canonicalFile.toPath()
         val target = File(root, safePath).canonicalFile
         return target.takeIf { it.toPath().startsWith(rootPath) }

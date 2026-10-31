@@ -103,6 +103,32 @@ test('archive image base refreshes before Markdown images are inserted', () => {
   );
 });
 
+test('MDZip image insertion passes an asset URL instead of nested Markdown', () => {
+  const start = mainActivitySource.indexOf('private fun insertImageFromUri');
+  const end = mainActivitySource.indexOf('\n    private fun showUnsavedChangesDialog', start);
+  const insertImageSource = mainActivitySource.slice(start, end);
+  assert.match(insertImageSource, /TextPackManager\.addAssetImage\(session, inputStream, originalName\)/);
+  assert.match(
+    insertImageSource,
+    /window\.editorBridge\.insertImage\(\$escapedAssetPath, \$escapedAltText\)/
+  );
+  assert.doesNotMatch(insertImageSource, /markdownImageTag/);
+});
+
+test('legacy TextPack archives are rejected instead of rendered as plain text', () => {
+  assert.match(textPackManagerSource, /fun isUnsupportedLegacyTextPackArchive/);
+  assert.match(textPackManagerSource, /lowerName\.endsWith\("\.textpack"\)/);
+  assert.doesNotMatch(textPackManagerSource, /openLegacySession/);
+  assert.match(
+    mainActivitySource,
+    /TextPackManager\.isUnsupportedLegacyTextPackArchive\(this, uri, fileName\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /TextPackManager\.isUnsupportedLegacyTextPackArchive\(this, uri, name\)/
+  );
+});
+
 test('CodeMirror caret bounds are forwarded to Android input methods', () => {
   assert.match(source, /scheduleNativeCursorAnchor\(update\.view\)/);
   assert.match(source, /bridge\.onSelectionChanged\(JSON\.stringify\(\{/);
@@ -618,7 +644,7 @@ test('left panel search options reach native search and the file filters', () =>
   );
   assert.match(
     mainActivitySource,
-    /markdownExtensions = setOf\("\.md", "\.textpack", "\.mdx", "\.textpack\.zip", "\.mdz"\)/
+    /markdownExtensions = setOf\("\.md", "\.markdown", "\.mdx", "\.mdz"\)/
   );
   assert.match(
     mainActivitySource,

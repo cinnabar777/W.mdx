@@ -1522,6 +1522,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val fileName = getFileNameFromUri(uri)
 
+            if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, uri, fileName)) {
+                throw java.io.IOException(
+                    "This older TextPack archive is not supported. Open or create an MDZip .mdz file instead."
+                )
+            }
+
             if (TextPackManager.isTextPackFile(this, uri, fileName)) {
                 val session = TextPackManager.openTextPack(this, uri, fileName)
                 val text = session.markdownContent
@@ -2108,19 +2114,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
             try {
                 val targetFileName = getFileNameFromUri(uri)
-                val hasTextPackExtension =
-                    targetFileName.endsWith(".textpack", ignoreCase = true) ||
-                    targetFileName.endsWith(".textpack.zip", ignoreCase = true)
                 val hasMdzipExtension = targetFileName.endsWith(".mdz", ignoreCase = true)
+                if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, uri, targetFileName)) {
+                    throw java.io.IOException(
+                        "Legacy TextPack archives are not supported. Save this document as an MDZip .mdz file."
+                    )
+                }
                 val isMdzipTarget = requestedAsTextPack == true ||
                     hasMdzipExtension ||
-                    (uri == currentFileUri && currentTextPackSession?.format == TextPackFormat.MDZIP)
-                val isTextPackTarget = isMdzipTarget || (
-                    requestedAsTextPack ?: (
-                        hasTextPackExtension ||
-                            (uri == currentFileUri && currentTextPackSession != null)
-                        )
-                    )
+                    (uri == currentFileUri && currentTextPackSession != null)
+                val isTextPackTarget = isMdzipTarget
 
                 if (isTextPackTarget) {
                     val packageTitle = targetFileName.substringBeforeLast('.', targetFileName)
@@ -2134,7 +2137,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         session,
                         markdownText,
                         uri,
-                        writeMdzip = isMdzipTarget,
                         title = packageTitle
                     )
                 } else {
@@ -2244,9 +2246,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 if (session != null) {
                     val originalName = getFileNameFromUri(uri)
                     val assetPath = TextPackManager.addAssetImage(session, inputStream, originalName)
-                    val markdownImageTag = "![Image]($assetPath)"
-                    val escapedTag = JSONObjectWrapper.quote(markdownImageTag)
-                    webView.evaluateJavascript("window.editorBridge.insertImage($escapedTag);", null)
+                    val escapedAssetPath = JSONObjectWrapper.quote(assetPath)
+                    val escapedAltText = JSONObjectWrapper.quote("Image")
+                    webView.evaluateJavascript(
+                        "window.editorBridge.insertImage($escapedAssetPath, $escapedAltText);",
+                        null
+                    )
                 } else {
                     val bytes = inputStream.readBytes()
                     val mimeType = contentResolver.getType(uri) ?: "image/png"
@@ -2429,8 +2434,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .put(
                 "isTextPack",
                 currentTextPackSession != null ||
-                    name.endsWith(".textpack", true) ||
-                    name.endsWith(".textpack.zip", true) ||
                     name.endsWith(".mdz", true)
             )
             .put("hasBom", hasBom)
@@ -2444,6 +2447,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         return runCatching {
             val name = getFileNameFromUri(uri)
+            if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, uri, name)) {
+                throw java.io.IOException(
+                    "This older TextPack archive is not supported. Open or create an MDZip .mdz file instead."
+                )
+            }
             val textPack = TextPackManager.isTextPackFile(this, uri, name)
             val markdown = if (textPack) {
                 TextPackManager.openTextPack(this, uri, name).markdownContent
@@ -2505,7 +2513,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } else {
             null
         }
-        val markdownExtensions = setOf(".md", ".textpack", ".mdx", ".textpack.zip", ".mdz")
+        val markdownExtensions = setOf(".md", ".markdown", ".mdx", ".mdz")
 
         for (treeUri in authorizedLeftPanelTrees()) {
             if (results.length() >= maxResults || scannedFiles >= maxScannedFiles) {
@@ -2544,9 +2552,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         continue
                     }
                     scannedFiles++
-                    val hasTextPackExtension = entry.name.endsWith(".textpack", true) ||
-                        entry.name.endsWith(".textpack.zip", true) ||
-                        entry.name.endsWith(".mdz", true)
+                    if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, entry.uri, entry.name)) {
+                        continue
+                    }
+                    val hasTextPackExtension = entry.name.endsWith(".mdz", true)
                     val hasPlainTextExtension = textExtensions.any { entry.name.endsWith(it, true) }
                     val needsTextPackProbe = includeContents &&
                         (
@@ -2636,6 +2645,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             if (tabHasBom && !content.startsWith("\uFEFF")) content = "\uFEFF$content"
             val name = getFileNameFromUri(uri)
+            if (TextPackManager.isUnsupportedLegacyTextPackArchive(this, uri, name)) {
+                throw java.io.IOException(
+                    "Legacy TextPack archives are not supported. Save this document as an MDZip .mdz file."
+                )
+            }
             val packTarget = isTextPack || TextPackManager.isTextPackFile(this, uri, name)
             if (packTarget) {
                 val session = if (uri == currentFileUri) {
@@ -2648,8 +2662,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     session,
                     content,
                     uri,
-                    writeMdzip = session.format == TextPackFormat.MDZIP ||
-                        name.endsWith(".mdz", ignoreCase = true),
                     title = name.substringBeforeLast('.', name)
                 )
                 if (uri == currentFileUri) currentTextPackSession = savedSession
