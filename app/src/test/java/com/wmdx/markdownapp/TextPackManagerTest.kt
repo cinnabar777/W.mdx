@@ -8,6 +8,7 @@ import java.io.OutputStream
 import java.text.Normalizer
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -377,6 +378,52 @@ class TextPackManagerTest {
                 available
             )
         )
+    }
+
+    @Test
+    fun encodedUnicodeProjectLinkOpensTheExactArchiveEntry() {
+        val sessionDir = java.nio.file.Files.createTempDirectory("mdzip-unicode-link").toFile()
+        val decomposedName = Normalizer.normalize("café.md", Normalizer.Form.NFD)
+        val archivePath = "docs/café.md"
+        val expectedMarkdown = "# Unicode document\n\nOpened the exact ZIP entry.\n"
+        val guideMarkdown = "# Guide\n"
+        val manifest = """{"spec":{"name":"mdzip-spec","version":"1.2.1"},"mode":"project","entryPoint":"docs/guide.md"}"""
+        val session = TextPackSession(
+            sessionDir = sessionDir,
+            markdownContent = guideMarkdown,
+            sourceUri = null,
+            documentPath = "docs/guide.md",
+            manifest = JSONObject().put("mode", "project")
+        )
+
+        try {
+            val archive = createArchive(
+                mapOf(
+                    "manifest.json" to manifest.toByteArray(Charsets.UTF_8),
+                    "docs/guide.md" to guideMarkdown.toByteArray(Charsets.UTF_8),
+                    "docs/$decomposedName" to expectedMarkdown.toByteArray(Charsets.UTF_8)
+                )
+            )
+            val extractedPaths = TextPackManager.extractArchive(
+                ByteArrayInputStream(archive),
+                sessionDir
+            )
+            val encodedComposedName = java.net.URLEncoder
+                .encode("café.md", Charsets.UTF_8.name())
+                .replace("+", "%20")
+
+            val resolvedPath = TextPackManager.resolveProjectLink(session, encodedComposedName)
+
+            assertTrue(archivePath in extractedPaths)
+            assertEquals(archivePath, resolvedPath)
+            assertEquals(
+                expectedMarkdown,
+                TextPackManager.selectMarkdownDocument(session, resolvedPath!!)
+            )
+            assertEquals(archivePath, session.documentPath)
+        } finally {
+            sessionDir.deleteRecursively()
+        }
     }
 
     @Test

@@ -21,7 +21,8 @@ test('MDZip project links reuse their tabs and navigate to the requested heading
   const markdownByPath = new Map([
     ['index.md', '# Start\n\nProject entry point.'],
     ['docs/guide.md', '# Guide\n\n## Guide Details\n\nGuide text.'],
-    ['docs/chapters/topic.md', '# Topic\n\n## Deep Dive\n\nTopic text.']
+    ['docs/chapters/topic.md', '# Topic\n\n## Deep Dive\n\nTopic text.'],
+    ['docs/notes/春の café.md', '# Unicode note\n\nUnicode path content.']
   ]);
   const archiveUri = 'content://example/project.mdz';
   const makeDocumentUri = (documentPath) =>
@@ -128,6 +129,11 @@ test('MDZip project links reuse their tabs and navigate to the requested heading
     assert.equal(activePath, 'docs/chapters/topic.md');
     const topicTabId = selectedTab().dataset.tabId;
 
+    await openLinkAndFlush('../notes/%E6%98%A5%E3%81%AE%20caf%C3%A9.md');
+    assert.equal(activePath, 'docs/notes/春の café.md');
+    assert.equal(currentMarkdown, markdownByPath.get(activePath));
+    const unicodeTabId = selectedTab().dataset.tabId;
+
     await openLinkAndFlush('../guide.md#Guide%20Details');
     assert.equal(activePath, 'docs/guide.md');
     assert.equal(selectedTab().dataset.tabId, guideTabId, 'returning to the guide reuses its tab');
@@ -136,7 +142,16 @@ test('MDZip project links reuse their tabs and navigate to the requested heading
       heading: 'Guide Details'
     });
 
-    await openLinkAndFlush('../index.md#Start');
+    await openLinkAndFlush('notes/%E6%98%A5%E3%81%AE%20caf%C3%A9.md');
+    assert.equal(activePath, 'docs/notes/春の café.md');
+    assert.equal(selectedTab().dataset.tabId, unicodeTabId, 'reopening a Unicode document reuses its tab');
+    assert.equal(
+      selectedTab().dataset.tabId,
+      makeDocumentUri('docs/notes/春の café.md'),
+      'the encoded MDZip entry URI remains stable'
+    );
+
+    await openLinkAndFlush('../../index.md#Start');
     assert.equal(activePath, 'index.md');
     const entryTabId = selectedTab().dataset.tabId;
     assert.deepEqual(headingNavigations.at(-1), {
@@ -180,20 +195,25 @@ test('MDZip project links reuse their tabs and navigate to the requested heading
     );
 
     const allTabs = visibleTabs();
-    assert.equal(allTabs.length, 3, 'each project document has exactly one tab');
+    assert.equal(allTabs.length, 4, 'each project document has exactly one tab');
     assert.equal(guideTabId, makeDocumentUri('docs/guide.md'));
     assert.equal(topicTabId, makeDocumentUri('docs/chapters/topic.md'));
+    assert.equal(unicodeTabId, makeDocumentUri('docs/notes/春の café.md'));
     assert.equal(entryTabId, makeDocumentUri('index.md'));
 
     await new Promise((resolve) => setTimeout(resolve, 300));
     const persisted = JSON.parse(
       window.localStorage.getItem('wmdx.leftPanel.taskTabs.mdzip-navigation-test')
     );
-    assert.equal(persisted.tabs.length, 3);
+    assert.equal(persisted.tabs.length, 4);
     assert.equal(persisted.activeTabId, entryTabId);
     assert.equal(
       persisted.tabs.find((tab) => tab.id === topicTabId)?.uri,
       makeDocumentUri('docs/chapters/topic.md')
+    );
+    assert.equal(
+      persisted.tabs.find((tab) => tab.id === unicodeTabId)?.uri,
+      makeDocumentUri('docs/notes/春の café.md')
     );
   } finally {
     dom.window.close();
