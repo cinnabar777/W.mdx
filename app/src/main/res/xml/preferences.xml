@@ -76,7 +76,7 @@
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_media"
             app:title="Media Playback"
-            app:summary="Player colors and saved media playback speed" />
+            app:summary="Player colors and saved audio playback speed" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Documents &amp; Access">

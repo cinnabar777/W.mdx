@@ -162,8 +162,8 @@ export function createVideoPlayerControls(video, wrapper, status) {
   ].join(';');
   controls.appendChild(seek);
 
-  const initialRate = Number(window.mdzipAudioPlaybackRate ?? 1);
-  video.playbackRate = PLAYBACK_RATES.includes(initialRate) ? initialRate : 1;
+  const initialRate = 1;
+  video.playbackRate = initialRate;
   const speedButton = makeButton(`Playback speed ${formatRate(video.playbackRate)}`, null, true);
   speedButton.textContent = formatRate(video.playbackRate);
   const muteButton = makeButton('Mute video', 'volume');
@@ -242,16 +242,12 @@ export function createVideoPlayerControls(video, wrapper, status) {
     muteButton.innerHTML = makeIcon(muted ? 'muted' : 'volume');
     muteButton.setAttribute('aria-label', muted ? 'Unmute video' : 'Mute video');
   };
-  const setPlaybackRate = (rate, persist = false) => {
+  const setPlaybackRate = rate => {
     video.playbackRate = rate;
-    window.mdzipAudioPlaybackRate = rate;
     speedButton.textContent = formatRate(rate);
     speedButton.setAttribute('aria-label', `Playback speed ${formatRate(rate)}`);
     for (const item of rateOptions) {
       item.option.setAttribute('aria-checked', String(item.rate === rate));
-    }
-    if (persist && window.AndroidNative?.setMediaPlaybackSpeed?.(String(rate)) !== true) {
-      showStatus('Playback speed changed but could not be saved.');
     }
   };
 
@@ -364,7 +360,7 @@ export function createVideoPlayerControls(video, wrapper, status) {
     item.option.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
-      setPlaybackRate(item.rate, true);
+      setPlaybackRate(item.rate);
       hideSpeedMenu();
     });
   }
@@ -416,8 +412,6 @@ export function createVideoPlayerControls(video, wrapper, status) {
   video.addEventListener('pause', syncPlayButton);
   video.addEventListener('ended', syncPlayButton);
   video.addEventListener('volumechange', syncMuteButton);
-  video._syncMdzipPlaybackRate = () =>
-    setPlaybackRate(Number(window.mdzipAudioPlaybackRate ?? video.playbackRate));
   document.addEventListener('pointerdown', dismissSpeedMenu, true);
   document.addEventListener('fullscreenchange', onFullscreenChange);
   document.addEventListener('webkitfullscreenchange', onFullscreenChange);
@@ -440,6 +434,5 @@ export function createVideoPlayerControls(video, wrapper, status) {
     window.removeEventListener('scroll', positionSpeedMenu, true);
     window.visualViewport?.removeEventListener('resize', positionSpeedMenu);
     window.visualViewport?.removeEventListener('scroll', positionSpeedMenu);
-    delete video._syncMdzipPlaybackRate;
   };
 }

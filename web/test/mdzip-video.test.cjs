@@ -64,10 +64,11 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   assert.match(widget, /createVideoPlayerControls\(video, wrapper, status\)/);
   assert.match(controls, /--media-controls-bg/);
   assert.match(controls, /--media-controls-accent/);
-  assert.match(controls, /setMediaPlaybackSpeed/);
+  assert.match(controls, /const initialRate = 1/);
+  assert.doesNotMatch(controls, /mdzipAudioPlaybackRate|mdzipVideoPlaybackRate|setMediaPlaybackSpeed/);
+  assert.doesNotMatch(editor, /video\[data-mdzip-video="true"\]/);
   assert.match(widget, /userEvent: 'delete\.mdzip-video'/);
   assert.match(icons, /video: `<svg/);
-  assert.match(editor, /video\[data-mdzip-video="true"\]/);
 });
 
 test('video speed popup stays within the visible viewport', async () => {

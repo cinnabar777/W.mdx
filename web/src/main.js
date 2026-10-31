@@ -7899,10 +7899,6 @@ window.editorBridge = {
       audio.playbackRate = window.mdzipAudioPlaybackRate;
       audio._syncMdzipPlaybackRate?.();
     });
-    document.querySelectorAll('video[data-mdzip-video="true"]').forEach(video => {
-      video.playbackRate = window.mdzipAudioPlaybackRate;
-      video._syncMdzipPlaybackRate?.();
-    });
 
     if (prefs.pref_line_wrap === false) {
       document.body.classList.add('no-line-wrap');
