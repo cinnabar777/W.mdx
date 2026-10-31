@@ -2318,9 +2318,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "Accept-Ranges" to "bytes",
             "Cache-Control" to "no-store"
         )
-        if (extension == "m4a" && !m4aRangeRequestsEnabled) {
-            headers.remove("Accept-Ranges")
-        }
 
         if (shouldServeMdzipAudioAsWholeFile(extension, range, m4aRangeRequestsEnabled)) {
             recordMdzipAudioAsset(

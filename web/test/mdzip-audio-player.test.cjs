@@ -44,7 +44,8 @@ test('M4A requests full preload so its timeline can be seeked without byte range
   assert.match(player, /isM4aSource =/);
   assert.match(player, /audio\.preload = isM4aSource \? 'auto' : 'metadata'/);
   assert.match(activity, /enableMdzipAudioRangeRequests\(relativeLink: String\)/);
-  assert.match(activity, /if \(extension == "m4a" && !m4aRangeRequestsEnabled\)/);
+  assert.match(activity, /"Accept-Ranges" to "bytes"/);
+  assert.doesNotMatch(activity, /headers\.remove\("Accept-Ranges"\)/);
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);
   assert.ok(
