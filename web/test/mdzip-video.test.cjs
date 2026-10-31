@@ -50,6 +50,7 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   assert.match(activity, /pickVideoLauncher\.launch\("video\/mp4"\)/);
   assert.match(activity, /MdzipManager\.videoArchiveFile/);
   assert.match(activity, /if \(isVideoAsset\) "video\/mp4"/);
+  assert.match(activity, /shouldServeMdzipAssetAsWholeFile/);
   assert.match(activity, /recordMdzipVideoAsset/);
   assert.match(activity, /"mdzip_video_asset"/);
   assert.match(activity, /fun syncMdzipVideoReferences\(/);

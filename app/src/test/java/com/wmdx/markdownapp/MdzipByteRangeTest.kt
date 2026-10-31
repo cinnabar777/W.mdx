@@ -60,6 +60,13 @@ class MdzipByteRangeTest {
     }
 
     @Test
+    fun servesPackagedVideoAsAWholeFileEvenWhenWebViewRequestsARange() {
+        assertTrue(shouldServeMdzipAssetAsWholeFile(true, "mp4", "bytes=0-"))
+        assertTrue(shouldServeMdzipAssetAsWholeFile(true, "mp4", "bytes=1048576-"))
+        assertFalse(shouldServeMdzipAssetAsWholeFile(false, "mp3", "bytes=100-200"))
+    }
+
+    @Test
     fun rejectsInvalidOrUnsatisfiableRanges() {
         listOf(
             "bytes=-0",

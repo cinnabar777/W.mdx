@@ -53,6 +53,13 @@ internal fun shouldServeMdzipAudioAsWholeFile(
         extension.equals("ogg", ignoreCase = true) ||
         extension.equals("oga", ignoreCase = true)
 
+internal fun shouldServeMdzipAssetAsWholeFile(
+    isVideoAsset: Boolean,
+    extension: String,
+    rangeHeader: String?
+): Boolean =
+    isVideoAsset || shouldServeMdzipAudioAsWholeFile(extension, rangeHeader)
+
 internal fun openMdzipByteRangeStream(
     file: File,
     start: Long,
