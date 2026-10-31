@@ -6,7 +6,7 @@ const path = require('node:path');
 const read = relativePath =>
   fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 
-test('MP4, M4V, WebM, and 3GP Markdown links format, parse, and extract outside code blocks', async () => {
+test('MP4, M4V, WebM, 3GP, and MOV Markdown links format, parse, and extract outside code blocks', async () => {
   const {
     extractMarkdownVideoLinks,
     formatMarkdownVideoLink,
@@ -34,6 +34,11 @@ test('MP4, M4V, WebM, and 3GP Markdown links format, parse, and extract outside 
   assert.deepEqual(parseMarkdownVideoLink(threeGpMarkdown), {
     label: 'Older phone clip.3gp',
     url: 'video/Older%20phone%20clip.3gp'
+  });
+  const movMarkdown = formatMarkdownVideoLink('QuickTime clip.mov', 'video/QuickTime clip.mov');
+  assert.deepEqual(parseMarkdownVideoLink(movMarkdown), {
+    label: 'QuickTime clip.mov',
+    url: 'video/QuickTime%20clip.mov'
   });
   const layoutMarkdown = formatMarkdownVideoLink(
     'Framed clip.mp4',
@@ -73,15 +78,19 @@ test('MP4, M4V, WebM, and 3GP Markdown links format, parse, and extract outside 
     formatMarkdownVideoLink('Clip', 'video/clip.3gp?download=1'),
     '[Clip](video/clip.3gp?download=1)'
   );
+  assert.equal(
+    formatMarkdownVideoLink('Clip', 'video/clip.mov?download=1'),
+    '[Clip](video/clip.mov?download=1)'
+  );
   assert.deepEqual(
     extractMarkdownVideoLinks(
-      '[Clip](video/clip.mp4)\n[Camera](video/camera.m4v)\n[Screen](video/screen.webm)\n[Older phone](video/older.3gp)\n\n`[Example](video/example.mp4)`'
+      '[Clip](video/clip.mp4)\n[Camera](video/camera.m4v)\n[Screen](video/screen.webm)\n[Older phone](video/older.3gp)\n[QuickTime](video/quicktime.mov)\n\n`[Example](video/example.mp4)`'
     ).map(link => link.url),
-    ['video/clip.mp4', 'video/camera.m4v', 'video/screen.webm', 'video/older.3gp']
+    ['video/clip.mp4', 'video/camera.m4v', 'video/screen.webm', 'video/older.3gp', 'video/quicktime.mov']
   );
 });
 
-test('MP4, M4V, WebM, and 3GP insertion, package serving, and default rendering are connected', () => {
+test('MP4, M4V, WebM, 3GP, and MOV insertion, package serving, and default rendering are connected', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const editor = read('src/main.js');
@@ -91,8 +100,9 @@ test('MP4, M4V, WebM, and 3GP insertion, package serving, and default rendering 
   const widget = read('src/videoPreviewWidget.js');
   const byteRanges = read('../app/src/main/java/com/wmdx/markdownapp/MdzipByteRange.kt');
   const icons = read('src/toolbarIcons.js');
+  const capture = read('src/navigationCapture.js');
 
-  assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS = setOf\("mp4", "m4v", "webm", "3gp"\)/);
+  assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS = setOf\("mp4", "m4v", "webm", "3gp", "mov"\)/);
   assert.match(manager, /fun addVideo\(/);
   assert.match(manager, /fun syncVideoReferences\(/);
   assert.match(manager, /pendingAudioDeletions \+ session\.pendingVideoDeletions/);
@@ -101,6 +111,9 @@ test('MP4, M4V, WebM, and 3GP insertion, package serving, and default rendering 
   assert.match(activity, /mdzipVideoMimeType\(extension\)/);
   assert.match(activity, /"webm" -> "video\/webm"/);
   assert.match(activity, /"3gp" -> "video\/3gpp"/);
+  assert.match(activity, /"mov" -> "video\/quicktime"/);
+  assert.match(editor, /3gp\|mov/);
+  assert.match(capture, /m4v\|mov\|webm/);
   assert.match(activity, /shouldServeMdzipAssetAsWholeFile\(isVideoAsset, extension, range\)/);
   assert.equal(
     (editor.match(/hiddenSyntaxRanges\.push\(videoDecoration\)/g) || []).length,
