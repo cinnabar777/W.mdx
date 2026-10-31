@@ -8,7 +8,6 @@ import java.io.OutputStream
 import java.text.Normalizer
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -392,8 +391,7 @@ class TextPackManagerTest {
             sessionDir = sessionDir,
             markdownContent = guideMarkdown,
             sourceUri = null,
-            documentPath = "docs/guide.md",
-            manifest = JSONObject().put("mode", "project")
+            documentPath = "docs/guide.md"
         )
 
         try {
@@ -412,7 +410,11 @@ class TextPackManagerTest {
                 .encode("café.md", Charsets.UTF_8.name())
                 .replace("+", "%20")
 
-            val resolvedPath = TextPackManager.resolveProjectLink(session, encodedComposedName)
+            val resolvedPath = TextPackManager.resolveMdzipLinkPath(
+                session.documentPath,
+                encodedComposedName,
+                extractedPaths
+            )
 
             assertTrue(archivePath in extractedPaths)
             assertEquals(archivePath, resolvedPath)
