@@ -230,8 +230,18 @@ export function createMediaPreviewElement(document, type, src, label, reference 
   };
   const showMediaLoadError = () => {
     const mediaName = label || (type === 'audio' ? 'Audio' : 'Video');
+    const errorCode = media.error?.code;
+    const errorDescription = {
+      1: 'playback aborted',
+      2: 'media data could not be fetched',
+      3: 'media data could not be decoded',
+      4: 'media source or codec was rejected'
+    }[errorCode];
+    const errorDetail = errorDescription
+      ? ` Browser media error ${errorCode}: ${errorDescription}.`
+      : '';
     showPlaybackError(
-      `Unable to play ${type} “${mediaName}” (${reference || src}). The file may be missing, unreadable, or unsupported by this device.`
+      `Unable to play ${type} “${mediaName}” (${reference || src}).${errorDetail} The file may be missing, unreadable, or unsupported by this device.`
     );
   };
 

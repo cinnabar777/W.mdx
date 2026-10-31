@@ -980,19 +980,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }.build()
 
     private fun validatedMediaMimeHint(mimeType: String?, expectedMediaType: String?): String? {
-        val expected = expectedMediaType?.lowercase(java.util.Locale.ROOT)
-            ?.takeIf { it == "audio" || it == "video" }
-            ?: return null
-        val normalized = mimeType
-            ?.substringBefore(';')
-            ?.trim()
-            ?.lowercase(java.util.Locale.ROOT)
-            ?: return null
-        if (normalized == "application/octet-stream") return normalized
-        if (!normalized.startsWith("$expected/")) return null
-        return normalized.takeIf {
-            Regex("^(audio|video)/[a-z0-9][a-z0-9.+_-]*$").matches(it)
-        }
+        return MediaMimeTypeResolver.validatedHint(mimeType, expectedMediaType)
     }
 
     private fun mediaMimeType(
@@ -1034,24 +1022,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun knownMediaMimeType(extension: String, expectedMediaType: String?): String? =
-        when (extension.lowercase(java.util.Locale.ROOT)) {
-            "3gp" -> if (expectedMediaType == "audio") "audio/3gpp" else "video/3gpp"
-            "aac" -> "audio/aac"
-            "avi" -> "video/x-msvideo"
-            "flac" -> "audio/flac"
-            "m4a" -> "audio/mp4"
-            "m4v" -> "video/mp4"
-            "mkv" -> "video/x-matroska"
-            "mov" -> "video/quicktime"
-            "mp3" -> "audio/mpeg"
-            "mp4" -> if (expectedMediaType == "audio") "audio/mp4" else "video/mp4"
-            "oga", "ogg", "opus" -> "audio/ogg"
-            "ogv" -> "video/ogg"
-            "wav" -> "audio/wav"
-            "webm" -> if (expectedMediaType == "audio") "audio/webm" else "video/webm"
-            "wmv" -> "video/x-ms-wmv"
-            else -> null
-        }
+        MediaMimeTypeResolver.knownMimeType(extension, expectedMediaType)
 
     private fun interceptArchiveAssetRequest(request: WebResourceRequest?): WebResourceResponse {
         val uri = request?.url ?: return missingArchiveAssetResponse()
@@ -1067,12 +1038,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val expectedMediaType = assetFolder
             .takeIf { it.equals("audio", ignoreCase = true) || it.equals("video", ignoreCase = true) }
             ?.lowercase(java.util.Locale.ROOT)
-        val mimeType = validatedMediaMimeHint(
+        val mimeType = MediaMimeTypeResolver.archiveAssetMimeType(
+            file.extension,
             uri.getQueryParameter(WMDX_MEDIA_MIME_PARAM),
             expectedMediaType
-        ) ?: expectedMediaType?.let {
-            knownMediaMimeType(file.extension, it)
-        } ?: android.webkit.MimeTypeMap.getSingleton()
+        ) ?: android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(file.extension.lowercase(java.util.Locale.ROOT))
             ?: "application/octet-stream"
         return runCatching {
@@ -2655,7 +2625,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun insertMediaFromUri(uri: Uri, mediaType: String) {
         try {
-            val mimeType = mediaMimeType(uri, mediaType)
+            val originalName = getFileNameFromUri(uri)
+            val session = currentTextPackSession
+            val mimeType = if (session != null) {
+                MediaMimeTypeResolver.mdzipImportMimeType(
+                    originalName,
+                    runCatching { contentResolver.getType(uri) }.getOrNull(),
+                    mediaType
+                ) ?: mediaMimeType(uri, mediaType)
+            } else {
+                mediaMimeType(uri, mediaType)
+            }
             if (
                 mimeType == null ||
                 (!mimeType.startsWith("$mediaType/") && mimeType != "application/octet-stream")
@@ -2664,10 +2644,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 ThemedToast.show(this, "Choose a supported $expected file.", Toast.LENGTH_LONG)
                 return
             }
-            val originalName = getFileNameFromUri(uri)
             val label = originalName?.takeIf { name -> name.isNotBlank() }
                 ?: if (mediaType == "audio") "Audio" else "Video"
-            val session = currentTextPackSession
             val mediaUrl = if (session != null) {
                 val extensionFromMimeType = mimeType
                     ?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }

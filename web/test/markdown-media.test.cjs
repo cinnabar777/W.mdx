@@ -159,6 +159,27 @@ test('audio and video load errors announce the media reference without removing 
   }
 });
 
+test('media load errors include the browser error code when available', async () => {
+  const { createMediaPreviewElement } = await import('../src/mediaPreview.js');
+  const document = new JSDOM('', { url: 'https://wmdx.test/' }).window.document;
+  const player = createMediaPreviewElement(
+    document,
+    'audio',
+    'https://wmdx.test/mdzip-assets/session/audio/recording.flac',
+    'recording.flac'
+  );
+  Object.defineProperty(player.mediaElement, 'error', {
+    configurable: true,
+    value: { code: 3 }
+  });
+  player.mediaElement.dispatchEvent(new document.defaultView.Event('error'));
+
+  assert.match(
+    player.querySelector('.wmdx-media-error').textContent,
+    /Browser media error 3: media data could not be decoded/
+  );
+});
+
 test('playback speed persists and the menu stays above a player near the viewport bottom', async () => {
   const { createMediaPreviewElement } = await import('../src/mediaPreview.js');
   const dom = new JSDOM('', { url: 'https://wmdx.test/' });
