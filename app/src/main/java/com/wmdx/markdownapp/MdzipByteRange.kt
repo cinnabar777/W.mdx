@@ -48,7 +48,8 @@ internal fun shouldServeMdzipAudioAsWholeFile(
         extension.equals("m4a", ignoreCase = true) ||
         extension.equals("flac", ignoreCase = true) ||
         extension.equals("opus", ignoreCase = true) ||
-        extension.equals("ogg", ignoreCase = true)
+        extension.equals("ogg", ignoreCase = true) ||
+        extension.equals("oga", ignoreCase = true)
 
 internal fun openMdzipByteRangeStream(
     file: File,

@@ -212,8 +212,8 @@ export class AudioPreviewWidget extends WidgetType {
     const audioPath = this.relativeLink || this.src;
     const isFlacSource = /\.flac(?:$|[?#])/i.test(audioPath);
     const isOpusSource = /\.opus(?:$|[?#])/i.test(audioPath);
-    const isOggSource = /\.(?:opus|ogg)(?:$|[?#])/i.test(audioPath);
-    const isBlobSeekSource = /\.(?:m4a|flac|opus|ogg)(?:$|[?#])/i.test(audioPath);
+    const isOggSource = /\.(?:opus|ogg|oga)(?:$|[?#])/i.test(audioPath);
+    const isBlobSeekSource = /\.(?:m4a|flac|opus|ogg|oga)(?:$|[?#])/i.test(audioPath);
     const seekBlobMimeType = isFlacSource
       ? 'audio/flac'
       : isOggSource

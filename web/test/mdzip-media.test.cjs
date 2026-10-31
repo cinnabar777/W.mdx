@@ -19,7 +19,7 @@ test('formats MP3 links with URL-encoded filenames and readable labels', async (
   });
 });
 
-test('recognizes M4A, FLAC, Opus, and OGG links and rejects unsupported audio formats', async () => {
+test('recognizes M4A, FLAC, Opus, OGG, and OGA links and rejects unsupported audio formats', async () => {
   const { parseMarkdownAudioLink } = await import('../src/markdownMedia.js');
   assert.deepEqual(parseMarkdownAudioLink('[Voice memo](audio/voice.m4a)'), {
     label: 'Voice memo',
@@ -36,6 +36,10 @@ test('recognizes M4A, FLAC, Opus, and OGG links and rejects unsupported audio fo
   assert.deepEqual(parseMarkdownAudioLink('[Voice](audio/voice.ogg)'), {
     label: 'Voice',
     url: 'audio/voice.ogg'
+  });
+  assert.deepEqual(parseMarkdownAudioLink('[Voice](audio/voice.oga)'), {
+    label: 'Voice',
+    url: 'audio/voice.oga'
   });
   assert.equal(parseMarkdownAudioLink('[Voice](audio/voice.wav)'), null);
   assert.equal(parseMarkdownAudioLink('![Voice](audio/voice.mp3)'), null);
@@ -93,9 +97,13 @@ test('stores audio width and alignment in standard Markdown link titles', async 
     formatMarkdownAudioLink('Ogg', 'audio/track.ogg?source=local'),
     '[Ogg](audio/track.ogg?source=local)'
   );
+  assert.equal(
+    formatMarkdownAudioLink('OGA', 'audio/track.oga?source=local'),
+    '[OGA](audio/track.oga?source=local)'
+  );
 });
 
-test('extracts MP3, M4A, FLAC, Opus, and OGG links without treating images or code as attachments', async () => {
+test('extracts MP3, M4A, FLAC, Opus, OGG, and OGA links without treating images or code as attachments', async () => {
   const { extractMarkdownAudioLinks } = await import('../src/markdownMedia.js');
   const markdown = [
     '[Voice](audio/voice.mp3)',
@@ -103,6 +111,7 @@ test('extracts MP3, M4A, FLAC, Opus, and OGG links without treating images or co
     '[Lossless](audio/recording.flac)',
     '[Voice](audio/recording.opus)',
     '[Ogg](audio/recording.ogg)',
+    '[Oga](audio/recording.oga)',
     '![Artwork](audio/image.mp3)',
     '`[Inline example](audio/inline.mp3)`',
     '```md',
@@ -117,7 +126,8 @@ test('extracts MP3, M4A, FLAC, Opus, and OGG links without treating images or co
       'audio/recording.m4a',
       'audio/recording.flac',
       'audio/recording.opus',
-      'audio/recording.ogg'
+      'audio/recording.ogg',
+      'audio/recording.oga'
     ]
   );
 });

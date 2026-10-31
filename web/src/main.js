@@ -3914,7 +3914,7 @@ class CodeMirrorAdapter {
       const changedText =
         update.startState.doc.sliceString(fromA, toA) +
         update.state.doc.sliceString(fromB, toB);
-      if (touchesExistingLink || /(?:audio\/|\.(?:mp3|m4a|flac|opus|ogg))/i.test(changedText)) {
+      if (touchesExistingLink || /(?:audio\/|\.(?:mp3|m4a|flac|opus|ogg|oga))/i.test(changedText)) {
         linksMayHaveChanged = true;
       }
     });

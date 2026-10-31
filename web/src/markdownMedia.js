@@ -58,7 +58,7 @@ export function parseMarkdownAudioLink(text) {
   } catch {
     // Keep the encoded value; the native resolver validates and decodes it.
   }
-  if (!/\.(?:mp3|m4a|flac|opus|ogg)$/i.test(decodedPath)) return null;
+  if (!/\.(?:mp3|m4a|flac|opus|ogg|oga)$/i.test(decodedPath)) return null;
   const parsed = { label: link.label, url: link.url };
   const layout = parseAudioLayoutTitle(link.title);
   if (layout) parsed.layout = layout;
@@ -169,11 +169,11 @@ export function formatMarkdownAudioLink(label, url, layout = null) {
   const queryIndex = rawUrl.indexOf('?');
   const fragmentIndex = rawUrl.indexOf('#');
   const suffixCandidates = [
-    queryIndex >= 0 && /\.(?:mp3|m4a|flac|opus|ogg)$/i.test(rawUrl.slice(0, queryIndex))
+    queryIndex >= 0 && /\.(?:mp3|m4a|flac|opus|ogg|oga)$/i.test(rawUrl.slice(0, queryIndex))
       ? queryIndex
       : -1,
     fragmentIndex >= 0 &&
-    /\.(?:mp3|m4a|flac|opus|ogg)$/i.test(rawUrl.slice(0, fragmentIndex))
+    /\.(?:mp3|m4a|flac|opus|ogg|oga)$/i.test(rawUrl.slice(0, fragmentIndex))
       ? fragmentIndex
       : -1
   ].filter(index => index >= 0);

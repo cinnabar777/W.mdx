@@ -24,28 +24,30 @@ test('long-press exposes edit and explicit package delete actions', () => {
   assert.match(player, /userEvent: 'delete\.mdzip-audio'/);
 });
 
-test('M4A, FLAC, Opus, and OGG files are accepted and served with the correct MIME types', () => {
+test('M4A, FLAC, Opus, OGG, and OGA files are accepted and served with the correct MIME types', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const capture = read('src/navigationCapture.js');
-  assert.match(manager, /setOf\("mp3", "m4a", "flac", "opus", "ogg"\)/);
+  assert.match(manager, /setOf\("mp3", "m4a", "flac", "opus", "ogg", "oga"\)/);
   assert.match(manager, /fun addAudio\(/);
   assert.match(manager, /fun isSupportedAudioFileName\(/);
   assert.match(activity, /pickAudioLauncher\.launch\("audio\/\*"\)/);
   assert.match(activity, /"m4a" -> "audio\/mp4"/);
   assert.match(activity, /"flac" -> "audio\/flac"/);
-  assert.match(activity, /"opus", "ogg" -> "audio\/ogg"/);
+  assert.match(activity, /"opus", "ogg", "oga" -> "audio\/ogg"/);
   assert.match(activity, /"mdzip_audio_asset"/);
   assert.match(capture, /enqueue\('media_event'/);
   assert.match(capture, /mediaErrorCode:/);
 });
 
-test('M4A, FLAC, Opus, and OGG use bounded Blob seeking when needed', () => {
+test('M4A, FLAC, Opus, OGG, and OGA use bounded Blob seeking when needed', () => {
   const player = read('src/audioPreviewWidget.js');
   const blobLoader = read('src/mdzipAudioBlobSeek.js');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   assert.match(player, /isBlobSeekSource =/);
   assert.match(player, /audio\.preload = isBlobSeekSource \? 'auto' : 'metadata'/);
+  assert.match(player, /isOggSource = .*oga/);
+  assert.match(player, /isBlobSeekSource = .*oga/);
   assert.match(player, /void seekAudioWithBlob\(targetTime\)/);
   assert.match(player, /fetchAudioSeekBlob\(this\.src/);
   assert.match(player, /prepareOggDuration/);
@@ -57,7 +59,7 @@ test('M4A, FLAC, Opus, and OGG use bounded Blob seeking when needed', () => {
   assert.doesNotMatch(player, /enableMdzipAudioRangeRequests/);
   assert.match(
     activity,
-    /if \(!isVideoAsset && extension in setOf\("m4a", "flac", "opus", "ogg"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
+    /if \(!isVideoAsset && extension in setOf\("m4a", "flac", "opus", "ogg", "oga"\)\) \{\s*headers\.remove\("Accept-Ranges"\)/
   );
   const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
   assert.ok(seekCommit);
