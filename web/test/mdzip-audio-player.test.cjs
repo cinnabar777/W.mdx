@@ -43,7 +43,14 @@ test('M4A requests full preload so its timeline can be seeked without byte range
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   assert.match(player, /isM4aSource =/);
   assert.match(player, /audio\.preload = isM4aSource \? 'auto' : 'metadata'/);
-  assert.match(activity, /if \(extension == "m4a"\) headers\.remove\("Accept-Ranges"\)/);
+  assert.match(activity, /enableMdzipAudioRangeRequests\(relativeLink: String\)/);
+  assert.match(activity, /if \(extension == "m4a" && !m4aRangeRequestsEnabled\)/);
+  const seekCommit = player.match(/const commitSeek = \(\) => \{([\s\S]*?)\n    \};/)?.[1];
+  assert.ok(seekCommit);
+  assert.ok(
+    seekCommit.indexOf('enableMdzipAudioRangeRequests') <
+      seekCommit.indexOf('audio.currentTime = targetTime')
+  );
 });
 
 test('audio scrubbing commits one seek on release instead of on every input event', () => {

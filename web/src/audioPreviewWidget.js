@@ -415,6 +415,9 @@ export class AudioPreviewWidget extends WidgetType {
       isDraggingSeek = false;
       if (Number.isFinite(audio.duration)) {
         const targetTime = Math.max(0, Math.min(Number(seek.value), audio.duration));
+        if (isM4aSource) {
+          window.AndroidNative?.enableMdzipAudioRangeRequests?.(this.relativeLink);
+        }
         audio.currentTime = targetTime;
       }
     };
