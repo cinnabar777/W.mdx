@@ -34,6 +34,8 @@ test('MDZip project links reuse their tabs and navigate to the requested heading
   let activeUri = makeDocumentUri(activePath);
   let currentMarkdown = markdownByPath.get(activePath);
   let sessionSequence = 0;
+  let rejectNextSave = false;
+  const savedDocuments = [];
   const headingNavigations = [];
 
   const context = () => ({
@@ -76,6 +78,16 @@ test('MDZip project links reuse their tabs and navigate to the requested heading
             isTextPack: true,
             isMdzipEntry: true
           };
+    },
+    saveLeftPanelTab(uri, name, markdown) {
+      if (rejectNextSave) {
+        rejectNextSave = false;
+        return { ok: false, error: 'Test save rejected.' };
+      }
+      const documentPath = documentPathFromUri(uri);
+      markdownByPath.set(documentPath, markdown);
+      savedDocuments.push({ uri, name, markdown });
+      return { ok: true };
     },
     focusOpenDocument: () => false,
     readWmdxTabSession: () => null
@@ -136,6 +148,37 @@ test('MDZip project links reuse their tabs and navigate to the requested heading
     assert.equal(activePath, 'docs/guide.md');
     assert.equal(selectedTab().dataset.tabId, guideTabId);
 
+    const guideEdits = '# Guide\n\nUnsaved changes from the guide.';
+    currentMarkdown = guideEdits;
+    controller.onEditorChanged(guideEdits);
+    await openLinkAndFlush('../index.md');
+    assert.equal(activePath, 'index.md', 'a dirty source can switch after saving');
+    assert.equal(markdownByPath.get('docs/guide.md'), guideEdits);
+    assert.deepEqual(savedDocuments.at(-1), {
+      uri: makeDocumentUri('docs/guide.md'),
+      name: 'guide.md',
+      markdown: guideEdits
+    });
+
+    const rejectedSaveEdits = '# Start\n\nKeep these edits after save fails.';
+    currentMarkdown = rejectedSaveEdits;
+    controller.onEditorChanged(rejectedSaveEdits);
+    rejectNextSave = true;
+    await openLinkAndFlush('docs/guide.md');
+    assert.equal(activePath, 'index.md', 'a rejected save keeps the source document active');
+    assert.equal(currentMarkdown, rejectedSaveEdits, 'the editor retains the source edits');
+    const dirtySourceTab = visibleTabs().find((tab) => tab.dataset.tabId === entryTabId);
+    assert.match(dirtySourceTab.textContent, /•/, 'the source tab remains marked dirty');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const persistedAfterRejection = JSON.parse(
+      window.localStorage.getItem('wmdx.leftPanel.taskTabs.mdzip-navigation-test')
+    );
+    assert.equal(persistedAfterRejection.activeTabId, entryTabId);
+    assert.equal(
+      persistedAfterRejection.tabs.find((tab) => tab.id === entryTabId)?.markdown,
+      rejectedSaveEdits
+    );
+
     const allTabs = visibleTabs();
     assert.equal(allTabs.length, 3, 'each project document has exactly one tab');
     assert.equal(guideTabId, makeDocumentUri('docs/guide.md'));
@@ -147,7 +190,7 @@ test('MDZip project links reuse their tabs and navigate to the requested heading
       window.localStorage.getItem('wmdx.leftPanel.taskTabs.mdzip-navigation-test')
     );
     assert.equal(persisted.tabs.length, 3);
-    assert.equal(persisted.activeTabId, guideTabId);
+    assert.equal(persisted.activeTabId, entryTabId);
     assert.equal(
       persisted.tabs.find((tab) => tab.id === topicTabId)?.uri,
       makeDocumentUri('docs/chapters/topic.md')
