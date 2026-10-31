@@ -147,6 +147,50 @@ test('Vorbis duration is recovered from the Ogg sample rate and final granule', 
   );
 });
 
+test('Ogg FLAC duration is recovered from STREAMINFO and the final granule', async () => {
+  const { getOggAudioMetadata } = await import('../src/oggOpusDuration.js');
+  const mappingPacket = new Uint8Array(51);
+  mappingPacket.set([0x7f, 0x46, 0x4c, 0x41, 0x43, 1, 0, 0, 1]);
+  mappingPacket.set([0x66, 0x4c, 0x61, 0x43], 9);
+  mappingPacket.set([0, 0, 0, 34], 13);
+  const streamInfo = new DataView(mappingPacket.buffer);
+  streamInfo.setBigUint64(27, 44100n << 44n, false);
+
+  const makePage = ({ flags, sequence, granule, packet }) => {
+    const page = new Uint8Array(28 + packet.length);
+    page.set([0x4f, 0x67, 0x67, 0x53], 0);
+    page[4] = 0;
+    page[5] = flags;
+    const view = new DataView(page.buffer);
+    view.setBigUint64(6, BigInt(granule), true);
+    view.setUint32(14, 12, true);
+    view.setUint32(18, sequence, true);
+    page[26] = 1;
+    page[27] = packet.length;
+    page.set(packet, 28);
+    return page;
+  };
+  const headPage = makePage({
+    flags: 2,
+    sequence: 0,
+    granule: 0,
+    packet: mappingPacket
+  });
+  const endPage = new Uint8Array(27);
+  endPage.set([0x4f, 0x67, 0x67, 0x53], 0);
+  endPage[4] = 0;
+  endPage[5] = 4;
+  const endPageView = new DataView(endPage.buffer);
+  endPageView.setBigUint64(6, 44100n * 10n, true);
+  endPageView.setUint32(14, 12, true);
+  endPageView.setUint32(18, 1, true);
+
+  assert.deepEqual(
+    await getOggAudioMetadata(new Blob([headPage, endPage], { type: 'audio/ogg' })),
+    { codec: 'flac', duration: 10 }
+  );
+});
+
 test('MDZip duplicate Save As moves the generated number before the extension', () => {
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');

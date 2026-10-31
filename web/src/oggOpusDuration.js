@@ -1,6 +1,8 @@
 const OGG_CAPTURE = [0x4f, 0x67, 0x67, 0x53];
 const OPUS_HEAD = [0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64];
 const VORBIS_IDENTIFICATION = [0x01, 0x76, 0x6f, 0x72, 0x62, 0x69, 0x73];
+const OGG_FLAC_MAPPING = [0x7f, 0x46, 0x4c, 0x41, 0x43];
+const FLAC_STREAM_MARKER = [0x66, 0x4c, 0x61, 0x43];
 const GRANULE_UNKNOWN = 0xffffffffffffffffn;
 const OPUS_SAMPLE_RATE = 48000;
 
@@ -21,6 +23,31 @@ function findSequence(bytes, from, to, sequence) {
     if (matchesAt(bytes, offset, sequence)) return offset;
   }
   return -1;
+}
+
+function getOggFlacSampleRate(bytes, view, from, to) {
+  const mappingOffset = findSequence(bytes, from, to, OGG_FLAC_MAPPING);
+  if (mappingOffset < 0) return 0;
+
+  const markerOffset = mappingOffset + OGG_FLAC_MAPPING.length + 4;
+  if (!matchesAt(bytes, markerOffset, FLAC_STREAM_MARKER)) return 0;
+
+  const metadataHeaderOffset = markerOffset + FLAC_STREAM_MARKER.length;
+  if (metadataHeaderOffset + 4 > to) return 0;
+  const blockType = bytes[metadataHeaderOffset] & 0x7f;
+  const blockLength =
+    (bytes[metadataHeaderOffset + 1] << 16) |
+    (bytes[metadataHeaderOffset + 2] << 8) |
+    bytes[metadataHeaderOffset + 3];
+  const streamInfoOffset = metadataHeaderOffset + 4;
+  if (
+    blockType !== 0 ||
+    blockLength < 34 ||
+    streamInfoOffset + 34 > to
+  ) return 0;
+
+  const sampleRateAndFormat = view.getBigUint64(streamInfoOffset + 10, false);
+  return Number(sampleRateAndFormat >> 44n);
 }
 
 export async function getOggAudioMetadata(blob) {
@@ -74,6 +101,19 @@ export async function getOggAudioMetadata(blob) {
           const parsedSampleRate = view.getUint32(vorbisOffset + 12, true);
           if (parsedSampleRate > 0) {
             codec = 'vorbis';
+            codecSerial = serial;
+            sampleRate = parsedSampleRate;
+          }
+        }
+        if (codec === null) {
+          const parsedSampleRate = getOggFlacSampleRate(
+            bytes,
+            view,
+            bodyStart,
+            bodyEnd
+          );
+          if (parsedSampleRate > 0) {
+            codec = 'flac';
             codecSerial = serial;
             sampleRate = parsedSampleRate;
           }
