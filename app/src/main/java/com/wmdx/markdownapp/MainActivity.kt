@@ -2334,8 +2334,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
         }
 
-        val byteRange = parseMdzipByteRange(range, fileLength)
-            ?: return mdzipRangeError(fileLength, mimeType, range)
+        val rangeHeader = range ?: return mdzipRangeError(fileLength, mimeType, range)
+        val byteRange = parseMdzipByteRange(rangeHeader, fileLength)
+            ?: return mdzipRangeError(fileLength, mimeType, rangeHeader)
         headers["Content-Length"] = byteRange.length.toString()
         val contentRange = "bytes ${byteRange.start}-${byteRange.endInclusive}/$fileLength"
         headers["Content-Range"] = contentRange
@@ -2343,7 +2344,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             extension,
             206,
             mimeType,
-            rangeHeader = range,
+            rangeHeader = rangeHeader,
             contentRange = contentRange,
             contentLength = byteRange.length
         )
