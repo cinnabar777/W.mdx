@@ -20,6 +20,21 @@ export function getMarkdownMediaType(url) {
   return null;
 }
 
+export function resolveArchiveMediaUrl(url, baseUrl) {
+  if (
+    !baseUrl ||
+    typeof url !== 'string' ||
+    /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(url)
+  ) {
+    return url;
+  }
+  try {
+    return new URL(url, baseUrl).href;
+  } catch {
+    return url;
+  }
+}
+
 export function parseMarkdownMediaLink(markdown) {
   if (typeof markdown !== 'string') return null;
   const match = markdown.match(

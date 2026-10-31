@@ -785,92 +785,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         mimeType: String,
         request: WebResourceRequest?
     ): WebResourceResponse {
-        val fileLength = file.length()
         val rangeHeader = request?.requestHeaders
             ?.entries
             ?.firstOrNull { it.key.equals("Range", ignoreCase = true) }
             ?.value
-        val rangeMatch = rangeHeader?.let { Regex("bytes=(\\d*)-(\\d*)").matchEntire(it) }
-        if (rangeMatch != null && fileLength > 0L) {
-            val requestedStart = rangeMatch.groupValues[1].toLongOrNull()
-            val requestedEnd = rangeMatch.groupValues[2].toLongOrNull()
-            if (requestedStart == null && requestedEnd == null) {
-                return rangeNotSatisfiableResponse(fileLength)
-            }
-            val rangeStart = if (requestedStart == null) {
-                (fileLength - requestedEnd!!).coerceAtLeast(0L)
-            } else {
-                requestedStart
-            }
-            val rangeEnd = if (requestedStart == null || requestedEnd == null) {
-                fileLength - 1L
-            } else {
-                requestedEnd
-            }.coerceAtMost(fileLength - 1L)
-            if (rangeStart >= fileLength || rangeEnd < rangeStart) {
-                return rangeNotSatisfiableResponse(fileLength)
-            }
-
-            val contentLength = rangeEnd - rangeStart + 1L
-            val stream = java.io.FileInputStream(file)
-            stream.channel.position(rangeStart)
-            val limitedStream = object : java.io.FilterInputStream(stream) {
-                private var remaining = contentLength
-
-                override fun read(): Int {
-                    if (remaining <= 0L) return -1
-                    val value = super.read()
-                    if (value >= 0) remaining--
-                    return value
-                }
-
-                override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-                    if (remaining <= 0L) return -1
-                    val count = super.read(buffer, offset, minOf(length.toLong(), remaining).toInt())
-                    if (count > 0) remaining -= count
-                    return count
-                }
-            }
-            return WebResourceResponse(
-                mimeType,
-                null,
-                206,
-                "Partial Content",
-                mapOf(
-                    "Accept-Ranges" to "bytes",
-                    "Content-Length" to contentLength.toString(),
-                    "Content-Range" to "bytes $rangeStart-$rangeEnd/$fileLength"
-                ),
-                limitedStream
-            )
-        }
-
+        val plan = ArchiveAssetResponsePlan.create(file, mimeType, rangeHeader)
         return WebResourceResponse(
-            mimeType,
+            plan.contentType,
             null,
-            200,
-            "OK",
-            mapOf(
-                "Accept-Ranges" to "bytes",
-                "Content-Length" to fileLength.toString()
-            ),
-            java.io.FileInputStream(file)
+            plan.statusCode,
+            plan.reasonPhrase,
+            plan.responseHeaders,
+            plan.openBody(file)
         )
     }
-
-    private fun rangeNotSatisfiableResponse(fileLength: Long): WebResourceResponse =
-        WebResourceResponse(
-            "application/octet-stream",
-            null,
-            416,
-            "Range Not Satisfiable",
-            mapOf(
-                "Accept-Ranges" to "bytes",
-                "Content-Range" to "bytes */$fileLength",
-                "Content-Length" to "0"
-            ),
-            java.io.ByteArrayInputStream(ByteArray(0))
-        )
 
     private fun missingArchiveAssetResponse(): WebResourceResponse =
         WebResourceResponse(

@@ -36,8 +36,10 @@ import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import {
   formatMarkdownMediaLink,
-  parseMarkdownMediaLink
+  parseMarkdownMediaLink,
+  resolveArchiveMediaUrl
 } from './markdownMedia.js';
+import { createMediaPreviewElement } from './mediaPreview.js';
 import {
   getMarkdownFormattingState,
   getMarkdownFormatRanges,
@@ -1047,10 +1049,6 @@ function resolveArchiveImageUrl(url, baseUrl) {
   }
 }
 
-function resolveArchiveMediaUrl(url, baseUrl) {
-  return resolveArchiveImageUrl(url, baseUrl);
-}
-
 class MediaPreviewWidget extends WidgetType {
   constructor(type, url, label, from, to) {
     super();
@@ -1091,14 +1089,12 @@ class MediaPreviewWidget extends WidgetType {
     wrapper.className = 'cm-media-preview-wrapper';
     wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 8px 0; display: block; box-sizing: border-box;`;
 
-    const media = document.createElement(this.type);
-    media.controls = true;
-    media.preload = 'metadata';
-    media.setAttribute('aria-label', this.label);
-    media.src = this.renderUrl;
-    media.style.cssText = this.type === 'video'
-      ? 'display: block; width: 100%; max-width: 100%; max-height: 420px; border-radius: 6px; background: #000;'
-      : 'display: block; width: 100%; max-width: 560px;';
+    const media = createMediaPreviewElement(
+      document,
+      this.type,
+      this.renderUrl,
+      this.label
+    );
     media.addEventListener('loadedmetadata', () => {
       const renderedHeight = Math.ceil(media.getBoundingClientRect().height);
       if (renderedHeight > 0) wrapper.style.minHeight = `${renderedHeight}px`;

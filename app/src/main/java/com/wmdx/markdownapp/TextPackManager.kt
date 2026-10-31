@@ -167,7 +167,11 @@ object TextPackManager {
         return relativeMarkdownPath(session.documentPath, archivePath)
             .split('/')
             .joinToString("/") { segment ->
-                if (segment == "." || segment == "..") segment else Uri.encode(segment)
+                when {
+                    segment == "." || segment == ".." -> segment
+                    segment.matches(Regex("[A-Za-z0-9._~-]+")) -> segment
+                    else -> Uri.encode(segment)
+                }
             }
     }
 

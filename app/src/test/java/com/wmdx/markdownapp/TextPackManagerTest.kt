@@ -14,6 +14,65 @@ import org.junit.Test
 
 class TextPackManagerTest {
     @Test
+    fun importedAudioAndVideoSurviveSavingAndReopeningTheMdzip() {
+        val sourceSessionDir = java.nio.file.Files.createTempDirectory("mdzip-media-source").toFile()
+        val reopenedSessionDir = java.nio.file.Files.createTempDirectory("mdzip-media-reopened").toFile()
+        val audioBytes = byteArrayOf(0, 1, 2, 3, 4, 5, 0x7f, 0x80.toByte(), 0xff.toByte())
+        val videoBytes = byteArrayOf(9, 8, 7, 6, 5, 4, 3, 2, 1)
+
+        try {
+            val session = TextPackSession(
+                sessionDir = sourceSessionDir,
+                markdownContent = "",
+                sourceUri = null
+            )
+            val audioPath = TextPackManager.addAssetMedia(
+                session,
+                ByteArrayInputStream(audioBytes),
+                "voice note.ogg",
+                "audio",
+                "ogg"
+            )
+            val videoPath = TextPackManager.addAssetMedia(
+                session,
+                ByteArrayInputStream(videoBytes),
+                "clip.webm",
+                "video",
+                "webm"
+            )
+            val markdown = "[Voice](<$audioPath>)\n\n[Clip](<$videoPath>)\n"
+            TextPackManager.writeMdzipDocument(sourceSessionDir, "index.md", markdown)
+            File(sourceSessionDir, "manifest.json").writeText(
+                """{"spec":{"name":"mdzip-spec","version":"1.2.1"},"mode":"document","entryPoint":"index.md"}""",
+                Charsets.UTF_8
+            )
+
+            val savedArchive = ByteArrayOutputStream().also { output ->
+                TextPackManager.writeMdzipArchive(sourceSessionDir, output)
+            }.toByteArray()
+            TextPackManager.extractArchive(ByteArrayInputStream(savedArchive), reopenedSessionDir)
+
+            val reopenedSession = TextPackSession(
+                sessionDir = reopenedSessionDir,
+                markdownContent = File(reopenedSessionDir, "index.md").readText(Charsets.UTF_8),
+                sourceUri = null
+            )
+            assertEquals(markdown, reopenedSession.markdownContent)
+            assertArrayEquals(
+                audioBytes,
+                TextPackManager.resolveAssetFile(reopenedSession, audioPath)!!.readBytes()
+            )
+            assertArrayEquals(
+                videoBytes,
+                TextPackManager.resolveAssetFile(reopenedSession, videoPath)!!.readBytes()
+            )
+        } finally {
+            sourceSessionDir.deleteRecursively()
+            reopenedSessionDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun projectArchiveRoundTripPreservesUntouchedEntriesWhenNestedMarkdownIsEdited() {
         val manifest = """
             {
