@@ -190,6 +190,39 @@ class TextPackManagerTest {
     }
 
     @Test
+    fun nestedProjectLinksResolveFromTheCurrentlyOpenDocument() {
+        val available = setOf(
+            "index.md",
+            "docs/guide.md",
+            "docs/chapters/topic.md"
+        )
+        assertEquals(
+            "docs/chapters/topic.md",
+            TextPackManager.resolveMdzipLinkPath(
+                "docs/guide.md",
+                "chapters/topic.md#Deep%20Dive",
+                available
+            )
+        )
+        assertEquals(
+            "docs/guide.md",
+            TextPackManager.resolveMdzipLinkPath(
+                "docs/chapters/topic.md",
+                "../guide.md#Guide%20Details",
+                available
+            )
+        )
+        assertEquals(
+            "index.md",
+            TextPackManager.resolveMdzipLinkPath(
+                "docs/chapters/topic.md",
+                "../../index.md#Start",
+                available
+            )
+        )
+    }
+
+    @Test
     fun internalLinkResolutionRejectsEscapesAndExternalTargets() {
         val available = setOf("index.md", "docs/intro.md", "docs/chapter one.md")
         assertEquals(
