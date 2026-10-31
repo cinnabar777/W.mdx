@@ -61,9 +61,13 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   assert.match(settingsPreview, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video \}/);
   assert.match(settingsActivity, /"image", "audio", "video", "link"/);
   assert.match(widget, /video\.controls = true/);
-  assert.match(widget, /createVideoPlayerControls\(video, wrapper\)/);
+  assert.match(widget, /createVideoPlayerControls\(video, header\)/);
+  assert.match(widget, /video\.error\?\.code/);
+  assert.match(widget, /widgetDisposed \|\| !video\.getAttribute\('src'\)/);
   assert.match(controls, /--media-controls-bg/);
   assert.match(controls, /--media-controls-accent/);
+  assert.match(controls, /header\.appendChild\(speedButton\)/);
+  assert.doesNotMatch(controls, /wrapper\.appendChild/);
   assert.doesNotMatch(controls, /mdzipAudioPlaybackRate|mdzipVideoPlaybackRate|setMediaPlaybackSpeed/);
   assert.doesNotMatch(controls, /video\.play\(\)|video\.pause\(\)/);
   assert.doesNotMatch(editor, /video\[data-mdzip-video="true"\]/);

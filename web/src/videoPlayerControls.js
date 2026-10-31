@@ -80,30 +80,29 @@ function getViewportBounds() {
   };
 }
 
-export function createVideoPlayerControls(video, wrapper) {
-  const controls = document.createElement('div');
-  controls.className = 'cm-mdzip-video-controls';
-  controls.style.cssText = [
-    'display:flex',
-    'justify-content:flex-end',
-    'box-sizing:border-box',
-    'width:100%',
-    'max-width:100%',
-    'margin-top:8px',
-    'padding:6px 8px',
-    'border-radius:var(--media-controls-radius, 24px)',
-    'background:var(--media-controls-bg, #242424)',
-    'color:var(--media-controls-text, #fff)'
+export function createVideoPlayerControls(video, header) {
+  const label = document.createElement('span');
+  label.className = 'cm-mdzip-video-label-text';
+  label.textContent = header.textContent;
+  label.style.cssText = [
+    'flex:1 1 auto',
+    'min-width:0',
+    'overflow-wrap:anywhere'
   ].join(';');
-  wrapper.appendChild(controls);
+  header.replaceChildren(label);
+  header.style.display = 'flex';
+  header.style.alignItems = 'center';
+  header.style.justifyContent = 'space-between';
+  header.style.gap = '8px';
 
   const speedButton = document.createElement('button');
   speedButton.type = 'button';
   speedButton.textContent = formatRate(video.playbackRate);
   speedButton.setAttribute('aria-label', `Playback speed ${formatRate(video.playbackRate)}`);
   speedButton.setAttribute('aria-haspopup', 'menu');
+  speedButton.className = 'cm-mdzip-video-speed';
   styleButton(speedButton);
-  controls.appendChild(speedButton);
+  header.appendChild(speedButton);
 
   const speedMenu = document.createElement('div');
   speedMenu.setAttribute('role', 'menu');
@@ -160,7 +159,7 @@ export function createVideoPlayerControls(video, wrapper) {
   const dismissSpeedMenu = event => {
     if (
       speedMenuOpen &&
-      !controls.contains(event.target) &&
+      !header.contains(event.target) &&
       !speedMenu.contains(event.target)
     ) {
       hideSpeedMenu();
@@ -180,6 +179,11 @@ export function createVideoPlayerControls(video, wrapper) {
     event.preventDefault();
     event.stopPropagation();
     showSpeedMenu();
+  });
+  speedButton.addEventListener('pointerdown', event => event.stopPropagation());
+  speedButton.addEventListener('contextmenu', event => {
+    event.preventDefault();
+    event.stopPropagation();
   });
   video.addEventListener('ratechange', syncRateLabel);
   document.addEventListener('pointerdown', dismissSpeedMenu, true);

@@ -78,10 +78,24 @@ export class VideoPreviewWidget extends WidgetType {
     status.hidden = true;
     status.textContent = 'Unable to play this MP4 video on this device.';
     status.style.cssText = 'font-size:13px;line-height:1.5;margin-top:8px;color:var(--media-controls-text,#fff)';
-    const cleanupControls = createVideoPlayerControls(video, wrapper);
+    const cleanupControls = createVideoPlayerControls(video, header);
     wrapper.appendChild(status);
+    let widgetDisposed = false;
     video.addEventListener('error', () => {
+      if (widgetDisposed || !video.getAttribute('src')) return;
+      const code = video.error?.code;
+      const errorDescriptions = {
+        1: 'Playback was interrupted.',
+        2: 'The video could not be loaded.',
+        3: 'The video could not be decoded.',
+        4: 'The video format is unsupported.'
+      };
+      const description = errorDescriptions[code] || 'The video failed to play.';
+      status.textContent = `Video playback failed: ${description} (media error ${code ?? 'unknown'}).`;
       status.hidden = false;
+    });
+    video.addEventListener('playing', () => {
+      status.hidden = true;
     });
 
     let pressTimer = null;
@@ -145,6 +159,7 @@ export class VideoPreviewWidget extends WidgetType {
       showMenu();
     });
     wrapper._cleanupVideoWidget = () => {
+      widgetDisposed = true;
       cancelLongPress();
       removeMenu();
       cleanupControls();
