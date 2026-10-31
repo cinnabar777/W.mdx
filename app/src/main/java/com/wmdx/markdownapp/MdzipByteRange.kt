@@ -58,7 +58,11 @@ internal fun shouldServeMdzipAssetAsWholeFile(
     extension: String,
     rangeHeader: String?
 ): Boolean =
-    isVideoAsset || shouldServeMdzipAudioAsWholeFile(extension, rangeHeader)
+    if (isVideoAsset) {
+        rangeHeader == null
+    } else {
+        shouldServeMdzipAudioAsWholeFile(extension, rangeHeader)
+    }
 
 internal fun openMdzipByteRangeStream(
     file: File,

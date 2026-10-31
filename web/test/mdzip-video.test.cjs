@@ -32,7 +32,7 @@ test('MP4 Markdown links format, parse, and extract outside code blocks', async 
   );
 });
 
-test('MP4 insertion, package serving, rendering, and deletion are connected', () => {
+test('MP4 insertion, package serving, and default rendering are connected', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const editor = read('src/main.js');
@@ -40,7 +40,7 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   const settingsPreview = read('src/toolbarSettingsPreview.js');
   const settingsActivity = read('../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
   const widget = read('src/videoPreviewWidget.js');
-  const controls = read('src/videoPlayerControls.js');
+  const byteRanges = read('../app/src/main/java/com/wmdx/markdownapp/MdzipByteRange.kt');
   const icons = read('src/toolbarIcons.js');
 
   assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS = setOf\("mp4"\)/);
@@ -50,7 +50,8 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   assert.match(activity, /pickVideoLauncher\.launch\("video\/mp4"\)/);
   assert.match(activity, /MdzipManager\.videoArchiveFile/);
   assert.match(activity, /if \(isVideoAsset\) "video\/mp4"/);
-  assert.match(activity, /shouldServeMdzipAssetAsWholeFile/);
+  assert.match(activity, /shouldServeMdzipAssetAsWholeFile\(isVideoAsset, extension, range\)/);
+  assert.match(byteRanges, /if \(isVideoAsset\) \{\s*rangeHeader == null/s);
   assert.match(activity, /recordMdzipVideoAsset/);
   assert.match(activity, /"mdzip_video_asset"/);
   assert.match(activity, /fun syncMdzipVideoReferences\(/);
@@ -64,41 +65,13 @@ test('MP4 insertion, package serving, rendering, and deletion are connected', ()
   assert.match(settingsPreview, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video \}/);
   assert.match(settingsActivity, /"image", "audio", "video", "link"/);
   assert.match(widget, /video\.controls = true/);
-  assert.match(widget, /createVideoPlayerControls\(video, header\)/);
+  assert.match(widget, /setAttribute\('aria-label', this\.label\)/);
+  assert.doesNotMatch(widget, /createVideoPlayerControls|cm-mdzip-video-speed|speedMenu/);
   assert.match(widget, /video\.error\?\.code/);
   assert.match(widget, /widgetDisposed \|\| !video\.getAttribute\('src'\)/);
-  assert.match(controls, /--media-controls-bg/);
-  assert.match(controls, /--media-controls-accent/);
-  assert.match(controls, /header\.appendChild\(speedButton\)/);
-  assert.doesNotMatch(controls, /wrapper\.appendChild/);
-  assert.doesNotMatch(controls, /mdzipAudioPlaybackRate|mdzipVideoPlaybackRate|setMediaPlaybackSpeed/);
-  assert.doesNotMatch(controls, /video\.play\(\)|video\.pause\(\)/);
+  assert.match(widget, /color-scheme:inherit/);
+  assert.match(read('index.html'), /:root \{\s*color-scheme: dark;/);
+  assert.match(read('index.html'), /body\.light-theme \{\s*color-scheme: light;/);
   assert.doesNotMatch(editor, /video\[data-mdzip-video="true"\]/);
-  assert.match(widget, /userEvent: 'delete\.mdzip-video'/);
   assert.match(icons, /video: `<svg/);
-});
-
-test('video speed popup stays within the visible viewport', async () => {
-  const { calculateViewportClampedPopupPosition } =
-    await import('../src/mediaPopupPosition.js');
-  const bounds = { left: 0, top: 24, right: 411, bottom: 800 };
-
-  assert.deepEqual(
-    calculateViewportClampedPopupPosition({
-      bounds,
-      anchorRect: { left: 350, right: 390, top: 32, bottom: 60 },
-      width: 200,
-      height: 300
-    }),
-    { left: 190, top: 68 }
-  );
-  assert.deepEqual(
-    calculateViewportClampedPopupPosition({
-      bounds,
-      anchorRect: { left: 180, right: 220, top: 740, bottom: 780 },
-      width: 200,
-      height: 300
-    }),
-    { left: 20, top: 432 }
-  );
 });

@@ -2031,10 +2031,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                 widget: new VideoPreviewWidget(
                   videoUrl,
                   videoLink.label,
-                  videoLink.url,
-                  raw,
-                  node.from,
-                  node.to
+                  videoLink.url
                 )
               }).range(node.from, node.to);
               builder.push(videoDecoration);
@@ -3162,10 +3159,7 @@ function buildHeightMapValue(state) {
             widget: new VideoPreviewWidget(
               videoUrl,
               videoLink.label,
-              videoLink.url,
-              raw,
-              node.from,
-              node.to
+              videoLink.url
             )
           }).range(node.from, node.to);
           replacements.push(videoDecoration);

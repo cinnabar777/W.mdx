@@ -2372,7 +2372,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "Accept-Ranges" to "bytes",
             "Cache-Control" to "no-store"
         )
-        if (isVideoAsset || extension in setOf("aac", "m4a", "wav", "flac", "opus", "ogg", "oga")) {
+        if (extension in setOf("aac", "m4a", "wav", "flac", "opus", "ogg", "oga")) {
             headers.remove("Accept-Ranges")
         }
 

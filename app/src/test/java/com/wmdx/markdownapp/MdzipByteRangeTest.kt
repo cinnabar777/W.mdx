@@ -55,14 +55,13 @@ class MdzipByteRangeTest {
         assertTrue(shouldServeMdzipAudioAsWholeFile("oga", "bytes=0-"))
         assertTrue(shouldServeMdzipAudioAsWholeFile("mp3", null))
         assertFalse(shouldServeMdzipAudioAsWholeFile("mp3", "bytes=100-200"))
-        assertTrue(shouldServeMdzipAudioAsWholeFile("mp4", null))
-        assertFalse(shouldServeMdzipAudioAsWholeFile("mp4", "bytes=0-"))
     }
 
     @Test
-    fun servesPackagedVideoAsAWholeFileEvenWhenWebViewRequestsARange() {
-        assertTrue(shouldServeMdzipAssetAsWholeFile(true, "mp4", "bytes=0-"))
-        assertTrue(shouldServeMdzipAssetAsWholeFile(true, "mp4", "bytes=1048576-"))
+    fun servesPackagedVideoWholeOnInitialRequestAndSupportsRequestedRanges() {
+        assertTrue(shouldServeMdzipAssetAsWholeFile(true, "mp4", null))
+        assertFalse(shouldServeMdzipAssetAsWholeFile(true, "mp4", "bytes=0-"))
+        assertFalse(shouldServeMdzipAssetAsWholeFile(true, "mp4", "bytes=1048576-"))
         assertFalse(shouldServeMdzipAssetAsWholeFile(false, "mp3", "bytes=100-200"))
     }
 
