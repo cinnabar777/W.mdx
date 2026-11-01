@@ -318,6 +318,26 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
   assert.equal(config.styles.undo.title, 'Invalid target');
 });
 
+test('removed highlight gesture is discarded without changing other built-in actions', async () => {
+  const { BUILT_IN_ACTION_IDS, normalizeBottomToolbarConfig } =
+    await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    styles: {
+      undo: {
+        gestureActions: {
+          tap1: 'removeHighlight',
+          tap2: 'clearFormatting'
+        }
+      }
+    }
+  });
+
+  assert.equal(BUILT_IN_ACTION_IDS.includes('removeHighlight'), false);
+  assert.deepEqual(config.styles.undo.gestureActions, {
+    tap2: 'clearFormatting'
+  });
+});
+
 test('custom toolbar keys can use built-in actions but cannot become actions themselves', async () => {
   const {
     BUILT_IN_ACTION_IDS,

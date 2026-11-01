@@ -1478,7 +1478,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "swipeUpLeft", "swipeUpRight", "swipeDownLeft", "swipeDownRight"
         )
         private val TOOLBAR_GESTURE_ACTION_IDS = listOf(
-            "historyBack", "historyForward", "toggleToolbar", "removeHighlight",
+            "historyBack", "historyForward", "toggleToolbar",
             "editToolbarKeyPreferences",
             TOOLBAR_OPEN_GROUP_ACTION_ID
         )

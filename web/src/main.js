@@ -5168,7 +5168,6 @@ function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
     { id: 'historyBack', title: 'Back in Navigation History', icon: svgIcons.undo },
     { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
     { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
-    { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough },
     {
       id: 'editToolbarKeyPreferences',
       title: "Edit This Key's Preferences",
@@ -5221,10 +5220,6 @@ function runToolbarGestureAction(
   }
   if (actionId === 'toggleToolbar') {
     toggleBottomToolbar();
-    return true;
-  }
-  if (actionId === 'removeHighlight') {
-    execCmd('highlight', { value: null });
     return true;
   }
   const customKey = toolbarConfig.customKeys?.[actionId];

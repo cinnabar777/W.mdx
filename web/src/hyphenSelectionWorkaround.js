@@ -1,4 +1,5 @@
 const NO_AUTO_HYPHENS_CLASS = 'cm-android-selection-no-auto-hyphens';
+const SELECTION_SETTLE_DELAY_MS = 300;
 
 function paragraphForNode(node) {
   const element = node?.nodeType === 1 ? node : node?.parentElement;
@@ -31,6 +32,11 @@ export function installHyphenSelectionWorkaround(view) {
   let pendingParagraph = null;
   let pendingRefreshTimer = null;
   let destroyed = false;
+
+  const cancelPendingRefresh = () => {
+    if (pendingRefreshTimer !== null) win.clearTimeout(pendingRefreshTimer);
+    pendingRefreshTimer = null;
+  };
 
   const setActiveParagraph = paragraph => {
     if (paragraph === activeParagraph) return;
@@ -69,17 +75,18 @@ export function installHyphenSelectionWorkaround(view) {
 
   const beginTouchSelection = event => {
     if (!editor.contains(event.target)) return;
+    cancelPendingRefresh();
     pendingParagraph = autoHyphenatedParagraph(event.target, view, win);
     refresh();
   };
 
   const scheduleSelectionRefresh = () => {
-    pendingParagraph = null;
-    if (pendingRefreshTimer !== null) win.clearTimeout(pendingRefreshTimer);
+    cancelPendingRefresh();
     pendingRefreshTimer = win.setTimeout(() => {
       pendingRefreshTimer = null;
+      pendingParagraph = null;
       refresh();
-    }, 0);
+    }, SELECTION_SETTLE_DELAY_MS);
   };
 
   const onPointerDown = event => {
@@ -108,8 +115,7 @@ export function installHyphenSelectionWorkaround(view) {
       doc.removeEventListener('touchstart', beginTouchSelection, true);
       doc.removeEventListener('touchend', scheduleSelectionRefresh, true);
       doc.removeEventListener('touchcancel', scheduleSelectionRefresh, true);
-      if (pendingRefreshTimer !== null) win.clearTimeout(pendingRefreshTimer);
-      pendingRefreshTimer = null;
+      cancelPendingRefresh();
       pendingParagraph = null;
       setActiveParagraph(null);
     }

@@ -61,7 +61,7 @@ test('only the selected auto-hyphenated paragraph is temporarily reflowed', asyn
   dom.window.close();
 });
 
-test('touch-down reflows only the target paragraph before selection handles are requested', async () => {
+test('touch selection stays reflowed until Android completes the delayed selection', async () => {
   const { installHyphenSelectionWorkaround } =
     await import('../src/hyphenSelectionWorkaround.js');
   const dom = androidDom(`
@@ -102,11 +102,19 @@ test('touch-down reflows only the target paragraph before selection handles are 
   assert.equal(otherParagraph.classList.contains('cm-android-selection-no-auto-hyphens'), false);
   assert.ok(layoutReads > 0, 'touch-down forces layout before native handle placement');
 
-  selectText(doc, paragraph.firstChild, 6, 11);
   const pointerUp = new dom.window.Event('pointerup', { bubbles: true });
   Object.defineProperty(pointerUp, 'pointerType', { value: 'touch' });
   doc.dispatchEvent(pointerUp);
-  await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+  assert.equal(
+    paragraph.classList.contains('cm-android-selection-no-auto-hyphens'),
+    true,
+    'do not restore hyphenation while Android selection is still collapsed'
+  );
+
+  // Android can expand the selection after pointer-up/touch-end.
+  await new Promise(resolve => dom.window.setTimeout(resolve, 20));
+  selectText(doc, paragraph.firstChild, 6, 11);
+  await new Promise(resolve => dom.window.setTimeout(resolve, 320));
   assert.equal(paragraph.classList.contains('cm-android-selection-no-auto-hyphens'), true);
 
   doc.getSelection().collapse(paragraph.firstChild, 11);

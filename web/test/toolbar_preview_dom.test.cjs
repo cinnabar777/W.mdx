@@ -1061,6 +1061,13 @@ test('custom toolbar keys can run built-in actions but cannot be selected as act
       null,
       'a user-created key does not become a selectable action'
     );
+    search.value = 'Remove Highlight';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    assert.equal(
+      actionPicker.querySelector('[role="option"][aria-label="Remove Highlight"]'),
+      null,
+      'the obsolete highlight action is not available to assign'
+    );
     search.value = 'Bold';
     search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     actionPicker.querySelector('[role="option"][aria-label="Bold"]').click();
