@@ -8,6 +8,9 @@ function paragraphForNode(node) {
 function autoHyphenatedParagraph(node, view, win) {
   const paragraph = paragraphForNode(node);
   if (!paragraph || !view.dom.contains(paragraph)) return null;
+  // The workaround itself changes computed hyphens from "auto" to "none".
+  // Keep recognizing the active paragraph during later selectionchange events.
+  if (paragraph.classList.contains(NO_AUTO_HYPHENS_CLASS)) return paragraph;
 
   const style = win.getComputedStyle(paragraph);
   const hyphens = style.getPropertyValue('hyphens').trim().toLowerCase();

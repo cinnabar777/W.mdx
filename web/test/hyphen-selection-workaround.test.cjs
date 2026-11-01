@@ -73,6 +73,20 @@ test('touch-down reflows only the target paragraph before selection handles are 
   const doc = dom.window.document;
   const editor = doc.querySelector('.cm-editor');
   const [paragraph, otherParagraph] = editor.querySelectorAll('.cm-paragraph');
+  const getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+  dom.window.getComputedStyle = element => {
+    const computed = getComputedStyle(element);
+    if (!element.classList.contains('cm-android-selection-no-auto-hyphens')) {
+      return computed;
+    }
+    return {
+      hyphens: 'none',
+      getPropertyValue(property) {
+        if (property === 'hyphens' || property === '-webkit-hyphens') return 'none';
+        return computed.getPropertyValue(property);
+      }
+    };
+  };
   let layoutReads = 0;
   const getBoundingClientRect = paragraph.getBoundingClientRect.bind(paragraph);
   paragraph.getBoundingClientRect = () => {
