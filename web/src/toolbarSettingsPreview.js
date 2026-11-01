@@ -193,7 +193,8 @@ const PREVIEW_GROUP_ITEMS = {
 const PREVIEW_EDITOR_ACTION_ITEMS = [
   { id: 'moveLineUp', title: 'Move Line Up', icon: svgIcons.moveLineUp },
   { id: 'moveLineDown', title: 'Move Line Down', icon: svgIcons.moveLineDown },
-  { id: 'deleteLine', title: 'Delete Line / Paragraph', icon: svgIcons.deleteLine }
+  { id: 'deleteLine', title: 'Delete Line / Paragraph', icon: svgIcons.deleteLine },
+  { id: 'cycleListType', title: 'Cycle List Types', icon: svgIcons.lists }
 ];
 const PREVIEW_ITEM_DEFINITIONS = new Map([
   ...BOTTOM_TOOLBAR_ITEMS.map(item => [item.id, item]),
@@ -393,6 +394,7 @@ function render() {
       renderBottomToolbarKeys(tray, trayConfig, svgIcons, {
         definitions: Object.fromEntries(definitions),
         includeEmptyGroups: true,
+        gestureIndicatorMode: 'count',
         buttonClass: 'grouped-key-btn toolbar-preview-key',
         resolveCustomIcon: style => style.customSvg || '',
         resolveGestureActionIcon: (_actionId, _customSvg, keyId, gestureId) =>
@@ -809,17 +811,30 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   labelElement.className = 'toolbar-key-label';
   labelElement.textContent = title;
   button.appendChild(labelElement);
-  for (const { id: gestureId, position } of getToolbarGestureIndicatorEntries(style)) {
-    const gestureIcon = getAssignedGestureIconMarkup(style, gestureId, item.id);
-    if (gestureIcon) {
-      const marker = document.createElement('span');
-      marker.className =
-        `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
-      marker.dataset.gesturePosition = position;
-      marker.setAttribute('aria-hidden', 'true');
-      marker.title = `${gestureId} action`;
-      marker.innerHTML = gestureIcon;
-      button.appendChild(marker);
+  const gestureEntries = getToolbarGestureIndicatorEntries(style);
+  if (location === 'tray' && gestureEntries.length > 0) {
+    const count = document.createElement('span');
+    count.className = 'toolbar-key-gesture-count';
+    count.setAttribute('aria-hidden', 'true');
+    count.textContent = String(gestureEntries.length);
+    button.setAttribute(
+      'aria-label',
+      `${title}, ${gestureEntries.length} assigned gestures`
+    );
+    button.appendChild(count);
+  } else {
+    for (const { id: gestureId, position } of gestureEntries) {
+      const gestureIcon = getAssignedGestureIconMarkup(style, gestureId, item.id);
+      if (gestureIcon) {
+        const marker = document.createElement('span');
+        marker.className =
+          `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
+        marker.dataset.gesturePosition = position;
+        marker.setAttribute('aria-hidden', 'true');
+        marker.title = `${gestureId} action`;
+        marker.innerHTML = gestureIcon;
+        button.appendChild(marker);
+      }
     }
   }
   button.addEventListener('pointerdown', event => beginPossibleDrag(event, button), {

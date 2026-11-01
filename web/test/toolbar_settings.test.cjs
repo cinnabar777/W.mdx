@@ -43,7 +43,7 @@ const colorPickerSource = fs.readFileSync(
 );
 
 test('line editing actions are available in settings and run against the active editor', () => {
-  for (const action of ['moveLineUp', 'moveLineDown', 'deleteLine']) {
+  for (const action of ['moveLineUp', 'moveLineDown', 'deleteLine', 'cycleListType']) {
     assert.match(settingsSource, new RegExp(`id: '${action}'`));
     assert.match(mainSource, new RegExp(`id: '${action}'`));
     assert.match(mainSource, new RegExp(`execCmd\\('${action}'\\)`));
@@ -51,6 +51,10 @@ test('line editing actions are available in settings and run against the active 
   assert.match(mainSource, /cmMoveLineUp\(view\)/);
   assert.match(mainSource, /cmMoveLineDown\(view\)/);
   assert.match(mainSource, /cmDeleteLine\(view\)/);
+  assert.match(settingsSource, /location === 'tray' && gestureEntries\.length > 0/);
+  assert.match(settingsSource, /toolbar-key-gesture-count/);
+  assert.match(settingsSource, /gestureIndicatorMode: 'count'/);
+  assert.match(sharedCss, /\.toolbar-preview-tray \.toolbar-key-gesture-count/);
 });
 
 test('bottom toolbar preview uses the same renderer, icon source, and toolbar stylesheet as the editor', () => {

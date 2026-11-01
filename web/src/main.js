@@ -53,6 +53,7 @@ import {
   isWmdxUnderlineSyntaxEnabled,
   setWmdxUnderlineSyntaxEnabled,
   clearMarkdownFormatting,
+  cycleMarkdownListType,
   toggleMarkdownFormat,
   toggleWmdxColorFormat,
   toggleUnderlineFormat
@@ -165,8 +166,12 @@ let customHotkeys = {
   bulletedList: 'ctrl+shift+8',
   numberedList: 'ctrl+shift+7',
   todoList: 'ctrl+shift+l',
+  cycleListType: 'ctrl+alt+shift+l',
   indent: 'tab',
   outdent: 'shift+tab',
+  moveLineUp: 'ctrl+alt+up',
+  moveLineDown: 'ctrl+alt+down',
+  deleteLine: 'ctrl+shift+k',
   horizontalLine: 'ctrl+shift+h',
   autoHeading: '',
   findAndReplace: 'ctrl+f',
@@ -5161,6 +5166,12 @@ function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
       title: 'Delete Line / Paragraph',
       icon: svgIcons.deleteLine,
       action: () => execCmd('deleteLine')
+    },
+    {
+      id: 'cycleListType',
+      title: 'Cycle List Types',
+      icon: svgIcons.lists,
+      action: () => execCmd('cycleListType')
     }
   ]) {
     registry.set(item.id, item);
@@ -6282,6 +6293,7 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
     else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
     else if (cmdName === 'todoList') cmToggleLinePrefix(view, '- [ ] ');
+    else if (cmdName === 'cycleListType') cycleMarkdownListType(view);
     else if (cmdName === 'indent') applyMarkdownIndent(view, 'indent', '  ');
     else if (cmdName === 'outdent') applyMarkdownIndent(view, 'outdent', '  ');
     else if (cmdName === 'moveLineUp') {
@@ -7837,6 +7849,10 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.callout)) { e.preventDefault(); execCmd('callout'); }
     else if (parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.codeBlock)) { e.preventDefault(); execCmd('codeBlock'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.moveLineUp)) { e.preventDefault(); execCmd('moveLineUp'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.moveLineDown)) { e.preventDefault(); execCmd('moveLineDown'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.deleteLine)) { e.preventDefault(); execCmd('deleteLine'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.cycleListType)) { e.preventDefault(); execCmd('cycleListType'); }
     else if (parseAndMatchHotkey(e, customHotkeys.bulletedList)) { e.preventDefault(); execCmd('bulletedList'); }
     else if (parseAndMatchHotkey(e, customHotkeys.numberedList)) { e.preventDefault(); execCmd('numberedList'); }
     else if (parseAndMatchHotkey(e, customHotkeys.todoList)) { e.preventDefault(); execCmd('todoList'); }

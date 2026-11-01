@@ -232,24 +232,35 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     button.appendChild(labelElement);
 
     button.classList.toggle('toolbar-key-force-label', style.forceShowLabel === true);
-    if (typeof options.resolveGestureActionIcon === 'function') {
-      for (const { id: gestureId, actionId, position } of getToolbarGestureIndicatorEntries(style)) {
-      const gestureIcon = options.resolveGestureActionIcon(
-        actionId,
-        style.gestureActionIcons?.[gestureId] ||
-          (gestureId === 'swipeUp' ? style.gestureActionIconSvg : ''),
-        id,
-        gestureId
+    const gestureEntries = getToolbarGestureIndicatorEntries(style);
+    if (options.gestureIndicatorMode === 'count' && gestureEntries.length > 0) {
+      const count = doc.createElement('span');
+      count.className = 'toolbar-key-gesture-count';
+      count.setAttribute('aria-hidden', 'true');
+      count.textContent = String(gestureEntries.length);
+      button.setAttribute(
+        'aria-label',
+        `${title}, ${gestureEntries.length} assigned gestures`
       );
-      if (gestureIcon) {
-        const marker = doc.createElement('span');
-        marker.className =
-          `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
-        marker.dataset.gesturePosition = position;
-        marker.setAttribute('aria-hidden', 'true');
-        marker.innerHTML = gestureIcon;
-        button.appendChild(marker);
-      }
+      button.appendChild(count);
+    } else if (typeof options.resolveGestureActionIcon === 'function') {
+      for (const { id: gestureId, actionId, position } of gestureEntries) {
+        const gestureIcon = options.resolveGestureActionIcon(
+          actionId,
+          style.gestureActionIcons?.[gestureId] ||
+            (gestureId === 'swipeUp' ? style.gestureActionIconSvg : ''),
+          id,
+          gestureId
+        );
+        if (gestureIcon) {
+          const marker = doc.createElement('span');
+          marker.className =
+            `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
+          marker.dataset.gesturePosition = position;
+          marker.setAttribute('aria-hidden', 'true');
+          marker.innerHTML = gestureIcon;
+          button.appendChild(marker);
+        }
       }
     }
     if (typeof options.onKeyClick === 'function') {

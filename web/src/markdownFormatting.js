@@ -1092,3 +1092,64 @@ export function toggleWmdxColorFormat(view, action = null) {
   view.focus();
   return true;
 }
+
+function cycleMarkdownListLine(lineText) {
+  const indent = /^[ \t]*/.exec(lineText)?.[0] ?? '';
+  const content = lineText.slice(indent.length);
+  const checkbox = /^[-*+]\s+\[[ xX]\](?:\s+|$)/.exec(content);
+  if (checkbox) {
+    return `${indent}1. ${content.slice(checkbox[0].length)}`;
+  }
+
+  const numbered = /^\d+[.)](?:\s+|$)/.exec(content);
+  if (numbered) {
+    return `${indent}${content.slice(numbered[0].length)}`;
+  }
+
+  const bullet = /^[-*+](?:\s+|$)/.exec(content);
+  if (bullet) {
+    return `${indent}- [ ] ${content.slice(bullet[0].length)}`;
+  }
+
+  return `${indent}- ${content}`;
+}
+
+export function cycleMarkdownListType(view) {
+  if (!view?.state?.doc || typeof view.dispatch !== 'function') return false;
+  const { doc, selection } = view.state;
+  const code = codeRanges(view.state);
+  const lineNumbers = new Set();
+
+  for (const range of selection.ranges || [selection.main]) {
+    const firstLine = doc.lineAt(range.from).number;
+    let lastLine = doc.lineAt(range.to).number;
+    if (
+      !range.empty &&
+      lastLine > firstLine &&
+      doc.line(lastLine).from === range.to
+    ) {
+      lastLine--;
+    }
+    for (let number = firstLine; number <= lastLine; number++) {
+      lineNumbers.add(number);
+    }
+  }
+
+  const changes = [...lineNumbers]
+    .sort((a, b) => a - b)
+    .flatMap(number => {
+      const line = doc.line(number);
+      if (code.some(range => range.from <= line.from && range.to >= line.to)) {
+        return [];
+      }
+      const insert = cycleMarkdownListLine(line.text);
+      return insert === line.text
+        ? []
+        : [{ from: line.from, to: line.to, insert }];
+    });
+  if (changes.length === 0) return false;
+
+  view.dispatch({ changes });
+  view.focus?.();
+  return true;
+}

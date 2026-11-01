@@ -121,6 +121,11 @@
             app:defaultValue="ctrl+shift+c" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_cycleListType"
+            app:title="Cycle List Types"
+            app:defaultValue="ctrl+alt+shift+l" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_underline"
             app:title="Cycle Underline Style"
             app:defaultValue="ctrl+u" />
@@ -129,6 +134,11 @@
             app:key="pref_hotkey_outdent"
             app:title="Decrease Indent"
             app:defaultValue="shift+tab" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_deleteLine"
+            app:title="Delete Line / Paragraph"
+            app:defaultValue="ctrl+shift+k" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_findAndReplace"
@@ -169,6 +179,16 @@
             app:key="pref_hotkey_link"
             app:title="Link"
             app:defaultValue="ctrl+k" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_moveLineDown"
+            app:title="Move Line Down"
+            app:defaultValue="ctrl+alt+down" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_moveLineUp"
+            app:title="Move Line Up"
+            app:defaultValue="ctrl+alt+up" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_numberedList"

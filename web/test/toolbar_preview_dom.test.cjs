@@ -73,6 +73,9 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     },
     hidden: ['heading'],
     styles: {
+      paragraph: {
+        gestureActions: { tap2: 'bold', swipeLeft: 'deleteLine' }
+      },
       saveFile: {
         iconColor: '#00ff00',
         backgroundColor: '#22000000'
@@ -105,6 +108,56 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
 
   try {
     await import(`../src/toolbarSettingsPreview.js?preview-test=${Date.now()}`);
+
+    const heldParagraph = dom.window.document.querySelector(
+      '#toolbar-holding-tray [data-preview-popup-item="paragraph"]'
+    );
+    assert.ok(heldParagraph, 'the configured key is present in the holding area');
+    assert.equal(
+      heldParagraph.querySelectorAll('.toolbar-key-gesture-indicator').length,
+      0,
+      'holding-area keys do not overlay several action icons on the main icon'
+    );
+    assert.equal(
+      heldParagraph.querySelector('.toolbar-key-gesture-count')?.textContent,
+      '2',
+      'the holding-area key shows one compact count for its assigned gestures'
+    );
+    assert.equal(
+      heldParagraph.getAttribute('aria-label'),
+      'Paragraph, 2 assigned gestures'
+    );
+
+    const trayProbe = dom.window.document.createElement('div');
+    const { renderBottomToolbarKeys } = await import('../src/toolbarRenderer.js');
+    const { svgIcons } = await import('../src/toolbarIcons.js');
+    renderBottomToolbarKeys(trayProbe, {
+      version: 3,
+      order: ['undo'],
+      hidden: ['lists', 'format', 'table', 'insert', 'menu'],
+      holding: [],
+      popupGroups: {},
+      customGroups: {},
+      customKeys: {},
+      styles: {
+        undo: {
+          gestureActions: { tap2: 'bold', swipeLeft: 'deleteLine' }
+        }
+      }
+    }, svgIcons, {
+      gestureIndicatorMode: 'count',
+      resolveGestureActionIcon: () => '<svg></svg>'
+    });
+    const heldToolbarKey = trayProbe.querySelector('[data-toolbar-key="undo"]');
+    assert.equal(
+      heldToolbarKey.querySelector('.toolbar-key-gesture-count')?.textContent,
+      '2',
+      'held toolbar keys also use the compact gesture count'
+    );
+    assert.equal(
+      heldToolbarKey.querySelectorAll('.toolbar-key-gesture-indicator').length,
+      0
+    );
 
     const helpButton = dom.window.document.querySelector('#toolbar-help-button');
     const helpModal = dom.window.document.querySelector('#toolbar-help-modal');

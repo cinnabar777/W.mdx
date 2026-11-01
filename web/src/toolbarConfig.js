@@ -2,7 +2,7 @@ import { TABLE_ACTIONS } from './tableActions.js';
 import { BUILT_IN_GESTURE_ACTION_IDS, TOOLBAR_GESTURE_IDS } from './toolbarGestures.js';
 
 export const BOTTOM_TOOLBAR_ITEMS = Object.freeze([
-  { id: 'undo', title: 'Undo (Hold: Redo)', icon: 'undo', kind: 'action' },
+  { id: 'undo', title: 'Undo', icon: 'undo', kind: 'action' },
   { id: 'heading', title: 'Paragraph & Headings', icon: 'paragraph', kind: 'group' },
   { id: 'lists', title: 'Lists', icon: 'lists', kind: 'group' },
   { id: 'format', title: 'Format', icon: 'format', kind: 'group' },
@@ -72,6 +72,7 @@ export const BUILT_IN_ACTION_IDS = Object.freeze([...new Set([
   'moveLineUp',
   'moveLineDown',
   'deleteLine',
+  'cycleListType',
   ...BUILT_IN_GESTURE_ACTION_IDS.filter(id => id !== OPEN_GROUP_ACTION_ID)
 ])]);
 

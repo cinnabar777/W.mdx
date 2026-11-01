@@ -252,6 +252,56 @@ test('highlighter and pen cycle actions apply every custom style then remove it'
   assert.equal(specific.state.doc.toString(), 'word');
 });
 
+test('list type cycling follows current Markdown syntax on every activation', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { cycleMarkdownListType } = await import('../src/markdownFormatting.js');
+  const createView = (doc, cursor = 0, selection = null) => {
+    const state = EditorState.create({
+      doc,
+      selection: selection || EditorSelection.cursor(cursor),
+      extensions: [markdown()]
+    });
+    return {
+      state,
+      dispatch(transaction) {
+        this.state = this.state.update(transaction).state;
+      },
+      focus() {}
+    };
+  };
+
+  const repeated = createView('item', 2);
+  for (const expected of ['- item', '- [ ] item', '1. item', 'item', '- item']) {
+    assert.equal(cycleMarkdownListType(repeated), true);
+    assert.equal(repeated.state.doc.toString(), expected);
+  }
+
+  const selected = createView(
+    'plain\n- bullet\n- [x] checked\n12. numbered',
+    0,
+    EditorSelection.range(0, 'plain\n- bullet\n- [x] checked\n12. numbered'.length)
+  );
+  assert.equal(cycleMarkdownListType(selected), true);
+  assert.equal(
+    selected.state.doc.toString(),
+    '- plain\n- [ ] bullet\n1. checked\nnumbered'
+  );
+
+  const nested = createView('  * nested', 5);
+  assert.equal(cycleMarkdownListType(nested), true);
+  assert.equal(nested.state.doc.toString(), '  - [ ] nested');
+
+  const nestedNumbered = createView('  3. nested', 5);
+  assert.equal(cycleMarkdownListType(nestedNumbered), true);
+  assert.equal(nestedNumbered.state.doc.toString(), '  nested');
+
+  const fencedCode = '```md\n- code sample\n```';
+  const codeView = createView(fencedCode, fencedCode.indexOf('-'));
+  assert.equal(cycleMarkdownListType(codeView), false);
+  assert.equal(codeView.state.doc.toString(), fencedCode);
+});
+
 test('an empty inline-format pair can be toggled off at the caret', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
