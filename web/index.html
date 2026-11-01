@@ -373,8 +373,6 @@
       color: var(--selection-highlight-text, inherit) !important;
     }
 
-    /* The selection workaround temporarily disables hyphenation on the active paragraph. */
-
     /* Left workspace panel; toolbars remain above its overlay and panel. */
     #left-panel-overlay {
       position: fixed;
@@ -1822,10 +1820,6 @@
       padding-left: var(--callout-padding, 12px) !important;
       padding-right: var(--callout-padding, 12px) !important;
       text-indent: 0 !important;
-    }
-    .cm-editor .cm-content .cm-paragraph.cm-android-selection-no-auto-hyphens {
-      -webkit-hyphens: none !important;
-      hyphens: none !important;
     }
     .cm-content .cm-line.cm-callout-list-item {
       margin-left: calc(var(--callout-margin-left, 0px) + var(--list-left-indent, 24px)) !important;

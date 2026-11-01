@@ -28,7 +28,6 @@ import {
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
-import { installHyphenSelectionWorkaround } from './hyphenSelectionWorkaround.js';
 import { applyMarkdownIndent } from './markdownIndent.js';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { applyAutoHeading } from './autoHeading.js';
@@ -3762,7 +3761,6 @@ class CodeMirrorAdapter {
     this.mode = currentEditorMode;
     this.documentSessionId = window.AndroidNative?.getCurrentDocumentSessionId?.() || null;
     this.view = null;
-    this.hyphenSelectionWorkaround = null;
     this.historyCompartment = new Compartment();
     this.lineWrapCompartment = new Compartment();
     this.lineNumbersCompartment = new Compartment();
@@ -4099,7 +4097,6 @@ class CodeMirrorAdapter {
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             updateTableDocumentSelection(update.view);
             updateFloatingSelectionToolbar(update.view);
-            this.hyphenSelectionWorkaround?.refresh();
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             scheduleNativeCursorAnchor(update.view);
@@ -4180,10 +4177,6 @@ class CodeMirrorAdapter {
       parent: containerEl,
       scrollTo: modeSnapshot?.scroll
     });
-    if (this.mode === 'wysiwyg') {
-      this.hyphenSelectionWorkaround = installHyphenSelectionWorkaround(this.view);
-    }
-
     let editorTapStart = null;
     this.view.contentDOM.addEventListener('pointerdown', event => {
       if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
@@ -4425,9 +4418,6 @@ class CodeMirrorAdapter {
 
   destroy() {
     this.persistScrollPosition();
-    this.hyphenSelectionWorkaround?.destroy();
-    this.hyphenSelectionWorkaround = null;
-
     if (this.syntaxRefreshFrame !== null) {
       cancelAnimationFrame(this.syntaxRefreshFrame);
       this.syntaxRefreshFrame = null;
