@@ -36,7 +36,7 @@ object MdzipManager {
     private const val ASSET_BASE_URL = "https://appassets.androidplatform.net/mdzip-assets"
     private val SUPPORTED_AUDIO_EXTENSIONS =
         setOf("mp3", "aac", "m4a", "wav", "flac", "opus", "ogg", "oga")
-    private val SUPPORTED_VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "3gp", "mov")
+    private val SUPPORTED_VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "3gp", "mov", "mkv")
 
     fun isMdzipFileName(fileName: String): Boolean =
         fileName.endsWith(".mdz", ignoreCase = true)
@@ -253,7 +253,7 @@ object MdzipManager {
         val basename = originalName.substringAfterLast('/').substringAfterLast('\\')
         val extension = basename.substringAfterLast('.', "").lowercase()
         if (extension !in SUPPORTED_VIDEO_EXTENSIONS) {
-            throw IOException("Choose an MP4, M4V, WebM, 3GP, or MOV video file.")
+            throw IOException("Choose an MP4, M4V, WebM, 3GP, MOV, or MKV video file.")
         }
         val cleanName = sanitizeVideoFileName(basename)
         val stem = cleanName.removeSuffix(".$extension").ifBlank { "video" }
@@ -540,7 +540,7 @@ object MdzipManager {
     private fun sanitizeVideoFileName(name: String): String {
         val extension = name.substringAfterLast('.', "").lowercase()
         if (extension !in SUPPORTED_VIDEO_EXTENSIONS) {
-            throw IOException("Choose an MP4, M4V, WebM, 3GP, or MOV video file.")
+            throw IOException("Choose an MP4, M4V, WebM, 3GP, MOV, or MKV video file.")
         }
         val stem = name.substringBeforeLast('.', name)
             .replace(Regex("[^\\p{L}\\p{N} ._()\\-]"), "_")

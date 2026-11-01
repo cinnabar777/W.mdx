@@ -60,13 +60,13 @@ class MdzipManagerTest {
     }
 
     @Test
-    fun acceptsMp4M4vWebm3gpAndMovVideoAndRejectsOtherVideoFormats() {
+    fun acceptsMp4M4vWebm3gpMovAndMkvVideoAndRejectsOtherVideoFormats() {
         assertEquals(true, MdzipManager.isSupportedVideoFileName("phone clip.MP4"))
         assertEquals(true, MdzipManager.isSupportedVideoFileName("phone clip.M4V"))
         assertEquals(true, MdzipManager.isSupportedVideoFileName("phone clip.WEBM"))
         assertEquals(true, MdzipManager.isSupportedVideoFileName("phone clip.3GP"))
         assertEquals(true, MdzipManager.isSupportedVideoFileName("phone clip.MOV"))
+        assertEquals(true, MdzipManager.isSupportedVideoFileName("phone clip.MKV"))
         assertFalse(MdzipManager.isSupportedVideoFileName("phone clip.avi"))
-        assertFalse(MdzipManager.isSupportedVideoFileName("phone clip.mkv"))
     }
 }
