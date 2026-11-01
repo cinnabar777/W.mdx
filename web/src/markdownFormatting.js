@@ -460,6 +460,77 @@ function unwrapFormattedRange(view, range, selection, format) {
   return false;
 }
 
+function getInlineFormattingRanges(view, bounds) {
+  const ranges = Object.keys(MARKDOWN_FORMATS).flatMap(formatName =>
+    getMarkdownFormatRanges(view, formatName, bounds)
+  );
+  ranges.push(...getWmdxColorSyntaxRanges(view.state, bounds));
+
+  const seen = new Set();
+  return ranges.filter(range => {
+    const key = `${range.wrapperFrom}:${range.wrapperTo}:${range.open}:${range.close}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function clearMarkdownFormatting(view) {
+  if (!view?.state) return false;
+
+  const originalState = view.state;
+  let workingState = originalState;
+  let combinedChanges = originalState.changes();
+  let changed = false;
+  const workingView = {
+    get state() {
+      return workingState;
+    },
+    dispatch(spec) {
+      const transaction = workingState.update(spec);
+      combinedChanges = combinedChanges.compose(transaction.changes);
+      workingState = transaction.state;
+      changed = true;
+    },
+    focus() {}
+  };
+
+  for (let attempt = 0; attempt < 128; attempt += 1) {
+    const selection = workingState.selection.main;
+    const bounds = { from: selection.from, to: selection.to };
+    const ranges = getInlineFormattingRanges(workingView, bounds)
+      .filter(range => selection.empty
+        ? selection.head >= range.contentFrom && selection.head <= range.contentTo
+        : range.wrapperTo > selection.from && range.wrapperFrom < selection.to)
+      .sort((first, second) =>
+        (first.wrapperTo - first.wrapperFrom) - (second.wrapperTo - second.wrapperFrom) ||
+        second.wrapperFrom - first.wrapperFrom
+      );
+
+    let unwrapped = false;
+    for (const range of ranges) {
+      if (unwrapFormattedRange(
+        workingView,
+        range,
+        selection,
+        { open: range.open, close: range.close }
+      )) {
+        unwrapped = true;
+        break;
+      }
+    }
+    if (!unwrapped) break;
+  }
+
+  if (!changed) return false;
+  view.dispatch({
+    changes: combinedChanges,
+    selection: workingState.selection
+  });
+  view.focus?.();
+  return true;
+}
+
 function applyFormatToSelection(view, selection, ranges, format) {
   const doc = view.state.doc;
   const overlappingRanges = ranges.filter(range =>

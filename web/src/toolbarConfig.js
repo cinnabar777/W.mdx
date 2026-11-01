@@ -26,7 +26,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
     'bulletedList', 'numberedList', 'todoList', 'indent', 'outdent'
   ]),
   format: Object.freeze([
-    'bold', 'italic', 'strikethrough',
+    'bold', 'italic', 'strikethrough', 'clearFormatting',
     'underline', 'underlineSolid', 'underlineDotted', 'underlineDashed',
     'underlineDouble', 'underlineWavy',
     'highlightCycle', 'highlightYellow', 'highlightGreen', 'highlightPink', 'highlightBlue',
@@ -63,6 +63,15 @@ export const BUILT_IN_HOLDING_ITEM_IDS = Object.freeze(
   BUILT_IN_HOLDING_ITEMS.map(item => item.id)
 );
 
+export const OPEN_GROUP_ACTION_ID = 'openGroup';
+
+export const BUILT_IN_ACTION_IDS = Object.freeze([...new Set([
+  ...BOTTOM_TOOLBAR_ITEMS.filter(item => item.kind === 'action').map(item => item.id),
+  ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS,
+  ...BUILT_IN_HOLDING_ITEM_IDS,
+  ...BUILT_IN_GESTURE_ACTION_IDS.filter(id => id !== OPEN_GROUP_ACTION_ID)
+])]);
+
 export const BUILT_IN_DELETABLE_KEY_IDS = Object.freeze([
   ...BOTTOM_TOOLBAR_ITEM_IDS.filter(id =>
     !Object.prototype.hasOwnProperty.call(BOTTOM_TOOLBAR_GROUP_ITEM_IDS, id)
@@ -70,7 +79,6 @@ export const BUILT_IN_DELETABLE_KEY_IDS = Object.freeze([
   ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS
 ]);
 
-export const OPEN_GROUP_ACTION_ID = 'openGroup';
 const LEGACY_OPEN_GROUP_ACTION_PREFIX = 'openToolbarGroup:';
 
 function normalizeToolbarActionId(actionId, allowOpenGroup = false) {
@@ -89,7 +97,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 8,
+  version: 9,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -255,12 +263,13 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     ...rootIds,
     ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS.filter(id => !deletedKeyIds.has(id))
   ]);
+  const builtInActionIds = new Set(BUILT_IN_ACTION_IDS);
   const gestureActionIds = new Set([
-    ...keyIds,
-    ...BUILT_IN_GESTURE_ACTION_IDS
+    ...builtInActionIds,
+    OPEN_GROUP_ACTION_ID
   ]);
   for (const [id, actionId] of Object.entries(customKeyActions)) {
-    if (actionId !== id && gestureActionIds.has(actionId)) {
+    if (actionId !== id && builtInActionIds.has(actionId)) {
       customKeys[id].actionId = actionId;
     }
   }
@@ -374,6 +383,19 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       !legacyHidden.includes('video')
     ) {
       popupGroups.insert.order.push('video');
+    }
+  }
+
+  if (parsedVersion > 0 && parsedVersion < 9 && popupGroups.format) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    const heldActions = new Set(migrateToolbarActionIds(parsed.holding, parsedVersion));
+    if (
+      !assignedActions.has('clearFormatting') &&
+      !legacyHeldKeys.includes('clearFormatting') &&
+      !legacyHidden.includes('clearFormatting') &&
+      !heldActions.has('clearFormatting')
+    ) {
+      popupGroups.format.order.push('clearFormatting');
     }
   }
 

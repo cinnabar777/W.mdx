@@ -1431,7 +1431,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "bulletedList", "numberedList", "todoList", "indent", "outdent"
             ),
             "format" to listOf(
-                "bold", "italic", "strikethrough", "underline", "underlineSolid",
+                "bold", "italic", "strikethrough", "clearFormatting", "underline", "underlineSolid",
                 "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
                 "highlightCycle", "highlightYellow", "highlightGreen", "highlightPink",
                 "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple"
@@ -1459,7 +1459,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "autoHeading",
             "wrap", "line-numbers",
             "bulletedList", "numberedList", "todoList", "indent", "outdent",
-            "bold", "italic", "strikethrough", "underline", "underlineSolid",
+            "bold", "italic", "strikethrough", "clearFormatting", "underline", "underlineSolid",
             "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
             "highlightCycle", "highlightYellow", "highlightGreen", "highlightPink",
             "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple",
@@ -1482,6 +1482,11 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "editToolbarKeyPreferences",
             TOOLBAR_OPEN_GROUP_ACTION_ID
         )
+        private val TOOLBAR_BUILT_IN_ACTION_IDS =
+            (TOOLBAR_ITEM_IDS.filterNot { it in TOOLBAR_GROUP_ITEM_IDS } +
+                TOOLBAR_GROUP_ITEM_IDS.values.flatten() +
+                TOOLBAR_HOLDING_ITEM_IDS +
+                TOOLBAR_GESTURE_ACTION_IDS.filterNot { it == TOOLBAR_OPEN_GROUP_ACTION_ID }).toSet()
         private val TOOLBAR_CUSTOM_KEY_ID_PATTERN =
             Regex("""^custom-key-[a-z0-9-]{1,48}$""", RegexOption.IGNORE_CASE)
         private val TOOLBAR_COLOR_PROPERTIES = setOf(
@@ -1883,7 +1888,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             customGroups.keys().asSequence().toList() +
             customKeys.keys().asSequence().toList()
         val validKeyIds = validRootIds + popupActionIds
-        val validActionIds = validKeyIds + TOOLBAR_GESTURE_ACTION_IDS
+        val validActionIds = TOOLBAR_BUILT_IN_ACTION_IDS + TOOLBAR_OPEN_GROUP_ACTION_ID
         val groupIds = TOOLBAR_GROUP_ITEM_IDS.keys.filterNot { it in deletedGroups } +
             customGroups.keys().asSequence().toList()
         fun normalizeToolbarActionId(
@@ -1971,6 +1976,15 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             for (index in 0 until items.length()) {
                 assignedActions.add(items.optString(index))
             }
+        }
+
+        if (input.optInt("version", 1) < 9 &&
+            "clearFormatting" !in assignedActions &&
+            "clearFormatting" !in deletedKeys &&
+            "clearFormatting" !in legacyHeldActions) {
+            popupGroups.optJSONObject("format")?.optJSONArray("order")
+                ?.put("clearFormatting")
+            assignedActions.add("clearFormatting")
         }
 
         val rawHoldingActions = input.optJSONArray("holding") ?: org.json.JSONArray()

@@ -141,6 +141,7 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'bold', title: 'Bold', icon: svgIcons.bold },
     { id: 'italic', title: 'Italic', icon: svgIcons.italic },
     { id: 'strikethrough', title: 'Strikethrough', icon: svgIcons.strikethrough },
+    { id: 'clearFormatting', title: 'Clear Formatting', icon: svgIcons.clearFormatting },
     { id: 'underline', title: 'Cycle Underline Style', icon: svgIcons.underline },
     { id: 'underlineSolid', title: 'Solid Underline', icon: svgIcons.underlineSolid },
     { id: 'underlineDotted', title: 'Dotted Underline', icon: svgIcons.underlineDotted },
@@ -264,12 +265,6 @@ function setActionPickerOpen(open, clearSearch = false, target = 'gesture') {
 
 function actionDefinitions(contextKey = selectedKey) {
   const definitions = new Map(PREVIEW_ITEM_DEFINITIONS);
-  for (const [id, group] of Object.entries(config.customGroups)) {
-    definitions.set(id, { id, title: group.title, icon: group.icon, kind: 'group' });
-  }
-  for (const [id, key] of Object.entries(config.customKeys || {})) {
-    definitions.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
-  }
   if (config.popupGroups[contextKey]) {
     definitions.set(OPEN_GROUP_ACTION_ID, {
       id: OPEN_GROUP_ACTION_ID,

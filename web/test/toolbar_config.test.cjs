@@ -139,7 +139,8 @@ test('version 4 toolbar layouts migrate marker and pen actions without restoring
     'highlightCycle',
     'penCycle',
     'penBlue',
-    'penPurple'
+    'penPurple',
+    'clearFormatting'
   ]);
   assert.ok(config.holding.includes('highlightBlue'));
   assert.ok(!config.popupGroups.format.order.some(id =>
@@ -301,12 +302,10 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
     title: 'Save as Markdown Pack',
     gestureActions: {
       longPress: 'saveFile',
-      swipeUp: 'bold',
-      swipeDown: 'custom-key-quick-save'
+      swipeUp: 'bold'
     },
     gestureActionIcons: {
-      swipeUp: '<svg><path d="M1 1"/></svg>',
-      swipeDown: '<svg><path d="M2 2"/></svg>'
+      swipeUp: '<svg><path d="M1 1"/></svg>'
     }
   });
   assert.deepEqual(config.customKeys['custom-key-quick-save'], {
@@ -317,6 +316,64 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
   assert.equal(config.styles.inventedAction, undefined);
   assert.equal(config.styles.undo.gestureActions, undefined);
   assert.equal(config.styles.undo.title, 'Invalid target');
+});
+
+test('custom toolbar keys can use built-in actions but cannot become actions themselves', async () => {
+  const {
+    BUILT_IN_ACTION_IDS,
+    BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
+    normalizeBottomToolbarConfig
+  } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    customKeys: {
+      'custom-key-first': {
+        title: 'First custom key',
+        icon: 'copy',
+        actionId: 'custom-key-second'
+      },
+      'custom-key-second': {
+        title: 'Second custom key',
+        icon: 'copy',
+        actionId: 'copy'
+      }
+    },
+    styles: {
+      undo: {
+        gestureActions: {
+          tap1: 'custom-key-second',
+          tap2: 'copy'
+        }
+      }
+    }
+  });
+
+  assert.equal(config.customKeys['custom-key-first'].actionId, undefined);
+  assert.equal(config.customKeys['custom-key-second'].actionId, 'copy');
+  assert.equal(config.styles.undo.gestureActions.tap1, undefined);
+  assert.equal(config.styles.undo.gestureActions.tap2, 'copy');
+  assert.ok(BUILT_IN_ACTION_IDS.includes('copy'));
+  assert.ok(BOTTOM_TOOLBAR_GROUP_ITEM_IDS.format.includes('clearFormatting'));
+});
+
+test('adding Clear Formatting migrates old layouts without pulling it from the holding area', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const base = {
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      format: { order: ['bold'], hidden: [] }
+    }
+  };
+  const migrated = normalizeBottomToolbarConfig(base);
+  assert.ok(migrated.popupGroups.format.order.includes('clearFormatting'));
+
+  const held = normalizeBottomToolbarConfig({
+    ...base,
+    version: 9,
+    holding: ['clearFormatting']
+  });
+  assert.ok(!held.popupGroups.format.order.includes('clearFormatting'));
+  assert.ok(held.holding.includes('clearFormatting'));
 });
 
 test('toolbar toggle gestures persist without making the toggle replaceable', async () => {

@@ -111,6 +111,11 @@
             app:defaultValue="ctrl+shift+8" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_clearFormatting"
+            app:title="Clear Formatting"
+            app:defaultValue="ctrl+\" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_codeBlock"
             app:title="Code Block"
             app:defaultValue="ctrl+shift+c" />

@@ -1,4 +1,4 @@
-import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
+import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect, Prec } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
@@ -53,6 +53,7 @@ import {
   getWmdxColorSyntaxRanges,
   isWmdxUnderlineSyntaxEnabled,
   setWmdxUnderlineSyntaxEnabled,
+  clearMarkdownFormatting,
   toggleMarkdownFormat,
   toggleWmdxColorFormat,
   toggleUnderlineFormat
@@ -142,6 +143,7 @@ let customHotkeys = {
   underlineWavy: '',
   strikethrough: 'ctrl+shift+x',
   code: 'ctrl+e',
+  clearFormatting: 'ctrl+\\',
   link: 'ctrl+k',
   footnote: 'ctrl+shift+f',
   sourceEditing: 'ctrl+shift+u',
@@ -4117,8 +4119,7 @@ class CodeMirrorAdapter {
         footnoteStateField,
         persistentLayoutField,
         heightMapField,
-        tableNavigationKeymap,
-        markdownIndentKeymap,
+        Prec.highest([tableNavigationKeymap, markdownIndentKeymap]),
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
         keymap.of([
@@ -5051,6 +5052,7 @@ function createToolbarActionRegistry() {
       { id: 'bold', title: 'Bold', icon: svgIcons.bold, command: 'bold', action: () => execCmd('bold') },
       { id: 'italic', title: 'Italic', icon: svgIcons.italic, command: 'italic', action: () => execCmd('italic') },
       { id: 'strikethrough', title: 'Strikethrough', icon: svgIcons.strikethrough, command: 'strikethrough', action: () => execCmd('strikethrough') },
+      { id: 'clearFormatting', title: 'Clear Formatting', icon: svgIcons.clearFormatting, command: 'clearFormatting', action: () => execCmd('clearFormatting') },
       { id: 'underline', title: 'Cycle Underline Style', icon: svgIcons.underline, command: 'underline', action: () => execCmd('underline') },
       { id: 'underlineSolid', title: 'Solid Underline', icon: svgIcons.underlineSolid, command: 'underlineSolid', action: () => execCmd('underlineSolid') },
       { id: 'underlineDotted', title: 'Dotted Underline', icon: svgIcons.underlineDotted, command: 'underlineDotted', action: () => execCmd('underlineDotted') },
@@ -6246,6 +6248,8 @@ function execCmd(cmdName, options) {
       cmdName === 'code'
     ) {
       toggleMarkdownFormat(view, cmdName);
+    } else if (cmdName === 'clearFormatting') {
+      clearMarkdownFormatting(view);
     } else if (cmdName === 'underline') {
       toggleUnderlineFormat(view, 'cycle');
     } else if (cmdName.startsWith('underline')) {
@@ -7799,6 +7803,7 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.underlineDouble)) { e.preventDefault(); execCmd('underlineDouble'); }
     else if (parseAndMatchHotkey(e, customHotkeys.underlineWavy)) { e.preventDefault(); execCmd('underlineWavy'); }
     else if (parseAndMatchHotkey(e, customHotkeys.strikethrough)) { e.preventDefault(); execCmd('strikethrough'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.clearFormatting)) { e.preventDefault(); execCmd('clearFormatting'); }
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
     else if (parseAndMatchHotkey(e, customHotkeys.footnote)) { e.preventDefault(); execCmd('InsertFootnote'); }
@@ -7808,8 +7813,16 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.bulletedList)) { e.preventDefault(); execCmd('bulletedList'); }
     else if (parseAndMatchHotkey(e, customHotkeys.numberedList)) { e.preventDefault(); execCmd('numberedList'); }
     else if (parseAndMatchHotkey(e, customHotkeys.todoList)) { e.preventDefault(); execCmd('todoList'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.indent)) { e.preventDefault(); execCmd('indent'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.outdent)) { e.preventDefault(); execCmd('outdent'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.indent)) {
+      const tabInEditor = e.key === 'Tab' &&
+        activeAdapter?.view?.contentDOM?.contains(e.target);
+      if (!tabInEditor) { e.preventDefault(); execCmd('indent'); }
+    }
+    else if (parseAndMatchHotkey(e, customHotkeys.outdent)) {
+      const tabInEditor = e.key === 'Tab' &&
+        activeAdapter?.view?.contentDOM?.contains(e.target);
+      if (!tabInEditor) { e.preventDefault(); execCmd('outdent'); }
+    }
     else if (parseAndMatchHotkey(e, customHotkeys.horizontalLine)) { e.preventDefault(); execCmd('horizontalLine'); }
 
     // Headings shortcuts

@@ -54,6 +54,23 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
   const settings = {
     version: 1,
     order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
+    holding: [
+      'cut', 'copy', 'paste', 'selectAll',
+      'custom-key-user-copy', 'custom-group-user-folder'
+    ],
+    customKeys: {
+      'custom-key-user-copy': {
+        title: 'My Copy Key',
+        icon: 'copy',
+        actionId: 'copy'
+      }
+    },
+    customGroups: {
+      'custom-group-user-folder': {
+        title: 'My Folder',
+        icon: 'folder'
+      }
+    },
     hidden: ['heading'],
     styles: {
       saveFile: {
@@ -279,6 +296,10 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.ok(iconTitles.includes('Audio: Play'));
     assert.ok(iconTitles.includes('TOC Settings'));
     assert.ok(
+      iconTitles.some(title => title.includes('Clear Formatting')),
+      'the new built-in action icon appears in the shared icon picker'
+    );
+    assert.ok(
       html.includes('href="./icon-picker.css"'),
       'toolbar picker styles come from the shared stylesheet'
     );
@@ -352,6 +373,9 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     const actionSearch = dom.window.document.querySelector('#toolbar-action-search');
     const actionTitles = [...actionPicker.querySelectorAll('#toolbar-action-list [role="option"]')]
       .map(button => button.getAttribute('aria-label'));
+    assert.ok(actionTitles.includes('Clear Formatting'));
+    assert.ok(!actionTitles.includes('My Copy Key'));
+    assert.ok(!actionTitles.includes('My Folder'));
     assert.deepEqual(
       actionTitles,
       [...actionTitles].sort((a, b) =>
@@ -964,7 +988,7 @@ test('built-in groups and keys can be deleted on both toolbar surfaces', async (
   }
 });
 
-test('custom toolbar keys can run searchable actions and be assigned as gesture actions', async () => {
+test('custom toolbar keys can run built-in actions but cannot be selected as actions', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
@@ -1032,8 +1056,15 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
       .click();
     search.value = 'Quick Action';
     search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-    actionPicker.querySelector('[role="option"][aria-label="Quick Action"]').click();
-    assert.equal(saves.at(-1).styles.undo.gestureActions.tap1, customKeyId);
+    assert.equal(
+      actionPicker.querySelector('[role="option"][aria-label="Quick Action"]'),
+      null,
+      'a user-created key does not become a selectable action'
+    );
+    search.value = 'Bold';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    actionPicker.querySelector('[role="option"][aria-label="Bold"]').click();
+    assert.equal(saves.at(-1).styles.undo.gestureActions.tap1, 'bold');
 
     dom.window.document
       .querySelector('.toolbar-preview-gesture-icon[data-gesture-id="tap1"]')

@@ -77,6 +77,63 @@ test('the same inline toolbar action toggles formatting instead of nesting it', 
   assert.equal(view.state.doc.toString(), 'bold text and plain');
 });
 
+test('clear formatting removes nested Markdown and WMDX syntax in one undoable edit', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { GFM, Strikethrough } = await import('@lezer/markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '**==marked==** and **bold text**';
+  const start = doc.indexOf('marked');
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.range(start, start + 'marked'.length),
+    extensions: [markdown({ extensions: [GFM, Strikethrough] })]
+  });
+  let dispatchCount = 0;
+  const view = {
+    state,
+    dispatch(transaction) {
+      dispatchCount += 1;
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), 'marked and **bold text**');
+  assert.equal(view.state.doc.sliceString(
+    view.state.selection.main.from,
+    view.state.selection.main.to
+  ), 'marked');
+  assert.equal(dispatchCount, 1, 'all active formatting is removed in one edit');
+});
+
+test('clear formatting preserves emphasis outside a partially selected word', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '**bold**';
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.range(3, 5),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), '**b**ol**d**');
+  assert.equal(view.state.doc.sliceString(
+    view.state.selection.main.from,
+    view.state.selection.main.to
+  ), 'ol');
+});
+
 test('partial formatting removal keeps the unselected text formatted', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');

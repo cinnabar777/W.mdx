@@ -168,8 +168,18 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   const main = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8');
   assert.match(main, /export const markdownIndentKeymap = keymap\.of\([\s\S]*?key: 'Tab'[\s\S]*?applyMarkdownIndent\(view, 'indent'\)/);
   assert.match(main, /key: 'Shift-Tab'[\s\S]*?applyMarkdownIndent\(view, 'outdent'\)/);
+  assert.match(
+    main,
+    /Prec\.highest\(\[tableNavigationKeymap,\s*markdownIndentKeymap\]\)/,
+    'table navigation and list indentation must run before CodeMirror default Tab behavior'
+  );
   assert.match(main, /cmdName === 'indent'\) applyMarkdownIndent\(view, 'indent', '  '\)/);
   assert.match(main, /cmdName === 'outdent'\) applyMarkdownIndent\(view, 'outdent', '  '\)/);
+  assert.match(
+    main,
+    /const tabInEditor = e\.key === 'Tab' &&\s*activeAdapter\?\.view\?\.contentDOM\?\.contains\(e\.target\)/,
+    'the global shortcut handler must leave editor Tab events to the prioritized editor keymap'
+  );
   assert.match(
     main,
     /window\.addEventListener\('keydown', \(e\) => \{\s*if \(e\.defaultPrevented\) return;\s*const k =/,

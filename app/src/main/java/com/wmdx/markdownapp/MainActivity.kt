@@ -1266,6 +1266,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "underlineWavy" to prefs.getString("pref_hotkey_underlineWavy", ""),
             "strikethrough" to prefs.getString("pref_hotkey_strikethrough", "ctrl+shift+x"),
             "code" to prefs.getString("pref_hotkey_code", "ctrl+e"),
+            "clearFormatting" to prefs.getString("pref_hotkey_clearFormatting", "ctrl+\\"),
             "callout" to prefs.getString("pref_hotkey_callout", "ctrl+alt+q"),
             "link" to prefs.getString("pref_hotkey_link", "ctrl+k"),
             "footnote" to prefs.getString("pref_hotkey_footnote", "ctrl+shift+f"),
