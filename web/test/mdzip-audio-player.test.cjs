@@ -15,6 +15,15 @@ test('MDZip audio uses custom controls and a viewport-clamped speed menu', () =>
   assert.match(player, /setPlaybackRate\(rate, true\)/);
 });
 
+test('unsupported audio decoding shows a notice instead of dead playback controls', () => {
+  const player = read('src/audioPreviewWidget.js');
+  assert.match(player, /const unsupported = audio\.error\?\.code === 4/);
+  assert.match(player, /Unsupported audio format on this device\./);
+  assert.match(player, /controls\.hidden = true/);
+  assert.match(player, /audio\.play\(\)\.catch\(showAudioPlaybackFailure\)/);
+  assert.match(player, /audio\.addEventListener\('error', \(\) => \{\s*if \(isPreparingBlobSeek\) return;\s*showAudioPlaybackFailure\(\);/);
+});
+
 test('long-press exposes edit and explicit package delete actions', () => {
   const player = read('src/audioPreviewWidget.js');
   assert.match(player, /editButton\.textContent = 'Edit'/);

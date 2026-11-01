@@ -432,6 +432,21 @@ export class AudioPreviewWidget extends WidgetType {
         popupPoint = null;
       }
     };
+    const showAudioPlaybackFailure = () => {
+      const unsupported = audio.error?.code === 4;
+      status.textContent = unsupported
+        ? 'Unsupported audio format on this device.'
+        : 'Unable to play this audio file on this device.';
+      status.style.display = 'block';
+      if (unsupported) {
+        controls.hidden = true;
+        status.style.padding = '12px';
+        status.style.border = '1px solid var(--border-color, #444)';
+        status.style.borderRadius = '6px';
+        status.style.background = 'var(--media-controls-bg, #242424)';
+        hidePopup(activePopup);
+      }
+    };
     const showPopup = (popup, { anchor = null, point = null } = {}) => {
       if (activePopup && activePopup !== popup) hidePopup(activePopup);
       activePopup = popup;
@@ -736,10 +751,7 @@ export class AudioPreviewWidget extends WidgetType {
       event.preventDefault();
       event.stopPropagation();
       if (audio.paused) {
-        audio.play().catch(() => {
-          status.textContent = 'Unable to play this audio file on this device.';
-          status.style.display = 'block';
-        });
+        audio.play().catch(showAudioPlaybackFailure);
       } else {
         audio.pause();
       }
@@ -786,8 +798,7 @@ export class AudioPreviewWidget extends WidgetType {
     audio.addEventListener('volumechange', syncMuteButton);
     audio.addEventListener('error', () => {
       if (isPreparingBlobSeek) return;
-      status.textContent = 'Unable to play this audio file on this device.';
-      status.style.display = 'block';
+      showAudioPlaybackFailure();
     });
 
     const onLabelPointerDown = event => {
