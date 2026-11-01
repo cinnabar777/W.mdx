@@ -7,6 +7,8 @@ const { JSDOM } = require('jsdom');
 const root = path.resolve(__dirname, '../..');
 const html = fs.readFileSync(path.join(root, 'web/toolbar-settings-preview.html'), 'utf8');
 const sharedCss = fs.readFileSync(path.join(root, 'web/toolbar.css'), 'utf8');
+const iconPickerCss = fs.readFileSync(path.join(root, 'web/icon-picker.css'), 'utf8');
+const iconCatalogSource = fs.readFileSync(path.join(root, 'web/src/appIconCatalog.js'), 'utf8');
 const settingsSource = fs.readFileSync(
   path.join(root, 'web/src/toolbarSettingsPreview.js'),
   'utf8'
@@ -149,9 +151,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /Paste SVG/);
   assert.match(html, /Choose SVG file/);
   assert.match(html, /toolbar-preview-icon-actions/);
-  assert.match(html, /min-height: 40px/);
+  assert.match(iconPickerCss, /min-height:\s*40px/);
   assert.match(html, /width: max-content/);
-  assert.match(html, /overflow-y: auto/);
+  assert.match(iconPickerCss, /overflow-y:\s*auto/);
   assert.match(settingsSource, /setIconPickerOpen/);
   assert.match(settingsSource, /event\.key !== 'Escape'/);
   assert.doesNotMatch(html, /id="toolbar-current-key-preview"/);
@@ -242,7 +244,7 @@ test('toolbar gestures can open and save the preferences for their own key', () 
   assert.match(sharedCss, /\.toolbar-key-preferences-overlay\s*\{[\s\S]*?align-items:\s*flex-start/);
   assert.match(sharedCss, /\.toolbar-key-preferences-frame\s*\{/);
   assert.match(html, /\.toolbar-preview-editor-layer\s*\{[\s\S]*?z-index:\s*10030/);
-  assert.match(html, /\.toolbar-preview-icon-picker-modal\s*\{[\s\S]*?z-index:\s*10040/);
+  assert.match(iconPickerCss, /\.toolbar-preview-icon-picker-modal\s*\{[\s\S]*?z-index:\s*10040/);
 });
 
 test('marker and pen toolbar actions use numbered slots and the generic tintable icon', () => {
@@ -295,8 +297,8 @@ test('toolbar toggle gestures are configurable separately and run on the floatin
 test('no-icon gesture choices persist while suppressing their parent-key indicator', () => {
   assert.match(toolbarConfigSource, /NO_GESTURE_ICON = 'none'/);
   assert.match(toolbarConfigSource, /svg === NO_GESTURE_ICON/);
-  assert.match(settingsSource, /aria-label', 'No icon'/);
-  assert.match(settingsSource, /style\.gestureActionIcons\[selectedGestureId\] = NO_GESTURE_ICON/);
+  assert.match(iconCatalogSource, /aria-label', 'No icon'/);
+  assert.match(settingsSource, /gestureStyle\.gestureActionIcons\[selectedGestureId\] = NO_GESTURE_ICON/);
   assert.match(mainSource, /customSvg === NO_GESTURE_ICON\) return ''/);
   assert.match(androidSource, /if \(iconSvg == "none"\)/);
 });
