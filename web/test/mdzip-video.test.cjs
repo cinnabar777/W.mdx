@@ -6,7 +6,7 @@ const path = require('node:path');
 const read = relativePath =>
   fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 
-test('MP4, M4V, WebM, 3GP, MOV, and MKV Markdown links format, parse, and extract outside code blocks', async () => {
+test('MP4, M4V, WebM, 3GP, MOV, MKV, and AVI Markdown links format, parse, and extract outside code blocks', async () => {
   const {
     extractMarkdownVideoLinks,
     formatMarkdownVideoLink,
@@ -44,6 +44,11 @@ test('MP4, M4V, WebM, 3GP, MOV, and MKV Markdown links format, parse, and extrac
   assert.deepEqual(parseMarkdownVideoLink(mkvMarkdown), {
     label: 'Matroska clip.mkv',
     url: 'video/Matroska%20clip.mkv'
+  });
+  const aviMarkdown = formatMarkdownVideoLink('Old camera clip.avi', 'video/Old camera clip.avi');
+  assert.deepEqual(parseMarkdownVideoLink(aviMarkdown), {
+    label: 'Old camera clip.avi',
+    url: 'video/Old%20camera%20clip.avi'
   });
   const layoutMarkdown = formatMarkdownVideoLink(
     'Framed clip.mp4',
@@ -91,15 +96,19 @@ test('MP4, M4V, WebM, 3GP, MOV, and MKV Markdown links format, parse, and extrac
     formatMarkdownVideoLink('Clip', 'video/clip.mkv?download=1'),
     '[Clip](video/clip.mkv?download=1)'
   );
+  assert.equal(
+    formatMarkdownVideoLink('Clip', 'video/clip.avi?download=1'),
+    '[Clip](video/clip.avi?download=1)'
+  );
   assert.deepEqual(
     extractMarkdownVideoLinks(
-      '[Clip](video/clip.mp4)\n[Camera](video/camera.m4v)\n[Screen](video/screen.webm)\n[Older phone](video/older.3gp)\n[QuickTime](video/quicktime.mov)\n[Matroska](video/matroska.mkv)\n\n`[Example](video/example.mp4)`'
+      '[Clip](video/clip.mp4)\n[Camera](video/camera.m4v)\n[Screen](video/screen.webm)\n[Older phone](video/older.3gp)\n[QuickTime](video/quicktime.mov)\n[Matroska](video/matroska.mkv)\n[Legacy](video/legacy.avi)\n\n`[Example](video/example.mp4)`'
     ).map(link => link.url),
-    ['video/clip.mp4', 'video/camera.m4v', 'video/screen.webm', 'video/older.3gp', 'video/quicktime.mov', 'video/matroska.mkv']
+    ['video/clip.mp4', 'video/camera.m4v', 'video/screen.webm', 'video/older.3gp', 'video/quicktime.mov', 'video/matroska.mkv', 'video/legacy.avi']
   );
 });
 
-test('MP4, M4V, WebM, 3GP, MOV, and MKV insertion, package serving, and default rendering are connected', () => {
+test('MP4, M4V, WebM, 3GP, MOV, MKV, and AVI insertion, package serving, and default rendering are connected', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const editor = read('src/main.js');
@@ -111,7 +120,7 @@ test('MP4, M4V, WebM, 3GP, MOV, and MKV insertion, package serving, and default 
   const icons = read('src/toolbarIcons.js');
   const capture = read('src/navigationCapture.js');
 
-  assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS = setOf\("mp4", "m4v", "webm", "3gp", "mov", "mkv"\)/);
+  assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS =\s*setOf\("mp4", "m4v", "webm", "3gp", "mov", "mkv", "avi"\)/);
   assert.match(manager, /fun addVideo\(/);
   assert.match(manager, /fun syncVideoReferences\(/);
   assert.match(manager, /pendingAudioDeletions \+ session\.pendingVideoDeletions/);
@@ -122,8 +131,10 @@ test('MP4, M4V, WebM, 3GP, MOV, and MKV insertion, package serving, and default 
   assert.match(activity, /"3gp" -> "video\/3gpp"/);
   assert.match(activity, /"mov" -> "video\/quicktime"/);
   assert.match(activity, /"mkv" -> "video\/x-matroska"/);
-  assert.match(editor, /mov\|mkv/);
-  assert.match(capture, /webm\|mkv/);
+  assert.match(activity, /"avi" -> "video\/x-msvideo"/);
+  assert.match(activity, /Choose an MP4, M4V, WebM, 3GP, MOV, MKV, or AVI video file/);
+  assert.match(editor, /mov\|mkv\|avi/);
+  assert.match(capture, /webm\|mkv\|avi/);
   assert.match(activity, /shouldServeMdzipAssetAsWholeFile\(isVideoAsset, extension, range\)/);
   assert.equal(
     (editor.match(/hiddenSyntaxRanges\.push\(videoDecoration\)/g) || []).length,
