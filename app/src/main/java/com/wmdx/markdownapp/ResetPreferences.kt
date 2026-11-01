@@ -120,15 +120,15 @@ object PreferenceResetHelper {
             "pref_footnote_ref_color" -> "#29B6F6"
             "pref_footnote_link_color" -> "#29B6F6"
             "pref_footnote_bg_color" -> "#1A1A1A"
-            "pref_findreplace_panel_bg" -> "#121212"
+            "pref_findreplace_panel_bg" -> "#0F0F0F"
             "pref_findreplace_panel_border" -> "#282828"
-            "pref_findreplace_field_find_bg", "pref_findreplace_field_replace_bg" -> "#1E1E1E"
+            "pref_findreplace_field_find_bg", "pref_findreplace_field_replace_bg" -> "#000000"
             "pref_findreplace_field_find_color", "pref_findreplace_field_replace_color" -> "#FFFFFF"
             "pref_findreplace_field_find_placeholder", "pref_findreplace_field_replace_placeholder" -> "#888888"
             "pref_findreplace_field_find_border", "pref_findreplace_field_replace_border" -> "#333333"
             "pref_findreplace_field_find_focus_border", "pref_findreplace_field_replace_focus_border" -> "#0078D4"
-            "pref_findreplace_counter_color" -> "#888888"
-            "pref_findreplace_counter_bg" -> "#00000000"
+            "pref_findreplace_counter_color" -> "#FFFFFF"
+            "pref_findreplace_counter_bg" -> "#000000"
             "pref_findreplace_match_bg" -> "rgba(255, 255, 0, 0.35)"
             "pref_findreplace_current_match_bg" -> "#0078D4"
             "pref_findreplace_current_match_color" -> "#FFFFFF"
@@ -139,13 +139,13 @@ object PreferenceResetHelper {
             else -> {
                 when {
                     key != null && key.startsWith("pref_findreplace_btn_") &&
-                        (key.endsWith("_active_bg") || key.endsWith("_pressed_bg")) -> "#0078D4"
+                        (key.endsWith("_active_bg") || key.endsWith("_pressed_bg")) -> "#000799"
                     key != null && key.startsWith("pref_findreplace_btn_") &&
-                        key.endsWith("_active_color") -> "#FFFFFF"
+                        key.endsWith("_active_color") -> "#FFEA00"
                     key != null && key.startsWith("pref_findreplace_btn_") &&
-                        key.endsWith("_bg") -> "#1E1E1E"
+                        key.endsWith("_bg") -> "#000000"
                     key != null && key.startsWith("pref_findreplace_btn_") &&
-                        key.endsWith("_color") -> "#AAAAAA"
+                        key.endsWith("_color") -> "#FFFFFF"
                     else -> "#FFFFFF"
                 }
             }
@@ -486,13 +486,15 @@ object PreferenceResetHelper {
             key == "pref_findreplace_field_replace_border" -> "default"
             key == "pref_findreplace_field_replace_focus_border" -> "default"
             key == "pref_findreplace_field_replace_font_size" -> 14
-            key == "pref_findreplace_field_height" -> 32
+            key == "pref_findreplace_field_height" -> 42
             key == "pref_findreplace_counter_color" -> "default"
             key == "pref_findreplace_counter_bg" -> "default"
             key == "pref_findreplace_match_bg" -> "default"
             key == "pref_findreplace_current_match_bg" -> "default"
             key == "pref_findreplace_current_match_color" -> "default"
-            key.startsWith("pref_findreplace_btn_") && key.endsWith("_width") -> 28
+            key == "pref_findreplace_btn_highlight_width" ||
+                key == "pref_findreplace_btn_regex_width" -> 32
+            key.startsWith("pref_findreplace_btn_") && key.endsWith("_width") -> 34
             key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg") -> ""
             key.startsWith("pref_findreplace_btn_") -> "default"
             key == "pref_code_block_color" -> "default"

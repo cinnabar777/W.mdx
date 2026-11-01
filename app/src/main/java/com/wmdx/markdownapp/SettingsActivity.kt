@@ -2644,7 +2644,8 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     }
 
     private fun parseHiddenButtons(rawHidden: String?): MutableSet<String> {
-        val items = rawHidden?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+        val value = rawHidden ?: "highlight,regex"
+        val items = value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         return items.filter { it in KNOWN_BUTTON_IDS }.toMutableSet()
     }
 
@@ -2835,7 +2836,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         }
         val card = previewCardView ?: return
         val panelBgHex = prefs.getString("pref_findreplace_panel_bg", "default") ?: "default"
-        val panelBg = if (panelBgHex == "default") Color.parseColor("#121212") else ColorPickerDialog.parseHexColor(panelBgHex, Color.parseColor("#121212"))
+        val panelBg = if (panelBgHex == "default") Color.parseColor("#0F0F0F") else ColorPickerDialog.parseHexColor(panelBgHex, Color.parseColor("#0F0F0F"))
         val panelBorderHex = prefs.getString("pref_findreplace_panel_border", "default") ?: "default"
         val panelBorder = if (panelBorderHex == "default") Color.parseColor("#282828") else ColorPickerDialog.parseHexColor(panelBorderHex, Color.parseColor("#282828"))
         val density = card.resources.displayMetrics.density
@@ -2849,7 +2850,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val findColorHex = prefs.getString("pref_findreplace_field_find_color", "default") ?: "default"
 
         previewFindField?.apply {
-            setBackgroundColor(if (findBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(findBgHex, Color.parseColor("#1E1E1E")))
+            setBackgroundColor(if (findBgHex == "default") Color.BLACK else ColorPickerDialog.parseHexColor(findBgHex, Color.BLACK))
             setTextColor(if (findColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(findColorHex, Color.parseColor("#888888")))
         }
 
@@ -2857,7 +2858,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val replaceColorHex = prefs.getString("pref_findreplace_field_replace_color", "default") ?: "default"
 
         previewReplaceField?.apply {
-            setBackgroundColor(if (replaceBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(replaceBgHex, Color.parseColor("#1E1E1E")))
+            setBackgroundColor(if (replaceBgHex == "default") Color.BLACK else ColorPickerDialog.parseHexColor(replaceBgHex, Color.BLACK))
             setTextColor(if (replaceColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(replaceColorHex, Color.parseColor("#888888")))
         }
 
@@ -2870,7 +2871,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         )
 
         val (row1List, row2List) = parseAndNormalizeRows(prefs)
-        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, "highlight,regex"))
 
         val row1Ids = row1List.filter { it !in hiddenSet }
         val row2Ids = row2List.filter { it !in hiddenSet }
@@ -2943,7 +2944,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                             setMargins((3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt())
                         }
                         setOnClickListener {
-                            val curHidden = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+                            val curHidden = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, "highlight,regex"))
                             curHidden.remove(hid)
                             prefs.edit().putString(PREF_KEY_HIDDEN_BUTTONS, curHidden.joinToString(",")).apply()
                             refreshFindReplacePreview(prefs)
@@ -2961,7 +2962,8 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             val btnColorHex = prefs.getString("pref_findreplace_btn_${suffix}_color", "default") ?: "default"
             val customSvg = prefs.getString("pref_findreplace_btn_${suffix}_svg", "") ?: ""
             val density = btnView.context.resources.displayMetrics.density
-            val iconWidth = prefs.getInt("pref_findreplace_btn_${suffix}_width", 28)
+            val defaultWidth = if (domId == "highlight" || domId == "regex") 32 else 34
+            val iconWidth = prefs.getInt("pref_findreplace_btn_${suffix}_width", defaultWidth)
             btnView.apply {
                 gravity = android.view.Gravity.CENTER
                 textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER
@@ -2973,9 +2975,9 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 btnView.layoutParams = params
             }
 
-            btnView.setBackgroundColor(if (btnBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(btnBgHex, Color.parseColor("#1E1E1E")))
+            btnView.setBackgroundColor(if (btnBgHex == "default") Color.BLACK else ColorPickerDialog.parseHexColor(btnBgHex, Color.BLACK))
 
-            val defaultIconColor = Color.parseColor("#AAAAAA")
+            val defaultIconColor = Color.WHITE
             val iconColor = if (btnColorHex == "default") {
                 defaultIconColor
             } else {
@@ -3035,7 +3037,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             }
         }
 
-        val fieldHeightPx = (prefs.getInt("pref_findreplace_field_height", 32) *
+        val fieldHeightPx = (prefs.getInt("pref_findreplace_field_height", 42) *
             (context?.resources?.displayMetrics?.density ?: 1f)).toInt()
         listOf(previewFindField, previewReplaceField).forEach { field ->
             field?.layoutParams = field?.layoutParams?.apply { height = fieldHeightPx }
@@ -3552,7 +3554,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                         val targetIndex = insertionIndex(targetGroup, event.x, draggedId)
                         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
                         val (row1, row2) = parseAndNormalizeRows(prefs)
-                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, "highlight,regex"))
 
                         hiddenSet.remove(draggedId)
                         row1.remove(draggedId)
@@ -3609,7 +3611,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                     val draggedId = event.clipData?.getItemAt(0)?.text?.toString()
                     if (draggedId != null && draggedId in KNOWN_BUTTON_IDS) {
                         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, "highlight,regex"))
                         hiddenSet.add(draggedId)
 
                         prefs.edit()

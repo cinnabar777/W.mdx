@@ -4,6 +4,17 @@ import { findReplaceIcons } from './findReplaceIcons.js';
 const DEFAULT_ROW1 = ['prev', 'next', 'highlight', 'regex', 'close'];
 const DEFAULT_ROW2 = ['replace-one', 'replace-all', 'case', 'word'];
 const BUTTON_IDS = [...DEFAULT_ROW1, ...DEFAULT_ROW2];
+const DEFAULT_BUTTON_WIDTHS = Object.freeze({
+  prev: 34,
+  next: 34,
+  highlight: 32,
+  regex: 32,
+  close: 34,
+  'replace-one': 34,
+  'replace-all': 34,
+  case: 34,
+  word: 34
+});
 const BUTTON_LABELS = {
   prev: 'Previous',
   next: 'Next',
@@ -69,7 +80,7 @@ function setColorVariable(name, value, fallback) {
 function normalizeRows(rawRow1, rawRow2, hiddenValues) {
   const valid = new Set(BUTTON_IDS);
   const hidden = new Set(
-    String(hiddenValues || '')
+    String(hiddenValues == null ? 'highlight,regex' : hiddenValues)
       .split(',')
       .map(value => value.trim())
       .filter(value => valid.has(value))
@@ -140,7 +151,7 @@ function applyStyles(prefs) {
   setColorVariable('--findreplace-btn-active-bg', prefs.pref_findreplace_btn_active_bg, '#0078d4');
   setColorVariable('--findreplace-btn-active-color', prefs.pref_findreplace_btn_active_color, '#ffffff');
   setColorVariable('--findreplace-btn-pressed-bg', prefs.pref_findreplace_btn_pressed_bg, '#0078d4');
-  const fieldHeight = Number(prefs.pref_findreplace_field_height ?? 32);
+  const fieldHeight = Number(prefs.pref_findreplace_field_height ?? 42);
   const safeFieldHeight = Number.isFinite(fieldHeight)
     ? Math.max(24, Math.min(56, fieldHeight))
     : 32;
@@ -151,7 +162,8 @@ function applyStyles(prefs) {
     const widthValue = Number(
       prefs[`pref_findreplace_btn_${suffix}_width`] ??
       prefs.pref_findreplace_btn_width ??
-      28
+      DEFAULT_BUTTON_WIDTHS[id] ??
+      34
     );
     const buttonWidth = Number.isFinite(widthValue)
       ? Math.max(20, Math.min(64, widthValue))
@@ -546,7 +558,7 @@ window.applyFindReplaceSettings = rawPrefs => {
   const normalized = normalizeRows(
     prefs.pref_findreplace_button_row1,
     prefs.pref_findreplace_button_row2,
-    prefs.pref_findreplace_hidden_buttons
+    prefs.pref_findreplace_hidden_buttons ?? 'highlight,regex'
   );
   state.row1 = normalized.row1;
   state.row2 = normalized.row2;

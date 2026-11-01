@@ -93,7 +93,7 @@
 
     /* Custom Compact Phone-Optimized Find & Replace Bar */
     .search-bar-container {
-      background-color: var(--findreplace-panel-bg, #121212) !important;
+      background-color: var(--findreplace-panel-bg, #0f0f0f) !important;
       color: #ffffff !important;
       border-bottom: 1px solid var(--findreplace-panel-border, #282828) !important;
       min-height: var(--findreplace-panel-min-height, auto) !important;
@@ -133,13 +133,13 @@
       min-width: 0 !important;
       border-radius: 6px !important;
       padding: 4px 8px !important;
-      height: var(--findreplace-field-height, 32px) !important;
+      height: var(--findreplace-field-height, 42px) !important;
       outline: none !important;
       box-sizing: border-box !important;
     }
 
     #search-input {
-      background-color: var(--findreplace-field-find-bg, var(--findreplace-field-bg, #1e1e1e)) !important;
+      background-color: var(--findreplace-field-find-bg, var(--findreplace-field-bg, #000000)) !important;
       color: var(--findreplace-field-find-color, var(--findreplace-field-color, #ffffff)) !important;
       border: 1px solid var(--findreplace-field-find-border, var(--findreplace-field-border, #333333)) !important;
       font-size: var(--findreplace-field-find-font-size, var(--findreplace-field-font-size, 14px)) !important;
@@ -154,7 +154,7 @@
     }
 
     #replace-input {
-      background-color: var(--findreplace-field-replace-bg, var(--findreplace-field-bg, #1e1e1e)) !important;
+      background-color: var(--findreplace-field-replace-bg, var(--findreplace-field-bg, #000000)) !important;
       color: var(--findreplace-field-replace-color, var(--findreplace-field-color, #ffffff)) !important;
       border: 1px solid var(--findreplace-field-replace-border, var(--findreplace-field-border, #333333)) !important;
       font-size: var(--findreplace-field-replace-font-size, var(--findreplace-field-font-size, 14px)) !important;
@@ -170,8 +170,8 @@
 
     .search-counter {
       font-size: 11px !important;
-      color: var(--findreplace-counter-color, #888888) !important;
-      background-color: var(--findreplace-counter-bg, transparent) !important;
+      color: var(--findreplace-counter-color, #ffffff) !important;
+      background-color: var(--findreplace-counter-bg, #000000) !important;
       white-space: nowrap !important;
       text-align: center !important;
       flex: 0 0 auto !important;
@@ -208,13 +208,13 @@
     }
 
     .search-icon-btn {
-      background-color: var(--findreplace-btn-bg, #1e1e1e) !important;
-      color: var(--findreplace-btn-color, #aaaaaa) !important;
+      background-color: var(--findreplace-btn-bg, #000000) !important;
+      color: var(--findreplace-btn-color, #ffffff) !important;
       border: 1px solid var(--findreplace-field-border, #333333) !important;
       border-radius: 6px !important;
       height: var(--findreplace-btn-height, 32px) !important;
-      width: var(--findreplace-btn-width, 28px) !important;
-      min-width: var(--findreplace-btn-width, 28px) !important;
+      width: var(--findreplace-btn-width, 34px) !important;
+      min-width: var(--findreplace-btn-width, 34px) !important;
       padding: 0 !important;
       font-size: 13px !important;
       font-weight: 600 !important;
@@ -236,84 +236,84 @@
     }
 
     .search-icon-btn.active {
-      background-color: var(--findreplace-btn-active-bg, #0078d4) !important;
-      color: var(--findreplace-btn-active-color, #ffffff) !important;
+      background-color: var(--findreplace-btn-active-bg, #000799) !important;
+      color: var(--findreplace-btn-active-color, #ffea00) !important;
       border-color: var(--findreplace-btn-active-bg, #0078d4) !important;
     }
 
     .search-icon-btn:active {
-      background-color: var(--findreplace-btn-pressed-bg, #0078d4) !important;
+      background-color: var(--findreplace-btn-pressed-bg, #000799) !important;
     }
 
     #search-btn-prev {
-      background-color: var(--findreplace-prev-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
-      color: var(--findreplace-prev-color, var(--findreplace-btn-color, #aaaaaa)) !important;
-      width: var(--findreplace-prev-width, var(--findreplace-btn-width, 28px)) !important;
+      background-color: var(--findreplace-prev-bg, var(--findreplace-btn-bg, #000000)) !important;
+      color: var(--findreplace-prev-color, var(--findreplace-btn-color, #ffffff)) !important;
+      width: var(--findreplace-prev-width, var(--findreplace-btn-width, 34px)) !important;
       height: var(--findreplace-prev-height, var(--findreplace-btn-height, 32px)) !important;
     }
     #search-btn-next {
-      background-color: var(--findreplace-next-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
-      color: var(--findreplace-next-color, var(--findreplace-btn-color, #aaaaaa)) !important;
-      width: var(--findreplace-next-width, var(--findreplace-btn-width, 28px)) !important;
+      background-color: var(--findreplace-next-bg, var(--findreplace-btn-bg, #000000)) !important;
+      color: var(--findreplace-next-color, var(--findreplace-btn-color, #ffffff)) !important;
+      width: var(--findreplace-next-width, var(--findreplace-btn-width, 34px)) !important;
       height: var(--findreplace-next-height, var(--findreplace-btn-height, 32px)) !important;
     }
     #search-btn-highlight {
-      background-color: var(--findreplace-highlight-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
-      color: var(--findreplace-highlight-color, var(--findreplace-btn-color, #aaaaaa)) !important;
-      width: var(--findreplace-highlight-width, var(--findreplace-btn-width, 28px)) !important;
+      background-color: var(--findreplace-highlight-bg, var(--findreplace-btn-bg, #000000)) !important;
+      color: var(--findreplace-highlight-color, var(--findreplace-btn-color, #ffffff)) !important;
+      width: var(--findreplace-highlight-width, var(--findreplace-btn-width, 32px)) !important;
       height: var(--findreplace-highlight-height, var(--findreplace-btn-height, 32px)) !important;
     }
     #search-btn-highlight.active {
-      background-color: var(--findreplace-highlight-active-bg, var(--findreplace-btn-active-bg, #0078d4)) !important;
-      color: var(--findreplace-highlight-active-color, var(--findreplace-btn-active-color, #ffffff)) !important;
+      background-color: var(--findreplace-highlight-active-bg, var(--findreplace-btn-active-bg, #000799)) !important;
+      color: var(--findreplace-highlight-active-color, var(--findreplace-btn-active-color, #ffea00)) !important;
     }
     #search-btn-regex {
-      background-color: var(--findreplace-regex-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
-      color: var(--findreplace-regex-color, var(--findreplace-btn-color, #aaaaaa)) !important;
-      width: var(--findreplace-regex-width, var(--findreplace-btn-width, 28px)) !important;
+      background-color: var(--findreplace-regex-bg, var(--findreplace-btn-bg, #000000)) !important;
+      color: var(--findreplace-regex-color, var(--findreplace-btn-color, #ffffff)) !important;
+      width: var(--findreplace-regex-width, var(--findreplace-btn-width, 32px)) !important;
       height: var(--findreplace-regex-height, var(--findreplace-btn-height, 32px)) !important;
     }
     #search-btn-regex.active {
-      background-color: var(--findreplace-regex-active-bg, var(--findreplace-btn-active-bg, #0078d4)) !important;
-      color: var(--findreplace-regex-active-color, var(--findreplace-btn-active-color, #ffffff)) !important;
+      background-color: var(--findreplace-regex-active-bg, var(--findreplace-btn-active-bg, #000799)) !important;
+      color: var(--findreplace-regex-active-color, var(--findreplace-btn-active-color, #ffea00)) !important;
     }
     #search-btn-close {
-      background-color: var(--findreplace-close-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
-      color: var(--findreplace-close-color, var(--findreplace-btn-color, #aaaaaa)) !important;
-      width: var(--findreplace-close-width, var(--findreplace-btn-width, 28px)) !important;
+      background-color: var(--findreplace-close-bg, var(--findreplace-btn-bg, #000000)) !important;
+      color: var(--findreplace-close-color, var(--findreplace-btn-color, #ffffff)) !important;
+      width: var(--findreplace-close-width, var(--findreplace-btn-width, 34px)) !important;
       height: var(--findreplace-close-height, var(--findreplace-btn-height, 32px)) !important;
     }
     #search-btn-replace-one {
-      background-color: var(--findreplace-replace-one-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
-      color: var(--findreplace-replace-one-color, var(--findreplace-btn-color, #aaaaaa)) !important;
-      width: var(--findreplace-replace-one-width, var(--findreplace-btn-width, 28px)) !important;
+      background-color: var(--findreplace-replace-one-bg, var(--findreplace-btn-bg, #000000)) !important;
+      color: var(--findreplace-replace-one-color, var(--findreplace-btn-color, #ffffff)) !important;
+      width: var(--findreplace-replace-one-width, var(--findreplace-btn-width, 34px)) !important;
       height: var(--findreplace-replace-one-height, var(--findreplace-btn-height, 32px)) !important;
     }
     #search-btn-replace-all {
-      background-color: var(--findreplace-replace-all-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
-      color: var(--findreplace-replace-all-color, var(--findreplace-btn-color, #aaaaaa)) !important;
-      width: var(--findreplace-replace-all-width, var(--findreplace-btn-width, 28px)) !important;
+      background-color: var(--findreplace-replace-all-bg, var(--findreplace-btn-bg, #000000)) !important;
+      color: var(--findreplace-replace-all-color, var(--findreplace-btn-color, #ffffff)) !important;
+      width: var(--findreplace-replace-all-width, var(--findreplace-btn-width, 34px)) !important;
       height: var(--findreplace-replace-all-height, var(--findreplace-btn-height, 32px)) !important;
     }
     #search-btn-case {
-      background-color: var(--findreplace-case-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
-      color: var(--findreplace-case-color, var(--findreplace-btn-color, #aaaaaa)) !important;
-      width: var(--findreplace-case-width, var(--findreplace-btn-width, 28px)) !important;
+      background-color: var(--findreplace-case-bg, var(--findreplace-btn-bg, #000000)) !important;
+      color: var(--findreplace-case-color, var(--findreplace-btn-color, #ffffff)) !important;
+      width: var(--findreplace-case-width, var(--findreplace-btn-width, 34px)) !important;
       height: var(--findreplace-case-height, var(--findreplace-btn-height, 32px)) !important;
     }
     #search-btn-case.active {
-      background-color: var(--findreplace-case-active-bg, var(--findreplace-btn-active-bg, #0078d4)) !important;
-      color: var(--findreplace-case-active-color, var(--findreplace-btn-active-color, #ffffff)) !important;
+      background-color: var(--findreplace-case-active-bg, var(--findreplace-btn-active-bg, #000799)) !important;
+      color: var(--findreplace-case-active-color, var(--findreplace-btn-active-color, #ffea00)) !important;
     }
     #search-btn-word {
-      background-color: var(--findreplace-word-bg, var(--findreplace-btn-bg, #1e1e1e)) !important;
-      color: var(--findreplace-word-color, var(--findreplace-btn-color, #aaaaaa)) !important;
-      width: var(--findreplace-word-width, var(--findreplace-btn-width, 28px)) !important;
+      background-color: var(--findreplace-word-bg, var(--findreplace-btn-bg, #000000)) !important;
+      color: var(--findreplace-word-color, var(--findreplace-btn-color, #ffffff)) !important;
+      width: var(--findreplace-word-width, var(--findreplace-btn-width, 34px)) !important;
       height: var(--findreplace-word-height, var(--findreplace-btn-height, 32px)) !important;
     }
     #search-btn-word.active {
-      background-color: var(--findreplace-word-active-bg, var(--findreplace-btn-active-bg, #0078d4)) !important;
-      color: var(--findreplace-word-active-color, var(--findreplace-btn-active-color, #ffffff)) !important;
+      background-color: var(--findreplace-word-active-bg, var(--findreplace-btn-active-bg, #000799)) !important;
+      color: var(--findreplace-word-active-color, var(--findreplace-btn-active-color, #ffea00)) !important;
     }
 
     /* CodeMirror Search Match Highlighting */
@@ -2295,20 +2295,20 @@
         <span id="search-counter" class="search-counter"></span>
         <span id="search-error-msg" class="search-error-msg hidden"></span>
         <div class="search-icon-group">
-          <button id="search-btn-prev" class="search-icon-btn" title="Find Previous"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></button>
-          <button id="search-btn-next" class="search-icon-btn" title="Find Next"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+          <button id="search-btn-prev" class="search-icon-btn" title="Find Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+          <button id="search-btn-next" class="search-icon-btn" title="Find Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
           <button id="search-btn-highlight" class="search-icon-btn active" title="Highlight All Instances"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg></button>
-          <button id="search-btn-regex" class="search-icon-btn" title="Regular Expression"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><text x="12" y="16" text-anchor="middle" font-size="14" font-weight="bold" font-family="monospace">.*</text></svg></button>
+          <button id="search-btn-regex" class="search-icon-btn" title="Regular Expression"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3v10"/><path d="m12.67 5.5 8.66 5"/><path d="m12.67 10.5 8.66-5"/><path d="M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2z"/></svg></button>
           <button id="search-btn-close" class="search-icon-btn" title="Close Search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
       </div>
       <div id="search-replace-row" class="search-bar-row replace-row">
         <input type="text" id="replace-input" class="search-input" placeholder="Replace..." />
         <div class="search-icon-group">
-          <button id="search-btn-replace-one" class="search-icon-btn" title="Replace One"><svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="13 18 19 12 13 6"/></svg></button>
-          <button id="search-btn-replace-all" class="search-icon-btn" title="Replace All"><svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h12"/><polyline points="11 11 15 7 11 3"/><path d="M3 17h18"/><polyline points="17 21 21 17 17 13"/></svg></button>
-          <button id="search-btn-case" class="search-icon-btn" title="Match Case"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><text x="12" y="17" text-anchor="middle" font-size="15" font-weight="bold">Aa</text></svg></button>
-          <button id="search-btn-word" class="search-icon-btn" title="Match Whole Word"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="bold">\b</text></svg></button>
+          <button id="search-btn-replace-one" class="search-icon-btn" title="Replace One"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4a1 1 0 0 1 1-1"/><path d="M15 10a1 1 0 0 1-1-1"/><path d="M21 4a1 1 0 0 0-1-1"/><path d="M21 9a1 1 0 0 1-1 1"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a2 2 0 0 1 2-2h2"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></button>
+          <button id="search-btn-replace-all" class="search-icon-btn" title="Replace All"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1"/><path d="M14 4a1 1 0 0 1 1-1"/><path d="M15 10a1 1 0 0 1-1-1"/><path d="M19 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1"/><path d="M21 4a1 1 0 0 0-1-1"/><path d="M21 9a1 1 0 0 1-1 1"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a2 2 0 0 1 2-2h2"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></button>
+          <button id="search-btn-case" class="search-icon-btn" title="Match Case"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16"/><path d="M22 9v7"/><path d="M3.304 13h6.392"/><circle cx="18.5" cy="12.5" r="3.5"/></svg></button>
+          <button id="search-btn-word" class="search-icon-btn" title="Match Whole Word"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="12" r="3"/><path d="M10 9v6"/><circle cx="17" cy="12" r="3"/><path d="M14 7v8"/><path d="M22 17v1c0 .5-.5 1-1 1H3c-.5 0-1-.5-1-1v-1"/></svg></button>
         </div>
       </div>
     </div>

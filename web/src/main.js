@@ -8693,6 +8693,10 @@ window.editorBridge = {
     setCssVar('--findreplace-current-match-color', androidArgbToCss(prefs.pref_findreplace_current_match_color));
 
     const findreplaceButtons = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
+    const defaultFindReplaceButtonWidths = {
+      prev: 34, next: 34, highlight: 32, regex: 32, close: 34,
+      replace_one: 34, replace_all: 34, case: 34, word: 34
+    };
     findreplaceButtons.forEach(bId => {
       const bKey = bId.replace(/-/g, '_');
       setCssVar(`--findreplace-${bId}-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_bg`] || prefs.pref_findreplace_btn_bg));
@@ -8703,7 +8707,8 @@ window.editorBridge = {
       const buttonWidth = Number(
         prefs[`pref_findreplace_btn_${bKey}_width`] ??
         prefs.pref_findreplace_btn_width ??
-        28
+        defaultFindReplaceButtonWidths[bKey] ??
+        34
       );
       const safeButtonWidth = Number.isFinite(buttonWidth)
         ? Math.max(20, Math.min(64, buttonWidth))
@@ -8741,7 +8746,7 @@ window.editorBridge = {
     const applyFindReplaceButtonLayout = (prefs) => {
       let rawRow1 = prefs.pref_findreplace_button_row1;
       let rawRow2 = prefs.pref_findreplace_button_row2;
-      const hiddenRaw = prefs.pref_findreplace_hidden_buttons || '';
+      const hiddenRaw = prefs.pref_findreplace_hidden_buttons ?? 'highlight,regex';
 
       const knownIds = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
       const defaultRow1 = ['prev', 'next', 'highlight', 'regex', 'close'];

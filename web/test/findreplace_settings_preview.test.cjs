@@ -117,6 +117,51 @@ test('find and replace preview matches live icon sizing and saved button layout'
   dom.window.close();
 });
 
+test('empty Find & Replace settings use the chosen icon, size, and hidden-button defaults', async () => {
+  const dom = await createPreviewDom();
+  const { document, findReplaceIcons } = dom.window;
+  dom.window.applyFindReplaceSettings({});
+
+  assert.deepEqual(
+    [...document.querySelectorAll('.findreplace-preview-hidden-button')].map(button => button.textContent),
+    ['+ Highlight', '+ Regex']
+  );
+  assert.equal(
+    document.documentElement.style.getPropertyValue('--findreplace-field-height'),
+    '42px'
+  );
+  assert.equal(
+    document.documentElement.style.getPropertyValue('--findreplace-prev-width'),
+    '34px'
+  );
+  assert.equal(
+    document.documentElement.style.getPropertyValue('--findreplace-highlight-width'),
+    '32px'
+  );
+
+  dom.window.applyFindReplaceSettings({ pref_findreplace_hidden_buttons: '' });
+  for (const [buttonId, iconKey] of [
+    ['prev', 'findPrevious'],
+    ['next', 'findNext'],
+    ['highlight', 'findHighlight'],
+    ['regex', 'findRegex'],
+    ['close', 'findClose'],
+    ['replace-one', 'replaceOne'],
+    ['replace-all', 'replaceAll'],
+    ['case', 'matchCase'],
+    ['word', 'wholeWord']
+  ]) {
+    const expectedIcon = document.createElement('span');
+    expectedIcon.innerHTML = findReplaceIcons[iconKey];
+    assert.equal(
+      document.querySelector(`#search-btn-${buttonId}`).innerHTML,
+      expectedIcon.innerHTML
+    );
+  }
+
+  dom.window.close();
+});
+
 test('drag feedback allows moving buttons between rows and into the hidden tray', async () => {
   const dom = await createPreviewDom();
   const { document } = dom.window;
@@ -128,7 +173,7 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
       return 'saved';
     }
   };
-  dom.window.applyFindReplaceSettings({});
+  dom.window.applyFindReplaceSettings({ pref_findreplace_hidden_buttons: '' });
 
   const row1 = document.querySelector('#findreplace-row1');
   const row2 = document.querySelector('#findreplace-row2');
