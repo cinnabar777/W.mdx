@@ -69,6 +69,9 @@ export const BUILT_IN_ACTION_IDS = Object.freeze([...new Set([
   ...BOTTOM_TOOLBAR_ITEMS.filter(item => item.kind === 'action').map(item => item.id),
   ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS,
   ...BUILT_IN_HOLDING_ITEM_IDS,
+  'moveLineUp',
+  'moveLineDown',
+  'deleteLine',
   ...BUILT_IN_GESTURE_ACTION_IDS.filter(id => id !== OPEN_GROUP_ACTION_ID)
 ])]);
 

@@ -421,6 +421,32 @@ test('adding Clear Formatting migrates old layouts without pulling it from the h
   assert.ok(held.holding.includes('clearFormatting'));
 });
 
+test('line editing actions are accepted as built-in toolbar gestures', async () => {
+  const { BUILT_IN_ACTION_IDS, normalizeBottomToolbarConfig } =
+    await import('../src/toolbarConfig.js');
+  const actions = ['moveLineUp', 'moveLineDown', 'deleteLine'];
+  for (const action of actions) assert.ok(BUILT_IN_ACTION_IDS.includes(action));
+
+  const config = normalizeBottomToolbarConfig({
+    version: 9,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    styles: {
+      undo: {
+        gestureActions: {
+          tap2: 'moveLineUp',
+          tap3: 'moveLineDown',
+          swipeLeft: 'deleteLine'
+        }
+      }
+    }
+  });
+  assert.deepEqual(config.styles.undo.gestureActions, {
+    tap2: 'moveLineUp',
+    tap3: 'moveLineDown',
+    swipeLeft: 'deleteLine'
+  });
+});
+
 test('toolbar toggle gestures persist without making the toggle replaceable', async () => {
   const {
     BOTTOM_TOOLBAR_ITEM_IDS,

@@ -1482,11 +1482,14 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "editToolbarKeyPreferences",
             TOOLBAR_OPEN_GROUP_ACTION_ID
         )
+        private val TOOLBAR_EDITOR_ACTION_IDS =
+            listOf("moveLineUp", "moveLineDown", "deleteLine")
         private val TOOLBAR_BUILT_IN_ACTION_IDS =
             (TOOLBAR_ITEM_IDS.filterNot { it in TOOLBAR_GROUP_ITEM_IDS } +
                 TOOLBAR_GROUP_ITEM_IDS.values.flatten() +
                 TOOLBAR_HOLDING_ITEM_IDS +
-                TOOLBAR_GESTURE_ACTION_IDS.filterNot { it == TOOLBAR_OPEN_GROUP_ACTION_ID }).toSet()
+                TOOLBAR_GESTURE_ACTION_IDS.filterNot { it == TOOLBAR_OPEN_GROUP_ACTION_ID } +
+                TOOLBAR_EDITOR_ACTION_IDS).toSet()
         private val TOOLBAR_CUSTOM_KEY_ID_PATTERN =
             Regex("""^custom-key-[a-z0-9-]{1,48}$""", RegexOption.IGNORE_CASE)
         private val TOOLBAR_COLOR_PROPERTIES = setOf(

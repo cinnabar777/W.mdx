@@ -129,7 +129,7 @@ const PREVIEW_GROUP_ITEMS = {
     })),
     { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading },
     { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap },
-    { id: 'line-numbers', title: 'Toggle Line Numbers', icon: '#' }
+    { id: 'line-numbers', title: 'Toggle Line Numbers', icon: svgIcons.lineNumbers }
   ],
   lists: [
     { id: 'bulletedList', title: 'Bulleted List', icon: svgIcons.bulletedList },
@@ -190,10 +190,16 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'settings', title: 'Settings', icon: svgIcons.settings }
   ]
 };
+const PREVIEW_EDITOR_ACTION_ITEMS = [
+  { id: 'moveLineUp', title: 'Move Line Up', icon: svgIcons.moveLineUp },
+  { id: 'moveLineDown', title: 'Move Line Down', icon: svgIcons.moveLineDown },
+  { id: 'deleteLine', title: 'Delete Line / Paragraph', icon: svgIcons.deleteLine }
+];
 const PREVIEW_ITEM_DEFINITIONS = new Map([
   ...BOTTOM_TOOLBAR_ITEMS.map(item => [item.id, item]),
   ...BUILT_IN_HOLDING_ITEMS.map(item => [item.id, item]),
-  ...Object.values(PREVIEW_GROUP_ITEMS).flat().map(item => [item.id, item])
+  ...Object.values(PREVIEW_GROUP_ITEMS).flat().map(item => [item.id, item]),
+  ...PREVIEW_EDITOR_ACTION_ITEMS.map(item => [item.id, item])
 ]);
 const PREVIEW_SHORTCUT_ITEMS = [
   { id: 'historyBack', title: 'Back in Navigation History', icon: svgIcons.undo },
@@ -213,6 +219,7 @@ for (const item of [
   ...BOTTOM_TOOLBAR_ITEMS,
   ...BUILT_IN_HOLDING_ITEMS,
   ...Object.values(PREVIEW_GROUP_ITEMS).flat(),
+  ...PREVIEW_EDITOR_ACTION_ITEMS,
   ...PREVIEW_SHORTCUT_ITEMS
 ]) {
   PREVIEW_ICON_TITLES.set(item.id, item.title);

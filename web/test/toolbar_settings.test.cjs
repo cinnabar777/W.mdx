@@ -42,6 +42,17 @@ const colorPickerSource = fs.readFileSync(
   'utf8'
 );
 
+test('line editing actions are available in settings and run against the active editor', () => {
+  for (const action of ['moveLineUp', 'moveLineDown', 'deleteLine']) {
+    assert.match(settingsSource, new RegExp(`id: '${action}'`));
+    assert.match(mainSource, new RegExp(`id: '${action}'`));
+    assert.match(mainSource, new RegExp(`execCmd\\('${action}'\\)`));
+  }
+  assert.match(mainSource, /cmMoveLineUp\(view\)/);
+  assert.match(mainSource, /cmMoveLineDown\(view\)/);
+  assert.match(mainSource, /cmDeleteLine\(view\)/);
+});
+
 test('bottom toolbar preview uses the same renderer, icon source, and toolbar stylesheet as the editor', () => {
   assert.match(settingsSource, /renderBottomToolbarKeys/);
   assert.match(settingsSource, /from '\.\/toolbarIcons\.js'/);

@@ -83,7 +83,19 @@ import {
 } from './toolbarRenderer.js';
 import { getFloatingToolbarPosition } from './toolbarPositioning.js';
 import { openToolbarKeyPreferencesDialog } from './toolbarKeyPreferencesDialog.js';
-import { defaultKeymap, history, historyField, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
+import {
+  defaultKeymap,
+  history,
+  historyField,
+  historyKeymap,
+  undo as cmUndo,
+  redo as cmRedo,
+  undoDepth,
+  redoDepth,
+  moveLineUp as cmMoveLineUp,
+  moveLineDown as cmMoveLineDown,
+  deleteLine as cmDeleteLine
+} from '@codemirror/commands';
 import {
   search,
   SearchQuery,
@@ -4687,7 +4699,7 @@ function setupGroupedControlBar() {
         { title: 'Heading 6', icon: 'H6', command: 'heading6', action: () => execCmd('heading', { value: 'heading6' }) },
         { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
         { id: 'wrap', icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
-        { id: 'line-numbers', icon: '#', title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
+        { id: 'line-numbers', icon: svgIcons.lineNumbers, title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
       ]);
     };
   }
@@ -5030,7 +5042,7 @@ function createToolbarActionRegistry() {
       })),
       { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
       { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap, action: () => window.editorBridge.toggleLineWrap() },
-      { id: 'line-numbers', title: 'Toggle Line Numbers', icon: '#', action: () => window.editorBridge.toggleLineNumbers() }
+      { id: 'line-numbers', title: 'Toggle Line Numbers', icon: svgIcons.lineNumbers, action: () => window.editorBridge.toggleLineNumbers() }
     ],
     [
       { id: 'bulletedList', title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
@@ -5131,6 +5143,28 @@ function createRuntimeToolbarItemRegistry() {
 
 function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
   const registry = createToolbarActionRegistry();
+  for (const item of [
+    {
+      id: 'moveLineUp',
+      title: 'Move Line Up',
+      icon: svgIcons.moveLineUp,
+      action: () => execCmd('moveLineUp')
+    },
+    {
+      id: 'moveLineDown',
+      title: 'Move Line Down',
+      icon: svgIcons.moveLineDown,
+      action: () => execCmd('moveLineDown')
+    },
+    {
+      id: 'deleteLine',
+      title: 'Delete Line / Paragraph',
+      icon: svgIcons.deleteLine,
+      action: () => execCmd('deleteLine')
+    }
+  ]) {
+    registry.set(item.id, item);
+  }
   for (const item of BOTTOM_TOOLBAR_ITEMS) {
     if (!toolbarConfig.popupGroups[item.id]) continue;
     registry.set(item.id, {
@@ -6250,6 +6284,13 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'todoList') cmToggleLinePrefix(view, '- [ ] ');
     else if (cmdName === 'indent') applyMarkdownIndent(view, 'indent', '  ');
     else if (cmdName === 'outdent') applyMarkdownIndent(view, 'outdent', '  ');
+    else if (cmdName === 'moveLineUp') {
+      if (cmMoveLineUp(view)) view.focus();
+    } else if (cmdName === 'moveLineDown') {
+      if (cmMoveLineDown(view)) view.focus();
+    } else if (cmdName === 'deleteLine') {
+      if (cmDeleteLine(view)) view.focus();
+    }
     else if (cmdName === 'horizontalLine') cmWrapSelection(view, '\n---\n', '');
     else if (cmdName === 'InsertFootnote') openFootnoteInsertionDialog();
     else if (cmdName === 'link') openLinkInsertionDialog();
