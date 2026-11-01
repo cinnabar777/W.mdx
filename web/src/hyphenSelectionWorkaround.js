@@ -144,6 +144,32 @@ function getSelectionPositions(view, selection) {
   }
 }
 
+export function getSelectionEndpointRect(view, position, isStart) {
+  const documentLength = view.state?.doc?.length;
+  if (!Number.isInteger(documentLength) || !Number.isInteger(position)) return null;
+
+  const from = isStart ? position : Math.max(0, position - 1);
+  const to = isStart ? Math.min(documentLength, position + 1) : position;
+  if (from >= to) return null;
+
+  try {
+    const start = view.domAtPos(from, 1);
+    const end = view.domAtPos(to, -1);
+    const range = view.dom.ownerDocument.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+    const rects = Array.from(range.getClientRects())
+      .filter(rect => rect.height > 0);
+    if (!rects.length) return null;
+
+    const rect = isStart ? rects[0] : rects[rects.length - 1];
+    const x = isStart ? rect.left : rect.right;
+    return { left: x, right: x, top: rect.top, bottom: rect.bottom };
+  } catch {
+    return null;
+  }
+}
+
 export function installHyphenSelectionWorkaround(view, editorSelection) {
   const doc = view?.dom?.ownerDocument;
   const win = doc?.defaultView;
@@ -229,8 +255,12 @@ export function installHyphenSelectionWorkaround(view, editorSelection) {
     let anchorCoords;
     let headCoords;
     try {
-      anchorCoords = view.coordsAtPos(anchorPosition);
-      headCoords = view.coordsAtPos(headPosition);
+      anchorCoords =
+        getSelectionEndpointRect(view, anchorPosition, anchorPosition === selection.from) ||
+        view.coordsAtPos(anchorPosition);
+      headCoords =
+        getSelectionEndpointRect(view, headPosition, headPosition === selection.from) ||
+        view.coordsAtPos(headPosition);
     } catch {
       hideHandles();
       return;

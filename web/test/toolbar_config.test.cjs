@@ -427,6 +427,38 @@ test('runtime renderer creates the configured order with stable accessible key i
   );
 });
 
+test('toolbar root action buttons expose syntax commands for active highlighting', async () => {
+  const { renderBottomToolbarKeys } = await import('../src/toolbarRenderer.js');
+  const dom = new JSDOM('<div id="toolbar"></div>');
+  const toolbar = dom.window.document.querySelector('#toolbar');
+  renderBottomToolbarKeys(toolbar, {
+    version: 8,
+    order: ['undo'],
+    hidden: [],
+    holding: [],
+    popupGroups: {},
+    customGroups: {},
+    customKeys: {},
+    styles: {}
+  }, {}, {
+    definitions: {
+      undo: {
+        id: 'undo',
+        title: 'Bold',
+        icon: '',
+        kind: 'action',
+        command: 'bold'
+      }
+    }
+  });
+
+  assert.equal(
+    toolbar.querySelector('[data-toolbar-key="undo"]')?.dataset.toolbarCommand,
+    'bold'
+  );
+  dom.window.close();
+});
+
 test('runtime toolbar dispatches all eight swipe directions from a key', async () => {
   const { renderBottomToolbarKeys } = await import('../src/toolbarRenderer.js');
   const { TOOLBAR_SWIPE_GESTURE_IDS } = await import('../src/toolbarGestures.js');

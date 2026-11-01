@@ -757,6 +757,96 @@ test('custom groups accept loose actions and deleting a group releases its child
   }
 });
 
+test('empty custom groups can be placed on both toolbar surfaces', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html',
+    pretendToBeVisual: true
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const previousRequestAnimationFrame = global.requestAnimationFrame;
+  const saves = [];
+  const defaultConfig = {
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    hidden: [],
+    holding: [],
+    customGroups: {},
+    customKeys: {},
+    styles: {}
+  };
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify(defaultConfig),
+      pref_toolbar_floating_config: JSON.stringify(defaultConfig)
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+  global.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?empty-group-surfaces=${Date.now()}`);
+    const createAndPlaceGroup = async (surface, name) => {
+      if (surface === 'floating') {
+        dom.window.document
+          .querySelector('[data-toolbar-surface="floating"]')
+          .click();
+        await new Promise(resolve => dom.window.requestAnimationFrame(resolve));
+      }
+      dom.window.document.querySelector('#toolbar-add-custom').click();
+      const type = dom.window.document.querySelector('#toolbar-create-group-type');
+      type.value = 'group';
+      type.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+      const nameInput = dom.window.document.querySelector('#toolbar-create-group-name');
+      nameInput.value = name;
+      dom.window.document.querySelector('#toolbar-create-group-form')
+        .dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+
+      const groupId = Object.keys(saves.at(-1).customGroups)[0];
+      assert.ok(groupId, `${surface} group was created`);
+      const heldGroup = dom.window.document.querySelector(
+        `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
+      );
+      assert.ok(heldGroup, 'new empty groups start in the holding area');
+
+      const stage = dom.window.document.querySelector('.toolbar-preview-stage');
+      await dragKey(dom, heldGroup, stage, 90, 50, null, stage);
+      assert.ok(
+        dom.window.document.querySelector(
+          `#toolbar-preview [data-toolbar-key="${groupId}"]`
+        ),
+        `${surface} empty group appears on its toolbar after release`
+      );
+      assert.equal(
+        dom.window.document.querySelector(
+          `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
+        ),
+        null,
+        `${surface} group leaves the holding area after placement`
+      );
+      assert.ok(saves.at(-1).order.includes(groupId));
+      assert.ok(!saves.at(-1).holding.includes(groupId));
+    };
+
+    await createAndPlaceGroup('bottom', 'Bottom folder');
+    await createAndPlaceGroup('floating', 'Floating folder');
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+    if (previousRequestAnimationFrame === undefined) delete global.requestAnimationFrame;
+    else global.requestAnimationFrame = previousRequestAnimationFrame;
+  }
+});
+
 test('custom toolbar keys can run searchable actions and be assigned as gesture actions', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const dom = new JSDOM(html, {

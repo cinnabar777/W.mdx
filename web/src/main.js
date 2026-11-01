@@ -29,6 +29,7 @@ import {
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import { installHyphenSelectionWorkaround } from './hyphenSelectionWorkaround.js';
+import { applyMarkdownIndent } from './markdownIndent.js';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { applyAutoHeading } from './autoHeading.js';
 import { toCssFontFamily } from './fontFamilies.js';
@@ -2459,39 +2460,6 @@ function cmWrapSelection(view, before, after = before) {
   view.focus();
 }
 
-function cmIndentSelection(view, spaces = '  ') {
-  if (!view) return;
-  const sel = view.state.selection.main;
-  const startLine = view.state.doc.lineAt(sel.from).number;
-  const endLine = view.state.doc.lineAt(sel.to).number;
-  const changes = [];
-  for (let i = startLine; i <= endLine; i++) {
-    const l = view.state.doc.line(i);
-    changes.push({ from: l.from, to: l.from, insert: spaces });
-  }
-  view.dispatch({ changes });
-  view.focus();
-}
-
-function cmOutdentSelection(view, spaces = '  ') {
-  if (!view) return;
-  const sel = view.state.selection.main;
-  const startLine = view.state.doc.lineAt(sel.from).number;
-  const endLine = view.state.doc.lineAt(sel.to).number;
-  const changes = [];
-  for (let i = startLine; i <= endLine; i++) {
-    const l = view.state.doc.line(i);
-    if (l.text.startsWith(spaces)) {
-      changes.push({ from: l.from, to: l.from + spaces.length, insert: '' });
-    }
-  }
-  if (changes.length > 0) {
-    view.dispatch({ changes });
-  }
-  view.focus();
-}
-
-
 export function isEscapedPipe(text, index) {
   if (text[index] !== '|') return false;
   let backslashes = 0;
@@ -3553,6 +3521,17 @@ export const tableNavigationKeymap = keymap.of([
   }
 ]);
 
+export const markdownIndentKeymap = keymap.of([
+  {
+    key: 'Tab',
+    run: view => applyMarkdownIndent(view, 'indent')
+  },
+  {
+    key: 'Shift-Tab',
+    run: view => applyMarkdownIndent(view, 'outdent')
+  }
+]);
+
 const renderedVerticalGoals = new WeakMap();
 
 function renderedVisualRows(view) {
@@ -4139,6 +4118,7 @@ class CodeMirrorAdapter {
         persistentLayoutField,
         heightMapField,
         tableNavigationKeymap,
+        markdownIndentKeymap,
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
         keymap.of([
@@ -4643,7 +4623,13 @@ function setupGroupedControlBar() {
   const toolbarDefinitions = Object.fromEntries(
     [...toolbarActionRegistry].map(([id, item]) => [
       id,
-      { id, title: item.title, icon: item.icon, kind: 'action' }
+      {
+        id,
+        title: item.title,
+        icon: item.icon,
+        kind: item.kind || 'action',
+        command: item.command
+      }
     ])
   );
   renderBottomToolbarKeys(bar, bottomToolbarConfig, svgIcons, {
@@ -4878,7 +4864,13 @@ function setupFloatingSelectionToolbar() {
   const definitions = Object.fromEntries(
     [...registry].map(([id, item]) => [
       id,
-      { id, title: item.title, icon: item.icon, kind: item.kind || 'action' }
+      {
+        id,
+        title: item.title,
+        icon: item.icon,
+        kind: item.kind || 'action',
+        command: item.command
+      }
     ])
   );
   renderBottomToolbarKeys(bar, floatingToolbarConfig, svgIcons, {
@@ -6269,8 +6261,8 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
     else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
     else if (cmdName === 'todoList') cmToggleLinePrefix(view, '- [ ] ');
-    else if (cmdName === 'indent') cmIndentSelection(view, '  ');
-    else if (cmdName === 'outdent') cmOutdentSelection(view, '  ');
+    else if (cmdName === 'indent') applyMarkdownIndent(view, 'indent', '  ');
+    else if (cmdName === 'outdent') applyMarkdownIndent(view, 'outdent', '  ');
     else if (cmdName === 'horizontalLine') cmWrapSelection(view, '\n---\n', '');
     else if (cmdName === 'InsertFootnote') openFootnoteInsertionDialog();
     else if (cmdName === 'link') openLinkInsertionDialog();

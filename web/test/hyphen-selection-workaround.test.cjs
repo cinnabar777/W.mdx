@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
 test('hyphen handle detection is limited to paragraph-start selections with auto hyphens', async () => {
@@ -90,6 +92,45 @@ test('selection repair restores the original anchor only when it jumped outside 
   dom.window.close();
 });
 
+test('selection handles use the selected endpoint character rather than CodeMirror coordinates', async () => {
+  const { getSelectionEndpointRect } = await import('../src/hyphenSelectionWorkaround.js');
+  const dom = new JSDOM(
+    '<div id="editor-container"><div class="cm-editor"><div class="cm-paragraph">first\u00adhyphen</div></div></div>'
+  );
+  const doc = dom.window.document;
+  const editor = doc.querySelector('.cm-editor');
+  const text = doc.querySelector('.cm-paragraph').firstChild;
+  dom.window.Range.prototype.getClientRects = function getClientRects() {
+    if (this.collapsed || this.startContainer !== text) return [];
+    const left = 30 + this.startOffset * 8;
+    return [{
+      left,
+      right: left + 8,
+      top: 10,
+      bottom: 26,
+      width: 8,
+      height: 16
+    }];
+  };
+  const view = {
+    dom: editor,
+    state: { doc: { length: text.data.length } },
+    domAtPos: position => ({ node: text, offset: position }),
+    coordsAtPos: () => ({ left: 900, bottom: 600 })
+  };
+
+  const start = getSelectionEndpointRect(view, 0, true);
+  const end = getSelectionEndpointRect(view, 5, false);
+  assert.equal(start.left, 30);
+  assert.equal(start.bottom, 26);
+  assert.equal(end.left, 70);
+  assert.match(
+    fs.readFileSync(path.resolve(__dirname, '../src/hyphenSelectionWorkaround.js'), 'utf8'),
+    /getSelectionEndpointRect\(view, anchorPosition/
+  );
+  dom.window.close();
+});
+
 test('Android WebView gets draggable app handles only for the affected selection', async () => {
   const { installHyphenSelectionWorkaround } = await import('../src/hyphenSelectionWorkaround.js');
   const dom = new JSDOM('<div id="editor-container"><div class="cm-editor"><div class="cm-paragraph" style="hyphens: auto">first\u00adhyphen later</div></div></div>', {
@@ -103,7 +144,6 @@ test('Android WebView gets draggable app handles only for the affected selection
   const editor = doc.querySelector('.cm-editor');
   const text = doc.querySelector('.cm-paragraph').firstChild;
   root.getBoundingClientRect = () => ({ left: 0, top: 0 });
-
   const makeSelection = (anchor, head) => ({
     main: {
       anchor,
@@ -116,8 +156,12 @@ test('Android WebView gets draggable app handles only for the affected selection
   const view = {
     dom: editor,
     scrollDOM: editor,
-    state: { selection: makeSelection(0, 0) },
+    state: {
+      selection: makeSelection(0, 0),
+      doc: { length: text.data.length }
+    },
     posAtDOM: (_node, offset) => offset,
+    domAtPos: position => ({ node: text, offset: position }),
     posAtCoords: ({ x }) => Math.round(x),
     coordsAtPos: position => ({ left: position * 10, bottom: 20 }),
     dispatch({ selection }) {

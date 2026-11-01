@@ -322,10 +322,18 @@ function render() {
     definitions.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
   }
   const emptyGroupIds = getEmptyPopupGroupIds();
+  const placedEmptyCustomGroups = new Set(
+    [...emptyGroupIds].filter(id => config.customGroups[id] && config.order.includes(id))
+  );
+  const heldEmptyGroupIds = [...emptyGroupIds]
+    .filter(id => !placedEmptyCustomGroups.has(id));
+  const visibleOrder = config.order.filter(
+    id => !emptyGroupIds.has(id) || placedEmptyCustomGroups.has(id)
+  );
   const toolbarConfig = {
     ...config,
-    order: config.order.filter(id => !emptyGroupIds.has(id)),
-    hidden: [...new Set([...config.hidden, ...emptyGroupIds])]
+    order: visibleOrder,
+    hidden: [...new Set([...config.hidden, ...heldEmptyGroupIds])]
   };
   renderBottomToolbarKeys(toolbar, toolbarConfig, svgIcons, {
     definitions: Object.fromEntries(definitions),
@@ -353,7 +361,8 @@ function render() {
   }
 
   if (config.hidden.length || config.holding.length || emptyGroupIds.size > 0) {
-    const heldToolbarKeys = [...new Set([...config.holding, ...config.hidden, ...emptyGroupIds])]
+    const heldToolbarKeys = [...new Set([...config.holding, ...config.hidden, ...heldEmptyGroupIds])]
+          .filter(id => !visibleOrder.includes(id))
           .filter(id =>
             BOTTOM_TOOLBAR_ITEMS.some(item => item.id === id) ||
             config.customGroups[id] ||
@@ -2156,7 +2165,7 @@ document.querySelector('#toolbar-create-group-type')?.addEventListener('change',
   const title = document.querySelector('#toolbar-create-group-title');
   const isGroup = event.target.value === 'group';
   if (input) input.placeholder = isGroup ? 'Group name' : 'Key name';
-  if (title) title.textContent = isGroup ? 'Create custom group' : 'Create custom key';
+  if (title) title.textContent = isGroup ? 'Create group' : 'Create key';
 });
 
 document.querySelector('#toolbar-create-group-cancel')?.addEventListener('click', () => {

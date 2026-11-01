@@ -176,6 +176,9 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     button.title = title;
     button.setAttribute('aria-label', title);
     button.setAttribute('data-toolbar-kind', definition.kind);
+    if (definition.command) {
+      button.dataset.toolbarCommand = definition.command;
+    }
 
     const style = config.styles[id] || {};
     button.classList.toggle('has-toolbar-swipe-action', hasToolbarSwipeActions(style));

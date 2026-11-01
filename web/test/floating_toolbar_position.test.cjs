@@ -72,6 +72,9 @@ test('floating toolbar has an independent layout and restores Android selection 
   const styles = readWeb('toolbar.css');
 
   assert.match(main, /let floatingToolbarConfig = normalizeBottomToolbarConfig\(null\)/);
+  assert.match(main, /kind: item\.kind \|\| 'action',\s*command: item\.command/);
+  assert.equal((main.match(/command: item\.command/g) || []).length, 2,
+    'both bottom and floating toolbar definitions preserve syntax commands');
   assert.match(main, /applyFloatingToolbarConfig: function\(rawConfig\)/);
   assert.match(main, /updateFloatingSelectionToolbar\(update\.view\)/);
   assert.match(settings, /configsBySurface = \{\s*bottom: config,\s*floating:/);

@@ -85,7 +85,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /config\.customGroups\[id\]/);
   assert.match(settingsSource, /config\.customKeys\[id\]/);
   assert.match(html, /id="toolbar-add-custom"/);
-  assert.match(html, /\+ Custom key or group/);
+  assert.match(html, /\+ Key or group/);
+  assert.doesNotMatch(html, /\+ Custom key or group/);
+  assert.match(html, /Create key or group/);
   assert.match(html, /id="toolbar-create-group-form"/);
   assert.match(html, /id="toolbar-delete-custom-group"/);
   assert.match(html, /id="toolbar-open-icon-picker"/);
