@@ -2737,6 +2737,11 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         key: String
     ) {
         if (key.startsWith("pref_findreplace_")) {
+            if (
+                key == PREF_KEY_BUTTON_ROW1 ||
+                key == PREF_KEY_BUTTON_ROW2 ||
+                key == PREF_KEY_HIDDEN_BUTTONS
+            ) return
             refreshFindReplacePreview(sharedPreferences)
         }
     }
@@ -3104,7 +3109,6 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 .putString(PREF_KEY_HIDDEN_BUTTONS, hidden.joinToString(","))
                 .commit()
             if (!saved) return "save_failed"
-            activity?.runOnUiThread { refreshFindReplacePreview(prefs) }
             return "saved"
         }
     }

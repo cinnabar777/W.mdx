@@ -85,6 +85,18 @@ test('Find & Replace settings preview reuses live panel styles, sizing, and auto
   assert.match(settingsActivity, /\.putString\(PREF_KEY_BUTTON_ROW1[\s\S]*?\.commit\(\)/);
 });
 
+test('Find & Replace row saves do not reload and reset the live preview', () => {
+  assert.match(
+    settingsActivity,
+    /key == PREF_KEY_BUTTON_ROW1 \|\|[\s\S]*?key == PREF_KEY_BUTTON_ROW2 \|\|[\s\S]*?key == PREF_KEY_HIDDEN_BUTTONS/
+  );
+  const saveButtonLayout = settingsActivity.match(
+    /fun saveButtonLayout\(row1Value: String[\s\S]*?\n        }\n    }/
+  );
+  assert.ok(saveButtonLayout, 'Missing Find & Replace layout save bridge');
+  assert.doesNotMatch(saveButtonLayout[0], /refreshFindReplacePreview/);
+});
+
 test('literal search vs regex search pattern logic', () => {
   const literalText = 'cat.dog';
   const literalQuery = 'cat.dog';
