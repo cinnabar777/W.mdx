@@ -268,6 +268,15 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       ),
       'the icon catalog is alphabetized'
     );
+    assert.ok(iconTitles.some(title => title.startsWith('Table: ')));
+    assert.ok(iconTitles.includes('Callout: Warning'));
+    assert.ok(iconTitles.includes('Find & Replace: Find Previous'));
+    assert.ok(iconTitles.includes('Audio: Play'));
+    assert.ok(iconTitles.includes('TOC Settings'));
+    assert.ok(
+      html.includes('href="./icon-picker.css"'),
+      'toolbar picker styles come from the shared stylesheet'
+    );
     assert.equal(
       picker.querySelector('#toolbar-icon-search').parentElement,
       picker.querySelector('.toolbar-preview-icon-picker-dialog')

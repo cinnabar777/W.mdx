@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="./findreplace.css">
+  <link rel="stylesheet" href="./icon-picker.css">
   <style>
     * {
       box-sizing: border-box;
@@ -88,20 +89,20 @@
         <span id="search-counter" class="search-counter">1/12</span>
         <span id="search-error-msg" class="search-error-msg hidden"></span>
         <div id="findreplace-row1" class="search-icon-group">
-          <button id="search-btn-prev" class="search-icon-btn" data-button-id="prev" data-category="category_btn_prev" title="Find Previous" aria-label="Find Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></button>
-          <button id="search-btn-next" class="search-icon-btn" data-button-id="next" data-category="category_btn_next" title="Find Next" aria-label="Find Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-          <button id="search-btn-highlight" class="search-icon-btn active" data-button-id="highlight" data-category="category_btn_highlight" title="Highlight All Instances" aria-label="Highlight All Instances"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg></button>
-          <button id="search-btn-regex" class="search-icon-btn" data-button-id="regex" data-category="category_btn_regex" title="Regular Expression" aria-label="Regular Expression"><svg viewBox="0 0 24 24" fill="currentColor"><text x="12" y="16" text-anchor="middle" font-size="14" font-weight="bold" font-family="monospace">.*</text></svg></button>
-          <button id="search-btn-close" class="search-icon-btn" data-button-id="close" data-category="category_btn_close" title="Close Search" aria-label="Close Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          <button id="search-btn-prev" class="search-icon-btn" data-button-id="prev" data-icon-key="findPrevious" data-category="category_btn_prev" title="Find Previous" aria-label="Find Previous"></button>
+          <button id="search-btn-next" class="search-icon-btn" data-button-id="next" data-icon-key="findNext" data-category="category_btn_next" title="Find Next" aria-label="Find Next"></button>
+          <button id="search-btn-highlight" class="search-icon-btn active" data-button-id="highlight" data-icon-key="findHighlight" data-category="category_btn_highlight" title="Highlight All Instances" aria-label="Highlight All Instances"></button>
+          <button id="search-btn-regex" class="search-icon-btn" data-button-id="regex" data-icon-key="findRegex" data-category="category_btn_regex" title="Regular Expression" aria-label="Regular Expression"></button>
+          <button id="search-btn-close" class="search-icon-btn" data-button-id="close" data-icon-key="findClose" data-category="category_btn_close" title="Close Search" aria-label="Close Search"></button>
         </div>
       </div>
       <div id="search-replace-row" class="search-bar-row replace-row">
         <input id="replace-input" class="search-input" type="text" placeholder="Replace..." readonly aria-label="Replace field settings">
         <div id="findreplace-row2" class="search-icon-group">
-          <button id="search-btn-replace-one" class="search-icon-btn" data-button-id="replace-one" data-category="category_btn_replace_one" title="Replace One" aria-label="Replace One"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="13 18 19 12 13 6"/></svg></button>
-          <button id="search-btn-replace-all" class="search-icon-btn" data-button-id="replace-all" data-category="category_btn_replace_all" title="Replace All" aria-label="Replace All"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h12"/><polyline points="11 11 15 7 11 3"/><path d="M3 17h18"/><polyline points="17 21 21 17 17 13"/></svg></button>
-          <button id="search-btn-case" class="search-icon-btn" data-button-id="case" data-category="category_btn_case" title="Match Case" aria-label="Match Case"><svg viewBox="0 0 24 24" fill="currentColor"><text x="12" y="17" text-anchor="middle" font-size="15" font-weight="bold">Aa</text></svg></button>
-          <button id="search-btn-word" class="search-icon-btn" data-button-id="word" data-category="category_btn_word" title="Match Whole Word" aria-label="Match Whole Word"><svg viewBox="0 0 24 24" fill="currentColor"><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="bold">\b</text></svg></button>
+          <button id="search-btn-replace-one" class="search-icon-btn" data-button-id="replace-one" data-icon-key="replaceOne" data-category="category_btn_replace_one" title="Replace One" aria-label="Replace One"></button>
+          <button id="search-btn-replace-all" class="search-icon-btn" data-button-id="replace-all" data-icon-key="replaceAll" data-category="category_btn_replace_all" title="Replace All" aria-label="Replace All"></button>
+          <button id="search-btn-case" class="search-icon-btn" data-button-id="case" data-icon-key="matchCase" data-category="category_btn_case" title="Match Case" aria-label="Match Case"></button>
+          <button id="search-btn-word" class="search-icon-btn" data-button-id="word" data-icon-key="wholeWord" data-category="category_btn_word" title="Match Whole Word" aria-label="Match Whole Word"></button>
         </div>
       </div>
     </div>
@@ -109,6 +110,21 @@
       <div class="findreplace-preview-hidden-label">Hidden buttons — drag here to remove; tap to restore</div>
       <div id="findreplace-hidden-buttons" class="findreplace-preview-hidden-buttons"></div>
     </div>
+  </div>
+  <div id="findreplace-icon-picker-modal" class="toolbar-preview-icon-picker-modal" hidden aria-hidden="true">
+    <section class="toolbar-preview-icon-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="findreplace-icon-picker-title">
+      <header class="toolbar-preview-icon-picker-header">
+        <h2 id="findreplace-icon-picker-title">Choose icon</h2>
+        <button id="findreplace-icon-picker-close" class="toolbar-preview-icon-picker-close" type="button" aria-label="Close icon picker">×</button>
+      </header>
+      <input id="findreplace-icon-search" class="toolbar-preview-icon-search" type="search" placeholder="Search available icons…" aria-label="Search app icons">
+      <div class="toolbar-preview-icon-actions">
+        <button id="findreplace-paste-svg" type="button">Paste SVG</button>
+        <button id="findreplace-choose-svg" type="button">Choose SVG file</button>
+      </div>
+      <div class="toolbar-preview-section-label">Available icons</div>
+      <div id="findreplace-icon-list" class="toolbar-preview-icon-list" role="listbox" aria-label="Available app icons"></div>
+    </section>
   </div>
   <script src="./findreplace-settings.js"></script>
 </body>

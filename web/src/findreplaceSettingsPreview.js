@@ -1,3 +1,6 @@
+import { renderIconChoices } from './appIconCatalog.js';
+import { findReplaceIcons } from './findReplaceIcons.js';
+
 const DEFAULT_ROW1 = ['prev', 'next', 'highlight', 'regex', 'close'];
 const DEFAULT_ROW2 = ['replace-one', 'replace-all', 'case', 'word'];
 const BUTTON_IDS = [...DEFAULT_ROW1, ...DEFAULT_ROW2];
@@ -28,6 +31,9 @@ const rowElements = {
   row1: document.querySelector('#findreplace-row1'),
   row2: document.querySelector('#findreplace-row2')
 };
+const iconPickerModal = document.querySelector('#findreplace-icon-picker-modal');
+const iconPickerSearch = document.querySelector('#findreplace-icon-search');
+let activeIconButtonId = null;
 const state = {
   row1: [...DEFAULT_ROW1],
   row2: [...DEFAULT_ROW2],
@@ -91,6 +97,16 @@ function normalizeRows(rawRow1, rawRow2, hiddenValues) {
 
 function applyStyles(prefs) {
   const root = document.documentElement;
+  const isLightTheme = prefs.pref_app_theme === 'light';
+  document.body.classList.toggle('light-theme', isLightTheme);
+  root.style.setProperty(
+    '--toolbar-preview-surface',
+    colorValue(prefs.pref_findreplace_panel_bg, isLightTheme ? '#ffffff' : '#000000')
+  );
+  root.style.setProperty(
+    '--toolbar-preview-text',
+    isLightTheme ? '#111111' : '#ffffff'
+  );
   setColorVariable('--findreplace-panel-bg', prefs.pref_findreplace_panel_bg, '#121212');
   setColorVariable('--findreplace-panel-border', prefs.pref_findreplace_panel_border, '#282828');
   setColorVariable('--findreplace-field-find-bg', prefs.pref_findreplace_field_find_bg, '#1e1e1e');
@@ -196,6 +212,70 @@ function sanitizeSvg(svg) {
   ) return null;
   return trimmed;
 }
+
+function renderIconCatalog() {
+  const list = document.querySelector('#findreplace-icon-list');
+  if (!list || !iconPickerSearch) return;
+  const activeButton = buttonElements.get(activeIconButtonId);
+  renderIconChoices(list, {
+    query: iconPickerSearch.value,
+    selectedMarkup: activeButton?.innerHTML || '',
+    sanitizeMarkup: sanitizeSvg,
+    onSelect: choice => {
+      const bridge = window.FindReplaceSettings;
+      if (!activeIconButtonId || typeof bridge?.saveButtonIcon !== 'function') return;
+      const result = bridge.saveButtonIcon(activeIconButtonId, choice.markup);
+      if (result !== 'saved') return;
+      const safeMarkup = sanitizeSvg(choice.markup);
+      if (activeButton && safeMarkup) activeButton.innerHTML = safeMarkup;
+      setIconPickerOpen(false);
+    }
+  });
+}
+
+function setIconPickerOpen(open) {
+  if (!iconPickerModal) return;
+  iconPickerModal.hidden = !open;
+  iconPickerModal.setAttribute('aria-hidden', String(!open));
+  if (open && iconPickerSearch) {
+    iconPickerSearch.value = '';
+    renderIconCatalog();
+  }
+  window.FindReplaceSettings?.setIconPickerExpanded?.(open);
+}
+
+function startNativeIconEdit(action) {
+  const buttonId = activeIconButtonId;
+  if (!buttonId) return;
+  setIconPickerOpen(false);
+  window.FindReplaceSettings?.editButtonIcon?.(buttonId, action);
+}
+
+window.openFindReplaceIconPicker = buttonId => {
+  if (!buttonElements.has(buttonId)) return false;
+  activeIconButtonId = buttonId;
+  setIconPickerOpen(true);
+  return true;
+};
+
+document.querySelector('#findreplace-icon-picker-close')?.addEventListener('click', () => {
+  setIconPickerOpen(false);
+});
+iconPickerModal?.addEventListener('click', event => {
+  if (event.target === iconPickerModal) setIconPickerOpen(false);
+});
+iconPickerSearch?.addEventListener('input', renderIconCatalog);
+document.querySelector('#findreplace-paste-svg')?.addEventListener('click', () => {
+  startNativeIconEdit('paste');
+});
+document.querySelector('#findreplace-choose-svg')?.addEventListener('click', () => {
+  startNativeIconEdit('file');
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && iconPickerModal && !iconPickerModal.hidden) {
+    setIconPickerOpen(false);
+  }
+});
 
 function mergeVisibleOrder(original, visibleOrder) {
   let index = 0;
@@ -361,7 +441,12 @@ function finishPointerDrag(button, moved) {
 }
 
 for (const button of buttonElements.values()) {
-  button.dataset.defaultSvg = button.innerHTML;
+  const defaultSvg = findReplaceIcons[button.dataset.iconKey];
+  if (typeof defaultSvg !== 'string') {
+    throw new Error(`No default icon is registered for ${button.dataset.buttonId}.`);
+  }
+  button.innerHTML = defaultSvg;
+  button.dataset.defaultSvg = defaultSvg;
   button.addEventListener('click', event => {
     if (state.dragging || Date.now() < suppressClickUntil) {
       event.preventDefault();

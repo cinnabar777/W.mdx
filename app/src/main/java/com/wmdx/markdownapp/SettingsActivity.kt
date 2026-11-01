@@ -2599,7 +2599,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         val key = preference.key
         if (key != null && key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg")) {
-            showSvgSourceChooser(key)
+            openFindReplaceIconPicker(key)
             return true
         }
         return super.onPreferenceTreeClick(preference)
@@ -2608,10 +2608,30 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     override fun onDisplayPreferenceDialog(preference: Preference) {
         val key = preference.key
         if (key != null && key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg")) {
-            showSvgSourceChooser(key)
+            openFindReplaceIconPicker(key)
             return
         }
         super.onDisplayPreferenceDialog(preference)
+    }
+
+    private fun openFindReplaceIconPicker(key: String) {
+        targetSvgPrefKey = key
+        val buttonId = buttonPreferenceSuffix.entries
+            .firstOrNull { (_, suffix) -> key == "pref_findreplace_btn_${suffix}_svg" }
+            ?.key
+        val preview = findReplacePreviewWebView
+        if (buttonId == null || preview == null) {
+            showSvgSourceChooser(key)
+            return
+        }
+        setFindReplacePreviewExpanded(true)
+        preview.post {
+            val encodedButtonId = org.json.JSONObject.quote(buttonId)
+            preview.evaluateJavascript(
+                "window.openFindReplaceIconPicker && window.openFindReplaceIconPicker($encodedButtonId);",
+                null
+            )
+        }
     }
 
     private fun showSvgSourceChooser(key: String) {
@@ -2976,7 +2996,27 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 }
             }
         }
+        payload.put("pref_app_theme", prefs.getString("pref_app_theme", "amoled"))
         return payload.toString()
+    }
+
+    private fun setFindReplacePreviewExpanded(expanded: Boolean) {
+        val preview = findReplacePreviewWebView ?: return
+        val ctx = context ?: return
+        val density = ctx.resources.displayMetrics.density
+        val rootHeight = preview.rootView.height
+            .takeIf { it > 0 }
+            ?: ctx.resources.displayMetrics.heightPixels
+        val height = if (expanded) {
+            (rootHeight * 0.82f).toInt().coerceAtLeast((248 * density).toInt())
+        } else {
+            (248 * density).toInt()
+        }
+        val params = preview.layoutParams ?: return
+        if (params.height == height) return
+        params.height = height
+        preview.layoutParams = params
+        preview.requestLayout()
     }
 
     private fun setupFindReplaceWebPreview(fragmentRootView: android.view.View): Boolean {
@@ -3071,6 +3111,50 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     }
 
     inner class FindReplacePreviewBridge {
+        @android.webkit.JavascriptInterface
+        fun setIconPickerExpanded(expanded: Boolean) {
+            activity?.runOnUiThread {
+                setFindReplacePreviewExpanded(expanded)
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun editButtonIcon(buttonId: String, action: String): String {
+            val suffix = buttonPreferenceSuffix[buttonId] ?: return "invalid_button"
+            val key = "pref_findreplace_btn_${suffix}_svg"
+            targetSvgPrefKey = key
+            if (action != "paste" && action != "file") return "invalid_action"
+            activity?.runOnUiThread {
+                if (action == "paste") {
+                    showPasteSvgDialog(key)
+                } else {
+                    pickSvgLauncher.launch(arrayOf("image/svg+xml", "text/xml", "application/xml", "*/*"))
+                }
+            } ?: return "no_activity"
+            return "opened"
+        }
+
+        @android.webkit.JavascriptInterface
+        fun saveButtonIcon(buttonId: String, svg: String): String {
+            val suffix = buttonPreferenceSuffix[buttonId] ?: return "invalid_button"
+            if (svg.toByteArray(Charsets.UTF_8).size > 64 * 1024) return "too_large"
+            if (!isValidAndSafeSvg(svg)) return "invalid_svg"
+            try {
+                com.caverock.androidsvg.SVG.getFromString(svg)
+            } catch (_: Exception) {
+                return "invalid_svg"
+            }
+            val ctx = context ?: return "no_context"
+            val key = "pref_findreplace_btn_${suffix}_svg"
+            val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
+            if (!prefs.edit().putString(key, svg).commit()) return "save_failed"
+            activity?.runOnUiThread {
+                findPreference<Preference>(key)?.summary = "Built-in app icon selected"
+                refreshFindReplacePreview(prefs)
+            }
+            return "saved"
+        }
+
         @android.webkit.JavascriptInterface
         fun selectCategory(key: String) {
             val validCategories = setOf(

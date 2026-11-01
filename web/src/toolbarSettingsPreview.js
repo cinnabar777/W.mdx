@@ -16,6 +16,8 @@ import {
   getToolbarGestureIndicatorEntries
 } from './toolbarGestures.js';
 import { svgIcons } from './toolbarIcons.js';
+import { calloutTypeIcons } from './calloutIcons.js';
+import { renderIconChoices } from './appIconCatalog.js';
 import {
   renderBottomToolbarKeys,
   sanitizeToolbarSvg,
@@ -107,8 +109,8 @@ function observeEmbeddedEditorSize() {
   });
 }
 
-const calloutIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
-const RESET_ICON_MARKUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>';
+const calloutIcon = calloutTypeIcons.info;
+const RESET_ICON_MARKUP = svgIcons.reset;
 const TOOLBAR_TOGGLE_ITEM = {
   id: TOOLBAR_TOGGLE_STYLE_ID,
   title: 'Toolbar toggle',
@@ -1055,80 +1057,34 @@ function resetGestureAction(gestureId) {
   saveConfig();
 }
 
-function iconTitle(name) {
-  if (PREVIEW_ICON_TITLES.has(name)) return PREVIEW_ICON_TITLES.get(name);
-  return name
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[-_]/g, ' ')
-    .replace(/\b\w/g, letter => letter.toUpperCase());
-}
-
 function renderIconCatalog() {
   const list = document.querySelector('#toolbar-icon-list');
   const search = document.querySelector('#toolbar-icon-search');
   if (!list || !search) return;
-  const query = search.value.trim().toLowerCase();
   const style = config.styles[selectedKey] || {};
   const selectedSvg = iconPickerTarget === 'gesture-action'
     ? style.gestureActionIcons?.[selectedGestureId] === NO_GESTURE_ICON
       ? NO_GESTURE_ICON
       : getAssignedGestureIconMarkup(style, selectedGestureId)
     : style.customSvg;
-  list.replaceChildren();
-  const initialChoiceCount = list.children.length;
-  const showNoIconChoice =
-    iconPickerTarget === 'gesture-action' &&
-    (!query || ['no icon', 'none'].some(label => label.includes(query)));
-  if (showNoIconChoice) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'toolbar-preview-icon-choice toolbar-preview-no-icon-choice';
-    button.setAttribute('role', 'option');
-    button.setAttribute('aria-label', 'No icon');
-    button.setAttribute('aria-pressed', String(selectedSvg === NO_GESTURE_ICON));
-    button.innerHTML =
-      '<span class="toolbar-preview-no-icon-mark" aria-hidden="true">∅</span><span>No icon</span>';
-    button.addEventListener('pointerdown', event => event.preventDefault());
-    button.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
+  renderIconChoices(list, {
+    query: search.value,
+    selectedMarkup: selectedSvg,
+    titleOverrides: PREVIEW_ICON_TITLES,
+    sanitizeMarkup: markup => sanitizeToolbarSvg(markup, false, document),
+    noIconOption: iconPickerTarget === 'gesture-action',
+    noIconSelected: selectedSvg === NO_GESTURE_ICON,
+    onNoIcon: () => {
       if (!selectedKey || !selectedGestureId) return;
-      const style = config.styles[selectedKey] || {};
-      style.gestureActionIcons = style.gestureActionIcons || {};
-      style.gestureActionIcons[selectedGestureId] = NO_GESTURE_ICON;
-      config.styles[selectedKey] = style;
+      const gestureStyle = config.styles[selectedKey] || {};
+      gestureStyle.gestureActionIcons = gestureStyle.gestureActionIcons || {};
+      gestureStyle.gestureActionIcons[selectedGestureId] = NO_GESTURE_ICON;
+      config.styles[selectedKey] = gestureStyle;
       setIconPickerOpen(false);
       render();
       saveConfig();
-    });
-    list.appendChild(button);
-  }
-  const icons = Object.entries(svgIcons)
-    .map(([name, value]) => [
-      name,
-      typeof value === 'function' ? value('#00e5ff') : value,
-      iconTitle(name)
-    ])
-    .filter(([name, , title]) => `${name} ${title}`.toLowerCase().includes(query))
-    .sort(([nameA, , titleA], [nameB, , titleB]) =>
-      titleA.localeCompare(titleB, undefined, { sensitivity: 'base', numeric: true }) ||
-      nameA.localeCompare(nameB, undefined, { sensitivity: 'base', numeric: true })
-    );
-
-  for (const [name, markup, title] of icons) {
-    if (typeof markup !== 'string' || !markup.includes('<svg')) continue;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'toolbar-preview-icon-choice';
-    button.setAttribute('role', 'option');
-    button.setAttribute('aria-label', title);
-    button.setAttribute('aria-pressed', String(selectedSvg === markup));
-    button.title = title;
-    button.innerHTML = `${sanitizeToolbarSvg(markup, false, document)}<span>${title}</span>`;
-    button.addEventListener('pointerdown', event => event.preventDefault());
-    button.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
+    },
+    onSelect: ({ markup }) => {
       if (!selectedKey) return;
       const style = config.styles[selectedKey] || {};
       if (iconPickerTarget === 'gesture-action') {
@@ -1142,15 +1098,8 @@ function renderIconCatalog() {
       setIconPickerOpen(false);
       render();
       saveConfig();
-    });
-    list.appendChild(button);
-  }
-  if (list.children.length === initialChoiceCount) {
-    const empty = document.createElement('span');
-    empty.className = 'toolbar-preview-icon-empty';
-    empty.textContent = 'No matching icons';
-    list.appendChild(empty);
-  }
+    }
+  });
 }
 
 function renderActionCatalog() {
@@ -2098,7 +2047,7 @@ document.querySelector('#toolbar-active-background-color')?.addEventListener('cl
   openColorPicker('activeBackgroundColor');
 });
 document.querySelectorAll('.toolbar-preview-reset-color').forEach(button => {
-  button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>';
+  button.innerHTML = svgIcons.reset;
   button.addEventListener('click', event => {
     event.preventDefault();
     event.stopPropagation();
