@@ -507,6 +507,14 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
   assert.match(androidSource, /isToolbarStyleAllowed/);
   assert.match(androidSource, /custom-group-\[a-z0-9-\]/);
   assert.match(androidSource, /sanitizeToolbarGroupCycles\(popupGroups, groupIds\)/);
+  assert.match(androidSource, /val deletedGroups = mutableListOf<String>\(\)/);
+  assert.match(androidSource, /id in TOOLBAR_GROUP_ITEM_IDS && id !in deletedGroups/);
+  assert.match(androidSource, /TOOLBAR_ITEM_IDS\.filterNot \{ it in deletedGroups \}/);
+  assert.match(androidSource, /groupId !in order/);
+  assert.match(
+    androidSource,
+    /\.put\("deletedGroups", org\.json\.JSONArray\(deletedGroups\)\)/
+  );
   assert.match(androidSource, /id in validKeyIds && id !in assignedActions/);
   assert.match(androidSource, /input\.optInt\("version", 1\) >= 3/);
   assert.match(androidSource, /\.put\("version", 4\)/);

@@ -87,6 +87,7 @@ export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
   holding: BUILT_IN_HOLDING_ITEM_IDS,
+  deletedGroups: [],
   customGroups: {},
   customKeys: {},
   styles: {}
@@ -166,6 +167,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       hidden: [],
       popupGroups: createDefaultPopupGroups(),
       holding: [...BUILT_IN_HOLDING_ITEM_IDS],
+      deletedGroups: [],
       customGroups: {},
       customKeys: {},
       styles: {}
@@ -174,6 +176,11 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   const parsedVersion = Number.isFinite(Number(parsed.version))
     ? Number(parsed.version)
     : 0;
+  const deletedGroups = normalizeUniqueIds(
+    parsed.deletedGroups,
+    new Set(Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS))
+  );
+  const deletedGroupIds = new Set(deletedGroups);
 
   const customGroups = {};
   if (parsed.customGroups && typeof parsed.customGroups === 'object' &&
@@ -218,13 +225,14 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   }
 
   const rootIds = [
-    ...BOTTOM_TOOLBAR_ITEM_IDS,
+    ...BOTTOM_TOOLBAR_ITEM_IDS.filter(id => !deletedGroupIds.has(id)),
     ...BUILT_IN_HOLDING_ITEM_IDS,
     ...Object.keys(customGroups),
     ...Object.keys(customKeys)
   ];
   const groupIds = new Set([
-    ...Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS),
+    ...Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS)
+      .filter(id => !deletedGroupIds.has(id)),
     ...Object.keys(customGroups)
   ]);
   const keyIds = new Set([...rootIds, ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS]);
@@ -248,7 +256,8 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     .filter(id => !legacyHidden.includes(id));
   const popupGroups = {};
   for (const id of new Set([
-    ...Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS),
+    ...Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS)
+      .filter(groupId => !deletedGroupIds.has(groupId)),
     ...Object.keys(customGroups)
   ])) {
     popupGroups[id] = { order: [], hidden: [] };
@@ -292,7 +301,8 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   if (
     parsedVersion > 0 &&
     parsedVersion < DEFAULT_BOTTOM_TOOLBAR_CONFIG.version &&
-    Array.isArray(rawPopupGroups.format?.order)
+    Array.isArray(rawPopupGroups.format?.order) &&
+    popupGroups.format
   ) {
     const formatOrder = popupGroups.format.order;
     const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
@@ -308,7 +318,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     parsedVersion > 0 &&
     parsedVersion < DEFAULT_BOTTOM_TOOLBAR_CONFIG.version &&
     Array.isArray(rawPopupGroups.heading?.order) &&
-    popupGroups.heading.order.length > 0
+    popupGroups.heading?.order.length > 0
   ) {
     const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
     if (
@@ -324,6 +334,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
     for (const [groupId, actionId] of [['insert', 'audio'], ['menu', 'saveAsMdzip']]) {
       if (
+        popupGroups[groupId] &&
         !assignedActions.has(actionId) &&
         !legacyHeldKeys.includes(actionId) &&
         !legacyHidden.includes(actionId)
@@ -337,6 +348,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   if (parsedVersion > 0 && parsedVersion < 8) {
     const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
     if (
+      popupGroups.insert &&
       !assignedActions.has('video') &&
       !legacyHeldKeys.includes('video') &&
       !legacyHidden.includes('video')
@@ -412,19 +424,24 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   }
   order = order.filter(id => !holding.includes(id) && !assignedKeys.has(id));
   if (order.length === 0) {
-    for (const group of Object.values(popupGroups)) {
-      group.order = group.order.filter(id => id !== 'menu');
+    const fallbackId = deletedGroupIds.has('menu')
+      ? BOTTOM_TOOLBAR_ITEM_IDS.find(id => !deletedGroupIds.has(id))
+      : 'menu';
+    if (fallbackId) {
+      for (const group of Object.values(popupGroups)) {
+        group.order = group.order.filter(id => id !== fallbackId);
+      }
+      assignedKeys.delete(fallbackId);
+      holding = holding.filter(id => id !== fallbackId);
+      order.push(fallbackId);
     }
-    assignedKeys.delete('menu');
-    holding = holding.filter(id => id !== 'menu');
-    order.push('menu');
   }
   const hidden = holding.filter(id => rootIds.includes(id));
 
   const styles = {};
   if (parsed.styles && typeof parsed.styles === 'object' && !Array.isArray(parsed.styles)) {
     const allowedStyleIds = new Set([
-      ...BOTTOM_TOOLBAR_STYLE_IDS,
+      ...BOTTOM_TOOLBAR_STYLE_IDS.filter(id => !deletedGroupIds.has(id)),
       TOOLBAR_TOGGLE_STYLE_ID,
       ...Object.keys(customGroups),
       ...Object.keys(customKeys)
@@ -501,7 +518,17 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     }
   }
 
-  return { version: 4, order, hidden, popupGroups, holding, customGroups, customKeys, styles };
+  return {
+    version: 4,
+    order,
+    hidden,
+    popupGroups,
+    holding,
+    deletedGroups,
+    customGroups,
+    customKeys,
+    styles
+  };
 }
 
 function hasGroupPath(groupChildren, start, target, visited = new Set()) {

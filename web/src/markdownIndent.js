@@ -1,5 +1,67 @@
 const ROOT_LIST_MARKER = /^([-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/;
 
+function leadingWhitespace(lineText) {
+  return /^[ \t]*/.exec(lineText)[0];
+}
+
+function indentationWidth(value) {
+  let width = 0;
+  for (const character of value) {
+    width = character === '\t' ? width + (4 - (width % 4)) : width + 1;
+  }
+  return width;
+}
+
+function listItemInfo(lineText) {
+  const indent = leadingWhitespace(lineText);
+  const marker = ROOT_LIST_MARKER.exec(lineText.slice(indent.length));
+  if (!marker) return null;
+  return {
+    indent,
+    indentWidth: indentationWidth(indent),
+    markerWidth: indentationWidth(marker[0])
+  };
+}
+
+function findPreviousListSibling(doc, lineNumber, currentInfo) {
+  for (let number = lineNumber - 1; number >= 1; number -= 1) {
+    const previousLine = doc.line(number);
+    if (!previousLine.text.trim()) return null;
+    const previousInfo = listItemInfo(previousLine.text);
+    if (!previousInfo) return null;
+    if (previousInfo.indentWidth === currentInfo.indentWidth) return previousInfo;
+    if (previousInfo.indentWidth < currentInfo.indentWidth) return null;
+  }
+  return null;
+}
+
+function getOutdentWidth(doc, lineNumber, currentInfo, spaces) {
+  for (let number = lineNumber - 1; number >= 1; number -= 1) {
+    const previousLine = doc.line(number);
+    if (!previousLine.text.trim()) break;
+    const previousInfo = listItemInfo(previousLine.text);
+    if (!previousInfo) break;
+    if (previousInfo.indentWidth < currentInfo.indentWidth) {
+      return previousInfo.markerWidth;
+    }
+  }
+  return indentationWidth(spaces);
+}
+
+function leadingWhitespaceLengthForWidth(whitespace, width) {
+  let columns = 0;
+  let length = 0;
+  for (const character of whitespace) {
+    const nextColumns = character === '\t'
+      ? columns + (4 - (columns % 4))
+      : columns + 1;
+    columns = nextColumns;
+    length += 1;
+    if (columns >= width) break;
+  }
+  return length;
+}
+
 function selectedLineNumbers(doc, selection) {
   const first = doc.lineAt(selection.from).number;
   let last = doc.lineAt(selection.to).number;
@@ -17,18 +79,50 @@ export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  
 
   const changes = [];
   const { first, last } = selectedLineNumbers(doc, selection);
+  const selectedLines = [];
   for (let number = first; number <= last; number += 1) {
-    const line = doc.line(number);
+    selectedLines.push({ number, line: doc.line(number) });
+  }
+
+  const nonBlankLines = selectedLines.filter(({ line }) => line.text.trim());
+  const selectedListLines = nonBlankLines.map(({ number, line }) => ({
+    number,
+    line,
+    info: listItemInfo(line.text)
+  }));
+  const isListBlock =
+    selectedListLines.length > 0 &&
+    selectedListLines.every(({ info }) => info !== null);
+
+  if (direction === 'indent' && isListBlock) {
+    const firstListLine = selectedListLines[0];
+    const parent = findPreviousListSibling(doc, firstListLine.number, firstListLine.info);
+    if (!parent) return changes;
+
+    const indentBy = parent.markerWidth;
+    for (const { line } of selectedLines) {
+      changes.push({ from: line.from, to: line.from, insert: ' '.repeat(indentBy) });
+    }
+    return changes;
+  }
+
+  for (const { number, line } of selectedLines) {
     if (direction === 'indent') {
       changes.push({ from: line.from, to: line.from, insert: spaces });
       continue;
     }
 
+    const currentInfo = listItemInfo(line.text);
     const leadingWhitespace = /^[ \t]*/.exec(line.text)[0];
     if (leadingWhitespace) {
-      const removeLength = leadingWhitespace.startsWith('\t')
-        ? 1
-        : Math.min(spaces.length, leadingWhitespace.length);
+      const removeWidth = currentInfo
+        ? getOutdentWidth(doc, number, currentInfo, spaces)
+        : indentationWidth(spaces);
+      const removeLength = leadingWhitespaceLengthForWidth(
+        leadingWhitespace,
+        removeWidth
+      );
+      if (removeLength === 0) continue;
       changes.push({
         from: line.from,
         to: line.from + removeLength,

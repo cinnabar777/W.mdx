@@ -322,13 +322,13 @@ function render() {
     definitions.set(id, { id, title: key.title, icon: key.icon, kind: 'action' });
   }
   const emptyGroupIds = getEmptyPopupGroupIds();
-  const placedEmptyCustomGroups = new Set(
-    [...emptyGroupIds].filter(id => config.customGroups[id] && config.order.includes(id))
+  const placedEmptyGroups = new Set(
+    [...emptyGroupIds].filter(id => config.order.includes(id))
   );
   const heldEmptyGroupIds = [...emptyGroupIds]
-    .filter(id => !placedEmptyCustomGroups.has(id));
+    .filter(id => !placedEmptyGroups.has(id));
   const visibleOrder = config.order.filter(
-    id => !emptyGroupIds.has(id) || placedEmptyCustomGroups.has(id)
+    id => !emptyGroupIds.has(id) || placedEmptyGroups.has(id)
   );
   const toolbarConfig = {
     ...config,
@@ -453,6 +453,7 @@ function applyToolbarSurfaceConfig(surface, rawConfig) {
       hidden: currentConfig.hidden,
       popupGroups: currentConfig.popupGroups,
       holding: currentConfig.holding,
+      deletedGroups: currentConfig.deletedGroups,
       customGroups: currentConfig.customGroups,
       customKeys: currentConfig.customKeys
     };
@@ -678,6 +679,7 @@ function layoutSignature(value) {
     hidden: value.hidden,
     popupGroups: value.popupGroups,
     holding: value.holding,
+    deletedGroups: value.deletedGroups,
     customGroups: value.customGroups,
     customKeys: value.customKeys
   });
@@ -879,13 +881,21 @@ function refreshSelectedKeyEditor() {
   const deleteGroupButton = document.querySelector('#toolbar-delete-custom-group');
   if (deleteGroupButton) {
     const isCustomGroup = Boolean(config.customGroups[selectedKey]);
+    const isBuiltInGroup = Boolean(
+      config.popupGroups[selectedKey] && !config.customGroups[selectedKey]
+    );
     const isCustomKey = Boolean(config.customKeys?.[selectedKey]);
-    deleteGroupButton.hidden = !isCustomGroup && !isCustomKey;
+    deleteGroupButton.hidden = !isCustomGroup && !isBuiltInGroup && !isCustomKey;
+    const deleteLabel = isCustomGroup
+      ? 'Delete custom group'
+      : isBuiltInGroup
+        ? 'Delete group'
+        : 'Delete custom key';
     deleteGroupButton.setAttribute(
       'aria-label',
-      isCustomGroup ? 'Delete custom group' : 'Delete custom key'
+      deleteLabel
     );
-    deleteGroupButton.title = isCustomGroup ? 'Delete custom group' : 'Delete custom key';
+    deleteGroupButton.title = deleteLabel;
   }
   const addCustomButton = document.querySelector('#toolbar-add-custom');
   if (addCustomButton) addCustomButton.disabled = false;
@@ -2269,18 +2279,26 @@ document.querySelector('#toolbar-preview-title-input')?.addEventListener('keydow
 
 document.querySelector('#toolbar-delete-custom-group')?.addEventListener('click', () => {
   const id = selectedKey;
-  if (!id || (!config.customGroups[id] && !config.customKeys?.[id])) return;
-  if (config.customGroups[id]) {
+  const isBuiltInGroup = Boolean(config.popupGroups[id] && !config.customGroups[id]);
+  if (
+    !id ||
+    (!config.customGroups[id] && !config.customKeys?.[id] && !isBuiltInGroup)
+  ) return;
+  if (config.customGroups[id] || isBuiltInGroup) {
     const group = config.popupGroups[id];
     if (group) config.holding = [...new Set([...config.holding, ...group.order])];
-    delete config.customGroups[id];
+    if (config.customGroups[id]) {
+      delete config.customGroups[id];
+    } else {
+      config.deletedGroups = [...new Set([...config.deletedGroups, id])];
+    }
     delete config.popupGroups[id];
   } else {
-    for (const popupGroup of Object.values(config.popupGroups)) {
-      popupGroup.order = popupGroup.order.filter(key => key !== id);
-      popupGroup.hidden = popupGroup.hidden.filter(key => key !== id);
-    }
     delete config.customKeys[id];
+  }
+  for (const popupGroup of Object.values(config.popupGroups)) {
+    popupGroup.order = popupGroup.order.filter(key => key !== id);
+    popupGroup.hidden = popupGroup.hidden.filter(key => key !== id);
   }
   delete config.styles[id];
   config.order = config.order.filter(key => key !== id);

@@ -4180,10 +4180,7 @@ class CodeMirrorAdapter {
       scrollTo: modeSnapshot?.scroll
     });
     if (this.mode === 'wysiwyg') {
-      this.hyphenSelectionWorkaround = installHyphenSelectionWorkaround(
-        this.view,
-        EditorSelection
-      );
+      this.hyphenSelectionWorkaround = installHyphenSelectionWorkaround(this.view);
     }
 
     let editorTapStart = null;
@@ -7733,6 +7730,7 @@ function setupKeyboardShortcuts() {
   }, true);
 
   window.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented) return;
     const k = (e.key || '').toLowerCase();
     const c = (e.code || '').toLowerCase();
 

@@ -1,223 +1,95 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-test('hyphen handle detection is limited to paragraph-start selections with auto hyphens', async () => {
+function selectText(doc, node, from, to) {
+  const range = doc.createRange();
+  range.setStart(node, from);
+  range.setEnd(node, to);
+  const selection = doc.defaultView.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  doc.dispatchEvent(new doc.defaultView.Event('selectionchange'));
+}
+
+test('only paragraph-start selections with active hyphenation are affected', async () => {
   const {
-    isHyphenHandleBugProneRange,
+    getHyphenatedParagraphForSelection,
     isRangeStartAtParagraphStart
   } = await import('../src/hyphenSelectionWorkaround.js');
   const dom = new JSDOM(`
-    <div class="cm-paragraph" style="hyphens: auto">first\u00adhyphen appears later</div>
-    <div class="cm-paragraph" style="hyphens: auto">first generated hyphen appears later</div>
+    <div class="cm-paragraph" style="hyphens: auto">first generated hyphen later</div>
     <div class="cm-paragraph" style="hyphens: none">ordinary paragraph</div>
   `);
-  const [hyphenated, generated, ordinary] =
+  const [hyphenated, ordinary] =
     dom.window.document.querySelectorAll('.cm-paragraph');
   const hyphenatedText = hyphenated.firstChild;
-  const generatedText = generated.firstChild;
   const ordinaryText = ordinary.firstChild;
-  const hyphenatedRange = dom.window.document.createRange();
-  hyphenatedRange.setStart(hyphenatedText, 0);
-  hyphenatedRange.setEnd(hyphenatedText, 5);
-  const generatedRange = dom.window.document.createRange();
-  generatedRange.setStart(generatedText, 0);
-  generatedRange.setEnd(generatedText, 5);
-  const ordinaryRange = dom.window.document.createRange();
-  ordinaryRange.setStart(ordinaryText, 0);
-  ordinaryRange.setEnd(ordinaryText, 4);
+  const range = dom.window.document.createRange();
+  range.setStart(hyphenatedText, 0);
+  range.setEnd(hyphenatedText, 5);
 
-  assert.equal(isRangeStartAtParagraphStart(hyphenatedRange), true);
-  assert.equal(isHyphenHandleBugProneRange(hyphenatedRange), true);
-  dom.window.Range.prototype.getClientRects = () => [
-    { left: 0, width: 48, top: 10, height: 16 },
-    { left: 48, width: 8, top: 10, height: 16 }
-  ];
-  assert.equal(isHyphenHandleBugProneRange(generatedRange), true);
-  assert.equal(isHyphenHandleBugProneRange(ordinaryRange), false);
+  assert.equal(isRangeStartAtParagraphStart(range), true);
+  assert.equal(getHyphenatedParagraphForSelection(range), hyphenated);
 
-  const nonInitialRange = dom.window.document.createRange();
-  nonInitialRange.setStart(hyphenatedText, 6);
-  nonInitialRange.setEnd(hyphenatedText, 12);
-  assert.equal(isHyphenHandleBugProneRange(nonInitialRange), false);
+  range.setStart(hyphenatedText, 6);
+  range.setEnd(hyphenatedText, 11);
+  assert.equal(getHyphenatedParagraphForSelection(range), null);
+
+  range.setStart(ordinaryText, 0);
+  range.setEnd(ordinaryText, 4);
+  assert.equal(getHyphenatedParagraphForSelection(range), null);
+
+  range.collapse(true);
+  assert.equal(getHyphenatedParagraphForSelection(range), null);
   dom.window.close();
 });
 
-test('generated-hyphen detection requires a narrow adjacent text fragment', async () => {
-  const { hasTrailingHyphenRectPattern } = await import('../src/hyphenSelectionWorkaround.js');
-  const rect = (left, width) => ({
-    left,
-    width,
-    top: 10,
-    height: 16
-  });
-
-  assert.equal(
-    hasTrailingHyphenRectPattern([rect(0, 40), rect(40, 8)], 16),
-    true
-  );
-  assert.equal(
-    hasTrailingHyphenRectPattern([rect(0, 40), rect(40, 12)], 16),
-    false
-  );
-  assert.equal(
-    hasTrailingHyphenRectPattern([rect(0, 40), rect(44, 8)], 16),
-    false
-  );
-});
-
-test('selection repair restores the original anchor only when it jumped outside the range', async () => {
-  const { repairJumpedSelectionRange } = await import('../src/hyphenSelectionWorkaround.js');
-  const dom = new JSDOM('<div class="cm-paragraph">first rest</div>');
-  const text = dom.window.document.querySelector('.cm-paragraph').firstChild;
-  const selection = dom.window.getSelection();
-  const jumpedRange = dom.window.document.createRange();
-  jumpedRange.setStart(text, 6);
-  jumpedRange.setEnd(text, 10);
-  selection.addRange(jumpedRange);
-
-  const repaired = repairJumpedSelectionRange(selection, text, 0);
-  assert.ok(repaired);
-  assert.equal(repaired.toString(), 'first rest');
-  assert.equal(repaired.startOffset, 0);
-
-  const alreadyCorrectRange = dom.window.document.createRange();
-  alreadyCorrectRange.setStart(text, 0);
-  alreadyCorrectRange.setEnd(text, 5);
-  selection.removeAllRanges();
-  selection.addRange(alreadyCorrectRange);
-  assert.equal(repairJumpedSelectionRange(selection, text, 0), null);
-  dom.window.close();
-});
-
-test('selection handles use the selected endpoint character rather than CodeMirror coordinates', async () => {
-  const { getSelectionEndpointRect } = await import('../src/hyphenSelectionWorkaround.js');
-  const dom = new JSDOM(
-    '<div id="editor-container"><div class="cm-editor"><div class="cm-paragraph">first\u00adhyphen</div></div></div>'
-  );
-  const doc = dom.window.document;
-  const editor = doc.querySelector('.cm-editor');
-  const text = doc.querySelector('.cm-paragraph').firstChild;
-  dom.window.Range.prototype.getClientRects = function getClientRects() {
-    if (this.collapsed || this.startContainer !== text) return [];
-    const left = 30 + this.startOffset * 8;
-    return [{
-      left,
-      right: left + 8,
-      top: 10,
-      bottom: 26,
-      width: 8,
-      height: 16
-    }];
-  };
-  const view = {
-    dom: editor,
-    state: { doc: { length: text.data.length } },
-    domAtPos: position => ({ node: text, offset: position }),
-    coordsAtPos: () => ({ left: 900, bottom: 600 })
-  };
-
-  const start = getSelectionEndpointRect(view, 0, true);
-  const end = getSelectionEndpointRect(view, 5, false);
-  assert.equal(start.left, 30);
-  assert.equal(start.bottom, 26);
-  assert.equal(end.left, 70);
-  assert.match(
-    fs.readFileSync(path.resolve(__dirname, '../src/hyphenSelectionWorkaround.js'), 'utf8'),
-    /getSelectionEndpointRect\(view, anchorPosition/
-  );
-  dom.window.close();
-});
-
-test('Android WebView gets draggable app handles only for the affected selection', async () => {
-  const { installHyphenSelectionWorkaround } = await import('../src/hyphenSelectionWorkaround.js');
-  const dom = new JSDOM('<div id="editor-container"><div class="cm-editor"><div class="cm-paragraph" style="hyphens: auto">first\u00adhyphen later</div></div></div>', {
-    pretendToBeVisual: true
-  });
+test('Android selection temporarily disables and then restores paragraph hyphenation', async () => {
+  const { installHyphenSelectionWorkaround } =
+    await import('../src/hyphenSelectionWorkaround.js');
+  const dom = new JSDOM(`
+    <div id="editor">
+      <div class="cm-paragraph" style="hyphens: auto !important; -webkit-hyphens: auto">first generated hyphen later</div>
+      <div class="cm-paragraph" style="hyphens: auto">another paragraph</div>
+    </div>
+  `);
   Object.defineProperty(dom.window.navigator, 'userAgent', {
     value: 'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/147.0 Mobile'
   });
   const doc = dom.window.document;
-  const root = doc.querySelector('#editor-container');
-  const editor = doc.querySelector('.cm-editor');
-  const text = doc.querySelector('.cm-paragraph').firstChild;
-  root.getBoundingClientRect = () => ({ left: 0, top: 0 });
-  const makeSelection = (anchor, head) => ({
-    main: {
-      anchor,
-      head,
-      from: Math.min(anchor, head),
-      to: Math.max(anchor, head),
-      empty: anchor === head
-    }
-  });
-  const view = {
-    dom: editor,
-    scrollDOM: editor,
-    state: {
-      selection: makeSelection(0, 0),
-      doc: { length: text.data.length }
-    },
-    posAtDOM: (_node, offset) => offset,
-    domAtPos: position => ({ node: text, offset: position }),
-    posAtCoords: ({ x }) => Math.round(x),
-    coordsAtPos: position => ({ left: position * 10, bottom: 20 }),
-    dispatch({ selection }) {
-      this.state.selection = selection;
-      const range = doc.createRange();
-      range.setStart(text, selection.main.from);
-      range.setEnd(text, selection.main.to);
-      const domSelection = dom.window.getSelection();
-      domSelection.removeAllRanges();
-      domSelection.addRange(range);
-    }
-  };
-  const selectionApi = {
-    range: (anchor, head) => makeSelection(anchor, head)
-  };
-  const cleanup = installHyphenSelectionWorkaround(view, selectionApi);
-  assert.ok(cleanup);
+  const editor = doc.querySelector('#editor');
+  const [firstParagraph, secondParagraph] = editor.querySelectorAll('.cm-paragraph');
+  const firstText = firstParagraph.firstChild;
+  const secondText = secondParagraph.firstChild;
+  const workaround = installHyphenSelectionWorkaround({ dom: editor });
+  assert.ok(workaround);
 
-  const pointerEvent = (type, values = {}) => {
-    const event = new dom.window.Event(type, { bubbles: true, cancelable: true });
-    for (const [key, value] of Object.entries(values)) {
-      Object.defineProperty(event, key, { value });
-    }
-    return event;
-  };
-  editor.dispatchEvent(pointerEvent('pointerdown', {
-    pointerType: 'touch',
-    pointerId: 1
-  }));
-  const initialRange = doc.createRange();
-  initialRange.setStart(text, 0);
-  initialRange.setEnd(text, 5);
-  dom.window.getSelection().removeAllRanges();
-  dom.window.getSelection().addRange(initialRange);
-  doc.dispatchEvent(new dom.window.Event('selectionchange'));
-  dom.window.dispatchEvent(pointerEvent('pointerup', { pointerId: 1 }));
-  await new Promise(resolve => dom.window.setTimeout(resolve, 100));
+  selectText(doc, firstText, 0, 5);
+  assert.equal(firstParagraph.style.getPropertyValue('hyphens'), 'none');
+  assert.equal(firstParagraph.style.getPropertyPriority('hyphens'), 'important');
 
-  const layer = root.querySelector('.wmdx-hyphen-selection-handle-layer');
-  assert.ok(layer);
-  assert.equal(layer.hidden, false);
-  const anchorHandle = layer.querySelector('[data-selection-endpoint="anchor"]');
-  anchorHandle.dispatchEvent(pointerEvent('pointerdown', {
-    button: 0,
-    pointerId: 2
-  }));
-  dom.window.dispatchEvent(pointerEvent('pointermove', {
-    pointerId: 2,
-    clientX: 2,
-    clientY: 20
-  }));
-  assert.equal(view.state.selection.main.anchor, 2);
-  assert.equal(view.state.selection.main.head, 5);
-  dom.window.dispatchEvent(pointerEvent('pointerup', { pointerId: 2 }));
+  selectText(doc, firstText, 6, 11);
+  assert.equal(firstParagraph.style.getPropertyValue('hyphens'), 'auto');
+  assert.equal(firstParagraph.style.getPropertyPriority('hyphens'), 'important');
 
-  cleanup.destroy();
-  assert.equal(root.querySelector('.wmdx-hyphen-selection-handle-layer'), null);
+  selectText(doc, firstText, 0, 5);
+  selectText(doc, secondText, 0, 4);
+  assert.equal(firstParagraph.style.getPropertyValue('hyphens'), 'auto');
+  assert.equal(secondParagraph.style.getPropertyValue('hyphens'), 'none');
+
+  workaround.destroy();
+  assert.equal(secondParagraph.style.getPropertyValue('hyphens'), 'auto');
+  dom.window.close();
+});
+
+test('the workaround is not installed outside Android WebView', async () => {
+  const { installHyphenSelectionWorkaround } =
+    await import('../src/hyphenSelectionWorkaround.js');
+  const dom = new JSDOM('<div id="editor"></div>');
+  assert.equal(
+    installHyphenSelectionWorkaround({ dom: dom.window.document.querySelector('#editor') }),
+    null
+  );
   dom.window.close();
 });

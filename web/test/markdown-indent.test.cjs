@@ -27,16 +27,57 @@ function applyChanges(source, changes) {
   return result;
 }
 
-test('indent adds one Markdown nesting level to every selected line', async () => {
+test('indent nests a selected list block under its preceding sibling', async () => {
   const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
-  const source = '- first\n  - second';
+  const source = '- parent\n- first\n- second\n- next';
+  const doc = makeDoc(source);
+  const changes = getMarkdownIndentChanges(
+    doc,
+    { from: doc.line(2).from, to: doc.line(3).to },
+    'indent'
+  );
+
+  assert.equal(
+    applyChanges(source, changes),
+    '- parent\n  - first\n  - second\n- next'
+  );
+});
+
+test('indent uses the preceding ordered marker width for one nested level', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = '10. parent\n1. child';
+  const doc = makeDoc(source);
+  const changes = getMarkdownIndentChanges(
+    doc,
+    { from: doc.line(2).from, to: doc.line(2).to },
+    'indent'
+  );
+
+  assert.equal(applyChanges(source, changes), '10. parent\n    1. child');
+});
+
+test('indent does not turn an unparented root list into a code block', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = '- first\n- second';
   const changes = getMarkdownIndentChanges(
     makeDoc(source),
     { from: 0, to: source.length },
     'indent'
   );
 
-  assert.equal(applyChanges(source, changes), '  - first\n    - second');
+  assert.deepEqual(changes, []);
+});
+
+test('indent still inserts spaces for ordinary paragraph text', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = 'plain text';
+  const changes = getMarkdownIndentChanges(
+    makeDoc(source),
+    { from: 0, to: source.length },
+    'indent'
+  );
+
+  assert.equal(applyChanges(source, changes), '  plain text');
 });
 
 test('outdent reduces nested indentation and removes a root list marker', async () => {
@@ -80,6 +121,11 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   assert.match(main, /key: 'Shift-Tab'[\s\S]*?applyMarkdownIndent\(view, 'outdent'\)/);
   assert.match(main, /cmdName === 'indent'\) applyMarkdownIndent\(view, 'indent', '  '\)/);
   assert.match(main, /cmdName === 'outdent'\) applyMarkdownIndent\(view, 'outdent', '  '\)/);
+  assert.match(
+    main,
+    /window\.addEventListener\('keydown', \(e\) => \{\s*if \(e\.defaultPrevented\) return;\s*const k =/,
+    'global shortcuts must not run again after the editor keymap consumes Tab'
+  );
 });
 
 test('the shared indent command dispatches mapped changes and consumes an empty outdent', async () => {

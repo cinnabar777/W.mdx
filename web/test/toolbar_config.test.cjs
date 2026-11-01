@@ -31,6 +31,30 @@ test('bottom toolbar configuration ignores unknown and duplicate keys but restor
   );
 });
 
+test('empty built-in groups can be placed on the toolbar and deleted safely', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const emptyListsGroup = normalizeBottomToolbarConfig({
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: { lists: { order: [], hidden: [] } }
+  });
+  assert.ok(emptyListsGroup.order.includes('lists'));
+  assert.ok(!emptyListsGroup.holding.includes('lists'));
+
+  const deletedListsGroup = normalizeBottomToolbarConfig({
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    deletedGroups: ['lists', 'not-a-group', 'lists'],
+    popupGroups: { lists: { order: [], hidden: [] } }
+  });
+  assert.deepEqual(deletedListsGroup.deletedGroups, ['lists']);
+  assert.equal(deletedListsGroup.popupGroups.lists, undefined);
+  assert.ok(!deletedListsGroup.order.includes('lists'));
+  assert.ok(!deletedListsGroup.holding.includes('lists'));
+  assert.ok(deletedListsGroup.holding.includes('bulletedList'));
+  assert.ok(deletedListsGroup.holding.includes('outdent'));
+});
+
 test('obsolete Files & Tabs toolbar action is removed from saved layouts', async () => {
   const { BOTTOM_TOOLBAR_GROUP_ITEM_IDS, normalizeBottomToolbarConfig } =
     await import('../src/toolbarConfig.js');

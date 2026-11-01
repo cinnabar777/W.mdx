@@ -15,6 +15,7 @@ async function dragKey(
   moveX = 42,
   moveY = 12
 ) {
+  const originalGetBoundingClientRect = target.getBoundingClientRect;
   target.getBoundingClientRect = () => ({
     left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100
   });
@@ -28,11 +29,15 @@ async function dragKey(
       clientY
     }));
   };
-  dispatchPointer(source, 'pointerdown', 2, 2);
-  await new Promise(resolve => setTimeout(resolve, 410));
-  dispatchPointer(dom.window.document, 'pointermove', moveX, moveY);
-  duringDrag?.();
-  dispatchPointer(dom.window.document, 'pointerup', dropX, dropY);
+  try {
+    dispatchPointer(source, 'pointerdown', 2, 2);
+    await new Promise(resolve => setTimeout(resolve, 410));
+    dispatchPointer(dom.window.document, 'pointermove', moveX, moveY);
+    duringDrag?.();
+    dispatchPointer(dom.window.document, 'pointerup', dropX, dropY);
+  } finally {
+    target.getBoundingClientRect = originalGetBoundingClientRect;
+  }
 }
 
 test('toolbar settings preview opens a dismissible icon picker popup above spacious key settings', async () => {
@@ -836,6 +841,94 @@ test('empty custom groups can be placed on both toolbar surfaces', async () => {
 
     await createAndPlaceGroup('bottom', 'Bottom folder');
     await createAndPlaceGroup('floating', 'Floating folder');
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+    if (previousRequestAnimationFrame === undefined) delete global.requestAnimationFrame;
+    else global.requestAnimationFrame = previousRequestAnimationFrame;
+  }
+});
+
+test('empty built-in groups can be restored and deleted on both toolbar surfaces', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html',
+    pretendToBeVisual: true
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const previousRequestAnimationFrame = global.requestAnimationFrame;
+  const saves = [];
+  const configWithHeldLists = {
+    version: 8,
+    order: ['undo', 'heading', 'format', 'table', 'insert', 'menu'],
+    hidden: ['lists'],
+    popupGroups: { lists: { order: [], hidden: [] } },
+    holding: ['lists'],
+    deletedGroups: [],
+    customGroups: {},
+    customKeys: {},
+    styles: {}
+  };
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify(configWithHeldLists),
+      pref_toolbar_floating_config: JSON.stringify(configWithHeldLists)
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+  global.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?builtin-group-test=${Date.now()}`);
+    const runOnSurface = async surface => {
+      if (surface === 'floating') {
+        dom.window.document
+          .querySelector('[data-toolbar-surface="floating"]')
+          .click();
+        await new Promise(resolve => dom.window.requestAnimationFrame(resolve));
+      }
+
+      const tray = dom.window.document.querySelector('#toolbar-holding-tray');
+      const stage = dom.window.document.querySelector('.toolbar-preview-stage');
+      const heldGroup = tray.querySelector('[data-toolbar-key="lists"]');
+      assert.ok(heldGroup, `${surface} keeps the built-in group in the holding area`);
+      await dragKey(dom, heldGroup, stage, 90, 50, null, stage);
+
+      const placedGroup = dom.window.document.querySelector(
+        '#toolbar-preview [data-toolbar-key="lists"]'
+      );
+      assert.ok(placedGroup, `${surface} can return the empty group to its toolbar`);
+      assert.ok(saves.at(-1).order.includes('lists'));
+
+      await dragKey(dom, placedGroup, tray);
+      const heldAgain = tray.querySelector('[data-toolbar-key="lists"]');
+      assert.ok(heldAgain, 'the group can be moved back to the holding area');
+      heldAgain.click();
+      const deleteButton = dom.window.document.querySelector('#toolbar-delete-custom-group');
+      assert.equal(deleteButton.hidden, false, 'built-in groups have a delete control');
+      assert.equal(deleteButton.title, 'Delete group');
+      deleteButton.click();
+
+      const saved = saves.at(-1);
+      assert.ok(saved.deletedGroups.includes('lists'));
+      assert.ok(!saved.order.includes('lists'));
+      assert.ok(!saved.holding.includes('lists'));
+      assert.equal(saved.popupGroups.lists, undefined);
+      assert.ok(saved.holding.includes('bulletedList'));
+      assert.ok(saved.holding.includes('outdent'));
+    };
+
+    await runOnSurface('bottom');
+    await runOnSurface('floating');
   } finally {
     dom.window.close();
     if (previousWindow === undefined) delete global.window;
