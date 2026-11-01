@@ -1,0 +1,104 @@
+{
+  "version": 9,
+  "order": [
+    "custom-key-mvy7xpbw-8",
+    "highlightCycle",
+    "penCycle",
+    "underline",
+    "bold",
+    "custom-key-mvy7p38e-4",
+    "custom-key-mvy7rysk-5",
+    "custom-key-mvy7t6k4-6"
+  ],
+  "hidden": ["cut", "copy", "paste", "selectAll"],
+  "popupGroups": {},
+  "holding": ["cut", "copy", "paste", "selectAll", "saveAsMdzip"],
+  "deletedGroups": ["heading", "lists", "format", "menu", "table", "insert"],
+  "deletedKeys": [
+    "audio", "autoHeading", "blockQuote", "bulletedList", "callout", "clearFormatting",
+    "codeBlock", "deleteColumn", "deleteRow", "exportHtml", "footnote", "heading1",
+    "heading2", "heading3", "heading4", "heading5", "heading6", "highlightBlue",
+    "highlightGreen", "highlightPink", "highlightYellow", "horizontalLine", "image",
+    "indent", "inlineCode", "insertColumnRight", "insertRowBelow", "insertTable",
+    "italic", "line-numbers", "link", "mergeDown", "mergeLeft", "mergeRight",
+    "mergeUp", "newFile", "newWindow", "numberedList", "openFile", "outdent",
+    "paragraph", "penBlue", "penGreen", "penPurple", "penRed", "saveAsFile",
+    "saveAsTextPack", "saveFile", "saveTabs", "search", "settings", "splitCell",
+    "strikethrough", "switchView", "todoList", "underlineDashed", "underlineDotted",
+    "underlineDouble", "underlineSolid", "underlineWavy", "undo", "video", "wrap"
+  ],
+  "customGroups": {},
+  "customKeys": {
+    "custom-key-mvy7p38e-4": {
+      "title": "Copy",
+      "icon": "newFile",
+      "actionId": "copy"
+    },
+    "custom-key-mvy7rysk-5": {
+      "title": "Paste",
+      "icon": "newFile",
+      "actionId": "paste"
+    },
+    "custom-key-mvy7t6k4-6": {
+      "title": "Select All",
+      "icon": "newFile",
+      "actionId": "selectAll"
+    },
+    "custom-key-mvy7xpbw-8": {
+      "title": "Erase",
+      "icon": "newFile",
+      "actionId": "clearFormatting"
+    }
+  },
+  "styles": {
+    "bold": {
+      "gestureActions": {
+        "longPress": "editToolbarKeyPreferences",
+        "tap1": "bold",
+        "tap2": "italic",
+        "tap3": "strikethrough"
+      },
+      "gestureActionIcons": {"longPress": "none"}
+    },
+    "underline": {
+      "gestureActions": {"longPress": "editToolbarKeyPreferences"},
+      "gestureActionIcons": {"longPress": "none"}
+    },
+    "highlightCycle": {
+      "gestureActions": {"longPress": "editToolbarKeyPreferences"},
+      "gestureActionIcons": {"longPress": "none"}
+    },
+    "penCycle": {
+      "gestureActions": {"longPress": "editToolbarKeyPreferences"},
+      "gestureActionIcons": {"longPress": "none"}
+    },
+    "custom-key-mvy7p38e-4": {
+      "customSvg": "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"8\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\"/><path d=\"M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3\"/></svg>",
+      "preserveSvgColors": false,
+      "gestureActions": {
+        "longPress": "editToolbarKeyPreferences",
+        "tap1": "copy",
+        "tap2": "cut"
+      },
+      "gestureActionIcons": {"longPress": "none"}
+    },
+    "custom-key-mvy7rysk-5": {
+      "customSvg": "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2\"/><rect x=\"8\" y=\"2\" width=\"8\" height=\"4\" rx=\"1\"/><path d=\"M8 12h8M8 16h6\"/></svg>",
+      "preserveSvgColors": false,
+      "gestureActions": {"longPress": "editToolbarKeyPreferences"},
+      "gestureActionIcons": {"longPress": "none"}
+    },
+    "custom-key-mvy7t6k4-6": {
+      "customSvg": "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3\"/><path d=\"M8 9h8M8 12h8M8 15h8\"/></svg>",
+      "preserveSvgColors": false,
+      "gestureActions": {"longPress": "editToolbarKeyPreferences"},
+      "gestureActionIcons": {"longPress": "none"}
+    },
+    "custom-key-mvy7xpbw-8": {
+      "customSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21\"/><path d=\"m5.082 11.09 8.828 8.828\"/></svg>",
+      "preserveSvgColors": false,
+      "gestureActions": {"longPress": "editToolbarKeyPreferences"},
+      "gestureActionIcons": {"longPress": "none"}
+    }
+  }
+}

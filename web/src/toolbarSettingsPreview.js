@@ -4,6 +4,7 @@ import {
   BOTTOM_TOOLBAR_ITEM_IDS,
   BUILT_IN_DELETABLE_KEY_IDS,
   BUILT_IN_HOLDING_ITEMS,
+  DEFAULT_FLOATING_TOOLBAR_CONFIG,
   NO_GESTURE_ICON,
   normalizeBottomToolbarConfig,
   OPEN_GROUP_ACTION_ID,
@@ -44,7 +45,7 @@ const selectedTitle = document.querySelector('#toolbar-preview-selected-title');
 let config = normalizeBottomToolbarConfig(null);
 const configsBySurface = {
   bottom: config,
-  floating: normalizeBottomToolbarConfig(null)
+  floating: normalizeBottomToolbarConfig(DEFAULT_FLOATING_TOOLBAR_CONFIG)
 };
 let activeToolbarSurface = 'bottom';
 let selectedKey = null;
@@ -516,10 +517,7 @@ function applySettings(payload) {
     '--toolbar-padding',
     `${Number.isFinite(padding) && padding >= 0 && padding <= 16 ? padding : 4}px`
   );
-  const floatingBgFallback =
-    prefs.pref_toolbar_bg_color && prefs.pref_toolbar_bg_color !== 'default'
-      ? prefs.pref_toolbar_bg_color
-      : (isLightTheme ? '#f8f9fa' : '#121212');
+  const floatingBgFallback = '#222222';
   const floatingIconFallback =
     prefs.pref_toolbar_icon_color && prefs.pref_toolbar_icon_color !== 'default'
       ? prefs.pref_toolbar_icon_color
@@ -527,9 +525,7 @@ function applySettings(payload) {
   setCssVariable('--toolbar-floating-bg', prefs.pref_toolbar_floating_bg_color, floatingBgFallback);
   setCssVariable('--toolbar-floating-icon-color', prefs.pref_toolbar_floating_icon_color, floatingIconFallback);
   setCssVariable('--toolbar-floating-active-bg', prefs.pref_toolbar_floating_active_key_bg_color,
-    prefs.pref_toolbar_active_key_bg_color && prefs.pref_toolbar_active_key_bg_color !== 'default'
-      ? prefs.pref_toolbar_active_key_bg_color
-      : (isLightTheme ? '#e9ecef' : '#1f1f1f'));
+    '#000000');
   setCssVariable('--toolbar-floating-label-color', prefs.pref_toolbar_floating_label_color, floatingIconFallback);
   document.documentElement.style.setProperty(
     '--toolbar-floating-label-display',
@@ -549,12 +545,12 @@ function applySettings(payload) {
       ? floatingLabelSize
       : 8}px`
   );
-  const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 4);
+  const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 0);
   document.documentElement.style.setProperty(
     '--toolbar-floating-padding',
     `${Number.isFinite(floatingPadding) && floatingPadding >= 0 && floatingPadding <= 16
       ? floatingPadding
-      : 4}px`
+      : 0}px`
   );
   const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width);
   const safeFloatingKeyWidth =
@@ -2342,7 +2338,9 @@ document.querySelector('#toolbar-force-show-label')?.addEventListener('change', 
   saveConfig();
 });
 document.querySelector('#toolbar-reset-layout')?.addEventListener('click', () => {
-  config = normalizeBottomToolbarConfig(null);
+  config = normalizeBottomToolbarConfig(
+    activeToolbarSurface === 'floating' ? DEFAULT_FLOATING_TOOLBAR_CONFIG : null
+  );
   setIconPickerOpen(false);
   selectedKey = null;
   openPopupGroup = null;

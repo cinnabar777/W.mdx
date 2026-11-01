@@ -1,6 +1,31 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const fs = require('node:fs');
+const path = require('node:path');
 const { JSDOM } = require('jsdom');
+
+test('floating toolbar defaults match the backup and keep only five holding keys', async () => {
+  const {
+    DEFAULT_FLOATING_TOOLBAR_CONFIG,
+    normalizeBottomToolbarConfig
+  } = await import('../src/toolbarConfig.js');
+  const nativeDefault = JSON.parse(fs.readFileSync(
+    path.resolve(__dirname, '../../app/src/main/res/raw/default_floating_toolbar_config.json'),
+    'utf8'
+  ));
+  const normalizedWeb = normalizeBottomToolbarConfig(DEFAULT_FLOATING_TOOLBAR_CONFIG);
+  const normalizedNative = normalizeBottomToolbarConfig(nativeDefault);
+
+  assert.deepEqual(normalizedWeb.holding, [
+    'cut', 'copy', 'paste', 'selectAll', 'saveAsMdzip'
+  ]);
+  assert.deepEqual(
+    { ...normalizedNative, deletedGroups: [...normalizedNative.deletedGroups].sort(),
+      deletedKeys: [...normalizedNative.deletedKeys].sort() },
+    { ...normalizedWeb, deletedGroups: [...normalizedWeb.deletedGroups].sort(),
+      deletedKeys: [...normalizedWeb.deletedKeys].sort() }
+  );
+});
 
 test('bottom toolbar configuration ignores unknown and duplicate keys but restores missing built-ins', async () => {
   const {

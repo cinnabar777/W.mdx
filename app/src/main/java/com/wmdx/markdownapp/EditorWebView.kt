@@ -21,7 +21,7 @@ class EditorWebView @JvmOverloads constructor(
 
     private fun isFloatingToolbarEnabled(): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
-            .getBoolean("pref_toolbar_floating_enabled", false)
+            .getBoolean("pref_toolbar_floating_enabled", true)
 
     override fun startActionMode(callback: ActionMode.Callback): ActionMode =
         if (isFloatingToolbarEnabled()) {

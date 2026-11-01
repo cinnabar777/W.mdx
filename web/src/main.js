@@ -63,6 +63,7 @@ import { calloutTypeIcons } from './calloutIcons.js';
 import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
+  DEFAULT_FLOATING_TOOLBAR_CONFIG,
   NO_GESTURE_ICON,
   OPEN_GROUP_ACTION_ID,
   normalizeBottomToolbarConfig,
@@ -110,9 +111,9 @@ let activePopupGroup = null;
 let activeToolbarRootKey = null;
 let activePopupSurface = 'bottom';
 let bottomToolbarConfig = normalizeBottomToolbarConfig(null);
-let floatingToolbarConfig = normalizeBottomToolbarConfig(null);
+let floatingToolbarConfig = normalizeBottomToolbarConfig(DEFAULT_FLOATING_TOOLBAR_CONFIG);
 let floatingToolbarSelectionFrame = 0;
-let floatingToolbarEnabled = false;
+let floatingToolbarEnabled = true;
 let tocHideFileExtension = false;
 let tocPanelEnabled = true;
 
@@ -7874,7 +7875,9 @@ window.editorBridge = {
     setupGroupedControlBar();
   },
   applyFloatingToolbarConfig: function(rawConfig) {
-    const nextConfig = normalizeBottomToolbarConfig(rawConfig);
+    const nextConfig = normalizeBottomToolbarConfig(
+      rawConfig ?? DEFAULT_FLOATING_TOOLBAR_CONFIG
+    );
     if (JSON.stringify(nextConfig) === JSON.stringify(floatingToolbarConfig)) return;
     floatingToolbarConfig = nextConfig;
     hidePopupStrip();
@@ -7882,7 +7885,9 @@ window.editorBridge = {
   },
   applyToolbarConfigs: function(bottomRawConfig, floatingRawConfig) {
     const nextBottomConfig = normalizeBottomToolbarConfig(bottomRawConfig);
-    const nextFloatingConfig = normalizeBottomToolbarConfig(floatingRawConfig);
+    const nextFloatingConfig = normalizeBottomToolbarConfig(
+      floatingRawConfig ?? DEFAULT_FLOATING_TOOLBAR_CONFIG
+    );
     const bottomChanged =
       JSON.stringify(nextBottomConfig) !== JSON.stringify(bottomToolbarConfig);
     const floatingChanged =
@@ -8431,7 +8436,7 @@ window.editorBridge = {
     setCssVar('--hr-gradient-offset', prefs.pref_hr_gradient_offset_percent ?? 25, '%');
 
     // Toolbar
-    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled === true;
+    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled !== false;
     if (!floatingToolbarEnabled && activePopupSurface === 'floating') {
       hidePopupStrip();
     }
@@ -8446,7 +8451,7 @@ window.editorBridge = {
       }
     }
     const floatingConfigPreference = prefs.pref_toolbar_floating_config ??
-      prefs.pref_toolbar_bottom_config;
+      DEFAULT_FLOATING_TOOLBAR_CONFIG;
     if (floatingConfigPreference !== undefined) {
       const nextFloatingConfig = normalizeBottomToolbarConfig(
         floatingConfigPreference
@@ -8530,9 +8535,15 @@ window.editorBridge = {
       Number.isFinite(toolbarPadding) ? Math.max(0, Math.min(16, toolbarPadding)) : 4,
       'px'
     );
-    setCssVar('--toolbar-floating-bg', androidArgbToCss(prefs.pref_toolbar_floating_bg_color));
+    setCssVar(
+      '--toolbar-floating-bg',
+      androidArgbToCss(prefs.pref_toolbar_floating_bg_color ?? '#222222')
+    );
     setCssVar('--toolbar-floating-icon-color', androidArgbToCss(prefs.pref_toolbar_floating_icon_color));
-    setCssVar('--toolbar-floating-active-bg', androidArgbToCss(prefs.pref_toolbar_floating_active_key_bg_color));
+    setCssVar(
+      '--toolbar-floating-active-bg',
+      androidArgbToCss(prefs.pref_toolbar_floating_active_key_bg_color ?? '#000000')
+    );
     setCssVar('--toolbar-floating-label-color', androidArgbToCss(prefs.pref_toolbar_floating_label_color));
     setCssVar(
       '--toolbar-floating-label-display',
@@ -8550,10 +8561,10 @@ window.editorBridge = {
       Number.isFinite(floatingLabelSize) ? Math.max(6, Math.min(16, floatingLabelSize)) : 8,
       'px'
     );
-    const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 4);
+    const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 0);
     setCssVar(
       '--toolbar-floating-padding',
-      Number.isFinite(floatingPadding) ? Math.max(0, Math.min(16, floatingPadding)) : 4,
+      Number.isFinite(floatingPadding) ? Math.max(0, Math.min(16, floatingPadding)) : 0,
       'px'
     );
     const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width ?? 48);

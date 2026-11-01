@@ -330,10 +330,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         WindowRegistry.registerActivity(this)
         val startupPreferences = PreferenceManager.getDefaultSharedPreferences(this)
         if (!startupPreferences.getBoolean("pref_toolbar_default_corrected", false)) {
-            startupPreferences.edit()
-                .putBoolean("pref_toolbar_floating_enabled", false)
-                .putBoolean("pref_toolbar_default_corrected", true)
-                .apply()
+            val editor = startupPreferences.edit()
+            if (!startupPreferences.contains("pref_toolbar_floating_enabled")) {
+                editor.putBoolean("pref_toolbar_floating_enabled", true)
+            }
+            editor.putBoolean("pref_toolbar_default_corrected", true).apply()
         }
         setContentView(R.layout.activity_main)
 
@@ -1099,12 +1100,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (!isEditorReady || !::webView.isInitialized) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val bottomConfig = prefs.getString("pref_toolbar_bottom_config", null)
-        val floatingConfig = prefs.getString("pref_toolbar_floating_config", bottomConfig)
+        val defaultFloatingConfig = ToolbarDefaults.floatingToolbarConfigJson(this)
+        val floatingConfig = prefs.getString(
+            "pref_toolbar_floating_config",
+            defaultFloatingConfig
+        ) ?: defaultFloatingConfig
         val escapedConfig = bottomConfig?.let { JSONObjectWrapper.quote(it) } ?: "null"
         val escapedFloatingConfig = floatingConfig?.let { JSONObjectWrapper.quote(it) } ?: "null"
         webView.evaluateJavascript(
             "window.editorBridge?.applyBottomToolbarConfig?.($escapedConfig);" +
-                "window.editorBridge?.applyFloatingToolbarConfig?.($escapedFloatingConfig || $escapedConfig);",
+                "window.editorBridge?.applyFloatingToolbarConfig?.($escapedFloatingConfig);",
             null
         )
     }

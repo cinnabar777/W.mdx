@@ -1753,9 +1753,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 TOOLBAR_FLOATING_CONFIG_KEY,
                 prefs.getString(
                     TOOLBAR_FLOATING_CONFIG_KEY,
-                    prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
-                ) ?: prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
-                    ?: defaultToolbarConfigJson()
+                    ToolbarDefaults.floatingToolbarConfigJson(requireContext())
+                ) ?: ToolbarDefaults.floatingToolbarConfigJson(requireContext())
             )
         }
         payload.put("pref_toolbar_bg_color", prefs.getString("pref_toolbar_bg_color", "default"))
@@ -1774,9 +1773,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         )
         payload.put(
             "pref_toolbar_floating_enabled",
-            prefs.getBoolean("pref_toolbar_floating_enabled", false)
+            prefs.getBoolean("pref_toolbar_floating_enabled", true)
         )
-        payload.put("pref_toolbar_floating_bg_color", prefs.getString("pref_toolbar_floating_bg_color", "default"))
+        payload.put("pref_toolbar_floating_bg_color", prefs.getString("pref_toolbar_floating_bg_color", "#222222"))
         payload.put("pref_toolbar_floating_icon_color", prefs.getString("pref_toolbar_floating_icon_color", "default"))
         payload.put("pref_toolbar_floating_key_height", prefs.getInt("pref_toolbar_floating_key_height", 36))
         payload.put("pref_toolbar_floating_show_labels", prefs.getBoolean("pref_toolbar_floating_show_labels", false))
@@ -1784,9 +1783,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         payload.put("pref_toolbar_floating_label_color", prefs.getString("pref_toolbar_floating_label_color", "default"))
         payload.put(
             "pref_toolbar_floating_active_key_bg_color",
-            prefs.getString("pref_toolbar_floating_active_key_bg_color", "default")
+            prefs.getString("pref_toolbar_floating_active_key_bg_color", "#000000")
         )
-        payload.put("pref_toolbar_floating_padding", prefs.getInt("pref_toolbar_floating_padding", 4))
+        payload.put("pref_toolbar_floating_padding", prefs.getInt("pref_toolbar_floating_padding", 0))
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
         payload.put("pref_toolbar_floating_key_width", prefs.getInt("pref_toolbar_floating_key_width", 48))
@@ -1822,6 +1821,13 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .put("styles", org.json.JSONObject())
             .toString()
     }
+
+    private fun defaultToolbarConfigForCurrentSurfaceJson(): String =
+        if (toolbarConfigPreferenceKey == TOOLBAR_FLOATING_CONFIG_KEY) {
+            ToolbarDefaults.floatingToolbarConfigJson(requireContext())
+        } else {
+            defaultToolbarConfigJson()
+        }
 
     private fun updateToolbarPreview(includeToolbarConfig: Boolean = true) {
         val preview = toolbarPreviewWebView ?: return
@@ -2269,8 +2275,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
         return runCatching {
             val saved = org.json.JSONObject(
-                toolbarPreferences.getString(toolbarConfigPreferenceKey, defaultToolbarConfigJson())
-                    ?: defaultToolbarConfigJson()
+                toolbarPreferences.getString(
+                    toolbarConfigPreferenceKey,
+                    defaultToolbarConfigForCurrentSurfaceJson()
+                ) ?: defaultToolbarConfigForCurrentSurfaceJson()
             )
             saved.optJSONObject("customGroups")?.has(itemId) == true ||
                 saved.optJSONObject("customKeys")?.has(itemId) == true
@@ -2294,8 +2302,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         ) return false
         return try {
             val current = org.json.JSONObject(
-                toolbarPreferences.getString(toolbarConfigPreferenceKey, defaultToolbarConfigJson())
-                    ?: defaultToolbarConfigJson()
+                toolbarPreferences.getString(
+                    toolbarConfigPreferenceKey,
+                    defaultToolbarConfigForCurrentSurfaceJson()
+                ) ?: defaultToolbarConfigForCurrentSurfaceJson()
             )
             val styles = current.optJSONObject("styles") ?: org.json.JSONObject()
             val style = styles.optJSONObject(itemId) ?: org.json.JSONObject()
@@ -2473,8 +2483,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             if (!isToolbarStyleAllowed(itemId) || property !in TOOLBAR_COLOR_PROPERTIES) return
             activity?.runOnUiThread {
                 val config = org.json.JSONObject(
-                    toolbarPreferences.getString(toolbarConfigPreferenceKey, defaultToolbarConfigJson())
-                        ?: defaultToolbarConfigJson()
+                    toolbarPreferences.getString(
+                        toolbarConfigPreferenceKey,
+                        defaultToolbarConfigForCurrentSurfaceJson()
+                    ) ?: defaultToolbarConfigForCurrentSurfaceJson()
                 )
                 val current = config.optJSONObject("styles")
                     ?.optJSONObject(itemId)

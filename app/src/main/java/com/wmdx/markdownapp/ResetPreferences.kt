@@ -132,10 +132,10 @@ object PreferenceResetHelper {
             "pref_findreplace_match_bg" -> "rgba(255, 255, 0, 0.35)"
             "pref_findreplace_current_match_bg" -> "#0078D4"
             "pref_findreplace_current_match_color" -> "#FFFFFF"
-            "pref_toolbar_floating_bg_color" -> "#121212"
+            "pref_toolbar_floating_bg_color" -> "#222222"
             "pref_toolbar_floating_icon_color",
             "pref_toolbar_floating_label_color" -> "#FFFFFF"
-            "pref_toolbar_floating_active_key_bg_color" -> "#1F1F1F"
+            "pref_toolbar_floating_active_key_bg_color" -> "#000000"
             else -> {
                 when {
                     key != null && key.startsWith("pref_findreplace_btn_") &&
@@ -517,15 +517,15 @@ object PreferenceResetHelper {
             key == "pref_toolbar_toggle_closed_height" -> 34
             key == "pref_toolbar_height" -> 48
             key == "pref_toolbar_padding" -> 4
-            key == "pref_toolbar_floating_enabled" -> false
-            key == "pref_toolbar_floating_bg_color" -> "default"
+            key == "pref_toolbar_floating_enabled" -> true
+            key == "pref_toolbar_floating_bg_color" -> "#222222"
             key == "pref_toolbar_floating_icon_color" -> "default"
             key == "pref_toolbar_floating_key_height" -> 36
             key == "pref_toolbar_floating_show_labels" -> false
             key == "pref_toolbar_floating_label_size" -> 8
             key == "pref_toolbar_floating_label_color" -> "default"
-            key == "pref_toolbar_floating_active_key_bg_color" -> "default"
-            key == "pref_toolbar_floating_padding" -> 4
+            key == "pref_toolbar_floating_active_key_bg_color" -> "#000000"
+            key == "pref_toolbar_floating_padding" -> 0
             key == "pref_toolbar_floating_key_width" -> 48
             key == "pref_toolbar_floating_corner_radius" -> 24
             key == "pref_media_controls_corner_radius" -> 24
