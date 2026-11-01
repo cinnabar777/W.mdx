@@ -76,6 +76,7 @@ import {
   getToolbarGestureIndicatorEntries,
   getToolbarSwipeGesture,
   hasToolbarSwipeActions,
+  createToolbarToggleClickGuard,
   shouldSuppressToolbarToggleClick
 } from './toolbarGestures.js';
 import {
@@ -126,6 +127,7 @@ let activeToolbarRootKey = null;
 let activePopupSurface = 'bottom';
 let bottomToolbarConfig = normalizeBottomToolbarConfig(null);
 let floatingToolbarConfig = normalizeBottomToolbarConfig(DEFAULT_FLOATING_TOOLBAR_CONFIG);
+const toolbarToggleClickGuards = new WeakMap();
 let floatingToolbarSelectionFrame = 0;
 let floatingToolbarEnabled = true;
 let tocHideFileExtension = false;
@@ -4572,6 +4574,7 @@ function installToolbarTapActions(container) {
     const hasTap2 = Boolean(actions.tap2);
     const hasTap3 = Boolean(actions.tap3);
     if (!hasTap1 && !hasTap2 && !hasTap3) return;
+    toolbarToggleClickGuards.get(button)?.suppressNextClick();
 
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -5398,8 +5401,20 @@ async function runToolbarClipboardAction(actionId) {
 function installPopupToolbarSwipeUp(
   button,
   styleId,
-  toolbarConfigSource = null
+  toolbarConfigSource = null,
+  onHandledGesture = null
 ) {
+  let clickSuppressionToken = 0;
+  const markGestureHandled = () => {
+    const token = ++clickSuppressionToken;
+    button.dataset.toolbarGestureSuppressClick = 'true';
+    onHandledGesture?.();
+    setTimeout(() => {
+      if (clickSuppressionToken === token) {
+        delete button.dataset.toolbarGestureSuppressClick;
+      }
+    }, 250);
+  };
   const getToolbarConfig = () => {
     if (typeof toolbarConfigSource === 'function') return toolbarConfigSource();
     return toolbarConfigSource || getToolbarConfigForElement(button);
@@ -5432,9 +5447,7 @@ function installPopupToolbarSwipeUp(
         if (!actionId) return;
         runToolbarGestureAction(actionId, button, new Set(), toolbarConfig);
         longPressHandled = true;
-        if (longPressHandled) {
-          button.dataset.toolbarGestureSuppressClick = 'true';
-        }
+        markGestureHandled();
       }, 500);
     }
   }, { capture: true });
@@ -5469,7 +5482,7 @@ function installPopupToolbarSwipeUp(
       runToolbarGestureAction(actionId, button, new Set(), toolbarConfig);
     }
     if (!shouldSuppressToolbarToggleClick(gestureId, actionId)) return;
-    button.dataset.toolbarGestureSuppressClick = 'true';
+    markGestureHandled();
     event.preventDefault();
   }, { capture: true });
   button.addEventListener('pointercancel', () => {
@@ -7749,12 +7762,20 @@ function toggleBottomToolbar(forceState) {
 function setupFloatingToggle() {
   const toggleBtn = document.querySelector('#floating-toggle-btn');
   if (toggleBtn) {
+    const toggleClickGuard = createToolbarToggleClickGuard();
+    toolbarToggleClickGuards.set(toggleBtn, toggleClickGuard);
     toggleBtn.dataset.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;
     // Delegate from the body so the toggle and dynamically recreated toolbar
     // keys use the same capture-phase tap-action path.
     installToolbarTapActions(document.body);
-    installPopupToolbarSwipeUp(toggleBtn, TOOLBAR_TOGGLE_STYLE_ID);
+    installPopupToolbarSwipeUp(
+      toggleBtn,
+      TOOLBAR_TOGGLE_STYLE_ID,
+      null,
+      () => toggleClickGuard.suppressNextClick()
+    );
     toggleBtn.onclick = () => {
+      if (toggleClickGuard.consumeSuppressedClick()) return;
       toggleBottomToolbar();
     };
   }

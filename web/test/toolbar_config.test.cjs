@@ -710,6 +710,28 @@ test('toolbar toggle only falls through to open on an unassigned upward swipe', 
   assert.equal(shouldSuppressToolbarToggleClick('swipeUp', ''), false);
 });
 
+test('toolbar toggle click guard consumes one action click and then expires', async () => {
+  const { createToolbarToggleClickGuard } =
+    await import('../src/toolbarGestures.js');
+  let now = 100;
+  let toggleCount = 0;
+  const guard = createToolbarToggleClickGuard(20, () => now);
+  const clickToggle = () => {
+    if (!guard.consumeSuppressedClick()) toggleCount += 1;
+  };
+
+  guard.suppressNextClick();
+  clickToggle();
+  assert.equal(toggleCount, 0, 'an action gesture must not invoke the default toggle');
+  clickToggle();
+  assert.equal(toggleCount, 1, 'a later intentional tap must still toggle the toolbar');
+
+  guard.suppressNextClick();
+  now = 120;
+  clickToggle();
+  assert.equal(toggleCount, 2, 'an expired suppression must not block a later tap');
+});
+
 test('custom icons are made tintable by default and unsafe SVG content is stripped', async () => {
   const { sanitizeToolbarSvg } =
     await import('../src/toolbarRenderer.js');

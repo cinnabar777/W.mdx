@@ -318,7 +318,7 @@ test('toolbar toggle gestures are configurable separately and run on the floatin
   assert.match(mainActivitySource, /itemId == "toolbarToggleControl"/);
   assert.match(
     mainSource,
-    /toggleBtn\.dataset\.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;[\s\S]*?installToolbarTapActions\(document\.body\);[\s\S]*?installPopupToolbarSwipeUp\(toggleBtn, TOOLBAR_TOGGLE_STYLE_ID\)/
+    /toggleBtn\.dataset\.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;[\s\S]*?installToolbarTapActions\(document\.body\);[\s\S]*?installPopupToolbarSwipeUp\(\s*toggleBtn,\s*TOOLBAR_TOGGLE_STYLE_ID,\s*null,\s*\(\) => toggleClickGuard\.suppressNextClick\(\)\s*\)/
   );
   assert.match(
     fs.readFileSync(path.join(root, 'web/index.html'), 'utf8'),
@@ -333,6 +333,25 @@ test('no-icon gesture choices persist while suppressing their parent-key indicat
   assert.match(settingsSource, /gestureStyle\.gestureActionIcons\[selectedGestureId\] = NO_GESTURE_ICON/);
   assert.match(mainSource, /customSvg === NO_GESTURE_ICON\) return ''/);
   assert.match(androidSource, /if \(iconSvg == "none"\)/);
+});
+
+test('floating toggle guards its click after configured tap and swipe actions', () => {
+  assert.match(
+    mainSource,
+    /toolbarToggleClickGuards\.get\(button\)\?\.suppressNextClick\(\)/
+  );
+  assert.match(
+    mainSource,
+    /const markGestureHandled = \(\) => \{/
+  );
+  assert.match(
+    mainSource,
+    /button\.dataset\.toolbarGestureSuppressClick = 'true';[\s\S]*?onHandledGesture\?\.\(\);/
+  );
+  assert.match(
+    mainSource,
+    /if \(toggleClickGuard\.consumeSuppressedClick\(\)\) return;/
+  );
 });
 
 test('toolbar toggle gestures have a separate editor and remain outside the replaceable preview', async () => {
