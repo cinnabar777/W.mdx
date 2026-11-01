@@ -55,6 +55,32 @@ test('empty built-in groups can be placed on the toolbar and deleted safely', as
   assert.ok(deletedListsGroup.holding.includes('outdent'));
 });
 
+test('built-in keys can be deleted from the root, groups, or holding area', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      lists: { order: ['bulletedList', 'numberedList', 'indent'], hidden: [] }
+    },
+    holding: ['copy'],
+    deletedKeys: ['undo', 'bulletedList', 'outdent', 'unknown', 'bulletedList'],
+    styles: {
+      undo: { iconColor: '#ffffff' },
+      bulletedList: { iconColor: '#ffffff' },
+      copy: { iconColor: '#ffffff' }
+    }
+  });
+
+  assert.deepEqual(config.deletedKeys, ['undo', 'bulletedList', 'outdent']);
+  assert.ok(!config.order.includes('undo'));
+  assert.ok(!config.popupGroups.lists.order.includes('bulletedList'));
+  assert.ok(!config.popupGroups.lists.order.includes('outdent'));
+  assert.equal(config.styles.undo, undefined);
+  assert.equal(config.styles.bulletedList, undefined);
+  assert.ok(config.styles.copy);
+});
+
 test('obsolete Files & Tabs toolbar action is removed from saved layouts', async () => {
   const { BOTTOM_TOOLBAR_GROUP_ITEM_IDS, normalizeBottomToolbarConfig } =
     await import('../src/toolbarConfig.js');

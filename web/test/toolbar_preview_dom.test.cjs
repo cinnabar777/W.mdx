@@ -746,7 +746,7 @@ test('custom groups accept loose actions and deleting a group releases its child
       ),
       'the app preview opens the group and displays its assigned action'
     );
-    dom.window.document.querySelector('#toolbar-delete-custom-group').click();
+    dom.window.document.querySelector('#toolbar-delete-item').click();
     assert.equal(saves.at(-1).customGroups[groupId], undefined);
     assert.equal(saves.at(-1).popupGroups[groupId], undefined);
     assert.ok(
@@ -852,7 +852,7 @@ test('empty custom groups can be placed on both toolbar surfaces', async () => {
   }
 });
 
-test('empty built-in groups can be restored and deleted on both toolbar surfaces', async () => {
+test('built-in groups and keys can be deleted on both toolbar surfaces', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html',
@@ -913,18 +913,42 @@ test('empty built-in groups can be restored and deleted on both toolbar surfaces
       const heldAgain = tray.querySelector('[data-toolbar-key="lists"]');
       assert.ok(heldAgain, 'the group can be moved back to the holding area');
       heldAgain.click();
-      const deleteButton = dom.window.document.querySelector('#toolbar-delete-custom-group');
+      const deleteButton = dom.window.document.querySelector('#toolbar-delete-item');
       assert.equal(deleteButton.hidden, false, 'built-in groups have a delete control');
       assert.equal(deleteButton.title, 'Delete group');
       deleteButton.click();
 
-      const saved = saves.at(-1);
+      let saved = saves.at(-1);
       assert.ok(saved.deletedGroups.includes('lists'));
       assert.ok(!saved.order.includes('lists'));
       assert.ok(!saved.holding.includes('lists'));
       assert.equal(saved.popupGroups.lists, undefined);
       assert.ok(saved.holding.includes('bulletedList'));
       assert.ok(saved.holding.includes('outdent'));
+
+      const heldListKey = tray.querySelector(
+        '[data-preview-popup-item="bulletedList"]'
+      );
+      assert.ok(heldListKey, 'released built-in actions remain selectable in the holding area');
+      heldListKey.click();
+      assert.equal(deleteButton.hidden, false, 'built-in actions have a delete control');
+      assert.equal(deleteButton.title, 'Delete key');
+      deleteButton.click();
+      saved = saves.at(-1);
+      assert.ok(saved.deletedKeys.includes('bulletedList'));
+      assert.ok(!saved.holding.includes('bulletedList'));
+      assert.ok(!saved.popupGroups.lists);
+
+      const undoKey = dom.window.document.querySelector(
+        '#toolbar-preview [data-toolbar-key="undo"]'
+      );
+      assert.ok(undoKey, 'root built-in keys can be selected for deletion');
+      undoKey.click();
+      assert.equal(deleteButton.title, 'Delete key');
+      deleteButton.click();
+      saved = saves.at(-1);
+      assert.ok(saved.deletedKeys.includes('undo'));
+      assert.ok(!saved.order.includes('undo'));
     };
 
     await runOnSurface('bottom');

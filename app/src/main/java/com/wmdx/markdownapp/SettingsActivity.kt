@@ -1450,6 +1450,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "exportHtml", "search", "switchView", "newWindow", "settings"
             )
         )
+        private val TOOLBAR_DELETABLE_KEY_IDS =
+            (TOOLBAR_ITEM_IDS.filterNot { it in TOOLBAR_GROUP_ITEM_IDS } +
+                TOOLBAR_GROUP_ITEM_IDS.values.flatten()).distinct()
         private val TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS + listOf(
             "paragraph",
             "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
@@ -1808,6 +1811,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .put("popupGroups", popupGroups)
             .put("holding", org.json.JSONArray(TOOLBAR_HOLDING_ITEM_IDS))
             .put("deletedGroups", org.json.JSONArray())
+            .put("deletedKeys", org.json.JSONArray())
             .put("customGroups", org.json.JSONObject())
             .put("customKeys", org.json.JSONObject())
             .put("styles", org.json.JSONObject())
@@ -1862,9 +1866,20 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 deletedGroups.add(id)
             }
         }
-        val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten().toSet()
-        val validRootIds = TOOLBAR_ITEM_IDS.filterNot { it in deletedGroups } +
-            TOOLBAR_HOLDING_ITEM_IDS +
+        val deletedKeys = mutableListOf<String>()
+        val rawDeletedKeys = input.optJSONArray("deletedKeys") ?: org.json.JSONArray()
+        for (index in 0 until rawDeletedKeys.length()) {
+            val id = rawDeletedKeys.optString(index)
+            if (id in TOOLBAR_DELETABLE_KEY_IDS && id !in deletedKeys) {
+                deletedKeys.add(id)
+            }
+        }
+        val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten()
+            .filterNot { it in deletedKeys }.toSet()
+        val validRootIds = TOOLBAR_ITEM_IDS.filterNot {
+            it in deletedGroups || it in deletedKeys
+        } +
+            TOOLBAR_HOLDING_ITEM_IDS.filterNot { it in deletedKeys } +
             customGroups.keys().asSequence().toList() +
             customKeys.keys().asSequence().toList()
         val validKeyIds = validRootIds + popupActionIds
@@ -1906,7 +1921,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             if (id in validKeyIds && id !in hidden && id !in order) order.add(id)
         }
         for (id in TOOLBAR_ITEM_IDS) {
-            if (id !in deletedGroups && id !in order && id !in hidden) order.add(id)
+            if (id !in deletedGroups && id !in deletedKeys &&
+                id !in order && id !in hidden) order.add(id)
         }
 
         val popupGroups = org.json.JSONObject()
@@ -1934,7 +1950,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             if (!rawPopupGroups.has(groupId)) {
                 val defaults = TOOLBAR_GROUP_ITEM_IDS[groupId].orEmpty()
                 for (id in defaults) {
-                    if (id !in assignedActions) {
+                    if (id !in deletedKeys && id !in assignedActions) {
                         groupOrder.add(id)
                         assignedActions.add(id)
                     }
@@ -1966,7 +1982,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             if (id in validKeyIds && id !in assignedActions && id !in holding) holding.add(id)
         }
         for (id in TOOLBAR_HOLDING_ITEM_IDS) {
-            if (id !in order && id !in assignedActions && id !in holding) {
+            if (id !in deletedKeys &&
+                id !in order && id !in assignedActions && id !in holding) {
                 holding.add(id)
             }
         }
@@ -2014,12 +2031,14 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
         order.removeAll { it in assignedActions || it in holding }
         if (order.isEmpty()) {
-            val fallbackId = if ("menu" in deletedGroups) {
-                TOOLBAR_ITEM_IDS.firstOrNull { it !in deletedGroups }
+            val fallbackId = if ("menu" in deletedGroups || "menu" in deletedKeys) {
+                TOOLBAR_ITEM_IDS.firstOrNull {
+                    it !in deletedGroups && it !in deletedKeys
+                }
             } else {
                 "menu"
             }
-            if (fallbackId != null) {
+            if (fallbackId != null && fallbackId !in deletedKeys) {
                 for (groupId in groupIds) {
                     val group = popupGroups.optJSONObject(groupId) ?: continue
                     val children = group.optJSONArray("order") ?: org.json.JSONArray()
@@ -2046,7 +2065,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         val safeColor = Regex(
             """^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)|[A-Za-z]{1,20})$"""
         )
-        for (id in TOOLBAR_STYLE_IDS.filterNot { it in deletedGroups } +
+        for (id in TOOLBAR_STYLE_IDS.filterNot {
+            it in deletedGroups || it in deletedKeys
+        } +
             customGroups.keys().asSequence().toList() +
             customKeys.keys().asSequence().toList()) {
             val style = rawStyles.optJSONObject(id) ?: continue
@@ -2121,6 +2142,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .put("popupGroups", popupGroups)
             .put("holding", org.json.JSONArray(holding))
             .put("deletedGroups", org.json.JSONArray(deletedGroups))
+            .put("deletedKeys", org.json.JSONArray(deletedKeys))
             .put("customGroups", customGroups)
             .put("customKeys", customKeys)
             .put("styles", styles)

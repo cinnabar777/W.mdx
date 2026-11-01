@@ -89,7 +89,7 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.doesNotMatch(html, /\+ Custom key or group/);
   assert.match(html, /Create key or group/);
   assert.match(html, /id="toolbar-create-group-form"/);
-  assert.match(html, /id="toolbar-delete-custom-group"/);
+  assert.match(html, /id="toolbar-delete-item"/);
   assert.match(html, /id="toolbar-open-icon-picker"/);
   assert.match(html, /id="toolbar-icon-picker-modal"/);
   assert.match(html, /aria-modal="true"/);
@@ -109,7 +109,7 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /id="toolbar-custom-key-action"/);
   assert.match(html, /id="toolbar-preview-title-input"/);
   assert.match(html, /id="toolbar-edit-key-name"/);
-  assert.match(html, /id="toolbar-delete-custom-group"[^>]*aria-label="Delete custom group"/);
+  assert.match(html, /id="toolbar-delete-item"[^>]*aria-label="Delete item"/);
   assert.match(html, /grid-template-columns: minmax\(0, 1fr\) 40px 30px/);
   assert.match(html, /border-radius: 50%/);
   assert.match(html, /\.toolbar-preview-editor-layer\s*\{[^}]*z-index:\s*10030/s);
@@ -482,7 +482,7 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
   );
   assert.equal(BOTTOM_TOOLBAR_STYLE_IDS.length, BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length + 11);
   const kotlinGroupsBlock = androidSource.match(
-    /TOOLBAR_GROUP_ITEM_IDS = linkedMapOf\(([\s\S]*?)\n\s*\)\s*\n\s*private val TOOLBAR_STYLE_IDS/
+    /TOOLBAR_GROUP_ITEM_IDS = linkedMapOf\(([\s\S]*?)\n\s*\)\s*\n\s*private val TOOLBAR_DELETABLE_KEY_IDS/
   )?.[1];
   assert.ok(kotlinGroupsBlock, 'Android must preserve each popup group layout');
   const kotlinGroups = Object.fromEntries(
@@ -509,12 +509,24 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
   assert.match(androidSource, /sanitizeToolbarGroupCycles\(popupGroups, groupIds\)/);
   assert.match(androidSource, /val deletedGroups = mutableListOf<String>\(\)/);
   assert.match(androidSource, /id in TOOLBAR_GROUP_ITEM_IDS && id !in deletedGroups/);
-  assert.match(androidSource, /TOOLBAR_ITEM_IDS\.filterNot \{ it in deletedGroups \}/);
+  assert.match(
+    androidSource,
+    /TOOLBAR_ITEM_IDS\.filterNot \{\s*it in deletedGroups \|\| it in deletedKeys\s*\}/
+  );
+  assert.match(androidSource, /val deletedKeys = mutableListOf<String>\(\)/);
+  assert.match(androidSource, /id in TOOLBAR_DELETABLE_KEY_IDS && id !in deletedKeys/);
+  assert.match(androidSource, /TOOLBAR_HOLDING_ITEM_IDS\.filterNot \{ it in deletedKeys \}/);
   assert.match(androidSource, /groupId !in order/);
   assert.match(
     androidSource,
     /\.put\("deletedGroups", org\.json\.JSONArray\(deletedGroups\)\)/
   );
+  assert.match(
+    androidSource,
+    /\.put\("deletedKeys", org\.json\.JSONArray\(deletedKeys\)\)/
+  );
+  assert.match(settingsSource, /deletedKeys: currentConfig\.deletedKeys/);
+  assert.match(settingsSource, /deletedKeys: value\.deletedKeys/);
   assert.match(androidSource, /id in validKeyIds && id !in assignedActions/);
   assert.match(androidSource, /input\.optInt\("version", 1\) >= 3/);
   assert.match(androidSource, /\.put\("version", 4\)/);

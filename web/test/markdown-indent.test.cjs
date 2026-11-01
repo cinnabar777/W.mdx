@@ -43,6 +43,23 @@ test('indent nests a selected list block under its preceding sibling', async () 
   );
 });
 
+test('a Tab at the cursor nests only the current list item', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = '- first\n- second\n- third';
+  const doc = makeDoc(source);
+  const cursor = doc.line(2).from + 4;
+  const changes = getMarkdownIndentChanges(
+    doc,
+    { from: cursor, to: cursor },
+    'indent'
+  );
+
+  assert.equal(
+    applyChanges(source, changes),
+    '- first\n  - second\n- third'
+  );
+});
+
 test('indent uses the preceding ordered marker width for one nested level', async () => {
   const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
   const source = '10. parent\n1. child';
@@ -54,6 +71,38 @@ test('indent uses the preceding ordered marker width for one nested level', asyn
   );
 
   assert.equal(applyChanges(source, changes), '10. parent\n    1. child');
+});
+
+test('task-list checkboxes do not add extra columns to the nested indent', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = '- [ ] parent\n- [ ] child';
+  const doc = makeDoc(source);
+  const changes = getMarkdownIndentChanges(
+    doc,
+    { from: doc.line(2).from, to: doc.line(2).to },
+    'indent'
+  );
+
+  assert.equal(
+    applyChanges(source, changes),
+    '- [ ] parent\n  - [ ] child'
+  );
+});
+
+test('list indentation can find a sibling across blank and wrapped lines', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = '- parent\n\n  wrapped continuation\n- child';
+  const doc = makeDoc(source);
+  const changes = getMarkdownIndentChanges(
+    doc,
+    { from: doc.line(4).from, to: doc.line(4).to },
+    'indent'
+  );
+
+  assert.equal(
+    applyChanges(source, changes),
+    '- parent\n\n  wrapped continuation\n  - child'
+  );
 });
 
 test('indent does not turn an unparented root list into a code block', async () => {

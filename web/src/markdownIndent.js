@@ -1,4 +1,5 @@
-const ROOT_LIST_MARKER = /^([-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/;
+const ROOT_LIST_MARKER = /^([-+*]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/;
+const LIST_MARKER_PREFIX = /^([-+*]|\d+[.)])[ \t]+/;
 
 function leadingWhitespace(lineText) {
   return /^[ \t]*/.exec(lineText)[0];
@@ -14,7 +15,7 @@ function indentationWidth(value) {
 
 function listItemInfo(lineText) {
   const indent = leadingWhitespace(lineText);
-  const marker = ROOT_LIST_MARKER.exec(lineText.slice(indent.length));
+  const marker = LIST_MARKER_PREFIX.exec(lineText.slice(indent.length));
   if (!marker) return null;
   return {
     indent,
@@ -23,14 +24,24 @@ function listItemInfo(lineText) {
   };
 }
 
+function isContinuationLine(lineText, currentIndentWidth) {
+  if (!lineText.trim()) return true;
+  const lineIndentWidth = indentationWidth(leadingWhitespace(lineText));
+  return lineIndentWidth > currentIndentWidth ||
+    (currentIndentWidth > 0 && lineIndentWidth === currentIndentWidth);
+}
+
 function findPreviousListSibling(doc, lineNumber, currentInfo) {
   for (let number = lineNumber - 1; number >= 1; number -= 1) {
     const previousLine = doc.line(number);
-    if (!previousLine.text.trim()) return null;
+    if (!previousLine.text.trim()) continue;
     const previousInfo = listItemInfo(previousLine.text);
-    if (!previousInfo) return null;
-    if (previousInfo.indentWidth === currentInfo.indentWidth) return previousInfo;
-    if (previousInfo.indentWidth < currentInfo.indentWidth) return null;
+    if (previousInfo) {
+      if (previousInfo.indentWidth === currentInfo.indentWidth) return previousInfo;
+      if (previousInfo.indentWidth < currentInfo.indentWidth) return null;
+      continue;
+    }
+    if (!isContinuationLine(previousLine.text, currentInfo.indentWidth)) return null;
   }
   return null;
 }
@@ -38,12 +49,15 @@ function findPreviousListSibling(doc, lineNumber, currentInfo) {
 function getOutdentWidth(doc, lineNumber, currentInfo, spaces) {
   for (let number = lineNumber - 1; number >= 1; number -= 1) {
     const previousLine = doc.line(number);
-    if (!previousLine.text.trim()) break;
+    if (!previousLine.text.trim()) continue;
     const previousInfo = listItemInfo(previousLine.text);
-    if (!previousInfo) break;
-    if (previousInfo.indentWidth < currentInfo.indentWidth) {
-      return previousInfo.markerWidth;
+    if (previousInfo) {
+      if (previousInfo.indentWidth < currentInfo.indentWidth) {
+        return previousInfo.markerWidth;
+      }
+      continue;
     }
+    if (!isContinuationLine(previousLine.text, currentInfo.indentWidth)) break;
   }
   return indentationWidth(spaces);
 }

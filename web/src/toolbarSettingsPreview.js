@@ -2,6 +2,7 @@ import {
   BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
   BOTTOM_TOOLBAR_ITEMS,
   BOTTOM_TOOLBAR_ITEM_IDS,
+  BUILT_IN_DELETABLE_KEY_IDS,
   BUILT_IN_HOLDING_ITEMS,
   NO_GESTURE_ICON,
   normalizeBottomToolbarConfig,
@@ -454,6 +455,7 @@ function applyToolbarSurfaceConfig(surface, rawConfig) {
       popupGroups: currentConfig.popupGroups,
       holding: currentConfig.holding,
       deletedGroups: currentConfig.deletedGroups,
+      deletedKeys: currentConfig.deletedKeys,
       customGroups: currentConfig.customGroups,
       customKeys: currentConfig.customKeys
     };
@@ -680,6 +682,7 @@ function layoutSignature(value) {
     popupGroups: value.popupGroups,
     holding: value.holding,
     deletedGroups: value.deletedGroups,
+    deletedKeys: value.deletedKeys,
     customGroups: value.customGroups,
     customKeys: value.customKeys
   });
@@ -878,24 +881,28 @@ function refreshSelectedKeyEditor() {
     });
     editorKeyCache = selectedKey;
   }
-  const deleteGroupButton = document.querySelector('#toolbar-delete-custom-group');
-  if (deleteGroupButton) {
+  const deleteItemButton = document.querySelector('#toolbar-delete-item');
+  if (deleteItemButton) {
     const isCustomGroup = Boolean(config.customGroups[selectedKey]);
     const isBuiltInGroup = Boolean(
       config.popupGroups[selectedKey] && !config.customGroups[selectedKey]
     );
     const isCustomKey = Boolean(config.customKeys?.[selectedKey]);
-    deleteGroupButton.hidden = !isCustomGroup && !isBuiltInGroup && !isCustomKey;
+    const isBuiltInKey = BUILT_IN_DELETABLE_KEY_IDS.includes(selectedKey);
+    deleteItemButton.hidden =
+      !isCustomGroup && !isBuiltInGroup && !isCustomKey && !isBuiltInKey;
     const deleteLabel = isCustomGroup
       ? 'Delete custom group'
       : isBuiltInGroup
         ? 'Delete group'
-        : 'Delete custom key';
-    deleteGroupButton.setAttribute(
+        : isCustomKey
+          ? 'Delete custom key'
+          : 'Delete key';
+    deleteItemButton.setAttribute(
       'aria-label',
       deleteLabel
     );
-    deleteGroupButton.title = deleteLabel;
+    deleteItemButton.title = deleteLabel;
   }
   const addCustomButton = document.querySelector('#toolbar-add-custom');
   if (addCustomButton) addCustomButton.disabled = false;
@@ -2277,12 +2284,14 @@ document.querySelector('#toolbar-preview-title-input')?.addEventListener('keydow
   }
 });
 
-document.querySelector('#toolbar-delete-custom-group')?.addEventListener('click', () => {
+document.querySelector('#toolbar-delete-item')?.addEventListener('click', () => {
   const id = selectedKey;
   const isBuiltInGroup = Boolean(config.popupGroups[id] && !config.customGroups[id]);
+  const isBuiltInKey = BUILT_IN_DELETABLE_KEY_IDS.includes(id);
   if (
     !id ||
-    (!config.customGroups[id] && !config.customKeys?.[id] && !isBuiltInGroup)
+    (!config.customGroups[id] && !config.customKeys?.[id] &&
+      !isBuiltInGroup && !isBuiltInKey)
   ) return;
   if (config.customGroups[id] || isBuiltInGroup) {
     const group = config.popupGroups[id];
@@ -2293,6 +2302,8 @@ document.querySelector('#toolbar-delete-custom-group')?.addEventListener('click'
       config.deletedGroups = [...new Set([...config.deletedGroups, id])];
     }
     delete config.popupGroups[id];
+  } else if (isBuiltInKey) {
+    config.deletedKeys = [...new Set([...config.deletedKeys, id])];
   } else {
     delete config.customKeys[id];
   }
