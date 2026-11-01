@@ -1281,6 +1281,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "numberedList" to prefs.getString("pref_hotkey_numberedList", "ctrl+shift+7"),
             "todoList" to prefs.getString("pref_hotkey_todoList", "ctrl+shift+l"),
             "cycleListType" to prefs.getString("pref_hotkey_cycleListType", "ctrl+alt+shift+l"),
+            "undo" to prefs.getString("pref_hotkey_undo", "ctrl+z"),
+            "redo" to prefs.getString("pref_hotkey_redo", "ctrl+y"),
             "indent" to prefs.getString("pref_hotkey_indent", "tab"),
             "outdent" to prefs.getString("pref_hotkey_outdent", "shift+tab"),
             "moveLineUp" to prefs.getString("pref_hotkey_moveLineUp", "ctrl+alt+up"),

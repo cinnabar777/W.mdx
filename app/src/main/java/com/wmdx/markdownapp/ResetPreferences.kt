@@ -636,6 +636,8 @@ object PreferenceResetHelper {
             key == "pref_hotkey_numberedList" -> "ctrl+shift+7"
             key == "pref_hotkey_todoList" -> "ctrl+shift+l"
             key == "pref_hotkey_cycleListType" -> "ctrl+alt+shift+l"
+            key == "pref_hotkey_undo" -> "ctrl+z"
+            key == "pref_hotkey_redo" -> "ctrl+y"
             key == "pref_hotkey_indent" -> "tab"
             key == "pref_hotkey_outdent" -> "shift+tab"
             key == "pref_hotkey_moveLineUp" -> "ctrl+alt+up"

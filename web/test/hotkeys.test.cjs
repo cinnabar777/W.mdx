@@ -33,12 +33,28 @@ test('up and down shortcut names match arrow keys', async () => {
   }, 'ctrl+alt+down'), true);
 });
 
-test('line and list actions have editable shortcuts with matching reset defaults', () => {
+test('undo and redo shortcuts match their standard key combinations', async () => {
+  const { parseAndMatchHotkey } = await import('../src/hotkeys.js');
+  const event = key => ({
+    key,
+    code: `Key${key.toUpperCase()}`,
+    ctrlKey: true,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false
+  });
+  assert.equal(parseAndMatchHotkey(event('z'), 'ctrl+z'), true);
+  assert.equal(parseAndMatchHotkey(event('y'), 'ctrl+y'), true);
+});
+
+test('editing actions have editable shortcuts with matching reset defaults', () => {
   const shortcuts = [
     ['moveLineUp', 'moveLineUp', 'ctrl+alt+up'],
     ['moveLineDown', 'moveLineDown', 'ctrl+alt+down'],
     ['deleteLine', 'deleteLine', 'ctrl+shift+k'],
-    ['cycleListType', 'cycleListType', 'ctrl+alt+shift+l']
+    ['cycleListType', 'cycleListType', 'ctrl+alt+shift+l'],
+    ['undo', 'undo', 'ctrl+z'],
+    ['redo', 'redo', 'ctrl+y']
   ];
   const hotkeysXml = fs.readFileSync(
     path.join(root, 'app/src/main/res/xml/preferences_hotkeys.xml'),

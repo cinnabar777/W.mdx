@@ -196,6 +196,11 @@
             app:defaultValue="ctrl+shift+7" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_redo"
+            app:title="Redo"
+            app:defaultValue="ctrl+y" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_sourceEditing"
             app:title="Source Code View"
             app:defaultValue="ctrl+shift+u" />
@@ -234,6 +239,11 @@
             app:key="pref_hotkey_underlineWavy"
             app:title="Underline Wavy"
             app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_undo"
+            app:title="Undo"
+            app:defaultValue="ctrl+z" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Headings">

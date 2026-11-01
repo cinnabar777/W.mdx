@@ -191,6 +191,7 @@ const PREVIEW_GROUP_ITEMS = {
   ]
 };
 const PREVIEW_EDITOR_ACTION_ITEMS = [
+  { id: 'redo', title: 'Redo', icon: svgIcons.redo },
   { id: 'moveLineUp', title: 'Move Line Up', icon: svgIcons.moveLineUp },
   { id: 'moveLineDown', title: 'Move Line Down', icon: svgIcons.moveLineDown },
   { id: 'deleteLine', title: 'Delete Line / Paragraph', icon: svgIcons.deleteLine },

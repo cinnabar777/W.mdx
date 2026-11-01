@@ -73,6 +73,7 @@ export const BUILT_IN_ACTION_IDS = Object.freeze([...new Set([
   'moveLineDown',
   'deleteLine',
   'cycleListType',
+  'redo',
   ...BUILT_IN_GESTURE_ACTION_IDS.filter(id => id !== OPEN_GROUP_ACTION_ID)
 ])]);
 

@@ -421,10 +421,12 @@ test('adding Clear Formatting migrates old layouts without pulling it from the h
   assert.ok(held.holding.includes('clearFormatting'));
 });
 
-test('line editing actions are accepted as built-in toolbar gestures', async () => {
+test('editing history and line actions are accepted as built-in toolbar gestures', async () => {
   const { BUILT_IN_ACTION_IDS, normalizeBottomToolbarConfig } =
     await import('../src/toolbarConfig.js');
-  const actions = ['moveLineUp', 'moveLineDown', 'deleteLine', 'cycleListType'];
+  const actions = [
+    'moveLineUp', 'moveLineDown', 'deleteLine', 'cycleListType', 'undo', 'redo'
+  ];
   for (const action of actions) assert.ok(BUILT_IN_ACTION_IDS.includes(action));
 
   const config = normalizeBottomToolbarConfig({

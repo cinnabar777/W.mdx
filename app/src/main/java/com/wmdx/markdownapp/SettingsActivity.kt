@@ -1483,7 +1483,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             TOOLBAR_OPEN_GROUP_ACTION_ID
         )
         private val TOOLBAR_EDITOR_ACTION_IDS =
-            listOf("moveLineUp", "moveLineDown", "deleteLine", "cycleListType")
+            listOf("moveLineUp", "moveLineDown", "deleteLine", "cycleListType", "redo")
         private val TOOLBAR_BUILT_IN_ACTION_IDS =
             (TOOLBAR_ITEM_IDS.filterNot { it in TOOLBAR_GROUP_ITEM_IDS } +
                 TOOLBAR_GROUP_ITEM_IDS.values.flatten() +

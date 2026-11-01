@@ -57,6 +57,14 @@ test('line editing actions are available in settings and run against the active 
   assert.match(sharedCss, /\.toolbar-preview-tray \.toolbar-key-gesture-count/);
 });
 
+test('Redo is selectable as a toolbar action and runs on the active editor', () => {
+  assert.match(settingsSource, /id: 'redo', title: 'Redo'/);
+  assert.match(mainSource, /if \(actionId === 'redo'\)\s*\{\s*activeAdapter\?\.redo\(\);/);
+  assert.match(mainSource, /customHotkeys\.undo/);
+  assert.match(mainSource, /customHotkeys\.redo/);
+  assert.doesNotMatch(mainSource, /e\.ctrlKey && \(k === 'z' \|\| k === 'y'\)/);
+});
+
 test('bottom toolbar preview uses the same renderer, icon source, and toolbar stylesheet as the editor', () => {
   assert.match(settingsSource, /renderBottomToolbarKeys/);
   assert.match(settingsSource, /from '\.\/toolbarIcons\.js'/);

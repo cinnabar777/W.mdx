@@ -167,6 +167,8 @@ let customHotkeys = {
   numberedList: 'ctrl+shift+7',
   todoList: 'ctrl+shift+l',
   cycleListType: 'ctrl+alt+shift+l',
+  undo: 'ctrl+z',
+  redo: 'ctrl+y',
   indent: 'tab',
   outdent: 'shift+tab',
   moveLineUp: 'ctrl+alt+up',
@@ -5245,6 +5247,10 @@ function runToolbarGestureAction(
     activeAdapter?.undo();
     return Boolean(activeAdapter);
   }
+  if (actionId === 'redo') {
+    activeAdapter?.redo();
+    return Boolean(activeAdapter);
+  }
   if (actionId === 'historyBack' || actionId === 'historyForward') {
     const direction = actionId === 'historyBack' ? 'back' : 'forward';
     if (!navigateTocHistory(direction) && window.AndroidNative) {
@@ -7781,7 +7787,19 @@ function setupKeyboardShortcuts() {
       return;
     }
 
-    if (k === 'undo' || k === 'redo' || c === 'undo' || c === 'redo' || (e.ctrlKey && (k === 'z' || k === 'y'))) {
+    const focusedFormField = e.target?.closest?.('input, textarea, select');
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.undo)) {
+      e.preventDefault();
+      activeAdapter?.undo();
+      return;
+    }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.redo)) {
+      e.preventDefault();
+      activeAdapter?.redo();
+      return;
+    }
+
+    if (k === 'undo' || k === 'redo' || c === 'undo' || c === 'redo') {
       return;
     }
 
