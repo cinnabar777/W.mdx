@@ -58,6 +58,12 @@
             app:defaultValue="ctrl+shift+s" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_save_as_mdzip"
+            app:title="Save as MDZip"
+            app:summary="Key combination (e.g. ctrl+shift+alt+m)"
+            app:defaultValue="ctrl+shift+alt+m" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_save_as_textpack"
             app:title="Save as Text Pack"
             app:summary="Key combination (e.g. ctrl+shift+alt+s)"

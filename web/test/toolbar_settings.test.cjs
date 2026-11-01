@@ -65,6 +65,11 @@ test('Redo is selectable as a toolbar action and runs on the active editor', () 
   assert.doesNotMatch(mainSource, /e\.ctrlKey && \(k === 'z' \|\| k === 'y'\)/);
 });
 
+test('Save as MDZip is available in the toolbar action picker', () => {
+  assert.match(settingsSource, /id: 'saveAsMdzip', title: 'Save as MDZip', icon: svgIcons\.saveAsMdzip/);
+  assert.match(toolbarConfigSource, /'saveAsMdzip'/);
+});
+
 test('bottom toolbar preview uses the same renderer, icon source, and toolbar stylesheet as the editor', () => {
   assert.match(settingsSource, /renderBottomToolbarKeys/);
   assert.match(settingsSource, /from '\.\/toolbarIcons\.js'/);

@@ -140,6 +140,7 @@ let customHotkeys = {
   save_as: 'ctrl+shift+s',
   save_tabs: '',
   save_as_textpack: 'ctrl+shift+alt+s',
+  save_as_mdzip: 'ctrl+shift+alt+m',
   export: 'ctrl+shift+e',
   image: 'ctrl+shift+i',
   settings: 'ctrl+,',
@@ -7821,6 +7822,9 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as_textpack)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack');
+    } else if (parseAndMatchHotkey(e, customHotkeys.save_as_mdzip)) {
+      e.preventDefault();
+      window.AndroidNative && window.AndroidNative.onNativeAction('save_as_mdzip');
     } else if (parseAndMatchHotkey(e, customHotkeys.export)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('export');

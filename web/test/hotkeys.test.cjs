@@ -54,7 +54,8 @@ test('editing actions have editable shortcuts with matching reset defaults', () 
     ['deleteLine', 'deleteLine', 'ctrl+shift+k'],
     ['cycleListType', 'cycleListType', 'ctrl+alt+shift+l'],
     ['undo', 'undo', 'ctrl+z'],
-    ['redo', 'redo', 'ctrl+y']
+    ['redo', 'redo', 'ctrl+y'],
+    ['save_as_mdzip', 'save_as_mdzip', 'ctrl+shift+alt+m']
   ];
   const hotkeysXml = fs.readFileSync(
     path.join(root, 'app/src/main/res/xml/preferences_hotkeys.xml'),
