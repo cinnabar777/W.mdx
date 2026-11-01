@@ -144,6 +144,8 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(preferenceXml, /pref_toolbar_label_color/);
   assert.match(mainSource, /function runToolbarGestureAction/);
   assert.match(mainSource, /installPopupToolbarSwipeUp/);
+  assert.match(mainSource, /shouldSuppressToolbarToggleClick\(gestureId, actionId\)/);
+  assert.match(mainSource, /if \(actionId\) \{\s*runToolbarGestureAction\(actionId, button, new Set\(\), toolbarConfig\);/);
   assert.match(
     mainSource,
     /\{ id: OPEN_GROUP_ACTION_ID, title: 'Open group', icon: svgIcons\.folder \}/,

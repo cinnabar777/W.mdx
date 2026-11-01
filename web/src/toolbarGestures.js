@@ -73,6 +73,10 @@ export function getToolbarGestureActionId(style = {}, gestureId) {
     '';
 }
 
+export function shouldSuppressToolbarToggleClick(gestureId, actionId) {
+  return Boolean(actionId) || gestureId !== 'swipeUp';
+}
+
 export function hasToolbarSwipeActions(style = {}) {
   return TOOLBAR_SWIPE_GESTURE_IDS.some(gestureId =>
     Boolean(getToolbarGestureActionId(style, gestureId))

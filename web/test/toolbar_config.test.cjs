@@ -646,7 +646,10 @@ test('toolbar root action buttons expose syntax commands for active highlighting
 
 test('runtime toolbar dispatches all eight swipe directions from a key', async () => {
   const { renderBottomToolbarKeys } = await import('../src/toolbarRenderer.js');
-  const { TOOLBAR_SWIPE_GESTURE_IDS } = await import('../src/toolbarGestures.js');
+  const {
+    TOOLBAR_SWIPE_GESTURE_IDS,
+    shouldSuppressToolbarToggleClick
+  } = await import('../src/toolbarGestures.js');
   const dom = new JSDOM('<div id="toolbar"></div>');
   const toolbar = dom.window.document.querySelector('#toolbar');
   const directions = {
@@ -696,6 +699,15 @@ test('runtime toolbar dispatches all eight swipe directions from a key', async (
   }
 
   assert.deepEqual(dispatched, TOOLBAR_SWIPE_GESTURE_IDS);
+});
+
+test('toolbar toggle only falls through to open on an unassigned upward swipe', async () => {
+  const { shouldSuppressToolbarToggleClick } =
+    await import('../src/toolbarGestures.js');
+  assert.equal(shouldSuppressToolbarToggleClick('swipeDown', 'bold'), true);
+  assert.equal(shouldSuppressToolbarToggleClick('swipeDown', ''), true);
+  assert.equal(shouldSuppressToolbarToggleClick('swipeUp', 'bold'), true);
+  assert.equal(shouldSuppressToolbarToggleClick('swipeUp', ''), false);
 });
 
 test('custom icons are made tintable by default and unsafe SVG content is stripped', async () => {

@@ -75,7 +75,8 @@ import {
   getToolbarGestureActionId,
   getToolbarGestureIndicatorEntries,
   getToolbarSwipeGesture,
-  hasToolbarSwipeActions
+  hasToolbarSwipeActions,
+  shouldSuppressToolbarToggleClick
 } from './toolbarGestures.js';
 import {
   renderBottomToolbarKeys,
@@ -5427,9 +5428,9 @@ function installPopupToolbarSwipeUp(
         if (!pointerStart) return;
         const toolbarConfig = getToolbarConfig();
         const actionId = toolbarConfig.styles[styleId]?.gestureActions?.longPress;
-        longPressHandled = Boolean(
-          actionId && runToolbarGestureAction(actionId, button, new Set(), toolbarConfig)
-        );
+        if (!actionId) return;
+        runToolbarGestureAction(actionId, button, new Set(), toolbarConfig);
+        longPressHandled = true;
         if (longPressHandled) {
           button.dataset.toolbarGestureSuppressClick = 'true';
         }
@@ -5463,8 +5464,10 @@ function installPopupToolbarSwipeUp(
     const toolbarConfig = getToolbarConfig();
     const style = toolbarConfig.styles[styleId] || {};
     const actionId = getToolbarGestureActionId(style, gestureId);
-    if (!actionId ||
-        !runToolbarGestureAction(actionId, button, new Set(), toolbarConfig)) return;
+    if (actionId) {
+      runToolbarGestureAction(actionId, button, new Set(), toolbarConfig);
+    }
+    if (!shouldSuppressToolbarToggleClick(gestureId, actionId)) return;
     button.dataset.toolbarGestureSuppressClick = 'true';
     event.preventDefault();
   }, { capture: true });
