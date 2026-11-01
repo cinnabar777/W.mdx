@@ -373,6 +373,55 @@
       color: var(--selection-highlight-text, inherit) !important;
     }
 
+    /* Android WebView misplaces native handles for selections before auto-hyphens. */
+    .wmdx-hyphen-selection-handle-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 20000;
+      overflow: visible;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .wmdx-hyphen-selection-handle-layer[hidden],
+    .wmdx-hyphen-selection-handle[hidden] {
+      display: none !important;
+    }
+    .wmdx-hyphen-selection-handle {
+      position: absolute;
+      width: 40px;
+      height: 42px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      appearance: none;
+      background: transparent;
+      pointer-events: auto;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .wmdx-hyphen-selection-handle::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 19px;
+      width: 2px;
+      height: 14px;
+      border-radius: 2px;
+      background: #00d7c2;
+    }
+    .wmdx-hyphen-selection-handle::after {
+      content: "";
+      position: absolute;
+      top: 11px;
+      left: 12px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #00d7c2;
+    }
+
     /* Left workspace panel; toolbars remain above its overlay and panel. */
     #left-panel-overlay {
       position: fixed;
