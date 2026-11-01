@@ -35,6 +35,16 @@ import { setupLeftPanel } from './leftPanel.js';
 import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import {
+  extractMarkdownAudioLinks,
+  extractMarkdownVideoLinks,
+  formatMarkdownAudioLink,
+  formatMarkdownVideoLink,
+  parseMarkdownAudioLink,
+  parseMarkdownVideoLink
+} from './markdownMedia.js';
+import { AudioPreviewWidget } from './audioPreviewWidget.js';
+import { VideoPreviewWidget } from './videoPreviewWidget.js';
+import {
   getMarkdownFormattingState,
   getMarkdownFormatRanges,
   getWmdxUnderlineSyntaxDelimiterRanges,
@@ -69,7 +79,7 @@ import {
 } from './toolbarRenderer.js';
 import { getFloatingToolbarPosition } from './toolbarPositioning.js';
 import { openToolbarKeyPreferencesDialog } from './toolbarKeyPreferencesDialog.js';
-import { defaultKeymap, history, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
+import { defaultKeymap, history, historyField, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import {
   search,
   SearchQuery,
@@ -2012,6 +2022,47 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'Link' || node.name === 'URL') {
             const raw = view.state.doc.sliceString(node.from, node.to);
+            const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
+            const videoUrl = videoLink
+              ? window.AndroidNative?.resolveMdzipMediaUrl?.(videoLink.url)
+              : null;
+            if (videoLink && videoUrl && !isNodeActive && !isPureWysiwyg) {
+              const videoDecoration = Decoration.replace({
+                widget: new VideoPreviewWidget(
+                  videoUrl,
+                  videoLink.label,
+                  videoLink.url,
+                  node.from,
+                  node.to,
+                  videoLink.layout,
+                  (editView, item) => openVideoEditDialog(editView, item),
+                  videoLink.unsupported
+                )
+              }).range(node.from, node.to);
+              builder.push(videoDecoration);
+              hiddenSyntaxRanges.push(videoDecoration);
+              return false;
+            }
+            const audioLink = node.name === 'Link' ? parseMarkdownAudioLink(raw) : null;
+            const audioUrl = audioLink
+              ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
+              : null;
+            if (audioLink && audioUrl && !isNodeActive && !isPureWysiwyg) {
+              const audioDecoration = Decoration.replace({
+                widget: new AudioPreviewWidget(
+                  audioUrl,
+                  audioLink.label,
+                  audioLink.url,
+                  node.from,
+                  node.to,
+                  audioLink.layout,
+                  (editView, item) => openAudioEditDialog(editView, item)
+                )
+              }).range(node.from, node.to);
+              builder.push(audioDecoration);
+              hiddenSyntaxRanges.push(audioDecoration);
+              return false;
+            }
             const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
             if (match) {
               const labelFrom = node.from + 1;
@@ -3104,6 +3155,47 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'Link' || node.name === 'URL') {
         const raw = doc.sliceString(node.from, node.to);
+        const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
+        const videoUrl = videoLink
+          ? window.AndroidNative?.resolveMdzipMediaUrl?.(videoLink.url)
+          : null;
+        if (videoLink && videoUrl) {
+          const videoDecoration = Decoration.replace({
+            widget: new VideoPreviewWidget(
+              videoUrl,
+              videoLink.label,
+              videoLink.url,
+              node.from,
+              node.to,
+              videoLink.layout,
+              (editView, item) => openVideoEditDialog(editView, item),
+              videoLink.unsupported
+            )
+          }).range(node.from, node.to);
+          replacements.push(videoDecoration);
+          hiddenSyntaxRanges.push(videoDecoration);
+          return false;
+        }
+        const audioLink = node.name === 'Link' ? parseMarkdownAudioLink(raw) : null;
+        const audioUrl = audioLink
+          ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
+          : null;
+        if (audioLink && audioUrl) {
+          const audioDecoration = Decoration.replace({
+            widget: new AudioPreviewWidget(
+              audioUrl,
+              audioLink.label,
+              audioLink.url,
+              node.from,
+              node.to,
+              audioLink.layout,
+              (editView, item) => openAudioEditDialog(editView, item)
+            )
+          }).range(node.from, node.to);
+          replacements.push(audioDecoration);
+          hiddenSyntaxRanges.push(audioDecoration);
+          return false;
+        }
         const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         if (match) {
           const labelFrom = node.from + 1;
@@ -3702,6 +3794,7 @@ class CodeMirrorAdapter {
     this.mode = currentEditorMode;
     this.documentSessionId = window.AndroidNative?.getCurrentDocumentSessionId?.() || null;
     this.view = null;
+    this.historyCompartment = new Compartment();
     this.lineWrapCompartment = new Compartment();
     this.lineNumbersCompartment = new Compartment();
     this.showLineNumbers = false;
@@ -3715,6 +3808,8 @@ class CodeMirrorAdapter {
     this.syntaxRefreshAttempts = 0;
     this.syntaxRefreshComplete = false;
     this.pendingRestoreScrollTop = null;
+    this.mdzipAudioLinkRanges = [];
+    this.mdzipVideoLinkRanges = [];
   }
 
   scheduleSyntaxRefresh() {
@@ -3811,6 +3906,108 @@ class CodeMirrorAdapter {
     );
   }
 
+  syncMdzipAudioReferences(update) {
+    const previousLinks = this.mdzipAudioLinkRanges;
+    let linksMayHaveChanged = false;
+    update.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+      const touchesExistingLink = previousLinks.some(link =>
+        fromA === toA
+          ? fromA >= link.from && fromA <= link.to
+          : fromA < link.to && toA > link.from
+      );
+      const changedText =
+        update.startState.doc.sliceString(fromA, toA) +
+        update.state.doc.sliceString(fromB, toB);
+      if (touchesExistingLink || /(?:audio\/|\.(?:mp3|aac|m4a|wav|flac|opus|ogg|oga))/i.test(changedText)) {
+        linksMayHaveChanged = true;
+      }
+    });
+
+    if (!linksMayHaveChanged) {
+      this.mdzipAudioLinkRanges = previousLinks.map(link => ({
+        ...link,
+        from: update.changes.mapPos(link.from, 1),
+        to: update.changes.mapPos(link.to, -1)
+      }));
+      return;
+    }
+
+    const currentLinks = extractMarkdownAudioLinks(update.state.doc.toString());
+    const previousUrls = new Set(previousLinks.map(link => link.url));
+    const currentUrls = new Set(currentLinks.map(link => link.url));
+    this.mdzipAudioLinkRanges = currentLinks;
+    if (
+      previousUrls.size === currentUrls.size &&
+      [...previousUrls].every(url => currentUrls.has(url))
+    ) {
+      return;
+    }
+
+    try {
+      window.AndroidNative?.syncMdzipAudioReferences?.(
+        JSON.stringify([...previousUrls]),
+        JSON.stringify([...currentUrls]),
+        this.documentSessionId
+      );
+    } catch (error) {
+      window.AndroidNative?.reportDiagnostic?.(
+        'mdzip_audio_reference_sync_failed',
+        error?.message || 'bridge call failed'
+      );
+    }
+  }
+
+  syncMdzipVideoReferences(update) {
+    const previousLinks = this.mdzipVideoLinkRanges;
+    let linksMayHaveChanged = false;
+    update.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+      const touchesExistingLink = previousLinks.some(link =>
+        fromA === toA
+          ? fromA >= link.from && fromA <= link.to
+          : fromA < link.to && toA > link.from
+      );
+      const changedText =
+        update.startState.doc.sliceString(fromA, toA) +
+        update.state.doc.sliceString(fromB, toB);
+      if (touchesExistingLink || /(?:video\/|\.(?:mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv))/i.test(changedText)) {
+        linksMayHaveChanged = true;
+      }
+    });
+
+    if (!linksMayHaveChanged) {
+      this.mdzipVideoLinkRanges = previousLinks.map(link => ({
+        ...link,
+        from: update.changes.mapPos(link.from, 1),
+        to: update.changes.mapPos(link.to, -1)
+      }));
+      return;
+    }
+
+    const currentLinks = extractMarkdownVideoLinks(update.state.doc.toString());
+    const previousUrls = new Set(previousLinks.map(link => link.url));
+    const currentUrls = new Set(currentLinks.map(link => link.url));
+    this.mdzipVideoLinkRanges = currentLinks;
+    if (
+      previousUrls.size === currentUrls.size &&
+      [...previousUrls].every(url => currentUrls.has(url))
+    ) {
+      return;
+    }
+
+    try {
+      window.AndroidNative?.syncMdzipVideoReferences?.(
+        JSON.stringify([...previousUrls]),
+        JSON.stringify([...currentUrls]),
+        this.documentSessionId
+      );
+    } catch (error) {
+      window.AndroidNative?.reportDiagnostic?.(
+        'mdzip_video_reference_sync_failed',
+        error?.message || 'bridge call failed'
+      );
+    }
+  }
+
   queueScrollPositionSave() {
     if (!this.view || this.isProgrammatic) return;
     if (this.scrollPersistTimer !== null) {
@@ -3829,11 +4026,10 @@ class CodeMirrorAdapter {
 
   async init(containerEl, initialMarkdown = '', modeSnapshot = null) {
     containerEl.innerHTML = '';
-    let startState = EditorState.create({
-      doc: initialMarkdown || '',
-      extensions: [
+    const extensions = [
         highlightSpecialChars(),
-        history(),
+        this.historyCompartment.of(history()),
+        EditorView.contentAttributes.of({ autocapitalize: 'sentences' }),
         drawSelection(),
         dropCursor(),
         rectangularSelection(),
@@ -3905,6 +4101,19 @@ class CodeMirrorAdapter {
           }
         }),
         EditorView.updateListener.of(update => {
+          if (update.docChanged) {
+            if (this.isProgrammatic) {
+              this.mdzipAudioLinkRanges = extractMarkdownAudioLinks(
+                update.state.doc.toString()
+              );
+              this.mdzipVideoLinkRanges = extractMarkdownVideoLinks(
+                update.state.doc.toString()
+              );
+            } else {
+              this.syncMdzipAudioReferences(update);
+              this.syncMdzipVideoReferences(update);
+            }
+          }
           if (update.docChanged && !this.isProgrammatic) {
             this.revision++;
             window.leftPanelController?.onEditorChanged?.(update.state.doc.toString());
@@ -3947,8 +4156,30 @@ class CodeMirrorAdapter {
           ...defaultKeymap,
           ...historyKeymap
         ])
-      ]
-    });
+      ];
+    const stateConfig = { doc: initialMarkdown || '', extensions };
+    let startState;
+    if (modeSnapshot?.historyState) {
+      try {
+        startState = EditorState.fromJSON(
+          modeSnapshot.historyState,
+          stateConfig,
+          { history: historyField }
+        );
+      } catch (error) {
+        window.AndroidNative?.reportDiagnostic?.(
+          'history_restore_failed',
+          error?.message || 'history state could not be restored'
+        );
+      }
+    }
+    if (!startState) startState = EditorState.create(stateConfig);
+    this.mdzipAudioLinkRanges = extractMarkdownAudioLinks(
+      startState.doc.toString()
+    );
+    this.mdzipVideoLinkRanges = extractMarkdownVideoLinks(
+      startState.doc.toString()
+    );
 
     if (modeSnapshot?.selection) {
       let selection = modeSnapshot.selection;
@@ -4095,6 +4326,12 @@ class CodeMirrorAdapter {
     const currentDoc = this.view.state.doc.toString();
     if (currentDoc !== text) {
       this.view.dispatch({
+        effects: this.historyCompartment.reconfigure([])
+      });
+      this.view.dispatch({
+        effects: this.historyCompartment.reconfigure(history())
+      });
+      this.view.dispatch({
         changes: { from: 0, to: currentDoc.length, insert: text || '' },
         annotations: Transaction.addToHistory.of(false)
       });
@@ -4169,6 +4406,50 @@ class CodeMirrorAdapter {
     }
   }
 
+  insertAudioLink(relativeUrl, label) {
+    if (!this.view) return;
+    const markdown = formatMarkdownAudioLink(label, relativeUrl);
+    const selection = this.view.state.selection.main;
+    const before = this.view.state.doc.sliceString(0, selection.from);
+    const after = this.view.state.doc.sliceString(selection.to);
+    const prefix = before.length === 0 || before.endsWith('\n\n')
+      ? ''
+      : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = after.startsWith('\n\n')
+      ? ''
+      : after.startsWith('\n') ? '\n' : '\n\n';
+    const insertion = `${prefix}${markdown}${suffix}`;
+    const cursor = selection.from + insertion.length;
+    this.view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: insertion },
+      selection: { anchor: cursor, head: cursor },
+      userEvent: 'input.mdzip-audio'
+    });
+    this.view.focus();
+  }
+
+  insertVideoLink(relativeUrl, label) {
+    if (!this.view) return;
+    const markdown = formatMarkdownVideoLink(label, relativeUrl);
+    const selection = this.view.state.selection.main;
+    const before = this.view.state.doc.sliceString(0, selection.from);
+    const after = this.view.state.doc.sliceString(selection.to);
+    const prefix = before.length === 0 || before.endsWith('\n\n')
+      ? ''
+      : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = after.startsWith('\n\n')
+      ? ''
+      : after.startsWith('\n') ? '\n' : '\n\n';
+    const insertion = `${prefix}${markdown}${suffix}`;
+    const cursor = selection.from + insertion.length;
+    this.view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: insertion },
+      selection: { anchor: cursor, head: cursor },
+      userEvent: 'input.mdzip-video'
+    });
+    this.view.focus();
+  }
+
   destroy() {
     this.persistScrollPosition();
 
@@ -4225,7 +4506,10 @@ async function setEditorMode(mode) {
   const modeSnapshot = activeAdapter?.view
     ? {
         selection: activeAdapter.view.state.selection,
-        scroll: activeAdapter.view.scrollSnapshot()
+        scroll: activeAdapter.view.scrollSnapshot(),
+        historyState: activeAdapter.view.state.toJSON({
+          history: historyField
+        })
       }
     : null;
 
@@ -4512,6 +4796,8 @@ function setupGroupedControlBar() {
       e.stopPropagation();
       togglePopupStrip('insert', insertBtn, [
         { id: 'image', icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
+        { id: 'audio', icon: svgIcons.audio, title: 'Insert Audio', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('audio') },
+        { id: 'video', icon: svgIcons.video, title: 'Insert Video', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('video') },
         { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
@@ -4534,6 +4820,7 @@ function setupGroupedControlBar() {
         { id: 'saveAsFile', icon: svgIcons.saveAsFile, title: 'Save As', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as') },
         { id: 'saveTabs', icon: svgIcons.saveTabs, title: 'Save Tabs', action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
         { id: 'saveAsTextPack', icon: svgIcons.saveAsTextPack, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
+        { id: 'saveAsMdzip', icon: svgIcons.saveAsMdzip, title: 'Save as MDZip', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_mdzip') },
         { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
         { id: 'switchView', icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
@@ -4813,6 +5100,8 @@ function createToolbarActionRegistry() {
     ],
     [
       { id: 'image', title: 'Insert Image', icon: svgIcons.image, action: () => window.AndroidNative?.onNativeAction('image') },
+      { id: 'audio', title: 'Insert Audio', icon: svgIcons.audio, action: () => window.AndroidNative?.onNativeAction('audio') },
+      { id: 'video', title: 'Insert Video', icon: svgIcons.video, action: () => window.AndroidNative?.onNativeAction('video') },
       { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
       { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
@@ -4828,6 +5117,7 @@ function createToolbarActionRegistry() {
       { id: 'saveAsFile', title: 'Save As', icon: svgIcons.saveAsFile, action: () => window.AndroidNative?.onNativeAction('save_as') },
       { id: 'saveTabs', title: 'Save Tabs', icon: svgIcons.saveTabs, action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
       { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack, action: () => window.AndroidNative?.onNativeAction('save_as_textpack') },
+      { id: 'saveAsMdzip', title: 'Save as MDZip', icon: svgIcons.saveAsMdzip, action: () => window.AndroidNative?.onNativeAction('save_as_mdzip') },
       { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
       { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
       { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView, action: () => openWithOtherEngine() },
@@ -5489,6 +5779,170 @@ export function openFootnoteInsertionDialog(options = {}) {
 
   overlay.classList.add('open');
   requestAnimationFrame(() => textInput.focus());
+}
+
+function openAudioEditDialog(view, audioItem) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Audio Layout</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-audio-width">Player width (% of text area)</label>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <input id="modal-audio-width" class="modal-input" type="range" min="40" max="100" step="5"
+          style="flex:1;min-width:0;width:auto;padding:0;border:0;background:transparent;accent-color:var(--accent-color,#00d6c9);" />
+        <output id="modal-audio-width-value" aria-live="polite" style="min-width:42px;text-align:right;"></output>
+      </div>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-audio-alignment">Alignment</label>
+      <select id="modal-audio-alignment" class="modal-input">
+        <option value="left">Left</option>
+        <option value="center">Center</option>
+        <option value="right">Right</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-audio-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-audio-save">Save</button>
+    </div>
+  `;
+
+  const widthInput = dialog.querySelector('#modal-audio-width');
+  const widthValue = dialog.querySelector('#modal-audio-width-value');
+  const alignmentInput = dialog.querySelector('#modal-audio-alignment');
+  widthInput.value = String(audioItem.layout?.width ?? 100);
+  alignmentInput.value = audioItem.layout?.alignment ?? 'left';
+  const updateWidthValue = () => {
+    widthValue.textContent = `${widthInput.value}%`;
+  };
+  updateWidthValue();
+  widthInput.addEventListener('input', updateWidthValue);
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-audio-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-audio-save').addEventListener('click', event => {
+    event.preventDefault();
+    const { from, to } = audioItem;
+    if (from < 0 || to > view.state.doc.length || from >= to) {
+      close();
+      return;
+    }
+    const currentAudio = parseMarkdownAudioLink(view.state.doc.sliceString(from, to));
+    if (!currentAudio || currentAudio.url !== audioItem.url) {
+      close();
+      return;
+    }
+
+    const markdown = formatMarkdownAudioLink(
+      audioItem.label,
+      audioItem.url,
+      {
+        width: Number(widthInput.value),
+        alignment: alignmentInput.value
+      }
+    );
+    view.dispatch({
+      changes: { from, to, insert: markdown },
+      selection: { anchor: from + markdown.length, head: from + markdown.length },
+      userEvent: 'input.mdzip-audio-layout'
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => widthInput.focus());
+}
+
+function openVideoEditDialog(view, videoItem) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Video Layout</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-video-width">Video width (% of text area)</label>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <input id="modal-video-width" class="modal-input" type="range" min="40" max="100" step="5"
+          style="flex:1;min-width:0;width:auto;padding:0;border:0;background:transparent;accent-color:var(--accent-color,#00d6c9);" />
+        <output id="modal-video-width-value" aria-live="polite" style="min-width:42px;text-align:right;"></output>
+      </div>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-video-alignment">Alignment</label>
+      <select id="modal-video-alignment" class="modal-input">
+        <option value="left">Left</option>
+        <option value="center">Center</option>
+        <option value="right">Right</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-video-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-video-save">Save</button>
+    </div>
+  `;
+
+  const widthInput = dialog.querySelector('#modal-video-width');
+  const widthValue = dialog.querySelector('#modal-video-width-value');
+  const alignmentInput = dialog.querySelector('#modal-video-alignment');
+  widthInput.value = String(videoItem.layout?.width ?? 100);
+  alignmentInput.value = videoItem.layout?.alignment ?? 'left';
+  const updateWidthValue = () => {
+    widthValue.textContent = `${widthInput.value}%`;
+  };
+  updateWidthValue();
+  widthInput.addEventListener('input', updateWidthValue);
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-video-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-video-save').addEventListener('click', event => {
+    event.preventDefault();
+    const { from, to } = videoItem;
+    if (from < 0 || to > view.state.doc.length || from >= to) {
+      close();
+      return;
+    }
+    const currentVideo = parseMarkdownVideoLink(view.state.doc.sliceString(from, to));
+    if (!currentVideo || currentVideo.url !== videoItem.url) {
+      close();
+      return;
+    }
+
+    const markdown = formatMarkdownVideoLink(
+      videoItem.label,
+      videoItem.url,
+      {
+        width: Number(widthInput.value),
+        alignment: alignmentInput.value
+      }
+    );
+    view.dispatch({
+      changes: { from, to, insert: markdown },
+      selection: { anchor: from + markdown.length, head: from + markdown.length },
+      userEvent: 'input.mdzip-video-layout'
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => widthInput.focus());
 }
 
 function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
@@ -7221,7 +7675,6 @@ function setupTocGestureAndPanel(scrollDOM) {
     if (globalToggleBtn && globalToggleBtn.onclick === globalToggleHandler) {
       globalToggleBtn.onclick = null;
     }
-    isSwiping = false;
   };
 }
 
@@ -7501,6 +7954,37 @@ window.editorBridge = {
     } else {
       document.body.classList.remove('light-theme');
     }
+
+    setCssVar(
+      '--media-player-bg',
+      androidArgbToCss(prefs.pref_media_player_background_color)
+    );
+    setCssVar(
+      '--media-controls-bg',
+      androidArgbToCss(prefs.pref_media_controls_background_color)
+    );
+    setCssVar(
+      '--media-controls-text',
+      androidArgbToCss(prefs.pref_media_controls_text_color)
+    );
+    setCssVar(
+      '--media-controls-accent',
+      androidArgbToCss(prefs.pref_media_controls_accent_color)
+    );
+    setCssVar(
+      '--media-controls-radius',
+      prefs.pref_media_controls_corner_radius ?? 24,
+      'px'
+    );
+    const requestedMediaRate = Number(prefs.pref_media_playback_speed ?? '1.0');
+    const availableMediaRates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+    window.mdzipAudioPlaybackRate = availableMediaRates.includes(requestedMediaRate)
+      ? requestedMediaRate
+      : 1;
+    document.querySelectorAll('audio[data-mdzip-audio="true"]').forEach(audio => {
+      audio.playbackRate = window.mdzipAudioPlaybackRate;
+      audio._syncMdzipPlaybackRate?.();
+    });
 
     if (prefs.pref_line_wrap === false) {
       document.body.classList.add('no-line-wrap');
@@ -8440,6 +8924,31 @@ window.editorBridge = {
       const imgMarkdown = `![${altText}](${imageUrl})`;
       const cur = activeAdapter.getMarkdown();
       activeAdapter.setMarkdown(cur ? `${cur}\n${imgMarkdown}` : imgMarkdown);
+    }
+  },
+  insertAudioLink: function(relativeUrl, label = 'audio file') {
+    if (activeAdapter && typeof activeAdapter.insertAudioLink === 'function') {
+      activeAdapter.insertAudioLink(relativeUrl, label);
+    }
+  },
+  insertVideoLink: function(relativeUrl, label = 'video file') {
+    if (activeAdapter && typeof activeAdapter.insertVideoLink === 'function') {
+      activeAdapter.insertVideoLink(relativeUrl, label);
+    }
+  },
+  reloadMdzipAudio: function(relativeUrl) {
+    for (const audio of document.querySelectorAll('audio[data-mdzip-audio="true"]')) {
+      if (audio.dataset.mdzipLink !== relativeUrl) continue;
+      const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+      const wasPlaying = !audio.paused && !audio.ended;
+      audio.pause();
+      audio.addEventListener('loadedmetadata', () => {
+        if (Number.isFinite(audio.duration)) {
+          audio.currentTime = Math.min(currentTime, audio.duration);
+        }
+        if (wasPlaying) audio.play().catch(() => {});
+      }, { once: true });
+      audio.load();
     }
   },
   setTheme: function(themeName) {

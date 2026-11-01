@@ -72,6 +72,11 @@
             app:entries="@array/pref_image_mode_entries"
             app:entryValues="@array/pref_image_mode_values"
             app:defaultValue="picker" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_media"
+            app:title="Media Playback"
+            app:summary="Player colors and saved audio playback speed" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Documents &amp; Access">

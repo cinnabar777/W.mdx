@@ -36,6 +36,10 @@ object PreferenceResetHelper {
             "pref_settings_reset_icon_color" -> "#00E5FF"
             "pref_settings_reset_inactive_icon_color" -> "#555555"
             "pref_settings_bg_color" -> "#000000"
+            "pref_media_player_background_color" -> "#111111"
+            "pref_media_controls_background_color" -> "#242424"
+            "pref_media_controls_text_color" -> "#FFFFFF"
+            "pref_media_controls_accent_color" -> "#00D6C9"
             "pref_toolbar_bg_color" -> "#121212"
             "pref_toolbar_icon_color" -> "#FFFFFF"
             "pref_toolbar_active_key_bg_color" -> "#1F1F1F"
@@ -152,6 +156,14 @@ object PreferenceResetHelper {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
         return when (key) {
+            "pref_media_player_background_color" ->
+                if (isLightTheme) "#FFFFFF" else "#111111"
+            "pref_media_controls_background_color" ->
+                if (isLightTheme) "#F0F0F0" else "#242424"
+            "pref_media_controls_text_color" ->
+                if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_media_controls_accent_color" ->
+                if (isLightTheme) "#007F77" else "#00D6C9"
             "pref_body_background_color" ->
                 if (isLightTheme) "#FFFFFF" else "#000000"
             "pref_body_text_color", "pref_list_text_color" ->
@@ -514,6 +526,7 @@ object PreferenceResetHelper {
             key == "pref_toolbar_floating_padding" -> 4
             key == "pref_toolbar_floating_key_width" -> 48
             key == "pref_toolbar_floating_corner_radius" -> 24
+            key == "pref_media_controls_corner_radius" -> 24
             key == "pref_app_theme" -> "amoled"
             key == "pref_toc_panel_width" -> 80
             key == "pref_toc_panel_enabled" -> true

@@ -48,6 +48,7 @@ class SettingsActivity : AppCompatActivity() {
             val currentFragment = supportFragmentManager.findFragmentById(R.id.settings_container)
             supportActionBar?.title = when (currentFragment) {
                 is SettingsThemeFragment -> "Settings Appearance"
+                is MediaPlaybackSettingsFragment -> "Media Playback"
                 is StylingHeadingsFragment -> "Headings"
                 is StylingParagraphFragment -> "Paragraph & Body"
                 is StylingBoldFragment -> "Bold"
@@ -276,6 +277,13 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_settings_theme" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, SettingsThemeFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_media" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, MediaPlaybackSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -1433,11 +1441,12 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell"
             ),
             "insert" to listOf(
-                "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
-                "horizontalLine", "footnote"
+                "image", "audio", "video", "link", "callout", "inlineCode", "blockQuote",
+                "codeBlock", "horizontalLine", "footnote"
             ),
             "menu" to listOf(
                 "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
+                "saveAsMdzip",
                 "exportHtml", "search", "switchView", "newWindow", "settings"
             )
         )
@@ -1453,9 +1462,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple",
             "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
-            "image", "link", "callout", "inlineCode", "blockQuote", "codeBlock",
-            "horizontalLine", "footnote",
+            "image", "audio", "video", "link", "callout", "inlineCode", "blockQuote",
+            "codeBlock", "horizontalLine", "footnote",
             "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
+            "saveAsMdzip",
             "exportHtml", "search", "switchView", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID
         )
@@ -2727,6 +2737,11 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         key: String
     ) {
         if (key.startsWith("pref_findreplace_")) {
+            if (
+                key == PREF_KEY_BUTTON_ROW1 ||
+                key == PREF_KEY_BUTTON_ROW2 ||
+                key == PREF_KEY_HIDDEN_BUTTONS
+            ) return
             refreshFindReplacePreview(sharedPreferences)
         }
     }
@@ -3094,7 +3109,6 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 .putString(PREF_KEY_HIDDEN_BUTTONS, hidden.joinToString(","))
                 .commit()
             if (!saved) return "save_failed"
-            activity?.runOnUiThread { refreshFindReplacePreview(prefs) }
             return "saved"
         }
     }
@@ -3581,5 +3595,11 @@ class LeftPanelSettingsFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_left_panel, rootKey)
         configureFontPreferences()
+    }
+}
+
+class MediaPlaybackSettingsFragment : BaseSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_media, rootKey)
     }
 }

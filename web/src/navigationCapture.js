@@ -475,6 +475,60 @@ export function setupFullNavigationCapture(view) {
     });
   };
 
+  const safeMediaErrorMessage = (value) => {
+    const message = String(value || '').trim();
+    if (!message) return null;
+    return message
+      .replace(/(?:https?|file|content):\/\/[^\s"'<>]+/gi, '[source]')
+      .replace(
+        /\b[^\s/\\"'<>]+\.(?:mp4|m4v|mov|webm|mkv|avi|mpeg|mpg|ogv|wmv|3gp|m4a|aac|mp3|wav|flac|ogg|opus)\b/gi,
+        '[media]'
+      )
+      .replace(/(?:\/|\\)[^\s"'<>]+/g, '[path]')
+      .replace(/\s+/g, ' ')
+      .slice(0, 180);
+  };
+
+  const onMediaEvent = (event) => {
+    const media = event.target;
+    const mediaKind = media?.dataset?.mdzipVideo === 'true'
+      ? 'video'
+      : media?.dataset?.mdzipAudio === 'true' ? 'audio' : null;
+    if (!mediaKind) return;
+
+    const source = String(media.currentSrc || media.src || '');
+    let path = '';
+    try {
+      path = new win.URL(source, win.location.href).pathname;
+    } catch (_) {
+      // Keep the source private; record only its route and extension below.
+    }
+    const extension = path.match(/\.([a-z0-9]{1,8})$/i)?.[1]?.toLowerCase() || null;
+    enqueue('media_event', {
+      eventType: event.type,
+      mediaKind,
+      sourceKind: path.includes('/mdzip-assets/') ? 'mdzip' : source ? 'other' : 'unset',
+      extension,
+      mediaErrorCode: Number.isFinite(media.error?.code) ? media.error.code : null,
+      mediaErrorMessage: mediaKind === 'video' && event.type === 'error'
+        ? safeMediaErrorMessage(media.error?.message)
+        : null,
+      networkState: Number.isFinite(media.networkState) ? media.networkState : null,
+      readyState: Number.isFinite(media.readyState) ? media.readyState : null,
+      duration: Number.isFinite(media.duration) ? round(media.duration) : null,
+      currentTime: Number.isFinite(media.currentTime) ? round(media.currentTime) : null
+    });
+  };
+
+  const mediaEventTypes = [
+    'loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'play', 'playing',
+    'pause', 'ended', 'waiting', 'stalled', 'suspend', 'error', 'abort', 'emptied',
+    'seeking', 'seeked'
+  ];
+  for (const type of mediaEventTypes) {
+    doc.addEventListener(type, onMediaEvent, true);
+  }
+
   const onKeyDown = keyHandler('down');
   const onKeyUp = keyHandler('up');
   win.addEventListener('keydown', onKeyDown, true);
@@ -617,6 +671,9 @@ export function setupFullNavigationCapture(view) {
     win.visualViewport?.removeEventListener('scroll', onViewport);
     win.removeEventListener('error', onError, true);
     win.removeEventListener('unhandledrejection', onUnhandledRejection);
+    for (const type of mediaEventTypes) {
+      doc.removeEventListener(type, onMediaEvent, true);
+    }
     win.removeEventListener('pagehide', onPageHide);
     activePointerIds.clear();
     queue = [];
