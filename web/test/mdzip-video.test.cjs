@@ -6,7 +6,7 @@ const path = require('node:path');
 const read = relativePath =>
   fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 
-test('MP4, M4V, WebM, 3GP, MOV, MKV, and AVI Markdown links format, parse, and extract outside code blocks', async () => {
+test('playable and notice-only video links format, parse, and extract outside code blocks', async () => {
   const {
     extractMarkdownVideoLinks,
     formatMarkdownVideoLink,
@@ -48,7 +48,23 @@ test('MP4, M4V, WebM, 3GP, MOV, MKV, and AVI Markdown links format, parse, and e
   const aviMarkdown = formatMarkdownVideoLink('Old camera clip.avi', 'video/Old camera clip.avi');
   assert.deepEqual(parseMarkdownVideoLink(aviMarkdown), {
     label: 'Old camera clip.avi',
-    url: 'video/Old%20camera%20clip.avi'
+    url: 'video/Old%20camera%20clip.avi',
+    unsupported: true
+  });
+  for (const extension of ['mpeg', 'mpg', 'ogv', 'wmv']) {
+    assert.deepEqual(parseMarkdownVideoLink(`[Unsupported](video/sample.${extension})`), {
+      label: 'Unsupported',
+      url: `video/sample.${extension}`,
+      unsupported: true
+    });
+    assert.equal(
+      formatMarkdownVideoLink('Clip', `video/clip.${extension}?download=1`),
+      `[Clip](video/clip.${extension}?download=1)`
+    );
+  }
+  assert.deepEqual(parseMarkdownVideoLink('[Playable](video/clip.mkv)'), {
+    label: 'Playable',
+    url: 'video/clip.mkv'
   });
   const layoutMarkdown = formatMarkdownVideoLink(
     'Framed clip.mp4',
@@ -102,13 +118,25 @@ test('MP4, M4V, WebM, 3GP, MOV, MKV, and AVI Markdown links format, parse, and e
   );
   assert.deepEqual(
     extractMarkdownVideoLinks(
-      '[Clip](video/clip.mp4)\n[Camera](video/camera.m4v)\n[Screen](video/screen.webm)\n[Older phone](video/older.3gp)\n[QuickTime](video/quicktime.mov)\n[Matroska](video/matroska.mkv)\n[Legacy](video/legacy.avi)\n\n`[Example](video/example.mp4)`'
+      '[Clip](video/clip.mp4)\n[Camera](video/camera.m4v)\n[Screen](video/screen.webm)\n[Older phone](video/older.3gp)\n[QuickTime](video/quicktime.mov)\n[Matroska](video/matroska.mkv)\n[Legacy](video/legacy.avi)\n[MPEG](video/movie.mpeg)\n[MPG](video/movie.mpg)\n[Ogg](video/movie.ogv)\n[Windows](video/movie.wmv)\n\n`[Example](video/example.mp4)`'
     ).map(link => link.url),
-    ['video/clip.mp4', 'video/camera.m4v', 'video/screen.webm', 'video/older.3gp', 'video/quicktime.mov', 'video/matroska.mkv', 'video/legacy.avi']
+    [
+      'video/clip.mp4',
+      'video/camera.m4v',
+      'video/screen.webm',
+      'video/older.3gp',
+      'video/quicktime.mov',
+      'video/matroska.mkv',
+      'video/legacy.avi',
+      'video/movie.mpeg',
+      'video/movie.mpg',
+      'video/movie.ogv',
+      'video/movie.wmv'
+    ]
   );
 });
 
-test('MP4, M4V, WebM, 3GP, MOV, MKV, and AVI insertion, package serving, and default rendering are connected', () => {
+test('playable and notice-only video formats are packaged and rendered distinctly', () => {
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   const activity = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const editor = read('src/main.js');
@@ -120,7 +148,7 @@ test('MP4, M4V, WebM, 3GP, MOV, MKV, and AVI insertion, package serving, and def
   const icons = read('src/toolbarIcons.js');
   const capture = read('src/navigationCapture.js');
 
-  assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS =\s*setOf\("mp4", "m4v", "webm", "3gp", "mov", "mkv", "avi"\)/);
+  assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS =\s*setOf\("mp4", "m4v", "webm", "3gp", "mov", "mkv", "avi", "mpeg", "mpg", "ogv", "wmv"\)/);
   assert.match(manager, /fun addVideo\(/);
   assert.match(manager, /fun syncVideoReferences\(/);
   assert.match(manager, /pendingAudioDeletions \+ session\.pendingVideoDeletions/);
@@ -132,9 +160,12 @@ test('MP4, M4V, WebM, 3GP, MOV, MKV, and AVI insertion, package serving, and def
   assert.match(activity, /"mov" -> "video\/quicktime"/);
   assert.match(activity, /"mkv" -> "video\/x-matroska"/);
   assert.match(activity, /"avi" -> "video\/x-msvideo"/);
-  assert.match(activity, /Choose an MP4, M4V, WebM, 3GP, MOV, MKV, or AVI video file/);
-  assert.match(editor, /mov\|mkv\|avi/);
-  assert.match(capture, /webm\|mkv\|avi/);
+  assert.match(activity, /"mpeg", "mpg" -> "video\/mpeg"/);
+  assert.match(activity, /"ogv" -> "video\/ogg"/);
+  assert.match(activity, /"wmv" -> "video\/x-ms-wmv"/);
+  assert.match(activity, /Choose an MP4, M4V, WebM, 3GP, MOV, MKV, AVI, MPEG, MPG, OGV, or WMV video file/);
+  assert.match(editor, /mov\|mkv\|avi\|mpeg\|mpg\|ogv\|wmv/);
+  assert.match(capture, /mkv\|avi\|mpeg\|mpg\|ogv\|wmv/);
   assert.match(activity, /shouldServeMdzipAssetAsWholeFile\(isVideoAsset, extension, range\)/);
   assert.equal(
     (editor.match(/hiddenSyntaxRanges\.push\(videoDecoration\)/g) || []).length,
@@ -154,6 +185,8 @@ test('MP4, M4V, WebM, 3GP, MOV, MKV, and AVI insertion, package serving, and def
   assert.match(settingsPreview, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video \}/);
   assert.match(settingsActivity, /"image", "audio", "video", "link"/);
   assert.match(widget, /video\.controls = true/);
+  assert.match(widget, /Unsupported video format\. This app can play MP4, M4V, WebM, 3GP, MOV, and MKV\./);
+  assert.match(editor, /videoLink\.unsupported/);
   assert.match(widget, /setAttribute\('aria-label', this\.label\)/);
   assert.doesNotMatch(widget, /createVideoPlayerControls|cm-mdzip-video-speed|speedMenu/);
   assert.match(widget, /video\.error\?\.code/);
@@ -170,12 +203,14 @@ test('video preview keeps native controls and safely edits or deletes the entire
   const editor = read('src/main.js');
 
   assert.match(widget, /video\.controls = true/);
+  assert.match(widget, /const video = this\.unsupported \? null : document\.createElement\('video'\)/);
   assert.match(widget, /Long-press for video options/);
   assert.match(widget, /}, 550\)/);
   assert.match(widget, /editButton\.textContent = 'Edit'/);
   assert.match(widget, /deleteButton\.textContent = 'Delete from MDZip'/);
   assert.match(widget, /changes: \{ from: this\.from, to: this\.to, insert: '' \}/);
   assert.match(widget, /userEvent: 'delete\.mdzip-video'/);
+  assert.match(widget, /Unsupported video format\. This app can play MP4, M4V, WebM, 3GP, MOV, and MKV\./);
   assert.match(widget, /this\.onEdit\(view/);
   assert.equal((editor.match(/new VideoPreviewWidget\(/g) || []).length, 2);
   assert.equal((editor.match(/openVideoEditDialog\(editView, item\)/g) || []).length, 2);

@@ -2518,6 +2518,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "mov" -> "video/quicktime"
             "mkv" -> "video/x-matroska"
             "avi" -> "video/x-msvideo"
+            "mpeg", "mpg" -> "video/mpeg"
+            "ogv" -> "video/ogg"
+            "wmv" -> "video/x-ms-wmv"
             else -> "video/mp4"
         }
 
@@ -2640,7 +2643,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         try {
             val originalName = getFileNameFromUri(uri)
             if (!MdzipManager.isSupportedVideoFileName(originalName)) {
-                throw java.io.IOException("Choose an MP4, M4V, WebM, 3GP, MOV, MKV, or AVI video file.")
+                throw java.io.IOException("Choose an MP4, M4V, WebM, 3GP, MOV, MKV, AVI, MPEG, MPG, OGV, or WMV video file.")
             }
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected video file.")

@@ -71,6 +71,10 @@ function parseVideoLayoutTitle(title) {
   return { width, alignment: values.align };
 }
 
+const PLAYABLE_VIDEO_EXTENSIONS = new Set([
+  'mp4', 'm4v', 'webm', '3gp', 'mov', 'mkv'
+]);
+
 export function parseMarkdownAudioLink(text) {
   const link = markdownLinkParts(text);
   if (!link) return null;
@@ -96,8 +100,12 @@ export function parseMarkdownVideoLink(text) {
   } catch {
     // Keep the encoded value; the native resolver validates and decodes it.
   }
-  if (!/\.(?:mp4|m4v|webm|3gp|mov|mkv|avi)$/i.test(decodedPath)) return null;
+  const extension = decodedPath.match(/\.([^.\/]+)$/)?.[1]?.toLowerCase();
+  if (!extension || !/^(?:mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv)$/.test(extension)) {
+    return null;
+  }
   const parsed = { label: link.label, url: link.url };
+  if (!PLAYABLE_VIDEO_EXTENSIONS.has(extension)) parsed.unsupported = true;
   const layout = parseVideoLayoutTitle(link.title);
   if (layout) parsed.layout = layout;
   return parsed;
@@ -240,7 +248,10 @@ export function formatMarkdownVideoLink(label, url, layout = null) {
   const rawUrl = String(url ?? '').trim();
   const suffixIndices = ['?', '#']
     .map(character => rawUrl.indexOf(character))
-    .filter(index => index >= 0 && /\.(?:mp4|m4v|webm|3gp|mov|mkv|avi)$/i.test(rawUrl.slice(0, index)));
+    .filter(index =>
+      index >= 0 &&
+      /\.(?:mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv)$/i.test(rawUrl.slice(0, index))
+    );
   const suffixIndex = suffixIndices.length ? Math.min(...suffixIndices) : -1;
   const path = suffixIndex === -1 ? rawUrl : rawUrl.slice(0, suffixIndex);
   const suffix = suffixIndex === -1 ? '' : rawUrl.slice(suffixIndex);

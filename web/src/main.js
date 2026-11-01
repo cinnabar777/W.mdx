@@ -2035,7 +2035,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   node.from,
                   node.to,
                   videoLink.layout,
-                  (editView, item) => openVideoEditDialog(editView, item)
+                  (editView, item) => openVideoEditDialog(editView, item),
+                  videoLink.unsupported
                 )
               }).range(node.from, node.to);
               builder.push(videoDecoration);
@@ -3167,7 +3168,8 @@ function buildHeightMapValue(state) {
               node.from,
               node.to,
               videoLink.layout,
-              (editView, item) => openVideoEditDialog(editView, item)
+              (editView, item) => openVideoEditDialog(editView, item),
+              videoLink.unsupported
             )
           }).range(node.from, node.to);
           replacements.push(videoDecoration);
@@ -3967,7 +3969,7 @@ class CodeMirrorAdapter {
       const changedText =
         update.startState.doc.sliceString(fromA, toA) +
         update.state.doc.sliceString(fromB, toB);
-      if (touchesExistingLink || /(?:video\/|\.(?:mp4|m4v|webm|3gp|mov|mkv|avi))/i.test(changedText)) {
+      if (touchesExistingLink || /(?:video\/|\.(?:mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv))/i.test(changedText)) {
         linksMayHaveChanged = true;
       }
     });

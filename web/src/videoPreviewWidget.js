@@ -50,7 +50,7 @@ function viewportBounds() {
 }
 
 export class VideoPreviewWidget extends WidgetType {
-  constructor(src, label, relativeLink, from, to, layout = null, onEdit = null) {
+  constructor(src, label, relativeLink, from, to, layout = null, onEdit = null, unsupported = false) {
     super();
     this.src = src;
     this.label = label || 'video file';
@@ -65,6 +65,7 @@ export class VideoPreviewWidget extends WidgetType {
         : 'left'
     };
     this.onEdit = onEdit;
+    this.unsupported = unsupported;
   }
 
   eq(other) {
@@ -75,7 +76,8 @@ export class VideoPreviewWidget extends WidgetType {
       other.from === this.from &&
       other.to === this.to &&
       other.layout.width === this.layout.width &&
-      other.layout.alignment === this.layout.alignment;
+      other.layout.alignment === this.layout.alignment &&
+      other.unsupported === this.unsupported;
   }
 
   toDOM(view) {
@@ -111,30 +113,50 @@ export class VideoPreviewWidget extends WidgetType {
     ].join(';');
     wrapper.appendChild(labelRow);
 
-    const video = document.createElement('video');
-    video.src = this.src;
-    video.controls = true;
-    video.playsInline = true;
-    video.preload = 'metadata';
-    video.setAttribute('aria-label', this.label);
-    video.dataset.mdzipVideo = 'true';
-    video.dataset.mdzipLink = this.relativeLink;
-    video.setAttribute('webkit-playsinline', '');
-    video.style.cssText = [
-      'display:block',
-      'width:100%',
-      'max-width:100%',
-      'max-height:65vh',
-      'object-fit:contain',
-      'color-scheme:inherit'
-    ].join(';');
-    wrapper.appendChild(video);
+    const video = this.unsupported ? null : document.createElement('video');
+    if (video) {
+      video.src = this.src;
+      video.controls = true;
+      video.playsInline = true;
+      video.preload = 'metadata';
+      video.setAttribute('aria-label', this.label);
+      video.dataset.mdzipVideo = 'true';
+      video.dataset.mdzipLink = this.relativeLink;
+      video.setAttribute('webkit-playsinline', '');
+      video.style.cssText = [
+        'display:block',
+        'width:100%',
+        'max-width:100%',
+        'max-height:65vh',
+        'object-fit:contain',
+        'color-scheme:inherit'
+      ].join(';');
+      wrapper.appendChild(video);
+    }
 
     const status = document.createElement('div');
-    status.className = 'cm-mdzip-video-status';
-    status.hidden = true;
-    status.textContent = 'Unable to play this video on this device.';
-    status.style.cssText = 'font-size:13px;line-height:1.5;margin-top:8px;color:var(--media-controls-text,#fff)';
+    status.className = this.unsupported
+      ? 'cm-mdzip-video-status cm-mdzip-video-unsupported'
+      : 'cm-mdzip-video-status';
+    status.hidden = !this.unsupported;
+    status.setAttribute('role', 'status');
+    status.textContent = this.unsupported
+      ? 'Unsupported video format. This app can play MP4, M4V, WebM, 3GP, MOV, and MKV.'
+      : 'Unable to play this video on this device.';
+    status.style.cssText = [
+      'font-size:13px',
+      'line-height:1.5',
+      'margin-top:8px',
+      'color:var(--media-controls-text,#fff)',
+      ...(this.unsupported
+        ? [
+            'padding:12px',
+            'border:1px solid var(--border-color,#444)',
+            'border-radius:6px',
+            'background:var(--media-controls-bg,#242424)'
+          ]
+        : [])
+    ].join(';');
     wrapper.appendChild(status);
 
     const actions = document.createElement('div');
@@ -272,7 +294,7 @@ export class VideoPreviewWidget extends WidgetType {
     window.visualViewport?.addEventListener('resize', positionPopup);
     window.visualViewport?.addEventListener('scroll', positionPopup);
 
-    video.addEventListener('error', () => {
+    video?.addEventListener('error', () => {
       if (widgetDisposed || !video.getAttribute('src')) return;
       const code = video.error?.code;
       const errorDescriptions = {
@@ -285,7 +307,7 @@ export class VideoPreviewWidget extends WidgetType {
       status.textContent = `Video playback failed: ${description} (media error ${code ?? 'unknown'}).`;
       status.hidden = false;
     });
-    video.addEventListener('playing', () => {
+    video?.addEventListener('playing', () => {
       status.hidden = true;
     });
 
@@ -303,9 +325,9 @@ export class VideoPreviewWidget extends WidgetType {
       window.removeEventListener('scroll', positionPopup, true);
       window.visualViewport?.removeEventListener('resize', positionPopup);
       window.visualViewport?.removeEventListener('scroll', positionPopup);
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
+      video?.pause();
+      video?.removeAttribute('src');
+      video?.load();
     };
     return wrapper;
   }

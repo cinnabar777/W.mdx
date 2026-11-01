@@ -481,7 +481,7 @@ export function setupFullNavigationCapture(view) {
     return message
       .replace(/(?:https?|file|content):\/\/[^\s"'<>]+/gi, '[source]')
       .replace(
-        /\b[^\s/\\"'<>]+\.(?:mp4|m4v|mov|webm|mkv|avi|3gp|m4a|aac|mp3|wav|flac|ogg|opus)\b/gi,
+        /\b[^\s/\\"'<>]+\.(?:mp4|m4v|mov|webm|mkv|avi|mpeg|mpg|ogv|wmv|3gp|m4a|aac|mp3|wav|flac|ogg|opus)\b/gi,
         '[media]'
       )
       .replace(/(?:\/|\\)[^\s"'<>]+/g, '[path]')
