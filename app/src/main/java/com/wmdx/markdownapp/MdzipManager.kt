@@ -3,6 +3,7 @@ package com.wmdx.markdownapp
 import android.content.Context
 import android.net.Uri
 import org.json.JSONObject
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -10,7 +11,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.text.Normalizer
 import java.util.UUID
+import java.util.zip.CRC32
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
@@ -171,35 +174,80 @@ object MdzipManager {
                 .writeText(session.manifest.toString(2), Charsets.UTF_8)
 
             val pendingDeletions = session.pendingAudioDeletions + session.pendingVideoDeletions
-            val output = context.contentResolver.openOutputStream(targetUri, "rwt")
-                ?: throw IOException("Could not open the selected file for writing.")
-            output.use { stream ->
-                ZipOutputStream(stream).use { zip ->
-                    val files = session.sessionDir.walkTopDown()
-                        .filter { it.isFile }
-                        .filter { file ->
-                            val name = session.sessionDir.toPath()
-                                .relativize(file.toPath())
-                                .toString()
-                                .replace(File.separatorChar, '/')
-                            name !in pendingDeletions
-                        }
-                        .sortedBy { session.sessionDir.toPath().relativize(it.toPath()).toString() }
-                    for (file in files) {
-                        val name = session.sessionDir.toPath()
-                            .relativize(file.toPath())
-                            .toString()
-                            .replace(File.separatorChar, '/')
-                        val path = safeArchivePath(name)
-                        zip.putNextEntry(ZipEntry(path))
-                        FileInputStream(file).use { it.copyTo(zip) }
-                        zip.closeEntry()
+            val stagedArchive = File.createTempFile("mdzip-save-", ".mdz", context.cacheDir)
+            try {
+                writeSessionArchive(session.sessionDir, pendingDeletions, stagedArchive)
+                verifyStagedArchive(stagedArchive)
+
+                val output = context.contentResolver.openOutputStream(targetUri, "rwt")
+                    ?: throw IOException("Could not open the selected file for writing.")
+                output.use { stream ->
+                    val copiedBytes = FileInputStream(stagedArchive).use { it.copyTo(stream) }
+                    if (copiedBytes != stagedArchive.length()) {
+                        throw IOException("The complete MDZip package could not be written.")
                     }
-                    zip.finish()
+                    stream.flush()
                 }
+            } finally {
+                stagedArchive.delete()
             }
             session.markdownContent = markdown
             session.sourceUri = targetUri
+        }
+    }
+
+    internal fun writeSessionArchive(
+        sessionDir: File,
+        pendingDeletions: Set<String>,
+        archiveFile: File
+    ) {
+        ZipOutputStream(BufferedOutputStream(FileOutputStream(archiveFile))).use { zip ->
+            val files = sessionDir.walkTopDown()
+                .filter { it.isFile }
+                .filter { file ->
+                    val name = sessionDir.toPath()
+                        .relativize(file.toPath())
+                        .toString()
+                        .replace(File.separatorChar, '/')
+                    name !in pendingDeletions
+                }
+                .sortedBy { sessionDir.toPath().relativize(it.toPath()).toString() }
+            for (file in files) {
+                val name = sessionDir.toPath()
+                    .relativize(file.toPath())
+                    .toString()
+                    .replace(File.separatorChar, '/')
+                val path = safeArchivePath(name)
+                val entry = ZipEntry(path)
+                if (path.startsWith("video/")) {
+                    val size = file.length()
+                    val crc = CRC32()
+                    FileInputStream(file).use { input ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            crc.update(buffer, 0, read)
+                        }
+                    }
+                    entry.method = ZipEntry.STORED
+                    entry.size = size
+                    entry.compressedSize = size
+                    entry.crc = crc.value
+                }
+                zip.putNextEntry(entry)
+                FileInputStream(file).use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+            zip.finish()
+        }
+    }
+
+    internal fun verifyStagedArchive(archiveFile: File) {
+        ZipFile(archiveFile).use { archive ->
+            if (archive.size() == 0) {
+                throw IOException("The staged MDZip archive is empty.")
+            }
         }
     }
 

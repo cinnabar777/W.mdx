@@ -170,3 +170,16 @@ test('video preview keeps native controls and safely edits or deletes the entire
   assert.equal((editor.match(/openVideoEditDialog\(editView, item\)/g) || []).length, 2);
   assert.match(editor, /input\.mdzip-video-layout/);
 });
+
+test('MDZip writes and verifies a staged archive before opening the destination', () => {
+  const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
+  const saveStart = manager.indexOf('fun save(');
+  const writerStart = manager.indexOf('internal fun writeSessionArchive(', saveStart);
+  const saveBody = manager.slice(saveStart, writerStart);
+  const stageIndex = saveBody.indexOf('writeSessionArchive(session.sessionDir, pendingDeletions, stagedArchive)');
+  const verifyIndex = saveBody.indexOf('verifyStagedArchive(stagedArchive)');
+  const destinationIndex = saveBody.indexOf('openOutputStream(targetUri, "rwt")');
+
+  assert.ok(stageIndex >= 0 && verifyIndex > stageIndex && destinationIndex > verifyIndex);
+  assert.match(manager, /entry\.method = ZipEntry\.STORED/);
+});
