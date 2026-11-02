@@ -687,16 +687,29 @@ test('toolbar actions do not force the editor keyboard open', () => {
   assert.match(mainSource, /cmWrapSelection\(view, tableMarkdown, '', \{ preserveKeyboard: true \}\)/);
 });
 
-test('toolbar touch interactions restore the Android keyboard state from before the touch', () => {
+test('toolbar touches gate automatic keyboard focus without restoring the IME later', () => {
   assert.match(
     mainSource,
     /container\.addEventListener\('pointerdown', event => \{[\s\S]*?beginToolbarInteraction\?\.\(\)/,
     'toolbar pointerdown captures the keyboard state before the action'
   );
   assert.match(mainSource, /endToolbarInteraction\?\.\(\), 80\)/);
-  assert.match(mainActivitySource, /imeVisibleBeforeLastWebViewTouch = editorImeVisible\(\)/);
-  assert.match(mainActivitySource, /fun beginToolbarInteraction\(\)/);
-  assert.match(mainActivitySource, /fun endToolbarInteraction\(\)/);
-  assert.match(mainActivitySource, /toolbarImeInteractionDepth > 0[\s\S]*?!toolbarImeVisibleBeforeInteraction/);
-  assert.match(mainActivitySource, /restoreToolbarImeState\(generation\)/);
+  assert.match(
+    mainActivitySource,
+    /event\.actionMasked == MotionEvent\.ACTION_DOWN[\s\S]*?setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/,
+    'native touch handling gates WebView keyboard focus before it receives the touch'
+  );
+  assert.match(
+    mainActivitySource,
+    /fun beginToolbarInteraction\(\)[\s\S]*?setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/
+  );
+  const endInteraction = mainActivitySource.match(
+    /fun endToolbarInteraction\(\)\s*\{([\s\S]*?)\n\s*@JavascriptInterface/
+  )?.[1];
+  assert.ok(endInteraction, 'toolbar interactions have a native end callback');
+  assert.doesNotMatch(
+    endInteraction,
+    /setImeInputAllowed|showSoftInput|hideSoftInput|restoreToolbarImeState/,
+    'ending the toolbar interaction does not change keyboard visibility'
+  );
 });
