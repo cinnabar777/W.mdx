@@ -860,3 +860,53 @@ test('Image insertion offers Base64 directly and stores file images by document 
   assert.match(source, /resolveMarkdownAssetUrl\?\.\(this\.url\)/);
 });
 
+test('Save keeps the active package format if its original URI is unavailable', () => {
+  const saveStart = mainActivitySource.indexOf('private fun handleSaveFile()');
+  const saveEnd = mainActivitySource.indexOf('private fun handleSaveAsFile()', saveStart);
+  const saveHandler = mainActivitySource.slice(saveStart, saveEnd);
+  assert.match(saveHandler, /requestedAsMdzip = true\.takeIf \{ currentMdzipSession != null \}/);
+  assert.match(saveHandler, /currentMdzipSession != null[\s\S]*handleSaveAsMdzipFile\(\)/);
+  assert.match(saveHandler, /currentTextPackSession != null[\s\S]*handleSaveAsTextPackFile\(\)/);
+});
+
+test('Floating toolbar toggle preserves the prior Android keyboard state', () => {
+  assert.match(source, /toolbarImeSurfaceSelector\s*=\s*'#[^']*floating-toggle-btn/);
+  assert.match(source, /window\.AndroidNative\?\.beginToolbarInteraction\?\.\(\)/);
+  assert.match(source, /window\.AndroidNative\?\.endToolbarInteraction\?\.\(\)/);
+  assert.match(source, /event\.preventDefault\(\);[\s\S]*window\.AndroidNative\?\.beginToolbarInteraction/);
+});
+
+test('Markdown image storage can recover document ancestry from the approved tree', () => {
+  const assetManagerSource = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/MarkdownAssetManager.kt'),
+    'utf8'
+  );
+  assert.match(assetManagerSource, /findPathByTreeTraversal/);
+  assert.match(assetManagerSource, /MAX_PATH_SEARCH_DOCUMENTS/);
+  assert.match(assetManagerSource, /MAX_PATH_SEARCH_DEPTH/);
+  assert.match(assetManagerSource, /candidate\.parentDocumentIds\.size > bestLocation\.parentDocumentIds\.size/);
+});
+
+test('Attachment style preferences are reachable and applied to packaged attachment links', () => {
+  const styleRoot = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling.xml'),
+    'utf8'
+  );
+  const attachmentSettings = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_attachments.xml'),
+    'utf8'
+  );
+  const settingsActivity = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
+    'utf8'
+  );
+  assert.match(styleRoot, /pref_styling_page_attachments/);
+  assert.match(settingsActivity, /pref_styling_page_attachments" -> StylingAttachmentsFragment/);
+  assert.match(attachmentSettings, /pref_mdzip_attachment_bg_color/);
+  assert.match(attachmentSettings, /pref_mdzip_attachment_text_color/);
+  assert.match(attachmentSettings, /pref_mdzip_attachment_border_color/);
+  assert.match(attachmentSettings, /pref_mdzip_attachment_border_radius/);
+  assert.match(source, /--mdzip-attachment-bg-color/);
+  assert.match(source, /--mdzip-attachment-border-radius/);
+});
+

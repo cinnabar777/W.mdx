@@ -63,6 +63,45 @@ import {
 } from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
+
+// Keep WebView focus and the Android IME unchanged while touch interaction
+// moves between editor text and the in-WebView toolbars.
+const activeToolbarImePointers = new Set();
+const toolbarImeSurfaceSelector =
+  '#floating-toggle-btn, .floating-toggle-btn';
+
+document.addEventListener('pointerdown', event => {
+  if (event.isPrimary === false) return;
+  const target = event.target;
+  if (!target?.closest?.(toolbarImeSurfaceSelector)) return;
+
+  const pointerId = event.pointerId ?? 0;
+  if (activeToolbarImePointers.has(pointerId)) return;
+  activeToolbarImePointers.add(pointerId);
+  if (target.closest?.('button, [role="button"], [data-toolbar-key]')) {
+    event.preventDefault();
+  }
+  window.AndroidNative?.beginToolbarInteraction?.();
+}, true);
+
+const finishToolbarImePointer = pointerId => {
+  if (!activeToolbarImePointers.delete(pointerId)) return;
+  window.setTimeout(() => {
+    window.AndroidNative?.endToolbarInteraction?.();
+  }, 80);
+};
+
+document.addEventListener('pointerup', event => {
+  finishToolbarImePointer(event.pointerId ?? 0);
+}, true);
+document.addEventListener('pointercancel', event => {
+  finishToolbarImePointer(event.pointerId ?? 0);
+}, true);
+window.addEventListener('blur', () => {
+  for (const pointerId of [...activeToolbarImePointers]) {
+    finishToolbarImePointer(pointerId);
+  }
+});
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
   BUILT_IN_HOLDING_ITEMS,
@@ -2107,7 +2146,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                 widget: new MdzipAttachmentWidget(
                   attachmentLink.label,
                   attachmentLink.url,
-                  attachmentSessionId
+                  attachmentSessionId,
+                  node.from,
+                  node.to,
+                  attachmentLink.layout,
+                  (editView, item) => openAttachmentEditDialog(editView, item)
                 )
               }).range(node.from, node.to);
               builder.push(attachmentDecoration);
@@ -3232,7 +3275,11 @@ function buildHeightMapValue(state) {
             widget: new MdzipAttachmentWidget(
               attachmentLink.label,
               attachmentLink.url,
-              attachmentSessionId
+              attachmentSessionId,
+              node.from,
+              node.to,
+              attachmentLink.layout,
+              (editView, item) => openAttachmentEditDialog(editView, item)
             )
           }).range(node.from, node.to);
           replacements.push(attachmentDecoration);
@@ -6221,6 +6268,110 @@ function openVideoEditDialog(view, videoItem) {
   requestAnimationFrame(() => widthInput.focus());
 }
 
+function openAttachmentEditDialog(view, attachmentItem) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Attachment</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-attachment-label">Label</label>
+      <input id="modal-attachment-label" class="modal-input" type="text" maxlength="240" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-attachment-width">Width (% of text area)</label>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <input id="modal-attachment-width" class="modal-input" type="range" min="40" max="100" step="5"
+          style="flex:1;min-width:0;width:auto;padding:0;border:0;background:transparent;accent-color:var(--accent-color,#00d6c9);" />
+        <output id="modal-attachment-width-value" aria-live="polite" style="min-width:42px;text-align:right;"></output>
+      </div>
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-attachment-alignment">Alignment</label>
+      <select id="modal-attachment-alignment" class="modal-input">
+        <option value="left">Left</option>
+        <option value="center">Center</option>
+        <option value="right">Right</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-attachment-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-attachment-save">Save</button>
+    </div>
+  `;
+
+  const labelInput = dialog.querySelector('#modal-attachment-label');
+  const widthInput = dialog.querySelector('#modal-attachment-width');
+  const widthValue = dialog.querySelector('#modal-attachment-width-value');
+  const alignmentInput = dialog.querySelector('#modal-attachment-alignment');
+  labelInput.value = attachmentItem.label;
+  widthInput.value = String(attachmentItem.layout?.width ?? 100);
+  alignmentInput.value = attachmentItem.layout?.alignment ?? 'left';
+  const updateWidthValue = () => {
+    widthValue.textContent = `${widthInput.value}%`;
+  };
+  updateWidthValue();
+  widthInput.addEventListener('input', updateWidthValue);
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-attachment-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-attachment-save').addEventListener('click', event => {
+    event.preventDefault();
+    const { from, to } = attachmentItem;
+    if (from < 0 || to > view.state.doc.length || from >= to) {
+      close();
+      return;
+    }
+    const currentAttachment = parseMarkdownAttachmentLink(
+      view.state.doc.sliceString(from, to)
+    );
+    if (!currentAttachment || currentAttachment.url !== attachmentItem.url) {
+      close();
+      return;
+    }
+    const label = labelInput.value.trim();
+    if (!label) {
+      labelInput.focus();
+      return;
+    }
+    const markdown = formatMarkdownAttachmentLink(
+      label,
+      attachmentItem.url
+        .split(/[?#]/, 1)[0]
+        .split('/')
+        .map(segment => {
+          try {
+            return decodeURIComponent(segment);
+          } catch {
+            return segment;
+          }
+        })
+        .join('/'),
+      {
+        width: Number(widthInput.value),
+        alignment: alignmentInput.value
+      }
+    );
+    view.dispatch({
+      changes: { from, to, insert: markdown },
+      selection: { anchor: from + markdown.length, head: from + markdown.length },
+      userEvent: 'input.mdzip-attachment-layout'
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => labelInput.focus());
+}
+
 function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
@@ -8687,6 +8838,36 @@ window.editorBridge = {
     setCssVar('--callout-margin-left', prefs.pref_callout_margin_left ?? 0, 'px');
     setCssVar('--callout-margin-right', prefs.pref_callout_margin_right ?? 0, 'px');
     setCssVar('--callout-padding', prefs.pref_callout_padding, 'px');
+
+    // MDZip attachment controls are styled independently from ordinary links.
+    const attachmentThemeDefaults = document.body.classList.contains('light-theme')
+      ? { background: '#F8F9FA', text: '#111111', border: '#D0D5DB' }
+      : { background: '#202124', text: '#F1F3F4', border: '#555555' };
+    const attachmentColor = (key, fallback) => {
+      const value = prefs[key];
+      return androidArgbToCss(
+        value === undefined || value === null || value === '' || value === 'default'
+          ? fallback
+          : value
+      );
+    };
+    setCssVar(
+      '--mdzip-attachment-bg-color',
+      attachmentColor('pref_mdzip_attachment_bg_color', attachmentThemeDefaults.background)
+    );
+    setCssVar(
+      '--mdzip-attachment-text-color',
+      attachmentColor('pref_mdzip_attachment_text_color', attachmentThemeDefaults.text)
+    );
+    setCssVar(
+      '--mdzip-attachment-border-color',
+      attachmentColor('pref_mdzip_attachment_border_color', attachmentThemeDefaults.border)
+    );
+    setCssVar('--mdzip-attachment-border-width', prefs.pref_mdzip_attachment_border_width, 'px');
+    setCssVar('--mdzip-attachment-border-radius', prefs.pref_mdzip_attachment_border_radius, 'px');
+    setCssVar('--mdzip-attachment-padding-x', prefs.pref_mdzip_attachment_padding_x, 'px');
+    setCssVar('--mdzip-attachment-padding-y', prefs.pref_mdzip_attachment_padding_y, 'px');
+    setCssVar('--mdzip-attachment-font-size', prefs.pref_mdzip_attachment_font_size, 'px');
 
     // Callout Shared Header
     setCssVar('--callout-header-bg', prefs.pref_callout_header_bg_color);

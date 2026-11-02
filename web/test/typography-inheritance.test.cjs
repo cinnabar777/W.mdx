@@ -28,6 +28,7 @@ test('Typography pages keep headings and body first, then alphabetical element p
     'pref_styling_page_blockquotes',
     'pref_styling_page_bold',
     'pref_styling_page_callouts',
+    'pref_styling_page_attachments',
     'pref_styling_page_code',
     'pref_styling_page_cursor',
     'pref_styling_page_footnotes',

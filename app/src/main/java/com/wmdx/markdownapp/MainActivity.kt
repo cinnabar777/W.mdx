@@ -1918,10 +1918,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun handleSaveFile() {
-        if (currentFileUri != null) {
-            currentFileUri?.let { saveFileToUri(it) }
-        } else {
-            handleSaveAsFile()
+        val targetUri = currentFileUri
+        if (targetUri != null) {
+            saveFileToUri(
+                targetUri,
+                requestedAsTextPack = true.takeIf { currentTextPackSession != null },
+                requestedAsMdzip = true.takeIf { currentMdzipSession != null }
+            )
+            return
+        }
+
+        // A package can remain the active document even if Android did not
+        // restore its original URI. Keep Save's fallback in that package
+        // format instead of offering a misleading Markdown filename.
+        when {
+            currentMdzipSession != null -> handleSaveAsMdzipFile()
+            currentTextPackSession != null -> handleSaveAsTextPackFile()
+            MdzipManager.isMdzipFileName(currentFileName) -> handleSaveAsMdzipFile()
+            currentFileName.endsWith(".textpack", ignoreCase = true) ||
+                currentFileName.endsWith(".textpack.zip", ignoreCase = true) ->
+                handleSaveAsTextPackFile()
+            else -> handleSaveAsFile()
         }
     }
 
@@ -2506,7 +2523,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val location = MarkdownAssetManager.locateDocument(
             this,
             documentUri,
-            currentFileName,
             requireWrite = false
         ) ?: return textPackAssetError(404, "Not Found")
         val imageUri = MarkdownAssetManager.documentUriForPreviewId(this, location, documentId)
@@ -3067,11 +3083,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                             val location = MarkdownAssetManager.locateDocument(
                                 this,
                                 documentUri,
-                                currentFileName,
                                 requireWrite = true
                             ) ?: throw IOException(
-                                "Open this Markdown file from a writable folder to save image files. " +
-                                    "You can choose Base64 in the insert dialog instead."
+                                "Could not match this Markdown file to an approved write-enabled folder. " +
+                                    "Reopen it from that folder, or choose Base64 in the insert dialog."
                             )
                             val storageLocation = PreferenceManager
                                 .getDefaultSharedPreferences(this)
@@ -4202,7 +4217,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val location = MarkdownAssetManager.locateDocument(
                     this@MainActivity,
                     documentUri,
-                    currentFileName,
                     requireWrite = false
                 ) ?: return@runCatching ""
                 MarkdownAssetManager.previewAssetUrl(

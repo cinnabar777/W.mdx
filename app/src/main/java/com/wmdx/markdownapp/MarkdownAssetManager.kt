@@ -20,6 +20,8 @@ internal object MarkdownAssetManager {
     const val LOCATION_ASSETS = "assets"
     const val LOCATION_SAME_FOLDER = "same-folder"
     private const val MAX_IMAGE_BYTES = 256L * 1024L * 1024L
+    private const val MAX_PATH_SEARCH_DOCUMENTS = 10_000
+    private const val MAX_PATH_SEARCH_DEPTH = 64
     private const val PREVIEW_ASSET_BASE_URL =
         "https://appassets.androidplatform.net/markdown-assets"
 
@@ -32,7 +34,6 @@ internal object MarkdownAssetManager {
     fun locateDocument(
         context: Context,
         documentUri: Uri,
-        expectedFileName: String?,
         requireWrite: Boolean
     ): MarkdownDocumentLocation? {
         val resolver = context.contentResolver
@@ -58,31 +59,17 @@ internal object MarkdownAssetManager {
             val scopedDocumentUri = runCatching {
                 DocumentsContract.buildDocumentUriUsingTree(permission.uri, documentId)
             }.getOrNull() ?: continue
-            val actualName = queryDisplayName(context, scopedDocumentUri)
-            if (
-                !expectedFileName.isNullOrBlank() &&
-                actualName != null &&
-                actualName != expectedFileName
-            ) {
-                continue
-            }
-
-            val pathIds = runCatching {
-                DocumentsContract.findDocumentPath(resolver, scopedDocumentUri)?.path.orEmpty()
-            }.getOrNull().orEmpty()
             val rootDocumentId = runCatching {
                 DocumentsContract.getTreeDocumentId(permission.uri)
             }.getOrNull() ?: continue
-            val rootIndex = pathIds.indexOf(rootDocumentId)
-            if (
-                rootIndex < 0 ||
-                pathIds.lastOrNull() != documentId ||
-                rootIndex >= pathIds.lastIndex
-            ) {
-                continue
-            }
-
-            val parentIds = pathIds.subList(rootIndex, pathIds.lastIndex).toList()
+            val pathFromTreeRoot = findPathFromTreeRoot(
+                context,
+                permission.uri,
+                scopedDocumentUri,
+                rootDocumentId,
+                documentId
+            ) ?: continue
+            val parentIds = pathFromTreeRoot.dropLast(1)
             if (parentIds.isEmpty()) continue
             val candidate = MarkdownDocumentLocation(permission.uri, rootDocumentId, parentIds)
             if (
@@ -93,6 +80,77 @@ internal object MarkdownAssetManager {
             }
         }
         return bestLocation
+    }
+
+    /**
+     * Some document providers return an incomplete path for a tree-scoped URI.
+     * Use the provider path when it proves the document is beneath the granted
+     * tree; otherwise walk that tree to verify membership and recover parents.
+     */
+    private fun findPathFromTreeRoot(
+        context: Context,
+        treeUri: Uri,
+        documentUri: Uri,
+        rootDocumentId: String,
+        documentId: String
+    ): List<String>? {
+        val providerPath = runCatching {
+            DocumentsContract.findDocumentPath(context.contentResolver, documentUri)?.path
+        }.getOrNull()
+        val verifiedProviderPath = providerPath?.let { path ->
+            val rootIndex = path.indexOf(rootDocumentId)
+            path.takeIf {
+                rootIndex >= 0 &&
+                    rootIndex < path.lastIndex &&
+                    path.lastOrNull() == documentId
+            }?.subList(rootIndex, path.size)
+        }
+        if (verifiedProviderPath != null) return verifiedProviderPath
+
+        return findPathByTreeTraversal(context, treeUri, rootDocumentId, documentId)
+    }
+
+    private fun findPathByTreeTraversal(
+        context: Context,
+        treeUri: Uri,
+        rootDocumentId: String,
+        targetDocumentId: String
+    ): List<String>? {
+        val parents = HashMap<String, String?>()
+        val depths = HashMap<String, Int>()
+        val pending = java.util.ArrayDeque<String>()
+        parents[rootDocumentId] = null
+        depths[rootDocumentId] = 0
+        pending.addLast(rootDocumentId)
+
+        while (pending.isNotEmpty() && parents.size <= MAX_PATH_SEARCH_DOCUMENTS) {
+            val parentId = pending.removeFirst()
+            val parentDepth = depths[parentId] ?: continue
+            if (parentDepth >= MAX_PATH_SEARCH_DEPTH) continue
+            for (child in runCatching {
+                listChildren(context, treeUri, parentId)
+            }.getOrDefault(emptyList())) {
+                if (parents.size > MAX_PATH_SEARCH_DOCUMENTS) return null
+                if (child.documentId == targetDocumentId) {
+                    val path = mutableListOf(targetDocumentId)
+                    var currentParent: String? = parentId
+                    while (currentParent != null) {
+                        path.add(currentParent)
+                        currentParent = parents[currentParent]
+                    }
+                    return path.asReversed()
+                }
+                if (
+                    child.mimeType == DocumentsContract.Document.MIME_TYPE_DIR &&
+                    child.documentId !in parents
+                ) {
+                    parents[child.documentId] = parentId
+                    depths[child.documentId] = parentDepth + 1
+                    pending.addLast(child.documentId)
+                }
+            }
+        }
+        return null
     }
 
     fun addImage(
@@ -348,22 +406,6 @@ internal object MarkdownAssetManager {
 
     private fun buildDocumentUri(location: MarkdownDocumentLocation, documentId: String): Uri =
         DocumentsContract.buildDocumentUriUsingTree(location.treeUri, documentId)
-
-    private fun queryDisplayName(context: Context, uri: Uri): String? {
-        val cursor = runCatching {
-            context.contentResolver.query(
-                uri,
-                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
-                null,
-                null,
-                null
-            )
-        }.getOrNull() ?: return null
-        return cursor.use { results ->
-            val nameIndex = results.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-            if (nameIndex >= 0 && results.moveToFirst()) results.getString(nameIndex) else null
-        }
-    }
 
     internal fun mimeTypeForExtension(extension: String): String =
         when (extension.lowercase(Locale.ROOT)) {

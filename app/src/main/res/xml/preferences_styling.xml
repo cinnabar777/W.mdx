@@ -29,6 +29,11 @@
             app:summary="Callout typography, borders, colors, and header styles" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_attachments"
+            app:title="Attachments"
+            app:summary="Attachment background, text, border, spacing, and shape" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_code"
             app:title="Code Blocks"
             app:summary="Text &amp; background colors, language labels, padding &amp; border radius" />

@@ -74,6 +74,9 @@ object PreferenceResetHelper {
             "pref_callout_line_color" -> "#29B6F6"
             "pref_callout_bg_color" -> "#1A232A"
             "pref_callout_text_color" -> "#FFFFFF"
+            "pref_mdzip_attachment_bg_color" -> "#202124"
+            "pref_mdzip_attachment_text_color" -> "#F1F3F4"
+            "pref_mdzip_attachment_border_color" -> "#555555"
             "pref_callout_header_bg_color" -> "#1A232A"
             "pref_callout_header_title_color" -> "#FFFFFF"
             "pref_callout_header_accent_color" -> "#29B6F6"
@@ -169,6 +172,12 @@ object PreferenceResetHelper {
                 if (isLightTheme) "#007F77" else "#00D6C9"
             "pref_body_background_color" ->
                 if (isLightTheme) "#FFFFFF" else "#000000"
+            "pref_mdzip_attachment_bg_color" ->
+                if (isLightTheme) "#F8F9FA" else "#202124"
+            "pref_mdzip_attachment_text_color" ->
+                if (isLightTheme) "#111111" else "#F1F3F4"
+            "pref_mdzip_attachment_border_color" ->
+                if (isLightTheme) "#D0D5DB" else "#555555"
             "pref_body_text_color", "pref_list_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
             "pref_toc_panel_bg_color" -> {
@@ -448,6 +457,14 @@ object PreferenceResetHelper {
             key == "pref_code_block_border_radius" -> 6
             key == "pref_code_block_line_height" -> "1.4"
             key == "pref_code_block_lang_label_color" -> "default"
+            key == "pref_mdzip_attachment_bg_color" ||
+                key == "pref_mdzip_attachment_text_color" ||
+                key == "pref_mdzip_attachment_border_color" -> "default"
+            key == "pref_mdzip_attachment_border_width" -> 1
+            key == "pref_mdzip_attachment_border_radius" -> 8
+            key == "pref_mdzip_attachment_padding_x" -> 10
+            key == "pref_mdzip_attachment_padding_y" -> 7
+            key == "pref_mdzip_attachment_font_size" -> 14
             key == "pref_hr_thickness" -> 2
             key == "pref_hr_style" -> "solid"
             key == "pref_hr_color" -> "default"
