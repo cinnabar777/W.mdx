@@ -629,6 +629,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val expectedVisible = toolbarImeVisibleBeforeInteraction
+        (webView as? EditorWebView)?.setImeInputAllowed(expectedVisible)
         val visibleBeforeRestore = editorImeVisible()
         if (visibleBeforeRestore != expectedVisible) {
             val inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE)
@@ -4040,11 +4041,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         } else {
                             editorImeVisible()
                         }
+                    (webView as? EditorWebView)
+                        ?.setImeInputAllowed(toolbarImeVisibleBeforeInteraction)
                     toolbarImeRestoreGeneration += 1
                     AppDiagnostics.record(
                         this@MainActivity,
                         "toolbar_ime_state_captured",
-                        "imeVisible=$toolbarImeVisibleBeforeInteraction"
+                        "imeVisible=$toolbarImeVisibleBeforeInteraction inputAllowed=$toolbarImeVisibleBeforeInteraction"
                     )
                 }
                 toolbarImeInteractionDepth += 1
@@ -4079,6 +4082,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     )
                     return@runOnUiThread
                 }
+                (webView as? EditorWebView)?.setImeInputAllowed(true)
                 val visibleBefore = editorImeVisible()
                 AppDiagnostics.record(
                     this@MainActivity,

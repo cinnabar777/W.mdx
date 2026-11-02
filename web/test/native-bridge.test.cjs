@@ -10,6 +10,10 @@ const mainActivityPath = path.join(
   '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'
 );
 const mainActivitySource = fs.readFileSync(mainActivityPath, 'utf8');
+const editorWebViewSource = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/EditorWebView.kt'),
+  'utf8'
+);
 const textPackManagerSource = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/TextPackManager.kt'),
   'utf8'
@@ -134,7 +138,14 @@ test('tapping focused editor content explicitly requests the Android keyboard', 
   assert.match(source, /contentDOM\.addEventListener\('pointerdown'/);
   assert.match(source, /contentDOM\.addEventListener\('pointerup'/);
   assert.match(source, /this\.view\.hasFocus\)[\s\S]*?AndroidNative\?\.showEditorKeyboard\?\.\(\)/);
-  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
+  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?setImeInputAllowed\(true\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
+  assert.match(editorWebViewSource, /fun setImeInputAllowed\(allowed: Boolean\)[\s\S]*?restartInput\(this\)/);
+  assert.match(editorWebViewSource, /override fun onCheckIsTextEditor\(\): Boolean =\s*imeInputAllowed && super\.onCheckIsTextEditor\(\)/);
+});
+
+test('toolbar actions block incidental keyboard opens when the keyboard started closed', () => {
+  assert.match(mainActivitySource, /\(webView as\? EditorWebView\)\s*\n\s*\?\.setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/);
+  assert.match(mainActivitySource, /setImeInputAllowed\(expectedVisible\)/);
 });
 
 test('auto-save snapshots the editor before pausing WebView and runs once per leave', () => {
