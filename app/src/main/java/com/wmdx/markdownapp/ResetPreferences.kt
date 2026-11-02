@@ -578,7 +578,7 @@ object PreferenceResetHelper {
             key == "pref_left_panel_search_keep_open" ||
                 key == "pref_left_panel_folders_keep_open" ||
                 key == "pref_left_panel_tabs_keep_open" -> false
-            key == "pref_image_mode" -> "picker"
+            key == "pref_markdown_image_location" -> MarkdownAssetManager.LOCATION_ASSETS
             key == "pref_settings_category_title_color" -> "#00E5FF"
             key == "pref_settings_title_color" -> "#FFFFFF"
             key == "pref_settings_summary_color" -> "#AAAAAA"

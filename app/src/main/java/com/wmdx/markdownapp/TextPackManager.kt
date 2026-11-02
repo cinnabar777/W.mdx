@@ -203,7 +203,7 @@ object TextPackManager {
             throw IOException("Could not create the TextPack assets folder.")
         }
 
-        val baseName = safeAssetFileName(originalFileName, mimeType)
+        val baseName = safeImageFileName(originalFileName, mimeType)
         val assetName = uniqueAssetName(assetsDir, baseName)
         val assetPath = "assets/$assetName"
         val targetFile = resolveSessionFile(session.sessionDir, assetPath)
@@ -387,7 +387,10 @@ object TextPackManager {
             "image/gif" -> "gif"
             "image/webp" -> "webp"
             "image/svg+xml" -> "svg"
+            "image/bmp" -> "bmp"
             "image/heic" -> "heic"
+            "image/heif" -> "heif"
+            "image/tiff" -> "tif"
             "image/avif" -> "avif"
             else -> null
         }
@@ -402,7 +405,7 @@ object TextPackManager {
             false
         }
 
-    private fun safeAssetFileName(originalFileName: String?, mimeType: String?): String {
+    internal fun safeImageFileName(originalFileName: String?, mimeType: String?): String {
         var baseName = originalFileName
             ?.replace('\\', '/')
             ?.substringAfterLast('/')

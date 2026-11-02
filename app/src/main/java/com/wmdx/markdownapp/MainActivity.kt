@@ -40,6 +40,7 @@ import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -294,7 +295,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { insertImageFromUri(it) }
+        uri?.let { insertImageFromUri(it, embedBase64 = false) }
+    }
+
+    private val pickImageAsBase64Launcher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { insertImageFromUri(it, embedBase64 = true) }
     }
 
     private val pickAudioLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -786,6 +792,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val url = request?.url ?: return null
                 if (url.path?.startsWith("/textpack-assets/") == true && request != null) {
                     return interceptTextPackAssetRequest(request)
+                }
+                if (url.path?.startsWith("/markdown-assets/") == true && request != null) {
+                    return interceptMarkdownAssetRequest(request)
                 }
                 if (url.path?.startsWith("/mdzip-assets/") == true && request != null) {
                     return interceptMdzipAssetRequest(request)
@@ -2474,6 +2483,59 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             ByteArrayInputStream(ByteArray(0))
         )
 
+    private fun interceptMarkdownAssetRequest(request: WebResourceRequest): WebResourceResponse {
+        val segments = request.url.pathSegments
+        if (
+            currentTextPackSession != null ||
+            currentMdzipSession != null ||
+            segments.size < 3 ||
+            segments[0] != "markdown-assets" ||
+            segments[1] != currentDocumentSessionId
+        ) {
+            return textPackAssetError(404, "Not Found")
+        }
+
+        val encodedDocumentId = request.url.encodedPath
+            ?.split("/")
+            ?.drop(3)
+            ?.joinToString("/")
+            .orEmpty()
+        if (encodedDocumentId.isBlank()) return textPackAssetError(404, "Not Found")
+        val documentId = Uri.decode(encodedDocumentId)
+        val documentUri = currentFileUri ?: return textPackAssetError(404, "Not Found")
+        val location = MarkdownAssetManager.locateDocument(
+            this,
+            documentUri,
+            currentFileName,
+            requireWrite = false
+        ) ?: return textPackAssetError(404, "Not Found")
+        val imageUri = MarkdownAssetManager.documentUriForPreviewId(this, location, documentId)
+            ?: return textPackAssetError(404, "Not Found")
+        val declaredMimeType = contentResolver.getType(imageUri)
+        val mimeType = declaredMimeType?.takeIf { it.startsWith("image/") }
+            ?: MarkdownAssetManager.mimeTypeForExtension(
+                getFileNameFromUri(imageUri).substringAfterLast('.', "")
+            )
+        if (!mimeType.startsWith("image/")) return textPackAssetError(404, "Not Found")
+        val body = if (request.method.equals("HEAD", ignoreCase = true)) {
+            ByteArrayInputStream(ByteArray(0))
+        } else {
+            contentResolver.openInputStream(imageUri)
+                ?: return textPackAssetError(404, "Not Found")
+        }
+        return WebResourceResponse(
+            mimeType,
+            null,
+            200,
+            "OK",
+            mapOf(
+                "Cache-Control" to "no-store",
+                "X-Content-Type-Options" to "nosniff"
+            ),
+            body
+        )
+    }
+
     private fun interceptMdzipAssetRequest(request: WebResourceRequest): WebResourceResponse {
         val segments = request.url.pathSegments
         val session = currentMdzipSession
@@ -2487,6 +2549,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val archivePath = segments.drop(2).joinToString("/")
+        if (archivePath.startsWith("attachments/")) {
+            val file = MdzipManager.attachmentArchiveFile(session, archivePath)
+                ?: return mdzipAssetError(404, "Not Found")
+            val mimeType = android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(file.extension.lowercase())
+                ?.takeIf { it.startsWith("image/") }
+                ?: MarkdownAssetManager.mimeTypeForExtension(file.extension)
+            if (!mimeType.startsWith("image/")) return mdzipAssetError(404, "Not Found")
+            val headers = mapOf(
+                "Cache-Control" to "no-store",
+                "Content-Length" to file.length().toString(),
+                "X-Content-Type-Options" to "nosniff"
+            )
+            val body = if (request.method.equals("HEAD", ignoreCase = true)) {
+                ByteArrayInputStream(ByteArray(0))
+            } else {
+                FileInputStream(file)
+            }
+            return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
+        }
+
         val isVideoAsset = archivePath.startsWith("video/", ignoreCase = true)
         val file = if (isVideoAsset) {
             MdzipManager.videoArchiveFile(session, archivePath)
@@ -2756,13 +2839,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         )
 
     private fun handleInsertImage() {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val imageMode = prefs.getString("pref_image_mode", "picker")
-        if (imageMode == "url") {
-            showImageUrlDialog()
-        } else {
-            pickImageLauncher.launch("image/*")
-        }
+        val choices = arrayOf(
+            "Choose image file",
+            "Choose file and embed as Base64",
+            "Enter URL or Base64 data"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Insert Image")
+            .setItems(choices) { _, choice ->
+                when (choice) {
+                    0 -> pickImageLauncher.launch("image/*")
+                    1 -> pickImageAsBase64Launcher.launch("image/*")
+                    2 -> showImageUrlDialog()
+                }
+            }
+            .show()
     }
 
     private fun handleInsertAudio() {
@@ -2928,9 +3019,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun showImageUrlDialog() {
         val input = EditText(this)
-        input.hint = "https://example.com/image.png"
+        input.hint = "Image URL or data:image/...;base64,..."
         AlertDialog.Builder(this)
-            .setTitle("Insert Image URL")
+            .setTitle("Image URL or Base64 Data")
             .setView(input)
             .setPositiveButton("Insert") { _, _ ->
                 val url = input.text.toString().trim()
@@ -2943,34 +3034,88 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .show()
     }
 
-    private fun insertImageFromUri(uri: Uri) {
+    private fun insertImageFromUri(uri: Uri, embedBase64: Boolean) {
         try {
-            contentResolver.openInputStream(uri)?.use { inputStream ->
-                val session = currentTextPackSession
-                if (session != null) {
-                    val originalName = getFileNameFromUri(uri)
-                    val mimeType = contentResolver.getType(uri)
-                    val assetPath = TextPackManager.addAssetImage(
-                        session,
-                        inputStream,
-                        originalName,
-                        mimeType
-                    )
-                    val markdownImageTag = "![Image]($assetPath)"
-                    val escapedTag = JSONObjectWrapper.quote(markdownImageTag)
-                    webView.evaluateJavascript("window.editorBridge.insertImage($escapedTag);", null)
-                } else {
-                    val bytes = inputStream.readBytes()
-                    val mimeType = contentResolver.getType(uri) ?: "image/png"
+            val originalName = getFileNameFromUri(uri)
+            val mimeType = resolveImageMimeType(uri, originalName)
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: throw IOException("Could not read the selected image.")
+            val imageReference = if (embedBase64) {
+                inputStream.use { input ->
+                    val bytes = input.readBytes()
+                    if (bytes.isEmpty()) throw IOException("The selected image file is empty.")
                     val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    val dataUri = "data:$mimeType;base64,$base64"
-                    val escapedUri = JSONObjectWrapper.quote(dataUri)
-                    webView.evaluateJavascript("window.editorBridge.insertImage($escapedUri);", null)
+                    "data:$mimeType;base64,$base64"
+                }
+            } else {
+                inputStream.use { input ->
+                    when {
+                        currentTextPackSession != null -> TextPackManager.addAssetImage(
+                            currentTextPackSession!!,
+                            input,
+                            originalName,
+                            mimeType
+                        )
+                        currentMdzipSession != null -> MdzipManager.addAttachment(
+                            currentMdzipSession!!,
+                            input,
+                            originalName
+                        )
+                        else -> {
+                            val documentUri = currentFileUri
+                                ?: throw IOException("Save the Markdown document before adding an image file.")
+                            val location = MarkdownAssetManager.locateDocument(
+                                this,
+                                documentUri,
+                                currentFileName,
+                                requireWrite = true
+                            ) ?: throw IOException(
+                                "Open this Markdown file from a writable folder to save image files. " +
+                                    "You can choose Base64 in the insert dialog instead."
+                            )
+                            val storageLocation = PreferenceManager
+                                .getDefaultSharedPreferences(this)
+                                .getString(
+                                    "pref_markdown_image_location",
+                                    MarkdownAssetManager.LOCATION_ASSETS
+                                )
+                                ?: MarkdownAssetManager.LOCATION_ASSETS
+                            MarkdownAssetManager.addImage(
+                                this,
+                                location,
+                                input,
+                                originalName,
+                                mimeType,
+                                storageLocation
+                            )
+                        }
+                    }
                 }
             }
+            insertImageMarkdown(imageReference)
         } catch (e: Exception) {
             ThemedToast.show(this, "Failed to insert image: ${e.localizedMessage}", Toast.LENGTH_LONG)
         }
+    }
+
+    private fun insertImageMarkdown(imageReference: String) {
+        val escapedReference = JSONObjectWrapper.quote(imageReference)
+        webView.evaluateJavascript(
+            "window.editorBridge.insertImage($escapedReference, \"\");",
+            null
+        )
+    }
+
+    private fun resolveImageMimeType(uri: Uri, fileName: String): String {
+        val declaredType = contentResolver.getType(uri)
+        if (declaredType?.startsWith("image/") == true) return declaredType
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        return android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(extension)
+            ?.takeIf { it.startsWith("image/") }
+            ?: MarkdownAssetManager.mimeTypeForExtension(extension)
+                .takeIf { it.startsWith("image/") }
+            ?: "image/png"
     }
 
 
@@ -4023,6 +4168,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun resolveMdzipAttachmentUrl(relativeLink: String): String {
+            val session = currentMdzipSession ?: return ""
+            return runCatching {
+                MdzipManager.attachmentUrl(session, relativeLink)
+            }.getOrNull().orEmpty()
+        }
+
+        @JavascriptInterface
         fun resolveTextPackAssetUrl(relativeLink: String): String {
             val session = currentTextPackSession ?: return ""
             return runCatching {
@@ -4030,6 +4183,35 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
                 .getOrNull()
                 .orEmpty()
+        }
+
+        @JavascriptInterface
+        fun resolveMarkdownAssetUrl(relativeLink: String): String {
+            if (currentTextPackSession != null || currentMdzipSession != null) return ""
+            val trimmedLink = relativeLink.trim()
+            if (
+                trimmedLink.isBlank() ||
+                trimmedLink.startsWith("/") ||
+                trimmedLink.startsWith("//") ||
+                Regex("^[A-Za-z][A-Za-z0-9+.-]*:").containsMatchIn(trimmedLink)
+            ) {
+                return ""
+            }
+            val documentUri = currentFileUri ?: return ""
+            return runCatching {
+                val location = MarkdownAssetManager.locateDocument(
+                    this@MainActivity,
+                    documentUri,
+                    currentFileName,
+                    requireWrite = false
+                ) ?: return@runCatching ""
+                MarkdownAssetManager.previewAssetUrl(
+                    this@MainActivity,
+                    location,
+                    currentDocumentSessionId,
+                    relativeLink
+                )
+            }.getOrNull().orEmpty()
         }
 
         @JavascriptInterface
