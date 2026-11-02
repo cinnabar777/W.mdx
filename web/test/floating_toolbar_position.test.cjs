@@ -3,7 +3,10 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
 
-const { getFloatingToolbarPosition } = require('../src/toolbarPositioning.js');
+const {
+  getFloatingToolbarPosition,
+  getFloatingToolbarPositionAtPoint
+} = require('../src/toolbarPositioning.js');
 
 test('floating toolbar stays inside the visible viewport and centers on the selection', () => {
   const position = getFloatingToolbarPosition({
@@ -52,6 +55,24 @@ test('oversized floating toolbar is clamped to the viewport width', () => {
   assert.ok(position.left + position.width <= 352);
 });
 
+test('floating toolbar can anchor to a long-press point without a selection', () => {
+  const position = getFloatingToolbarPositionAtPoint({
+    point: { x: 206, y: 318 },
+    toolbarWidth: 260,
+    toolbarHeight: 48,
+    viewport: {
+      offsetLeft: 12,
+      offsetTop: 80,
+      width: 400,
+      height: 600
+    }
+  });
+
+  assert.deepEqual(position, { left: 76, top: 262, width: 260 });
+  assert.ok(position.left >= 20);
+  assert.ok(position.left + position.width <= 404);
+});
+
 test('floating toolbar has an independent layout and restores Android selection actions when disabled', () => {
   const repositoryRoot = path.resolve(__dirname, '..', '..');
   const readWeb = relativePath =>
@@ -80,6 +101,9 @@ test('floating toolbar has an independent layout and restores Android selection 
     'both bottom and floating toolbar definitions preserve syntax commands');
   assert.match(main, /applyFloatingToolbarConfig: function\(rawConfig\)/);
   assert.match(main, /updateFloatingSelectionToolbar\(update\.view\)/);
+  assert.match(main, /showFloatingSelectionToolbarAtPoint\(event\.clientX, event\.clientY, this\.view\)/);
+  assert.match(main, /event\.pointerType === 'touch'[\s\S]*?setTimeout\([\s\S]*?550/);
+  assert.match(main, /floatingToolbarAnchorPoint\?\.view === view/);
   assert.match(settings, /configsBySurface = \{\s*bottom: config,\s*floating:/);
   assert.match(settings, /setToolbarSurface\(surface\)/);
   assert.match(settingsHtml, /data-toolbar-surface="floating"/);

@@ -84,7 +84,10 @@ import {
   sanitizeToolbarSvg,
   toToolbarCssColor
 } from './toolbarRenderer.js';
-import { getFloatingToolbarPosition } from './toolbarPositioning.js';
+import {
+  getFloatingToolbarPosition,
+  getFloatingToolbarPositionAtPoint
+} from './toolbarPositioning.js';
 import { openToolbarKeyPreferencesDialog } from './toolbarKeyPreferencesDialog.js';
 import {
   defaultKeymap,
@@ -130,6 +133,7 @@ let floatingToolbarConfig = normalizeBottomToolbarConfig(DEFAULT_FLOATING_TOOLBA
 const toolbarToggleClickGuards = new WeakMap();
 let floatingToolbarSelectionFrame = 0;
 let floatingToolbarEnabled = true;
+let floatingToolbarAnchorPoint = null;
 let tocHideFileExtension = false;
 let tocPanelEnabled = true;
 
@@ -4202,7 +4206,17 @@ class CodeMirrorAdapter {
       scrollTo: modeSnapshot?.scroll
     });
     let editorTapStart = null;
+    let emptyAreaLongPressTimer = null;
+    let emptyAreaLongPressStart = null;
+    const cancelEmptyAreaLongPress = () => {
+      clearTimeout(emptyAreaLongPressTimer);
+      emptyAreaLongPressTimer = null;
+      emptyAreaLongPressStart = null;
+    };
     this.view.contentDOM.addEventListener('pointerdown', event => {
+      cancelEmptyAreaLongPress();
+      floatingToolbarAnchorPoint = null;
+      updateFloatingSelectionToolbar(this.view);
       if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
         editorTapStart = null;
         return;
@@ -4210,15 +4224,46 @@ class CodeMirrorAdapter {
       editorTapStart = {
         pointerId: event.pointerId,
         x: event.clientX,
-        y: event.clientY
+        y: event.clientY,
+        longPressTriggered: false
       };
+      if (event.pointerType === 'touch') {
+        emptyAreaLongPressStart = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY
+        };
+        emptyAreaLongPressTimer = setTimeout(() => {
+          const press = emptyAreaLongPressStart;
+          if (!press || press.pointerId !== event.pointerId) return;
+          const selection = this.view?.state?.selection?.main;
+          if (selection && !selection.empty) return;
+          if (showFloatingSelectionToolbarAtPoint(press.x, press.y, this.view) && editorTapStart) {
+            editorTapStart.longPressTriggered = true;
+          }
+          emptyAreaLongPressTimer = null;
+          emptyAreaLongPressStart = null;
+        }, 550);
+      }
+    }, { capture: true });
+    this.view.contentDOM.addEventListener('pointermove', event => {
+      const press = emptyAreaLongPressStart;
+      if (
+        press &&
+        press.pointerId === event.pointerId &&
+        Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10
+      ) {
+        cancelEmptyAreaLongPress();
+      }
     }, { capture: true });
     this.view.contentDOM.addEventListener('pointerup', event => {
       const start = editorTapStart;
       editorTapStart = null;
+      cancelEmptyAreaLongPress();
       if (
         !start ||
         start.pointerId !== event.pointerId ||
+        start.longPressTriggered ||
         Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12
       ) {
         return;
@@ -4231,7 +4276,17 @@ class CodeMirrorAdapter {
     }, { capture: true });
     this.view.contentDOM.addEventListener('pointercancel', () => {
       editorTapStart = null;
+      cancelEmptyAreaLongPress();
     }, { capture: true });
+    this.view.contentDOM.addEventListener('contextmenu', event => {
+      const selection = this.view?.state?.selection?.main;
+      if (selection && !selection.empty) return;
+      if (!showFloatingSelectionToolbarAtPoint(event.clientX, event.clientY, this.view)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (editorTapStart) editorTapStart.longPressTriggered = true;
+      cancelEmptyAreaLongPress();
+    });
 
     this.view.scrollDOM.style.overflowAnchor = 'auto';
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
@@ -4944,56 +4999,90 @@ function scheduleFloatingToolbarPosition() {
   });
 }
 
+function showFloatingSelectionToolbarAtPoint(x, y, view = activeAdapter?.view) {
+  if (!floatingToolbarEnabled || !view?.dom?.isConnected) return false;
+  const selection = view.state?.selection?.main;
+  if (selection && !selection.empty) return false;
+  floatingToolbarAnchorPoint = { x, y, view };
+  updateFloatingSelectionToolbar(view);
+  return true;
+}
+
 function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
   const bar = document.querySelector('#floating-selection-toolbar');
   if (!bar) return;
   if (!floatingToolbarEnabled) {
+    floatingToolbarAnchorPoint = null;
     bar.classList.remove('is-visible');
     bar.setAttribute('aria-hidden', 'true');
     if (activePopupSurface === 'floating') hidePopupStrip();
     return;
   }
   const selection = view?.state?.selection?.main;
-  if (!view?.dom?.isConnected || !selection || selection.empty) {
+  const hasSelection = Boolean(selection && !selection.empty);
+  if (hasSelection) floatingToolbarAnchorPoint = null;
+  const anchorPoint = !hasSelection && floatingToolbarAnchorPoint?.view === view
+    ? floatingToolbarAnchorPoint
+    : null;
+  if (!view?.dom?.isConnected || (!hasSelection && !anchorPoint)) {
     bar.classList.remove('is-visible');
     bar.setAttribute('aria-hidden', 'true');
     if (activePopupSurface === 'floating') hidePopupStrip();
     return;
   }
 
-  let start;
-  let end;
-  try {
-    start = view.coordsAtPos(selection.from);
-    end = view.coordsAtPos(selection.to);
-  } catch {
-    start = null;
-    end = null;
-  }
-  if (!start || !end) {
-    bar.classList.remove('is-visible');
-    bar.setAttribute('aria-hidden', 'true');
-    if (activePopupSurface === 'floating') hidePopupStrip();
-    return;
-  }
-
-  bar.classList.add('is-visible');
-  bar.setAttribute('aria-hidden', 'false');
-  bar.style.removeProperty('width');
-  const rect = bar.getBoundingClientRect();
-  const viewport = window.visualViewport;
-  const position = getFloatingToolbarPosition({
-    start,
-    end,
-    toolbarWidth: rect.width,
-    toolbarHeight: rect.height,
-    viewport: {
-      offsetLeft: viewport?.offsetLeft || 0,
-      offsetTop: viewport?.offsetTop || 0,
-      width: viewport?.width || window.innerWidth,
-      height: viewport?.height || window.innerHeight
+  let position;
+  if (anchorPoint) {
+    bar.classList.add('is-visible');
+    bar.setAttribute('aria-hidden', 'false');
+    bar.style.removeProperty('width');
+    const rect = bar.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    position = getFloatingToolbarPositionAtPoint({
+      point: anchorPoint,
+      toolbarWidth: rect.width,
+      toolbarHeight: rect.height,
+      viewport: {
+        offsetLeft: viewport?.offsetLeft || 0,
+        offsetTop: viewport?.offsetTop || 0,
+        width: viewport?.width || window.innerWidth,
+        height: viewport?.height || window.innerHeight
+      }
+    });
+  } else {
+    let start;
+    let end;
+    try {
+      start = view.coordsAtPos(selection.from);
+      end = view.coordsAtPos(selection.to);
+    } catch {
+      start = null;
+      end = null;
     }
-  });
+    if (!start || !end) {
+      bar.classList.remove('is-visible');
+      bar.setAttribute('aria-hidden', 'true');
+      if (activePopupSurface === 'floating') hidePopupStrip();
+      return;
+    }
+    bar.classList.add('is-visible');
+    bar.setAttribute('aria-hidden', 'false');
+    bar.style.removeProperty('width');
+    const rect = bar.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    position = getFloatingToolbarPosition({
+      start,
+      end,
+      toolbarWidth: rect.width,
+      toolbarHeight: rect.height,
+      viewport: {
+        offsetLeft: viewport?.offsetLeft || 0,
+        offsetTop: viewport?.offsetTop || 0,
+        width: viewport?.width || window.innerWidth,
+        height: viewport?.height || window.innerHeight
+      }
+    });
+  }
   bar.style.width = `${position.width}px`;
   bar.style.left = `${position.left}px`;
   bar.style.top = `${position.top}px`;
