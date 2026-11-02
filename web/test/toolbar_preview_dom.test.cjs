@@ -15,6 +15,7 @@ async function dragKey(
   moveX = 42,
   moveY = 12
 ) {
+  const originalGetBoundingClientRect = target.getBoundingClientRect;
   target.getBoundingClientRect = () => ({
     left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100
   });
@@ -28,11 +29,15 @@ async function dragKey(
       clientY
     }));
   };
-  dispatchPointer(source, 'pointerdown', 2, 2);
-  await new Promise(resolve => setTimeout(resolve, 410));
-  dispatchPointer(dom.window.document, 'pointermove', moveX, moveY);
-  duringDrag?.();
-  dispatchPointer(dom.window.document, 'pointerup', dropX, dropY);
+  try {
+    dispatchPointer(source, 'pointerdown', 2, 2);
+    await new Promise(resolve => setTimeout(resolve, 410));
+    dispatchPointer(dom.window.document, 'pointermove', moveX, moveY);
+    duringDrag?.();
+    dispatchPointer(dom.window.document, 'pointerup', dropX, dropY);
+  } finally {
+    target.getBoundingClientRect = originalGetBoundingClientRect;
+  }
 }
 
 test('toolbar settings preview opens a dismissible icon picker popup above spacious key settings', async () => {
@@ -49,8 +54,28 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
   const settings = {
     version: 1,
     order: ['undo', 'lists', 'format', 'table', 'insert', 'menu'],
+    holding: [
+      'cut', 'copy', 'paste', 'selectAll',
+      'custom-key-user-copy', 'custom-group-user-folder'
+    ],
+    customKeys: {
+      'custom-key-user-copy': {
+        title: 'My Copy Key',
+        icon: 'copy',
+        actionId: 'copy'
+      }
+    },
+    customGroups: {
+      'custom-group-user-folder': {
+        title: 'My Folder',
+        icon: 'folder'
+      }
+    },
     hidden: ['heading'],
     styles: {
+      paragraph: {
+        gestureActions: { tap2: 'bold', swipeLeft: 'deleteLine' }
+      },
       saveFile: {
         iconColor: '#00ff00',
         backgroundColor: '#22000000'
@@ -83,6 +108,56 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
 
   try {
     await import(`../src/toolbarSettingsPreview.js?preview-test=${Date.now()}`);
+
+    const heldParagraph = dom.window.document.querySelector(
+      '#toolbar-holding-tray [data-preview-popup-item="paragraph"]'
+    );
+    assert.ok(heldParagraph, 'the configured key is present in the holding area');
+    assert.equal(
+      heldParagraph.querySelectorAll('.toolbar-key-gesture-indicator').length,
+      0,
+      'holding-area keys do not overlay several action icons on the main icon'
+    );
+    assert.equal(
+      heldParagraph.querySelector('.toolbar-key-gesture-count')?.textContent,
+      '2',
+      'the holding-area key shows one compact count for its assigned gestures'
+    );
+    assert.equal(
+      heldParagraph.getAttribute('aria-label'),
+      'Paragraph, 2 assigned gestures'
+    );
+
+    const trayProbe = dom.window.document.createElement('div');
+    const { renderBottomToolbarKeys } = await import('../src/toolbarRenderer.js');
+    const { svgIcons } = await import('../src/toolbarIcons.js');
+    renderBottomToolbarKeys(trayProbe, {
+      version: 3,
+      order: ['undo'],
+      hidden: ['lists', 'format', 'table', 'insert', 'menu'],
+      holding: [],
+      popupGroups: {},
+      customGroups: {},
+      customKeys: {},
+      styles: {
+        undo: {
+          gestureActions: { tap2: 'bold', swipeLeft: 'deleteLine' }
+        }
+      }
+    }, svgIcons, {
+      gestureIndicatorMode: 'count',
+      resolveGestureActionIcon: () => '<svg></svg>'
+    });
+    const heldToolbarKey = trayProbe.querySelector('[data-toolbar-key="undo"]');
+    assert.equal(
+      heldToolbarKey.querySelector('.toolbar-key-gesture-count')?.textContent,
+      '2',
+      'held toolbar keys also use the compact gesture count'
+    );
+    assert.equal(
+      heldToolbarKey.querySelectorAll('.toolbar-key-gesture-indicator').length,
+      0
+    );
 
     const helpButton = dom.window.document.querySelector('#toolbar-help-button');
     const helpModal = dom.window.document.querySelector('#toolbar-help-modal');
@@ -174,6 +249,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
         'Save As',
         'Save Tabs',
         'Save as Text Pack',
+        'Save as MDZip',
         'Export HTML / MHTML',
         'Find & Replace',
         'Switch View Mode',
@@ -268,6 +344,19 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
       ),
       'the icon catalog is alphabetized'
     );
+    assert.ok(iconTitles.some(title => title.startsWith('Table: ')));
+    assert.ok(iconTitles.includes('Callout: Warning'));
+    assert.ok(iconTitles.includes('Find & Replace: Find Previous'));
+    assert.ok(iconTitles.includes('Audio: Play'));
+    assert.ok(iconTitles.includes('TOC Settings'));
+    assert.ok(
+      iconTitles.some(title => title.includes('Clear Formatting')),
+      'the new built-in action icon appears in the shared icon picker'
+    );
+    assert.ok(
+      html.includes('href="./icon-picker.css"'),
+      'toolbar picker styles come from the shared stylesheet'
+    );
     assert.equal(
       picker.querySelector('#toolbar-icon-search').parentElement,
       picker.querySelector('.toolbar-preview-icon-picker-dialog')
@@ -338,6 +427,9 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     const actionSearch = dom.window.document.querySelector('#toolbar-action-search');
     const actionTitles = [...actionPicker.querySelectorAll('#toolbar-action-list [role="option"]')]
       .map(button => button.getAttribute('aria-label'));
+    assert.ok(actionTitles.includes('Clear Formatting'));
+    assert.ok(!actionTitles.includes('My Copy Key'));
+    assert.ok(!actionTitles.includes('My Folder'));
     assert.deepEqual(
       actionTitles,
       [...actionTitles].sort((a, b) =>
@@ -732,7 +824,7 @@ test('custom groups accept loose actions and deleting a group releases its child
       ),
       'the app preview opens the group and displays its assigned action'
     );
-    dom.window.document.querySelector('#toolbar-delete-custom-group').click();
+    dom.window.document.querySelector('#toolbar-delete-item').click();
     assert.equal(saves.at(-1).customGroups[groupId], undefined);
     assert.equal(saves.at(-1).popupGroups[groupId], undefined);
     assert.ok(
@@ -748,7 +840,209 @@ test('custom groups accept loose actions and deleting a group releases its child
   }
 });
 
-test('custom toolbar keys can run searchable actions and be assigned as gesture actions', async () => {
+test('empty custom groups can be placed on both toolbar surfaces', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html',
+    pretendToBeVisual: true
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const previousRequestAnimationFrame = global.requestAnimationFrame;
+  const saves = [];
+  const defaultConfig = {
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    hidden: [],
+    holding: [],
+    customGroups: {},
+    customKeys: {},
+    styles: {}
+  };
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify(defaultConfig),
+      pref_toolbar_floating_config: JSON.stringify(defaultConfig)
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+  global.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?empty-group-surfaces=${Date.now()}`);
+    const createAndPlaceGroup = async (surface, name) => {
+      if (surface === 'floating') {
+        dom.window.document
+          .querySelector('[data-toolbar-surface="floating"]')
+          .click();
+        await new Promise(resolve => dom.window.requestAnimationFrame(resolve));
+      }
+      dom.window.document.querySelector('#toolbar-add-custom').click();
+      const type = dom.window.document.querySelector('#toolbar-create-group-type');
+      type.value = 'group';
+      type.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+      const nameInput = dom.window.document.querySelector('#toolbar-create-group-name');
+      nameInput.value = name;
+      dom.window.document.querySelector('#toolbar-create-group-form')
+        .dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+
+      const groupId = Object.keys(saves.at(-1).customGroups)[0];
+      assert.ok(groupId, `${surface} group was created`);
+      const heldGroup = dom.window.document.querySelector(
+        `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
+      );
+      assert.ok(heldGroup, 'new empty groups start in the holding area');
+
+      const stage = dom.window.document.querySelector('.toolbar-preview-stage');
+      await dragKey(dom, heldGroup, stage, 90, 50, null, stage);
+      assert.ok(
+        dom.window.document.querySelector(
+          `#toolbar-preview [data-toolbar-key="${groupId}"]`
+        ),
+        `${surface} empty group appears on its toolbar after release`
+      );
+      assert.equal(
+        dom.window.document.querySelector(
+          `#toolbar-holding-tray [data-toolbar-key="${groupId}"]`
+        ),
+        null,
+        `${surface} group leaves the holding area after placement`
+      );
+      assert.ok(saves.at(-1).order.includes(groupId));
+      assert.ok(!saves.at(-1).holding.includes(groupId));
+    };
+
+    await createAndPlaceGroup('bottom', 'Bottom folder');
+    await createAndPlaceGroup('floating', 'Floating folder');
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+    if (previousRequestAnimationFrame === undefined) delete global.requestAnimationFrame;
+    else global.requestAnimationFrame = previousRequestAnimationFrame;
+  }
+});
+
+test('built-in groups and keys can be deleted on both toolbar surfaces', async () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html',
+    pretendToBeVisual: true
+  });
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const previousRequestAnimationFrame = global.requestAnimationFrame;
+  const saves = [];
+  const configWithHeldLists = {
+    version: 8,
+    order: ['undo', 'heading', 'format', 'table', 'insert', 'menu'],
+    hidden: ['lists'],
+    popupGroups: { lists: { order: [], hidden: [] } },
+    holding: ['lists'],
+    deletedGroups: [],
+    customGroups: {},
+    customKeys: {},
+    styles: {}
+  };
+  dom.window.ToolbarSettings = {
+    getBottomToolbarSettings: () => JSON.stringify({
+      pref_toolbar_bottom_config: JSON.stringify(configWithHeldLists),
+      pref_toolbar_floating_config: JSON.stringify(configWithHeldLists)
+    }),
+    saveBottomToolbarConfig: value => {
+      saves.push(JSON.parse(value));
+      return true;
+    }
+  };
+  global.window = dom.window;
+  global.document = dom.window.document;
+  global.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+
+  try {
+    await import(`../src/toolbarSettingsPreview.js?builtin-group-test=${Date.now()}`);
+    const runOnSurface = async surface => {
+      if (surface === 'floating') {
+        dom.window.document
+          .querySelector('[data-toolbar-surface="floating"]')
+          .click();
+        await new Promise(resolve => dom.window.requestAnimationFrame(resolve));
+      }
+
+      const tray = dom.window.document.querySelector('#toolbar-holding-tray');
+      const stage = dom.window.document.querySelector('.toolbar-preview-stage');
+      const heldGroup = tray.querySelector('[data-toolbar-key="lists"]');
+      assert.ok(heldGroup, `${surface} keeps the built-in group in the holding area`);
+      await dragKey(dom, heldGroup, stage, 90, 50, null, stage);
+
+      const placedGroup = dom.window.document.querySelector(
+        '#toolbar-preview [data-toolbar-key="lists"]'
+      );
+      assert.ok(placedGroup, `${surface} can return the empty group to its toolbar`);
+      assert.ok(saves.at(-1).order.includes('lists'));
+
+      await dragKey(dom, placedGroup, tray);
+      const heldAgain = tray.querySelector('[data-toolbar-key="lists"]');
+      assert.ok(heldAgain, 'the group can be moved back to the holding area');
+      heldAgain.click();
+      const deleteButton = dom.window.document.querySelector('#toolbar-delete-item');
+      assert.equal(deleteButton.hidden, false, 'built-in groups have a delete control');
+      assert.equal(deleteButton.title, 'Delete group');
+      deleteButton.click();
+
+      let saved = saves.at(-1);
+      assert.ok(saved.deletedGroups.includes('lists'));
+      assert.ok(!saved.order.includes('lists'));
+      assert.ok(!saved.holding.includes('lists'));
+      assert.equal(saved.popupGroups.lists, undefined);
+      assert.ok(saved.holding.includes('bulletedList'));
+      assert.ok(saved.holding.includes('outdent'));
+
+      const heldListKey = tray.querySelector(
+        '[data-preview-popup-item="bulletedList"]'
+      );
+      assert.ok(heldListKey, 'released built-in actions remain selectable in the holding area');
+      heldListKey.click();
+      assert.equal(deleteButton.hidden, false, 'built-in actions have a delete control');
+      assert.equal(deleteButton.title, 'Delete key');
+      deleteButton.click();
+      saved = saves.at(-1);
+      assert.ok(saved.deletedKeys.includes('bulletedList'));
+      assert.ok(!saved.holding.includes('bulletedList'));
+      assert.ok(!saved.popupGroups.lists);
+
+      const undoKey = dom.window.document.querySelector(
+        '#toolbar-preview [data-toolbar-key="undo"]'
+      );
+      assert.ok(undoKey, 'root built-in keys can be selected for deletion');
+      undoKey.click();
+      assert.equal(deleteButton.title, 'Delete key');
+      deleteButton.click();
+      saved = saves.at(-1);
+      assert.ok(saved.deletedKeys.includes('undo'));
+      assert.ok(!saved.order.includes('undo'));
+    };
+
+    await runOnSurface('bottom');
+    await runOnSurface('floating');
+  } finally {
+    dom.window.close();
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+    if (previousRequestAnimationFrame === undefined) delete global.requestAnimationFrame;
+    else global.requestAnimationFrame = previousRequestAnimationFrame;
+  }
+});
+
+test('custom toolbar keys can run built-in actions but cannot be selected as actions', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../toolbar-settings-preview.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html'
@@ -816,8 +1110,22 @@ test('custom toolbar keys can run searchable actions and be assigned as gesture 
       .click();
     search.value = 'Quick Action';
     search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-    actionPicker.querySelector('[role="option"][aria-label="Quick Action"]').click();
-    assert.equal(saves.at(-1).styles.undo.gestureActions.tap1, customKeyId);
+    assert.equal(
+      actionPicker.querySelector('[role="option"][aria-label="Quick Action"]'),
+      null,
+      'a user-created key does not become a selectable action'
+    );
+    search.value = 'Remove Highlight';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    assert.equal(
+      actionPicker.querySelector('[role="option"][aria-label="Remove Highlight"]'),
+      null,
+      'the obsolete highlight action is not available to assign'
+    );
+    search.value = 'Bold';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    actionPicker.querySelector('[role="option"][aria-label="Bold"]').click();
+    assert.equal(saves.at(-1).styles.undo.gestureActions.tap1, 'bold');
 
     dom.window.document
       .querySelector('.toolbar-preview-gesture-icon[data-gesture-id="tap1"]')
@@ -1061,7 +1369,11 @@ test('dropping one toolbar key onto another creates a folder with both keys', as
         hidden: [],
         holding: [],
         customGroups: {},
-        styles: {}
+        styles: {
+          undo: {
+            customSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 1h1v1H1z"/></svg>'
+          }
+        }
       })
     }),
     saveBottomToolbarConfig: value => {
@@ -1084,6 +1396,12 @@ test('dropping one toolbar key onto another creates a folder with both keys', as
 
     const groupId = Object.keys(saves.at(-1).customGroups)[0];
     assert.ok(groupId, 'a drop on the center of another key creates a group');
+    assert.equal(saves.at(-1).customGroups[groupId].icon, 'folder');
+    assert.equal(
+      saves.at(-1).styles[groupId]?.customSvg,
+      undefined,
+      'the new group does not inherit the first key custom icon'
+    );
     assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['undo', 'table']);
     assert.ok(!saves.at(-1).order.includes('undo'));
     assert.ok(!saves.at(-1).order.includes('table'));

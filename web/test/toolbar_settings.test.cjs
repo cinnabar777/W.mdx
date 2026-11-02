@@ -7,6 +7,8 @@ const { JSDOM } = require('jsdom');
 const root = path.resolve(__dirname, '../..');
 const html = fs.readFileSync(path.join(root, 'web/toolbar-settings-preview.html'), 'utf8');
 const sharedCss = fs.readFileSync(path.join(root, 'web/toolbar.css'), 'utf8');
+const iconPickerCss = fs.readFileSync(path.join(root, 'web/icon-picker.css'), 'utf8');
+const iconCatalogSource = fs.readFileSync(path.join(root, 'web/src/appIconCatalog.js'), 'utf8');
 const settingsSource = fs.readFileSync(
   path.join(root, 'web/src/toolbarSettingsPreview.js'),
   'utf8'
@@ -21,6 +23,10 @@ const mainActivitySource = fs.readFileSync(
 );
 const preferenceXml = fs.readFileSync(
   path.join(root, 'app/src/main/res/xml/preferences_styling_controlbar.xml'),
+  'utf8'
+);
+const hotkeysPreferenceXml = fs.readFileSync(
+  path.join(root, 'app/src/main/res/xml/preferences_hotkeys.xml'),
   'utf8'
 );
 const resetSource = fs.readFileSync(
@@ -39,6 +45,34 @@ const colorPickerSource = fs.readFileSync(
   path.join(root, 'app/src/main/java/com/wmdx/markdownapp/ColorPickerDialog.kt'),
   'utf8'
 );
+
+test('line editing actions are available in settings and run against the active editor', () => {
+  for (const action of ['moveLineUp', 'moveLineDown', 'deleteLine', 'cycleListType']) {
+    assert.match(settingsSource, new RegExp(`id: '${action}'`));
+    assert.match(mainSource, new RegExp(`id: '${action}'`));
+    assert.match(mainSource, new RegExp(`execCmd\\('${action}'\\)`));
+  }
+  assert.match(mainSource, /cmMoveLineUp\(view\)/);
+  assert.match(mainSource, /cmMoveLineDown\(view\)/);
+  assert.match(mainSource, /cmDeleteLine\(view\)/);
+  assert.match(settingsSource, /location === 'tray' && gestureEntries\.length > 0/);
+  assert.match(settingsSource, /toolbar-key-gesture-count/);
+  assert.match(settingsSource, /gestureIndicatorMode: 'count'/);
+  assert.match(sharedCss, /\.toolbar-preview-tray \.toolbar-key-gesture-count/);
+});
+
+test('Redo is selectable as a toolbar action and runs on the active editor', () => {
+  assert.match(settingsSource, /id: 'redo', title: 'Redo'/);
+  assert.match(mainSource, /if \(actionId === 'redo'\)\s*\{\s*activeAdapter\?\.redo\(\);/);
+  assert.match(mainSource, /customHotkeys\.undo/);
+  assert.match(mainSource, /customHotkeys\.redo/);
+  assert.doesNotMatch(mainSource, /e\.ctrlKey && \(k === 'z' \|\| k === 'y'\)/);
+});
+
+test('Save as MDZip is available in the toolbar action picker', () => {
+  assert.match(settingsSource, /id: 'saveAsMdzip', title: 'Save as MDZip', icon: svgIcons\.saveAsMdzip/);
+  assert.match(toolbarConfigSource, /'saveAsMdzip'/);
+});
 
 test('bottom toolbar preview uses the same renderer, icon source, and toolbar stylesheet as the editor', () => {
   assert.match(settingsSource, /renderBottomToolbarKeys/);
@@ -83,9 +117,11 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(settingsSource, /config\.customGroups\[id\]/);
   assert.match(settingsSource, /config\.customKeys\[id\]/);
   assert.match(html, /id="toolbar-add-custom"/);
-  assert.match(html, /\+ Custom key or group/);
+  assert.match(html, /\+ Key or group/);
+  assert.doesNotMatch(html, /\+ Custom key or group/);
+  assert.match(html, /Create key or group/);
   assert.match(html, /id="toolbar-create-group-form"/);
-  assert.match(html, /id="toolbar-delete-custom-group"/);
+  assert.match(html, /id="toolbar-delete-item"/);
   assert.match(html, /id="toolbar-open-icon-picker"/);
   assert.match(html, /id="toolbar-icon-picker-modal"/);
   assert.match(html, /aria-modal="true"/);
@@ -105,7 +141,7 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /id="toolbar-custom-key-action"/);
   assert.match(html, /id="toolbar-preview-title-input"/);
   assert.match(html, /id="toolbar-edit-key-name"/);
-  assert.match(html, /id="toolbar-delete-custom-group"[^>]*aria-label="Delete custom group"/);
+  assert.match(html, /id="toolbar-delete-item"[^>]*aria-label="Delete item"/);
   assert.match(html, /grid-template-columns: minmax\(0, 1fr\) 40px 30px/);
   assert.match(html, /border-radius: 50%/);
   assert.match(html, /\.toolbar-preview-editor-layer\s*\{[^}]*z-index:\s*10030/s);
@@ -117,6 +153,8 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(preferenceXml, /pref_toolbar_label_color/);
   assert.match(mainSource, /function runToolbarGestureAction/);
   assert.match(mainSource, /installPopupToolbarSwipeUp/);
+  assert.match(mainSource, /shouldSuppressToolbarToggleClick\(gestureId, actionId\)/);
+  assert.match(mainSource, /if \(actionId\) \{\s*runToolbarGestureAction\(actionId, button, new Set\(\), toolbarConfig\);/);
   assert.match(
     mainSource,
     /\{ id: OPEN_GROUP_ACTION_ID, title: 'Open group', icon: svgIcons\.folder \}/,
@@ -149,9 +187,9 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(html, /Paste SVG/);
   assert.match(html, /Choose SVG file/);
   assert.match(html, /toolbar-preview-icon-actions/);
-  assert.match(html, /min-height: 40px/);
+  assert.match(iconPickerCss, /min-height:\s*40px/);
   assert.match(html, /width: max-content/);
-  assert.match(html, /overflow-y: auto/);
+  assert.match(iconPickerCss, /overflow-y:\s*auto/);
   assert.match(settingsSource, /setIconPickerOpen/);
   assert.match(settingsSource, /event\.key !== 'Escape'/);
   assert.doesNotMatch(html, /id="toolbar-current-key-preview"/);
@@ -188,8 +226,8 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(toolbarConfigSource, /id: 'paste', title: 'Paste', icon: 'paste'/);
   assert.match(toolbarConfigSource, /id: 'selectAll', title: 'Select All', icon: 'selectAll'/);
   assert.match(settingsSource, /title: 'Open group'/);
-  assert.match(mainSource, /function runToolbarClipboardAction\(actionId\)/);
-  assert.match(mainSource, /runToolbarClipboardAction\(item\.id\)/);
+  assert.match(mainSource, /function runToolbarClipboardAction\(actionId, preserveKeyboard = false\)/);
+  assert.match(mainSource, /runToolbarClipboardAction\(item\.id, true\)/);
   assert.match(mainSource, /actionId === OPEN_GROUP_ACTION_ID/);
   assert.match(mainSource, /sourceButton\?\.dataset\?\.toolbarKey/);
   assert.match(mainActivitySource, /fun writeClipboard\(text: String\?\): Boolean/);
@@ -242,7 +280,7 @@ test('toolbar gestures can open and save the preferences for their own key', () 
   assert.match(sharedCss, /\.toolbar-key-preferences-overlay\s*\{[\s\S]*?align-items:\s*flex-start/);
   assert.match(sharedCss, /\.toolbar-key-preferences-frame\s*\{/);
   assert.match(html, /\.toolbar-preview-editor-layer\s*\{[\s\S]*?z-index:\s*10030/);
-  assert.match(html, /\.toolbar-preview-icon-picker-modal\s*\{[\s\S]*?z-index:\s*10040/);
+  assert.match(iconPickerCss, /\.toolbar-preview-icon-picker-modal\s*\{[\s\S]*?z-index:\s*10040/);
 });
 
 test('marker and pen toolbar actions use numbered slots and the generic tintable icon', () => {
@@ -284,7 +322,7 @@ test('toolbar toggle gestures are configurable separately and run on the floatin
   assert.match(mainActivitySource, /itemId == "toolbarToggleControl"/);
   assert.match(
     mainSource,
-    /toggleBtn\.dataset\.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;[\s\S]*?installToolbarTapActions\(document\.body\);[\s\S]*?installPopupToolbarSwipeUp\(toggleBtn, TOOLBAR_TOGGLE_STYLE_ID\)/
+    /toggleBtn\.dataset\.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;[\s\S]*?installToolbarTapActions\(document\.body\);[\s\S]*?installPopupToolbarSwipeUp\(\s*toggleBtn,\s*TOOLBAR_TOGGLE_STYLE_ID,\s*null,\s*\(\) => toggleClickGuard\.suppressNextClick\(\)\s*\)/
   );
   assert.match(
     fs.readFileSync(path.join(root, 'web/index.html'), 'utf8'),
@@ -295,10 +333,29 @@ test('toolbar toggle gestures are configurable separately and run on the floatin
 test('no-icon gesture choices persist while suppressing their parent-key indicator', () => {
   assert.match(toolbarConfigSource, /NO_GESTURE_ICON = 'none'/);
   assert.match(toolbarConfigSource, /svg === NO_GESTURE_ICON/);
-  assert.match(settingsSource, /aria-label', 'No icon'/);
-  assert.match(settingsSource, /style\.gestureActionIcons\[selectedGestureId\] = NO_GESTURE_ICON/);
+  assert.match(iconCatalogSource, /aria-label', 'No icon'/);
+  assert.match(settingsSource, /gestureStyle\.gestureActionIcons\[selectedGestureId\] = NO_GESTURE_ICON/);
   assert.match(mainSource, /customSvg === NO_GESTURE_ICON\) return ''/);
   assert.match(androidSource, /if \(iconSvg == "none"\)/);
+});
+
+test('floating toggle guards its click after configured tap and swipe actions', () => {
+  assert.match(
+    mainSource,
+    /toolbarToggleClickGuards\.get\(button\)\?\.suppressNextClick\(\)/
+  );
+  assert.match(
+    mainSource,
+    /const markGestureHandled = \(\) => \{/
+  );
+  assert.match(
+    mainSource,
+    /button\.dataset\.toolbarGestureSuppressClick = 'true';[\s\S]*?onHandledGesture\?\.\(\);/
+  );
+  assert.match(
+    mainSource,
+    /if \(toggleClickGuard\.consumeSuppressedClick\(\)\) return;/
+  );
 });
 
 test('toolbar toggle gestures have a separate editor and remain outside the replaceable preview', async () => {
@@ -478,7 +535,7 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
   );
   assert.equal(BOTTOM_TOOLBAR_STYLE_IDS.length, BOTTOM_TOOLBAR_POPUP_ITEM_IDS.length + 11);
   const kotlinGroupsBlock = androidSource.match(
-    /TOOLBAR_GROUP_ITEM_IDS = linkedMapOf\(([\s\S]*?)\n\s*\)\s*\n\s*private val TOOLBAR_STYLE_IDS/
+    /TOOLBAR_GROUP_ITEM_IDS = linkedMapOf\(([\s\S]*?)\n\s*\)\s*\n\s*private val TOOLBAR_DELETABLE_KEY_IDS/
   )?.[1];
   assert.ok(kotlinGroupsBlock, 'Android must preserve each popup group layout');
   const kotlinGroups = Object.fromEntries(
@@ -503,6 +560,26 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
   assert.match(androidSource, /isToolbarStyleAllowed/);
   assert.match(androidSource, /custom-group-\[a-z0-9-\]/);
   assert.match(androidSource, /sanitizeToolbarGroupCycles\(popupGroups, groupIds\)/);
+  assert.match(androidSource, /val deletedGroups = mutableListOf<String>\(\)/);
+  assert.match(androidSource, /id in TOOLBAR_GROUP_ITEM_IDS && id !in deletedGroups/);
+  assert.match(
+    androidSource,
+    /TOOLBAR_ITEM_IDS\.filterNot \{\s*it in deletedGroups \|\| it in deletedKeys\s*\}/
+  );
+  assert.match(androidSource, /val deletedKeys = mutableListOf<String>\(\)/);
+  assert.match(androidSource, /id in TOOLBAR_DELETABLE_KEY_IDS && id !in deletedKeys/);
+  assert.match(androidSource, /TOOLBAR_HOLDING_ITEM_IDS\.filterNot \{ it in deletedKeys \}/);
+  assert.match(androidSource, /groupId !in order/);
+  assert.match(
+    androidSource,
+    /\.put\("deletedGroups", org\.json\.JSONArray\(deletedGroups\)\)/
+  );
+  assert.match(
+    androidSource,
+    /\.put\("deletedKeys", org\.json\.JSONArray\(deletedKeys\)\)/
+  );
+  assert.match(settingsSource, /deletedKeys: currentConfig\.deletedKeys/);
+  assert.match(settingsSource, /deletedKeys: value\.deletedKeys/);
   assert.match(androidSource, /id in validKeyIds && id !in assignedActions/);
   assert.match(androidSource, /input\.optInt\("version", 1\) >= 3/);
   assert.match(androidSource, /\.put\("version", 4\)/);
@@ -582,4 +659,38 @@ test('global toolbar settings stay fixed while the key editor fits its content',
 test('runtime toolbar consumes the saved bottom toolbar configuration', () => {
   assert.match(mainSource, /normalizeBottomToolbarConfig\(\s*prefs\.pref_toolbar_bottom_config\s*\)/);
   assert.match(mainSource, /renderBottomToolbarKeys\(bar, bottomToolbarConfig, svgIcons/);
+});
+
+test('Paste as Plain Text is available as an action and configurable shortcut', () => {
+  assert.match(mainSource, /id: 'pasteAsPlainText'[\s\S]*?title: 'Paste as Plain Text'/);
+  assert.match(mainSource, /actionId === 'paste' \|\| actionId === 'pasteAsPlainText'/);
+  assert.match(mainSource, /customHotkeys\.paste_as_plain_text/);
+  assert.match(settingsSource, /id: 'pasteAsPlainText'[\s\S]*?Paste as Plain Text/);
+  assert.match(androidSource, /"pasteAsPlainText"/);
+  assert.match(mainActivitySource, /"paste_as_plain_text" to prefs\.getString\("pref_hotkey_paste_as_plain_text", "ctrl\+shift\+v"\)/);
+  assert.match(hotkeysPreferenceXml, /app:key="pref_hotkey_paste_as_plain_text"[\s\S]*?app:defaultValue="ctrl\+shift\+v"/);
+  assert.match(resetSource, /key == "pref_hotkey_paste_as_plain_text" -> "ctrl\+shift\+v"/);
+});
+
+test('toolbar actions do not force the editor keyboard open', () => {
+  assert.match(mainSource, /function focusEditorAfterCommand\(view, options = \{\}\) \{[\s\S]*?toolbarActionExecutionDepth > 0[\s\S]*?view\?\.focus\(\)/);
+  assert.match(mainSource, /runToolbarActionWithoutRefocusingEditor\(\(\) => item\.action\(\)\)/);
+  assert.match(mainSource, /runToolbarActionWithoutRefocusingEditor\(\(\) => action\.action\?\.\(\)\)/);
+  assert.match(mainSource, /runToolbarClipboardAction\(item\.id, true\)/);
+  assert.match(mainSource, /runToolbarClipboardAction\('pasteAsPlainText', true\)/);
+  assert.match(mainSource, /cmWrapSelection\(view, tableMarkdown, '', \{ preserveKeyboard: true \}\)/);
+});
+
+test('toolbar touch interactions restore the Android keyboard state from before the touch', () => {
+  assert.match(
+    mainSource,
+    /container\.addEventListener\('pointerdown', event => \{[\s\S]*?beginToolbarInteraction\?\.\(\)/,
+    'toolbar pointerdown captures the keyboard state before the action'
+  );
+  assert.match(mainSource, /endToolbarInteraction\?\.\(\), 80\)/);
+  assert.match(mainActivitySource, /imeVisibleBeforeLastWebViewTouch = editorImeVisible\(\)/);
+  assert.match(mainActivitySource, /fun beginToolbarInteraction\(\)/);
+  assert.match(mainActivitySource, /fun endToolbarInteraction\(\)/);
+  assert.match(mainActivitySource, /toolbarImeInteractionDepth > 0[\s\S]*?!toolbarImeVisibleBeforeInteraction/);
+  assert.match(mainActivitySource, /restoreToolbarImeState\(generation\)/);
 });

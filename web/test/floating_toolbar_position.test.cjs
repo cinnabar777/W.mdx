@@ -2,8 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
+const repositoryRoot = path.resolve(__dirname, '..', '..');
+const readWeb = relativePath =>
+  readFileSync(path.join(repositoryRoot, 'web', relativePath), 'utf8');
 
-const { getFloatingToolbarPosition } = require('../src/toolbarPositioning.js');
+const {
+  getFloatingToolbarPosition,
+  getFloatingToolbarPositionAtPoint
+} = require('../src/toolbarPositioning.js');
 
 test('floating toolbar stays inside the visible viewport and centers on the selection', () => {
   const position = getFloatingToolbarPosition({
@@ -52,28 +58,109 @@ test('oversized floating toolbar is clamped to the viewport width', () => {
   assert.ok(position.left + position.width <= 352);
 });
 
+test('floating toolbar can anchor to a long-press point without a selection', () => {
+  const position = getFloatingToolbarPositionAtPoint({
+    point: { x: 206, y: 318 },
+    toolbarWidth: 260,
+    toolbarHeight: 48,
+    viewport: {
+      offsetLeft: 12,
+      offsetTop: 80,
+      width: 400,
+      height: 600
+    }
+  });
+
+  assert.deepEqual(position, { left: 76, top: 262, width: 260 });
+  assert.ok(position.left >= 20);
+  assert.ok(position.left + position.width <= 404);
+});
+
+test('floating toolbar hides from changed nonempty selection ranges only', () => {
+  const visibility = readWeb('src/floatingSelectionToolbarVisibility.js');
+  const main = readWeb('src/main.js');
+
+  assert.match(visibility, /existingSelectionChanged\s*=\s*[\s\S]*?currentRange !== null[\s\S]*?nextRange !== null/);
+  assert.match(visibility, /if \(existingSelectionChanged && !ignoreRangeChange\)/);
+  assert.match(main, /ignoreRangeChange: update\.docChanged \|\| toolbarActionExecutionDepth > 0/);
+  assert.doesNotMatch(main, /installFloatingSelectionToolbarPointerTracking/);
+});
+
+test('closing a popup preserves active syntax states on toolbar keys', () => {
+  const main = readWeb('src/main.js');
+  const helper = main.match(
+    /function clearToolbarPopupActiveStates\(\) \{[\s\S]*?\n\}/
+  )?.[0];
+
+  assert.ok(helper, 'popup active-state cleanup helper exists');
+  assert.match(helper, /toolbarConfig\.popupGroups\[keyId\]/);
+  assert.match(helper, /button\.classList\.remove\('active'\)/);
+  assert.match(main, /activePopupSurface = 'bottom';\s*clearToolbarPopupActiveStates\(\);/);
+  assert.doesNotMatch(
+    main,
+    /querySelectorAll\('\.grouped-key-btn'\)\.forEach\(btn => btn\.classList\.remove\('active'\)\)/
+  );
+});
+
 test('floating toolbar has an independent layout and restores Android selection actions when disabled', () => {
-  const repositoryRoot = path.resolve(__dirname, '..', '..');
-  const readWeb = relativePath =>
-    readFileSync(path.join(repositoryRoot, 'web', relativePath), 'utf8');
   const readApp = relativePath =>
     readFileSync(path.join(repositoryRoot, 'app', relativePath), 'utf8');
   const main = readWeb('src/main.js');
+  const selectionVisibility = readWeb('src/floatingSelectionToolbarVisibility.js');
   const settings = readWeb('src/toolbarSettingsPreview.js');
   const settingsHtml = readWeb('toolbar-settings-preview.html');
   const nativeActivity = readApp('src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const editorWebView = readApp('src/main/java/com/wmdx/markdownapp/EditorWebView.kt');
   const settingsActivity = readApp('src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
   const controlbarPrefs = readApp('src/main/res/xml/preferences_styling_controlbar.xml');
+  const cursorPrefs = readApp('src/main/res/xml/preferences_styling_cursor.xml');
   const resetPreferences = readApp('src/main/java/com/wmdx/markdownapp/ResetPreferences.kt');
   const mainSettingsPrefs = readApp('src/main/res/xml/preferences.xml');
   const activityLayout = readApp('src/main/res/layout/activity_main.xml');
   const webIndex = readFileSync(path.join(repositoryRoot, 'web', 'index.html'), 'utf8');
   const styles = readWeb('toolbar.css');
 
-  assert.match(main, /let floatingToolbarConfig = normalizeBottomToolbarConfig\(null\)/);
+  assert.match(
+    main,
+    /let floatingToolbarConfig = normalizeBottomToolbarConfig\(DEFAULT_FLOATING_TOOLBAR_CONFIG\)/
+  );
+  assert.match(main, /kind: item\.kind \|\| 'action',\s*command: item\.command/);
+  assert.equal((main.match(/command: item\.command/g) || []).length, 2,
+    'both bottom and floating toolbar definitions preserve syntax commands');
   assert.match(main, /applyFloatingToolbarConfig: function\(rawConfig\)/);
-  assert.match(main, /updateFloatingSelectionToolbar\(update\.view\)/);
+  assert.match(
+    main,
+    /updateFloatingSelectionToolbar\(update\.view,\s*\{\s*ignoreRangeChange: update\.docChanged \|\| toolbarActionExecutionDepth > 0/
+  );
+  assert.match(
+    main,
+    /floatingSelectionToolbarVisibility\.updateSelection\(view, selection, \{\s*ignoreRangeChange\s*\}\)/
+  );
+  assert.doesNotMatch(main, /installFloatingSelectionToolbarPointerTracking\(\)/);
+  assert.match(selectionVisibility, /delayMs = 1000/);
+  assert.match(selectionVisibility, /setDelayMs\(nextDelayMs\)/);
+  assert.doesNotMatch(editorWebView, /dispatchTouchEvent\(event: MotionEvent\)/);
+  assert.match(cursorPrefs, /ResetTenthsSeekBarPreference[\s\S]*?app:key="pref_floating_toolbar_hide_delay_tenths"[\s\S]*?android:max="50"[\s\S]*?app:defaultValue="10"/);
+  assert.match(resetPreferences, /key == "pref_floating_toolbar_hide_delay_tenths" -> 10/);
+  assert.match(
+    main,
+    /pref_floating_toolbar_hide_delay_tenths \?\? 10[\s\S]*?Math\.min\(50,[\s\S]*?\) \* 100[\s\S]*?: 1000/
+  );
+  assert.match(
+    nativeActivity,
+    /migrateFloatingToolbarHideDelayPreference\(startupPreferences\)/
+  );
+  assert.match(
+    nativeActivity,
+    /putInt\(tenthsKey, oldSeconds\.coerceIn\(0, 5\) \* 10\)[\s\S]*?remove\(secondsKey\)/
+  );
+  assert.match(
+    resetPreferences,
+    /String\.format\(Locale\.ROOT, "%.1f s", tenths \/ 10\.0\)/
+  );
+  assert.match(main, /showFloatingSelectionToolbarAtPoint\(event\.clientX, event\.clientY, this\.view\)/);
+  assert.match(main, /event\.pointerType === 'touch'[\s\S]*?setTimeout\([\s\S]*?550/);
+  assert.match(main, /floatingToolbarAnchorPoint\?\.view === view/);
   assert.match(settings, /configsBySurface = \{\s*bottom: config,\s*floating:/);
   assert.match(settings, /setToolbarSurface\(surface\)/);
   assert.match(settingsHtml, /data-toolbar-surface="floating"/);
@@ -91,14 +178,14 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(controlbarPrefs, /pref_toolbar_floating_corner_radius/);
   assert.match(
     controlbarPrefs,
-    /pref_toolbar_floating_enabled[\s\S]*?android:defaultValue="false"/
+    /pref_toolbar_floating_enabled[\s\S]*?android:defaultValue="true"/
   );
   assert.match(
     settingsActivity,
-    /prefs\.getBoolean\("pref_toolbar_floating_enabled", false\)/
+    /prefs\.getBoolean\("pref_toolbar_floating_enabled", true\)/
   );
-  assert.match(main, /let floatingToolbarEnabled = false/);
-  assert.match(main, /floatingToolbarEnabled = prefs\.pref_toolbar_floating_enabled === true/);
+  assert.match(main, /let floatingToolbarEnabled = true/);
+  assert.match(main, /floatingToolbarEnabled = prefs\.pref_toolbar_floating_enabled !== false/);
   assert.match(main, /if \(!floatingToolbarEnabled\) \{[\s\S]*?aria-hidden', 'true'/);
   assert.match(
     webIndex,
@@ -115,7 +202,7 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(controlbarPrefs, /ResetSwitchPreference[\s\S]*?pref_toolbar_floating_enabled/);
   assert.match(resetPreferences, /key == "pref_toolbar_toggle_closed_width" -> 34/);
   assert.match(resetPreferences, /key == "pref_toolbar_toggle_closed_height" -> 34/);
-  assert.match(resetPreferences, /key == "pref_toolbar_floating_enabled" -> false/);
+  assert.match(resetPreferences, /key == "pref_toolbar_floating_enabled" -> true/);
   assert.match(resetPreferences, /key == "pref_toolbar_floating_key_width" -> 48/);
   assert.match(resetPreferences, /key == "pref_toolbar_floating_corner_radius" -> 24/);
   assert.match(main, /--toolbar-toggle-open-size/);
@@ -130,7 +217,7 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.doesNotMatch(nativeActivity, /setCustomSelectionActionModeCallback/);
   assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback\)/);
   assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback, type: Int\)/);
-  assert.match(editorWebView, /getBoolean\("pref_toolbar_floating_enabled", false\)/);
+  assert.match(editorWebView, /getBoolean\("pref_toolbar_floating_enabled", true\)/);
   assert.match(editorWebView, /else\s*\{\s*super\.startActionMode\(callback\)\s*\}/);
   assert.match(editorWebView, /else\s*\{\s*super\.startActionMode\(callback, type\)\s*\}/);
   assert.match(editorWebView, /override fun startActionModeForChild\(/);
@@ -139,8 +226,16 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(styles, /--toolbar-floating-key-width/);
   assert.match(styles, /--toolbar-floating-corner-radius/);
   assert.match(
+    controlbarPrefs,
+    /app:key="pref_toolbar_floating_padding"[\s\S]*?android:defaultValue="10"/
+  );
+  assert.match(resetPreferences, /key == "pref_toolbar_floating_padding" -> 10/);
+  assert.match(settingsActivity, /prefs\.getInt\("pref_toolbar_floating_padding", 10\)/);
+  assert.match(main, /pref_toolbar_floating_padding \?\? 10/);
+  assert.match(settings, /pref_toolbar_floating_padding \?\? 10/);
+  assert.match(
     styles,
-    /\.floating-selection-toolbar\s*\{[^}]*padding:\s*4px[^}]*gap:\s*var\(--toolbar-floating-padding/s
+    /\.floating-selection-toolbar\s*\{[^}]*padding:\s*4px[^}]*gap:\s*var\(--toolbar-floating-padding,\s*10px\)/s
   );
   assert.match(
     styles,

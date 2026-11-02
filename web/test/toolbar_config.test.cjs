@@ -1,6 +1,50 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const fs = require('node:fs');
+const path = require('node:path');
 const { JSDOM } = require('jsdom');
+
+test('floating toolbar defaults match the updated backup', async () => {
+  const {
+    DEFAULT_FLOATING_TOOLBAR_CONFIG,
+    normalizeBottomToolbarConfig
+  } = await import('../src/toolbarConfig.js');
+  const nativeDefault = JSON.parse(fs.readFileSync(
+    path.resolve(__dirname, '../../app/src/main/res/raw/default_floating_toolbar_config.json'),
+    'utf8'
+  ));
+  const normalizedWeb = normalizeBottomToolbarConfig(DEFAULT_FLOATING_TOOLBAR_CONFIG);
+  const normalizedNative = normalizeBottomToolbarConfig(nativeDefault);
+
+  assert.deepEqual(normalizedWeb.order, [
+    'highlightCycle',
+    'underline',
+    'bold',
+    'custom-key-mvy7p38e-4',
+    'custom-key-mvy7rysk-5'
+  ]);
+  assert.deepEqual(normalizedWeb.holding, [
+    'cut', 'copy', 'paste', 'selectAll', 'penCycle', 'custom-key-mvy7xpbw-8'
+  ]);
+  assert.deepEqual(
+    Object.keys(normalizedWeb.customKeys).sort(),
+    [
+      'custom-key-mvy7p38e-4',
+      'custom-key-mvy7rysk-5',
+      'custom-key-mvy7xpbw-8'
+    ].sort()
+  );
+  assert.equal(
+    normalizedWeb.styles['custom-key-mvy7rysk-5'].gestureActions.swipeUpRight,
+    'pasteAsPlainText'
+  );
+  assert.deepEqual(
+    { ...normalizedNative, deletedGroups: [...normalizedNative.deletedGroups].sort(),
+      deletedKeys: [...normalizedNative.deletedKeys].sort() },
+    { ...normalizedWeb, deletedGroups: [...normalizedWeb.deletedGroups].sort(),
+      deletedKeys: [...normalizedWeb.deletedKeys].sort() }
+  );
+});
 
 test('bottom toolbar configuration ignores unknown and duplicate keys but restores missing built-ins', async () => {
   const {
@@ -29,6 +73,56 @@ test('bottom toolbar configuration ignores unknown and duplicate keys but restor
     [...config.order, ...config.hidden].sort(),
     [...BOTTOM_TOOLBAR_ITEM_IDS, ...BUILT_IN_HOLDING_ITEM_IDS].sort()
   );
+});
+
+test('empty built-in groups can be placed on the toolbar and deleted safely', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const emptyListsGroup = normalizeBottomToolbarConfig({
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: { lists: { order: [], hidden: [] } }
+  });
+  assert.ok(emptyListsGroup.order.includes('lists'));
+  assert.ok(!emptyListsGroup.holding.includes('lists'));
+
+  const deletedListsGroup = normalizeBottomToolbarConfig({
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    deletedGroups: ['lists', 'not-a-group', 'lists'],
+    popupGroups: { lists: { order: [], hidden: [] } }
+  });
+  assert.deepEqual(deletedListsGroup.deletedGroups, ['lists']);
+  assert.equal(deletedListsGroup.popupGroups.lists, undefined);
+  assert.ok(!deletedListsGroup.order.includes('lists'));
+  assert.ok(!deletedListsGroup.holding.includes('lists'));
+  assert.ok(deletedListsGroup.holding.includes('bulletedList'));
+  assert.ok(deletedListsGroup.holding.includes('outdent'));
+});
+
+test('built-in keys can be deleted from the root, groups, or holding area', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      lists: { order: ['bulletedList', 'numberedList', 'indent'], hidden: [] }
+    },
+    holding: ['copy'],
+    deletedKeys: ['undo', 'bulletedList', 'outdent', 'unknown', 'bulletedList'],
+    styles: {
+      undo: { iconColor: '#ffffff' },
+      bulletedList: { iconColor: '#ffffff' },
+      copy: { iconColor: '#ffffff' }
+    }
+  });
+
+  assert.deepEqual(config.deletedKeys, ['undo', 'bulletedList', 'outdent']);
+  assert.ok(!config.order.includes('undo'));
+  assert.ok(!config.popupGroups.lists.order.includes('bulletedList'));
+  assert.ok(!config.popupGroups.lists.order.includes('outdent'));
+  assert.equal(config.styles.undo, undefined);
+  assert.equal(config.styles.bulletedList, undefined);
+  assert.ok(config.styles.copy);
 });
 
 test('obsolete Files & Tabs toolbar action is removed from saved layouts', async () => {
@@ -89,7 +183,8 @@ test('version 4 toolbar layouts migrate marker and pen actions without restoring
     'highlightCycle',
     'penCycle',
     'penBlue',
-    'penPurple'
+    'penPurple',
+    'clearFormatting'
   ]);
   assert.ok(config.holding.includes('highlightBlue'));
   assert.ok(!config.popupGroups.format.order.some(id =>
@@ -251,12 +346,10 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
     title: 'Save as Markdown Pack',
     gestureActions: {
       longPress: 'saveFile',
-      swipeUp: 'bold',
-      swipeDown: 'custom-key-quick-save'
+      swipeUp: 'bold'
     },
     gestureActionIcons: {
-      swipeUp: '<svg><path d="M1 1"/></svg>',
-      swipeDown: '<svg><path d="M2 2"/></svg>'
+      swipeUp: '<svg><path d="M1 1"/></svg>'
     }
   });
   assert.deepEqual(config.customKeys['custom-key-quick-save'], {
@@ -267,6 +360,130 @@ test('toolbar styles retain colors for popup actions but discard unknown style t
   assert.equal(config.styles.inventedAction, undefined);
   assert.equal(config.styles.undo.gestureActions, undefined);
   assert.equal(config.styles.undo.title, 'Invalid target');
+});
+
+test('removed highlight gesture is discarded without changing other built-in actions', async () => {
+  const { BUILT_IN_ACTION_IDS, normalizeBottomToolbarConfig } =
+    await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    styles: {
+      undo: {
+        gestureActions: {
+          tap1: 'removeHighlight',
+          tap2: 'clearFormatting'
+        }
+      }
+    }
+  });
+
+  assert.equal(BUILT_IN_ACTION_IDS.includes('removeHighlight'), false);
+  assert.deepEqual(config.styles.undo.gestureActions, {
+    tap2: 'clearFormatting'
+  });
+});
+
+test('custom toolbar keys can use built-in actions but cannot become actions themselves', async () => {
+  const {
+    BUILT_IN_ACTION_IDS,
+    BOTTOM_TOOLBAR_GROUP_ITEM_IDS,
+    normalizeBottomToolbarConfig
+  } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    customKeys: {
+      'custom-key-first': {
+        title: 'First custom key',
+        icon: 'copy',
+        actionId: 'custom-key-second'
+      },
+      'custom-key-second': {
+        title: 'Second custom key',
+        icon: 'copy',
+        actionId: 'copy'
+      }
+    },
+    styles: {
+      undo: {
+        gestureActions: {
+          tap1: 'custom-key-second',
+          tap2: 'copy'
+        }
+      }
+    }
+  });
+
+  assert.equal(config.customKeys['custom-key-first'].actionId, undefined);
+  assert.equal(config.customKeys['custom-key-second'].actionId, 'copy');
+  assert.equal(config.styles.undo.gestureActions.tap1, undefined);
+  assert.equal(config.styles.undo.gestureActions.tap2, 'copy');
+  assert.ok(BUILT_IN_ACTION_IDS.includes('copy'));
+  assert.ok(BOTTOM_TOOLBAR_GROUP_ITEM_IDS.format.includes('clearFormatting'));
+});
+
+test('adding Clear Formatting migrates old layouts without pulling it from the holding area', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const base = {
+    version: 8,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      format: { order: ['bold'], hidden: [] }
+    }
+  };
+  const migrated = normalizeBottomToolbarConfig(base);
+  assert.ok(migrated.popupGroups.format.order.includes('clearFormatting'));
+
+  const held = normalizeBottomToolbarConfig({
+    ...base,
+    version: 9,
+    holding: ['clearFormatting']
+  });
+  assert.ok(!held.popupGroups.format.order.includes('clearFormatting'));
+  assert.ok(held.holding.includes('clearFormatting'));
+});
+
+test('editing history and line actions are accepted as built-in toolbar gestures', async () => {
+  const { BUILT_IN_ACTION_IDS, normalizeBottomToolbarConfig } =
+    await import('../src/toolbarConfig.js');
+  const actions = [
+    'moveLineUp', 'moveLineDown', 'deleteLine', 'cycleListType', 'undo', 'redo'
+  ];
+  for (const action of actions) assert.ok(BUILT_IN_ACTION_IDS.includes(action));
+
+  const config = normalizeBottomToolbarConfig({
+    version: 9,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    styles: {
+      undo: {
+        gestureActions: {
+          tap2: 'moveLineUp',
+          tap3: 'moveLineDown',
+          swipeLeft: 'deleteLine'
+        }
+      }
+    }
+  });
+  assert.deepEqual(config.styles.undo.gestureActions, {
+    tap2: 'moveLineUp',
+    tap3: 'moveLineDown',
+    swipeLeft: 'deleteLine'
+  });
+});
+
+test('paste as plain text is accepted as a built-in toolbar gesture action', async () => {
+  const { BUILT_IN_ACTION_IDS, normalizeBottomToolbarConfig } =
+    await import('../src/toolbarConfig.js');
+  assert.ok(BUILT_IN_ACTION_IDS.includes('pasteAsPlainText'));
+
+  const config = normalizeBottomToolbarConfig({
+    styles: {
+      undo: { gestureActions: { tap1: 'pasteAsPlainText' } }
+    }
+  });
+  assert.equal(config.styles.undo.gestureActions.tap1, 'pasteAsPlainText');
+});
+
+test('the Undo toolbar key is labeled only Undo', async () => {
+  const { BOTTOM_TOOLBAR_ITEMS } = await import('../src/toolbarConfig.js');
+  assert.equal(BOTTOM_TOOLBAR_ITEMS.find(item => item.id === 'undo')?.title, 'Undo');
 });
 
 test('toolbar toggle gestures persist without making the toggle replaceable', async () => {
@@ -427,9 +644,44 @@ test('runtime renderer creates the configured order with stable accessible key i
   );
 });
 
+test('toolbar root action buttons expose syntax commands for active highlighting', async () => {
+  const { renderBottomToolbarKeys } = await import('../src/toolbarRenderer.js');
+  const dom = new JSDOM('<div id="toolbar"></div>');
+  const toolbar = dom.window.document.querySelector('#toolbar');
+  renderBottomToolbarKeys(toolbar, {
+    version: 8,
+    order: ['undo'],
+    hidden: [],
+    holding: [],
+    popupGroups: {},
+    customGroups: {},
+    customKeys: {},
+    styles: {}
+  }, {}, {
+    definitions: {
+      undo: {
+        id: 'undo',
+        title: 'Bold',
+        icon: '',
+        kind: 'action',
+        command: 'bold'
+      }
+    }
+  });
+
+  assert.equal(
+    toolbar.querySelector('[data-toolbar-key="undo"]')?.dataset.toolbarCommand,
+    'bold'
+  );
+  dom.window.close();
+});
+
 test('runtime toolbar dispatches all eight swipe directions from a key', async () => {
   const { renderBottomToolbarKeys } = await import('../src/toolbarRenderer.js');
-  const { TOOLBAR_SWIPE_GESTURE_IDS } = await import('../src/toolbarGestures.js');
+  const {
+    TOOLBAR_SWIPE_GESTURE_IDS,
+    shouldSuppressToolbarToggleClick
+  } = await import('../src/toolbarGestures.js');
   const dom = new JSDOM('<div id="toolbar"></div>');
   const toolbar = dom.window.document.querySelector('#toolbar');
   const directions = {
@@ -479,6 +731,37 @@ test('runtime toolbar dispatches all eight swipe directions from a key', async (
   }
 
   assert.deepEqual(dispatched, TOOLBAR_SWIPE_GESTURE_IDS);
+});
+
+test('toolbar toggle only falls through to open on an unassigned upward swipe', async () => {
+  const { shouldSuppressToolbarToggleClick } =
+    await import('../src/toolbarGestures.js');
+  assert.equal(shouldSuppressToolbarToggleClick('swipeDown', 'bold'), true);
+  assert.equal(shouldSuppressToolbarToggleClick('swipeDown', ''), true);
+  assert.equal(shouldSuppressToolbarToggleClick('swipeUp', 'bold'), true);
+  assert.equal(shouldSuppressToolbarToggleClick('swipeUp', ''), false);
+});
+
+test('toolbar toggle click guard consumes one action click and then expires', async () => {
+  const { createToolbarToggleClickGuard } =
+    await import('../src/toolbarGestures.js');
+  let now = 100;
+  let toggleCount = 0;
+  const guard = createToolbarToggleClickGuard(20, () => now);
+  const clickToggle = () => {
+    if (!guard.consumeSuppressedClick()) toggleCount += 1;
+  };
+
+  guard.suppressNextClick();
+  clickToggle();
+  assert.equal(toggleCount, 0, 'an action gesture must not invoke the default toggle');
+  clickToggle();
+  assert.equal(toggleCount, 1, 'a later intentional tap must still toggle the toolbar');
+
+  guard.suppressNextClick();
+  now = 120;
+  clickToggle();
+  assert.equal(toggleCount, 2, 'an expired suppression must not block a later tap');
 });
 
 test('custom icons are made tintable by default and unsafe SVG content is stripped', async () => {

@@ -73,6 +73,30 @@ export function getToolbarGestureActionId(style = {}, gestureId) {
     '';
 }
 
+export function shouldSuppressToolbarToggleClick(gestureId, actionId) {
+  return Boolean(actionId) || gestureId !== 'swipeUp';
+}
+
+export function createToolbarToggleClickGuard(
+  expiryMs = 250,
+  now = () => Date.now()
+) {
+  let suppressedUntil = 0;
+  return {
+    suppressNextClick() {
+      suppressedUntil = now() + expiryMs;
+    },
+    consumeSuppressedClick() {
+      if (!suppressedUntil || now() >= suppressedUntil) {
+        suppressedUntil = 0;
+        return false;
+      }
+      suppressedUntil = 0;
+      return true;
+    }
+  };
+}
+
 export function hasToolbarSwipeActions(style = {}) {
   return TOOLBAR_SWIPE_GESTURE_IDS.some(gestureId =>
     Boolean(getToolbarGestureActionId(style, gestureId))
@@ -117,7 +141,6 @@ export const BUILT_IN_GESTURE_ACTION_IDS = Object.freeze([
   'historyBack',
   'historyForward',
   'toggleToolbar',
-  'removeHighlight',
   'editToolbarKeyPreferences',
   'openGroup'
 ]);

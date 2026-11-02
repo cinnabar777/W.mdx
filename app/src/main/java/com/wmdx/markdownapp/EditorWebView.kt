@@ -6,6 +6,7 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.preference.PreferenceManager
 
@@ -19,9 +20,22 @@ class EditorWebView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : WebView(context, attrs, defStyleAttr) {
 
+    @Volatile
+    private var imeInputAllowed = true
+
+    fun setImeInputAllowed(allowed: Boolean) {
+        if (imeInputAllowed == allowed) return
+        imeInputAllowed = allowed
+        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+            ?.restartInput(this)
+    }
+
+    override fun onCheckIsTextEditor(): Boolean =
+        imeInputAllowed && super.onCheckIsTextEditor()
+
     private fun isFloatingToolbarEnabled(): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)
-            .getBoolean("pref_toolbar_floating_enabled", false)
+            .getBoolean("pref_toolbar_floating_enabled", true)
 
     override fun startActionMode(callback: ActionMode.Callback): ActionMode =
         if (isFloatingToolbarEnabled()) {

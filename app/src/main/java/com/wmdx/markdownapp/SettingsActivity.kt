@@ -1431,7 +1431,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "bulletedList", "numberedList", "todoList", "indent", "outdent"
             ),
             "format" to listOf(
-                "bold", "italic", "strikethrough", "underline", "underlineSolid",
+                "bold", "italic", "strikethrough", "clearFormatting", "underline", "underlineSolid",
                 "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
                 "highlightCycle", "highlightYellow", "highlightGreen", "highlightPink",
                 "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple"
@@ -1450,13 +1450,16 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "exportHtml", "search", "switchView", "newWindow", "settings"
             )
         )
+        private val TOOLBAR_DELETABLE_KEY_IDS =
+            (TOOLBAR_ITEM_IDS.filterNot { it in TOOLBAR_GROUP_ITEM_IDS } +
+                TOOLBAR_GROUP_ITEM_IDS.values.flatten()).distinct()
         private val TOOLBAR_STYLE_IDS = TOOLBAR_ITEM_IDS + listOf(
             "paragraph",
             "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
             "autoHeading",
             "wrap", "line-numbers",
             "bulletedList", "numberedList", "todoList", "indent", "outdent",
-            "bold", "italic", "strikethrough", "underline", "underlineSolid",
+            "bold", "italic", "strikethrough", "clearFormatting", "underline", "underlineSolid",
             "underlineDotted", "underlineDashed", "underlineDouble", "underlineWavy",
             "highlightCycle", "highlightYellow", "highlightGreen", "highlightPink",
             "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple",
@@ -1475,10 +1478,21 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "swipeUpLeft", "swipeUpRight", "swipeDownLeft", "swipeDownRight"
         )
         private val TOOLBAR_GESTURE_ACTION_IDS = listOf(
-            "historyBack", "historyForward", "toggleToolbar", "removeHighlight",
+            "historyBack", "historyForward", "toggleToolbar",
             "editToolbarKeyPreferences",
             TOOLBAR_OPEN_GROUP_ACTION_ID
         )
+        private val TOOLBAR_EDITOR_ACTION_IDS =
+            listOf(
+                "moveLineUp", "moveLineDown", "deleteLine", "cycleListType", "redo",
+                "pasteAsPlainText"
+            )
+        private val TOOLBAR_BUILT_IN_ACTION_IDS =
+            (TOOLBAR_ITEM_IDS.filterNot { it in TOOLBAR_GROUP_ITEM_IDS } +
+                TOOLBAR_GROUP_ITEM_IDS.values.flatten() +
+                TOOLBAR_HOLDING_ITEM_IDS +
+                TOOLBAR_GESTURE_ACTION_IDS.filterNot { it == TOOLBAR_OPEN_GROUP_ACTION_ID } +
+                TOOLBAR_EDITOR_ACTION_IDS).toSet()
         private val TOOLBAR_CUSTOM_KEY_ID_PATTERN =
             Regex("""^custom-key-[a-z0-9-]{1,48}$""", RegexOption.IGNORE_CASE)
         private val TOOLBAR_COLOR_PROPERTIES = setOf(
@@ -1745,9 +1759,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 TOOLBAR_FLOATING_CONFIG_KEY,
                 prefs.getString(
                     TOOLBAR_FLOATING_CONFIG_KEY,
-                    prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
-                ) ?: prefs.getString(TOOLBAR_CONFIG_KEY, defaultToolbarConfigJson())
-                    ?: defaultToolbarConfigJson()
+                    ToolbarDefaults.floatingToolbarConfigJson(requireContext())
+                ) ?: ToolbarDefaults.floatingToolbarConfigJson(requireContext())
             )
         }
         payload.put("pref_toolbar_bg_color", prefs.getString("pref_toolbar_bg_color", "default"))
@@ -1766,9 +1779,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         )
         payload.put(
             "pref_toolbar_floating_enabled",
-            prefs.getBoolean("pref_toolbar_floating_enabled", false)
+            prefs.getBoolean("pref_toolbar_floating_enabled", true)
         )
-        payload.put("pref_toolbar_floating_bg_color", prefs.getString("pref_toolbar_floating_bg_color", "default"))
+        payload.put("pref_toolbar_floating_bg_color", prefs.getString("pref_toolbar_floating_bg_color", "#222222"))
         payload.put("pref_toolbar_floating_icon_color", prefs.getString("pref_toolbar_floating_icon_color", "default"))
         payload.put("pref_toolbar_floating_key_height", prefs.getInt("pref_toolbar_floating_key_height", 36))
         payload.put("pref_toolbar_floating_show_labels", prefs.getBoolean("pref_toolbar_floating_show_labels", false))
@@ -1776,9 +1789,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         payload.put("pref_toolbar_floating_label_color", prefs.getString("pref_toolbar_floating_label_color", "default"))
         payload.put(
             "pref_toolbar_floating_active_key_bg_color",
-            prefs.getString("pref_toolbar_floating_active_key_bg_color", "default")
+            prefs.getString("pref_toolbar_floating_active_key_bg_color", "#000000")
         )
-        payload.put("pref_toolbar_floating_padding", prefs.getInt("pref_toolbar_floating_padding", 4))
+        payload.put("pref_toolbar_floating_padding", prefs.getInt("pref_toolbar_floating_padding", 10))
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
         payload.put("pref_toolbar_floating_key_width", prefs.getInt("pref_toolbar_floating_key_width", 48))
@@ -1807,11 +1820,20 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .put("hidden", org.json.JSONArray())
             .put("popupGroups", popupGroups)
             .put("holding", org.json.JSONArray(TOOLBAR_HOLDING_ITEM_IDS))
+            .put("deletedGroups", org.json.JSONArray())
+            .put("deletedKeys", org.json.JSONArray())
             .put("customGroups", org.json.JSONObject())
             .put("customKeys", org.json.JSONObject())
             .put("styles", org.json.JSONObject())
             .toString()
     }
+
+    private fun defaultToolbarConfigForCurrentSurfaceJson(): String =
+        if (toolbarConfigPreferenceKey == TOOLBAR_FLOATING_CONFIG_KEY) {
+            ToolbarDefaults.floatingToolbarConfigJson(requireContext())
+        } else {
+            defaultToolbarConfigJson()
+        }
 
     private fun updateToolbarPreview(includeToolbarConfig: Boolean = true) {
         val preview = toolbarPreviewWebView ?: return
@@ -1853,14 +1875,33 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 ?: "newFile"
             customKeys.put(id, org.json.JSONObject().put("title", title).put("icon", icon))
         }
-        val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten().toSet()
-        val validRootIds = TOOLBAR_ITEM_IDS +
-            TOOLBAR_HOLDING_ITEM_IDS +
+        val deletedGroups = mutableListOf<String>()
+        val rawDeletedGroups = input.optJSONArray("deletedGroups") ?: org.json.JSONArray()
+        for (index in 0 until rawDeletedGroups.length()) {
+            val id = rawDeletedGroups.optString(index)
+            if (id in TOOLBAR_GROUP_ITEM_IDS && id !in deletedGroups) {
+                deletedGroups.add(id)
+            }
+        }
+        val deletedKeys = mutableListOf<String>()
+        val rawDeletedKeys = input.optJSONArray("deletedKeys") ?: org.json.JSONArray()
+        for (index in 0 until rawDeletedKeys.length()) {
+            val id = rawDeletedKeys.optString(index)
+            if (id in TOOLBAR_DELETABLE_KEY_IDS && id !in deletedKeys) {
+                deletedKeys.add(id)
+            }
+        }
+        val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten()
+            .filterNot { it in deletedKeys }.toSet()
+        val validRootIds = TOOLBAR_ITEM_IDS.filterNot {
+            it in deletedGroups || it in deletedKeys
+        } +
+            TOOLBAR_HOLDING_ITEM_IDS.filterNot { it in deletedKeys } +
             customGroups.keys().asSequence().toList() +
             customKeys.keys().asSequence().toList()
         val validKeyIds = validRootIds + popupActionIds
-        val validActionIds = validKeyIds + TOOLBAR_GESTURE_ACTION_IDS
-        val groupIds = TOOLBAR_GROUP_ITEM_IDS.keys.toList() +
+        val validActionIds = TOOLBAR_BUILT_IN_ACTION_IDS + TOOLBAR_OPEN_GROUP_ACTION_ID
+        val groupIds = TOOLBAR_GROUP_ITEM_IDS.keys.filterNot { it in deletedGroups } +
             customGroups.keys().asSequence().toList()
         fun normalizeToolbarActionId(
             actionId: String,
@@ -1897,7 +1938,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             if (id in validKeyIds && id !in hidden && id !in order) order.add(id)
         }
         for (id in TOOLBAR_ITEM_IDS) {
-            if (id !in order && id !in hidden) order.add(id)
+            if (id !in deletedGroups && id !in deletedKeys &&
+                id !in order && id !in hidden) order.add(id)
         }
 
         val popupGroups = org.json.JSONObject()
@@ -1925,7 +1967,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             if (!rawPopupGroups.has(groupId)) {
                 val defaults = TOOLBAR_GROUP_ITEM_IDS[groupId].orEmpty()
                 for (id in defaults) {
-                    if (id !in assignedActions) {
+                    if (id !in deletedKeys && id !in assignedActions) {
                         groupOrder.add(id)
                         assignedActions.add(id)
                     }
@@ -1948,6 +1990,15 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             }
         }
 
+        if (input.optInt("version", 1) < 9 &&
+            "clearFormatting" !in assignedActions &&
+            "clearFormatting" !in deletedKeys &&
+            "clearFormatting" !in legacyHeldActions) {
+            popupGroups.optJSONObject("format")?.optJSONArray("order")
+                ?.put("clearFormatting")
+            assignedActions.add("clearFormatting")
+        }
+
         val rawHoldingActions = input.optJSONArray("holding") ?: org.json.JSONArray()
 
         val holding = mutableListOf<String>()
@@ -1957,7 +2008,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             if (id in validKeyIds && id !in assignedActions && id !in holding) holding.add(id)
         }
         for (id in TOOLBAR_HOLDING_ITEM_IDS) {
-            if (id !in order && id !in assignedActions && id !in holding) {
+            if (id !in deletedKeys &&
+                id !in order && id !in assignedActions && id !in holding) {
                 holding.add(id)
             }
         }
@@ -1984,8 +2036,11 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
         for (groupId in groupIds) {
             val group = popupGroups.optJSONObject(groupId) ?: continue
-            if (group.optJSONArray("order")?.length() == 0 && groupId !in assignedActions) {
-                order.remove(groupId)
+            if (
+                group.optJSONArray("order")?.length() == 0 &&
+                groupId !in assignedActions &&
+                groupId !in order
+            ) {
                 if (groupId !in holding) holding.add(groupId)
                 if (groupId !in hidden) hidden.add(groupId)
             }
@@ -2002,20 +2057,29 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
         order.removeAll { it in assignedActions || it in holding }
         if (order.isEmpty()) {
-            for (groupId in groupIds) {
-                val group = popupGroups.optJSONObject(groupId) ?: continue
-                val children = group.optJSONArray("order") ?: org.json.JSONArray()
-                val retained = org.json.JSONArray()
-                for (index in 0 until children.length()) {
-                    val id = children.optString(index)
-                    if (id != "menu") retained.put(id)
+            val fallbackId = if ("menu" in deletedGroups || "menu" in deletedKeys) {
+                TOOLBAR_ITEM_IDS.firstOrNull {
+                    it !in deletedGroups && it !in deletedKeys
                 }
-                group.put("order", retained)
+            } else {
+                "menu"
             }
-            assignedActions.remove("menu")
-            holding.remove("menu")
-            hidden.remove("menu")
-            order.add("menu")
+            if (fallbackId != null && fallbackId !in deletedKeys) {
+                for (groupId in groupIds) {
+                    val group = popupGroups.optJSONObject(groupId) ?: continue
+                    val children = group.optJSONArray("order") ?: org.json.JSONArray()
+                    val retained = org.json.JSONArray()
+                    for (index in 0 until children.length()) {
+                        val id = children.optString(index)
+                        if (id != fallbackId) retained.put(id)
+                    }
+                    group.put("order", retained)
+                }
+                assignedActions.remove(fallbackId)
+                holding.remove(fallbackId)
+                hidden.remove(fallbackId)
+                order.add(fallbackId)
+            }
         }
         hidden.clear()
         for (id in holding) {
@@ -2027,7 +2091,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         val safeColor = Regex(
             """^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([\d\s.,%+-]+\)|[A-Za-z]{1,20})$"""
         )
-        for (id in TOOLBAR_STYLE_IDS +
+        for (id in TOOLBAR_STYLE_IDS.filterNot {
+            it in deletedGroups || it in deletedKeys
+        } +
             customGroups.keys().asSequence().toList() +
             customKeys.keys().asSequence().toList()) {
             val style = rawStyles.optJSONObject(id) ?: continue
@@ -2101,6 +2167,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             .put("hidden", org.json.JSONArray(hidden))
             .put("popupGroups", popupGroups)
             .put("holding", org.json.JSONArray(holding))
+            .put("deletedGroups", org.json.JSONArray(deletedGroups))
+            .put("deletedKeys", org.json.JSONArray(deletedKeys))
             .put("customGroups", customGroups)
             .put("customKeys", customKeys)
             .put("styles", styles)
@@ -2213,8 +2281,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         }
         return runCatching {
             val saved = org.json.JSONObject(
-                toolbarPreferences.getString(toolbarConfigPreferenceKey, defaultToolbarConfigJson())
-                    ?: defaultToolbarConfigJson()
+                toolbarPreferences.getString(
+                    toolbarConfigPreferenceKey,
+                    defaultToolbarConfigForCurrentSurfaceJson()
+                ) ?: defaultToolbarConfigForCurrentSurfaceJson()
             )
             saved.optJSONObject("customGroups")?.has(itemId) == true ||
                 saved.optJSONObject("customKeys")?.has(itemId) == true
@@ -2238,8 +2308,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         ) return false
         return try {
             val current = org.json.JSONObject(
-                toolbarPreferences.getString(toolbarConfigPreferenceKey, defaultToolbarConfigJson())
-                    ?: defaultToolbarConfigJson()
+                toolbarPreferences.getString(
+                    toolbarConfigPreferenceKey,
+                    defaultToolbarConfigForCurrentSurfaceJson()
+                ) ?: defaultToolbarConfigForCurrentSurfaceJson()
             )
             val styles = current.optJSONObject("styles") ?: org.json.JSONObject()
             val style = styles.optJSONObject(itemId) ?: org.json.JSONObject()
@@ -2417,8 +2489,10 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             if (!isToolbarStyleAllowed(itemId) || property !in TOOLBAR_COLOR_PROPERTIES) return
             activity?.runOnUiThread {
                 val config = org.json.JSONObject(
-                    toolbarPreferences.getString(toolbarConfigPreferenceKey, defaultToolbarConfigJson())
-                        ?: defaultToolbarConfigJson()
+                    toolbarPreferences.getString(
+                        toolbarConfigPreferenceKey,
+                        defaultToolbarConfigForCurrentSurfaceJson()
+                    ) ?: defaultToolbarConfigForCurrentSurfaceJson()
                 )
                 val current = config.optJSONObject("styles")
                     ?.optJSONObject(itemId)
@@ -2588,7 +2662,8 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     }
 
     private fun parseHiddenButtons(rawHidden: String?): MutableSet<String> {
-        val items = rawHidden?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+        val value = rawHidden ?: "highlight,regex"
+        val items = value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         return items.filter { it in KNOWN_BUTTON_IDS }.toMutableSet()
     }
 
@@ -2599,7 +2674,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         val key = preference.key
         if (key != null && key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg")) {
-            showSvgSourceChooser(key)
+            openFindReplaceIconPicker(key)
             return true
         }
         return super.onPreferenceTreeClick(preference)
@@ -2608,10 +2683,30 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     override fun onDisplayPreferenceDialog(preference: Preference) {
         val key = preference.key
         if (key != null && key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg")) {
-            showSvgSourceChooser(key)
+            openFindReplaceIconPicker(key)
             return
         }
         super.onDisplayPreferenceDialog(preference)
+    }
+
+    private fun openFindReplaceIconPicker(key: String) {
+        targetSvgPrefKey = key
+        val buttonId = buttonPreferenceSuffix.entries
+            .firstOrNull { (_, suffix) -> key == "pref_findreplace_btn_${suffix}_svg" }
+            ?.key
+        val preview = findReplacePreviewWebView
+        if (buttonId == null || preview == null) {
+            showSvgSourceChooser(key)
+            return
+        }
+        setFindReplacePreviewExpanded(true)
+        preview.post {
+            val encodedButtonId = org.json.JSONObject.quote(buttonId)
+            preview.evaluateJavascript(
+                "window.openFindReplaceIconPicker && window.openFindReplaceIconPicker($encodedButtonId);",
+                null
+            )
+        }
     }
 
     private fun showSvgSourceChooser(key: String) {
@@ -2759,7 +2854,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         }
         val card = previewCardView ?: return
         val panelBgHex = prefs.getString("pref_findreplace_panel_bg", "default") ?: "default"
-        val panelBg = if (panelBgHex == "default") Color.parseColor("#121212") else ColorPickerDialog.parseHexColor(panelBgHex, Color.parseColor("#121212"))
+        val panelBg = if (panelBgHex == "default") Color.parseColor("#0F0F0F") else ColorPickerDialog.parseHexColor(panelBgHex, Color.parseColor("#0F0F0F"))
         val panelBorderHex = prefs.getString("pref_findreplace_panel_border", "default") ?: "default"
         val panelBorder = if (panelBorderHex == "default") Color.parseColor("#282828") else ColorPickerDialog.parseHexColor(panelBorderHex, Color.parseColor("#282828"))
         val density = card.resources.displayMetrics.density
@@ -2773,7 +2868,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val findColorHex = prefs.getString("pref_findreplace_field_find_color", "default") ?: "default"
 
         previewFindField?.apply {
-            setBackgroundColor(if (findBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(findBgHex, Color.parseColor("#1E1E1E")))
+            setBackgroundColor(if (findBgHex == "default") Color.BLACK else ColorPickerDialog.parseHexColor(findBgHex, Color.BLACK))
             setTextColor(if (findColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(findColorHex, Color.parseColor("#888888")))
         }
 
@@ -2781,7 +2876,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         val replaceColorHex = prefs.getString("pref_findreplace_field_replace_color", "default") ?: "default"
 
         previewReplaceField?.apply {
-            setBackgroundColor(if (replaceBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(replaceBgHex, Color.parseColor("#1E1E1E")))
+            setBackgroundColor(if (replaceBgHex == "default") Color.BLACK else ColorPickerDialog.parseHexColor(replaceBgHex, Color.BLACK))
             setTextColor(if (replaceColorHex == "default") Color.parseColor("#888888") else ColorPickerDialog.parseHexColor(replaceColorHex, Color.parseColor("#888888")))
         }
 
@@ -2794,7 +2889,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
         )
 
         val (row1List, row2List) = parseAndNormalizeRows(prefs)
-        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, "highlight,regex"))
 
         val row1Ids = row1List.filter { it !in hiddenSet }
         val row2Ids = row2List.filter { it !in hiddenSet }
@@ -2867,7 +2962,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                             setMargins((3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt())
                         }
                         setOnClickListener {
-                            val curHidden = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+                            val curHidden = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, "highlight,regex"))
                             curHidden.remove(hid)
                             prefs.edit().putString(PREF_KEY_HIDDEN_BUTTONS, curHidden.joinToString(",")).apply()
                             refreshFindReplacePreview(prefs)
@@ -2885,7 +2980,8 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             val btnColorHex = prefs.getString("pref_findreplace_btn_${suffix}_color", "default") ?: "default"
             val customSvg = prefs.getString("pref_findreplace_btn_${suffix}_svg", "") ?: ""
             val density = btnView.context.resources.displayMetrics.density
-            val iconWidth = prefs.getInt("pref_findreplace_btn_${suffix}_width", 28)
+            val defaultWidth = if (domId == "highlight" || domId == "regex") 32 else 34
+            val iconWidth = prefs.getInt("pref_findreplace_btn_${suffix}_width", defaultWidth)
             btnView.apply {
                 gravity = android.view.Gravity.CENTER
                 textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER
@@ -2897,9 +2993,9 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 btnView.layoutParams = params
             }
 
-            btnView.setBackgroundColor(if (btnBgHex == "default") Color.parseColor("#1E1E1E") else ColorPickerDialog.parseHexColor(btnBgHex, Color.parseColor("#1E1E1E")))
+            btnView.setBackgroundColor(if (btnBgHex == "default") Color.BLACK else ColorPickerDialog.parseHexColor(btnBgHex, Color.BLACK))
 
-            val defaultIconColor = Color.parseColor("#AAAAAA")
+            val defaultIconColor = Color.WHITE
             val iconColor = if (btnColorHex == "default") {
                 defaultIconColor
             } else {
@@ -2959,7 +3055,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
             }
         }
 
-        val fieldHeightPx = (prefs.getInt("pref_findreplace_field_height", 32) *
+        val fieldHeightPx = (prefs.getInt("pref_findreplace_field_height", 42) *
             (context?.resources?.displayMetrics?.density ?: 1f)).toInt()
         listOf(previewFindField, previewReplaceField).forEach { field ->
             field?.layoutParams = field?.layoutParams?.apply { height = fieldHeightPx }
@@ -2976,7 +3072,27 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                 }
             }
         }
+        payload.put("pref_app_theme", prefs.getString("pref_app_theme", "amoled"))
         return payload.toString()
+    }
+
+    private fun setFindReplacePreviewExpanded(expanded: Boolean) {
+        val preview = findReplacePreviewWebView ?: return
+        val ctx = context ?: return
+        val density = ctx.resources.displayMetrics.density
+        val rootHeight = preview.rootView.height
+            .takeIf { it > 0 }
+            ?: ctx.resources.displayMetrics.heightPixels
+        val height = if (expanded) {
+            (rootHeight * 0.82f).toInt().coerceAtLeast((248 * density).toInt())
+        } else {
+            (248 * density).toInt()
+        }
+        val params = preview.layoutParams ?: return
+        if (params.height == height) return
+        params.height = height
+        preview.layoutParams = params
+        preview.requestLayout()
     }
 
     private fun setupFindReplaceWebPreview(fragmentRootView: android.view.View): Boolean {
@@ -3071,6 +3187,50 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
     }
 
     inner class FindReplacePreviewBridge {
+        @android.webkit.JavascriptInterface
+        fun setIconPickerExpanded(expanded: Boolean) {
+            activity?.runOnUiThread {
+                setFindReplacePreviewExpanded(expanded)
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun editButtonIcon(buttonId: String, action: String): String {
+            val suffix = buttonPreferenceSuffix[buttonId] ?: return "invalid_button"
+            val key = "pref_findreplace_btn_${suffix}_svg"
+            targetSvgPrefKey = key
+            if (action != "paste" && action != "file") return "invalid_action"
+            activity?.runOnUiThread {
+                if (action == "paste") {
+                    showPasteSvgDialog(key)
+                } else {
+                    pickSvgLauncher.launch(arrayOf("image/svg+xml", "text/xml", "application/xml", "*/*"))
+                }
+            } ?: return "no_activity"
+            return "opened"
+        }
+
+        @android.webkit.JavascriptInterface
+        fun saveButtonIcon(buttonId: String, svg: String): String {
+            val suffix = buttonPreferenceSuffix[buttonId] ?: return "invalid_button"
+            if (svg.toByteArray(Charsets.UTF_8).size > 64 * 1024) return "too_large"
+            if (!isValidAndSafeSvg(svg)) return "invalid_svg"
+            try {
+                com.caverock.androidsvg.SVG.getFromString(svg)
+            } catch (_: Exception) {
+                return "invalid_svg"
+            }
+            val ctx = context ?: return "no_context"
+            val key = "pref_findreplace_btn_${suffix}_svg"
+            val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
+            if (!prefs.edit().putString(key, svg).commit()) return "save_failed"
+            activity?.runOnUiThread {
+                findPreference<Preference>(key)?.summary = "Built-in app icon selected"
+                refreshFindReplacePreview(prefs)
+            }
+            return "saved"
+        }
+
         @android.webkit.JavascriptInterface
         fun selectCategory(key: String) {
             val validCategories = setOf(
@@ -3412,7 +3572,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                         val targetIndex = insertionIndex(targetGroup, event.x, draggedId)
                         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
                         val (row1, row2) = parseAndNormalizeRows(prefs)
-                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, "highlight,regex"))
 
                         hiddenSet.remove(draggedId)
                         row1.remove(draggedId)
@@ -3469,7 +3629,7 @@ class StylingFindReplaceFragment : StylingSettingsFragment() {
                     val draggedId = event.clipData?.getItemAt(0)?.text?.toString()
                     if (draggedId != null && draggedId in KNOWN_BUTTON_IDS) {
                         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, ""))
+                        val hiddenSet = parseHiddenButtons(prefs.getString(PREF_KEY_HIDDEN_BUTTONS, "highlight,regex"))
                         hiddenSet.add(draggedId)
 
                         prefs.edit()

@@ -74,6 +74,7 @@ async function build() {
     path.join(outDir, 'findreplace-settings-preview.html')
   );
   fs.copyFileSync(path.join(webDir, 'toolbar.css'), path.join(outDir, 'toolbar.css'));
+  fs.copyFileSync(path.join(webDir, 'icon-picker.css'), path.join(outDir, 'icon-picker.css'));
 
   console.log('Web bundle build complete! Assets written to:', outDir);
 }

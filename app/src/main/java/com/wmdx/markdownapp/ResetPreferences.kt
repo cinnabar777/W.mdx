@@ -1,6 +1,8 @@
 package com.wmdx.markdownapp
 
 import android.content.Context
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.Gravity
@@ -18,6 +20,7 @@ import androidx.preference.PreferenceViewHolder
 import androidx.preference.SeekBarPreference
 import androidx.preference.SwitchPreferenceCompat
 import java.io.File
+import java.util.Locale
 
 interface ResettablePreference {
     fun callNotifyChanged()
@@ -120,32 +123,32 @@ object PreferenceResetHelper {
             "pref_footnote_ref_color" -> "#29B6F6"
             "pref_footnote_link_color" -> "#29B6F6"
             "pref_footnote_bg_color" -> "#1A1A1A"
-            "pref_findreplace_panel_bg" -> "#121212"
+            "pref_findreplace_panel_bg" -> "#0F0F0F"
             "pref_findreplace_panel_border" -> "#282828"
-            "pref_findreplace_field_find_bg", "pref_findreplace_field_replace_bg" -> "#1E1E1E"
+            "pref_findreplace_field_find_bg", "pref_findreplace_field_replace_bg" -> "#000000"
             "pref_findreplace_field_find_color", "pref_findreplace_field_replace_color" -> "#FFFFFF"
             "pref_findreplace_field_find_placeholder", "pref_findreplace_field_replace_placeholder" -> "#888888"
             "pref_findreplace_field_find_border", "pref_findreplace_field_replace_border" -> "#333333"
             "pref_findreplace_field_find_focus_border", "pref_findreplace_field_replace_focus_border" -> "#0078D4"
-            "pref_findreplace_counter_color" -> "#888888"
-            "pref_findreplace_counter_bg" -> "#00000000"
+            "pref_findreplace_counter_color" -> "#FFFFFF"
+            "pref_findreplace_counter_bg" -> "#000000"
             "pref_findreplace_match_bg" -> "rgba(255, 255, 0, 0.35)"
             "pref_findreplace_current_match_bg" -> "#0078D4"
             "pref_findreplace_current_match_color" -> "#FFFFFF"
-            "pref_toolbar_floating_bg_color" -> "#121212"
+            "pref_toolbar_floating_bg_color" -> "#222222"
             "pref_toolbar_floating_icon_color",
             "pref_toolbar_floating_label_color" -> "#FFFFFF"
-            "pref_toolbar_floating_active_key_bg_color" -> "#1F1F1F"
+            "pref_toolbar_floating_active_key_bg_color" -> "#000000"
             else -> {
                 when {
                     key != null && key.startsWith("pref_findreplace_btn_") &&
-                        (key.endsWith("_active_bg") || key.endsWith("_pressed_bg")) -> "#0078D4"
+                        (key.endsWith("_active_bg") || key.endsWith("_pressed_bg")) -> "#000799"
                     key != null && key.startsWith("pref_findreplace_btn_") &&
-                        key.endsWith("_active_color") -> "#FFFFFF"
+                        key.endsWith("_active_color") -> "#FFEA00"
                     key != null && key.startsWith("pref_findreplace_btn_") &&
-                        key.endsWith("_bg") -> "#1E1E1E"
+                        key.endsWith("_bg") -> "#000000"
                     key != null && key.startsWith("pref_findreplace_btn_") &&
-                        key.endsWith("_color") -> "#AAAAAA"
+                        key.endsWith("_color") -> "#FFFFFF"
                     else -> "#FFFFFF"
                 }
             }
@@ -472,6 +475,7 @@ object PreferenceResetHelper {
             key == "pref_cursor_blink_rate" -> "0.8s"
             key == "pref_selection_highlight_bg_color" -> "default"
             key == "pref_selection_highlight_text_color" -> "default"
+            key == "pref_floating_toolbar_hide_delay_tenths" -> 10
             key == "pref_findreplace_panel_bg" -> "default"
             key == "pref_findreplace_panel_border" -> "default"
             key == "pref_findreplace_field_find_bg" -> "default"
@@ -486,13 +490,15 @@ object PreferenceResetHelper {
             key == "pref_findreplace_field_replace_border" -> "default"
             key == "pref_findreplace_field_replace_focus_border" -> "default"
             key == "pref_findreplace_field_replace_font_size" -> 14
-            key == "pref_findreplace_field_height" -> 32
+            key == "pref_findreplace_field_height" -> 42
             key == "pref_findreplace_counter_color" -> "default"
             key == "pref_findreplace_counter_bg" -> "default"
             key == "pref_findreplace_match_bg" -> "default"
             key == "pref_findreplace_current_match_bg" -> "default"
             key == "pref_findreplace_current_match_color" -> "default"
-            key.startsWith("pref_findreplace_btn_") && key.endsWith("_width") -> 28
+            key == "pref_findreplace_btn_highlight_width" ||
+                key == "pref_findreplace_btn_regex_width" -> 32
+            key.startsWith("pref_findreplace_btn_") && key.endsWith("_width") -> 34
             key.startsWith("pref_findreplace_btn_") && key.endsWith("_svg") -> ""
             key.startsWith("pref_findreplace_btn_") -> "default"
             key == "pref_code_block_color" -> "default"
@@ -515,15 +521,15 @@ object PreferenceResetHelper {
             key == "pref_toolbar_toggle_closed_height" -> 34
             key == "pref_toolbar_height" -> 48
             key == "pref_toolbar_padding" -> 4
-            key == "pref_toolbar_floating_enabled" -> false
-            key == "pref_toolbar_floating_bg_color" -> "default"
+            key == "pref_toolbar_floating_enabled" -> true
+            key == "pref_toolbar_floating_bg_color" -> "#222222"
             key == "pref_toolbar_floating_icon_color" -> "default"
             key == "pref_toolbar_floating_key_height" -> 36
             key == "pref_toolbar_floating_show_labels" -> false
             key == "pref_toolbar_floating_label_size" -> 8
             key == "pref_toolbar_floating_label_color" -> "default"
-            key == "pref_toolbar_floating_active_key_bg_color" -> "default"
-            key == "pref_toolbar_floating_padding" -> 4
+            key == "pref_toolbar_floating_active_key_bg_color" -> "#000000"
+            key == "pref_toolbar_floating_padding" -> 10
             key == "pref_toolbar_floating_key_width" -> 48
             key == "pref_toolbar_floating_corner_radius" -> 24
             key == "pref_media_controls_corner_radius" -> 24
@@ -611,7 +617,9 @@ object PreferenceResetHelper {
             key == "pref_hotkey_save" -> "ctrl+s"
             key == "pref_hotkey_save_as" -> "ctrl+shift+s"
             key == "pref_hotkey_save_tabs" -> ""
+            key == "pref_hotkey_paste_as_plain_text" -> "ctrl+shift+v"
             key == "pref_hotkey_save_as_textpack" -> "ctrl+shift+alt+s"
+            key == "pref_hotkey_save_as_mdzip" -> "ctrl+shift+alt+m"
             key == "pref_hotkey_image" -> "ctrl+shift+i"
             key == "pref_hotkey_settings" -> "ctrl+,"
             key == "pref_hotkey_toggle_toolbar" -> "ctrl+t"
@@ -633,8 +641,14 @@ object PreferenceResetHelper {
             key == "pref_hotkey_bulletedList" -> "ctrl+shift+8"
             key == "pref_hotkey_numberedList" -> "ctrl+shift+7"
             key == "pref_hotkey_todoList" -> "ctrl+shift+l"
+            key == "pref_hotkey_cycleListType" -> "ctrl+alt+shift+l"
+            key == "pref_hotkey_undo" -> "ctrl+z"
+            key == "pref_hotkey_redo" -> "ctrl+y"
             key == "pref_hotkey_indent" -> "tab"
             key == "pref_hotkey_outdent" -> "shift+tab"
+            key == "pref_hotkey_moveLineUp" -> "ctrl+alt+up"
+            key == "pref_hotkey_moveLineDown" -> "ctrl+alt+down"
+            key == "pref_hotkey_deleteLine" -> "ctrl+shift+k"
             key == "pref_hotkey_horizontalLine" -> "ctrl+shift+h"
             key == "pref_hotkey_findAndReplace" -> "ctrl+f"
             key == "pref_hotkey_sourceEditing" -> "ctrl+shift+u"
@@ -1257,6 +1271,40 @@ open class ResetSeekBarPreference : SeekBarPreference, ResettablePreference {
     override fun callNotifyChanged() {
         notifyChanged()
     }
+}
+
+class ResetTenthsSeekBarPreference : ResetSeekBarPreference {
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int, defStyleRes: Int) : super(context, attrs, defStyleAttr, defStyleRes)
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr)
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
+    constructor(context: Context) : super(context)
+
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        val valueView = holder.findViewById(androidx.preference.R.id.seekbar_value) as? TextView
+            ?: return
+        val formatterTagId = androidx.preference.R.id.seekbar_value
+        if (valueView.getTag(formatterTagId) == null) {
+            val formatter = object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+                override fun afterTextChanged(s: Editable?) {
+                    val tenths = s?.toString()?.toIntOrNull() ?: return
+                    val formatted = formatTenths(tenths)
+                    if (valueView.text.toString() != formatted) {
+                        valueView.text = formatted
+                    }
+                }
+            }
+            valueView.setTag(formatterTagId, formatter)
+            valueView.addTextChangedListener(formatter)
+        }
+        valueView.text = formatTenths(value)
+    }
+
+    private fun formatTenths(tenths: Int): String =
+        String.format(Locale.ROOT, "%.1f s", tenths / 10.0)
 }
 
 open class ResetEditTextPreference : EditTextPreference, ResettablePreference {

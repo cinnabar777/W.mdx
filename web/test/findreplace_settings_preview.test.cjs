@@ -12,6 +12,22 @@ const previewScript = fs.readFileSync(
   path.join(__dirname, '../src/findreplaceSettingsPreview.js'),
   'utf8'
 );
+const executablePreviewScript = previewScript.replace(
+  /^import\s+\{[^}]+\}\s+from\s+['"][^'"]+['"];\s*$/gm,
+  ''
+);
+
+async function createPreviewDom() {
+  const dom = new JSDOM(previewHtml, { runScripts: 'outside-only' });
+  const [catalog, icons] = await Promise.all([
+    import('../src/appIconCatalog.js'),
+    import('../src/findReplaceIcons.js')
+  ]);
+  dom.window.renderIconChoices = catalog.renderIconChoices;
+  dom.window.findReplaceIcons = icons.findReplaceIcons;
+  dom.window.eval(executablePreviewScript);
+  return dom;
+}
 
 function setRect(element, { left, top, width, height }) {
   element.getBoundingClientRect = () => ({
@@ -37,10 +53,9 @@ function dispatchPointer(window, element, type, { x, y, pointerId = 1, button = 
   element.dispatchEvent(event);
 }
 
-test('find and replace preview matches live icon sizing and saved button layout', () => {
-  const dom = new JSDOM(previewHtml, { runScripts: 'outside-only' });
+test('find and replace preview matches live icon sizing and saved button layout', async () => {
+  const dom = await createPreviewDom();
   const { document } = dom.window;
-  dom.window.eval(previewScript);
   assert.match(previewHtml, /-webkit-user-select:\s*none\s*!important/);
 
   let savedLayout = null;
@@ -102,10 +117,54 @@ test('find and replace preview matches live icon sizing and saved button layout'
   dom.window.close();
 });
 
+test('empty Find & Replace settings use the chosen icon, size, and hidden-button defaults', async () => {
+  const dom = await createPreviewDom();
+  const { document, findReplaceIcons } = dom.window;
+  dom.window.applyFindReplaceSettings({});
+
+  assert.deepEqual(
+    [...document.querySelectorAll('.findreplace-preview-hidden-button')].map(button => button.textContent),
+    ['+ Highlight', '+ Regex']
+  );
+  assert.equal(
+    document.documentElement.style.getPropertyValue('--findreplace-field-height'),
+    '42px'
+  );
+  assert.equal(
+    document.documentElement.style.getPropertyValue('--findreplace-prev-width'),
+    '34px'
+  );
+  assert.equal(
+    document.documentElement.style.getPropertyValue('--findreplace-highlight-width'),
+    '32px'
+  );
+
+  dom.window.applyFindReplaceSettings({ pref_findreplace_hidden_buttons: '' });
+  for (const [buttonId, iconKey] of [
+    ['prev', 'findPrevious'],
+    ['next', 'findNext'],
+    ['highlight', 'findHighlight'],
+    ['regex', 'findRegex'],
+    ['close', 'findClose'],
+    ['replace-one', 'replaceOne'],
+    ['replace-all', 'replaceAll'],
+    ['case', 'matchCase'],
+    ['word', 'wholeWord']
+  ]) {
+    const expectedIcon = document.createElement('span');
+    expectedIcon.innerHTML = findReplaceIcons[iconKey];
+    assert.equal(
+      document.querySelector(`#search-btn-${buttonId}`).innerHTML,
+      expectedIcon.innerHTML
+    );
+  }
+
+  dom.window.close();
+});
+
 test('drag feedback allows moving buttons between rows and into the hidden tray', async () => {
-  const dom = new JSDOM(previewHtml, { runScripts: 'outside-only' });
+  const dom = await createPreviewDom();
   const { document } = dom.window;
-  dom.window.eval(previewScript);
 
   let savedLayout = null;
   dom.window.FindReplaceSettings = {
@@ -114,7 +173,7 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
       return 'saved';
     }
   };
-  dom.window.applyFindReplaceSettings({});
+  dom.window.applyFindReplaceSettings({ pref_findreplace_hidden_buttons: '' });
 
   const row1 = document.querySelector('#findreplace-row1');
   const row2 = document.querySelector('#findreplace-row2');
@@ -190,5 +249,58 @@ test('drag feedback allows moving buttons between rows and into the hidden tray'
   assert.equal(row1.contains(next), false);
   assert.equal(savedLayout[2], 'next');
   assert.match(document.querySelector('#findreplace-hidden-buttons').textContent, /\+ Next/);
+  dom.window.close();
+});
+
+test('find and replace uses the toolbar icon picker and the complete built-in catalog', async () => {
+  const dom = await createPreviewDom();
+  const { document } = dom.window;
+  const expanded = [];
+  const savedIcons = [];
+  const nativeEdits = [];
+  dom.window.FindReplaceSettings = {
+    setIconPickerExpanded: expandedValue => expanded.push(expandedValue),
+    saveButtonIcon: (buttonId, svg) => {
+      savedIcons.push([buttonId, svg]);
+      return 'saved';
+    },
+    editButtonIcon: (buttonId, action) => nativeEdits.push([buttonId, action])
+  };
+
+  assert.match(previewHtml, /href="\.\/icon-picker\.css"/);
+  assert.match(previewHtml, /class="toolbar-preview-icon-picker-dialog"/);
+  assert.match(previewHtml, /id="findreplace-paste-svg"/);
+  assert.match(previewHtml, /id="findreplace-choose-svg"/);
+
+  assert.equal(dom.window.openFindReplaceIconPicker('prev'), true);
+  const modal = document.querySelector('#findreplace-icon-picker-modal');
+  assert.equal(modal.hidden, false);
+  const titles = [...document.querySelectorAll('#findreplace-icon-list [role="option"]')]
+    .map(button => button.getAttribute('aria-label'));
+  assert.ok(titles.some(title => title === 'Table: Add Row Below'));
+  assert.ok(titles.some(title => title === 'Callout: Warning'));
+  assert.ok(titles.some(title => title === 'Find & Replace: Find Previous'));
+  assert.ok(titles.some(title => title === 'Audio: Play'));
+  assert.ok(titles.some(title => title === 'Help'));
+
+  const search = document.querySelector('#findreplace-icon-search');
+  search.value = 'audio: play';
+  search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  const playIcon = document.querySelector('#findreplace-icon-list [role="option"]');
+  assert.equal(playIcon.getAttribute('aria-label'), 'Audio: Play');
+  playIcon.click();
+  assert.equal(modal.hidden, true);
+  assert.equal(savedIcons.length, 1);
+  assert.equal(savedIcons[0][0], 'prev');
+  assert.match(savedIcons[0][1], /<svg/);
+  assert.deepEqual(expanded, [true, false]);
+
+  dom.window.openFindReplaceIconPicker('replace-all');
+  document.querySelector('#findreplace-paste-svg').click();
+  assert.deepEqual(nativeEdits[0], ['replace-all', 'paste']);
+  dom.window.openFindReplaceIconPicker('case');
+  document.querySelector('#findreplace-choose-svg').click();
+  assert.deepEqual(nativeEdits[1], ['case', 'file']);
+  assert.equal(modal.hidden, true);
   dom.window.close();
 });

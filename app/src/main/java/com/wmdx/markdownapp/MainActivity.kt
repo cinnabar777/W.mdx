@@ -54,6 +54,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var progressBar: ProgressBar
     private var suppressImeUntilUserTouch = false
     private var imeHideGeneration = 0
+    private var imeVisibleBeforeLastWebViewTouch = false
+    private var lastWebViewTouchElapsedMs = 0L
+    private var toolbarImeInteractionDepth = 0
+    private var toolbarImeVisibleBeforeInteraction = false
+    private var toolbarImeRestoreGeneration = 0
 
     private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
     private data class LeftPanelDocumentEntry(
@@ -329,11 +334,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onCreate(savedInstanceState)
         WindowRegistry.registerActivity(this)
         val startupPreferences = PreferenceManager.getDefaultSharedPreferences(this)
+        migrateFloatingToolbarHideDelayPreference(startupPreferences)
         if (!startupPreferences.getBoolean("pref_toolbar_default_corrected", false)) {
-            startupPreferences.edit()
-                .putBoolean("pref_toolbar_floating_enabled", false)
-                .putBoolean("pref_toolbar_default_corrected", true)
-                .apply()
+            val editor = startupPreferences.edit()
+            if (!startupPreferences.contains("pref_toolbar_floating_enabled")) {
+                editor.putBoolean("pref_toolbar_floating_enabled", true)
+            }
+            editor.putBoolean("pref_toolbar_default_corrected", true).apply()
         }
         setContentView(R.layout.activity_main)
 
@@ -349,6 +356,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "focusable=${webView.isFocusable} touchFocusable=${webView.isFocusableInTouchMode}"
         )
         webView.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                imeVisibleBeforeLastWebViewTouch = editorImeVisible()
+                lastWebViewTouchElapsedMs = android.os.SystemClock.elapsedRealtime()
+            }
             if (
                 event.actionMasked == MotionEvent.ACTION_DOWN &&
                 suppressImeUntilUserTouch
@@ -386,6 +397,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         AppDiagnostics.record(this, "window_created")
         handleIntent(intent, isRestoration = savedInstanceState != null)
+    }
+
+    private fun migrateFloatingToolbarHideDelayPreference(preferences: SharedPreferences) {
+        val tenthsKey = "pref_floating_toolbar_hide_delay_tenths"
+        if (preferences.contains(tenthsKey)) return
+
+        val secondsKey = "pref_floating_toolbar_hide_delay_seconds"
+        val oldSeconds = if (preferences.contains(secondsKey)) {
+            preferences.getInt(secondsKey, 1)
+        } else {
+            1
+        }
+        preferences.edit()
+            .putInt(tenthsKey, oldSeconds.coerceIn(0, 5) * 10)
+            .remove(secondsKey)
+            .apply()
     }
 
     override fun onDestroy() {
@@ -522,6 +549,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onResume() {
         super.onResume()
         isActivityResumed = true
+        toolbarImeInteractionDepth = 0
+        toolbarImeRestoreGeneration += 1
         WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
             pendingExistingDocumentFocusUri = it
         }
@@ -552,6 +581,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onPause() {
         isActivityResumed = false
+        toolbarImeInteractionDepth = 0
+        toolbarImeRestoreGeneration += 1
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
@@ -603,6 +634,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun editorImeVisible(): Boolean =
         ViewCompat.getRootWindowInsets(webView)
             ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+
+    private fun restoreToolbarImeState(generation: Int) {
+        if (
+            generation != toolbarImeRestoreGeneration ||
+            toolbarImeInteractionDepth != 0 ||
+            !isActivityResumed ||
+            !::webView.isInitialized
+        ) {
+            return
+        }
+
+        val expectedVisible = toolbarImeVisibleBeforeInteraction
+        (webView as? EditorWebView)?.setImeInputAllowed(expectedVisible)
+        val visibleBeforeRestore = editorImeVisible()
+        if (visibleBeforeRestore != expectedVisible) {
+            val inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE)
+                as? android.view.inputmethod.InputMethodManager
+            if (expectedVisible) {
+                window.setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+                )
+                if (!webView.isFocused) webView.requestFocusFromTouch()
+                ViewCompat.getWindowInsetsController(webView)
+                    ?.show(WindowInsetsCompat.Type.ime())
+                inputMethodManager?.showSoftInput(
+                    webView,
+                    android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT
+                )
+            } else {
+                ViewCompat.getWindowInsetsController(webView)
+                    ?.hide(WindowInsetsCompat.Type.ime())
+                inputMethodManager?.hideSoftInputFromWindow(webView.windowToken, 0)
+            }
+        }
+        AppDiagnostics.record(
+            this,
+            "toolbar_ime_state_restored",
+            "expectedVisible=$expectedVisible visibleBeforeRestore=$visibleBeforeRestore"
+        )
+    }
 
     private fun hideImeWhileResumeIsSuppressed(generation: Int) {
         if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
@@ -1099,12 +1171,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (!isEditorReady || !::webView.isInitialized) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val bottomConfig = prefs.getString("pref_toolbar_bottom_config", null)
-        val floatingConfig = prefs.getString("pref_toolbar_floating_config", bottomConfig)
+        val defaultFloatingConfig = ToolbarDefaults.floatingToolbarConfigJson(this)
+        val floatingConfig = prefs.getString(
+            "pref_toolbar_floating_config",
+            defaultFloatingConfig
+        ) ?: defaultFloatingConfig
         val escapedConfig = bottomConfig?.let { JSONObjectWrapper.quote(it) } ?: "null"
         val escapedFloatingConfig = floatingConfig?.let { JSONObjectWrapper.quote(it) } ?: "null"
         webView.evaluateJavascript(
             "window.editorBridge?.applyBottomToolbarConfig?.($escapedConfig);" +
-                "window.editorBridge?.applyFloatingToolbarConfig?.($escapedFloatingConfig || $escapedConfig);",
+                "window.editorBridge?.applyFloatingToolbarConfig?.($escapedFloatingConfig);",
             null
         )
     }
@@ -1248,7 +1324,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "save" to prefs.getString("pref_hotkey_save", "ctrl+s"),
             "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
             "save_tabs" to prefs.getString("pref_hotkey_save_tabs", ""),
+            "paste_as_plain_text" to prefs.getString("pref_hotkey_paste_as_plain_text", "ctrl+shift+v"),
             "save_as_textpack" to prefs.getString("pref_hotkey_save_as_textpack", "ctrl+shift+alt+s"),
+            "save_as_mdzip" to prefs.getString("pref_hotkey_save_as_mdzip", "ctrl+shift+alt+m"),
             "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
             "image" to prefs.getString("pref_hotkey_image", "ctrl+shift+i"),
             "settings" to prefs.getString("pref_hotkey_settings", "ctrl+,"),
@@ -1266,6 +1344,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "underlineWavy" to prefs.getString("pref_hotkey_underlineWavy", ""),
             "strikethrough" to prefs.getString("pref_hotkey_strikethrough", "ctrl+shift+x"),
             "code" to prefs.getString("pref_hotkey_code", "ctrl+e"),
+            "clearFormatting" to prefs.getString("pref_hotkey_clearFormatting", "ctrl+\\"),
             "callout" to prefs.getString("pref_hotkey_callout", "ctrl+alt+q"),
             "link" to prefs.getString("pref_hotkey_link", "ctrl+k"),
             "footnote" to prefs.getString("pref_hotkey_footnote", "ctrl+shift+f"),
@@ -1274,8 +1353,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "bulletedList" to prefs.getString("pref_hotkey_bulletedList", "ctrl+shift+8"),
             "numberedList" to prefs.getString("pref_hotkey_numberedList", "ctrl+shift+7"),
             "todoList" to prefs.getString("pref_hotkey_todoList", "ctrl+shift+l"),
+            "cycleListType" to prefs.getString("pref_hotkey_cycleListType", "ctrl+alt+shift+l"),
+            "undo" to prefs.getString("pref_hotkey_undo", "ctrl+z"),
+            "redo" to prefs.getString("pref_hotkey_redo", "ctrl+y"),
             "indent" to prefs.getString("pref_hotkey_indent", "tab"),
             "outdent" to prefs.getString("pref_hotkey_outdent", "shift+tab"),
+            "moveLineUp" to prefs.getString("pref_hotkey_moveLineUp", "ctrl+alt+up"),
+            "moveLineDown" to prefs.getString("pref_hotkey_moveLineDown", "ctrl+alt+down"),
+            "deleteLine" to prefs.getString("pref_hotkey_deleteLine", "ctrl+shift+k"),
             "horizontalLine" to prefs.getString("pref_hotkey_horizontalLine", "ctrl+shift+h"),
             "findAndReplace" to prefs.getString("pref_hotkey_findAndReplace", "ctrl+f"),
             "sourceEditing" to prefs.getString("pref_hotkey_sourceEditing", "ctrl+shift+u"),
@@ -3961,8 +4046,60 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun beginToolbarInteraction() {
+            runOnUiThread {
+                if (!isActivityResumed || !::webView.isInitialized) return@runOnUiThread
+                if (toolbarImeInteractionDepth == 0) {
+                    val elapsedSinceTouch =
+                        android.os.SystemClock.elapsedRealtime() - lastWebViewTouchElapsedMs
+                    toolbarImeVisibleBeforeInteraction =
+                        if (elapsedSinceTouch in 0..1_000L) {
+                            imeVisibleBeforeLastWebViewTouch
+                        } else {
+                            editorImeVisible()
+                        }
+                    (webView as? EditorWebView)
+                        ?.setImeInputAllowed(toolbarImeVisibleBeforeInteraction)
+                    toolbarImeRestoreGeneration += 1
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "toolbar_ime_state_captured",
+                        "imeVisible=$toolbarImeVisibleBeforeInteraction inputAllowed=$toolbarImeVisibleBeforeInteraction"
+                    )
+                }
+                toolbarImeInteractionDepth += 1
+            }
+        }
+
+        @JavascriptInterface
+        fun endToolbarInteraction() {
+            runOnUiThread {
+                if (toolbarImeInteractionDepth <= 0) return@runOnUiThread
+                toolbarImeInteractionDepth -= 1
+                if (toolbarImeInteractionDepth != 0) return@runOnUiThread
+
+                val generation = ++toolbarImeRestoreGeneration
+                webView.postDelayed({
+                    restoreToolbarImeState(generation)
+                }, 80L)
+            }
+        }
+
+        @JavascriptInterface
         fun showEditorKeyboard() {
             runOnUiThread {
+                if (
+                    toolbarImeInteractionDepth > 0 &&
+                    !toolbarImeVisibleBeforeInteraction
+                ) {
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "ime_show_suppressed_toolbar",
+                        "depth=$toolbarImeInteractionDepth"
+                    )
+                    return@runOnUiThread
+                }
+                (webView as? EditorWebView)?.setImeInputAllowed(true)
                 val visibleBefore = editorImeVisible()
                 AppDiagnostics.record(
                     this@MainActivity,

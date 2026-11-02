@@ -168,7 +168,7 @@ body.light-theme .popup-toolbar-strip {
   justify-content: flex-start !important;
   height: calc(var(--toolbar-floating-key-height, 36px) + 12px) !important;
   padding: 4px !important;
-  gap: var(--toolbar-floating-padding, 4px) !important;
+  gap: var(--toolbar-floating-padding, 10px) !important;
   background-color: var(--toolbar-floating-bg, var(--toolbar-bg, #121212)) !important;
   border-radius: var(--toolbar-floating-corner-radius, 24px) !important;
 }
@@ -217,7 +217,7 @@ body.light-theme .popup-toolbar-strip {
   overflow-x: auto !important;
   overflow-y: hidden !important;
   padding: 4px !important;
-  gap: var(--toolbar-floating-padding, 4px) !important;
+  gap: var(--toolbar-floating-padding, 10px) !important;
   box-sizing: border-box !important;
   border-radius: var(--toolbar-floating-corner-radius, 24px) !important;
   background-color: var(--toolbar-floating-bg, var(--toolbar-bg, #121212)) !important;
@@ -666,12 +666,41 @@ body.light-theme .toolbar-preview-help-header {
 }
 
 .toolbar-preview-tray .toolbar-preview-popup-key {
+  position: relative;
   width: 47px;
   min-width: 47px;
   height: 47px;
   min-height: 47px;
   flex: 0 0 47px;
   padding: 2px;
+}
+
+.toolbar-preview-tray .toolbar-preview-key {
+  position: relative;
+}
+
+.toolbar-preview-tray .toolbar-key-gesture-indicator {
+  display: none;
+}
+
+.toolbar-preview-tray .toolbar-key-gesture-count {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: grid;
+  min-width: 14px;
+  height: 14px;
+  padding-inline: 2px;
+  place-items: center;
+  border: 1px solid var(--toolbar-preview-surface, #000);
+  border-radius: 999px;
+  background: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff));
+  color: var(--toolbar-preview-surface, #000);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .toolbar-preview-tray .toolbar-preview-popup-key svg {

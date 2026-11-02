@@ -52,10 +52,22 @@
             app:defaultValue="ctrl+shift+o" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_paste_as_plain_text"
+            app:title="Paste as Plain Text"
+            app:summary="Key combination (e.g. ctrl+shift+v)"
+            app:defaultValue="ctrl+shift+v" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_save_as"
             app:title="Save As"
             app:summary="Key combination (e.g. ctrl+shift+s)"
             app:defaultValue="ctrl+shift+s" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_save_as_mdzip"
+            app:title="Save as MDZip"
+            app:summary="Key combination (e.g. ctrl+shift+alt+m)"
+            app:defaultValue="ctrl+shift+alt+m" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_save_as_textpack"
@@ -111,9 +123,19 @@
             app:defaultValue="ctrl+shift+8" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_clearFormatting"
+            app:title="Clear Formatting"
+            app:defaultValue="ctrl+\" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_codeBlock"
             app:title="Code Block"
             app:defaultValue="ctrl+shift+c" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_cycleListType"
+            app:title="Cycle List Types"
+            app:defaultValue="ctrl+alt+shift+l" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_underline"
@@ -124,6 +146,11 @@
             app:key="pref_hotkey_outdent"
             app:title="Decrease Indent"
             app:defaultValue="shift+tab" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_deleteLine"
+            app:title="Delete Line / Paragraph"
+            app:defaultValue="ctrl+shift+k" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_findAndReplace"
@@ -166,9 +193,24 @@
             app:defaultValue="ctrl+k" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_moveLineDown"
+            app:title="Move Line Down"
+            app:defaultValue="ctrl+alt+down" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_moveLineUp"
+            app:title="Move Line Up"
+            app:defaultValue="ctrl+alt+up" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_numberedList"
             app:title="Numbered List"
             app:defaultValue="ctrl+shift+7" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_redo"
+            app:title="Redo"
+            app:defaultValue="ctrl+y" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_sourceEditing"
@@ -209,6 +251,11 @@
             app:key="pref_hotkey_underlineWavy"
             app:title="Underline Wavy"
             app:defaultValue="" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_undo"
+            app:title="Undo"
+            app:defaultValue="ctrl+z" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Headings">

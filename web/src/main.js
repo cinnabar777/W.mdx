@@ -1,4 +1,4 @@
-import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect } from '@codemirror/state';
+import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect, Prec } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
@@ -28,6 +28,7 @@ import {
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
+import { applyMarkdownIndent } from './markdownIndent.js';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { applyAutoHeading } from './autoHeading.js';
 import { toCssFontFamily } from './fontFamilies.js';
@@ -51,15 +52,19 @@ import {
   getWmdxColorSyntaxRanges,
   isWmdxUnderlineSyntaxEnabled,
   setWmdxUnderlineSyntaxEnabled,
+  clearMarkdownFormatting,
+  cycleMarkdownListType,
   toggleMarkdownFormat,
   toggleWmdxColorFormat,
   toggleUnderlineFormat
 } from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
+import { calloutTypeIcons } from './calloutIcons.js';
 import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
+  DEFAULT_FLOATING_TOOLBAR_CONFIG,
   NO_GESTURE_ICON,
   OPEN_GROUP_ACTION_ID,
   normalizeBottomToolbarConfig,
@@ -70,16 +75,34 @@ import {
   getToolbarGestureActionId,
   getToolbarGestureIndicatorEntries,
   getToolbarSwipeGesture,
-  hasToolbarSwipeActions
+  hasToolbarSwipeActions,
+  createToolbarToggleClickGuard,
+  shouldSuppressToolbarToggleClick
 } from './toolbarGestures.js';
 import {
   renderBottomToolbarKeys,
   sanitizeToolbarSvg,
   toToolbarCssColor
 } from './toolbarRenderer.js';
-import { getFloatingToolbarPosition } from './toolbarPositioning.js';
+import {
+  getFloatingToolbarPosition,
+  getFloatingToolbarPositionAtPoint
+} from './toolbarPositioning.js';
+import { createFloatingSelectionToolbarVisibility } from './floatingSelectionToolbarVisibility.js';
 import { openToolbarKeyPreferencesDialog } from './toolbarKeyPreferencesDialog.js';
-import { defaultKeymap, history, historyField, historyKeymap, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
+import {
+  defaultKeymap,
+  history,
+  historyField,
+  historyKeymap,
+  undo as cmUndo,
+  redo as cmRedo,
+  undoDepth,
+  redoDepth,
+  moveLineUp as cmMoveLineUp,
+  moveLineDown as cmMoveLineDown,
+  deleteLine as cmDeleteLine
+} from '@codemirror/commands';
 import {
   search,
   SearchQuery,
@@ -106,10 +129,17 @@ let isLineWrapEnabled = true;
 let activePopupGroup = null;
 let activeToolbarRootKey = null;
 let activePopupSurface = 'bottom';
+let toolbarActionExecutionDepth = 0;
 let bottomToolbarConfig = normalizeBottomToolbarConfig(null);
-let floatingToolbarConfig = normalizeBottomToolbarConfig(null);
+let floatingToolbarConfig = normalizeBottomToolbarConfig(DEFAULT_FLOATING_TOOLBAR_CONFIG);
+const toolbarToggleClickGuards = new WeakMap();
 let floatingToolbarSelectionFrame = 0;
-let floatingToolbarEnabled = false;
+let floatingToolbarEnabled = true;
+let floatingToolbarAnchorPoint = null;
+const floatingSelectionToolbarVisibility = createFloatingSelectionToolbarVisibility({
+  onHide: hideFloatingSelectionToolbar,
+  onResume: () => updateFloatingSelectionToolbar()
+});
 let tocHideFileExtension = false;
 let tocPanelEnabled = true;
 
@@ -121,7 +151,9 @@ let customHotkeys = {
   save: 'ctrl+s',
   save_as: 'ctrl+shift+s',
   save_tabs: '',
+  paste_as_plain_text: 'ctrl+shift+v',
   save_as_textpack: 'ctrl+shift+alt+s',
+  save_as_mdzip: 'ctrl+shift+alt+m',
   export: 'ctrl+shift+e',
   image: 'ctrl+shift+i',
   settings: 'ctrl+,',
@@ -139,6 +171,7 @@ let customHotkeys = {
   underlineWavy: '',
   strikethrough: 'ctrl+shift+x',
   code: 'ctrl+e',
+  clearFormatting: 'ctrl+\\',
   link: 'ctrl+k',
   footnote: 'ctrl+shift+f',
   sourceEditing: 'ctrl+shift+u',
@@ -148,8 +181,14 @@ let customHotkeys = {
   bulletedList: 'ctrl+shift+8',
   numberedList: 'ctrl+shift+7',
   todoList: 'ctrl+shift+l',
+  cycleListType: 'ctrl+alt+shift+l',
+  undo: 'ctrl+z',
+  redo: 'ctrl+y',
   indent: 'tab',
   outdent: 'shift+tab',
+  moveLineUp: 'ctrl+alt+up',
+  moveLineDown: 'ctrl+alt+down',
+  deleteLine: 'ctrl+shift+k',
   horizontalLine: 'ctrl+shift+h',
   autoHeading: '',
   findAndReplace: 'ctrl+f',
@@ -588,19 +627,6 @@ class CodeBlockHeaderWidget extends WidgetType {
   }
 }
 
-const calloutTypeIcons = {
-  info: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
-  question: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-  faq: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-  todo: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 11 12 14 22 4"/></svg>`,
-  example: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
-  note: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
-  tip: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A7 7 0 1 1 15.5 14.5A7 7 0 0 1 8.5 14.5z"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`,
-  warning: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-  important: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
-  danger: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
-};
-
 let calloutTypeIconOverrides = {};
 
 function getCalloutTitleStart(line, match) {
@@ -687,9 +713,7 @@ class CalloutTitleWidget extends WidgetType {
       btn.tabIndex = 0;
       btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
       btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
-      btn.innerHTML = currentlyFolded
-        ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`
-        : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+      btn.innerHTML = currentlyFolded ? svgIcons.chevronRight : svgIcons.chevronDown;
 
       span.appendChild(btn);
 
@@ -1098,7 +1122,7 @@ class ImagePreviewWidget extends WidgetType {
     editButton.type = 'button';
     editButton.className = 'cm-image-action-edit';
     editButton.setAttribute('aria-label', 'Edit image');
-    editButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg><span>Edit</span>';
+    editButton.innerHTML = `${svgIcons.edit}<span>Edit</span>`;
     editButton.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
@@ -1109,7 +1133,7 @@ class ImagePreviewWidget extends WidgetType {
     deleteButton.type = 'button';
     deleteButton.className = 'cm-image-action-delete';
     deleteButton.setAttribute('aria-label', 'Delete image');
-    deleteButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg><span>Delete</span>';
+    deleteButton.innerHTML = `${svgIcons.delete}<span>Delete</span>`;
     deleteButton.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
@@ -2431,10 +2455,10 @@ function cmToggleLinePrefix(view, prefix) {
       selection: { anchor: line.from + prefix.length, head: line.from + prefix.length }
     });
   }
-  view.focus();
+  focusEditorAfterCommand(view);
 }
 
-function cmWrapSelection(view, before, after = before) {
+function cmWrapSelection(view, before, after = before, options = {}) {
   if (!view) return;
   const sel = view.state.selection.main;
   let selectedText = view.state.doc.sliceString(sel.from, sel.to);
@@ -2446,7 +2470,7 @@ function cmWrapSelection(view, before, after = before) {
       changes: { from: sel.from, to: sel.to, insert: unwrapped },
       selection: { anchor: sel.from, head: sel.from + unwrapped.length }
     });
-    view.focus();
+    focusEditorAfterCommand(view, options);
     return;
   }
 
@@ -2469,41 +2493,13 @@ function cmWrapSelection(view, before, after = before) {
     changes: { from: sel.from, to: sel.to, insert: replacement },
     selection: { anchor: sel.from + startOffset + before.length, head: sel.from + startOffset + before.length + coreText.length }
   });
-  view.focus();
+  focusEditorAfterCommand(view, options);
 }
 
-function cmIndentSelection(view, spaces = '  ') {
-  if (!view) return;
-  const sel = view.state.selection.main;
-  const startLine = view.state.doc.lineAt(sel.from).number;
-  const endLine = view.state.doc.lineAt(sel.to).number;
-  const changes = [];
-  for (let i = startLine; i <= endLine; i++) {
-    const l = view.state.doc.line(i);
-    changes.push({ from: l.from, to: l.from, insert: spaces });
-  }
-  view.dispatch({ changes });
-  view.focus();
+function focusEditorAfterCommand(view, options = {}) {
+  if (toolbarActionExecutionDepth > 0 || options.preserveKeyboard === true) return;
+  view?.focus();
 }
-
-function cmOutdentSelection(view, spaces = '  ') {
-  if (!view) return;
-  const sel = view.state.selection.main;
-  const startLine = view.state.doc.lineAt(sel.from).number;
-  const endLine = view.state.doc.lineAt(sel.to).number;
-  const changes = [];
-  for (let i = startLine; i <= endLine; i++) {
-    const l = view.state.doc.line(i);
-    if (l.text.startsWith(spaces)) {
-      changes.push({ from: l.from, to: l.from + spaces.length, insert: '' });
-    }
-  }
-  if (changes.length > 0) {
-    view.dispatch({ changes });
-  }
-  view.focus();
-}
-
 
 export function isEscapedPipe(text, index) {
   if (text[index] !== '|') return false;
@@ -3566,6 +3562,17 @@ export const tableNavigationKeymap = keymap.of([
   }
 ]);
 
+export const markdownIndentKeymap = keymap.of([
+  {
+    key: 'Tab',
+    run: view => applyMarkdownIndent(view, 'indent')
+  },
+  {
+    key: 'Shift-Tab',
+    run: view => applyMarkdownIndent(view, 'outdent')
+  }
+]);
+
 const renderedVerticalGoals = new WeakMap();
 
 function renderedVisualRows(view) {
@@ -4129,7 +4136,9 @@ class CodeMirrorAdapter {
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             updateTableDocumentSelection(update.view);
-            updateFloatingSelectionToolbar(update.view);
+            updateFloatingSelectionToolbar(update.view, {
+              ignoreRangeChange: update.docChanged || toolbarActionExecutionDepth > 0
+            });
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             scheduleNativeCursorAnchor(update.view);
@@ -4149,7 +4158,7 @@ class CodeMirrorAdapter {
         footnoteStateField,
         persistentLayoutField,
         heightMapField,
-        tableNavigationKeymap,
+        Prec.highest([tableNavigationKeymap, markdownIndentKeymap]),
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
         keymap.of([
@@ -4210,9 +4219,18 @@ class CodeMirrorAdapter {
       parent: containerEl,
       scrollTo: modeSnapshot?.scroll
     });
-
     let editorTapStart = null;
+    let emptyAreaLongPressTimer = null;
+    let emptyAreaLongPressStart = null;
+    const cancelEmptyAreaLongPress = () => {
+      clearTimeout(emptyAreaLongPressTimer);
+      emptyAreaLongPressTimer = null;
+      emptyAreaLongPressStart = null;
+    };
     this.view.contentDOM.addEventListener('pointerdown', event => {
+      cancelEmptyAreaLongPress();
+      floatingToolbarAnchorPoint = null;
+      updateFloatingSelectionToolbar(this.view);
       if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
         editorTapStart = null;
         return;
@@ -4220,15 +4238,46 @@ class CodeMirrorAdapter {
       editorTapStart = {
         pointerId: event.pointerId,
         x: event.clientX,
-        y: event.clientY
+        y: event.clientY,
+        longPressTriggered: false
       };
+      if (event.pointerType === 'touch') {
+        emptyAreaLongPressStart = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY
+        };
+        emptyAreaLongPressTimer = setTimeout(() => {
+          const press = emptyAreaLongPressStart;
+          if (!press || press.pointerId !== event.pointerId) return;
+          const selection = this.view?.state?.selection?.main;
+          if (selection && !selection.empty) return;
+          if (showFloatingSelectionToolbarAtPoint(press.x, press.y, this.view) && editorTapStart) {
+            editorTapStart.longPressTriggered = true;
+          }
+          emptyAreaLongPressTimer = null;
+          emptyAreaLongPressStart = null;
+        }, 550);
+      }
+    }, { capture: true });
+    this.view.contentDOM.addEventListener('pointermove', event => {
+      const press = emptyAreaLongPressStart;
+      if (
+        press &&
+        press.pointerId === event.pointerId &&
+        Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10
+      ) {
+        cancelEmptyAreaLongPress();
+      }
     }, { capture: true });
     this.view.contentDOM.addEventListener('pointerup', event => {
       const start = editorTapStart;
       editorTapStart = null;
+      cancelEmptyAreaLongPress();
       if (
         !start ||
         start.pointerId !== event.pointerId ||
+        start.longPressTriggered ||
         Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12
       ) {
         return;
@@ -4241,7 +4290,17 @@ class CodeMirrorAdapter {
     }, { capture: true });
     this.view.contentDOM.addEventListener('pointercancel', () => {
       editorTapStart = null;
+      cancelEmptyAreaLongPress();
     }, { capture: true });
+    this.view.contentDOM.addEventListener('contextmenu', event => {
+      const selection = this.view?.state?.selection?.main;
+      if (selection && !selection.empty) return;
+      if (!showFloatingSelectionToolbarAtPoint(event.clientX, event.clientY, this.view)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (editorTapStart) editorTapStart.longPressTriggered = true;
+      cancelEmptyAreaLongPress();
+    });
 
     this.view.scrollDOM.style.overflowAnchor = 'auto';
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
@@ -4452,7 +4511,6 @@ class CodeMirrorAdapter {
 
   destroy() {
     this.persistScrollPosition();
-
     if (this.syntaxRefreshFrame !== null) {
       cancelAnimationFrame(this.syntaxRefreshFrame);
       this.syntaxRefreshFrame = null;
@@ -4562,6 +4620,30 @@ function installToolbarTapActions(container) {
   if (!container || container.dataset.toolbarTapActionsInstalled === 'true') return;
   container.dataset.toolbarTapActionsInstalled = 'true';
   const pendingTaps = new WeakMap();
+  const activeToolbarPointerIds = new Set();
+  const getToolbarPointerControl = event => {
+    const target = event.target?.nodeType === 1
+      ? event.target
+      : event.target?.parentElement;
+    const control = target?.closest?.(
+      '[data-toolbar-key], [data-toolbar-style-id], .popup-strip-btn'
+    );
+    return control && container.contains(control) ? control : null;
+  };
+  const endToolbarPointer = event => {
+    const pointerId = event.pointerId ?? 'primary';
+    if (!activeToolbarPointerIds.delete(pointerId)) return;
+    setTimeout(() => window.AndroidNative?.endToolbarInteraction?.(), 80);
+  };
+  container.addEventListener('pointerdown', event => {
+    if (event.isPrimary === false || !getToolbarPointerControl(event)) return;
+    const pointerId = event.pointerId ?? 'primary';
+    if (activeToolbarPointerIds.has(pointerId)) return;
+    activeToolbarPointerIds.add(pointerId);
+    window.AndroidNative?.beginToolbarInteraction?.();
+  }, true);
+  container.addEventListener('pointerup', endToolbarPointer, true);
+  container.addEventListener('pointercancel', endToolbarPointer, true);
   container.addEventListener('click', event => {
     const target = event.target?.nodeType === 1
       ? event.target
@@ -4585,6 +4667,7 @@ function installToolbarTapActions(container) {
     const hasTap2 = Boolean(actions.tap2);
     const hasTap3 = Boolean(actions.tap3);
     if (!hasTap1 && !hasTap2 && !hasTap3) return;
+    toolbarToggleClickGuards.get(button)?.suppressNextClick();
 
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -4646,7 +4729,13 @@ function setupGroupedControlBar() {
   const toolbarDefinitions = Object.fromEntries(
     [...toolbarActionRegistry].map(([id, item]) => [
       id,
-      { id, title: item.title, icon: item.icon, kind: 'action' }
+      {
+        id,
+        title: item.title,
+        icon: item.icon,
+        kind: item.kind || 'action',
+        command: item.command
+      }
     ])
   );
   renderBottomToolbarKeys(bar, bottomToolbarConfig, svgIcons, {
@@ -4715,7 +4804,7 @@ function setupGroupedControlBar() {
         { title: 'Heading 6', icon: 'H6', command: 'heading6', action: () => execCmd('heading', { value: 'heading6' }) },
         { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
         { id: 'wrap', icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
-        { id: 'line-numbers', icon: '#', title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
+        { id: 'line-numbers', icon: svgIcons.lineNumbers, title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
       ]);
     };
   }
@@ -4855,7 +4944,7 @@ function setupGroupedControlBar() {
       button.onclick = event => {
         event.preventDefault();
         event.stopPropagation();
-        action.action?.();
+        runToolbarActionWithoutRefocusingEditor(() => action.action?.());
       };
     }
   }
@@ -4881,7 +4970,13 @@ function setupFloatingSelectionToolbar() {
   const definitions = Object.fromEntries(
     [...registry].map(([id, item]) => [
       id,
-      { id, title: item.title, icon: item.icon, kind: item.kind || 'action' }
+      {
+        id,
+        title: item.title,
+        icon: item.icon,
+        kind: item.kind || 'action',
+        command: item.command
+      }
     ])
   );
   renderBottomToolbarKeys(bar, floatingToolbarConfig, svgIcons, {
@@ -4942,56 +5037,109 @@ function scheduleFloatingToolbarPosition() {
   });
 }
 
-function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
+function showFloatingSelectionToolbarAtPoint(x, y, view = activeAdapter?.view) {
+  if (!floatingToolbarEnabled || !view?.dom?.isConnected) return false;
+  const selection = view.state?.selection?.main;
+  if (selection && !selection.empty) return false;
+  floatingToolbarAnchorPoint = { x, y, view };
+  updateFloatingSelectionToolbar(view);
+  return true;
+}
+
+function hideFloatingSelectionToolbar() {
+  const bar = document.querySelector('#floating-selection-toolbar');
+  if (!bar) return;
+  bar.classList.remove('is-visible');
+  bar.setAttribute('aria-hidden', 'true');
+  if (activePopupSurface === 'floating') hidePopupStrip();
+}
+
+function updateFloatingSelectionToolbar(
+  view = activeAdapter?.view,
+  { ignoreRangeChange = false } = {}
+) {
   const bar = document.querySelector('#floating-selection-toolbar');
   if (!bar) return;
   if (!floatingToolbarEnabled) {
+    floatingSelectionToolbarVisibility.reset();
+    floatingToolbarAnchorPoint = null;
     bar.classList.remove('is-visible');
     bar.setAttribute('aria-hidden', 'true');
     if (activePopupSurface === 'floating') hidePopupStrip();
     return;
   }
   const selection = view?.state?.selection?.main;
-  if (!view?.dom?.isConnected || !selection || selection.empty) {
-    bar.classList.remove('is-visible');
-    bar.setAttribute('aria-hidden', 'true');
-    if (activePopupSurface === 'floating') hidePopupStrip();
-    return;
-  }
-
-  let start;
-  let end;
-  try {
-    start = view.coordsAtPos(selection.from);
-    end = view.coordsAtPos(selection.to);
-  } catch {
-    start = null;
-    end = null;
-  }
-  if (!start || !end) {
-    bar.classList.remove('is-visible');
-    bar.setAttribute('aria-hidden', 'true');
-    if (activePopupSurface === 'floating') hidePopupStrip();
-    return;
-  }
-
-  bar.classList.add('is-visible');
-  bar.setAttribute('aria-hidden', 'false');
-  bar.style.removeProperty('width');
-  const rect = bar.getBoundingClientRect();
-  const viewport = window.visualViewport;
-  const position = getFloatingToolbarPosition({
-    start,
-    end,
-    toolbarWidth: rect.width,
-    toolbarHeight: rect.height,
-    viewport: {
-      offsetLeft: viewport?.offsetLeft || 0,
-      offsetTop: viewport?.offsetTop || 0,
-      width: viewport?.width || window.innerWidth,
-      height: viewport?.height || window.innerHeight
-    }
+  const hasSelection = Boolean(selection && !selection.empty);
+  floatingSelectionToolbarVisibility.updateSelection(view, selection, {
+    ignoreRangeChange
   });
+  if (hasSelection) floatingToolbarAnchorPoint = null;
+  if (hasSelection && floatingSelectionToolbarVisibility.isSuppressed()) {
+    hideFloatingSelectionToolbar();
+    return;
+  }
+  const anchorPoint = !hasSelection && floatingToolbarAnchorPoint?.view === view
+    ? floatingToolbarAnchorPoint
+    : null;
+  if (!view?.dom?.isConnected || (!hasSelection && !anchorPoint)) {
+    bar.classList.remove('is-visible');
+    bar.setAttribute('aria-hidden', 'true');
+    if (activePopupSurface === 'floating') hidePopupStrip();
+    return;
+  }
+
+  let position;
+  if (anchorPoint) {
+    bar.classList.add('is-visible');
+    bar.setAttribute('aria-hidden', 'false');
+    bar.style.removeProperty('width');
+    const rect = bar.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    position = getFloatingToolbarPositionAtPoint({
+      point: anchorPoint,
+      toolbarWidth: rect.width,
+      toolbarHeight: rect.height,
+      viewport: {
+        offsetLeft: viewport?.offsetLeft || 0,
+        offsetTop: viewport?.offsetTop || 0,
+        width: viewport?.width || window.innerWidth,
+        height: viewport?.height || window.innerHeight
+      }
+    });
+  } else {
+    let start;
+    let end;
+    try {
+      start = view.coordsAtPos(selection.from);
+      end = view.coordsAtPos(selection.to);
+    } catch {
+      start = null;
+      end = null;
+    }
+    if (!start || !end) {
+      bar.classList.remove('is-visible');
+      bar.setAttribute('aria-hidden', 'true');
+      if (activePopupSurface === 'floating') hidePopupStrip();
+      return;
+    }
+    bar.classList.add('is-visible');
+    bar.setAttribute('aria-hidden', 'false');
+    bar.style.removeProperty('width');
+    const rect = bar.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    position = getFloatingToolbarPosition({
+      start,
+      end,
+      toolbarWidth: rect.width,
+      toolbarHeight: rect.height,
+      viewport: {
+        offsetLeft: viewport?.offsetLeft || 0,
+        offsetTop: viewport?.offsetTop || 0,
+        width: viewport?.width || window.innerWidth,
+        height: viewport?.height || window.innerHeight
+      }
+    });
+  }
   bar.style.width = `${position.width}px`;
   bar.style.left = `${position.left}px`;
   bar.style.top = `${position.top}px`;
@@ -5052,7 +5200,7 @@ function createToolbarActionRegistry() {
       })),
       { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
       { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap, action: () => window.editorBridge.toggleLineWrap() },
-      { id: 'line-numbers', title: 'Toggle Line Numbers', icon: '#', action: () => window.editorBridge.toggleLineNumbers() }
+      { id: 'line-numbers', title: 'Toggle Line Numbers', icon: svgIcons.lineNumbers, action: () => window.editorBridge.toggleLineNumbers() }
     ],
     [
       { id: 'bulletedList', title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
@@ -5065,6 +5213,7 @@ function createToolbarActionRegistry() {
       { id: 'bold', title: 'Bold', icon: svgIcons.bold, command: 'bold', action: () => execCmd('bold') },
       { id: 'italic', title: 'Italic', icon: svgIcons.italic, command: 'italic', action: () => execCmd('italic') },
       { id: 'strikethrough', title: 'Strikethrough', icon: svgIcons.strikethrough, command: 'strikethrough', action: () => execCmd('strikethrough') },
+      { id: 'clearFormatting', title: 'Clear Formatting', icon: svgIcons.clearFormatting, command: 'clearFormatting', action: () => execCmd('clearFormatting') },
       { id: 'underline', title: 'Cycle Underline Style', icon: svgIcons.underline, command: 'underline', action: () => execCmd('underline') },
       { id: 'underlineSolid', title: 'Solid Underline', icon: svgIcons.underlineSolid, command: 'underlineSolid', action: () => execCmd('underlineSolid') },
       { id: 'underlineDotted', title: 'Dotted Underline', icon: svgIcons.underlineDotted, command: 'underlineDotted', action: () => execCmd('underlineDotted') },
@@ -5132,7 +5281,7 @@ function createToolbarActionRegistry() {
     ...item,
     icon: svgIcons[item.icon],
     action: () => {
-      void runToolbarClipboardAction(item.id);
+      void runToolbarClipboardAction(item.id, true);
     }
   }));
   return new Map([...groups.flat(), ...clipboardItems].map(item => [item.id, item]));
@@ -5152,6 +5301,42 @@ function createRuntimeToolbarItemRegistry() {
 
 function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
   const registry = createToolbarActionRegistry();
+  for (const item of [
+    {
+      id: 'moveLineUp',
+      title: 'Move Line Up',
+      icon: svgIcons.moveLineUp,
+      action: () => execCmd('moveLineUp')
+    },
+    {
+      id: 'moveLineDown',
+      title: 'Move Line Down',
+      icon: svgIcons.moveLineDown,
+      action: () => execCmd('moveLineDown')
+    },
+    {
+      id: 'deleteLine',
+      title: 'Delete Line / Paragraph',
+      icon: svgIcons.deleteLine,
+      action: () => execCmd('deleteLine')
+    },
+    {
+      id: 'cycleListType',
+      title: 'Cycle List Types',
+      icon: svgIcons.lists,
+      action: () => execCmd('cycleListType')
+    },
+    {
+      id: 'pasteAsPlainText',
+      title: 'Paste as Plain Text',
+      icon: svgIcons.pasteAsPlainTextClipboard,
+      action: () => {
+        void runToolbarClipboardAction('pasteAsPlainText', true);
+      }
+    }
+  ]) {
+    registry.set(item.id, item);
+  }
   for (const item of BOTTOM_TOOLBAR_ITEMS) {
     if (!toolbarConfig.popupGroups[item.id]) continue;
     registry.set(item.id, {
@@ -5180,7 +5365,6 @@ function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
     { id: 'historyBack', title: 'Back in Navigation History', icon: svgIcons.undo },
     { id: 'historyForward', title: 'Forward in Navigation History', icon: svgIcons.redo },
     { id: 'toggleToolbar', title: 'Show or Hide Toolbar', icon: svgIcons.menu },
-    { id: 'removeHighlight', title: 'Remove Highlight', icon: svgIcons.strikethrough },
     {
       id: 'editToolbarKeyPreferences',
       title: "Edit This Key's Preferences",
@@ -5222,6 +5406,10 @@ function runToolbarGestureAction(
     activeAdapter?.undo();
     return Boolean(activeAdapter);
   }
+  if (actionId === 'redo') {
+    activeAdapter?.redo();
+    return Boolean(activeAdapter);
+  }
   if (actionId === 'historyBack' || actionId === 'historyForward') {
     const direction = actionId === 'historyBack' ? 'back' : 'forward';
     if (!navigateTocHistory(direction) && window.AndroidNative) {
@@ -5233,10 +5421,6 @@ function runToolbarGestureAction(
   }
   if (actionId === 'toggleToolbar') {
     toggleBottomToolbar();
-    return true;
-  }
-  if (actionId === 'removeHighlight') {
-    execCmd('highlight', { value: null });
     return true;
   }
   const customKey = toolbarConfig.customKeys?.[actionId];
@@ -5254,8 +5438,17 @@ function runToolbarGestureAction(
     return true;
   }
   if (typeof item.action !== 'function') return false;
-  item.action();
+  runToolbarActionWithoutRefocusingEditor(() => item.action());
   return true;
+}
+
+function runToolbarActionWithoutRefocusingEditor(action) {
+  toolbarActionExecutionDepth += 1;
+  try {
+    return action();
+  } finally {
+    toolbarActionExecutionDepth -= 1;
+  }
 }
 
 function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
@@ -5295,7 +5488,7 @@ function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
   });
 }
 
-async function runToolbarClipboardAction(actionId) {
+async function runToolbarClipboardAction(actionId, preserveKeyboard = false) {
   const view = activeAdapter?.view;
   if (!view) return false;
 
@@ -5304,7 +5497,7 @@ async function runToolbarClipboardAction(actionId) {
       selection: { anchor: 0, head: view.state.doc.length },
       userEvent: 'select'
     });
-    view.focus();
+    focusEditorAfterCommand(view, { preserveKeyboard });
     return true;
   }
 
@@ -5336,11 +5529,11 @@ async function runToolbarClipboardAction(actionId) {
         userEvent: 'delete.cut'
       });
     }
-    view.focus();
+    focusEditorAfterCommand(view, { preserveKeyboard });
     return true;
   }
 
-  if (actionId === 'paste') {
+  if (actionId === 'paste' || actionId === 'pasteAsPlainText') {
     let text;
     try {
       if (typeof window.AndroidNative?.readClipboard === 'function') {
@@ -5361,7 +5554,7 @@ async function runToolbarClipboardAction(actionId) {
       selection: { anchor: from + text.length },
       userEvent: 'input.paste'
     });
-    view.focus();
+    focusEditorAfterCommand(view, { preserveKeyboard });
     return true;
   }
 
@@ -5371,8 +5564,20 @@ async function runToolbarClipboardAction(actionId) {
 function installPopupToolbarSwipeUp(
   button,
   styleId,
-  toolbarConfigSource = null
+  toolbarConfigSource = null,
+  onHandledGesture = null
 ) {
+  let clickSuppressionToken = 0;
+  const markGestureHandled = () => {
+    const token = ++clickSuppressionToken;
+    button.dataset.toolbarGestureSuppressClick = 'true';
+    onHandledGesture?.();
+    setTimeout(() => {
+      if (clickSuppressionToken === token) {
+        delete button.dataset.toolbarGestureSuppressClick;
+      }
+    }, 250);
+  };
   const getToolbarConfig = () => {
     if (typeof toolbarConfigSource === 'function') return toolbarConfigSource();
     return toolbarConfigSource || getToolbarConfigForElement(button);
@@ -5402,12 +5607,10 @@ function installPopupToolbarSwipeUp(
         if (!pointerStart) return;
         const toolbarConfig = getToolbarConfig();
         const actionId = toolbarConfig.styles[styleId]?.gestureActions?.longPress;
-        longPressHandled = Boolean(
-          actionId && runToolbarGestureAction(actionId, button, new Set(), toolbarConfig)
-        );
-        if (longPressHandled) {
-          button.dataset.toolbarGestureSuppressClick = 'true';
-        }
+        if (!actionId) return;
+        runToolbarGestureAction(actionId, button, new Set(), toolbarConfig);
+        longPressHandled = true;
+        markGestureHandled();
       }, 500);
     }
   }, { capture: true });
@@ -5438,9 +5641,11 @@ function installPopupToolbarSwipeUp(
     const toolbarConfig = getToolbarConfig();
     const style = toolbarConfig.styles[styleId] || {};
     const actionId = getToolbarGestureActionId(style, gestureId);
-    if (!actionId ||
-        !runToolbarGestureAction(actionId, button, new Set(), toolbarConfig)) return;
-    button.dataset.toolbarGestureSuppressClick = 'true';
+    if (actionId) {
+      runToolbarGestureAction(actionId, button, new Set(), toolbarConfig);
+    }
+    if (!shouldSuppressToolbarToggleClick(gestureId, actionId)) return;
+    markGestureHandled();
     event.preventDefault();
   }, { capture: true });
   button.addEventListener('pointercancel', () => {
@@ -6246,34 +6451,51 @@ function insertCustomTable(rows, cols) {
     }
     tableMarkdown += `${rowStr}\n`;
   }
-  cmWrapSelection(view, tableMarkdown, '');
+  cmWrapSelection(view, tableMarkdown, '', { preserveKeyboard: true });
   hidePopupStrip();
 }
 
 function execCmd(cmdName, options) {
   if (activeAdapter && activeAdapter.view) {
     const view = activeAdapter.view;
+    const editorCommandOptions = toolbarActionExecutionDepth > 0
+      ? { preserveKeyboard: true }
+      : {};
     if (
       cmdName === 'bold' ||
       cmdName === 'italic' ||
       cmdName === 'strikethrough' ||
       cmdName === 'code'
     ) {
-      toggleMarkdownFormat(view, cmdName);
+      toggleMarkdownFormat(view, cmdName, editorCommandOptions);
+    } else if (cmdName === 'clearFormatting') {
+      clearMarkdownFormatting(view, editorCommandOptions);
     } else if (cmdName === 'underline') {
-      toggleUnderlineFormat(view, 'cycle');
+      toggleUnderlineFormat(view, 'cycle', editorCommandOptions);
     } else if (cmdName.startsWith('underline')) {
       toggleUnderlineFormat(
         view,
-        cmdName.slice('underline'.length).toLowerCase()
+        cmdName.slice('underline'.length).toLowerCase(),
+        editorCommandOptions
       );
     } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
     else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
     else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
     else if (cmdName === 'todoList') cmToggleLinePrefix(view, '- [ ] ');
-    else if (cmdName === 'indent') cmIndentSelection(view, '  ');
-    else if (cmdName === 'outdent') cmOutdentSelection(view, '  ');
+    else if (cmdName === 'cycleListType') cycleMarkdownListType(view);
+    else if (cmdName === 'indent') {
+      applyMarkdownIndent(view, 'indent', '  ', editorCommandOptions);
+    } else if (cmdName === 'outdent') {
+      applyMarkdownIndent(view, 'outdent', '  ', editorCommandOptions);
+    }
+    else if (cmdName === 'moveLineUp') {
+      if (cmMoveLineUp(view)) focusEditorAfterCommand(view);
+    } else if (cmdName === 'moveLineDown') {
+      if (cmMoveLineDown(view)) focusEditorAfterCommand(view);
+    } else if (cmdName === 'deleteLine') {
+      if (cmDeleteLine(view)) focusEditorAfterCommand(view);
+    }
     else if (cmdName === 'horizontalLine') cmWrapSelection(view, '\n---\n', '');
     else if (cmdName === 'InsertFootnote') openFootnoteInsertionDialog();
     else if (cmdName === 'link') openLinkInsertionDialog();
@@ -6291,7 +6513,7 @@ function execCmd(cmdName, options) {
       else if (val === 'heading6') cmToggleLinePrefix(view, '###### ');
     } else if (cmdName === 'highlight') {
       const val = options ? options.value : null;
-      toggleWmdxColorFormat(view, val);
+      toggleWmdxColorFormat(view, val, editorCommandOptions);
     }
   }
 }
@@ -6315,7 +6537,21 @@ function hidePopupStrip() {
   activePopupGroup = null;
   activeToolbarRootKey = null;
   activePopupSurface = 'bottom';
-  document.querySelectorAll('.grouped-key-btn').forEach(btn => btn.classList.remove('active'));
+  clearToolbarPopupActiveStates();
+}
+
+function clearToolbarPopupActiveStates() {
+  document.querySelectorAll(
+    '#bottom-toolbar .grouped-key-btn.active, #floating-selection-toolbar .grouped-key-btn.active'
+  ).forEach(button => {
+    const keyId = button.dataset.toolbarKey;
+    const toolbarConfig = button.closest('#floating-selection-toolbar')
+      ? floatingToolbarConfig
+      : bottomToolbarConfig;
+    if (keyId && toolbarConfig.popupGroups[keyId]) {
+      button.classList.remove('active');
+    }
+  });
 }
 
 function togglePopupStrip(
@@ -6343,7 +6579,7 @@ function togglePopupStrip(
   strip.classList.remove('hidden');
   activePopupGroup = groupKey;
   activePopupSurface = surface;
-  document.querySelectorAll('.grouped-key-btn').forEach(btn => btn.classList.remove('active'));
+  clearToolbarPopupActiveStates();
   const rootKey = activeToolbarRootKey || groupKey;
   const rootSelector = surface === 'floating'
     ? '#floating-selection-toolbar [data-toolbar-key]'
@@ -7710,12 +7946,20 @@ function toggleBottomToolbar(forceState) {
 function setupFloatingToggle() {
   const toggleBtn = document.querySelector('#floating-toggle-btn');
   if (toggleBtn) {
+    const toggleClickGuard = createToolbarToggleClickGuard();
+    toolbarToggleClickGuards.set(toggleBtn, toggleClickGuard);
     toggleBtn.dataset.toolbarStyleId = TOOLBAR_TOGGLE_STYLE_ID;
     // Delegate from the body so the toggle and dynamically recreated toolbar
     // keys use the same capture-phase tap-action path.
     installToolbarTapActions(document.body);
-    installPopupToolbarSwipeUp(toggleBtn, TOOLBAR_TOGGLE_STYLE_ID);
+    installPopupToolbarSwipeUp(
+      toggleBtn,
+      TOOLBAR_TOGGLE_STYLE_ID,
+      null,
+      () => toggleClickGuard.suppressNextClick()
+    );
     toggleBtn.onclick = () => {
+      if (toggleClickGuard.consumeSuppressedClick()) return;
       toggleBottomToolbar();
     };
   }
@@ -7744,6 +7988,7 @@ function setupKeyboardShortcuts() {
   }, true);
 
   window.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented) return;
     const k = (e.key || '').toLowerCase();
     const c = (e.code || '').toLowerCase();
 
@@ -7751,7 +7996,24 @@ function setupKeyboardShortcuts() {
       return;
     }
 
-    if (k === 'undo' || k === 'redo' || c === 'undo' || c === 'redo' || (e.ctrlKey && (k === 'z' || k === 'y'))) {
+    const focusedFormField = e.target?.closest?.('input, textarea, select');
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.undo)) {
+      e.preventDefault();
+      activeAdapter?.undo();
+      return;
+    }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.redo)) {
+      e.preventDefault();
+      activeAdapter?.redo();
+      return;
+    }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.paste_as_plain_text)) {
+      e.preventDefault();
+      void runToolbarClipboardAction('pasteAsPlainText');
+      return;
+    }
+
+    if (k === 'undo' || k === 'redo' || c === 'undo' || c === 'redo') {
       return;
     }
 
@@ -7770,6 +8032,9 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as_textpack)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack');
+    } else if (parseAndMatchHotkey(e, customHotkeys.save_as_mdzip)) {
+      e.preventDefault();
+      window.AndroidNative && window.AndroidNative.onNativeAction('save_as_mdzip');
     } else if (parseAndMatchHotkey(e, customHotkeys.export)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('export');
@@ -7812,17 +8077,30 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.underlineDouble)) { e.preventDefault(); execCmd('underlineDouble'); }
     else if (parseAndMatchHotkey(e, customHotkeys.underlineWavy)) { e.preventDefault(); execCmd('underlineWavy'); }
     else if (parseAndMatchHotkey(e, customHotkeys.strikethrough)) { e.preventDefault(); execCmd('strikethrough'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.clearFormatting)) { e.preventDefault(); execCmd('clearFormatting'); }
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
     else if (parseAndMatchHotkey(e, customHotkeys.footnote)) { e.preventDefault(); execCmd('InsertFootnote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.callout)) { e.preventDefault(); execCmd('callout'); }
     else if (parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.codeBlock)) { e.preventDefault(); execCmd('codeBlock'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.moveLineUp)) { e.preventDefault(); execCmd('moveLineUp'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.moveLineDown)) { e.preventDefault(); execCmd('moveLineDown'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.deleteLine)) { e.preventDefault(); execCmd('deleteLine'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.cycleListType)) { e.preventDefault(); execCmd('cycleListType'); }
     else if (parseAndMatchHotkey(e, customHotkeys.bulletedList)) { e.preventDefault(); execCmd('bulletedList'); }
     else if (parseAndMatchHotkey(e, customHotkeys.numberedList)) { e.preventDefault(); execCmd('numberedList'); }
     else if (parseAndMatchHotkey(e, customHotkeys.todoList)) { e.preventDefault(); execCmd('todoList'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.indent)) { e.preventDefault(); execCmd('indent'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.outdent)) { e.preventDefault(); execCmd('outdent'); }
+    else if (parseAndMatchHotkey(e, customHotkeys.indent)) {
+      const tabInEditor = e.key === 'Tab' &&
+        activeAdapter?.view?.contentDOM?.contains(e.target);
+      if (!tabInEditor) { e.preventDefault(); execCmd('indent'); }
+    }
+    else if (parseAndMatchHotkey(e, customHotkeys.outdent)) {
+      const tabInEditor = e.key === 'Tab' &&
+        activeAdapter?.view?.contentDOM?.contains(e.target);
+      if (!tabInEditor) { e.preventDefault(); execCmd('outdent'); }
+    }
     else if (parseAndMatchHotkey(e, customHotkeys.horizontalLine)) { e.preventDefault(); execCmd('horizontalLine'); }
 
     // Headings shortcuts
@@ -7889,7 +8167,9 @@ window.editorBridge = {
     setupGroupedControlBar();
   },
   applyFloatingToolbarConfig: function(rawConfig) {
-    const nextConfig = normalizeBottomToolbarConfig(rawConfig);
+    const nextConfig = normalizeBottomToolbarConfig(
+      rawConfig ?? DEFAULT_FLOATING_TOOLBAR_CONFIG
+    );
     if (JSON.stringify(nextConfig) === JSON.stringify(floatingToolbarConfig)) return;
     floatingToolbarConfig = nextConfig;
     hidePopupStrip();
@@ -7897,7 +8177,9 @@ window.editorBridge = {
   },
   applyToolbarConfigs: function(bottomRawConfig, floatingRawConfig) {
     const nextBottomConfig = normalizeBottomToolbarConfig(bottomRawConfig);
-    const nextFloatingConfig = normalizeBottomToolbarConfig(floatingRawConfig);
+    const nextFloatingConfig = normalizeBottomToolbarConfig(
+      floatingRawConfig ?? DEFAULT_FLOATING_TOOLBAR_CONFIG
+    );
     const bottomChanged =
       JSON.stringify(nextBottomConfig) !== JSON.stringify(bottomToolbarConfig);
     const floatingChanged =
@@ -8446,7 +8728,15 @@ window.editorBridge = {
     setCssVar('--hr-gradient-offset', prefs.pref_hr_gradient_offset_percent ?? 25, '%');
 
     // Toolbar
-    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled === true;
+    const floatingToolbarHideDelayTenths = Number(
+      prefs.pref_floating_toolbar_hide_delay_tenths ?? 10
+    );
+    floatingSelectionToolbarVisibility.setDelayMs(
+      Number.isFinite(floatingToolbarHideDelayTenths)
+        ? Math.max(0, Math.min(50, floatingToolbarHideDelayTenths)) * 100
+        : 1000
+    );
+    floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled !== false;
     if (!floatingToolbarEnabled && activePopupSurface === 'floating') {
       hidePopupStrip();
     }
@@ -8461,7 +8751,7 @@ window.editorBridge = {
       }
     }
     const floatingConfigPreference = prefs.pref_toolbar_floating_config ??
-      prefs.pref_toolbar_bottom_config;
+      DEFAULT_FLOATING_TOOLBAR_CONFIG;
     if (floatingConfigPreference !== undefined) {
       const nextFloatingConfig = normalizeBottomToolbarConfig(
         floatingConfigPreference
@@ -8545,9 +8835,15 @@ window.editorBridge = {
       Number.isFinite(toolbarPadding) ? Math.max(0, Math.min(16, toolbarPadding)) : 4,
       'px'
     );
-    setCssVar('--toolbar-floating-bg', androidArgbToCss(prefs.pref_toolbar_floating_bg_color));
+    setCssVar(
+      '--toolbar-floating-bg',
+      androidArgbToCss(prefs.pref_toolbar_floating_bg_color ?? '#222222')
+    );
     setCssVar('--toolbar-floating-icon-color', androidArgbToCss(prefs.pref_toolbar_floating_icon_color));
-    setCssVar('--toolbar-floating-active-bg', androidArgbToCss(prefs.pref_toolbar_floating_active_key_bg_color));
+    setCssVar(
+      '--toolbar-floating-active-bg',
+      androidArgbToCss(prefs.pref_toolbar_floating_active_key_bg_color ?? '#000000')
+    );
     setCssVar('--toolbar-floating-label-color', androidArgbToCss(prefs.pref_toolbar_floating_label_color));
     setCssVar(
       '--toolbar-floating-label-display',
@@ -8565,10 +8861,10 @@ window.editorBridge = {
       Number.isFinite(floatingLabelSize) ? Math.max(6, Math.min(16, floatingLabelSize)) : 8,
       'px'
     );
-    const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 4);
+    const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 10);
     setCssVar(
       '--toolbar-floating-padding',
-      Number.isFinite(floatingPadding) ? Math.max(0, Math.min(16, floatingPadding)) : 4,
+      Number.isFinite(floatingPadding) ? Math.max(0, Math.min(16, floatingPadding)) : 10,
       'px'
     );
     const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width ?? 48);
@@ -8698,6 +8994,10 @@ window.editorBridge = {
     setCssVar('--findreplace-current-match-color', androidArgbToCss(prefs.pref_findreplace_current_match_color));
 
     const findreplaceButtons = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
+    const defaultFindReplaceButtonWidths = {
+      prev: 34, next: 34, highlight: 32, regex: 32, close: 34,
+      replace_one: 34, replace_all: 34, case: 34, word: 34
+    };
     findreplaceButtons.forEach(bId => {
       const bKey = bId.replace(/-/g, '_');
       setCssVar(`--findreplace-${bId}-bg`, androidArgbToCss(prefs[`pref_findreplace_btn_${bKey}_bg`] || prefs.pref_findreplace_btn_bg));
@@ -8708,7 +9008,8 @@ window.editorBridge = {
       const buttonWidth = Number(
         prefs[`pref_findreplace_btn_${bKey}_width`] ??
         prefs.pref_findreplace_btn_width ??
-        28
+        defaultFindReplaceButtonWidths[bKey] ??
+        34
       );
       const safeButtonWidth = Number.isFinite(buttonWidth)
         ? Math.max(20, Math.min(64, buttonWidth))
@@ -8746,7 +9047,7 @@ window.editorBridge = {
     const applyFindReplaceButtonLayout = (prefs) => {
       let rawRow1 = prefs.pref_findreplace_button_row1;
       let rawRow2 = prefs.pref_findreplace_button_row2;
-      const hiddenRaw = prefs.pref_findreplace_hidden_buttons || '';
+      const hiddenRaw = prefs.pref_findreplace_hidden_buttons ?? 'highlight,regex';
 
       const knownIds = ['prev', 'next', 'highlight', 'regex', 'close', 'replace-one', 'replace-all', 'case', 'word'];
       const defaultRow1 = ['prev', 'next', 'highlight', 'regex', 'close'];

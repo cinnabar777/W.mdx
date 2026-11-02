@@ -30,3 +30,26 @@ export function getFloatingToolbarPosition({
       : Math.max(topLimit, Math.min(above, bottomLimit - toolbarHeight));
   return { left, top, width };
 }
+
+export function getFloatingToolbarPositionAtPoint({
+  point,
+  toolbarWidth,
+  toolbarHeight,
+  viewport,
+  margin = 8
+}) {
+  const anchor = {
+    left: point.x,
+    right: point.x,
+    top: point.y,
+    bottom: point.y
+  };
+  return getFloatingToolbarPosition({
+    start: anchor,
+    end: anchor,
+    toolbarWidth,
+    toolbarHeight,
+    viewport,
+    margin
+  });
+}

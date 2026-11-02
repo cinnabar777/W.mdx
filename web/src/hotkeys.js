@@ -24,6 +24,8 @@ function matchSingleHotkey(event, shortcutString) {
   if (keyPart === 'tab' && (keyLower === 'tab' || codeLower === 'tab')) return true;
   if (keyPart === 'left' && (keyLower === 'arrowleft' || codeLower === 'arrowleft')) return true;
   if (keyPart === 'right' && (keyLower === 'arrowright' || codeLower === 'arrowright')) return true;
+  if (keyPart === 'up' && (keyLower === 'arrowup' || codeLower === 'arrowup')) return true;
+  if (keyPart === 'down' && (keyLower === 'arrowdown' || codeLower === 'arrowdown')) return true;
   return false;
 }
 
