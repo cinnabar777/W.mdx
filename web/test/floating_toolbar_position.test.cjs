@@ -76,22 +76,14 @@ test('floating toolbar can anchor to a long-press point without a selection', ()
   assert.ok(position.left + position.width <= 404);
 });
 
-test('floating toolbar only delays visibility for a real selection drag', () => {
+test('floating toolbar hides from changed nonempty selection ranges only', () => {
   const visibility = readWeb('src/floatingSelectionToolbarVisibility.js');
   const main = readWeb('src/main.js');
 
-  assert.match(visibility, /dragThresholdPx = 8/);
-  assert.match(
-    visibility,
-    /if \(pointerDragging && pointerSelectionChanged && currentRange\) suppress\(\)/
-  );
-  assert.doesNotMatch(
-    visibility.match(/function pointerDown\(event = \{\}\) \{[\s\S]*?\n  \}/)?.[0] || '',
-    /suppress\(\)/
-  );
-  assert.match(visibility, /else if \(releasePending\)[\s\S]*?scheduleResume\(\)/);
-  assert.match(main, /floatingSelectionToolbarVisibility\.pointerMove\(event\)/);
-  assert.doesNotMatch(main, /suppressOnChange:\s*toolbarActionExecutionDepth/);
+  assert.match(visibility, /existingSelectionChanged\s*=\s*[\s\S]*?currentRange !== null[\s\S]*?nextRange !== null/);
+  assert.match(visibility, /if \(existingSelectionChanged && !ignoreRangeChange\)/);
+  assert.match(main, /ignoreRangeChange: update\.docChanged \|\| toolbarActionExecutionDepth > 0/);
+  assert.doesNotMatch(main, /installFloatingSelectionToolbarPointerTracking/);
 });
 
 test('closing a popup preserves active syntax states on toolbar keys', () => {
@@ -136,16 +128,18 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.equal((main.match(/command: item\.command/g) || []).length, 2,
     'both bottom and floating toolbar definitions preserve syntax commands');
   assert.match(main, /applyFloatingToolbarConfig: function\(rawConfig\)/);
-  assert.match(main, /updateFloatingSelectionToolbar\(update\.view\)/);
-  assert.match(main, /floatingSelectionToolbarVisibility\.updateSelection\(view, selection\)/);
-  assert.match(main, /installFloatingSelectionToolbarPointerTracking\(\)/);
+  assert.match(
+    main,
+    /updateFloatingSelectionToolbar\(update\.view,\s*\{\s*ignoreRangeChange: update\.docChanged \|\| toolbarActionExecutionDepth > 0/
+  );
+  assert.match(
+    main,
+    /floatingSelectionToolbarVisibility\.updateSelection\(view, selection, \{\s*ignoreRangeChange\s*\}\)/
+  );
+  assert.doesNotMatch(main, /installFloatingSelectionToolbarPointerTracking\(\)/);
   assert.match(selectionVisibility, /delayMs = 1000/);
-  assert.match(selectionVisibility, /function pointerDown\(event = \{\}\)/);
-  assert.match(selectionVisibility, /function pointerUp\(event = \{\}\)/);
   assert.match(selectionVisibility, /setDelayMs\(nextDelayMs\)/);
-  assert.match(editorWebView, /override fun dispatchTouchEvent\(event: MotionEvent\): Boolean/);
-  assert.match(editorWebView, /sendSelectionGestureToEditor\("move"/);
-  assert.match(main, /onNativeSelectionTouch: function\(action, x, y\)/);
+  assert.doesNotMatch(editorWebView, /dispatchTouchEvent\(event: MotionEvent\)/);
   assert.match(cursorPrefs, /app:key="pref_floating_toolbar_hide_delay_seconds"[\s\S]*?app:defaultValue="1"/);
   assert.match(resetPreferences, /key == "pref_floating_toolbar_hide_delay_seconds" -> 1/);
   assert.match(

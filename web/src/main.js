@@ -4136,7 +4136,9 @@ class CodeMirrorAdapter {
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             updateTableDocumentSelection(update.view);
-            updateFloatingSelectionToolbar(update.view);
+            updateFloatingSelectionToolbar(update.view, {
+              ignoreRangeChange: update.docChanged || toolbarActionExecutionDepth > 0
+            });
           }
           if (update.selectionSet || update.docChanged || update.viewportChanged) {
             scheduleNativeCursorAnchor(update.view);
@@ -4963,7 +4965,6 @@ function setupFloatingSelectionToolbar() {
     container.appendChild(bar);
   }
   installToolbarTapActions(bar);
-  installFloatingSelectionToolbarPointerTracking();
 
   const registry = createRuntimeToolbarItemRegistryForConfig(floatingToolbarConfig);
   const definitions = Object.fromEntries(
@@ -5028,26 +5029,6 @@ function setupFloatingSelectionToolbar() {
   updateFloatingSelectionToolbar();
 }
 
-function installFloatingSelectionToolbarPointerTracking() {
-  if (document.__wmdxFloatingSelectionPointerTrackingInstalled) return;
-  const isEditorTarget = target => {
-    const element = target?.nodeType === 1 ? target : target?.parentElement;
-    return Boolean(element && activeAdapter?.view?.dom?.contains(element));
-  };
-  document.addEventListener('pointerdown', event => {
-    if (isEditorTarget(event.target)) {
-      floatingSelectionToolbarVisibility.pointerDown(event);
-    }
-  }, true);
-  document.addEventListener('pointermove', event => {
-    floatingSelectionToolbarVisibility.pointerMove(event);
-  }, true);
-  const finishPointer = event => floatingSelectionToolbarVisibility.pointerUp(event);
-  document.addEventListener('pointerup', finishPointer, true);
-  document.addEventListener('pointercancel', finishPointer, true);
-  document.__wmdxFloatingSelectionPointerTrackingInstalled = true;
-}
-
 function scheduleFloatingToolbarPosition() {
   if (floatingToolbarSelectionFrame) return;
   floatingToolbarSelectionFrame = window.requestAnimationFrame(() => {
@@ -5073,7 +5054,10 @@ function hideFloatingSelectionToolbar() {
   if (activePopupSurface === 'floating') hidePopupStrip();
 }
 
-function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
+function updateFloatingSelectionToolbar(
+  view = activeAdapter?.view,
+  { ignoreRangeChange = false } = {}
+) {
   const bar = document.querySelector('#floating-selection-toolbar');
   if (!bar) return;
   if (!floatingToolbarEnabled) {
@@ -5086,7 +5070,9 @@ function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
   }
   const selection = view?.state?.selection?.main;
   const hasSelection = Boolean(selection && !selection.empty);
-  floatingSelectionToolbarVisibility.updateSelection(view, selection);
+  floatingSelectionToolbarVisibility.updateSelection(view, selection, {
+    ignoreRangeChange
+  });
   if (hasSelection) floatingToolbarAnchorPoint = null;
   if (hasSelection && floatingSelectionToolbarVisibility.isSuppressed()) {
     hideFloatingSelectionToolbar();
@@ -9228,21 +9214,6 @@ window.editorBridge = {
   getSelectionState: function() {
     if (activeAdapter) return activeAdapter.getSelectionState();
     return { path: [], offset: 0 };
-  },
-  onNativeSelectionTouch: function(action, x, y) {
-    const devicePixelRatio = Number(window.devicePixelRatio) || 1;
-    const event = {
-      clientX: Number(x) / devicePixelRatio,
-      clientY: Number(y) / devicePixelRatio,
-      pointerType: 'touch'
-    };
-    if (action === 'down') {
-      floatingSelectionToolbarVisibility.pointerDown(event);
-    } else if (action === 'move') {
-      floatingSelectionToolbarVisibility.pointerMove(event);
-    } else {
-      floatingSelectionToolbarVisibility.pointerUp(event);
-    }
   },
   setSelectionState: function(stateJson, scrollTop) {
     if (activeAdapter) activeAdapter.setSelectionState(stateJson, scrollTop);
