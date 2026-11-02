@@ -1088,7 +1088,8 @@ class ImagePreviewWidget extends WidgetType {
     wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 6px 0; display: block; box-sizing: border-box; touch-action: manipulation; user-select: none; -webkit-user-select: none;`;
 
     const img = document.createElement('img');
-    img.src = this.url;
+    const textPackAssetUrl = window.AndroidNative?.resolveTextPackAssetUrl?.(this.url);
+    img.src = textPackAssetUrl || this.url;
     img.alt = this.alt;
     img.draggable = false;
     img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;

@@ -828,3 +828,19 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(toolbarIconsSource, /saveTabs:/);
 });
 
+test('TextPack image previews resolve paths from the active package assets', () => {
+  assert.match(
+    mainActivitySource,
+    /url\.path\?\.startsWith\("\/textpack-assets\/"\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /fun resolveTextPackAssetUrl\(relativeLink: String\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /TextPackManager\.resolveAssetFile\(session, archivePath\)/
+  );
+  assert.match(source, /resolveTextPackAssetUrl\?\.\(this\.url\)/);
+});
+

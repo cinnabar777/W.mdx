@@ -96,7 +96,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var currentToast: Toast? = null
     private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var leftPanelSearchFuture: Future<*>? = null
-    private var currentTextPackSession: TextPackSession? = null
+    @Volatile private var currentTextPackSession: TextPackSession? = null
     @Volatile private var currentMdzipSession: MdzipSession? = null
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
@@ -783,6 +783,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 request: WebResourceRequest?
             ): WebResourceResponse? {
                 val url = request?.url ?: return null
+                if (url.path?.startsWith("/textpack-assets/") == true && request != null) {
+                    return interceptTextPackAssetRequest(request)
+                }
                 if (url.path?.startsWith("/mdzip-assets/") == true && request != null) {
                     return interceptMdzipAssetRequest(request)
                 }
@@ -2336,7 +2339,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     currentTextPackSession = null
                     MdzipManager.save(this, session, markdownText, uri)
                 } else if (isTextPackTarget) {
-                    val session = currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
+                    val session = currentTextPackSession ?: if (
+                        requestedAsTextPack == true && uri != currentFileUri
+                    ) {
+                        TextPackManager.createTextPackSession(this)
+                    } else {
+                        TextPackManager.openTextPack(this, uri)
+                    }
                     currentTextPackSession = session
                     currentMdzipSession = null
                     TextPackManager.saveTextPack(this, session, markdownText, uri)
@@ -2413,6 +2422,56 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+
+    private fun interceptTextPackAssetRequest(request: WebResourceRequest): WebResourceResponse {
+        val segments = request.url.pathSegments
+        val session = currentTextPackSession
+        if (
+            session == null ||
+            segments.size < 4 ||
+            segments[0] != "textpack-assets" ||
+            segments[1] != session.sessionDir.name
+        ) {
+            return textPackAssetError(404, "Not Found")
+        }
+
+        val archivePath = request.url.encodedPath
+            ?.split("/")
+            ?.drop(3)
+            ?.joinToString("/")
+            .orEmpty()
+        if (archivePath.isBlank()) return textPackAssetError(404, "Not Found")
+        val file = TextPackManager.resolveAssetFile(session, archivePath)
+            ?: return textPackAssetError(404, "Not Found")
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(file.extension.lowercase())
+            ?: runCatching {
+                FileInputStream(file).use { java.net.URLConnection.guessContentTypeFromStream(it) }
+            }.getOrNull()
+            ?: "application/octet-stream"
+        val fileLength = file.length()
+        val headers = mapOf(
+            "Cache-Control" to "no-store",
+            "Content-Length" to fileLength.toString(),
+            "X-Content-Type-Options" to "nosniff"
+        )
+        val body = if (request.method.equals("HEAD", ignoreCase = true)) {
+            ByteArrayInputStream(ByteArray(0))
+        } else {
+            FileInputStream(file)
+        }
+        return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
+    }
+
+    private fun textPackAssetError(statusCode: Int, reasonPhrase: String): WebResourceResponse =
+        WebResourceResponse(
+            "text/plain",
+            "UTF-8",
+            statusCode,
+            reasonPhrase,
+            emptyMap(),
+            ByteArrayInputStream(ByteArray(0))
+        )
 
     private fun interceptMdzipAssetRequest(request: WebResourceRequest): WebResourceResponse {
         val segments = request.url.pathSegments
@@ -2889,7 +2948,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val session = currentTextPackSession
                 if (session != null) {
                     val originalName = getFileNameFromUri(uri)
-                    val assetPath = TextPackManager.addAssetImage(session, inputStream, originalName)
+                    val mimeType = contentResolver.getType(uri)
+                    val assetPath = TextPackManager.addAssetImage(
+                        session,
+                        inputStream,
+                        originalName,
+                        mimeType
+                    )
                     val markdownImageTag = "![Image]($assetPath)"
                     val escapedTag = JSONObjectWrapper.quote(markdownImageTag)
                     webView.evaluateJavascript("window.editorBridge.insertImage($escapedTag);", null)
@@ -3951,6 +4016,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return runCatching {
                 MdzipManager.audioUrl(session, relativeLink)
                     ?: MdzipManager.videoUrl(session, relativeLink)
+            }
+                .getOrNull()
+                .orEmpty()
+        }
+
+        @JavascriptInterface
+        fun resolveTextPackAssetUrl(relativeLink: String): String {
+            val session = currentTextPackSession ?: return ""
+            return runCatching {
+                TextPackManager.previewAssetUrl(session, relativeLink)
             }
                 .getOrNull()
                 .orEmpty()
