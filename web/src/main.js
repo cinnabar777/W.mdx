@@ -155,6 +155,7 @@ let customHotkeys = {
   save_as: 'ctrl+shift+s',
   save_tabs: '',
   paste_as_plain_text: 'ctrl+shift+v',
+  attachment: 'ctrl+shift+a',
   save_as_textpack: 'ctrl+shift+alt+s',
   save_as_mdzip: 'ctrl+shift+alt+m',
   export: 'ctrl+shift+e',
@@ -4952,7 +4953,7 @@ function setupGroupedControlBar() {
         { id: 'image', icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
         { id: 'audio', icon: svgIcons.audio, title: 'Insert Audio', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('audio') },
         { id: 'video', icon: svgIcons.video, title: 'Insert Video', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('video') },
-        { id: 'attachment', icon: svgIcons.link, title: 'Attach File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('attachment') },
+        { id: 'attachment', icon: svgIcons.attachment, title: 'Attach File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('attachment') },
         { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
@@ -5317,7 +5318,7 @@ function createToolbarActionRegistry() {
       { id: 'image', title: 'Insert Image', icon: svgIcons.image, action: () => window.AndroidNative?.onNativeAction('image') },
       { id: 'audio', title: 'Insert Audio', icon: svgIcons.audio, action: () => window.AndroidNative?.onNativeAction('audio') },
       { id: 'video', title: 'Insert Video', icon: svgIcons.video, action: () => window.AndroidNative?.onNativeAction('video') },
-      { id: 'attachment', title: 'Attach File', icon: svgIcons.link, action: () => window.AndroidNative?.onNativeAction('attachment') },
+      { id: 'attachment', title: 'Attach File', icon: svgIcons.attachment, action: () => window.AndroidNative?.onNativeAction('attachment') },
       { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
       { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
@@ -8077,6 +8078,11 @@ function setupKeyboardShortcuts() {
     if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.paste_as_plain_text)) {
       e.preventDefault();
       void runToolbarClipboardAction('pasteAsPlainText');
+      return;
+    }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.attachment)) {
+      e.preventDefault();
+      window.AndroidNative?.onNativeAction('attachment');
       return;
     }
 

@@ -211,7 +211,7 @@ test('version 5 toolbar layouts add Auto Heading to the heading actions', async 
   assert.ok(config.holding.includes('heading3'));
 });
 
-test('version 7 toolbar layouts add Video to the Insert actions', async () => {
+test('version 7 toolbar layouts add newer actions to the Insert group', async () => {
   const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
   const config = normalizeBottomToolbarConfig({
     version: 7,
@@ -224,7 +224,27 @@ test('version 7 toolbar layouts add Video to the Insert actions', async () => {
     }
   });
 
-  assert.deepEqual(config.popupGroups.insert.order, ['image', 'audio', 'link', 'video']);
+  assert.deepEqual(config.popupGroups.insert.order, [
+    'image', 'audio', 'link', 'video', 'attachment'
+  ]);
+});
+
+test('version 9 toolbar layouts add Attach File to the Insert actions', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 9,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      insert: {
+        order: ['image', 'audio', 'video', 'link'],
+        hidden: []
+      }
+    }
+  });
+
+  assert.deepEqual(config.popupGroups.insert.order, [
+    'image', 'audio', 'video', 'link', 'attachment'
+  ]);
 });
 
 test('popup actions can be reordered and removed from their former group into the shared holding area', async () => {

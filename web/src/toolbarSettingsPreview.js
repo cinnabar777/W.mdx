@@ -168,6 +168,7 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'image', title: 'Insert Image', icon: svgIcons.image },
     { id: 'audio', title: 'Insert Audio', icon: svgIcons.audio },
     { id: 'video', title: 'Insert Video', icon: svgIcons.video },
+    { id: 'attachment', title: 'Attach File', icon: svgIcons.attachment },
     { id: 'link', title: 'Insert Link', icon: svgIcons.link },
     { id: 'callout', title: 'Insert Callout', icon: calloutIcon },
     { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode },

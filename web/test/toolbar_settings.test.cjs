@@ -74,6 +74,12 @@ test('Save as MDZip is available in the toolbar action picker', () => {
   assert.match(toolbarConfigSource, /'saveAsMdzip'/);
 });
 
+test('Attach File is available as a toolbar action with its own icon', () => {
+  assert.match(settingsSource, /id: 'attachment', title: 'Attach File', icon: svgIcons\.attachment/);
+  assert.match(toolbarConfigSource, /'attachment'/);
+  assert.match(mainSource, /customHotkeys\.attachment/);
+});
+
 test('bottom toolbar preview uses the same renderer, icon source, and toolbar stylesheet as the editor', () => {
   assert.match(settingsSource, /renderBottomToolbarKeys/);
   assert.match(settingsSource, /from '\.\/toolbarIcons\.js'/);

@@ -1337,6 +1337,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
             "save_tabs" to prefs.getString("pref_hotkey_save_tabs", ""),
             "paste_as_plain_text" to prefs.getString("pref_hotkey_paste_as_plain_text", "ctrl+shift+v"),
+            "attachment" to prefs.getString("pref_hotkey_attachment", "ctrl+shift+a"),
             "save_as_textpack" to prefs.getString("pref_hotkey_save_as_textpack", "ctrl+shift+alt+s"),
             "save_as_mdzip" to prefs.getString("pref_hotkey_save_as_mdzip", "ctrl+shift+alt+m"),
             "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
