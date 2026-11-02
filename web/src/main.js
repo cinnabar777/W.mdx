@@ -145,7 +145,7 @@ let customHotkeys = {
   save: 'ctrl+s',
   save_as: 'ctrl+shift+s',
   save_tabs: '',
-  pasteAsPlainText: 'ctrl+shift+v',
+  paste_as_plain_text: 'ctrl+shift+v',
   save_as_textpack: 'ctrl+shift+alt+s',
   save_as_mdzip: 'ctrl+shift+alt+m',
   export: 'ctrl+shift+e',
@@ -7921,7 +7921,7 @@ function setupKeyboardShortcuts() {
       activeAdapter?.redo();
       return;
     }
-    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.pasteAsPlainText)) {
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.paste_as_plain_text)) {
       e.preventDefault();
       void runToolbarClipboardAction('pasteAsPlainText');
       return;
