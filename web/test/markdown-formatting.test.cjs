@@ -77,6 +77,34 @@ test('the same inline toolbar action toggles formatting instead of nesting it', 
   assert.equal(view.state.doc.toString(), 'bold text and plain');
 });
 
+test('toolbar formatting can preserve a closed keyboard without refocusing the editor', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { toggleMarkdownFormat } = await import('../src/markdownFormatting.js');
+  const state = EditorState.create({
+    doc: '**bold text**',
+    selection: EditorSelection.range(2, 11),
+    extensions: [markdown()]
+  });
+  let focusCount = 0;
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {
+      focusCount += 1;
+    }
+  };
+
+  assert.equal(toggleMarkdownFormat(view, 'bold', { preserveKeyboard: true }), true);
+  assert.equal(focusCount, 0);
+  assert.equal(view.state.doc.toString(), 'bold text');
+
+  assert.equal(toggleMarkdownFormat(view, 'bold'), true);
+  assert.equal(focusCount, 1, 'non-toolbar formatting retains its existing focus behavior');
+});
+
 test('clear formatting removes nested Markdown and WMDX syntax in one undoable edit', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');

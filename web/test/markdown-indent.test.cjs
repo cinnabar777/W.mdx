@@ -173,8 +173,8 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
     /Prec\.highest\(\[tableNavigationKeymap,\s*markdownIndentKeymap\]\)/,
     'table navigation and list indentation must run before CodeMirror default Tab behavior'
   );
-  assert.match(main, /cmdName === 'indent'\) applyMarkdownIndent\(view, 'indent', '  '\)/);
-  assert.match(main, /cmdName === 'outdent'\) applyMarkdownIndent\(view, 'outdent', '  '\)/);
+  assert.match(main, /cmdName === 'indent'\) \{\s*applyMarkdownIndent\(view, 'indent', '  ', editorCommandOptions\)/);
+  assert.match(main, /cmdName === 'outdent'\) \{\s*applyMarkdownIndent\(view, 'outdent', '  ', editorCommandOptions\)/);
   assert.match(
     main,
     /const tabInEditor = e\.key === 'Tab' &&\s*activeAdapter\?\.view\?\.contentDOM\?\.contains\(e\.target\)/,
@@ -215,4 +215,11 @@ test('the shared indent command dispatches mapped changes and consumes an empty 
   }]);
   assert.equal(dispatches[0].selection.assoc, 1);
   assert.equal(focused, true);
+
+  focused = false;
+  assert.equal(
+    applyMarkdownIndent(view, 'outdent', '  ', { preserveKeyboard: true }),
+    true
+  );
+  assert.equal(focused, false, 'toolbar indentation does not reopen a closed keyboard');
 });

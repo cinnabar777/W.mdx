@@ -128,6 +128,7 @@ let isLineWrapEnabled = true;
 let activePopupGroup = null;
 let activeToolbarRootKey = null;
 let activePopupSurface = 'bottom';
+let toolbarActionExecutionDepth = 0;
 let bottomToolbarConfig = normalizeBottomToolbarConfig(null);
 let floatingToolbarConfig = normalizeBottomToolbarConfig(DEFAULT_FLOATING_TOOLBAR_CONFIG);
 const toolbarToggleClickGuards = new WeakMap();
@@ -2449,10 +2450,10 @@ function cmToggleLinePrefix(view, prefix) {
       selection: { anchor: line.from + prefix.length, head: line.from + prefix.length }
     });
   }
-  view.focus();
+  focusEditorAfterCommand(view);
 }
 
-function cmWrapSelection(view, before, after = before) {
+function cmWrapSelection(view, before, after = before, options = {}) {
   if (!view) return;
   const sel = view.state.selection.main;
   let selectedText = view.state.doc.sliceString(sel.from, sel.to);
@@ -2464,7 +2465,7 @@ function cmWrapSelection(view, before, after = before) {
       changes: { from: sel.from, to: sel.to, insert: unwrapped },
       selection: { anchor: sel.from, head: sel.from + unwrapped.length }
     });
-    view.focus();
+    focusEditorAfterCommand(view, options);
     return;
   }
 
@@ -2487,7 +2488,12 @@ function cmWrapSelection(view, before, after = before) {
     changes: { from: sel.from, to: sel.to, insert: replacement },
     selection: { anchor: sel.from + startOffset + before.length, head: sel.from + startOffset + before.length + coreText.length }
   });
-  view.focus();
+  focusEditorAfterCommand(view, options);
+}
+
+function focusEditorAfterCommand(view, options = {}) {
+  if (toolbarActionExecutionDepth > 0 || options.preserveKeyboard === true) return;
+  view?.focus();
 }
 
 export function isEscapedPipe(text, index) {
@@ -4907,7 +4913,7 @@ function setupGroupedControlBar() {
       button.onclick = event => {
         event.preventDefault();
         event.stopPropagation();
-        action.action?.();
+        runToolbarActionWithoutRefocusingEditor(() => action.action?.());
       };
     }
   }
@@ -5225,7 +5231,7 @@ function createToolbarActionRegistry() {
     ...item,
     icon: svgIcons[item.icon],
     action: () => {
-      void runToolbarClipboardAction(item.id);
+      void runToolbarClipboardAction(item.id, true);
     }
   }));
   return new Map([...groups.flat(), ...clipboardItems].map(item => [item.id, item]));
@@ -5275,7 +5281,7 @@ function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
       title: 'Paste as Plain Text',
       icon: svgIcons.pasteAsPlainTextClipboard,
       action: () => {
-        void runToolbarClipboardAction('pasteAsPlainText');
+        void runToolbarClipboardAction('pasteAsPlainText', true);
       }
     }
   ]) {
@@ -5382,8 +5388,17 @@ function runToolbarGestureAction(
     return true;
   }
   if (typeof item.action !== 'function') return false;
-  item.action();
+  runToolbarActionWithoutRefocusingEditor(() => item.action());
   return true;
+}
+
+function runToolbarActionWithoutRefocusingEditor(action) {
+  toolbarActionExecutionDepth += 1;
+  try {
+    return action();
+  } finally {
+    toolbarActionExecutionDepth -= 1;
+  }
 }
 
 function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
@@ -5423,7 +5438,7 @@ function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
   });
 }
 
-async function runToolbarClipboardAction(actionId) {
+async function runToolbarClipboardAction(actionId, preserveKeyboard = false) {
   const view = activeAdapter?.view;
   if (!view) return false;
 
@@ -5432,7 +5447,7 @@ async function runToolbarClipboardAction(actionId) {
       selection: { anchor: 0, head: view.state.doc.length },
       userEvent: 'select'
     });
-    view.focus();
+    focusEditorAfterCommand(view, { preserveKeyboard });
     return true;
   }
 
@@ -5464,7 +5479,7 @@ async function runToolbarClipboardAction(actionId) {
         userEvent: 'delete.cut'
       });
     }
-    view.focus();
+    focusEditorAfterCommand(view, { preserveKeyboard });
     return true;
   }
 
@@ -5489,7 +5504,7 @@ async function runToolbarClipboardAction(actionId) {
       selection: { anchor: from + text.length },
       userEvent: 'input.paste'
     });
-    view.focus();
+    focusEditorAfterCommand(view, { preserveKeyboard });
     return true;
   }
 
@@ -6386,28 +6401,32 @@ function insertCustomTable(rows, cols) {
     }
     tableMarkdown += `${rowStr}\n`;
   }
-  cmWrapSelection(view, tableMarkdown, '');
+  cmWrapSelection(view, tableMarkdown, '', { preserveKeyboard: true });
   hidePopupStrip();
 }
 
 function execCmd(cmdName, options) {
   if (activeAdapter && activeAdapter.view) {
     const view = activeAdapter.view;
+    const editorCommandOptions = toolbarActionExecutionDepth > 0
+      ? { preserveKeyboard: true }
+      : {};
     if (
       cmdName === 'bold' ||
       cmdName === 'italic' ||
       cmdName === 'strikethrough' ||
       cmdName === 'code'
     ) {
-      toggleMarkdownFormat(view, cmdName);
+      toggleMarkdownFormat(view, cmdName, editorCommandOptions);
     } else if (cmdName === 'clearFormatting') {
-      clearMarkdownFormatting(view);
+      clearMarkdownFormatting(view, editorCommandOptions);
     } else if (cmdName === 'underline') {
-      toggleUnderlineFormat(view, 'cycle');
+      toggleUnderlineFormat(view, 'cycle', editorCommandOptions);
     } else if (cmdName.startsWith('underline')) {
       toggleUnderlineFormat(
         view,
-        cmdName.slice('underline'.length).toLowerCase()
+        cmdName.slice('underline'.length).toLowerCase(),
+        editorCommandOptions
       );
     } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
@@ -6415,14 +6434,17 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
     else if (cmdName === 'todoList') cmToggleLinePrefix(view, '- [ ] ');
     else if (cmdName === 'cycleListType') cycleMarkdownListType(view);
-    else if (cmdName === 'indent') applyMarkdownIndent(view, 'indent', '  ');
-    else if (cmdName === 'outdent') applyMarkdownIndent(view, 'outdent', '  ');
+    else if (cmdName === 'indent') {
+      applyMarkdownIndent(view, 'indent', '  ', editorCommandOptions);
+    } else if (cmdName === 'outdent') {
+      applyMarkdownIndent(view, 'outdent', '  ', editorCommandOptions);
+    }
     else if (cmdName === 'moveLineUp') {
-      if (cmMoveLineUp(view)) view.focus();
+      if (cmMoveLineUp(view)) focusEditorAfterCommand(view);
     } else if (cmdName === 'moveLineDown') {
-      if (cmMoveLineDown(view)) view.focus();
+      if (cmMoveLineDown(view)) focusEditorAfterCommand(view);
     } else if (cmdName === 'deleteLine') {
-      if (cmDeleteLine(view)) view.focus();
+      if (cmDeleteLine(view)) focusEditorAfterCommand(view);
     }
     else if (cmdName === 'horizontalLine') cmWrapSelection(view, '\n---\n', '');
     else if (cmdName === 'InsertFootnote') openFootnoteInsertionDialog();
@@ -6441,7 +6463,7 @@ function execCmd(cmdName, options) {
       else if (val === 'heading6') cmToggleLinePrefix(view, '###### ');
     } else if (cmdName === 'highlight') {
       const val = options ? options.value : null;
-      toggleWmdxColorFormat(view, val);
+      toggleWmdxColorFormat(view, val, editorCommandOptions);
     }
   }
 }

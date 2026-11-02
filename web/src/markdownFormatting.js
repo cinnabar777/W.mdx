@@ -404,7 +404,12 @@ function wrapSegment(text, open, close) {
   return core ? `${leading}${open}${core}${close}${trailing}` : text;
 }
 
-function unwrapFormattedRange(view, range, selection, format) {
+function focusEditor(view, options = {}) {
+  if (options.preserveKeyboard === true) return;
+  view?.focus?.();
+}
+
+function unwrapFormattedRange(view, range, selection, format, options = {}) {
   const doc = view.state.doc;
   const selectedInsideContent =
     selection.from >= range.contentFrom &&
@@ -423,7 +428,7 @@ function unwrapFormattedRange(view, range, selection, format) {
         head: insertAt + content.length
       }
     });
-    view.focus();
+    focusEditor(view, options);
     return true;
   }
 
@@ -442,7 +447,7 @@ function unwrapFormattedRange(view, range, selection, format) {
         head: selectedFrom + selected.length
       }
     });
-    view.focus();
+    focusEditor(view, options);
     return true;
   }
 
@@ -453,7 +458,7 @@ function unwrapFormattedRange(view, range, selection, format) {
       changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: content },
       selection: { anchor: cursor, head: cursor }
     });
-    view.focus();
+    focusEditor(view, options);
     return true;
   }
 
@@ -475,7 +480,7 @@ function getInlineFormattingRanges(view, bounds) {
   });
 }
 
-export function clearMarkdownFormatting(view) {
+export function clearMarkdownFormatting(view, options = {}) {
   if (!view?.state) return false;
 
   const originalState = view.state;
@@ -513,7 +518,8 @@ export function clearMarkdownFormatting(view) {
         workingView,
         range,
         selection,
-        { open: range.open, close: range.close }
+        { open: range.open, close: range.close },
+        options
       )) {
         unwrapped = true;
         break;
@@ -527,11 +533,11 @@ export function clearMarkdownFormatting(view) {
     changes: combinedChanges,
     selection: workingState.selection
   });
-  view.focus?.();
+  focusEditor(view, options);
   return true;
 }
 
-function applyFormatToSelection(view, selection, ranges, format) {
+function applyFormatToSelection(view, selection, ranges, format, options = {}) {
   const doc = view.state.doc;
   const overlappingRanges = ranges.filter(range =>
     range.wrapperTo > selection.from && range.wrapperFrom < selection.to
@@ -645,11 +651,11 @@ function applyFormatToSelection(view, selection, ranges, format) {
       head: editFrom + mapToOutput(selectedTo, -1)
     }
   });
-  view.focus();
+  focusEditor(view, options);
   return true;
 }
 
-function toggleMarkdownFormatInternal(view, formatName) {
+function toggleMarkdownFormatInternal(view, formatName, options = {}) {
   if (!view?.state) return false;
   const format = MARKDOWN_FORMATS[formatName];
   if (!format || !format.open || !format.close) return false;
@@ -662,7 +668,8 @@ function toggleMarkdownFormatInternal(view, formatName) {
     const containingRange = ranges.find(range =>
       selection.head >= range.contentFrom && selection.head <= range.contentTo
     );
-    if (containingRange && unwrapFormattedRange(view, containingRange, selection, format)) {
+    if (containingRange &&
+        unwrapFormattedRange(view, containingRange, selection, format, options)) {
       return true;
     }
 
@@ -684,7 +691,7 @@ function toggleMarkdownFormatInternal(view, formatName) {
         }
       });
     }
-    view.focus();
+    focusEditor(view, options);
     return true;
   }
 
@@ -692,7 +699,8 @@ function toggleMarkdownFormatInternal(view, formatName) {
     selection.from >= range.wrapperFrom &&
     selection.to <= range.wrapperTo
   );
-  if (containingRange && unwrapFormattedRange(view, containingRange, selection, format)) {
+  if (containingRange &&
+      unwrapFormattedRange(view, containingRange, selection, format, options)) {
     return true;
   }
 
@@ -701,7 +709,7 @@ function toggleMarkdownFormatInternal(view, formatName) {
       selection.from >= range.wrapperFrom &&
       selection.to <= range.wrapperTo
     );
-    if (activeRange && unwrapFormattedRange(view, activeRange, selection, format)) {
+    if (activeRange && unwrapFormattedRange(view, activeRange, selection, format, options)) {
       return true;
     }
   }
@@ -709,7 +717,7 @@ function toggleMarkdownFormatInternal(view, formatName) {
   if (ranges.some(range =>
     range.wrapperTo > selection.from && range.wrapperFrom < selection.to
   )) {
-    return applyFormatToSelection(view, selection, ranges, format);
+    return applyFormatToSelection(view, selection, ranges, format, options);
   }
 
   const selectedText = doc.sliceString(selection.from, selection.to);
@@ -727,7 +735,7 @@ function toggleMarkdownFormatInternal(view, formatName) {
       head: selectedFrom + core.length
     }
   });
-  view.focus();
+  focusEditor(view, options);
   return true;
 }
 
@@ -758,7 +766,7 @@ function wrapUnderlineSegment(text, style) {
   };
 }
 
-function replaceUnderlineRange(view, range, selection, style) {
+function replaceUnderlineRange(view, range, selection, style, options = {}) {
   const doc = view.state.doc;
   if (range.contentFrom === range.contentTo && selection.empty) {
     const delimiters = style ? underlineDelimiters(style) : null;
@@ -770,7 +778,7 @@ function replaceUnderlineRange(view, range, selection, style) {
       changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: replacement },
       selection: { anchor: cursor, head: cursor }
     });
-    view.focus();
+    focusEditor(view, options);
     return true;
   }
   const oldText = doc.sliceString(range.contentFrom, range.contentTo);
@@ -804,7 +812,7 @@ function replaceUnderlineRange(view, range, selection, style) {
     changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: replacement },
     selection: { anchor, head }
   });
-  view.focus();
+  focusEditor(view, options);
   return true;
 }
 
@@ -833,10 +841,10 @@ function emptyUnderlinePairAt(view, position) {
   return null;
 }
 
-export function toggleUnderlineFormat(view, action = 'cycle') {
+export function toggleUnderlineFormat(view, action = 'cycle', options = {}) {
   if (!view?.state) return false;
   if (!wmdxUnderlineSyntaxEnabled) {
-    return toggleMarkdownFormatInternal(view, 'underline');
+    return toggleMarkdownFormatInternal(view, 'underline', options);
   }
 
   const isCycle = action === 'cycle';
@@ -866,7 +874,7 @@ export function toggleUnderlineFormat(view, action = 'cycle') {
     style = null;
   }
 
-  if (current) return replaceUnderlineRange(view, current, selection, style);
+  if (current) return replaceUnderlineRange(view, current, selection, style, options);
 
   if (selection.empty) {
     const delimiters = underlineDelimiters(style || 'solid');
@@ -881,7 +889,7 @@ export function toggleUnderlineFormat(view, action = 'cycle') {
         head: position + (style ? delimiters.open.length : 0)
       }
     });
-    view.focus();
+    focusEditor(view, options);
     return true;
   }
 
@@ -894,13 +902,13 @@ export function toggleUnderlineFormat(view, action = 'cycle') {
       head: selection.from + wrapped.contentStart + wrapped.contentLength
     }
   });
-  view.focus();
+  focusEditor(view, options);
   return true;
 }
 
-export function toggleMarkdownFormat(view, formatName) {
-  if (formatName === 'underline') return toggleUnderlineFormat(view, 'cycle');
-  return toggleMarkdownFormatInternal(view, formatName);
+export function toggleMarkdownFormat(view, formatName, options = {}) {
+  if (formatName === 'underline') return toggleUnderlineFormat(view, 'cycle', options);
+  return toggleMarkdownFormatInternal(view, formatName, options);
 }
 
 function colorDelimiters(group, color) {
@@ -962,7 +970,7 @@ function emptyColorPairAt(view, group, position) {
   return null;
 }
 
-function replaceWmdxColorRange(view, range, selection, color) {
+function replaceWmdxColorRange(view, range, selection, color, options = {}) {
   const doc = view.state.doc;
   if (range.contentFrom === range.contentTo && selection.empty) {
     const delimiters = color ? colorDelimiters(range.group, color) : null;
@@ -972,7 +980,7 @@ function replaceWmdxColorRange(view, range, selection, color) {
       changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: replacement },
       selection: { anchor: cursor, head: cursor }
     });
-    view.focus();
+    focusEditor(view, options);
     return true;
   }
 
@@ -1007,11 +1015,11 @@ function replaceWmdxColorRange(view, range, selection, color) {
     changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: replacement },
     selection: { anchor, head }
   });
-  view.focus();
+  focusEditor(view, options);
   return true;
 }
 
-export function toggleWmdxColorFormat(view, action = null) {
+export function toggleWmdxColorFormat(view, action = null, options = {}) {
   if (!view?.state) return false;
   const selection = view.state.selection.main;
   let group = null;
@@ -1043,7 +1051,7 @@ export function toggleWmdxColorFormat(view, action = null) {
 
   if (!action) {
     if (!current) return false;
-    return replaceWmdxColorRange(view, current, selection, null);
+    return replaceWmdxColorRange(view, current, selection, null, options);
   }
 
   let color = requestedColor;
@@ -1059,7 +1067,7 @@ export function toggleWmdxColorFormat(view, action = null) {
     color = null;
   }
 
-  if (current) return replaceWmdxColorRange(view, current, selection, color);
+  if (current) return replaceWmdxColorRange(view, current, selection, color, options);
   if (selection.empty) {
     if (group !== 'highlight' || !color) return false;
     const delimiters = colorDelimiters(group, color);
@@ -1075,7 +1083,7 @@ export function toggleWmdxColorFormat(view, action = null) {
         head: position + delimiters.open.length
       }
     });
-    view.focus();
+    focusEditor(view, options);
     return true;
   }
 
@@ -1089,7 +1097,7 @@ export function toggleWmdxColorFormat(view, action = null) {
       head: selection.from + wrapped.contentStart + wrapped.contentLength
     }
   });
-  view.focus();
+  focusEditor(view, options);
   return true;
 }
 

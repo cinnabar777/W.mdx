@@ -226,8 +226,8 @@ test('toolbar settings support drag ordering, a hidden-key tray, icon colors, an
   assert.match(toolbarConfigSource, /id: 'paste', title: 'Paste', icon: 'paste'/);
   assert.match(toolbarConfigSource, /id: 'selectAll', title: 'Select All', icon: 'selectAll'/);
   assert.match(settingsSource, /title: 'Open group'/);
-  assert.match(mainSource, /function runToolbarClipboardAction\(actionId\)/);
-  assert.match(mainSource, /runToolbarClipboardAction\(item\.id\)/);
+  assert.match(mainSource, /function runToolbarClipboardAction\(actionId, preserveKeyboard = false\)/);
+  assert.match(mainSource, /runToolbarClipboardAction\(item\.id, true\)/);
   assert.match(mainSource, /actionId === OPEN_GROUP_ACTION_ID/);
   assert.match(mainSource, /sourceButton\?\.dataset\?\.toolbarKey/);
   assert.match(mainActivitySource, /fun writeClipboard\(text: String\?\): Boolean/);
@@ -670,4 +670,13 @@ test('Paste as Plain Text is available as an action and configurable shortcut', 
   assert.match(mainActivitySource, /"paste_as_plain_text" to prefs\.getString\("pref_hotkey_paste_as_plain_text", "ctrl\+shift\+v"\)/);
   assert.match(hotkeysPreferenceXml, /app:key="pref_hotkey_paste_as_plain_text"[\s\S]*?app:defaultValue="ctrl\+shift\+v"/);
   assert.match(resetSource, /key == "pref_hotkey_paste_as_plain_text" -> "ctrl\+shift\+v"/);
+});
+
+test('toolbar actions do not force the editor keyboard open', () => {
+  assert.match(mainSource, /function focusEditorAfterCommand\(view, options = \{\}\) \{[\s\S]*?toolbarActionExecutionDepth > 0[\s\S]*?view\?\.focus\(\)/);
+  assert.match(mainSource, /runToolbarActionWithoutRefocusingEditor\(\(\) => item\.action\(\)\)/);
+  assert.match(mainSource, /runToolbarActionWithoutRefocusingEditor\(\(\) => action\.action\?\.\(\)\)/);
+  assert.match(mainSource, /runToolbarClipboardAction\(item\.id, true\)/);
+  assert.match(mainSource, /runToolbarClipboardAction\('pasteAsPlainText', true\)/);
+  assert.match(mainSource, /cmWrapSelection\(view, tableMarkdown, '', \{ preserveKeyboard: true \}\)/);
 });

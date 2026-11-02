@@ -158,7 +158,7 @@ export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  
   return changes;
 }
 
-export function applyMarkdownIndent(view, direction, spaces = '  ') {
+export function applyMarkdownIndent(view, direction, spaces = '  ', options = {}) {
   if (!view?.state) return false;
 
   const changes = getMarkdownIndentChanges(
@@ -174,6 +174,6 @@ export function applyMarkdownIndent(view, direction, spaces = '  ') {
       selection: view.state.selection.map(changeSet, 1)
     });
   }
-  view.focus();
+  if (options.preserveKeyboard !== true) view.focus();
   return true;
 }
