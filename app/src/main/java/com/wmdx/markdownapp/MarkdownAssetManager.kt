@@ -22,6 +22,7 @@ internal object MarkdownAssetManager {
     private const val MAX_IMAGE_BYTES = 256L * 1024L * 1024L
     private const val MAX_PATH_SEARCH_DOCUMENTS = 10_000
     private const val MAX_PATH_SEARCH_DEPTH = 64
+    private const val MAX_FALLBACK_IDENTITY_CHECK_BYTES = 16L * 1024L * 1024L
     private const val PREVIEW_ASSET_BASE_URL =
         "https://appassets.androidplatform.net/markdown-assets"
 
@@ -43,43 +44,177 @@ internal object MarkdownAssetManager {
             } else {
                 null
             }
-        }.getOrNull() ?: return null
+        }.getOrNull()
+        val displayName = queryDisplayName(context, documentUri) ?: return null
+        val permissions = resolver.persistedUriPermissions.filter { permission ->
+            permission.isReadPermission &&
+                (!requireWrite || permission.isWritePermission) &&
+                DocumentsContract.isTreeUri(permission.uri)
+        }
+        if (permissions.isEmpty()) return null
 
-        var bestLocation: MarkdownDocumentLocation? = null
-        for (permission in resolver.persistedUriPermissions) {
-            if (
-                !permission.isReadPermission ||
-                (requireWrite && !permission.isWritePermission) ||
-                !DocumentsContract.isTreeUri(permission.uri) ||
-                permission.uri.authority != documentUri.authority
-            ) {
-                continue
-            }
-
-            val scopedDocumentUri = runCatching {
-                DocumentsContract.buildDocumentUriUsingTree(permission.uri, documentId)
-            }.getOrNull() ?: continue
+        val exactMatches = mutableListOf<MarkdownDocumentLocation>()
+        for (permission in permissions) {
             val rootDocumentId = runCatching {
                 DocumentsContract.getTreeDocumentId(permission.uri)
             }.getOrNull() ?: continue
-            val pathFromTreeRoot = findPathFromTreeRoot(
-                context,
-                permission.uri,
-                scopedDocumentUri,
-                rootDocumentId,
-                documentId
-            ) ?: continue
-            val parentIds = pathFromTreeRoot.dropLast(1)
-            if (parentIds.isEmpty()) continue
-            val candidate = MarkdownDocumentLocation(permission.uri, rootDocumentId, parentIds)
+
             if (
-                bestLocation == null ||
-                candidate.parentDocumentIds.size > bestLocation.parentDocumentIds.size
+                documentId != null &&
+                permission.uri.authority == documentUri.authority
             ) {
-                bestLocation = candidate
+                val scopedDocumentUri = runCatching {
+                    DocumentsContract.buildDocumentUriUsingTree(permission.uri, documentId)
+                }.getOrNull()
+                val path = scopedDocumentUri?.let {
+                    findPathFromTreeRoot(
+                        context,
+                        permission.uri,
+                        it,
+                        rootDocumentId,
+                        documentId
+                    )
+                }
+                if (path != null) {
+                    val parentIds = path.dropLast(1)
+                    if (parentIds.isNotEmpty()) {
+                        exactMatches += MarkdownDocumentLocation(
+                            permission.uri,
+                            rootDocumentId,
+                            parentIds
+                        )
+                    }
+                }
             }
         }
-        return bestLocation
+
+        val exactMatch = exactMatches.maxByOrNull { it.parentDocumentIds.size }
+        if (exactMatch != null) {
+            AppDiagnostics.record(
+                context,
+                "markdown_asset_location_resolved",
+                "strategy=document_id trees=${permissions.size}"
+            )
+            return exactMatch
+        }
+
+        val nameMatches = mutableListOf<Pair<String, MarkdownDocumentLocation>>()
+        for (permission in permissions) {
+            val rootDocumentId = runCatching {
+                DocumentsContract.getTreeDocumentId(permission.uri)
+            }.getOrNull() ?: continue
+            for (path in findPathsByDisplayNameInTree(
+                context,
+                permission.uri,
+                rootDocumentId,
+                displayName
+            )) {
+                val targetDocumentId = path.lastOrNull() ?: continue
+                val parentIds = path.dropLast(1)
+                if (parentIds.isNotEmpty()) {
+                    nameMatches += targetDocumentId to MarkdownDocumentLocation(
+                        permission.uri,
+                        rootDocumentId,
+                        parentIds
+                    )
+                }
+            }
+        }
+
+        // Some file pickers return a provider URI that cannot be resolved by
+        // document ID in the approved tree. Require both a unique name and
+        // identical content; never guess between duplicate basenames.
+        val verifiedNameMatches = nameMatches.filter { (targetId, location) ->
+            val candidateUri = runCatching {
+                DocumentsContract.buildDocumentUriUsingTree(location.treeUri, targetId)
+            }.getOrNull() ?: return@filter false
+            hasSameContent(context, documentUri, candidateUri)
+        }
+        val uniqueNameMatches = verifiedNameMatches.distinctBy { (targetId, location) ->
+            location.treeUri.authority to targetId
+        }
+        if (uniqueNameMatches.size == 1) {
+            AppDiagnostics.record(
+                context,
+                "markdown_asset_location_resolved",
+                "strategy=unique_name_and_content trees=${permissions.size}"
+            )
+            return uniqueNameMatches.single().second
+        }
+
+        AppDiagnostics.record(
+            context,
+            "markdown_asset_location_unresolved",
+            "sourceDocumentUri=${documentId != null} trees=${permissions.size} verifiedNameMatches=${uniqueNameMatches.size}"
+        )
+        return null
+    }
+
+    private fun queryDisplayName(context: Context, uri: Uri): String? =
+        runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(
+                    android.provider.OpenableColumns.DISPLAY_NAME
+                )
+                if (nameIndex >= 0 && cursor.moveToFirst()) {
+                    cursor.getString(nameIndex)?.takeIf { it.isNotBlank() }
+                } else {
+                    null
+                }
+            }
+        }.getOrNull()
+
+    private fun hasSameContent(context: Context, firstUri: Uri, secondUri: Uri): Boolean {
+        val firstStream = runCatching {
+            context.contentResolver.openInputStream(firstUri)
+        }.getOrNull() ?: return false
+        val secondStream = runCatching {
+            context.contentResolver.openInputStream(secondUri)
+        }.getOrNull() ?: run {
+            runCatching { firstStream.close() }
+            return false
+        }
+        firstStream.use { first ->
+            secondStream.use { second ->
+                val firstBuffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                val secondBuffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var bytesCompared = 0L
+                while (bytesCompared <= MAX_FALLBACK_IDENTITY_CHECK_BYTES) {
+                    val firstCount = readChunk(first, firstBuffer)
+                    val secondCount = readChunk(second, secondBuffer)
+                    if (firstCount != secondCount) return false
+                    if (firstCount == 0) return true
+                    for (index in 0 until firstCount) {
+                        if (firstBuffer[index] != secondBuffer[index]) return false
+                    }
+                    bytesCompared += firstCount
+                    if (bytesCompared > MAX_FALLBACK_IDENTITY_CHECK_BYTES) return false
+                }
+            }
+        }
+        return false
+    }
+
+    private fun readChunk(input: InputStream, buffer: ByteArray): Int {
+        var count = 0
+        while (count < buffer.size) {
+            val read = input.read(buffer, count, buffer.size - count)
+            if (read < 0) break
+            if (read == 0) {
+                val nextByte = input.read()
+                if (nextByte < 0) break
+                buffer[count++] = nextByte.toByte()
+            } else {
+                count += read
+            }
+        }
+        return count
     }
 
     /**
@@ -151,6 +286,54 @@ internal object MarkdownAssetManager {
             }
         }
         return null
+    }
+
+    private fun findPathsByDisplayNameInTree(
+        context: Context,
+        treeUri: Uri,
+        rootDocumentId: String,
+        targetDisplayName: String
+    ): List<List<String>> {
+        val parents = HashMap<String, String?>()
+        val depths = HashMap<String, Int>()
+        val pending = java.util.ArrayDeque<String>()
+        val matches = mutableListOf<List<String>>()
+        parents[rootDocumentId] = null
+        depths[rootDocumentId] = 0
+        pending.addLast(rootDocumentId)
+
+        while (pending.isNotEmpty() && parents.size <= MAX_PATH_SEARCH_DOCUMENTS) {
+            val parentId = pending.removeFirst()
+            val parentDepth = depths[parentId] ?: continue
+            if (parentDepth >= MAX_PATH_SEARCH_DEPTH) continue
+            for (child in runCatching {
+                listChildren(context, treeUri, parentId)
+            }.getOrDefault(emptyList())) {
+                if (parents.size > MAX_PATH_SEARCH_DOCUMENTS) return matches
+                if (
+                    child.mimeType != DocumentsContract.Document.MIME_TYPE_DIR &&
+                    child.displayName == targetDisplayName
+                ) {
+                    val path = mutableListOf(child.documentId)
+                    var currentParent: String? = parentId
+                    while (currentParent != null) {
+                        path.add(currentParent)
+                        currentParent = parents[currentParent]
+                    }
+                    matches += path.asReversed()
+                    if (matches.size > 1) return matches
+                }
+                if (
+                    child.mimeType == DocumentsContract.Document.MIME_TYPE_DIR &&
+                    child.documentId !in parents
+                ) {
+                    parents[child.documentId] = parentId
+                    depths[child.documentId] = parentDepth + 1
+                    pending.addLast(child.documentId)
+                }
+            }
+        }
+        return matches
     }
 
     fun addImage(

@@ -14,6 +14,11 @@
             app:summary="Font, weight, size, color, line height, spacing, alignment &amp; indents" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_attachments"
+            app:title="Attachments"
+            app:summary="Attachment background, text, border, spacing, and shape" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_blockquotes"
             app:title="Block Quotes"
             app:summary="Block quote typography, border, background, and spacing" />
@@ -27,11 +32,6 @@
             app:key="pref_styling_page_callouts"
             app:title="Callouts"
             app:summary="Callout typography, borders, colors, and header styles" />
-
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_attachments"
-            app:title="Attachments"
-            app:summary="Attachment background, text, border, spacing, and shape" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_code"

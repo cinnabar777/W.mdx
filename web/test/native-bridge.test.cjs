@@ -144,8 +144,9 @@ test('tapping focused editor content explicitly requests the Android keyboard', 
 });
 
 test('toolbar actions block incidental keyboard opens when the keyboard started closed', () => {
-  assert.match(mainActivitySource, /\(webView as\? EditorWebView\)\s*\n\s*\?\.setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/);
-  assert.match(mainActivitySource, /setImeInputAllowed\(expectedVisible\)/);
+  assert.match(mainActivitySource, /setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/);
+  assert.match(mainActivitySource, /setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/);
+  assert.doesNotMatch(mainActivitySource, /restoreToolbarImeState|setImeInputAllowed\(expectedVisible\)/);
 });
 
 test('auto-save snapshots the editor before pausing WebView and runs once per leave', () => {
@@ -860,20 +861,29 @@ test('Image insertion offers Base64 directly and stores file images by document 
   assert.match(source, /resolveMarkdownAssetUrl\?\.\(this\.url\)/);
 });
 
-test('Save keeps the active package format if its original URI is unavailable', () => {
+test('Save preserves the active document format for direct save and fallback', () => {
   const saveStart = mainActivitySource.indexOf('private fun handleSaveFile()');
   const saveEnd = mainActivitySource.indexOf('private fun handleSaveAsFile()', saveStart);
   const saveHandler = mainActivitySource.slice(saveStart, saveEnd);
-  assert.match(saveHandler, /requestedAsMdzip = true\.takeIf \{ currentMdzipSession != null \}/);
-  assert.match(saveHandler, /currentMdzipSession != null[\s\S]*handleSaveAsMdzipFile\(\)/);
-  assert.match(saveHandler, /currentTextPackSession != null[\s\S]*handleSaveAsTextPackFile\(\)/);
+  assert.match(saveHandler, /requestedAsMdzip = currentDocumentFormat == DocumentFormat\.MDZIP/);
+  assert.match(saveHandler, /requestedAsTextPack = currentDocumentFormat == DocumentFormat\.TEXT_PACK/);
+  assert.match(saveHandler, /when \(currentDocumentFormat\)/);
+  assert.match(saveHandler, /DocumentFormat\.MDZIP -> handleSaveAsMdzipFile\(\)/);
+  assert.match(saveHandler, /DocumentFormat\.TEXT_PACK -> handleSaveAsTextPackFile\(\)/);
+  assert.match(mainActivitySource, /"save_action"/);
 });
 
-test('Floating toolbar toggle preserves the prior Android keyboard state', () => {
+test('Toolbar touches gate the IME before WebView focus and do not restore it later', () => {
   assert.match(source, /toolbarImeSurfaceSelector\s*=\s*'#[^']*floating-toggle-btn/);
   assert.match(source, /window\.AndroidNative\?\.beginToolbarInteraction\?\.\(\)/);
   assert.match(source, /window\.AndroidNative\?\.endToolbarInteraction\?\.\(\)/);
   assert.match(source, /event\.preventDefault\(\);[\s\S]*window\.AndroidNative\?\.beginToolbarInteraction/);
+  assert.match(mainActivitySource, /setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/);
+  const endStart = mainActivitySource.indexOf('fun endToolbarInteraction()');
+  const endEnd = mainActivitySource.indexOf('@JavascriptInterface', endStart);
+  const endBody = mainActivitySource.slice(endStart, endEnd);
+  assert.doesNotMatch(endBody, /restoreToolbarImeState|hideSoftInput|setImeInputAllowed/);
+  assert.match(source, /document\.addEventListener\('pointerdown'[\s\S]*isTextInput[\s\S]*showEditorKeyboard/);
 });
 
 test('Markdown image storage can recover document ancestry from the approved tree', () => {
@@ -882,9 +892,34 @@ test('Markdown image storage can recover document ancestry from the approved tre
     'utf8'
   );
   assert.match(assetManagerSource, /findPathByTreeTraversal/);
+  assert.match(assetManagerSource, /findPathsByDisplayNameInTree/);
+  assert.match(assetManagerSource, /queryDisplayName\(context, documentUri\)/);
+  assert.match(assetManagerSource, /hasSameContent\(context, documentUri, candidateUri\)/);
+  assert.match(assetManagerSource, /strategy=unique_name_and_content/);
+  assert.match(assetManagerSource, /uniqueNameMatches\.size == 1/);
   assert.match(assetManagerSource, /MAX_PATH_SEARCH_DOCUMENTS/);
   assert.match(assetManagerSource, /MAX_PATH_SEARCH_DEPTH/);
-  assert.match(assetManagerSource, /candidate\.parentDocumentIds\.size > bestLocation\.parentDocumentIds\.size/);
+  assert.match(assetManagerSource, /exactMatches\.maxByOrNull \{ it\.parentDocumentIds\.size \}/);
+});
+
+test('Typography keeps Headings and Body first, then alphabetizes text elements', () => {
+  const styleRoot = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling.xml'),
+    'utf8'
+  );
+  const titles = [...styleRoot.matchAll(
+    /app:key="pref_styling_page_[^"]+"\s+app:title="([^"]+)"/g
+  )].map(match => match[1].replaceAll('&amp;', '&'));
+  assert.deepEqual(titles.slice(0, 3), [
+    'Headings (H1 – H6)',
+    'Paragraph & Body Text',
+    'Attachments'
+  ]);
+  const remaining = titles.slice(2);
+  assert.deepEqual(
+    remaining,
+    [...remaining].sort((left, right) => left.localeCompare(right))
+  );
 });
 
 test('Attachment style preferences are reachable and applied to packaged attachment links', () => {

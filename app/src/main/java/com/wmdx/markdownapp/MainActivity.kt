@@ -60,7 +60,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var lastWebViewTouchElapsedMs = 0L
     private var toolbarImeInteractionDepth = 0
     private var toolbarImeVisibleBeforeInteraction = false
-    private var toolbarImeRestoreGeneration = 0
+    private enum class DocumentFormat { MARKDOWN, TEXT_PACK, MDZIP }
+    private var currentDocumentFormat = DocumentFormat.MARKDOWN
 
     private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
     private data class LeftPanelDocumentEntry(
@@ -378,6 +379,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 imeVisibleBeforeLastWebViewTouch = editorImeVisible()
                 lastWebViewTouchElapsedMs = android.os.SystemClock.elapsedRealtime()
+                // Block WebView's automatic input-connection focus before it
+                // handles the touch. Text fields explicitly request the IME.
+                (webView as? EditorWebView)
+                    ?.setImeInputAllowed(imeVisibleBeforeLastWebViewTouch)
             }
             if (
                 event.actionMasked == MotionEvent.ACTION_DOWN &&
@@ -521,6 +526,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (intent.getBooleanExtra("is_new_document", false)) {
             currentFileUri = null
             currentFileName = getString(R.string.untitled_document)
+            currentDocumentFormat = DocumentFormat.MARKDOWN
             isDirty = false
             updateTitle()
             if (isEditorReady) {
@@ -569,7 +575,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onResume()
         isActivityResumed = true
         toolbarImeInteractionDepth = 0
-        toolbarImeRestoreGeneration += 1
         WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
             pendingExistingDocumentFocusUri = it
         }
@@ -601,7 +606,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onPause() {
         isActivityResumed = false
         toolbarImeInteractionDepth = 0
-        toolbarImeRestoreGeneration += 1
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
@@ -653,47 +657,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun editorImeVisible(): Boolean =
         ViewCompat.getRootWindowInsets(webView)
             ?.isVisible(WindowInsetsCompat.Type.ime()) == true
-
-    private fun restoreToolbarImeState(generation: Int) {
-        if (
-            generation != toolbarImeRestoreGeneration ||
-            toolbarImeInteractionDepth != 0 ||
-            !isActivityResumed ||
-            !::webView.isInitialized
-        ) {
-            return
-        }
-
-        val expectedVisible = toolbarImeVisibleBeforeInteraction
-        (webView as? EditorWebView)?.setImeInputAllowed(expectedVisible)
-        val visibleBeforeRestore = editorImeVisible()
-        if (visibleBeforeRestore != expectedVisible) {
-            val inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE)
-                as? android.view.inputmethod.InputMethodManager
-            if (expectedVisible) {
-                window.setSoftInputMode(
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
-                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
-                )
-                if (!webView.isFocused) webView.requestFocusFromTouch()
-                ViewCompat.getWindowInsetsController(webView)
-                    ?.show(WindowInsetsCompat.Type.ime())
-                inputMethodManager?.showSoftInput(
-                    webView,
-                    android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT
-                )
-            } else {
-                ViewCompat.getWindowInsetsController(webView)
-                    ?.hide(WindowInsetsCompat.Type.ime())
-                inputMethodManager?.hideSoftInputFromWindow(webView.windowToken, 0)
-            }
-        }
-        AppDiagnostics.record(
-            this,
-            "toolbar_ime_state_restored",
-            "expectedVisible=$expectedVisible visibleBeforeRestore=$visibleBeforeRestore"
-        )
-    }
 
     private fun hideImeWhileResumeIsSuppressed(generation: Int) {
         if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
@@ -1489,6 +1452,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         currentEmptyContentExplicitlyEdited = false
         currentTextPackSession = null
         currentMdzipSession = null
+        currentDocumentFormat = DocumentFormat.MARKDOWN
         latestMarkdownContent = ""
         currentFileUri = null
         currentFileName = getString(R.string.untitled_document)
@@ -1652,6 +1616,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 currentTextPackSession = null
                 currentMdzipSession = session
+                currentDocumentFormat = DocumentFormat.MDZIP
                 currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                 currentRevision = 0
                 currentEmptyContentExplicitlyEdited = false
@@ -1683,6 +1648,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 currentTextPackSession = session
                 currentMdzipSession = null
+                currentDocumentFormat = DocumentFormat.TEXT_PACK
                 currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                 currentRevision = 0
                 currentEmptyContentExplicitlyEdited = false
@@ -1706,6 +1672,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             } else {
                 currentTextPackSession = null
                 currentMdzipSession = null
+                currentDocumentFormat = DocumentFormat.MARKDOWN
                 val inputStream = contentResolver.openInputStream(uri)
                     ?: throw java.io.FileNotFoundException("Could not read the selected file")
                 inputStream.use {
@@ -1919,26 +1886,25 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun handleSaveFile() {
         val targetUri = currentFileUri
+        AppDiagnostics.record(
+            this,
+            "save_action",
+            "hasUri=${targetUri != null} format=${currentDocumentFormat.name.lowercase()} " +
+                "mdzipSession=${currentMdzipSession != null} textPackSession=${currentTextPackSession != null}"
+        )
         if (targetUri != null) {
             saveFileToUri(
                 targetUri,
-                requestedAsTextPack = true.takeIf { currentTextPackSession != null },
-                requestedAsMdzip = true.takeIf { currentMdzipSession != null }
+                requestedAsTextPack = currentDocumentFormat == DocumentFormat.TEXT_PACK,
+                requestedAsMdzip = currentDocumentFormat == DocumentFormat.MDZIP
             )
             return
         }
 
-        // A package can remain the active document even if Android did not
-        // restore its original URI. Keep Save's fallback in that package
-        // format instead of offering a misleading Markdown filename.
-        when {
-            currentMdzipSession != null -> handleSaveAsMdzipFile()
-            currentTextPackSession != null -> handleSaveAsTextPackFile()
-            MdzipManager.isMdzipFileName(currentFileName) -> handleSaveAsMdzipFile()
-            currentFileName.endsWith(".textpack", ignoreCase = true) ||
-                currentFileName.endsWith(".textpack.zip", ignoreCase = true) ->
-                handleSaveAsTextPackFile()
-            else -> handleSaveAsFile()
+        when (currentDocumentFormat) {
+            DocumentFormat.MDZIP -> handleSaveAsMdzipFile()
+            DocumentFormat.TEXT_PACK -> handleSaveAsTextPackFile()
+            DocumentFormat.MARKDOWN -> handleSaveAsFile()
         }
     }
 
@@ -2388,6 +2354,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     currentMdzipSession = null
                 }
 
+                currentDocumentFormat = when {
+                    isMdzipTarget -> DocumentFormat.MDZIP
+                    isTextPackTarget -> DocumentFormat.TEXT_PACK
+                    else -> DocumentFormat.MARKDOWN
+                }
                 persistDocumentUriPermission(uri)
                 remapDocumentNavigationHistory(oldDocumentKey, uri.toString())
                 currentFileUri = uri
@@ -3937,6 +3908,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             restoreDocumentHistoryState(historyStateJson)
             currentFileUri = uri
             currentFileName = name.ifBlank { "Untitled.md" }
+            currentDocumentFormat = when {
+                MdzipManager.isMdzipFileName(name) -> DocumentFormat.MDZIP
+                isTextPack || name.endsWith(".textpack", ignoreCase = true) ||
+                    name.endsWith(".textpack.zip", ignoreCase = true) ->
+                    DocumentFormat.TEXT_PACK
+                else -> DocumentFormat.MARKDOWN
+            }
             currentDocumentSessionId = java.util.UUID.randomUUID().toString()
             currentRevision = 0
             currentEmptyContentExplicitlyEdited = emptyContentExplicitlyEdited
@@ -4124,6 +4102,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     pendingSharedText = null
                     currentFileUri = null
                     currentFileName = getString(R.string.untitled_document)
+                    currentDocumentFormat = DocumentFormat.MARKDOWN
                     currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                     currentRevision = 0
                     currentTextPackSession = null
@@ -4434,7 +4413,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         }
                     (webView as? EditorWebView)
                         ?.setImeInputAllowed(toolbarImeVisibleBeforeInteraction)
-                    toolbarImeRestoreGeneration += 1
                     AppDiagnostics.record(
                         this@MainActivity,
                         "toolbar_ime_state_captured",
@@ -4450,12 +4428,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             runOnUiThread {
                 if (toolbarImeInteractionDepth <= 0) return@runOnUiThread
                 toolbarImeInteractionDepth -= 1
-                if (toolbarImeInteractionDepth != 0) return@runOnUiThread
-
-                val generation = ++toolbarImeRestoreGeneration
-                webView.postDelayed({
-                    restoreToolbarImeState(generation)
-                }, 80L)
             }
         }
 

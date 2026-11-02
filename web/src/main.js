@@ -102,6 +102,17 @@ window.addEventListener('blur', () => {
     finishToolbarImePointer(pointerId);
   }
 });
+
+document.addEventListener('pointerdown', event => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const isTextInput = target.matches(
+    'textarea, input:not([type="button"]):not([type="checkbox"]):not([type="color"]):not([type="file"]):not([type="image"]):not([type="radio"]):not([type="range"]):not([type="reset"]):not([type="submit"])'
+  );
+  const isEditable = target.closest('[contenteditable="true"]:not(.cm-content)');
+  if (!isTextInput && !isEditable) return;
+  window.AndroidNative?.showEditorKeyboard?.();
+}, true);
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
   BUILT_IN_HOLDING_ITEMS,
