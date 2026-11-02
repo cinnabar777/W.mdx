@@ -68,8 +68,7 @@ import { svgIcons } from './toolbarIcons.js';
 // moves between editor text and the in-WebView toolbars.
 const activeToolbarImePointers = new Set();
 const toolbarImeSurfaceSelector =
-  '#bottom-toolbar, #floating-selection-toolbar, #popup-toolbar-strip, ' +
-  '#floating-toggle-btn, .floating-toggle-btn';
+  '#bottom-toolbar, #floating-selection-toolbar, #popup-toolbar-strip, #floating-toggle-btn, .floating-toggle-btn';
 
 document.addEventListener('pointerdown', event => {
   if (event.isPrimary === false) return;

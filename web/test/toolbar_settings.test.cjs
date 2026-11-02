@@ -690,7 +690,7 @@ test('toolbar actions do not force the editor keyboard open', () => {
 test('toolbar touches gate automatic keyboard focus without restoring the IME later', () => {
   assert.match(
     mainSource,
-    /container\.addEventListener\('pointerdown', event => \{[\s\S]*?beginToolbarInteraction\?\.\(\)/,
+    /document\.addEventListener\('pointerdown', event => \{[\s\S]*?toolbarImeSurfaceSelector[\s\S]*?beginToolbarInteraction\?\.\(\)/,
     'toolbar pointerdown captures the keyboard state before the action'
   );
   assert.match(mainSource, /endToolbarInteraction\?\.\(\), 80\)/);
@@ -701,7 +701,7 @@ test('toolbar touches gate automatic keyboard focus without restoring the IME la
   );
   assert.match(
     mainActivitySource,
-    /fun beginToolbarInteraction\(\)[\s\S]*?setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/
+    /fun beginToolbarInteraction\(\)[\s\S]*?if \(!imeWasVisible\)[\s\S]*?setImeInputAllowed\(false\)/
   );
   const endInteraction = mainActivitySource.match(
     /fun endToolbarInteraction\(\)\s*\{([\s\S]*?)\n\s*@JavascriptInterface/

@@ -145,7 +145,14 @@ test('tapping focused editor content explicitly requests the Android keyboard', 
 
 test('toolbar actions block incidental keyboard opens when the keyboard started closed', () => {
   assert.match(mainActivitySource, /setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/);
-  assert.match(mainActivitySource, /setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/);
+  assert.match(
+    mainActivitySource,
+    /fun beginToolbarInteraction\(\)[\s\S]*?if \(!imeWasVisible\)[\s\S]*?setImeInputAllowed\(false\)/
+  );
+  assert.match(
+    editorWebViewSource,
+    /override fun onCreateInputConnection\(outAttrs: EditorInfo\): InputConnection\? =\s*if \(imeInputAllowed\) super\.onCreateInputConnection\(outAttrs\) else null/
+  );
   assert.doesNotMatch(mainActivitySource, /restoreToolbarImeState|setImeInputAllowed\(expectedVisible\)/);
 });
 

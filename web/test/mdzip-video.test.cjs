@@ -153,7 +153,8 @@ test('playable and notice-only video formats are packaged and rendered distinctl
   assert.match(manager, /fun syncVideoReferences\(/);
   assert.match(manager, /pendingAudioDeletions \+ session\.pendingVideoDeletions/);
   assert.match(activity, /pickVideoLauncher\.launch\("video\/\*"\)/);
-  assert.match(activity, /MdzipManager\.videoArchiveFile/);
+  assert.match(activity, /MdzipManager\.isSupportedVideoFileName\(archivePath\)/);
+  assert.match(activity, /MdzipManager\.assetArchiveFile\(session, archivePath\)/);
   assert.match(activity, /mdzipVideoMimeType\(extension\)/);
   assert.match(activity, /"webm" -> "video\/webm"/);
   assert.match(activity, /"3gp" -> "video\/3gpp"/);
@@ -222,10 +223,14 @@ test('MDZip writes and verifies a staged archive before opening the destination'
   const saveStart = manager.indexOf('fun save(');
   const writerStart = manager.indexOf('internal fun writeSessionArchive(', saveStart);
   const saveBody = manager.slice(saveStart, writerStart);
-  const stageIndex = saveBody.indexOf('writeSessionArchive(session.sessionDir, pendingDeletions, stagedArchive)');
+  const stageIndex = saveBody.indexOf('writeSessionArchive(');
   const verifyIndex = saveBody.indexOf('verifyStagedArchive(stagedArchive)');
   const destinationIndex = saveBody.indexOf('openOutputStream(targetUri, "rwt")');
 
   assert.ok(stageIndex >= 0 && verifyIndex > stageIndex && destinationIndex > verifyIndex);
+  assert.match(
+    saveBody,
+    /writeSessionArchive\(\s*session\.sessionDir,[\s\S]*?stagedArchive,[\s\S]*?session\.originalArchivePaths/
+  );
   assert.match(manager, /entry\.method = ZipEntry\.STORED/);
 });
