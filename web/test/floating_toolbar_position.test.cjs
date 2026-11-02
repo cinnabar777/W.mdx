@@ -80,6 +80,7 @@ test('floating toolbar has an independent layout and restores Android selection 
   const readApp = relativePath =>
     readFileSync(path.join(repositoryRoot, 'app', relativePath), 'utf8');
   const main = readWeb('src/main.js');
+  const selectionVisibility = readWeb('src/floatingSelectionToolbarVisibility.js');
   const settings = readWeb('src/toolbarSettingsPreview.js');
   const settingsHtml = readWeb('toolbar-settings-preview.html');
   const nativeActivity = readApp('src/main/java/com/wmdx/markdownapp/MainActivity.kt');
@@ -101,6 +102,11 @@ test('floating toolbar has an independent layout and restores Android selection 
     'both bottom and floating toolbar definitions preserve syntax commands');
   assert.match(main, /applyFloatingToolbarConfig: function\(rawConfig\)/);
   assert.match(main, /updateFloatingSelectionToolbar\(update\.view\)/);
+  assert.match(main, /floatingSelectionToolbarVisibility\.updateSelection\(view, selection\)/);
+  assert.match(main, /installFloatingSelectionToolbarPointerTracking\(\)/);
+  assert.match(selectionVisibility, /delayMs = 1000/);
+  assert.match(selectionVisibility, /function pointerDown\(\)/);
+  assert.match(selectionVisibility, /function pointerUp\(\)/);
   assert.match(main, /showFloatingSelectionToolbarAtPoint\(event\.clientX, event\.clientY, this\.view\)/);
   assert.match(main, /event\.pointerType === 'touch'[\s\S]*?setTimeout\([\s\S]*?550/);
   assert.match(main, /floatingToolbarAnchorPoint\?\.view === view/);

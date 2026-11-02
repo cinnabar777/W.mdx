@@ -88,6 +88,7 @@ import {
   getFloatingToolbarPosition,
   getFloatingToolbarPositionAtPoint
 } from './toolbarPositioning.js';
+import { createFloatingSelectionToolbarVisibility } from './floatingSelectionToolbarVisibility.js';
 import { openToolbarKeyPreferencesDialog } from './toolbarKeyPreferencesDialog.js';
 import {
   defaultKeymap,
@@ -135,6 +136,10 @@ const toolbarToggleClickGuards = new WeakMap();
 let floatingToolbarSelectionFrame = 0;
 let floatingToolbarEnabled = true;
 let floatingToolbarAnchorPoint = null;
+const floatingSelectionToolbarVisibility = createFloatingSelectionToolbarVisibility({
+  onHide: hideFloatingSelectionToolbar,
+  onResume: () => updateFloatingSelectionToolbar()
+});
 let tocHideFileExtension = false;
 let tocPanelEnabled = true;
 
@@ -4958,6 +4963,7 @@ function setupFloatingSelectionToolbar() {
     container.appendChild(bar);
   }
   installToolbarTapActions(bar);
+  installFloatingSelectionToolbarPointerTracking();
 
   const registry = createRuntimeToolbarItemRegistryForConfig(floatingToolbarConfig);
   const definitions = Object.fromEntries(
@@ -5022,6 +5028,26 @@ function setupFloatingSelectionToolbar() {
   updateFloatingSelectionToolbar();
 }
 
+function installFloatingSelectionToolbarPointerTracking() {
+  if (document.__wmdxFloatingSelectionPointerTrackingInstalled) return;
+  const isEditorTarget = target => {
+    const element = target?.nodeType === 1 ? target : target?.parentElement;
+    return Boolean(element && activeAdapter?.view?.dom?.contains(element));
+  };
+  document.addEventListener('pointerdown', event => {
+    if (isEditorTarget(event.target)) {
+      floatingSelectionToolbarVisibility.pointerDown();
+    }
+  }, true);
+  document.addEventListener('pointermove', () => {
+    floatingSelectionToolbarVisibility.pointerMove();
+  }, true);
+  const finishPointer = () => floatingSelectionToolbarVisibility.pointerUp();
+  document.addEventListener('pointerup', finishPointer, true);
+  document.addEventListener('pointercancel', finishPointer, true);
+  document.__wmdxFloatingSelectionPointerTrackingInstalled = true;
+}
+
 function scheduleFloatingToolbarPosition() {
   if (floatingToolbarSelectionFrame) return;
   floatingToolbarSelectionFrame = window.requestAnimationFrame(() => {
@@ -5039,10 +5065,19 @@ function showFloatingSelectionToolbarAtPoint(x, y, view = activeAdapter?.view) {
   return true;
 }
 
+function hideFloatingSelectionToolbar() {
+  const bar = document.querySelector('#floating-selection-toolbar');
+  if (!bar) return;
+  bar.classList.remove('is-visible');
+  bar.setAttribute('aria-hidden', 'true');
+  if (activePopupSurface === 'floating') hidePopupStrip();
+}
+
 function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
   const bar = document.querySelector('#floating-selection-toolbar');
   if (!bar) return;
   if (!floatingToolbarEnabled) {
+    floatingSelectionToolbarVisibility.reset();
     floatingToolbarAnchorPoint = null;
     bar.classList.remove('is-visible');
     bar.setAttribute('aria-hidden', 'true');
@@ -5051,7 +5086,12 @@ function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
   }
   const selection = view?.state?.selection?.main;
   const hasSelection = Boolean(selection && !selection.empty);
+  floatingSelectionToolbarVisibility.updateSelection(view, selection);
   if (hasSelection) floatingToolbarAnchorPoint = null;
+  if (hasSelection && floatingSelectionToolbarVisibility.isSuppressed()) {
+    hideFloatingSelectionToolbar();
+    return;
+  }
   const anchorPoint = !hasSelection && floatingToolbarAnchorPoint?.view === view
     ? floatingToolbarAnchorPoint
     : null;
