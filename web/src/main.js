@@ -39,10 +39,13 @@ import {
   extractMarkdownAudioLinks,
   extractMarkdownVideoLinks,
   formatMarkdownAudioLink,
+  formatMarkdownAttachmentLink,
   formatMarkdownVideoLink,
   parseMarkdownAudioLink,
+  parseMarkdownAttachmentLink,
   parseMarkdownVideoLink
 } from './markdownMedia.js';
+import { MdzipAttachmentWidget } from './mdzipAttachmentWidget.js';
 import { AudioPreviewWidget } from './audioPreviewWidget.js';
 import { VideoPreviewWidget } from './videoPreviewWidget.js';
 import {
@@ -2087,6 +2090,26 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               hiddenSyntaxRanges.push(audioDecoration);
               return false;
             }
+            const attachmentLink = node.name === 'Link'
+              ? parseMarkdownAttachmentLink(raw)
+              : null;
+            const attachmentSessionId = attachmentLink
+              ? window.AndroidNative?.getCurrentDocumentSessionId?.()
+              : null;
+            const attachmentExists = attachmentLink && window.AndroidNative
+              ?.canOpenMdzipAttachment?.(attachmentLink.url, attachmentSessionId);
+            if (attachmentLink && attachmentExists && !isNodeActive && !isPureWysiwyg) {
+              const attachmentDecoration = Decoration.replace({
+                widget: new MdzipAttachmentWidget(
+                  attachmentLink.label,
+                  attachmentLink.url,
+                  attachmentSessionId
+                )
+              }).range(node.from, node.to);
+              builder.push(attachmentDecoration);
+              hiddenSyntaxRanges.push(attachmentDecoration);
+              return false;
+            }
             const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
             if (match) {
               const labelFrom = node.from + 1;
@@ -3190,6 +3213,26 @@ function buildHeightMapValue(state) {
           }).range(node.from, node.to);
           replacements.push(audioDecoration);
           hiddenSyntaxRanges.push(audioDecoration);
+          return false;
+        }
+        const attachmentLink = node.name === 'Link'
+          ? parseMarkdownAttachmentLink(raw)
+          : null;
+        const attachmentSessionId = attachmentLink
+          ? window.AndroidNative?.getCurrentDocumentSessionId?.()
+          : null;
+        const attachmentExists = attachmentLink && window.AndroidNative
+          ?.canOpenMdzipAttachment?.(attachmentLink.url, attachmentSessionId);
+        if (attachmentLink && attachmentExists) {
+          const attachmentDecoration = Decoration.replace({
+            widget: new MdzipAttachmentWidget(
+              attachmentLink.label,
+              attachmentLink.url,
+              attachmentSessionId
+            )
+          }).range(node.from, node.to);
+          replacements.push(attachmentDecoration);
+          hiddenSyntaxRanges.push(attachmentDecoration);
           return false;
         }
         const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
@@ -4509,6 +4552,28 @@ class CodeMirrorAdapter {
     this.view.focus();
   }
 
+  insertAttachmentLink(relativeUrl, label) {
+    if (!this.view) return;
+    const markdown = formatMarkdownAttachmentLink(label, relativeUrl);
+    const selection = this.view.state.selection.main;
+    const before = this.view.state.doc.sliceString(0, selection.from);
+    const after = this.view.state.doc.sliceString(selection.to);
+    const prefix = before.length === 0 || before.endsWith('\n\n')
+      ? ''
+      : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = after.startsWith('\n\n')
+      ? ''
+      : after.startsWith('\n') ? '\n' : '\n\n';
+    const insertion = `${prefix}${markdown}${suffix}`;
+    const cursor = selection.from + insertion.length;
+    this.view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: insertion },
+      selection: { anchor: cursor, head: cursor },
+      userEvent: 'input.mdzip-attachment'
+    });
+    this.view.focus();
+  }
+
   destroy() {
     this.persistScrollPosition();
     if (this.syntaxRefreshFrame !== null) {
@@ -4887,6 +4952,7 @@ function setupGroupedControlBar() {
         { id: 'image', icon: svgIcons.image, title: 'Insert Image', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('image') },
         { id: 'audio', icon: svgIcons.audio, title: 'Insert Audio', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('audio') },
         { id: 'video', icon: svgIcons.video, title: 'Insert Video', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('video') },
+        { id: 'attachment', icon: svgIcons.link, title: 'Attach File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('attachment') },
         { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
@@ -5251,6 +5317,7 @@ function createToolbarActionRegistry() {
       { id: 'image', title: 'Insert Image', icon: svgIcons.image, action: () => window.AndroidNative?.onNativeAction('image') },
       { id: 'audio', title: 'Insert Audio', icon: svgIcons.audio, action: () => window.AndroidNative?.onNativeAction('audio') },
       { id: 'video', title: 'Insert Video', icon: svgIcons.video, action: () => window.AndroidNative?.onNativeAction('video') },
+      { id: 'attachment', title: 'Attach File', icon: svgIcons.link, action: () => window.AndroidNative?.onNativeAction('attachment') },
       { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
       { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
@@ -9235,6 +9302,11 @@ window.editorBridge = {
   insertVideoLink: function(relativeUrl, label = 'video file') {
     if (activeAdapter && typeof activeAdapter.insertVideoLink === 'function') {
       activeAdapter.insertVideoLink(relativeUrl, label);
+    }
+  },
+  insertAttachmentLink: function(relativeUrl, label = 'attachment') {
+    if (activeAdapter && typeof activeAdapter.insertAttachmentLink === 'function') {
+      activeAdapter.insertAttachmentLink(relativeUrl, label);
     }
   },
   reloadMdzipAudio: function(relativeUrl) {

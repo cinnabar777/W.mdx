@@ -9,6 +9,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.net.URLDecoder
 import java.text.Normalizer
 import java.util.UUID
 import java.util.zip.CRC32
@@ -36,6 +37,7 @@ object MdzipManager {
     private const val MAX_TOTAL_BYTES = 512L * 1024L * 1024L
     private const val MAX_AUDIO_BYTES = 256L * 1024L * 1024L
     private const val MAX_VIDEO_BYTES = 256L * 1024L * 1024L
+    private const val MAX_ATTACHMENT_BYTES = 256L * 1024L * 1024L
     private const val ASSET_BASE_URL = "https://appassets.androidplatform.net/mdzip-assets"
     private val SUPPORTED_AUDIO_EXTENSIONS =
         setOf("mp3", "aac", "m4a", "wav", "flac", "opus", "ogg", "oga")
@@ -220,7 +222,11 @@ object MdzipManager {
                     .replace(File.separatorChar, '/')
                 val path = safeArchivePath(name)
                 val entry = ZipEntry(path)
-                if (path.startsWith("video/")) {
+                if (
+                    path.startsWith("video/") ||
+                    (path.startsWith("attachments/") &&
+                        (isSupportedVideoFileName(path) || isSupportedAudioFileName(path)))
+                ) {
                     val size = file.length()
                     val crc = CRC32()
                     FileInputStream(file).use { input ->
@@ -336,6 +342,61 @@ object MdzipManager {
         return relativeMarkdownPath(session.entryPoint, archivePath)
     }
 
+    fun addAttachment(session: MdzipSession, input: InputStream, originalName: String): String {
+        return addAttachment(session.sessionDir, session.entryPoint, input, originalName)
+    }
+
+    internal fun addAttachment(
+        sessionDir: File,
+        entryPoint: String,
+        input: InputStream,
+        originalName: String
+    ): String {
+        val basename = originalName.substringAfterLast('/').substringAfterLast('\\')
+        if (basename.isBlank()) throw IOException("The selected file has no name.")
+        val cleanName = sanitizeAttachmentFileName(basename)
+        val candidateName = uniqueAttachmentName(sessionDir, cleanName)
+        val archivePath = "attachments/$candidateName"
+        val target = resolveArchiveFile(sessionDir, archivePath)
+        val parent = target.parentFile
+            ?: throw IOException("Could not create the attachments folder.")
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw IOException("Could not create the attachments folder.")
+        }
+
+        val currentBytes = sessionDir.walkTopDown()
+            .filter { it.isFile }
+            .sumOf { it.length() }
+        val temporary = File.createTempFile(".attachment-", ".tmp", parent)
+        try {
+            var bytesCopied = 0L
+            input.use { source ->
+                FileOutputStream(temporary).use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = source.read(buffer)
+                        if (read < 0) break
+                        bytesCopied += read
+                        if (
+                            bytesCopied > MAX_ATTACHMENT_BYTES ||
+                            currentBytes + bytesCopied > MAX_TOTAL_BYTES
+                        ) {
+                            throw IOException("This file is too large to add to the MDZip package.")
+                        }
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+            if (bytesCopied == 0L) throw IOException("The selected file is empty.")
+            if (!temporary.renameTo(target)) {
+                throw IOException("Could not add the file to the MDZip package.")
+            }
+        } finally {
+            temporary.delete()
+        }
+        return relativeMarkdownPath(entryPoint, archivePath)
+    }
+
     fun replaceAudio(
         session: MdzipSession,
         markdownLink: String,
@@ -401,6 +462,43 @@ object MdzipManager {
             !isSupportedAudioFileName(archivePath)
         ) return null
         return archivePath
+    }
+
+    fun resolveAttachmentArchivePath(session: MdzipSession, markdownLink: String): String? {
+        return resolveAttachmentArchivePath(session.entryPoint, markdownLink)
+    }
+
+    internal fun resolveAttachmentArchivePath(entryPoint: String, markdownLink: String): String? {
+        val target = markdownLink.trim().removePrefix("<").removeSuffix(">")
+        if (target.isBlank() || target.startsWith("/") || target.startsWith("//")) return null
+        if (target.contains("://") || target.startsWith("data:", ignoreCase = true)) return null
+        val decoded = runCatching {
+            URLDecoder.decode(
+                target.substringBefore('#').substringBefore('?').replace("+", "%2B"),
+                Charsets.UTF_8.name()
+            )
+        }.getOrNull() ?: return null
+        val parts = ArrayList<String>()
+        val base = entryPoint.substringBeforeLast('/', "")
+        if (base.isNotEmpty()) parts.addAll(base.split('/'))
+        for (part in decoded.split('/')) {
+            when (part) {
+                "", "." -> Unit
+                ".." -> if (parts.isEmpty()) return null else parts.removeAt(parts.lastIndex)
+                else -> parts.add(part)
+            }
+        }
+        if (parts.isEmpty()) return null
+        val archivePath = runCatching { safeArchivePath(parts.joinToString("/")) }.getOrNull()
+            ?: return null
+        return archivePath.takeIf { it.startsWith("attachments/") }
+    }
+
+    fun resolveAttachmentFile(session: MdzipSession, markdownLink: String): File? {
+        val archivePath = resolveAttachmentArchivePath(session.entryPoint, markdownLink) ?: return null
+        return runCatching { resolveArchiveFile(session.sessionDir, archivePath) }
+            .getOrNull()
+            ?.takeIf { it.isFile }
     }
 
     fun resolveAudioFile(session: MdzipSession, markdownLink: String): File? {
@@ -597,6 +695,29 @@ object MdzipManager {
             .trim('.')
             .ifBlank { "video" }
         return "$stem.$extension"
+    }
+
+    private fun sanitizeAttachmentFileName(name: String): String =
+        name.replace(Regex("[^\\p{L}\\p{N} ._()\\-]"), "_")
+            .trim()
+            .trim('.')
+            .ifBlank { "attachment" }
+
+    private fun uniqueAttachmentName(root: File, name: String): String {
+        val extension = name.substringAfterLast('.', "").takeIf {
+            it.isNotEmpty() && name.lastIndexOf('.') > 0
+        }
+        val stem = if (extension == null) name else name.removeSuffix(".$extension")
+        var suffix = 1
+        while (suffix < 10000) {
+            val numberedStem = if (suffix == 1) stem else "$stem ($suffix)"
+            val candidateName = if (extension == null) numberedStem else "$numberedStem.$extension"
+            if (!resolveArchiveFile(root, "attachments/$candidateName").exists()) {
+                return candidateName
+            }
+            suffix += 1
+        }
+        throw IOException("Could not assign a unique name to the attachment.")
     }
 
     private fun uniqueVideoName(root: File, stem: String, extension: String): String {
