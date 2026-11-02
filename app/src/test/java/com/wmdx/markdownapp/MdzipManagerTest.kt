@@ -154,7 +154,7 @@ class MdzipManagerTest {
             )
 
             assertEquals("../attachments/reference.pdf", firstLink)
-            assertEquals("../attachments/reference%20(2).pdf", secondLink)
+            assertEquals("../attachments/reference%20%282%29.pdf", secondLink)
             assertEquals(
                 "attachments/reference.pdf",
                 MdzipManager.resolveAttachmentArchivePath("docs/notes.md", firstLink)
@@ -189,7 +189,7 @@ class MdzipManagerTest {
                 "reference.pdf"
             )
 
-            assertEquals("attachments/reference%20(2).pdf", link)
+            assertEquals("attachments/reference%20%282%29.pdf", link)
             assertTrue(File(sessionDir, "attachments/reference (2).pdf").isFile)
             assertTrue(existing.isFile)
         } finally {
