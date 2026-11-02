@@ -34,7 +34,7 @@ export function createFloatingSelectionToolbarVisibility({
     }, delayMs);
   }
 
-  function updateSelection(view, selection) {
+  function updateSelection(view, selection, { suppressOnChange = true } = {}) {
     const nextRange = selection && !selection.empty
       ? { from: selection.from, to: selection.to }
       : null;
@@ -51,6 +51,11 @@ export function createFloatingSelectionToolbarVisibility({
       return changed;
     }
     if (changed) {
+      if (!suppressOnChange) {
+        clearResumeTimer();
+        suppressed = false;
+        return changed;
+      }
       suppress();
       scheduleResume();
     }

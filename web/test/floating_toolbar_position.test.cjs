@@ -102,7 +102,10 @@ test('floating toolbar has an independent layout and restores Android selection 
     'both bottom and floating toolbar definitions preserve syntax commands');
   assert.match(main, /applyFloatingToolbarConfig: function\(rawConfig\)/);
   assert.match(main, /updateFloatingSelectionToolbar\(update\.view\)/);
-  assert.match(main, /floatingSelectionToolbarVisibility\.updateSelection\(view, selection\)/);
+  assert.match(
+    main,
+    /floatingSelectionToolbarVisibility\.updateSelection\(view, selection, \{\s*suppressOnChange: toolbarActionExecutionDepth === 0/
+  );
   assert.match(main, /installFloatingSelectionToolbarPointerTracking\(\)/);
   assert.match(selectionVisibility, /delayMs = 1000/);
   assert.match(selectionVisibility, /function pointerDown\(\)/);

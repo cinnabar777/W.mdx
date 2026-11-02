@@ -91,3 +91,30 @@ test('clearing the text selection cancels a pending toolbar return', () => {
   assert.equal(clock.runNext(), false);
   assert.deepEqual(events, ['hide']);
 });
+
+test('toolbar actions can adjust selection without hiding the toolbar', () => {
+  const events = [];
+  const clock = createTimerHarness();
+  const visibility = createFloatingSelectionToolbarVisibility({
+    onHide: () => events.push('hide'),
+    onResume: () => events.push('show'),
+    schedule: clock.schedule,
+    cancel: clock.cancel
+  });
+  const view = {};
+
+  visibility.updateSelection(view, { from: 1, to: 5, empty: false });
+  clock.runNext();
+  visibility.updateSelection(
+    view,
+    { from: 2, to: 7, empty: false },
+    { suppressOnChange: false }
+  );
+
+  assert.equal(visibility.isSuppressed(), false);
+  assert.equal(clock.timers.size, 0);
+  assert.deepEqual(events, ['hide', 'show']);
+
+  visibility.updateSelection(view, { from: 3, to: 7, empty: false });
+  assert.equal(visibility.isSuppressed(), true, 'later user selection movement is still detected');
+});

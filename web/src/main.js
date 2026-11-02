@@ -5086,7 +5086,9 @@ function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
   }
   const selection = view?.state?.selection?.main;
   const hasSelection = Boolean(selection && !selection.empty);
-  floatingSelectionToolbarVisibility.updateSelection(view, selection);
+  floatingSelectionToolbarVisibility.updateSelection(view, selection, {
+    suppressOnChange: toolbarActionExecutionDepth === 0
+  });
   if (hasSelection) floatingToolbarAnchorPoint = null;
   if (hasSelection && floatingSelectionToolbarVisibility.isSuppressed()) {
     hideFloatingSelectionToolbar();

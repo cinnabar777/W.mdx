@@ -116,20 +116,26 @@ export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
 });
 
 const FLOATING_DEFAULT_ORDER = Object.freeze([
-  'custom-key-mvy7xpbw-8',
   'highlightCycle',
-  'penCycle',
   'underline',
   'bold',
   'custom-key-mvy7p38e-4',
-  'custom-key-mvy7rysk-5',
-  'custom-key-mvy7t6k4-6'
+  'custom-key-mvy7rysk-5'
 ]);
 const FLOATING_DEFAULT_HOLDING = Object.freeze([
-  'cut', 'copy', 'paste', 'selectAll', 'saveAsMdzip'
+  'cut',
+  'copy',
+  'paste',
+  'selectAll',
+  'penCycle',
+  'custom-key-mvy7xpbw-8'
+]);
+const FLOATING_DEFAULT_HIDDEN = Object.freeze([
+  'cut', 'copy', 'paste', 'selectAll', 'custom-key-mvy7xpbw-8'
 ]);
 const FLOATING_DEFAULT_ACTIVE_KEYS = new Set([
-  'bold', 'underline', 'highlightCycle', 'penCycle', ...FLOATING_DEFAULT_HOLDING
+  ...FLOATING_DEFAULT_ORDER,
+  ...FLOATING_DEFAULT_HOLDING
 ]);
 const FLOATING_DEFAULT_DELETED_KEYS = Object.freeze(
   BUILT_IN_DELETABLE_KEY_IDS.filter(id => !FLOATING_DEFAULT_ACTIVE_KEYS.has(id))
@@ -138,7 +144,7 @@ const FLOATING_DEFAULT_DELETED_KEYS = Object.freeze(
 export const DEFAULT_FLOATING_TOOLBAR_CONFIG = Object.freeze({
   version: DEFAULT_BOTTOM_TOOLBAR_CONFIG.version,
   order: FLOATING_DEFAULT_ORDER,
-  hidden: BUILT_IN_HOLDING_ITEM_IDS,
+  hidden: FLOATING_DEFAULT_HIDDEN,
   popupGroups: Object.freeze({}),
   holding: FLOATING_DEFAULT_HOLDING,
   deletedGroups: Object.freeze(Object.keys(BOTTOM_TOOLBAR_GROUP_ITEM_IDS)),
@@ -147,7 +153,6 @@ export const DEFAULT_FLOATING_TOOLBAR_CONFIG = Object.freeze({
   customKeys: Object.freeze({
     'custom-key-mvy7p38e-4': { title: 'Copy', icon: 'newFile', actionId: 'copy' },
     'custom-key-mvy7rysk-5': { title: 'Paste', icon: 'newFile', actionId: 'paste' },
-    'custom-key-mvy7t6k4-6': { title: 'Select All', icon: 'newFile', actionId: 'selectAll' },
     'custom-key-mvy7xpbw-8': { title: 'Erase', icon: 'newFile', actionId: 'clearFormatting' }
   }),
   styles: Object.freeze({
@@ -155,8 +160,8 @@ export const DEFAULT_FLOATING_TOOLBAR_CONFIG = Object.freeze({
       gestureActions: {
         longPress: 'editToolbarKeyPreferences',
         tap1: 'bold',
-        tap2: 'italic',
-        tap3: 'strikethrough'
+        swipeUpLeft: 'italic',
+        swipeUpRight: 'strikethrough'
       },
       gestureActionIcons: { longPress: 'none' }
     },
@@ -165,7 +170,12 @@ export const DEFAULT_FLOATING_TOOLBAR_CONFIG = Object.freeze({
       gestureActionIcons: { longPress: 'none' }
     },
     highlightCycle: {
-      gestureActions: { longPress: 'editToolbarKeyPreferences' },
+      gestureActions: {
+        longPress: 'editToolbarKeyPreferences',
+        tap1: 'highlightCycle',
+        swipeUpLeft: 'clearFormatting',
+        swipeUpRight: 'penCycle'
+      },
       gestureActionIcons: { longPress: 'none' }
     },
     penCycle: {
@@ -178,21 +188,23 @@ export const DEFAULT_FLOATING_TOOLBAR_CONFIG = Object.freeze({
       gestureActions: {
         longPress: 'editToolbarKeyPreferences',
         tap1: 'copy',
-        tap2: 'cut'
+        swipeUpLeft: 'selectAll',
+        swipeUpRight: 'cut'
       },
       gestureActionIcons: { longPress: 'none' }
     },
     'custom-key-mvy7rysk-5': {
       customSvg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 12h8M8 16h6"/></svg>',
       preserveSvgColors: false,
-      gestureActions: { longPress: 'editToolbarKeyPreferences' },
-      gestureActionIcons: { longPress: 'none' }
-    },
-    'custom-key-mvy7t6k4-6': {
-      customSvg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3"/><path d="M8 9h8M8 12h8M8 15h8"/></svg>',
-      preserveSvgColors: false,
-      gestureActions: { longPress: 'editToolbarKeyPreferences' },
-      gestureActionIcons: { longPress: 'none' }
+      gestureActions: {
+        longPress: 'editToolbarKeyPreferences',
+        tap1: 'paste',
+        swipeUpRight: 'pasteAsPlainText'
+      },
+      gestureActionIcons: {
+        longPress: 'none',
+        swipeUpRight: '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="17" text-anchor="middle" font-size="13" font-weight="bold" font-family="system-ui, sans-serif" fill="currentColor">PT</text></svg>'
+      }
     },
     'custom-key-mvy7xpbw-8': {
       customSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/><path d="m5.082 11.09 8.828 8.828"/></svg>',

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-test('floating toolbar defaults match the backup and keep only five holding keys', async () => {
+test('floating toolbar defaults match the updated backup', async () => {
   const {
     DEFAULT_FLOATING_TOOLBAR_CONFIG,
     normalizeBottomToolbarConfig
@@ -16,9 +16,28 @@ test('floating toolbar defaults match the backup and keep only five holding keys
   const normalizedWeb = normalizeBottomToolbarConfig(DEFAULT_FLOATING_TOOLBAR_CONFIG);
   const normalizedNative = normalizeBottomToolbarConfig(nativeDefault);
 
-  assert.deepEqual(normalizedWeb.holding, [
-    'cut', 'copy', 'paste', 'selectAll', 'saveAsMdzip'
+  assert.deepEqual(normalizedWeb.order, [
+    'highlightCycle',
+    'underline',
+    'bold',
+    'custom-key-mvy7p38e-4',
+    'custom-key-mvy7rysk-5'
   ]);
+  assert.deepEqual(normalizedWeb.holding, [
+    'cut', 'copy', 'paste', 'selectAll', 'penCycle', 'custom-key-mvy7xpbw-8'
+  ]);
+  assert.deepEqual(
+    Object.keys(normalizedWeb.customKeys).sort(),
+    [
+      'custom-key-mvy7p38e-4',
+      'custom-key-mvy7rysk-5',
+      'custom-key-mvy7xpbw-8'
+    ].sort()
+  );
+  assert.equal(
+    normalizedWeb.styles['custom-key-mvy7rysk-5'].gestureActions.swipeUpRight,
+    'pasteAsPlainText'
+  );
   assert.deepEqual(
     { ...normalizedNative, deletedGroups: [...normalizedNative.deletedGroups].sort(),
       deletedKeys: [...normalizedNative.deletedKeys].sort() },
