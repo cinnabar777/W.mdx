@@ -465,11 +465,41 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (isEditorReady && matchesConfiguredSaveShortcut(event)) {
+            AppDiagnostics.recordNativeKeyEvent(this, event, true)
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                AppDiagnostics.record(
+                    this,
+                    "native_save_shortcut",
+                    "format=${currentDocumentFormat.name.lowercase()} " +
+                        "hasUri=${currentFileUri != null}"
+                )
+                handleSaveFile()
+            }
+            return true
+        }
+
         val handled = super.dispatchKeyEvent(event)
         if (isEditorReady) {
             AppDiagnostics.recordNativeKeyEvent(this, event, handled)
         }
         return handled
+    }
+
+    private fun matchesConfiguredSaveShortcut(event: KeyEvent): Boolean {
+        if (
+            event.keyCode != KeyEvent.KEYCODE_S ||
+            !(event.isCtrlPressed || event.isMetaPressed) ||
+            event.isAltPressed ||
+            event.isShiftPressed
+        ) return false
+
+        val shortcut = PreferenceManager.getDefaultSharedPreferences(this)
+            .getString("pref_hotkey_save", "ctrl+s")
+            ?.trim()
+            ?.lowercase()
+
+        return shortcut == "ctrl+s" || shortcut == "control+s"
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
