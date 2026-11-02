@@ -8742,6 +8742,14 @@ window.editorBridge = {
     setCssVar('--hr-gradient-offset', prefs.pref_hr_gradient_offset_percent ?? 25, '%');
 
     // Toolbar
+    const floatingToolbarHideDelaySeconds = Number(
+      prefs.pref_floating_toolbar_hide_delay_seconds ?? 1
+    );
+    floatingSelectionToolbarVisibility.setDelayMs(
+      Number.isFinite(floatingToolbarHideDelaySeconds)
+        ? Math.max(0, Math.min(5, floatingToolbarHideDelaySeconds)) * 1000
+        : 1000
+    );
     floatingToolbarEnabled = prefs.pref_toolbar_floating_enabled !== false;
     if (!floatingToolbarEnabled && activePopupSurface === 'floating') {
       hidePopupStrip();

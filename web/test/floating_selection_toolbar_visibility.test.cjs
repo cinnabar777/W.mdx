@@ -27,7 +27,7 @@ function createTimerHarness() {
   };
 }
 
-test('dragging a selection hides the toolbar until one second after release', () => {
+test('dragging a selection hides only after its range changes and returns after one second', () => {
   const events = [];
   const clock = createTimerHarness();
   const visibility = createFloatingSelectionToolbarVisibility({
@@ -41,6 +41,7 @@ test('dragging a selection hides the toolbar until one second after release', ()
   visibility.updateSelection(view, { from: 2, to: 8, empty: false });
   visibility.pointerDown({ clientX: 10, clientY: 10 });
   visibility.pointerMove({ clientX: 30, clientY: 30 });
+  assert.deepEqual(events, [], 'pointer movement alone does not hide the toolbar');
   visibility.updateSelection(view, { from: 3, to: 8, empty: false });
   assert.equal(clock.timers.size, 0, 'the toolbar stays hidden during the drag');
   assert.equal(visibility.isSuppressed(), true);
@@ -73,7 +74,7 @@ test('a tap-created word selection shows the toolbar immediately', () => {
   assert.deepEqual(events, []);
 });
 
-test('touching an existing selection hides the toolbar, then restores it on tap release', () => {
+test('tapping an existing selection or collapsing it does not trigger drag hiding', () => {
   const events = [];
   const clock = createTimerHarness();
   const visibility = createFloatingSelectionToolbarVisibility({
@@ -86,15 +87,33 @@ test('touching an existing selection hides the toolbar, then restores it on tap 
 
   visibility.updateSelection(view, { from: 1, to: 6, empty: false });
   visibility.pointerDown({ clientX: 10, clientY: 10 });
-  assert.equal(visibility.isSuppressed(), true);
-  assert.deepEqual(events, ['hide']);
-
-  visibility.updateSelection(view, { from: 2, to: 7, empty: false });
+  visibility.updateSelection(view, { from: 4, to: 4, empty: true });
   visibility.pointerUp({ clientX: 12, clientY: 11 });
 
   assert.equal(clock.timers.size, 0);
   assert.equal(visibility.isSuppressed(), false);
-  assert.deepEqual(events, ['hide', 'show']);
+  assert.deepEqual(events, []);
+});
+
+test('pointer movement without a changed text selection does not hide the toolbar', () => {
+  const events = [];
+  const clock = createTimerHarness();
+  const visibility = createFloatingSelectionToolbarVisibility({
+    onHide: () => events.push('hide'),
+    onResume: () => events.push('show'),
+    schedule: clock.schedule,
+    cancel: clock.cancel
+  });
+  const view = {};
+
+  visibility.updateSelection(view, { from: 1, to: 6, empty: false });
+  visibility.pointerDown({ clientX: 10, clientY: 10 });
+  visibility.pointerMove({ clientX: 30, clientY: 30 });
+  visibility.pointerUp({ clientX: 30, clientY: 30 });
+
+  assert.equal(clock.timers.size, 0);
+  assert.equal(visibility.isSuppressed(), false);
+  assert.deepEqual(events, []);
 });
 
 test('pointer release coordinates recognize a drag if move events were missed', () => {
@@ -115,6 +134,27 @@ test('pointer release coordinates recognize a drag if move events were missed', 
   assert.deepEqual(events, ['hide']);
   assert.equal(clock.runNext(), 1000);
   assert.equal(visibility.isSuppressed(), false);
+  assert.deepEqual(events, ['hide', 'show']);
+});
+
+test('the toolbar return delay can be changed', () => {
+  const events = [];
+  const clock = createTimerHarness();
+  const visibility = createFloatingSelectionToolbarVisibility({
+    onHide: () => events.push('hide'),
+    onResume: () => events.push('show'),
+    schedule: clock.schedule,
+    cancel: clock.cancel
+  });
+
+  visibility.setDelayMs(2500);
+  visibility.updateSelection({}, { from: 1, to: 6, empty: false });
+  visibility.pointerDown({ clientX: 10, clientY: 10 });
+  visibility.pointerMove({ clientX: 30, clientY: 30 });
+  visibility.updateSelection({}, { from: 2, to: 6, empty: false });
+  visibility.pointerUp({ clientX: 30, clientY: 30 });
+
+  assert.equal(clock.runNext(), 2500);
   assert.deepEqual(events, ['hide', 'show']);
 });
 

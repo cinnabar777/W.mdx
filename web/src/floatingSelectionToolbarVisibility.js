@@ -11,9 +11,14 @@ export function createFloatingSelectionToolbarVisibility({
   let pointerActive = false;
   let pointerDragging = false;
   let pointerStart = null;
+  let pointerRangeAtDown = null;
+  let pointerSelectionChanged = false;
   let releasePending = false;
   let suppressed = false;
   let resumeTimer = null;
+  let currentDelayMs = Number.isFinite(delayMs)
+    ? Math.max(0, Math.min(5000, Math.round(delayMs)))
+    : 1000;
 
   function clearResumeTimer() {
     if (resumeTimer !== null) cancel(resumeTimer);
@@ -36,18 +41,31 @@ export function createFloatingSelectionToolbarVisibility({
       releasePending = false;
       suppressed = false;
       onResume();
-    }, delayMs);
+    }, currentDelayMs);
   }
 
   function updateSelection(view, selection) {
     const nextRange = selection && !selection.empty
       ? { from: selection.from, to: selection.to }
       : null;
-    const changed =
-      view !== currentView ||
+    const rangeChanged =
       nextRange?.from !== currentRange?.from ||
       nextRange?.to !== currentRange?.to;
+    const changed =
+      view !== currentView ||
+      rangeChanged;
 
+    if (
+      pointerActive &&
+      rangeChanged &&
+      nextRange &&
+      (
+        nextRange.from !== pointerRangeAtDown?.from ||
+        nextRange.to !== pointerRangeAtDown?.to
+      )
+    ) {
+      pointerSelectionChanged = true;
+    }
     currentView = view;
     currentRange = nextRange;
     if (!nextRange) {
@@ -57,14 +75,14 @@ export function createFloatingSelectionToolbarVisibility({
       return changed;
     }
     if (changed) {
-      if (pointerDragging) {
-        clearResumeTimer();
-        suppress();
+      if (pointerActive) {
+        if (pointerDragging && pointerSelectionChanged && nextRange) {
+          clearResumeTimer();
+          suppress();
+        }
       } else if (releasePending) {
         suppress();
         scheduleResume();
-      } else if (pointerActive) {
-        // Keep an existing toolbar hidden while the user's finger is down.
       } else {
         clearResumeTimer();
         releasePending = false;
@@ -82,10 +100,11 @@ export function createFloatingSelectionToolbarVisibility({
     releasePending = false;
     pointerActive = true;
     pointerDragging = false;
+    pointerRangeAtDown = currentRange ? { ...currentRange } : null;
+    pointerSelectionChanged = false;
     pointerStart = Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
       ? { x: event.clientX, y: event.clientY }
       : null;
-    if (currentRange) suppress();
   }
 
   function pointerMove(event = {}) {
@@ -107,7 +126,7 @@ export function createFloatingSelectionToolbarVisibility({
     if (!pointerDragging) return;
     clearResumeTimer();
     releasePending = false;
-    suppress();
+    if (pointerSelectionChanged && currentRange) suppress();
   }
 
   function pointerUp(event = {}) {
@@ -123,16 +142,20 @@ export function createFloatingSelectionToolbarVisibility({
       ) >= dragThresholdPx
     ) {
       pointerDragging = true;
-      suppress();
     }
+    if (pointerDragging && pointerSelectionChanged && currentRange) suppress();
     pointerActive = false;
     pointerStart = null;
-    if (pointerDragging) {
+    pointerRangeAtDown = null;
+    if (pointerDragging && pointerSelectionChanged && currentRange) {
       pointerDragging = false;
+      pointerSelectionChanged = false;
       releasePending = true;
       scheduleResume();
       return;
     }
+    pointerDragging = false;
+    pointerSelectionChanged = false;
     if (suppressed) {
       clearResumeTimer();
       releasePending = false;
@@ -148,6 +171,8 @@ export function createFloatingSelectionToolbarVisibility({
     pointerActive = false;
     pointerDragging = false;
     pointerStart = null;
+    pointerRangeAtDown = null;
+    pointerSelectionChanged = false;
     releasePending = false;
     suppressed = false;
   }
@@ -158,6 +183,14 @@ export function createFloatingSelectionToolbarVisibility({
     pointerMove,
     pointerUp,
     reset,
+    setDelayMs(nextDelayMs) {
+      const normalizedDelayMs = Number.isFinite(nextDelayMs)
+        ? Math.max(0, Math.min(5000, Math.round(nextDelayMs)))
+        : 1000;
+      if (normalizedDelayMs === currentDelayMs) return;
+      currentDelayMs = normalizedDelayMs;
+      if (resumeTimer !== null && releasePending) scheduleResume();
+    },
     isSuppressed: () => suppressed
   };
 }

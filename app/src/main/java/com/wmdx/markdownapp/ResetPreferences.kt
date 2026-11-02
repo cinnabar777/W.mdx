@@ -472,6 +472,7 @@ object PreferenceResetHelper {
             key == "pref_cursor_blink_rate" -> "0.8s"
             key == "pref_selection_highlight_bg_color" -> "default"
             key == "pref_selection_highlight_text_color" -> "default"
+            key == "pref_floating_toolbar_hide_delay_seconds" -> 1
             key == "pref_findreplace_panel_bg" -> "default"
             key == "pref_findreplace_panel_border" -> "default"
             key == "pref_findreplace_field_find_bg" -> "default"

@@ -81,7 +81,14 @@ test('floating toolbar only delays visibility for a real selection drag', () => 
   const main = readWeb('src/main.js');
 
   assert.match(visibility, /dragThresholdPx = 8/);
-  assert.match(visibility, /if \(pointerDragging\)[\s\S]*?suppress\(\)/);
+  assert.match(
+    visibility,
+    /if \(pointerDragging && pointerSelectionChanged && currentRange\) suppress\(\)/
+  );
+  assert.doesNotMatch(
+    visibility.match(/function pointerDown\(event = \{\}\) \{[\s\S]*?\n  \}/)?.[0] || '',
+    /suppress\(\)/
+  );
   assert.match(visibility, /else if \(releasePending\)[\s\S]*?scheduleResume\(\)/);
   assert.match(main, /floatingSelectionToolbarVisibility\.pointerMove\(event\)/);
   assert.doesNotMatch(main, /suppressOnChange:\s*toolbarActionExecutionDepth/);
@@ -114,6 +121,7 @@ test('floating toolbar has an independent layout and restores Android selection 
   const editorWebView = readApp('src/main/java/com/wmdx/markdownapp/EditorWebView.kt');
   const settingsActivity = readApp('src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
   const controlbarPrefs = readApp('src/main/res/xml/preferences_styling_controlbar.xml');
+  const cursorPrefs = readApp('src/main/res/xml/preferences_styling_cursor.xml');
   const resetPreferences = readApp('src/main/java/com/wmdx/markdownapp/ResetPreferences.kt');
   const mainSettingsPrefs = readApp('src/main/res/xml/preferences.xml');
   const activityLayout = readApp('src/main/res/layout/activity_main.xml');
@@ -134,6 +142,13 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(selectionVisibility, /delayMs = 1000/);
   assert.match(selectionVisibility, /function pointerDown\(event = \{\}\)/);
   assert.match(selectionVisibility, /function pointerUp\(event = \{\}\)/);
+  assert.match(selectionVisibility, /setDelayMs\(nextDelayMs\)/);
+  assert.match(cursorPrefs, /app:key="pref_floating_toolbar_hide_delay_seconds"[\s\S]*?app:defaultValue="1"/);
+  assert.match(resetPreferences, /key == "pref_floating_toolbar_hide_delay_seconds" -> 1/);
+  assert.match(
+    main,
+    /pref_floating_toolbar_hide_delay_seconds \?\? 1[\s\S]*?setDelayMs\([\s\S]*?1000/
+  );
   assert.match(main, /showFloatingSelectionToolbarAtPoint\(event\.clientX, event\.clientY, this\.view\)/);
   assert.match(main, /event\.pointerType === 'touch'[\s\S]*?setTimeout\([\s\S]*?550/);
   assert.match(main, /floatingToolbarAnchorPoint\?\.view === view/);
