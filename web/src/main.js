@@ -68,6 +68,7 @@ import { svgIcons } from './toolbarIcons.js';
 // moves between editor text and the in-WebView toolbars.
 const activeToolbarImePointers = new Set();
 const toolbarImeSurfaceSelector =
+  '#bottom-toolbar, #floating-selection-toolbar, #popup-toolbar-strip, ' +
   '#floating-toggle-btn, .floating-toggle-btn';
 
 document.addEventListener('pointerdown', event => {
@@ -4747,30 +4748,6 @@ function installToolbarTapActions(container) {
   if (!container || container.dataset.toolbarTapActionsInstalled === 'true') return;
   container.dataset.toolbarTapActionsInstalled = 'true';
   const pendingTaps = new WeakMap();
-  const activeToolbarPointerIds = new Set();
-  const getToolbarPointerControl = event => {
-    const target = event.target?.nodeType === 1
-      ? event.target
-      : event.target?.parentElement;
-    const control = target?.closest?.(
-      '[data-toolbar-key], [data-toolbar-style-id], .popup-strip-btn'
-    );
-    return control && container.contains(control) ? control : null;
-  };
-  const endToolbarPointer = event => {
-    const pointerId = event.pointerId ?? 'primary';
-    if (!activeToolbarPointerIds.delete(pointerId)) return;
-    setTimeout(() => window.AndroidNative?.endToolbarInteraction?.(), 80);
-  };
-  container.addEventListener('pointerdown', event => {
-    if (event.isPrimary === false || !getToolbarPointerControl(event)) return;
-    const pointerId = event.pointerId ?? 'primary';
-    if (activeToolbarPointerIds.has(pointerId)) return;
-    activeToolbarPointerIds.add(pointerId);
-    window.AndroidNative?.beginToolbarInteraction?.();
-  }, true);
-  container.addEventListener('pointerup', endToolbarPointer, true);
-  container.addEventListener('pointercancel', endToolbarPointer, true);
   container.addEventListener('click', event => {
     const target = event.target?.nodeType === 1
       ? event.target

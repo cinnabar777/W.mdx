@@ -6,6 +6,8 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.preference.PreferenceManager
@@ -36,6 +38,9 @@ class EditorWebView @JvmOverloads constructor(
 
     override fun onCheckIsTextEditor(): Boolean =
         imeInputAllowed && super.onCheckIsTextEditor()
+
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? =
+        if (imeInputAllowed) super.onCreateInputConnection(outAttrs) else null
 
     private fun isFloatingToolbarEnabled(): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)

@@ -56,10 +56,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var progressBar: ProgressBar
     private var suppressImeUntilUserTouch = false
     private var imeHideGeneration = 0
-    private var imeVisibleBeforeLastWebViewTouch = false
-    private var lastWebViewTouchElapsedMs = 0L
-    private var toolbarImeInteractionDepth = 0
-    private var toolbarImeVisibleBeforeInteraction = false
+    @Volatile private var imeVisibleBeforeLastWebViewTouch = false
+    @Volatile private var lastWebViewTouchElapsedMs = 0L
+    @Volatile private var lastKnownImeVisible = false
+    private val toolbarImeInteractionLock = Any()
+    @Volatile private var toolbarImeInteractionDepth = 0
+    @Volatile private var toolbarImeVisibleBeforeInteraction = false
     private enum class DocumentFormat { MARKDOWN, TEXT_PACK, MDZIP }
     private var currentDocumentFormat = DocumentFormat.MARKDOWN
 
@@ -94,7 +96,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingOpenUri: Uri? = null
     private var pendingOpenPermissionFlags: Int? = null
     private var pendingExistingDocumentFocusUri: Uri? = null
-    private var isActivityResumed = false
+    @Volatile private var isActivityResumed = false
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
     private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
@@ -604,7 +606,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onResume() {
         super.onResume()
         isActivityResumed = true
-        toolbarImeInteractionDepth = 0
+        synchronized(toolbarImeInteractionLock) {
+            toolbarImeInteractionDepth = 0
+            toolbarImeVisibleBeforeInteraction = false
+        }
         WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
             pendingExistingDocumentFocusUri = it
         }
@@ -635,7 +640,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onPause() {
         isActivityResumed = false
-        toolbarImeInteractionDepth = 0
+        synchronized(toolbarImeInteractionLock) {
+            toolbarImeInteractionDepth = 0
+            toolbarImeVisibleBeforeInteraction = false
+        }
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
@@ -684,9 +692,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun editorImeVisible(): Boolean =
-        ViewCompat.getRootWindowInsets(webView)
+    private fun editorImeVisible(): Boolean {
+        val visible = ViewCompat.getRootWindowInsets(webView)
             ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        lastKnownImeVisible = visible
+        return visible
+    }
 
     private fun hideImeWhileResumeIsSuppressed(generation: Int) {
         if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
@@ -2566,9 +2577,39 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val archivePath = segments.drop(2).joinToString("/")
-        if (archivePath.startsWith("attachments/")) {
-            val file = MdzipManager.attachmentArchiveFile(session, archivePath)
-                ?: return mdzipAssetError(404, "Not Found")
+        val isImageAsset = MdzipManager.isSupportedImageFileName(archivePath)
+        val isVideoAsset = MdzipManager.isSupportedVideoFileName(archivePath)
+        val isAudioAsset = MdzipManager.isSupportedAudioFileName(archivePath)
+        val file = MdzipManager.assetArchiveFile(session, archivePath)
+        if (file == null) {
+            if (isVideoAsset) {
+                val extension = archivePath.substringAfterLast('.').lowercase()
+                recordMdzipVideoAsset(
+                    extension,
+                    404,
+                    mdzipVideoMimeType(extension),
+                    rangeHeader = request.requestHeaders.entries
+                        .firstOrNull { it.key.equals("Range", ignoreCase = true) }
+                        ?.value,
+                    contentRange = null,
+                    contentLength = 0,
+                    method = request.method
+                )
+            } else if (isAudioAsset) {
+                val extension = archivePath.substringAfterLast('.').lowercase()
+                recordMdzipAudioAsset(
+                    extension,
+                    404,
+                    mdzipAudioMimeType(extension),
+                    rangeHeader = null,
+                    contentRange = null,
+                    contentLength = 0
+                )
+            }
+            return mdzipAssetError(404, "Not Found")
+        }
+
+        if (isImageAsset) {
             val mimeType = android.webkit.MimeTypeMap.getSingleton()
                 .getMimeTypeFromExtension(file.extension.lowercase())
                 ?.takeIf { it.startsWith("image/") }
@@ -2587,38 +2628,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
         }
 
-        val isVideoAsset = archivePath.startsWith("video/", ignoreCase = true)
-        val file = if (isVideoAsset) {
-            MdzipManager.videoArchiveFile(session, archivePath)
-        } else {
-            MdzipManager.audioArchiveFile(session, archivePath)
-        }
-        if (file == null) {
-            if (isVideoAsset && archivePath.startsWith("video/", ignoreCase = true)) {
-                recordMdzipVideoAsset(
-                    archivePath.substringAfterLast('.').lowercase(),
-                    404,
-                    mdzipVideoMimeType(archivePath.substringAfterLast('.')),
-                    rangeHeader = request.requestHeaders.entries
-                        .firstOrNull { it.key.equals("Range", ignoreCase = true) }
-                        ?.value,
-                    contentRange = null,
-                    contentLength = 0,
-                    method = request.method
-                )
-            } else if (archivePath.startsWith("audio/", ignoreCase = true) &&
-                MdzipManager.isSupportedAudioFileName(archivePath)
-            ) {
-                val extension = archivePath.substringAfterLast('.').lowercase()
-                recordMdzipAudioAsset(
-                    extension,
-                    404,
-                    mdzipAudioMimeType(extension),
-                    rangeHeader = null,
-                    contentRange = null,
-                    contentLength = 0
-                )
-            }
+        if (!isVideoAsset && !isAudioAsset) {
             return mdzipAssetError(404, "Not Found")
         }
         val extension = file.extension.lowercase()
@@ -4430,8 +4440,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun beginToolbarInteraction() {
-            runOnUiThread {
-                if (!isActivityResumed || !::webView.isInitialized) return@runOnUiThread
+            if (!isActivityResumed || !::webView.isInitialized) return
+            val imeWasVisible = synchronized(toolbarImeInteractionLock) {
                 if (toolbarImeInteractionDepth == 0) {
                     val elapsedSinceTouch =
                         android.os.SystemClock.elapsedRealtime() - lastWebViewTouchElapsedMs
@@ -4439,35 +4449,59 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         if (elapsedSinceTouch in 0..1_000L) {
                             imeVisibleBeforeLastWebViewTouch
                         } else {
-                            editorImeVisible()
+                            lastKnownImeVisible
                         }
-                    (webView as? EditorWebView)
-                        ?.setImeInputAllowed(toolbarImeVisibleBeforeInteraction)
+                }
+                toolbarImeInteractionDepth += 1
+                toolbarImeVisibleBeforeInteraction
+            }
+            if (!imeWasVisible) {
+                (webView as? EditorWebView)?.setImeInputAllowed(false)
+            }
+            runOnUiThread {
+                if (!isActivityResumed) return@runOnUiThread
+                synchronized(toolbarImeInteractionLock) {
                     AppDiagnostics.record(
                         this@MainActivity,
                         "toolbar_ime_state_captured",
-                        "imeVisible=$toolbarImeVisibleBeforeInteraction inputAllowed=$toolbarImeVisibleBeforeInteraction"
+                        "imeVisible=$imeWasVisible inputAllowed=$imeWasVisible " +
+                            "depth=$toolbarImeInteractionDepth"
                     )
                 }
-                toolbarImeInteractionDepth += 1
             }
         }
 
         @JavascriptInterface
         fun endToolbarInteraction() {
-            runOnUiThread {
-                if (toolbarImeInteractionDepth <= 0) return@runOnUiThread
+            synchronized(toolbarImeInteractionLock) {
+                if (toolbarImeInteractionDepth <= 0) return
                 toolbarImeInteractionDepth -= 1
             }
         }
 
         @JavascriptInterface
         fun showEditorKeyboard() {
-            runOnUiThread {
-                if (
-                    toolbarImeInteractionDepth > 0 &&
+            val suppressedByToolbar = synchronized(toolbarImeInteractionLock) {
+                toolbarImeInteractionDepth > 0 &&
                     !toolbarImeVisibleBeforeInteraction
-                ) {
+            }
+            if (suppressedByToolbar) {
+                runOnUiThread {
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "ime_show_suppressed_toolbar",
+                        "depth=$toolbarImeInteractionDepth"
+                    )
+                }
+                return
+            }
+            runOnUiThread {
+                val stillSuppressedByToolbar =
+                    synchronized(toolbarImeInteractionLock) {
+                        toolbarImeInteractionDepth > 0 &&
+                            !toolbarImeVisibleBeforeInteraction
+                    }
+                if (stillSuppressedByToolbar) {
                     AppDiagnostics.record(
                         this@MainActivity,
                         "ime_show_suppressed_toolbar",
