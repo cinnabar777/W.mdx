@@ -1369,7 +1369,11 @@ test('dropping one toolbar key onto another creates a folder with both keys', as
         hidden: [],
         holding: [],
         customGroups: {},
-        styles: {}
+        styles: {
+          undo: {
+            customSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 1h1v1H1z"/></svg>'
+          }
+        }
       })
     }),
     saveBottomToolbarConfig: value => {
@@ -1392,6 +1396,12 @@ test('dropping one toolbar key onto another creates a folder with both keys', as
 
     const groupId = Object.keys(saves.at(-1).customGroups)[0];
     assert.ok(groupId, 'a drop on the center of another key creates a group');
+    assert.equal(saves.at(-1).customGroups[groupId].icon, 'folder');
+    assert.equal(
+      saves.at(-1).styles[groupId]?.customSvg,
+      undefined,
+      'the new group does not inherit the first key custom icon'
+    );
     assert.deepEqual(saves.at(-1).popupGroups[groupId].order, ['undo', 'table']);
     assert.ok(!saves.at(-1).order.includes('undo'));
     assert.ok(!saves.at(-1).order.includes('table'));

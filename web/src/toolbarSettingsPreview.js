@@ -2021,21 +2021,8 @@ function createToolbarGroupFromDrop(firstId, secondId, placement) {
         ? { id: firstId, title: config.customKeys[firstId].title, icon: config.customKeys[firstId].icon }
       : null);
   const title = firstDefinition?.title?.trim().slice(0, 48) || 'New group';
-  const sourceStyle = config.styles[firstId] || {};
-  const sourceIcon = firstDefinition?.icon;
-  const iconName = typeof sourceIcon === 'string' && /^[a-z0-9_-]{1,48}$/i.test(sourceIcon)
-    ? sourceIcon
-    : 'folder';
-  config.customGroups[groupId] = { title, icon: iconName };
+  config.customGroups[groupId] = { title, icon: 'folder' };
   config.popupGroups[groupId] = { order: [firstId, secondId], hidden: [] };
-  const customSvg = sourceStyle.customSvg ||
-    (typeof sourceIcon === 'string' && sourceIcon.includes('<svg') ? sourceIcon : '');
-  if (customSvg) {
-    config.styles[groupId] = {
-      customSvg,
-      preserveSvgColors: sourceStyle.preserveSvgColors === true
-    };
-  }
 
   const previousIndex = placement.index;
   config.order = config.order.filter(id => id !== firstId && id !== secondId);
