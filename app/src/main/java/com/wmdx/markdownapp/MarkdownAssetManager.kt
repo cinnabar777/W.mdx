@@ -150,26 +150,6 @@ internal object MarkdownAssetManager {
         return null
     }
 
-    private fun queryDisplayName(context: Context, uri: Uri): String? =
-        runCatching {
-            context.contentResolver.query(
-                uri,
-                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
-                null,
-                null,
-                null
-            )?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(
-                    android.provider.OpenableColumns.DISPLAY_NAME
-                )
-                if (nameIndex >= 0 && cursor.moveToFirst()) {
-                    cursor.getString(nameIndex)?.takeIf { it.isNotBlank() }
-                } else {
-                    null
-                }
-            }
-        }.getOrNull()
-
     private fun hasSameContent(context: Context, firstUri: Uri, secondUri: Uri): Boolean {
         val firstStream = runCatching {
             context.contentResolver.openInputStream(firstUri)
@@ -594,14 +574,14 @@ internal object MarkdownAssetManager {
         val cursor = runCatching {
             context.contentResolver.query(
                 uri,
-                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
                 null,
                 null,
                 null
             )
         }.getOrNull() ?: return null
         return cursor.use { results ->
-            val nameIndex = results.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val nameIndex = results.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
             if (nameIndex >= 0 && results.moveToFirst()) results.getString(nameIndex) else null
         }
     }
