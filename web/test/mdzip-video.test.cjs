@@ -180,10 +180,10 @@ test('playable and notice-only video formats are packaged and rendered distinctl
   assert.doesNotMatch(editor, /decorations\.push\(videoDecoration\)/);
   assert.match(editor, /syncMdzipVideoReferences\?\./);
   assert.match(editor, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video/);
-  assert.match(toolbarConfig, /'image', 'audio', 'video', 'link'/);
+  assert.match(toolbarConfig, /'image', 'audio', 'video', 'attachment', 'link'/);
   assert.match(toolbarConfig, /parsedVersion > 0 && parsedVersion < 8/);
   assert.match(settingsPreview, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video \}/);
-  assert.match(settingsActivity, /"image", "audio", "video", "link"/);
+  assert.match(settingsActivity, /"image", "audio", "video", "attachment", "link"/);
   assert.match(widget, /video\.controls = true/);
   assert.match(widget, /Unsupported video format\. This app can play MP4, M4V, WebM, 3GP, MOV, and MKV\./);
   assert.match(editor, /videoLink\.unsupported/);
