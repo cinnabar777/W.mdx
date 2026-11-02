@@ -5036,11 +5036,11 @@ function installFloatingSelectionToolbarPointerTracking() {
   };
   document.addEventListener('pointerdown', event => {
     if (isEditorTarget(event.target)) {
-      floatingSelectionToolbarVisibility.pointerDown();
+      floatingSelectionToolbarVisibility.pointerDown(event);
     }
   }, true);
-  document.addEventListener('pointermove', () => {
-    floatingSelectionToolbarVisibility.pointerMove();
+  document.addEventListener('pointermove', event => {
+    floatingSelectionToolbarVisibility.pointerMove(event);
   }, true);
   const finishPointer = () => floatingSelectionToolbarVisibility.pointerUp();
   document.addEventListener('pointerup', finishPointer, true);
@@ -5086,9 +5086,7 @@ function updateFloatingSelectionToolbar(view = activeAdapter?.view) {
   }
   const selection = view?.state?.selection?.main;
   const hasSelection = Boolean(selection && !selection.empty);
-  floatingSelectionToolbarVisibility.updateSelection(view, selection, {
-    suppressOnChange: toolbarActionExecutionDepth === 0
-  });
+  floatingSelectionToolbarVisibility.updateSelection(view, selection);
   if (hasSelection) floatingToolbarAnchorPoint = null;
   if (hasSelection && floatingSelectionToolbarVisibility.isSuppressed()) {
     hideFloatingSelectionToolbar();
@@ -6553,7 +6551,21 @@ function hidePopupStrip() {
   activePopupGroup = null;
   activeToolbarRootKey = null;
   activePopupSurface = 'bottom';
-  document.querySelectorAll('.grouped-key-btn').forEach(btn => btn.classList.remove('active'));
+  clearToolbarPopupActiveStates();
+}
+
+function clearToolbarPopupActiveStates() {
+  document.querySelectorAll(
+    '#bottom-toolbar .grouped-key-btn.active, #floating-selection-toolbar .grouped-key-btn.active'
+  ).forEach(button => {
+    const keyId = button.dataset.toolbarKey;
+    const toolbarConfig = button.closest('#floating-selection-toolbar')
+      ? floatingToolbarConfig
+      : bottomToolbarConfig;
+    if (keyId && toolbarConfig.popupGroups[keyId]) {
+      button.classList.remove('active');
+    }
+  });
 }
 
 function togglePopupStrip(
@@ -6581,7 +6593,7 @@ function togglePopupStrip(
   strip.classList.remove('hidden');
   activePopupGroup = groupKey;
   activePopupSurface = surface;
-  document.querySelectorAll('.grouped-key-btn').forEach(btn => btn.classList.remove('active'));
+  clearToolbarPopupActiveStates();
   const rootKey = activeToolbarRootKey || groupKey;
   const rootSelector = surface === 'floating'
     ? '#floating-selection-toolbar [data-toolbar-key]'

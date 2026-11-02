@@ -27,7 +27,7 @@ function createTimerHarness() {
   };
 }
 
-test('selection changes keep the floating toolbar hidden until one second of stillness', () => {
+test('dragging a selection hides the toolbar until one second after release', () => {
   const events = [];
   const clock = createTimerHarness();
   const visibility = createFloatingSelectionToolbarVisibility({
@@ -39,19 +39,21 @@ test('selection changes keep the floating toolbar hidden until one second of sti
   const view = {};
 
   visibility.updateSelection(view, { from: 2, to: 8, empty: false });
-  const firstTimer = [...clock.timers.keys()][0];
+  visibility.pointerDown({ clientX: 10, clientY: 10 });
+  visibility.pointerMove({ clientX: 30, clientY: 30 });
   visibility.updateSelection(view, { from: 3, to: 8, empty: false });
-
-  assert.equal(clock.timers.size, 1, 'each movement restarts the one-second delay');
-  assert.equal(clock.timers.has(firstTimer), false, 'the prior delay is cancelled');
+  assert.equal(clock.timers.size, 0, 'the toolbar stays hidden during the drag');
   assert.equal(visibility.isSuppressed(), true);
   assert.deepEqual(events, ['hide']);
+
+  visibility.pointerUp();
+  assert.equal(clock.timers.size, 1);
   assert.equal(clock.runNext(), 1000);
   assert.equal(visibility.isSuppressed(), false);
   assert.deepEqual(events, ['hide', 'show']);
 });
 
-test('an active pointer keeps the toolbar hidden until one second after release', () => {
+test('a tap-created word selection shows the toolbar immediately', () => {
   const events = [];
   const clock = createTimerHarness();
   const visibility = createFloatingSelectionToolbarVisibility({
@@ -62,15 +64,33 @@ test('an active pointer keeps the toolbar hidden until one second after release'
   });
   const view = {};
 
-  visibility.updateSelection(view, { from: 1, to: 6, empty: false });
-  visibility.pointerDown();
-  visibility.pointerMove();
-  assert.equal(clock.timers.size, 0, 'the timer stays stopped during pointer movement');
-  assert.equal(visibility.isSuppressed(), true);
-
+  visibility.pointerDown({ clientX: 10, clientY: 10 });
   visibility.pointerUp();
-  assert.equal(clock.runNext(), 1000);
-  assert.deepEqual(events, ['hide', 'show']);
+  visibility.updateSelection(view, { from: 1, to: 6, empty: false });
+
+  assert.equal(clock.timers.size, 0);
+  assert.equal(visibility.isSuppressed(), false);
+  assert.deepEqual(events, []);
+});
+
+test('small pointer movement does not classify a tap selection as a drag', () => {
+  const events = [];
+  const clock = createTimerHarness();
+  const visibility = createFloatingSelectionToolbarVisibility({
+    onHide: () => events.push('hide'),
+    onResume: () => events.push('show'),
+    schedule: clock.schedule,
+    cancel: clock.cancel
+  });
+
+  visibility.pointerDown({ clientX: 10, clientY: 10 });
+  visibility.pointerMove({ clientX: 13, clientY: 12 });
+  visibility.updateSelection({}, { from: 1, to: 4, empty: false });
+  visibility.pointerUp();
+
+  assert.equal(clock.timers.size, 0);
+  assert.equal(visibility.isSuppressed(), false);
+  assert.deepEqual(events, []);
 });
 
 test('clearing the text selection cancels a pending toolbar return', () => {
@@ -89,7 +109,7 @@ test('clearing the text selection cancels a pending toolbar return', () => {
   assert.equal(clock.timers.size, 0);
   assert.equal(visibility.isSuppressed(), false);
   assert.equal(clock.runNext(), false);
-  assert.deepEqual(events, ['hide']);
+  assert.deepEqual(events, []);
 });
 
 test('toolbar actions can adjust selection without hiding the toolbar', () => {
@@ -104,17 +124,16 @@ test('toolbar actions can adjust selection without hiding the toolbar', () => {
   const view = {};
 
   visibility.updateSelection(view, { from: 1, to: 5, empty: false });
-  clock.runNext();
-  visibility.updateSelection(
-    view,
-    { from: 2, to: 7, empty: false },
-    { suppressOnChange: false }
-  );
+  visibility.updateSelection(view, { from: 2, to: 7, empty: false });
 
   assert.equal(visibility.isSuppressed(), false);
   assert.equal(clock.timers.size, 0);
-  assert.deepEqual(events, ['hide', 'show']);
+  assert.deepEqual(events, []);
 
   visibility.updateSelection(view, { from: 3, to: 7, empty: false });
-  assert.equal(visibility.isSuppressed(), true, 'later user selection movement is still detected');
+  assert.equal(
+    visibility.isSuppressed(),
+    false,
+    'selection changes outside a pointer drag stay visible'
+  );
 });

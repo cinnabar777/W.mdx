@@ -2,12 +2,16 @@ export function createFloatingSelectionToolbarVisibility({
   onHide = () => {},
   onResume = () => {},
   delayMs = 1000,
+  dragThresholdPx = 8,
   schedule = setTimeout,
   cancel = clearTimeout
 } = {}) {
   let currentView = null;
   let currentRange = null;
   let pointerActive = false;
+  let pointerDragging = false;
+  let pointerStart = null;
+  let releasePending = false;
   let suppressed = false;
   let resumeTimer = null;
 
@@ -29,12 +33,13 @@ export function createFloatingSelectionToolbarVisibility({
     resumeTimer = schedule(() => {
       resumeTimer = null;
       if (pointerActive || !currentRange) return;
+      releasePending = false;
       suppressed = false;
       onResume();
     }, delayMs);
   }
 
-  function updateSelection(view, selection, { suppressOnChange = true } = {}) {
+  function updateSelection(view, selection) {
     const nextRange = selection && !selection.empty
       ? { from: selection.from, to: selection.to }
       : null;
@@ -47,38 +52,77 @@ export function createFloatingSelectionToolbarVisibility({
     currentRange = nextRange;
     if (!nextRange) {
       clearResumeTimer();
+      releasePending = false;
       suppressed = false;
       return changed;
     }
     if (changed) {
-      if (!suppressOnChange) {
+      if (pointerDragging) {
         clearResumeTimer();
-        suppressed = false;
-        return changed;
+        suppress();
+      } else if (releasePending) {
+        suppress();
+        scheduleResume();
+      } else {
+        clearResumeTimer();
+        releasePending = false;
+        if (suppressed) {
+          suppressed = false;
+          onResume();
+        }
       }
-      suppress();
-      scheduleResume();
     }
     return changed;
   }
 
-  function pointerDown() {
-    pointerActive = true;
-    if (!currentRange) return;
+  function pointerDown(event = {}) {
     clearResumeTimer();
-    suppress();
+    releasePending = false;
+    pointerActive = true;
+    pointerDragging = false;
+    pointerStart = Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+      ? { x: event.clientX, y: event.clientY }
+      : null;
   }
 
-  function pointerMove() {
-    if (!pointerActive || !currentRange) return;
+  function pointerMove(event = {}) {
+    if (!pointerActive) return;
+    if (!pointerDragging) {
+      if (!pointerStart) {
+        pointerDragging = true;
+      } else if (
+        Number.isFinite(event.clientX) &&
+        Number.isFinite(event.clientY) &&
+        Math.hypot(
+          event.clientX - pointerStart.x,
+          event.clientY - pointerStart.y
+        ) >= dragThresholdPx
+      ) {
+        pointerDragging = true;
+      }
+    }
+    if (!pointerDragging) return;
     clearResumeTimer();
+    releasePending = false;
     suppress();
   }
 
   function pointerUp() {
     if (!pointerActive) return;
     pointerActive = false;
-    scheduleResume();
+    pointerStart = null;
+    if (pointerDragging) {
+      pointerDragging = false;
+      releasePending = true;
+      scheduleResume();
+      return;
+    }
+    if (suppressed) {
+      clearResumeTimer();
+      releasePending = false;
+      suppressed = false;
+      onResume();
+    }
   }
 
   function reset() {
@@ -86,6 +130,9 @@ export function createFloatingSelectionToolbarVisibility({
     currentView = null;
     currentRange = null;
     pointerActive = false;
+    pointerDragging = false;
+    pointerStart = null;
+    releasePending = false;
     suppressed = false;
   }
 

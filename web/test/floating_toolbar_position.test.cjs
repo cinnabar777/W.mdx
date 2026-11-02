@@ -2,6 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
+const repositoryRoot = path.resolve(__dirname, '..', '..');
+const readWeb = relativePath =>
+  readFileSync(path.join(repositoryRoot, 'web', relativePath), 'utf8');
 
 const {
   getFloatingToolbarPosition,
@@ -73,10 +76,34 @@ test('floating toolbar can anchor to a long-press point without a selection', ()
   assert.ok(position.left + position.width <= 404);
 });
 
+test('floating toolbar only delays visibility for a real selection drag', () => {
+  const visibility = readWeb('src/floatingSelectionToolbarVisibility.js');
+  const main = readWeb('src/main.js');
+
+  assert.match(visibility, /dragThresholdPx = 8/);
+  assert.match(visibility, /if \(pointerDragging\)[\s\S]*?suppress\(\)/);
+  assert.match(visibility, /else if \(releasePending\)[\s\S]*?scheduleResume\(\)/);
+  assert.match(main, /floatingSelectionToolbarVisibility\.pointerMove\(event\)/);
+  assert.doesNotMatch(main, /suppressOnChange:\s*toolbarActionExecutionDepth/);
+});
+
+test('closing a popup preserves active syntax states on toolbar keys', () => {
+  const main = readWeb('src/main.js');
+  const helper = main.match(
+    /function clearToolbarPopupActiveStates\(\) \{[\s\S]*?\n\}/
+  )?.[0];
+
+  assert.ok(helper, 'popup active-state cleanup helper exists');
+  assert.match(helper, /toolbarConfig\.popupGroups\[keyId\]/);
+  assert.match(helper, /button\.classList\.remove\('active'\)/);
+  assert.match(main, /activePopupSurface = 'bottom';\s*clearToolbarPopupActiveStates\(\);/);
+  assert.doesNotMatch(
+    main,
+    /querySelectorAll\('\.grouped-key-btn'\)\.forEach\(btn => btn\.classList\.remove\('active'\)\)/
+  );
+});
+
 test('floating toolbar has an independent layout and restores Android selection actions when disabled', () => {
-  const repositoryRoot = path.resolve(__dirname, '..', '..');
-  const readWeb = relativePath =>
-    readFileSync(path.join(repositoryRoot, 'web', relativePath), 'utf8');
   const readApp = relativePath =>
     readFileSync(path.join(repositoryRoot, 'app', relativePath), 'utf8');
   const main = readWeb('src/main.js');
@@ -102,13 +129,10 @@ test('floating toolbar has an independent layout and restores Android selection 
     'both bottom and floating toolbar definitions preserve syntax commands');
   assert.match(main, /applyFloatingToolbarConfig: function\(rawConfig\)/);
   assert.match(main, /updateFloatingSelectionToolbar\(update\.view\)/);
-  assert.match(
-    main,
-    /floatingSelectionToolbarVisibility\.updateSelection\(view, selection, \{\s*suppressOnChange: toolbarActionExecutionDepth === 0/
-  );
+  assert.match(main, /floatingSelectionToolbarVisibility\.updateSelection\(view, selection\)/);
   assert.match(main, /installFloatingSelectionToolbarPointerTracking\(\)/);
   assert.match(selectionVisibility, /delayMs = 1000/);
-  assert.match(selectionVisibility, /function pointerDown\(\)/);
+  assert.match(selectionVisibility, /function pointerDown\(event = \{\}\)/);
   assert.match(selectionVisibility, /function pointerUp\(\)/);
   assert.match(main, /showFloatingSelectionToolbarAtPoint\(event\.clientX, event\.clientY, this\.view\)/);
   assert.match(main, /event\.pointerType === 'touch'[\s\S]*?setTimeout\([\s\S]*?550/);
