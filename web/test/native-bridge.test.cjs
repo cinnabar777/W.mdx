@@ -144,8 +144,9 @@ test('tapping focused editor content explicitly requests the Android keyboard', 
 });
 
 test('toolbar actions block incidental keyboard opens when the keyboard started closed', () => {
-  assert.match(mainActivitySource, /\(webView as\? EditorWebView\)\s*\n\s*\?\.setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/);
-  assert.match(mainActivitySource, /setImeInputAllowed\(expectedVisible\)/);
+  assert.match(mainActivitySource, /setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/);
+  assert.match(mainActivitySource, /setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/);
+  assert.doesNotMatch(mainActivitySource, /restoreToolbarImeState|setImeInputAllowed\(expectedVisible\)/);
 });
 
 test('auto-save snapshots the editor before pausing WebView and runs once per leave', () => {
@@ -826,5 +827,134 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(source, /save_tabs: ''/);
   assert.match(toolbarConfigSource, /'saveTabs'/);
   assert.match(toolbarIconsSource, /saveTabs:/);
+});
+
+test('TextPack image previews resolve paths from the active package assets', () => {
+  assert.match(
+    mainActivitySource,
+    /url\.path\?\.startsWith\("\/textpack-assets\/"\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /fun resolveTextPackAssetUrl\(relativeLink: String\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /TextPackManager\.resolveAssetFile\(session, archivePath\)/
+  );
+  assert.match(source, /resolveTextPackAssetUrl\?\.\(this\.url\)/);
+});
+
+test('Image insertion offers Base64 directly and stores file images by document format', () => {
+  assert.match(mainActivitySource, /Choose file and embed as Base64/);
+  assert.match(mainActivitySource, /pref_markdown_image_location/);
+  assert.match(mainActivitySource, /TextPackManager\.addAssetImage/);
+  assert.match(mainActivitySource, /MdzipManager\.addAttachment/);
+  assert.match(mainActivitySource, /MarkdownAssetManager\.addImage/);
+  assert.ok(
+    mainActivitySource.includes('window.editorBridge.insertImage($escapedReference'),
+    'insertImage receives a raw URL or path and adds Markdown exactly once'
+  );
+  assert.doesNotMatch(mainActivitySource, /pref_image_mode/);
+  assert.doesNotMatch(mainActivitySource, /markdownImageTag/);
+  assert.match(source, /resolveMdzipAttachmentUrl\?\.\(this\.url\)/);
+  assert.match(source, /resolveMarkdownAssetUrl\?\.\(this\.url\)/);
+});
+
+test('Save preserves the active document format for direct save and fallback', () => {
+  const saveStart = mainActivitySource.indexOf('private fun handleSaveFile()');
+  const saveEnd = mainActivitySource.indexOf('private fun handleSaveAsFile()', saveStart);
+  const saveHandler = mainActivitySource.slice(saveStart, saveEnd);
+  assert.match(saveHandler, /requestedAsMdzip = currentDocumentFormat == DocumentFormat\.MDZIP/);
+  assert.match(saveHandler, /requestedAsTextPack = currentDocumentFormat == DocumentFormat\.TEXT_PACK/);
+  assert.match(saveHandler, /when \(currentDocumentFormat\)/);
+  assert.match(saveHandler, /DocumentFormat\.MDZIP -> handleSaveAsMdzipFile\(\)/);
+  assert.match(saveHandler, /DocumentFormat\.TEXT_PACK -> handleSaveAsTextPackFile\(\)/);
+  assert.match(mainActivitySource, /"save_action"/);
+});
+
+test('Toolbar touches gate the IME before WebView focus and do not restore it later', () => {
+  assert.match(source, /toolbarImeSurfaceSelector\s*=\s*'#[^']*floating-toggle-btn/);
+  assert.match(source, /window\.AndroidNative\?\.beginToolbarInteraction\?\.\(\)/);
+  assert.match(source, /window\.AndroidNative\?\.endToolbarInteraction\?\.\(\)/);
+  assert.match(source, /event\.preventDefault\(\);[\s\S]*window\.AndroidNative\?\.beginToolbarInteraction/);
+  assert.match(mainActivitySource, /setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/);
+  const endStart = mainActivitySource.indexOf('fun endToolbarInteraction()');
+  const endEnd = mainActivitySource.indexOf('@JavascriptInterface', endStart);
+  const endBody = mainActivitySource.slice(endStart, endEnd);
+  assert.doesNotMatch(endBody, /restoreToolbarImeState|hideSoftInput|setImeInputAllowed/);
+  assert.match(source, /document\.addEventListener\('pointerdown'[\s\S]*isTextInput[\s\S]*showEditorKeyboard/);
+});
+
+test('Suppressing a hidden IME does not restart the WebView input connection', () => {
+  const setterStart = editorWebViewSource.indexOf('fun setImeInputAllowed');
+  const setterEnd = editorWebViewSource.indexOf('override fun onCheckIsTextEditor', setterStart);
+  const setter = editorWebViewSource.slice(setterStart, setterEnd);
+  const suppressionGuard = setter.indexOf('if (!allowed) return');
+  const restartInput = setter.indexOf('restartInput(this)');
+
+  assert.notEqual(setterStart, -1);
+  assert.notEqual(suppressionGuard, -1);
+  assert.notEqual(restartInput, -1);
+  assert.ok(suppressionGuard < restartInput);
+});
+
+test('Markdown image storage can recover document ancestry from the approved tree', () => {
+  const assetManagerSource = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/MarkdownAssetManager.kt'),
+    'utf8'
+  );
+  assert.match(assetManagerSource, /findPathByTreeTraversal/);
+  assert.match(assetManagerSource, /findPathsByDisplayNameInTree/);
+  assert.match(assetManagerSource, /queryDisplayName\(context, documentUri\)/);
+  assert.match(assetManagerSource, /hasSameContent\(context, documentUri, candidateUri\)/);
+  assert.match(assetManagerSource, /strategy=unique_name_and_content/);
+  assert.match(assetManagerSource, /uniqueNameMatches\.size == 1/);
+  assert.match(assetManagerSource, /MAX_PATH_SEARCH_DOCUMENTS/);
+  assert.match(assetManagerSource, /MAX_PATH_SEARCH_DEPTH/);
+  assert.match(assetManagerSource, /exactMatches\.maxByOrNull \{ it\.parentDocumentIds\.size \}/);
+});
+
+test('Typography keeps Headings and Body first, then alphabetizes text elements', () => {
+  const styleRoot = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling.xml'),
+    'utf8'
+  );
+  const titles = [...styleRoot.matchAll(
+    /app:key="pref_styling_page_[^"]+"\s+app:title="([^"]+)"/g
+  )].map(match => match[1].replaceAll('&amp;', '&'));
+  assert.deepEqual(titles.slice(0, 3), [
+    'Headings (H1 – H6)',
+    'Paragraph & Body Text',
+    'Attachments'
+  ]);
+  const remaining = titles.slice(2);
+  assert.deepEqual(
+    remaining,
+    [...remaining].sort((left, right) => left.localeCompare(right))
+  );
+});
+
+test('Attachment style preferences are reachable and applied to packaged attachment links', () => {
+  const styleRoot = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling.xml'),
+    'utf8'
+  );
+  const attachmentSettings = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_attachments.xml'),
+    'utf8'
+  );
+  const settingsActivity = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
+    'utf8'
+  );
+  assert.match(styleRoot, /pref_styling_page_attachments/);
+  assert.match(settingsActivity, /pref_styling_page_attachments" -> StylingAttachmentsFragment/);
+  assert.match(attachmentSettings, /pref_mdzip_attachment_bg_color/);
+  assert.match(attachmentSettings, /pref_mdzip_attachment_text_color/);
+  assert.match(attachmentSettings, /pref_mdzip_attachment_border_color/);
+  assert.match(attachmentSettings, /pref_mdzip_attachment_border_radius/);
+  assert.match(source, /--mdzip-attachment-bg-color/);
+  assert.match(source, /--mdzip-attachment-border-radius/);
 });
 

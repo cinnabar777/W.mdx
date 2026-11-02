@@ -54,13 +54,13 @@
         <item>1.75</item>
         <item>2.0</item>
     </string-array>
-    <string-array name="pref_image_mode_entries">
-        <item>Android Local File Picker</item>
-        <item>URL / Base64 Data Input</item>
+    <string-array name="pref_markdown_image_location_entries">
+        <item>Shared assets folder</item>
+        <item>Same folder as Markdown</item>
     </string-array>
-    <string-array name="pref_image_mode_values">
-        <item>picker</item>
-        <item>url</item>
+    <string-array name="pref_markdown_image_location_values">
+        <item>assets</item>
+        <item>same-folder</item>
     </string-array>
     <string-array name="align_entries">
         <item>Default</item>

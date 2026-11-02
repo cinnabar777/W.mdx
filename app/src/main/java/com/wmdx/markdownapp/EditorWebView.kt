@@ -26,6 +26,10 @@ class EditorWebView @JvmOverloads constructor(
     fun setImeInputAllowed(allowed: Boolean) {
         if (imeInputAllowed == allowed) return
         imeInputAllowed = allowed
+        // Restarting input while suppressing a hidden IME can cause Android
+        // to reopen it. Recreate the input connection only for an explicit
+        // transition back to text input; the toolbar touch gate stays passive.
+        if (!allowed) return
         (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
             ?.restartInput(this)
     }

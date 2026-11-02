@@ -71,6 +71,28 @@ function parseVideoLayoutTitle(title) {
   return { width, alignment: values.align };
 }
 
+function parseAttachmentLayoutTitle(title) {
+  if (!title?.startsWith('wmdx-attachment:')) return null;
+  const values = Object.fromEntries(
+    title.slice('wmdx-attachment:'.length).split(';').map(pair => {
+      const separator = pair.indexOf('=');
+      return separator === -1
+        ? [pair, '']
+        : [pair.slice(0, separator), pair.slice(separator + 1)];
+    })
+  );
+  const width = Number(values.width);
+  if (
+    !Number.isInteger(width) ||
+    width < 40 ||
+    width > 100 ||
+    !['left', 'center', 'right'].includes(values.align)
+  ) {
+    return null;
+  }
+  return { width, alignment: values.align };
+}
+
 const PLAYABLE_VIDEO_EXTENSIONS = new Set([
   'mp4', 'm4v', 'webm', '3gp', 'mov', 'mkv'
 ]);
@@ -124,7 +146,10 @@ export function parseMarkdownAttachmentLink(text) {
   if (/^(?:[a-z][a-z0-9+.-]*:|\/|\\\\)/i.test(decodedPath)) return null;
   const packagePath = decodedPath.replace(/^(?:\.\.\/)+/, '');
   if (!packagePath.startsWith('attachments/')) return null;
-  return { label: link.label, url: link.url };
+  const parsed = { label: link.label, url: link.url };
+  const layout = parseAttachmentLayoutTitle(link.title);
+  if (layout) parsed.layout = layout;
+  return parsed;
 }
 
 function markdownCodeRanges(text) {
@@ -299,7 +324,7 @@ export function formatMarkdownVideoLink(label, url, layout = null) {
   return `[${safeLabel}](${safePath}${suffix}${title})`;
 }
 
-export function formatMarkdownAttachmentLink(label, url) {
+export function formatMarkdownAttachmentLink(label, url, layout = null) {
   const safeLabel = String(label ?? 'attachment')
     .replace(/\\/g, '\\\\')
     .replace(/\]/g, '\\]');
@@ -314,5 +339,18 @@ export function formatMarkdownAttachmentLink(label, url) {
       `%${character.charCodeAt(0).toString(16).toUpperCase()}`
     );
   }).join('/');
-  return `[${safeLabel}](${safePath})`;
+  if (layout == null) return `[${safeLabel}](${safePath})`;
+
+  const width = Number(layout.width ?? 100);
+  const alignment = layout.alignment ?? 'left';
+  if (!Number.isInteger(width) || width < 40 || width > 100) {
+    throw new RangeError('Attachment width must be a whole-number percentage from 40 to 100.');
+  }
+  if (!['left', 'center', 'right'].includes(alignment)) {
+    throw new RangeError('Attachment alignment must be left, center, or right.');
+  }
+  const title = width === 100 && alignment === 'left'
+    ? ''
+    : ` "wmdx-attachment:width=${width};align=${alignment}"`;
+  return `[${safeLabel}](${safePath}${title})`;
 }

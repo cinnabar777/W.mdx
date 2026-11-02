@@ -39,6 +39,8 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -58,7 +60,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var lastWebViewTouchElapsedMs = 0L
     private var toolbarImeInteractionDepth = 0
     private var toolbarImeVisibleBeforeInteraction = false
-    private var toolbarImeRestoreGeneration = 0
+    private enum class DocumentFormat { MARKDOWN, TEXT_PACK, MDZIP }
+    private var currentDocumentFormat = DocumentFormat.MARKDOWN
 
     private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
     private data class LeftPanelDocumentEntry(
@@ -96,7 +99,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var currentToast: Toast? = null
     private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var leftPanelSearchFuture: Future<*>? = null
-    private var currentTextPackSession: TextPackSession? = null
+    @Volatile private var currentTextPackSession: TextPackSession? = null
     @Volatile private var currentMdzipSession: MdzipSession? = null
     private var pendingRenameFallbackName: String? = null
     private var pendingCreateDocumentAsTextPack: Boolean? = null
@@ -293,7 +296,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { insertImageFromUri(it) }
+        uri?.let { insertImageFromUri(it, embedBase64 = false) }
+    }
+
+    private val pickImageAsBase64Launcher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { insertImageFromUri(it, embedBase64 = true) }
     }
 
     private val pickAudioLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -371,6 +379,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 imeVisibleBeforeLastWebViewTouch = editorImeVisible()
                 lastWebViewTouchElapsedMs = android.os.SystemClock.elapsedRealtime()
+                // Block WebView's automatic input-connection focus before it
+                // handles the touch. Text fields explicitly request the IME.
+                (webView as? EditorWebView)
+                    ?.setImeInputAllowed(imeVisibleBeforeLastWebViewTouch)
             }
             if (
                 event.actionMasked == MotionEvent.ACTION_DOWN &&
@@ -453,11 +465,41 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (isEditorReady && matchesConfiguredSaveShortcut(event)) {
+            AppDiagnostics.recordNativeKeyEvent(this, event, true)
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                AppDiagnostics.record(
+                    this,
+                    "native_save_shortcut",
+                    "format=${currentDocumentFormat.name.lowercase()} " +
+                        "hasUri=${currentFileUri != null}"
+                )
+                handleSaveFile()
+            }
+            return true
+        }
+
         val handled = super.dispatchKeyEvent(event)
         if (isEditorReady) {
             AppDiagnostics.recordNativeKeyEvent(this, event, handled)
         }
         return handled
+    }
+
+    private fun matchesConfiguredSaveShortcut(event: KeyEvent): Boolean {
+        if (
+            event.keyCode != KeyEvent.KEYCODE_S ||
+            !(event.isCtrlPressed || event.isMetaPressed) ||
+            event.isAltPressed ||
+            event.isShiftPressed
+        ) return false
+
+        val shortcut = PreferenceManager.getDefaultSharedPreferences(this)
+            .getString("pref_hotkey_save", "ctrl+s")
+            ?.trim()
+            ?.lowercase()
+
+        return shortcut == "ctrl+s" || shortcut == "control+s"
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -514,6 +556,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (intent.getBooleanExtra("is_new_document", false)) {
             currentFileUri = null
             currentFileName = getString(R.string.untitled_document)
+            currentDocumentFormat = DocumentFormat.MARKDOWN
             isDirty = false
             updateTitle()
             if (isEditorReady) {
@@ -562,7 +605,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onResume()
         isActivityResumed = true
         toolbarImeInteractionDepth = 0
-        toolbarImeRestoreGeneration += 1
         WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
             pendingExistingDocumentFocusUri = it
         }
@@ -594,7 +636,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onPause() {
         isActivityResumed = false
         toolbarImeInteractionDepth = 0
-        toolbarImeRestoreGeneration += 1
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
@@ -646,47 +687,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun editorImeVisible(): Boolean =
         ViewCompat.getRootWindowInsets(webView)
             ?.isVisible(WindowInsetsCompat.Type.ime()) == true
-
-    private fun restoreToolbarImeState(generation: Int) {
-        if (
-            generation != toolbarImeRestoreGeneration ||
-            toolbarImeInteractionDepth != 0 ||
-            !isActivityResumed ||
-            !::webView.isInitialized
-        ) {
-            return
-        }
-
-        val expectedVisible = toolbarImeVisibleBeforeInteraction
-        (webView as? EditorWebView)?.setImeInputAllowed(expectedVisible)
-        val visibleBeforeRestore = editorImeVisible()
-        if (visibleBeforeRestore != expectedVisible) {
-            val inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE)
-                as? android.view.inputmethod.InputMethodManager
-            if (expectedVisible) {
-                window.setSoftInputMode(
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
-                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
-                )
-                if (!webView.isFocused) webView.requestFocusFromTouch()
-                ViewCompat.getWindowInsetsController(webView)
-                    ?.show(WindowInsetsCompat.Type.ime())
-                inputMethodManager?.showSoftInput(
-                    webView,
-                    android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT
-                )
-            } else {
-                ViewCompat.getWindowInsetsController(webView)
-                    ?.hide(WindowInsetsCompat.Type.ime())
-                inputMethodManager?.hideSoftInputFromWindow(webView.windowToken, 0)
-            }
-        }
-        AppDiagnostics.record(
-            this,
-            "toolbar_ime_state_restored",
-            "expectedVisible=$expectedVisible visibleBeforeRestore=$visibleBeforeRestore"
-        )
-    }
 
     private fun hideImeWhileResumeIsSuppressed(generation: Int) {
         if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
@@ -783,6 +783,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 request: WebResourceRequest?
             ): WebResourceResponse? {
                 val url = request?.url ?: return null
+                if (url.path?.startsWith("/textpack-assets/") == true && request != null) {
+                    return interceptTextPackAssetRequest(request)
+                }
+                if (url.path?.startsWith("/markdown-assets/") == true && request != null) {
+                    return interceptMarkdownAssetRequest(request)
+                }
                 if (url.path?.startsWith("/mdzip-assets/") == true && request != null) {
                     return interceptMdzipAssetRequest(request)
                 }
@@ -1476,6 +1482,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         currentEmptyContentExplicitlyEdited = false
         currentTextPackSession = null
         currentMdzipSession = null
+        currentDocumentFormat = DocumentFormat.MARKDOWN
         latestMarkdownContent = ""
         currentFileUri = null
         currentFileName = getString(R.string.untitled_document)
@@ -1639,6 +1646,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 currentTextPackSession = null
                 currentMdzipSession = session
+                currentDocumentFormat = DocumentFormat.MDZIP
                 currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                 currentRevision = 0
                 currentEmptyContentExplicitlyEdited = false
@@ -1670,6 +1678,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 currentTextPackSession = session
                 currentMdzipSession = null
+                currentDocumentFormat = DocumentFormat.TEXT_PACK
                 currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                 currentRevision = 0
                 currentEmptyContentExplicitlyEdited = false
@@ -1693,6 +1702,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             } else {
                 currentTextPackSession = null
                 currentMdzipSession = null
+                currentDocumentFormat = DocumentFormat.MARKDOWN
                 val inputStream = contentResolver.openInputStream(uri)
                     ?: throw java.io.FileNotFoundException("Could not read the selected file")
                 inputStream.use {
@@ -1905,10 +1915,26 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun handleSaveFile() {
-        if (currentFileUri != null) {
-            currentFileUri?.let { saveFileToUri(it) }
-        } else {
-            handleSaveAsFile()
+        val targetUri = currentFileUri
+        AppDiagnostics.record(
+            this,
+            "save_action",
+            "hasUri=${targetUri != null} format=${currentDocumentFormat.name.lowercase()} " +
+                "mdzipSession=${currentMdzipSession != null} textPackSession=${currentTextPackSession != null}"
+        )
+        if (targetUri != null) {
+            saveFileToUri(
+                targetUri,
+                requestedAsTextPack = currentDocumentFormat == DocumentFormat.TEXT_PACK,
+                requestedAsMdzip = currentDocumentFormat == DocumentFormat.MDZIP
+            )
+            return
+        }
+
+        when (currentDocumentFormat) {
+            DocumentFormat.MDZIP -> handleSaveAsMdzipFile()
+            DocumentFormat.TEXT_PACK -> handleSaveAsTextPackFile()
+            DocumentFormat.MARKDOWN -> handleSaveAsFile()
         }
     }
 
@@ -2336,7 +2362,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     currentTextPackSession = null
                     MdzipManager.save(this, session, markdownText, uri)
                 } else if (isTextPackTarget) {
-                    val session = currentTextPackSession ?: TextPackManager.openTextPack(this, uri)
+                    val session = currentTextPackSession ?: if (
+                        requestedAsTextPack == true && uri != currentFileUri
+                    ) {
+                        TextPackManager.createTextPackSession(this)
+                    } else {
+                        TextPackManager.openTextPack(this, uri)
+                    }
                     currentTextPackSession = session
                     currentMdzipSession = null
                     TextPackManager.saveTextPack(this, session, markdownText, uri)
@@ -2352,6 +2384,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     currentMdzipSession = null
                 }
 
+                currentDocumentFormat = when {
+                    isMdzipTarget -> DocumentFormat.MDZIP
+                    isTextPackTarget -> DocumentFormat.TEXT_PACK
+                    else -> DocumentFormat.MARKDOWN
+                }
                 persistDocumentUriPermission(uri)
                 remapDocumentNavigationHistory(oldDocumentKey, uri.toString())
                 currentFileUri = uri
@@ -2414,6 +2451,108 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
 
+    private fun interceptTextPackAssetRequest(request: WebResourceRequest): WebResourceResponse {
+        val segments = request.url.pathSegments
+        val session = currentTextPackSession
+        if (
+            session == null ||
+            segments.size < 4 ||
+            segments[0] != "textpack-assets" ||
+            segments[1] != session.sessionDir.name
+        ) {
+            return textPackAssetError(404, "Not Found")
+        }
+
+        val archivePath = request.url.encodedPath
+            ?.split("/")
+            ?.drop(3)
+            ?.joinToString("/")
+            .orEmpty()
+        if (archivePath.isBlank()) return textPackAssetError(404, "Not Found")
+        val file = TextPackManager.resolveAssetFile(session, archivePath)
+            ?: return textPackAssetError(404, "Not Found")
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(file.extension.lowercase())
+            ?: runCatching {
+                FileInputStream(file).use { java.net.URLConnection.guessContentTypeFromStream(it) }
+            }.getOrNull()
+            ?: "application/octet-stream"
+        val fileLength = file.length()
+        val headers = mapOf(
+            "Cache-Control" to "no-store",
+            "Content-Length" to fileLength.toString(),
+            "X-Content-Type-Options" to "nosniff"
+        )
+        val body = if (request.method.equals("HEAD", ignoreCase = true)) {
+            ByteArrayInputStream(ByteArray(0))
+        } else {
+            FileInputStream(file)
+        }
+        return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
+    }
+
+    private fun textPackAssetError(statusCode: Int, reasonPhrase: String): WebResourceResponse =
+        WebResourceResponse(
+            "text/plain",
+            "UTF-8",
+            statusCode,
+            reasonPhrase,
+            emptyMap(),
+            ByteArrayInputStream(ByteArray(0))
+        )
+
+    private fun interceptMarkdownAssetRequest(request: WebResourceRequest): WebResourceResponse {
+        val segments = request.url.pathSegments
+        if (
+            currentTextPackSession != null ||
+            currentMdzipSession != null ||
+            segments.size < 3 ||
+            segments[0] != "markdown-assets" ||
+            segments[1] != currentDocumentSessionId
+        ) {
+            return textPackAssetError(404, "Not Found")
+        }
+
+        val encodedDocumentId = request.url.encodedPath
+            ?.split("/")
+            ?.drop(3)
+            ?.joinToString("/")
+            .orEmpty()
+        if (encodedDocumentId.isBlank()) return textPackAssetError(404, "Not Found")
+        val documentId = Uri.decode(encodedDocumentId)
+        val documentUri = currentFileUri ?: return textPackAssetError(404, "Not Found")
+        val location = MarkdownAssetManager.locateDocument(
+            this,
+            documentUri,
+            requireWrite = false
+        ) ?: return textPackAssetError(404, "Not Found")
+        val imageUri = MarkdownAssetManager.documentUriForPreviewId(this, location, documentId)
+            ?: return textPackAssetError(404, "Not Found")
+        val declaredMimeType = contentResolver.getType(imageUri)
+        val mimeType = declaredMimeType?.takeIf { it.startsWith("image/") }
+            ?: MarkdownAssetManager.mimeTypeForExtension(
+                getFileNameFromUri(imageUri).substringAfterLast('.', "")
+            )
+        if (!mimeType.startsWith("image/")) return textPackAssetError(404, "Not Found")
+        val body = if (request.method.equals("HEAD", ignoreCase = true)) {
+            ByteArrayInputStream(ByteArray(0))
+        } else {
+            contentResolver.openInputStream(imageUri)
+                ?: return textPackAssetError(404, "Not Found")
+        }
+        return WebResourceResponse(
+            mimeType,
+            null,
+            200,
+            "OK",
+            mapOf(
+                "Cache-Control" to "no-store",
+                "X-Content-Type-Options" to "nosniff"
+            ),
+            body
+        )
+    }
+
     private fun interceptMdzipAssetRequest(request: WebResourceRequest): WebResourceResponse {
         val segments = request.url.pathSegments
         val session = currentMdzipSession
@@ -2427,6 +2566,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val archivePath = segments.drop(2).joinToString("/")
+        if (archivePath.startsWith("attachments/")) {
+            val file = MdzipManager.attachmentArchiveFile(session, archivePath)
+                ?: return mdzipAssetError(404, "Not Found")
+            val mimeType = android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(file.extension.lowercase())
+                ?.takeIf { it.startsWith("image/") }
+                ?: MarkdownAssetManager.mimeTypeForExtension(file.extension)
+            if (!mimeType.startsWith("image/")) return mdzipAssetError(404, "Not Found")
+            val headers = mapOf(
+                "Cache-Control" to "no-store",
+                "Content-Length" to file.length().toString(),
+                "X-Content-Type-Options" to "nosniff"
+            )
+            val body = if (request.method.equals("HEAD", ignoreCase = true)) {
+                ByteArrayInputStream(ByteArray(0))
+            } else {
+                FileInputStream(file)
+            }
+            return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
+        }
+
         val isVideoAsset = archivePath.startsWith("video/", ignoreCase = true)
         val file = if (isVideoAsset) {
             MdzipManager.videoArchiveFile(session, archivePath)
@@ -2696,13 +2856,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         )
 
     private fun handleInsertImage() {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val imageMode = prefs.getString("pref_image_mode", "picker")
-        if (imageMode == "url") {
-            showImageUrlDialog()
-        } else {
-            pickImageLauncher.launch("image/*")
-        }
+        val choices = arrayOf(
+            "Choose image file",
+            "Choose file and embed as Base64",
+            "Enter URL or Base64 data"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Insert Image")
+            .setItems(choices) { _, choice ->
+                when (choice) {
+                    0 -> pickImageLauncher.launch("image/*")
+                    1 -> pickImageAsBase64Launcher.launch("image/*")
+                    2 -> showImageUrlDialog()
+                }
+            }
+            .show()
     }
 
     private fun handleInsertAudio() {
@@ -2868,9 +3036,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun showImageUrlDialog() {
         val input = EditText(this)
-        input.hint = "https://example.com/image.png"
+        input.hint = "Image URL or data:image/...;base64,..."
         AlertDialog.Builder(this)
-            .setTitle("Insert Image URL")
+            .setTitle("Image URL or Base64 Data")
             .setView(input)
             .setPositiveButton("Insert") { _, _ ->
                 val url = input.text.toString().trim()
@@ -2883,28 +3051,87 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .show()
     }
 
-    private fun insertImageFromUri(uri: Uri) {
+    private fun insertImageFromUri(uri: Uri, embedBase64: Boolean) {
         try {
-            contentResolver.openInputStream(uri)?.use { inputStream ->
-                val session = currentTextPackSession
-                if (session != null) {
-                    val originalName = getFileNameFromUri(uri)
-                    val assetPath = TextPackManager.addAssetImage(session, inputStream, originalName)
-                    val markdownImageTag = "![Image]($assetPath)"
-                    val escapedTag = JSONObjectWrapper.quote(markdownImageTag)
-                    webView.evaluateJavascript("window.editorBridge.insertImage($escapedTag);", null)
-                } else {
-                    val bytes = inputStream.readBytes()
-                    val mimeType = contentResolver.getType(uri) ?: "image/png"
+            val originalName = getFileNameFromUri(uri)
+            val mimeType = resolveImageMimeType(uri, originalName)
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: throw IOException("Could not read the selected image.")
+            val imageReference = if (embedBase64) {
+                inputStream.use { input ->
+                    val bytes = input.readBytes()
+                    if (bytes.isEmpty()) throw IOException("The selected image file is empty.")
                     val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    val dataUri = "data:$mimeType;base64,$base64"
-                    val escapedUri = JSONObjectWrapper.quote(dataUri)
-                    webView.evaluateJavascript("window.editorBridge.insertImage($escapedUri);", null)
+                    "data:$mimeType;base64,$base64"
+                }
+            } else {
+                inputStream.use { input ->
+                    when {
+                        currentTextPackSession != null -> TextPackManager.addAssetImage(
+                            currentTextPackSession!!,
+                            input,
+                            originalName,
+                            mimeType
+                        )
+                        currentMdzipSession != null -> MdzipManager.addAttachment(
+                            currentMdzipSession!!,
+                            input,
+                            originalName
+                        )
+                        else -> {
+                            val documentUri = currentFileUri
+                                ?: throw IOException("Save the Markdown document before adding an image file.")
+                            val location = MarkdownAssetManager.locateDocument(
+                                this,
+                                documentUri,
+                                requireWrite = true
+                            ) ?: throw IOException(
+                                "Could not match this Markdown file to an approved write-enabled folder. " +
+                                    "Reopen it from that folder, or choose Base64 in the insert dialog."
+                            )
+                            val storageLocation = PreferenceManager
+                                .getDefaultSharedPreferences(this)
+                                .getString(
+                                    "pref_markdown_image_location",
+                                    MarkdownAssetManager.LOCATION_ASSETS
+                                )
+                                ?: MarkdownAssetManager.LOCATION_ASSETS
+                            MarkdownAssetManager.addImage(
+                                this,
+                                location,
+                                input,
+                                originalName,
+                                mimeType,
+                                storageLocation
+                            )
+                        }
+                    }
                 }
             }
+            insertImageMarkdown(imageReference)
         } catch (e: Exception) {
             ThemedToast.show(this, "Failed to insert image: ${e.localizedMessage}", Toast.LENGTH_LONG)
         }
+    }
+
+    private fun insertImageMarkdown(imageReference: String) {
+        val escapedReference = JSONObjectWrapper.quote(imageReference)
+        webView.evaluateJavascript(
+            "window.editorBridge.insertImage($escapedReference, \"\");",
+            null
+        )
+    }
+
+    private fun resolveImageMimeType(uri: Uri, fileName: String): String {
+        val declaredType = contentResolver.getType(uri)
+        if (declaredType?.startsWith("image/") == true) return declaredType
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        return android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(extension)
+            ?.takeIf { it.startsWith("image/") }
+            ?: MarkdownAssetManager.mimeTypeForExtension(extension)
+                .takeIf { it.startsWith("image/") }
+            ?: "image/png"
     }
 
 
@@ -3711,6 +3938,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             restoreDocumentHistoryState(historyStateJson)
             currentFileUri = uri
             currentFileName = name.ifBlank { "Untitled.md" }
+            currentDocumentFormat = when {
+                MdzipManager.isMdzipFileName(name) -> DocumentFormat.MDZIP
+                isTextPack || name.endsWith(".textpack", ignoreCase = true) ||
+                    name.endsWith(".textpack.zip", ignoreCase = true) ->
+                    DocumentFormat.TEXT_PACK
+                else -> DocumentFormat.MARKDOWN
+            }
             currentDocumentSessionId = java.util.UUID.randomUUID().toString()
             currentRevision = 0
             currentEmptyContentExplicitlyEdited = emptyContentExplicitlyEdited
@@ -3898,6 +4132,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     pendingSharedText = null
                     currentFileUri = null
                     currentFileName = getString(R.string.untitled_document)
+                    currentDocumentFormat = DocumentFormat.MARKDOWN
                     currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                     currentRevision = 0
                     currentTextPackSession = null
@@ -3954,6 +4189,52 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
                 .getOrNull()
                 .orEmpty()
+        }
+
+        @JavascriptInterface
+        fun resolveMdzipAttachmentUrl(relativeLink: String): String {
+            val session = currentMdzipSession ?: return ""
+            return runCatching {
+                MdzipManager.attachmentUrl(session, relativeLink)
+            }.getOrNull().orEmpty()
+        }
+
+        @JavascriptInterface
+        fun resolveTextPackAssetUrl(relativeLink: String): String {
+            val session = currentTextPackSession ?: return ""
+            return runCatching {
+                TextPackManager.previewAssetUrl(session, relativeLink)
+            }
+                .getOrNull()
+                .orEmpty()
+        }
+
+        @JavascriptInterface
+        fun resolveMarkdownAssetUrl(relativeLink: String): String {
+            if (currentTextPackSession != null || currentMdzipSession != null) return ""
+            val trimmedLink = relativeLink.trim()
+            if (
+                trimmedLink.isBlank() ||
+                trimmedLink.startsWith("/") ||
+                trimmedLink.startsWith("//") ||
+                Regex("^[A-Za-z][A-Za-z0-9+.-]*:").containsMatchIn(trimmedLink)
+            ) {
+                return ""
+            }
+            val documentUri = currentFileUri ?: return ""
+            return runCatching {
+                val location = MarkdownAssetManager.locateDocument(
+                    this@MainActivity,
+                    documentUri,
+                    requireWrite = false
+                ) ?: return@runCatching ""
+                MarkdownAssetManager.previewAssetUrl(
+                    this@MainActivity,
+                    location,
+                    currentDocumentSessionId,
+                    relativeLink
+                )
+            }.getOrNull().orEmpty()
         }
 
         @JavascriptInterface
@@ -4162,7 +4443,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         }
                     (webView as? EditorWebView)
                         ?.setImeInputAllowed(toolbarImeVisibleBeforeInteraction)
-                    toolbarImeRestoreGeneration += 1
                     AppDiagnostics.record(
                         this@MainActivity,
                         "toolbar_ime_state_captured",
@@ -4178,12 +4458,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             runOnUiThread {
                 if (toolbarImeInteractionDepth <= 0) return@runOnUiThread
                 toolbarImeInteractionDepth -= 1
-                if (toolbarImeInteractionDepth != 0) return@runOnUiThread
-
-                val generation = ++toolbarImeRestoreGeneration
-                webView.postDelayed({
-                    restoreToolbarImeState(generation)
-                }, 80L)
             }
         }
 

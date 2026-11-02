@@ -59,6 +59,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingListsFragment -> "Lists & Todos"
                 is StylingBlockquotesFragment -> "Block Quotes"
                 is StylingCalloutsFragment -> "Callouts"
+                is StylingAttachmentsFragment -> "Attachments"
                 is StylingTablesFragment -> "Tables"
                 is StylingCodeFragment -> "Code Blocks"
                 is StylingHrFragment -> "Horizontal Rules"
@@ -950,6 +951,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_lists" -> StylingListsFragment()
             "pref_styling_page_blockquotes" -> StylingBlockquotesFragment()
             "pref_styling_page_callouts" -> StylingCalloutsFragment()
+            "pref_styling_page_attachments" -> StylingAttachmentsFragment()
             "pref_styling_page_tables" -> StylingTablesFragment()
             "pref_styling_page_code" -> StylingCodeFragment()
             "pref_styling_page_hr" -> StylingHrFragment()
@@ -1359,6 +1361,12 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
             }
             box.background = borderDrawable
         }
+    }
+}
+
+class StylingAttachmentsFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_attachments, rootKey)
     }
 }
 

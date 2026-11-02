@@ -157,4 +157,10 @@ class MdzipManagerTest {
             sessionDir.deleteRecursively()
         }
     }
+    @Test
+    fun identifiesImageAttachmentsForPackagePreviews() {
+        assertTrue(MdzipManager.isSupportedImageFileName("attachments/textbundle.png"))
+        assertTrue(MdzipManager.isSupportedImageFileName("attachments/photo.webp"))
+        assertFalse(MdzipManager.isSupportedImageFileName("attachments/reference.pdf"))
+    }
 }

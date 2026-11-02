@@ -37,6 +37,55 @@ test('MDZip attachment link formatting escapes labels and filename characters', 
   });
 });
 
+test('MDZip attachment width and alignment metadata round-trip safely', async () => {
+  const { formatMarkdownAttachmentLink, parseMarkdownAttachmentLink } =
+    await import('../src/markdownMedia.js');
+  const markdown = formatMarkdownAttachmentLink(
+    'Project files',
+    'attachments/project files.zip',
+    { width: 65, alignment: 'center' }
+  );
+
+  assert.equal(
+    markdown,
+    '[Project files](attachments/project%20files.zip "wmdx-attachment:width=65;align=center")'
+  );
+  assert.deepEqual(parseMarkdownAttachmentLink(markdown), {
+    label: 'Project files',
+    url: 'attachments/project%20files.zip',
+    layout: { width: 65, alignment: 'center' }
+  });
+  const parsed = parseMarkdownAttachmentLink(markdown);
+  assert.equal(
+    formatMarkdownAttachmentLink(
+      'Renamed files',
+      parsed.url.split('/').map(decodeURIComponent).join('/'),
+      { width: 65, alignment: 'center' }
+    ),
+    '[Renamed files](attachments/project%20files.zip "wmdx-attachment:width=65;align=center")'
+  );
+  assert.throws(
+    () => formatMarkdownAttachmentLink('Bad width', 'attachments/file.pdf', {
+      width: 20,
+      alignment: 'left'
+    }),
+    /Attachment width/
+  );
+});
+
+test('MDZip attachments expose whole-element edit and delete actions in the widget', () => {
+  const widget = fs.readFileSync(
+    path.join(__dirname, '../src/mdzipAttachmentWidget.js'),
+    'utf8'
+  );
+  assert.match(widget, /createAction\('Edit'/);
+  assert.match(widget, /createAction\('Delete'/);
+  assert.match(widget, /changes: \{ from: this\.from, to: this\.to, insert: '' \}/);
+  assert.match(widget, /userEvent: 'delete\.mdzip-attachment'/);
+  assert.match(widget, /sliceString\(this\.from, this\.to\) !== expectedMarkdown/);
+  assert.match(widget, /--mdzip-attachment-border-radius/);
+});
+
 test('both insert toolbars expose the generic attachment picker', () => {
   const main = fs.readFileSync(
     path.join(__dirname, '../src/main.js'),

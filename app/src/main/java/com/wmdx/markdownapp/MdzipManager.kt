@@ -496,9 +496,38 @@ object MdzipManager {
 
     fun resolveAttachmentFile(session: MdzipSession, markdownLink: String): File? {
         val archivePath = resolveAttachmentArchivePath(session.entryPoint, markdownLink) ?: return null
-        return runCatching { resolveArchiveFile(session.sessionDir, archivePath) }
+        return attachmentArchiveFile(session, archivePath)
+    }
+
+    fun attachmentArchiveFile(session: MdzipSession, archivePath: String): File? {
+        val safePath = runCatching { safeArchivePath(archivePath) }.getOrNull() ?: return null
+        if (!safePath.startsWith("attachments/")) return null
+        return runCatching { resolveArchiveFile(session.sessionDir, safePath) }
             .getOrNull()
             ?.takeIf { it.isFile }
+    }
+
+    fun isSupportedImageFileName(fileName: String): Boolean =
+        fileName.substringAfterLast('.', "").lowercase() in setOf(
+            "avif",
+            "bmp",
+            "gif",
+            "heic",
+            "heif",
+            "jpeg",
+            "jpg",
+            "png",
+            "svg",
+            "tif",
+            "tiff",
+            "webp"
+        )
+
+    fun attachmentUrl(session: MdzipSession, markdownLink: String): String? {
+        val archivePath = resolveAttachmentArchivePath(session, markdownLink) ?: return null
+        if (!isSupportedImageFileName(archivePath)) return null
+        if (attachmentArchiveFile(session, archivePath) == null) return null
+        return "$ASSET_BASE_URL/${session.sessionDir.name}/${Uri.encode(archivePath, "/")}"
     }
 
     fun resolveAudioFile(session: MdzipSession, markdownLink: String): File? {

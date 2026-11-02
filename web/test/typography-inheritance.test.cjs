@@ -25,6 +25,7 @@ test('Typography pages keep headings and body first, then alphabetical element p
   assert.deepEqual(keys, [
     'pref_styling_page_headings',
     'pref_styling_page_paragraph',
+    'pref_styling_page_attachments',
     'pref_styling_page_blockquotes',
     'pref_styling_page_bold',
     'pref_styling_page_callouts',
