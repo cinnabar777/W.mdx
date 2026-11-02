@@ -886,6 +886,19 @@ test('Toolbar touches gate the IME before WebView focus and do not restore it la
   assert.match(source, /document\.addEventListener\('pointerdown'[\s\S]*isTextInput[\s\S]*showEditorKeyboard/);
 });
 
+test('Suppressing a hidden IME does not restart the WebView input connection', () => {
+  const setterStart = editorWebViewSource.indexOf('fun setImeInputAllowed');
+  const setterEnd = editorWebViewSource.indexOf('override fun onCheckIsTextEditor', setterStart);
+  const setter = editorWebViewSource.slice(setterStart, setterEnd);
+  const suppressionGuard = setter.indexOf('if (!allowed) return');
+  const restartInput = setter.indexOf('restartInput(this)');
+
+  assert.notEqual(setterStart, -1);
+  assert.notEqual(suppressionGuard, -1);
+  assert.notEqual(restartInput, -1);
+  assert.ok(suppressionGuard < restartInput);
+});
+
 test('Markdown image storage can recover document ancestry from the approved tree', () => {
   const assetManagerSource = fs.readFileSync(
     path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/MarkdownAssetManager.kt'),
