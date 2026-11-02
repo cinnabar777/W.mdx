@@ -693,7 +693,10 @@ test('toolbar touches gate automatic keyboard focus without restoring the IME la
     /document\.addEventListener\('pointerdown', event => \{[\s\S]*?toolbarImeSurfaceSelector[\s\S]*?beginToolbarInteraction\?\.\(\)/,
     'toolbar pointerdown captures the keyboard state before the action'
   );
-  assert.match(mainSource, /endToolbarInteraction\?\.\(\), 80\)/);
+  assert.match(
+    mainSource,
+    /window\.setTimeout\(\(\) => \{[\s\S]*?endToolbarInteraction\?\.\(\)[\s\S]*?\}, 80\)/
+  );
   assert.match(
     mainActivitySource,
     /event\.actionMasked == MotionEvent\.ACTION_DOWN[\s\S]*?setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/,
