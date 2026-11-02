@@ -104,6 +104,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingCreateDocumentSessionId: String? = null
     private var pendingInsertAudioDocumentSessionId: String? = null
     private var pendingInsertVideoDocumentSessionId: String? = null
+    private var pendingInsertAttachmentDocumentSessionId: String? = null
     private var pendingReplaceMdzipAudioLink: String? = null
     private var pendingWmdxTabSessionJson: String? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
@@ -317,6 +318,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             ThemedToast.show(this, "The active document changed. The video was not added.", Toast.LENGTH_LONG)
         }
     }
+
+    private val pickAttachmentLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            val expectedSessionId = pendingInsertAttachmentDocumentSessionId
+            pendingInsertAttachmentDocumentSessionId = null
+            if (uri != null && expectedSessionId == currentDocumentSessionId) {
+                insertAttachmentFromUri(uri)
+            } else if (uri != null) {
+                ThemedToast.show(this, "The active document changed. The attachment was not added.", Toast.LENGTH_LONG)
+            }
+        }
 
     private val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (isEditorReady) {
@@ -1325,6 +1337,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "save_as" to prefs.getString("pref_hotkey_save_as", "ctrl+shift+s"),
             "save_tabs" to prefs.getString("pref_hotkey_save_tabs", ""),
             "paste_as_plain_text" to prefs.getString("pref_hotkey_paste_as_plain_text", "ctrl+shift+v"),
+            "attachment" to prefs.getString("pref_hotkey_attachment", "ctrl+shift+a"),
             "save_as_textpack" to prefs.getString("pref_hotkey_save_as_textpack", "ctrl+shift+alt+s"),
             "save_as_mdzip" to prefs.getString("pref_hotkey_save_as_mdzip", "ctrl+shift+alt+m"),
             "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
@@ -2719,6 +2732,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         pickVideoLauncher.launch("video/*")
     }
 
+    private fun handleInsertAttachment() {
+        if (currentMdzipSession == null) {
+            ThemedToast.show(
+                this,
+                "Open or save a document as MDZip (.mdz) before attaching a file.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+        pendingInsertAttachmentDocumentSessionId = currentDocumentSessionId
+        pickAttachmentLauncher.launch(arrayOf("*/*"))
+    }
+
+    private fun insertAttachmentFromUri(uri: Uri) {
+        val session = currentMdzipSession
+        if (session == null) {
+            ThemedToast.show(this, "The active document is no longer an MDZip package.", Toast.LENGTH_LONG)
+            return
+        }
+        try {
+            val originalName = getFileNameFromUri(uri)
+            val input = contentResolver.openInputStream(uri)
+                ?: throw java.io.IOException("Could not read the selected file.")
+            val relativeLink = MdzipManager.addAttachment(session, input, originalName)
+            isDirty = true
+            updateTitle()
+            val escapedLink = JSONObjectWrapper.quote(relativeLink)
+            val escapedName = JSONObjectWrapper.quote(originalName)
+            webView.evaluateJavascript(
+                "window.editorBridge?.insertAttachmentLink?.($escapedLink, $escapedName);",
+                null
+            )
+        } catch (error: Exception) {
+            ThemedToast.show(
+                this,
+                "Could not attach the file: ${error.localizedMessage ?: "unknown error"}",
+                Toast.LENGTH_LONG
+            )
+        }
+    }
+
     private fun insertVideoFromUri(uri: Uri) {
         val session = currentMdzipSession
         if (session == null) {
@@ -3878,6 +3932,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "image" -> handleInsertImage()
                     "audio" -> handleInsertAudio()
                     "video" -> handleInsertVideo()
+                    "attachment" -> handleInsertAttachment()
                     "new_window" -> handleNewWindow()
                     "settings" -> settingsLauncher.launch(android.content.Intent(this@MainActivity, SettingsActivity::class.java))
                     "toc_settings" -> settingsLauncher.launch(
@@ -3899,6 +3954,53 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
                 .getOrNull()
                 .orEmpty()
+        }
+
+        @JavascriptInterface
+        fun canOpenMdzipAttachment(relativeLink: String, documentSessionId: String?): Boolean {
+            if (documentSessionId != currentDocumentSessionId) return false
+            val session = currentMdzipSession ?: return false
+            return MdzipManager.resolveAttachmentFile(session, relativeLink) != null
+        }
+
+        @JavascriptInterface
+        fun openMdzipAttachment(relativeLink: String, documentSessionId: String?): Boolean {
+            if (documentSessionId != currentDocumentSessionId) return false
+            val session = currentMdzipSession ?: return false
+            val file = MdzipManager.resolveAttachmentFile(session, relativeLink) ?: return false
+            runOnUiThread {
+                if (documentSessionId != currentDocumentSessionId || currentMdzipSession !== session) {
+                    return@runOnUiThread
+                }
+                try {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        this@MainActivity,
+                        "${packageName}.diagnostics.provider",
+                        file
+                    )
+                    val mimeType = android.webkit.MimeTypeMap.getSingleton()
+                        .getMimeTypeFromExtension(file.extension.lowercase())
+                        ?: "application/octet-stream"
+                    val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, mimeType)
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(android.content.Intent.createChooser(viewIntent, "Open attachment"))
+                } catch (_: android.content.ActivityNotFoundException) {
+                    ThemedToast.show(
+                        this@MainActivity,
+                        "No app on this device can open that file.",
+                        Toast.LENGTH_LONG
+                    )
+                } catch (error: Exception) {
+                    ThemedToast.show(
+                        this@MainActivity,
+                        "Could not open the attachment: ${error.localizedMessage ?: "unknown error"}",
+                        Toast.LENGTH_LONG
+                    )
+                }
+            }
+            return true
         }
 
         @JavascriptInterface

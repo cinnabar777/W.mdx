@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "order": [
     "highlightCycle",
     "underline",
@@ -14,7 +14,7 @@
   ],
   "deletedGroups": ["heading", "lists", "format", "menu", "table", "insert"],
   "deletedKeys": [
-    "audio", "autoHeading", "blockQuote", "bulletedList", "callout", "clearFormatting",
+    "attachment", "audio", "autoHeading", "blockQuote", "bulletedList", "callout", "clearFormatting",
     "codeBlock", "deleteColumn", "deleteRow", "exportHtml", "footnote", "heading1",
     "heading2", "heading3", "heading4", "heading5", "heading6", "highlightBlue",
     "highlightGreen", "highlightPink", "highlightYellow", "horizontalLine", "image",

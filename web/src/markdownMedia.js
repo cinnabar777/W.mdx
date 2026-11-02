@@ -111,6 +111,22 @@ export function parseMarkdownVideoLink(text) {
   return parsed;
 }
 
+export function parseMarkdownAttachmentLink(text) {
+  const link = markdownLinkParts(text);
+  if (!link) return null;
+
+  let decodedPath = link.url.split(/[?#]/, 1)[0];
+  try {
+    decodedPath = decodeURIComponent(decodedPath);
+  } catch {
+    // The native resolver performs the final safe-path validation.
+  }
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/|\\\\)/i.test(decodedPath)) return null;
+  const packagePath = decodedPath.replace(/^(?:\.\.\/)+/, '');
+  if (!packagePath.startsWith('attachments/')) return null;
+  return { label: link.label, url: link.url };
+}
+
 function markdownCodeRanges(text) {
   const ranges = [];
   const lines = text.split('\n');
@@ -281,4 +297,22 @@ export function formatMarkdownVideoLink(label, url, layout = null) {
     ? ''
     : ` "wmdx-video:width=${width};align=${alignment}"`;
   return `[${safeLabel}](${safePath}${suffix}${title})`;
+}
+
+export function formatMarkdownAttachmentLink(label, url) {
+  const safeLabel = String(label ?? 'attachment')
+    .replace(/\\/g, '\\\\')
+    .replace(/\]/g, '\\]');
+  const safePath = String(url ?? '').trim().split('/').map(segment => {
+    let decoded = segment;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      // Encode malformed percent signs as literal filename characters.
+    }
+    return encodeURIComponent(decoded).replace(/[!'()*]/g, character =>
+      `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+    );
+  }).join('/');
+  return `[${safeLabel}](${safePath})`;
 }

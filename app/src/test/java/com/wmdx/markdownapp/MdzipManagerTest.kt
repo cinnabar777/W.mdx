@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.util.zip.ZipEntry
@@ -95,6 +96,9 @@ class MdzipManagerTest {
             val videoFile = File(sessionDir, "video/clip.mkv")
             assertTrue(videoFile.parentFile?.mkdirs() == true)
             videoFile.writeBytes(videoBytes)
+            val attachedVideo = File(sessionDir, "attachments/attached-clip.mp4")
+            assertTrue(attachedVideo.parentFile?.mkdirs() == true)
+            attachedVideo.writeBytes(videoBytes)
 
             MdzipManager.writeSessionArchive(sessionDir, emptySet(), archiveFile)
             MdzipManager.verifyStagedArchive(archiveFile)
@@ -102,6 +106,7 @@ class MdzipManagerTest {
             ZipFile(archiveFile).use { archive ->
                 val videoEntry = archive.getEntry("video/clip.mkv")
                 assertEquals(ZipEntry.STORED, videoEntry.method)
+                assertEquals(ZipEntry.STORED, archive.getEntry("attachments/attached-clip.mp4").method)
                 assertEquals(ZipEntry.DEFLATED, archive.getEntry("index.md").method)
                 assertArrayEquals(
                     videoBytes,
@@ -110,6 +115,45 @@ class MdzipManagerTest {
             }
         } finally {
             archiveFile.delete()
+            sessionDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun addsAnyAttachmentWithUniqueNamesAndResolvesRelativeLinks() {
+        val sessionDir = File.createTempFile("mdzip-attachment-session-", ".tmp")
+        assertTrue(sessionDir.delete())
+        assertTrue(sessionDir.mkdirs())
+        val bytes = "attachment bytes".toByteArray()
+        try {
+            val firstLink = MdzipManager.addAttachment(
+                sessionDir,
+                "docs/notes.md",
+                ByteArrayInputStream(bytes),
+                "reference.pdf"
+            )
+            val secondLink = MdzipManager.addAttachment(
+                sessionDir,
+                "docs/notes.md",
+                ByteArrayInputStream(bytes),
+                "reference.pdf"
+            )
+
+            assertEquals("../attachments/reference.pdf", firstLink)
+            assertEquals("../attachments/reference (2).pdf", secondLink)
+            assertEquals(
+                "attachments/reference.pdf",
+                MdzipManager.resolveAttachmentArchivePath("docs/notes.md", firstLink)
+            )
+            assertArrayEquals(
+                bytes,
+                File(sessionDir, "attachments/reference.pdf").readBytes()
+            )
+            assertEquals(
+                null,
+                MdzipManager.resolveAttachmentArchivePath("docs/notes.md", "../index.md")
+            )
+        } finally {
             sessionDir.deleteRecursively()
         }
     }

@@ -4,6 +4,12 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="App Actions">
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_attachment"
+            app:title="Attach File"
+            app:summary="Key combination (e.g. ctrl+shift+a)"
+            app:defaultValue="ctrl+shift+a" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_export"
             app:title="Export HTML / MHTML"
             app:summary="Key combination (e.g. ctrl+shift+e)"

@@ -618,6 +618,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_save_as" -> "ctrl+shift+s"
             key == "pref_hotkey_save_tabs" -> ""
             key == "pref_hotkey_paste_as_plain_text" -> "ctrl+shift+v"
+            key == "pref_hotkey_attachment" -> "ctrl+shift+a"
             key == "pref_hotkey_save_as_textpack" -> "ctrl+shift+alt+s"
             key == "pref_hotkey_save_as_mdzip" -> "ctrl+shift+alt+m"
             key == "pref_hotkey_image" -> "ctrl+shift+i"
