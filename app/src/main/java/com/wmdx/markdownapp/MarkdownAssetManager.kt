@@ -407,6 +407,22 @@ internal object MarkdownAssetManager {
     private fun buildDocumentUri(location: MarkdownDocumentLocation, documentId: String): Uri =
         DocumentsContract.buildDocumentUriUsingTree(location.treeUri, documentId)
 
+    private fun queryDisplayName(context: Context, uri: Uri): String? {
+        val cursor = runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null
+            )
+        }.getOrNull() ?: return null
+        return cursor.use { results ->
+            val nameIndex = results.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            if (nameIndex >= 0 && results.moveToFirst()) results.getString(nameIndex) else null
+        }
+    }
+
     internal fun mimeTypeForExtension(extension: String): String =
         when (extension.lowercase(Locale.ROOT)) {
             "jpg", "jpeg" -> "image/jpeg"
