@@ -561,12 +561,12 @@ function applySettings(payload) {
       ? floatingLabelSize
       : 8}px`
   );
-  const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 0);
+  const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 10);
   document.documentElement.style.setProperty(
     '--toolbar-floating-padding',
     `${Number.isFinite(floatingPadding) && floatingPadding >= 0 && floatingPadding <= 16
       ? floatingPadding
-      : 0}px`
+      : 10}px`
   );
   const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width);
   const safeFloatingKeyWidth =

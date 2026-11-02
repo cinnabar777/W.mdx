@@ -5042,7 +5042,7 @@ function installFloatingSelectionToolbarPointerTracking() {
   document.addEventListener('pointermove', event => {
     floatingSelectionToolbarVisibility.pointerMove(event);
   }, true);
-  const finishPointer = () => floatingSelectionToolbarVisibility.pointerUp();
+  const finishPointer = event => floatingSelectionToolbarVisibility.pointerUp(event);
   document.addEventListener('pointerup', finishPointer, true);
   document.addEventListener('pointercancel', finishPointer, true);
   document.__wmdxFloatingSelectionPointerTrackingInstalled = true;
@@ -8867,10 +8867,10 @@ window.editorBridge = {
       Number.isFinite(floatingLabelSize) ? Math.max(6, Math.min(16, floatingLabelSize)) : 8,
       'px'
     );
-    const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 0);
+    const floatingPadding = Number(prefs.pref_toolbar_floating_padding ?? 10);
     setCssVar(
       '--toolbar-floating-padding',
-      Number.isFinite(floatingPadding) ? Math.max(0, Math.min(16, floatingPadding)) : 0,
+      Number.isFinite(floatingPadding) ? Math.max(0, Math.min(16, floatingPadding)) : 10,
       'px'
     );
     const floatingKeyWidth = Number(prefs.pref_toolbar_floating_key_width ?? 48);

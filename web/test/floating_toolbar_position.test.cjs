@@ -133,7 +133,7 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(main, /installFloatingSelectionToolbarPointerTracking\(\)/);
   assert.match(selectionVisibility, /delayMs = 1000/);
   assert.match(selectionVisibility, /function pointerDown\(event = \{\}\)/);
-  assert.match(selectionVisibility, /function pointerUp\(\)/);
+  assert.match(selectionVisibility, /function pointerUp\(event = \{\}\)/);
   assert.match(main, /showFloatingSelectionToolbarAtPoint\(event\.clientX, event\.clientY, this\.view\)/);
   assert.match(main, /event\.pointerType === 'touch'[\s\S]*?setTimeout\([\s\S]*?550/);
   assert.match(main, /floatingToolbarAnchorPoint\?\.view === view/);
@@ -202,8 +202,16 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(styles, /--toolbar-floating-key-width/);
   assert.match(styles, /--toolbar-floating-corner-radius/);
   assert.match(
+    controlbarPrefs,
+    /app:key="pref_toolbar_floating_padding"[\s\S]*?android:defaultValue="10"/
+  );
+  assert.match(resetPreferences, /key == "pref_toolbar_floating_padding" -> 10/);
+  assert.match(settingsActivity, /prefs\.getInt\("pref_toolbar_floating_padding", 10\)/);
+  assert.match(main, /pref_toolbar_floating_padding \?\? 10/);
+  assert.match(settings, /pref_toolbar_floating_padding \?\? 10/);
+  assert.match(
     styles,
-    /\.floating-selection-toolbar\s*\{[^}]*padding:\s*4px[^}]*gap:\s*var\(--toolbar-floating-padding/s
+    /\.floating-selection-toolbar\s*\{[^}]*padding:\s*4px[^}]*gap:\s*var\(--toolbar-floating-padding,\s*10px\)/s
   );
   assert.match(
     styles,

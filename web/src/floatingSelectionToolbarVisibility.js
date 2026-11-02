@@ -63,6 +63,8 @@ export function createFloatingSelectionToolbarVisibility({
       } else if (releasePending) {
         suppress();
         scheduleResume();
+      } else if (pointerActive) {
+        // Keep an existing toolbar hidden while the user's finger is down.
       } else {
         clearResumeTimer();
         releasePending = false;
@@ -83,6 +85,7 @@ export function createFloatingSelectionToolbarVisibility({
     pointerStart = Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
       ? { x: event.clientX, y: event.clientY }
       : null;
+    if (currentRange) suppress();
   }
 
   function pointerMove(event = {}) {
@@ -107,8 +110,21 @@ export function createFloatingSelectionToolbarVisibility({
     suppress();
   }
 
-  function pointerUp() {
+  function pointerUp(event = {}) {
     if (!pointerActive) return;
+    if (
+      !pointerDragging &&
+      pointerStart &&
+      Number.isFinite(event.clientX) &&
+      Number.isFinite(event.clientY) &&
+      Math.hypot(
+        event.clientX - pointerStart.x,
+        event.clientY - pointerStart.y
+      ) >= dragThresholdPx
+    ) {
+      pointerDragging = true;
+      suppress();
+    }
     pointerActive = false;
     pointerStart = null;
     if (pointerDragging) {

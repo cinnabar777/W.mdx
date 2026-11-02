@@ -73,6 +73,51 @@ test('a tap-created word selection shows the toolbar immediately', () => {
   assert.deepEqual(events, []);
 });
 
+test('touching an existing selection hides the toolbar, then restores it on tap release', () => {
+  const events = [];
+  const clock = createTimerHarness();
+  const visibility = createFloatingSelectionToolbarVisibility({
+    onHide: () => events.push('hide'),
+    onResume: () => events.push('show'),
+    schedule: clock.schedule,
+    cancel: clock.cancel
+  });
+  const view = {};
+
+  visibility.updateSelection(view, { from: 1, to: 6, empty: false });
+  visibility.pointerDown({ clientX: 10, clientY: 10 });
+  assert.equal(visibility.isSuppressed(), true);
+  assert.deepEqual(events, ['hide']);
+
+  visibility.updateSelection(view, { from: 2, to: 7, empty: false });
+  visibility.pointerUp({ clientX: 12, clientY: 11 });
+
+  assert.equal(clock.timers.size, 0);
+  assert.equal(visibility.isSuppressed(), false);
+  assert.deepEqual(events, ['hide', 'show']);
+});
+
+test('pointer release coordinates recognize a drag if move events were missed', () => {
+  const events = [];
+  const clock = createTimerHarness();
+  const visibility = createFloatingSelectionToolbarVisibility({
+    onHide: () => events.push('hide'),
+    onResume: () => events.push('show'),
+    schedule: clock.schedule,
+    cancel: clock.cancel
+  });
+
+  visibility.pointerDown({ clientX: 10, clientY: 10 });
+  visibility.updateSelection({}, { from: 1, to: 6, empty: false });
+  visibility.pointerUp({ clientX: 30, clientY: 30 });
+
+  assert.equal(visibility.isSuppressed(), true);
+  assert.deepEqual(events, ['hide']);
+  assert.equal(clock.runNext(), 1000);
+  assert.equal(visibility.isSuppressed(), false);
+  assert.deepEqual(events, ['hide', 'show']);
+});
+
 test('small pointer movement does not classify a tap selection as a drag', () => {
   const events = [];
   const clock = createTimerHarness();
@@ -86,7 +131,7 @@ test('small pointer movement does not classify a tap selection as a drag', () =>
   visibility.pointerDown({ clientX: 10, clientY: 10 });
   visibility.pointerMove({ clientX: 13, clientY: 12 });
   visibility.updateSelection({}, { from: 1, to: 4, empty: false });
-  visibility.pointerUp();
+  visibility.pointerUp({ clientX: 13, clientY: 12 });
 
   assert.equal(clock.timers.size, 0);
   assert.equal(visibility.isSuppressed(), false);

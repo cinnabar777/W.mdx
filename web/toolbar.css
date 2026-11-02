@@ -168,7 +168,7 @@ body.light-theme .popup-toolbar-strip {
   justify-content: flex-start !important;
   height: calc(var(--toolbar-floating-key-height, 36px) + 12px) !important;
   padding: 4px !important;
-  gap: var(--toolbar-floating-padding, 4px) !important;
+  gap: var(--toolbar-floating-padding, 10px) !important;
   background-color: var(--toolbar-floating-bg, var(--toolbar-bg, #121212)) !important;
   border-radius: var(--toolbar-floating-corner-radius, 24px) !important;
 }
@@ -217,7 +217,7 @@ body.light-theme .popup-toolbar-strip {
   overflow-x: auto !important;
   overflow-y: hidden !important;
   padding: 4px !important;
-  gap: var(--toolbar-floating-padding, 4px) !important;
+  gap: var(--toolbar-floating-padding, 10px) !important;
   box-sizing: border-box !important;
   border-radius: var(--toolbar-floating-corner-radius, 24px) !important;
   background-color: var(--toolbar-floating-bg, var(--toolbar-bg, #121212)) !important;

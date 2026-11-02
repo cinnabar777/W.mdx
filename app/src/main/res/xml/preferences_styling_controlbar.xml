@@ -165,7 +165,7 @@
             app:key="pref_toolbar_floating_padding"
             app:title="Toolbar Padding (dp)"
             app:summary="Space around keys inside the floating toolbar"
-            android:defaultValue="0"
+            android:defaultValue="10"
             app:min="0"
             android:max="16"
             app:showSeekBarValue="true" />

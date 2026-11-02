@@ -525,7 +525,7 @@ object PreferenceResetHelper {
             key == "pref_toolbar_floating_label_size" -> 8
             key == "pref_toolbar_floating_label_color" -> "default"
             key == "pref_toolbar_floating_active_key_bg_color" -> "#000000"
-            key == "pref_toolbar_floating_padding" -> 0
+            key == "pref_toolbar_floating_padding" -> 10
             key == "pref_toolbar_floating_key_width" -> 48
             key == "pref_toolbar_floating_corner_radius" -> 24
             key == "pref_media_controls_corner_radius" -> 24

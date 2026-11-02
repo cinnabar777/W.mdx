@@ -1791,7 +1791,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "pref_toolbar_floating_active_key_bg_color",
             prefs.getString("pref_toolbar_floating_active_key_bg_color", "#000000")
         )
-        payload.put("pref_toolbar_floating_padding", prefs.getInt("pref_toolbar_floating_padding", 0))
+        payload.put("pref_toolbar_floating_padding", prefs.getInt("pref_toolbar_floating_padding", 10))
         payload.put("pref_toolbar_height", prefs.getInt("pref_toolbar_height", 48))
         payload.put("pref_toolbar_padding", prefs.getInt("pref_toolbar_padding", 4))
         payload.put("pref_toolbar_floating_key_width", prefs.getInt("pref_toolbar_floating_key_width", 48))
