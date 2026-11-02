@@ -25,6 +25,10 @@ const preferenceXml = fs.readFileSync(
   path.join(root, 'app/src/main/res/xml/preferences_styling_controlbar.xml'),
   'utf8'
 );
+const hotkeysPreferenceXml = fs.readFileSync(
+  path.join(root, 'app/src/main/res/xml/preferences_hotkeys.xml'),
+  'utf8'
+);
 const resetSource = fs.readFileSync(
   path.join(root, 'app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
   'utf8'
@@ -655,4 +659,15 @@ test('global toolbar settings stay fixed while the key editor fits its content',
 test('runtime toolbar consumes the saved bottom toolbar configuration', () => {
   assert.match(mainSource, /normalizeBottomToolbarConfig\(\s*prefs\.pref_toolbar_bottom_config\s*\)/);
   assert.match(mainSource, /renderBottomToolbarKeys\(bar, bottomToolbarConfig, svgIcons/);
+});
+
+test('Paste as Plain Text is available as an action and configurable shortcut', () => {
+  assert.match(mainSource, /id: 'pasteAsPlainText'[\s\S]*?title: 'Paste as Plain Text'/);
+  assert.match(mainSource, /actionId === 'paste' \|\| actionId === 'pasteAsPlainText'/);
+  assert.match(mainSource, /customHotkeys\.pasteAsPlainText/);
+  assert.match(settingsSource, /id: 'pasteAsPlainText'[\s\S]*?Paste as Plain Text/);
+  assert.match(androidSource, /"pasteAsPlainText"/);
+  assert.match(mainActivitySource, /"pasteAsPlainText" to prefs\.getString\([\s\S]*?"ctrl\+shift\+v"/);
+  assert.match(hotkeysPreferenceXml, /app:key="pref_hotkey_paste_as_plain_text"[\s\S]*?app:defaultValue="ctrl\+shift\+v"/);
+  assert.match(resetSource, /key == "pref_hotkey_paste_as_plain_text" -> "ctrl\+shift\+v"/);
 });

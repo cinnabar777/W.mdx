@@ -449,6 +449,19 @@ test('editing history and line actions are accepted as built-in toolbar gestures
   });
 });
 
+test('paste as plain text is accepted as a built-in toolbar gesture action', async () => {
+  const { BUILT_IN_ACTION_IDS, normalizeBottomToolbarConfig } =
+    await import('../src/toolbarConfig.js');
+  assert.ok(BUILT_IN_ACTION_IDS.includes('pasteAsPlainText'));
+
+  const config = normalizeBottomToolbarConfig({
+    styles: {
+      undo: { gestureActions: { tap1: 'pasteAsPlainText' } }
+    }
+  });
+  assert.equal(config.styles.undo.gestureActions.tap1, 'pasteAsPlainText');
+});
+
 test('the Undo toolbar key is labeled only Undo', async () => {
   const { BOTTOM_TOOLBAR_ITEMS } = await import('../src/toolbarConfig.js');
   assert.equal(BOTTOM_TOOLBAR_ITEMS.find(item => item.id === 'undo')?.title, 'Undo');

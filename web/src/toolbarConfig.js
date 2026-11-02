@@ -69,6 +69,7 @@ export const BUILT_IN_ACTION_IDS = Object.freeze([...new Set([
   ...BOTTOM_TOOLBAR_ITEMS.filter(item => item.kind === 'action').map(item => item.id),
   ...BOTTOM_TOOLBAR_POPUP_ITEM_IDS,
   ...BUILT_IN_HOLDING_ITEM_IDS,
+  'pasteAsPlainText',
   'moveLineUp',
   'moveLineDown',
   'deleteLine',

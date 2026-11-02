@@ -28,6 +28,12 @@
             app:defaultValue="ctrl+shift+i" />
 
         <com.wmdx.markdownapp.ResetEditTextPreference
+            app:key="pref_hotkey_paste_as_plain_text"
+            app:title="Paste as Plain Text"
+            app:summary="Key combination (e.g. ctrl+shift+v)"
+            app:defaultValue="ctrl+shift+v" />
+
+        <com.wmdx.markdownapp.ResetEditTextPreference
             app:key="pref_hotkey_new"
             app:title="New Document"
             app:summary="Key combination (e.g. ctrl+n)"

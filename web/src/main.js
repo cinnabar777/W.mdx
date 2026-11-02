@@ -145,6 +145,7 @@ let customHotkeys = {
   save: 'ctrl+s',
   save_as: 'ctrl+shift+s',
   save_tabs: '',
+  pasteAsPlainText: 'ctrl+shift+v',
   save_as_textpack: 'ctrl+shift+alt+s',
   save_as_mdzip: 'ctrl+shift+alt+m',
   export: 'ctrl+shift+e',
@@ -5268,6 +5269,14 @@ function createRuntimeToolbarItemRegistryForConfig(toolbarConfig) {
       title: 'Cycle List Types',
       icon: svgIcons.lists,
       action: () => execCmd('cycleListType')
+    },
+    {
+      id: 'pasteAsPlainText',
+      title: 'Paste as Plain Text',
+      icon: svgIcons.pasteAsPlainTextClipboard,
+      action: () => {
+        void runToolbarClipboardAction('pasteAsPlainText');
+      }
     }
   ]) {
     registry.set(item.id, item);
@@ -5459,7 +5468,7 @@ async function runToolbarClipboardAction(actionId) {
     return true;
   }
 
-  if (actionId === 'paste') {
+  if (actionId === 'paste' || actionId === 'pasteAsPlainText') {
     let text;
     try {
       if (typeof window.AndroidNative?.readClipboard === 'function') {
@@ -7910,6 +7919,11 @@ function setupKeyboardShortcuts() {
     if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.redo)) {
       e.preventDefault();
       activeAdapter?.redo();
+      return;
+    }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.pasteAsPlainText)) {
+      e.preventDefault();
+      void runToolbarClipboardAction('pasteAsPlainText');
       return;
     }
 

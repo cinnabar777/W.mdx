@@ -196,7 +196,12 @@ const PREVIEW_EDITOR_ACTION_ITEMS = [
   { id: 'moveLineUp', title: 'Move Line Up', icon: svgIcons.moveLineUp },
   { id: 'moveLineDown', title: 'Move Line Down', icon: svgIcons.moveLineDown },
   { id: 'deleteLine', title: 'Delete Line / Paragraph', icon: svgIcons.deleteLine },
-  { id: 'cycleListType', title: 'Cycle List Types', icon: svgIcons.lists }
+  { id: 'cycleListType', title: 'Cycle List Types', icon: svgIcons.lists },
+  {
+    id: 'pasteAsPlainText',
+    title: 'Paste as Plain Text',
+    icon: svgIcons.pasteAsPlainTextClipboard
+  }
 ];
 const PREVIEW_ITEM_DEFINITIONS = new Map([
   ...BOTTOM_TOOLBAR_ITEMS.map(item => [item.id, item]),

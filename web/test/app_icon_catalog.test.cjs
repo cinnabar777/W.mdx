@@ -64,5 +64,7 @@ test('the icon picker includes the requested text marks and replacement icons', 
   assert.match(svgIcons.clearFormatting, /M21 21H8/);
   assert.match(svgIcons.codeBlock, /m10 9-3 3 3 3/);
   assert.match(svgIcons.lineNumbers, /x1="10" x2="8"/);
+  assert.ok(choicesById.get('pasteAsPlainTextClipboard')?.markup.includes('>pt</text>'));
+  assert.ok(choicesById.get('plainTextPT')?.markup.includes('>PT</text>'));
   assert.ok(choicesById.get('toc-expand-collapse').markup.includes('<path d="M12 3v14"/>'));
 });
