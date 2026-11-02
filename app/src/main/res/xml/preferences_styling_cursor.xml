@@ -42,13 +42,13 @@
             app:summary="Text color for selected text range"
             app:defaultValue="default" />
 
-        <com.wmdx.markdownapp.ResetSeekBarPreference
-            app:key="pref_floating_toolbar_hide_delay_seconds"
-            app:title="Floating Toolbar Hide Time (s)"
-            app:summary="How long it stays hidden after you drag a selection"
+        <com.wmdx.markdownapp.ResetTenthsSeekBarPreference
+            app:key="pref_floating_toolbar_hide_delay_tenths"
+            app:title="Floating Toolbar Hide Time"
+            app:summary="Choose 0.0–5.0 seconds in 0.1-second steps"
             app:min="0"
-            android:max="5"
-            app:defaultValue="1"
+            android:max="50"
+            app:defaultValue="10"
             app:showSeekBarValue="true" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 

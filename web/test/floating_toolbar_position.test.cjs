@@ -140,11 +140,23 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(selectionVisibility, /delayMs = 1000/);
   assert.match(selectionVisibility, /setDelayMs\(nextDelayMs\)/);
   assert.doesNotMatch(editorWebView, /dispatchTouchEvent\(event: MotionEvent\)/);
-  assert.match(cursorPrefs, /app:key="pref_floating_toolbar_hide_delay_seconds"[\s\S]*?app:defaultValue="1"/);
-  assert.match(resetPreferences, /key == "pref_floating_toolbar_hide_delay_seconds" -> 1/);
+  assert.match(cursorPrefs, /ResetTenthsSeekBarPreference[\s\S]*?app:key="pref_floating_toolbar_hide_delay_tenths"[\s\S]*?android:max="50"[\s\S]*?app:defaultValue="10"/);
+  assert.match(resetPreferences, /key == "pref_floating_toolbar_hide_delay_tenths" -> 10/);
   assert.match(
     main,
-    /pref_floating_toolbar_hide_delay_seconds \?\? 1[\s\S]*?setDelayMs\([\s\S]*?1000/
+    /pref_floating_toolbar_hide_delay_tenths \?\? 10[\s\S]*?Math\.min\(50,[\s\S]*?\) \* 100[\s\S]*?: 1000/
+  );
+  assert.match(
+    nativeActivity,
+    /migrateFloatingToolbarHideDelayPreference\(startupPreferences\)/
+  );
+  assert.match(
+    nativeActivity,
+    /putInt\(tenthsKey, oldSeconds\.coerceIn\(0, 5\) \* 10\)[\s\S]*?remove\(secondsKey\)/
+  );
+  assert.match(
+    resetPreferences,
+    /String\.format\(Locale\.ROOT, "%.1f s", tenths \/ 10\.0\)/
   );
   assert.match(main, /showFloatingSelectionToolbarAtPoint\(event\.clientX, event\.clientY, this\.view\)/);
   assert.match(main, /event\.pointerType === 'touch'[\s\S]*?setTimeout\([\s\S]*?550/);

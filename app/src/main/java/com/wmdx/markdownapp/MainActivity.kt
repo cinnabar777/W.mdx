@@ -334,6 +334,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onCreate(savedInstanceState)
         WindowRegistry.registerActivity(this)
         val startupPreferences = PreferenceManager.getDefaultSharedPreferences(this)
+        migrateFloatingToolbarHideDelayPreference(startupPreferences)
         if (!startupPreferences.getBoolean("pref_toolbar_default_corrected", false)) {
             val editor = startupPreferences.edit()
             if (!startupPreferences.contains("pref_toolbar_floating_enabled")) {
@@ -396,6 +397,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         AppDiagnostics.record(this, "window_created")
         handleIntent(intent, isRestoration = savedInstanceState != null)
+    }
+
+    private fun migrateFloatingToolbarHideDelayPreference(preferences: SharedPreferences) {
+        val tenthsKey = "pref_floating_toolbar_hide_delay_tenths"
+        if (preferences.contains(tenthsKey)) return
+
+        val secondsKey = "pref_floating_toolbar_hide_delay_seconds"
+        val oldSeconds = if (preferences.contains(secondsKey)) {
+            preferences.getInt(secondsKey, 1)
+        } else {
+            1
+        }
+        preferences.edit()
+            .putInt(tenthsKey, oldSeconds.coerceIn(0, 5) * 10)
+            .remove(secondsKey)
+            .apply()
     }
 
     override fun onDestroy() {

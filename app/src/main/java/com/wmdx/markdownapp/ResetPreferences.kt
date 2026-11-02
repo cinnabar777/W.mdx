@@ -1,6 +1,8 @@
 package com.wmdx.markdownapp
 
 import android.content.Context
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.Gravity
@@ -18,6 +20,7 @@ import androidx.preference.PreferenceViewHolder
 import androidx.preference.SeekBarPreference
 import androidx.preference.SwitchPreferenceCompat
 import java.io.File
+import java.util.Locale
 
 interface ResettablePreference {
     fun callNotifyChanged()
@@ -472,7 +475,7 @@ object PreferenceResetHelper {
             key == "pref_cursor_blink_rate" -> "0.8s"
             key == "pref_selection_highlight_bg_color" -> "default"
             key == "pref_selection_highlight_text_color" -> "default"
-            key == "pref_floating_toolbar_hide_delay_seconds" -> 1
+            key == "pref_floating_toolbar_hide_delay_tenths" -> 10
             key == "pref_findreplace_panel_bg" -> "default"
             key == "pref_findreplace_panel_border" -> "default"
             key == "pref_findreplace_field_find_bg" -> "default"
@@ -1268,6 +1271,40 @@ open class ResetSeekBarPreference : SeekBarPreference, ResettablePreference {
     override fun callNotifyChanged() {
         notifyChanged()
     }
+}
+
+class ResetTenthsSeekBarPreference : ResetSeekBarPreference {
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int, defStyleRes: Int) : super(context, attrs, defStyleAttr, defStyleRes)
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr)
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
+    constructor(context: Context) : super(context)
+
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        val valueView = holder.findViewById(androidx.preference.R.id.seekbar_value) as? TextView
+            ?: return
+        val formatterTagId = androidx.preference.R.id.seekbar_value
+        if (valueView.getTag(formatterTagId) == null) {
+            val formatter = object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+                override fun afterTextChanged(s: Editable?) {
+                    val tenths = s?.toString()?.toIntOrNull() ?: return
+                    val formatted = formatTenths(tenths)
+                    if (valueView.text.toString() != formatted) {
+                        valueView.text = formatted
+                    }
+                }
+            }
+            valueView.setTag(formatterTagId, formatter)
+            valueView.addTextChangedListener(formatter)
+        }
+        valueView.text = formatTenths(value)
+    }
+
+    private fun formatTenths(tenths: Int): String =
+        String.format(Locale.ROOT, "%.1f s", tenths / 10.0)
 }
 
 open class ResetEditTextPreference : EditTextPreference, ResettablePreference {
