@@ -143,6 +143,9 @@ test('floating toolbar has an independent layout and restores Android selection 
   assert.match(selectionVisibility, /function pointerDown\(event = \{\}\)/);
   assert.match(selectionVisibility, /function pointerUp\(event = \{\}\)/);
   assert.match(selectionVisibility, /setDelayMs\(nextDelayMs\)/);
+  assert.match(editorWebView, /override fun dispatchTouchEvent\(event: MotionEvent\): Boolean/);
+  assert.match(editorWebView, /sendSelectionGestureToEditor\("move"/);
+  assert.match(main, /onNativeSelectionTouch: function\(action, x, y\)/);
   assert.match(cursorPrefs, /app:key="pref_floating_toolbar_hide_delay_seconds"[\s\S]*?app:defaultValue="1"/);
   assert.match(resetPreferences, /key == "pref_floating_toolbar_hide_delay_seconds" -> 1/);
   assert.match(

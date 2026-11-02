@@ -57,6 +57,7 @@ export function createFloatingSelectionToolbarVisibility({
 
     if (
       pointerActive &&
+      pointerRangeAtDown &&
       rangeChanged &&
       nextRange &&
       (
@@ -96,6 +97,7 @@ export function createFloatingSelectionToolbarVisibility({
   }
 
   function pointerDown(event = {}) {
+    if (pointerActive) return;
     clearResumeTimer();
     releasePending = false;
     pointerActive = true;

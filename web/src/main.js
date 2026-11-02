@@ -9229,6 +9229,21 @@ window.editorBridge = {
     if (activeAdapter) return activeAdapter.getSelectionState();
     return { path: [], offset: 0 };
   },
+  onNativeSelectionTouch: function(action, x, y) {
+    const devicePixelRatio = Number(window.devicePixelRatio) || 1;
+    const event = {
+      clientX: Number(x) / devicePixelRatio,
+      clientY: Number(y) / devicePixelRatio,
+      pointerType: 'touch'
+    };
+    if (action === 'down') {
+      floatingSelectionToolbarVisibility.pointerDown(event);
+    } else if (action === 'move') {
+      floatingSelectionToolbarVisibility.pointerMove(event);
+    } else {
+      floatingSelectionToolbarVisibility.pointerUp(event);
+    }
+  },
   setSelectionState: function(stateJson, scrollTop) {
     if (activeAdapter) activeAdapter.setSelectionState(stateJson, scrollTop);
   },

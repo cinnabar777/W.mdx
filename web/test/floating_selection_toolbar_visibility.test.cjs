@@ -126,8 +126,9 @@ test('pointer release coordinates recognize a drag if move events were missed', 
     cancel: clock.cancel
   });
 
-  visibility.pointerDown({ clientX: 10, clientY: 10 });
   visibility.updateSelection({}, { from: 1, to: 6, empty: false });
+  visibility.pointerDown({ clientX: 10, clientY: 10 });
+  visibility.updateSelection({}, { from: 2, to: 6, empty: false });
   visibility.pointerUp({ clientX: 30, clientY: 30 });
 
   assert.equal(visibility.isSuppressed(), true);
@@ -135,6 +136,26 @@ test('pointer release coordinates recognize a drag if move events were missed', 
   assert.equal(clock.runNext(), 1000);
   assert.equal(visibility.isSuppressed(), false);
   assert.deepEqual(events, ['hide', 'show']);
+});
+
+test('a drag that begins without an existing selection does not hide the toolbar', () => {
+  const events = [];
+  const clock = createTimerHarness();
+  const visibility = createFloatingSelectionToolbarVisibility({
+    onHide: () => events.push('hide'),
+    onResume: () => events.push('show'),
+    schedule: clock.schedule,
+    cancel: clock.cancel
+  });
+
+  visibility.pointerDown({ clientX: 10, clientY: 10 });
+  visibility.pointerMove({ clientX: 30, clientY: 30 });
+  visibility.updateSelection({}, { from: 1, to: 6, empty: false });
+  visibility.pointerUp({ clientX: 30, clientY: 30 });
+
+  assert.equal(clock.timers.size, 0);
+  assert.equal(visibility.isSuppressed(), false);
+  assert.deepEqual(events, []);
 });
 
 test('the toolbar return delay can be changed', () => {
