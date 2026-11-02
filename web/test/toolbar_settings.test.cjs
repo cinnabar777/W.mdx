@@ -680,3 +680,17 @@ test('toolbar actions do not force the editor keyboard open', () => {
   assert.match(mainSource, /runToolbarClipboardAction\('pasteAsPlainText', true\)/);
   assert.match(mainSource, /cmWrapSelection\(view, tableMarkdown, '', \{ preserveKeyboard: true \}\)/);
 });
+
+test('toolbar touch interactions restore the Android keyboard state from before the touch', () => {
+  assert.match(
+    mainSource,
+    /container\.addEventListener\('pointerdown', event => \{[\s\S]*?beginToolbarInteraction\?\.\(\)/,
+    'toolbar pointerdown captures the keyboard state before the action'
+  );
+  assert.match(mainSource, /endToolbarInteraction\?\.\(\), 80\)/);
+  assert.match(mainActivitySource, /imeVisibleBeforeLastWebViewTouch = editorImeVisible\(\)/);
+  assert.match(mainActivitySource, /fun beginToolbarInteraction\(\)/);
+  assert.match(mainActivitySource, /fun endToolbarInteraction\(\)/);
+  assert.match(mainActivitySource, /toolbarImeInteractionDepth > 0[\s\S]*?!toolbarImeVisibleBeforeInteraction/);
+  assert.match(mainActivitySource, /restoreToolbarImeState\(generation\)/);
+});

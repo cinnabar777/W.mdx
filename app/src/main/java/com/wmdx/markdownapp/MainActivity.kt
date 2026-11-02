@@ -54,6 +54,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var progressBar: ProgressBar
     private var suppressImeUntilUserTouch = false
     private var imeHideGeneration = 0
+    private var imeVisibleBeforeLastWebViewTouch = false
+    private var lastWebViewTouchElapsedMs = 0L
+    private var toolbarImeInteractionDepth = 0
+    private var toolbarImeVisibleBeforeInteraction = false
+    private var toolbarImeRestoreGeneration = 0
 
     private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
     private data class LeftPanelDocumentEntry(
@@ -350,6 +355,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "focusable=${webView.isFocusable} touchFocusable=${webView.isFocusableInTouchMode}"
         )
         webView.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                imeVisibleBeforeLastWebViewTouch = editorImeVisible()
+                lastWebViewTouchElapsedMs = android.os.SystemClock.elapsedRealtime()
+            }
             if (
                 event.actionMasked == MotionEvent.ACTION_DOWN &&
                 suppressImeUntilUserTouch
@@ -523,6 +532,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onResume() {
         super.onResume()
         isActivityResumed = true
+        toolbarImeInteractionDepth = 0
+        toolbarImeRestoreGeneration += 1
         WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
             pendingExistingDocumentFocusUri = it
         }
@@ -553,6 +564,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onPause() {
         isActivityResumed = false
+        toolbarImeInteractionDepth = 0
+        toolbarImeRestoreGeneration += 1
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
@@ -604,6 +617,46 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun editorImeVisible(): Boolean =
         ViewCompat.getRootWindowInsets(webView)
             ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+
+    private fun restoreToolbarImeState(generation: Int) {
+        if (
+            generation != toolbarImeRestoreGeneration ||
+            toolbarImeInteractionDepth != 0 ||
+            !isActivityResumed ||
+            !::webView.isInitialized
+        ) {
+            return
+        }
+
+        val expectedVisible = toolbarImeVisibleBeforeInteraction
+        val visibleBeforeRestore = editorImeVisible()
+        if (visibleBeforeRestore != expectedVisible) {
+            val inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE)
+                as? android.view.inputmethod.InputMethodManager
+            if (expectedVisible) {
+                window.setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+                )
+                if (!webView.isFocused) webView.requestFocusFromTouch()
+                ViewCompat.getWindowInsetsController(webView)
+                    ?.show(WindowInsetsCompat.Type.ime())
+                inputMethodManager?.showSoftInput(
+                    webView,
+                    android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT
+                )
+            } else {
+                ViewCompat.getWindowInsetsController(webView)
+                    ?.hide(WindowInsetsCompat.Type.ime())
+                inputMethodManager?.hideSoftInputFromWindow(webView.windowToken, 0)
+            }
+        }
+        AppDiagnostics.record(
+            this,
+            "toolbar_ime_state_restored",
+            "expectedVisible=$expectedVisible visibleBeforeRestore=$visibleBeforeRestore"
+        )
+    }
 
     private fun hideImeWhileResumeIsSuppressed(generation: Int) {
         if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
@@ -3975,8 +4028,57 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun beginToolbarInteraction() {
+            runOnUiThread {
+                if (!isActivityResumed || !::webView.isInitialized) return@runOnUiThread
+                if (toolbarImeInteractionDepth == 0) {
+                    val elapsedSinceTouch =
+                        android.os.SystemClock.elapsedRealtime() - lastWebViewTouchElapsedMs
+                    toolbarImeVisibleBeforeInteraction =
+                        if (elapsedSinceTouch in 0..1_000L) {
+                            imeVisibleBeforeLastWebViewTouch
+                        } else {
+                            editorImeVisible()
+                        }
+                    toolbarImeRestoreGeneration += 1
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "toolbar_ime_state_captured",
+                        "imeVisible=$toolbarImeVisibleBeforeInteraction"
+                    )
+                }
+                toolbarImeInteractionDepth += 1
+            }
+        }
+
+        @JavascriptInterface
+        fun endToolbarInteraction() {
+            runOnUiThread {
+                if (toolbarImeInteractionDepth <= 0) return@runOnUiThread
+                toolbarImeInteractionDepth -= 1
+                if (toolbarImeInteractionDepth != 0) return@runOnUiThread
+
+                val generation = ++toolbarImeRestoreGeneration
+                webView.postDelayed({
+                    restoreToolbarImeState(generation)
+                }, 80L)
+            }
+        }
+
+        @JavascriptInterface
         fun showEditorKeyboard() {
             runOnUiThread {
+                if (
+                    toolbarImeInteractionDepth > 0 &&
+                    !toolbarImeVisibleBeforeInteraction
+                ) {
+                    AppDiagnostics.record(
+                        this@MainActivity,
+                        "ime_show_suppressed_toolbar",
+                        "depth=$toolbarImeInteractionDepth"
+                    )
+                    return@runOnUiThread
+                }
                 val visibleBefore = editorImeVisible()
                 AppDiagnostics.record(
                     this@MainActivity,
