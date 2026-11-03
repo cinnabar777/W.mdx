@@ -509,6 +509,7 @@ test('typography editor categories are separated into individual navigation page
     'Italic',
     'Links',
     'Lists (Bulleted, Numbered, Todo Checkboxes)',
+    'Media Playback',
     'Tables'
   ].map(title => navigationXml.indexOf(`app:title="${title}"`));
   assert.ok(orderedPages.every(index => index >= 0), 'Every expected typography page is present');
@@ -519,15 +520,34 @@ test('typography editor categories are separated into individual navigation page
   );
 });
 
-test('bottom toolbar appearance is in main settings below Find & Replace', () => {
-  const findReplaceIndex = mainSettingsXml.indexOf('app:key="pref_page_findreplace"');
-  const toolbarIndex = mainSettingsXml.indexOf('app:key="pref_page_bottom_toolbar"');
-  const keyboardIndex = mainSettingsXml.indexOf('app:key="pref_page_hotkeys"');
-
-  assert.ok(findReplaceIndex >= 0 && findReplaceIndex < toolbarIndex);
-  assert.ok(toolbarIndex < keyboardIndex);
-  assert.match(mainSettingsXml, /app:key="pref_page_bottom_toolbar"[\s\S]*?app:title="Toolbars"/);
-  assert.ok(settingsActivitySource.includes('"pref_page_bottom_toolbar"'));
+test('UI Appearance contains the requested pages in order', () => {
+  const uiAppearanceXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_ui_appearance.xml'),
+    'utf8'
+  );
+  const pages = [...uiAppearanceXml.matchAll(
+    /app:key="(pref_page_[^"]+)"\s+app:title="([^"]+)"/g
+  )];
+  assert.deepEqual(
+    pages.map(([, key, title]) => [key, title.replaceAll('&amp;', '&')]),
+    [
+      ['pref_page_settings_theme', 'Settings'],
+      ['pref_page_findreplace', 'Find & Replace'],
+      ['pref_page_left_panel', 'Left Panel'],
+      ['pref_page_toc', 'Right Panel: TOC'],
+      ['pref_page_bottom_toolbar', 'Toolbars']
+    ]
+  );
+  assert.match(mainSettingsXml, /app:key="pref_page_ui_appearance"[\s\S]*?app:title="UI Appearance"/);
+  assert.match(mainSettingsXml, /app:key="pref_page_styling"[\s\S]*?app:title="Document Appearance"/);
+  assert.doesNotMatch(mainSettingsXml, /app:key="pref_page_(settings_theme|findreplace|left_panel|toc|bottom_toolbar)"/);
+  assert.ok(settingsActivitySource.includes('UIAppearanceSettingsFragment'));
+  assert.ok(settingsActivitySource.includes('is SettingsThemeFragment -> "Settings"'));
+  assert.ok(settingsActivitySource.includes('is StylingSettingsFragment -> "Document Appearance"'));
+  assert.ok(settingsActivitySource.includes('"pref_styling_page_media" -> MediaPlaybackSettingsFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_page_toc" -> TocPanelSettingsFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_page_left_panel" -> LeftPanelSettingsFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_page_bottom_toolbar" -> StylingControlbarFragment()'));
   assert.ok(!stylingPagesXml.includes('pref_styling_page_controlbar'));
   assert.ok(settingsActivitySource.includes('is StylingControlbarFragment -> "Toolbars"'));
 });

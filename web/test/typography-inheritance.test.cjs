@@ -38,6 +38,7 @@ test('Typography pages keep headings and body first, then alphabetical element p
     'pref_styling_page_italic',
     'pref_styling_page_links',
     'pref_styling_page_lists',
+    'pref_styling_page_media',
     'pref_styling_page_tables',
     'pref_styling_page_underline'
   ]);

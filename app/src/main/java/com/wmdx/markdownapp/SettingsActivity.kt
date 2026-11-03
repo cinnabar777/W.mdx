@@ -39,15 +39,16 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         if (intent.getStringExtra("settings_page") == "toc") {
-            supportActionBar?.title = "Table of Contents Panel"
+            supportActionBar?.title = "Right Panel: TOC"
         } else if (intent.getStringExtra("settings_page") == "left_panel") {
-            supportActionBar?.title = "Left Side Panel"
+            supportActionBar?.title = "Left Panel"
         }
 
         supportFragmentManager.addOnBackStackChangedListener {
             val currentFragment = supportFragmentManager.findFragmentById(R.id.settings_container)
             supportActionBar?.title = when (currentFragment) {
-                is SettingsThemeFragment -> "Settings Appearance"
+                is UIAppearanceSettingsFragment -> "UI Appearance"
+                is SettingsThemeFragment -> "Settings"
                 is MediaPlaybackSettingsFragment -> "Media Playback"
                 is StylingHeadingsFragment -> "Headings"
                 is StylingParagraphFragment -> "Paragraph & Body"
@@ -66,10 +67,10 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingControlbarFragment -> "Toolbars"
                 is StylingCursorFragment -> "Cursor & Selection"
                 is StylingFindReplaceFragment -> "Find & Replace"
-                is TocPanelSettingsFragment -> "Table of Contents"
-                is LeftPanelSettingsFragment -> "Left Side Panel"
+                is TocPanelSettingsFragment -> "Right Panel: TOC"
+                is LeftPanelSettingsFragment -> "Left Panel"
                 is StorageAccessSettingsFragment -> "File & Folder Access"
-                is StylingSettingsFragment -> "Typography"
+                is StylingSettingsFragment -> "Document Appearance"
                 is ExportSettingsFragment -> "HTML & MHTML Export"
                 is HotkeysSettingsFragment -> "Keyboard Shortcuts"
                 else -> getString(R.string.settings_title)
@@ -254,16 +255,9 @@ class SettingsFragment : BaseSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         val key = preference.key ?: return super.onPreferenceTreeClick(preference)
         when (key) {
-            "pref_page_toc" -> {
+            "pref_page_ui_appearance" -> {
                 parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, TocPanelSettingsFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_left_panel" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, LeftPanelSettingsFragment())
+                    .replace(R.id.settings_container, UIAppearanceSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -271,34 +265,6 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_storage_access" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, StorageAccessSettingsFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_settings_theme" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, SettingsThemeFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_media" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, MediaPlaybackSettingsFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_findreplace" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, StylingFindReplaceFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_bottom_toolbar" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, StylingControlbarFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -653,6 +619,31 @@ class StorageAccessSettingsFragment : BaseSettingsFragment() {
     }
 }
 
+class UIAppearanceSettingsFragment : BaseSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_ui_appearance, rootKey)
+    }
+
+    override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        val targetFragment: PreferenceFragmentCompat? = when (preference.key) {
+            "pref_page_settings_theme" -> SettingsThemeFragment()
+            "pref_page_findreplace" -> StylingFindReplaceFragment()
+            "pref_page_left_panel" -> LeftPanelSettingsFragment()
+            "pref_page_toc" -> TocPanelSettingsFragment()
+            "pref_page_bottom_toolbar" -> StylingControlbarFragment()
+            else -> null
+        }
+        if (targetFragment != null) {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.settings_container, targetFragment)
+                .addToBackStack(null)
+                .commit()
+            return true
+        }
+        return super.onPreferenceTreeClick(preference)
+    }
+}
+
 open class StylingSettingsFragment : BaseSettingsFragment() {
     private var activeFontTargetKey: String? = null
 
@@ -939,6 +930,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             return true
         }
         val targetFragment: PreferenceFragmentCompat? = when (key) {
+            "pref_styling_page_media" -> MediaPlaybackSettingsFragment()
             "pref_styling_page_headings" -> StylingHeadingsFragment()
             "pref_styling_page_paragraph" -> StylingParagraphFragment()
             "pref_styling_page_bold" -> StylingBoldFragment()

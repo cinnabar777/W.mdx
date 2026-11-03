@@ -4,34 +4,14 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Editor">
         <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_page_settings_theme"
-            app:title="Settings Appearance"
-            app:summary="Change section headers, titles, summaries, switches, and background colors" />
+            app:key="pref_page_ui_appearance"
+            app:title="UI Appearance"
+            app:summary="Settings, panels, Find &amp; Replace, and toolbars" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_styling"
-            app:title="Typography"
+            app:title="Document Appearance"
             app:summary="Fonts, sizes, colors, and layout for text and document elements" />
-
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_page_toc"
-            app:title="Table of Contents"
-            app:summary="Panel appearance, heading list, and navigation controls" />
-
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_page_left_panel"
-            app:title="Left Side Panel"
-            app:summary="Folders, file search, tabs, and panel appearance" />
-
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_page_findreplace"
-            app:title="Find &amp; Replace"
-            app:summary="Search panel colors, fields, counter, and buttons" />
-
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_page_bottom_toolbar"
-            app:title="Toolbars"
-            app:summary="Edit bottom and floating toolbar layouts and appearance" />
 
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_hotkeys"
@@ -73,10 +53,6 @@
             app:entryValues="@array/pref_markdown_image_location_values"
             app:defaultValue="assets" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_page_media"
-            app:title="Media Playback"
-            app:summary="Player colors and saved audio playback speed" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Documents &amp; Access">

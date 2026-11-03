@@ -79,6 +79,11 @@
             app:summary="Typography, indentation, item spacing, and bullet &amp; checkbox colors" />
 
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_media"
+            app:title="Media Playback"
+            app:summary="Player colors and saved audio playback speed" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_styling_page_tables"
             app:title="Tables"
             app:summary="Typography, borders, header colors, and cell padding" />

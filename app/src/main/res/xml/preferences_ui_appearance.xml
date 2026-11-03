@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_settings_theme"
+        app:title="Settings"
+        app:summary="Change section headers, titles, summaries, switches, and background colors" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_findreplace"
+        app:title="Find &amp; Replace"
+        app:summary="Search panel colors, fields, counter, and buttons" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_left_panel"
+        app:title="Left Panel"
+        app:summary="Folders, file search, tabs, and panel appearance" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_toc"
+        app:title="Right Panel: TOC"
+        app:summary="Panel appearance, heading list, and navigation controls" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_bottom_toolbar"
+        app:title="Toolbars"
+        app:summary="Edit bottom and floating toolbar layouts and appearance" />
+
+</androidx.preference.PreferenceScreen>
