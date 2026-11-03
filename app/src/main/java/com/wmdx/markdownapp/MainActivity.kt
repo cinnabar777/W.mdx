@@ -310,23 +310,22 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         ) { uri ->
             val sessionJson = pendingWmdxTabSessionJson
             pendingWmdxTabSessionJson = null
-            if (uri == null || sessionJson == null) return@registerForActivityResult
-            var sessionUri = uri
-            runCatching {
+            if (uri == null) return@registerForActivityResult
+            if (sessionJson == null) return@registerForActivityResult
+            var sessionUri: Uri = uri
+            try {
                 sessionUri = ensureDocumentExtension(uri, ".wmdx")
                 writeWmdxTabSession(sessionUri, sessionJson, persistGrant = true)
-            }
-                .onSuccess {
-                    clearPendingWmdxTabSessionSave(sessionUri)
-                    val uriLiteral = JSONObjectWrapper.quote(sessionUri.toString())
-                    val sessionLiteral = JSONObjectWrapper.quote(sessionJson)
-                    webView.evaluateJavascript(
-                        "window.leftPanelController?.onWmdxTabSessionSaved?.($uriLiteral, $sessionLiteral);",
-                        null
-                    )
+                clearPendingWmdxTabSessionSave(sessionUri)
+                val uriLiteral = JSONObjectWrapper.quote(sessionUri.toString())
+                val sessionLiteral = JSONObjectWrapper.quote(sessionJson)
+                webView.evaluateJavascript(
+                    "window.leftPanelController?.onWmdxTabSessionSaved?.($uriLiteral, $sessionLiteral);",
+                    null
+                )
                 ThemedToast.show(this, "Tab session saved.", Toast.LENGTH_SHORT)
-            }.onFailure {
-                val cause = it.localizedMessage ?: "Could not save the tab session."
+            } catch (error: Exception) {
+                val cause = error.localizedMessage ?: "Could not save the tab session."
                 val cached = cachePendingWmdxTabSessionSave(sessionUri, sessionJson)
                 val message = if (cached) {
                     "$cause A private recovery copy is being held until the session saves."
