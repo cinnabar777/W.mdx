@@ -784,7 +784,7 @@ test('folder file actions keep open, open-in-new-tab, rename, and delete distinc
 test('tab group membership persists alongside file tab state', () => {
   assert.match(
     leftPanelSource,
-    /JSON\.stringify\(\{ activeTabId, tabs, groups \}\)/
+    /JSON\.stringify\(\{\s*activeTabId,\s*tabs,\s*groups,\s*portableSessionUri:\s*activePortableSessionUri\s*\}\)/
   );
   assert.match(leftPanelSource, /groupId: groups\.some\(\(group\) => group\.id === savedTab\.groupId\)/);
   assert.match(leftPanelSource, /dissolveTabGroup\(tabs, groups, group\.id\)/);
@@ -860,10 +860,18 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(leftPanelSource, /scrollTop: Number\.isFinite\(tab\.scrollTop\)/);
   assert.match(mainActivitySource, /saveWmdxTabSession\(sessionJson: String\)/);
   assert.match(mainActivitySource, /readWmdxTabSession\(uriString: String\)/);
-  assert.match(mainActivitySource, /Wmdx Session\.wmds/);
-  assert.match(mainActivitySource, /name\.endsWith\("\.wmds", ignoreCase = true\)/);
-  assert.match(mainActivitySource, /name\.endsWith\("\.mds", ignoreCase = true\)/);
-  assert.match(mainActivitySource, /name\.endsWith\("\.wmdxsession", ignoreCase = true\)/);
+  assert.match(mainActivitySource, /Wmdx Session\.wmdx/);
+  assert.match(mainActivitySource, /name\.endsWith\("\.wmdx", ignoreCase = true\)/);
+  assert.doesNotMatch(mainActivitySource, /name\.endsWith\("\.wmds", ignoreCase = true\)/);
+  assert.doesNotMatch(mainActivitySource, /name\.endsWith\("\.mds", ignoreCase = true\)/);
+  assert.doesNotMatch(mainActivitySource, /name\.endsWith\("\.wmdxsession", ignoreCase = true\)/);
+  assert.match(mainActivitySource, /updateWmdxTabSession\(sessionJson: String, uriString: String\)/);
+  assert.match(mainActivitySource, /cachePendingWmdxTabSessionSave/);
+  assert.match(mainActivitySource, /clearPendingWmdxTabSessionSave/);
+  assert.match(leftPanelSource, /native\.updateWmdxTabSession\(sessionJson, activePortableSessionUri\)/);
+  assert.match(leftPanelSource, /hasPendingWmdxTabSessionSave/);
+  assert.match(leftPanelSource, /onWmdxTabSessionSaved/);
+  assert.match(leftPanelSource, /onWmdxTabSessionSaveFailed/);
   assert.doesNotMatch(sanitizerSource, /\.put\("markdown"/);
   assert.match(appManifestXml, /application\/vnd\.wmdx\.tabs-session\+json/);
   assert.match(
@@ -881,6 +889,25 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(source, /save_tabs: ''/);
   assert.match(toolbarConfigSource, /'saveTabs'/);
   assert.match(toolbarIconsSource, /saveTabs:/);
+});
+
+test('New tab saves new documents before opening them and keeps an empty launcher at the start page', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../../web/index.html'), 'utf8');
+
+  for (const action of ['new-markdown', 'new-mdzip', 'go-to-file', 'open-session']) {
+    assert.match(html, new RegExp(`data-start-page-action="${action}"`));
+  }
+  assert.match(leftPanelSource, /const activateStartPage = \(\) =>/);
+  assert.match(leftPanelSource, /else activateStartPage\(\);/);
+  assert.doesNotMatch(
+    leftPanelSource,
+    /addTab\(\{ uri: null, name: 'Untitled', markdown: currentMarkdown\(\) \}/
+  );
+  assert.match(mainActivitySource, /requestNewDocument\(DocumentFormat\.MARKDOWN\)/);
+  assert.match(mainActivitySource, /requestNewDocument\(DocumentFormat\.MDZIP\)/);
+  assert.match(mainActivitySource, /ensureDocumentExtension\(uri, extension\)/);
+  assert.match(mainActivitySource, /openDocumentFromNative/);
+  assert.match(mainActivitySource, /openWmdxTabSessionLauncher\.launch/);
 });
 
 test('TextPack image previews resolve paths from the active package assets', () => {

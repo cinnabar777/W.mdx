@@ -253,6 +253,10 @@ export function setupLeftPanel() {
   const panel = document.getElementById('left-panel');
   const overlay = document.getElementById('left-panel-overlay');
   const stack = document.getElementById('left-panel-stack');
+  const startPage = document.getElementById('start-page');
+  const sessionSaveWarning = document.getElementById('session-save-warning');
+  const sessionSaveWarningMessage = document.getElementById('session-save-warning-message');
+  const sessionSaveWarningRetry = document.getElementById('session-save-warning-retry');
   if (!panel || !overlay || !stack) return null;
 
   const native = window.AndroidNative;
@@ -285,9 +289,12 @@ export function setupLeftPanel() {
   const unverifiedRestoredTabIds = new Set();
   let activeTabId = null;
   let loadedTabId = null;
+  let activePortableSessionUri = null;
+  let lastPortableSessionJson = null;
   let switchingTab = false;
   let pendingTabHistoryNavigation = false;
   let tabsPersistTimer = null;
+  let portableSessionPersistTimer = null;
   let windowClosing = false;
   let searchTimer = null;
   let searchRequestId = 0;
@@ -299,6 +306,88 @@ export function setupLeftPanel() {
   let hideTabFileExtension = true;
   let lastSearchResults = [];
   let lastSearchTruncated = false;
+
+  const updateStartPageVisibility = () => {
+    if (!startPage) return;
+    const visible = !tabs.length || !tabs.some((tab) => tab.id === activeTabId);
+    startPage.hidden = !visible;
+    document.body.classList.toggle('start-page-visible', visible);
+  };
+
+  const buildPortableSession = () => {
+    const sessionTabs = tabs.filter((tab) => Boolean(tab?.uri));
+    const includedGroupIds = new Set(sessionTabs.map((tab) => tab.groupId).filter(Boolean));
+    return {
+      format: 'wmdx-tabs-session',
+      version: 1,
+      activeTabId: sessionTabs.some((tab) => tab.id === activeTabId)
+        ? activeTabId
+        : sessionTabs[0]?.id || null,
+      groups: groups
+        .filter((group) => includedGroupIds.has(group.id))
+        .map(({ id, name, collapsed }) => ({ id, name, collapsed: Boolean(collapsed) })),
+      tabs: sessionTabs.map((tab) => ({
+        id: tab.id,
+        uri: tab.uri || null,
+        name: tab.name || 'Untitled',
+        pinned: Boolean(tab.pinned),
+        groupId: includedGroupIds.has(tab.groupId) ? tab.groupId : null,
+        scrollTop: Number.isFinite(tab.scrollTop)
+          ? Math.max(0, Math.round(tab.scrollTop))
+          : null
+      }))
+    };
+  };
+
+  const showSessionSaveWarning = (message) => {
+    if (sessionSaveWarningMessage) {
+      sessionSaveWarningMessage.textContent = message ||
+        'This session could not be saved. Its latest state is held privately until you retry.';
+    }
+    if (sessionSaveWarning) sessionSaveWarning.hidden = false;
+  };
+
+  const clearSessionSaveWarning = () => {
+    if (sessionSaveWarning) sessionSaveWarning.hidden = true;
+    if (sessionSaveWarningMessage) sessionSaveWarningMessage.textContent = '';
+  };
+
+  const persistPortableSessionNow = (force = false) => {
+    clearTimeout(portableSessionPersistTimer);
+    portableSessionPersistTimer = null;
+    if (!activePortableSessionUri) return true;
+    const sessionJson = JSON.stringify(buildPortableSession());
+    if (!force && sessionJson === lastPortableSessionJson) return true;
+    if (typeof native?.updateWmdxTabSession !== 'function') {
+      showSessionSaveWarning(
+        'This session cannot be updated in this app build. Its latest state is held privately.'
+      );
+      return false;
+    }
+    const result = parseBridgeResult(
+      native.updateWmdxTabSession(sessionJson, activePortableSessionUri),
+      {}
+    );
+    if (!result?.ok) {
+      const recoveryNotice = result?.cached === true
+        ? 'The latest state is held privately.'
+        : 'A private recovery copy could not be stored.';
+      showSessionSaveWarning(
+        `Could not update this session${result?.error ? `: ${result.error}` : '.'} ` +
+        `${recoveryNotice} Restore write access and retry.`
+      );
+      return false;
+    }
+    lastPortableSessionJson = sessionJson;
+    clearSessionSaveWarning();
+    return true;
+  };
+
+  const schedulePortableSessionSave = () => {
+    if (!activePortableSessionUri) return;
+    clearTimeout(portableSessionPersistTimer);
+    portableSessionPersistTimer = setTimeout(() => persistPortableSessionNow(), 250);
+  };
 
   const sectionElements = new Map(
     SECTION_ORDER.map((id) => [
@@ -340,12 +429,18 @@ export function setupLeftPanel() {
     clearTimeout(tabsPersistTimer);
     tabsPersistTimer = null;
     syncNativeOpenTabUris();
-    if (windowClosing && !launcherWindow) return;
-    try {
-      localStorage.setItem(tabsStorageKey, JSON.stringify({ activeTabId, tabs, groups }));
-    } catch {
-      // A session remains usable in memory if WebView storage is unavailable.
+    if (!(windowClosing && !launcherWindow)) {
+      try {
+        localStorage.setItem(
+          tabsStorageKey,
+          JSON.stringify({ activeTabId, tabs, groups, portableSessionUri: activePortableSessionUri })
+        );
+      } catch {
+        // A session remains usable in memory if WebView storage is unavailable.
+      }
     }
+    updateStartPageVisibility();
+    persistPortableSessionNow();
   };
 
   const persistTabs = () => {
@@ -717,7 +812,7 @@ export function setupLeftPanel() {
         persistTabs();
         activateTab(activeTabId);
       } else {
-        activateUntitledTab();
+        activateStartPage();
       }
       folderStatus.textContent = 'A tab points to a file that is no longer available.';
       return;
@@ -742,41 +837,28 @@ export function setupLeftPanel() {
     persistTabs();
   };
 
-  const activateUntitledTab = () => {
-    let tab = tabs.find((item) => !item.uri);
-    if (!tab) {
-      tab = addTab(
-        { uri: null, name: 'Untitled', markdown: '' },
-        { activate: false, persist: false }
-      );
-    }
-    activeTabId = tab.id;
+  const activateStartPage = () => {
+    tabs.splice(0, tabs.length);
+    groups.splice(0, groups.length);
+    activeTabId = null;
+    loadedTabId = null;
     switchingTab = true;
     native?.activateLeftPanelTab?.(
       '',
-      tab.name || 'Untitled',
-      tab.markdown || '',
-      tab.dirty,
-      tab.isTextPack,
-      tab.hasBom,
-      tab.hasCrlf,
-      tab.emptyContentExplicitlyEdited,
-      serializeTabHistoryState(tab)
+      'New tab',
+      '',
+      false,
+      false,
+      false,
+      false,
+      false,
+      null
     );
-    tab.documentSessionId = native?.getCurrentDocumentSessionId?.() || null;
-    window.editorBridge?.setMarkdown?.(tab.markdown || '');
-    loadedTabId = tab.id;
-    wantedExpanded.tabs = true;
-    tabsManuallyCollapsed = false;
-    if (activeSection === 'folders' && !searchInput.value.trim()) {
-      activeSection = null;
-    }
-    persistPanelState();
-    updateSectionVisibility();
+    window.editorBridge?.setMarkdown?.('');
     switchingTab = false;
     renderTabs();
-    persistTabs();
-    return tab;
+    persistTabsNow();
+    return null;
   };
 
   const saveTabSession = async () => {
@@ -799,34 +881,14 @@ export function setupLeftPanel() {
       if (!confirmed) return false;
     }
 
-    const sessionTabs = tabs.filter(Boolean);
+    const sessionTabs = tabs.filter((tab) => Boolean(tab?.uri));
     if (!sessionTabs.length) {
       folderStatus.textContent = 'There are no tabs to include in this session.';
       native?.showToast?.('There are no tabs to include in this session.');
       return false;
     }
-    const includedGroupIds = new Set(sessionTabs.map((tab) => tab.groupId).filter(Boolean));
-    const session = {
-      format: 'wmdx-tabs-session',
-      version: 1,
-      activeTabId: sessionTabs.some((tab) => tab.id === activeTabId)
-        ? activeTabId
-        : sessionTabs[0].id,
-      groups: groups
-        .filter((group) => includedGroupIds.has(group.id))
-        .map(({ id, name, collapsed }) => ({ id, name, collapsed: Boolean(collapsed) })),
-      tabs: sessionTabs.map((tab) => ({
-        id: tab.id,
-        uri: tab.uri || null,
-        name: tab.name || 'Untitled',
-        pinned: Boolean(tab.pinned),
-        groupId: includedGroupIds.has(tab.groupId) ? tab.groupId : null,
-        scrollTop: Number.isFinite(tab.scrollTop)
-          ? Math.max(0, Math.round(tab.scrollTop))
-          : null
-      }))
-    };
-    const started = native?.saveWmdxTabSession?.(JSON.stringify(session));
+    const sessionJson = JSON.stringify(buildPortableSession());
+    const started = native?.saveWmdxTabSession?.(sessionJson);
     if (started === false || typeof native?.saveWmdxTabSession !== 'function') {
       folderStatus.textContent = 'Could not start saving the tab session in this app build.';
       native?.showToast?.('Could not start saving the tab session.');
@@ -836,7 +898,7 @@ export function setupLeftPanel() {
     return true;
   };
 
-  const restorePortableSession = async (sessionValue) => {
+  const restorePortableSession = async (sessionValue, sourceUri = null) => {
     const session = typeof sessionValue === 'string'
       ? parseJson(sessionValue, null)
       : sessionValue;
@@ -887,8 +949,7 @@ export function setupLeftPanel() {
       const uri = typeof savedTab.uri === 'string' && savedTab.uri
         ? normalizeDocumentUri(savedTab.uri)
         : null;
-      if (uri && !/^(content|file):/i.test(uri)) continue;
-      if (!uri && (savedTab.dirty || savedTab.markdown)) continue;
+      if (!uri || !/^(content|file):/i.test(uri)) continue;
       if (uri && [...seenUris].some((seenUri) => sameDocumentUri(seenUri, uri))) continue;
 
       const id = uri || `untitled:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
@@ -921,12 +982,37 @@ export function setupLeftPanel() {
       sourceIds.set(savedTab.id, id);
       if (uri) seenUris.add(uri);
     }
-    if (!restoredTabs.length) {
+    if (!restoredTabs.length && session.tabs.length) {
       folderStatus.textContent = 'This session contains no tabs that can be restored.';
       return false;
     }
 
-    let restoredActiveId = sourceIds.get(session.activeTabId) || restoredTabs[0].id;
+    let restoredActiveId = sourceIds.get(session.activeTabId) || restoredTabs[0]?.id || null;
+    if (!restoredTabs.length) {
+      tabs.splice(0, tabs.length);
+      groups.splice(0, groups.length);
+      activeTabId = null;
+      loadedTabId = null;
+      restoredTabIds.clear();
+      checkedRestoredTabIds.clear();
+      unverifiedRestoredTabIds.clear();
+      if (sourceUri) {
+        activePortableSessionUri = sourceUri;
+        lastPortableSessionJson = JSON.stringify(buildPortableSession());
+        clearSessionSaveWarning();
+      }
+      renderTabs();
+      persistTabsNow();
+      if (sourceUri && native?.hasPendingWmdxTabSessionSave?.(sourceUri) === true) {
+        showSessionSaveWarning(
+          'The latest session changes are held privately because the session file could not be updated. Retry after restoring write access.'
+        );
+        schedulePortableSessionSave();
+      }
+      folderStatus.textContent = 'This session has no open tabs.';
+      return true;
+    }
+
     if (!tabsEnabled) {
       const active = restoredTabs.find((tab) => tab.id === restoredActiveId) || restoredTabs[0];
       restoredTabs.splice(0, restoredTabs.length, active);
@@ -963,9 +1049,21 @@ export function setupLeftPanel() {
     activeTabId = active.id;
     loadedTabId = null;
     switchingTab = false;
+    if (sourceUri) {
+      activePortableSessionUri = sourceUri;
+      lastPortableSessionJson = JSON.stringify(buildPortableSession());
+      clearSessionSaveWarning();
+    }
     renderTabs();
     updateSectionVisibility();
     activateTab(activeTabId, false);
+    persistTabs();
+    if (sourceUri && native?.hasPendingWmdxTabSessionSave?.(sourceUri) === true) {
+      showSessionSaveWarning(
+        'The latest session changes are held privately because the session file could not be updated. Retry after restoring write access.'
+      );
+      schedulePortableSessionSave();
+    }
     folderStatus.textContent = `Restored ${restoredTabs.length} tab${restoredTabs.length === 1 ? '' : 's'}.`;
     return true;
   };
@@ -976,7 +1074,7 @@ export function setupLeftPanel() {
     if (!result.ok || !result.session) {
       folderStatus.textContent = result?.error || 'Could not read this W.mdx tab session.';
     } else {
-      void restorePortableSession(result.session);
+      void restorePortableSession(result.session, uri);
     }
     return true;
   };
@@ -1083,20 +1181,21 @@ export function setupLeftPanel() {
       : tabs.find((tab) => sameDocumentUri(tab.uri, uri));
     if (existing) {
       activateTab(existing.id);
-      return;
+      return true;
     }
-    if (openPortableSessionUri(uri)) return;
-    if (native?.focusOpenDocument?.(uri) === true) return;
+    if (openPortableSessionUri(uri)) return true;
+    if (native?.focusOpenDocument?.(uri) === true) return true;
     if (!native?.readLeftPanelDocument) {
       folderStatus.textContent = 'File access is unavailable in this app build.';
-      return;
+      return false;
     }
     const result = parseBridgeResult(native.readLeftPanelDocument(uri), {});
     if (!result?.ok) {
       folderStatus.textContent = result?.error || 'Could not open this file.';
-      return;
+      return false;
     }
     addTab(result);
+    return true;
   };
 
   const renderFolderEntry = (entry, treeUri, parentElement, depth = 0) => {
@@ -1609,6 +1708,7 @@ export function setupLeftPanel() {
         renderTabRow(tab, index);
       }
     });
+    updateStartPageVisibility();
     requestAnimationFrame(reflowSections);
   };
 
@@ -1855,7 +1955,7 @@ export function setupLeftPanel() {
     }
     removeEmptyTabGroups(tabs, groups);
     if (!tabs.length) {
-      activateUntitledTab();
+      activateStartPage();
     } else if (closeIds.includes(activeTabId)) {
       const replacement = tabs[0];
       if (replacement && tabs.includes(replacement)) activateTab(replacement.id);
@@ -1971,7 +2071,7 @@ export function setupLeftPanel() {
     if (activeTabId === tab.id) {
       activeTabId = tabs[0]?.id || null;
       if (activeTabId) activateTab(activeTabId);
-      else activateUntitledTab();
+      else activateStartPage();
     }
     renderTabs();
     persistTabs();
@@ -2028,6 +2128,10 @@ export function setupLeftPanel() {
     });
 
   const storedTabs = parseJson(readStorage(tabsStorageKey), null);
+  activePortableSessionUri = typeof storedTabs?.portableSessionUri === 'string' &&
+    storedTabs.portableSessionUri.trim()
+    ? storedTabs.portableSessionUri.trim()
+    : null;
   if (Array.isArray(storedTabs?.tabs) && storedTabs.tabs.length) {
     if (Array.isArray(storedTabs.groups)) {
       storedTabs.groups.forEach((savedGroup) => {
@@ -2086,20 +2190,26 @@ export function setupLeftPanel() {
       tab.markdown === '' &&
       /^Untitled(?:\.md)?$/i.test(tab.name)
     );
-    if (emptyUntitledTabs.length > 1) {
-      const keepId = emptyUntitledTabs.some((tab) => tab.id === storedTabs.activeTabId)
-        ? storedTabs.activeTabId
-        : emptyUntitledTabs[0].id;
-      const retainedTabs = tabs.filter((tab) =>
-        !emptyUntitledTabs.includes(tab) || tab.id === keepId
-      );
-      tabs.splice(0, tabs.length, ...retainedTabs);
+    if (emptyUntitledTabs.length) {
+      tabs.splice(0, tabs.length, ...tabs.filter((tab) => !emptyUntitledTabs.includes(tab)));
     }
     activeTabId = tabs.some((tab) => tab.id === storedTabs.activeTabId)
       ? storedTabs.activeTabId
-      : tabs[0]?.id;
+      : tabs[0]?.id || null;
   }
-  if (!tabs.length && windowContext?.name) {
+  const windowContextName = typeof windowContext?.name === 'string'
+    ? windowContext.name.trim()
+    : '';
+  const windowContextMarkdown = typeof windowContext?.markdown === 'string'
+    ? windowContext.markdown
+    : '';
+  const windowContextHasDocument = Boolean(
+    windowContext?.uri ||
+    windowContext?.dirty ||
+    windowContextMarkdown ||
+    (windowContextName && !/^(?:Untitled(?:\.md)?|New tab)$/i.test(windowContextName))
+  );
+  if (!tabs.length && windowContextHasDocument) {
     addTab({
       uri: windowContext.uri || null,
       name: windowContext.name,
@@ -2112,14 +2222,8 @@ export function setupLeftPanel() {
     }, { activate: false, persist: false });
     activeTabId = tabs[0]?.id || null;
   }
-  if (!tabs.length) {
-    addTab({ uri: null, name: 'Untitled', markdown: currentMarkdown() }, {
-      activate: false,
-      persist: false
-    });
-    activeTabId = tabs[0]?.id || null;
-  }
   if (activeTabId) activateTab(activeTabId, false);
+  else activateStartPage();
   renderTabs();
 
   const onEditorChanged = (markdown) => {
@@ -2140,6 +2244,11 @@ export function setupLeftPanel() {
     if (switchingTab) return;
     const context = parseBridgeResult(native?.getLeftPanelContext?.(), {});
     if (!context || typeof context !== 'object') return;
+    const loadedMarkdown = String(markdown ?? context.markdown ?? '');
+    if (!activeTabId && !context.uri && !context.dirty && !loadedMarkdown) {
+      updateStartPageVisibility();
+      return;
+    }
     const current = activeTab();
     if (pendingTabHistoryNavigation && current) {
       pendingTabHistoryNavigation = false;
@@ -2353,6 +2462,7 @@ export function setupLeftPanel() {
     },
     onWindowClosing() {
       if (!launcherWindow) {
+        persistPortableSessionNow(true);
         windowClosing = true;
         try {
           localStorage.removeItem(tabsStorageKey);
@@ -2408,6 +2518,64 @@ export function setupLeftPanel() {
   window.leftPanelController = controller;
   controller.activateTab = activateTab;
   controller.renderTabs = renderTabs;
+  controller.openDocumentFromNative = (uri) => openDocument(uri);
+  controller.openStartPageSearch = () => {
+    openPanel();
+    wantedExpanded.search = true;
+    activeSection = 'search';
+    persistPanelState();
+    updateSectionVisibility();
+    requestAnimationFrame(() => searchInput?.focus());
+  };
+  controller.onWmdxTabSessionSaved = (uri, sessionJson) => {
+    activePortableSessionUri = typeof uri === 'string' && uri.trim() ? uri.trim() : null;
+    lastPortableSessionJson = typeof sessionJson === 'string' && sessionJson
+      ? sessionJson
+      : JSON.stringify(buildPortableSession());
+    clearSessionSaveWarning();
+    persistTabsNow();
+  };
+  controller.onWmdxTabSessionSaveFailed = (uri, error) => {
+    activePortableSessionUri = typeof uri === 'string' && uri.trim() ? uri.trim() : null;
+    lastPortableSessionJson = JSON.stringify(buildPortableSession());
+    persistTabsNow();
+    showSessionSaveWarning(
+      `Could not save this session${error ? `: ${error}` : '.'} Restore write access and retry.`
+    );
+  };
+  controller.retryWmdxTabSessionSave = () => persistPortableSessionNow(true);
+  document.querySelectorAll('[data-start-page-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      switch (button.dataset.startPageAction) {
+        case 'new-markdown':
+          native?.onNativeAction?.('new_markdown');
+          break;
+        case 'new-mdzip':
+          native?.onNativeAction?.('new_mdzip');
+          break;
+        case 'go-to-file':
+          controller.openStartPageSearch();
+          break;
+        case 'open-session':
+          native?.onNativeAction?.('open_session');
+          break;
+        default:
+          break;
+      }
+    });
+  });
+  sessionSaveWarningRetry?.addEventListener('click', () => {
+    persistPortableSessionNow(true);
+  });
+  if (
+    activePortableSessionUri &&
+    native?.hasPendingWmdxTabSessionSave?.(activePortableSessionUri) === true
+  ) {
+    showSessionSaveWarning(
+      'The latest session changes are held privately because the session file could not be updated. Retry after restoring write access.'
+    );
+    schedulePortableSessionSave();
+  }
   window.addEventListener('pagehide', autoSaveDirtyTabsOnLeave);
   window.addEventListener('resize', () => controller.refreshLayout());
   document.addEventListener('visibilitychange', () => {

@@ -124,6 +124,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingCreateDocumentAsTextPack: Boolean? = null
     private var pendingCreateDocumentAsMdzip: Boolean? = null
     private var pendingCreateDocumentSessionId: String? = null
+    private var pendingCreateNewDocumentFormat: DocumentFormat? = null
     private var pendingInsertAudioDocumentSessionId: String? = null
     private var pendingInsertVideoDocumentSessionId: String? = null
     private var pendingInsertAttachmentDocumentSessionId: String? = null
@@ -238,6 +239,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
+    private val openWmdxTabSessionLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                openFile(
+                    it,
+                    forceReload = true,
+                    permissionFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+        }
+
     private data class PendingToolbarKeySvgRequest(
         val surface: String,
         val itemId: String,
@@ -298,18 +311,33 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val sessionJson = pendingWmdxTabSessionJson
             pendingWmdxTabSessionJson = null
             if (uri == null || sessionJson == null) return@registerForActivityResult
+            var sessionUri = uri
             runCatching {
-                val output = contentResolver.openOutputStream(uri, "w")
-                    ?: throw java.io.IOException("Could not create the selected session file.")
-                output.use { it.write(sessionJson.toByteArray(Charsets.UTF_8)) }
-                persistDocumentUriPermission(uri)
-            }.onSuccess {
+                sessionUri = ensureDocumentExtension(uri, ".wmdx")
+                writeWmdxTabSession(sessionUri, sessionJson, persistGrant = true)
+            }
+                .onSuccess {
+                    clearPendingWmdxTabSessionSave(sessionUri)
+                    val uriLiteral = JSONObjectWrapper.quote(sessionUri.toString())
+                    val sessionLiteral = JSONObjectWrapper.quote(sessionJson)
+                    webView.evaluateJavascript(
+                        "window.leftPanelController?.onWmdxTabSessionSaved?.($uriLiteral, $sessionLiteral);",
+                        null
+                    )
                 ThemedToast.show(this, "Tab session saved.", Toast.LENGTH_SHORT)
             }.onFailure {
-                ThemedToast.show(
-                    this,
-                    it.localizedMessage ?: "Could not save the tab session.",
-                    Toast.LENGTH_LONG
+                val cause = it.localizedMessage ?: "Could not save the tab session."
+                val cached = cachePendingWmdxTabSessionSave(sessionUri, sessionJson)
+                val message = if (cached) {
+                    "$cause A private recovery copy is being held until the session saves."
+                } else {
+                    "$cause The private recovery copy could not be stored."
+                }
+                val uriLiteral = JSONObjectWrapper.quote(sessionUri.toString())
+                val messageLiteral = JSONObjectWrapper.quote(message)
+                webView.evaluateJavascript(
+                    "window.leftPanelController?.onWmdxTabSessionSaveFailed?.($uriLiteral, $messageLiteral);",
+                    null
                 )
             }
         }
@@ -1536,10 +1564,92 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun handleNewFile() {
         if (isDirty) {
-            showUnsavedChangesDialog { createNewDocument() }
-        } else {
-            createNewDocument()
+            AlertDialog.Builder(this)
+                .setTitle("Save current changes first?")
+                .setMessage("Save the current document before creating another file.")
+                .setPositiveButton("Save") { _, _ -> handleSaveFile() }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+            return
         }
+        requestNewDocument(DocumentFormat.MARKDOWN)
+    }
+
+    private fun requestNewDocument(format: DocumentFormat) {
+        if (format != DocumentFormat.MARKDOWN && format != DocumentFormat.MDZIP) return
+        pendingCreateNewDocumentFormat = format
+        pendingCreateDocumentAsTextPack = null
+        pendingCreateDocumentAsMdzip = null
+        pendingCreateDocumentSessionId = null
+        val suggestedName = if (format == DocumentFormat.MDZIP) "Untitled.mdz" else "Untitled.md"
+        if (format == DocumentFormat.MDZIP) {
+            createMdzipDocumentLauncher.launch(suggestedName)
+        } else {
+            createDocumentLauncher.launch(suggestedName)
+        }
+    }
+
+    private fun createNewSavedDocument(uri: Uri, format: DocumentFormat) {
+        var targetUri = uri
+        try {
+            val extension = if (format == DocumentFormat.MDZIP) ".mdz" else ".md"
+            targetUri = ensureDocumentExtension(uri, extension)
+            val fileName = getFileNameFromUri(targetUri)
+            if (format == DocumentFormat.MDZIP) {
+                val session = MdzipManager.create(this, "", fileName)
+                try {
+                    MdzipManager.save(this, session, "", targetUri)
+                } finally {
+                    session.sessionDir.deleteRecursively()
+                }
+            } else {
+                val output = contentResolver.openOutputStream(targetUri, "wt")
+                    ?: throw java.io.IOException("Could not create the selected Markdown file.")
+                output.use { it.write(ByteArray(0)) }
+            }
+            persistDocumentUriPermission(targetUri)
+            val uriLiteral = JSONObjectWrapper.quote(targetUri.toString())
+            webView.evaluateJavascript(
+                "window.leftPanelController?.openDocumentFromNative?.($uriLiteral) === true;"
+            ) { opened ->
+                if (opened != "true" && !isFinishing) {
+                    openFile(
+                        targetUri,
+                        forceReload = true,
+                        permissionFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                }
+            }
+        } catch (error: Exception) {
+            runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, targetUri) }
+            if (targetUri != uri) {
+                runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, uri) }
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Could not create file")
+                .setMessage(error.localizedMessage ?: "The file was not created.")
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+        }
+    }
+
+    private fun ensureDocumentExtension(uri: Uri, extension: String): Uri {
+        val name = getFileNameFromUri(uri)
+        if (name.endsWith(extension, ignoreCase = true)) return uri
+        val stem = if (name.startsWith(".")) {
+            name
+        } else {
+            name.substringBeforeLast('.', name).ifBlank { name }
+        }
+        val renamed = android.provider.DocumentsContract.renameDocument(
+            contentResolver,
+            uri,
+            "$stem$extension"
+        )
+        return renamed ?: throw java.io.IOException(
+            "Could not add $extension to the file name. Choose a name ending in $extension."
+        )
     }
 
     private fun createNewDocument() {
@@ -1843,7 +1953,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 source.optInt("version") != 1
             ) return null
             val sourceTabs = source.optJSONArray("tabs") ?: return null
-            if (sourceTabs.length() !in 1..200) return null
+            if (sourceTabs.length() !in 0..200) return null
 
             val sourceGroups = source.optJSONArray("groups") ?: JSONArray()
             val groups = linkedMapOf<String, org.json.JSONObject>()
@@ -1868,20 +1978,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 if (id.isEmpty() || !ids.add(id)) continue
                 val uriValue = tab.opt("uri")
                 val uriString = (uriValue as? String)?.takeIf { it.isNotBlank() }
-                if (uriString != null) {
-                    if (uriString.length > 8192) {
-                        ids.remove(id)
-                        continue
-                    }
-                    val scheme = runCatching { Uri.parse(uriString).scheme?.lowercase() }.getOrNull()
-                    if (scheme != "content" && scheme != "file") {
-                        ids.remove(id)
-                        continue
-                    }
-                    if (!uris.add(uriString)) {
-                        ids.remove(id)
-                        continue
-                    }
+                if (uriString == null || uriString.length > 8192) {
+                    ids.remove(id)
+                    continue
+                }
+                val scheme = runCatching { Uri.parse(uriString).scheme?.lowercase() }.getOrNull()
+                if (scheme != "content" && scheme != "file") {
+                    ids.remove(id)
+                    continue
+                }
+                if (!uris.add(uriString)) {
+                    ids.remove(id)
+                    continue
                 }
                 val requestedGroupId = (tab.opt("groupId") as? String)
                     ?.takeIf { groups.containsKey(it) }
@@ -1902,15 +2010,17 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         .put("scrollTop", scrollTop ?: JSONObject.NULL)
                 )
             }
-            if (tabs.length() == 0) return null
-
             val groupsJson = JSONArray()
             groups.forEach { (id, group) ->
                 if (id in usedGroups) groupsJson.put(group)
             }
-            val activeTabId = source.optString("activeTabId")
-                .takeIf { it in ids }
-                ?: tabs.getJSONObject(0).getString("id")
+            val activeTabId: Any = if (tabs.length() == 0) {
+                org.json.JSONObject.NULL
+            } else {
+                source.optString("activeTabId")
+                    .takeIf { it in ids }
+                    ?: tabs.getJSONObject(0).getString("id")
+            }
             val sanitized = org.json.JSONObject()
                 .put("format", "wmdx-tabs-session")
                 .put("version", 1)
@@ -1928,13 +2038,55 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun pendingWmdxTabSessionCacheFile(uri: Uri): java.io.File {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(uri.toString().toByteArray(Charsets.UTF_8))
+        val key = digest.joinToString("") { byte ->
+            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+        }
+        return java.io.File(cacheDir, "pending-wmdx-session-$key.json")
+    }
+
+    private fun writeWmdxTabSession(
+        uri: Uri,
+        sessionJson: String,
+        persistGrant: Boolean = false
+    ) {
+        val sanitized = sanitizeWmdxTabSession(sessionJson)
+            ?: throw java.io.IOException("This is not a supported W.mdx tab session.")
+        val output = contentResolver.openOutputStream(uri, "wt")
+            ?: throw java.io.IOException("Could not open the selected session file for writing.")
+        output.use { it.write(sanitized.toByteArray(Charsets.UTF_8)) }
+        if (persistGrant) persistDocumentUriPermission(uri)
+    }
+
+    private fun cachePendingWmdxTabSessionSave(uri: Uri, sessionJson: String): Boolean {
+        val sanitized = sanitizeWmdxTabSession(sessionJson) ?: return false
+        val cacheFile = pendingWmdxTabSessionCacheFile(uri)
+        return runCatching {
+            val cachedValue = org.json.JSONObject()
+                .put("uri", uri.toString())
+                .put("session", sanitized)
+                .toString()
+            cacheFile.writeText(cachedValue)
+            cacheFile.isFile
+        }.getOrDefault(false)
+    }
+
+    private fun clearPendingWmdxTabSessionSave(uri: Uri): Boolean {
+        val cacheFile = pendingWmdxTabSessionCacheFile(uri)
+        return runCatching { !cacheFile.exists() || cacheFile.delete() || !cacheFile.exists() }
+            .getOrDefault(false)
+    }
+
+    private fun hasCachedWmdxTabSessionSave(uriString: String): Boolean {
+        val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return false
+        return runCatching { pendingWmdxTabSessionCacheFile(uri).isFile }.getOrDefault(false)
+    }
+
     private fun isWmdxTabSession(uri: Uri): Boolean {
         val name = runCatching { getFileNameFromUri(uri) }.getOrNull().orEmpty()
-        val mimeType = runCatching { contentResolver.getType(uri) }.getOrNull()
-        return name.endsWith(".wmds", ignoreCase = true) ||
-            name.endsWith(".mds", ignoreCase = true) ||
-            name.endsWith(".wmdxsession", ignoreCase = true) ||
-            mimeType == WMDX_TAB_SESSION_MIME
+        return name.endsWith(".wmdx", ignoreCase = true)
     }
 
     private fun readWmdxTabSession(uri: Uri): org.json.JSONObject {
@@ -1982,8 +2134,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return
         }
         val sessionJson = JSONObjectWrapper.quote(result.optJSONObject("session")?.toString())
+        val uriJson = JSONObjectWrapper.quote(uri.toString())
         webView.evaluateJavascript(
-            "window.leftPanelController?.restorePortableSession?.($sessionJson);",
+            "window.leftPanelController?.restorePortableSession?.($sessionJson, $uriJson);",
             null
         )
     }
@@ -2042,6 +2195,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun handleCreateDocumentResult(uri: Uri?) {
+        val newDocumentFormat = pendingCreateNewDocumentFormat
+        pendingCreateNewDocumentFormat = null
+        if (newDocumentFormat != null) {
+            pendingCreateDocumentAsTextPack = null
+            pendingCreateDocumentAsMdzip = null
+            pendingCreateDocumentSessionId = null
+            if (uri != null) createNewSavedDocument(uri, newDocumentFormat)
+            return
+        }
         if (uri != null) {
             pendingRenameFallbackName = null
             val saveAsTextPack = pendingCreateDocumentAsTextPack
@@ -4616,10 +4778,40 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (isFinishing) return false
             runOnUiThread {
                 pendingWmdxTabSessionJson = sanitized
-                saveWmdxTabSessionLauncher.launch("Wmdx Session.wmds")
+                saveWmdxTabSessionLauncher.launch("Wmdx Session.wmdx")
             }
             return true
         }
+
+        @JavascriptInterface
+        fun updateWmdxTabSession(sessionJson: String, uriString: String): String {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                ?: return org.json.JSONObject()
+                    .put("ok", false)
+                    .put("error", "The session file location is invalid.")
+                    .toString()
+            val sanitized = sanitizeWmdxTabSession(sessionJson)
+                ?: return org.json.JSONObject()
+                    .put("ok", false)
+                    .put("error", "The session data is invalid.")
+                    .toString()
+            return runCatching {
+                writeWmdxTabSession(uri, sanitized)
+                clearPendingWmdxTabSessionSave(uri)
+                org.json.JSONObject().put("ok", true).toString()
+            }.getOrElse { error ->
+                val cached = cachePendingWmdxTabSessionSave(uri, sanitized)
+                org.json.JSONObject()
+                    .put("ok", false)
+                    .put("error", error.localizedMessage ?: "Could not update the session file.")
+                    .put("cached", cached)
+                    .toString()
+            }
+        }
+
+        @JavascriptInterface
+        fun hasPendingWmdxTabSessionSave(uriString: String): Boolean =
+            this@MainActivity.hasCachedWmdxTabSessionSave(uriString)
 
         @JavascriptInterface
         fun getDocumentNavigationHistory(): String =
@@ -4925,6 +5117,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             runOnUiThread {
                 when (action) {
                     "new" -> handleNewFile()
+                    "new_markdown" -> requestNewDocument(DocumentFormat.MARKDOWN)
+                    "new_mdzip" -> requestNewDocument(DocumentFormat.MDZIP)
+                    "open_session" -> openWmdxTabSessionLauncher.launch(
+                        arrayOf(WMDX_TAB_SESSION_MIME)
+                    )
                     "open" -> handleOpenFile()
                     "save" -> handleSaveFile()
                     "save_as" -> handleSaveAsFile()
