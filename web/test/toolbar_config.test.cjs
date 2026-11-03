@@ -225,7 +225,7 @@ test('version 7 toolbar layouts add newer actions to the Insert group', async ()
   });
 
   assert.deepEqual(config.popupGroups.insert.order, [
-    'image', 'audio', 'link', 'video', 'attachment'
+    'image', 'audio', 'link', 'video', 'attachment', 'embed'
   ]);
 });
 
@@ -243,7 +243,7 @@ test('version 9 toolbar layouts add Attach File to the Insert actions', async ()
   });
 
   assert.deepEqual(config.popupGroups.insert.order, [
-    'image', 'audio', 'video', 'link', 'attachment'
+    'image', 'audio', 'video', 'link', 'attachment', 'embed'
   ]);
 });
 

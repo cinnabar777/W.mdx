@@ -31,6 +31,7 @@ test('Document Appearance pages are alphabetical by title', () => {
     'pref_styling_page_callouts',
     'pref_styling_page_code',
     'pref_styling_page_cursor',
+    'pref_styling_page_embedded_content',
     'pref_styling_page_footnotes',
     'pref_styling_page_headings',
     'pref_styling_page_highlights_pens',
