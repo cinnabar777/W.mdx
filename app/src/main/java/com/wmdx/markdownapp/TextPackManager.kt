@@ -24,14 +24,15 @@ data class TextPackSession(
     val sessionDir: File,
     var markdownContent: String,
     var sourceUri: Uri?,
-    val markdownEntryPath: String = DEFAULT_TEXT_PACK_MARKDOWN_ENTRY
+    val markdownEntryPath: String = DEFAULT_TEXT_PACK_MARKDOWN_ENTRY,
+    val pendingAssetDeletions: MutableSet<String> = linkedSetOf()
 )
 
 object TextPackManager {
     private const val MAX_ENTRIES = 4096
     private const val MAX_ENTRY_BYTES = 256L * 1024L * 1024L
     private const val MAX_TOTAL_BYTES = 512L * 1024L * 1024L
-    private const val MAX_IMAGE_BYTES = 256L * 1024L * 1024L
+    private const val MAX_ASSET_BYTES = 256L * 1024L * 1024L
     private const val MARKDOWN_TYPE = "net.daringfireball.markdown"
     private const val PREVIEW_ASSET_BASE_URL =
         "https://appassets.androidplatform.net/textpack-assets"
@@ -197,37 +198,58 @@ object TextPackManager {
         imageInputStream: InputStream,
         originalFileName: String?,
         mimeType: String? = null
+    ): String = addAssetFileWithName(
+        session,
+        imageInputStream,
+        safeImageFileName(originalFileName, mimeType)
+    )
+
+    fun addAssetFile(
+        session: TextPackSession,
+        inputStream: InputStream,
+        originalFileName: String?
+    ): String = addAssetFileWithName(
+        session,
+        inputStream,
+        safeAssetFileName(originalFileName)
+    )
+
+    private fun addAssetFileWithName(
+        session: TextPackSession,
+        inputStream: InputStream,
+        safeName: String
     ): String = synchronized(session) {
         val assetsDir = resolveSessionFile(session.sessionDir, "assets")
         if (!assetsDir.exists() && !assetsDir.mkdirs()) {
             throw IOException("Could not create the TextPack assets folder.")
         }
 
-        val baseName = safeImageFileName(originalFileName, mimeType)
-        val assetName = uniqueAssetName(assetsDir, baseName)
+        val assetName = uniqueAssetName(assetsDir, safeName)
         val assetPath = "assets/$assetName"
         val targetFile = resolveSessionFile(session.sessionDir, assetPath)
         var bytesCopied = 0L
         try {
-            FileOutputStream(targetFile).use { output ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) {
-                    val read = imageInputStream.read(buffer)
-                    if (read < 0) break
-                    bytesCopied += read
-                    if (bytesCopied > MAX_IMAGE_BYTES) {
-                        throw IOException("This image is too large to add to the TextPack.")
+            inputStream.use { source ->
+                FileOutputStream(targetFile).use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = source.read(buffer)
+                        if (read < 0) break
+                        bytesCopied += read
+                        if (bytesCopied > MAX_ASSET_BYTES) {
+                            throw IOException("This file is too large to add to the TextPack.")
+                        }
+                        output.write(buffer, 0, read)
                     }
-                    output.write(buffer, 0, read)
                 }
             }
             if (bytesCopied == 0L) {
-                throw IOException("The selected image file is empty.")
+                throw IOException("The selected file is empty.")
             }
         } catch (error: Exception) {
             targetFile.delete()
             if (error is IOException) throw error
-            throw IOException("Could not add the image to the TextPack.", error)
+            throw IOException("Could not add the file to the TextPack.", error)
         }
 
         encodeArchivePath(assetPath)
@@ -250,7 +272,12 @@ object TextPackManager {
 
             val stagedArchive = File.createTempFile("textpack-save-", ".textpack", context.cacheDir)
             try {
-                writeSessionArchive(session.sessionDir, markdownEntryPath, stagedArchive)
+                writeSessionArchive(
+                    session.sessionDir,
+                    markdownEntryPath,
+                    stagedArchive,
+                    session.pendingAssetDeletions
+                )
                 verifyStagedArchive(stagedArchive, markdownEntryPath)
 
                 val output = context.contentResolver.openOutputStream(targetUri, "rwt")
@@ -276,6 +303,25 @@ object TextPackManager {
         return runCatching { resolveSessionFile(session.sessionDir, archivePath) }
             .getOrNull()
             ?.takeIf { it.isFile }
+    }
+
+    internal fun canDeleteAsset(session: TextPackSession, markdownReference: String): Boolean =
+        resolveAssetFile(session, markdownReference) != null
+
+    internal fun stageAssetDeletion(session: TextPackSession, markdownReference: String): Boolean {
+        val archivePath = assetArchivePath(markdownReference) ?: return false
+        synchronized(session) {
+            if (resolveAssetFile(session, markdownReference) == null) return false
+            session.pendingAssetDeletions.add(archivePath)
+            return true
+        }
+    }
+
+    internal fun syncAssetReferences(session: TextPackSession, currentReferences: Collection<String>) {
+        val currentPaths = currentReferences.mapNotNullTo(linkedSetOf(), ::assetArchivePath)
+        synchronized(session) {
+            session.pendingAssetDeletions.removeAll(currentPaths)
+        }
     }
 
     internal fun previewAssetUrl(session: TextPackSession, markdownReference: String): String? {
@@ -306,14 +352,22 @@ object TextPackManager {
         return segments.joinToString("/")
     }
 
-    internal fun writeSessionArchive(sessionDir: File, markdownEntryPath: String, archiveFile: File) {
+    internal fun writeSessionArchive(
+        sessionDir: File,
+        markdownEntryPath: String,
+        archiveFile: File,
+        excludedPaths: Set<String> = emptySet()
+    ) {
         val selectedMarkdownPath = safeArchivePath(markdownEntryPath)
+        val safeExcludedPaths = excludedPaths.mapTo(hashSetOf(), ::safeArchivePath)
         val root = sessionDir.canonicalFile
         val files = sessionDir.walkTopDown()
             .filter { it.isFile }
             .map { file -> relativePath(sessionDir, file) to file }
             .filter { (path, _) ->
-                !isRootTextDocumentPath(path) || path == selectedMarkdownPath
+                val safePath = safeArchivePath(path)
+                safePath !in safeExcludedPaths &&
+                    (!isRootTextDocumentPath(safePath) || safePath == selectedMarkdownPath)
             }
             .sortedBy { it.first }
 
@@ -405,20 +459,31 @@ object TextPackManager {
             false
         }
 
-    internal fun safeImageFileName(originalFileName: String?, mimeType: String?): String {
+    internal fun safeAssetFileName(
+        originalFileName: String?,
+        fallbackName: String = "asset"
+    ): String {
         var baseName = originalFileName
             ?.replace('\\', '/')
             ?.substringAfterLast('/')
             ?.filterNot { Character.isISOControl(it) || it == '/' || it == '\\' }
             ?.trim()
             .orEmpty()
-        if (baseName.isBlank() || baseName == "." || baseName == "..") baseName = "image"
+        if (baseName.isBlank() || baseName == "." || baseName == "..") baseName = fallbackName
 
-        val hasExtension = baseName.lastIndexOf('.') > 0
-        if (!hasExtension) {
+        if (baseName.length > 180) {
+            val extensionStart = baseName.lastIndexOf('.').takeIf { it > 0 } ?: baseName.length
+            val extension = baseName.substring(extensionStart)
+            baseName = baseName.substring(0, (180 - extension.length).coerceAtLeast(1)) + extension
+        }
+        return baseName
+    }
+
+    internal fun safeImageFileName(originalFileName: String?, mimeType: String?): String {
+        var baseName = safeAssetFileName(originalFileName, "image")
+        if (baseName.lastIndexOf('.') <= 0) {
             imageExtensionForMimeType(mimeType)?.let { baseName = "$baseName.$it" }
         }
-
         if (baseName.length > 180) {
             val extensionStart = baseName.lastIndexOf('.').takeIf { it > 0 } ?: baseName.length
             val extension = baseName.substring(extensionStart)

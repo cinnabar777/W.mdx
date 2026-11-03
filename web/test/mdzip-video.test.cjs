@@ -151,9 +151,13 @@ test('playable and notice-only video formats are packaged and rendered distinctl
   assert.match(manager, /SUPPORTED_VIDEO_EXTENSIONS =\s*setOf\("mp4", "m4v", "webm", "3gp", "mov", "mkv", "avi", "mpeg", "mpg", "ogv", "wmv"\)/);
   assert.match(manager, /fun addVideo\(/);
   assert.match(manager, /fun syncVideoReferences\(/);
-  assert.match(manager, /pendingAudioDeletions \+ session\.pendingVideoDeletions/);
+  assert.match(
+    manager,
+    /session\.pendingAudioDeletions \+[\s\S]*session\.pendingVideoDeletions \+[\s\S]*session\.pendingAttachmentDeletions/
+  );
   assert.match(activity, /pickVideoLauncher\.launch\("video\/\*"\)/);
-  assert.match(activity, /MdzipManager\.videoArchiveFile/);
+  assert.match(activity, /MdzipManager\.isSupportedVideoFileName\(archivePath\)/);
+  assert.match(activity, /MdzipManager\.assetArchiveFile\(session, archivePath\)/);
   assert.match(activity, /mdzipVideoMimeType\(extension\)/);
   assert.match(activity, /"webm" -> "video\/webm"/);
   assert.match(activity, /"3gp" -> "video\/3gpp"/);
@@ -207,9 +211,10 @@ test('video preview keeps native controls and safely edits or deletes the entire
   assert.match(widget, /Long-press for video options/);
   assert.match(widget, /}, 550\)/);
   assert.match(widget, /editButton\.textContent = 'Edit'/);
-  assert.match(widget, /deleteButton\.textContent = 'Delete from MDZip'/);
+  assert.match(widget, /removeLinkButton\.textContent = 'Remove link'/);
+  assert.match(widget, /deleteButton\.textContent = 'Delete'/);
   assert.match(widget, /changes: \{ from: this\.from, to: this\.to, insert: '' \}/);
-  assert.match(widget, /userEvent: 'delete\.mdzip-video'/);
+  assert.match(widget, /userEvent: deletePackagedAsset \? 'delete\.packaged-video' : 'delete\.video-link'/);
   assert.match(widget, /Unsupported video format\. This app can play MP4, M4V, WebM, 3GP, MOV, and MKV\./);
   assert.match(widget, /this\.onEdit\(view/);
   assert.equal((editor.match(/new VideoPreviewWidget\(/g) || []).length, 2);
@@ -222,10 +227,14 @@ test('MDZip writes and verifies a staged archive before opening the destination'
   const saveStart = manager.indexOf('fun save(');
   const writerStart = manager.indexOf('internal fun writeSessionArchive(', saveStart);
   const saveBody = manager.slice(saveStart, writerStart);
-  const stageIndex = saveBody.indexOf('writeSessionArchive(session.sessionDir, pendingDeletions, stagedArchive)');
+  const stageIndex = saveBody.indexOf('writeSessionArchive(');
   const verifyIndex = saveBody.indexOf('verifyStagedArchive(stagedArchive)');
   const destinationIndex = saveBody.indexOf('openOutputStream(targetUri, "rwt")');
 
   assert.ok(stageIndex >= 0 && verifyIndex > stageIndex && destinationIndex > verifyIndex);
+  assert.match(
+    saveBody,
+    /writeSessionArchive\(\s*session\.sessionDir,[\s\S]*?stagedArchive,[\s\S]*?session\.originalArchivePaths/
+  );
   assert.match(manager, /entry\.method = ZipEntry\.STORED/);
 });

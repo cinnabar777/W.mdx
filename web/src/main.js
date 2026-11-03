@@ -63,45 +63,11 @@ import {
 } from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
+import { installToolbarTouchHandling } from './toolbarTouchHandling.js';
 
-// Keep WebView focus and the Android IME unchanged while touch interaction
-// moves between editor text and the in-WebView toolbars.
-const activeToolbarImePointers = new Set();
-const toolbarImeSurfaceSelector =
-  '#floating-toggle-btn, .floating-toggle-btn';
-
-document.addEventListener('pointerdown', event => {
-  if (event.isPrimary === false) return;
-  const target = event.target;
-  if (!target?.closest?.(toolbarImeSurfaceSelector)) return;
-
-  const pointerId = event.pointerId ?? 0;
-  if (activeToolbarImePointers.has(pointerId)) return;
-  activeToolbarImePointers.add(pointerId);
-  if (target.closest?.('button, [role="button"], [data-toolbar-key]')) {
-    event.preventDefault();
-  }
-  window.AndroidNative?.beginToolbarInteraction?.();
-}, true);
-
-const finishToolbarImePointer = pointerId => {
-  if (!activeToolbarImePointers.delete(pointerId)) return;
-  window.setTimeout(() => {
-    window.AndroidNative?.endToolbarInteraction?.();
-  }, 80);
-};
-
-document.addEventListener('pointerup', event => {
-  finishToolbarImePointer(event.pointerId ?? 0);
-}, true);
-document.addEventListener('pointercancel', event => {
-  finishToolbarImePointer(event.pointerId ?? 0);
-}, true);
-window.addEventListener('blur', () => {
-  for (const pointerId of [...activeToolbarImePointers]) {
-    finishToolbarImePointer(pointerId);
-  }
-});
+const toolbarTouchSurfaceSelector =
+  '#bottom-toolbar, #floating-selection-toolbar, #popup-toolbar-strip, #floating-toggle-btn, .floating-toggle-btn';
+installToolbarTouchHandling(document, toolbarTouchSurfaceSelector);
 
 document.addEventListener('pointerdown', event => {
   const target = event.target;
@@ -2117,7 +2083,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   node.to,
                   videoLink.layout,
                   (editView, item) => openVideoEditDialog(editView, item),
-                  videoLink.unsupported
+                  videoLink.unsupported,
+                  window.AndroidNative?.getCurrentDocumentSessionId?.()
                 )
               }).range(node.from, node.to);
               builder.push(videoDecoration);
@@ -2137,7 +2104,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   node.from,
                   node.to,
                   audioLink.layout,
-                  (editView, item) => openAudioEditDialog(editView, item)
+                  (editView, item) => openAudioEditDialog(editView, item),
+                  window.AndroidNative?.getCurrentDocumentSessionId?.()
                 )
               }).range(node.from, node.to);
               builder.push(audioDecoration);
@@ -2151,7 +2119,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               ? window.AndroidNative?.getCurrentDocumentSessionId?.()
               : null;
             const attachmentExists = attachmentLink && window.AndroidNative
-              ?.canOpenMdzipAttachment?.(attachmentLink.url, attachmentSessionId);
+              ?.canOpenAttachment?.(attachmentLink.url, attachmentSessionId);
             if (attachmentLink && attachmentExists && !isNodeActive && !isPureWysiwyg) {
               const attachmentDecoration = Decoration.replace({
                 widget: new MdzipAttachmentWidget(
@@ -3246,7 +3214,8 @@ function buildHeightMapValue(state) {
               node.to,
               videoLink.layout,
               (editView, item) => openVideoEditDialog(editView, item),
-              videoLink.unsupported
+              videoLink.unsupported,
+              window.AndroidNative?.getCurrentDocumentSessionId?.()
             )
           }).range(node.from, node.to);
           replacements.push(videoDecoration);
@@ -3266,7 +3235,8 @@ function buildHeightMapValue(state) {
               node.from,
               node.to,
               audioLink.layout,
-              (editView, item) => openAudioEditDialog(editView, item)
+              (editView, item) => openAudioEditDialog(editView, item),
+              window.AndroidNative?.getCurrentDocumentSessionId?.()
             )
           }).range(node.from, node.to);
           replacements.push(audioDecoration);
@@ -3280,7 +3250,7 @@ function buildHeightMapValue(state) {
           ? window.AndroidNative?.getCurrentDocumentSessionId?.()
           : null;
         const attachmentExists = attachmentLink && window.AndroidNative
-          ?.canOpenMdzipAttachment?.(attachmentLink.url, attachmentSessionId);
+          ?.canOpenAttachment?.(attachmentLink.url, attachmentSessionId);
         if (attachmentLink && attachmentExists) {
           const attachmentDecoration = Decoration.replace({
             widget: new MdzipAttachmentWidget(
@@ -4120,6 +4090,47 @@ class CodeMirrorAdapter {
     }
   }
 
+  syncPackagedAssetReferences(update) {
+    let assetLinksMayHaveChanged = false;
+    update.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+      const changedText =
+        update.startState.doc.sliceString(fromA, toA) +
+        update.state.doc.sliceString(fromB, toB);
+      if (
+        /(?:assets|attachments|audio|video)\//i.test(changedText) ||
+        /\.(?:mp3|aac|m4a|wav|flac|opus|ogg|oga|mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv|pdf|zip|docx?|xlsx?|pptx?|txt|csv|rtf|html?)(?:$|[?#\s)>])/i.test(changedText)
+      ) {
+        assetLinksMayHaveChanged = true;
+      }
+    });
+    if (!assetLinksMayHaveChanged) return;
+    if (!forceParsing(update.view, update.state.doc.length, 40)) return;
+
+    const references = new Set();
+    syntaxTree(update.state).iterate({
+      enter: node => {
+        if (node.name !== 'Link') return;
+        const raw = update.state.doc.sliceString(node.from, node.to);
+        const parsed = parseMarkdownAudioLink(raw) ||
+          parseMarkdownVideoLink(raw) ||
+          parseMarkdownAttachmentLink(raw);
+        if (parsed?.url) references.add(parsed.url);
+      }
+    });
+
+    try {
+      window.AndroidNative?.syncPackagedAssetReferences?.(
+        JSON.stringify([...references]),
+        this.documentSessionId
+      );
+    } catch (error) {
+      window.AndroidNative?.reportDiagnostic?.(
+        'packaged_asset_reference_sync_failed',
+        error?.message || 'bridge call failed'
+      );
+    }
+  }
+
   queueScrollPositionSave() {
     if (!this.view || this.isProgrammatic) return;
     if (this.scrollPersistTimer !== null) {
@@ -4224,6 +4235,7 @@ class CodeMirrorAdapter {
             } else {
               this.syncMdzipAudioReferences(update);
               this.syncMdzipVideoReferences(update);
+              this.syncPackagedAssetReferences(update);
             }
           }
           if (update.docChanged && !this.isProgrammatic) {
@@ -4333,6 +4345,19 @@ class CodeMirrorAdapter {
       emptyAreaLongPressStart = null;
     };
     this.view.contentDOM.addEventListener('pointerdown', event => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest(
+          'button, input, textarea, audio, video, .cm-image-preview-wrapper, ' +
+          '.cm-mdzip-audio-preview-wrapper, .cm-mdzip-video-preview-wrapper, ' +
+          '.cm-mdzip-attachment-shell'
+        )
+      ) {
+        editorTapStart = null;
+        cancelEmptyAreaLongPress();
+        return;
+      }
       cancelEmptyAreaLongPress();
       floatingToolbarAnchorPoint = null;
       updateFloatingSelectionToolbar(this.view);
@@ -4388,7 +4413,7 @@ class CodeMirrorAdapter {
         return;
       }
       requestAnimationFrame(() => {
-        if (this.view?.dom.isConnected && this.view.hasFocus) {
+        if (this.view?.dom.isConnected) {
           window.AndroidNative?.showEditorKeyboard?.();
         }
       });
@@ -4747,30 +4772,6 @@ function installToolbarTapActions(container) {
   if (!container || container.dataset.toolbarTapActionsInstalled === 'true') return;
   container.dataset.toolbarTapActionsInstalled = 'true';
   const pendingTaps = new WeakMap();
-  const activeToolbarPointerIds = new Set();
-  const getToolbarPointerControl = event => {
-    const target = event.target?.nodeType === 1
-      ? event.target
-      : event.target?.parentElement;
-    const control = target?.closest?.(
-      '[data-toolbar-key], [data-toolbar-style-id], .popup-strip-btn'
-    );
-    return control && container.contains(control) ? control : null;
-  };
-  const endToolbarPointer = event => {
-    const pointerId = event.pointerId ?? 'primary';
-    if (!activeToolbarPointerIds.delete(pointerId)) return;
-    setTimeout(() => window.AndroidNative?.endToolbarInteraction?.(), 80);
-  };
-  container.addEventListener('pointerdown', event => {
-    if (event.isPrimary === false || !getToolbarPointerControl(event)) return;
-    const pointerId = event.pointerId ?? 'primary';
-    if (activeToolbarPointerIds.has(pointerId)) return;
-    activeToolbarPointerIds.add(pointerId);
-    window.AndroidNative?.beginToolbarInteraction?.();
-  }, true);
-  container.addEventListener('pointerup', endToolbarPointer, true);
-  container.addEventListener('pointercancel', endToolbarPointer, true);
   container.addEventListener('click', event => {
     const target = event.target?.nodeType === 1
       ? event.target
@@ -5416,12 +5417,18 @@ function createToolbarActionRegistry() {
   return new Map([...groups.flat(), ...clipboardItems].map(item => [item.id, item]));
 }
 
-function getToolbarConfigForElement(element) {
+function getToolbarSurfaceForElement(element) {
   const floatingToolbar = element?.closest?.('#floating-selection-toolbar');
-  if (floatingToolbar) return floatingToolbarConfig;
   const popupStrip = element?.closest?.('#popup-toolbar-strip');
-  if (popupStrip?.dataset?.toolbarSurface === 'floating') return floatingToolbarConfig;
-  return bottomToolbarConfig;
+  return floatingToolbar || popupStrip?.dataset?.toolbarSurface === 'floating'
+    ? 'floating'
+    : 'bottom';
+}
+
+function getToolbarConfigForElement(element) {
+  return getToolbarSurfaceForElement(element) === 'floating'
+    ? floatingToolbarConfig
+    : bottomToolbarConfig;
 }
 
 function createRuntimeToolbarItemRegistry() {
@@ -5581,7 +5588,6 @@ function runToolbarActionWithoutRefocusingEditor(action) {
 }
 
 function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
-  if (currentEditorMode !== 'wysiwyg') return false;
   const keyId =
     sourceButton?.dataset?.toolbarStyleId ||
     sourceButton?.dataset?.toolbarKey;
@@ -5596,17 +5602,17 @@ function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
     toolbarConfig.customKeys?.[keyId]?.title ||
     definition?.title ||
     keyId;
-  const surface = toolbarConfig === floatingToolbarConfig ? 'floating' : 'bottom';
+  const surface = getToolbarSurfaceForElement(sourceButton);
   return openToolbarKeyPreferencesDialog({
     keyId,
     keyTitle: title,
     surface,
     config: toolbarConfig,
     onSave: (targetSurface, nextConfig) => {
-      const save = window.AndroidNative?.saveToolbarKeyPreferences;
-      if (typeof save !== 'function') return false;
+      const androidNative = window.AndroidNative;
+      if (typeof androidNative?.saveToolbarKeyPreferences !== 'function') return false;
       const rawConfig = JSON.stringify(nextConfig);
-      if (!save(targetSurface, rawConfig)) return false;
+      if (!androidNative.saveToolbarKeyPreferences(targetSurface, rawConfig)) return false;
       if (targetSurface === 'floating') {
         window.editorBridge?.applyFloatingToolbarConfig?.(nextConfig);
       } else {
@@ -5759,6 +5765,7 @@ function installPopupToolbarSwipeUp(
     if (longPressHandled) {
       longPressHandled = false;
       pointerStart = null;
+      button.dataset.toolbarGestureSuppressClick = 'true';
       event.preventDefault();
       return;
     }

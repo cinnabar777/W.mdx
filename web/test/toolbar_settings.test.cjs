@@ -257,7 +257,20 @@ test('toolbar gestures can open and save the preferences for their own key', () 
     mainSource,
     /sourceButton\?\.dataset\?\.toolbarStyleId[\s\S]*?sourceButton\?\.dataset\?\.toolbarKey/
   );
-  assert.match(mainSource, /currentEditorMode !== 'wysiwyg'/);
+  const runtimeKeyPreferences = mainSource.match(
+    /function openToolbarKeyPreferences\(sourceButton, toolbarConfig\) \{[\s\S]*?\n\}/
+  )?.[0];
+  assert.ok(runtimeKeyPreferences, 'the in-editor key-preferences action has a runtime flow');
+  assert.doesNotMatch(
+    runtimeKeyPreferences,
+    /currentEditorMode/,
+    'key preferences are available in WYSIWYG, live-preview, and source views'
+  );
+  assert.match(runtimeKeyPreferences, /getToolbarSurfaceForElement\(sourceButton\)/);
+  assert.match(
+    runtimeKeyPreferences,
+    /androidNative\.saveToolbarKeyPreferences\(targetSurface, rawConfig\)/
+  );
   assert.match(keyPreferencesDialogSource, /toolbar-settings-preview\.html\?embed=key-preferences/);
   assert.match(keyPreferencesDialogSource, /openToolbarKeyPreferencesEditor/);
   assert.match(settingsSource, /window\.openToolbarKeyPreferencesEditor/);
@@ -273,10 +286,8 @@ test('toolbar gestures can open and save the preferences for their own key', () 
     /if \(section\.open\) return;[\s\S]*?if \(other !== section\) other\.open = false;/
   );
   assert.match(html, /data-toolbar-section="colors"/);
-  assert.match(
-    mainSource,
-    /save\(targetSurface, rawConfig\)/
-  );
+  assert.match(mainSource, /openToolbarKeyPreferencesDialog\(\{[\s\S]*?onSave: \(targetSurface, nextConfig\) =>/);
+  assert.match(keyPreferencesDialogSource, /saveBottomToolbarConfig: createToolbarKeyPreferencesSaveBridge\(surface, onSave\)/);
   assert.match(mainActivitySource, /fun saveToolbarKeyPreferences\(surface: String, rawConfig: String\)/);
   assert.match(mainActivitySource, /fun pickToolbarKeyColor\(surface: String, itemId: String, property: String\)/);
   assert.match(mainActivitySource, /fun pickToolbarKeySvg\(surface: String, itemId: String, property: String\)/);
@@ -443,6 +454,13 @@ test('embedded preferences open the existing full key editor for the triggering 
   const dom = new JSDOM(html, {
     url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html?embed=key-preferences'
   });
+  const savedConfigs = [];
+  dom.window.ToolbarSettings = {
+    saveBottomToolbarConfig: rawConfig => {
+      savedConfigs.push(JSON.parse(rawConfig));
+      return 'saved';
+    }
+  };
   const previousWindow = global.window;
   const previousDocument = global.document;
   global.window = dom.window;
@@ -482,6 +500,20 @@ test('embedded preferences open the existing full key editor for the triggering 
     assert.match(
       dom.window.document.querySelector('[data-gesture-list="taps"]').textContent,
       /Bold/
+    );
+    dom.window.document
+      .querySelector('.toolbar-preview-gesture-action[data-gesture-id="tap2"]')
+      .click();
+    const actionSearch = dom.window.document.querySelector('#toolbar-action-search');
+    actionSearch.value = 'italic';
+    actionSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    dom.window.document
+      .querySelector('#toolbar-action-list [aria-label="Italic"]')
+      .click();
+    assert.equal(
+      savedConfigs.at(-1)?.styles.undo.gestureActions.tap2,
+      'italic',
+      'editing Undo preferences saves the changed gesture on Undo'
     );
     await new Promise(resolve => dom.window.setTimeout(resolve, 20));
   } finally {
@@ -687,29 +719,10 @@ test('toolbar actions do not force the editor keyboard open', () => {
   assert.match(mainSource, /cmWrapSelection\(view, tableMarkdown, '', \{ preserveKeyboard: true \}\)/);
 });
 
-test('toolbar touches gate automatic keyboard focus without restoring the IME later', () => {
-  assert.match(
-    mainSource,
-    /container\.addEventListener\('pointerdown', event => \{[\s\S]*?beginToolbarInteraction\?\.\(\)/,
-    'toolbar pointerdown captures the keyboard state before the action'
-  );
-  assert.match(mainSource, /endToolbarInteraction\?\.\(\), 80\)/);
-  assert.match(
-    mainActivitySource,
-    /event\.actionMasked == MotionEvent\.ACTION_DOWN[\s\S]*?setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/,
-    'native touch handling gates WebView keyboard focus before it receives the touch'
-  );
-  assert.match(
-    mainActivitySource,
-    /fun beginToolbarInteraction\(\)[\s\S]*?setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/
-  );
-  const endInteraction = mainActivitySource.match(
-    /fun endToolbarInteraction\(\)\s*\{([\s\S]*?)\n\s*@JavascriptInterface/
-  )?.[1];
-  assert.ok(endInteraction, 'toolbar interactions have a native end callback');
-  assert.doesNotMatch(
-    endInteraction,
-    /setImeInputAllowed|showSoftInput|hideSoftInput|restoreToolbarImeState/,
-    'ending the toolbar interaction does not change keyboard visibility'
-  );
+test('toolbar-local touch handling preserves tap and gesture dispatch', () => {
+  assert.match(mainSource, /installToolbarTouchHandling\(document, toolbarTouchSurfaceSelector\)/);
+  assert.match(mainSource, /function installToolbarTapActions\(container\)/);
+  assert.match(mainSource, /onGesture: \(id, gestureId, event, button\) =>/);
+  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
+  assert.doesNotMatch(mainActivitySource, /toolbarImeInteraction|toolbarImeSuppressedUntilEditorTouch|setImeInputAllowed/);
 });

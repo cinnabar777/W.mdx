@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-test('MDZip attachment links parse only local attachment paths', async () => {
+test('attachment links parse local package paths and marked external asset paths', async () => {
   const { parseMarkdownAttachmentLink } = await import('../src/markdownMedia.js');
 
   assert.deepEqual(
@@ -14,8 +14,13 @@ test('MDZip attachment links parse only local attachment paths', async () => {
     parseMarkdownAttachmentLink('[A & B](../attachments/a%20%26%20b.pdf)'),
     { label: 'A & B', url: '../attachments/a%20%26%20b.pdf' }
   );
+  assert.deepEqual(
+    parseMarkdownAttachmentLink('[Reference](../assets/reference.pdf "wmdx-attachment")'),
+    { label: 'Reference', url: '../assets/reference.pdf' }
+  );
   assert.equal(parseMarkdownAttachmentLink('[Website](https://example.com/file.pdf)'), null);
   assert.equal(parseMarkdownAttachmentLink('[Audio](audio/voice.mp3)'), null);
+  assert.equal(parseMarkdownAttachmentLink('[Ordinary link](assets/reference.pdf)'), null);
   assert.equal(parseMarkdownAttachmentLink('![Image](attachments/photo.png)'), null);
 });
 
@@ -29,7 +34,7 @@ test('MDZip attachment link formatting escapes labels and filename characters', 
 
   assert.equal(
     markdown,
-    '[A\\] reference.pdf](attachments/A%20%26%20B%20%28final%29.pdf)'
+    '[A\\] reference.pdf](attachments/A%20%26%20B%20%28final%29.pdf "wmdx-attachment")'
   );
   assert.deepEqual(parseMarkdownAttachmentLink(markdown), {
     label: 'A] reference.pdf',
@@ -73,22 +78,29 @@ test('MDZip attachment width and alignment metadata round-trip safely', async ()
   );
 });
 
-test('MDZip attachments expose whole-element edit and delete actions in the widget', () => {
+test('attachments expose whole-element edit, remove-link, and packaged-delete actions', () => {
   const widget = fs.readFileSync(
     path.join(__dirname, '../src/mdzipAttachmentWidget.js'),
     'utf8'
   );
   assert.match(widget, /createAction\('Edit'/);
+  assert.match(widget, /createAction\('Remove link'/);
   assert.match(widget, /createAction\('Delete'/);
+  assert.match(widget, /canDeletePackagedAsset/);
+  assert.match(widget, /deletePackagedAsset/);
   assert.match(widget, /changes: \{ from: this\.from, to: this\.to, insert: '' \}/);
-  assert.match(widget, /userEvent: 'delete\.mdzip-attachment'/);
+  assert.match(widget, /userEvent: 'delete\.packaged-attachment'/);
   assert.match(widget, /sliceString\(this\.from, this\.to\) !== expectedMarkdown/);
   assert.match(widget, /--mdzip-attachment-border-radius/);
 });
 
-test('both insert toolbars expose the generic attachment picker', () => {
+test('all document formats can resolve and open inserted attachments', () => {
   const main = fs.readFileSync(
     path.join(__dirname, '../src/main.js'),
+    'utf8'
+  );
+  const widget = fs.readFileSync(
+    path.join(__dirname, '../src/mdzipAttachmentWidget.js'),
     'utf8'
   );
   const native = fs.readFileSync(
@@ -99,6 +111,9 @@ test('both insert toolbars expose the generic attachment picker', () => {
   assert.match(main, /insertAttachmentLink: function/);
   assert.match(main, /new MdzipAttachmentWidget/);
   assert.match(native, /pickAttachmentLauncher\.launch\(arrayOf\("\*\/\*"\)\)/);
-  assert.match(native, /fun canOpenMdzipAttachment/);
-  assert.match(native, /fun openMdzipAttachment/);
+  assert.match(native, /fun canOpenAttachment/);
+  assert.match(native, /fun openAttachment/);
+  assert.match(native, /DocumentFormat\.TEXT_PACK -> currentTextPackSession/);
+  assert.match(native, /DocumentFormat\.MARKDOWN -> resolveMarkdownAssetUrl/);
+  assert.match(widget, /openAttachment\?\./);
 });

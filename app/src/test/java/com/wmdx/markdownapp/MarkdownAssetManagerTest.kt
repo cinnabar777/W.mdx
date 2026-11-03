@@ -42,4 +42,12 @@ class MarkdownAssetManagerTest {
             )
         )
     }
+
+    @Test
+    fun recognizesAudioAndVideoAssetMimeTypes() {
+        assertEquals("audio/mpeg", MarkdownAssetManager.mimeTypeForExtension("mp3"))
+        assertEquals("audio/mp4", MarkdownAssetManager.mimeTypeForExtension("m4a"))
+        assertEquals("video/webm", MarkdownAssetManager.mimeTypeForExtension("webm"))
+        assertEquals("video/x-matroska", MarkdownAssetManager.mimeTypeForExtension("mkv"))
+    }
 }

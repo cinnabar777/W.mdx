@@ -6,7 +6,6 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.View
-import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.preference.PreferenceManager
 
@@ -19,23 +18,6 @@ class EditorWebView @JvmOverloads constructor(
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : WebView(context, attrs, defStyleAttr) {
-
-    @Volatile
-    private var imeInputAllowed = true
-
-    fun setImeInputAllowed(allowed: Boolean) {
-        if (imeInputAllowed == allowed) return
-        imeInputAllowed = allowed
-        // Restarting input while suppressing a hidden IME can cause Android
-        // to reopen it. Recreate the input connection only for an explicit
-        // transition back to text input; the toolbar touch gate stays passive.
-        if (!allowed) return
-        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-            ?.restartInput(this)
-    }
-
-    override fun onCheckIsTextEditor(): Boolean =
-        imeInputAllowed && super.onCheckIsTextEditor()
 
     private fun isFloatingToolbarEnabled(): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)

@@ -134,19 +134,38 @@ test('returning to the app keeps the keyboard hidden until the user touches the 
   assert.ok(mainActivitySource.includes('?.hide(WindowInsetsCompat.Type.ime())'));
 });
 
-test('tapping focused editor content explicitly requests the Android keyboard', () => {
+test('tapping editor content explicitly requests the Android keyboard', () => {
   assert.match(source, /contentDOM\.addEventListener\('pointerdown'/);
   assert.match(source, /contentDOM\.addEventListener\('pointerup'/);
-  assert.match(source, /this\.view\.hasFocus\)[\s\S]*?AndroidNative\?\.showEditorKeyboard\?\.\(\)/);
-  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?setImeInputAllowed\(true\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
-  assert.match(editorWebViewSource, /fun setImeInputAllowed\(allowed: Boolean\)[\s\S]*?restartInput\(this\)/);
-  assert.match(editorWebViewSource, /override fun onCheckIsTextEditor\(\): Boolean =\s*imeInputAllowed && super\.onCheckIsTextEditor\(\)/);
+  assert.match(
+    source,
+    /contentDOM\.addEventListener\('pointerup'[\s\S]*?if \(this\.view\?\.dom\.isConnected\) \{\s*window\.AndroidNative\?\.showEditorKeyboard\?\.\(\)/
+  );
+  assert.doesNotMatch(
+    source,
+    /this\.view\.hasFocus\)[\s\S]{0,120}AndroidNative\?\.showEditorKeyboard/
+  );
+  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?requestFocusFromTouch\(\)[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
+  assert.doesNotMatch(mainActivitySource, /setImeInputAllowed|toolbarImeSuppressedUntilEditorTouch/);
+  assert.doesNotMatch(editorWebViewSource, /imeInputAllowed|onCheckIsTextEditor|onCreateInputConnection|override fun requestFocus/);
 });
 
-test('toolbar actions block incidental keyboard opens when the keyboard started closed', () => {
-  assert.match(mainActivitySource, /setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/);
-  assert.match(mainActivitySource, /setImeInputAllowed\(toolbarImeVisibleBeforeInteraction\)/);
-  assert.doesNotMatch(mainActivitySource, /restoreToolbarImeState|setImeInputAllowed\(expectedVisible\)/);
+test('toolbar touch handling stays local and preserves click and pointer paths', () => {
+  const toolbarTouchSource = fs.readFileSync(
+    path.join(__dirname, '../src/toolbarTouchHandling.js'),
+    'utf8'
+  );
+  assert.match(source, /installToolbarTouchHandling\(document, toolbarTouchSurfaceSelector\)/);
+  assert.match(
+    source,
+    /toolbarTouchSurfaceSelector\s*=\s*'#[^']*popup-toolbar-strip[^']*floating-toggle-btn/
+  );
+  assert.match(toolbarTouchSource, /addEventListener\('touchstart', onTouchStart, \{\s*capture: true,\s*passive: false/);
+  assert.match(toolbarTouchSource, /addEventListener\('pointerup', onPointerUp\)/);
+  assert.match(toolbarTouchSource, /control\.click\?\.\(\)/);
+  assert.match(toolbarTouchSource, /toolbarGestureSuppressClick/);
+  assert.doesNotMatch(mainActivitySource, /toolbarImeInteraction|toolbarImeSuppressedUntilEditorTouch|setImeInputAllowed/);
+  assert.doesNotMatch(editorWebViewSource, /imeInputAllowed|onCreateInputConnection|override fun requestFocus/);
 });
 
 test('auto-save snapshots the editor before pausing WebView and runs once per leave', () => {
@@ -873,30 +892,11 @@ test('Save preserves the active document format for direct save and fallback', (
   assert.match(mainActivitySource, /"save_action"/);
 });
 
-test('Toolbar touches gate the IME before WebView focus and do not restore it later', () => {
-  assert.match(source, /toolbarImeSurfaceSelector\s*=\s*'#[^']*floating-toggle-btn/);
-  assert.match(source, /window\.AndroidNative\?\.beginToolbarInteraction\?\.\(\)/);
-  assert.match(source, /window\.AndroidNative\?\.endToolbarInteraction\?\.\(\)/);
-  assert.match(source, /event\.preventDefault\(\);[\s\S]*window\.AndroidNative\?\.beginToolbarInteraction/);
-  assert.match(mainActivitySource, /setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/);
-  const endStart = mainActivitySource.indexOf('fun endToolbarInteraction()');
-  const endEnd = mainActivitySource.indexOf('@JavascriptInterface', endStart);
-  const endBody = mainActivitySource.slice(endStart, endEnd);
-  assert.doesNotMatch(endBody, /restoreToolbarImeState|hideSoftInput|setImeInputAllowed/);
+test('editor keyboard behavior no longer depends on toolbar input gating', () => {
+  assert.doesNotMatch(source, /beginToolbarInteraction|endToolbarInteraction|onEditorPointerDown/);
+  assert.doesNotMatch(mainActivitySource, /toolbarImeInteraction|toolbarImeSuppressedUntilEditorTouch|setImeInputAllowed/);
+  assert.doesNotMatch(editorWebViewSource, /imeInputAllowed|InputConnection|override fun requestFocus/);
   assert.match(source, /document\.addEventListener\('pointerdown'[\s\S]*isTextInput[\s\S]*showEditorKeyboard/);
-});
-
-test('Suppressing a hidden IME does not restart the WebView input connection', () => {
-  const setterStart = editorWebViewSource.indexOf('fun setImeInputAllowed');
-  const setterEnd = editorWebViewSource.indexOf('override fun onCheckIsTextEditor', setterStart);
-  const setter = editorWebViewSource.slice(setterStart, setterEnd);
-  const suppressionGuard = setter.indexOf('if (!allowed) return');
-  const restartInput = setter.indexOf('restartInput(this)');
-
-  assert.notEqual(setterStart, -1);
-  assert.notEqual(suppressionGuard, -1);
-  assert.notEqual(restartInput, -1);
-  assert.ok(suppressionGuard < restartInput);
 });
 
 test('Markdown image storage can recover document ancestry from the approved tree', () => {

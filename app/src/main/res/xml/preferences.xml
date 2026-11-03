@@ -67,8 +67,8 @@
 
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_markdown_image_location"
-            app:title="Markdown Image Storage"
-            app:summary="Use one shared assets folder at the selected folder root or store images beside the Markdown file"
+            app:title="Markdown Asset Storage"
+            app:summary="Use one shared assets folder at the selected folder root or store assets beside the Markdown file"
             app:entries="@array/pref_markdown_image_location_entries"
             app:entryValues="@array/pref_markdown_image_location_values"
             app:defaultValue="assets" />

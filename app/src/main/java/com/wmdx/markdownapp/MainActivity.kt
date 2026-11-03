@@ -56,11 +56,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var progressBar: ProgressBar
     private var suppressImeUntilUserTouch = false
     private var imeHideGeneration = 0
-    private var imeVisibleBeforeLastWebViewTouch = false
-    private var lastWebViewTouchElapsedMs = 0L
-    private var toolbarImeInteractionDepth = 0
-    private var toolbarImeVisibleBeforeInteraction = false
+    @Volatile private var lastKnownImeVisible = false
     private enum class DocumentFormat { MARKDOWN, TEXT_PACK, MDZIP }
+    private enum class InsertAssetKind { AUDIO, VIDEO, ATTACHMENT }
     private var currentDocumentFormat = DocumentFormat.MARKDOWN
 
     private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
@@ -94,7 +92,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingOpenUri: Uri? = null
     private var pendingOpenPermissionFlags: Int? = null
     private var pendingExistingDocumentFocusUri: Uri? = null
-    private var isActivityResumed = false
+    @Volatile private var isActivityResumed = false
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
     private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
@@ -370,20 +368,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         progressBar = findViewById(R.id.progressBar)
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
+        ViewCompat.setOnApplyWindowInsetsListener(webView) { _, insets ->
+            lastKnownImeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            insets
+        }
         AppDiagnostics.record(
             this,
             "ime_webview_focus_configured",
             "focusable=${webView.isFocusable} touchFocusable=${webView.isFocusableInTouchMode}"
         )
         webView.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                imeVisibleBeforeLastWebViewTouch = editorImeVisible()
-                lastWebViewTouchElapsedMs = android.os.SystemClock.elapsedRealtime()
-                // Block WebView's automatic input-connection focus before it
-                // handles the touch. Text fields explicitly request the IME.
-                (webView as? EditorWebView)
-                    ?.setImeInputAllowed(imeVisibleBeforeLastWebViewTouch)
-            }
             if (
                 event.actionMasked == MotionEvent.ACTION_DOWN &&
                 suppressImeUntilUserTouch
@@ -604,7 +598,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onResume() {
         super.onResume()
         isActivityResumed = true
-        toolbarImeInteractionDepth = 0
         WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
             pendingExistingDocumentFocusUri = it
         }
@@ -635,7 +628,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onPause() {
         isActivityResumed = false
-        toolbarImeInteractionDepth = 0
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
@@ -684,9 +676,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
-    private fun editorImeVisible(): Boolean =
-        ViewCompat.getRootWindowInsets(webView)
+    private fun editorImeVisible(): Boolean {
+        val visible = ViewCompat.getRootWindowInsets(webView)
             ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        lastKnownImeVisible = visible
+        return visible
+    }
 
     private fun hideImeWhileResumeIsSuppressed(generation: Int) {
         if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
@@ -2526,18 +2521,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             documentUri,
             requireWrite = false
         ) ?: return textPackAssetError(404, "Not Found")
-        val imageUri = MarkdownAssetManager.documentUriForPreviewId(this, location, documentId)
+        val assetUri = MarkdownAssetManager.documentUriForPreviewId(this, location, documentId)
             ?: return textPackAssetError(404, "Not Found")
-        val declaredMimeType = contentResolver.getType(imageUri)
-        val mimeType = declaredMimeType?.takeIf { it.startsWith("image/") }
-            ?: MarkdownAssetManager.mimeTypeForExtension(
-                getFileNameFromUri(imageUri).substringAfterLast('.', "")
-            )
-        if (!mimeType.startsWith("image/")) return textPackAssetError(404, "Not Found")
+        val extension = getFileNameFromUri(assetUri).substringAfterLast('.', "")
+        val declaredMimeType = contentResolver.getType(assetUri)
+        val mimeType = declaredMimeType
+            ?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+            ?: android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(extension.lowercase())
+            ?: MarkdownAssetManager.mimeTypeForExtension(extension)
         val body = if (request.method.equals("HEAD", ignoreCase = true)) {
             ByteArrayInputStream(ByteArray(0))
         } else {
-            contentResolver.openInputStream(imageUri)
+            contentResolver.openInputStream(assetUri)
                 ?: return textPackAssetError(404, "Not Found")
         }
         return WebResourceResponse(
@@ -2566,9 +2562,39 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         val archivePath = segments.drop(2).joinToString("/")
-        if (archivePath.startsWith("attachments/")) {
-            val file = MdzipManager.attachmentArchiveFile(session, archivePath)
-                ?: return mdzipAssetError(404, "Not Found")
+        val isImageAsset = MdzipManager.isSupportedImageFileName(archivePath)
+        val isVideoAsset = MdzipManager.isSupportedVideoFileName(archivePath)
+        val isAudioAsset = MdzipManager.isSupportedAudioFileName(archivePath)
+        val file = MdzipManager.assetArchiveFile(session, archivePath)
+        if (file == null) {
+            if (isVideoAsset) {
+                val extension = archivePath.substringAfterLast('.').lowercase()
+                recordMdzipVideoAsset(
+                    extension,
+                    404,
+                    mdzipVideoMimeType(extension),
+                    rangeHeader = request.requestHeaders.entries
+                        .firstOrNull { it.key.equals("Range", ignoreCase = true) }
+                        ?.value,
+                    contentRange = null,
+                    contentLength = 0,
+                    method = request.method
+                )
+            } else if (isAudioAsset) {
+                val extension = archivePath.substringAfterLast('.').lowercase()
+                recordMdzipAudioAsset(
+                    extension,
+                    404,
+                    mdzipAudioMimeType(extension),
+                    rangeHeader = null,
+                    contentRange = null,
+                    contentLength = 0
+                )
+            }
+            return mdzipAssetError(404, "Not Found")
+        }
+
+        if (isImageAsset) {
             val mimeType = android.webkit.MimeTypeMap.getSingleton()
                 .getMimeTypeFromExtension(file.extension.lowercase())
                 ?.takeIf { it.startsWith("image/") }
@@ -2587,38 +2613,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             return WebResourceResponse(mimeType, null, 200, "OK", headers, body)
         }
 
-        val isVideoAsset = archivePath.startsWith("video/", ignoreCase = true)
-        val file = if (isVideoAsset) {
-            MdzipManager.videoArchiveFile(session, archivePath)
-        } else {
-            MdzipManager.audioArchiveFile(session, archivePath)
-        }
-        if (file == null) {
-            if (isVideoAsset && archivePath.startsWith("video/", ignoreCase = true)) {
-                recordMdzipVideoAsset(
-                    archivePath.substringAfterLast('.').lowercase(),
-                    404,
-                    mdzipVideoMimeType(archivePath.substringAfterLast('.')),
-                    rangeHeader = request.requestHeaders.entries
-                        .firstOrNull { it.key.equals("Range", ignoreCase = true) }
-                        ?.value,
-                    contentRange = null,
-                    contentLength = 0,
-                    method = request.method
-                )
-            } else if (archivePath.startsWith("audio/", ignoreCase = true) &&
-                MdzipManager.isSupportedAudioFileName(archivePath)
-            ) {
-                val extension = archivePath.substringAfterLast('.').lowercase()
-                recordMdzipAudioAsset(
-                    extension,
-                    404,
-                    mdzipAudioMimeType(extension),
-                    rangeHeader = null,
-                    contentRange = null,
-                    contentLength = 0
-                )
-            }
+        if (!isVideoAsset && !isAudioAsset) {
             return mdzipAssetError(404, "Not Found")
         }
         val extension = file.extension.lowercase()
@@ -2874,126 +2869,107 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun handleInsertAudio() {
-        if (currentMdzipSession == null) {
-            ThemedToast.show(
-                this,
-                "Open or save a document as MDZip (.mdz) before inserting audio.",
-                Toast.LENGTH_LONG
-            )
-            return
-        }
         pendingReplaceMdzipAudioLink = null
         pendingInsertAudioDocumentSessionId = currentDocumentSessionId
         pickAudioLauncher.launch("audio/*")
     }
 
     private fun handleInsertVideo() {
-        if (currentMdzipSession == null) {
-            ThemedToast.show(
-                this,
-                "Open or save a document as MDZip (.mdz) before inserting video.",
-                Toast.LENGTH_LONG
-            )
-            return
-        }
         pendingInsertVideoDocumentSessionId = currentDocumentSessionId
         pickVideoLauncher.launch("video/*")
     }
 
     private fun handleInsertAttachment() {
-        if (currentMdzipSession == null) {
-            ThemedToast.show(
-                this,
-                "Open or save a document as MDZip (.mdz) before attaching a file.",
-                Toast.LENGTH_LONG
-            )
-            return
-        }
         pendingInsertAttachmentDocumentSessionId = currentDocumentSessionId
         pickAttachmentLauncher.launch(arrayOf("*/*"))
     }
 
-    private fun insertAttachmentFromUri(uri: Uri) {
-        val session = currentMdzipSession
-        if (session == null) {
-            ThemedToast.show(this, "The active document is no longer an MDZip package.", Toast.LENGTH_LONG)
-            return
-        }
+    private fun insertAttachmentFromUri(uri: Uri) =
+        insertAssetFromUri(uri, InsertAssetKind.ATTACHMENT)
+
+    private fun insertVideoFromUri(uri: Uri) =
+        insertAssetFromUri(uri, InsertAssetKind.VIDEO)
+
+    private fun insertAudioFromUri(uri: Uri) =
+        insertAssetFromUri(uri, InsertAssetKind.AUDIO)
+
+    private fun insertAssetFromUri(uri: Uri, kind: InsertAssetKind) {
         try {
-            val originalName = getFileNameFromUri(uri)
+            val originalName = getFileNameFromUri(uri).ifBlank { "attachment" }
+            if (kind == InsertAssetKind.AUDIO && !MdzipManager.isSupportedAudioFileName(originalName)) {
+                throw java.io.IOException("Choose an MP3, AAC, M4A, WAV, FLAC, Opus, OGG, or OGA audio file.")
+            }
+            if (kind == InsertAssetKind.VIDEO && !MdzipManager.isSupportedVideoFileName(originalName)) {
+                throw java.io.IOException("Choose an MP4, M4V, WebM, 3GP, MOV, MKV, AVI, MPEG, MPG, OGV, or WMV video file.")
+            }
+            val mimeType = contentResolver.getType(uri)
+                ?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+                ?: android.webkit.MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(originalName.substringAfterLast('.', "").lowercase())
             val input = contentResolver.openInputStream(uri)
                 ?: throw java.io.IOException("Could not read the selected file.")
-            val relativeLink = MdzipManager.addAttachment(session, input, originalName)
+            val relativeLink = input.use { assetInput ->
+                when (currentDocumentFormat) {
+                    DocumentFormat.MDZIP -> {
+                        val session = currentMdzipSession
+                            ?: throw java.io.IOException("The active MDZip document is no longer available.")
+                        when (kind) {
+                            InsertAssetKind.AUDIO -> MdzipManager.addAudio(session, assetInput, originalName)
+                            InsertAssetKind.VIDEO -> MdzipManager.addVideo(session, assetInput, originalName)
+                            InsertAssetKind.ATTACHMENT ->
+                                MdzipManager.addAttachment(session, assetInput, originalName)
+                        }
+                    }
+                    DocumentFormat.TEXT_PACK -> {
+                        val session = currentTextPackSession
+                            ?: throw java.io.IOException("The active TextPack document is no longer available.")
+                        TextPackManager.addAssetFile(session, assetInput, originalName)
+                    }
+                    DocumentFormat.MARKDOWN -> {
+                        val documentUri = currentFileUri
+                            ?: throw java.io.IOException(
+                                "Save this Markdown file in an approved writable folder before adding files."
+                            )
+                        val location = MarkdownAssetManager.locateDocument(
+                            this,
+                            documentUri,
+                            requireWrite = true
+                        ) ?: throw java.io.IOException(
+                            "Open this Markdown file from an approved writable folder before adding files."
+                        )
+                        val storageLocation = PreferenceManager.getDefaultSharedPreferences(this)
+                            .getString(
+                                "pref_markdown_image_location",
+                                MarkdownAssetManager.LOCATION_ASSETS
+                            ) ?: MarkdownAssetManager.LOCATION_ASSETS
+                        MarkdownAssetManager.addAsset(
+                            this,
+                            location,
+                            assetInput,
+                            originalName,
+                            mimeType,
+                            storageLocation
+                        )
+                    }
+                }
+            }
             isDirty = true
             updateTitle()
             val escapedLink = JSONObjectWrapper.quote(relativeLink)
             val escapedName = JSONObjectWrapper.quote(originalName)
-            webView.evaluateJavascript(
-                "window.editorBridge?.insertAttachmentLink?.($escapedLink, $escapedName);",
-                null
-            )
-        } catch (error: Exception) {
-            ThemedToast.show(
-                this,
-                "Could not attach the file: ${error.localizedMessage ?: "unknown error"}",
-                Toast.LENGTH_LONG
-            )
-        }
-    }
-
-    private fun insertVideoFromUri(uri: Uri) {
-        val session = currentMdzipSession
-        if (session == null) {
-            ThemedToast.show(this, "The active document is no longer an MDZip package.", Toast.LENGTH_LONG)
-            return
-        }
-        try {
-            val originalName = getFileNameFromUri(uri)
-            if (!MdzipManager.isSupportedVideoFileName(originalName)) {
-                throw java.io.IOException("Choose an MP4, M4V, WebM, 3GP, MOV, MKV, AVI, MPEG, MPG, OGV, or WMV video file.")
+            val insertMethod = when (kind) {
+                InsertAssetKind.AUDIO -> "insertAudioLink"
+                InsertAssetKind.VIDEO -> "insertVideoLink"
+                InsertAssetKind.ATTACHMENT -> "insertAttachmentLink"
             }
-            val input = contentResolver.openInputStream(uri)
-                ?: throw java.io.IOException("Could not read the selected video file.")
-            val relativeLink = MdzipManager.addVideo(session, input, originalName)
-            val escapedLink = JSONObjectWrapper.quote(relativeLink)
-            val escapedName = JSONObjectWrapper.quote(originalName)
             webView.evaluateJavascript(
-                "window.editorBridge?.insertVideoLink?.($escapedLink, $escapedName);",
+                "window.editorBridge?.$insertMethod?.($escapedLink, $escapedName);",
                 null
             )
         } catch (error: Exception) {
             ThemedToast.show(
                 this,
-                "Could not add the video file: ${error.localizedMessage ?: "unknown error"}",
-                Toast.LENGTH_LONG
-            )
-        }
-    }
-
-    private fun insertAudioFromUri(uri: Uri) {
-        val session = currentMdzipSession
-        if (session == null) {
-            ThemedToast.show(this, "The active document is no longer an MDZip package.", Toast.LENGTH_LONG)
-            return
-        }
-        try {
-            val originalName = getFileNameFromUri(uri)
-            if (!MdzipManager.isSupportedAudioFileName(originalName)) {
-                throw java.io.IOException("Choose an MP3, AAC, M4A, WAV, FLAC, Opus, OGG, or OGA file.")
-            }
-            val input = contentResolver.openInputStream(uri)
-                ?: throw java.io.IOException("Could not read the selected audio file.")
-            val relativeLink = MdzipManager.addAudio(session, input, originalName)
-            val escapedLink = JSONObjectWrapper.quote(relativeLink)
-            val escapedName = JSONObjectWrapper.quote(originalName)
-            webView.evaluateJavascript(
-                "window.editorBridge?.insertAudioLink?.($escapedLink, $escapedName);",
-                null
-            )
-        } catch (error: Exception) {
-            ThemedToast.show(
-                this,
-                "Could not add the audio file: ${error.localizedMessage ?: "unknown error"}",
+                "Could not add the file: ${error.localizedMessage ?: "unknown error"}",
                 Toast.LENGTH_LONG
             )
         }
@@ -4182,10 +4158,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun resolveMdzipMediaUrl(relativeLink: String): String {
-            val session = currentMdzipSession ?: return ""
             return runCatching {
-                MdzipManager.audioUrl(session, relativeLink)
-                    ?: MdzipManager.videoUrl(session, relativeLink)
+                when (currentDocumentFormat) {
+                    DocumentFormat.MDZIP -> {
+                        val session = currentMdzipSession ?: return ""
+                        MdzipManager.audioUrl(session, relativeLink)
+                            ?: MdzipManager.videoUrl(session, relativeLink)
+                    }
+                    DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
+                        TextPackManager.previewAssetUrl(it, relativeLink)
+                    }
+                    DocumentFormat.MARKDOWN -> resolveMarkdownAssetUrl(relativeLink)
+                }
             }
                 .getOrNull()
                 .orEmpty()
@@ -4193,9 +4177,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun resolveMdzipAttachmentUrl(relativeLink: String): String {
-            val session = currentMdzipSession ?: return ""
             return runCatching {
-                MdzipManager.attachmentUrl(session, relativeLink)
+                when (currentDocumentFormat) {
+                    DocumentFormat.MDZIP -> currentMdzipSession?.let {
+                        MdzipManager.assetUrl(it, relativeLink)
+                    }
+                    DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
+                        TextPackManager.previewAssetUrl(it, relativeLink)
+                    }
+                    DocumentFormat.MARKDOWN -> resolveMarkdownAssetUrl(relativeLink)
+                }
             }.getOrNull().orEmpty()
         }
 
@@ -4238,29 +4229,81 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun canOpenMdzipAttachment(relativeLink: String, documentSessionId: String?): Boolean {
+        fun canOpenAttachment(relativeLink: String, documentSessionId: String?): Boolean {
             if (documentSessionId != currentDocumentSessionId) return false
-            val session = currentMdzipSession ?: return false
-            return MdzipManager.resolveAttachmentFile(session, relativeLink) != null
+            return resolveAttachmentUri(relativeLink) != null
         }
 
         @JavascriptInterface
-        fun openMdzipAttachment(relativeLink: String, documentSessionId: String?): Boolean {
+        fun canDeletePackagedAsset(relativeLink: String, documentSessionId: String?): Boolean {
             if (documentSessionId != currentDocumentSessionId) return false
-            val session = currentMdzipSession ?: return false
-            val file = MdzipManager.resolveAttachmentFile(session, relativeLink) ?: return false
+            return when (currentDocumentFormat) {
+                DocumentFormat.MDZIP -> currentMdzipSession?.let {
+                    MdzipManager.canDeletePackagedAsset(it, relativeLink)
+                } ?: false
+                DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
+                    TextPackManager.canDeleteAsset(it, relativeLink)
+                } ?: false
+                DocumentFormat.MARKDOWN -> false
+            }
+        }
+
+        @JavascriptInterface
+        fun deletePackagedAsset(relativeLink: String, documentSessionId: String?): Boolean {
+            if (documentSessionId != currentDocumentSessionId) return false
+            return when (currentDocumentFormat) {
+                DocumentFormat.MDZIP -> currentMdzipSession?.let {
+                    runCatching {
+                        MdzipManager.stagePackagedAssetDeletion(it, relativeLink)
+                    }.getOrDefault(false)
+                } ?: false
+                DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
+                    runCatching {
+                        TextPackManager.stageAssetDeletion(it, relativeLink)
+                    }.getOrDefault(false)
+                } ?: false
+                DocumentFormat.MARKDOWN -> false
+            }
+        }
+
+        @JavascriptInterface
+        fun syncPackagedAssetReferences(
+            referencesJson: String?,
+            documentSessionId: String?
+        ) {
+            if (documentSessionId != currentDocumentSessionId) return
+            val references = runCatching {
+                val values = org.json.JSONArray(referencesJson ?: "[]")
+                (0 until values.length()).mapNotNull { index ->
+                    values.optString(index).takeIf { it.isNotBlank() }
+                }
+            }.getOrNull() ?: return
+
+            when (currentDocumentFormat) {
+                DocumentFormat.MDZIP -> currentMdzipSession?.let {
+                    MdzipManager.syncPackagedAssetReferences(it, references)
+                }
+                DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
+                    TextPackManager.syncAssetReferences(it, references)
+                }
+                DocumentFormat.MARKDOWN -> Unit
+            }
+        }
+
+        @JavascriptInterface
+        fun openAttachment(relativeLink: String, documentSessionId: String?): Boolean {
+            if (documentSessionId != currentDocumentSessionId) return false
+            if (resolveAttachmentUri(relativeLink) == null) return false
             runOnUiThread {
-                if (documentSessionId != currentDocumentSessionId || currentMdzipSession !== session) {
+                if (documentSessionId != currentDocumentSessionId) {
                     return@runOnUiThread
                 }
                 try {
-                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                        this@MainActivity,
-                        "${packageName}.diagnostics.provider",
-                        file
-                    )
+                    val uri = resolveAttachmentUri(relativeLink) ?: return@runOnUiThread
+                    val fileName = getFileNameFromUri(uri)
                     val mimeType = android.webkit.MimeTypeMap.getSingleton()
-                        .getMimeTypeFromExtension(file.extension.lowercase())
+                        .getMimeTypeFromExtension(fileName.substringAfterLast('.', "").lowercase())
+                        ?: contentResolver.getType(uri)
                         ?: "application/octet-stream"
                     val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
                         setDataAndType(uri, mimeType)
@@ -4282,6 +4325,47 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             }
             return true
+        }
+
+        @JavascriptInterface
+        fun canOpenMdzipAttachment(relativeLink: String, documentSessionId: String?): Boolean =
+            canOpenAttachment(relativeLink, documentSessionId)
+
+        @JavascriptInterface
+        fun openMdzipAttachment(relativeLink: String, documentSessionId: String?): Boolean =
+            openAttachment(relativeLink, documentSessionId)
+
+        private fun resolveAttachmentUri(relativeLink: String): Uri? {
+            val file = when (currentDocumentFormat) {
+                DocumentFormat.MDZIP -> currentMdzipSession?.let {
+                    MdzipManager.resolveAttachmentFile(it, relativeLink)
+                }
+                DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
+                    TextPackManager.resolveAssetFile(it, relativeLink)
+                }
+                DocumentFormat.MARKDOWN -> null
+            }
+            if (file != null) {
+                return runCatching {
+                    androidx.core.content.FileProvider.getUriForFile(
+                        this@MainActivity,
+                        "${packageName}.diagnostics.provider",
+                        file
+                    )
+                }.getOrNull()
+            }
+            if (currentDocumentFormat != DocumentFormat.MARKDOWN) return null
+            val documentUri = currentFileUri ?: return null
+            val location = MarkdownAssetManager.locateDocument(
+                this@MainActivity,
+                documentUri,
+                requireWrite = false
+            ) ?: return null
+            return MarkdownAssetManager.resolveImageUri(
+                this@MainActivity,
+                location,
+                relativeLink
+            )
         }
 
         @JavascriptInterface
@@ -4429,53 +4513,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun beginToolbarInteraction() {
-            runOnUiThread {
-                if (!isActivityResumed || !::webView.isInitialized) return@runOnUiThread
-                if (toolbarImeInteractionDepth == 0) {
-                    val elapsedSinceTouch =
-                        android.os.SystemClock.elapsedRealtime() - lastWebViewTouchElapsedMs
-                    toolbarImeVisibleBeforeInteraction =
-                        if (elapsedSinceTouch in 0..1_000L) {
-                            imeVisibleBeforeLastWebViewTouch
-                        } else {
-                            editorImeVisible()
-                        }
-                    (webView as? EditorWebView)
-                        ?.setImeInputAllowed(toolbarImeVisibleBeforeInteraction)
-                    AppDiagnostics.record(
-                        this@MainActivity,
-                        "toolbar_ime_state_captured",
-                        "imeVisible=$toolbarImeVisibleBeforeInteraction inputAllowed=$toolbarImeVisibleBeforeInteraction"
-                    )
-                }
-                toolbarImeInteractionDepth += 1
-            }
-        }
-
-        @JavascriptInterface
-        fun endToolbarInteraction() {
-            runOnUiThread {
-                if (toolbarImeInteractionDepth <= 0) return@runOnUiThread
-                toolbarImeInteractionDepth -= 1
-            }
-        }
-
-        @JavascriptInterface
         fun showEditorKeyboard() {
             runOnUiThread {
-                if (
-                    toolbarImeInteractionDepth > 0 &&
-                    !toolbarImeVisibleBeforeInteraction
-                ) {
-                    AppDiagnostics.record(
-                        this@MainActivity,
-                        "ime_show_suppressed_toolbar",
-                        "depth=$toolbarImeInteractionDepth"
-                    )
-                    return@runOnUiThread
-                }
-                (webView as? EditorWebView)?.setImeInputAllowed(true)
                 val visibleBefore = editorImeVisible()
                 AppDiagnostics.record(
                     this@MainActivity,

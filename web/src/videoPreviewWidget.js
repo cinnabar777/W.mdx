@@ -50,7 +50,17 @@ function viewportBounds() {
 }
 
 export class VideoPreviewWidget extends WidgetType {
-  constructor(src, label, relativeLink, from, to, layout = null, onEdit = null, unsupported = false) {
+  constructor(
+    src,
+    label,
+    relativeLink,
+    from,
+    to,
+    layout = null,
+    onEdit = null,
+    unsupported = false,
+    documentSessionId = null
+  ) {
     super();
     this.src = src;
     this.label = label || 'video file';
@@ -66,6 +76,7 @@ export class VideoPreviewWidget extends WidgetType {
     };
     this.onEdit = onEdit;
     this.unsupported = unsupported;
+    this.documentSessionId = documentSessionId;
   }
 
   eq(other) {
@@ -73,6 +84,7 @@ export class VideoPreviewWidget extends WidgetType {
       other.src === this.src &&
       other.label === this.label &&
       other.relativeLink === this.relativeLink &&
+      other.documentSessionId === this.documentSessionId &&
       other.from === this.from &&
       other.to === this.to &&
       other.layout.width === this.layout.width &&
@@ -83,6 +95,7 @@ export class VideoPreviewWidget extends WidgetType {
   toDOM(view) {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-mdzip-video-preview-wrapper';
+    const expectedMarkdown = view?.state?.doc?.sliceString(this.from, this.to) ?? '';
     const alignmentMargin = this.layout.alignment === 'center'
       ? '10px auto'
       : this.layout.alignment === 'right'
@@ -171,12 +184,27 @@ export class VideoPreviewWidget extends WidgetType {
     stylePopupButton(editButton);
     actions.appendChild(editButton);
 
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.setAttribute('role', 'menuitem');
-    deleteButton.textContent = 'Delete from MDZip';
-    stylePopupButton(deleteButton);
-    actions.appendChild(deleteButton);
+    const removeLinkButton = document.createElement('button');
+    removeLinkButton.type = 'button';
+    removeLinkButton.setAttribute('role', 'menuitem');
+    removeLinkButton.textContent = 'Remove link';
+    stylePopupButton(removeLinkButton);
+    actions.appendChild(removeLinkButton);
+
+    const canDeletePackagedAsset =
+      window.AndroidNative?.canDeletePackagedAsset?.(
+        this.relativeLink,
+        this.documentSessionId
+      ) === true;
+    let deleteButton = null;
+    if (canDeletePackagedAsset) {
+      deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.setAttribute('role', 'menuitem');
+      deleteButton.textContent = 'Delete';
+      stylePopupButton(deleteButton);
+      actions.appendChild(deleteButton);
+    }
 
     let widgetDisposed = false;
     let pressTimer = null;
@@ -268,15 +296,32 @@ export class VideoPreviewWidget extends WidgetType {
         layout: this.layout
       });
     };
-    const deleteVideo = event => {
+    const removeVideoLink = (event, deletePackagedAsset = false) => {
       event.preventDefault();
       event.stopPropagation();
       hidePopup();
-      if (this.from < 0 || this.to > view.state.doc.length || this.from >= this.to) return;
+      if (
+        !view ||
+        this.from < 0 ||
+        this.to > view.state.doc.length ||
+        this.from >= this.to ||
+        view.state.doc.sliceString(this.from, this.to) !== expectedMarkdown
+      ) return;
+      if (
+        deletePackagedAsset &&
+        window.AndroidNative?.deletePackagedAsset?.(
+          this.relativeLink,
+          this.documentSessionId
+        ) !== true
+      ) {
+        status.textContent = 'Could not delete this file from the package.';
+        status.hidden = false;
+        return;
+      }
       view.dispatch({
         changes: { from: this.from, to: this.to, insert: '' },
         selection: { anchor: this.from },
-        userEvent: 'delete.mdzip-video'
+        userEvent: deletePackagedAsset ? 'delete.packaged-video' : 'delete.video-link'
       });
       view.focus();
     };
@@ -287,7 +332,8 @@ export class VideoPreviewWidget extends WidgetType {
     labelRow.addEventListener('pointercancel', onLabelPointerEnd);
     labelRow.addEventListener('contextmenu', onContextMenu);
     editButton.addEventListener('click', editVideo);
-    deleteButton.addEventListener('click', deleteVideo);
+    removeLinkButton.addEventListener('click', event => removeVideoLink(event));
+    deleteButton?.addEventListener('click', event => removeVideoLink(event, true));
     document.addEventListener('pointerdown', dismissPopup, true);
     window.addEventListener('resize', positionPopup);
     window.addEventListener('scroll', positionPopup, true);

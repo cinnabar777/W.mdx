@@ -145,7 +145,10 @@ export function parseMarkdownAttachmentLink(text) {
   }
   if (/^(?:[a-z][a-z0-9+.-]*:|\/|\\\\)/i.test(decodedPath)) return null;
   const packagePath = decodedPath.replace(/^(?:\.\.\/)+/, '');
-  if (!packagePath.startsWith('attachments/')) return null;
+  const hasAttachmentMarker =
+    link.title === 'wmdx-attachment' ||
+    link.title?.startsWith('wmdx-attachment:');
+  if (!packagePath.startsWith('attachments/') && !hasAttachmentMarker) return null;
   const parsed = { label: link.label, url: link.url };
   const layout = parseAttachmentLayoutTitle(link.title);
   if (layout) parsed.layout = layout;
@@ -339,7 +342,7 @@ export function formatMarkdownAttachmentLink(label, url, layout = null) {
       `%${character.charCodeAt(0).toString(16).toUpperCase()}`
     );
   }).join('/');
-  if (layout == null) return `[${safeLabel}](${safePath})`;
+  if (layout == null) return `[${safeLabel}](${safePath} "wmdx-attachment")`;
 
   const width = Number(layout.width ?? 100);
   const alignment = layout.alignment ?? 'left';

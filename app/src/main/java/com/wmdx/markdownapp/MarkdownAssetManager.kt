@@ -19,7 +19,7 @@ internal data class MarkdownDocumentLocation(
 internal object MarkdownAssetManager {
     const val LOCATION_ASSETS = "assets"
     const val LOCATION_SAME_FOLDER = "same-folder"
-    private const val MAX_IMAGE_BYTES = 256L * 1024L * 1024L
+    private const val MAX_ASSET_BYTES = 256L * 1024L * 1024L
     private const val MAX_PATH_SEARCH_DOCUMENTS = 10_000
     private const val MAX_PATH_SEARCH_DEPTH = 64
     private const val MAX_FALLBACK_IDENTITY_CHECK_BYTES = 16L * 1024L * 1024L
@@ -323,6 +323,22 @@ internal object MarkdownAssetManager {
         originalFileName: String?,
         mimeType: String?,
         storageLocation: String
+    ): String = addAsset(
+        context,
+        location,
+        input,
+        TextPackManager.safeImageFileName(originalFileName, mimeType),
+        mimeType,
+        storageLocation
+    )
+
+    fun addAsset(
+        context: Context,
+        location: MarkdownDocumentLocation,
+        input: InputStream,
+        originalFileName: String?,
+        mimeType: String?,
+        storageLocation: String
     ): String {
         val resolver = context.contentResolver
         val targetDirectoryIds: List<String>
@@ -353,26 +369,28 @@ internal object MarkdownAssetManager {
             targetDirectoryNames = listOf("assets")
         }
 
-        val safeName = TextPackManager.safeImageFileName(originalFileName, mimeType)
+        val safeName = TextPackManager.safeAssetFileName(originalFileName)
         val existingNames = listChildren(
             context,
             location.treeUri,
             DocumentsContract.getDocumentId(targetDirectoryUri)
         ).map { canonicalName(it.displayName) }.toHashSet()
         val targetName = uniqueName(safeName, existingNames)
-        val targetMimeType = mimeType?.takeIf { it.startsWith("image/") }
-            ?: mimeTypeForExtension(targetName.substringAfterLast('.', ""))
+        val targetMimeType = mimeType
+            ?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+            ?: assetMimeTypeForExtension(targetName.substringAfterLast('.', ""))
+        val fileDescription = if (targetMimeType.startsWith("image/")) "image" else "asset"
         val targetUri = DocumentsContract.createDocument(
             resolver,
             targetDirectoryUri,
             targetMimeType,
             targetName
-        ) ?: throw IOException("Could not create the image file in the Markdown folder.")
+        ) ?: throw IOException("Could not create the $fileDescription in the Markdown folder.")
 
         var bytesCopied = 0L
         try {
             val output = resolver.openOutputStream(targetUri, "w")
-                ?: throw IOException("Could not write the image file.")
+                ?: throw IOException("Could not write the selected asset.")
             input.use { source ->
                 output.use { destination ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -380,19 +398,19 @@ internal object MarkdownAssetManager {
                         val read = source.read(buffer)
                         if (read < 0) break
                         bytesCopied += read
-                        if (bytesCopied > MAX_IMAGE_BYTES) {
-                            throw IOException("This image is too large to save as a Markdown asset.")
+                        if (bytesCopied > MAX_ASSET_BYTES) {
+                            throw IOException("This selected file is too large to save as a Markdown asset.")
                         }
                         destination.write(buffer, 0, read)
                     }
                     destination.flush()
                 }
             }
-            if (bytesCopied == 0L) throw IOException("The selected image file is empty.")
+            if (bytesCopied == 0L) throw IOException("The selected file is empty.")
         } catch (error: Exception) {
             runCatching { DocumentsContract.deleteDocument(resolver, targetUri) }
             if (error is IOException) throw error
-            throw IOException("Could not save the Markdown image file.", error)
+            throw IOException("Could not save the selected Markdown asset.", error)
         }
 
         val actualName = queryDisplayName(context, targetUri) ?: targetName
@@ -598,6 +616,27 @@ internal object MarkdownAssetManager {
             "heif" -> "image/heif"
             "tif", "tiff" -> "image/tiff"
             "avif" -> "image/avif"
+            "mp3" -> "audio/mpeg"
+            "aac" -> "audio/aac"
+            "m4a" -> "audio/mp4"
+            "wav" -> "audio/wav"
+            "flac" -> "audio/flac"
+            "opus" -> "audio/opus"
+            "ogg", "oga" -> "audio/ogg"
+            "mp4", "m4v" -> "video/mp4"
+            "webm" -> "video/webm"
+            "3gp" -> "video/3gpp"
+            "mov" -> "video/quicktime"
+            "mkv" -> "video/x-matroska"
+            "avi" -> "video/x-msvideo"
+            "mpeg", "mpg" -> "video/mpeg"
+            "ogv" -> "video/ogg"
+            "wmv" -> "video/x-ms-wmv"
             else -> "application/octet-stream"
         }
+
+    private fun assetMimeTypeForExtension(extension: String): String =
+        android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(extension.lowercase(Locale.ROOT))
+            ?: mimeTypeForExtension(extension)
 }
