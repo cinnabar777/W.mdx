@@ -249,7 +249,7 @@ test('custom underline syntax, styles, toolbar actions, and shortcuts are wired 
     assert.ok(underlineSettings.includes(`app:key="pref_underline_${style}_color"`));
     assert.ok(underlineSettings.includes(`app:key="pref_underline_${style}_thickness"`));
     assert.ok(hotkeySettings.includes(`app:key="pref_hotkey_underline${key}"`));
-    assert.ok(hotkeySettings.includes(`app:key="pref_hotkey_underline${key}"\n            app:title="Underline ${key}"\n            app:defaultValue=""`));
+    assert.ok(hotkeySettings.includes(`app:key="pref_hotkey_underline${key}"\n        app:title="Underline: ${key}"\n        app:defaultValue=""`));
     assert.ok(mainActivity.includes(`"underline${key}" to prefs.getString("pref_hotkey_underline${key}", "")`));
     assert.ok(toolbarConfig.includes(`'underline${key}'`));
     assert.ok(indexHtml.includes(`.cm-underline-${style}`));
@@ -257,7 +257,7 @@ test('custom underline syntax, styles, toolbar actions, and shortcuts are wired 
     assert.ok(indexHtml.includes(`--underline-${style}-thickness`));
   }
 
-  assert.ok(hotkeySettings.includes('app:key="pref_hotkey_underline"\n            app:title="Cycle Underline Style"\n            app:defaultValue="ctrl+u"'));
+  assert.ok(hotkeySettings.includes('app:key="pref_hotkey_underline"\n        app:title="Underline: Cycle Style"\n        app:defaultValue="ctrl+u"'));
   assert.ok(source.includes('`--underline-${style}-color`'));
 });
 

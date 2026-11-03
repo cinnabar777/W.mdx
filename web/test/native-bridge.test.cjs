@@ -631,23 +631,18 @@ test('settings labels avoid redundant settings, styling, and shortcut wording', 
   assert.ok(!mainSettingsXml.includes('HTML &amp; MHTML Export Settings'));
 });
 
-test('keyboard shortcuts are alphabetized within each existing group', () => {
-  const groups = [...hotkeysXml.matchAll(
-    /<com\.wmdx\.markdownapp\.ResetPreferenceCategory app:title="([^"]+)">([\s\S]*?)<\/com\.wmdx\.markdownapp\.ResetPreferenceCategory>/g
-  )];
-  assert.equal(groups.length, 4, 'All shortcut groups remain present');
-
-  for (const [, groupTitle, groupXml] of groups) {
-    const titles = [...groupXml.matchAll(/app:title="([^"]+)"/g)]
-      .map(([, title]) => title.replace(/&amp;/g, '&'));
-    assert.deepEqual(
-      titles,
-      [...titles].sort((first, second) =>
-        first.localeCompare(second, undefined, { sensitivity: 'base' })
-      ),
-      `${groupTitle} shortcuts are alphabetized without changing group order`
-    );
-  }
+test('keyboard shortcuts are one flat alphabetical list with no section headings', () => {
+  assert.doesNotMatch(hotkeysXml, /ResetPreferenceCategory/);
+  const titles = [...hotkeysXml.matchAll(/app:title="([^"]+)"/g)]
+    .map(([, title]) => title.replace(/&amp;/g, '&'));
+  assert.equal(titles.length, 66, 'All shortcut preferences remain present');
+  assert.deepEqual(
+    titles,
+    [...titles].sort((first, second) =>
+      first.localeCompare(second, undefined, { sensitivity: 'base' })
+    ),
+    'Shortcut names are alphabetized across the full list'
+  );
 });
 
 test('every visible hotkey preference reaches a matching editor action', () => {
