@@ -1,6 +1,5 @@
 import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect, Facet, Prec } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
-import { markdown as markdownLanguage } from '@codemirror/lang-markdown';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
@@ -277,6 +276,7 @@ class CheckboxWidget extends WidgetType {
     input.type = 'checkbox';
     input.checked = this.checked;
     input.className = 'cm-todo-checkbox';
+    input.disabled = view.state.readOnly;
     input.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -1865,7 +1865,8 @@ class EmbeddedDocumentWidget extends WidgetType {
     const state = EditorState.create({
       doc: markdownText,
       extensions: [
-        markdownLanguage(),
+        cmMarkdown({ extensions: [GFM, GFMStrikethrough, GFMTaskList] }),
+        syntaxHighlighting(customHighlightStyle),
         livePreviewPlugin,
         tableStateField,
         wysiwygCodeBlockField,

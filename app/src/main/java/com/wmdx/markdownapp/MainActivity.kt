@@ -2945,7 +2945,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun handleInsertEmbeddedDocument() {
         pendingInsertEmbeddedDocumentSessionId = currentDocumentSessionId
         pickEmbeddedDocumentLauncher.launch(
-            arrayOf("text/markdown", "text/x-markdown", "text/plain", MdzipManager.MIME_TYPE)
+            arrayOf(
+                "text/markdown",
+                "text/x-markdown",
+                "text/plain",
+                MdzipManager.MIME_TYPE,
+                "application/octet-stream"
+            )
         )
     }
 

@@ -96,6 +96,40 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(native, /fun resolveEmbeddedAssetUrl/);
 });
 
+test('embedded Markdown renders GFM task lists without enabling table changes', async () => {
+  const main = readProjectFile('web/src/main.js');
+  const childExtensions = main.match(
+    /const state = EditorState\.create\(\{\s*doc: markdownText,\s*extensions: \[([\s\S]*?)\n      \]\s*\}\);/
+  )?.[1];
+  assert.ok(childExtensions, 'the embedded document must create its own read-only editor');
+  assert.match(
+    childExtensions,
+    /cmMarkdown\(\{ extensions: \[GFM, GFMStrikethrough, GFMTaskList\] \}\)/
+  );
+  assert.match(childExtensions, /syntaxHighlighting\(customHighlightStyle\)/);
+  assert.doesNotMatch(childExtensions, /GFMTable/);
+  assert.match(main, /input\.disabled = view\.state\.readOnly;/);
+
+  const { EditorState } = await import('@codemirror/state');
+  const { syntaxTree } = await import('@codemirror/language');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { GFM, Strikethrough, TaskList } = await import('@lezer/markdown');
+  const state = EditorState.create({
+    doc: '- [x] Checked task\n- [ ] Open task',
+    extensions: [markdown({ extensions: [GFM, Strikethrough, TaskList] })]
+  });
+  assert.match(syntaxTree(state).toString(), /TaskMarker/);
+});
+
+test('embedded document picker accepts generic MDZip MIME and validates extensions', () => {
+  const native = readProjectFile('app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  assert.match(
+    native,
+    /pickEmbeddedDocumentLauncher\.launch\(\s*arrayOf\([\s\S]*?MdzipManager\.MIME_TYPE,[\s\S]*?"application\/octet-stream"[\s\S]*?\)\s*\)/
+  );
+  assert.match(native, /if \(!isMdzip && !fileName\.endsWith\("\.md", ignoreCase = true\)\)/);
+});
+
 test('unset embedded-document source routes ordinary media through the normal resolver', async () => {
   const main = readProjectFile('web/src/main.js');
   const { EditorState, Facet } = await import('@codemirror/state');
