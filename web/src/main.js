@@ -1686,7 +1686,7 @@ class EmbeddedDocumentWidget extends WidgetType {
       'color:var(--embedded-content-text-color,#f1f3f4)',
       'border:var(--embedded-content-border-width,1px) solid var(--embedded-content-border-color,#555)',
       'border-radius:var(--embedded-content-border-radius,8px)',
-      'padding:var(--embedded-content-padding-y,8px) var(--embedded-content-padding-x,10px)',
+      'padding:var(--embedded-content-padding-y,8px) 0',
       'font-size:var(--embedded-content-font-size,14px)',
       'line-height:1.45',
       'touch-action:manipulation',
@@ -1916,17 +1916,21 @@ class EmbeddedDocumentWidget extends WidgetType {
       this.documentSessionId
     );
     let markdownText = null;
+    let loadErrorMessage = null;
     try {
       const result = JSON.parse(resultText);
       if (result?.ok === true && typeof result.markdown === 'string') {
         markdownText = result.markdown;
+      } else if (typeof result?.message === 'string') {
+        loadErrorMessage = result.message;
       }
     } catch {
       // An older bridge or an inaccessible source should render an error card.
     }
     if (markdownText === null) {
       const unavailable = document.createElement('div');
-      unavailable.textContent = 'Could not load this embedded document.';
+      unavailable.textContent =
+        loadErrorMessage || 'Could not load this embedded document.';
       unavailable.setAttribute('role', 'status');
       content.appendChild(unavailable);
       return shell;
@@ -2090,6 +2094,11 @@ class EmbeddedDocumentWidget extends WidgetType {
     childEditor.dom.style.background = 'transparent';
     childEditor.dom.style.color = 'inherit';
     childEditor.dom.style.fontSize = 'inherit';
+    childEditor.contentDOM.style.setProperty(
+      'padding',
+      '0 var(--embedded-content-padding-x,10px)',
+      'important'
+    );
     childEditor.scrollDOM.style.background = 'transparent';
     childEditor.contentDOM.style.color = 'inherit';
     childEditor.contentDOM.style.background = 'transparent';

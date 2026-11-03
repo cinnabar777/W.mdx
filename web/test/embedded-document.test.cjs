@@ -134,6 +134,15 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(main, /--body-font-size:var\(--embedded-content-font-size/);
   assert.match(main, /--embedded-content-title-bg-color/);
   assert.match(main, /--embedded-content-title-text-color/);
+  assert.match(main, /'padding:var\(--embedded-content-padding-y,8px\) 0'/);
+  assert.match(
+    main,
+    /childEditor\.contentDOM\.style\.setProperty\(\s*'padding',\s*'0 var\(--embedded-content-padding-x,10px\)',\s*'important'\s*\)/
+  );
+  assert.match(
+    main,
+    /unavailable\.textContent =\s*loadErrorMessage \|\| 'Could not load this embedded document\.'/
+  );
   assert.match(main, /width:calc\(100% \+ var\(--body-margin-left,16px\) \+ var\(--body-margin-right,16px\)\)/);
   assert.match(main, /margin-left:calc\(-1 \* var\(--body-margin-left,16px\)\)/);
   assert.match(main, /childEditor\.scrollDOM\.style\.background = 'transparent'/);
@@ -142,6 +151,11 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(main, /openEmbeddedDocumentEditDialog/);
   assert.match(native, /"embed" -> handleInsertEmbeddedDocument\(\)/);
   assert.match(native, /fun loadEmbeddedMarkdown/);
+  assert.match(
+    native,
+    /EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE[\s\S]*?Settings > File & Folder Access[\s\S]*?Read access is enough to display it/
+  );
+  assert.match(native, /\.put\("message", message\)/);
   assert.match(native, /fun saveEmbeddedMarkdown/);
   assert.match(native, /fun resolveEmbeddedAssetUrl/);
 });

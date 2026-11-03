@@ -50,6 +50,8 @@ import java.util.concurrent.Future
 private const val WMDX_TAB_SESSION_MIME = "application/vnd.wmdx.tabs-session+json"
 private const val MAX_WMDX_TAB_SESSION_BYTES = 512 * 1024
 private const val MAX_EMBEDDED_DOCUMENT_BYTES = 16L * 1024L * 1024L
+private const val EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE =
+    "Could not load this embedded document. Check that it exists and grant read access to its folder in Settings > File & Folder Access, then reopen it. Read access is enough to display it; write access is only needed to save edits."
 
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -4674,7 +4676,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             return runCatching {
                 val sourceUri = resolveEmbeddedDocumentUri(relativeLink)
-                    ?: throw java.io.FileNotFoundException("The embedded document could not be found.")
+                    ?: throw java.io.FileNotFoundException(
+                        if (currentDocumentFormat == DocumentFormat.MARKDOWN) {
+                            EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE
+                        } else {
+                            "The embedded document could not be found."
+                        }
+                    )
                 val fileName = getFileNameFromUri(sourceUri)
                 val markdown = when {
                     MdzipManager.isMdzipFileName(fileName) ->
@@ -4685,8 +4693,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     .put("ok", true)
                     .put("markdown", markdown)
                     .toString()
-            }.getOrElse {
-                JSONObject().put("ok", false).toString()
+            }.getOrElse { error ->
+                val message =
+                    if (
+                        currentDocumentFormat == DocumentFormat.MARKDOWN &&
+                        (error is SecurityException || error is java.io.FileNotFoundException)
+                    ) {
+                        EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE
+                    } else {
+                        error.localizedMessage ?: "Could not load this embedded document."
+                    }
+                JSONObject()
+                    .put("ok", false)
+                    .put("message", message)
+                    .toString()
             }
         }
 
