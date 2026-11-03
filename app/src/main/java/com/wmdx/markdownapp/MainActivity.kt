@@ -4885,13 +4885,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             tabHasBom: Boolean,
             tabHasCrlf: Boolean,
             emptyContentExplicitlyEdited: Boolean,
-            historyStateJson: String
+            historyStateJson: String?
         ): Boolean {
             val uri = uriString.takeIf { it.isNotBlank() }?.let {
                 runCatching { Uri.parse(it) }.getOrNull()
             }
             if (uri != null && !hasLeftPanelDocumentAccess(uri)) return false
-            restoreDocumentHistoryState(historyStateJson)
+            restoreDocumentHistoryState(historyStateJson.orEmpty())
             currentFileUri = uri
             currentFileName = name.ifBlank { "Untitled.md" }
             currentDocumentFormat = when {

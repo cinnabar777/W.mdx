@@ -797,7 +797,7 @@ test('document history is stored and restored with the active tab', () => {
   assert.match(leftPanelSource, /serializeTabHistoryState\(next\)/);
   assert.match(leftPanelSource, /pendingTabHistoryNavigation && current/);
   assert.match(mainActivitySource, /fun getDocumentNavigationHistory\(\)/);
-  assert.match(mainActivitySource, /restoreDocumentHistoryState\(historyStateJson\)/);
+  assert.match(mainActivitySource, /restoreDocumentHistoryState\(historyStateJson\.orEmpty\(\)\)/);
   assert.match(
     mainActivitySource,
     /beginTabHistoryNavigation\(\)\s*openFile\(uri, rememberHistory = false, skipExistingWindowFocus = true\)/
@@ -899,6 +899,8 @@ test('New tab saves new documents before opening them and keeps an empty launche
   }
   assert.match(leftPanelSource, /const activateStartPage = \(\) =>/);
   assert.match(leftPanelSource, /else activateStartPage\(\);/);
+  assert.match(leftPanelSource, /false,\s*false,\s*false,\s*false,\s*false,\s*'\{\}'/);
+  assert.match(mainActivitySource, /historyStateJson: String\?/);
   assert.doesNotMatch(
     leftPanelSource,
     /addTab\(\{ uri: null, name: 'Untitled', markdown: currentMarkdown\(\) \}/

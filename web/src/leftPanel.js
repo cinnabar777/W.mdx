@@ -843,17 +843,21 @@ export function setupLeftPanel() {
     activeTabId = null;
     loadedTabId = null;
     switchingTab = true;
-    native?.activateLeftPanelTab?.(
-      '',
-      'New tab',
-      '',
-      false,
-      false,
-      false,
-      false,
-      false,
-      null
-    );
+    try {
+      native?.activateLeftPanelTab?.(
+        '',
+        'New tab',
+        '',
+        false,
+        false,
+        false,
+        false,
+        false,
+        '{}'
+      );
+    } catch (error) {
+      console.error('Could not reset the native document for the New tab page:', error);
+    }
     window.editorBridge?.setMarkdown?.('');
     switchingTab = false;
     renderTabs();
