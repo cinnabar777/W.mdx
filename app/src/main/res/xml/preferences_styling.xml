@@ -3,16 +3,6 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <com.wmdx.markdownapp.ResetPreference
-        app:key="pref_styling_page_headings"
-        app:title="Headings (H1 – H6)"
-        app:summary="Fonts, scale, alignment, underline, margins &amp; colors" />
-
-    <com.wmdx.markdownapp.ResetPreference
-        app:key="pref_styling_page_paragraph"
-        app:title="Paragraph &amp; Body Styling"
-        app:summary="Separate controls for paragraph styling and default body text" />
-
-    <com.wmdx.markdownapp.ResetPreference
         app:key="pref_styling_page_attachments"
         app:title="Attachments"
         app:summary="Attachment background, text, border, spacing, and shape" />
@@ -21,6 +11,11 @@
         app:key="pref_styling_page_blockquotes"
         app:title="Block Quotes"
         app:summary="Block quote typography, border, background, and spacing" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_body"
+        app:title="Body"
+        app:summary="Default body text and document layout" />
 
     <com.wmdx.markdownapp.ResetPreference
         app:key="pref_styling_page_bold"
@@ -46,6 +41,11 @@
         app:key="pref_styling_page_footnotes"
         app:title="Footnotes"
         app:summary="Footnote text, reference, return-link, and background appearance" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_headings"
+        app:title="Headings (H1 – H6)"
+        app:summary="Fonts, scale, alignment, underline, margins &amp; colors" />
 
     <com.wmdx.markdownapp.ResetPreference
         app:key="pref_styling_page_highlights_pens"
@@ -81,6 +81,11 @@
         app:key="pref_styling_page_media"
         app:title="Media Playback"
         app:summary="Player colors and saved audio playback speed" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_paragraph"
+        app:title="Paragraph"
+        app:summary="Paragraph spacing, alignment, indentation, and line behavior" />
 
     <com.wmdx.markdownapp.ResetPreference
         app:key="pref_styling_page_tables"

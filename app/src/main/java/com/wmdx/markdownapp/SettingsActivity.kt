@@ -51,7 +51,8 @@ class SettingsActivity : AppCompatActivity() {
                 is SettingsThemeFragment -> "Settings"
                 is MediaPlaybackSettingsFragment -> "Media Playback"
                 is StylingHeadingsFragment -> "Headings"
-                is StylingParagraphFragment -> "Paragraph & Body Styling"
+                is StylingBodyFragment -> "Body"
+                is StylingParagraphFragment -> "Paragraph"
                 is StylingBoldFragment -> "Bold"
                 is StylingItalicFragment -> "Italic"
                 is StylingLinksFragment -> "Links"
@@ -932,6 +933,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
         val targetFragment: PreferenceFragmentCompat? = when (key) {
             "pref_styling_page_media" -> MediaPlaybackSettingsFragment()
             "pref_styling_page_headings" -> StylingHeadingsFragment()
+            "pref_styling_page_body" -> StylingBodyFragment()
             "pref_styling_page_paragraph" -> StylingParagraphFragment()
             "pref_styling_page_bold" -> StylingBoldFragment()
             "pref_styling_page_italic" -> StylingItalicFragment()
@@ -1040,6 +1042,12 @@ class StylingHeadingsFragment : StylingSettingsFragment() {
 class StylingParagraphFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_paragraph, rootKey)
+    }
+}
+
+class StylingBodyFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_body, rootKey)
         configureFontPreferences()
     }
 }

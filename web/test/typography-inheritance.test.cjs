@@ -11,6 +11,7 @@ const styles = read('web/index.html');
 const reset = read('app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt');
 const settingsActivity = read('app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
 const paragraph = read('app/src/main/res/xml/preferences_styling_paragraph.xml');
+const body = read('app/src/main/res/xml/preferences_styling_body.xml');
 const lists = read('app/src/main/res/xml/preferences_styling_lists.xml');
 const blocks = read('app/src/main/res/xml/preferences_styling_blockquotes.xml');
 const tables = read('app/src/main/res/xml/preferences_styling_tables.xml');
@@ -19,19 +20,19 @@ const highlightsPens = read('app/src/main/res/xml/preferences_styling_highlights
 const hotkeys = read('app/src/main/res/xml/preferences_hotkeys.xml');
 const tableWidget = read('web/src/tableWidget.js');
 
-test('Typography pages keep headings and body first, then alphabetical element pages', () => {
+test('Document Appearance pages are alphabetical by title', () => {
   const keys = [...shortcuts.matchAll(/app:key="(pref_styling_page_[^"]+)"/g)]
     .map((match) => match[1]);
   assert.deepEqual(keys, [
-    'pref_styling_page_headings',
-    'pref_styling_page_paragraph',
     'pref_styling_page_attachments',
     'pref_styling_page_blockquotes',
+    'pref_styling_page_body',
     'pref_styling_page_bold',
     'pref_styling_page_callouts',
     'pref_styling_page_code',
     'pref_styling_page_cursor',
     'pref_styling_page_footnotes',
+    'pref_styling_page_headings',
     'pref_styling_page_highlights_pens',
     'pref_styling_page_hr',
     'pref_styling_page_inline_code',
@@ -39,49 +40,44 @@ test('Typography pages keep headings and body first, then alphabetical element p
     'pref_styling_page_links',
     'pref_styling_page_lists',
     'pref_styling_page_media',
+    'pref_styling_page_paragraph',
     'pref_styling_page_tables',
     'pref_styling_page_underline'
   ]);
 });
 
-test('Paragraph-only and body styling controls are clearly separated', () => {
-  const groups = [...paragraph.matchAll(
-    /<com\.wmdx\.markdownapp\.ResetPreferenceCategory app:title="([^"]+)">([\s\S]*?)<\/com\.wmdx\.markdownapp\.ResetPreferenceCategory>/g
-  )];
-  assert.deepEqual(groups.map(([, title]) => title), [
-    'Paragraph Styling',
-    'Body Styling'
+test('Paragraph and Body have separate pages with their own controls', () => {
+  const keysFor = (xml) => [...xml.matchAll(/app:key="([^"]+)"/g)]
+    .map(([, key]) => key);
+  assert.deepEqual(keysFor(paragraph), [
+    'pref_paragraph_line_height',
+    'pref_letter_spacing',
+    'pref_paragraph_align',
+    'pref_paragraph_first_line_indent',
+    'pref_justify_paragraph',
+    'pref_paragraph_hyphenate',
+    'pref_paragraph_margin_top',
+    'pref_paragraph_margin_bottom'
   ]);
-
-  const keys = groups.map(([, , contents]) => [
-    ...contents.matchAll(/app:key="([^"]+)"/g)
-  ].map(([, key]) => key));
-  assert.deepEqual(keys, [
-    [
-      'pref_paragraph_line_height',
-      'pref_letter_spacing',
-      'pref_paragraph_align',
-      'pref_paragraph_first_line_indent',
-      'pref_justify_paragraph',
-      'pref_paragraph_hyphenate',
-      'pref_paragraph_margin_top',
-      'pref_paragraph_margin_bottom'
-    ],
-    [
-      'pref_body_font_size',
-      'pref_body_font_weight',
-      'pref_body_font_family',
-      'pref_body_text_color',
-      'pref_body_background_color',
-      'pref_font_file_body',
-      'pref_body_margin_left',
-      'pref_body_margin_right',
-      'pref_line_wrap'
-    ]
+  assert.deepEqual(keysFor(body), [
+    'pref_body_font_size',
+    'pref_body_font_weight',
+    'pref_body_font_family',
+    'pref_body_text_color',
+    'pref_body_background_color',
+    'pref_font_file_body',
+    'pref_body_margin_left',
+    'pref_body_margin_right',
+    'pref_line_wrap'
   ]);
-  assert.match(paragraph, /app:key="pref_body_background_color"[\s\S]*?app:title="Document Background Color"/);
+  assert.doesNotMatch(paragraph, /ResetPreferenceCategory/);
+  assert.doesNotMatch(body, /ResetPreferenceCategory/);
+  assert.match(body, /app:key="pref_body_background_color"[\s\S]*?app:title="Document Background Color"/);
   assert.match(paragraph, /app:key="pref_paragraph_margin_top"[\s\S]*?app:title="Paragraph Top Margin \(px\)"/);
-  assert.match(settingsActivity, /is StylingParagraphFragment -> "Paragraph & Body Styling"/);
+  assert.match(settingsActivity, /is StylingBodyFragment -> "Body"/);
+  assert.match(settingsActivity, /is StylingParagraphFragment -> "Paragraph"/);
+  assert.match(settingsActivity, /"pref_styling_page_body" -> StylingBodyFragment\(\)/);
+  assert.match(settingsActivity, /"pref_styling_page_paragraph" -> StylingParagraphFragment\(\)/);
   for (const xml of [lists, blocks, tables, footnotes]) {
     assert.ok(xml.includes('app:title="Inherit Body Typography"'));
     assert.ok(!xml.includes('Inherit Paragraph &amp; Body Typography'));
@@ -135,7 +131,7 @@ test('highlight and pen colors, syntax, and replacement shortcuts stay connected
 
 test('custom font pickers remain connected on the rearranged typography pages', () => {
   for (const fragmentName of [
-    'StylingParagraphFragment',
+    'StylingBodyFragment',
     'StylingInlineElementFragment',
     'StylingCalloutsFragment'
   ]) {
@@ -150,12 +146,12 @@ test('custom font pickers remain connected on the rearranged typography pages', 
 test('Body typography exposes font weight, text color, and hyphenation', () => {
   for (const key of [
     'pref_body_font_weight',
-    'pref_body_text_color',
-    'pref_paragraph_hyphenate'
+    'pref_body_text_color'
   ]) {
-    assert.ok(paragraph.includes(`app:key="${key}"`), `${key} is configurable`);
+    assert.ok(body.includes(`app:key="${key}"`), `${key} is configurable`);
     assert.ok(main.includes(key), `${key} is applied`);
   }
+  assert.ok(paragraph.includes('app:key="pref_paragraph_hyphenate"'), 'Paragraph hyphenation is configurable');
   for (const variable of [
     '--body-font-weight',
     '--body-text-color',
@@ -272,7 +268,7 @@ test('system and custom font choices are available and connected across typograp
   }
 
   for (const [xml, key] of [
-    [paragraph, 'pref_body_font_family'],
+    [body, 'pref_body_font_family'],
     [blocks, 'pref_blockquote_font_family'],
     [blocks, 'pref_callout_font_family'],
     [lists, 'pref_list_font_family'],

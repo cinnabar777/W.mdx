@@ -42,6 +42,10 @@ const paragraphSettingsXml = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_paragraph.xml'),
   'utf8'
 );
+const bodySettingsXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_body.xml'),
+  'utf8'
+);
 const editorHtml = fs.readFileSync(
   path.join(__dirname, '../index.html'),
   'utf8'
@@ -415,7 +419,7 @@ test('New Window launches a fresh, separate Android editor task', () => {
 
 test('body background color is configurable independently of the app theme', () => {
   assert.match(
-    paragraphSettingsXml,
+    bodySettingsXml,
     /app:key="pref_body_background_color"[\s\S]*?app:defaultValue="default"/
   );
   assert.match(resetPreferencesSource, /key == "pref_body_background_color" -> "default"/);
@@ -502,27 +506,31 @@ test('typography editor categories are separated into individual navigation page
   }
 
   const orderedPages = [
-    'Headings (H1 – H6)',
-    'Paragraph &amp; Body Styling',
+    'Attachments',
     'Block Quotes',
+    'Body',
     'Bold',
     'Callouts',
     'Code Blocks',
     'Cursor &amp; Selection',
     'Footnotes',
+    'Headings (H1 – H6)',
+    'Highlights &amp; Pens',
     'Horizontal Rules',
     'Inline Code',
     'Italic',
     'Links',
     'Lists (Bulleted, Numbered, Todo Checkboxes)',
     'Media Playback',
-    'Tables'
+    'Paragraph',
+    'Tables',
+    'Underline'
   ].map(title => navigationXml.indexOf(`app:title="${title}"`));
   assert.ok(orderedPages.every(index => index >= 0), 'Every expected typography page is present');
   assert.deepEqual(
     orderedPages,
     [...orderedPages].sort((first, second) => first - second),
-    'Headings and body stay first; remaining typography pages are alphabetical'
+    'Every Document Appearance page is alphabetized by title'
   );
 });
 
@@ -555,6 +563,8 @@ test('UI Appearance contains the requested pages in order', () => {
   assert.ok(settingsActivitySource.includes('is SettingsThemeFragment -> "Settings"'));
   assert.ok(settingsActivitySource.includes('is StylingSettingsFragment -> "Document Appearance"'));
   assert.ok(settingsActivitySource.includes('"pref_styling_page_media" -> MediaPlaybackSettingsFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_styling_page_body" -> StylingBodyFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_styling_page_paragraph" -> StylingParagraphFragment()'));
   assert.ok(settingsActivitySource.includes('"pref_page_toc" -> TocPanelSettingsFragment()'));
   assert.ok(settingsActivitySource.includes('"pref_page_left_panel" -> LeftPanelSettingsFragment()'));
   assert.ok(settingsActivitySource.includes('"pref_page_bottom_toolbar" -> StylingControlbarFragment()'));
@@ -945,7 +955,7 @@ test('Markdown image storage can recover document ancestry from the approved tre
   assert.match(assetManagerSource, /exactMatches\.maxByOrNull \{ it\.parentDocumentIds\.size \}/);
 });
 
-test('Typography keeps Headings and Body first, then alphabetizes text elements', () => {
+test('Document Appearance pages are alphabetized by title', () => {
   const styleRoot = fs.readFileSync(
     path.join(__dirname, '../../app/src/main/res/xml/preferences_styling.xml'),
     'utf8'
@@ -953,17 +963,28 @@ test('Typography keeps Headings and Body first, then alphabetizes text elements'
   const titles = [...styleRoot.matchAll(
     /app:key="pref_styling_page_[^"]+"\s+app:title="([^"]+)"/g
   )].map(match => match[1].replaceAll('&amp;', '&'));
-  assert.deepEqual(titles.slice(0, 3), [
+  assert.deepEqual(titles, [
+    'Attachments',
+    'Block Quotes',
+    'Body',
+    'Bold',
+    'Callouts',
+    'Code Blocks',
+    'Cursor & Selection',
+    'Footnotes',
     'Headings (H1 – H6)',
-    'Paragraph & Body Styling',
-    'Attachments'
+    'Highlights & Pens',
+    'Horizontal Rules',
+    'Inline Code',
+    'Italic',
+    'Links',
+    'Lists (Bulleted, Numbered, Todo Checkboxes)',
+    'Media Playback',
+    'Paragraph',
+    'Tables',
+    'Underline'
   ]);
   assert.doesNotMatch(styleRoot, /ResetPreferenceCategory[^>]*app:title="Text Elements"/);
-  const remaining = titles.slice(2);
-  assert.deepEqual(
-    remaining,
-    [...remaining].sort((left, right) => left.localeCompare(right))
-  );
 });
 
 test('Attachment style preferences are reachable and applied to packaged attachment links', () => {
