@@ -309,7 +309,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         pendingReplaceMdzipAudioLink = null
         if (uri != null && expectedSessionId == currentDocumentSessionId) {
             if (replacementLink != null) replaceAudioFromUri(uri, replacementLink)
-            else insertAudioFromUri(uri)
+            else promptForAssetTitle(uri, InsertAssetKind.AUDIO) { title ->
+                if (expectedSessionId == currentDocumentSessionId) {
+                    insertAudioFromUri(uri, title)
+                } else {
+                    ThemedToast.show(this, "The active document changed. The audio was not added.", Toast.LENGTH_LONG)
+                }
+            }
         } else if (uri != null) {
             ThemedToast.show(this, "The active document changed. The audio change was not applied.", Toast.LENGTH_LONG)
         }
@@ -319,7 +325,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val expectedSessionId = pendingInsertVideoDocumentSessionId
         pendingInsertVideoDocumentSessionId = null
         if (uri != null && expectedSessionId == currentDocumentSessionId) {
-            insertVideoFromUri(uri)
+            promptForAssetTitle(uri, InsertAssetKind.VIDEO) { title ->
+                if (expectedSessionId == currentDocumentSessionId) {
+                    insertVideoFromUri(uri, title)
+                } else {
+                    ThemedToast.show(this, "The active document changed. The video was not added.", Toast.LENGTH_LONG)
+                }
+            }
         } else if (uri != null) {
             ThemedToast.show(this, "The active document changed. The video was not added.", Toast.LENGTH_LONG)
         }
@@ -330,7 +342,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val expectedSessionId = pendingInsertAttachmentDocumentSessionId
             pendingInsertAttachmentDocumentSessionId = null
             if (uri != null && expectedSessionId == currentDocumentSessionId) {
-                insertAttachmentFromUri(uri)
+                promptForAssetTitle(uri, InsertAssetKind.ATTACHMENT) { title ->
+                    if (expectedSessionId == currentDocumentSessionId) {
+                        insertAttachmentFromUri(uri, title)
+                    } else {
+                        ThemedToast.show(this, "The active document changed. The attachment was not added.", Toast.LENGTH_LONG)
+                    }
+                }
             } else if (uri != null) {
                 ThemedToast.show(this, "The active document changed. The attachment was not added.", Toast.LENGTH_LONG)
             }
@@ -2884,16 +2902,66 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         pickAttachmentLauncher.launch(arrayOf("*/*"))
     }
 
-    private fun insertAttachmentFromUri(uri: Uri) =
-        insertAssetFromUri(uri, InsertAssetKind.ATTACHMENT)
+    private fun promptForAssetTitle(
+        uri: Uri,
+        kind: InsertAssetKind,
+        onConfirm: (String) -> Unit
+    ) {
+        val originalName = getFileNameFromUri(uri).ifBlank {
+            when (kind) {
+                InsertAssetKind.AUDIO -> "audio"
+                InsertAssetKind.VIDEO -> "video"
+                InsertAssetKind.ATTACHMENT -> "attachment"
+            }
+        }
+        val extensionStart = originalName.lastIndexOf('.')
+        val defaultTitle = originalName
+            .let { if (extensionStart > 0) it.substring(0, extensionStart) else it }
+            .trim()
+            .ifBlank { originalName }
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            hint = "Title"
+            setText(defaultTitle)
+            setSelection(text.length)
+        }
+        val kindTitle = when (kind) {
+            InsertAssetKind.AUDIO -> "audio"
+            InsertAssetKind.VIDEO -> "video"
+            InsertAssetKind.ATTACHMENT -> "attachment"
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Insert $kindTitle")
+            .setView(input, 24, 4, 24, 0)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Insert", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val title = input.text.toString().trim()
+                if (title.isEmpty()) {
+                    input.error = "Enter a title"
+                    input.requestFocus()
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                onConfirm(title)
+            }
+            input.requestFocus()
+        }
+        dialog.show()
+    }
 
-    private fun insertVideoFromUri(uri: Uri) =
-        insertAssetFromUri(uri, InsertAssetKind.VIDEO)
+    private fun insertAttachmentFromUri(uri: Uri, title: String) =
+        insertAssetFromUri(uri, InsertAssetKind.ATTACHMENT, title)
 
-    private fun insertAudioFromUri(uri: Uri) =
-        insertAssetFromUri(uri, InsertAssetKind.AUDIO)
+    private fun insertVideoFromUri(uri: Uri, title: String) =
+        insertAssetFromUri(uri, InsertAssetKind.VIDEO, title)
 
-    private fun insertAssetFromUri(uri: Uri, kind: InsertAssetKind) {
+    private fun insertAudioFromUri(uri: Uri, title: String) =
+        insertAssetFromUri(uri, InsertAssetKind.AUDIO, title)
+
+    private fun insertAssetFromUri(uri: Uri, kind: InsertAssetKind, title: String) {
         try {
             val originalName = getFileNameFromUri(uri).ifBlank { "attachment" }
             if (kind == InsertAssetKind.AUDIO && !MdzipManager.isSupportedAudioFileName(originalName)) {
@@ -2956,14 +3024,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             isDirty = true
             updateTitle()
             val escapedLink = JSONObjectWrapper.quote(relativeLink)
-            val escapedName = JSONObjectWrapper.quote(originalName)
+            val escapedTitle = JSONObjectWrapper.quote(title)
             val insertMethod = when (kind) {
                 InsertAssetKind.AUDIO -> "insertAudioLink"
                 InsertAssetKind.VIDEO -> "insertVideoLink"
                 InsertAssetKind.ATTACHMENT -> "insertAttachmentLink"
             }
             webView.evaluateJavascript(
-                "window.editorBridge?.$insertMethod?.($escapedLink, $escapedName);",
+                "window.editorBridge?.$insertMethod?.($escapedLink, $escapedTitle);",
                 null
             )
         } catch (error: Exception) {

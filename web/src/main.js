@@ -6128,7 +6128,11 @@ function openAudioEditDialog(view, audioItem) {
   if (!overlay || !dialog || !view) return;
 
   dialog.innerHTML = `
-    <h3 class="modal-title">Edit Audio Layout</h3>
+    <h3 class="modal-title">Edit Audio</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-audio-title">Title</label>
+      <input id="modal-audio-title" class="modal-input" type="text" maxlength="240" autocomplete="off" />
+    </div>
     <div class="modal-field-group">
       <label class="modal-label" for="modal-audio-width">Player width (% of text area)</label>
       <div style="display:flex;align-items:center;gap:12px;">
@@ -6151,9 +6155,11 @@ function openAudioEditDialog(view, audioItem) {
     </div>
   `;
 
+  const titleInput = dialog.querySelector('#modal-audio-title');
   const widthInput = dialog.querySelector('#modal-audio-width');
   const widthValue = dialog.querySelector('#modal-audio-width-value');
   const alignmentInput = dialog.querySelector('#modal-audio-alignment');
+  titleInput.value = audioItem.label;
   widthInput.value = String(audioItem.layout?.width ?? 100);
   alignmentInput.value = audioItem.layout?.alignment ?? 'left';
   const updateWidthValue = () => {
@@ -6173,6 +6179,11 @@ function openAudioEditDialog(view, audioItem) {
   });
   dialog.querySelector('#modal-audio-save').addEventListener('click', event => {
     event.preventDefault();
+    const label = titleInput.value.trim();
+    if (!label) {
+      titleInput.focus();
+      return;
+    }
     const { from, to } = audioItem;
     if (from < 0 || to > view.state.doc.length || from >= to) {
       close();
@@ -6185,7 +6196,7 @@ function openAudioEditDialog(view, audioItem) {
     }
 
     const markdown = formatMarkdownAudioLink(
-      audioItem.label,
+      label,
       audioItem.url,
       {
         width: Number(widthInput.value),
@@ -6201,7 +6212,7 @@ function openAudioEditDialog(view, audioItem) {
   });
 
   overlay.classList.add('open');
-  requestAnimationFrame(() => widthInput.focus());
+  requestAnimationFrame(() => titleInput.focus());
 }
 
 function openVideoEditDialog(view, videoItem) {
@@ -6210,7 +6221,11 @@ function openVideoEditDialog(view, videoItem) {
   if (!overlay || !dialog || !view) return;
 
   dialog.innerHTML = `
-    <h3 class="modal-title">Edit Video Layout</h3>
+    <h3 class="modal-title">Edit Video</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-video-title">Title</label>
+      <input id="modal-video-title" class="modal-input" type="text" maxlength="240" autocomplete="off" />
+    </div>
     <div class="modal-field-group">
       <label class="modal-label" for="modal-video-width">Video width (% of text area)</label>
       <div style="display:flex;align-items:center;gap:12px;">
@@ -6233,9 +6248,11 @@ function openVideoEditDialog(view, videoItem) {
     </div>
   `;
 
+  const titleInput = dialog.querySelector('#modal-video-title');
   const widthInput = dialog.querySelector('#modal-video-width');
   const widthValue = dialog.querySelector('#modal-video-width-value');
   const alignmentInput = dialog.querySelector('#modal-video-alignment');
+  titleInput.value = videoItem.label;
   widthInput.value = String(videoItem.layout?.width ?? 100);
   alignmentInput.value = videoItem.layout?.alignment ?? 'left';
   const updateWidthValue = () => {
@@ -6255,6 +6272,11 @@ function openVideoEditDialog(view, videoItem) {
   });
   dialog.querySelector('#modal-video-save').addEventListener('click', event => {
     event.preventDefault();
+    const label = titleInput.value.trim();
+    if (!label) {
+      titleInput.focus();
+      return;
+    }
     const { from, to } = videoItem;
     if (from < 0 || to > view.state.doc.length || from >= to) {
       close();
@@ -6267,7 +6289,7 @@ function openVideoEditDialog(view, videoItem) {
     }
 
     const markdown = formatMarkdownVideoLink(
-      videoItem.label,
+      label,
       videoItem.url,
       {
         width: Number(widthInput.value),
@@ -6283,7 +6305,7 @@ function openVideoEditDialog(view, videoItem) {
   });
 
   overlay.classList.add('open');
-  requestAnimationFrame(() => widthInput.focus());
+  requestAnimationFrame(() => titleInput.focus());
 }
 
 function openAttachmentEditDialog(view, attachmentItem) {
@@ -6294,7 +6316,7 @@ function openAttachmentEditDialog(view, attachmentItem) {
   dialog.innerHTML = `
     <h3 class="modal-title">Edit Attachment</h3>
     <div class="modal-field-group">
-      <label class="modal-label" for="modal-attachment-label">Label</label>
+      <label class="modal-label" for="modal-attachment-label">Title</label>
       <input id="modal-attachment-label" class="modal-input" type="text" maxlength="240" />
     </div>
     <div class="modal-field-group">

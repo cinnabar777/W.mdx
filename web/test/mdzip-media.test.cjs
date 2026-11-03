@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 test('formats MP3 links with URL-encoded filenames and readable labels', async () => {
   const { formatMarkdownAudioLink, parseMarkdownAudioLink } =
@@ -117,6 +119,25 @@ test('stores audio width and alignment in standard Markdown link titles', async 
     formatMarkdownAudioLink('OGA', 'audio/track.oga?source=local'),
     '[OGA](audio/track.oga?source=local)'
   );
+});
+
+test('audio and video edit dialogs save the edited display title', () => {
+  const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+  const audioStart = main.indexOf('function openAudioEditDialog(');
+  const videoStart = main.indexOf('function openVideoEditDialog(', audioStart);
+  const attachmentStart = main.indexOf('function openAttachmentEditDialog(', videoStart);
+  const audioDialog = main.slice(audioStart, videoStart);
+  const videoDialog = main.slice(videoStart, attachmentStart);
+  const attachmentDialog = main.slice(attachmentStart, main.indexOf('function openImageEditDialog(', attachmentStart));
+
+  assert.match(audioDialog, /for="modal-audio-title">Title/);
+  assert.match(audioDialog, /titleInput\.value = audioItem\.label/);
+  assert.match(audioDialog, /formatMarkdownAudioLink\(\s*label,/);
+  assert.match(videoDialog, /for="modal-video-title">Title/);
+  assert.match(videoDialog, /titleInput\.value = videoItem\.label/);
+  assert.match(videoDialog, /formatMarkdownVideoLink\(\s*label,/);
+  assert.match(attachmentDialog, /for="modal-attachment-label">Title/);
+  assert.match(attachmentDialog, /formatMarkdownAttachmentLink\(\s*label,/);
 });
 
 test('extracts MP3, AAC, M4A, WAV, FLAC, Opus, OGG, and OGA links without treating images or code as attachments', async () => {
