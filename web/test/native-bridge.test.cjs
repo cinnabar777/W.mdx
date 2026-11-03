@@ -899,8 +899,13 @@ test('TextPack image previews resolve paths from the active package assets', () 
   assert.match(source, /resolveTextPackAssetUrl\?\.\(this\.url\)/);
 });
 
-test('Image insertion offers Base64 directly and stores file images by document format', () => {
-  assert.match(mainActivitySource, /Choose file and embed as Base64/);
+test('Image insertion separates file, Base64, and URL options and stores file images by format', () => {
+  assert.match(mainActivitySource, /Choose image file and embed as Base64/);
+  assert.match(mainActivitySource, /"Paste Base64"/);
+  assert.match(mainActivitySource, /"Enter URL"/);
+  assert.match(mainActivitySource, /Download image to document assets/);
+  assert.match(mainActivitySource, /Embed image as Base64/);
+  assert.match(mainActivitySource, /Leave both options unchecked to use the URL directly/);
   assert.match(mainActivitySource, /pref_markdown_image_location/);
   assert.match(mainActivitySource, /TextPackManager\.addAssetImage/);
   assert.match(mainActivitySource, /MdzipManager\.addAttachment/);
