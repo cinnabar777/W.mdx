@@ -111,6 +111,7 @@ document.addEventListener('pointerdown', event => {
   );
   const isEditable = target.closest('[contenteditable="true"]:not(.cm-content)');
   if (!isTextInput && !isEditable) return;
+  window.AndroidNative?.onEditorPointerDown?.();
   window.AndroidNative?.showEditorKeyboard?.();
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
@@ -2151,7 +2152,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               ? window.AndroidNative?.getCurrentDocumentSessionId?.()
               : null;
             const attachmentExists = attachmentLink && window.AndroidNative
-              ?.canOpenMdzipAttachment?.(attachmentLink.url, attachmentSessionId);
+              ?.canOpenAttachment?.(attachmentLink.url, attachmentSessionId);
             if (attachmentLink && attachmentExists && !isNodeActive && !isPureWysiwyg) {
               const attachmentDecoration = Decoration.replace({
                 widget: new MdzipAttachmentWidget(
@@ -3280,7 +3281,7 @@ function buildHeightMapValue(state) {
           ? window.AndroidNative?.getCurrentDocumentSessionId?.()
           : null;
         const attachmentExists = attachmentLink && window.AndroidNative
-          ?.canOpenMdzipAttachment?.(attachmentLink.url, attachmentSessionId);
+          ?.canOpenAttachment?.(attachmentLink.url, attachmentSessionId);
         if (attachmentLink && attachmentExists) {
           const attachmentDecoration = Decoration.replace({
             widget: new MdzipAttachmentWidget(
@@ -4333,6 +4334,19 @@ class CodeMirrorAdapter {
       emptyAreaLongPressStart = null;
     };
     this.view.contentDOM.addEventListener('pointerdown', event => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest(
+          'button, input, textarea, audio, video, .cm-image-preview-wrapper, ' +
+          '.cm-mdzip-audio-preview-wrapper, .cm-mdzip-video-preview-wrapper, ' +
+          '.cm-mdzip-attachment-shell'
+        )
+      ) {
+        editorTapStart = null;
+        cancelEmptyAreaLongPress();
+        return;
+      }
       cancelEmptyAreaLongPress();
       floatingToolbarAnchorPoint = null;
       updateFloatingSelectionToolbar(this.view);
@@ -4340,6 +4354,7 @@ class CodeMirrorAdapter {
         editorTapStart = null;
         return;
       }
+      window.AndroidNative?.onEditorPointerDown?.();
       editorTapStart = {
         pointerId: event.pointerId,
         x: event.clientX,

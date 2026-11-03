@@ -27,7 +27,7 @@ test('unsupported audio decoding shows a notice instead of dead playback control
 test('long-press exposes edit and explicit package delete actions', () => {
   const player = read('src/audioPreviewWidget.js');
   assert.match(player, /editButton\.textContent = 'Edit'/);
-  assert.match(player, /deleteButton\.textContent = 'Delete from MDZip'/);
+  assert.match(player, /deleteButton\.textContent = 'Remove link'/);
   assert.match(player, /this\.onEdit\(view/);
   assert.doesNotMatch(player, /editMdzipAudio/);
   assert.match(player, /userEvent: 'delete\.mdzip-audio'/);

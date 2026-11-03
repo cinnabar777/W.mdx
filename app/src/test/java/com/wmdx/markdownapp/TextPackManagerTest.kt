@@ -110,6 +110,29 @@ class TextPackManagerTest {
     }
 
     @Test
+    fun insertsNonImageAssetsWithoutChangingTheirNames() {
+        val sessionDir = temporaryDirectory()
+        val session = TextPackSession(sessionDir, "", null)
+        val audioBytes = byteArrayOf(5, 10, 15)
+        try {
+            val assetPath = TextPackManager.addAssetFile(
+                session,
+                ByteArrayInputStream(audioBytes),
+                "recordings/Meeting Audio.m4a"
+            )
+
+            assertEquals("assets/Meeting%20Audio.m4a", assetPath)
+            assertTrue(
+                TextPackManager.resolveAssetFile(session, assetPath)!!
+                    .readBytes()
+                    .contentEquals(audioBytes)
+            )
+        } finally {
+            sessionDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsTraversalPathsAndArchivesWithTraversalEntries() {
         listOf("../outside.png", "/outside.png", "assets/../../outside.png", "C:/outside.png")
             .forEach { path ->

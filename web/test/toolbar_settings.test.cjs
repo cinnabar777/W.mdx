@@ -699,7 +699,7 @@ test('toolbar touches gate automatic keyboard focus without restoring the IME la
   );
   assert.match(
     mainActivitySource,
-    /event\.actionMasked == MotionEvent\.ACTION_DOWN[\s\S]*?setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/,
+    /event\.actionMasked == MotionEvent\.ACTION_DOWN[\s\S]*?setImeInputAllowed\(imeWasVisible\)/,
     'native touch handling gates WebView keyboard focus before it receives the touch'
   );
   assert.match(
@@ -714,5 +714,13 @@ test('toolbar touches gate automatic keyboard focus without restoring the IME la
     endInteraction,
     /setImeInputAllowed|showSoftInput|hideSoftInput|restoreToolbarImeState/,
     'ending the toolbar interaction does not change keyboard visibility'
+  );
+  assert.match(
+    mainActivitySource,
+    /toolbarImeSuppressedUntilEditorTouch = !lastKnownImeVisible/
+  );
+  assert.match(
+    mainActivitySource,
+    /fun onEditorPointerDown\(\)[\s\S]*?toolbarImeSuppressedUntilEditorTouch = false/
   );
 });

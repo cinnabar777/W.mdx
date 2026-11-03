@@ -144,10 +144,18 @@ test('tapping focused editor content explicitly requests the Android keyboard', 
 });
 
 test('toolbar actions block incidental keyboard opens when the keyboard started closed', () => {
-  assert.match(mainActivitySource, /setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/);
+  assert.match(mainActivitySource, /setImeInputAllowed\(imeWasVisible\)/);
   assert.match(
     mainActivitySource,
     /fun beginToolbarInteraction\(\)[\s\S]*?if \(!imeWasVisible\)[\s\S]*?setImeInputAllowed\(false\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /toolbarImeSuppressedUntilEditorTouch \|\|[\s\S]*?toolbarImeInteractionDepth > 0/
+  );
+  assert.match(
+    mainActivitySource,
+    /fun onEditorPointerDown\(\)[\s\S]*?toolbarImeSuppressedUntilEditorTouch = false/
   );
   assert.match(
     editorWebViewSource,
@@ -885,7 +893,7 @@ test('Toolbar touches gate the IME before WebView focus and do not restore it la
   assert.match(source, /window\.AndroidNative\?\.beginToolbarInteraction\?\.\(\)/);
   assert.match(source, /window\.AndroidNative\?\.endToolbarInteraction\?\.\(\)/);
   assert.match(source, /event\.preventDefault\(\);[\s\S]*window\.AndroidNative\?\.beginToolbarInteraction/);
-  assert.match(mainActivitySource, /setImeInputAllowed\(imeVisibleBeforeLastWebViewTouch\)/);
+  assert.match(mainActivitySource, /setImeInputAllowed\(imeWasVisible\)/);
   const endStart = mainActivitySource.indexOf('fun endToolbarInteraction()');
   const endEnd = mainActivitySource.indexOf('@JavascriptInterface', endStart);
   const endBody = mainActivitySource.slice(endStart, endEnd);

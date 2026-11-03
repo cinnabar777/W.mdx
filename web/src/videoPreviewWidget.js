@@ -174,7 +174,7 @@ export class VideoPreviewWidget extends WidgetType {
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
     deleteButton.setAttribute('role', 'menuitem');
-    deleteButton.textContent = 'Delete from MDZip';
+    deleteButton.textContent = 'Remove link';
     stylePopupButton(deleteButton);
     actions.appendChild(deleteButton);
 

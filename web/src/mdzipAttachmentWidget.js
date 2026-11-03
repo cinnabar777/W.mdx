@@ -80,7 +80,7 @@ export class MdzipAttachmentWidget extends WidgetType {
         return;
       }
       hideActions();
-      window.AndroidNative?.openMdzipAttachment?.(
+      window.AndroidNative?.openAttachment?.(
         this.relativeLink,
         this.documentSessionId
       );

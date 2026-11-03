@@ -208,7 +208,7 @@ test('video preview keeps native controls and safely edits or deletes the entire
   assert.match(widget, /Long-press for video options/);
   assert.match(widget, /}, 550\)/);
   assert.match(widget, /editButton\.textContent = 'Edit'/);
-  assert.match(widget, /deleteButton\.textContent = 'Delete from MDZip'/);
+  assert.match(widget, /deleteButton\.textContent = 'Remove link'/);
   assert.match(widget, /changes: \{ from: this\.from, to: this\.to, insert: '' \}/);
   assert.match(widget, /userEvent: 'delete\.mdzip-video'/);
   assert.match(widget, /Unsupported video format\. This app can play MP4, M4V, WebM, 3GP, MOV, and MKV\./);

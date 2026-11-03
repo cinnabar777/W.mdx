@@ -697,6 +697,12 @@ object MdzipManager {
         return "$ASSET_BASE_URL/${session.sessionDir.name}/${Uri.encode(archivePath, "/")}"
     }
 
+    fun assetUrl(session: MdzipSession, markdownLink: String): String? {
+        val archivePath = resolveRelativeArchivePath(session.entryPoint, markdownLink) ?: return null
+        if (assetArchiveFile(session, archivePath) == null) return null
+        return "$ASSET_BASE_URL/${session.sessionDir.name}/${Uri.encode(archivePath, "/")}"
+    }
+
     fun resolveAudioFile(session: MdzipSession, markdownLink: String): File? {
         val archivePath = resolveAudioArchivePath(session, markdownLink) ?: return null
         return audioArchiveFile(session, archivePath)
