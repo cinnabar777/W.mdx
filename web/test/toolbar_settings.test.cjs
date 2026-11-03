@@ -257,7 +257,20 @@ test('toolbar gestures can open and save the preferences for their own key', () 
     mainSource,
     /sourceButton\?\.dataset\?\.toolbarStyleId[\s\S]*?sourceButton\?\.dataset\?\.toolbarKey/
   );
-  assert.match(mainSource, /currentEditorMode !== 'wysiwyg'/);
+  const runtimeKeyPreferences = mainSource.match(
+    /function openToolbarKeyPreferences\(sourceButton, toolbarConfig\) \{[\s\S]*?\n\}/
+  )?.[0];
+  assert.ok(runtimeKeyPreferences, 'the in-editor key-preferences action has a runtime flow');
+  assert.doesNotMatch(
+    runtimeKeyPreferences,
+    /currentEditorMode/,
+    'key preferences are available in WYSIWYG, live-preview, and source views'
+  );
+  assert.match(runtimeKeyPreferences, /getToolbarSurfaceForElement\(sourceButton\)/);
+  assert.match(
+    runtimeKeyPreferences,
+    /androidNative\.saveToolbarKeyPreferences\(targetSurface, rawConfig\)/
+  );
   assert.match(keyPreferencesDialogSource, /toolbar-settings-preview\.html\?embed=key-preferences/);
   assert.match(keyPreferencesDialogSource, /openToolbarKeyPreferencesEditor/);
   assert.match(settingsSource, /window\.openToolbarKeyPreferencesEditor/);
@@ -273,10 +286,6 @@ test('toolbar gestures can open and save the preferences for their own key', () 
     /if \(section\.open\) return;[\s\S]*?if \(other !== section\) other\.open = false;/
   );
   assert.match(html, /data-toolbar-section="colors"/);
-  assert.match(
-    mainSource,
-    /save\(targetSurface, rawConfig\)/
-  );
   assert.match(mainSource, /openToolbarKeyPreferencesDialog\(\{[\s\S]*?onSave: \(targetSurface, nextConfig\) =>/);
   assert.match(keyPreferencesDialogSource, /saveBottomToolbarConfig: createToolbarKeyPreferencesSaveBridge\(surface, onSave\)/);
   assert.match(mainActivitySource, /fun saveToolbarKeyPreferences\(surface: String, rawConfig: String\)/);
@@ -445,6 +454,13 @@ test('embedded preferences open the existing full key editor for the triggering 
   const dom = new JSDOM(html, {
     url: 'https://appassets.androidplatform.net/assets/www/toolbar-settings-preview.html?embed=key-preferences'
   });
+  const savedConfigs = [];
+  dom.window.ToolbarSettings = {
+    saveBottomToolbarConfig: rawConfig => {
+      savedConfigs.push(JSON.parse(rawConfig));
+      return 'saved';
+    }
+  };
   const previousWindow = global.window;
   const previousDocument = global.document;
   global.window = dom.window;
@@ -484,6 +500,20 @@ test('embedded preferences open the existing full key editor for the triggering 
     assert.match(
       dom.window.document.querySelector('[data-gesture-list="taps"]').textContent,
       /Bold/
+    );
+    dom.window.document
+      .querySelector('.toolbar-preview-gesture-action[data-gesture-id="tap2"]')
+      .click();
+    const actionSearch = dom.window.document.querySelector('#toolbar-action-search');
+    actionSearch.value = 'italic';
+    actionSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    dom.window.document
+      .querySelector('#toolbar-action-list [aria-label="Italic"]')
+      .click();
+    assert.equal(
+      savedConfigs.at(-1)?.styles.undo.gestureActions.tap2,
+      'italic',
+      'editing Undo preferences saves the changed gesture on Undo'
     );
     await new Promise(resolve => dom.window.setTimeout(resolve, 20));
   } finally {

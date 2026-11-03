@@ -5417,12 +5417,18 @@ function createToolbarActionRegistry() {
   return new Map([...groups.flat(), ...clipboardItems].map(item => [item.id, item]));
 }
 
-function getToolbarConfigForElement(element) {
+function getToolbarSurfaceForElement(element) {
   const floatingToolbar = element?.closest?.('#floating-selection-toolbar');
-  if (floatingToolbar) return floatingToolbarConfig;
   const popupStrip = element?.closest?.('#popup-toolbar-strip');
-  if (popupStrip?.dataset?.toolbarSurface === 'floating') return floatingToolbarConfig;
-  return bottomToolbarConfig;
+  return floatingToolbar || popupStrip?.dataset?.toolbarSurface === 'floating'
+    ? 'floating'
+    : 'bottom';
+}
+
+function getToolbarConfigForElement(element) {
+  return getToolbarSurfaceForElement(element) === 'floating'
+    ? floatingToolbarConfig
+    : bottomToolbarConfig;
 }
 
 function createRuntimeToolbarItemRegistry() {
@@ -5582,7 +5588,6 @@ function runToolbarActionWithoutRefocusingEditor(action) {
 }
 
 function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
-  if (currentEditorMode !== 'wysiwyg') return false;
   const keyId =
     sourceButton?.dataset?.toolbarStyleId ||
     sourceButton?.dataset?.toolbarKey;
@@ -5597,17 +5602,17 @@ function openToolbarKeyPreferences(sourceButton, toolbarConfig) {
     toolbarConfig.customKeys?.[keyId]?.title ||
     definition?.title ||
     keyId;
-  const surface = toolbarConfig === floatingToolbarConfig ? 'floating' : 'bottom';
+  const surface = getToolbarSurfaceForElement(sourceButton);
   return openToolbarKeyPreferencesDialog({
     keyId,
     keyTitle: title,
     surface,
     config: toolbarConfig,
     onSave: (targetSurface, nextConfig) => {
-      const save = window.AndroidNative?.saveToolbarKeyPreferences;
-      if (typeof save !== 'function') return false;
+      const androidNative = window.AndroidNative;
+      if (typeof androidNative?.saveToolbarKeyPreferences !== 'function') return false;
       const rawConfig = JSON.stringify(nextConfig);
-      if (!save(targetSurface, rawConfig)) return false;
+      if (!androidNative.saveToolbarKeyPreferences(targetSurface, rawConfig)) return false;
       if (targetSurface === 'floating') {
         window.editorBridge?.applyFloatingToolbarConfig?.(nextConfig);
       } else {
