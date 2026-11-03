@@ -49,6 +49,7 @@ import java.util.concurrent.Future
 
 private const val WMDX_TAB_SESSION_MIME = "application/vnd.wmdx.tabs-session+json"
 private const val MAX_WMDX_TAB_SESSION_BYTES = 512 * 1024
+private const val MAX_EMBEDDED_MARKDOWN_BYTES = 16L * 1024L * 1024L
 
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -106,7 +107,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingInsertAudioDocumentSessionId: String? = null
     private var pendingInsertVideoDocumentSessionId: String? = null
     private var pendingInsertAttachmentDocumentSessionId: String? = null
+    private var pendingInsertEmbeddedDocumentSessionId: String? = null
     private var pendingReplaceMdzipAudioLink: String? = null
+    private val embeddedMdzipSessionsLock = Any()
+    private val embeddedMdzipSessions =
+        java.util.LinkedHashMap<String, MdzipSession>(8, 0.75f, true)
     private var pendingWmdxTabSessionJson: String? = null
     private data class RenameAccessRequest(val uri: Uri, val targetName: String)
     private var pendingRenamePermissionRequest: RenameAccessRequest? = null
@@ -354,6 +359,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
+    private val pickEmbeddedDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            val expectedSessionId = pendingInsertEmbeddedDocumentSessionId
+            pendingInsertEmbeddedDocumentSessionId = null
+            if (uri != null && expectedSessionId == currentDocumentSessionId) {
+                insertEmbeddedDocumentFromUri(uri, expectedSessionId)
+            } else if (uri != null) {
+                ThemedToast.show(
+                    this,
+                    "The active document changed. The embedded document was not added.",
+                    Toast.LENGTH_LONG
+                )
+            }
+        }
+
     private val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (isEditorReady) {
             applyThemeAndFullscreenPreferences()
@@ -466,6 +486,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (isFinishing && !isChangingConfigurations) {
             WindowRegistry.unregister(this)
         }
+        clearEmbeddedMdzipSessions()
         super.onDestroy()
     }
 
@@ -927,6 +948,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
+    private fun hasPersistedReadAccess(uri: Uri): Boolean {
+        if (
+            contentResolver.persistedUriPermissions.any {
+                it.uri == uri && it.isReadPermission
+            }
+        ) {
+            return true
+        }
+        val treeUri = leftPanelTreeForDocument(uri) ?: return false
+        return contentResolver.persistedUriPermissions.any {
+            it.uri == treeUri && it.isReadPermission
+        }
+    }
+
     private fun findPersistedFolderDocumentUri(documentUri: Uri): Uri? {
         for (permission in contentResolver.persistedUriPermissions) {
             if (
@@ -1357,6 +1392,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "save_tabs" to prefs.getString("pref_hotkey_save_tabs", ""),
             "paste_as_plain_text" to prefs.getString("pref_hotkey_paste_as_plain_text", "ctrl+shift+v"),
             "attachment" to prefs.getString("pref_hotkey_attachment", "ctrl+shift+a"),
+            "embed" to prefs.getString("pref_hotkey_embed", "ctrl+alt+e"),
             "save_as_textpack" to prefs.getString("pref_hotkey_save_as_textpack", "ctrl+shift+alt+s"),
             "save_as_mdzip" to prefs.getString("pref_hotkey_save_as_mdzip", "ctrl+shift+alt+m"),
             "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
@@ -1490,6 +1526,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             currentFileUri?.let { documentHistoryStack.push(it) }
             documentForwardStack.clear()
         }
+        clearEmbeddedMdzipSessions()
         currentDocumentSessionId = java.util.UUID.randomUUID().toString()
         currentRevision = 0
         currentEmptyContentExplicitlyEdited = false
@@ -1660,6 +1697,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 currentTextPackSession = null
                 currentMdzipSession = session
                 currentDocumentFormat = DocumentFormat.MDZIP
+                clearEmbeddedMdzipSessions()
                 currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                 currentRevision = 0
                 currentEmptyContentExplicitlyEdited = false
@@ -1692,6 +1730,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 currentTextPackSession = session
                 currentMdzipSession = null
                 currentDocumentFormat = DocumentFormat.TEXT_PACK
+                clearEmbeddedMdzipSessions()
                 currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                 currentRevision = 0
                 currentEmptyContentExplicitlyEdited = false
@@ -1723,6 +1762,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     val content = reader.readText()
                     hasBom = content.startsWith("\uFEFF")
                     hasCrlf = content.contains("\r\n")
+                    clearEmbeddedMdzipSessions()
                     currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                     currentRevision = 0
                     currentEmptyContentExplicitlyEdited = false
@@ -2902,6 +2942,175 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         pickAttachmentLauncher.launch(arrayOf("*/*"))
     }
 
+    private fun handleInsertEmbeddedDocument() {
+        pendingInsertEmbeddedDocumentSessionId = currentDocumentSessionId
+        pickEmbeddedDocumentLauncher.launch(
+            arrayOf("text/markdown", "text/x-markdown", "text/plain", MdzipManager.MIME_TYPE)
+        )
+    }
+
+    private fun insertEmbeddedDocumentFromUri(uri: Uri, expectedSessionId: String) {
+        val fileName = getFileNameFromUri(uri).trim()
+        val isMdzip = MdzipManager.isMdzipFileName(fileName)
+        if (!isMdzip && !fileName.endsWith(".md", ignoreCase = true)) {
+            ThemedToast.show(
+                this,
+                "Choose a Markdown (.md) or MDZip (.mdz) document.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+        if (expectedSessionId != currentDocumentSessionId) {
+            ThemedToast.show(
+                this,
+                "The active document changed. The embedded document was not added.",
+                Toast.LENGTH_LONG
+            )
+            return
+        }
+
+        runCatching {
+            val sourceMarkdown = readEmbeddedMarkdown(uri, fileName, isMdzip)
+            if (sourceMarkdown.length > MAX_EMBEDDED_MARKDOWN_BYTES) {
+                throw java.io.IOException("This Markdown document is too large to embed.")
+            }
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val method = prefs.getString("pref_embedded_document_method", "copy")
+            var mediaBaseUrl: String? = null
+            if (method == "link" || !isMdzip) {
+                persistDocumentUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                if (!hasPersistedReadAccess(uri)) {
+                    throw java.io.IOException(
+                        "The selected file provider does not allow saved access. Choose Copy into current document."
+                    )
+                }
+            }
+            val link = if (method == "link") {
+                mediaBaseUrl = uri.toString()
+                uri.toString()
+            } else {
+                if (!isMdzip) {
+                    mediaBaseUrl = uri.toString()
+                }
+                when (currentDocumentFormat) {
+                    DocumentFormat.MDZIP -> {
+                        val session = currentMdzipSession
+                            ?: throw java.io.IOException("Save the MDZip document before copying an embed.")
+                        MdzipManager.addAttachment(
+                            session,
+                            contentResolver.openInputStream(uri)
+                                ?: throw java.io.IOException("Could not read the selected document."),
+                            fileName
+                        )
+                    }
+                    DocumentFormat.TEXT_PACK -> {
+                        val session = currentTextPackSession
+                            ?: throw java.io.IOException("Save the TextPack before copying an embed.")
+                        TextPackManager.addAssetFile(
+                            session,
+                            contentResolver.openInputStream(uri)
+                                ?: throw java.io.IOException("Could not read the selected document."),
+                            fileName
+                        )
+                    }
+                    DocumentFormat.MARKDOWN -> {
+                        val documentUri = currentFileUri
+                            ?: throw java.io.IOException("Save the Markdown file before copying an embed.")
+                        val location = MarkdownAssetManager.locateDocument(
+                            this,
+                            documentUri,
+                            requireWrite = true
+                        ) ?: throw java.io.IOException(
+                            "Open the Markdown file from a writable approved folder before copying an embed."
+                        )
+                        MarkdownAssetManager.addAsset(
+                            this,
+                            location,
+                            contentResolver.openInputStream(uri)
+                                ?: throw java.io.IOException("Could not read the selected document."),
+                            fileName,
+                            if (isMdzip) MdzipManager.MIME_TYPE else "text/markdown",
+                            prefs.getString(
+                                "pref_markdown_image_location",
+                                MarkdownAssetManager.LOCATION_ASSETS
+                            ) ?: MarkdownAssetManager.LOCATION_ASSETS
+                        )
+                    }
+                }
+            }
+            val label = fileName.substringBeforeLast('.', fileName).ifBlank { fileName }
+            val safeUrl = JSONObjectWrapper.quote(link)
+            val safeLabel = JSONObjectWrapper.quote(label)
+            val safeMediaBaseUrl = JSONObjectWrapper.quote(mediaBaseUrl.orEmpty())
+            webView.evaluateJavascript(
+                "window.editorBridge?.insertEmbeddedDocumentLink?.($safeUrl, $safeLabel, $safeMediaBaseUrl);",
+                null
+            )
+        }.onFailure { error ->
+            ThemedToast.show(
+                this,
+                error.localizedMessage ?: "Could not add the embedded document.",
+                Toast.LENGTH_LONG
+            )
+        }
+    }
+
+    private fun readEmbeddedMarkdown(uri: Uri, fileName: String, isMdzip: Boolean): String {
+        if (isMdzip) {
+            return getEmbeddedMdzipSession(uri).markdownContent
+        }
+        val input = contentResolver.openInputStream(uri)
+            ?: throw java.io.FileNotFoundException("Could not read the selected Markdown document.")
+        val output = java.io.ByteArrayOutputStream()
+        input.use { source ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var copied = 0L
+            while (true) {
+                val count = source.read(buffer)
+                if (count < 0) break
+                copied += count
+                if (copied > MAX_EMBEDDED_MARKDOWN_BYTES) {
+                    throw java.io.IOException("This Markdown document is too large to embed.")
+                }
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toString(Charsets.UTF_8.name())
+    }
+
+    private fun getEmbeddedMdzipSession(uri: Uri): MdzipSession {
+        val key = "${currentDocumentSessionId}:${uri}"
+        synchronized(embeddedMdzipSessionsLock) {
+            embeddedMdzipSessions[key]?.let { return it }
+        }
+        val opened = MdzipManager.open(this, uri)
+        synchronized(embeddedMdzipSessionsLock) {
+            embeddedMdzipSessions[key]?.let {
+                opened.sessionDir.deleteRecursively()
+                return it
+            }
+            embeddedMdzipSessions[key] = opened
+            while (embeddedMdzipSessions.size > 16) {
+                val eldest = embeddedMdzipSessions.entries.iterator()
+                if (!eldest.hasNext()) break
+                val evicted = eldest.next()
+                eldest.remove()
+                evicted.value.sessionDir.deleteRecursively()
+            }
+            return opened
+        }
+    }
+
+    private fun clearEmbeddedMdzipSessions() {
+        synchronized(embeddedMdzipSessionsLock) {
+            embeddedMdzipSessions.values.forEach { it.sessionDir.deleteRecursively() }
+            embeddedMdzipSessions.clear()
+        }
+    }
+
     private fun promptForAssetTitle(
         uri: Uri,
         kind: InsertAssetKind,
@@ -3410,7 +3619,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         var truncated = false
         val maxResults = 100
         val maxScannedFiles = 2500
-        val textExtensions = setOf(".md", ".markdown", ".mdx", ".txt")
+        val textExtensions = setOf(".md", ".markdown", ".txt")
         val wholeWordPattern = if (wholeWords) {
             Regex(
                 "(^|[^\\p{L}\\p{N}_])${Regex.escape(needle)}(?![\\p{L}\\p{N}_])",
@@ -3419,7 +3628,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } else {
             null
         }
-        val markdownExtensions = setOf(".md", ".textpack", ".mdx", ".textpack.zip", ".mdz")
+        val markdownExtensions = setOf(".md", ".textpack", ".textpack.zip", ".mdz")
 
         for (treeUri in authorizedLeftPanelTrees()) {
             if (results.length() >= maxResults || scannedFiles >= maxScannedFiles) {
@@ -3464,10 +3673,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     val hasPlainTextExtension = textExtensions.any { entry.name.endsWith(it, true) }
                     val needsTextPackProbe = includeContents &&
                         !hasMdzipExtension &&
-                        (
-                            entry.name.endsWith(".mdx", true) ||
-                                (!markdownOnly && !hasPlainTextExtension && !hasTextPackExtension)
-                            )
+                        !hasPlainTextExtension &&
+                        !hasTextPackExtension
                     val isTextPack = !hasMdzipExtension && (hasTextPackExtension ||
                         (needsTextPackProbe &&
                             TextPackManager.isTextPackFile(this, entry.uri, entry.name)))
@@ -3989,6 +4196,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     DocumentFormat.TEXT_PACK
                 else -> DocumentFormat.MARKDOWN
             }
+            clearEmbeddedMdzipSessions()
             currentDocumentSessionId = java.util.UUID.randomUUID().toString()
             currentRevision = 0
             currentEmptyContentExplicitlyEdited = emptyContentExplicitlyEdited
@@ -4177,6 +4385,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     currentFileUri = null
                     currentFileName = getString(R.string.untitled_document)
                     currentDocumentFormat = DocumentFormat.MARKDOWN
+                    clearEmbeddedMdzipSessions()
                     currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                     currentRevision = 0
                     currentTextPackSession = null
@@ -4212,6 +4421,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "audio" -> handleInsertAudio()
                     "video" -> handleInsertVideo()
                     "attachment" -> handleInsertAttachment()
+                    "embed" -> handleInsertEmbeddedDocument()
                     "new_window" -> handleNewWindow()
                     "settings" -> settingsLauncher.launch(android.content.Intent(this@MainActivity, SettingsActivity::class.java))
                     "toc_settings" -> settingsLauncher.launch(
@@ -4402,6 +4612,94 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         @JavascriptInterface
         fun openMdzipAttachment(relativeLink: String, documentSessionId: String?): Boolean =
             openAttachment(relativeLink, documentSessionId)
+
+        @JavascriptInterface
+        fun loadEmbeddedMarkdown(relativeLink: String, documentSessionId: String?): String {
+            if (documentSessionId != currentDocumentSessionId) {
+                return JSONObject().put("ok", false).toString()
+            }
+            return runCatching {
+                val sourceUri = resolveEmbeddedDocumentUri(relativeLink)
+                    ?: throw java.io.FileNotFoundException("The embedded document could not be found.")
+                val fileName = getFileNameFromUri(sourceUri)
+                val markdown = when {
+                    MdzipManager.isMdzipFileName(fileName) ->
+                        getEmbeddedMdzipSession(sourceUri).markdownContent
+                    fileName.endsWith(".md", ignoreCase = true) ->
+                        readEmbeddedMarkdown(sourceUri, fileName, isMdzip = false)
+                    else -> ""
+                }
+                JSONObject()
+                    .put("ok", true)
+                    .put("markdown", markdown)
+                    .toString()
+            }.getOrElse {
+                JSONObject().put("ok", false).toString()
+            }
+        }
+
+        @JavascriptInterface
+        fun resolveEmbeddedAssetUrl(
+            relativeLink: String,
+            embeddedDocumentLink: String,
+            documentSessionId: String?
+        ): String {
+            if (documentSessionId != currentDocumentSessionId) return ""
+            return runCatching {
+                val sourceUri = resolveEmbeddedDocumentUri(embeddedDocumentLink) ?: return ""
+                val sourceName = getFileNameFromUri(sourceUri)
+                if (MdzipManager.isMdzipFileName(sourceName)) {
+                    val sourceSession = getEmbeddedMdzipSession(sourceUri)
+                    return MdzipManager.assetUrl(sourceSession, relativeLink).orEmpty()
+                }
+
+                if (
+                    currentDocumentFormat == DocumentFormat.MDZIP &&
+                    !embeddedDocumentLink.startsWith("content://", ignoreCase = true)
+                ) {
+                    val parentSession = currentMdzipSession ?: return ""
+                    val embeddedEntryPoint = MdzipManager.resolveRelativeArchivePath(
+                        parentSession.entryPoint,
+                        embeddedDocumentLink
+                    ) ?: return ""
+                    return MdzipManager.assetUrl(
+                        parentSession,
+                        embeddedEntryPoint,
+                        relativeLink
+                    ).orEmpty()
+                }
+
+                val location = MarkdownAssetManager.locateDocument(
+                    this@MainActivity,
+                    sourceUri,
+                    requireWrite = false
+                ) ?: return ""
+                MarkdownAssetManager.previewAssetUrl(
+                    this@MainActivity,
+                    location,
+                    currentDocumentSessionId,
+                    relativeLink
+                ).orEmpty()
+            }.getOrDefault("")
+        }
+
+        private fun resolveEmbeddedDocumentUri(relativeLink: String): Uri? {
+            val decodedLink = if (relativeLink.startsWith("content://", ignoreCase = true)) {
+                relativeLink
+            } else {
+                Uri.decode(relativeLink)
+            }
+            val directUri = runCatching { Uri.parse(decodedLink) }.getOrNull()
+            if (directUri?.scheme == "content") {
+                val name = getFileNameFromUri(directUri)
+                return directUri.takeIf {
+                    (MdzipManager.isMdzipFileName(name) ||
+                        name.endsWith(".md", ignoreCase = true)) &&
+                        hasPersistedReadAccess(directUri)
+                }
+            }
+            return resolveAttachmentUri(relativeLink)
+        }
 
         private fun resolveAttachmentUri(relativeLink: String): Uri? {
             val file = when (currentDocumentFormat) {

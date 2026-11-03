@@ -62,6 +62,7 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingBlockquotesFragment -> "Block Quotes"
                 is StylingCalloutsFragment -> "Callouts"
                 is StylingAttachmentsFragment -> "Attachments"
+                is StylingEmbeddedContentFragment -> "Embedded Content"
                 is StylingTablesFragment -> "Tables"
                 is StylingCodeFragment -> "Code Blocks"
                 is StylingHrFragment -> "Horizontal Rules"
@@ -946,6 +947,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_blockquotes" -> StylingBlockquotesFragment()
             "pref_styling_page_callouts" -> StylingCalloutsFragment()
             "pref_styling_page_attachments" -> StylingAttachmentsFragment()
+            "pref_styling_page_embedded_content" -> StylingEmbeddedContentFragment()
             "pref_styling_page_tables" -> StylingTablesFragment()
             "pref_styling_page_code" -> StylingCodeFragment()
             "pref_styling_page_hr" -> StylingHrFragment()
@@ -1370,6 +1372,12 @@ class StylingAttachmentsFragment : StylingSettingsFragment() {
     }
 }
 
+class StylingEmbeddedContentFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_embedded_content, rootKey)
+    }
+}
+
 class StylingTablesFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_tables, rootKey)
@@ -1449,7 +1457,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell"
             ),
             "insert" to listOf(
-                "image", "audio", "video", "attachment", "link", "callout", "inlineCode", "blockQuote",
+                "image", "audio", "video", "attachment", "embed", "link", "callout", "inlineCode", "blockQuote",
                 "codeBlock", "horizontalLine", "footnote"
             ),
             "menu" to listOf(
@@ -1473,7 +1481,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple",
             "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
-            "image", "audio", "video", "attachment", "link", "callout", "inlineCode", "blockQuote",
+            "image", "audio", "video", "attachment", "embed", "link", "callout", "inlineCode", "blockQuote",
             "codeBlock", "horizontalLine", "footnote",
             "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "saveAsMdzip",

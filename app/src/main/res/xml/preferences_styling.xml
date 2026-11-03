@@ -38,6 +38,11 @@
         app:summary="Configure caret color, blink rate, and selection handles" />
 
     <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_embedded_content"
+        app:title="Embedded Content"
+        app:summary="Embedded document background, text, border, spacing, and shape" />
+
+    <com.wmdx.markdownapp.ResetPreference
         app:key="pref_styling_page_footnotes"
         app:title="Footnotes"
         app:summary="Footnote text, reference, return-link, and background appearance" />

@@ -635,7 +635,7 @@ test('keyboard shortcuts are one flat alphabetical list with no section headings
   assert.doesNotMatch(hotkeysXml, /ResetPreferenceCategory/);
   const titles = [...hotkeysXml.matchAll(/app:title="([^"]+)"/g)]
     .map(([, title]) => title.replace(/&amp;/g, '&'));
-  assert.equal(titles.length, 66, 'All shortcut preferences remain present');
+  assert.equal(titles.length, 67, 'All shortcut preferences remain present');
   assert.deepEqual(
     titles,
     [...titles].sort((first, second) =>
@@ -675,7 +675,7 @@ test('left panel search options reach native search and the file filters', () =>
   );
   assert.match(
     mainActivitySource,
-    /markdownExtensions = setOf\("\.md", "\.textpack", "\.mdx", "\.textpack\.zip", "\.mdz"\)/
+    /markdownExtensions = setOf\("\.md", "\.textpack", "\.textpack\.zip", "\.mdz"\)/
   );
   assert.match(
     mainActivitySource,
@@ -966,6 +966,7 @@ test('Document Appearance pages are alphabetized by title', () => {
     'Callouts',
     'Code Blocks',
     'Cursor & Selection',
+    'Embedded Content',
     'Footnotes',
     'Headings (H1 – H6)',
     'Highlights & Pens',

@@ -465,6 +465,14 @@ object PreferenceResetHelper {
             key == "pref_mdzip_attachment_padding_x" -> 10
             key == "pref_mdzip_attachment_padding_y" -> 7
             key == "pref_mdzip_attachment_font_size" -> 14
+            key == "pref_embedded_content_bg_color" ||
+                key == "pref_embedded_content_text_color" ||
+                key == "pref_embedded_content_border_color" -> "default"
+            key == "pref_embedded_content_border_width" -> 1
+            key == "pref_embedded_content_border_radius" -> 8
+            key == "pref_embedded_content_padding_x" -> 10
+            key == "pref_embedded_content_padding_y" -> 8
+            key == "pref_embedded_content_font_size" -> 14
             key == "pref_hr_thickness" -> 2
             key == "pref_hr_style" -> "solid"
             key == "pref_hr_color" -> "default"
@@ -596,6 +604,7 @@ object PreferenceResetHelper {
                 key == "pref_left_panel_folders_keep_open" ||
                 key == "pref_left_panel_tabs_keep_open" -> false
             key == "pref_markdown_image_location" -> MarkdownAssetManager.LOCATION_ASSETS
+            key == "pref_embedded_document_method" -> "copy"
             key == "pref_settings_category_title_color" -> "#00E5FF"
             key == "pref_settings_title_color" -> "#FFFFFF"
             key == "pref_settings_summary_color" -> "#AAAAAA"
@@ -636,6 +645,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_save_tabs" -> ""
             key == "pref_hotkey_paste_as_plain_text" -> "ctrl+shift+v"
             key == "pref_hotkey_attachment" -> "ctrl+shift+a"
+            key == "pref_hotkey_embed" -> "ctrl+alt+e"
             key == "pref_hotkey_save_as_textpack" -> "ctrl+shift+alt+s"
             key == "pref_hotkey_save_as_mdzip" -> "ctrl+shift+alt+m"
             key == "pref_hotkey_image" -> "ctrl+shift+i"

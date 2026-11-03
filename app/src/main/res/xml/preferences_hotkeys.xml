@@ -40,6 +40,12 @@
         app:defaultValue="ctrl+shift+c" />
 
     <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_embed"
+        app:title="Document: Embed"
+        app:summary="Key combination (e.g. ctrl+alt+e)"
+        app:defaultValue="ctrl+alt+e" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
         app:key="pref_hotkey_new"
         app:title="Document: New"
         app:summary="Key combination (e.g. ctrl+n)"
