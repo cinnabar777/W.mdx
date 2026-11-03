@@ -27,10 +27,11 @@ test('unsupported audio decoding shows a notice instead of dead playback control
 test('long-press exposes edit and explicit package delete actions', () => {
   const player = read('src/audioPreviewWidget.js');
   assert.match(player, /editButton\.textContent = 'Edit'/);
-  assert.match(player, /deleteButton\.textContent = 'Remove link'/);
+  assert.match(player, /removeLinkButton\.textContent = 'Remove link'/);
+  assert.match(player, /deleteButton\.textContent = 'Delete'/);
   assert.match(player, /this\.onEdit\(view/);
   assert.doesNotMatch(player, /editMdzipAudio/);
-  assert.match(player, /userEvent: 'delete\.mdzip-audio'/);
+  assert.match(player, /userEvent: deletePackagedAsset \? 'delete\.packaged-audio' : 'delete\.audio-link'/);
 });
 
 test('AAC, M4A, WAV, FLAC, Opus, OGG, and OGA files are accepted and served with the correct MIME types', () => {
@@ -388,16 +389,17 @@ test('audio edit controls save width and alignment, and the keyboard requests se
   assert.match(player, /this\.layout\.alignment === 'center'/);
 });
 
-test('audio link edits synchronize packaged assets and retain their bytes for undo', () => {
+test('audio links retain package files unless Delete is chosen and staged changes remain undoable', () => {
   const editor = read('src/main.js');
   const player = read('src/audioPreviewWidget.js');
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   assert.match(editor, /syncMdzipAudioReferences\?\.\(\s*JSON\.stringify\(\[\.\.\.previousUrls\]\)/);
+  assert.match(editor, /syncPackagedAssetReferences\?\./);
   assert.match(manager, /pendingAudioDeletions: MutableSet<String>/);
-  assert.match(manager, /name !in pendingDeletions/);
+  assert.match(manager, /safeArchivePath\(name\) !in pendingDeletions/);
   assert.match(manager, /fun syncAudioReferences\(/);
   assert.match(manager, /session\.pendingAudioDeletions\.add\(archivePath\)/);
-  assert.match(player, /userEvent: 'delete\.mdzip-audio'/);
+  assert.match(player, /userEvent: deletePackagedAsset \? 'delete\.packaged-audio' : 'delete\.audio-link'/);
 });
 
 test('view changes preserve CodeMirror undo history', () => {

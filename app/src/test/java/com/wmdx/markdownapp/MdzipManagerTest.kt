@@ -134,6 +134,67 @@ class MdzipManagerTest {
     }
 
     @Test
+    fun packageAssetDeletionIsExplicitAndUndoCancelsThePendingRemoval() {
+        val sessionDir = File.createTempFile("mdzip-delete-session-", ".tmp")
+        assertTrue(sessionDir.delete())
+        assertTrue(sessionDir.mkdirs())
+        val archiveFile = File.createTempFile("mdzip-delete-", ".mdz")
+        try {
+            File(sessionDir, "index.md").writeText("# Delete test")
+            File(sessionDir, "manifest.json").writeText("""{"entryPoint":"index.md"}""")
+            val audio = File(sessionDir, "audio/voice.mp3")
+            assertTrue(audio.parentFile?.mkdirs() == true)
+            audio.writeBytes(byteArrayOf(1, 2, 3))
+            val attachment = File(sessionDir, "attachments/notes.pdf")
+            assertTrue(attachment.parentFile?.mkdirs() == true)
+            attachment.writeBytes(byteArrayOf(4, 5, 6))
+            val session = MdzipSession(
+                sessionDir,
+                "index.md",
+                org.json.JSONObject(),
+                "",
+                null
+            )
+
+            MdzipManager.syncAudioReferences(
+                session,
+                listOf("audio/voice.mp3"),
+                emptyList()
+            )
+            assertTrue(session.pendingAudioDeletions.isEmpty())
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "audio/voice.mp3"))
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/notes.pdf"))
+            assertTrue(session.pendingAttachmentDeletions.contains("attachments/notes.pdf"))
+
+            MdzipManager.syncPackagedAssetReferences(
+                session,
+                listOf("audio/voice.mp3", "attachments/notes.pdf")
+            )
+            assertTrue(session.pendingAudioDeletions.isEmpty())
+            assertTrue(session.pendingAttachmentDeletions.isEmpty())
+            MdzipManager.writeSessionArchive(sessionDir, emptySet(), archiveFile)
+            ZipFile(archiveFile).use { archive ->
+                assertTrue(archive.getEntry("audio/voice.mp3") != null)
+                assertTrue(archive.getEntry("attachments/notes.pdf") != null)
+            }
+
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "audio/voice.mp3"))
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/notes.pdf"))
+            val pending = session.pendingAudioDeletions +
+                session.pendingVideoDeletions +
+                session.pendingAttachmentDeletions
+            MdzipManager.writeSessionArchive(sessionDir, pending, archiveFile)
+            ZipFile(archiveFile).use { archive ->
+                assertEquals(null, archive.getEntry("audio/voice.mp3"))
+                assertEquals(null, archive.getEntry("attachments/notes.pdf"))
+            }
+        } finally {
+            archiveFile.delete()
+            sessionDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun addsAnyAttachmentWithUniqueNamesAndResolvesRelativeLinks() {
         val sessionDir = File.createTempFile("mdzip-attachment-session-", ".tmp")
         assertTrue(sessionDir.delete())

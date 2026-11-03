@@ -133,6 +133,52 @@ class TextPackManagerTest {
     }
 
     @Test
+    fun onlyExplicitPackagedAssetDeletionRemovesTheAssetAndUndoRestoresIt() {
+        val sessionDir = temporaryDirectory()
+        val archiveFile = File.createTempFile("textpack-delete-", ".textpack")
+        val session = TextPackSession(sessionDir, "# Delete test", null, "text.markdown")
+        try {
+            File(sessionDir, "text.markdown").writeText(session.markdownContent)
+            val asset = File(sessionDir, "assets/voice memo.mp3")
+            assertTrue(asset.parentFile?.mkdirs() == true)
+            asset.writeBytes(byteArrayOf(1, 2, 3))
+
+            TextPackManager.syncAssetReferences(session, emptyList())
+            assertTrue(session.pendingAssetDeletions.isEmpty())
+            TextPackManager.writeSessionArchive(sessionDir, "text.markdown", archiveFile)
+            ZipFile(archiveFile).use { assertNotNull(it.getEntry("assets/voice memo.mp3")) }
+
+            assertTrue(TextPackManager.canDeleteAsset(session, "assets/voice%20memo.mp3"))
+            assertTrue(TextPackManager.stageAssetDeletion(session, "assets/voice%20memo.mp3"))
+            assertTrue(session.pendingAssetDeletions.contains("assets/voice memo.mp3"))
+
+            TextPackManager.writeSessionArchive(
+                sessionDir,
+                "text.markdown",
+                archiveFile,
+                session.pendingAssetDeletions
+            )
+            ZipFile(archiveFile).use { assertNull(it.getEntry("assets/voice memo.mp3")) }
+
+            TextPackManager.syncAssetReferences(session, listOf("assets/voice%20memo.mp3"))
+            assertFalse(session.pendingAssetDeletions.contains("assets/voice memo.mp3"))
+            TextPackManager.writeSessionArchive(
+                sessionDir,
+                "text.markdown",
+                archiveFile,
+                session.pendingAssetDeletions
+            )
+            ZipFile(archiveFile).use { assertNotNull(it.getEntry("assets/voice memo.mp3")) }
+
+            TextPackManager.syncAssetReferences(session, emptyList())
+            assertFalse(session.pendingAssetDeletions.contains("assets/voice memo.mp3"))
+        } finally {
+            archiveFile.delete()
+            sessionDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsTraversalPathsAndArchivesWithTraversalEntries() {
         listOf("../outside.png", "/outside.png", "assets/../../outside.png", "C:/outside.png")
             .forEach { path ->

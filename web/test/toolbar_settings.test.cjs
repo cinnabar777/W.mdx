@@ -687,7 +687,7 @@ test('toolbar actions do not force the editor keyboard open', () => {
   assert.match(mainSource, /cmWrapSelection\(view, tableMarkdown, '', \{ preserveKeyboard: true \}\)/);
 });
 
-test('toolbar touches gate automatic keyboard focus without restoring the IME later', () => {
+test('toolbar touches preserve editor focus while keeping a hidden IME gated', () => {
   assert.match(
     mainSource,
     /document\.addEventListener\('pointerdown', event => \{[\s\S]*?toolbarImeSurfaceSelector[\s\S]*?beginToolbarInteraction\?\.\(\)/,
@@ -695,12 +695,12 @@ test('toolbar touches gate automatic keyboard focus without restoring the IME la
   );
   assert.match(
     mainSource,
-    /window\.setTimeout\(\(\) => \{[\s\S]*?endToolbarInteraction\?\.\(\)[\s\S]*?\}, 80\)/
+    /editorHadFocus: Boolean\(view\?\.hasFocus\)[\s\S]*?endToolbarInteraction\?\.\(\)[\s\S]*?view\.focus\(\)[\s\S]*?\}, 80\)/
   );
   assert.match(
     mainActivitySource,
-    /event\.actionMasked == MotionEvent\.ACTION_DOWN[\s\S]*?setImeInputAllowed\(imeWasVisible\)/,
-    'native touch handling gates WebView keyboard focus before it receives the touch'
+    /if \(!imeWasVisible\) \{\s*toolbarImeSuppressedUntilEditorTouch = true\s*\}[\s\S]*?setImeInputAllowed\(imeWasVisible\)/,
+    'native touch handling gates hidden IME requests before WebView receives any touch'
   );
   assert.match(
     mainActivitySource,

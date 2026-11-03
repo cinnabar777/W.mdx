@@ -139,7 +139,16 @@ function viewportBounds() {
 }
 
 export class AudioPreviewWidget extends WidgetType {
-  constructor(src, label, relativeLink, from, to, layout = null, onEdit = null) {
+  constructor(
+    src,
+    label,
+    relativeLink,
+    from,
+    to,
+    layout = null,
+    onEdit = null,
+    documentSessionId = null
+  ) {
     super();
     this.src = src;
     this.label = label || 'audio file';
@@ -154,6 +163,7 @@ export class AudioPreviewWidget extends WidgetType {
         : 'left'
     };
     this.onEdit = onEdit;
+    this.documentSessionId = documentSessionId;
   }
 
   eq(other) {
@@ -161,6 +171,7 @@ export class AudioPreviewWidget extends WidgetType {
       other.src === this.src &&
       other.label === this.label &&
       other.relativeLink === this.relativeLink &&
+      other.documentSessionId === this.documentSessionId &&
       other.from === this.from &&
       other.to === this.to &&
       other.layout.width === this.layout.width &&
@@ -170,6 +181,7 @@ export class AudioPreviewWidget extends WidgetType {
   toDOM(view) {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-mdzip-audio-preview-wrapper';
+    const expectedMarkdown = view?.state?.doc?.sliceString(this.from, this.to) ?? '';
     const alignmentMargin = this.layout.alignment === 'center'
       ? '10px auto'
       : this.layout.alignment === 'right'
@@ -375,12 +387,27 @@ export class AudioPreviewWidget extends WidgetType {
     stylePopupButton(editButton);
     actions.appendChild(editButton);
 
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.setAttribute('role', 'menuitem');
-    deleteButton.textContent = 'Remove link';
-    stylePopupButton(deleteButton);
-    actions.appendChild(deleteButton);
+    const removeLinkButton = document.createElement('button');
+    removeLinkButton.type = 'button';
+    removeLinkButton.setAttribute('role', 'menuitem');
+    removeLinkButton.textContent = 'Remove link';
+    stylePopupButton(removeLinkButton);
+    actions.appendChild(removeLinkButton);
+
+    const canDeletePackagedAsset =
+      window.AndroidNative?.canDeletePackagedAsset?.(
+        this.relativeLink,
+        this.documentSessionId
+      ) === true;
+    let deleteButton = null;
+    if (canDeletePackagedAsset) {
+      deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.setAttribute('role', 'menuitem');
+      deleteButton.textContent = 'Delete';
+      stylePopupButton(deleteButton);
+      actions.appendChild(deleteButton);
+    }
 
     let lastPressPoint = null;
     let activePopup = null;
@@ -842,14 +869,32 @@ export class AudioPreviewWidget extends WidgetType {
         layout: this.layout
       });
     };
-    const deleteAudio = event => {
+    const removeAudioLink = (event, deletePackagedAsset = false) => {
       event.preventDefault();
       event.stopPropagation();
       hidePopup(actions);
+      if (
+        !view ||
+        this.from < 0 ||
+        this.to > view.state.doc.length ||
+        this.from >= this.to ||
+        view.state.doc.sliceString(this.from, this.to) !== expectedMarkdown
+      ) return;
+      if (
+        deletePackagedAsset &&
+        window.AndroidNative?.deletePackagedAsset?.(
+          this.relativeLink,
+          this.documentSessionId
+        ) !== true
+      ) {
+        status.textContent = 'Could not delete this file from the package.';
+        status.style.display = 'block';
+        return;
+      }
       view.dispatch({
         changes: { from: this.from, to: this.to, insert: '' },
         selection: { anchor: this.from },
-        userEvent: 'delete.mdzip-audio'
+        userEvent: deletePackagedAsset ? 'delete.packaged-audio' : 'delete.audio-link'
       });
       view.focus();
     };
@@ -860,7 +905,8 @@ export class AudioPreviewWidget extends WidgetType {
     labelRow.addEventListener('pointercancel', onLabelPointerEnd);
     labelRow.addEventListener('contextmenu', onContextMenu);
     editButton.addEventListener('click', editAudio);
-    deleteButton.addEventListener('click', deleteAudio);
+    removeLinkButton.addEventListener('click', event => removeAudioLink(event));
+    deleteButton?.addEventListener('click', event => removeAudioLink(event, true));
     document.addEventListener('pointerdown', dismissPopup, true);
     window.addEventListener('resize', positionPopup);
     window.addEventListener('scroll', positionPopup, true);

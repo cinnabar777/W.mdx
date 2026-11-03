@@ -24,7 +24,8 @@ data class TextPackSession(
     val sessionDir: File,
     var markdownContent: String,
     var sourceUri: Uri?,
-    val markdownEntryPath: String = DEFAULT_TEXT_PACK_MARKDOWN_ENTRY
+    val markdownEntryPath: String = DEFAULT_TEXT_PACK_MARKDOWN_ENTRY,
+    val pendingAssetDeletions: MutableSet<String> = linkedSetOf()
 )
 
 object TextPackManager {
@@ -271,7 +272,12 @@ object TextPackManager {
 
             val stagedArchive = File.createTempFile("textpack-save-", ".textpack", context.cacheDir)
             try {
-                writeSessionArchive(session.sessionDir, markdownEntryPath, stagedArchive)
+                writeSessionArchive(
+                    session.sessionDir,
+                    markdownEntryPath,
+                    stagedArchive,
+                    session.pendingAssetDeletions
+                )
                 verifyStagedArchive(stagedArchive, markdownEntryPath)
 
                 val output = context.contentResolver.openOutputStream(targetUri, "rwt")
@@ -297,6 +303,25 @@ object TextPackManager {
         return runCatching { resolveSessionFile(session.sessionDir, archivePath) }
             .getOrNull()
             ?.takeIf { it.isFile }
+    }
+
+    internal fun canDeleteAsset(session: TextPackSession, markdownReference: String): Boolean =
+        resolveAssetFile(session, markdownReference) != null
+
+    internal fun stageAssetDeletion(session: TextPackSession, markdownReference: String): Boolean {
+        val archivePath = assetArchivePath(markdownReference) ?: return false
+        synchronized(session) {
+            if (resolveAssetFile(session, markdownReference) == null) return false
+            session.pendingAssetDeletions.add(archivePath)
+            return true
+        }
+    }
+
+    internal fun syncAssetReferences(session: TextPackSession, currentReferences: Collection<String>) {
+        val currentPaths = currentReferences.mapNotNullTo(linkedSetOf(), ::assetArchivePath)
+        synchronized(session) {
+            session.pendingAssetDeletions.removeAll(currentPaths)
+        }
     }
 
     internal fun previewAssetUrl(session: TextPackSession, markdownReference: String): String? {
@@ -327,14 +352,22 @@ object TextPackManager {
         return segments.joinToString("/")
     }
 
-    internal fun writeSessionArchive(sessionDir: File, markdownEntryPath: String, archiveFile: File) {
+    internal fun writeSessionArchive(
+        sessionDir: File,
+        markdownEntryPath: String,
+        archiveFile: File,
+        excludedPaths: Set<String> = emptySet()
+    ) {
         val selectedMarkdownPath = safeArchivePath(markdownEntryPath)
+        val safeExcludedPaths = excludedPaths.mapTo(hashSetOf(), ::safeArchivePath)
         val root = sessionDir.canonicalFile
         val files = sessionDir.walkTopDown()
             .filter { it.isFile }
             .map { file -> relativePath(sessionDir, file) to file }
             .filter { (path, _) ->
-                !isRootTextDocumentPath(path) || path == selectedMarkdownPath
+                val safePath = safeArchivePath(path)
+                safePath !in safeExcludedPaths &&
+                    (!isRootTextDocumentPath(safePath) || safePath == selectedMarkdownPath)
             }
             .sortedBy { it.first }
 

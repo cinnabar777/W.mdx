@@ -64,9 +64,9 @@ import {
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
 
-// Keep WebView focus and the Android IME unchanged while touch interaction
-// moves between editor text and the in-WebView toolbars.
-const activeToolbarImePointers = new Set();
+// Preserve editor focus while touch interaction moves between editor text and
+// the in-WebView toolbars. Native input gating keeps this from opening a hidden IME.
+const activeToolbarImePointers = new Map();
 const toolbarImeSurfaceSelector =
   '#bottom-toolbar, #floating-selection-toolbar, #popup-toolbar-strip, #floating-toggle-btn, .floating-toggle-btn';
 
@@ -77,7 +77,11 @@ document.addEventListener('pointerdown', event => {
 
   const pointerId = event.pointerId ?? 0;
   if (activeToolbarImePointers.has(pointerId)) return;
-  activeToolbarImePointers.add(pointerId);
+  const view = activeAdapter?.view;
+  activeToolbarImePointers.set(pointerId, {
+    view,
+    editorHadFocus: Boolean(view?.hasFocus)
+  });
   if (target.closest?.('button, [role="button"], [data-toolbar-key]')) {
     event.preventDefault();
   }
@@ -85,9 +89,20 @@ document.addEventListener('pointerdown', event => {
 }, true);
 
 const finishToolbarImePointer = pointerId => {
-  if (!activeToolbarImePointers.delete(pointerId)) return;
+  const pointerState = activeToolbarImePointers.get(pointerId);
+  if (!pointerState) return;
+  activeToolbarImePointers.delete(pointerId);
   window.setTimeout(() => {
     window.AndroidNative?.endToolbarInteraction?.();
+    const { view, editorHadFocus } = pointerState;
+    if (
+      !editorHadFocus ||
+      !view?.dom?.isConnected ||
+      view.hasFocus ||
+      document.visibilityState === 'hidden' ||
+      document.querySelector('[role="dialog"]:not([aria-hidden="true"]), dialog[open]')
+    ) return;
+    view.focus();
   }, 80);
 };
 
@@ -98,7 +113,7 @@ document.addEventListener('pointercancel', event => {
   finishToolbarImePointer(event.pointerId ?? 0);
 }, true);
 window.addEventListener('blur', () => {
-  for (const pointerId of [...activeToolbarImePointers]) {
+  for (const pointerId of [...activeToolbarImePointers.keys()]) {
     finishToolbarImePointer(pointerId);
   }
 });
@@ -2118,7 +2133,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   node.to,
                   videoLink.layout,
                   (editView, item) => openVideoEditDialog(editView, item),
-                  videoLink.unsupported
+                  videoLink.unsupported,
+                  window.AndroidNative?.getCurrentDocumentSessionId?.()
                 )
               }).range(node.from, node.to);
               builder.push(videoDecoration);
@@ -2138,7 +2154,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   node.from,
                   node.to,
                   audioLink.layout,
-                  (editView, item) => openAudioEditDialog(editView, item)
+                  (editView, item) => openAudioEditDialog(editView, item),
+                  window.AndroidNative?.getCurrentDocumentSessionId?.()
                 )
               }).range(node.from, node.to);
               builder.push(audioDecoration);
@@ -3247,7 +3264,8 @@ function buildHeightMapValue(state) {
               node.to,
               videoLink.layout,
               (editView, item) => openVideoEditDialog(editView, item),
-              videoLink.unsupported
+              videoLink.unsupported,
+              window.AndroidNative?.getCurrentDocumentSessionId?.()
             )
           }).range(node.from, node.to);
           replacements.push(videoDecoration);
@@ -3267,7 +3285,8 @@ function buildHeightMapValue(state) {
               node.from,
               node.to,
               audioLink.layout,
-              (editView, item) => openAudioEditDialog(editView, item)
+              (editView, item) => openAudioEditDialog(editView, item),
+              window.AndroidNative?.getCurrentDocumentSessionId?.()
             )
           }).range(node.from, node.to);
           replacements.push(audioDecoration);
@@ -4121,6 +4140,47 @@ class CodeMirrorAdapter {
     }
   }
 
+  syncPackagedAssetReferences(update) {
+    let assetLinksMayHaveChanged = false;
+    update.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+      const changedText =
+        update.startState.doc.sliceString(fromA, toA) +
+        update.state.doc.sliceString(fromB, toB);
+      if (
+        /(?:assets|attachments|audio|video)\//i.test(changedText) ||
+        /\.(?:mp3|aac|m4a|wav|flac|opus|ogg|oga|mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv|pdf|zip|docx?|xlsx?|pptx?|txt|csv|rtf|html?)(?:$|[?#\s)>])/i.test(changedText)
+      ) {
+        assetLinksMayHaveChanged = true;
+      }
+    });
+    if (!assetLinksMayHaveChanged) return;
+    if (!forceParsing(update.view, update.state.doc.length, 40)) return;
+
+    const references = new Set();
+    syntaxTree(update.state).iterate({
+      enter: node => {
+        if (node.name !== 'Link') return;
+        const raw = update.state.doc.sliceString(node.from, node.to);
+        const parsed = parseMarkdownAudioLink(raw) ||
+          parseMarkdownVideoLink(raw) ||
+          parseMarkdownAttachmentLink(raw);
+        if (parsed?.url) references.add(parsed.url);
+      }
+    });
+
+    try {
+      window.AndroidNative?.syncPackagedAssetReferences?.(
+        JSON.stringify([...references]),
+        this.documentSessionId
+      );
+    } catch (error) {
+      window.AndroidNative?.reportDiagnostic?.(
+        'packaged_asset_reference_sync_failed',
+        error?.message || 'bridge call failed'
+      );
+    }
+  }
+
   queueScrollPositionSave() {
     if (!this.view || this.isProgrammatic) return;
     if (this.scrollPersistTimer !== null) {
@@ -4225,6 +4285,7 @@ class CodeMirrorAdapter {
             } else {
               this.syncMdzipAudioReferences(update);
               this.syncMdzipVideoReferences(update);
+              this.syncPackagedAssetReferences(update);
             }
           }
           if (update.docChanged && !this.isProgrammatic) {

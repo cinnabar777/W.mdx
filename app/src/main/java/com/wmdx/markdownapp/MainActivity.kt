@@ -384,8 +384,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         webView.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 val imeWasVisible = editorImeVisible()
-                // Block WebView's automatic input-connection focus before it
-                // handles the touch. Text fields explicitly request the IME.
+                // Any touch starts in the non-text state unless JavaScript
+                // identifies an actual editable target. This runs before
+                // WebView handles the touch, so toolbar and popup taps cannot
+                // reopen a previously hidden IME.
+                if (!imeWasVisible) {
+                    toolbarImeSuppressedUntilEditorTouch = true
+                }
                 (webView as? EditorWebView)
                     ?.setImeInputAllowed(imeWasVisible)
             }
@@ -4251,6 +4256,62 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         fun canOpenAttachment(relativeLink: String, documentSessionId: String?): Boolean {
             if (documentSessionId != currentDocumentSessionId) return false
             return resolveAttachmentUri(relativeLink) != null
+        }
+
+        @JavascriptInterface
+        fun canDeletePackagedAsset(relativeLink: String, documentSessionId: String?): Boolean {
+            if (documentSessionId != currentDocumentSessionId) return false
+            return when (currentDocumentFormat) {
+                DocumentFormat.MDZIP -> currentMdzipSession?.let {
+                    MdzipManager.canDeletePackagedAsset(it, relativeLink)
+                } ?: false
+                DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
+                    TextPackManager.canDeleteAsset(it, relativeLink)
+                } ?: false
+                DocumentFormat.MARKDOWN -> false
+            }
+        }
+
+        @JavascriptInterface
+        fun deletePackagedAsset(relativeLink: String, documentSessionId: String?): Boolean {
+            if (documentSessionId != currentDocumentSessionId) return false
+            return when (currentDocumentFormat) {
+                DocumentFormat.MDZIP -> currentMdzipSession?.let {
+                    runCatching {
+                        MdzipManager.stagePackagedAssetDeletion(it, relativeLink)
+                    }.getOrDefault(false)
+                } ?: false
+                DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
+                    runCatching {
+                        TextPackManager.stageAssetDeletion(it, relativeLink)
+                    }.getOrDefault(false)
+                } ?: false
+                DocumentFormat.MARKDOWN -> false
+            }
+        }
+
+        @JavascriptInterface
+        fun syncPackagedAssetReferences(
+            referencesJson: String?,
+            documentSessionId: String?
+        ) {
+            if (documentSessionId != currentDocumentSessionId) return
+            val references = runCatching {
+                val values = org.json.JSONArray(referencesJson ?: "[]")
+                (0 until values.length()).mapNotNull { index ->
+                    values.optString(index).takeIf { it.isNotBlank() }
+                }
+            }.getOrNull() ?: return
+
+            when (currentDocumentFormat) {
+                DocumentFormat.MDZIP -> currentMdzipSession?.let {
+                    MdzipManager.syncPackagedAssetReferences(it, references)
+                }
+                DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
+                    TextPackManager.syncAssetReferences(it, references)
+                }
+                DocumentFormat.MARKDOWN -> Unit
+            }
         }
 
         @JavascriptInterface

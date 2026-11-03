@@ -27,6 +27,7 @@ test('audio, video, and attachment insertion use storage for the active document
 test('audio and video widgets use format-neutral removal language', () => {
   for (const widgetFile of ['audioPreviewWidget.js', 'videoPreviewWidget.js']) {
     const source = fs.readFileSync(path.join(__dirname, '../src', widgetFile), 'utf8');
-    assert.match(source, /deleteButton\.textContent = 'Remove link'/);
+    assert.match(source, /removeLinkButton\.textContent = 'Remove link'/);
+    assert.match(source, /deleteButton\.textContent = 'Delete'/);
   }
 });

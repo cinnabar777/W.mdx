@@ -78,15 +78,18 @@ test('MDZip attachment width and alignment metadata round-trip safely', async ()
   );
 });
 
-test('attachments expose whole-element edit and delete actions in the widget', () => {
+test('attachments expose whole-element edit, remove-link, and packaged-delete actions', () => {
   const widget = fs.readFileSync(
     path.join(__dirname, '../src/mdzipAttachmentWidget.js'),
     'utf8'
   );
   assert.match(widget, /createAction\('Edit'/);
+  assert.match(widget, /createAction\('Remove link'/);
   assert.match(widget, /createAction\('Delete'/);
+  assert.match(widget, /canDeletePackagedAsset/);
+  assert.match(widget, /deletePackagedAsset/);
   assert.match(widget, /changes: \{ from: this\.from, to: this\.to, insert: '' \}/);
-  assert.match(widget, /userEvent: 'delete\.mdzip-attachment'/);
+  assert.match(widget, /userEvent: 'delete\.packaged-attachment'/);
   assert.match(widget, /sliceString\(this\.from, this\.to\) !== expectedMarkdown/);
   assert.match(widget, /--mdzip-attachment-border-radius/);
 });

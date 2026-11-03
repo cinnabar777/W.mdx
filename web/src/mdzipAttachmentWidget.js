@@ -207,7 +207,7 @@ export class MdzipAttachmentWidget extends WidgetType {
         layout: this.layout
       });
     });
-    createAction('Delete', () => {
+    const removeAttachmentLink = () => {
       if (
         !view ||
         this.from < 0 ||
@@ -218,10 +218,38 @@ export class MdzipAttachmentWidget extends WidgetType {
       view.dispatch({
         changes: { from: this.from, to: this.to, insert: '' },
         selection: { anchor: this.from },
-        userEvent: 'delete.mdzip-attachment'
+        userEvent: 'delete.attachment-link'
       });
       view.focus();
-    });
+    };
+    createAction('Remove link', removeAttachmentLink);
+
+    if (
+      window.AndroidNative?.canDeletePackagedAsset?.(
+        this.relativeLink,
+        this.documentSessionId
+      ) === true
+    ) {
+      createAction('Delete', () => {
+        if (
+          !view ||
+          this.from < 0 ||
+          this.to > view.state.doc.length ||
+          this.from >= this.to ||
+          view.state.doc.sliceString(this.from, this.to) !== expectedMarkdown ||
+          window.AndroidNative?.deletePackagedAsset?.(
+            this.relativeLink,
+            this.documentSessionId
+          ) !== true
+        ) return;
+        view.dispatch({
+          changes: { from: this.from, to: this.to, insert: '' },
+          selection: { anchor: this.from },
+          userEvent: 'delete.packaged-attachment'
+        });
+        view.focus();
+      });
+    }
 
     button.addEventListener('pointerdown', onPointerDown);
     button.addEventListener('pointermove', onPointerMove);

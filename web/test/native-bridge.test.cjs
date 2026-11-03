@@ -147,6 +147,10 @@ test('toolbar actions block incidental keyboard opens when the keyboard started 
   assert.match(mainActivitySource, /setImeInputAllowed\(imeWasVisible\)/);
   assert.match(
     mainActivitySource,
+    /if \(!imeWasVisible\) \{\s*toolbarImeSuppressedUntilEditorTouch = true\s*\}/
+  );
+  assert.match(
+    mainActivitySource,
     /fun beginToolbarInteraction\(\)[\s\S]*?if \(!imeWasVisible\)[\s\S]*?setImeInputAllowed\(false\)/
   );
   assert.match(
