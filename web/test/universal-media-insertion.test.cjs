@@ -31,8 +31,12 @@ test('audio, video, and attachment insertion use storage for the active document
   assert.match(insertion, /MdzipManager\.addAttachment\(session, assetInput, originalName\)/);
   assert.match(insertion, /val escapedTitle = JSONObjectWrapper\.quote\(title\)/);
   assert.match(insertion, /\$insertMethod\?\.\(\$escapedLink, \$escapedTitle\)/);
-  assert.match(titlePrompt, /setTitle\("Insert \$kindTitle"\)/);
-  assert.match(titlePrompt, /hint = "Title"/);
+  assert.match(titlePrompt, /setTitle\("Set \$kindTitle title"\)/);
+  assert.match(
+    titlePrompt,
+    /setMessage\("This title appears in the document\. It does not rename the file\."\)/
+  );
+  assert.match(titlePrompt, /hint = "Displayed title"/);
   assert.match(titlePrompt, /setText\(defaultTitle\)/);
   assert.match(mainActivity, /promptForAssetTitle\(uri, InsertAssetKind\.AUDIO\)/);
   assert.match(mainActivity, /promptForAssetTitle\(uri, InsertAssetKind\.VIDEO\)/);

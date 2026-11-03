@@ -3130,7 +3130,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .ifBlank { originalName }
         val input = EditText(this).apply {
             setSingleLine(true)
-            hint = "Title"
+            hint = "Displayed title"
             setText(defaultTitle)
             setSelection(text.length)
         }
@@ -3140,7 +3140,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             InsertAssetKind.ATTACHMENT -> "attachment"
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Insert $kindTitle")
+            .setTitle("Set $kindTitle title")
+            .setMessage("This title appears in the document. It does not rename the file.")
             .setView(input, 24, 4, 24, 0)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Insert", null)
