@@ -277,6 +277,8 @@ test('toolbar gestures can open and save the preferences for their own key', () 
     mainSource,
     /save\(targetSurface, rawConfig\)/
   );
+  assert.match(mainSource, /openToolbarKeyPreferencesDialog\(\{[\s\S]*?onSave: \(targetSurface, nextConfig\) =>/);
+  assert.match(keyPreferencesDialogSource, /saveBottomToolbarConfig: createToolbarKeyPreferencesSaveBridge\(surface, onSave\)/);
   assert.match(mainActivitySource, /fun saveToolbarKeyPreferences\(surface: String, rawConfig: String\)/);
   assert.match(mainActivitySource, /fun pickToolbarKeyColor\(surface: String, itemId: String, property: String\)/);
   assert.match(mainActivitySource, /fun pickToolbarKeySvg\(surface: String, itemId: String, property: String\)/);

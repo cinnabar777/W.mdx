@@ -1,6 +1,8 @@
 const TOOLBAR_CONTROL_SELECTOR =
   'button, [role="button"], [data-toolbar-key], [data-toolbar-style-id]';
 const EDITABLE_CONTROL_SELECTOR = 'input, textarea, select, [contenteditable="true"]';
+const SCROLLABLE_TOOLBAR_SURFACE_SELECTOR =
+  '#popup-toolbar-strip, #floating-selection-toolbar';
 const NATIVE_CLICK_SUPPRESSION_MS = 500;
 
 export function installToolbarTouchHandling(documentRef, surfaceSelector) {
@@ -30,15 +32,24 @@ export function installToolbarTouchHandling(documentRef, surfaceSelector) {
   };
   const onTouchStart = event => {
     if (event.touches?.length > 1) return;
-    if (!getControl(event.target) || !event.cancelable) return;
+    const control = getControl(event.target);
+    if (
+      !control ||
+      control.closest(SCROLLABLE_TOOLBAR_SURFACE_SELECTOR) ||
+      !event.cancelable
+    ) return;
     // Match the mobile toolbar pattern used by Gay Toolbar: cancel the
-    // toolbar's touch default without changing WebView/editor focus policy.
+    // non-scrollable toolbar's touch default without changing WebView/editor
+    // focus policy. Scrollable surfaces retain their pan gesture.
     event.preventDefault();
   };
   const onPointerDown = event => {
     if (event.pointerType !== 'touch' || event.isPrimary === false) return;
     const control = getControl(event.target);
     if (!control) return;
+    // Prevent a toolbar button from taking focus. Pointer Events leave
+    // touch-action-controlled scrolling to the scrollable toolbar surface.
+    if (event.cancelable) event.preventDefault();
     const pointerId = event.pointerId ?? 0;
     clearPendingNativeClick(control);
     activeTouchControls.set(pointerId, control);

@@ -60,6 +60,40 @@ test('touch defaults are canceled only for toolbar actions, not editable control
   dom.window.close();
 });
 
+test('scrollable toolbar surfaces keep pan gestures while preventing button focus', async () => {
+  const { installToolbarTouchHandling } =
+    await import('../src/toolbarTouchHandling.js');
+  const dom = new JSDOM(`
+    <div id="popup-toolbar-strip">
+      <button id="popup-action" data-toolbar-key="bold">Bold</button>
+    </div>
+    <div id="floating-selection-toolbar">
+      <button id="floating-action" data-toolbar-key="undo">Undo</button>
+    </div>
+  `);
+  const { document } = dom.window;
+  const cleanup = installToolbarTouchHandling(document, toolbarSurfaceSelector);
+
+  for (const id of ['popup-action', 'floating-action']) {
+    const button = document.querySelector(`#${id}`);
+    assert.equal(
+      dispatchTouchStart(dom.window, button).defaultPrevented,
+      false,
+      'touchstart must remain uncanceled so the surface can scroll'
+    );
+    const pointerDown = createPointerEvent(dom.window, 'pointerdown');
+    button.dispatchEvent(pointerDown);
+    assert.equal(
+      pointerDown.defaultPrevented,
+      true,
+      'toolbar buttons still prevent focus changes'
+    );
+  }
+
+  cleanup();
+  dom.window.close();
+});
+
 test('touch taps re-enter the existing click pipeline for each tap', async () => {
   const { installToolbarTouchHandling } =
     await import('../src/toolbarTouchHandling.js');

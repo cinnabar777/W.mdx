@@ -2,8 +2,33 @@ const EMBEDDED_EDITOR_URL = './toolbar-settings-preview.html?embed=key-preferenc
 const CLOSE_MESSAGE_TYPE = 'wmdx-toolbar-key-preferences-close';
 const RESIZE_MESSAGE_TYPE = 'wmdx-toolbar-key-preferences-resize';
 
-export function openToolbarKeyPreferencesDialog({ keyId, keyTitle, surface, config }) {
-  if (!keyId || !config || typeof document === 'undefined') return false;
+export function createToolbarKeyPreferencesSaveBridge(surface, onSave) {
+  return rawConfig => {
+    let nextConfig;
+    try {
+      nextConfig = JSON.parse(rawConfig);
+    } catch {
+      return 'invalid_config';
+    }
+    try {
+      const saved = onSave?.(surface, nextConfig);
+      return saved === true || saved === 'saved' ? 'saved' : 'commit_failed';
+    } catch {
+      return 'bridge_error';
+    }
+  };
+}
+
+export function openToolbarKeyPreferencesDialog({
+  keyId,
+  keyTitle,
+  surface,
+  config,
+  onSave
+}) {
+  if (!keyId || !config || typeof onSave !== 'function' || typeof document === 'undefined') {
+    return false;
+  }
   document.querySelector('#toolbar-key-preferences-overlay')?.remove();
 
   const overlay = document.createElement('div');
@@ -47,27 +72,9 @@ export function openToolbarKeyPreferencesDialog({ keyId, keyTitle, surface, conf
     }
   };
 
-  const applyToolbarConfig = (targetSurface, rawConfig) => {
-    const configValue = JSON.parse(rawConfig);
-    if (targetSurface === 'floating') {
-      window.editorBridge?.applyFloatingToolbarConfig?.(configValue);
-    } else {
-      window.editorBridge?.applyBottomToolbarConfig?.(configValue);
-    }
-  };
-
   const settingsBridge = {
     setToolbarSurface: () => {},
-    saveBottomToolbarConfig: rawConfig => {
-      const save = window.AndroidNative?.saveToolbarKeyPreferences;
-      if (typeof save !== 'function' || !save(surface, rawConfig)) return 'commit_failed';
-      try {
-        applyToolbarConfig(surface, rawConfig);
-      } catch {
-        return 'bridge_error';
-      }
-      return 'saved';
-    },
+    saveBottomToolbarConfig: createToolbarKeyPreferencesSaveBridge(surface, onSave),
     pickBottomToolbarColor: (itemId, property) =>
       window.AndroidNative?.pickToolbarKeyColor?.(surface, itemId, property),
     editBottomToolbarIcon: request => {
