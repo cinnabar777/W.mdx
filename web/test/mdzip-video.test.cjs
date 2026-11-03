@@ -210,6 +210,10 @@ test('video preview keeps native controls and safely edits or deletes the entire
   assert.match(widget, /const video = this\.unsupported \? null : document\.createElement\('video'\)/);
   assert.match(widget, /Long-press for video options/);
   assert.match(widget, /}, 550\)/);
+  assert.match(widget, /wrapper\.addEventListener\('pointerdown', onPointerDown\)/);
+  assert.match(widget, /wrapper\.addEventListener\('contextmenu', onContextMenu\)/);
+  assert.match(widget, /video\?\.addEventListener\('contextmenu', onContextMenu\)/);
+  assert.match(widget, /'-webkit-touch-callout:none'/);
   assert.match(widget, /editButton\.textContent = 'Edit'/);
   assert.match(widget, /removeLinkButton\.textContent = 'Remove link'/);
   assert.match(widget, /deleteButton\.textContent = 'Delete'/);

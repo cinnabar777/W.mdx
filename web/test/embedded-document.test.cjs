@@ -92,6 +92,8 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   const settingsActivity = readProjectFile(
     'app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'
   );
+  const preferenceLayout = readProjectFile('app/src/main/res/layout/preference_help_switch.xml');
+  const themedToast = readProjectFile('app/src/main/java/com/wmdx/markdownapp/ThemedToast.kt');
   const resetPreferences = readProjectFile(
     'app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'
   );
@@ -107,6 +109,11 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(stylingPage, /app:key="pref_embedded_document_method_link"[\s\S]*?android:defaultValue="false"/);
   assert.match(stylingPage, /app:key="pref_embedded_content_limited_interaction"[\s\S]*?android:defaultValue="true"/);
   assert.match(stylingPage, /app:key="pref_embedded_content_full_inline_editing"[\s\S]*?android:defaultValue="false"/);
+  assert.equal(
+    (stylingPage.match(/<com\.wmdx\.markdownapp\.HelpResetSwitchPreference/g) || []).length,
+    4
+  );
+  assert.doesNotMatch(stylingPage, /pref_embedded_(?:document_method|content_interaction)_help/);
   assert.match(styling, /app:key="pref_styling_page_embedded_content"/);
   assert.match(stylingPage, /pref_embedded_content_bg_color/);
   assert.match(stylingPage, /pref_embedded_content_border_radius/);
@@ -115,6 +122,11 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(settingsActivity, /selectEmbeddedDocumentMethod/);
   assert.match(settingsActivity, /selectEmbeddedInteractionMode/);
   assert.match(settingsActivity, /Edits are saved back to the original linked file/);
+  assert.match(settingsActivity, /setHelpContent\(/);
+  assert.match(resetPreferences, /class HelpResetSwitchPreference/);
+  assert.match(resetPreferences, /R\.id\.preference_help/);
+  assert.match(preferenceLayout, /@\+id\/preference_help/);
+  assert.match(themedToast, /Gravity\.TOP or Gravity\.CENTER_HORIZONTAL/);
   assert.match(resetPreferences, /pref_embedded_content_title_bg_color/);
   assert.match(resetPreferences, /pref_embedded_content_title_text_color/);
   assert.match(main, /--bg-color:var\(--embedded-content-bg-color/);
@@ -145,8 +157,17 @@ test('embedded Markdown renders GFM task lists without enabling table changes', 
   );
   assert.match(childExtensions, /syntaxHighlighting\(customHighlightStyle\)/);
   assert.doesNotMatch(childExtensions, /GFMTable/);
-  assert.match(childExtensions, /EditorState\.readOnly\.of\(this\.interactionMode !== 'full'\)/);
+  assert.match(childExtensions, /EditorState\.readOnly\.of\(!fullInlineEditing\)/);
+  assert.match(childExtensions, /drawSelection\(\)/);
+  assert.match(childExtensions, /\.cm-cursor, \.cm-dropCursor/);
   assert.match(childExtensions, /EditorView\.updateListener\.of\(update => \{/);
+  assert.match(main, /UNSAVED EMBEDDED EDITS/);
+  assert.match(main, /setAttribute\('role', fullInlineEditing \? 'alert' : 'status'\)/);
+  assert.match(main, /position:fixed/);
+  assert.match(
+    main,
+    /pendingEmbeddedDocumentEdits\.has\(saveKey\)[\s\S]*?childEditor\?\.state\.doc\.toString\(\)/
+  );
   assert.match(main, /input\.disabled = view\.state\.readOnly && !allowReadOnlyCheckboxChanges/);
   assert.match(main, /window\.AndroidNative\?\.saveEmbeddedMarkdown/);
   assert.match(

@@ -1400,3 +1400,44 @@ open class ResetSwitchPreference : SwitchPreferenceCompat, ResettablePreference 
         notifyChanged()
     }
 }
+
+class HelpResetSwitchPreference : ResetSwitchPreference {
+    private var helpTitle: CharSequence? = null
+    private var helpMessage: CharSequence? = null
+
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int, defStyleRes: Int) :
+        super(context, attrs, defStyleAttr, defStyleRes)
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) :
+        super(context, attrs, defStyleAttr)
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
+    constructor(context: Context) : super(context)
+
+    fun setHelpContent(title: CharSequence, message: CharSequence) {
+        helpTitle = title
+        helpMessage = message
+        notifyChanged()
+    }
+
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        val button = holder.itemView.findViewById<android.widget.ImageButton>(
+            R.id.preference_help
+        ) ?: return
+        val message = helpMessage
+        if (message.isNullOrBlank()) {
+            button.visibility = View.GONE
+            button.setOnClickListener(null)
+            return
+        }
+
+        button.visibility = View.VISIBLE
+        button.contentDescription = "Help for ${title ?: helpTitle ?: "setting"}"
+        button.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(context)
+                .setTitle(helpTitle ?: title)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+        }
+    }
+}

@@ -143,6 +143,8 @@ import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as 
 let activeAdapter = null;
 let embeddedContentInteractionMode = 'checkboxes';
 const pendingEmbeddedDocumentEdits = new Map();
+let activeEmbeddedEditSaveWarning = null;
+let activeEmbeddedEditSaveWarningKey = null;
 let refreshOpenTocPanel = null;
 let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
@@ -1800,20 +1802,47 @@ class EmbeddedDocumentWidget extends WidgetType {
     actions.append(status);
     shell.appendChild(actions);
 
+    const fullInlineEditing = this.interactionMode === 'full';
     const saveStatus = document.createElement('div');
     saveStatus.className = 'cm-embedded-document-save-status';
-    saveStatus.setAttribute('role', 'status');
+    saveStatus.setAttribute('role', fullInlineEditing ? 'alert' : 'status');
+    saveStatus.setAttribute('aria-live', fullInlineEditing ? 'assertive' : 'polite');
     saveStatus.hidden = true;
-    saveStatus.style.cssText =
-      'display:none;margin:0 0 8px;font-size:12px;color:var(--text-color,#ddd);';
+    saveStatus.style.cssText = fullInlineEditing
+      ? [
+          'display:none',
+          'position:fixed',
+          'top:8px',
+          'top:max(8px,env(safe-area-inset-top,8px))',
+          'left:12px',
+          'right:12px',
+          'z-index:100000',
+          'box-sizing:border-box',
+          'align-items:center',
+          'justify-content:space-between',
+          'flex-wrap:wrap',
+          'gap:10px',
+          'padding:12px 14px',
+          'border:2px solid #ff7777',
+          'border-radius:10px',
+          'background:#7b1717',
+          'color:#fff',
+          'box-shadow:0 4px 18px rgba(0,0,0,.6)',
+          'font-size:14px',
+          'font-weight:700'
+        ].join(';')
+      : 'display:none;margin:0 0 8px;font-size:12px;color:var(--text-color,#ddd);';
     const saveMessage = document.createElement('span');
     saveMessage.textContent =
-      'Could not save embedded edits. Check write access, then retry.';
+      fullInlineEditing
+        ? 'UNSAVED EMBEDDED EDITS — Keep this document open, restore write access, then retry.'
+        : 'Could not save embedded edits. Check write access, then retry.';
     const retrySaveButton = document.createElement('button');
     retrySaveButton.type = 'button';
     retrySaveButton.textContent = 'Retry save';
-    retrySaveButton.style.cssText =
-      'margin-left:8px;padding:4px 8px;border-radius:5px;font:inherit;';
+    retrySaveButton.style.cssText = fullInlineEditing
+      ? 'min-height:40px;padding:7px 12px;border:1px solid #fff;border-radius:7px;background:#fff;color:#641010;font:inherit;font-weight:700;'
+      : 'margin-left:8px;padding:4px 8px;border-radius:5px;font:inherit;';
     saveStatus.append(saveMessage, retrySaveButton);
     shell.appendChild(saveStatus);
 
@@ -1912,6 +1941,39 @@ class EmbeddedDocumentWidget extends WidgetType {
     let childEditor = null;
     let saveTimer = null;
     const setSaveError = visible => {
+      if (fullInlineEditing) {
+        if (visible) {
+          if (
+            activeEmbeddedEditSaveWarning &&
+            activeEmbeddedEditSaveWarning !== saveStatus
+          ) {
+            activeEmbeddedEditSaveWarning.remove();
+          }
+          activeEmbeddedEditSaveWarning = saveStatus;
+          activeEmbeddedEditSaveWarningKey = saveKey;
+          saveStatus.hidden = false;
+          saveStatus.style.display = 'flex';
+          if (saveStatus.parentNode !== document.body) {
+            document.body.appendChild(saveStatus);
+          }
+          return;
+        }
+
+        saveStatus.hidden = true;
+        saveStatus.style.display = 'none';
+        if (activeEmbeddedEditSaveWarningKey === saveKey) {
+          activeEmbeddedEditSaveWarning?.remove();
+          activeEmbeddedEditSaveWarning = null;
+          activeEmbeddedEditSaveWarningKey = null;
+        }
+        if (shell.isConnected && saveStatus.parentNode !== shell) {
+          shell.appendChild(saveStatus);
+        } else if (!shell.isConnected) {
+          saveStatus.remove();
+        }
+        return;
+      }
+
       saveStatus.hidden = !visible;
       saveStatus.style.display = visible ? 'block' : 'none';
     };
@@ -1920,8 +1982,11 @@ class EmbeddedDocumentWidget extends WidgetType {
         clearTimeout(saveTimer);
         saveTimer = null;
       }
-      if (!childEditor || !canEdit) return true;
-      const text = childEditor.state.doc.toString();
+      if (!canEdit) return true;
+      const text = pendingEmbeddedDocumentEdits.has(saveKey)
+        ? pendingEmbeddedDocumentEdits.get(saveKey)
+        : childEditor?.state.doc.toString();
+      if (typeof text !== 'string') return true;
       if (text === persistedMarkdownText &&
           !pendingEmbeddedDocumentEdits.has(saveKey)) {
         setSaveError(false);
@@ -1958,8 +2023,24 @@ class EmbeddedDocumentWidget extends WidgetType {
       extensions: [
         cmMarkdown({ extensions: [GFM, GFMStrikethrough, GFMTaskList] }),
         syntaxHighlighting(customHighlightStyle),
-        ...(this.interactionMode === 'full'
-          ? [history(), keymap.of([...defaultKeymap, ...historyKeymap])]
+        ...(fullInlineEditing
+          ? [
+              history(),
+              keymap.of([...defaultKeymap, ...historyKeymap]),
+              drawSelection(),
+              EditorView.theme({
+                '.cm-content': {
+                  caretColor: 'var(--cursor-color, var(--text-color, #fff)) !important'
+                },
+                '.cm-cursor, .cm-dropCursor': {
+                  borderLeft:
+                    'var(--cursor-width, 2px) solid var(--cursor-color, var(--text-color, #fff)) !important',
+                  zIndex: 3,
+                  animation: 'none'
+                },
+                '.cm-cursorLayer': { zIndex: 3 }
+              })
+            ]
           : []),
         livePreviewPlugin,
         tableStateField,
@@ -1987,8 +2068,8 @@ class EmbeddedDocumentWidget extends WidgetType {
         embeddedCheckboxInteractionFacet.of(
           this.interactionMode === 'checkboxes'
         ),
-        EditorState.readOnly.of(this.interactionMode !== 'full'),
-        EditorView.editable.of(this.interactionMode === 'full'),
+        EditorState.readOnly.of(!fullInlineEditing),
+        EditorView.editable.of(fullInlineEditing),
         EditorView.lineWrapping,
         EditorView.updateListener.of(update => {
           if (!update.docChanged || !canEdit) return;
@@ -2012,9 +2093,11 @@ class EmbeddedDocumentWidget extends WidgetType {
     childEditor.contentDOM.style.color = 'inherit';
     childEditor.contentDOM.style.background = 'transparent';
     childEditor.contentDOM.style.fontSize = 'inherit';
-    if (this.interactionMode === 'full') {
+    if (fullInlineEditing) {
       childEditor.contentDOM.style.userSelect = 'text';
       childEditor.contentDOM.style.webkitUserSelect = 'text';
+      childEditor.contentDOM.style.caretColor =
+        'var(--cursor-color, var(--text-color, #fff))';
       childEditor.dom.addEventListener('focusout', flushEmbeddedSave);
     }
     shell.__flushEmbeddedDocumentSave = flushEmbeddedSave;

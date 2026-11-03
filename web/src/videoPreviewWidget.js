@@ -109,7 +109,8 @@ export class VideoPreviewWidget extends WidgetType {
       `margin:${alignmentMargin}`,
       'touch-action:manipulation',
       'user-select:none',
-      '-webkit-user-select:none'
+      '-webkit-user-select:none',
+      '-webkit-touch-callout:none'
     ].join(';');
 
     const labelRow = document.createElement('div');
@@ -122,7 +123,10 @@ export class VideoPreviewWidget extends WidgetType {
       'margin:0 0 8px',
       'overflow-wrap:anywhere',
       'color:var(--media-controls-text,#fff)',
-      'touch-action:manipulation'
+      'touch-action:manipulation',
+      'user-select:none',
+      '-webkit-user-select:none',
+      '-webkit-touch-callout:none'
     ].join(';');
     wrapper.appendChild(labelRow);
 
@@ -142,7 +146,10 @@ export class VideoPreviewWidget extends WidgetType {
         'max-width:100%',
         'max-height:65vh',
         'object-fit:contain',
-        'color-scheme:inherit'
+        'color-scheme:inherit',
+        'user-select:none',
+        '-webkit-user-select:none',
+        '-webkit-touch-callout:none'
       ].join(';');
       wrapper.appendChild(video);
     }
@@ -209,6 +216,7 @@ export class VideoPreviewWidget extends WidgetType {
     let widgetDisposed = false;
     let pressTimer = null;
     let pressPoint = null;
+    let pressStart = null;
     let activePopup = null;
     const clearPressTimer = () => {
       if (pressTimer !== null) {
@@ -253,28 +261,32 @@ export class VideoPreviewWidget extends WidgetType {
         hidePopup();
       }
     };
-    const onLabelPointerDown = event => {
+    const onPointerDown = event => {
       if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+      if (!event.target?.closest?.('video, .cm-mdzip-video-label')) return;
       const point = { x: event.clientX, y: event.clientY };
-      labelRow._pressStart = point;
+      pressStart = point;
+      pressPoint = point;
       clearPressTimer();
       pressTimer = setTimeout(() => {
         pressTimer = null;
+        pressStart = null;
         showPopup(point);
       }, 550);
     };
-    const onLabelPointerMove = event => {
-      const start = labelRow._pressStart;
+    const onPointerMove = event => {
+      const start = pressStart;
       if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) {
         clearPressTimer();
-        labelRow._pressStart = null;
+        pressStart = null;
       }
     };
-    const onLabelPointerEnd = () => {
+    const onPointerEnd = () => {
       clearPressTimer();
-      labelRow._pressStart = null;
+      pressStart = null;
     };
     const onContextMenu = event => {
+      if (!event.target?.closest?.('video, .cm-mdzip-video-label')) return;
       event.preventDefault();
       event.stopPropagation();
       showPopup({ x: event.clientX, y: event.clientY });
@@ -326,11 +338,12 @@ export class VideoPreviewWidget extends WidgetType {
       view.focus();
     };
 
-    labelRow.addEventListener('pointerdown', onLabelPointerDown);
-    labelRow.addEventListener('pointermove', onLabelPointerMove);
-    labelRow.addEventListener('pointerup', onLabelPointerEnd);
-    labelRow.addEventListener('pointercancel', onLabelPointerEnd);
-    labelRow.addEventListener('contextmenu', onContextMenu);
+    wrapper.addEventListener('pointerdown', onPointerDown);
+    wrapper.addEventListener('pointermove', onPointerMove);
+    wrapper.addEventListener('pointerup', onPointerEnd);
+    wrapper.addEventListener('pointercancel', onPointerEnd);
+    wrapper.addEventListener('contextmenu', onContextMenu);
+    video?.addEventListener('contextmenu', onContextMenu);
     editButton.addEventListener('click', editVideo);
     removeLinkButton.addEventListener('click', event => removeVideoLink(event));
     deleteButton?.addEventListener('click', event => removeVideoLink(event, true));
@@ -361,11 +374,12 @@ export class VideoPreviewWidget extends WidgetType {
       widgetDisposed = true;
       clearPressTimer();
       hidePopup();
-      labelRow.removeEventListener('pointerdown', onLabelPointerDown);
-      labelRow.removeEventListener('pointermove', onLabelPointerMove);
-      labelRow.removeEventListener('pointerup', onLabelPointerEnd);
-      labelRow.removeEventListener('pointercancel', onLabelPointerEnd);
-      labelRow.removeEventListener('contextmenu', onContextMenu);
+      wrapper.removeEventListener('pointerdown', onPointerDown);
+      wrapper.removeEventListener('pointermove', onPointerMove);
+      wrapper.removeEventListener('pointerup', onPointerEnd);
+      wrapper.removeEventListener('pointercancel', onPointerEnd);
+      wrapper.removeEventListener('contextmenu', onContextMenu);
+      video?.removeEventListener('contextmenu', onContextMenu);
       document.removeEventListener('pointerdown', dismissPopup, true);
       window.removeEventListener('resize', positionPopup);
       window.removeEventListener('scroll', positionPopup, true);

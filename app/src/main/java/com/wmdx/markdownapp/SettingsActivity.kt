@@ -141,6 +141,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
             if (pref is androidx.preference.PreferenceCategory) {
                 pref.layoutResource = R.layout.preference_category_custom
                 applyCustomLayouts(pref)
+            } else if (pref is HelpResetSwitchPreference) {
+                pref.layoutResource = R.layout.preference_help_switch
             } else if (pref is androidx.preference.SeekBarPreference) {
                 if (pref is androidx.preference.PreferenceGroup) {
                     applyCustomLayouts(pref)
@@ -1378,6 +1380,31 @@ class StylingEmbeddedContentFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_embedded_content, rootKey)
 
+        findPreference<HelpResetSwitchPreference>("pref_embedded_document_method_copy")
+            ?.setHelpContent(
+                "Copy into parent assets",
+                "Creates an independent copy inside the parent document's assets. " +
+                    "Edits to the embedded copy do not change the original selected file."
+            )
+        findPreference<HelpResetSwitchPreference>("pref_embedded_document_method_link")
+            ?.setHelpContent(
+                "Link to original file",
+                "Uses the original selected file. Embedded edits are saved back to that file " +
+                    "and require write access."
+            )
+        findPreference<HelpResetSwitchPreference>("pref_embedded_content_limited_interaction")
+            ?.setHelpContent(
+                "Limited interaction",
+                "Allows checkbox changes only. The rest of the embedded document stays read-only."
+            )
+        findPreference<HelpResetSwitchPreference>("pref_embedded_content_full_inline_editing")
+            ?.setHelpContent(
+                "Full inline editing",
+                "Allows editing embedded text directly in the document. Changes save to the " +
+                    "selected copy or linked file. A failed save keeps a warning at the top " +
+                    "until the edits save successfully."
+            )
+
         findPreference<ResetSwitchPreference>("pref_embedded_document_method_copy")
             ?.setOnPreferenceChangeListener { _, value ->
                 selectEmbeddedDocumentMethod(if (value == true) "copy" else "link")
@@ -1397,36 +1424,6 @@ class StylingEmbeddedContentFragment : StylingSettingsFragment() {
         findPreference<ResetSwitchPreference>("pref_embedded_content_full_inline_editing")
             ?.setOnPreferenceChangeListener { _, value ->
                 selectEmbeddedInteractionMode(if (value == true) "full" else "limited")
-                true
-            }
-
-        findPreference<androidx.preference.Preference>("pref_embedded_document_method_help")
-            ?.setOnPreferenceClickListener {
-                androidx.appcompat.app.AlertDialog.Builder(requireContext())
-                    .setTitle("Copy and link")
-                    .setMessage(
-                        "Copy stores an independent file in the parent document's assets. " +
-                            "Edits to that embed are saved to the copy. If the parent is MDZip " +
-                            "or TextPack, save the parent to include the copy in its archive. " +
-                            "Link uses the original file, so edits are saved back to it and require write access. " +
-                            "This setting applies to new embeds; existing embeds keep their source."
-                    )
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show()
-                true
-            }
-        findPreference<androidx.preference.Preference>("pref_embedded_content_interaction_help")
-            ?.setOnPreferenceClickListener {
-                androidx.appcompat.app.AlertDialog.Builder(requireContext())
-                    .setTitle("Embedded editing modes")
-                    .setMessage(
-                        "Limited interaction allows checkbox changes but keeps the rest of the " +
-                            "embedded document read-only. Full inline editing allows text edits " +
-                            "inside the embed. Changes are saved automatically according to the " +
-                            "copy or link method above; linked files must be writable."
-                    )
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show()
                 true
             }
 
