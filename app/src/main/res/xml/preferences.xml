@@ -43,13 +43,6 @@
             app:entries="@array/pref_markdown_image_location_entries"
             app:entryValues="@array/pref_markdown_image_location_values"
             app:defaultValue="assets" />
-        <com.wmdx.markdownapp.ResetListPreference
-            app:key="pref_embedded_document_method"
-            app:title="Embedded Document Method"
-            app:summary="Link to the original file or copy it into the current document"
-            app:entries="@array/pref_embedded_document_method_entries"
-            app:entryValues="@array/pref_embedded_document_method_values"
-            app:defaultValue="copy" />
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_diagnostics"
             app:title="Diagnostics"

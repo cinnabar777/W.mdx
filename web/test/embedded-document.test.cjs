@@ -89,6 +89,12 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
     'app/src/main/res/xml/preferences_styling_embedded_content.xml'
   );
   const native = readProjectFile('app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  const settingsActivity = readProjectFile(
+    'app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'
+  );
+  const resetPreferences = readProjectFile(
+    'app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'
+  );
 
   assert.match(toolbar, /'embed'/);
   assert.match(icons, /embed:/);
@@ -96,19 +102,33 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(main, /customHotkeys\.embed/);
   assert.match(main, /window\.AndroidNative\?\.loadEmbeddedMarkdown/);
   assert.match(hotkeys, /app:key="pref_hotkey_embed"[\s\S]*?app:title="Document: Embed"/);
-  assert.match(settings, /app:key="pref_embedded_document_method"[\s\S]*?app:defaultValue="copy"/);
+  assert.doesNotMatch(settings, /app:key="pref_embedded_document_method"/);
+  assert.match(stylingPage, /app:key="pref_embedded_document_method_copy"[\s\S]*?android:defaultValue="true"/);
+  assert.match(stylingPage, /app:key="pref_embedded_document_method_link"[\s\S]*?android:defaultValue="false"/);
+  assert.match(stylingPage, /app:key="pref_embedded_content_limited_interaction"[\s\S]*?android:defaultValue="true"/);
+  assert.match(stylingPage, /app:key="pref_embedded_content_full_inline_editing"[\s\S]*?android:defaultValue="false"/);
   assert.match(styling, /app:key="pref_styling_page_embedded_content"/);
   assert.match(stylingPage, /pref_embedded_content_bg_color/);
   assert.match(stylingPage, /pref_embedded_content_border_radius/);
+  assert.match(stylingPage, /pref_embedded_content_title_bg_color/);
+  assert.match(stylingPage, /pref_embedded_content_title_text_color/);
+  assert.match(settingsActivity, /selectEmbeddedDocumentMethod/);
+  assert.match(settingsActivity, /selectEmbeddedInteractionMode/);
+  assert.match(settingsActivity, /Edits are saved back to the original linked file/);
+  assert.match(resetPreferences, /pref_embedded_content_title_bg_color/);
+  assert.match(resetPreferences, /pref_embedded_content_title_text_color/);
   assert.match(main, /--bg-color:var\(--embedded-content-bg-color/);
   assert.match(main, /--text-color:var\(--embedded-content-text-color/);
   assert.match(main, /--body-font-size:var\(--embedded-content-font-size/);
+  assert.match(main, /--embedded-content-title-bg-color/);
+  assert.match(main, /--embedded-content-title-text-color/);
   assert.match(main, /childEditor\.scrollDOM\.style\.background = 'transparent'/);
   assert.match(main, /Long-press for embedded document options/);
   assert.match(main, /Remove embed/);
   assert.match(main, /openEmbeddedDocumentEditDialog/);
   assert.match(native, /"embed" -> handleInsertEmbeddedDocument\(\)/);
   assert.match(native, /fun loadEmbeddedMarkdown/);
+  assert.match(native, /fun saveEmbeddedMarkdown/);
   assert.match(native, /fun resolveEmbeddedAssetUrl/);
 });
 
@@ -118,14 +138,17 @@ test('embedded Markdown renders GFM task lists without enabling table changes', 
   const childExtensions = main.match(
     /const state = EditorState\.create\(\{\s*doc: markdownText,\s*extensions: \[([\s\S]*?)\n      \]\s*\}\);/
   )?.[1];
-  assert.ok(childExtensions, 'the embedded document must create its own read-only editor');
+  assert.ok(childExtensions, 'the embedded document must create its own editor');
   assert.match(
     childExtensions,
     /cmMarkdown\(\{ extensions: \[GFM, GFMStrikethrough, GFMTaskList\] \}\)/
   );
   assert.match(childExtensions, /syntaxHighlighting\(customHighlightStyle\)/);
   assert.doesNotMatch(childExtensions, /GFMTable/);
-  assert.match(main, /input\.disabled = view\.state\.readOnly;/);
+  assert.match(childExtensions, /EditorState\.readOnly\.of\(this\.interactionMode !== 'full'\)/);
+  assert.match(childExtensions, /EditorView\.updateListener\.of\(update => \{/);
+  assert.match(main, /input\.disabled = view\.state\.readOnly && !allowReadOnlyCheckboxChanges/);
+  assert.match(main, /window\.AndroidNative\?\.saveEmbeddedMarkdown/);
   assert.match(
     main,
     /actions\.hidden = true;\s*actions\.style\.cssText = 'display:none;[\s\S]*?const closeActions = \(\) => \{\s*actions\.hidden = true;\s*actions\.style\.display = 'none';/

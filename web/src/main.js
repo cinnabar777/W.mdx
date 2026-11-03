@@ -141,6 +141,8 @@ import { tags } from '@lezer/highlight';
 import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
 
 let activeAdapter = null;
+let embeddedContentInteractionMode = 'checkboxes';
+const pendingEmbeddedDocumentEdits = new Map();
 let refreshOpenTocPanel = null;
 let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
@@ -276,10 +278,14 @@ class CheckboxWidget extends WidgetType {
     input.type = 'checkbox';
     input.checked = this.checked;
     input.className = 'cm-todo-checkbox';
-    input.disabled = view.state.readOnly;
+    const allowReadOnlyCheckboxChanges = view.state.facet(
+      embeddedCheckboxInteractionFacet
+    );
+    input.disabled = view.state.readOnly && !allowReadOnlyCheckboxChanges;
     input.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (view.state.readOnly && !allowReadOnlyCheckboxChanges) return;
       const newText = this.checked ? '[ ]' : '[x]';
       view.dispatch({
         changes: { from: this.pos, to: this.pos + this.len, insert: newText }
@@ -1597,6 +1603,9 @@ const embeddedDocumentSourceFacet = Facet.define({
 const embeddedDocumentDepthFacet = Facet.define({
   combine: values => values[0] ?? 0
 });
+const embeddedCheckboxInteractionFacet = Facet.define({
+  combine: values => values[0] === true
+});
 const MAX_EMBEDDED_DOCUMENT_DEPTH = 4;
 
 function isStandaloneEmbeddedDocument(doc, node, raw) {
@@ -1624,7 +1633,8 @@ class EmbeddedDocumentWidget extends WidgetType {
     to,
     documentSessionId,
     mediaBaseUrl = null,
-    depth = 0
+    depth = 0,
+    interactionMode = 'checkboxes'
   ) {
     super();
     this.label = label || 'Embedded document';
@@ -1634,6 +1644,7 @@ class EmbeddedDocumentWidget extends WidgetType {
     this.documentSessionId = documentSessionId;
     this.mediaBaseUrl = mediaBaseUrl;
     this.depth = depth;
+    this.interactionMode = interactionMode;
   }
 
   eq(other) {
@@ -1644,7 +1655,8 @@ class EmbeddedDocumentWidget extends WidgetType {
       other.to === this.to &&
       other.documentSessionId === this.documentSessionId &&
       other.mediaBaseUrl === this.mediaBaseUrl &&
-      other.depth === this.depth;
+      other.depth === this.depth &&
+      other.interactionMode === this.interactionMode;
   }
 
   get estimatedHeight() {
@@ -1683,7 +1695,16 @@ class EmbeddedDocumentWidget extends WidgetType {
     title.className = 'cm-embedded-document-title';
     title.textContent = this.label;
     title.title = 'Long-press for embedded document options';
-    title.style.cssText = 'font-size:.9em;font-weight:600;opacity:.8;margin:0 0 6px;overflow-wrap:anywhere;';
+    title.style.cssText = [
+      'font-size:.9em',
+      'font-weight:600',
+      'margin:0 0 6px',
+      'padding:5px 7px',
+      'border-radius:4px',
+      'background:var(--embedded-content-title-bg-color,transparent)',
+      'color:var(--embedded-content-title-text-color,inherit)',
+      'overflow-wrap:anywhere'
+    ].join(';');
     shell.appendChild(title);
 
     const expectedMarkdown = view?.state?.doc?.sliceString(this.from, this.to) ?? '';
@@ -1779,6 +1800,23 @@ class EmbeddedDocumentWidget extends WidgetType {
     actions.append(status);
     shell.appendChild(actions);
 
+    const saveStatus = document.createElement('div');
+    saveStatus.className = 'cm-embedded-document-save-status';
+    saveStatus.setAttribute('role', 'status');
+    saveStatus.hidden = true;
+    saveStatus.style.cssText =
+      'display:none;margin:0 0 8px;font-size:12px;color:var(--text-color,#ddd);';
+    const saveMessage = document.createElement('span');
+    saveMessage.textContent =
+      'Could not save embedded edits. Check write access, then retry.';
+    const retrySaveButton = document.createElement('button');
+    retrySaveButton.type = 'button';
+    retrySaveButton.textContent = 'Retry save';
+    retrySaveButton.style.cssText =
+      'margin-left:8px;padding:4px 8px;border-radius:5px;font:inherit;';
+    saveStatus.append(saveMessage, retrySaveButton);
+    shell.appendChild(saveStatus);
+
     let pressTimer = null;
     let pressStart = null;
     const clearPressTimer = () => {
@@ -1864,25 +1902,108 @@ class EmbeddedDocumentWidget extends WidgetType {
       return shell;
     }
 
+    let persistedMarkdownText = markdownText;
+    const saveKey = `${this.documentSessionId || ''}:${this.url}`;
+    if (pendingEmbeddedDocumentEdits.has(saveKey)) {
+      markdownText = pendingEmbeddedDocumentEdits.get(saveKey);
+    }
+    const canEdit = this.interactionMode === 'checkboxes' ||
+      this.interactionMode === 'full';
+    let childEditor = null;
+    let saveTimer = null;
+    const setSaveError = visible => {
+      saveStatus.hidden = !visible;
+      saveStatus.style.display = visible ? 'block' : 'none';
+    };
+    const flushEmbeddedSave = () => {
+      if (saveTimer !== null) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      if (!childEditor || !canEdit) return true;
+      const text = childEditor.state.doc.toString();
+      if (text === persistedMarkdownText &&
+          !pendingEmbeddedDocumentEdits.has(saveKey)) {
+        setSaveError(false);
+        return true;
+      }
+      let saved = false;
+      try {
+        saved = window.AndroidNative?.saveEmbeddedMarkdown?.(
+          this.url,
+          text,
+          this.documentSessionId
+        ) === true;
+      } catch {
+        saved = false;
+      }
+      if (!saved) {
+        pendingEmbeddedDocumentEdits.set(saveKey, text);
+        setSaveError(true);
+        return false;
+      }
+      persistedMarkdownText = text;
+      pendingEmbeddedDocumentEdits.delete(saveKey);
+      setSaveError(false);
+      return true;
+    };
+    retrySaveButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      flushEmbeddedSave();
+    });
+
     const state = EditorState.create({
       doc: markdownText,
       extensions: [
         cmMarkdown({ extensions: [GFM, GFMStrikethrough, GFMTaskList] }),
         syntaxHighlighting(customHighlightStyle),
+        ...(this.interactionMode === 'full'
+          ? [history(), keymap.of([...defaultKeymap, ...historyKeymap])]
+          : []),
         livePreviewPlugin,
         tableStateField,
         wysiwygCodeBlockField,
         footnoteStateField,
         persistentLayoutField,
         heightMapField,
+        hiddenSyntaxAtomicRanges,
         embeddedDocumentSourceFacet.of(this.mediaBaseUrl || this.url),
         embeddedDocumentDepthFacet.of(this.depth + 1),
-        EditorState.readOnly.of(true),
-        EditorView.editable.of(false),
-        EditorView.lineWrapping
+        EditorState.transactionFilter.of(transaction => {
+          if (
+            currentEditorMode !== 'wysiwyg' ||
+            transaction.docChanged ||
+            !transaction.selection
+          ) {
+            return transaction;
+          }
+          return filterSelectionOutsideHiddenSyntax(
+            transaction,
+            hiddenSyntaxRangesForState(transaction.startState),
+            transaction.newDoc.length
+          );
+        }),
+        embeddedCheckboxInteractionFacet.of(
+          this.interactionMode === 'checkboxes'
+        ),
+        EditorState.readOnly.of(this.interactionMode !== 'full'),
+        EditorView.editable.of(this.interactionMode === 'full'),
+        EditorView.lineWrapping,
+        EditorView.updateListener.of(update => {
+          if (!update.docChanged || !canEdit) return;
+          const text = update.state.doc.toString();
+          pendingEmbeddedDocumentEdits.set(saveKey, text);
+          if (this.interactionMode === 'checkboxes') {
+            flushEmbeddedSave();
+            return;
+          }
+          if (saveTimer !== null) clearTimeout(saveTimer);
+          saveTimer = setTimeout(flushEmbeddedSave, 500);
+        })
       ]
     });
-    const childEditor = new EditorView({ state, parent: content });
+    childEditor = new EditorView({ state, parent: content });
     childEditor.dom.classList.add('cm-embedded-document-child');
     childEditor.dom.style.background = 'transparent';
     childEditor.dom.style.color = 'inherit';
@@ -1891,12 +2012,22 @@ class EmbeddedDocumentWidget extends WidgetType {
     childEditor.contentDOM.style.color = 'inherit';
     childEditor.contentDOM.style.background = 'transparent';
     childEditor.contentDOM.style.fontSize = 'inherit';
+    if (this.interactionMode === 'full') {
+      childEditor.contentDOM.style.userSelect = 'text';
+      childEditor.contentDOM.style.webkitUserSelect = 'text';
+      childEditor.dom.addEventListener('focusout', flushEmbeddedSave);
+    }
+    shell.__flushEmbeddedDocumentSave = flushEmbeddedSave;
     shell.__embeddedDocumentEditor = childEditor;
+    if (pendingEmbeddedDocumentEdits.has(saveKey)) {
+      saveTimer = setTimeout(flushEmbeddedSave, 0);
+    }
     return shell;
   }
 
   destroy(dom) {
     dom?._clearEmbeddedPressTimer?.();
+    dom?.__flushEmbeddedDocumentSave?.();
     dom?.__embeddedDocumentEditor?.destroy?.();
   }
 
@@ -2410,7 +2541,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   node.to,
                   window.AndroidNative?.getCurrentDocumentSessionId?.(),
                   embeddedLink.mediaBaseUrl,
-                  view.state.facet(embeddedDocumentDepthFacet)
+                  view.state.facet(embeddedDocumentDepthFacet),
+                  embeddedContentInteractionMode
                 ),
                 block: true
               }).range(node.from, node.to);
@@ -3557,7 +3689,8 @@ function buildHeightMapValue(state) {
               node.to,
               window.AndroidNative?.getCurrentDocumentSessionId?.(),
               embeddedLink.mediaBaseUrl,
-              state.facet(embeddedDocumentDepthFacet)
+              state.facet(embeddedDocumentDepthFacet),
+              embeddedContentInteractionMode
             ),
             block: true
           }).range(node.from, node.to);
@@ -8918,6 +9051,12 @@ window.editorBridge = {
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
     const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
+    const limitedInteraction =
+      prefs.pref_embedded_content_limited_interaction !== false;
+    const fullInlineEditing =
+      prefs.pref_embedded_content_full_inline_editing === true;
+    embeddedContentInteractionMode =
+      !limitedInteraction && fullInlineEditing ? 'full' : 'checkboxes';
     setWmdxUnderlineSyntaxEnabled(prefs.pref_underline_use_wmdx_syntax !== false);
     if (activeAdapter?.view) {
       activeAdapter.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
@@ -9367,8 +9506,20 @@ window.editorBridge = {
     setCssVar('--mdzip-attachment-font-size', prefs.pref_mdzip_attachment_font_size, 'px');
 
     const embeddedThemeDefaults = document.body.classList.contains('light-theme')
-      ? { background: '#F8F9FA', text: '#111111', border: '#D0D5DB' }
-      : { background: '#202124', text: '#F1F3F4', border: '#555555' };
+      ? {
+          background: '#F8F9FA',
+          text: '#111111',
+          border: '#D0D5DB',
+          titleBackground: '#E9ECEF',
+          titleText: '#111111'
+        }
+      : {
+          background: '#202124',
+          text: '#F1F3F4',
+          border: '#555555',
+          titleBackground: '#303134',
+          titleText: '#F1F3F4'
+        };
     const embeddedColor = (key, fallback) => {
       const value = prefs[key];
       return androidArgbToCss(
@@ -9388,6 +9539,20 @@ window.editorBridge = {
     setCssVar(
       '--embedded-content-border-color',
       embeddedColor('pref_embedded_content_border_color', embeddedThemeDefaults.border)
+    );
+    setCssVar(
+      '--embedded-content-title-bg-color',
+      embeddedColor(
+        'pref_embedded_content_title_bg_color',
+        embeddedThemeDefaults.titleBackground
+      )
+    );
+    setCssVar(
+      '--embedded-content-title-text-color',
+      embeddedColor(
+        'pref_embedded_content_title_text_color',
+        embeddedThemeDefaults.titleText
+      )
     );
     setCssVar('--embedded-content-border-width', prefs.pref_embedded_content_border_width, 'px');
     setCssVar('--embedded-content-border-radius', prefs.pref_embedded_content_border_radius, 'px');

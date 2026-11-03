@@ -1373,8 +1373,151 @@ class StylingAttachmentsFragment : StylingSettingsFragment() {
 }
 
 class StylingEmbeddedContentFragment : StylingSettingsFragment() {
+    private var syncingEmbeddedSettings = false
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_embedded_content, rootKey)
+
+        findPreference<ResetSwitchPreference>("pref_embedded_document_method_copy")
+            ?.setOnPreferenceChangeListener { _, value ->
+                selectEmbeddedDocumentMethod(if (value == true) "copy" else "link")
+                true
+            }
+        findPreference<ResetSwitchPreference>("pref_embedded_document_method_link")
+            ?.setOnPreferenceChangeListener { _, value ->
+                selectEmbeddedDocumentMethod(if (value == true) "link" else "copy")
+                true
+            }
+
+        findPreference<ResetSwitchPreference>("pref_embedded_content_limited_interaction")
+            ?.setOnPreferenceChangeListener { _, value ->
+                selectEmbeddedInteractionMode(if (value == true) "limited" else "full")
+                true
+            }
+        findPreference<ResetSwitchPreference>("pref_embedded_content_full_inline_editing")
+            ?.setOnPreferenceChangeListener { _, value ->
+                selectEmbeddedInteractionMode(if (value == true) "full" else "limited")
+                true
+            }
+
+        findPreference<androidx.preference.Preference>("pref_embedded_document_method_help")
+            ?.setOnPreferenceClickListener {
+                androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("Copy and link")
+                    .setMessage(
+                        "Copy stores an independent file in the parent document's assets. " +
+                            "Edits to that embed are saved to the copy. If the parent is MDZip " +
+                            "or TextPack, save the parent to include the copy in its archive. " +
+                            "Link uses the original file, so edits are saved back to it and require write access. " +
+                            "This setting applies to new embeds; existing embeds keep their source."
+                    )
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+                true
+            }
+        findPreference<androidx.preference.Preference>("pref_embedded_content_interaction_help")
+            ?.setOnPreferenceClickListener {
+                androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("Embedded editing modes")
+                    .setMessage(
+                        "Limited interaction allows checkbox changes but keeps the rest of the " +
+                            "embedded document read-only. Full inline editing allows text edits " +
+                            "inside the embed. Changes are saved automatically according to the " +
+                            "copy or link method above; linked files must be writable."
+                    )
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+                true
+            }
+
+        val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val method = prefs.getString("pref_embedded_document_method", "copy")
+            ?.takeIf { it == "link" } ?: "copy"
+        selectEmbeddedDocumentMethod(method)
+        val fullEditing = prefs.getBoolean("pref_embedded_content_full_inline_editing", false)
+        val limitedInteraction =
+            prefs.getBoolean("pref_embedded_content_limited_interaction", true)
+        selectEmbeddedInteractionMode(
+            if (fullEditing && !limitedInteraction) "full" else "limited"
+        )
+        updateEmbeddedSaveSummary(method)
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        super.onSettingPreferenceChanged(sharedPreferences, key)
+        if (syncingEmbeddedSettings) return
+
+        when (key) {
+            "pref_embedded_document_method_copy",
+            "pref_embedded_document_method_link",
+            "pref_embedded_document_method" -> {
+                val method = when (key) {
+                    "pref_embedded_document_method_copy" ->
+                        if (sharedPreferences.getBoolean(key, false)) "copy" else "link"
+                    "pref_embedded_document_method_link" ->
+                        if (sharedPreferences.getBoolean(key, false)) "link" else "copy"
+                    else ->
+                        sharedPreferences.getString(key, "copy")
+                            ?.takeIf { it == "link" } ?: "copy"
+                }
+                selectEmbeddedDocumentMethod(method)
+            }
+
+            "pref_embedded_content_limited_interaction",
+            "pref_embedded_content_full_inline_editing" -> {
+                val mode = if (key == "pref_embedded_content_full_inline_editing") {
+                    if (sharedPreferences.getBoolean(key, false)) "full" else "limited"
+                } else {
+                    if (sharedPreferences.getBoolean(key, true)) "limited" else "full"
+                }
+                selectEmbeddedInteractionMode(mode)
+            }
+        }
+    }
+
+    private fun selectEmbeddedDocumentMethod(method: String) {
+        if (syncingEmbeddedSettings) return
+        val selected = if (method == "link") "link" else "copy"
+        syncingEmbeddedSettings = true
+        PreferenceManager.getDefaultSharedPreferences(requireContext()).edit()
+            .putString("pref_embedded_document_method", selected)
+            .putBoolean("pref_embedded_document_method_copy", selected == "copy")
+            .putBoolean("pref_embedded_document_method_link", selected == "link")
+            .apply()
+        findPreference<ResetSwitchPreference>("pref_embedded_document_method_copy")
+            ?.isChecked = selected == "copy"
+        findPreference<ResetSwitchPreference>("pref_embedded_document_method_link")
+            ?.isChecked = selected == "link"
+        updateEmbeddedSaveSummary(selected)
+        syncingEmbeddedSettings = false
+    }
+
+    private fun selectEmbeddedInteractionMode(mode: String) {
+        if (syncingEmbeddedSettings) return
+        val full = mode == "full"
+        syncingEmbeddedSettings = true
+        PreferenceManager.getDefaultSharedPreferences(requireContext()).edit()
+            .putBoolean("pref_embedded_content_limited_interaction", !full)
+            .putBoolean("pref_embedded_content_full_inline_editing", full)
+            .apply()
+        findPreference<ResetSwitchPreference>("pref_embedded_content_limited_interaction")
+            ?.isChecked = !full
+        findPreference<ResetSwitchPreference>("pref_embedded_content_full_inline_editing")
+            ?.isChecked = full
+        syncingEmbeddedSettings = false
+    }
+
+    private fun updateEmbeddedSaveSummary(method: String) {
+        val summary = if (method == "link") {
+            "Edits are saved back to the original linked file. The original must allow writing."
+        } else {
+            "Edits are saved to the copied file in parent assets. Save an MDZip or TextPack parent to include the copy in its archive."
+        }
+        findPreference<androidx.preference.Preference>("pref_embedded_content_saving_info")
+            ?.summary = summary
     }
 }
 

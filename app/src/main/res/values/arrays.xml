@@ -62,14 +62,6 @@
         <item>assets</item>
         <item>same-folder</item>
     </string-array>
-    <string-array name="pref_embedded_document_method_entries">
-        <item>Copy into current document</item>
-        <item>Link to original file</item>
-    </string-array>
-    <string-array name="pref_embedded_document_method_values">
-        <item>copy</item>
-        <item>link</item>
-    </string-array>
     <string-array name="align_entries">
         <item>Default</item>
         <item>Left</item>

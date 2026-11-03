@@ -2,6 +2,49 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Embedding and Editing">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_embedded_document_method_copy"
+            app:title="Copy into parent assets"
+            app:summary="Keep an independent copy; edits are saved to that copy"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_embedded_document_method_link"
+            app:title="Link to original file"
+            app:summary="Use the original file; edits are saved back to it"
+            android:defaultValue="false" />
+
+        <Preference
+            app:key="pref_embedded_document_method_help"
+            app:title="Copy and link help"
+            app:summary="Tap for details about where edits are saved"
+            app:icon="@drawable/ic_help_outline" />
+
+        <Preference
+            app:key="pref_embedded_content_saving_info"
+            app:title="Saving embedded edits"
+            app:summary="Edits are saved according to the selected copy or link method" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_embedded_content_limited_interaction"
+            app:title="Limited interaction"
+            app:summary="Allow checkbox changes only"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_embedded_content_full_inline_editing"
+            app:title="Full inline editing"
+            app:summary="Edit embedded text directly in the document"
+            android:defaultValue="false" />
+
+        <Preference
+            app:key="pref_embedded_content_interaction_help"
+            app:title="Editing modes help"
+            app:summary="Tap for details about embedded interactions and saving"
+            app:icon="@drawable/ic_help_outline" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Embedded Content Appearance">
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_embedded_content_bg_color"
@@ -13,6 +56,18 @@
             app:key="pref_embedded_content_text_color"
             app:title="Text Color"
             app:summary="Text color inside embedded documents"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_embedded_content_title_bg_color"
+            app:title="Title Background Color"
+            app:summary="Background behind the embedded document title"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_embedded_content_title_text_color"
+            app:title="Title Text Color"
+            app:summary="Text color of the embedded document title"
             app:defaultValue="default" />
 
         <com.wmdx.markdownapp.ResetColorPickerPreference

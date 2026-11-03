@@ -3003,6 +3003,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     uri,
                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
+                if (method == "link") {
+                    persistDocumentUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                }
                 if (!hasPersistedReadAccess(uri)) {
                     throw java.io.IOException(
                         "The selected file provider does not allow saved access. Choose Copy into current document."
@@ -4682,6 +4688,63 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }.getOrElse {
                 JSONObject().put("ok", false).toString()
             }
+        }
+
+        @JavascriptInterface
+        fun saveEmbeddedMarkdown(
+            relativeLink: String,
+            markdownText: String?,
+            documentSessionId: String?
+        ): Boolean {
+            if (documentSessionId != currentDocumentSessionId || markdownText == null) return false
+            val bytes = markdownText.toByteArray(Charsets.UTF_8)
+            if (bytes.size > MAX_EMBEDDED_DOCUMENT_BYTES) return false
+
+            return runCatching {
+                val decodedLink = if (relativeLink.startsWith("content://", ignoreCase = true)) {
+                    relativeLink
+                } else {
+                    Uri.decode(relativeLink)
+                }
+                val isDirectLinkedFile = runCatching {
+                    Uri.parse(decodedLink).scheme == "content"
+                }.getOrDefault(false)
+                val targetUri = resolveEmbeddedDocumentUri(relativeLink)
+                    ?: throw java.io.FileNotFoundException(
+                        "The embedded document could not be found."
+                    )
+
+                val fileName = getFileNameFromUri(targetUri)
+                if (MdzipManager.isMdzipFileName(fileName)) {
+                    MdzipManager.save(
+                        this@MainActivity,
+                        getEmbeddedMdzipSession(targetUri),
+                        markdownText,
+                        targetUri
+                    )
+                } else {
+                    val output = contentResolver.openOutputStream(targetUri, "rwt")
+                        ?: throw java.io.IOException(
+                            "Could not open the embedded document for writing."
+                        )
+                    output.use { it.write(bytes) }
+                }
+
+                val isPackagedCopy = !isDirectLinkedFile &&
+                    (currentDocumentFormat == DocumentFormat.MDZIP ||
+                        currentDocumentFormat == DocumentFormat.TEXT_PACK)
+                if (isPackagedCopy) {
+                    runOnUiThread {
+                        if (documentSessionId == currentDocumentSessionId) {
+                            isDirty = true
+                            updateTitle()
+                        }
+                    }
+                }
+                true
+            }.onFailure {
+                AppDiagnostics.record(this@MainActivity, "embedded_document_save_failed")
+            }.getOrDefault(false)
         }
 
         @JavascriptInterface
