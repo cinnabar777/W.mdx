@@ -181,7 +181,7 @@ test('paragraph and list typography selectors have matching editor line classes'
 test('letter-spacing control is labeled as paragraph-only, not global', () => {
   assert.match(paragraphSettings, /app:key="pref_letter_spacing"/);
   assert.match(paragraphSettings, /app:title="Paragraph Letter Spacing \(px\)"/);
-  assert.match(paragraphSettings, /Letter spacing for regular paragraph text only/);
+  assert.match(paragraphSettings, /Letter spacing for paragraph text only/);
   assert.doesNotMatch(paragraphSettings, /Global Letter Spacing/);
 });
 
@@ -249,7 +249,7 @@ test('custom underline syntax, styles, toolbar actions, and shortcuts are wired 
     assert.ok(underlineSettings.includes(`app:key="pref_underline_${style}_color"`));
     assert.ok(underlineSettings.includes(`app:key="pref_underline_${style}_thickness"`));
     assert.ok(hotkeySettings.includes(`app:key="pref_hotkey_underline${key}"`));
-    assert.ok(hotkeySettings.includes(`app:key="pref_hotkey_underline${key}"\n            app:title="Underline ${key}"\n            app:defaultValue=""`));
+    assert.ok(hotkeySettings.includes(`app:key="pref_hotkey_underline${key}"\n        app:title="Underline: ${key}"\n        app:defaultValue=""`));
     assert.ok(mainActivity.includes(`"underline${key}" to prefs.getString("pref_hotkey_underline${key}", "")`));
     assert.ok(toolbarConfig.includes(`'underline${key}'`));
     assert.ok(indexHtml.includes(`.cm-underline-${style}`));
@@ -257,7 +257,7 @@ test('custom underline syntax, styles, toolbar actions, and shortcuts are wired 
     assert.ok(indexHtml.includes(`--underline-${style}-thickness`));
   }
 
-  assert.ok(hotkeySettings.includes('app:key="pref_hotkey_underline"\n            app:title="Cycle Underline Style"\n            app:defaultValue="ctrl+u"'));
+  assert.ok(hotkeySettings.includes('app:key="pref_hotkey_underline"\n        app:title="Underline: Cycle Style"\n        app:defaultValue="ctrl+u"'));
   assert.ok(source.includes('`--underline-${style}-color`'));
 });
 

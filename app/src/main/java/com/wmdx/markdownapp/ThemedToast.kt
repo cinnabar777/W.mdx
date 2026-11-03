@@ -47,6 +47,11 @@ object ThemedToast {
         val toast = Toast(applicationContext).apply {
             this.duration = duration
             view = textView
+            setGravity(
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+                0,
+                (48 * density).toInt()
+            )
         }
         currentToast = toast
         toast.show()

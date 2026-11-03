@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetSeekBarPreference
+        app:key="pref_body_font_size"
+        app:title="Body Text Size (px)"
+        app:summary="Default font size for regular body text"
+        app:min="12"
+        android:max="32"
+        app:defaultValue="16"
+        app:showSeekBarValue="true" />
+
+    <com.wmdx.markdownapp.ResetSeekBarPreference
+        app:key="pref_body_font_weight"
+        app:title="Body Text Font Weight"
+        app:summary="Default weight for regular body text (100–900)"
+        app:min="100"
+        android:max="900"
+        app:defaultValue="400"
+        app:showSeekBarValue="true" />
+
+    <com.wmdx.markdownapp.ResetListPreference
+        app:key="pref_body_font_family"
+        app:title="Body Text Font Family"
+        app:summary="Choose a device font for regular body text"
+        android:entries="@array/font_family_entries"
+        android:entryValues="@array/font_family_values"
+        android:defaultValue="default" />
+
+    <com.wmdx.markdownapp.ResetColorPickerPreference
+        app:key="pref_body_text_color"
+        app:title="Body Text Color"
+        app:summary="Default text color for body content"
+        app:defaultValue="default" />
+
+    <com.wmdx.markdownapp.ResetColorPickerPreference
+        app:key="pref_body_background_color"
+        app:title="Document Background Color"
+        app:summary="Background color behind the document content"
+        app:defaultValue="default" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_font_file_body"
+        app:title="Body Text Font File"
+        app:summary="Choose a custom font file for body text when Font Family is set to Default" />
+
+    <com.wmdx.markdownapp.ResetSeekBarPreference
+        app:key="pref_body_margin_left"
+        app:title="Body Left Margin (px)"
+        app:summary="Space between the document edge and body text"
+        app:min="0"
+        android:max="80"
+        app:defaultValue="16"
+        app:showSeekBarValue="true" />
+
+    <com.wmdx.markdownapp.ResetSeekBarPreference
+        app:key="pref_body_margin_right"
+        app:title="Body Right Margin (px)"
+        app:summary="Space between the document edge and body text"
+        app:min="0"
+        android:max="80"
+        app:defaultValue="16"
+        app:showSeekBarValue="true" />
+
+    <com.wmdx.markdownapp.ResetSwitchPreference
+        app:key="pref_line_wrap"
+        app:title="Wrap Long Lines"
+        app:summary="When off, long document lines scroll horizontally instead of wrapping"
+        android:defaultValue="true" />
+
+</androidx.preference.PreferenceScreen>

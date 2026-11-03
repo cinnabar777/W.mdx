@@ -532,6 +532,17 @@ object MdzipManager {
         return relativeMarkdownPath(session.entryPoint, archivePath)
     }
 
+    fun addImage(
+        session: MdzipSession,
+        input: InputStream,
+        originalName: String?,
+        mimeType: String?
+    ): String = addAttachment(
+        session,
+        input,
+        TextPackManager.safeImageFileName(originalName, mimeType)
+    )
+
     fun addAttachment(session: MdzipSession, input: InputStream, originalName: String): String {
         return addAttachment(
             session.sessionDir,
@@ -738,6 +749,17 @@ object MdzipManager {
 
     fun assetUrl(session: MdzipSession, markdownLink: String): String? {
         val archivePath = resolveRelativeArchivePath(session.entryPoint, markdownLink) ?: return null
+        if (assetArchiveFile(session, archivePath) == null) return null
+        return "$ASSET_BASE_URL/${session.sessionDir.name}/${Uri.encode(archivePath, "/")}"
+    }
+
+    fun assetUrl(
+        session: MdzipSession,
+        embeddedEntryPoint: String,
+        markdownLink: String
+    ): String? {
+        val archivePath = resolveRelativeArchivePath(embeddedEntryPoint, markdownLink)
+            ?: return null
         if (assetArchiveFile(session, archivePath) == null) return null
         return "$ASSET_BASE_URL/${session.sessionDir.name}/${Uri.encode(archivePath, "/")}"
     }

@@ -39,18 +39,20 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         if (intent.getStringExtra("settings_page") == "toc") {
-            supportActionBar?.title = "Table of Contents Panel"
+            supportActionBar?.title = "Right Panel: TOC"
         } else if (intent.getStringExtra("settings_page") == "left_panel") {
-            supportActionBar?.title = "Left Side Panel"
+            supportActionBar?.title = "Left Panel"
         }
 
         supportFragmentManager.addOnBackStackChangedListener {
             val currentFragment = supportFragmentManager.findFragmentById(R.id.settings_container)
             supportActionBar?.title = when (currentFragment) {
-                is SettingsThemeFragment -> "Settings Appearance"
+                is UIAppearanceSettingsFragment -> "UI Appearance"
+                is SettingsThemeFragment -> "Settings"
                 is MediaPlaybackSettingsFragment -> "Media Playback"
                 is StylingHeadingsFragment -> "Headings"
-                is StylingParagraphFragment -> "Paragraph & Body"
+                is StylingBodyFragment -> "Body"
+                is StylingParagraphFragment -> "Paragraph"
                 is StylingBoldFragment -> "Bold"
                 is StylingItalicFragment -> "Italic"
                 is StylingLinksFragment -> "Links"
@@ -60,16 +62,17 @@ class SettingsActivity : AppCompatActivity() {
                 is StylingBlockquotesFragment -> "Block Quotes"
                 is StylingCalloutsFragment -> "Callouts"
                 is StylingAttachmentsFragment -> "Attachments"
+                is StylingEmbeddedContentFragment -> "Embedded Content"
                 is StylingTablesFragment -> "Tables"
                 is StylingCodeFragment -> "Code Blocks"
                 is StylingHrFragment -> "Horizontal Rules"
                 is StylingControlbarFragment -> "Toolbars"
                 is StylingCursorFragment -> "Cursor & Selection"
                 is StylingFindReplaceFragment -> "Find & Replace"
-                is TocPanelSettingsFragment -> "Table of Contents"
-                is LeftPanelSettingsFragment -> "Left Side Panel"
+                is TocPanelSettingsFragment -> "Right Panel: TOC"
+                is LeftPanelSettingsFragment -> "Left Panel"
                 is StorageAccessSettingsFragment -> "File & Folder Access"
-                is StylingSettingsFragment -> "Typography"
+                is StylingSettingsFragment -> "Document Appearance"
                 is ExportSettingsFragment -> "HTML & MHTML Export"
                 is HotkeysSettingsFragment -> "Keyboard Shortcuts"
                 else -> getString(R.string.settings_title)
@@ -138,6 +141,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
             if (pref is androidx.preference.PreferenceCategory) {
                 pref.layoutResource = R.layout.preference_category_custom
                 applyCustomLayouts(pref)
+            } else if (pref is HelpResetSwitchPreference) {
+                pref.layoutResource = R.layout.preference_help_switch
             } else if (pref is androidx.preference.SeekBarPreference) {
                 if (pref is androidx.preference.PreferenceGroup) {
                     applyCustomLayouts(pref)
@@ -254,16 +259,9 @@ class SettingsFragment : BaseSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         val key = preference.key ?: return super.onPreferenceTreeClick(preference)
         when (key) {
-            "pref_page_toc" -> {
+            "pref_page_ui_appearance" -> {
                 parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, TocPanelSettingsFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_left_panel" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, LeftPanelSettingsFragment())
+                    .replace(R.id.settings_container, UIAppearanceSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -271,34 +269,6 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_storage_access" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, StorageAccessSettingsFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_settings_theme" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, SettingsThemeFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_media" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, MediaPlaybackSettingsFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_findreplace" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, StylingFindReplaceFragment())
-                    .addToBackStack(null)
-                    .commit()
-                return true
-            }
-            "pref_page_bottom_toolbar" -> {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.settings_container, StylingControlbarFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -653,6 +623,31 @@ class StorageAccessSettingsFragment : BaseSettingsFragment() {
     }
 }
 
+class UIAppearanceSettingsFragment : BaseSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_ui_appearance, rootKey)
+    }
+
+    override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        val targetFragment: PreferenceFragmentCompat? = when (preference.key) {
+            "pref_page_settings_theme" -> SettingsThemeFragment()
+            "pref_page_findreplace" -> StylingFindReplaceFragment()
+            "pref_page_left_panel" -> LeftPanelSettingsFragment()
+            "pref_page_toc" -> TocPanelSettingsFragment()
+            "pref_page_bottom_toolbar" -> StylingControlbarFragment()
+            else -> null
+        }
+        if (targetFragment != null) {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.settings_container, targetFragment)
+                .addToBackStack(null)
+                .commit()
+            return true
+        }
+        return super.onPreferenceTreeClick(preference)
+    }
+}
+
 open class StylingSettingsFragment : BaseSettingsFragment() {
     private var activeFontTargetKey: String? = null
 
@@ -939,7 +934,9 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             return true
         }
         val targetFragment: PreferenceFragmentCompat? = when (key) {
+            "pref_styling_page_media" -> MediaPlaybackSettingsFragment()
             "pref_styling_page_headings" -> StylingHeadingsFragment()
+            "pref_styling_page_body" -> StylingBodyFragment()
             "pref_styling_page_paragraph" -> StylingParagraphFragment()
             "pref_styling_page_bold" -> StylingBoldFragment()
             "pref_styling_page_italic" -> StylingItalicFragment()
@@ -952,6 +949,7 @@ open class StylingSettingsFragment : BaseSettingsFragment() {
             "pref_styling_page_blockquotes" -> StylingBlockquotesFragment()
             "pref_styling_page_callouts" -> StylingCalloutsFragment()
             "pref_styling_page_attachments" -> StylingAttachmentsFragment()
+            "pref_styling_page_embedded_content" -> StylingEmbeddedContentFragment()
             "pref_styling_page_tables" -> StylingTablesFragment()
             "pref_styling_page_code" -> StylingCodeFragment()
             "pref_styling_page_hr" -> StylingHrFragment()
@@ -1048,6 +1046,12 @@ class StylingHeadingsFragment : StylingSettingsFragment() {
 class StylingParagraphFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_paragraph, rootKey)
+    }
+}
+
+class StylingBodyFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_body, rootKey)
         configureFontPreferences()
     }
 }
@@ -1370,6 +1374,150 @@ class StylingAttachmentsFragment : StylingSettingsFragment() {
     }
 }
 
+class StylingEmbeddedContentFragment : StylingSettingsFragment() {
+    private var syncingEmbeddedSettings = false
+
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_embedded_content, rootKey)
+
+        findPreference<HelpResetSwitchPreference>("pref_embedded_document_method_copy")
+            ?.setHelpContent(
+                "Copy into parent assets",
+                "Creates an independent copy inside the parent document's assets. " +
+                    "Edits to the embedded copy do not change the original selected file."
+            )
+        findPreference<HelpResetSwitchPreference>("pref_embedded_document_method_link")
+            ?.setHelpContent(
+                "Link to original file",
+                "Uses the original selected file. Embedded edits are saved back to that file " +
+                    "and require write access."
+            )
+        findPreference<HelpResetSwitchPreference>("pref_embedded_content_limited_interaction")
+            ?.setHelpContent(
+                "Limited interaction",
+                "Allows checkbox changes only. The rest of the embedded document stays read-only."
+            )
+        findPreference<HelpResetSwitchPreference>("pref_embedded_content_full_inline_editing")
+            ?.setHelpContent(
+                "Full inline editing",
+                "Allows editing embedded text directly in the document. Changes save to the " +
+                    "selected copy or linked file. A failed save keeps a warning at the top " +
+                    "until the edits save successfully."
+            )
+
+        findPreference<ResetSwitchPreference>("pref_embedded_document_method_copy")
+            ?.setOnPreferenceChangeListener { _, value ->
+                selectEmbeddedDocumentMethod(if (value == true) "copy" else "link")
+                true
+            }
+        findPreference<ResetSwitchPreference>("pref_embedded_document_method_link")
+            ?.setOnPreferenceChangeListener { _, value ->
+                selectEmbeddedDocumentMethod(if (value == true) "link" else "copy")
+                true
+            }
+
+        findPreference<ResetSwitchPreference>("pref_embedded_content_limited_interaction")
+            ?.setOnPreferenceChangeListener { _, value ->
+                selectEmbeddedInteractionMode(if (value == true) "limited" else "full")
+                true
+            }
+        findPreference<ResetSwitchPreference>("pref_embedded_content_full_inline_editing")
+            ?.setOnPreferenceChangeListener { _, value ->
+                selectEmbeddedInteractionMode(if (value == true) "full" else "limited")
+                true
+            }
+
+        val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val method = prefs.getString("pref_embedded_document_method", "copy")
+            ?.takeIf { it == "link" } ?: "copy"
+        selectEmbeddedDocumentMethod(method)
+        val fullEditing = prefs.getBoolean("pref_embedded_content_full_inline_editing", false)
+        val limitedInteraction =
+            prefs.getBoolean("pref_embedded_content_limited_interaction", true)
+        selectEmbeddedInteractionMode(
+            if (fullEditing && !limitedInteraction) "full" else "limited"
+        )
+        updateEmbeddedSaveSummary(method)
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        super.onSettingPreferenceChanged(sharedPreferences, key)
+        if (syncingEmbeddedSettings) return
+
+        when (key) {
+            "pref_embedded_document_method_copy",
+            "pref_embedded_document_method_link",
+            "pref_embedded_document_method" -> {
+                val method = when (key) {
+                    "pref_embedded_document_method_copy" ->
+                        if (sharedPreferences.getBoolean(key, false)) "copy" else "link"
+                    "pref_embedded_document_method_link" ->
+                        if (sharedPreferences.getBoolean(key, false)) "link" else "copy"
+                    else ->
+                        sharedPreferences.getString(key, "copy")
+                            ?.takeIf { it == "link" } ?: "copy"
+                }
+                selectEmbeddedDocumentMethod(method)
+            }
+
+            "pref_embedded_content_limited_interaction",
+            "pref_embedded_content_full_inline_editing" -> {
+                val mode = if (key == "pref_embedded_content_full_inline_editing") {
+                    if (sharedPreferences.getBoolean(key, false)) "full" else "limited"
+                } else {
+                    if (sharedPreferences.getBoolean(key, true)) "limited" else "full"
+                }
+                selectEmbeddedInteractionMode(mode)
+            }
+        }
+    }
+
+    private fun selectEmbeddedDocumentMethod(method: String) {
+        if (syncingEmbeddedSettings) return
+        val selected = if (method == "link") "link" else "copy"
+        syncingEmbeddedSettings = true
+        PreferenceManager.getDefaultSharedPreferences(requireContext()).edit()
+            .putString("pref_embedded_document_method", selected)
+            .putBoolean("pref_embedded_document_method_copy", selected == "copy")
+            .putBoolean("pref_embedded_document_method_link", selected == "link")
+            .apply()
+        findPreference<ResetSwitchPreference>("pref_embedded_document_method_copy")
+            ?.isChecked = selected == "copy"
+        findPreference<ResetSwitchPreference>("pref_embedded_document_method_link")
+            ?.isChecked = selected == "link"
+        updateEmbeddedSaveSummary(selected)
+        syncingEmbeddedSettings = false
+    }
+
+    private fun selectEmbeddedInteractionMode(mode: String) {
+        if (syncingEmbeddedSettings) return
+        val full = mode == "full"
+        syncingEmbeddedSettings = true
+        PreferenceManager.getDefaultSharedPreferences(requireContext()).edit()
+            .putBoolean("pref_embedded_content_limited_interaction", !full)
+            .putBoolean("pref_embedded_content_full_inline_editing", full)
+            .apply()
+        findPreference<ResetSwitchPreference>("pref_embedded_content_limited_interaction")
+            ?.isChecked = !full
+        findPreference<ResetSwitchPreference>("pref_embedded_content_full_inline_editing")
+            ?.isChecked = full
+        syncingEmbeddedSettings = false
+    }
+
+    private fun updateEmbeddedSaveSummary(method: String) {
+        val summary = if (method == "link") {
+            "Edits are saved back to the original linked file. The original must allow writing."
+        } else {
+            "Edits are saved to the copied file in parent assets. Save an MDZip or TextPack parent to include the copy in its archive."
+        }
+        findPreference<androidx.preference.Preference>("pref_embedded_content_saving_info")
+            ?.summary = summary
+    }
+}
+
 class StylingTablesFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_tables, rootKey)
@@ -1449,7 +1597,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell"
             ),
             "insert" to listOf(
-                "image", "audio", "video", "attachment", "link", "callout", "inlineCode", "blockQuote",
+                "image", "audio", "video", "attachment", "embed", "link", "callout", "inlineCode", "blockQuote",
                 "codeBlock", "horizontalLine", "footnote"
             ),
             "menu" to listOf(
@@ -1473,7 +1621,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "highlightBlue", "penCycle", "penRed", "penGreen", "penBlue", "penPurple",
             "insertTable", "insertRowBelow", "insertColumnRight", "deleteRow", "deleteColumn",
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
-            "image", "audio", "video", "attachment", "link", "callout", "inlineCode", "blockQuote",
+            "image", "audio", "video", "attachment", "embed", "link", "callout", "inlineCode", "blockQuote",
             "codeBlock", "horizontalLine", "footnote",
             "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "saveAsMdzip",

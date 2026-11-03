@@ -42,6 +42,10 @@ const paragraphSettingsXml = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_paragraph.xml'),
   'utf8'
 );
+const bodySettingsXml = fs.readFileSync(
+  path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_body.xml'),
+  'utf8'
+);
 const editorHtml = fs.readFileSync(
   path.join(__dirname, '../index.html'),
   'utf8'
@@ -365,6 +369,12 @@ test('users can save and manage folder access from the main settings page', () =
   assert.ok(settingsActivitySource.includes('it.uri.toString() !in locallyRevokedUris'));
   assert.ok(mainActivitySource.includes('resolveRenameTargetInTree(permission.uri, documentUri)'));
   assert.ok(storageSettingsXml.includes('Downloads folder itself'));
+  assert.match(mainSettingsXml, /ResetPreferenceCategory app:title="Preferences"/);
+  assert.doesNotMatch(mainSettingsXml, /Display &amp; Images/);
+  assert.match(
+    mainSettingsXml,
+    /app:key="pref_page_storage_access"[\s\S]*?\/>\s*<com\.wmdx\.markdownapp\.ResetListPreference\s+app:key="pref_markdown_image_location"/
+  );
 });
 
 test('rename access dialog offers folder access and Save As alongside its explanation', () => {
@@ -409,7 +419,7 @@ test('New Window launches a fresh, separate Android editor task', () => {
 
 test('body background color is configurable independently of the app theme', () => {
   assert.match(
-    paragraphSettingsXml,
+    bodySettingsXml,
     /app:key="pref_body_background_color"[\s\S]*?app:defaultValue="default"/
   );
   assert.match(resetPreferencesSource, /key == "pref_body_background_color" -> "default"/);
@@ -496,38 +506,68 @@ test('typography editor categories are separated into individual navigation page
   }
 
   const orderedPages = [
-    'Headings (H1 – H6)',
-    'Paragraph &amp; Body Text',
+    'Attachments',
     'Block Quotes',
+    'Body',
     'Bold',
     'Callouts',
     'Code Blocks',
     'Cursor &amp; Selection',
     'Footnotes',
+    'Headings (H1 – H6)',
+    'Highlights &amp; Pens',
     'Horizontal Rules',
     'Inline Code',
     'Italic',
     'Links',
     'Lists (Bulleted, Numbered, Todo Checkboxes)',
-    'Tables'
+    'Media Playback',
+    'Paragraph',
+    'Tables',
+    'Underline'
   ].map(title => navigationXml.indexOf(`app:title="${title}"`));
   assert.ok(orderedPages.every(index => index >= 0), 'Every expected typography page is present');
   assert.deepEqual(
     orderedPages,
     [...orderedPages].sort((first, second) => first - second),
-    'Headings and body stay first; remaining typography pages are alphabetical'
+    'Every Document Appearance page is alphabetized by title'
   );
 });
 
-test('bottom toolbar appearance is in main settings below Find & Replace', () => {
-  const findReplaceIndex = mainSettingsXml.indexOf('app:key="pref_page_findreplace"');
-  const toolbarIndex = mainSettingsXml.indexOf('app:key="pref_page_bottom_toolbar"');
-  const keyboardIndex = mainSettingsXml.indexOf('app:key="pref_page_hotkeys"');
-
-  assert.ok(findReplaceIndex >= 0 && findReplaceIndex < toolbarIndex);
-  assert.ok(toolbarIndex < keyboardIndex);
-  assert.match(mainSettingsXml, /app:key="pref_page_bottom_toolbar"[\s\S]*?app:title="Toolbars"/);
-  assert.ok(settingsActivitySource.includes('"pref_page_bottom_toolbar"'));
+test('UI Appearance contains the requested pages in order', () => {
+  const uiAppearanceXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_ui_appearance.xml'),
+    'utf8'
+  );
+  const pages = [...uiAppearanceXml.matchAll(
+    /app:key="([^"]+)"\s+app:title="([^"]+)"/g
+  )];
+  assert.deepEqual(
+    pages.map(([, key, title]) => [key, title.replaceAll('&amp;', '&')]),
+    [
+      ['pref_page_settings_theme', 'Settings'],
+      ['pref_app_theme', 'App Theme'],
+      ['pref_page_findreplace', 'Find & Replace'],
+      ['pref_hide_status_bar', 'Hide Status Bar'],
+      ['pref_hide_nav_bar', 'Hide Navigation Bar'],
+      ['pref_page_left_panel', 'Left Panel'],
+      ['pref_page_toc', 'Right Panel: TOC'],
+      ['pref_page_bottom_toolbar', 'Toolbars']
+    ]
+  );
+  assert.match(mainSettingsXml, /app:key="pref_page_ui_appearance"[\s\S]*?app:title="UI Appearance"/);
+  assert.match(mainSettingsXml, /app:key="pref_page_styling"[\s\S]*?app:title="Document Appearance"/);
+  assert.doesNotMatch(mainSettingsXml, /app:key="pref_page_(settings_theme|findreplace|left_panel|toc|bottom_toolbar)"/);
+  assert.doesNotMatch(mainSettingsXml, /app:key="(pref_app_theme|pref_hide_status_bar|pref_hide_nav_bar)"/);
+  assert.ok(settingsActivitySource.includes('UIAppearanceSettingsFragment'));
+  assert.ok(settingsActivitySource.includes('is SettingsThemeFragment -> "Settings"'));
+  assert.ok(settingsActivitySource.includes('is StylingSettingsFragment -> "Document Appearance"'));
+  assert.ok(settingsActivitySource.includes('"pref_styling_page_media" -> MediaPlaybackSettingsFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_styling_page_body" -> StylingBodyFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_styling_page_paragraph" -> StylingParagraphFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_page_toc" -> TocPanelSettingsFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_page_left_panel" -> LeftPanelSettingsFragment()'));
+  assert.ok(settingsActivitySource.includes('"pref_page_bottom_toolbar" -> StylingControlbarFragment()'));
   assert.ok(!stylingPagesXml.includes('pref_styling_page_controlbar'));
   assert.ok(settingsActivitySource.includes('is StylingControlbarFragment -> "Toolbars"'));
 });
@@ -591,23 +631,18 @@ test('settings labels avoid redundant settings, styling, and shortcut wording', 
   assert.ok(!mainSettingsXml.includes('HTML &amp; MHTML Export Settings'));
 });
 
-test('keyboard shortcuts are alphabetized within each existing group', () => {
-  const groups = [...hotkeysXml.matchAll(
-    /<com\.wmdx\.markdownapp\.ResetPreferenceCategory app:title="([^"]+)">([\s\S]*?)<\/com\.wmdx\.markdownapp\.ResetPreferenceCategory>/g
-  )];
-  assert.equal(groups.length, 4, 'All shortcut groups remain present');
-
-  for (const [, groupTitle, groupXml] of groups) {
-    const titles = [...groupXml.matchAll(/app:title="([^"]+)"/g)]
-      .map(([, title]) => title.replace(/&amp;/g, '&'));
-    assert.deepEqual(
-      titles,
-      [...titles].sort((first, second) =>
-        first.localeCompare(second, undefined, { sensitivity: 'base' })
-      ),
-      `${groupTitle} shortcuts are alphabetized without changing group order`
-    );
-  }
+test('keyboard shortcuts are one flat alphabetical list with no section headings', () => {
+  assert.doesNotMatch(hotkeysXml, /ResetPreferenceCategory/);
+  const titles = [...hotkeysXml.matchAll(/app:title="([^"]+)"/g)]
+    .map(([, title]) => title.replace(/&amp;/g, '&'));
+  assert.equal(titles.length, 67, 'All shortcut preferences remain present');
+  assert.deepEqual(
+    titles,
+    [...titles].sort((first, second) =>
+      first.localeCompare(second, undefined, { sensitivity: 'base' })
+    ),
+    'Shortcut names are alphabetized across the full list'
+  );
 });
 
 test('every visible hotkey preference reaches a matching editor action', () => {
@@ -640,7 +675,7 @@ test('left panel search options reach native search and the file filters', () =>
   );
   assert.match(
     mainActivitySource,
-    /markdownExtensions = setOf\("\.md", "\.textpack", "\.mdx", "\.textpack\.zip", "\.mdz"\)/
+    /markdownExtensions = setOf\("\.md", "\.textpack", "\.textpack\.zip", "\.mdz"\)/
   );
   assert.match(
     mainActivitySource,
@@ -915,7 +950,7 @@ test('Markdown image storage can recover document ancestry from the approved tre
   assert.match(assetManagerSource, /exactMatches\.maxByOrNull \{ it\.parentDocumentIds\.size \}/);
 });
 
-test('Typography keeps Headings and Body first, then alphabetizes text elements', () => {
+test('Document Appearance pages are alphabetized by title', () => {
   const styleRoot = fs.readFileSync(
     path.join(__dirname, '../../app/src/main/res/xml/preferences_styling.xml'),
     'utf8'
@@ -923,16 +958,29 @@ test('Typography keeps Headings and Body first, then alphabetizes text elements'
   const titles = [...styleRoot.matchAll(
     /app:key="pref_styling_page_[^"]+"\s+app:title="([^"]+)"/g
   )].map(match => match[1].replaceAll('&amp;', '&'));
-  assert.deepEqual(titles.slice(0, 3), [
+  assert.deepEqual(titles, [
+    'Attachments',
+    'Block Quotes',
+    'Body',
+    'Bold',
+    'Callouts',
+    'Code Blocks',
+    'Cursor & Selection',
+    'Embedded Content',
+    'Footnotes',
     'Headings (H1 – H6)',
-    'Paragraph & Body Text',
-    'Attachments'
+    'Highlights & Pens',
+    'Horizontal Rules',
+    'Inline Code',
+    'Italic',
+    'Links',
+    'Lists (Bulleted, Numbered, Todo Checkboxes)',
+    'Media Playback',
+    'Paragraph',
+    'Tables',
+    'Underline'
   ]);
-  const remaining = titles.slice(2);
-  assert.deepEqual(
-    remaining,
-    [...remaining].sort((left, right) => left.localeCompare(right))
-  );
+  assert.doesNotMatch(styleRoot, /ResetPreferenceCategory[^>]*app:title="Text Elements"/);
 });
 
 test('Attachment style preferences are reachable and applied to packaged attachment links', () => {

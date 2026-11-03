@@ -77,6 +77,11 @@ object PreferenceResetHelper {
             "pref_mdzip_attachment_bg_color" -> "#202124"
             "pref_mdzip_attachment_text_color" -> "#F1F3F4"
             "pref_mdzip_attachment_border_color" -> "#555555"
+            "pref_embedded_content_bg_color" -> "#202124"
+            "pref_embedded_content_text_color" -> "#F1F3F4"
+            "pref_embedded_content_border_color" -> "#555555"
+            "pref_embedded_content_title_bg_color" -> "#303134"
+            "pref_embedded_content_title_text_color" -> "#F1F3F4"
             "pref_callout_header_bg_color" -> "#1A232A"
             "pref_callout_header_title_color" -> "#FFFFFF"
             "pref_callout_header_accent_color" -> "#29B6F6"
@@ -178,6 +183,16 @@ object PreferenceResetHelper {
                 if (isLightTheme) "#111111" else "#F1F3F4"
             "pref_mdzip_attachment_border_color" ->
                 if (isLightTheme) "#D0D5DB" else "#555555"
+            "pref_embedded_content_bg_color" ->
+                if (isLightTheme) "#F8F9FA" else "#202124"
+            "pref_embedded_content_text_color" ->
+                if (isLightTheme) "#111111" else "#F1F3F4"
+            "pref_embedded_content_border_color" ->
+                if (isLightTheme) "#D0D5DB" else "#555555"
+            "pref_embedded_content_title_bg_color" ->
+                if (isLightTheme) "#E9ECEF" else "#303134"
+            "pref_embedded_content_title_text_color" ->
+                if (isLightTheme) "#111111" else "#F1F3F4"
             "pref_body_text_color", "pref_list_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
             "pref_toc_panel_bg_color" -> {
@@ -465,6 +480,16 @@ object PreferenceResetHelper {
             key == "pref_mdzip_attachment_padding_x" -> 10
             key == "pref_mdzip_attachment_padding_y" -> 7
             key == "pref_mdzip_attachment_font_size" -> 14
+            key == "pref_embedded_content_bg_color" ||
+                key == "pref_embedded_content_text_color" ||
+                key == "pref_embedded_content_border_color" ||
+                key == "pref_embedded_content_title_bg_color" ||
+                key == "pref_embedded_content_title_text_color" -> "default"
+            key == "pref_embedded_content_border_width" -> 1
+            key == "pref_embedded_content_border_radius" -> 8
+            key == "pref_embedded_content_padding_x" -> 10
+            key == "pref_embedded_content_padding_y" -> 8
+            key == "pref_embedded_content_font_size" -> 14
             key == "pref_hr_thickness" -> 2
             key == "pref_hr_style" -> "solid"
             key == "pref_hr_color" -> "default"
@@ -596,6 +621,11 @@ object PreferenceResetHelper {
                 key == "pref_left_panel_folders_keep_open" ||
                 key == "pref_left_panel_tabs_keep_open" -> false
             key == "pref_markdown_image_location" -> MarkdownAssetManager.LOCATION_ASSETS
+            key == "pref_embedded_document_method_copy" -> true
+            key == "pref_embedded_document_method_link" -> false
+            key == "pref_embedded_content_limited_interaction" -> true
+            key == "pref_embedded_content_full_inline_editing" -> false
+            key == "pref_embedded_document_method" -> "copy"
             key == "pref_settings_category_title_color" -> "#00E5FF"
             key == "pref_settings_title_color" -> "#FFFFFF"
             key == "pref_settings_summary_color" -> "#AAAAAA"
@@ -636,6 +666,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_save_tabs" -> ""
             key == "pref_hotkey_paste_as_plain_text" -> "ctrl+shift+v"
             key == "pref_hotkey_attachment" -> "ctrl+shift+a"
+            key == "pref_hotkey_embed" -> "ctrl+alt+e"
             key == "pref_hotkey_save_as_textpack" -> "ctrl+shift+alt+s"
             key == "pref_hotkey_save_as_mdzip" -> "ctrl+shift+alt+m"
             key == "pref_hotkey_image" -> "ctrl+shift+i"
@@ -1367,5 +1398,46 @@ open class ResetSwitchPreference : SwitchPreferenceCompat, ResettablePreference 
     }
     override fun callNotifyChanged() {
         notifyChanged()
+    }
+}
+
+class HelpResetSwitchPreference : ResetSwitchPreference {
+    private var helpTitle: CharSequence? = null
+    private var helpMessage: CharSequence? = null
+
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int, defStyleRes: Int) :
+        super(context, attrs, defStyleAttr, defStyleRes)
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) :
+        super(context, attrs, defStyleAttr)
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
+    constructor(context: Context) : super(context)
+
+    fun setHelpContent(title: CharSequence, message: CharSequence) {
+        helpTitle = title
+        helpMessage = message
+        notifyChanged()
+    }
+
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        val button = holder.itemView.findViewById<android.widget.ImageButton>(
+            R.id.preference_help
+        ) ?: return
+        val message = helpMessage
+        if (message.isNullOrBlank()) {
+            button.visibility = View.GONE
+            button.setOnClickListener(null)
+            return
+        }
+
+        button.visibility = View.VISIBLE
+        button.contentDescription = "Help for ${title ?: helpTitle ?: "setting"}"
+        button.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(context)
+                .setTitle(helpTitle ?: title)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+        }
     }
 }

@@ -45,7 +45,9 @@ internal object MarkdownAssetManager {
                 null
             }
         }.getOrNull()
-        val displayName = queryDisplayName(context, documentUri) ?: return null
+        val displayName = queryDisplayName(context, documentUri)
+            ?: documentUri.lastPathSegment
+            ?: return null
         val permissions = resolver.persistedUriPermissions.filter { permission ->
             permission.isReadPermission &&
                 (!requireWrite || permission.isWritePermission) &&
@@ -96,6 +98,47 @@ internal object MarkdownAssetManager {
                 "strategy=document_id trees=${permissions.size}"
             )
             return exactMatch
+        }
+
+        val filesystemPath = queryFilesystemPath(context, documentUri, displayName)
+        if (filesystemPath != null) {
+            val filesystemMatches = permissions.mapNotNull { permission ->
+                val rootDocumentId = runCatching {
+                    DocumentsContract.getTreeDocumentId(permission.uri)
+                }.getOrNull() ?: return@mapNotNull null
+                val pathIds = findPathByFilesystemLocation(
+                    context,
+                    permission.uri,
+                    rootDocumentId,
+                    filesystemPath,
+                    displayName
+                ) ?: return@mapNotNull null
+                val candidateDocumentId = pathIds.lastOrNull() ?: return@mapNotNull null
+                val candidateUri = runCatching {
+                    DocumentsContract.buildDocumentUriUsingTree(
+                        permission.uri,
+                        candidateDocumentId
+                    )
+                }.getOrNull() ?: return@mapNotNull null
+                if (!hasSameContent(context, documentUri, candidateUri)) {
+                    return@mapNotNull null
+                }
+                MarkdownDocumentLocation(
+                    permission.uri,
+                    rootDocumentId,
+                    pathIds.dropLast(1)
+                )
+            }.distinctBy { location ->
+                location.treeUri.toString() to location.parentDocumentIds
+            }
+            if (filesystemMatches.size == 1) {
+                AppDiagnostics.record(
+                    context,
+                    "markdown_asset_location_resolved",
+                    "strategy=filesystem_path trees=${permissions.size}"
+                )
+                return filesystemMatches.single()
+            }
         }
 
         val nameMatches = mutableListOf<Pair<String, MarkdownDocumentLocation>>()
@@ -315,6 +358,155 @@ internal object MarkdownAssetManager {
         }
         return matches
     }
+
+    private fun findPathByFilesystemLocation(
+        context: Context,
+        treeUri: Uri,
+        rootDocumentId: String,
+        filesystemPath: String,
+        displayName: String
+    ): List<String>? {
+        if (treeUri.authority != "com.android.externalstorage.documents") return null
+        val rootPath = externalStorageTreeRootPath(rootDocumentId) ?: return null
+        val segments = relativeFilesystemSegments(rootPath, filesystemPath) ?: return null
+        if (segments.isEmpty() || segments.last() != displayName) return null
+
+        val pathIds = mutableListOf(rootDocumentId)
+        var parentDocumentId = rootDocumentId
+        for ((index, segment) in segments.withIndex()) {
+            val child = listChildren(context, treeUri, parentDocumentId)
+                .singleOrNull { it.displayName == segment }
+                ?: return null
+            val isLastSegment = index == segments.lastIndex
+            if (
+                (isLastSegment && child.mimeType == DocumentsContract.Document.MIME_TYPE_DIR) ||
+                (!isLastSegment && child.mimeType != DocumentsContract.Document.MIME_TYPE_DIR)
+            ) {
+                return null
+            }
+            pathIds += child.documentId
+            parentDocumentId = child.documentId
+        }
+        return pathIds
+    }
+
+    private fun externalStorageTreeRootPath(rootDocumentId: String): String? {
+        val separator = rootDocumentId.indexOf(':')
+        if (separator <= 0) return null
+        val volumeId = rootDocumentId.substring(0, separator)
+        val volumeRoot = externalStorageVolumeRoot(volumeId) ?: return null
+        val rootSegments = rootDocumentId.substring(separator + 1)
+            .split('/')
+            .filter(String::isNotEmpty)
+        if (rootSegments.any { it == "." || it == ".." || it.any(Character::isISOControl) }) {
+            return null
+        }
+        val rootPath = rootSegments.fold(volumeRoot) { parent, segment ->
+            java.io.File(parent, segment)
+        }
+        return runCatching { rootPath.canonicalPath }.getOrNull()
+    }
+
+    private fun externalStorageVolumeRoot(volumeId: String): java.io.File? {
+        if (!volumeId.matches(Regex("^[A-Za-z0-9_-]+$"))) return null
+        return when {
+            volumeId.equals("primary", ignoreCase = true) ||
+                volumeId.equals("external_primary", ignoreCase = true) ->
+                android.os.Environment.getExternalStorageDirectory()
+            volumeId.equals("external", ignoreCase = true) -> null
+            else -> java.io.File("/storage", volumeId)
+        }
+    }
+
+    internal fun relativeFilesystemSegments(
+        treeRootPath: String,
+        documentPath: String
+    ): List<String>? {
+        val rootPath = runCatching { java.io.File(treeRootPath).canonicalPath }.getOrNull()
+            ?: return null
+        val sourcePath = runCatching { java.io.File(documentPath).canonicalPath }.getOrNull()
+            ?: return null
+        val rootPrefix = if (rootPath.endsWith(java.io.File.separator)) {
+            rootPath
+        } else {
+            rootPath + java.io.File.separator
+        }
+        if (!sourcePath.startsWith(rootPrefix)) return null
+        val relativePath = sourcePath.substring(rootPrefix.length)
+        return relativePath.split(java.io.File.separatorChar)
+            .takeIf { segments ->
+                segments.isNotEmpty() &&
+                    segments.none { segment ->
+                        segment.isBlank() ||
+                            segment == "." ||
+                            segment == ".." ||
+                            segment.any(Character::isISOControl)
+                    }
+            }
+    }
+
+    private fun queryFilesystemPath(
+        context: Context,
+        uri: Uri,
+        displayName: String
+    ): String? {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            return uri.path?.takeIf(String::isNotBlank)
+        }
+
+        val dataPath = queryStringColumn(
+            context,
+            uri,
+            android.provider.MediaStore.MediaColumns.DATA
+        )?.takeIf(String::isNotBlank)
+        if (dataPath != null) {
+            return dataPath.takeIf { java.io.File(it).name == displayName }
+        }
+        if (uri.authority != "media") return null
+
+        val relativePath = queryStringColumn(
+            context,
+            uri,
+            android.provider.MediaStore.MediaColumns.RELATIVE_PATH
+        ) ?: return null
+        val volumeName = queryStringColumn(
+            context,
+            uri,
+            android.provider.MediaStore.MediaColumns.VOLUME_NAME
+        ) ?: return null
+        if (
+            displayName.isBlank() ||
+            displayName.contains('/') ||
+            displayName.contains('\\') ||
+            displayName == "." ||
+            displayName == ".."
+        ) {
+            return null
+        }
+        val volumeRoot = externalStorageVolumeRoot(volumeName) ?: return null
+        val relativeSegments = relativePath.split('/')
+            .filter(String::isNotEmpty)
+        if (relativeSegments.any { it == "." || it == ".." || it.any(Character::isISOControl) }) {
+            return null
+        }
+        val parent = relativeSegments.fold(volumeRoot) { directory, segment ->
+            java.io.File(directory, segment)
+        }
+        return java.io.File(parent, displayName).path
+    }
+
+    private fun queryStringColumn(context: Context, uri: Uri, columnName: String): String? =
+        runCatching {
+            context.contentResolver.query(uri, arrayOf(columnName), null, null, null)
+                ?.use { cursor ->
+                    val columnIndex = cursor.getColumnIndex(columnName)
+                    if (columnIndex >= 0 && cursor.moveToFirst()) {
+                        cursor.getString(columnIndex)
+                    } else {
+                        null
+                    }
+                }
+        }.getOrNull()
 
     fun addImage(
         context: Context,

@@ -5,7 +5,7 @@
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Footnote Typography">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_footnote_inherit_body_typography"
-            app:title="Inherit Paragraph &amp; Body Typography"
+            app:title="Inherit Body Typography"
             app:summary="Use the paragraph and body font, weight, spacing, color, size, alignment, and line height"
             app:disableDependentsState="true"
             android:defaultValue="true" />

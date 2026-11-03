@@ -184,10 +184,10 @@ test('playable and notice-only video formats are packaged and rendered distinctl
   assert.doesNotMatch(editor, /decorations\.push\(videoDecoration\)/);
   assert.match(editor, /syncMdzipVideoReferences\?\./);
   assert.match(editor, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video/);
-  assert.match(toolbarConfig, /'image', 'audio', 'video', 'attachment', 'link'/);
+  assert.match(toolbarConfig, /'image', 'audio', 'video', 'attachment', 'embed', 'link'/);
   assert.match(toolbarConfig, /parsedVersion > 0 && parsedVersion < 8/);
   assert.match(settingsPreview, /\{ id: 'video', title: 'Insert Video', icon: svgIcons\.video \}/);
-  assert.match(settingsActivity, /"image", "audio", "video", "attachment", "link"/);
+  assert.match(settingsActivity, /"image", "audio", "video", "attachment", "embed", "link"/);
   assert.match(widget, /video\.controls = true/);
   assert.match(widget, /Unsupported video format\. This app can play MP4, M4V, WebM, 3GP, MOV, and MKV\./);
   assert.match(editor, /videoLink\.unsupported/);
@@ -210,6 +210,10 @@ test('video preview keeps native controls and safely edits or deletes the entire
   assert.match(widget, /const video = this\.unsupported \? null : document\.createElement\('video'\)/);
   assert.match(widget, /Long-press for video options/);
   assert.match(widget, /}, 550\)/);
+  assert.match(widget, /wrapper\.addEventListener\('pointerdown', onPointerDown\)/);
+  assert.match(widget, /wrapper\.addEventListener\('contextmenu', onContextMenu\)/);
+  assert.match(widget, /video\?\.addEventListener\('contextmenu', onContextMenu\)/);
+  assert.match(widget, /'-webkit-touch-callout:none'/);
   assert.match(widget, /editButton\.textContent = 'Edit'/);
   assert.match(widget, /removeLinkButton\.textContent = 'Remove link'/);
   assert.match(widget, /deleteButton\.textContent = 'Delete'/);

@@ -155,6 +155,40 @@ export function parseMarkdownAttachmentLink(text) {
   return parsed;
 }
 
+export function parseMarkdownEmbeddedDocumentLink(text) {
+  const link = markdownLinkParts(text);
+  if (!link || !/^wmdx-embed(?:[;:]|$)/.test(link.title ?? '')) return null;
+  let decodedUrl = link.url;
+  try {
+    decodedUrl = decodeURIComponent(link.url);
+  } catch {
+    // Native URI and package path resolution performs final validation.
+  }
+  const isContentUri = /^content:\/\//i.test(decodedUrl);
+  const decodedPath = decodedUrl.split(/[?#]/, 1)[0];
+  if (/\.(?:mdx|textpack(?:\.zip)?)$/i.test(decodedPath)) return null;
+  if (
+    !isContentUri &&
+    /^(?:[a-z][a-z0-9+.-]*:|\/|\\\\)/i.test(decodedUrl)
+  ) {
+    return null;
+  }
+  let mediaBaseUrl = null;
+  const mediaBaseMatch = link.title.match(/(?:^|;)base=([^;]+)/);
+  if (mediaBaseMatch) {
+    try {
+      mediaBaseUrl = decodeURIComponent(mediaBaseMatch[1]);
+    } catch {
+      mediaBaseUrl = null;
+    }
+  }
+  return {
+    label: link.label || 'Embedded document',
+    url: link.url,
+    mediaBaseUrl
+  };
+}
+
 function markdownCodeRanges(text) {
   const ranges = [];
   const lines = text.split('\n');
@@ -356,4 +390,29 @@ export function formatMarkdownAttachmentLink(label, url, layout = null) {
     ? ''
     : ` "wmdx-attachment:width=${width};align=${alignment}"`;
   return `[${safeLabel}](${safePath}${title})`;
+}
+
+export function formatMarkdownEmbeddedDocumentLink(label, url, mediaBaseUrl = null) {
+  const safeLabel = String(label ?? 'Embedded document')
+    .replace(/\\/g, '\\\\')
+    .replace(/\]/g, '\\]');
+  const rawUrl = String(url ?? '').trim();
+  if (!rawUrl) throw new TypeError('An embedded document needs a file path.');
+  const safeUrl = /^content:\/\//i.test(rawUrl)
+    ? encodeURIComponent(rawUrl)
+    : rawUrl.split('/').map(segment => {
+      let decoded = segment;
+      try {
+        decoded = decodeURIComponent(segment);
+      } catch {
+        // Encode malformed percent signs as literal filename characters.
+      }
+      return encodeURIComponent(decoded).replace(/[!'()*]/g, character =>
+        `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+      );
+    }).join('/');
+  const title = mediaBaseUrl
+    ? `wmdx-embed;base=${encodeURIComponent(String(mediaBaseUrl))}`
+    : 'wmdx-embed';
+  return `[${safeLabel}](${safeUrl} "${title}")`;
 }

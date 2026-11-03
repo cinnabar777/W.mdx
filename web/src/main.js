@@ -1,4 +1,4 @@
-import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect, Prec } from '@codemirror/state';
+import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect, Facet, Prec } from '@codemirror/state';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
@@ -40,9 +40,11 @@ import {
   extractMarkdownVideoLinks,
   formatMarkdownAudioLink,
   formatMarkdownAttachmentLink,
+  formatMarkdownEmbeddedDocumentLink,
   formatMarkdownVideoLink,
   parseMarkdownAudioLink,
   parseMarkdownAttachmentLink,
+  parseMarkdownEmbeddedDocumentLink,
   parseMarkdownVideoLink
 } from './markdownMedia.js';
 import { MdzipAttachmentWidget } from './mdzipAttachmentWidget.js';
@@ -139,6 +141,10 @@ import { tags } from '@lezer/highlight';
 import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
 
 let activeAdapter = null;
+let embeddedContentInteractionMode = 'checkboxes';
+const pendingEmbeddedDocumentEdits = new Map();
+let activeEmbeddedEditSaveWarning = null;
+let activeEmbeddedEditSaveWarningKey = null;
 let refreshOpenTocPanel = null;
 let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
@@ -172,6 +178,7 @@ let customHotkeys = {
   save_tabs: '',
   paste_as_plain_text: 'ctrl+shift+v',
   attachment: 'ctrl+shift+a',
+  embed: 'ctrl+alt+e',
   save_as_textpack: 'ctrl+shift+alt+s',
   save_as_mdzip: 'ctrl+shift+alt+m',
   export: 'ctrl+shift+e',
@@ -273,9 +280,14 @@ class CheckboxWidget extends WidgetType {
     input.type = 'checkbox';
     input.checked = this.checked;
     input.className = 'cm-todo-checkbox';
+    const allowReadOnlyCheckboxChanges = view.state.facet(
+      embeddedCheckboxInteractionFacet
+    );
+    input.disabled = view.state.readOnly && !allowReadOnlyCheckboxChanges;
     input.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (view.state.readOnly && !allowReadOnlyCheckboxChanges) return;
       const newText = this.checked ? '[ ]' : '[x]';
       view.dispatch({
         changes: { from: this.pos, to: this.pos + this.len, insert: newText }
@@ -1104,10 +1116,16 @@ class ImagePreviewWidget extends WidgetType {
     wrapper.style.cssText = `max-width: 100%; min-height: ${this.heightEstimate}px; margin: 6px 0; display: block; box-sizing: border-box; touch-action: manipulation; user-select: none; -webkit-user-select: none;`;
 
     const img = document.createElement('img');
+    const embeddedSource = view?.state?.facet?.(embeddedDocumentSourceFacet);
+    const embeddedAssetUrl = embeddedSource
+      ? resolveDocumentAssetUrl(view.state, this.url)
+      : null;
     const textPackAssetUrl = window.AndroidNative?.resolveTextPackAssetUrl?.(this.url);
     const mdzipAttachmentUrl = window.AndroidNative?.resolveMdzipAttachmentUrl?.(this.url);
     const markdownAssetUrl = window.AndroidNative?.resolveMarkdownAssetUrl?.(this.url);
-    img.src = textPackAssetUrl || mdzipAttachmentUrl || markdownAssetUrl || this.url;
+    img.src = embeddedSource
+      ? (embeddedAssetUrl || this.url)
+      : (textPackAssetUrl || mdzipAttachmentUrl || markdownAssetUrl || this.url);
     img.alt = this.alt;
     img.draggable = false;
     img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;
@@ -1580,6 +1598,536 @@ export { EditorState } from '@codemirror/state';
 export { EditorView } from '@codemirror/view';
 export { cursorLineDown, cursorLineUp } from '@codemirror/commands';
 export { markdown } from '@codemirror/lang-markdown';
+
+const embeddedDocumentSourceFacet = Facet.define({
+  combine: values => values[0] ?? null
+});
+const embeddedDocumentDepthFacet = Facet.define({
+  combine: values => values[0] ?? 0
+});
+const embeddedCheckboxInteractionFacet = Facet.define({
+  combine: values => values[0] === true
+});
+const MAX_EMBEDDED_DOCUMENT_DEPTH = 4;
+
+function isStandaloneEmbeddedDocument(doc, node, raw) {
+  const line = doc.lineAt(node.from);
+  return line.from === node.from && line.to === node.to && line.text === raw;
+}
+
+function resolveDocumentAssetUrl(state, relativeLink) {
+  const embeddedSource = state?.facet?.(embeddedDocumentSourceFacet);
+  if (embeddedSource) {
+    return window.AndroidNative?.resolveEmbeddedAssetUrl?.(
+      relativeLink,
+      embeddedSource,
+      window.AndroidNative?.getCurrentDocumentSessionId?.()
+    ) || null;
+  }
+  return window.AndroidNative?.resolveMdzipMediaUrl?.(relativeLink) || null;
+}
+
+class EmbeddedDocumentWidget extends WidgetType {
+  constructor(
+    label,
+    url,
+    from,
+    to,
+    documentSessionId,
+    mediaBaseUrl = null,
+    depth = 0,
+    interactionMode = 'checkboxes'
+  ) {
+    super();
+    this.label = label || 'Embedded document';
+    this.url = url;
+    this.from = from;
+    this.to = to;
+    this.documentSessionId = documentSessionId;
+    this.mediaBaseUrl = mediaBaseUrl;
+    this.depth = depth;
+    this.interactionMode = interactionMode;
+  }
+
+  eq(other) {
+    return other instanceof EmbeddedDocumentWidget &&
+      other.label === this.label &&
+      other.url === this.url &&
+      other.from === this.from &&
+      other.to === this.to &&
+      other.documentSessionId === this.documentSessionId &&
+      other.mediaBaseUrl === this.mediaBaseUrl &&
+      other.depth === this.depth &&
+      other.interactionMode === this.interactionMode;
+  }
+
+  get estimatedHeight() {
+    return 160;
+  }
+
+  toDOM(view) {
+    const shell = document.createElement('section');
+    shell.className = 'cm-embedded-document-shell';
+    shell.setAttribute('contenteditable', 'false');
+    shell.setAttribute('aria-label', this.label);
+    shell.dataset.embeddedSource = this.url;
+    shell.style.cssText = [
+      'display:block',
+      'box-sizing:border-box',
+      'width:calc(100% + var(--body-margin-left,16px) + var(--body-margin-right,16px))',
+      'max-width:calc(100% + var(--body-margin-left,16px) + var(--body-margin-right,16px))',
+      'margin-left:calc(-1 * var(--body-margin-left,16px))',
+      'overflow:hidden',
+      '--bg-color:var(--embedded-content-bg-color,#202124)',
+      '--body-background-color:var(--embedded-content-bg-color,#202124)',
+      '--text-color:var(--embedded-content-text-color,#f1f3f4)',
+      '--body-font-size:var(--embedded-content-font-size,14px)',
+      'background:var(--embedded-content-bg-color,#202124)',
+      'color:var(--embedded-content-text-color,#f1f3f4)',
+      'border:var(--embedded-content-border-width,1px) solid var(--embedded-content-border-color,#555)',
+      'border-radius:var(--embedded-content-border-radius,8px)',
+      'padding:var(--embedded-content-padding-y,8px) 0',
+      'font-size:var(--embedded-content-font-size,14px)',
+      'line-height:1.45',
+      'touch-action:manipulation',
+      'user-select:none',
+      '-webkit-user-select:none'
+    ].join(';');
+
+    const title = document.createElement('div');
+    title.className = 'cm-embedded-document-title';
+    title.textContent = this.label;
+    title.title = 'Long-press for embedded document options';
+    title.style.cssText = [
+      'font-size:.9em',
+      'font-weight:600',
+      'margin:0 0 6px',
+      'padding:5px 7px',
+      'border-radius:4px',
+      'background:var(--embedded-content-title-bg-color,transparent)',
+      'color:var(--embedded-content-title-text-color,inherit)',
+      'overflow-wrap:anywhere'
+    ].join(';');
+    shell.appendChild(title);
+
+    const expectedMarkdown = view?.state?.doc?.sliceString(this.from, this.to) ?? '';
+    const actions = document.createElement('div');
+    actions.className = 'cm-embedded-document-actions';
+    actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', 'Embedded document actions');
+    actions.hidden = true;
+    actions.style.cssText = 'display:none;flex-wrap:wrap;gap:8px;margin:0 0 8px;';
+    const createAction = (label, action) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.style.cssText = [
+        'min-height:36px',
+        'padding:7px 12px',
+        'border:1px solid var(--border-color,#555)',
+        'border-radius:7px',
+        'background:var(--media-controls-bg,#242424)',
+        'color:var(--media-controls-text,#fff)',
+        'font:inherit',
+        'font-size:13px',
+        'touch-action:manipulation'
+      ].join(';');
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        action();
+      });
+      return button;
+    };
+    const status = document.createElement('div');
+    status.setAttribute('role', 'status');
+    status.hidden = true;
+    status.style.cssText = 'flex-basis:100%;font-size:12px;color:var(--text-color,#ddd);';
+    const closeActions = () => {
+      actions.hidden = true;
+      actions.style.display = 'none';
+      title.setAttribute('aria-expanded', 'false');
+    };
+    const removeEmbeddedDocument = deletePackagedAsset => {
+      if (
+        !view ||
+        this.from < 0 ||
+        this.to > view.state.doc.length ||
+        this.from >= this.to ||
+        view.state.doc.sliceString(this.from, this.to) !== expectedMarkdown
+      ) {
+        closeActions();
+        return;
+      }
+      if (
+        deletePackagedAsset &&
+        window.AndroidNative?.deletePackagedAsset?.(
+          this.url,
+          this.documentSessionId
+        ) !== true
+      ) {
+        status.textContent = 'Could not delete this document from the package.';
+        status.hidden = false;
+        return;
+      }
+      closeActions();
+      view.dispatch({
+        changes: { from: this.from, to: this.to, insert: '' },
+        selection: { anchor: this.from },
+        userEvent: deletePackagedAsset
+          ? 'delete.packaged-embedded-document'
+          : 'delete.embedded-document-link'
+      });
+    };
+    actions.append(
+      createAction('Edit', () => {
+        closeActions();
+        openEmbeddedDocumentEditDialog(view, {
+          from: this.from,
+          to: this.to,
+          label: this.label,
+          url: this.url,
+          mediaBaseUrl: this.mediaBaseUrl
+        });
+      }),
+      createAction('Remove embed', () => removeEmbeddedDocument(false))
+    );
+    if (
+      window.AndroidNative?.canDeletePackagedAsset?.(
+        this.url,
+        this.documentSessionId
+      ) === true
+    ) {
+      actions.append(createAction('Delete file', () => removeEmbeddedDocument(true)));
+    }
+    actions.append(status);
+    shell.appendChild(actions);
+
+    const fullInlineEditing = this.interactionMode === 'full';
+    const saveStatus = document.createElement('div');
+    saveStatus.className = 'cm-embedded-document-save-status';
+    saveStatus.setAttribute('role', fullInlineEditing ? 'alert' : 'status');
+    saveStatus.setAttribute('aria-live', fullInlineEditing ? 'assertive' : 'polite');
+    saveStatus.hidden = true;
+    saveStatus.style.cssText = fullInlineEditing
+      ? [
+          'display:none',
+          'position:fixed',
+          'top:8px',
+          'top:max(8px,env(safe-area-inset-top,8px))',
+          'left:12px',
+          'right:12px',
+          'z-index:100000',
+          'box-sizing:border-box',
+          'align-items:center',
+          'justify-content:space-between',
+          'flex-wrap:wrap',
+          'gap:10px',
+          'padding:12px 14px',
+          'border:2px solid #ff7777',
+          'border-radius:10px',
+          'background:#7b1717',
+          'color:#fff',
+          'box-shadow:0 4px 18px rgba(0,0,0,.6)',
+          'font-size:14px',
+          'font-weight:700'
+        ].join(';')
+      : 'display:none;margin:0 0 8px;font-size:12px;color:var(--text-color,#ddd);';
+    const saveMessage = document.createElement('span');
+    saveMessage.textContent =
+      fullInlineEditing
+        ? 'UNSAVED EMBEDDED EDITS — Keep this document open, restore write access, then retry.'
+        : 'Could not save embedded edits. Check write access, then retry.';
+    const retrySaveButton = document.createElement('button');
+    retrySaveButton.type = 'button';
+    retrySaveButton.textContent = 'Retry save';
+    retrySaveButton.style.cssText = fullInlineEditing
+      ? 'min-height:40px;padding:7px 12px;border:1px solid #fff;border-radius:7px;background:#fff;color:#641010;font:inherit;font-weight:700;'
+      : 'margin-left:8px;padding:4px 8px;border-radius:5px;font:inherit;';
+    saveStatus.append(saveMessage, retrySaveButton);
+    shell.appendChild(saveStatus);
+
+    let pressTimer = null;
+    let pressStart = null;
+    const clearPressTimer = () => {
+      if (pressTimer !== null) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+    const showActions = () => {
+      actions.hidden = false;
+      actions.style.display = 'flex';
+      title.setAttribute('aria-expanded', 'true');
+    };
+    shell._clearEmbeddedPressTimer = clearPressTimer;
+    title.setAttribute('role', 'button');
+    title.tabIndex = 0;
+    title.setAttribute('aria-haspopup', 'true');
+    title.setAttribute('aria-expanded', 'false');
+    title.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      showActions();
+    });
+    title.addEventListener('pointerdown', event => {
+      if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+      pressStart = { x: event.clientX, y: event.clientY };
+      clearPressTimer();
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        showActions();
+      }, 550);
+    });
+    title.addEventListener('pointermove', event => {
+      if (pressStart && Math.hypot(event.clientX - pressStart.x, event.clientY - pressStart.y) > 12) {
+        clearPressTimer();
+        pressStart = null;
+      }
+    });
+    const endPress = () => {
+      clearPressTimer();
+      pressStart = null;
+    };
+    title.addEventListener('pointerup', endPress);
+    title.addEventListener('pointercancel', endPress);
+    title.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      showActions();
+    });
+
+    const content = document.createElement('div');
+    content.className = 'cm-embedded-document-content';
+    content.style.cssText =
+      'background:transparent;color:inherit;font-size:inherit;max-width:100%;';
+    shell.appendChild(content);
+
+    if (this.depth >= MAX_EMBEDDED_DOCUMENT_DEPTH) {
+      const unavailable = document.createElement('div');
+      unavailable.textContent = 'Embedded document nesting limit reached.';
+      unavailable.setAttribute('role', 'status');
+      content.appendChild(unavailable);
+      return shell;
+    }
+
+    const resultText = window.AndroidNative?.loadEmbeddedMarkdown?.(
+      this.url,
+      this.documentSessionId
+    );
+    let markdownText = null;
+    let loadErrorMessage = null;
+    try {
+      const result = JSON.parse(resultText);
+      if (result?.ok === true && typeof result.markdown === 'string') {
+        markdownText = result.markdown;
+      } else if (typeof result?.message === 'string') {
+        loadErrorMessage = result.message;
+      }
+    } catch {
+      // An older bridge or an inaccessible source should render an error card.
+    }
+    if (markdownText === null) {
+      const unavailable = document.createElement('div');
+      unavailable.textContent =
+        loadErrorMessage || 'Could not load this embedded document.';
+      unavailable.setAttribute('role', 'status');
+      content.appendChild(unavailable);
+      return shell;
+    }
+
+    let persistedMarkdownText = markdownText;
+    const saveKey = `${this.documentSessionId || ''}:${this.url}`;
+    if (pendingEmbeddedDocumentEdits.has(saveKey)) {
+      markdownText = pendingEmbeddedDocumentEdits.get(saveKey);
+    }
+    const canEdit = this.interactionMode === 'checkboxes' ||
+      this.interactionMode === 'full';
+    let childEditor = null;
+    let saveTimer = null;
+    const setSaveError = visible => {
+      if (fullInlineEditing) {
+        if (visible) {
+          if (
+            activeEmbeddedEditSaveWarning &&
+            activeEmbeddedEditSaveWarning !== saveStatus
+          ) {
+            activeEmbeddedEditSaveWarning.remove();
+          }
+          activeEmbeddedEditSaveWarning = saveStatus;
+          activeEmbeddedEditSaveWarningKey = saveKey;
+          saveStatus.hidden = false;
+          saveStatus.style.display = 'flex';
+          if (saveStatus.parentNode !== document.body) {
+            document.body.appendChild(saveStatus);
+          }
+          return;
+        }
+
+        saveStatus.hidden = true;
+        saveStatus.style.display = 'none';
+        if (activeEmbeddedEditSaveWarningKey === saveKey) {
+          activeEmbeddedEditSaveWarning?.remove();
+          activeEmbeddedEditSaveWarning = null;
+          activeEmbeddedEditSaveWarningKey = null;
+        }
+        if (shell.isConnected && saveStatus.parentNode !== shell) {
+          shell.appendChild(saveStatus);
+        } else if (!shell.isConnected) {
+          saveStatus.remove();
+        }
+        return;
+      }
+
+      saveStatus.hidden = !visible;
+      saveStatus.style.display = visible ? 'block' : 'none';
+    };
+    const flushEmbeddedSave = () => {
+      if (saveTimer !== null) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      if (!canEdit) return true;
+      const text = pendingEmbeddedDocumentEdits.has(saveKey)
+        ? pendingEmbeddedDocumentEdits.get(saveKey)
+        : childEditor?.state.doc.toString();
+      if (typeof text !== 'string') return true;
+      if (text === persistedMarkdownText &&
+          !pendingEmbeddedDocumentEdits.has(saveKey)) {
+        setSaveError(false);
+        return true;
+      }
+      let saved = false;
+      try {
+        saved = window.AndroidNative?.saveEmbeddedMarkdown?.(
+          this.url,
+          text,
+          this.documentSessionId
+        ) === true;
+      } catch {
+        saved = false;
+      }
+      if (!saved) {
+        pendingEmbeddedDocumentEdits.set(saveKey, text);
+        setSaveError(true);
+        return false;
+      }
+      persistedMarkdownText = text;
+      pendingEmbeddedDocumentEdits.delete(saveKey);
+      setSaveError(false);
+      return true;
+    };
+    retrySaveButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      flushEmbeddedSave();
+    });
+
+    const state = EditorState.create({
+      doc: markdownText,
+      extensions: [
+        cmMarkdown({ extensions: [GFM, GFMStrikethrough, GFMTaskList] }),
+        syntaxHighlighting(customHighlightStyle),
+        ...(fullInlineEditing
+          ? [
+              history(),
+              keymap.of([...defaultKeymap, ...historyKeymap]),
+              drawSelection(),
+              EditorView.theme({
+                '.cm-content': {
+                  caretColor: 'var(--cursor-color, var(--text-color, #fff)) !important'
+                },
+                '.cm-cursor, .cm-dropCursor': {
+                  borderLeft:
+                    'var(--cursor-width, 2px) solid var(--cursor-color, var(--text-color, #fff)) !important',
+                  zIndex: 3,
+                  animation: 'none'
+                },
+                '.cm-cursorLayer': { zIndex: 3 }
+              })
+            ]
+          : []),
+        livePreviewPlugin,
+        tableStateField,
+        wysiwygCodeBlockField,
+        footnoteStateField,
+        persistentLayoutField,
+        heightMapField,
+        hiddenSyntaxAtomicRanges,
+        embeddedDocumentSourceFacet.of(this.mediaBaseUrl || this.url),
+        embeddedDocumentDepthFacet.of(this.depth + 1),
+        EditorState.transactionFilter.of(transaction => {
+          if (
+            currentEditorMode !== 'wysiwyg' ||
+            transaction.docChanged ||
+            !transaction.selection
+          ) {
+            return transaction;
+          }
+          return filterSelectionOutsideHiddenSyntax(
+            transaction,
+            hiddenSyntaxRangesForState(transaction.startState),
+            transaction.newDoc.length
+          );
+        }),
+        embeddedCheckboxInteractionFacet.of(
+          this.interactionMode === 'checkboxes'
+        ),
+        EditorState.readOnly.of(!fullInlineEditing),
+        EditorView.editable.of(fullInlineEditing),
+        EditorView.lineWrapping,
+        EditorView.updateListener.of(update => {
+          if (!update.docChanged || !canEdit) return;
+          const text = update.state.doc.toString();
+          pendingEmbeddedDocumentEdits.set(saveKey, text);
+          if (this.interactionMode === 'checkboxes') {
+            flushEmbeddedSave();
+            return;
+          }
+          if (saveTimer !== null) clearTimeout(saveTimer);
+          saveTimer = setTimeout(flushEmbeddedSave, 500);
+        })
+      ]
+    });
+    childEditor = new EditorView({ state, parent: content });
+    childEditor.dom.classList.add('cm-embedded-document-child');
+    childEditor.dom.style.background = 'transparent';
+    childEditor.dom.style.color = 'inherit';
+    childEditor.dom.style.fontSize = 'inherit';
+    childEditor.contentDOM.style.setProperty(
+      'padding',
+      '0 var(--embedded-content-padding-x,10px)',
+      'important'
+    );
+    childEditor.scrollDOM.style.background = 'transparent';
+    childEditor.contentDOM.style.color = 'inherit';
+    childEditor.contentDOM.style.background = 'transparent';
+    childEditor.contentDOM.style.fontSize = 'inherit';
+    if (fullInlineEditing) {
+      childEditor.contentDOM.style.userSelect = 'text';
+      childEditor.contentDOM.style.webkitUserSelect = 'text';
+      childEditor.contentDOM.style.caretColor =
+        'var(--cursor-color, var(--text-color, #fff))';
+      childEditor.dom.addEventListener('focusout', flushEmbeddedSave);
+    }
+    shell.__flushEmbeddedDocumentSave = flushEmbeddedSave;
+    shell.__embeddedDocumentEditor = childEditor;
+    if (pendingEmbeddedDocumentEdits.has(saveKey)) {
+      saveTimer = setTimeout(flushEmbeddedSave, 0);
+    }
+    return shell;
+  }
+
+  destroy(dom) {
+    dom?._clearEmbeddedPressTimer?.();
+    dom?.__flushEmbeddedDocumentSave?.();
+    dom?.__embeddedDocumentEditor?.destroy?.();
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
 
 export const livePreviewPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
@@ -2069,10 +2617,34 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'Link' || node.name === 'URL') {
             const raw = view.state.doc.sliceString(node.from, node.to);
-            const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
-            const videoUrl = videoLink
-              ? window.AndroidNative?.resolveMdzipMediaUrl?.(videoLink.url)
+            const embeddedLink = node.name === 'Link'
+              ? parseMarkdownEmbeddedDocumentLink(raw)
               : null;
+            if (
+              embeddedLink &&
+              isStandaloneEmbeddedDocument(view.state.doc, node, raw) &&
+              !isNodeActive &&
+              !isPureWysiwyg
+            ) {
+              const embeddedDecoration = Decoration.replace({
+                widget: new EmbeddedDocumentWidget(
+                  embeddedLink.label,
+                  embeddedLink.url,
+                  node.from,
+                  node.to,
+                  window.AndroidNative?.getCurrentDocumentSessionId?.(),
+                  embeddedLink.mediaBaseUrl,
+                  view.state.facet(embeddedDocumentDepthFacet),
+                  embeddedContentInteractionMode
+                ),
+                block: true
+              }).range(node.from, node.to);
+              builder.push(embeddedDecoration);
+              hiddenSyntaxRanges.push(embeddedDecoration);
+              return false;
+            }
+            const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
+            const videoUrl = videoLink ? resolveDocumentAssetUrl(view.state, videoLink.url) : null;
             if (videoLink && videoUrl && !isNodeActive && !isPureWysiwyg) {
               const videoDecoration = Decoration.replace({
                 widget: new VideoPreviewWidget(
@@ -2092,9 +2664,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               return false;
             }
             const audioLink = node.name === 'Link' ? parseMarkdownAudioLink(raw) : null;
-            const audioUrl = audioLink
-              ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
-              : null;
+            const audioUrl = audioLink ? resolveDocumentAssetUrl(view.state, audioLink.url) : null;
             if (audioLink && audioUrl && !isNodeActive && !isPureWysiwyg) {
               const audioDecoration = Decoration.replace({
                 widget: new AudioPreviewWidget(
@@ -3200,10 +3770,29 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'Link' || node.name === 'URL') {
         const raw = doc.sliceString(node.from, node.to);
-        const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
-        const videoUrl = videoLink
-          ? window.AndroidNative?.resolveMdzipMediaUrl?.(videoLink.url)
+        const embeddedLink = node.name === 'Link'
+          ? parseMarkdownEmbeddedDocumentLink(raw)
           : null;
+        if (embeddedLink && isStandaloneEmbeddedDocument(doc, node, raw)) {
+          const embeddedDecoration = Decoration.replace({
+            widget: new EmbeddedDocumentWidget(
+              embeddedLink.label,
+              embeddedLink.url,
+              node.from,
+              node.to,
+              window.AndroidNative?.getCurrentDocumentSessionId?.(),
+              embeddedLink.mediaBaseUrl,
+              state.facet(embeddedDocumentDepthFacet),
+              embeddedContentInteractionMode
+            ),
+            block: true
+          }).range(node.from, node.to);
+          replacements.push(embeddedDecoration);
+          hiddenSyntaxRanges.push(embeddedDecoration);
+          return false;
+        }
+        const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
+        const videoUrl = videoLink ? resolveDocumentAssetUrl(state, videoLink.url) : null;
         if (videoLink && videoUrl) {
           const videoDecoration = Decoration.replace({
             widget: new VideoPreviewWidget(
@@ -3223,9 +3812,7 @@ function buildHeightMapValue(state) {
           return false;
         }
         const audioLink = node.name === 'Link' ? parseMarkdownAudioLink(raw) : null;
-        const audioUrl = audioLink
-          ? window.AndroidNative?.resolveMdzipMediaUrl?.(audioLink.url)
-          : null;
+        const audioUrl = audioLink ? resolveDocumentAssetUrl(state, audioLink.url) : null;
         if (audioLink && audioUrl) {
           const audioDecoration = Decoration.replace({
             widget: new AudioPreviewWidget(
@@ -4098,7 +4685,7 @@ class CodeMirrorAdapter {
         update.state.doc.sliceString(fromB, toB);
       if (
         /(?:assets|attachments|audio|video)\//i.test(changedText) ||
-        /\.(?:mp3|aac|m4a|wav|flac|opus|ogg|oga|mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv|pdf|zip|docx?|xlsx?|pptx?|txt|csv|rtf|html?)(?:$|[?#\s)>])/i.test(changedText)
+        /\.(?:md|mdz|mp3|aac|m4a|wav|flac|opus|ogg|oga|mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv|pdf|zip|docx?|xlsx?|pptx?|txt|csv|rtf|html?)(?:$|[?#\s)>])/i.test(changedText)
       ) {
         assetLinksMayHaveChanged = true;
       }
@@ -4113,7 +4700,8 @@ class CodeMirrorAdapter {
         const raw = update.state.doc.sliceString(node.from, node.to);
         const parsed = parseMarkdownAudioLink(raw) ||
           parseMarkdownVideoLink(raw) ||
-          parseMarkdownAttachmentLink(raw);
+          parseMarkdownAttachmentLink(raw) ||
+          parseMarkdownEmbeddedDocumentLink(raw);
         if (parsed?.url) references.add(parsed.url);
       }
     });
@@ -4349,7 +4937,7 @@ class CodeMirrorAdapter {
       if (
         target instanceof HTMLElement &&
         target.closest(
-          'button, input, textarea, audio, video, .cm-image-preview-wrapper, ' +
+          'button, input, textarea, audio, video, .cm-image-preview-wrapper, .cm-embedded-document-shell, ' +
           '.cm-mdzip-audio-preview-wrapper, .cm-mdzip-video-preview-wrapper, ' +
           '.cm-mdzip-attachment-shell'
         )
@@ -4659,6 +5247,27 @@ class CodeMirrorAdapter {
       userEvent: 'input.mdzip-attachment'
     });
     this.view.focus();
+  }
+
+  insertEmbeddedDocumentLink(relativeUrl, label, mediaBaseUrl = null) {
+    if (!this.view) return;
+    const markdown = formatMarkdownEmbeddedDocumentLink(label, relativeUrl, mediaBaseUrl);
+    const selection = this.view.state.selection.main;
+    const before = this.view.state.doc.sliceString(0, selection.from);
+    const after = this.view.state.doc.sliceString(selection.to);
+    const prefix = before.length === 0 || before.endsWith('\n\n')
+      ? ''
+      : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = after.startsWith('\n\n')
+      ? ''
+      : after.startsWith('\n') ? '\n' : '\n\n';
+    const insertion = `${prefix}${markdown}${suffix}`;
+    const cursor = selection.from + insertion.length;
+    this.view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: insertion },
+      selection: { anchor: cursor, head: cursor },
+      userEvent: 'input.embedded-document'
+    });
   }
 
   destroy() {
@@ -5016,6 +5625,7 @@ function setupGroupedControlBar() {
         { id: 'audio', icon: svgIcons.audio, title: 'Insert Audio', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('audio') },
         { id: 'video', icon: svgIcons.video, title: 'Insert Video', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('video') },
         { id: 'attachment', icon: svgIcons.attachment, title: 'Attach File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('attachment') },
+        { id: 'embed', icon: svgIcons.embed, title: 'Embed Document', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('embed') },
         { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
@@ -5381,6 +5991,7 @@ function createToolbarActionRegistry() {
       { id: 'audio', title: 'Insert Audio', icon: svgIcons.audio, action: () => window.AndroidNative?.onNativeAction('audio') },
       { id: 'video', title: 'Insert Video', icon: svgIcons.video, action: () => window.AndroidNative?.onNativeAction('video') },
       { id: 'attachment', title: 'Attach File', icon: svgIcons.attachment, action: () => window.AndroidNative?.onNativeAction('attachment') },
+      { id: 'embed', title: 'Embed Document', icon: svgIcons.embed, action: () => window.AndroidNative?.onNativeAction('embed') },
       { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
       { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
@@ -6128,7 +6739,11 @@ function openAudioEditDialog(view, audioItem) {
   if (!overlay || !dialog || !view) return;
 
   dialog.innerHTML = `
-    <h3 class="modal-title">Edit Audio Layout</h3>
+    <h3 class="modal-title">Edit Audio</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-audio-title">Title</label>
+      <input id="modal-audio-title" class="modal-input" type="text" maxlength="240" autocomplete="off" />
+    </div>
     <div class="modal-field-group">
       <label class="modal-label" for="modal-audio-width">Player width (% of text area)</label>
       <div style="display:flex;align-items:center;gap:12px;">
@@ -6151,9 +6766,11 @@ function openAudioEditDialog(view, audioItem) {
     </div>
   `;
 
+  const titleInput = dialog.querySelector('#modal-audio-title');
   const widthInput = dialog.querySelector('#modal-audio-width');
   const widthValue = dialog.querySelector('#modal-audio-width-value');
   const alignmentInput = dialog.querySelector('#modal-audio-alignment');
+  titleInput.value = audioItem.label;
   widthInput.value = String(audioItem.layout?.width ?? 100);
   alignmentInput.value = audioItem.layout?.alignment ?? 'left';
   const updateWidthValue = () => {
@@ -6173,6 +6790,11 @@ function openAudioEditDialog(view, audioItem) {
   });
   dialog.querySelector('#modal-audio-save').addEventListener('click', event => {
     event.preventDefault();
+    const label = titleInput.value.trim();
+    if (!label) {
+      titleInput.focus();
+      return;
+    }
     const { from, to } = audioItem;
     if (from < 0 || to > view.state.doc.length || from >= to) {
       close();
@@ -6185,7 +6807,7 @@ function openAudioEditDialog(view, audioItem) {
     }
 
     const markdown = formatMarkdownAudioLink(
-      audioItem.label,
+      label,
       audioItem.url,
       {
         width: Number(widthInput.value),
@@ -6201,7 +6823,74 @@ function openAudioEditDialog(view, audioItem) {
   });
 
   overlay.classList.add('open');
-  requestAnimationFrame(() => widthInput.focus());
+  requestAnimationFrame(() => titleInput.focus());
+}
+
+function openEmbeddedDocumentEditDialog(view, embeddedItem) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog || !view) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Embedded Document</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-embedded-document-title">Title</label>
+      <input id="modal-embedded-document-title" class="modal-input" type="text" maxlength="240" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-embedded-document-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-embedded-document-save">Save</button>
+    </div>
+  `;
+
+  const titleInput = dialog.querySelector('#modal-embedded-document-title');
+  titleInput.value = embeddedItem.label;
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+  };
+  dialog.querySelector('#modal-embedded-document-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-embedded-document-save').addEventListener('click', event => {
+    event.preventDefault();
+    const { from, to } = embeddedItem;
+    if (from < 0 || to > view.state.doc.length || from >= to) {
+      close();
+      return;
+    }
+    const currentItem = parseMarkdownEmbeddedDocumentLink(
+      view.state.doc.sliceString(from, to)
+    );
+    if (
+      !currentItem ||
+      currentItem.url !== embeddedItem.url ||
+      currentItem.mediaBaseUrl !== embeddedItem.mediaBaseUrl
+    ) {
+      close();
+      return;
+    }
+    const label = titleInput.value.trim();
+    if (!label) {
+      titleInput.focus();
+      return;
+    }
+    const markdown = formatMarkdownEmbeddedDocumentLink(
+      label,
+      embeddedItem.url,
+      embeddedItem.mediaBaseUrl
+    );
+    view.dispatch({
+      changes: { from, to, insert: markdown },
+      selection: { anchor: from + markdown.length, head: from + markdown.length },
+      userEvent: 'input.embedded-document-title'
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => titleInput.focus());
 }
 
 function openVideoEditDialog(view, videoItem) {
@@ -6210,7 +6899,11 @@ function openVideoEditDialog(view, videoItem) {
   if (!overlay || !dialog || !view) return;
 
   dialog.innerHTML = `
-    <h3 class="modal-title">Edit Video Layout</h3>
+    <h3 class="modal-title">Edit Video</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-video-title">Title</label>
+      <input id="modal-video-title" class="modal-input" type="text" maxlength="240" autocomplete="off" />
+    </div>
     <div class="modal-field-group">
       <label class="modal-label" for="modal-video-width">Video width (% of text area)</label>
       <div style="display:flex;align-items:center;gap:12px;">
@@ -6233,9 +6926,11 @@ function openVideoEditDialog(view, videoItem) {
     </div>
   `;
 
+  const titleInput = dialog.querySelector('#modal-video-title');
   const widthInput = dialog.querySelector('#modal-video-width');
   const widthValue = dialog.querySelector('#modal-video-width-value');
   const alignmentInput = dialog.querySelector('#modal-video-alignment');
+  titleInput.value = videoItem.label;
   widthInput.value = String(videoItem.layout?.width ?? 100);
   alignmentInput.value = videoItem.layout?.alignment ?? 'left';
   const updateWidthValue = () => {
@@ -6255,6 +6950,11 @@ function openVideoEditDialog(view, videoItem) {
   });
   dialog.querySelector('#modal-video-save').addEventListener('click', event => {
     event.preventDefault();
+    const label = titleInput.value.trim();
+    if (!label) {
+      titleInput.focus();
+      return;
+    }
     const { from, to } = videoItem;
     if (from < 0 || to > view.state.doc.length || from >= to) {
       close();
@@ -6267,7 +6967,7 @@ function openVideoEditDialog(view, videoItem) {
     }
 
     const markdown = formatMarkdownVideoLink(
-      videoItem.label,
+      label,
       videoItem.url,
       {
         width: Number(widthInput.value),
@@ -6283,7 +6983,7 @@ function openVideoEditDialog(view, videoItem) {
   });
 
   overlay.classList.add('open');
-  requestAnimationFrame(() => widthInput.focus());
+  requestAnimationFrame(() => titleInput.focus());
 }
 
 function openAttachmentEditDialog(view, attachmentItem) {
@@ -6294,7 +6994,7 @@ function openAttachmentEditDialog(view, attachmentItem) {
   dialog.innerHTML = `
     <h3 class="modal-title">Edit Attachment</h3>
     <div class="modal-field-group">
-      <label class="modal-label" for="modal-attachment-label">Label</label>
+      <label class="modal-label" for="modal-attachment-label">Title</label>
       <input id="modal-attachment-label" class="modal-input" type="text" maxlength="240" />
     </div>
     <div class="modal-field-group">
@@ -8257,6 +8957,11 @@ function setupKeyboardShortcuts() {
       window.AndroidNative?.onNativeAction('attachment');
       return;
     }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.embed)) {
+      e.preventDefault();
+      window.AndroidNative?.onNativeAction('embed');
+      return;
+    }
 
     if (k === 'undo' || k === 'redo' || c === 'undo' || c === 'redo') {
       return;
@@ -8439,6 +9144,12 @@ window.editorBridge = {
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
     const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
+    const limitedInteraction =
+      prefs.pref_embedded_content_limited_interaction !== false;
+    const fullInlineEditing =
+      prefs.pref_embedded_content_full_inline_editing === true;
+    embeddedContentInteractionMode =
+      !limitedInteraction && fullInlineEditing ? 'full' : 'checkboxes';
     setWmdxUnderlineSyntaxEnabled(prefs.pref_underline_use_wmdx_syntax !== false);
     if (activeAdapter?.view) {
       activeAdapter.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
@@ -8886,6 +9597,61 @@ window.editorBridge = {
     setCssVar('--mdzip-attachment-padding-x', prefs.pref_mdzip_attachment_padding_x, 'px');
     setCssVar('--mdzip-attachment-padding-y', prefs.pref_mdzip_attachment_padding_y, 'px');
     setCssVar('--mdzip-attachment-font-size', prefs.pref_mdzip_attachment_font_size, 'px');
+
+    const embeddedThemeDefaults = document.body.classList.contains('light-theme')
+      ? {
+          background: '#F8F9FA',
+          text: '#111111',
+          border: '#D0D5DB',
+          titleBackground: '#E9ECEF',
+          titleText: '#111111'
+        }
+      : {
+          background: '#202124',
+          text: '#F1F3F4',
+          border: '#555555',
+          titleBackground: '#303134',
+          titleText: '#F1F3F4'
+        };
+    const embeddedColor = (key, fallback) => {
+      const value = prefs[key];
+      return androidArgbToCss(
+        value === undefined || value === null || value === '' || value === 'default'
+          ? fallback
+          : value
+      );
+    };
+    setCssVar(
+      '--embedded-content-bg-color',
+      embeddedColor('pref_embedded_content_bg_color', embeddedThemeDefaults.background)
+    );
+    setCssVar(
+      '--embedded-content-text-color',
+      embeddedColor('pref_embedded_content_text_color', embeddedThemeDefaults.text)
+    );
+    setCssVar(
+      '--embedded-content-border-color',
+      embeddedColor('pref_embedded_content_border_color', embeddedThemeDefaults.border)
+    );
+    setCssVar(
+      '--embedded-content-title-bg-color',
+      embeddedColor(
+        'pref_embedded_content_title_bg_color',
+        embeddedThemeDefaults.titleBackground
+      )
+    );
+    setCssVar(
+      '--embedded-content-title-text-color',
+      embeddedColor(
+        'pref_embedded_content_title_text_color',
+        embeddedThemeDefaults.titleText
+      )
+    );
+    setCssVar('--embedded-content-border-width', prefs.pref_embedded_content_border_width, 'px');
+    setCssVar('--embedded-content-border-radius', prefs.pref_embedded_content_border_radius, 'px');
+    setCssVar('--embedded-content-padding-x', prefs.pref_embedded_content_padding_x, 'px');
+    setCssVar('--embedded-content-padding-y', prefs.pref_embedded_content_padding_y, 'px');
+    setCssVar('--embedded-content-font-size', prefs.pref_embedded_content_font_size, 'px');
 
     // Callout Shared Header
     setCssVar('--callout-header-bg', prefs.pref_callout_header_bg_color);
@@ -9515,6 +10281,11 @@ window.editorBridge = {
   insertAttachmentLink: function(relativeUrl, label = 'attachment') {
     if (activeAdapter && typeof activeAdapter.insertAttachmentLink === 'function') {
       activeAdapter.insertAttachmentLink(relativeUrl, label);
+    }
+  },
+  insertEmbeddedDocumentLink: function(relativeUrl, label = 'Embedded document', mediaBaseUrl = null) {
+    if (activeAdapter && typeof activeAdapter.insertEmbeddedDocumentLink === 'function') {
+      activeAdapter.insertEmbeddedDocumentLink(relativeUrl, label, mediaBaseUrl);
     }
   },
   reloadMdzipAudio: function(relativeUrl) {

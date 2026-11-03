@@ -45,9 +45,9 @@ export class MdzipAttachmentWidget extends WidgetType {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'cm-mdzip-attachment';
-    button.textContent = `Open attachment: ${this.label}`;
-    button.setAttribute('aria-label', `Open attachment: ${this.label}`);
-    button.title = 'Open attachment';
+    button.textContent = this.label;
+    button.setAttribute('aria-label', `Open ${this.label}`);
+    button.title = `Open ${this.label}`;
     const alignmentMargin = this.layout.alignment === 'center'
       ? '4px auto'
       : this.layout.alignment === 'right'

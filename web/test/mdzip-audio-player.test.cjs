@@ -420,10 +420,12 @@ test('WYSIWYG and live preview make the whole audio link atomic', () => {
 test('media playback settings expose color theme and persistent speed choices', () => {
   const settings = read('../app/src/main/res/xml/preferences_media.xml');
   const root = read('../app/src/main/res/xml/preferences.xml');
+  const documentAppearance = read('../app/src/main/res/xml/preferences_styling.xml');
   const native = read('../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const reset = read('../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt');
   const editor = read('src/main.js');
-  assert.match(root, /app:key="pref_page_media"/);
+  assert.match(documentAppearance, /app:key="pref_styling_page_media"/);
+  assert.doesNotMatch(root, /pref_styling_page_media/);
   for (const key of [
     'pref_media_player_background_color',
     'pref_media_controls_background_color',

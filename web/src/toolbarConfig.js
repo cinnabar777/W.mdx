@@ -34,7 +34,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   ]),
   table: Object.freeze(['insertTable', ...TABLE_ACTIONS.map(item => item.id)]),
   insert: Object.freeze([
-    'image', 'audio', 'video', 'attachment', 'link', 'callout', 'inlineCode', 'blockQuote',
+    'image', 'audio', 'video', 'attachment', 'embed', 'link', 'callout', 'inlineCode', 'blockQuote',
     'codeBlock', 'horizontalLine', 'footnote'
   ]),
   menu: Object.freeze([
@@ -103,7 +103,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 10,
+  version: 11,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -516,6 +516,20 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       !heldActions.has('attachment')
     ) {
       popupGroups.insert.order.push('attachment');
+    }
+  }
+
+  if (parsedVersion > 0 && parsedVersion < 11 && popupGroups.insert) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    const heldActions = new Set(migrateToolbarActionIds(parsed.holding, parsedVersion));
+    if (
+      !assignedActions.has('embed') &&
+      !deletedKeyIds.has('embed') &&
+      !legacyHeldKeys.includes('embed') &&
+      !legacyHidden.includes('embed') &&
+      !heldActions.has('embed')
+    ) {
+      popupGroups.insert.order.push('embed');
     }
   }
 

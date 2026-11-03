@@ -12,8 +12,12 @@ test('audio, video, and attachment insertion use storage for the active document
   const start = mainActivity.indexOf('private fun insertAssetFromUri(');
   const end = mainActivity.indexOf('private fun replaceAudioFromUri(', start);
   const insertion = mainActivity.slice(start, end);
+  const promptStart = mainActivity.indexOf('private fun promptForAssetTitle(');
+  const promptEnd = mainActivity.indexOf('private fun insertAttachmentFromUri(', promptStart);
+  const titlePrompt = mainActivity.slice(promptStart, promptEnd);
 
   assert.notEqual(start, -1);
+  assert.notEqual(promptStart, -1);
   assert.match(insertion, /DocumentFormat\.MDZIP[\s\S]*MdzipManager\.addAudio/);
   assert.match(insertion, /DocumentFormat\.MDZIP[\s\S]*MdzipManager\.addVideo/);
   assert.match(insertion, /DocumentFormat\.MDZIP[\s\S]*MdzipManager\.addAttachment/);
@@ -22,6 +26,21 @@ test('audio, video, and attachment insertion use storage for the active document
   assert.match(insertion, /requireWrite = true/);
   assert.match(insertion, /pref_markdown_image_location/);
   assert.match(insertion, /window\.editorBridge\?\.\$insertMethod/);
+  assert.match(insertion, /MdzipManager\.addAudio\(session, assetInput, originalName\)/);
+  assert.match(insertion, /MdzipManager\.addVideo\(session, assetInput, originalName\)/);
+  assert.match(insertion, /MdzipManager\.addAttachment\(session, assetInput, originalName\)/);
+  assert.match(insertion, /val escapedTitle = JSONObjectWrapper\.quote\(title\)/);
+  assert.match(insertion, /\$insertMethod\?\.\(\$escapedLink, \$escapedTitle\)/);
+  assert.match(titlePrompt, /setTitle\("Set \$kindTitle title"\)/);
+  assert.match(
+    titlePrompt,
+    /setMessage\("This title appears in the document\. It does not rename the file\."\)/
+  );
+  assert.match(titlePrompt, /hint = "Displayed title"/);
+  assert.match(titlePrompt, /setText\(defaultTitle\)/);
+  assert.match(mainActivity, /promptForAssetTitle\(uri, InsertAssetKind\.AUDIO\)/);
+  assert.match(mainActivity, /promptForAssetTitle\(uri, InsertAssetKind\.VIDEO\)/);
+  assert.match(mainActivity, /promptForAssetTitle\(uri, InsertAssetKind\.ATTACHMENT\)/);
 });
 
 test('audio and video widgets use format-neutral removal language', () => {
@@ -30,4 +49,16 @@ test('audio and video widgets use format-neutral removal language', () => {
     assert.match(source, /removeLinkButton\.textContent = 'Remove link'/);
     assert.match(source, /deleteButton\.textContent = 'Delete'/);
   }
+});
+
+test('MDZip image insertion gives extensionless picker names a MIME-derived extension', () => {
+  const start = mainActivity.indexOf('private fun insertImageFromUri(');
+  const end = mainActivity.indexOf('private fun insertImageMarkdown(', start);
+  const insertion = mainActivity.slice(start, end);
+
+  assert.notEqual(start, -1);
+  assert.match(
+    insertion,
+    /currentMdzipSession != null -> MdzipManager\.addImage\([\s\S]*?originalName,[\s\S]*?mimeType/
+  );
 });

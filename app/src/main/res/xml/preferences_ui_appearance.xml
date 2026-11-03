@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_settings_theme"
+        app:title="Settings"
+        app:summary="Change section headers, titles, summaries, switches, and background colors" />
+
+    <com.wmdx.markdownapp.ResetListPreference
+        app:key="pref_app_theme"
+        app:title="App Theme"
+        app:summary="Choose dark AMOLED or light mode"
+        app:entries="@array/pref_theme_entries"
+        app:entryValues="@array/pref_theme_values"
+        app:defaultValue="amoled" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_findreplace"
+        app:title="Find &amp; Replace"
+        app:summary="Search panel colors, fields, counter, and buttons" />
+
+    <com.wmdx.markdownapp.ResetSwitchPreference
+        app:key="pref_hide_status_bar"
+        app:title="Hide Status Bar"
+        app:summary="Hide the system status bar for fullscreen editing"
+        android:defaultValue="false" />
+
+    <com.wmdx.markdownapp.ResetSwitchPreference
+        app:key="pref_hide_nav_bar"
+        app:title="Hide Navigation Bar"
+        app:summary="Hide the system navigation bar"
+        android:defaultValue="false" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_left_panel"
+        app:title="Left Panel"
+        app:summary="Folders, file search, tabs, and panel appearance" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_toc"
+        app:title="Right Panel: TOC"
+        app:summary="Panel appearance, heading list, and navigation controls" />
+
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_bottom_toolbar"
+        app:title="Toolbars"
+        app:summary="Edit bottom and floating toolbar layouts and appearance" />
+
+</androidx.preference.PreferenceScreen>

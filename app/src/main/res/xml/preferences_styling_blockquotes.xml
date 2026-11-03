@@ -7,7 +7,7 @@
         app:title="Block Quote">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_blockquote_inherit_body_typography"
-            app:title="Inherit Paragraph &amp; Body Typography"
+            app:title="Inherit Body Typography"
             app:summary="Use the paragraph font, weight, spacing, color, size, alignment, hyphenation, and line height"
             app:disableDependentsState="true"
             android:defaultValue="true" />
@@ -90,7 +90,7 @@
         app:title="Callout Body">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_callout_inherit_body_typography"
-            app:title="Inherit Paragraph &amp; Body Typography"
+            app:title="Inherit Body Typography"
             app:summary="Use the paragraph font, weight, spacing, color, size, alignment, hyphenation, and line height for callout body text"
             app:disableDependentsState="true"
             android:defaultValue="true" />

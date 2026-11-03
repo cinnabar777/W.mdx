@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Embedding and Editing">
+        <com.wmdx.markdownapp.HelpResetSwitchPreference
+            app:key="pref_embedded_document_method_copy"
+            app:title="Copy into parent assets"
+            app:summary="Keep an independent copy; edits are saved to that copy"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.HelpResetSwitchPreference
+            app:key="pref_embedded_document_method_link"
+            app:title="Link to original file"
+            app:summary="Use the original file; edits are saved back to it"
+            android:defaultValue="false" />
+
+        <Preference
+            app:key="pref_embedded_content_saving_info"
+            app:title="Saving embedded edits"
+            app:summary="Edits are saved according to the selected copy or link method" />
+
+        <com.wmdx.markdownapp.HelpResetSwitchPreference
+            app:key="pref_embedded_content_limited_interaction"
+            app:title="Limited interaction"
+            app:summary="Allow checkbox changes only"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.HelpResetSwitchPreference
+            app:key="pref_embedded_content_full_inline_editing"
+            app:title="Full inline editing"
+            app:summary="Edit embedded text directly in the document"
+            android:defaultValue="false" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Embedded Content Appearance">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_embedded_content_bg_color"
+            app:title="Background Color"
+            app:summary="Background behind embedded documents"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_embedded_content_text_color"
+            app:title="Text Color"
+            app:summary="Text color inside embedded documents"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_embedded_content_title_bg_color"
+            app:title="Title Background Color"
+            app:summary="Background behind the embedded document title"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_embedded_content_title_text_color"
+            app:title="Title Text Color"
+            app:summary="Text color of the embedded document title"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_embedded_content_border_color"
+            app:title="Border Color"
+            app:summary="Outline color around embedded documents"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_embedded_content_border_width"
+            app:title="Border Width (px)"
+            app:summary="Outline thickness"
+            app:min="0"
+            android:max="8"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_embedded_content_border_radius"
+            app:title="Corner Radius (px)"
+            app:summary="Roundness of the embedded document border"
+            app:min="0"
+            android:max="32"
+            app:defaultValue="8"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_embedded_content_padding_x"
+            app:title="Horizontal Padding (px)"
+            app:summary="Space inside the left and right edges"
+            app:min="0"
+            android:max="32"
+            app:defaultValue="10"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_embedded_content_padding_y"
+            app:title="Vertical Padding (px)"
+            app:summary="Space inside the top and bottom edges"
+            app:min="0"
+            android:max="24"
+            app:defaultValue="8"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_embedded_content_font_size"
+            app:title="Text Size (px)"
+            app:summary="Text size inside embedded documents"
+            app:min="10"
+            android:max="28"
+            app:defaultValue="14"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>
