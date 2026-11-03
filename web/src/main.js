@@ -1674,8 +1674,9 @@ class EmbeddedDocumentWidget extends WidgetType {
     shell.style.cssText = [
       'display:block',
       'box-sizing:border-box',
-      'width:100%',
-      'max-width:100%',
+      'width:calc(100% + var(--body-margin-left,16px) + var(--body-margin-right,16px))',
+      'max-width:calc(100% + var(--body-margin-left,16px) + var(--body-margin-right,16px))',
+      'margin-left:calc(-1 * var(--body-margin-left,16px))',
       'overflow:hidden',
       '--bg-color:var(--embedded-content-bg-color,#202124)',
       '--body-background-color:var(--embedded-content-bg-color,#202124)',

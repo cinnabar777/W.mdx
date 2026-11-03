@@ -134,6 +134,8 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(main, /--body-font-size:var\(--embedded-content-font-size/);
   assert.match(main, /--embedded-content-title-bg-color/);
   assert.match(main, /--embedded-content-title-text-color/);
+  assert.match(main, /width:calc\(100% \+ var\(--body-margin-left,16px\) \+ var\(--body-margin-right,16px\)\)/);
+  assert.match(main, /margin-left:calc\(-1 \* var\(--body-margin-left,16px\)\)/);
   assert.match(main, /childEditor\.scrollDOM\.style\.background = 'transparent'/);
   assert.match(main, /Long-press for embedded document options/);
   assert.match(main, /Remove embed/);
