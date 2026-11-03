@@ -134,10 +134,17 @@ test('returning to the app keeps the keyboard hidden until the user touches the 
   assert.ok(mainActivitySource.includes('?.hide(WindowInsetsCompat.Type.ime())'));
 });
 
-test('tapping focused editor content explicitly requests the Android keyboard', () => {
+test('tapping editor content explicitly requests the Android keyboard', () => {
   assert.match(source, /contentDOM\.addEventListener\('pointerdown'/);
   assert.match(source, /contentDOM\.addEventListener\('pointerup'/);
-  assert.match(source, /this\.view\.hasFocus\)[\s\S]*?AndroidNative\?\.showEditorKeyboard\?\.\(\)/);
+  assert.match(
+    source,
+    /contentDOM\.addEventListener\('pointerup'[\s\S]*?if \(this\.view\?\.dom\.isConnected\) \{\s*window\.AndroidNative\?\.showEditorKeyboard\?\.\(\)/
+  );
+  assert.doesNotMatch(
+    source,
+    /this\.view\.hasFocus\)[\s\S]{0,120}AndroidNative\?\.showEditorKeyboard/
+  );
   assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?setImeInputAllowed\(true\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
   assert.match(editorWebViewSource, /fun setImeInputAllowed\(allowed: Boolean\)[\s\S]*?restartInput\(this\)/);
   assert.match(editorWebViewSource, /override fun onCheckIsTextEditor\(\): Boolean =\s*imeInputAllowed && super\.onCheckIsTextEditor\(\)/);
@@ -186,6 +193,17 @@ test('a suppressed WebView rejects implicit native focus requests', () => {
   assert.doesNotMatch(
     editorWebViewSource,
     /override fun requestFocus\(\):|override fun requestFocus\(direction: Int\):|override fun requestFocusFromTouch\(\)/
+  );
+});
+
+test('a fresh editor touch re-enables the native WebView focus gate', () => {
+  assert.match(
+    mainActivitySource,
+    /fun onEditorPointerDown\(\)[\s\S]*?enableImeInputForEditorTouch\(\)/
+  );
+  assert.match(
+    editorWebViewSource,
+    /fun enableImeInputForEditorTouch\(\)[\s\S]*?imeInputAllowed = true[\s\S]*?post \{[\s\S]*?restartInput\(this\)/
   );
 });
 

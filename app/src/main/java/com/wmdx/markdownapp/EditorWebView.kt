@@ -37,6 +37,18 @@ class EditorWebView @JvmOverloads constructor(
             ?.restartInput(this)
     }
 
+    fun enableImeInputForEditorTouch() {
+        if (imeInputAllowed) return
+        // The JavaScript bridge runs off the UI thread. Open the focus gate
+        // immediately, then restart the input connection on the view thread.
+        imeInputAllowed = true
+        post {
+            if (!imeInputAllowed) return@post
+            (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                ?.restartInput(this)
+        }
+    }
+
     override fun onCheckIsTextEditor(): Boolean =
         imeInputAllowed && super.onCheckIsTextEditor()
 

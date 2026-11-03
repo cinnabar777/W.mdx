@@ -4452,7 +4452,7 @@ class CodeMirrorAdapter {
         return;
       }
       requestAnimationFrame(() => {
-        if (this.view?.dom.isConnected && this.view.hasFocus) {
+        if (this.view?.dom.isConnected) {
           window.AndroidNative?.showEditorKeyboard?.();
         }
       });

@@ -4581,6 +4581,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 toolbarImeSuppressedUntilEditorTouch = false
                 wasSuppressed
             }
+            (webView as? EditorWebView)?.enableImeInputForEditorTouch()
             if (released) {
                 AppDiagnostics.record(
                     this@MainActivity,
