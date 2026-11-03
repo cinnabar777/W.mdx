@@ -155,6 +155,16 @@ test('toolbar actions block incidental keyboard opens when the keyboard started 
   );
   assert.match(
     mainActivitySource,
+    /if \(!lastKnownImeVisible\) \{\s*toolbarImeSuppressedUntilEditorTouch = true\s*\}/,
+    'a toolbar interaction cannot clear the gate based on the active editor state'
+  );
+  assert.doesNotMatch(
+    mainActivitySource,
+    /toolbarImeSuppressedUntilEditorTouch = !lastKnownImeVisible/,
+    'cached IME visibility cannot release the editor-touch gate'
+  );
+  assert.match(
+    mainActivitySource,
     /toolbarImeSuppressedUntilEditorTouch \|\|[\s\S]*?toolbarImeInteractionDepth > 0/
   );
   assert.match(

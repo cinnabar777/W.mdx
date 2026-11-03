@@ -4542,7 +4542,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val imeWasVisible = synchronized(toolbarImeInteractionLock) {
                 if (toolbarImeInteractionDepth == 0) {
                     toolbarImeVisibleBeforeInteraction = lastKnownImeVisible
-                    toolbarImeSuppressedUntilEditorTouch = !lastKnownImeVisible
+                    if (!lastKnownImeVisible) {
+                        toolbarImeSuppressedUntilEditorTouch = true
+                    }
                 }
                 toolbarImeInteractionDepth += 1
                 toolbarImeVisibleBeforeInteraction

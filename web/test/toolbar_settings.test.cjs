@@ -687,15 +687,22 @@ test('toolbar actions do not force the editor keyboard open', () => {
   assert.match(mainSource, /cmWrapSelection\(view, tableMarkdown, '', \{ preserveKeyboard: true \}\)/);
 });
 
-test('toolbar touches preserve editor focus while keeping a hidden IME gated', () => {
+test('toolbar touches do not refocus the editor and keep a hidden IME gated', () => {
   assert.match(
     mainSource,
     /document\.addEventListener\('pointerdown', event => \{[\s\S]*?toolbarImeSurfaceSelector[\s\S]*?beginToolbarInteraction\?\.\(\)/,
     'toolbar pointerdown captures the keyboard state before the action'
   );
-  assert.match(
-    mainSource,
-    /editorHadFocus: Boolean\(view\?\.hasFocus\)[\s\S]*?endToolbarInteraction\?\.\(\)[\s\S]*?view\.focus\(\)[\s\S]*?\}, 80\)/
+  const finishToolbarInteraction = mainSource.match(
+    /const finishToolbarImePointer = pointerId => \{([\s\S]*?)\n\};/
+  )?.[1];
+  assert.ok(finishToolbarInteraction, 'toolbar pointer interactions have a finish handler');
+  assert.match(finishToolbarInteraction, /activeToolbarImePointers\.delete\(pointerId\)/);
+  assert.match(finishToolbarInteraction, /endToolbarInteraction\?\.\(\)/);
+  assert.doesNotMatch(
+    finishToolbarInteraction,
+    /view\.focus\(\)|editorHadFocus|80\)/,
+    'ending a toolbar touch does not refocus the active editor'
   );
   assert.match(
     mainActivitySource,
@@ -717,7 +724,7 @@ test('toolbar touches preserve editor focus while keeping a hidden IME gated', (
   );
   assert.match(
     mainActivitySource,
-    /toolbarImeSuppressedUntilEditorTouch = !lastKnownImeVisible/
+    /if \(!lastKnownImeVisible\) \{\s*toolbarImeSuppressedUntilEditorTouch = true\s*\}/
   );
   assert.match(
     mainActivitySource,

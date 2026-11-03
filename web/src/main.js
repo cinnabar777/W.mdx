@@ -64,9 +64,9 @@ import {
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
 
-// Preserve editor focus while touch interaction moves between editor text and
-// the in-WebView toolbars. Native input gating keeps this from opening a hidden IME.
-const activeToolbarImePointers = new Map();
+// Prevent toolbar presses from stealing editor focus or reopening a hidden IME.
+// Only a fresh pointer-down on editor text releases the native input gate.
+const activeToolbarImePointers = new Set();
 const toolbarImeSurfaceSelector =
   '#bottom-toolbar, #floating-selection-toolbar, #popup-toolbar-strip, #floating-toggle-btn, .floating-toggle-btn';
 
@@ -77,11 +77,7 @@ document.addEventListener('pointerdown', event => {
 
   const pointerId = event.pointerId ?? 0;
   if (activeToolbarImePointers.has(pointerId)) return;
-  const view = activeAdapter?.view;
-  activeToolbarImePointers.set(pointerId, {
-    view,
-    editorHadFocus: Boolean(view?.hasFocus)
-  });
+  activeToolbarImePointers.add(pointerId);
   if (target.closest?.('button, [role="button"], [data-toolbar-key]')) {
     event.preventDefault();
   }
@@ -89,21 +85,13 @@ document.addEventListener('pointerdown', event => {
 }, true);
 
 const finishToolbarImePointer = pointerId => {
-  const pointerState = activeToolbarImePointers.get(pointerId);
-  if (!pointerState) return;
-  activeToolbarImePointers.delete(pointerId);
+  if (!activeToolbarImePointers.delete(pointerId)) return;
+  // Keep the native gate active through the pointer's click action. Never
+  // refocus CodeMirror here: the caret can remain active after the IME closes,
+  // and refocusing is not a new touch in the text field.
   window.setTimeout(() => {
     window.AndroidNative?.endToolbarInteraction?.();
-    const { view, editorHadFocus } = pointerState;
-    if (
-      !editorHadFocus ||
-      !view?.dom?.isConnected ||
-      view.hasFocus ||
-      document.visibilityState === 'hidden' ||
-      document.querySelector('[role="dialog"]:not([aria-hidden="true"]), dialog[open]')
-    ) return;
-    view.focus();
-  }, 80);
+  }, 0);
 };
 
 document.addEventListener('pointerup', event => {
@@ -113,7 +101,7 @@ document.addEventListener('pointercancel', event => {
   finishToolbarImePointer(event.pointerId ?? 0);
 }, true);
 window.addEventListener('blur', () => {
-  for (const pointerId of [...activeToolbarImePointers.keys()]) {
+  for (const pointerId of [...activeToolbarImePointers]) {
     finishToolbarImePointer(pointerId);
   }
 });
