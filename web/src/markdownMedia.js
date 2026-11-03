@@ -165,12 +165,11 @@ export function parseMarkdownEmbeddedDocumentLink(text) {
     // Native URI and package path resolution performs final validation.
   }
   const isContentUri = /^content:\/\//i.test(decodedUrl);
+  const decodedPath = decodedUrl.split(/[?#]/, 1)[0];
+  if (/\.(?:mdx|textpack(?:\.zip)?)$/i.test(decodedPath)) return null;
   if (
     !isContentUri &&
-    (
-      /^(?:[a-z][a-z0-9+.-]*:|\/|\\\\)/i.test(decodedUrl) ||
-      !/\.(?:md|mdz)$/i.test(decodedUrl.split(/[?#]/, 1)[0])
-    )
+    /^(?:[a-z][a-z0-9+.-]*:|\/|\\\\)/i.test(decodedUrl)
   ) {
     return null;
   }

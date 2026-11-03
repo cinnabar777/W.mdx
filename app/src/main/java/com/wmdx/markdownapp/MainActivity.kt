@@ -49,7 +49,7 @@ import java.util.concurrent.Future
 
 private const val WMDX_TAB_SESSION_MIME = "application/vnd.wmdx.tabs-session+json"
 private const val MAX_WMDX_TAB_SESSION_BYTES = 512 * 1024
-private const val MAX_EMBEDDED_MARKDOWN_BYTES = 16L * 1024L * 1024L
+private const val MAX_EMBEDDED_DOCUMENT_BYTES = 16L * 1024L * 1024L
 
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -2946,9 +2946,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         pendingInsertEmbeddedDocumentSessionId = currentDocumentSessionId
         pickEmbeddedDocumentLauncher.launch(
             arrayOf(
-                "text/markdown",
-                "text/x-markdown",
-                "text/plain",
+                "text/*",
+                "application/json",
+                "application/xml",
+                "application/javascript",
+                "application/yaml",
+                "application/x-yaml",
+                "application/toml",
                 MdzipManager.MIME_TYPE,
                 "application/octet-stream"
             )
@@ -2958,10 +2962,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun insertEmbeddedDocumentFromUri(uri: Uri, expectedSessionId: String) {
         val fileName = getFileNameFromUri(uri).trim()
         val isMdzip = MdzipManager.isMdzipFileName(fileName)
-        if (!isMdzip && !fileName.endsWith(".md", ignoreCase = true)) {
+        if (!isMdzip && isUnsupportedEmbeddedFileName(fileName)) {
             ThemedToast.show(
                 this,
-                "Choose a Markdown (.md) or MDZip (.mdz) document.",
+                "Legacy TextPack and .mdx files cannot be embedded.",
                 Toast.LENGTH_LONG
             )
             return
@@ -2976,9 +2980,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         runCatching {
-            val sourceMarkdown = readEmbeddedMarkdown(uri, fileName, isMdzip)
-            if (sourceMarkdown.length > MAX_EMBEDDED_MARKDOWN_BYTES) {
-                throw java.io.IOException("This Markdown document is too large to embed.")
+            val sourceText = readEmbeddedMarkdown(uri, fileName, isMdzip)
+            if (sourceText.toByteArray(Charsets.UTF_8).size > MAX_EMBEDDED_DOCUMENT_BYTES) {
+                throw java.io.IOException("This text document is too large to embed.")
             }
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val method = prefs.getString("pref_embedded_document_method", "copy")
@@ -3038,7 +3042,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                             contentResolver.openInputStream(uri)
                                 ?: throw java.io.IOException("Could not read the selected document."),
                             fileName,
-                            if (isMdzip) MdzipManager.MIME_TYPE else "text/markdown",
+                            if (isMdzip) MdzipManager.MIME_TYPE else contentResolver.getType(uri),
                             prefs.getString(
                                 "pref_markdown_image_location",
                                 MarkdownAssetManager.LOCATION_ASSETS
@@ -3064,12 +3068,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun isUnsupportedEmbeddedFileName(fileName: String): Boolean =
+        fileName.endsWith(".mdx", ignoreCase = true) ||
+            fileName.endsWith(".textpack", ignoreCase = true) ||
+            fileName.endsWith(".textpack.zip", ignoreCase = true)
+
     private fun readEmbeddedMarkdown(uri: Uri, fileName: String, isMdzip: Boolean): String {
         if (isMdzip) {
             return getEmbeddedMdzipSession(uri).markdownContent
         }
+        if (isUnsupportedEmbeddedFileName(fileName)) {
+            throw java.io.IOException("Legacy TextPack and .mdx files cannot be embedded.")
+        }
         val input = contentResolver.openInputStream(uri)
-            ?: throw java.io.FileNotFoundException("Could not read the selected Markdown document.")
+            ?: throw java.io.FileNotFoundException("Could not read the selected text document.")
         val output = java.io.ByteArrayOutputStream()
         input.use { source ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -3078,13 +3090,30 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val count = source.read(buffer)
                 if (count < 0) break
                 copied += count
-                if (copied > MAX_EMBEDDED_MARKDOWN_BYTES) {
-                    throw java.io.IOException("This Markdown document is too large to embed.")
+                if (copied > MAX_EMBEDDED_DOCUMENT_BYTES) {
+                    throw java.io.IOException("This text document is too large to embed.")
                 }
                 output.write(buffer, 0, count)
             }
         }
-        return output.toString(Charsets.UTF_8.name())
+        val text = try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(output.toByteArray()))
+                .toString()
+        } catch (error: java.nio.charset.CharacterCodingException) {
+            throw java.io.IOException("Choose a UTF-8 text-based file or an MDZip document.", error)
+        }
+        val allowedControls = setOf('\t', '\n', '\r', '\u000C')
+        if (text.any { character ->
+                character == '\u0000' ||
+                    (Character.isISOControl(character.code) && character !in allowedControls)
+            }
+        ) {
+            throw java.io.IOException("The selected file is not text-based and cannot be embedded.")
+        }
+        return text
     }
 
     private fun getEmbeddedMdzipSession(uri: Uri): MdzipSession {
@@ -4633,9 +4662,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val markdown = when {
                     MdzipManager.isMdzipFileName(fileName) ->
                         getEmbeddedMdzipSession(sourceUri).markdownContent
-                    fileName.endsWith(".md", ignoreCase = true) ->
-                        readEmbeddedMarkdown(sourceUri, fileName, isMdzip = false)
-                    else -> ""
+                    else -> readEmbeddedMarkdown(sourceUri, fileName, isMdzip = false)
                 }
                 JSONObject()
                     .put("ok", true)
@@ -4701,8 +4728,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (directUri?.scheme == "content") {
                 val name = getFileNameFromUri(directUri)
                 return directUri.takeIf {
-                    (MdzipManager.isMdzipFileName(name) ||
-                        name.endsWith(".md", ignoreCase = true)) &&
+                    !isUnsupportedEmbeddedFileName(name) &&
                         hasPersistedReadAccess(directUri)
                 }
             }

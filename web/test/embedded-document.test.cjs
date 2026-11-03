@@ -37,12 +37,28 @@ test('formats embedded Markdown and MDZip links while retaining media base metad
   );
 });
 
-test('only .md, .mdz, and local content URIs can be embedded', async () => {
+test('text-based files and MDZip can be embedded, but legacy formats cannot', async () => {
   const { parseMarkdownEmbeddedDocumentLink } =
     await import('../src/markdownMedia.js');
 
   assert.equal(
+    parseMarkdownEmbeddedDocumentLink('[Notes](assets/notes.txt "wmdx-embed")')?.url,
+    'assets/notes.txt'
+  );
+  assert.equal(
+    parseMarkdownEmbeddedDocumentLink('[Source](assets/MainActivity.kt "wmdx-embed")')?.url,
+    'assets/MainActivity.kt'
+  );
+  assert.equal(
+    parseMarkdownEmbeddedDocumentLink('[Readme](assets/README "wmdx-embed")')?.url,
+    'assets/README'
+  );
+  assert.equal(
     parseMarkdownEmbeddedDocumentLink('[Legacy](assets/Legacy.textpack "wmdx-embed")'),
+    null
+  );
+  assert.equal(
+    parseMarkdownEmbeddedDocumentLink('[Legacy](assets/Legacy.textpack.zip "wmdx-embed")'),
     null
   );
   assert.equal(
@@ -121,13 +137,17 @@ test('embedded Markdown renders GFM task lists without enabling table changes', 
   assert.match(syntaxTree(state).toString(), /TaskMarker/);
 });
 
-test('embedded document picker accepts generic MDZip MIME and validates extensions', () => {
+test('embedded picker offers text and MDZip MIME types and validates text content', () => {
   const native = readProjectFile('app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   assert.match(
     native,
-    /pickEmbeddedDocumentLauncher\.launch\(\s*arrayOf\([\s\S]*?MdzipManager\.MIME_TYPE,[\s\S]*?"application\/octet-stream"[\s\S]*?\)\s*\)/
+    /pickEmbeddedDocumentLauncher\.launch\(\s*arrayOf\([\s\S]*?"text\/\*",[\s\S]*?"application\/json"[\s\S]*?MdzipManager\.MIME_TYPE,[\s\S]*?"application\/octet-stream"[\s\S]*?\)\s*\)/
   );
-  assert.match(native, /if \(!isMdzip && !fileName\.endsWith\("\.md", ignoreCase = true\)\)/);
+  assert.match(native, /private fun isUnsupportedEmbeddedFileName/);
+  assert.match(native, /fileName\.endsWith\("\.textpack\.zip", ignoreCase = true\)/);
+  assert.match(native, /CodingErrorAction/);
+  assert.match(native, /Character\.isISOControl/);
+  assert.match(native, /else -> readEmbeddedMarkdown\(sourceUri, fileName, isMdzip = false\)/);
 });
 
 test('unset embedded-document source routes ordinary media through the normal resolver', async () => {
