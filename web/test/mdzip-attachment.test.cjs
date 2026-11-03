@@ -83,6 +83,9 @@ test('attachments expose whole-element edit, remove-link, and packaged-delete ac
     path.join(__dirname, '../src/mdzipAttachmentWidget.js'),
     'utf8'
   );
+  assert.match(widget, /button\.textContent = this\.label/);
+  assert.match(widget, /button\.setAttribute\('aria-label', `Open \$\{this\.label\}`\)/);
+  assert.doesNotMatch(widget, /Open attachment:/);
   assert.match(widget, /createAction\('Edit'/);
   assert.match(widget, /createAction\('Remove link'/);
   assert.match(widget, /createAction\('Delete'/);
