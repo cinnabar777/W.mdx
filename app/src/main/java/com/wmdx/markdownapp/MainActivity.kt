@@ -3326,10 +3326,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                             originalName,
                             mimeType
                         )
-                        currentMdzipSession != null -> MdzipManager.addAttachment(
+                        currentMdzipSession != null -> MdzipManager.addImage(
                             currentMdzipSession!!,
                             input,
-                            originalName
+                            originalName,
+                            mimeType
                         )
                         else -> {
                             val documentUri = currentFileUri

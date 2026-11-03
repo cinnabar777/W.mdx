@@ -1661,6 +1661,10 @@ class EmbeddedDocumentWidget extends WidgetType {
       'width:100%',
       'max-width:100%',
       'overflow:hidden',
+      '--bg-color:var(--embedded-content-bg-color,#202124)',
+      '--body-background-color:var(--embedded-content-bg-color,#202124)',
+      '--text-color:var(--embedded-content-text-color,#f1f3f4)',
+      '--body-font-size:var(--embedded-content-font-size,14px)',
       'background:var(--embedded-content-bg-color,#202124)',
       'color:var(--embedded-content-text-color,#f1f3f4)',
       'border:var(--embedded-content-border-width,1px) solid var(--embedded-content-border-color,#555)',
@@ -1823,6 +1827,8 @@ class EmbeddedDocumentWidget extends WidgetType {
 
     const content = document.createElement('div');
     content.className = 'cm-embedded-document-content';
+    content.style.cssText =
+      'background:transparent;color:inherit;font-size:inherit;max-width:100%;';
     shell.appendChild(content);
 
     if (this.depth >= MAX_EMBEDDED_DOCUMENT_DEPTH) {
@@ -1876,7 +1882,10 @@ class EmbeddedDocumentWidget extends WidgetType {
     childEditor.dom.style.background = 'transparent';
     childEditor.dom.style.color = 'inherit';
     childEditor.dom.style.fontSize = 'inherit';
+    childEditor.scrollDOM.style.background = 'transparent';
     childEditor.contentDOM.style.color = 'inherit';
+    childEditor.contentDOM.style.background = 'transparent';
+    childEditor.contentDOM.style.fontSize = 'inherit';
     shell.__embeddedDocumentEditor = childEditor;
     return shell;
   }

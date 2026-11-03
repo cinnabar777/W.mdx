@@ -84,6 +84,10 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(styling, /app:key="pref_styling_page_embedded_content"/);
   assert.match(stylingPage, /pref_embedded_content_bg_color/);
   assert.match(stylingPage, /pref_embedded_content_border_radius/);
+  assert.match(main, /--bg-color:var\(--embedded-content-bg-color/);
+  assert.match(main, /--text-color:var\(--embedded-content-text-color/);
+  assert.match(main, /--body-font-size:var\(--embedded-content-font-size/);
+  assert.match(main, /childEditor\.scrollDOM\.style\.background = 'transparent'/);
   assert.match(main, /Long-press for embedded document options/);
   assert.match(main, /Remove embed/);
   assert.match(main, /openEmbeddedDocumentEditDialog/);

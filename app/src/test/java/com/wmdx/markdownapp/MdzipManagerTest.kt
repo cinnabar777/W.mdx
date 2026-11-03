@@ -266,6 +266,38 @@ class MdzipManagerTest {
     }
 
     @Test
+    fun addsImagesWithMimeDerivedExtensionsWhenPickerNameHasNone() {
+        val sessionDir = File.createTempFile("mdzip-image-session-", ".tmp")
+        assertTrue(sessionDir.delete())
+        assertTrue(sessionDir.mkdirs())
+        val bytes = byteArrayOf(1, 2, 3)
+        val session = MdzipSession(
+            sessionDir,
+            "index.md",
+            org.json.JSONObject(),
+            "",
+            null
+        )
+        try {
+            val link = MdzipManager.addImage(
+                session,
+                ByteArrayInputStream(bytes),
+                "image",
+                "image/png"
+            )
+
+            assertEquals("attachments/image.png", link)
+            assertTrue(MdzipManager.isSupportedImageFileName(link))
+            assertArrayEquals(
+                bytes,
+                MdzipManager.assetArchiveFile(session, "attachments/image.png")!!.readBytes()
+            )
+        } finally {
+            sessionDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun opensManifestlessArchivesAndFindsTheOnlyContentMarkdownFile() {
         val contents = loadArchiveContents(
             listOf(

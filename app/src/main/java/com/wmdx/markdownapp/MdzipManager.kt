@@ -532,6 +532,17 @@ object MdzipManager {
         return relativeMarkdownPath(session.entryPoint, archivePath)
     }
 
+    fun addImage(
+        session: MdzipSession,
+        input: InputStream,
+        originalName: String?,
+        mimeType: String?
+    ): String = addAttachment(
+        session,
+        input,
+        TextPackManager.safeImageFileName(originalName, mimeType)
+    )
+
     fun addAttachment(session: MdzipSession, input: InputStream, originalName: String): String {
         return addAttachment(
             session.sessionDir,

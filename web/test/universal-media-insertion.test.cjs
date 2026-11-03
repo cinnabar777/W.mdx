@@ -46,3 +46,15 @@ test('audio and video widgets use format-neutral removal language', () => {
     assert.match(source, /deleteButton\.textContent = 'Delete'/);
   }
 });
+
+test('MDZip image insertion gives extensionless picker names a MIME-derived extension', () => {
+  const start = mainActivity.indexOf('private fun insertImageFromUri(');
+  const end = mainActivity.indexOf('private fun insertImageMarkdown(', start);
+  const insertion = mainActivity.slice(start, end);
+
+  assert.notEqual(start, -1);
+  assert.match(
+    insertion,
+    /currentMdzipSession != null -> MdzipManager\.addImage\([\s\S]*?originalName,[\s\S]*?mimeType/
+  );
+});
