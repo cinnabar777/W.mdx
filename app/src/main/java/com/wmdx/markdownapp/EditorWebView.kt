@@ -46,12 +46,6 @@ class EditorWebView @JvmOverloads constructor(
     // WebView can request native focus on touch while reusing its existing
     // input connection. Reject those implicit requests until an editor-text
     // gesture explicitly re-enables IME input.
-    override fun requestFocus(): Boolean =
-        if (imeInputAllowed) super.requestFocus() else false
-
-    override fun requestFocus(direction: Int): Boolean =
-        if (imeInputAllowed) super.requestFocus(direction) else false
-
     override fun requestFocus(
         direction: Int,
         previouslyFocusedRect: Rect?
@@ -61,9 +55,6 @@ class EditorWebView @JvmOverloads constructor(
         } else {
             false
         }
-
-    override fun requestFocusFromTouch(): Boolean =
-        if (imeInputAllowed) super.requestFocusFromTouch() else false
 
     private fun isFloatingToolbarEnabled(): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)

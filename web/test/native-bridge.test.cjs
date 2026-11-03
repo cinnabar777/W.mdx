@@ -181,19 +181,11 @@ test('toolbar actions block incidental keyboard opens when the keyboard started 
 test('a suppressed WebView rejects implicit native focus requests', () => {
   assert.match(
     editorWebViewSource,
-    /override fun requestFocusFromTouch\(\): Boolean =\s*if \(imeInputAllowed\) super\.requestFocusFromTouch\(\) else false/
+    /override fun requestFocus\(\s*direction: Int,\s*previouslyFocusedRect: Rect\?\s*\): Boolean =\s*if \(imeInputAllowed\) \{\s*super\.requestFocus\(direction, previouslyFocusedRect\)\s*\} else \{\s*false\s*\}/
   );
-  assert.match(
+  assert.doesNotMatch(
     editorWebViewSource,
-    /override fun requestFocus\(\): Boolean =\s*if \(imeInputAllowed\) super\.requestFocus\(\) else false/
-  );
-  assert.match(
-    editorWebViewSource,
-    /override fun requestFocus\(direction: Int\): Boolean =\s*if \(imeInputAllowed\) super\.requestFocus\(direction\) else false/
-  );
-  assert.match(
-    editorWebViewSource,
-    /override fun requestFocus\([\s\S]*?previouslyFocusedRect: Rect\?[\s\S]*?if \(imeInputAllowed\)[\s\S]*?super\.requestFocus\(direction, previouslyFocusedRect\)[\s\S]*?else \{\s*false/
+    /override fun requestFocus\(\):|override fun requestFocus\(direction: Int\):|override fun requestFocusFromTouch\(\)/
   );
 });
 
