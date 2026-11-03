@@ -5,6 +5,7 @@ import android.util.AttributeSet
 import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuInflater
+import android.view.View
 import android.webkit.WebView
 import androidx.preference.PreferenceManager
 
