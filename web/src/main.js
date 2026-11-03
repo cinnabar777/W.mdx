@@ -1591,7 +1591,9 @@ export { EditorView } from '@codemirror/view';
 export { cursorLineDown, cursorLineUp } from '@codemirror/commands';
 export { markdown } from '@codemirror/lang-markdown';
 
-const embeddedDocumentSourceFacet = Facet.define();
+const embeddedDocumentSourceFacet = Facet.define({
+  combine: values => values[0] ?? null
+});
 const embeddedDocumentDepthFacet = Facet.define({
   combine: values => values[0] ?? 0
 });

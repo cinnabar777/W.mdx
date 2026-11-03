@@ -96,6 +96,30 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(native, /fun resolveEmbeddedAssetUrl/);
 });
 
+test('unset embedded-document source routes ordinary media through the normal resolver', async () => {
+  const main = readProjectFile('web/src/main.js');
+  const { EditorState, Facet } = await import('@codemirror/state');
+
+  assert.match(
+    main,
+    /const embeddedDocumentSourceFacet = Facet\.define\(\{\s*combine: values => values\[0\] \?\? null\s*\}\);/
+  );
+  assert.match(
+    main,
+    /if \(embeddedSource\) \{\s*return window\.AndroidNative\?\.resolveEmbeddedAssetUrl/
+  );
+  assert.match(main, /return window\.AndroidNative\?\.resolveMdzipMediaUrl/);
+
+  const sourceFacet = Facet.define({ combine: values => values[0] ?? null });
+  const regularDocument = EditorState.create({ extensions: [] });
+  const embeddedDocument = EditorState.create({
+    extensions: [sourceFacet.of('assets/notes.md')]
+  });
+
+  assert.equal(regularDocument.facet(sourceFacet), null);
+  assert.equal(embeddedDocument.facet(sourceFacet), 'assets/notes.md');
+});
+
 test('migrates existing toolbar layouts to include Embed without restoring removed or hidden keys', async () => {
   const {
     DEFAULT_BOTTOM_TOOLBAR_CONFIG,
