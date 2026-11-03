@@ -116,6 +116,7 @@ test('floating toolbar has an independent layout and restores Android selection 
   const cursorPrefs = readApp('src/main/res/xml/preferences_styling_cursor.xml');
   const resetPreferences = readApp('src/main/java/com/wmdx/markdownapp/ResetPreferences.kt');
   const mainSettingsPrefs = readApp('src/main/res/xml/preferences.xml');
+  const uiAppearancePrefs = readApp('src/main/res/xml/preferences_ui_appearance.xml');
   const activityLayout = readApp('src/main/res/layout/activity_main.xml');
   const webIndex = readFileSync(path.join(repositoryRoot, 'web', 'index.html'), 'utf8');
   const styles = readWeb('toolbar.css');
@@ -212,7 +213,8 @@ test('floating toolbar has an independent layout and restores Android selection 
     controlbarPrefs,
     /ResetPreferenceCategory[\s\S]*?pref_toolbar_floating_category[\s\S]*?app:title="Floating toolbar"/
   );
-  assert.match(mainSettingsPrefs, /app:title="Toolbars"/);
+  assert.match(mainSettingsPrefs, /app:key="pref_page_ui_appearance"[\s\S]*?app:title="UI Appearance"/);
+  assert.match(uiAppearancePrefs, /app:key="pref_page_bottom_toolbar"[\s\S]*?app:title="Toolbars"/);
   assert.match(settingsActivity, /is StylingControlbarFragment -> "Toolbars"/);
   assert.doesNotMatch(nativeActivity, /setCustomSelectionActionModeCallback/);
   assert.match(editorWebView, /override fun startActionMode\(callback: ActionMode\.Callback\)/);
