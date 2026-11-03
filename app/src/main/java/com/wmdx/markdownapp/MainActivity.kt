@@ -38,18 +38,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
 private const val WMDX_TAB_SESSION_MIME = "application/vnd.wmdx.tabs-session+json"
 private const val MAX_WMDX_TAB_SESSION_BYTES = 512 * 1024
 private const val MAX_EMBEDDED_DOCUMENT_BYTES = 16L * 1024L * 1024L
+private const val MAX_DOWNLOADED_IMAGE_BYTES = 32L * 1024L * 1024L
 private const val EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE =
     "Could not load this embedded document. Check that it exists and grant read access to its folder in Settings > File & Folder Access, then reopen it. Read access is enough to display it; write access is only needed to save edits."
 
@@ -65,6 +69,19 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var currentDocumentFormat = DocumentFormat.MARKDOWN
 
     private data class CachedFontData(val modifiedAt: Long, val length: Long, val dataUri: String)
+    private data class DownloadedImage(
+        val bytes: ByteArray,
+        val fileName: String,
+        val mimeType: String
+    )
+    private data class ImageStorageTarget(
+        val sessionId: String,
+        val format: DocumentFormat,
+        val textPackSession: TextPackSession? = null,
+        val mdzipSession: MdzipSession? = null,
+        val markdownLocation: MarkdownDocumentLocation? = null,
+        val markdownStorageLocation: String = MarkdownAssetManager.LOCATION_ASSETS
+    )
     private data class LeftPanelDocumentEntry(
         val documentId: String,
         val name: String,
@@ -99,6 +116,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
     private val leftPanelSearchExecutor = Executors.newSingleThreadExecutor()
+    private val imageUrlDownloadExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var leftPanelSearchFuture: Future<*>? = null
     @Volatile private var currentTextPackSession: TextPackSession? = null
     @Volatile private var currentMdzipSession: MdzipSession? = null
@@ -485,6 +503,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
         leftPanelSearchFuture?.cancel(true)
         leftPanelSearchExecutor.shutdownNow()
+        imageUrlDownloadExecutor.shutdownNow()
         if (isFinishing && !isChangingConfigurations) {
             WindowRegistry.unregister(this)
         }
@@ -2924,8 +2943,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun handleInsertImage() {
         val choices = arrayOf(
             "Choose image file",
-            "Choose file and embed as Base64",
-            "Enter URL or Base64 data"
+            "Choose image file and embed as Base64",
+            "Paste Base64",
+            "Enter URL"
         )
         AlertDialog.Builder(this)
             .setTitle("Insert Image")
@@ -2933,7 +2953,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 when (choice) {
                     0 -> pickImageLauncher.launch("image/*")
                     1 -> pickImageAsBase64Launcher.launch("image/*")
-                    2 -> showImageUrlDialog()
+                    2 -> showPasteBase64ImageDialog()
+                    3 -> showImageUrlDialog()
                 }
             }
             .show()
@@ -3343,21 +3364,374 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun showImageUrlDialog() {
+        val expectedSessionId = currentDocumentSessionId
         val input = EditText(this)
-        input.hint = "Image URL or data:image/...;base64,..."
-        AlertDialog.Builder(this)
-            .setTitle("Image URL or Base64 Data")
-            .setView(input)
-            .setPositiveButton("Insert") { _, _ ->
+        input.hint = "https://example.com/image.png"
+        input.inputType =
+            android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_URI
+
+        val downloadImage = android.widget.CheckBox(this).apply {
+            text = "Download image to document assets"
+        }
+        val embedAsBase64 = android.widget.CheckBox(this).apply {
+            text = "Embed image as Base64"
+        }
+        downloadImage.setOnCheckedChangeListener { _, checked ->
+            if (checked) embedAsBase64.isChecked = false
+        }
+        embedAsBase64.setOnCheckedChangeListener { _, checked ->
+            if (checked) downloadImage.isChecked = false
+        }
+        val helperText = android.widget.TextView(this).apply {
+            text = "Leave both options unchecked to use the URL directly."
+            setTextColor(androidx.core.content.ContextCompat.getColor(
+                this@MainActivity,
+                android.R.color.darker_gray
+            ))
+            textSize = 13f
+        }
+        val content = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val sidePadding = (24 * resources.displayMetrics.density).toInt()
+            setPadding(sidePadding, 0, sidePadding, 0)
+            addView(
+                input,
+                android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(downloadImage)
+            addView(embedAsBase64)
+            addView(helperText)
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Enter Image URL")
+            .setView(content)
+            .setPositiveButton("Insert", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val url = input.text.toString().trim()
-                if (url.isNotEmpty()) {
-                    val escapedUrl = JSONObjectWrapper.quote(url)
-                    webView.evaluateJavascript("window.editorBridge.insertImage($escapedUrl);", null)
+                if (!isHttpImageUrl(url)) {
+                    ThemedToast.show(
+                        this,
+                        "Enter a valid HTTP or HTTPS image URL.",
+                        Toast.LENGTH_LONG
+                    )
+                    return@setOnClickListener
+                }
+                if (expectedSessionId != currentDocumentSessionId) {
+                    ThemedToast.show(
+                        this,
+                        "The active document changed. The image was not inserted.",
+                        Toast.LENGTH_LONG
+                    )
+                    dialog.dismiss()
+                    return@setOnClickListener
+                }
+                val shouldDownload = downloadImage.isChecked || embedAsBase64.isChecked
+                val shouldEmbedAsBase64 = embedAsBase64.isChecked
+                dialog.dismiss()
+                if (shouldDownload) {
+                    downloadImageFromUrl(url, expectedSessionId, shouldEmbedAsBase64)
+                } else {
+                    insertImageMarkdown(url)
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
+        dialog.show()
     }
+
+    private fun showPasteBase64ImageDialog() {
+        val expectedSessionId = currentDocumentSessionId
+        val input = EditText(this).apply {
+            hint = "data:image/png;base64,... or Base64 data"
+            minLines = 4
+            maxLines = 9
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            inputType =
+                android.text.InputType.TYPE_CLASS_TEXT or
+                    android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                    android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Paste Base64 Image")
+            .setView(input)
+            .setPositiveButton("Insert", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val imageData = runCatching {
+                    normalizeBase64Image(input.text.toString())
+                }.getOrElse { error ->
+                    ThemedToast.show(
+                        this,
+                        error.localizedMessage ?: "Enter valid image Base64 data.",
+                        Toast.LENGTH_LONG
+                    )
+                    return@setOnClickListener
+                }
+                if (expectedSessionId != currentDocumentSessionId) {
+                    ThemedToast.show(
+                        this,
+                        "The active document changed. The image was not inserted.",
+                        Toast.LENGTH_LONG
+                    )
+                    dialog.dismiss()
+                    return@setOnClickListener
+                }
+                insertImageMarkdown(imageData)
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun isHttpImageUrl(value: String): Boolean = runCatching {
+        val url = URL(value)
+        (url.protocol.equals("http", ignoreCase = true) ||
+            url.protocol.equals("https", ignoreCase = true)) &&
+            url.host.isNotBlank()
+    }.getOrDefault(false)
+
+    private fun normalizeBase64Image(value: String): String {
+        val dataUriMatch = Regex(
+            "^data:(image/[a-zA-Z0-9.+-]+);base64,([\\s\\S]+)$",
+            RegexOption.IGNORE_CASE
+        ).matchEntire(value.trim())
+        val mimeType: String
+        val encoded: String
+        var decodedBytes: ByteArray? = null
+        if (dataUriMatch != null) {
+            mimeType = dataUriMatch.groupValues[1].lowercase()
+            encoded = dataUriMatch.groupValues[2]
+        } else {
+            encoded = value.filterNot { it.isWhitespace() }
+            decodedBytes = decodeImageBase64(encoded)
+            mimeType = detectImageMimeType(decodedBytes)
+                ?: throw IOException(
+                    "Could not identify the image type. Paste a data:image/...;base64,... value instead."
+                )
+        }
+        val bytes = decodedBytes ?: decodeImageBase64(encoded)
+        if (!mimeType.startsWith("image/")) {
+            throw IOException("The pasted Base64 data is not an image.")
+        }
+        return "data:$mimeType;base64,${Base64.encodeToString(bytes, Base64.NO_WRAP)}"
+    }
+
+    private fun decodeImageBase64(encoded: String): ByteArray {
+        if (encoded.length > (MAX_DOWNLOADED_IMAGE_BYTES * 4L / 3L) + 16L) {
+            throw IOException("The Base64 image is too large to insert.")
+        }
+        val bytes = try {
+            Base64.decode(encoded, Base64.DEFAULT)
+        } catch (error: IllegalArgumentException) {
+            throw IOException("Enter valid Base64 image data.", error)
+        }
+        if (bytes.isEmpty()) throw IOException("The pasted Base64 image is empty.")
+        if (bytes.size > MAX_DOWNLOADED_IMAGE_BYTES) {
+            throw IOException("The Base64 image is too large to insert.")
+        }
+        return bytes
+    }
+
+    private fun detectImageMimeType(bytes: ByteArray): String? {
+        if (
+            bytes.size >= 8 &&
+            bytes[0] == 0x89.toByte() &&
+            bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4e.toByte() &&
+            bytes[3] == 0x47.toByte()
+        ) return "image/png"
+        if (
+            bytes.size >= 3 &&
+            bytes[0] == 0xff.toByte() &&
+            bytes[1] == 0xd8.toByte() &&
+            bytes[2] == 0xff.toByte()
+        ) return "image/jpeg"
+        if (bytes.size >= 6 && String(bytes, 0, 6, Charsets.US_ASCII).startsWith("GIF8")) {
+            return "image/gif"
+        }
+        if (
+            bytes.size >= 12 &&
+            String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+            String(bytes, 8, 4, Charsets.US_ASCII) == "WEBP"
+        ) return "image/webp"
+        if (bytes.size >= 2 && bytes[0] == 'B'.code.toByte() && bytes[1] == 'M'.code.toByte()) {
+            return "image/bmp"
+        }
+        val textPrefix = String(bytes, 0, minOf(bytes.size, 512), Charsets.UTF_8)
+            .removePrefix("\uFEFF")
+        if (Regex("<svg\\b", RegexOption.IGNORE_CASE).containsMatchIn(textPrefix)) {
+            return "image/svg+xml"
+        }
+        return null
+    }
+
+    private fun downloadImageFromUrl(
+        url: String,
+        expectedSessionId: String,
+        embedAsBase64: Boolean
+    ) {
+        val storageTarget = if (embedAsBase64) {
+            null
+        } else {
+            runCatching { captureImageStorageTarget(expectedSessionId) }
+                .getOrElse { error ->
+                    ThemedToast.show(
+                        this,
+                        "Failed to insert image: ${error.localizedMessage ?: "unknown error"}",
+                        Toast.LENGTH_LONG
+                    )
+                    return
+                }
+        }
+        val progressDialog = AlertDialog.Builder(this)
+            .setTitle(if (embedAsBase64) "Embedding Image" else "Downloading Image")
+            .setMessage("Please wait…")
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+        try {
+            imageUrlDownloadExecutor.execute {
+                val result = runCatching {
+                    val image = fetchImageFromUrl(url)
+                    if (expectedSessionId != currentDocumentSessionId) {
+                        throw IOException("The active document changed. The image was not inserted.")
+                    }
+                    if (embedAsBase64) {
+                        "data:${image.mimeType};base64," +
+                            Base64.encodeToString(image.bytes, Base64.NO_WRAP)
+                    } else {
+                        storeImageAsset(
+                            storageTarget
+                                ?: throw IOException("The image storage location is unavailable."),
+                            ByteArrayInputStream(image.bytes),
+                            image.fileName,
+                            image.mimeType
+                        )
+                    }
+                }
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    if (progressDialog.isShowing) progressDialog.dismiss()
+                    if (expectedSessionId != currentDocumentSessionId) {
+                        ThemedToast.show(
+                            this,
+                            "The active document changed. The image was not inserted.",
+                            Toast.LENGTH_LONG
+                        )
+                        return@runOnUiThread
+                    }
+                    result.onSuccess(::insertImageMarkdown).onFailure { error ->
+                        ThemedToast.show(
+                            this,
+                            "Could not complete URL image insertion: ${error.localizedMessage ?: "unknown error"}",
+                            Toast.LENGTH_LONG
+                        )
+                    }
+                }
+            }
+        } catch (error: java.util.concurrent.RejectedExecutionException) {
+            if (progressDialog.isShowing) progressDialog.dismiss()
+            ThemedToast.show(
+                this,
+                "Could not start the image download.",
+                Toast.LENGTH_LONG
+            )
+        }
+    }
+
+    private fun fetchImageFromUrl(value: String): DownloadedImage {
+        if (!isHttpImageUrl(value)) throw IOException("Enter a valid HTTP or HTTPS image URL.")
+        val connection = URL(value).openConnection() as? HttpURLConnection
+            ?: throw IOException("Could not open the image URL.")
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 20_000
+        connection.instanceFollowRedirects = true
+        connection.setRequestProperty("Accept", "image/*")
+        connection.setRequestProperty("User-Agent", "W.mdx")
+        try {
+            val responseCode = connection.responseCode
+            if (responseCode !in 200..299) {
+                throw IOException("The image server returned HTTP $responseCode.")
+            }
+            val contentType = connection.contentType
+                ?.substringBefore(';')
+                ?.trim()
+                ?.lowercase()
+            if (
+                contentType != null &&
+                !contentType.startsWith("image/") &&
+                contentType != "application/octet-stream" &&
+                contentType != "binary/octet-stream"
+            ) {
+                throw IOException("The URL did not return an image.")
+            }
+            if (connection.contentLengthLong > MAX_DOWNLOADED_IMAGE_BYTES) {
+                throw IOException("The image is too large to download.")
+            }
+            val output = ByteArrayOutputStream()
+            connection.inputStream.use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var total = 0L
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > MAX_DOWNLOADED_IMAGE_BYTES) {
+                        throw IOException("The image is too large to download.")
+                    }
+                    output.write(buffer, 0, count)
+                }
+            }
+            val bytes = output.toByteArray()
+            if (bytes.isEmpty()) throw IOException("The downloaded image is empty.")
+            val mimeType = contentType?.takeIf { it.startsWith("image/") }
+                ?: detectImageMimeType(bytes)
+                ?: imageMimeTypeFromUrl(connection.url)
+                ?: throw IOException("The URL did not return a supported image.")
+            val fileName = imageFileNameFromUrl(connection.url, mimeType)
+            return DownloadedImage(bytes, fileName, mimeType)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun imageFileNameFromUrl(url: URL, mimeType: String): String {
+        val encodedName = url.path.substringAfterLast('/').ifBlank { "image" }
+        val decodedName = Uri.decode(encodedName)
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .replace(Regex("[\\p{Cntrl}<>:\"|?*]"), "_")
+            .trim()
+            .ifBlank { "image" }
+        val extension = decodedName.substringAfterLast('.', "")
+        val mimeMap = android.webkit.MimeTypeMap.getSingleton()
+        val existingMime = extension.takeIf(String::isNotBlank)
+            ?.let(mimeMap::getMimeTypeFromExtension)
+        if (existingMime?.equals(mimeType, ignoreCase = true) == true) return decodedName
+        val canonicalExtension = mimeMap.getExtensionFromMimeType(mimeType)
+            ?: if (mimeType == "image/svg+xml") "svg" else null
+        if (canonicalExtension == null) return decodedName
+        val baseName = if (extension.isNotBlank()) {
+            decodedName.substringBeforeLast('.').ifBlank { "image" }
+        } else {
+            decodedName
+        }
+        return "$baseName.$canonicalExtension"
+    }
+
+    private fun imageMimeTypeFromUrl(url: URL): String? =
+        android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(url.path.substringAfterLast('.').lowercase())
+            ?.takeIf { it.startsWith("image/") }
 
     private fun insertImageFromUri(uri: Uri, embedBase64: Boolean) {
         try {
@@ -3420,6 +3794,90 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             insertImageMarkdown(imageReference)
         } catch (e: Exception) {
             ThemedToast.show(this, "Failed to insert image: ${e.localizedMessage}", Toast.LENGTH_LONG)
+        }
+    }
+
+    private fun captureImageStorageTarget(expectedSessionId: String): ImageStorageTarget {
+        if (expectedSessionId != currentDocumentSessionId) {
+            throw IOException("The active document changed. The image was not inserted.")
+        }
+        return when (currentDocumentFormat) {
+            DocumentFormat.TEXT_PACK -> ImageStorageTarget(
+                sessionId = expectedSessionId,
+                format = DocumentFormat.TEXT_PACK,
+                textPackSession = currentTextPackSession
+                    ?: throw IOException("The active TextPack session is no longer available.")
+            )
+            DocumentFormat.MDZIP -> ImageStorageTarget(
+                sessionId = expectedSessionId,
+                format = DocumentFormat.MDZIP,
+                mdzipSession = currentMdzipSession
+                    ?: throw IOException("The active MDZip session is no longer available.")
+            )
+            DocumentFormat.MARKDOWN -> {
+                val documentUri = currentFileUri
+                    ?: throw IOException("Save the Markdown document before downloading an image.")
+                val location = MarkdownAssetManager.locateDocument(
+                    this,
+                    documentUri,
+                    requireWrite = true
+                ) ?: throw IOException(
+                    "Could not match this Markdown file to an approved write-enabled folder. " +
+                        "Choose URL only or embed as Base64 instead."
+                )
+                val storageLocation = PreferenceManager
+                    .getDefaultSharedPreferences(this)
+                    .getString(
+                        "pref_markdown_image_location",
+                        MarkdownAssetManager.LOCATION_ASSETS
+                    ) ?: MarkdownAssetManager.LOCATION_ASSETS
+                ImageStorageTarget(
+                    sessionId = expectedSessionId,
+                    format = DocumentFormat.MARKDOWN,
+                    markdownLocation = location,
+                    markdownStorageLocation = storageLocation
+                )
+            }
+        }
+    }
+
+    private fun storeImageAsset(
+        target: ImageStorageTarget,
+        inputStream: InputStream,
+        originalName: String,
+        mimeType: String
+    ): String = inputStream.use { input ->
+        if (target.sessionId != currentDocumentSessionId) {
+            throw IOException("The active document changed. The image was not inserted.")
+        }
+        when {
+            target.format == DocumentFormat.TEXT_PACK ->
+                TextPackManager.addAssetImage(
+                    target.textPackSession
+                        ?: throw IOException("The TextPack session is no longer available."),
+                    input,
+                    originalName,
+                    mimeType
+                )
+            target.format == DocumentFormat.MDZIP -> MdzipManager.addImage(
+                target.mdzipSession
+                    ?: throw IOException("The MDZip session is no longer available."),
+                input,
+                originalName,
+                mimeType
+            )
+            else -> {
+                val location = target.markdownLocation
+                    ?: throw IOException("The Markdown image folder is no longer available.")
+                MarkdownAssetManager.addImage(
+                    this,
+                    location,
+                    input,
+                    originalName,
+                    mimeType,
+                    target.markdownStorageLocation
+                )
+            }
         }
     }
 
