@@ -1,15 +1,10 @@
 package com.wmdx.markdownapp
 
 import android.content.Context
-import android.graphics.Rect
 import android.util.AttributeSet
 import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuInflater
-import android.view.View
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputConnection
-import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.preference.PreferenceManager
 
@@ -22,51 +17,6 @@ class EditorWebView @JvmOverloads constructor(
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : WebView(context, attrs, defStyleAttr) {
-
-    @Volatile
-    private var imeInputAllowed = true
-
-    fun setImeInputAllowed(allowed: Boolean) {
-        if (imeInputAllowed == allowed) return
-        imeInputAllowed = allowed
-        // Restarting input while suppressing a hidden IME can cause Android
-        // to reopen it. Recreate the input connection only for an explicit
-        // transition back to text input; the toolbar touch gate stays passive.
-        if (!allowed) return
-        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-            ?.restartInput(this)
-    }
-
-    fun enableImeInputForEditorTouch() {
-        if (imeInputAllowed) return
-        // The JavaScript bridge runs off the UI thread. Open the focus gate
-        // immediately, then restart the input connection on the view thread.
-        imeInputAllowed = true
-        post {
-            if (!imeInputAllowed) return@post
-            (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-                ?.restartInput(this)
-        }
-    }
-
-    override fun onCheckIsTextEditor(): Boolean =
-        imeInputAllowed && super.onCheckIsTextEditor()
-
-    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? =
-        if (imeInputAllowed) super.onCreateInputConnection(outAttrs) else null
-
-    // WebView can request native focus on touch while reusing its existing
-    // input connection. Reject those implicit requests until an editor-text
-    // gesture explicitly re-enables IME input.
-    override fun requestFocus(
-        direction: Int,
-        previouslyFocusedRect: Rect?
-    ): Boolean =
-        if (imeInputAllowed) {
-            super.requestFocus(direction, previouslyFocusedRect)
-        } else {
-            false
-        }
 
     private fun isFloatingToolbarEnabled(): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)

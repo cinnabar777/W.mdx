@@ -55,12 +55,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     private var suppressImeUntilUserTouch = false
-    @Volatile private var toolbarImeSuppressedUntilEditorTouch = false
     private var imeHideGeneration = 0
     @Volatile private var lastKnownImeVisible = false
-    private val toolbarImeInteractionLock = Any()
-    @Volatile private var toolbarImeInteractionDepth = 0
-    @Volatile private var toolbarImeVisibleBeforeInteraction = false
     private enum class DocumentFormat { MARKDOWN, TEXT_PACK, MDZIP }
     private enum class InsertAssetKind { AUDIO, VIDEO, ATTACHMENT }
     private var currentDocumentFormat = DocumentFormat.MARKDOWN
@@ -382,18 +378,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "focusable=${webView.isFocusable} touchFocusable=${webView.isFocusableInTouchMode}"
         )
         webView.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                val imeWasVisible = editorImeVisible()
-                // Any touch starts in the non-text state unless JavaScript
-                // identifies an actual editable target. This runs before
-                // WebView handles the touch, so toolbar and popup taps cannot
-                // reopen a previously hidden IME.
-                if (!imeWasVisible) {
-                    toolbarImeSuppressedUntilEditorTouch = true
-                }
-                (webView as? EditorWebView)
-                    ?.setImeInputAllowed(imeWasVisible)
-            }
             if (
                 event.actionMasked == MotionEvent.ACTION_DOWN &&
                 suppressImeUntilUserTouch
@@ -614,10 +598,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onResume() {
         super.onResume()
         isActivityResumed = true
-        synchronized(toolbarImeInteractionLock) {
-            toolbarImeInteractionDepth = 0
-            toolbarImeVisibleBeforeInteraction = false
-        }
         WindowRegistry.consumePendingFocusUri(this, taskId)?.let {
             pendingExistingDocumentFocusUri = it
         }
@@ -648,10 +628,6 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onPause() {
         isActivityResumed = false
-        synchronized(toolbarImeInteractionLock) {
-            toolbarImeInteractionDepth = 0
-            toolbarImeVisibleBeforeInteraction = false
-        }
         AppDiagnostics.record(this, "window_paused")
         super.onPause()
         PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
@@ -4537,92 +4513,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun beginToolbarInteraction() {
-            if (!isActivityResumed || !::webView.isInitialized) return
-            val imeWasVisible = synchronized(toolbarImeInteractionLock) {
-                if (toolbarImeInteractionDepth == 0) {
-                    toolbarImeVisibleBeforeInteraction = lastKnownImeVisible
-                    if (!lastKnownImeVisible) {
-                        toolbarImeSuppressedUntilEditorTouch = true
-                    }
-                }
-                toolbarImeInteractionDepth += 1
-                toolbarImeVisibleBeforeInteraction
-            }
-            if (!imeWasVisible) {
-                (webView as? EditorWebView)?.setImeInputAllowed(false)
-            }
-            runOnUiThread {
-                if (!isActivityResumed) return@runOnUiThread
-                synchronized(toolbarImeInteractionLock) {
-                    AppDiagnostics.record(
-                        this@MainActivity,
-                        "toolbar_ime_state_captured",
-                        "imeVisible=$imeWasVisible inputAllowed=$imeWasVisible " +
-                            "depth=$toolbarImeInteractionDepth"
-                    )
-                }
-            }
-        }
-
-        @JavascriptInterface
-        fun endToolbarInteraction() {
-            synchronized(toolbarImeInteractionLock) {
-                if (toolbarImeInteractionDepth <= 0) return
-                toolbarImeInteractionDepth -= 1
-            }
-        }
-
-        @JavascriptInterface
-        fun onEditorPointerDown() {
-            val released = synchronized(toolbarImeInteractionLock) {
-                if (toolbarImeInteractionDepth > 0) return
-                val wasSuppressed = toolbarImeSuppressedUntilEditorTouch
-                toolbarImeSuppressedUntilEditorTouch = false
-                wasSuppressed
-            }
-            (webView as? EditorWebView)?.enableImeInputForEditorTouch()
-            if (released) {
-                AppDiagnostics.record(
-                    this@MainActivity,
-                    "ime_toolbar_suppression_released_editor_touch"
-                )
-            }
-        }
-
-        @JavascriptInterface
         fun showEditorKeyboard() {
-            val suppressedByToolbar = synchronized(toolbarImeInteractionLock) {
-                toolbarImeSuppressedUntilEditorTouch ||
-                    (toolbarImeInteractionDepth > 0 &&
-                        !toolbarImeVisibleBeforeInteraction)
-            }
-            if (suppressedByToolbar) {
-                runOnUiThread {
-                    AppDiagnostics.record(
-                        this@MainActivity,
-                        "ime_show_suppressed_toolbar",
-                        "depth=$toolbarImeInteractionDepth editorTouchRequired=$toolbarImeSuppressedUntilEditorTouch"
-                    )
-                }
-                return
-            }
             runOnUiThread {
-                val stillSuppressedByToolbar =
-                    synchronized(toolbarImeInteractionLock) {
-                        toolbarImeSuppressedUntilEditorTouch ||
-                            (toolbarImeInteractionDepth > 0 &&
-                                !toolbarImeVisibleBeforeInteraction)
-                    }
-                if (stillSuppressedByToolbar) {
-                    AppDiagnostics.record(
-                        this@MainActivity,
-                        "ime_show_suppressed_toolbar",
-                        "depth=$toolbarImeInteractionDepth editorTouchRequired=$toolbarImeSuppressedUntilEditorTouch"
-                    )
-                    return@runOnUiThread
-                }
-                (webView as? EditorWebView)?.setImeInputAllowed(true)
                 val visibleBefore = editorImeVisible()
                 AppDiagnostics.record(
                     this@MainActivity,

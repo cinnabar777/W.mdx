@@ -63,48 +63,11 @@ import {
 } from './markdownFormatting.js';
 import { TABLE_ACTIONS } from './tableActions.js';
 import { svgIcons } from './toolbarIcons.js';
+import { installToolbarTouchHandling } from './toolbarTouchHandling.js';
 
-// Prevent toolbar presses from stealing editor focus or reopening a hidden IME.
-// Only a fresh pointer-down on editor text releases the native input gate.
-const activeToolbarImePointers = new Set();
-const toolbarImeSurfaceSelector =
+const toolbarTouchSurfaceSelector =
   '#bottom-toolbar, #floating-selection-toolbar, #popup-toolbar-strip, #floating-toggle-btn, .floating-toggle-btn';
-
-document.addEventListener('pointerdown', event => {
-  if (event.isPrimary === false) return;
-  const target = event.target;
-  if (!target?.closest?.(toolbarImeSurfaceSelector)) return;
-
-  const pointerId = event.pointerId ?? 0;
-  if (activeToolbarImePointers.has(pointerId)) return;
-  activeToolbarImePointers.add(pointerId);
-  if (target.closest?.('button, [role="button"], [data-toolbar-key]')) {
-    event.preventDefault();
-  }
-  window.AndroidNative?.beginToolbarInteraction?.();
-}, true);
-
-const finishToolbarImePointer = pointerId => {
-  if (!activeToolbarImePointers.delete(pointerId)) return;
-  // Keep the native gate active through the pointer's click action. Never
-  // refocus CodeMirror here: the caret can remain active after the IME closes,
-  // and refocusing is not a new touch in the text field.
-  window.setTimeout(() => {
-    window.AndroidNative?.endToolbarInteraction?.();
-  }, 0);
-};
-
-document.addEventListener('pointerup', event => {
-  finishToolbarImePointer(event.pointerId ?? 0);
-}, true);
-document.addEventListener('pointercancel', event => {
-  finishToolbarImePointer(event.pointerId ?? 0);
-}, true);
-window.addEventListener('blur', () => {
-  for (const pointerId of [...activeToolbarImePointers]) {
-    finishToolbarImePointer(pointerId);
-  }
-});
+installToolbarTouchHandling(document, toolbarTouchSurfaceSelector);
 
 document.addEventListener('pointerdown', event => {
   const target = event.target;
@@ -114,7 +77,6 @@ document.addEventListener('pointerdown', event => {
   );
   const isEditable = target.closest('[contenteditable="true"]:not(.cm-content)');
   if (!isTextInput && !isEditable) return;
-  window.AndroidNative?.onEditorPointerDown?.();
   window.AndroidNative?.showEditorKeyboard?.();
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
@@ -4403,7 +4365,6 @@ class CodeMirrorAdapter {
         editorTapStart = null;
         return;
       }
-      window.AndroidNative?.onEditorPointerDown?.();
       editorTapStart = {
         pointerId: event.pointerId,
         x: event.clientX,
@@ -5799,6 +5760,7 @@ function installPopupToolbarSwipeUp(
     if (longPressHandled) {
       longPressHandled = false;
       pointerStart = null;
+      button.dataset.toolbarGestureSuppressClick = 'true';
       event.preventDefault();
       return;
     }

@@ -687,47 +687,10 @@ test('toolbar actions do not force the editor keyboard open', () => {
   assert.match(mainSource, /cmWrapSelection\(view, tableMarkdown, '', \{ preserveKeyboard: true \}\)/);
 });
 
-test('toolbar touches do not refocus the editor and keep a hidden IME gated', () => {
-  assert.match(
-    mainSource,
-    /document\.addEventListener\('pointerdown', event => \{[\s\S]*?toolbarImeSurfaceSelector[\s\S]*?beginToolbarInteraction\?\.\(\)/,
-    'toolbar pointerdown captures the keyboard state before the action'
-  );
-  const finishToolbarInteraction = mainSource.match(
-    /const finishToolbarImePointer = pointerId => \{([\s\S]*?)\n\};/
-  )?.[1];
-  assert.ok(finishToolbarInteraction, 'toolbar pointer interactions have a finish handler');
-  assert.match(finishToolbarInteraction, /activeToolbarImePointers\.delete\(pointerId\)/);
-  assert.match(finishToolbarInteraction, /endToolbarInteraction\?\.\(\)/);
-  assert.doesNotMatch(
-    finishToolbarInteraction,
-    /view\.focus\(\)|editorHadFocus|80\)/,
-    'ending a toolbar touch does not refocus the active editor'
-  );
-  assert.match(
-    mainActivitySource,
-    /if \(!imeWasVisible\) \{\s*toolbarImeSuppressedUntilEditorTouch = true\s*\}[\s\S]*?setImeInputAllowed\(imeWasVisible\)/,
-    'native touch handling gates hidden IME requests before WebView receives any touch'
-  );
-  assert.match(
-    mainActivitySource,
-    /fun beginToolbarInteraction\(\)[\s\S]*?if \(!imeWasVisible\)[\s\S]*?setImeInputAllowed\(false\)/
-  );
-  const endInteraction = mainActivitySource.match(
-    /fun endToolbarInteraction\(\)\s*\{([\s\S]*?)\n\s*@JavascriptInterface/
-  )?.[1];
-  assert.ok(endInteraction, 'toolbar interactions have a native end callback');
-  assert.doesNotMatch(
-    endInteraction,
-    /setImeInputAllowed|showSoftInput|hideSoftInput|restoreToolbarImeState/,
-    'ending the toolbar interaction does not change keyboard visibility'
-  );
-  assert.match(
-    mainActivitySource,
-    /if \(!lastKnownImeVisible\) \{\s*toolbarImeSuppressedUntilEditorTouch = true\s*\}/
-  );
-  assert.match(
-    mainActivitySource,
-    /fun onEditorPointerDown\(\)[\s\S]*?toolbarImeSuppressedUntilEditorTouch = false/
-  );
+test('toolbar-local touch handling preserves tap and gesture dispatch', () => {
+  assert.match(mainSource, /installToolbarTouchHandling\(document, toolbarTouchSurfaceSelector\)/);
+  assert.match(mainSource, /function installToolbarTapActions\(container\)/);
+  assert.match(mainSource, /onGesture: \(id, gestureId, event, button\) =>/);
+  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
+  assert.doesNotMatch(mainActivitySource, /toolbarImeInteraction|toolbarImeSuppressedUntilEditorTouch|setImeInputAllowed/);
 });
