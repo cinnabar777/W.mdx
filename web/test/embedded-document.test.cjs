@@ -114,6 +114,7 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
 
 test('embedded Markdown renders GFM task lists without enabling table changes', async () => {
   const main = readProjectFile('web/src/main.js');
+  const native = readProjectFile('app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const childExtensions = main.match(
     /const state = EditorState\.create\(\{\s*doc: markdownText,\s*extensions: \[([\s\S]*?)\n      \]\s*\}\);/
   )?.[1];
@@ -125,6 +126,19 @@ test('embedded Markdown renders GFM task lists without enabling table changes', 
   assert.match(childExtensions, /syntaxHighlighting\(customHighlightStyle\)/);
   assert.doesNotMatch(childExtensions, /GFMTable/);
   assert.match(main, /input\.disabled = view\.state\.readOnly;/);
+  assert.match(
+    main,
+    /actions\.hidden = true;\s*actions\.style\.cssText = 'display:none;[\s\S]*?const closeActions = \(\) => \{\s*actions\.hidden = true;\s*actions\.style\.display = 'none';/
+  );
+  assert.match(
+    main,
+    /const showActions = \(\) => \{\s*actions\.hidden = false;\s*actions\.style\.display = 'flex';/
+  );
+  assert.match(
+    native,
+    /private fun mdzipSessionForAssetRequest\(sessionDirName: String\): MdzipSession\? \{[\s\S]*?currentMdzipSession[\s\S]*?embeddedMdzipSessions\.entries\.firstOrNull \{\s*it\.value\.sessionDir\.name == sessionDirName\s*\}[\s\S]*?embeddedMdzipSessions\[entry\.key\]/
+  );
+  assert.match(native, /val session = mdzipSessionForAssetRequest\(segments\[1\]\)/);
 
   const { EditorState } = await import('@codemirror/state');
   const { syntaxTree } = await import('@codemirror/language');

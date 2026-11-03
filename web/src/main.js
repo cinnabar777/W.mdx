@@ -1692,7 +1692,7 @@ class EmbeddedDocumentWidget extends WidgetType {
     actions.setAttribute('role', 'group');
     actions.setAttribute('aria-label', 'Embedded document actions');
     actions.hidden = true;
-    actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px;';
+    actions.style.cssText = 'display:none;flex-wrap:wrap;gap:8px;margin:0 0 8px;';
     const createAction = (label, action) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -1721,6 +1721,7 @@ class EmbeddedDocumentWidget extends WidgetType {
     status.style.cssText = 'flex-basis:100%;font-size:12px;color:var(--text-color,#ddd);';
     const closeActions = () => {
       actions.hidden = true;
+      actions.style.display = 'none';
       title.setAttribute('aria-expanded', 'false');
     };
     const removeEmbeddedDocument = deletePackagedAsset => {
@@ -1788,6 +1789,7 @@ class EmbeddedDocumentWidget extends WidgetType {
     };
     const showActions = () => {
       actions.hidden = false;
+      actions.style.display = 'flex';
       title.setAttribute('aria-expanded', 'true');
     };
     shell._clearEmbeddedPressTimer = clearPressTimer;

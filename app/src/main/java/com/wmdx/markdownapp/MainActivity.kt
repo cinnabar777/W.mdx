@@ -2607,15 +2607,26 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         )
     }
 
+    private fun mdzipSessionForAssetRequest(sessionDirName: String): MdzipSession? {
+        currentMdzipSession
+            ?.takeIf { it.sessionDir.name == sessionDirName }
+            ?.let { return it }
+
+        return synchronized(embeddedMdzipSessionsLock) {
+            val entry = embeddedMdzipSessions.entries.firstOrNull {
+                it.value.sessionDir.name == sessionDirName
+            } ?: return@synchronized null
+            embeddedMdzipSessions[entry.key]
+        }
+    }
+
     private fun interceptMdzipAssetRequest(request: WebResourceRequest): WebResourceResponse {
         val segments = request.url.pathSegments
-        val session = currentMdzipSession
-        if (
-            session == null ||
-            segments.size < 3 ||
-            segments[0] != "mdzip-assets" ||
-            segments[1] != session.sessionDir.name
-        ) {
+        if (segments.size < 3 || segments[0] != "mdzip-assets") {
+            return mdzipAssetError(404, "Not Found")
+        }
+        val session = mdzipSessionForAssetRequest(segments[1])
+        if (session == null) {
             return mdzipAssetError(404, "Not Found")
         }
 
