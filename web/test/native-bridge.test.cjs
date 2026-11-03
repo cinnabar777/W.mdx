@@ -365,6 +365,12 @@ test('users can save and manage folder access from the main settings page', () =
   assert.ok(settingsActivitySource.includes('it.uri.toString() !in locallyRevokedUris'));
   assert.ok(mainActivitySource.includes('resolveRenameTargetInTree(permission.uri, documentUri)'));
   assert.ok(storageSettingsXml.includes('Downloads folder itself'));
+  assert.match(mainSettingsXml, /ResetPreferenceCategory app:title="Preferences"/);
+  assert.doesNotMatch(mainSettingsXml, /Display &amp; Images/);
+  assert.match(
+    mainSettingsXml,
+    /app:key="pref_page_storage_access"[\s\S]*?\/>\s*<com\.wmdx\.markdownapp\.ResetListPreference\s+app:key="pref_markdown_image_location"/
+  );
 });
 
 test('rename access dialog offers folder access and Save As alongside its explanation', () => {
@@ -497,7 +503,7 @@ test('typography editor categories are separated into individual navigation page
 
   const orderedPages = [
     'Headings (H1 – H6)',
-    'Paragraph &amp; Body Text',
+    'Paragraph &amp; Body Styling',
     'Block Quotes',
     'Bold',
     'Callouts',
@@ -526,13 +532,16 @@ test('UI Appearance contains the requested pages in order', () => {
     'utf8'
   );
   const pages = [...uiAppearanceXml.matchAll(
-    /app:key="(pref_page_[^"]+)"\s+app:title="([^"]+)"/g
+    /app:key="([^"]+)"\s+app:title="([^"]+)"/g
   )];
   assert.deepEqual(
     pages.map(([, key, title]) => [key, title.replaceAll('&amp;', '&')]),
     [
       ['pref_page_settings_theme', 'Settings'],
+      ['pref_app_theme', 'App Theme'],
       ['pref_page_findreplace', 'Find & Replace'],
+      ['pref_hide_status_bar', 'Hide Status Bar'],
+      ['pref_hide_nav_bar', 'Hide Navigation Bar'],
       ['pref_page_left_panel', 'Left Panel'],
       ['pref_page_toc', 'Right Panel: TOC'],
       ['pref_page_bottom_toolbar', 'Toolbars']
@@ -541,6 +550,7 @@ test('UI Appearance contains the requested pages in order', () => {
   assert.match(mainSettingsXml, /app:key="pref_page_ui_appearance"[\s\S]*?app:title="UI Appearance"/);
   assert.match(mainSettingsXml, /app:key="pref_page_styling"[\s\S]*?app:title="Document Appearance"/);
   assert.doesNotMatch(mainSettingsXml, /app:key="pref_page_(settings_theme|findreplace|left_panel|toc|bottom_toolbar)"/);
+  assert.doesNotMatch(mainSettingsXml, /app:key="(pref_app_theme|pref_hide_status_bar|pref_hide_nav_bar)"/);
   assert.ok(settingsActivitySource.includes('UIAppearanceSettingsFragment'));
   assert.ok(settingsActivitySource.includes('is SettingsThemeFragment -> "Settings"'));
   assert.ok(settingsActivitySource.includes('is StylingSettingsFragment -> "Document Appearance"'));
@@ -945,9 +955,10 @@ test('Typography keeps Headings and Body first, then alphabetizes text elements'
   )].map(match => match[1].replaceAll('&amp;', '&'));
   assert.deepEqual(titles.slice(0, 3), [
     'Headings (H1 – H6)',
-    'Paragraph & Body Text',
+    'Paragraph & Body Styling',
     'Attachments'
   ]);
+  assert.doesNotMatch(styleRoot, /ResetPreferenceCategory[^>]*app:title="Text Elements"/);
   const remaining = titles.slice(2);
   assert.deepEqual(
     remaining,

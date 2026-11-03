@@ -51,7 +51,7 @@ class SettingsActivity : AppCompatActivity() {
                 is SettingsThemeFragment -> "Settings"
                 is MediaPlaybackSettingsFragment -> "Media Playback"
                 is StylingHeadingsFragment -> "Headings"
-                is StylingParagraphFragment -> "Paragraph & Body"
+                is StylingParagraphFragment -> "Paragraph & Body Styling"
                 is StylingBoldFragment -> "Bold"
                 is StylingItalicFragment -> "Italic"
                 is StylingLinksFragment -> "Links"

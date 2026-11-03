@@ -44,6 +44,50 @@ test('Typography pages keep headings and body first, then alphabetical element p
   ]);
 });
 
+test('Paragraph-only and body styling controls are clearly separated', () => {
+  const groups = [...paragraph.matchAll(
+    /<com\.wmdx\.markdownapp\.ResetPreferenceCategory app:title="([^"]+)">([\s\S]*?)<\/com\.wmdx\.markdownapp\.ResetPreferenceCategory>/g
+  )];
+  assert.deepEqual(groups.map(([, title]) => title), [
+    'Paragraph Styling',
+    'Body Styling'
+  ]);
+
+  const keys = groups.map(([, , contents]) => [
+    ...contents.matchAll(/app:key="([^"]+)"/g)
+  ].map(([, key]) => key));
+  assert.deepEqual(keys, [
+    [
+      'pref_paragraph_line_height',
+      'pref_letter_spacing',
+      'pref_paragraph_align',
+      'pref_paragraph_first_line_indent',
+      'pref_justify_paragraph',
+      'pref_paragraph_hyphenate',
+      'pref_paragraph_margin_top',
+      'pref_paragraph_margin_bottom'
+    ],
+    [
+      'pref_body_font_size',
+      'pref_body_font_weight',
+      'pref_body_font_family',
+      'pref_body_text_color',
+      'pref_body_background_color',
+      'pref_font_file_body',
+      'pref_body_margin_left',
+      'pref_body_margin_right',
+      'pref_line_wrap'
+    ]
+  ]);
+  assert.match(paragraph, /app:key="pref_body_background_color"[\s\S]*?app:title="Document Background Color"/);
+  assert.match(paragraph, /app:key="pref_paragraph_margin_top"[\s\S]*?app:title="Paragraph Top Margin \(px\)"/);
+  assert.match(settingsActivity, /is StylingParagraphFragment -> "Paragraph & Body Styling"/);
+  for (const xml of [lists, blocks, tables, footnotes]) {
+    assert.ok(xml.includes('app:title="Inherit Body Typography"'));
+    assert.ok(!xml.includes('Inherit Paragraph &amp; Body Typography'));
+  }
+});
+
 test('highlight and pen colors, syntax, and replacement shortcuts stay connected', () => {
   assert.match(settingsActivity, /"pref_styling_page_highlights_pens" -> StylingHighlightsPensFragment\(\)/);
   assert.match(highlightsPens, /PreferenceCategory app:title="Markers"/);

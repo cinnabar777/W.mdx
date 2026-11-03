@@ -2,97 +2,94 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Text Elements">
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_headings"
-            app:title="Headings (H1 – H6)"
-            app:summary="Fonts, scale, alignment, underline, margins &amp; colors" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_headings"
+        app:title="Headings (H1 – H6)"
+        app:summary="Fonts, scale, alignment, underline, margins &amp; colors" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_paragraph"
-            app:title="Paragraph &amp; Body Text"
-            app:summary="Font, weight, size, color, line height, spacing, alignment &amp; indents" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_paragraph"
+        app:title="Paragraph &amp; Body Styling"
+        app:summary="Separate controls for paragraph styling and default body text" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_attachments"
-            app:title="Attachments"
-            app:summary="Attachment background, text, border, spacing, and shape" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_attachments"
+        app:title="Attachments"
+        app:summary="Attachment background, text, border, spacing, and shape" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_blockquotes"
-            app:title="Block Quotes"
-            app:summary="Block quote typography, border, background, and spacing" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_blockquotes"
+        app:title="Block Quotes"
+        app:summary="Block quote typography, border, background, and spacing" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_bold"
-            app:title="Bold"
-            app:summary="Bold text color, font weight, and custom font" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_bold"
+        app:title="Bold"
+        app:summary="Bold text color, font weight, and custom font" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_callouts"
-            app:title="Callouts"
-            app:summary="Callout typography, borders, colors, and header styles" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_callouts"
+        app:title="Callouts"
+        app:summary="Callout typography, borders, colors, and header styles" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_code"
-            app:title="Code Blocks"
-            app:summary="Text &amp; background colors, language labels, padding &amp; border radius" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_code"
+        app:title="Code Blocks"
+        app:summary="Text &amp; background colors, language labels, padding &amp; border radius" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_cursor"
-            app:title="Cursor &amp; Selection"
-            app:summary="Configure caret color, blink rate, and selection handles" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_cursor"
+        app:title="Cursor &amp; Selection"
+        app:summary="Configure caret color, blink rate, and selection handles" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_footnotes"
-            app:title="Footnotes"
-            app:summary="Footnote text, reference, return-link, and background appearance" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_footnotes"
+        app:title="Footnotes"
+        app:summary="Footnote text, reference, return-link, and background appearance" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_highlights_pens"
-            app:title="Highlights &amp; Pens"
-            app:summary="Wmdx marker and pen syntax, colors, and toolbar actions" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_highlights_pens"
+        app:title="Highlights &amp; Pens"
+        app:summary="Wmdx marker and pen syntax, colors, and toolbar actions" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_hr"
-            app:title="Horizontal Rules"
-            app:summary="Line style, color, width, and spacing" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_hr"
+        app:title="Horizontal Rules"
+        app:summary="Line style, color, width, and spacing" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_inline_code"
-            app:title="Inline Code"
-            app:summary="Inline code text, background, padding, and font" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_inline_code"
+        app:title="Inline Code"
+        app:summary="Inline code text, background, padding, and font" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_italic"
-            app:title="Italic"
-            app:summary="Italic text color, font weight, and custom font" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_italic"
+        app:title="Italic"
+        app:summary="Italic text color, font weight, and custom font" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_links"
-            app:title="Links"
-            app:summary="Link text color, underline style, and thickness" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_links"
+        app:title="Links"
+        app:summary="Link text color, underline style, and thickness" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_lists"
-            app:title="Lists (Bulleted, Numbered, Todo Checkboxes)"
-            app:summary="Typography, indentation, item spacing, and bullet &amp; checkbox colors" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_lists"
+        app:title="Lists (Bulleted, Numbered, Todo Checkboxes)"
+        app:summary="Typography, indentation, item spacing, and bullet &amp; checkbox colors" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_media"
-            app:title="Media Playback"
-            app:summary="Player colors and saved audio playback speed" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_media"
+        app:title="Media Playback"
+        app:summary="Player colors and saved audio playback speed" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_tables"
-            app:title="Tables"
-            app:summary="Typography, borders, header colors, and cell padding" />
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_tables"
+        app:title="Tables"
+        app:summary="Typography, borders, header colors, and cell padding" />
 
-        <com.wmdx.markdownapp.ResetPreference
-            app:key="pref_styling_page_underline"
-            app:title="Underline"
-            app:summary="Underline syntax, style, color, and thickness" />
-
-    </com.wmdx.markdownapp.ResetPreferenceCategory>
+    <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_styling_page_underline"
+        app:title="Underline"
+        app:summary="Underline syntax, style, color, and thickness" />
 
 </androidx.preference.PreferenceScreen>

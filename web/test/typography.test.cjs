@@ -181,7 +181,7 @@ test('paragraph and list typography selectors have matching editor line classes'
 test('letter-spacing control is labeled as paragraph-only, not global', () => {
   assert.match(paragraphSettings, /app:key="pref_letter_spacing"/);
   assert.match(paragraphSettings, /app:title="Paragraph Letter Spacing \(px\)"/);
-  assert.match(paragraphSettings, /Letter spacing for regular paragraph text only/);
+  assert.match(paragraphSettings, /Letter spacing for paragraph text only/);
   assert.doesNotMatch(paragraphSettings, /Global Letter Spacing/);
 });
 
