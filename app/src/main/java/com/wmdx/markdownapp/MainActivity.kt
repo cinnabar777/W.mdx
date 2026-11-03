@@ -4723,7 +4723,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         targetUri
                     )
                 } else {
-                    val output = contentResolver.openOutputStream(targetUri, "rwt")
+                    val output = contentResolver.openOutputStream(targetUri, "w")
                         ?: throw java.io.IOException(
                             "Could not open the embedded document for writing."
                         )
