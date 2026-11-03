@@ -1,6 +1,7 @@
 package com.wmdx.markdownapp
 
 import android.content.Context
+import android.graphics.Rect
 import android.util.AttributeSet
 import android.view.ActionMode
 import android.view.Menu
@@ -41,6 +42,28 @@ class EditorWebView @JvmOverloads constructor(
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? =
         if (imeInputAllowed) super.onCreateInputConnection(outAttrs) else null
+
+    // WebView can request native focus on touch while reusing its existing
+    // input connection. Reject those implicit requests until an editor-text
+    // gesture explicitly re-enables IME input.
+    override fun requestFocus(): Boolean =
+        if (imeInputAllowed) super.requestFocus() else false
+
+    override fun requestFocus(direction: Int): Boolean =
+        if (imeInputAllowed) super.requestFocus(direction) else false
+
+    override fun requestFocus(
+        direction: Int,
+        previouslyFocusedRect: Rect?
+    ): Boolean =
+        if (imeInputAllowed) {
+            super.requestFocus(direction, previouslyFocusedRect)
+        } else {
+            false
+        }
+
+    override fun requestFocusFromTouch(): Boolean =
+        if (imeInputAllowed) super.requestFocusFromTouch() else false
 
     private fun isFloatingToolbarEnabled(): Boolean =
         PreferenceManager.getDefaultSharedPreferences(context)

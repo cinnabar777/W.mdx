@@ -178,6 +178,25 @@ test('toolbar actions block incidental keyboard opens when the keyboard started 
   assert.doesNotMatch(mainActivitySource, /restoreToolbarImeState|setImeInputAllowed\(expectedVisible\)/);
 });
 
+test('a suppressed WebView rejects implicit native focus requests', () => {
+  assert.match(
+    editorWebViewSource,
+    /override fun requestFocusFromTouch\(\): Boolean =\s*if \(imeInputAllowed\) super\.requestFocusFromTouch\(\) else false/
+  );
+  assert.match(
+    editorWebViewSource,
+    /override fun requestFocus\(\): Boolean =\s*if \(imeInputAllowed\) super\.requestFocus\(\) else false/
+  );
+  assert.match(
+    editorWebViewSource,
+    /override fun requestFocus\(direction: Int\): Boolean =\s*if \(imeInputAllowed\) super\.requestFocus\(direction\) else false/
+  );
+  assert.match(
+    editorWebViewSource,
+    /override fun requestFocus\([\s\S]*?previouslyFocusedRect: Rect\?[\s\S]*?if \(imeInputAllowed\)[\s\S]*?super\.requestFocus\(direction, previouslyFocusedRect\)[\s\S]*?else \{\s*false/
+  );
+});
+
 test('auto-save snapshots the editor before pausing WebView and runs once per leave', () => {
   const pauseStart = mainActivitySource.indexOf('override fun onPause()');
   const pauseEnd = mainActivitySource.indexOf('override fun onSharedPreferenceChanged', pauseStart);
