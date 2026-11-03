@@ -57,8 +57,39 @@ test('MDZip image insertion gives extensionless picker names a MIME-derived exte
   const insertion = mainActivity.slice(start, end);
 
   assert.notEqual(start, -1);
+  assert.match(insertion, /resolveImageMimeType\(uri, originalName\)/);
   assert.match(
     insertion,
     /currentMdzipSession != null -> MdzipManager\.addImage\([\s\S]*?originalName,[\s\S]*?mimeType/
   );
+});
+
+test('image insertion separates file, Base64, and URL choices', () => {
+  const menuStart = mainActivity.indexOf('private fun handleInsertImage()');
+  const menuEnd = mainActivity.indexOf('private fun handleInsertAudio()', menuStart);
+  const menu = mainActivity.slice(menuStart, menuEnd);
+  const urlStart = mainActivity.indexOf('private fun showImageUrlDialog()');
+  const urlEnd = mainActivity.indexOf('private fun showPasteBase64ImageDialog()', urlStart);
+  const urlDialog = mainActivity.slice(urlStart, urlEnd);
+  const downloadStart = mainActivity.indexOf('private fun downloadImageFromUrl(');
+  const downloadEnd = mainActivity.indexOf('private fun fetchImageFromUrl(', downloadStart);
+  const download = mainActivity.slice(downloadStart, downloadEnd);
+
+  assert.match(
+    menu,
+    /"Choose image file",\s*"Choose image file and embed as Base64",\s*"Paste Base64",\s*"Enter URL"/
+  );
+  assert.match(urlDialog, /text = "Download image to document assets"/);
+  assert.match(urlDialog, /text = "Embed image as Base64"/);
+  assert.match(urlDialog, /Leave both options unchecked to use the URL directly/);
+  assert.doesNotMatch(urlDialog, /isChecked\s*=\s*true/);
+  assert.match(urlDialog, /if \(checked\) embedAsBase64\.isChecked = false/);
+  assert.match(urlDialog, /if \(checked\) downloadImage\.isChecked = false/);
+  assert.match(urlDialog, /if \(shouldDownload\)[\s\S]*?downloadImageFromUrl/);
+  assert.match(urlDialog, /else \{\s*insertImageMarkdown\(url\)/);
+  assert.match(mainActivity, /private fun normalizeBase64Image\(/);
+  assert.match(mainActivity, /detectImageMimeType\(bytes\)/);
+  assert.match(download, /fetchImageFromUrl\(url\)/);
+  assert.match(download, /storeImageAsset\(/);
+  assert.match(mainActivity, /MAX_DOWNLOADED_IMAGE_BYTES/);
 });
