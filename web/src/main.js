@@ -2,6 +2,7 @@ import { EditorState, EditorSelection, Compartment, Transaction, StateField, Sta
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
+import { separateTableMenuFromFloatingToolbar } from './toolbarOverlap.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
 import { parseAndMatchHotkey } from './hotkeys.js';
@@ -5153,8 +5154,7 @@ class CodeMirrorAdapter {
       }
       cancelEmptyAreaLongPress();
       floatingToolbarAnchorPoint = null;
-      if (isTableCell) hideFloatingSelectionToolbar();
-      else updateFloatingSelectionToolbar(this.view);
+      updateFloatingSelectionToolbar(this.view);
       if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
         editorTapStart = null;
         return;
@@ -5166,7 +5166,7 @@ class CodeMirrorAdapter {
         isTableCell,
         longPressTriggered: false
       };
-      if (event.pointerType === 'touch' && !isTableCell) {
+      if (event.pointerType === 'touch') {
         emptyAreaLongPressStart = {
           pointerId: event.pointerId,
           x: event.clientX,
@@ -5182,7 +5182,7 @@ class CodeMirrorAdapter {
           }
           emptyAreaLongPressTimer = null;
           emptyAreaLongPressStart = null;
-        }, 550);
+        }, isTableCell ? 500 : 550);
       }
     }, { capture: true });
     this.view.contentDOM.addEventListener('pointermove', event => {
@@ -6176,6 +6176,7 @@ function updateFloatingSelectionToolbar(
   bar.style.width = `${position.width}px`;
   bar.style.left = `${position.left}px`;
   bar.style.top = `${position.top}px`;
+  separateTableMenuFromFloatingToolbar();
   if (activePopupSurface === 'floating') positionFloatingPopupStrip();
 }
 

@@ -160,7 +160,7 @@ test('floating toolbar has an independent layout and restores Android selection 
     /String\.format\(Locale\.ROOT, "%.1f s", tenths \/ 10\.0\)/
   );
   assert.match(main, /showFloatingSelectionToolbarAtPoint\(event\.clientX, event\.clientY, this\.view\)/);
-  assert.match(main, /event\.pointerType === 'touch'[\s\S]*?setTimeout\([\s\S]*?550/);
+  assert.match(main, /event\.pointerType === 'touch'[\s\S]*?setTimeout\([\s\S]*?isTableCell \? 500 : 550/);
   assert.match(main, /floatingToolbarAnchorPoint\?\.view === view/);
   assert.match(settings, /configsBySurface = \{\s*bottom: config,\s*floating:/);
   assert.match(settings, /setToolbarSurface\(surface\)/);

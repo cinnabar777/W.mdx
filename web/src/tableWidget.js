@@ -2,6 +2,7 @@ import { WidgetType } from '@codemirror/view';
 import { StateEffect } from '@codemirror/state';
 import { TableModel } from './tableModule.js';
 import { TABLE_ACTIONS } from './tableActions.js';
+import { separateTableMenuFromFloatingToolbar } from './toolbarOverlap.js';
 
 export const tableHeightEstimatesChanged = StateEffect.define();
 
@@ -409,6 +410,8 @@ export class WordProcessorTableWidget extends WidgetType {
     };
 
     const attachCellEvents = (cellEl, r, c) => {
+      let cellPointerStart = null;
+
       tableCellSelectors.set(cellEl, ({ openEditor = false } = {}) => {
         selectCell(r, c);
         if (openEditor) openCellEditor(cellEl, r, c);
@@ -417,25 +420,14 @@ export class WordProcessorTableWidget extends WidgetType {
       const startLongPress = (e) => {
         e.stopPropagation();
         clearTimeout(longPressTimer);
-
-        if (activeOverlay) {
-          const current = activeOverlay._cellMeta;
-          if (
-            current?.widget === this &&
-            current?.row === r &&
-            current?.col === c
-          ) {
-            return;
-          }
-          e.preventDefault();
-          longPressTriggered = true;
-          handoffToCell(r, c, activeOverlay, this.from);
-          return;
-        }
-
         longPressTriggered = false;
         const startX = e.clientX || (e.touches && e.touches[0].clientX);
         const startY = e.clientY || (e.touches && e.touches[0].clientY);
+        cellPointerStart = {
+          pointerId: e.pointerId,
+          x: Number.isFinite(startX) ? startX : null,
+          y: Number.isFinite(startY) ? startY : null
+        };
 
         longPressTimer = setTimeout(() => {
           longPressTriggered = true;
@@ -469,6 +461,43 @@ export class WordProcessorTableWidget extends WidgetType {
       };
 
       cellEl.addEventListener('pointerdown', startLongPress, true);
+
+      cellEl.addEventListener('pointerup', e => {
+        const start = cellPointerStart;
+        if (!start || (start.pointerId != null && e.pointerId !== start.pointerId)) return;
+        cellPointerStart = null;
+        clearTimeout(longPressTimer);
+        if (longPressTriggered) return;
+        if (
+          start.x != null &&
+          start.y != null &&
+          Number.isFinite(e.clientX) &&
+          Number.isFinite(e.clientY) &&
+          Math.hypot(e.clientX - start.x, e.clientY - start.y) > 12
+        ) {
+          return;
+        }
+
+        longPressTriggered = true;
+        if (!cellEl.isConnected) return;
+        if (activeOverlay) {
+          const current = activeOverlay._cellMeta;
+          if (
+            current?.widget === this &&
+            current?.row === r &&
+            current?.col === c
+          ) {
+            activeOverlay.focus();
+            window.AndroidNative?.showEditorKeyboard?.();
+          } else {
+            handoffToCell(r, c, activeOverlay, this.from);
+          }
+        } else {
+          selectCell(r, c);
+          openCellEditor(cellEl, r, c);
+        }
+        e.preventDefault();
+      }, true);
 
       cellEl.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -563,6 +592,7 @@ export class WordProcessorTableWidget extends WidgetType {
 
       menu.style.top = `${Math.max(minTop, Math.min(top, maxTop))}px`;
       menu.style.left = `${left}px`;
+      separateTableMenuFromFloatingToolbar();
       dismissHandler = event => {
         if (!menu.contains(event.target)) closeMenu();
       };

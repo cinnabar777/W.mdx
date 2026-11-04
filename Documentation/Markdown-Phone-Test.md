@@ -149,11 +149,12 @@ Three tildes should stay literal: This will ~~~not~~~ strike.
 | **bold** | `code` | ordinary text |
 
 Check the header, column alignment, cell spacing, and inline formatting. In Live
-Preview and WYSIWYG, tap a cell once: the caret and keyboard should enter that
-cell, not move to the line after the table. Edit a cell, tap another cell, then
-return to confirm the first edit was saved. Long-press an unedited cell and
-confirm the table action menu appears without the general floating toolbar
-overlapping it. Save and reopen the document to confirm the edit persists.
+Preview and WYSIWYG, tap a cell and verify the caret and keyboard enter that
+cell without relying on a synthesized click; they must not move to the line
+after the table. Edit a cell, tap another cell, then return to confirm the first
+edit was saved. Long-press an unedited cell and confirm both the floating
+toolbar and table action menu remain available without overlapping. Save and
+reopen the document to confirm the edit persists.
 
 ### GFM automatic links
 

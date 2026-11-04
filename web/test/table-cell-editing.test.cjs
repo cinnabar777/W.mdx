@@ -62,16 +62,21 @@ async function withTableEditor(markdown, run) {
       assert.ok(count < 100, 'animation-frame callbacks settle without looping');
     };
 
-    const tapCell = cell => {
+    const tapCell = (cell, { dispatchClick = true } = {}) => {
       cell.dispatchEvent(new dom.window.Event('pointerdown', {
         bubbles: true,
         cancelable: true
       }));
-      dom.window.dispatchEvent(new dom.window.Event('pointerup', { bubbles: true }));
-      cell.dispatchEvent(new dom.window.MouseEvent('click', {
+      cell.dispatchEvent(new dom.window.Event('pointerup', {
         bubbles: true,
         cancelable: true
       }));
+      if (dispatchClick) {
+        cell.dispatchEvent(new dom.window.MouseEvent('click', {
+          bubbles: true,
+          cancelable: true
+        }));
+      }
     };
 
     const remountWidget = () => {
@@ -125,15 +130,15 @@ test('one tap enters a cell and switching cells commits the old value', async ()
     editor.addEventListener('pointerdown', () => editorPointerDowns++);
 
     let firstCell = container.querySelector('tbody td[data-row="1"][data-col="0"]');
-    tapCell(firstCell);
+    tapCell(firstCell, { dispatchClick: false });
     let cellEditor = container.querySelector('.cm-wp-cell-editor');
-    assert.ok(cellEditor, 'one tap opens the cell editor');
+    assert.ok(cellEditor, 'pointer-up opens the cell editor without a synthesized click');
     assert.equal(document.activeElement, cellEditor, 'the caret is focused inside the tapped cell');
     assert.ok(firstCell.style.outline, 'the selected cell is visibly highlighted');
     cellEditor.value = 'Alpha edited';
 
     const nextCellBeforeCommit = container.querySelector('tbody td[data-row="2"][data-col="1"]');
-    tapCell(nextCellBeforeCommit);
+    tapCell(nextCellBeforeCommit, { dispatchClick: false });
     flushFrames();
 
     const currentContainer = editor.querySelector('.cm-wp-table-container');
