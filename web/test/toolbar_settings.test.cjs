@@ -723,6 +723,13 @@ test('toolbar-local touch handling preserves tap and gesture dispatch', () => {
   assert.match(mainSource, /installToolbarTouchHandling\(document, toolbarTouchSurfaceSelector\)/);
   assert.match(mainSource, /function installToolbarTapActions\(container\)/);
   assert.match(mainSource, /onGesture: \(id, gestureId, event, button\) =>/);
-  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
+  assert.match(
+    mainActivitySource,
+    /fun showEditorKeyboard\(\)\s*\{\s*this@MainActivity\.requestEditorKeyboard\(refocusWebView = true\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /private fun requestEditorKeyboard\(refocusWebView: Boolean\)[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/
+  );
   assert.doesNotMatch(mainActivitySource, /toolbarImeInteraction|toolbarImeSuppressedUntilEditorTouch|setImeInputAllowed/);
 });

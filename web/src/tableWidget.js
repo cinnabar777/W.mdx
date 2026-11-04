@@ -67,6 +67,15 @@ function tableActionBridge() {
   return window.wmdxTableActions;
 }
 
+function showCellEditorKeyboard() {
+  const native = window.AndroidNative;
+  if (typeof native?.showEditorKeyboardForFocusedInput === 'function') {
+    native.showEditorKeyboardForFocusedInput();
+  } else {
+    native?.showEditorKeyboard?.();
+  }
+}
+
 function measuredOuterHeight(element) {
   const style = getComputedStyle(element);
   const marginTop = parseFloat(style.marginTop) || 0;
@@ -488,7 +497,7 @@ export class WordProcessorTableWidget extends WidgetType {
             current?.col === c
           ) {
             activeOverlay.focus();
-            window.AndroidNative?.showEditorKeyboard?.();
+            showCellEditorKeyboard();
           } else {
             handoffToCell(r, c, activeOverlay, this.from);
           }
@@ -784,7 +793,7 @@ export class WordProcessorTableWidget extends WidgetType {
       overlay.focus();
       overlay.setSelectionRange(overlay.value.length, overlay.value.length);
       activeOverlay = overlay;
-      window.AndroidNative?.showEditorKeyboard?.();
+      showCellEditorKeyboard();
     };
 
     const navigateCell = (r, c, rowDelta, colDelta) => {

@@ -848,6 +848,52 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         return visible
     }
 
+    private fun requestEditorKeyboard(refocusWebView: Boolean) {
+        runOnUiThread {
+            val visibleBefore = editorImeVisible()
+            AppDiagnostics.record(
+                this,
+                "ime_show_requested",
+                "suppressed=${suppressImeUntilUserTouch} generation=${imeHideGeneration} " +
+                    "viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} " +
+                    "imeVisible=${visibleBefore} refocusWebView=${refocusWebView}"
+            )
+            suppressImeUntilUserTouch = false
+            val generation = ++imeHideGeneration
+            window.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+            )
+            val touchFocusRequested =
+                if (refocusWebView) webView.requestFocusFromTouch() else false
+            val focusRequested =
+                if (refocusWebView) touchFocusRequested || webView.requestFocus()
+                else webView.isFocused
+            val insetsController = ViewCompat.getWindowInsetsController(webView)
+            insetsController?.show(WindowInsetsCompat.Type.ime())
+            val showAccepted =
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
+            AppDiagnostics.record(
+                this,
+                "ime_show_dispatched",
+                "generation=${generation} touchFocus=${touchFocusRequested} " +
+                    "focusRequested=${focusRequested} viewFocused=${webView.isFocused} " +
+                    "immAccepted=${showAccepted} touchFocusable=${webView.isFocusableInTouchMode} " +
+                    "refocusWebView=${refocusWebView}"
+            )
+            webView.postDelayed({
+                AppDiagnostics.record(
+                    this,
+                    "ime_show_observed",
+                    "generation=${generation} viewFocused=${webView.isFocused} " +
+                        "windowFocused=${window.decorView.hasWindowFocus()} " +
+                        "imeVisible=${editorImeVisible()} refocusWebView=${refocusWebView}"
+                )
+            }, 350L)
+        }
+    }
+
     private fun hideImeWhileResumeIsSuppressed(generation: Int) {
         if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
             return
@@ -6215,39 +6261,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun showEditorKeyboard() {
-            runOnUiThread {
-                val visibleBefore = editorImeVisible()
-                AppDiagnostics.record(
-                    this@MainActivity,
-                    "ime_show_requested",
-                    "suppressed=${suppressImeUntilUserTouch} generation=${imeHideGeneration} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${visibleBefore}"
-                )
-                suppressImeUntilUserTouch = false
-                val generation = ++imeHideGeneration
-                window.setSoftInputMode(
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
-                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
-                )
-                val touchFocusRequested = webView.requestFocusFromTouch()
-                val focusRequested = touchFocusRequested || webView.requestFocus()
-                val insetsController = ViewCompat.getWindowInsetsController(webView)
-                insetsController?.show(WindowInsetsCompat.Type.ime())
-                val showAccepted =
-                    (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-                        ?.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
-                AppDiagnostics.record(
-                    this@MainActivity,
-                    "ime_show_dispatched",
-                    "generation=${generation} touchFocus=${touchFocusRequested} focusRequested=${focusRequested} viewFocused=${webView.isFocused} immAccepted=${showAccepted} touchFocusable=${webView.isFocusableInTouchMode}"
-                )
-                webView.postDelayed({
-                    AppDiagnostics.record(
-                        this@MainActivity,
-                        "ime_show_observed",
-                        "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
-                    )
-                }, 350L)
-            }
+            this@MainActivity.requestEditorKeyboard(refocusWebView = true)
+        }
+
+        @JavascriptInterface
+        fun showEditorKeyboardForFocusedInput() {
+            this@MainActivity.requestEditorKeyboard(refocusWebView = false)
         }
         @JavascriptInterface
         fun renameCurrentDocument(newName: String) {

@@ -5,6 +5,10 @@ const path = require('node:path');
 
 const mainJsPath = path.join(__dirname, '../src/main.js');
 const source = fs.readFileSync(mainJsPath, 'utf8');
+const tableWidgetSource = fs.readFileSync(
+  path.join(__dirname, '../src/tableWidget.js'),
+  'utf8'
+);
 const mainActivityPath = path.join(
   __dirname,
   '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'
@@ -152,9 +156,41 @@ test('tapping editor content explicitly requests the Android keyboard', () => {
     source,
     /this\.view\.hasFocus\)[\s\S]{0,120}AndroidNative\?\.showEditorKeyboard/
   );
-  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?requestFocusFromTouch\(\)[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
+  assert.match(
+    mainActivitySource,
+    /fun showEditorKeyboard\(\)\s*\{\s*this@MainActivity\.requestEditorKeyboard\(refocusWebView = true\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /private fun requestEditorKeyboard\(refocusWebView: Boolean\)[\s\S]*?SOFT_INPUT_STATE_UNSPECIFIED[\s\S]*?requestFocusFromTouch\(\)[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/
+  );
   assert.doesNotMatch(mainActivitySource, /setImeInputAllowed|toolbarImeSuppressedUntilEditorTouch/);
   assert.doesNotMatch(editorWebViewSource, /imeInputAllowed|onCheckIsTextEditor|onCreateInputConnection|override fun requestFocus/);
+});
+
+test('table-cell editing shows the keyboard without reclaiming WebView focus', () => {
+  assert.match(
+    tableWidgetSource,
+    /function showCellEditorKeyboard\(\)[\s\S]*?showEditorKeyboardForFocusedInput/
+  );
+  assert.match(
+    tableWidgetSource,
+    /overlay\.focus\(\)[\s\S]*?showCellEditorKeyboard\(\)/
+  );
+  assert.match(
+    source,
+    /target\.matches\('\.cm-wp-cell-editor'\)[\s\S]*?showEditorKeyboardForFocusedInput/
+  );
+  assert.match(
+    mainActivitySource,
+    /fun showEditorKeyboardForFocusedInput\(\)\s*\{\s*this@MainActivity\.requestEditorKeyboard\(refocusWebView = false\)/
+  );
+  const focusedInputKeyboardPath = mainActivitySource.slice(
+    mainActivitySource.indexOf('private fun requestEditorKeyboard(refocusWebView: Boolean)'),
+    mainActivitySource.indexOf('private fun hideImeWhileResumeIsSuppressed')
+  );
+  assert.match(focusedInputKeyboardPath, /if \(refocusWebView\) webView\.requestFocusFromTouch\(\)/);
+  assert.match(focusedInputKeyboardPath, /showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
 });
 
 test('toolbar touch handling stays local and preserves click and pointer paths', () => {

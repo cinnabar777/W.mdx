@@ -84,7 +84,15 @@ document.addEventListener('pointerdown', event => {
   );
   const isEditable = target.closest('[contenteditable="true"]:not(.cm-content)');
   if (!isTextInput && !isEditable) return;
-  window.AndroidNative?.showEditorKeyboard?.();
+  const native = window.AndroidNative;
+  if (
+    target.matches('.cm-wp-cell-editor') &&
+    typeof native?.showEditorKeyboardForFocusedInput === 'function'
+  ) {
+    native.showEditorKeyboardForFocusedInput();
+  } else {
+    native?.showEditorKeyboard?.();
+  }
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
