@@ -552,10 +552,9 @@ breaks, reference links, and autolinks.
 
 **Still to do for full compatibility:**
 
-- The pinned CommonMark 0.31.2 corpus now checks parser-level semantic nodes.
-  This does not yet verify exact WYSIWYG rendering, edits, or exported Markdown.
-- Fix the two tracked parser gaps: ATX headings with a tab separator and an
-  undefined shortcut-link label inside emphasis.
+- The pinned CommonMark 0.31.2 corpus now checks parser-level semantic nodes for
+  all 575 non-HTML examples. This does not yet verify exact WYSIWYG rendering,
+  edits, or exported Markdown.
 - Define and test how imported raw HTML is converted to Wmdx-native syntax.
   Wmdx must not render arbitrary HTML or use HTML as its export fallback; warn
   rather than silently lose content that has no native equivalent.
@@ -653,14 +652,14 @@ rendering and editing, save/export, and reopen before expanding the syntax.
 
 “Focused tests” below verify specific app behavior; they do not establish full
 specification compatibility. The official CommonMark 0.31.2 corpus is included:
-573 non-HTML cases pass a parser-semantic check, two known parser gaps are TODOs,
-and 77 HTML-interoperability cases are held for the no-HTML import policy. The
-suite does not yet verify full WYSIWYG rendering or export, and there is no
-official GFM corpus or complete cross-dialect round-trip suite.
+575 non-HTML cases pass a parser-semantic check, and 77 HTML-interoperability
+cases are held for the no-HTML import policy. The suite does not yet verify full
+WYSIWYG rendering or export, and there is no official GFM corpus or complete
+cross-dialect round-trip suite.
 
 | Target or area | Current support and focused test evidence | Remaining acceptance work |
 | --- | --- | --- |
-| CommonMark core | Parser-semantic checks cover 573 of the 652 official 0.31.2 examples; two known parser gaps remain as TODOs. | Verify exact WYSIWYG rendering and open, edit, save, export, and reopen semantics against representative cases. |
+| CommonMark core | Parser-semantic checks cover all 575 non-HTML cases in the official 0.31.2 corpus, including tab-separated ATX headings and unresolved references inside emphasis. | Verify exact WYSIWYG rendering and open, edit, save, export, and reopen semantics against representative cases. |
 | CommonMark raw HTML | Arbitrary HTML is not rendered. `<u>...</u>` remains as a compatibility form when Wmdx underline syntax is disabled; 77 HTML-interoperability cases are held out of native parser checks. | Convert supported imported HTML to native Wmdx syntax; define and test visible handling for constructs with no equivalent. Never emit HTML as fallback. |
 | GFM tables | Editable pipe tables; focused coverage in `table-and-widgets.test.cjs` and `table-cell-editing.test.cjs`. | Run GFM table examples through editing and save/reopen round trips, including alignment, escaping, and edge cases. |
 | GFM tasks, strikethrough, and autolinks | Parser extensions are enabled; focused task/formatting behavior exists in `embedded-document.test.cjs` and `markdown-formatting.test.cjs`. | Run GFM examples in both main and embedded editors and verify edits survive save/export/reopen. |
