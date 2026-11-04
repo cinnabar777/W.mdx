@@ -323,3 +323,49 @@ test('long-press opens the horizontal table action menu above the touch point wi
     document.querySelector('.cm-wp-table-context-menu')?.remove();
   });
 });
+
+test('GFM table cell edits preserve alignment and escaped pipes through serialization and rerendering', async () => {
+  const markdown = [
+    '| Name | Value |',
+    '| :--- | ---: |',
+    '| Alpha \\| beta | `one\\|two` |'
+  ].join('\n');
+
+  await withTableEditor(markdown, async ({ view, container, tapCell, flushFrames, remountWidget }) => {
+    const originalCell = container.querySelector('tbody td[data-row="1"][data-col="0"]');
+    assert.equal(originalCell.textContent, 'Alpha | beta', 'escaped pipes render as cell text');
+    assert.equal(
+      container.querySelector('tbody td[data-row="1"][data-col="1"]').textContent,
+      'one\\|two',
+      'backslash escapes remain literal inside code spans'
+    );
+
+    tapCell(originalCell);
+    tapCell(originalCell);
+    const cellEditor = container.querySelector('.cm-wp-cell-editor');
+    assert.ok(cellEditor, 'the table cell can be edited');
+    cellEditor.value = 'Gamma \\| delta';
+    cellEditor.blur();
+    flushFrames();
+
+    const serialized = view.state.doc.toString();
+    const { TableModel } = await import('../src/tableModule.js');
+    const reopenedModel = TableModel.parse(serialized);
+    assert.ok(reopenedModel, 'the edited Markdown table can be parsed again');
+    assert.deepEqual(reopenedModel.alignments, ['left', 'right']);
+    assert.equal(reopenedModel.rows[1][0], 'Gamma \\| delta');
+    assert.equal(reopenedModel.rows[1][1], '`one\\|two`');
+
+    const reopenedContainer = remountWidget();
+    assert.equal(
+      reopenedContainer.querySelector('tbody td[data-row="1"][data-col="0"]').textContent,
+      'Gamma | delta',
+      'the reparsed table renders the edited escaped-pipe cell'
+    );
+    assert.equal(
+      reopenedContainer.querySelector('thead th[data-col="1"]').style.textAlign,
+      'right',
+      'column alignment survives serialization and rerendering'
+    );
+  });
+});
