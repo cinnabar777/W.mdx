@@ -1389,6 +1389,11 @@
       background: var(--table-cell-bg, transparent);
       color: var(--table-cell-color, var(--text-color, #ffffff));
     }
+    .cm-wp-table th,
+    .cm-wp-table td {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+    }
 
     .cm-wp-table-context-menu {
       position: fixed;
@@ -1471,6 +1476,8 @@
       outline: none;
       resize: none;
       border-radius: 4px;
+      user-select: text !important;
+      -webkit-user-select: text !important;
     }
     .cm-activeLine {
       background-color: var(--active-line-bg, rgba(255, 255, 255, 0.05)) !important;

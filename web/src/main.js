@@ -5137,6 +5137,8 @@ class CodeMirrorAdapter {
     };
     this.view.contentDOM.addEventListener('pointerdown', event => {
       const target = event.target;
+      const isTableCell = target instanceof HTMLElement &&
+        Boolean(target.closest('.cm-wp-table-container'));
       if (
         target instanceof HTMLElement &&
         target.closest(
@@ -5151,7 +5153,8 @@ class CodeMirrorAdapter {
       }
       cancelEmptyAreaLongPress();
       floatingToolbarAnchorPoint = null;
-      updateFloatingSelectionToolbar(this.view);
+      if (isTableCell) hideFloatingSelectionToolbar();
+      else updateFloatingSelectionToolbar(this.view);
       if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
         editorTapStart = null;
         return;
@@ -5160,9 +5163,10 @@ class CodeMirrorAdapter {
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
+        isTableCell,
         longPressTriggered: false
       };
-      if (event.pointerType === 'touch') {
+      if (event.pointerType === 'touch' && !isTableCell) {
         emptyAreaLongPressStart = {
           pointerId: event.pointerId,
           x: event.clientX,
@@ -5198,6 +5202,7 @@ class CodeMirrorAdapter {
       if (
         !start ||
         start.pointerId !== event.pointerId ||
+        start.isTableCell ||
         start.longPressTriggered ||
         event.target instanceof HTMLElement && event.target.closest('.cm-link') ||
         Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12

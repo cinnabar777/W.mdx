@@ -112,7 +112,7 @@ async function withTableEditor(markdown, run) {
   }
 }
 
-test('cell switching commits the old cell and selects the tapped cell without losing the tap', async () => {
+test('one tap enters a cell and switching cells commits the old value', async () => {
   const markdown = [
     '| Name | Value |',
     '| --- | --- |',
@@ -126,12 +126,10 @@ test('cell switching commits the old cell and selects the tapped cell without lo
 
     let firstCell = container.querySelector('tbody td[data-row="1"][data-col="0"]');
     tapCell(firstCell);
-    assert.equal(container.querySelector('.cm-wp-cell-editor'), null, 'first tap selects the cell');
-    assert.ok(firstCell.style.outline, 'the selected cell is visibly highlighted');
-
-    tapCell(firstCell);
     let cellEditor = container.querySelector('.cm-wp-cell-editor');
-    assert.ok(cellEditor, 'second tap enters the selected cell');
+    assert.ok(cellEditor, 'one tap opens the cell editor');
+    assert.equal(document.activeElement, cellEditor, 'the caret is focused inside the tapped cell');
+    assert.ok(firstCell.style.outline, 'the selected cell is visibly highlighted');
     cellEditor.value = 'Alpha edited';
 
     const nextCellBeforeCommit = container.querySelector('tbody td[data-row="2"][data-col="1"]');
@@ -141,12 +139,8 @@ test('cell switching commits the old cell and selects the tapped cell without lo
     const currentContainer = editor.querySelector('.cm-wp-table-container');
     const nextCell = currentContainer.querySelector('tbody td[data-row="2"][data-col="1"]');
     assert.equal(view.state.doc.toString().includes('Alpha edited'), true, 'the previous cell is saved before switching');
-    assert.equal(currentContainer.querySelector('.cm-wp-cell-editor'), null, 'the switch tap selects instead of reopening an editor');
-    assert.ok(nextCell.style.outline, 'the tap that leaves the old editor selects the new cell');
-
-    tapCell(nextCell);
     cellEditor = currentContainer.querySelector('.cm-wp-cell-editor');
-    assert.ok(cellEditor, 'the next tap enters the newly selected cell');
+    assert.ok(cellEditor, 'the switch tap enters the newly selected cell');
     assert.equal(cellEditor.value, 'Two');
     assert.equal(editorPointerDowns, 0, 'table taps do not create a stray document cursor');
   });
@@ -163,6 +157,9 @@ test('table toolbar actions are enabled for the selected cell and still edit the
   await withTableEditor(markdown, async ({ dom, container, tapCell, view, flushFrames }) => {
     const cell = container.querySelector('tbody td[data-row="1"][data-col="0"]');
     tapCell(cell);
+    const cellEditor = container.querySelector('.cm-wp-cell-editor');
+    assert.ok(cellEditor, 'one tap opens the cell editor');
+    cellEditor.value = 'Alpha edited';
 
     const actions = dom.window.wmdxTableActions;
     assert.ok(actions, 'selecting a cell publishes the table toolbar action bridge');
@@ -170,6 +167,7 @@ test('table toolbar actions are enabled for the selected cell and still edit the
     assert.equal(actions.isEnabled('splitCell'), false);
     assert.equal(actions.run('insertRowBelow'), true);
     flushFrames();
+    assert.ok(view.state.doc.toString().includes('Alpha edited'), 'table actions commit the open cell draft');
     assert.equal(view.state.doc.toString().split('\n').length, 5, 'the toolbar action inserts a table row');
   });
 });
@@ -182,11 +180,12 @@ test('only the active table stays highlighted and leaving the table clears the v
     '| Beta | Two |'
   ].join('\n');
 
-  await withTableEditor(markdown, async ({ dom, container, tapCell, view, scroller, remountWidget }) => {
+  await withTableEditor(markdown, async ({ dom, container, tapCell, view, scroller, remountWidget, flushFrames }) => {
     scroller.classList.add('cm-content');
     const firstTable = container;
     const firstCell = firstTable.querySelector('tbody td[data-row="1"][data-col="0"]');
     tapCell(firstCell);
+    assert.ok(firstTable.querySelector('.cm-wp-cell-editor'));
     const actions = dom.window.wmdxTableActions;
     assert.equal(actions.context.owner, firstTable);
     assert.ok(firstCell.style.backgroundColor, 'the current cell is highlighted');
@@ -202,9 +201,11 @@ test('only the active table stays highlighted and leaving the table clears the v
     scroller.appendChild(secondTable);
     const secondCell = secondTable.querySelector('tbody td[data-row="2"][data-col="1"]');
     tapCell(secondCell);
+    flushFrames();
     assert.equal(actions.context.owner, secondTable, 'tapping another table makes it the toolbar target');
     assert.equal(firstCell.style.backgroundColor, '', 'the previous table loses its visible highlight');
     assert.ok(secondCell.style.backgroundColor, 'the newly active table is highlighted');
+    assert.ok(secondTable.querySelector('.cm-wp-cell-editor'), 'tapping another table opens its cell editor');
 
     const remountedFirstTable = remountWidget();
     assert.equal(
@@ -224,11 +225,10 @@ test('only the active table stays highlighted and leaving the table clears the v
     assert.equal(secondCell.style.backgroundColor, '', 'the last table highlight clears when focus leaves it');
 
     tapCell(remountedFirstCell);
+    flushFrames();
     assert.equal(actions.active.from, 0, 'tapping a previously selected cell reactivates that table first');
     assert.ok(remountedFirstCell.style.backgroundColor);
-    assert.equal(remountedFirstTable.querySelector('.cm-wp-cell-editor'), null);
-    tapCell(remountedFirstCell);
-    assert.ok(remountedFirstTable.querySelector('.cm-wp-cell-editor'), 'a second tap enters cell editing');
+    assert.ok(remountedFirstTable.querySelector('.cm-wp-cell-editor'), 'the tap enters the restored cell');
     secondWidget.destroy(secondTable);
   });
 });
@@ -250,6 +250,10 @@ test('merged-cell selection survives a widget refresh and its editor uses render
 
     tapCell(mergedCell);
     assert.ok(mergedCell.style.outline, 'the first tap selects the merged cell');
+    const cellEditorBeforeRefresh = container.querySelector('.cm-wp-cell-editor');
+    assert.ok(cellEditorBeforeRefresh, 'the first tap opens the merged-cell editor');
+    cellEditorBeforeRefresh.blur();
+    flushFrames();
     let currentContainer = remountWidget();
     mergedCell = currentContainer.querySelector('tbody td[colspan="2"]');
     assert.ok(mergedCell.style.outline, 'the highlight survives a table-widget refresh');
@@ -258,7 +262,7 @@ test('merged-cell selection survives a widget refresh and its editor uses render
     tapCell(mergedCell);
 
     const cellEditor = currentContainer.querySelector('.cm-wp-cell-editor');
-    assert.ok(cellEditor, 'the second tap opens the merged cell editor');
+    assert.ok(cellEditor, 'one tap opens the merged cell editor');
     assert.equal(cellEditor.value, 'Alpha\nOne', 'saved Markdown line breaks are shown as editable line breaks');
     assert.equal(cellEditor.style.top, '75px');
     assert.equal(cellEditor.style.left, '110px');
@@ -340,7 +344,6 @@ test('GFM table cell edits preserve alignment and escaped pipes through serializ
       'escaped pipes render correctly inside code spans'
     );
 
-    tapCell(originalCell);
     tapCell(originalCell);
     const cellEditor = container.querySelector('.cm-wp-cell-editor');
     assert.ok(cellEditor, 'the table cell can be edited');
