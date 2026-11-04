@@ -665,6 +665,17 @@ test('every visible hotkey preference reaches a matching editor action', () => {
   assert.ok(keyboardHandler.includes("setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source')"));
 });
 
+test('Ctrl+O is intercepted before the editor handles the key', () => {
+  const keyboardHandler = source.slice(
+    source.indexOf('function setupKeyboardShortcuts()'),
+    source.indexOf('// Global JS Bridge exposure')
+  );
+  assert.match(
+    keyboardHandler,
+    /window\.addEventListener\('keydown',\s*\(e\)\s*=>\s*\{[\s\S]*?parseAndMatchHotkey\(e,\s*customHotkeys\.open\)[\s\S]*?e\.stopImmediatePropagation\(\)[\s\S]*?onNativeAction\?\.\('open'\)[\s\S]*?\},\s*true\)/
+  );
+});
+
 test('left panel search options reach native search and the file filters', () => {
   assert.match(leftPanelHtml, /id="left-panel-search-whole-words"[\s\S]*?<span>word<\/span>/);
   assert.match(leftPanelHtml, /id="left-panel-search-contents"[\s\S]*?<span>in files<\/span>/);
@@ -726,6 +737,14 @@ test('New Tab keeps open documents and exposes session, search, and styling path
   assert.match(newTabAppearanceXml, /app:key="pref_start_page_bg_color"/);
   assert.match(newTabAppearanceXml, /app:key="pref_start_page_action_border_color"/);
   assert.match(source, /setCssVar\('--start-page-bg-color'/);
+});
+
+test('tab long-press menu includes New tab without replacing other tabs', () => {
+  assert.match(
+    leftPanelSource,
+    /const showTabMenu = \(tab, x = 16, y = 120\) => \{[\s\S]*?const actions = \[[\s\S]*?\['New tab', \(\) => openNewTab\(\)\]/
+  );
+  assert.match(leftPanelSource, /const openNewTab = \(\) =>/);
 });
 
 test('empty file search requests read access to Documents instead of silently returning nothing', () => {

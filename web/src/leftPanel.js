@@ -1783,6 +1783,7 @@ export function setupLeftPanel() {
     if (!tabMenu) return;
     tabMenu.replaceChildren();
     const actions = [
+      ['New tab', () => openNewTab()],
       [tab.pinned ? 'Unpin' : 'Pin', () => {
         tab.pinned = !tab.pinned;
         renderTabs();

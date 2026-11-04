@@ -8917,6 +8917,13 @@ function setupKeyboardShortcuts() {
   window.addEventListener('keydown', (e) => {
     if (e.target?.closest?.('input, textarea, select')) return;
 
+    if (parseAndMatchHotkey(e, customHotkeys.open)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.AndroidNative?.onNativeAction?.('open');
+      return;
+    }
+
     let direction = null;
     if (parseAndMatchHotkey(e, customHotkeys.history_back)) {
       direction = 'back';
@@ -8978,9 +8985,6 @@ function setupKeyboardShortcuts() {
     if (parseAndMatchHotkey(e, customHotkeys.new)) {
       e.preventDefault();
       window.leftPanelController?.openNewTab?.();
-    } else if (parseAndMatchHotkey(e, customHotkeys.open)) {
-      e.preventDefault();
-      window.AndroidNative && window.AndroidNative.onNativeAction('open');
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as');
