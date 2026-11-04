@@ -111,7 +111,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     @Volatile private var latestMarkdownContent: String? = null
     private var pendingOpenUri: Uri? = null
     private var pendingOpenPermissionFlags: Int? = null
+    private var pendingOpenSkipExistingWindowFocus = false
     private var pendingExistingDocumentFocusUri: Uri? = null
+    private var pendingSessionOpenInNewWindow = false
+    private var pendingDefaultSearchFolderPicker = false
     @Volatile private var isActivityResumed = false
     private var pendingSharedText: String? = null
     private var currentToast: Toast? = null
@@ -241,12 +244,48 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private val openWmdxTabSessionLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            uri?.let {
-                openFile(
-                    it,
-                    forceReload = true,
-                    permissionFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            val openInNewWindow = pendingSessionOpenInNewWindow
+            pendingSessionOpenInNewWindow = false
+            if (uri != null) {
+                val permissionFlags =
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                         android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                if (!isWmdxTabSession(uri)) {
+                    Toast.makeText(
+                        this,
+                        "Choose a .wmdx session file.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else if (openInNewWindow) {
+                    persistDocumentUriPermission(uri, permissionFlags)
+                    openWmdxTabSessionInNewWindow(uri, permissionFlags)
+                } else {
+                    openFile(uri, forceReload = true, permissionFlags = permissionFlags)
+                }
+            }
+        }
+
+    private val defaultSearchFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            pendingDefaultSearchFolderPicker = false
+            val uri = result.data?.data
+            val readFlag = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            val granted = if (
+                result.resultCode == android.app.Activity.RESULT_OK &&
+                uri != null &&
+                ((result.data?.flags ?: 0) and readFlag) != 0
+            ) {
+                runCatching {
+                    contentResolver.takePersistableUriPermission(uri, readFlag)
+                    authorizedLeftPanelTrees().any { it == uri }
+                }.getOrDefault(false)
+            } else {
+                false
+            }
+            if (::webView.isInitialized) {
+                webView.evaluateJavascript(
+                    "window.leftPanelController?.onSearchFolderAccessResult?.($granted);",
+                    null
                 )
             }
         }
@@ -634,6 +673,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private fun handleIntent(intent: android.content.Intent?, isRestoration: Boolean = false) {
         if (intent == null) return
 
+        intent.getStringExtra("open_wmdx_tab_session_uri")?.let { sessionUri ->
+            pendingOpenUri = Uri.parse(sessionUri)
+            pendingOpenSkipExistingWindowFocus = true
+            pendingOpenPermissionFlags = intent.getIntExtra(
+                "open_wmdx_tab_session_permission_flags",
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+
         if (intent.getBooleanExtra("is_new_document", false)) {
             currentFileUri = null
             currentFileName = getString(R.string.untitled_document)
@@ -642,6 +691,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             updateTitle()
             if (isEditorReady) {
                 webView.evaluateJavascript("window.editorBridge.setMarkdown('');", null)
+                pendingOpenUri?.let { uri ->
+                    pendingOpenUri = null
+                    val permissionFlags = pendingOpenPermissionFlags
+                    pendingOpenPermissionFlags = null
+                    val skipExistingWindowFocus = pendingOpenSkipExistingWindowFocus
+                    pendingOpenSkipExistingWindowFocus = false
+                    openFile(
+                        uri,
+                        skipExistingWindowFocus = skipExistingWindowFocus,
+                        permissionFlags = permissionFlags
+                    )
+                }
             }
             return
         }
@@ -2685,6 +2746,62 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun openWmdxTabSessionInNewWindow(uri: Uri, permissionFlags: Int) {
+        val newWindowId = java.util.UUID.randomUUID().toString()
+        val intent = android.content.Intent(this, MainActivity::class.java).apply {
+            action = android.content.Intent.ACTION_MAIN
+            data = Uri.parse("wmdx://window/$newWindowId")
+            addFlags(
+                android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
+                    android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            putExtra("is_new_document", true)
+            putExtra("open_wmdx_tab_session_uri", uri.toString())
+            putExtra("open_wmdx_tab_session_permission_flags", permissionFlags)
+        }
+        try {
+            startActivity(intent)
+        } catch (error: Exception) {
+            AppDiagnostics.record(this, "open_session_new_window_failed", error.javaClass.simpleName)
+            ThemedToast.show(this, "Could not open the session in a new window", Toast.LENGTH_LONG)
+        }
+    }
+
+    private fun openDefaultDocumentsFolderPicker() {
+        if (pendingDefaultSearchFolderPicker || authorizedLeftPanelTrees().isNotEmpty()) return
+        pendingDefaultSearchFolderPicker = true
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                putExtra(
+                    android.provider.DocumentsContract.EXTRA_INITIAL_URI,
+                    android.provider.DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents",
+                        "primary:Documents"
+                    )
+                )
+            }
+        }
+        runCatching {
+            defaultSearchFolderLauncher.launch(intent)
+        }.onFailure { error ->
+            pendingDefaultSearchFolderPicker = false
+            AppDiagnostics.record(this, "search_documents_picker_failed", error.javaClass.simpleName)
+            if (::webView.isInitialized) {
+                webView.evaluateJavascript(
+                    "window.leftPanelController?.onSearchFolderAccessResult?.(false);",
+                    null
+                )
+            }
+        }
+    }
 
     private fun interceptTextPackAssetRequest(request: WebResourceRequest): WebResourceResponse {
         val segments = request.url.pathSegments
@@ -4738,6 +4855,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun requestDefaultSearchFolderAccess() {
+            runOnUiThread {
+                if (authorizedLeftPanelTrees().isNotEmpty()) {
+                    webView.evaluateJavascript(
+                        "window.leftPanelController?.onSearchFolderAccessResult?.(true);",
+                        null
+                    )
+                } else {
+                    openDefaultDocumentsFolderPicker()
+                }
+            }
+        }
+
+        @JavascriptInterface
         fun listLeftPanelFolderChildren(treeUriString: String, documentId: String): String {
             val treeUri = runCatching { Uri.parse(treeUriString) }.getOrNull() ?: return "[]"
             if (authorizedLeftPanelTree(treeUri) == null) return "[]"
@@ -5083,7 +5214,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     pendingOpenUri = null
                     val permissionFlags = pendingOpenPermissionFlags
                     pendingOpenPermissionFlags = null
-                    openFile(uri, permissionFlags = permissionFlags)
+                    val skipExistingWindowFocus = pendingOpenSkipExistingWindowFocus
+                    pendingOpenSkipExistingWindowFocus = false
+                    openFile(
+                        uri,
+                        skipExistingWindowFocus = skipExistingWindowFocus,
+                        permissionFlags = permissionFlags
+                    )
                 }
                 pendingSharedText?.let { text ->
                     pendingSharedText = null
@@ -5118,9 +5255,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "new" -> handleNewFile()
                     "new_markdown" -> requestNewDocument(DocumentFormat.MARKDOWN)
                     "new_mdzip" -> requestNewDocument(DocumentFormat.MDZIP)
-                    "open_session" -> openWmdxTabSessionLauncher.launch(
-                        arrayOf(WMDX_TAB_SESSION_MIME)
-                    )
+                    "open_session" -> {
+                        pendingSessionOpenInNewWindow = false
+                        openWmdxTabSessionLauncher.launch(arrayOf("*/*"))
+                    }
+                    "open_session_new_window" -> {
+                        pendingSessionOpenInNewWindow = true
+                        openWmdxTabSessionLauncher.launch(arrayOf("*/*"))
+                    }
                     "open" -> handleOpenFile()
                     "save" -> handleSaveFile()
                     "save_as" -> handleSaveAsFile()

@@ -179,6 +179,7 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'footnote', title: 'Insert Footnote', icon: svgIcons.footnote }
   ],
   menu: [
+    { id: 'newTab', title: 'New Tab', icon: svgIcons.newTab },
     { id: 'newFile', title: 'New File', icon: svgIcons.newFile },
     { id: 'openFile', title: 'Open File', icon: svgIcons.openFile },
     { id: 'saveFile', title: 'Save File', icon: svgIcons.saveFile },

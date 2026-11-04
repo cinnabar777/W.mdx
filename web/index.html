@@ -101,7 +101,7 @@
       box-sizing: border-box;
       padding: 28px 20px calc(var(--toolbar-height, 48px) + 28px);
       color: var(--text-color);
-      background: var(--body-background-color, var(--bg-color));
+      background: var(--start-page-bg-color, var(--body-background-color, var(--bg-color)));
     }
 
     #start-page[hidden] {
@@ -110,7 +110,8 @@
 
     .start-page-title {
       margin: 0;
-      font-size: 16px;
+      color: var(--start-page-title-color, var(--text-color));
+      font-size: var(--start-page-title-size, 16px);
       font-weight: 600;
       line-height: 1.4;
     }
@@ -121,7 +122,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 12px;
+      gap: var(--start-page-action-gap, 12px);
       width: 100%;
     }
 
@@ -130,16 +131,17 @@
       align-items: center;
       justify-content: center;
       gap: 9px;
-      min-width: 154px;
-      min-height: 48px;
+      min-width: var(--start-page-action-width, 154px);
+      min-height: var(--start-page-action-height, 48px);
       box-sizing: border-box;
       padding: 0 20px;
-      border: 1px solid color-mix(in srgb, var(--text-color) 24%, transparent);
-      border-radius: 999px;
-      color: inherit;
-      background: transparent;
+      border: var(--start-page-action-border-width, 1px) solid
+        var(--start-page-action-border-color, color-mix(in srgb, var(--text-color) 24%, transparent));
+      border-radius: var(--start-page-action-radius, 999px);
+      color: var(--start-page-action-text-color, inherit);
+      background: var(--start-page-action-bg-color, transparent);
       font: inherit;
-      font-size: 14px;
+      font-size: var(--start-page-action-text-size, 14px);
       cursor: pointer;
       touch-action: manipulation;
     }
@@ -151,6 +153,29 @@
     .start-page-action:focus-visible {
       outline: 2px solid var(--link-color);
       outline-offset: 3px;
+    }
+
+    .start-page-session-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .start-page-action-new-window {
+      width: 48px;
+      min-width: 48px;
+      padding: 0;
+    }
+
+    .start-page-action-new-window svg {
+      width: 19px;
+      height: 19px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
     }
 
     #session-save-warning {
@@ -2421,9 +2446,23 @@
         <button class="start-page-action" type="button" data-start-page-action="go-to-file">
           Go to file
         </button>
-        <button class="start-page-action" type="button" data-start-page-action="open-session">
-          Open session
-        </button>
+        <div class="start-page-session-row">
+          <button class="start-page-action" type="button" data-start-page-action="open-session">
+            Open session
+          </button>
+          <button
+            class="start-page-action start-page-action-new-window"
+            type="button"
+            data-start-page-action="open-session-new-window"
+            aria-label="Open session in a new window"
+            title="Open session in a new window"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 4h6v6M20 4l-9 9"></path>
+              <path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"></path>
+            </svg>
+          </button>
+        </div>
       </div>
     </main>
   </div>

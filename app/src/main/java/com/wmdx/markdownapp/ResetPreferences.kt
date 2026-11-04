@@ -193,6 +193,14 @@ object PreferenceResetHelper {
                 if (isLightTheme) "#E9ECEF" else "#303134"
             "pref_embedded_content_title_text_color" ->
                 if (isLightTheme) "#111111" else "#F1F3F4"
+            "pref_start_page_bg_color" ->
+                if (isLightTheme) "#FFFFFF" else "#000000"
+            "pref_start_page_title_color", "pref_start_page_action_text_color" ->
+                if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_start_page_action_bg_color" ->
+                if (isLightTheme) "#F8F9FA" else "#111111"
+            "pref_start_page_action_border_color" ->
+                if (isLightTheme) "#D0D5DB" else "#555555"
             "pref_body_text_color", "pref_list_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
             "pref_toc_panel_bg_color" -> {
@@ -485,6 +493,18 @@ object PreferenceResetHelper {
                 key == "pref_embedded_content_border_color" ||
                 key == "pref_embedded_content_title_bg_color" ||
                 key == "pref_embedded_content_title_text_color" -> "default"
+            key == "pref_start_page_bg_color" ||
+                key == "pref_start_page_title_color" ||
+                key == "pref_start_page_action_text_color" ||
+                key == "pref_start_page_action_bg_color" ||
+                key == "pref_start_page_action_border_color" -> "default"
+            key == "pref_start_page_title_size" -> 16
+            key == "pref_start_page_action_border_width" -> 1
+            key == "pref_start_page_action_radius" -> 24
+            key == "pref_start_page_action_text_size" -> 14
+            key == "pref_start_page_action_width" -> 154
+            key == "pref_start_page_action_height" -> 48
+            key == "pref_start_page_action_gap" -> 12
             key == "pref_embedded_content_border_width" -> 1
             key == "pref_embedded_content_border_radius" -> 8
             key == "pref_embedded_content_padding_x" -> 10

@@ -309,7 +309,8 @@ export function setupLeftPanel() {
 
   const updateStartPageVisibility = () => {
     if (!startPage) return;
-    const visible = !tabs.length || !tabs.some((tab) => tab.id === activeTabId);
+    const active = tabs.find((tab) => tab.id === activeTabId);
+    const visible = !active || Boolean(active.isStartPage);
     startPage.hidden = !visible;
     document.body.classList.toggle('start-page-visible', visible);
   };
@@ -751,11 +752,14 @@ export function setupLeftPanel() {
       return existing;
     }
     const tab = {
-      id: uri || `untitled:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      id: typeof documentData.id === 'string' && documentData.id
+        ? documentData.id
+        : uri || `untitled:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
       uri,
       name: documentData.name || 'Untitled',
       markdown: documentData.markdown || '',
       dirty: Boolean(documentData.dirty),
+      isStartPage: Boolean(documentData.isStartPage),
       pinned: false,
       groupId: null,
       documentHistoryBack: [],
@@ -863,6 +867,20 @@ export function setupLeftPanel() {
     renderTabs();
     persistTabsNow();
     return null;
+  };
+
+  const openNewTab = () => {
+    const current = tabs.find((tab) => tab.id === activeTabId);
+    if (!current) return activateStartPage();
+    if (current.isStartPage) return current.id;
+    const tab = addTab({
+      id: `start-page:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      name: 'New tab',
+      markdown: '',
+      dirty: false,
+      isStartPage: true
+    });
+    return tab?.id || null;
   };
 
   const saveTabSession = async () => {
@@ -1315,6 +1333,15 @@ export function setupLeftPanel() {
     if (!native?.searchLeftPanelFiles) {
       searchStatus.textContent = 'File search is unavailable in this app build.';
       return;
+    }
+    if (typeof native?.listLeftPanelFolderRoots === 'function') {
+      const roots = parseBridgeResult(native.listLeftPanelFolderRoots(), []);
+      if (Array.isArray(roots) && roots.length === 0) {
+        searchStatus.textContent =
+          'Choose Documents when prompted to allow file search.';
+        native.requestDefaultSearchFolderAccess?.();
+        return;
+      }
     }
     searchPending = true;
     searchStatus.textContent = 'Searching approved folders…';
@@ -2165,6 +2192,9 @@ export function setupLeftPanel() {
         name: typeof savedTab.name === 'string' ? savedTab.name : 'Untitled',
         markdown: typeof savedTab.markdown === 'string' ? savedTab.markdown : '',
         dirty: Boolean(savedTab.dirty),
+        isStartPage: Boolean(savedTab.isStartPage) ||
+          (!savedTab.uri && savedTab.name === 'New tab' &&
+            !savedTab.markdown && !savedTab.dirty),
         pinned: Boolean(savedTab.pinned),
         groupId: groups.some((group) => group.id === savedTab.groupId)
           ? savedTab.groupId
@@ -2378,6 +2408,15 @@ export function setupLeftPanel() {
   const controller = {
     open: openPanel,
     close: closePanel,
+    openNewTab,
+    onSearchFolderAccessResult(granted) {
+      if (!granted) {
+        searchStatus.textContent =
+          'Folder access was not granted. Add a folder in File & Folder Access to search.';
+        return;
+      }
+      runSearch();
+    },
     onEditorChanged,
     onNativeDocumentLoaded,
     focusDocumentUri(uri) {
@@ -2561,7 +2600,12 @@ export function setupLeftPanel() {
           controller.openStartPageSearch();
           break;
         case 'open-session':
-          native?.onNativeAction?.('open_session');
+          native?.onNativeAction?.(
+            launcherWindow ? 'open_session_new_window' : 'open_session'
+          );
+          break;
+        case 'open-session-new-window':
+          native?.onNativeAction?.('open_session_new_window');
           break;
         default:
           break;

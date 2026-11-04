@@ -122,7 +122,10 @@ test('undo uses undoDepth guard and preserves document on repeated undo', () => 
 test('external-open URI permission flags survive until the editor is ready', () => {
   assert.ok(mainActivitySource.includes('private var pendingOpenPermissionFlags: Int? = null'));
   assert.ok(mainActivitySource.includes('pendingOpenPermissionFlags = intent.flags'));
-  assert.ok(mainActivitySource.includes('openFile(uri, permissionFlags = permissionFlags)'));
+  assert.match(
+    mainActivitySource,
+    /openFile\(\s*uri,\s*skipExistingWindowFocus = skipExistingWindowFocus,\s*permissionFlags = permissionFlags\s*\)/s
+  );
 });
 
 test('returning to the app keeps the keyboard hidden until the user touches the editor', () => {
@@ -547,6 +550,7 @@ test('UI Appearance contains the requested pages in order', () => {
     [
       ['pref_page_settings_theme', 'Settings'],
       ['pref_app_theme', 'App Theme'],
+      ['pref_page_new_tab_appearance', 'New Tab'],
       ['pref_page_findreplace', 'Find & Replace'],
       ['pref_hide_status_bar', 'Hide Status Bar'],
       ['pref_hide_nav_bar', 'Hide Navigation Bar'],
@@ -680,6 +684,63 @@ test('left panel search options reach native search and the file filters', () =>
   assert.match(
     mainActivitySource,
     /Regex\(\s*"\(\^\|\[\^\\\\p\{L\}\\\\p\{N\}_\]\).*Regex\.escape\(needle\).*IGNORE_CASE/s
+  );
+});
+
+test('New Tab keeps open documents and exposes session, search, and styling paths', () => {
+  const uiAppearanceXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_ui_appearance.xml'),
+    'utf8'
+  );
+  const newTabAppearanceXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_new_tab.xml'),
+    'utf8'
+  );
+
+  assert.match(leftPanelSource, /const openNewTab = \(\) =>/);
+  assert.match(leftPanelSource, /isStartPage: Boolean\(documentData\.isStartPage\)/);
+  assert.match(leftPanelSource, /isStartPage: Boolean\(savedTab\.isStartPage\)/);
+  assert.match(leftPanelSource, /const visible = !active \|\| Boolean\(active\.isStartPage\)/);
+  assert.match(leftPanelSource, /native\.requestDefaultSearchFolderAccess\?\.\(\)/);
+  assert.match(
+    leftPanelSource,
+    /launcherWindow \? 'open_session_new_window' : 'open_session'/
+  );
+  assert.match(source, /window\.leftPanelController\?\.openNewTab\?\.\(\)/);
+  assert.match(hotkeysXml, /app:key="pref_hotkey_new"[\s\S]*?app:title="Document: New Tab"/);
+  assert.match(leftPanelHtml, /data-start-page-action="open-session-new-window"/);
+
+  assert.match(mainActivitySource, /openWmdxTabSessionLauncher\.launch\(arrayOf\("\*\/\*"\)\)/);
+  assert.match(mainActivitySource, /if \(!isWmdxTabSession\(uri\)\)/);
+  assert.match(mainActivitySource, /openWmdxTabSessionInNewWindow\(uri, permissionFlags\)/);
+  assert.match(mainActivitySource, /putExtra\("open_wmdx_tab_session_uri"/);
+
+  assert.ok(
+    uiAppearanceXml.indexOf('app:key="pref_app_theme"') <
+      uiAppearanceXml.indexOf('app:key="pref_page_new_tab_appearance"') &&
+      uiAppearanceXml.indexOf('app:key="pref_page_new_tab_appearance"') <
+        uiAppearanceXml.indexOf('app:key="pref_page_findreplace"'),
+    'New Tab styling appears after App Theme and before Find & Replace'
+  );
+  assert.match(settingsActivitySource, /pref_page_new_tab_appearance" -> NewTabAppearanceSettingsFragment\(\)/);
+  assert.match(newTabAppearanceXml, /app:key="pref_start_page_bg_color"/);
+  assert.match(newTabAppearanceXml, /app:key="pref_start_page_action_border_color"/);
+  assert.match(source, /setCssVar\('--start-page-bg-color'/);
+});
+
+test('empty file search requests read access to Documents instead of silently returning nothing', () => {
+  assert.match(
+    leftPanelSource,
+    /Choose Documents when prompted to allow file search\.[\s\S]*?requestDefaultSearchFolderAccess/
+  );
+  assert.match(mainActivitySource, /ACTION_OPEN_DOCUMENT_TREE/);
+  assert.match(
+    mainActivitySource,
+    /DocumentsContract\.buildDocumentUri\(\s*"com\.android\.externalstorage\.documents",\s*"primary:Documents"/
+  );
+  assert.match(
+    mainActivitySource,
+    /takePersistableUriPermission\(uri, readFlag\)/
   );
 });
 
