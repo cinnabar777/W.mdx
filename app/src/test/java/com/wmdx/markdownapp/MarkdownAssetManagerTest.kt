@@ -69,6 +69,46 @@ class MarkdownAssetManagerTest {
     }
 
     @Test
+    fun externalStorageDocumentIdResolvesRelativeAssetsWithinApprovedRoot() {
+        assertEquals(
+            "primary:Documents/assets/Untitled.mdz",
+            MarkdownAssetManager.externalStorageDocumentId(
+                rootDocumentId = "primary:Documents",
+                parentDocumentId = "primary:Documents",
+                relativeSegments = listOf("assets", "Untitled.mdz")
+            )
+        )
+        assertEquals(
+            "primary:Documents/assets/Untitled.mdz",
+            MarkdownAssetManager.externalStorageDocumentId(
+                rootDocumentId = "primary:Documents",
+                parentDocumentId = "primary:Documents/notes",
+                relativeSegments = listOf("..", "assets", "Untitled.mdz")
+            )
+        )
+    }
+
+    @Test
+    fun externalStorageDocumentIdCannotEscapeApprovedRoot() {
+        assertEquals(
+            null,
+            MarkdownAssetManager.externalStorageDocumentId(
+                rootDocumentId = "primary:Documents",
+                parentDocumentId = "primary:Documents",
+                relativeSegments = listOf("..", "secret.mdz")
+            )
+        )
+        assertEquals(
+            null,
+            MarkdownAssetManager.externalStorageDocumentId(
+                rootDocumentId = "primary:Documents",
+                parentDocumentId = "primary:Downloads",
+                relativeSegments = listOf("assets", "Untitled.mdz")
+            )
+        )
+    }
+
+    @Test
     fun recognizesAudioAndVideoAssetMimeTypes() {
         assertEquals("audio/mpeg", MarkdownAssetManager.mimeTypeForExtension("mp3"))
         assertEquals("audio/mp4", MarkdownAssetManager.mimeTypeForExtension("m4a"))

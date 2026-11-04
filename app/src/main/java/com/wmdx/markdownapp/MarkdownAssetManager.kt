@@ -633,16 +633,20 @@ internal object MarkdownAssetManager {
             if (segment.any { Character.isISOControl(it) } || segment == ".") return null
             val parentDocumentId = directoryStack.lastOrNull() ?: return null
             val child = findChild(context, location.treeUri, parentDocumentId, segment)
-                ?: return null
+                ?: return resolveExternalStorageDocumentUri(context, location, fileSegments)
             val isLastSegment = index == fileSegments.lastIndex
             if (isLastSegment) {
-                if (child.mimeType == DocumentsContract.Document.MIME_TYPE_DIR) return null
+                if (child.mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
+                    return resolveExternalStorageDocumentUri(context, location, fileSegments)
+                }
                 return buildDocumentUri(location, child.documentId)
             }
-            if (child.mimeType != DocumentsContract.Document.MIME_TYPE_DIR) return null
+            if (child.mimeType != DocumentsContract.Document.MIME_TYPE_DIR) {
+                return resolveExternalStorageDocumentUri(context, location, fileSegments)
+            }
             directoryStack.add(child.documentId)
         }
-        return null
+        return resolveExternalStorageDocumentUri(context, location, fileSegments)
     }
 
     fun previewAssetUrl(
@@ -697,6 +701,110 @@ internal object MarkdownAssetManager {
         val downwardStart = (commonPrefixLength - 1).coerceAtLeast(0)
         val downwardSegments = targetDirectoryNames.drop(downwardStart)
         return (upwardSegments + downwardSegments + fileName).joinToString("/")
+    }
+
+    internal fun externalStorageDocumentId(
+        rootDocumentId: String,
+        parentDocumentId: String,
+        relativeSegments: List<String>
+    ): String? {
+        val rootSeparator = rootDocumentId.indexOf(':')
+        val parentSeparator = parentDocumentId.indexOf(':')
+        if (rootSeparator <= 0 || parentSeparator <= 0) return null
+
+        val volumeId = rootDocumentId.substring(0, rootSeparator)
+        if (parentDocumentId.substring(0, parentSeparator) != volumeId) return null
+
+        val rootSegments = rootDocumentId.substring(rootSeparator + 1)
+            .split('/')
+            .filter(String::isNotEmpty)
+        val pathSegments = parentDocumentId.substring(parentSeparator + 1)
+            .split('/')
+            .filter(String::isNotEmpty)
+            .toMutableList()
+        if (
+            pathSegments.size < rootSegments.size ||
+            pathSegments.take(rootSegments.size) != rootSegments ||
+            pathSegments.any {
+                it == "." || it == ".." || it.any { char -> Character.isISOControl(char) }
+            }
+        ) {
+            return null
+        }
+
+        for (segment in relativeSegments) {
+            when (segment) {
+                "", "." -> Unit
+                ".." -> {
+                    if (pathSegments.size <= rootSegments.size) return null
+                    pathSegments.removeAt(pathSegments.lastIndex)
+                }
+                else -> {
+                    if (
+                        segment.contains('/') ||
+                        segment.any { Character.isISOControl(it) }
+                    ) {
+                        return null
+                    }
+                    pathSegments += segment
+                }
+            }
+        }
+        if (pathSegments.size <= rootSegments.size) return null
+        return "$volumeId:${pathSegments.joinToString("/")}"
+    }
+
+    private fun resolveExternalStorageDocumentUri(
+        context: Context,
+        location: MarkdownDocumentLocation,
+        relativeSegments: List<String>
+    ): Uri? {
+        if (location.treeUri.authority != "com.android.externalstorage.documents") return null
+        val parentDocumentId = location.parentDocumentIds.lastOrNull() ?: return null
+        val targetDocumentId = externalStorageDocumentId(
+            location.rootDocumentId,
+            parentDocumentId,
+            relativeSegments
+        ) ?: return null
+        val targetUri = buildDocumentUri(location, targetDocumentId)
+        val existsAsFile = runCatching {
+            context.contentResolver.query(
+                targetUri,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE
+                ),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID
+                )
+                val mimeIndex = cursor.getColumnIndex(
+                    DocumentsContract.Document.COLUMN_MIME_TYPE
+                )
+                idIndex >= 0 &&
+                    mimeIndex >= 0 &&
+                    cursor.moveToFirst() &&
+                    cursor.getString(idIndex) == targetDocumentId &&
+                    cursor.getString(mimeIndex) != DocumentsContract.Document.MIME_TYPE_DIR
+            } == true
+        }.getOrDefault(false)
+        if (!existsAsFile) {
+            AppDiagnostics.record(
+                context,
+                "markdown_asset_external_path_fallback_missing",
+                "segments=${relativeSegments.size}"
+            )
+            return null
+        }
+        AppDiagnostics.record(
+            context,
+            "markdown_asset_external_path_fallback_resolved",
+            "segments=${relativeSegments.size}"
+        )
+        return targetUri
     }
 
     private fun decodeRelativePath(reference: String): List<String>? {
