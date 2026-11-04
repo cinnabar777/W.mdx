@@ -13,6 +13,16 @@ function renderedText(line) {
   return copy.textContent;
 }
 
+function assertHardBreakRendering(lines, window) {
+  assert.equal(lines[2].textContent, 'Hard break by spaces:  ');
+  assert.equal(lines[2].querySelector('.cm-hardbreak-syntax'), null);
+
+  const backslashMarker = lines[4].querySelector('.cm-hardbreak-syntax');
+  assert.ok(backslashMarker, 'the backslash hard-break marker has a rendering decoration');
+  assert.equal(backslashMarker.textContent, '\\');
+  assert.equal(window.getComputedStyle(backslashMarker).display, 'none');
+}
+
 test('CommonMark inline syntax and hard breaks render without changing source', async () => {
   const html = fs.readFileSync(path.join(appAssets, 'index.html'), 'utf8');
   const bundle = fs.readFileSync(path.join(appAssets, 'bundle.js'), 'utf8');
@@ -101,16 +111,12 @@ test('CommonMark inline syntax and hard breaks render without changing source', 
     assert.deepEqual(renderedLines.slice(0, 6).map(renderedText), [
       'Entities: & © 🙂',
       'Escaped punctuation: *literal* &amp; |',
-      'Hard break by spaces:',
+      'Hard break by spaces:  ',
       'continued after spaces',
       'Hard break by slash',
       'continued after slash'
     ], content.innerHTML);
-    for (const line of [renderedLines[2], renderedLines[4]]) {
-      const marker = line.querySelector('.cm-hardbreak-syntax');
-      assert.ok(marker, 'the hard-break marker has a rendering decoration');
-      assert.equal(window.getComputedStyle(marker).display, 'none');
-    }
+    assertHardBreakRendering(renderedLines, window);
     assert.deepEqual(
       [...content.querySelectorAll('.cm-inline-code-normalized')].map(widget => widget.textContent),
       [' foo ', 'foo bar', 'foo bar   baz']
@@ -123,16 +129,12 @@ test('CommonMark inline syntax and hard breaks render without changing source', 
     assert.deepEqual(livePreviewLines.slice(0, 6).map(renderedText), [
       'Entities: & © 🙂',
       'Escaped punctuation: *literal* &amp; |',
-      'Hard break by spaces:',
+      'Hard break by spaces:  ',
       'continued after spaces',
       'Hard break by slash',
       'continued after slash'
     ]);
-    for (const line of [livePreviewLines[2], livePreviewLines[4]]) {
-      const marker = line.querySelector('.cm-hardbreak-syntax');
-      assert.ok(marker, 'the hard-break marker has a rendering decoration');
-      assert.equal(window.getComputedStyle(marker).display, 'none');
-    }
+    assertHardBreakRendering(livePreviewLines, window);
     assert.deepEqual(
       [...livePreviewContent.querySelectorAll('.cm-inline-code-normalized')].map(widget => widget.textContent),
       [' foo ', 'foo bar', 'foo bar   baz']

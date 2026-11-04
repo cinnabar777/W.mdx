@@ -327,9 +327,9 @@ function hardBreakSyntaxEnd(doc, node) {
 
 function hardBreakSyntaxDecoration(doc, node) {
   const end = hardBreakSyntaxEnd(doc, node);
-  return end > node.from
-    ? Decoration.mark({ class: 'cm-hardbreak-syntax' }).range(node.from, end)
-    : null;
+  // Keep the two-space hard-break spelling visible; only hide a backslash marker.
+  if (end <= node.from || doc.sliceString(end - 1, end) !== '\\') return null;
+  return Decoration.mark({ class: 'cm-hardbreak-syntax' }).range(end - 1, end);
 }
 
 function markdownCodeSpanDisplayText(doc, node) {
