@@ -1626,7 +1626,7 @@ export { cursorLineDown, cursorLineUp } from '@codemirror/commands';
 export { markdown } from '@codemirror/lang-markdown';
 
 const embeddedDocumentSourceFacet = Facet.define({
-  combine: values => values[0] ?? null
+  combine: values => values[0] ?? []
 });
 const embeddedDocumentDepthFacet = Facet.define({
   combine: values => values[0] ?? 0
@@ -1642,11 +1642,11 @@ function isStandaloneEmbeddedDocument(doc, node, raw) {
 }
 
 function resolveDocumentAssetUrl(state, relativeLink) {
-  const embeddedSource = state?.facet?.(embeddedDocumentSourceFacet);
-  if (embeddedSource) {
+  const embeddedSourceContext = state?.facet?.(embeddedDocumentSourceFacet);
+  if (embeddedSourceContext?.length) {
     return window.AndroidNative?.resolveEmbeddedAssetUrl?.(
       relativeLink,
-      embeddedSource,
+      JSON.stringify(embeddedSourceContext),
       window.AndroidNative?.getCurrentDocumentSessionId?.()
     ) || null;
   }
@@ -1661,7 +1661,8 @@ class EmbeddedDocumentWidget extends WidgetType {
     to,
     documentSessionId,
     depth = 0,
-    interactionMode = 'checkboxes'
+    interactionMode = 'checkboxes',
+    sourceContext = []
   ) {
     super();
     this.label = label || 'Embedded document';
@@ -1671,6 +1672,8 @@ class EmbeddedDocumentWidget extends WidgetType {
     this.documentSessionId = documentSessionId;
     this.depth = depth;
     this.interactionMode = interactionMode;
+    this.sourceContext = Array.isArray(sourceContext) ? [...sourceContext] : [];
+    this.sourceContextJson = JSON.stringify(this.sourceContext);
   }
 
   eq(other) {
@@ -1681,7 +1684,8 @@ class EmbeddedDocumentWidget extends WidgetType {
       other.to === this.to &&
       other.documentSessionId === this.documentSessionId &&
       other.depth === this.depth &&
-      other.interactionMode === this.interactionMode;
+      other.interactionMode === this.interactionMode &&
+      JSON.stringify(other.sourceContext) === JSON.stringify(this.sourceContext);
   }
 
   get estimatedHeight() {
@@ -1950,7 +1954,8 @@ class EmbeddedDocumentWidget extends WidgetType {
 
     const resultText = window.AndroidNative?.loadEmbeddedMarkdown?.(
       this.url,
-      this.documentSessionId
+      this.documentSessionId,
+      this.sourceContextJson
     );
     let markdownText = null;
     let loadErrorMessage = null;
@@ -1972,7 +1977,8 @@ class EmbeddedDocumentWidget extends WidgetType {
     }
 
     let persistedMarkdownText = markdownText;
-    const saveKey = `${this.documentSessionId || ''}:${this.url}`;
+    const saveKey =
+      `${this.documentSessionId || ''}:${this.sourceContextJson}:${this.url}`;
     if (pendingEmbeddedDocumentEdits.has(saveKey)) {
       markdownText = pendingEmbeddedDocumentEdits.get(saveKey);
     }
@@ -2037,7 +2043,8 @@ class EmbeddedDocumentWidget extends WidgetType {
         saved = window.AndroidNative?.saveEmbeddedMarkdown?.(
           this.url,
           text,
-          this.documentSessionId
+          this.documentSessionId,
+          this.sourceContextJson
         ) === true;
       } catch {
         saved = false;
@@ -2090,7 +2097,7 @@ class EmbeddedDocumentWidget extends WidgetType {
         heightMapField,
         liveEmbeddedDocumentField,
         hiddenSyntaxAtomicRanges,
-        embeddedDocumentSourceFacet.of(this.url),
+        embeddedDocumentSourceFacet.of([...this.sourceContext, this.url]),
         embeddedDocumentDepthFacet.of(this.depth + 1),
         EditorState.transactionFilter.of(transaction => {
           if (
@@ -3798,7 +3805,8 @@ function buildHeightMapValue(state) {
               node.to,
               window.AndroidNative?.getCurrentDocumentSessionId?.(),
               state.facet(embeddedDocumentDepthFacet),
-              embeddedContentInteractionMode
+              embeddedContentInteractionMode,
+              state.facet(embeddedDocumentSourceFacet)
             ),
             block: true
           }).range(node.from, node.to);
@@ -3977,7 +3985,8 @@ function buildLiveEmbeddedDocumentValue(state) {
           node.to,
           window.AndroidNative?.getCurrentDocumentSessionId?.(),
           state.facet(embeddedDocumentDepthFacet),
-          embeddedContentInteractionMode
+          embeddedContentInteractionMode,
+          state.facet(embeddedDocumentSourceFacet)
         ),
         block: true
       }).range(node.from, node.to);

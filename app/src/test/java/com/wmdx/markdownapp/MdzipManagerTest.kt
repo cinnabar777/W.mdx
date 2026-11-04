@@ -423,6 +423,28 @@ class MdzipManagerTest {
     }
 
     @Test
+    fun resolvesEmbeddedDocumentsAndTheirAssetsFromTheArchiveMarkdownPath() {
+        assertEquals(
+            "attachments/doc.md",
+            MdzipManager.resolveRelativeArchivePath("index.md", "attachments/doc.md")
+        )
+        assertEquals(
+            "attachments/checklist.md",
+            MdzipManager.resolveRelativeArchivePath(
+                "attachments/doc.md",
+                "checklist.md"
+            )
+        )
+        assertEquals(
+            "attachments/images/photo.png",
+            MdzipManager.resolveRelativeArchivePath(
+                "attachments/doc.md",
+                "images/photo.png"
+            )
+        )
+    }
+
+    @Test
     fun resolvesMarkdownLinksByStrictUtf8SegmentsAndNfc() {
         assertEquals(
             "images/caf\u00e9 +#.png",

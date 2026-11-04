@@ -178,7 +178,7 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   );
   assert.match(
     native,
-    /loadStage == "resolve" &&\s*error is java\.io\.FileNotFoundException[\s\S]*?EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE/
+    /loadStage == "resolve" &&[\s\S]*?error is java\.io\.FileNotFoundException[\s\S]*?EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE/
   );
   assert.match(native, /\.put\("message", message\)/);
   assert.match(native, /fun saveEmbeddedMarkdown/);
@@ -256,23 +256,56 @@ test('unset embedded-document source routes ordinary media through the normal re
 
   assert.match(
     main,
-    /const embeddedDocumentSourceFacet = Facet\.define\(\{\s*combine: values => values\[0\] \?\? null\s*\}\);/
+    /const embeddedDocumentSourceFacet = Facet\.define\(\{\s*combine: values => values\[0\] \?\? \[\]\s*\}\);/
   );
   assert.match(
     main,
-    /if \(embeddedSource\) \{\s*return window\.AndroidNative\?\.resolveEmbeddedAssetUrl/
+    /if \(embeddedSourceContext\?\.length\) \{\s*return window\.AndroidNative\?\.resolveEmbeddedAssetUrl/
   );
   assert.match(main, /return window\.AndroidNative\?\.resolveMdzipMediaUrl/);
-  assert.match(main, /embeddedDocumentSourceFacet\.of\(this\.url\)/);
+  assert.match(
+    main,
+    /embeddedDocumentSourceFacet\.of\(\[\.\.\.this\.sourceContext, this\.url\]\)/
+  );
 
-  const sourceFacet = Facet.define({ combine: values => values[0] ?? null });
+  const sourceFacet = Facet.define({ combine: values => values[0] ?? [] });
   const regularDocument = EditorState.create({ extensions: [] });
   const embeddedDocument = EditorState.create({
-    extensions: [sourceFacet.of('assets/notes.md')]
+    extensions: [sourceFacet.of(['assets/notes.md'])]
   });
 
-  assert.equal(regularDocument.facet(sourceFacet), null);
-  assert.equal(embeddedDocument.facet(sourceFacet), 'assets/notes.md');
+  assert.deepEqual(regularDocument.facet(sourceFacet), []);
+  assert.deepEqual(embeddedDocument.facet(sourceFacet), ['assets/notes.md']);
+});
+
+test('nested embeds pass their source chain to native loading, assets, and saving', () => {
+  const main = readProjectFile('web/src/main.js');
+  const native = readProjectFile(
+    'app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'
+  );
+
+  assert.match(
+    main,
+    /loadEmbeddedMarkdown\?\.\(\s*this\.url,\s*this\.documentSessionId,\s*this\.sourceContextJson\s*\)/
+  );
+  assert.match(
+    main,
+    /saveEmbeddedMarkdown\?\.\(\s*this\.url,\s*text,\s*this\.documentSessionId,\s*this\.sourceContextJson\s*\)/
+  );
+  assert.match(
+    main,
+    /resolveEmbeddedAssetUrl\?\.\(\s*relativeLink,\s*JSON\.stringify\(embeddedSourceContext\)/
+  );
+  assert.match(
+    native,
+    /private fun resolveEmbeddedSourceContext\([\s\S]*?sourceLinks\.withIndex\(\)[\s\S]*?resolveEmbeddedSourceChild\(/
+  );
+  assert.match(
+    native,
+    /MdzipManager\.resolveRelativeArchivePath\(\s*parent\.markdownPath,\s*relativeLink\s*\)/
+  );
+  assert.match(native, /MdzipManager\.assetArchiveFile\(parent\.session, archivePath\)/);
+  assert.match(native, /target\.archiveSession\.sourceUri/);
 });
 
 test('migrates existing toolbar layouts to include Embed without restoring removed or hidden keys', async () => {

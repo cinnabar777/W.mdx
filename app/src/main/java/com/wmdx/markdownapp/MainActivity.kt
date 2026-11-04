@@ -57,6 +57,20 @@ private const val MAX_DOWNLOADED_IMAGE_BYTES = 32L * 1024L * 1024L
 private const val EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE =
     "Could not load this embedded document. Check that it exists and grant read access to its folder in Settings > File & Folder Access, then reopen it. Read access is enough to display it; write access is only needed to save edits."
 
+private sealed interface EmbeddedDocumentSourceContext {
+    data class ExternalFile(val uri: Uri) : EmbeddedDocumentSourceContext
+    data class MdzipFile(
+        val session: MdzipSession,
+        val markdownPath: String
+    ) : EmbeddedDocumentSourceContext
+}
+
+private data class ResolvedEmbeddedDocument(
+    val uri: Uri,
+    val archiveSession: MdzipSession? = null,
+    val archivePath: String? = null
+)
+
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
     private lateinit var webView: WebView
@@ -5513,20 +5527,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             openAttachment(relativeLink, documentSessionId)
 
         @JavascriptInterface
-        fun loadEmbeddedMarkdown(relativeLink: String, documentSessionId: String?): String {
+        fun loadEmbeddedMarkdown(
+            relativeLink: String,
+            documentSessionId: String?,
+            sourceContextJson: String?
+        ): String {
             if (documentSessionId != currentDocumentSessionId) {
                 return JSONObject().put("ok", false).toString()
             }
             var loadStage = "resolve"
             return runCatching {
-                val sourceUri = resolveEmbeddedDocumentUri(relativeLink)
+                val target = resolveEmbeddedDocumentTarget(relativeLink, sourceContextJson)
                     ?: throw java.io.FileNotFoundException(
-                        if (currentDocumentFormat == DocumentFormat.MARKDOWN) {
+                        if (parseEmbeddedSourceLinks(sourceContextJson)?.isNotEmpty() == true) {
+                            "The embedded document could not be found relative to its parent document."
+                        } else if (currentDocumentFormat == DocumentFormat.MARKDOWN) {
                             EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE
                         } else {
                             "The embedded document could not be found."
                         }
                     )
+                val sourceUri = target.uri
                 val fileName = getFileNameFromUri(sourceUri)
                 val isMdzip = MdzipManager.isMdzipFileName(fileName)
                 loadStage = if (isMdzip) "open_mdzip" else "read_text"
@@ -5551,6 +5572,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                             EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE
                         currentDocumentFormat == DocumentFormat.MARKDOWN &&
                             loadStage == "resolve" &&
+                            parseEmbeddedSourceLinks(sourceContextJson)?.isEmpty() == true &&
                             error is java.io.FileNotFoundException ->
                             EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE
                         else ->
@@ -5567,7 +5589,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         fun saveEmbeddedMarkdown(
             relativeLink: String,
             markdownText: String?,
-            documentSessionId: String?
+            documentSessionId: String?,
+            sourceContextJson: String?
         ): Boolean {
             if (documentSessionId != currentDocumentSessionId || markdownText == null) return false
             val bytes = markdownText.toByteArray(Charsets.UTF_8)
@@ -5582,13 +5605,51 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val isDirectLinkedFile = runCatching {
                     Uri.parse(decodedLink).scheme == "content"
                 }.getOrDefault(false)
-                val targetUri = resolveEmbeddedDocumentUri(relativeLink)
+                val target = resolveEmbeddedDocumentTarget(relativeLink, sourceContextJson)
                     ?: throw java.io.FileNotFoundException(
                         "The embedded document could not be found."
                     )
+                val targetUri = target.uri
 
                 val fileName = getFileNameFromUri(targetUri)
-                if (MdzipManager.isMdzipFileName(fileName)) {
+                if (
+                    target.archiveSession != null &&
+                    target.archivePath != null
+                ) {
+                    if (MdzipManager.isMdzipFileName(fileName)) {
+                        MdzipManager.save(
+                            this@MainActivity,
+                            getEmbeddedMdzipSession(targetUri),
+                            markdownText,
+                            targetUri
+                        )
+                    } else {
+                        val output = contentResolver.openOutputStream(targetUri, "w")
+                            ?: throw java.io.IOException(
+                                "Could not open the embedded document for writing."
+                            )
+                        output.use { it.write(bytes) }
+                    }
+                    if (currentDocumentFormat == DocumentFormat.MDZIP) {
+                        runOnUiThread {
+                            if (documentSessionId == currentDocumentSessionId) {
+                                isDirty = true
+                                updateTitle()
+                            }
+                        }
+                    } else {
+                        val archiveUri = target.archiveSession.sourceUri
+                            ?: throw java.io.IOException(
+                                "The embedded MDZip has no writable source file."
+                            )
+                        MdzipManager.save(
+                            this@MainActivity,
+                            target.archiveSession,
+                            target.archiveSession.markdownContent,
+                            archiveUri
+                        )
+                    }
+                } else if (MdzipManager.isMdzipFileName(fileName)) {
                     MdzipManager.save(
                         this@MainActivity,
                         getEmbeddedMdzipSession(targetUri),
@@ -5623,37 +5684,37 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         @JavascriptInterface
         fun resolveEmbeddedAssetUrl(
             relativeLink: String,
-            embeddedDocumentLink: String,
+            sourceContextJson: String,
             documentSessionId: String?
         ): String {
             if (documentSessionId != currentDocumentSessionId) return ""
             return runCatching {
-                val sourceUri = embeddedMediaBaseFor(embeddedDocumentLink)
-                    ?.let { resolveEmbeddedDocumentUri(it.toString()) }
-                    ?: resolveEmbeddedDocumentUri(embeddedDocumentLink)
-                    ?: return ""
-                val sourceName = getFileNameFromUri(sourceUri)
-                if (MdzipManager.isMdzipFileName(sourceName)) {
-                    val sourceSession = getEmbeddedMdzipSession(sourceUri)
-                    return MdzipManager.assetUrl(sourceSession, relativeLink).orEmpty()
+                val sourceLinks = parseEmbeddedSourceLinks(sourceContextJson) ?: return ""
+                if (sourceLinks.isNotEmpty()) {
+                    when (val source = resolveEmbeddedSourceContext(sourceLinks) ?: return "") {
+                        is EmbeddedDocumentSourceContext.MdzipFile ->
+                            return MdzipManager.assetUrl(
+                                source.session,
+                                source.markdownPath,
+                                relativeLink
+                            ).orEmpty()
+                        is EmbeddedDocumentSourceContext.ExternalFile -> {
+                            val location = MarkdownAssetManager.locateDocument(
+                                this@MainActivity,
+                                source.uri,
+                                requireWrite = false
+                            ) ?: return ""
+                            return MarkdownAssetManager.previewAssetUrl(
+                                this@MainActivity,
+                                location,
+                                currentDocumentSessionId,
+                                relativeLink
+                            ).orEmpty()
+                        }
+                    }
                 }
 
-                if (
-                    currentDocumentFormat == DocumentFormat.MDZIP &&
-                    !embeddedDocumentLink.startsWith("content://", ignoreCase = true)
-                ) {
-                    val parentSession = currentMdzipSession ?: return ""
-                    val embeddedEntryPoint = MdzipManager.resolveRelativeArchivePath(
-                        parentSession.entryPoint,
-                        embeddedDocumentLink
-                    ) ?: return ""
-                    return MdzipManager.assetUrl(
-                        parentSession,
-                        embeddedEntryPoint,
-                        relativeLink
-                    ).orEmpty()
-                }
-
+                val sourceUri = resolveEmbeddedDocumentUri(relativeLink) ?: return ""
                 val location = MarkdownAssetManager.locateDocument(
                     this@MainActivity,
                     sourceUri,
@@ -5668,22 +5729,171 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }.getOrDefault("")
         }
 
-        private fun resolveEmbeddedDocumentUri(relativeLink: String): Uri? {
+        private fun parseEmbeddedSourceLinks(sourceContextJson: String?): List<String>? {
+            if (sourceContextJson.isNullOrBlank()) return emptyList()
+            val trimmed = sourceContextJson.trim()
+            if (!trimmed.startsWith("[")) return listOf(trimmed)
+            return try {
+                val sourceLinks = JSONArray(trimmed)
+                if (sourceLinks.length() > 4) return null
+                val links = mutableListOf<String>()
+                for (index in 0 until sourceLinks.length()) {
+                    val link = sourceLinks.getString(index).trim()
+                    if (link.isBlank()) return null
+                    links += link
+                }
+                links
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        private fun resolveEmbeddedSourceContext(
+            sourceLinks: List<String>
+        ): EmbeddedDocumentSourceContext? {
+            var source: EmbeddedDocumentSourceContext = when (currentDocumentFormat) {
+                DocumentFormat.MARKDOWN ->
+                    currentFileUri?.let { EmbeddedDocumentSourceContext.ExternalFile(it) }
+                        ?: return null
+                DocumentFormat.MDZIP ->
+                    currentMdzipSession?.let {
+                        EmbeddedDocumentSourceContext.MdzipFile(it, it.entryPoint)
+                    } ?: return null
+                DocumentFormat.TEXT_PACK -> return null
+            }
+
+            for ((index, link) in sourceLinks.withIndex()) {
+                source = resolveEmbeddedSourceChild(
+                    source,
+                    link,
+                    useMediaBase = index == 0 &&
+                        currentDocumentFormat == DocumentFormat.MARKDOWN
+                ) ?: return null
+            }
+            return source
+        }
+
+        private fun resolveEmbeddedSourceChild(
+            parent: EmbeddedDocumentSourceContext,
+            relativeLink: String,
+            useMediaBase: Boolean
+        ): EmbeddedDocumentSourceContext? {
+            val targetUri = when (parent) {
+                is EmbeddedDocumentSourceContext.ExternalFile ->
+                    resolveExternalEmbeddedDocumentUri(parent.uri, relativeLink)
+                        ?: return null
+                is EmbeddedDocumentSourceContext.MdzipFile -> {
+                    val archivePath = MdzipManager.resolveRelativeArchivePath(
+                        parent.markdownPath,
+                        relativeLink
+                    ) ?: return null
+                    val file = MdzipManager.assetArchiveFile(parent.session, archivePath)
+                        ?: return null
+                    embeddedFileProviderUri(file) ?: return null
+                }
+            }
+
+            val mappedMediaUri = if (useMediaBase) {
+                embeddedMediaBaseFor(relativeLink)
+                    ?.let { resolveEmbeddedContentUri(it.toString()) }
+            } else {
+                null
+            }
+            val resolvedUri = mappedMediaUri ?: targetUri
+            val fileName = getFileNameFromUri(resolvedUri)
+            return if (MdzipManager.isMdzipFileName(fileName)) {
+                val session = runCatching { getEmbeddedMdzipSession(resolvedUri) }.getOrNull()
+                    ?: return null
+                EmbeddedDocumentSourceContext.MdzipFile(session, session.entryPoint)
+            } else {
+                when (parent) {
+                    is EmbeddedDocumentSourceContext.ExternalFile ->
+                        EmbeddedDocumentSourceContext.ExternalFile(resolvedUri)
+                    is EmbeddedDocumentSourceContext.MdzipFile -> {
+                        val archivePath = MdzipManager.resolveRelativeArchivePath(
+                            parent.markdownPath,
+                            relativeLink
+                        ) ?: return null
+                        EmbeddedDocumentSourceContext.MdzipFile(parent.session, archivePath)
+                    }
+                }
+            }
+        }
+
+        private fun resolveExternalEmbeddedDocumentUri(
+            parentUri: Uri,
+            relativeLink: String
+        ): Uri? {
+            resolveEmbeddedContentUri(relativeLink)?.let { return it }
+            val location = MarkdownAssetManager.locateDocument(
+                this@MainActivity,
+                parentUri,
+                requireWrite = false
+            ) ?: return null
+            return MarkdownAssetManager.resolveImageUri(
+                this@MainActivity,
+                location,
+                relativeLink
+            )
+        }
+
+        private fun resolveEmbeddedDocumentTarget(
+            relativeLink: String,
+            sourceContextJson: String?
+        ): ResolvedEmbeddedDocument? {
+            val sourceLinks = parseEmbeddedSourceLinks(sourceContextJson) ?: return null
+            if (sourceLinks.isEmpty() || currentDocumentFormat == DocumentFormat.TEXT_PACK) {
+                val targetUri = resolveEmbeddedDocumentUri(relativeLink) ?: return null
+                val archiveSession = currentMdzipSession
+                    ?.takeIf { currentDocumentFormat == DocumentFormat.MDZIP }
+                val archivePath = archiveSession?.let {
+                    MdzipManager.resolveRelativeArchivePath(it.entryPoint, relativeLink)
+                }
+                return ResolvedEmbeddedDocument(targetUri, archiveSession, archivePath)
+            }
+
+            val parent = resolveEmbeddedSourceContext(sourceLinks) ?: return null
+            if (parent is EmbeddedDocumentSourceContext.MdzipFile) {
+                val archivePath = MdzipManager.resolveRelativeArchivePath(
+                    parent.markdownPath,
+                    relativeLink
+                ) ?: return null
+                val file = MdzipManager.assetArchiveFile(parent.session, archivePath)
+                    ?: return null
+                val uri = embeddedFileProviderUri(file) ?: return null
+                return ResolvedEmbeddedDocument(uri, parent.session, archivePath)
+            }
+
+            parent as EmbeddedDocumentSourceContext.ExternalFile
+            val uri = resolveExternalEmbeddedDocumentUri(parent.uri, relativeLink) ?: return null
+            return ResolvedEmbeddedDocument(uri)
+        }
+
+        private fun embeddedFileProviderUri(file: java.io.File): Uri? = runCatching {
+            androidx.core.content.FileProvider.getUriForFile(
+                this@MainActivity,
+                "${packageName}.diagnostics.provider",
+                file
+            )
+        }.getOrNull()
+
+        private fun resolveEmbeddedContentUri(relativeLink: String): Uri? {
             val decodedLink = if (relativeLink.startsWith("content://", ignoreCase = true)) {
                 relativeLink
             } else {
                 Uri.decode(relativeLink)
             }
             val directUri = runCatching { Uri.parse(decodedLink) }.getOrNull()
-            if (directUri?.scheme == "content") {
-                val name = getFileNameFromUri(directUri)
-                return directUri.takeIf {
-                    !isUnsupportedEmbeddedFileName(name) &&
-                        hasPersistedReadAccess(directUri)
-                }
+            if (directUri?.scheme != "content") return null
+            val name = getFileNameFromUri(directUri)
+            return directUri.takeIf {
+                !isUnsupportedEmbeddedFileName(name) &&
+                    hasPersistedReadAccess(directUri)
             }
-            return resolveAttachmentUri(relativeLink)
         }
+
+        private fun resolveEmbeddedDocumentUri(relativeLink: String): Uri? =
+            resolveEmbeddedContentUri(relativeLink) ?: resolveAttachmentUri(relativeLink)
 
         private fun resolveAttachmentUri(relativeLink: String): Uri? {
             val file = when (currentDocumentFormat) {
