@@ -141,6 +141,7 @@ import { tags } from '@lezer/highlight';
 import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
 
 let activeAdapter = null;
+let lastFocusedEditorView = null;
 let embeddedContentInteractionMode = 'checkboxes';
 const pendingEmbeddedDocumentEdits = new Map();
 let activeEmbeddedEditSaveWarning = null;
@@ -148,6 +149,31 @@ let activeEmbeddedEditSaveWarningKey = null;
 let refreshOpenTocPanel = null;
 let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
+
+function getUndoTargetView(parentView) {
+  if (!parentView) return null;
+  const focusedView = lastFocusedEditorView;
+  if (
+    focusedView &&
+    focusedView !== parentView &&
+    focusedView.dom?.isConnected &&
+    parentView.dom?.contains(focusedView.dom) &&
+    focusedView.dom?.closest?.('.cm-embedded-document-content')
+  ) {
+    return focusedView;
+  }
+  return parentView;
+}
+
+function clearLastFocusedEditorViewWithin(view) {
+  if (
+    view?.dom &&
+    lastFocusedEditorView?.dom &&
+    view.dom.contains(lastFocusedEditorView.dom)
+  ) {
+    lastFocusedEditorView = null;
+  }
+}
 let isProgrammaticChange = false;
 let pendingMarkdown = null;
 let isLineWrapEnabled = true;
@@ -2118,7 +2144,9 @@ class EmbeddedDocumentWidget extends WidgetType {
   destroy(dom) {
     dom?._clearEmbeddedPressTimer?.();
     dom?.__flushEmbeddedDocumentSave?.();
-    dom?.__embeddedDocumentEditor?.destroy?.();
+    const embeddedEditor = dom?.__embeddedDocumentEditor;
+    clearLastFocusedEditorViewWithin(embeddedEditor);
+    embeddedEditor?.destroy?.();
   }
 
   ignoreEvent() {
@@ -5178,14 +5206,16 @@ class CodeMirrorAdapter {
 
 
   undo() {
-    if (this.view && typeof undoDepth === 'function' && undoDepth(this.view.state) > 0) {
-      cmUndo(this.view);
+    const targetView = getUndoTargetView(this.view);
+    if (targetView && typeof undoDepth === 'function' && undoDepth(targetView.state) > 0) {
+      cmUndo(targetView);
     }
   }
 
   redo() {
-    if (this.view && typeof redoDepth === 'function' && redoDepth(this.view.state) > 0) {
-      cmRedo(this.view);
+    const targetView = getUndoTargetView(this.view);
+    if (targetView && typeof redoDepth === 'function' && redoDepth(targetView.state) > 0) {
+      cmRedo(targetView);
     }
   }
 
@@ -5353,6 +5383,7 @@ class CodeMirrorAdapter {
     }
 
     if (this.view) {
+      clearLastFocusedEditorViewWithin(this.view);
       this.view.destroy();
       this.view = null;
     }
@@ -8954,6 +8985,16 @@ function setupFloatingToggle() {
 }
 
 function setupKeyboardShortcuts() {
+  if (!document.__wmdxUndoFocusTrackingInstalled) {
+    document.__wmdxUndoFocusTrackingInstalled = true;
+    document.addEventListener('focusin', event => {
+      const focusedView = EditorView.findFromDOM(event.target);
+      if (focusedView?.contentDOM?.contains(event.target)) {
+        lastFocusedEditorView = focusedView;
+      }
+    }, true);
+  }
+
   window.addEventListener('keydown', (e) => {
     if (e.target?.closest?.('input, textarea, select')) return;
 
