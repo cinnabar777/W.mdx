@@ -526,22 +526,110 @@ The old `md...` entries were text-expansion abbreviations, not Markdown syntax.
 Any expansion depends on your keyboard or an external text expander; Wmdx does
 not define those abbreviations.
 
-HTML is not Markdown. Some renderers accept inline HTML such as
-`<u>underlined text</u>`, `<span style="color: red;">colored text</span>`,
-`<sub>2</sub>`, and
-`<sup>2</sup>`, but its appearance and support depend on the renderer. For
-consistent formatting in W.mdx, use the Wmdx underline, highlighter, and pen
-syntax above.
+HTML is not Markdown. W.mdx recognizes `<u>underlined text</u>` as underline
+formatting, but does not render arbitrary HTML blocks, elements, or attributes.
+Use the Wmdx underline, highlighter, and pen syntax above for other formatting.
 
-W.mdx supports local document embeds using the Obsidian-style `![[path]]` syntax
-described above. The following Obsidian or plugin features are not currently
-supported:
+## Markdown dialect compatibility
 
-- `%% comments %%`
-- Obsidian queries such as fenced `query` blocks
-- Template variables such as `{{title}}`
-- Obsidian tags and YAML properties
+W.mdx is a combination rather than a strict implementation of one flavor: it
+uses a CommonMark-based parser with GFM extensions, Wmdx formatting, and selected
+Obsidian conventions. “Supported” below means the syntax is implemented in the
+current editor; it does not claim exact compatibility with every edge case in
+another renderer.
 
-W.mdx does not interpret these as Obsidian features. A `#tag` in ordinary text
-is just text here; a `#` followed by a space at the start of a line begins a
-Markdown heading.
+### CommonMark
+
+**Implemented for everyday documents:** headings, paragraphs, lists, block
+quotes, code spans and blocks, emphasis, links, images, escapes, thematic
+breaks, reference links, and autolinks.
+
+**Still to do for full compatibility:**
+
+- Run the official CommonMark conformance examples against W.mdx and fix any
+  behavioral differences. The parser is CommonMark-based, but W.mdx does not
+  currently claim full spec conformance.
+- Match CommonMark's raw HTML rendering. W.mdx only gives `<u>...</u>` its
+  underline behavior; arbitrary HTML elements and HTML blocks are not rendered
+  as HTML.
+- Keep the optional **Use Wmdx syntax** underline setting in mind: when enabled,
+  `_text_` means underline rather than CommonMark italic. Use `*text*` for
+  portable italics in that setting.
+
+### GitHub Flavored Markdown
+
+**Implemented:** pipe tables, task-list checkboxes, strikethrough, and GFM
+autolinks. Tables and tasks are editable in W.mdx.
+
+**Still to do for full compatibility:**
+
+- Run the official GFM examples and verify edge cases for tables, tasks,
+  strikethrough, autolinks, and links.
+- GitHub.com alerts share the `> [!type]` callout marker with W.mdx, but exact
+  alert types and rendering are not a compatibility promise.
+- Match GFM's raw-HTML handling. W.mdx does not render arbitrary raw HTML, so
+  HTML-containing documents may look different.
+- GitHub-specific issue, pull-request, commit, and `@mention` links are not
+  general Markdown syntax; W.mdx does not resolve them to GitHub or send
+  notifications.
+
+### Obsidian Flavored Markdown
+
+**Implemented:** `[[target]]` wiki links, aliases such as
+`[[target|display text]]`, current-document heading links such as
+`[[#Heading]]`, whole-document `![[path]]` embeds with optional aliases,
+Obsidian-style callout markers, highlights, task lists, and reference
+footnotes.
+
+**Not implemented or only partially compatible:**
+
+- Heading and block transclusion such as `![[note#Heading]]` and
+  `![[note#^block]]`; W.mdx embeds the whole supported document.
+- Obsidian's `![[image.png]]`, audio, video, and PDF embed forms. Use standard
+  Markdown image syntax and W.mdx's Markdown media links or attachment links.
+- `%% comments %%`, semantic tags (a `#tag` is plain text), YAML
+  properties/frontmatter, math, Mermaid diagrams, and plugin-specific syntax.
+- Inline footnotes such as `^[note]`; W.mdx supports reference footnotes, with
+  four-space-indented continuation lines.
+- Exact Obsidian vault resolution and app behavior. W.mdx's file access and
+  linked-file behavior follow its own folder permissions and document settings.
+
+Callouts deliberately share Obsidian's `> [!type]` form; W.mdx also supports
+nested callouts and `+`/`-` initial folding markers. This is syntax overlap, not
+full Obsidian callout or plugin parity.
+
+### Other dialects worth tracking
+
+**Pandoc Markdown** is the most useful additional comparison if W.mdx needs
+academic or publishing workflows. It has configurable extensions for metadata
+blocks, citations, math, definition lists, and several table forms. W.mdx does
+not currently implement those features as a Pandoc-compatible set. Pandoc is
+modular, so a future target should name the specific extensions rather than
+promise compatibility with all of Pandoc Markdown.
+
+**Markdown Extra** is another established extension set, especially in older
+PHP Markdown documents. Its definition lists, abbreviations, attributes, and
+HTML-related behavior overlap with Pandoc's broader set; it is a lower-priority
+separate target unless users need to exchange those documents.
+
+**MDX** is not a plain-Markdown flavor: it combines Markdown with JSX and
+JavaScript expressions. It is not a compatibility target for W.mdx documents.
+
+**Suggested scope:** treat CommonMark core plus GFM's portable extensions and
+the documented Obsidian subset above as the main compatibility targets. Track
+Pandoc as a possible later target; add other syntax only when a concrete
+import/export workflow needs it.
+
+### Specifications and references
+
+- [CommonMark 0.31.2 specification](https://spec.commonmark.org/0.31.2/)
+- [GitHub Flavored Markdown specification](https://github.github.com/gfm/)
+- [Obsidian basic syntax](https://obsidian.md/help/syntax)
+- [Obsidian advanced syntax](https://obsidian.md/help/advanced-syntax)
+- [Obsidian internal links](https://obsidian.md/help/links) and
+  [embeds](https://obsidian.md/help/embeds)
+- [Obsidian callouts](https://obsidian.md/help/callouts) and
+  [properties](https://obsidian.md/help/properties)
+- [Pandoc's Markdown](https://pandoc.org/MANUAL.html#pandocs-markdown)
+- [Markdown Extra](https://michelf.ca/projects/php-markdown/extra/)
+- [MDX: Markdown for the component era](https://mdxjs.com/docs/what-is-mdx/)
