@@ -21,6 +21,7 @@ test('CommonMark reference links and CommonMark/GFM autolinks resolve targets', 
     '<https://commonmark.org/>',
     '<reader@example.com>',
     'www.commonmark.org https://github.com/ reader@example.com',
+    '[unsafe](javascript:alert(1))',
     '',
     '[commonmark-spec]: https://spec.commonmark.org/0.31.2/'
   ].join('\n');
@@ -31,6 +32,7 @@ test('CommonMark reference links and CommonMark/GFM autolinks resolve targets', 
   const tree = syntaxTree(state);
   const targets = collectMarkdownReferenceTargets(state.doc, tree);
   const resolvedLinks = [];
+  let unsafeLinkInfo = 'not-found';
 
   tree.iterate({
     enter(node) {
@@ -38,6 +40,7 @@ test('CommonMark reference links and CommonMark/GFM autolinks resolve targets', 
       const raw = state.doc.sliceString(node.from, node.to);
       if (node.name === 'URL' && !raw.includes('@') && !raw.startsWith('www.')) return;
       const info = getMarkdownLinkInfo(node, state.doc, targets);
+      if (node.name === 'Link' && raw.startsWith('[unsafe]')) unsafeLinkInfo = info;
       if (info) resolvedLinks.push({ raw, target: info.target });
     }
   });
@@ -63,6 +66,7 @@ test('CommonMark reference links and CommonMark/GFM autolinks resolve targets', 
     link.raw === 'reader@example.com' &&
     link.target === 'mailto:reader@example.com'
   ));
+  assert.equal(unsafeLinkInfo, null);
 });
 
 test('rendering and interaction regressions stay covered without changing table editing', () => {
@@ -72,8 +76,11 @@ test('rendering and interaction regressions stay covered without changing table 
 
   assert.match(main, /node\.name === 'LinkReference'/);
   assert.match(main, /node\.name === 'Autolink'/);
+  assert.match(main, /tagName: 'a'[\s\S]*?'data-wmdx-link-target'/);
+  assert.match(main, /a\.cm-link\[data-wmdx-link-target\]/);
   assert.match(main, /new WikilinkWidget\([\s\S]*?embeddedDocumentSourceFacet/);
   assert.match(main, /openMarkdownLink\?\.\(/);
+  assert.match(main, /const isBlockquoteLine = insideBlockquote \|\| Boolean\(quotePrefix\)/);
   assert.match(main, /activeSelectionDragView = this\.view/);
   assert.match(main, /window\.addEventListener\('pointermove', onGlobalPointerMove, true\)/);
   assert.doesNotMatch(main, /EmptyLineCursorAnchorWidget|emptyLineCursorAnchorWidget/);
@@ -86,6 +93,9 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(styles, /cm-link-reference-definition\s*\{\s*display:\s*none/);
   assert.match(styles, /--blockquote-depth-offset/);
   assert.match(styles, /margin-left:\s*calc\([\s\S]*?blockquote-depth-offset/);
+  assert.match(styles, /cm-line\.cm-blockquote\[data-blockquote-depth\][\s\S]*?::before/);
+  assert.match(styles, /cm-paragraph-first\.cm-blockquote[\s\S]*?padding-top:/);
+  assert.match(styles, /cm-paragraph-last\.cm-blockquote[\s\S]*?padding-bottom:/);
   assert.match(main, /Table cell\/editing|Table rendering in WYSIWYG/);
 });
 

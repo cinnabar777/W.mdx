@@ -51,6 +51,13 @@ function normalizeAutolinkTarget(target) {
   return value;
 }
 
+function normalizeSupportedTarget(target) {
+  const value = normalizeAutolinkTarget(target);
+  if (/^(?:https?:|mailto:)/i.test(value) || value.startsWith('#')) return value;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith('//')) return null;
+  return value;
+}
+
 function referenceTargetForLink(raw, labelEnd, referenceTargets) {
   const suffix = raw.slice(labelEnd + 1);
   if (suffix.startsWith('(')) {
@@ -79,15 +86,19 @@ export function getMarkdownLinkInfo(node, doc, referenceTargets = new Map()) {
 
   const raw = doc.sliceString(node.from, node.to);
   if (node.name === 'Autolink') {
-    const target = normalizeAutolinkTarget(raw.replace(/^<|>$/g, ''));
+    const target = normalizeSupportedTarget(raw.replace(/^<|>$/g, ''));
     return node.to - node.from > 2
-      ? { target, labelFrom: node.from + 1, labelTo: node.to - 1 }
+      ? target
+        ? { target, labelFrom: node.from + 1, labelTo: node.to - 1 }
+        : null
       : null;
   }
 
   if (node.name === 'URL') {
+    const target = normalizeSupportedTarget(raw);
+    if (!target) return null;
     return {
-      target: normalizeAutolinkTarget(raw),
+      target,
       labelFrom: node.from,
       labelTo: node.to
     };
@@ -99,6 +110,8 @@ export function getMarkdownLinkInfo(node, doc, referenceTargets = new Map()) {
 
   const labelFrom = node.from + 1;
   const labelTo = node.from + labelEnd;
-  const target = referenceTargetForLink(raw, labelEnd, referenceTargets);
+  const target = normalizeSupportedTarget(
+    referenceTargetForLink(raw, labelEnd, referenceTargets) || ''
+  );
   return target ? { target, labelFrom, labelTo } : null;
 }

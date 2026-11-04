@@ -2533,10 +2533,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
             if (linkInfo) {
               builder.push(
-                Decoration.mark({ class: 'cm-link' })
+                Decoration.mark({
+                  tagName: 'a',
+                  class: 'cm-link',
+                  attributes: {
+                    href: linkInfo.target,
+                    'data-wmdx-link-target': linkInfo.target
+                  }
+                })
                   .range(linkInfo.labelFrom, linkInfo.labelTo)
               );
-              if (!isNodeActive && !isPureWysiwyg) {
+              if (!isPureWysiwyg) {
                 hideSyntax(node.from, linkInfo.labelFrom);
                 hideSyntax(linkInfo.labelTo, node.to);
               }
@@ -2787,10 +2794,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             if (linkInfo) {
               const { labelFrom, labelTo } = linkInfo;
               builder.push(
-                Decoration.mark({ class: 'cm-link' }).range(labelFrom, labelTo)
+                Decoration.mark({
+                  tagName: 'a',
+                  class: 'cm-link',
+                  attributes: {
+                    href: linkInfo.target,
+                    'data-wmdx-link-target': linkInfo.target
+                  }
+                }).range(labelFrom, labelTo)
               );
 
-              if (!isNodeActive && !isPureWysiwyg) {
+              if (!isPureWysiwyg) {
                 if (labelFrom > node.from) {
                   hideSyntax(node.from, labelFrom);
                 }
@@ -4196,12 +4210,15 @@ export function buildPersistentLayoutDecorations(state) {
 
     let calloutInfo = null;
     const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
-    if (!insideBlockquote || !quotePrefix) {
+    const isBlockquoteLine = insideBlockquote || Boolean(quotePrefix);
+    if (!isBlockquoteLine) {
       activeCallouts.length = 0;
-      if (!insideBlockquote) currentBlockquoteDepth = 0;
+      currentBlockquoteDepth = 0;
     } else {
-      const depth = (quotePrefix[1].match(/>/g) || []).length;
-      currentBlockquoteDepth = depth;
+      const depth = quotePrefix
+        ? (quotePrefix[1].match(/>/g) || []).length
+        : Math.max(1, currentBlockquoteDepth);
+      if (quotePrefix) currentBlockquoteDepth = depth;
       while (
         activeCallouts.length > 0 &&
         activeCallouts[activeCallouts.length - 1].depth > depth
@@ -4209,7 +4226,7 @@ export function buildPersistentLayoutDecorations(state) {
         activeCallouts.pop();
       }
 
-      const opener = line.text.match(
+      const opener = quotePrefix && line.text.match(
         /^(\s*(?:>\s*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i
       );
       if (opener) {
@@ -4247,7 +4264,7 @@ export function buildPersistentLayoutDecorations(state) {
         type: calloutInfo.type,
         depth: calloutInfo.depth
       });
-    } else if (insideBlockquote) {
+    } else if (isBlockquoteLine) {
       addClass(number, 'cm-blockquote');
       blockquoteDepthByLine.set(
         number,
@@ -5228,49 +5245,29 @@ class CodeMirrorAdapter {
       cancelEmptyAreaLongPress();
     });
     this.markdownLinkClickHandler = event => {
-      const element = event.target?.closest?.('.cm-link:not(.cm-wikilink)');
-      if (!element || !this.view?.contentDOM?.contains(element)) return;
-
-      const position = this.view.posAtCoords({
-        x: event.clientX,
-        y: event.clientY
-      });
-      if (position == null) return;
-
-      const tree = syntaxTree(this.view.state);
-      const resolved = tree.resolveInner(position, 1);
-      let linkNode = null;
-      for (let node = resolved; node; node = node.parent) {
-        if (node.name === 'Link' || node.name === 'Autolink') {
-          linkNode = node;
-          break;
-        }
-        if (node.name === 'URL' && !linkNode) linkNode = node;
-      }
-      const references = collectMarkdownReferenceTargets(this.view.state.doc, tree);
-      const linkInfo = getMarkdownLinkInfo(
-        linkNode,
-        this.view.state.doc,
-        references
+      const element = event.target?.closest?.(
+        'a.cm-link[data-wmdx-link-target]'
       );
-      if (!linkInfo?.target) return;
+      if (!element || !this.view?.contentDOM?.contains(element)) return;
+      const target = element.getAttribute('data-wmdx-link-target');
+      if (!target) return;
 
       event.preventDefault();
       event.stopPropagation();
-      if (linkInfo.target.startsWith('#')) {
-        scrollToHeading(this.view, linkInfo.target.slice(1));
+      if (target.startsWith('#')) {
+        scrollToHeading(this.view, target.slice(1));
         return;
       }
 
       const nativeBridge = window.AndroidNative;
       if (nativeBridge?.openMarkdownLink) {
         nativeBridge.openMarkdownLink(
-          linkInfo.target,
+          target,
           nativeBridge.getCurrentDocumentSessionId?.(),
           JSON.stringify(this.view.state.facet(embeddedDocumentSourceFacet))
         );
-      } else if (/^(?:https?:|mailto:)/i.test(linkInfo.target)) {
-        window.open(linkInfo.target, '_blank', 'noopener');
+      } else if (/^(?:https?:|mailto:)/i.test(target)) {
+        window.open(target, '_blank', 'noopener');
       }
     };
     this.view.contentDOM.addEventListener(
