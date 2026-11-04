@@ -2,6 +2,7 @@ import { EditorState, EditorSelection, Compartment, Transaction, StateField, Sta
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
+import { getUnescapedPipeOffsets, hasTrailingUnescapedPipe, isEscapedPipe } from './tableModule.js';
 import { separateTableMenuFromFloatingToolbar } from './toolbarOverlap.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
@@ -3223,14 +3224,7 @@ function focusEditorAfterCommand(view, options = {}) {
   view?.focus();
 }
 
-export function isEscapedPipe(text, index) {
-  if (text[index] !== '|') return false;
-  let backslashes = 0;
-  for (let i = index - 1; i >= 0 && text[i] === '\\'; i--) {
-    backslashes++;
-  }
-  return backslashes % 2 === 1;
-}
+export { isEscapedPipe };
 
 export function trimCellRange(text, start, end, lineFrom) {
   const cellStart = start;
@@ -3259,14 +3253,11 @@ export function trimCellRange(text, start, end, lineFrom) {
 
 export function parsePipeRow(line) {
   const text = line.text;
-  const pipeOffsets = [];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '|' && !isEscapedPipe(text, i)) pipeOffsets.push(i);
-  }
+  const pipeOffsets = getUnescapedPipeOffsets(text);
   if (pipeOffsets.length === 0) return null;
 
   const hasLeadingPipe = /^\s*\|/.test(text);
-  const hasTrailingPipe = /\|\s*$/.test(text);
+  const hasTrailingPipe = hasTrailingUnescapedPipe(text, pipeOffsets);
   const firstCellStart = hasLeadingPipe ? pipeOffsets[0] + 1 : 0;
   const lastCellEnd = hasTrailingPipe
     ? pipeOffsets[pipeOffsets.length - 1]

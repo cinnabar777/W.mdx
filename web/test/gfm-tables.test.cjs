@@ -121,3 +121,41 @@ test('GFM table parsing keeps block quotes outside tables and rejects mismatched
     'a header with a different number of cells from the delimiter is not a GFM table'
   );
 });
+
+test('an escaped pipe at row end remains content, not the table closing boundary', async () => {
+  const {
+    TableModel,
+    getUnescapedPipeOffsets,
+    hasTrailingUnescapedPipe
+  } = await import('../src/tableModule.js');
+  const rowWithoutClosingPipe = '| Alpha | literal \\|   ';
+  const offsets = getUnescapedPipeOffsets(rowWithoutClosingPipe);
+
+  assert.equal(
+    hasTrailingUnescapedPipe(rowWithoutClosingPipe, offsets),
+    false,
+    'an escaped pipe followed only by whitespace is cell content'
+  );
+  assert.equal(
+    hasTrailingUnescapedPipe('| Alpha | literal \\| |', getUnescapedPipeOffsets('| Alpha | literal \\| |')),
+    true,
+    'an unescaped pipe after the cell content is the closing boundary'
+  );
+
+  const model = TableModel.parse([
+    '| Name | Value |',
+    '| --- | --- |',
+    '| Alpha | literal \\|'
+  ].join('\n'));
+  assert.deepEqual(model?.rows[1], ['Alpha', 'literal \\|']);
+
+  const mainSource = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '../src/main.js'),
+    'utf8'
+  );
+  assert.match(
+    mainSource,
+    /const hasTrailingPipe = hasTrailingUnescapedPipe\(text, pipeOffsets\)/,
+    'WYSIWYG table navigation uses escape-aware trailing-pipe detection'
+  );
+});

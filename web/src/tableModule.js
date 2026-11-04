@@ -7,21 +7,30 @@ export function isEscapedPipe(text, index) {
   return backslashes % 2 === 1;
 }
 
-export function parsePipeRow(lineText) {
-  const pipeOffsets = [];
-  for (let i = 0; i < lineText.length; i++) {
-    if (lineText[i] === '|' && !isEscapedPipe(lineText, i)) pipeOffsets.push(i);
+export function getUnescapedPipeOffsets(text) {
+  const offsets = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '|' && !isEscapedPipe(text, i)) offsets.push(i);
   }
+  return offsets;
+}
+
+export function hasTrailingUnescapedPipe(text, pipeOffsets = getUnescapedPipeOffsets(text)) {
+  const trailingWhitespaceOffset = text.search(/\s*$/);
+  return pipeOffsets.length > 0 &&
+    pipeOffsets[pipeOffsets.length - 1] === trailingWhitespaceOffset - 1;
+}
+
+export function parsePipeRow(lineText) {
+  const pipeOffsets = getUnescapedPipeOffsets(lineText);
   if (pipeOffsets.length === 0) {
     const cell = lineText.trim();
     return cell ? [cell] : null;
   }
 
   const firstContentOffset = lineText.search(/\S|$/);
-  const trailingWhitespaceOffset = lineText.search(/\s*$/);
   const hasLeadingPipe = pipeOffsets[0] === firstContentOffset;
-  const hasTrailingPipe =
-    pipeOffsets[pipeOffsets.length - 1] === trailingWhitespaceOffset - 1;
+  const hasTrailingPipe = hasTrailingUnescapedPipe(lineText, pipeOffsets);
 
   const firstCellStart = hasLeadingPipe ? pipeOffsets[0] + 1 : 0;
   const lastCellEnd = hasTrailingPipe ? pipeOffsets[pipeOffsets.length - 1] : lineText.length;
