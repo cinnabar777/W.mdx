@@ -8,7 +8,8 @@ export class MdzipAttachmentWidget extends WidgetType {
     from,
     to,
     layout = null,
-    onEdit = null
+    onEdit = null,
+    sourceContext = []
   ) {
     super();
     this.label = label || 'Attachment';
@@ -23,6 +24,8 @@ export class MdzipAttachmentWidget extends WidgetType {
         : 'left'
     };
     this.onEdit = onEdit;
+    this.sourceContext = Array.isArray(sourceContext) ? [...sourceContext] : [];
+    this.sourceContextJson = JSON.stringify(this.sourceContext);
   }
 
   eq(other) {
@@ -33,7 +36,8 @@ export class MdzipAttachmentWidget extends WidgetType {
       other.from === this.from &&
       other.to === this.to &&
       other.layout.width === this.layout.width &&
-      other.layout.alignment === this.layout.alignment;
+      other.layout.alignment === this.layout.alignment &&
+      JSON.stringify(other.sourceContext) === JSON.stringify(this.sourceContext);
   }
 
   toDOM(view) {
@@ -82,7 +86,8 @@ export class MdzipAttachmentWidget extends WidgetType {
       hideActions();
       window.AndroidNative?.openAttachment?.(
         this.relativeLink,
-        this.documentSessionId
+        this.documentSessionId,
+        this.sourceContextJson
       );
     });
 

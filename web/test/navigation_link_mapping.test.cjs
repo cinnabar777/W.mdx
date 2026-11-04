@@ -54,7 +54,7 @@ test('Dialog cancellation leaves document and table untouched', () => {
   assert.strictEqual(beforeState, afterState);
 });
 
-test('Markdown parser recognizes stable syntax examples independent of the editable cheat sheet', () => {
+test('Markdown parser recognizes Obsidian-style embeds independent of the editable cheat sheet', () => {
   const sample = [
     '# Heading',
     '',
@@ -83,6 +83,7 @@ test('Markdown parser recognizes stable syntax examples independent of the edita
   for (const expectedNode of [
     'ATXHeading1',
     'FencedCode',
+    'Image',
     'Blockquote',
     'ListItem',
     'Link',
@@ -92,7 +93,7 @@ test('Markdown parser recognizes stable syntax examples independent of the edita
   ]) {
     assert.ok(nodeNames.has(expectedNode), `Markdown parser recognizes ${expectedNode}`);
   }
-  assert.match(sample, /!\[\[[^\]]+\]\]/, 'The sample includes an app-specific embedded-note link');
+  assert.match(sample, /!\[\[[^\]]+\]\]/, 'The sample includes an Obsidian-style embedded-note link');
 });
 
 test('main.js contains hideSyntax replacement decorations and selection snapshot handling', () => {

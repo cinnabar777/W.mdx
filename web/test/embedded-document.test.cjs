@@ -7,23 +7,20 @@ const projectRoot = path.resolve(__dirname, '..', '..');
 const readProjectFile = relativePath =>
   fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
 
-test('formats embedded Markdown and MDZip links while retaining media base metadata', async () => {
+test('formats and parses Obsidian-style embedded document links', async () => {
   const {
     formatMarkdownEmbeddedDocumentLink,
     parseMarkdownEmbeddedDocumentLink
   } = await import('../src/markdownMedia.js');
-  const originalFolder = 'content://provider/tree/folder/document/notes%3AProject.md';
   const markdown = formatMarkdownEmbeddedDocumentLink(
     'Project notes',
-    'assets/Project notes (final).md',
-    originalFolder
+    'assets/Project notes (final).md'
   );
 
-  assert.match(markdown, /^\[Project notes\]\(assets\/Project%20notes%20%28final%29\.md /);
+  assert.equal(markdown, '![[assets/Project notes (final).md|Project notes]]');
   assert.deepEqual(parseMarkdownEmbeddedDocumentLink(markdown), {
     label: 'Project notes',
-    url: 'assets/Project%20notes%20%28final%29.md',
-    mediaBaseUrl: originalFolder
+    url: 'assets/Project notes (final).md'
   });
   assert.deepEqual(
     parseMarkdownEmbeddedDocumentLink(
@@ -31,49 +28,65 @@ test('formats embedded Markdown and MDZip links while retaining media base metad
     ),
     {
       label: 'Archive',
-      url: 'attachments/Archive.mdz',
-      mediaBaseUrl: null
+      url: 'attachments/Archive.mdz'
     }
+  );
+  assert.equal(
+    formatMarkdownEmbeddedDocumentLink('Archive', 'attachments/Archive.mdz'),
+    '![[attachments/Archive.mdz]]'
+  );
+  assert.equal(
+    parseMarkdownEmbeddedDocumentLink(
+      formatMarkdownEmbeddedDocumentLink('A | B', 'assets/A B.md')
+    )?.label,
+    'A | B'
   );
 });
 
-test('text-based files and MDZip can be embedded, but legacy formats cannot', async () => {
+test('Obsidian embeds accept renderer-readable files and reject unsupported sources', async () => {
   const { parseMarkdownEmbeddedDocumentLink } =
     await import('../src/markdownMedia.js');
 
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Notes](assets/notes.txt "wmdx-embed")')?.url,
+    parseMarkdownEmbeddedDocumentLink('![[assets/notes.txt]]')?.url,
     'assets/notes.txt'
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Source](assets/MainActivity.kt "wmdx-embed")')?.url,
-    'assets/MainActivity.kt'
+    parseMarkdownEmbeddedDocumentLink('![[assets/MainActivity.kt|Source code]]')?.label,
+    'Source code'
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Readme](assets/README "wmdx-embed")')?.url,
+    parseMarkdownEmbeddedDocumentLink('![[assets/README]]')?.url,
     'assets/README'
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Legacy](assets/Legacy.textpack "wmdx-embed")'),
+    parseMarkdownEmbeddedDocumentLink('![[assets/Legacy.textpack]]'),
     null
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Legacy](assets/Legacy.textpack.zip "wmdx-embed")'),
+    parseMarkdownEmbeddedDocumentLink('![[assets/Legacy.textpack.zip]]'),
     null
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Old](assets/Old.mdx "wmdx-embed")'),
+    parseMarkdownEmbeddedDocumentLink('![[https://example.com/notes.md]]'),
     null
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Remote](https://example.com/notes.md "wmdx-embed")'),
-    null
+    parseMarkdownEmbeddedDocumentLink('![[assets/notes.md#Heading]]'),
+    null,
+    'heading and block selectors are not supported'
   );
+  assert.equal(parseMarkdownEmbeddedDocumentLink('![[assets/photo.png]]'), null);
   assert.equal(
     parseMarkdownEmbeddedDocumentLink(
-      '[Local](content%3A%2F%2Fprovider%2Fdocument%2Fid "wmdx-embed")'
+      '![[content://provider/document/id|Local]]'
     )?.url,
-    'content%3A%2F%2Fprovider%2Fdocument%2Fid'
+    'content://provider/document/id'
+  );
+  assert.equal(
+    parseMarkdownEmbeddedDocumentLink('[Notes](assets/notes.txt "wmdx-embed")'),
+    null,
+    'the old Wmdx-only marker is intentionally not supported'
   );
 });
 
@@ -103,6 +116,7 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(preview, /\{ id: 'embed', title: 'Embed Document', icon: svgIcons\.embed \}/);
   assert.match(main, /customHotkeys\.embed/);
   assert.match(main, /window\.AndroidNative\?\.loadEmbeddedMarkdown/);
+  assert.match(main, /node\.name === 'Link' \|\| node\.name === 'URL' \|\| node\.name === 'Image'/);
   assert.match(hotkeys, /app:key="pref_hotkey_embed"[\s\S]*?app:title="Document: Embed"/);
   assert.doesNotMatch(settings, /app:key="pref_embedded_document_method"/);
   assert.match(stylingPage, /app:key="pref_embedded_document_method_copy"[\s\S]*?android:defaultValue="true"/);
@@ -141,8 +155,11 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   );
   assert.match(
     main,
-    /unavailable\.textContent =\s*loadErrorMessage \|\| 'Could not load this embedded document\.'/
+    /appendUnavailableNotice\(\s*loadErrorMessage \|\| 'Could not load this embedded document\.'\s*\)/
   );
+  assert.match(main, /const appendUnavailableNotice = message =>/);
+  assert.match(main, /'white-space:normal'[\s\S]*?'overflow-wrap:anywhere'/);
+  assert.match(main, /'width:100%'[\s\S]*?'max-width:100%'[\s\S]*?'min-width:0'/);
   assert.match(main, /width:calc\(100% \+ var\(--body-margin-left,16px\) \+ var\(--body-margin-right,16px\)\)/);
   assert.match(main, /margin-left:calc\(-1 \* var\(--body-margin-left,16px\)\)/);
   assert.match(main, /childEditor\.scrollDOM\.style\.background = 'transparent'/);
@@ -155,9 +172,18 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
     native,
     /EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE[\s\S]*?Settings > File & Folder Access[\s\S]*?Read access is enough to display it/
   );
+  assert.match(
+    native,
+    /var loadStage = "resolve"[\s\S]*?loadStage = if \(isMdzip\) "open_mdzip" else "read_text"[\s\S]*?stage=\$loadStage error=\$\{error\.javaClass\.simpleName\}/
+  );
+  assert.match(
+    native,
+    /loadStage == "resolve" &&[\s\S]*?error is java\.io\.FileNotFoundException[\s\S]*?EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE/
+  );
   assert.match(native, /\.put\("message", message\)/);
   assert.match(native, /fun saveEmbeddedMarkdown/);
   assert.match(native, /fun resolveEmbeddedAssetUrl/);
+  assert.match(native, /rememberEmbeddedMediaBase\(link, mediaBaseUrl\)/);
 });
 
 test('embedded Markdown renders GFM task lists without enabling table changes', async () => {
@@ -230,22 +256,61 @@ test('unset embedded-document source routes ordinary media through the normal re
 
   assert.match(
     main,
-    /const embeddedDocumentSourceFacet = Facet\.define\(\{\s*combine: values => values\[0\] \?\? null\s*\}\);/
+    /const embeddedDocumentSourceFacet = Facet\.define\(\{\s*combine: values => values\[0\] \?\? \[\]\s*\}\);/
   );
   assert.match(
     main,
-    /if \(embeddedSource\) \{\s*return window\.AndroidNative\?\.resolveEmbeddedAssetUrl/
+    /if \(embeddedSourceContext\?\.length\) \{\s*return window\.AndroidNative\?\.resolveEmbeddedAssetUrl/
   );
   assert.match(main, /return window\.AndroidNative\?\.resolveMdzipMediaUrl/);
+  assert.match(
+    main,
+    /const hasEmbeddedSource = Array\.isArray\(embeddedSource\)\s*\? embeddedSource\.length > 0\s*: Boolean\(embeddedSource\);/
+  );
+  assert.match(main, /img\.src = hasEmbeddedSource[\s\S]*?mdzipAttachmentUrl/);
+  assert.match(
+    main,
+    /embeddedDocumentSourceFacet\.of\(\[\.\.\.this\.sourceContext, this\.url\]\)/
+  );
 
-  const sourceFacet = Facet.define({ combine: values => values[0] ?? null });
+  const sourceFacet = Facet.define({ combine: values => values[0] ?? [] });
   const regularDocument = EditorState.create({ extensions: [] });
   const embeddedDocument = EditorState.create({
-    extensions: [sourceFacet.of('assets/notes.md')]
+    extensions: [sourceFacet.of(['assets/notes.md'])]
   });
 
-  assert.equal(regularDocument.facet(sourceFacet), null);
-  assert.equal(embeddedDocument.facet(sourceFacet), 'assets/notes.md');
+  assert.deepEqual(regularDocument.facet(sourceFacet), []);
+  assert.deepEqual(embeddedDocument.facet(sourceFacet), ['assets/notes.md']);
+});
+
+test('nested embeds pass their source chain to native loading, assets, and saving', () => {
+  const main = readProjectFile('web/src/main.js');
+  const native = readProjectFile(
+    'app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'
+  );
+
+  assert.match(
+    main,
+    /loadEmbeddedMarkdown\?\.\(\s*this\.url,\s*this\.documentSessionId,\s*this\.sourceContextJson\s*\)/
+  );
+  assert.match(
+    main,
+    /saveEmbeddedMarkdown\?\.\(\s*this\.url,\s*text,\s*this\.documentSessionId,\s*this\.sourceContextJson\s*\)/
+  );
+  assert.match(
+    main,
+    /resolveEmbeddedAssetUrl\?\.\(\s*relativeLink,\s*JSON\.stringify\(embeddedSourceContext\)/
+  );
+  assert.match(
+    native,
+    /private fun resolveEmbeddedSourceContext\([\s\S]*?sourceLinks\.withIndex\(\)[\s\S]*?resolveEmbeddedSourceChild\(/
+  );
+  assert.match(
+    native,
+    /MdzipManager\.resolveRelativeArchivePath\(\s*parent\.markdownPath,\s*relativeLink\s*\)/
+  );
+  assert.match(native, /MdzipManager\.assetArchiveFile\(parent\.session, archivePath\)/);
+  assert.match(native, /target\.archiveSession\.sourceUri/);
 });
 
 test('migrates existing toolbar layouts to include Embed without restoring removed or hidden keys', async () => {
@@ -273,7 +338,7 @@ test('migrates existing toolbar layouts to include Embed without restoring remov
 test('inserting an embed does not force keyboard focus back into the editor', () => {
   const main = readProjectFile('web/src/main.js');
   const method = main.match(
-    /insertEmbeddedDocumentLink\(relativeUrl, label, mediaBaseUrl = null\) \{([\s\S]*?)\n  \}/
+    /insertEmbeddedDocumentLink\(relativeUrl, label\) \{([\s\S]*?)\n  \}/
   )?.[1];
   assert.ok(method, 'the editor adapter must provide embedded-document insertion');
   assert.doesNotMatch(method, /this\.view\.focus\(\)/);

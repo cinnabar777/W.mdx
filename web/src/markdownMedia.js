@@ -156,36 +156,46 @@ export function parseMarkdownAttachmentLink(text) {
 }
 
 export function parseMarkdownEmbeddedDocumentLink(text) {
-  const link = markdownLinkParts(text);
-  if (!link || !/^wmdx-embed(?:[;:]|$)/.test(link.title ?? '')) return null;
-  let decodedUrl = link.url;
+  const match = String(text).trim().match(/^!\[\[([^\]\n|]+)(?:\|([^\]\n]*))?\]\]$/);
+  if (!match) return null;
+  const url = match[1].trim();
+  if (url.includes('#') || url.includes('?')) return null;
+  let decodedUrl = url;
   try {
-    decodedUrl = decodeURIComponent(link.url);
+    decodedUrl = decodeURIComponent(url);
   } catch {
     // Native URI and package path resolution performs final validation.
   }
   const isContentUri = /^content:\/\//i.test(decodedUrl);
-  const decodedPath = decodedUrl.split(/[?#]/, 1)[0];
-  if (/\.(?:mdx|textpack(?:\.zip)?)$/i.test(decodedPath)) return null;
+  if (/\.textpack(?:\.zip)?$/i.test(decodedUrl)) return null;
+  if (
+    /\.(?:avif|bmp|gif|jpe?g|png|webp|mp3|aac|m4a|wav|flac|opus|ogg|oga|mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv|pdf|zip|docx?|xlsx?|pptx?)$/i
+      .test(decodedUrl)
+  ) {
+    return null;
+  }
   if (
     !isContentUri &&
     /^(?:[a-z][a-z0-9+.-]*:|\/|\\\\)/i.test(decodedUrl)
   ) {
     return null;
   }
-  let mediaBaseUrl = null;
-  const mediaBaseMatch = link.title.match(/(?:^|;)base=([^;]+)/);
-  if (mediaBaseMatch) {
+  const basename = decodedUrl
+    .split(/[?#]/, 1)[0]
+    .split('/')
+    .at(-1) || 'Embedded document';
+  const defaultLabel = basename.replace(/\.[^.]+$/, '') || basename;
+  let alias = match[2]?.trim();
+  if (alias) {
     try {
-      mediaBaseUrl = decodeURIComponent(mediaBaseMatch[1]);
+      alias = decodeURIComponent(alias);
     } catch {
-      mediaBaseUrl = null;
+      // Keep literal alias text when it is not percent-encoded.
     }
   }
   return {
-    label: link.label || 'Embedded document',
-    url: link.url,
-    mediaBaseUrl
+    label: alias || defaultLabel,
+    url
   };
 }
 
@@ -392,27 +402,39 @@ export function formatMarkdownAttachmentLink(label, url, layout = null) {
   return `[${safeLabel}](${safePath}${title})`;
 }
 
-export function formatMarkdownEmbeddedDocumentLink(label, url, mediaBaseUrl = null) {
-  const safeLabel = String(label ?? 'Embedded document')
-    .replace(/\\/g, '\\\\')
-    .replace(/\]/g, '\\]');
+export function formatMarkdownEmbeddedDocumentLink(label, url) {
   const rawUrl = String(url ?? '').trim();
   if (!rawUrl) throw new TypeError('An embedded document needs a file path.');
-  const safeUrl = /^content:\/\//i.test(rawUrl)
-    ? encodeURIComponent(rawUrl)
-    : rawUrl.split('/').map(segment => {
-      let decoded = segment;
-      try {
-        decoded = decodeURIComponent(segment);
-      } catch {
-        // Encode malformed percent signs as literal filename characters.
-      }
-      return encodeURIComponent(decoded).replace(/[!'()*]/g, character =>
-        `%${character.charCodeAt(0).toString(16).toUpperCase()}`
-      );
-    }).join('/');
-  const title = mediaBaseUrl
-    ? `wmdx-embed;base=${encodeURIComponent(String(mediaBaseUrl))}`
-    : 'wmdx-embed';
-  return `[${safeLabel}](${safeUrl} "${title}")`;
+  const encodeSegment = segment => {
+    let decoded = segment;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      // Treat malformed percent signs as literal filename characters.
+    }
+    return encodeURIComponent(decoded).replace(/%20/g, ' ');
+  };
+  const contentUriPrefix = rawUrl.match(/^content:\/\/[^/]+/i)?.[0] ?? '';
+  const safeUrl = contentUriPrefix
+    ? contentUriPrefix + rawUrl.slice(contentUriPrefix.length)
+      .split('/')
+      .map(encodeSegment)
+      .join('/')
+    : rawUrl.split('/').map(encodeSegment).join('/');
+  const safeLabel = String(label ?? '').trim();
+  const decodedPath = (() => {
+    try {
+      return decodeURIComponent(rawUrl);
+    } catch {
+      return rawUrl;
+    }
+  })().split(/[?#]/, 1)[0];
+  const basename = decodedPath.split('/').at(-1) || '';
+  const defaultLabel = basename.replace(/\.[^.]+$/, '') || basename;
+  if (!safeLabel || safeLabel === defaultLabel) return `![[${safeUrl}]]`;
+  const alias = safeLabel
+    .replace(/%/g, '%25')
+    .replace(/\|/g, '%7C')
+    .replace(/\]/g, '%5D');
+  return `![[${safeUrl}|${alias}]]`;
 }

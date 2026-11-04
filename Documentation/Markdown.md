@@ -341,8 +341,8 @@ Markdown.
 
 **Rendered:** [[#Quick reference|Jump to the quick reference]].
 
-`![[Target]]` is Obsidian's embed syntax; W.mdx does not currently render it as
-an embedded file. Use a Markdown image for images instead.
+`[[Target]]` is an Obsidian-style wikilink. Prefixing it with `!` embeds a
+supported local document inline; see [Embedded documents](#embedded-documents).
 
 ### Images
 
@@ -361,9 +361,93 @@ W.mdx also accepts a pixel width after a vertical bar in the description:
 The width must be a whole number from 1 to 10,000. If no width is supplied, the
 image uses its natural size, subject to the editor's available width.
 
+The **Insert image** action can use a selected image file, embed a selected file
+as Base64, or insert pasted Base64 data. When entering a URL, leave both options
+unchecked to keep the URL as the image source; alternatively, download the image
+to the document's assets or embed it as Base64. The download and Base64 options
+are mutually exclusive.
+
 **Rendered:**
 
 ![Cyan sample image|120](data:image/svg+xml,%3Csvg%20xmlns%3D'http://www.w3.org/2000/svg'%20width%3D'120'%20height%3D'60'%3E%3Crect%20width%3D'120'%20height%3D'60'%20fill%3D'%2300bfc5'/%3E%3C/svg%3E)
+
+## Audio and video
+
+W.mdx recognizes links to supported audio and video files and renders them as
+players. The link text is the displayed title; changing it does not rename the
+file.
+
+```markdown
+[Voice memo](audio/voice-memo.m4a)
+[Trip video](video/trip.mp4)
+```
+
+Supported audio file extensions are `.mp3`, `.aac`, `.m4a`, `.wav`, `.flac`,
+`.opus`, `.ogg`, and `.oga`. Recognized video extensions are `.mp4`, `.m4v`,
+`.webm`, `.3gp`, `.mov`, `.mkv`, `.avi`, `.mpeg`, `.mpg`, `.ogv`, and `.wmv`.
+Actual playback depends on Android and the device's codec support.
+
+The optional Markdown link title can store W.mdx display width and alignment:
+
+```markdown
+[Voice memo](audio/voice-memo.m4a "wmdx-audio:width=75;align=center")
+[Trip video](video/trip.mp4 "wmdx-video:width=80;align=right")
+```
+
+The width is a whole-number percentage from 40 to 100. Alignment is `left`,
+`center`, or `right`. The default full-width, left-aligned layout needs no
+additional title metadata. These `wmdx-audio` and `wmdx-video` titles are W.mdx
+extensions, not standard Markdown.
+
+## Attachments
+
+Use a Markdown link to create a downloadable/openable attachment button. The
+link text is its displayed title:
+
+```markdown
+[Project files](attachments/project-files.zip "wmdx-attachment")
+```
+
+The `wmdx-attachment` link title tells W.mdx to render the link as an attachment
+rather than an ordinary text link. Attachment buttons can also store width and
+alignment:
+
+```markdown
+[Project files](attachments/project-files.zip "wmdx-attachment:width=75;align=center")
+```
+
+The width and alignment rules are the same as for audio and video. Tapping an
+attachment opens the file with a compatible app. The inserted title is display
+text; it does not rename the file.
+
+## Embedded documents
+
+W.mdx uses Obsidian's embed form for supported local documents:
+
+```markdown
+![[notes.md]]
+![[notes.md|Project notes]]
+```
+
+The part after `|` is an optional display alias. W.mdx embeds the whole document;
+Obsidian heading and block selectors are not currently supported.
+
+The Embed action can copy the selected document into the current document's
+assets or link to the original file. Choose the method in **Document Appearance
+→ Embedded Content**. A copied MDZip embed is stored inside the MDZip archive;
+Markdown documents use the configured Markdown asset storage. A linked embed
+continues to use the original file, so it must remain available to W.mdx.
+
+Embeds can use MDZip files and UTF-8 text-based files the renderer can display,
+including Markdown, plain text, and code files. Legacy TextPack documents and
+remote URLs are not supported as embedded documents.
+
+Embedded interaction is also controlled in **Document Appearance → Embedded
+Content**. **Limited interaction** allows checkboxes to be toggled without
+editing the rest of the document. **Full inline editing** allows editing within
+the embed. When full editing is enabled, the **Save edited to** setting chooses
+whether edits go to the copy in the parent document's assets or back to the
+original linked file.
 
 ## Tables
 
@@ -449,10 +533,11 @@ HTML is not Markdown. Some renderers accept inline HTML such as
 consistent formatting in W.mdx, use the Wmdx underline, highlighter, and pen
 syntax above.
 
-The following are Obsidian or plugin features, not standard Markdown syntax:
+W.mdx supports local document embeds using the Obsidian-style `![[path]]` syntax
+described above. The following Obsidian or plugin features are not currently
+supported:
 
 - `%% comments %%`
-- `![[file]]` embeds
 - Obsidian queries such as fenced `query` blocks
 - Template variables such as `{{title}}`
 - Obsidian tags and YAML properties
