@@ -988,7 +988,7 @@ test('session restore clearly explains when referenced files need folder access'
   );
   assert.match(
     leftPanelSource,
-    /if \(documentData\?\.needsFolderAccess\)[\s\S]*?title: 'Folder access required'[\s\S]*?cannot be restored[\s\S]*?Settings > File & Folder Access[\s\S]*?reopen the session/
+    /if \(documentData\?\.needsFolderAccess\)[\s\S]*?title: 'Folder access required'[\s\S]*?cannot be restored[\s\S]*?one or more files it references[\s\S]*?every folder containing files used by this session[\s\S]*?Settings > File & Folder Access[\s\S]*?reopen the session/
   );
 });
 
