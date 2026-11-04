@@ -122,7 +122,10 @@ test('undo uses undoDepth guard and preserves document on repeated undo', () => 
 test('external-open URI permission flags survive until the editor is ready', () => {
   assert.ok(mainActivitySource.includes('private var pendingOpenPermissionFlags: Int? = null'));
   assert.ok(mainActivitySource.includes('pendingOpenPermissionFlags = intent.flags'));
-  assert.ok(mainActivitySource.includes('openFile(uri, permissionFlags = permissionFlags)'));
+  assert.match(
+    mainActivitySource,
+    /openFile\(\s*uri,\s*skipExistingWindowFocus = skipExistingWindowFocus,\s*permissionFlags = permissionFlags\s*\)/s
+  );
 });
 
 test('returning to the app keeps the keyboard hidden until the user touches the editor', () => {
@@ -547,6 +550,7 @@ test('UI Appearance contains the requested pages in order', () => {
     [
       ['pref_page_settings_theme', 'Settings'],
       ['pref_app_theme', 'App Theme'],
+      ['pref_page_new_tab_appearance', 'New Tab'],
       ['pref_page_findreplace', 'Find & Replace'],
       ['pref_hide_status_bar', 'Hide Status Bar'],
       ['pref_hide_nav_bar', 'Hide Navigation Bar'],
@@ -661,6 +665,17 @@ test('every visible hotkey preference reaches a matching editor action', () => {
   assert.ok(keyboardHandler.includes("setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source')"));
 });
 
+test('Ctrl+O is intercepted before the editor handles the key', () => {
+  const keyboardHandler = source.slice(
+    source.indexOf('function setupKeyboardShortcuts()'),
+    source.indexOf('// Global JS Bridge exposure')
+  );
+  assert.match(
+    keyboardHandler,
+    /window\.addEventListener\('keydown',\s*\(e\)\s*=>\s*\{[\s\S]*?parseAndMatchHotkey\(e,\s*customHotkeys\.open\)[\s\S]*?e\.stopImmediatePropagation\(\)[\s\S]*?onNativeAction\?\.\('open'\)[\s\S]*?\},\s*true\)/
+  );
+});
+
 test('left panel search options reach native search and the file filters', () => {
   assert.match(leftPanelHtml, /id="left-panel-search-whole-words"[\s\S]*?<span>word<\/span>/);
   assert.match(leftPanelHtml, /id="left-panel-search-contents"[\s\S]*?<span>in files<\/span>/);
@@ -680,6 +695,74 @@ test('left panel search options reach native search and the file filters', () =>
   assert.match(
     mainActivitySource,
     /Regex\(\s*"\(\^\|\[\^\\\\p\{L\}\\\\p\{N\}_\]\).*Regex\.escape\(needle\).*IGNORE_CASE/s
+  );
+});
+
+test('New Tab keeps open documents and exposes session, search, and styling paths', () => {
+  const uiAppearanceXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_ui_appearance.xml'),
+    'utf8'
+  );
+  const newTabAppearanceXml = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_new_tab.xml'),
+    'utf8'
+  );
+
+  assert.match(leftPanelSource, /const openNewTab = \(\) =>/);
+  assert.match(leftPanelSource, /isStartPage: Boolean\(documentData\.isStartPage\)/);
+  assert.match(leftPanelSource, /isStartPage: Boolean\(savedTab\.isStartPage\)/);
+  assert.match(leftPanelSource, /const visible = !active \|\| Boolean\(active\.isStartPage\)/);
+  assert.match(leftPanelSource, /native\.requestDefaultSearchFolderAccess\?\.\(\)/);
+  assert.match(
+    leftPanelSource,
+    /launcherWindow \? 'open_session_new_window' : 'open_session'/
+  );
+  assert.match(source, /window\.leftPanelController\?\.openNewTab\?\.\(\)/);
+  assert.match(hotkeysXml, /app:key="pref_hotkey_new"[\s\S]*?app:title="Document: New Tab"/);
+  assert.match(leftPanelHtml, /data-start-page-action="open-session-new-window"/);
+
+  assert.match(
+    mainActivitySource,
+    /openWmdxTabSessionLauncher\.launch\(createOpenWmdxTabSessionIntent\(\)\)/
+  );
+  assert.match(mainActivitySource, /if \(!isWmdxTabSession\(uri\)\)/);
+  assert.match(mainActivitySource, /openWmdxTabSessionInNewWindow\(uri, permissionFlags\)/);
+  assert.match(mainActivitySource, /putExtra\("open_wmdx_tab_session_uri"/);
+
+  assert.ok(
+    uiAppearanceXml.indexOf('app:key="pref_app_theme"') <
+      uiAppearanceXml.indexOf('app:key="pref_page_new_tab_appearance"') &&
+      uiAppearanceXml.indexOf('app:key="pref_page_new_tab_appearance"') <
+        uiAppearanceXml.indexOf('app:key="pref_page_findreplace"'),
+    'New Tab styling appears after App Theme and before Find & Replace'
+  );
+  assert.match(settingsActivitySource, /pref_page_new_tab_appearance" -> NewTabAppearanceSettingsFragment\(\)/);
+  assert.match(newTabAppearanceXml, /app:key="pref_start_page_bg_color"/);
+  assert.match(newTabAppearanceXml, /app:key="pref_start_page_action_border_color"/);
+  assert.match(source, /setCssVar\('--start-page-bg-color'/);
+});
+
+test('tab long-press menu includes New tab without replacing other tabs', () => {
+  assert.match(
+    leftPanelSource,
+    /const showTabMenu = \(tab, x = 16, y = 120\) => \{[\s\S]*?const actions = \[[\s\S]*?\['New tab', \(\) => openNewTab\(\)\]/
+  );
+  assert.match(leftPanelSource, /const openNewTab = \(\) =>/);
+});
+
+test('empty file search requests read access to Documents instead of silently returning nothing', () => {
+  assert.match(
+    leftPanelSource,
+    /Choose Documents when prompted to allow file search\.[\s\S]*?requestDefaultSearchFolderAccess/
+  );
+  assert.match(mainActivitySource, /ACTION_OPEN_DOCUMENT_TREE/);
+  assert.match(
+    mainActivitySource,
+    /DocumentsContract\.buildDocumentUri\(\s*"com\.android\.externalstorage\.documents",\s*"primary:Documents"/
+  );
+  assert.match(
+    mainActivitySource,
+    /takePersistableUriPermission\(uri, readFlag\)/
   );
 });
 
@@ -784,7 +867,7 @@ test('folder file actions keep open, open-in-new-tab, rename, and delete distinc
 test('tab group membership persists alongside file tab state', () => {
   assert.match(
     leftPanelSource,
-    /JSON\.stringify\(\{ activeTabId, tabs, groups \}\)/
+    /JSON\.stringify\(\{\s*activeTabId,\s*tabs,\s*groups,\s*portableSessionUri:\s*activePortableSessionUri\s*\}\)/
   );
   assert.match(leftPanelSource, /groupId: groups\.some\(\(group\) => group\.id === savedTab\.groupId\)/);
   assert.match(leftPanelSource, /dissolveTabGroup\(tabs, groups, group\.id\)/);
@@ -797,7 +880,7 @@ test('document history is stored and restored with the active tab', () => {
   assert.match(leftPanelSource, /serializeTabHistoryState\(next\)/);
   assert.match(leftPanelSource, /pendingTabHistoryNavigation && current/);
   assert.match(mainActivitySource, /fun getDocumentNavigationHistory\(\)/);
-  assert.match(mainActivitySource, /restoreDocumentHistoryState\(historyStateJson\)/);
+  assert.match(mainActivitySource, /restoreDocumentHistoryState\(historyStateJson\.orEmpty\(\)\)/);
   assert.match(
     mainActivitySource,
     /beginTabHistoryNavigation\(\)\s*openFile\(uri, rememberHistory = false, skipExistingWindowFocus = true\)/
@@ -860,10 +943,25 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(leftPanelSource, /scrollTop: Number\.isFinite\(tab\.scrollTop\)/);
   assert.match(mainActivitySource, /saveWmdxTabSession\(sessionJson: String\)/);
   assert.match(mainActivitySource, /readWmdxTabSession\(uriString: String\)/);
-  assert.match(mainActivitySource, /Wmdx Session\.wmds/);
-  assert.match(mainActivitySource, /name\.endsWith\("\.wmds", ignoreCase = true\)/);
-  assert.match(mainActivitySource, /name\.endsWith\("\.mds", ignoreCase = true\)/);
-  assert.match(mainActivitySource, /name\.endsWith\("\.wmdxsession", ignoreCase = true\)/);
+  assert.match(
+    mainActivitySource,
+    /openWmdxTabSessionLauncher[\s\S]*?StartActivityForResult\(\)\)[\s\S]*?resultIntent\?\.flags/
+  );
+  assert.match(mainActivitySource, /createOpenWmdxTabSessionIntent\(\)/);
+  assert.match(mainActivitySource, /clipData = android\.content\.ClipData\.newRawUri\("W\.mdx session", uri\)/);
+  assert.match(mainActivitySource, /open_session[\s\S]*?openWmdxTabSessionLauncher\.launch\(createOpenWmdxTabSessionIntent\(\)\)/);
+  assert.match(mainActivitySource, /Wmdx Session\.wmdx/);
+  assert.match(mainActivitySource, /name\.endsWith\("\.wmdx", ignoreCase = true\)/);
+  assert.doesNotMatch(mainActivitySource, /name\.endsWith\("\.wmds", ignoreCase = true\)/);
+  assert.doesNotMatch(mainActivitySource, /name\.endsWith\("\.mds", ignoreCase = true\)/);
+  assert.doesNotMatch(mainActivitySource, /name\.endsWith\("\.wmdxsession", ignoreCase = true\)/);
+  assert.match(mainActivitySource, /updateWmdxTabSession\(sessionJson: String, uriString: String\)/);
+  assert.match(mainActivitySource, /cachePendingWmdxTabSessionSave/);
+  assert.match(mainActivitySource, /clearPendingWmdxTabSessionSave/);
+  assert.match(leftPanelSource, /native\.updateWmdxTabSession\(sessionJson, activePortableSessionUri\)/);
+  assert.match(leftPanelSource, /hasPendingWmdxTabSessionSave/);
+  assert.match(leftPanelSource, /onWmdxTabSessionSaved/);
+  assert.match(leftPanelSource, /onWmdxTabSessionSaveFailed/);
   assert.doesNotMatch(sanitizerSource, /\.put\("markdown"/);
   assert.match(appManifestXml, /application\/vnd\.wmdx\.tabs-session\+json/);
   assert.match(
@@ -881,6 +979,38 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(source, /save_tabs: ''/);
   assert.match(toolbarConfigSource, /'saveTabs'/);
   assert.match(toolbarIconsSource, /saveTabs:/);
+});
+
+test('session restore clearly explains when referenced files need folder access', () => {
+  assert.match(
+    mainActivitySource,
+    /put\("needsFolderAccess", true\)/
+  );
+  assert.match(
+    leftPanelSource,
+    /if \(documentData\?\.needsFolderAccess\)[\s\S]*?title: 'Folder access required'[\s\S]*?cannot be restored[\s\S]*?one or more files it references[\s\S]*?every folder containing files used by this session[\s\S]*?Settings > File & Folder Access[\s\S]*?reopen the session/
+  );
+});
+
+test('New tab saves new documents before opening them and keeps an empty launcher at the start page', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../../web/index.html'), 'utf8');
+
+  for (const action of ['new-markdown', 'new-mdzip', 'go-to-file', 'open-session']) {
+    assert.match(html, new RegExp(`data-start-page-action="${action}"`));
+  }
+  assert.match(leftPanelSource, /const activateStartPage = \(\) =>/);
+  assert.match(leftPanelSource, /else activateStartPage\(\);/);
+  assert.match(leftPanelSource, /false,\s*false,\s*false,\s*false,\s*false,\s*'\{\}'/);
+  assert.match(mainActivitySource, /historyStateJson: String\?/);
+  assert.doesNotMatch(
+    leftPanelSource,
+    /addTab\(\{ uri: null, name: 'Untitled', markdown: currentMarkdown\(\) \}/
+  );
+  assert.match(mainActivitySource, /requestNewDocument\(DocumentFormat\.MARKDOWN\)/);
+  assert.match(mainActivitySource, /requestNewDocument\(DocumentFormat\.MDZIP\)/);
+  assert.match(mainActivitySource, /ensureDocumentExtension\(uri, extension\)/);
+  assert.match(mainActivitySource, /openDocumentFromNative/);
+  assert.match(mainActivitySource, /openWmdxTabSessionLauncher\.launch/);
 });
 
 test('TextPack image previews resolve paths from the active package assets', () => {

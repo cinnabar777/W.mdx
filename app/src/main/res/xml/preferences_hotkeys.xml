@@ -47,7 +47,7 @@
 
     <com.wmdx.markdownapp.ResetEditTextPreference
         app:key="pref_hotkey_new"
-        app:title="Document: New"
+        app:title="Document: New Tab"
         app:summary="Key combination (e.g. ctrl+n)"
         app:defaultValue="ctrl+n" />
 

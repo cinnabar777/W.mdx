@@ -48,6 +48,7 @@ class SettingsActivity : AppCompatActivity() {
             val currentFragment = supportFragmentManager.findFragmentById(R.id.settings_container)
             supportActionBar?.title = when (currentFragment) {
                 is UIAppearanceSettingsFragment -> "UI Appearance"
+                is NewTabAppearanceSettingsFragment -> "New Tab"
                 is SettingsThemeFragment -> "Settings"
                 is MediaPlaybackSettingsFragment -> "Media Playback"
                 is StylingHeadingsFragment -> "Headings"
@@ -631,6 +632,7 @@ class UIAppearanceSettingsFragment : BaseSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         val targetFragment: PreferenceFragmentCompat? = when (preference.key) {
             "pref_page_settings_theme" -> SettingsThemeFragment()
+            "pref_page_new_tab_appearance" -> NewTabAppearanceSettingsFragment()
             "pref_page_findreplace" -> StylingFindReplaceFragment()
             "pref_page_left_panel" -> LeftPanelSettingsFragment()
             "pref_page_toc" -> TocPanelSettingsFragment()
@@ -1374,6 +1376,12 @@ class StylingAttachmentsFragment : StylingSettingsFragment() {
     }
 }
 
+class NewTabAppearanceSettingsFragment : StylingSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_styling_new_tab, rootKey)
+    }
+}
+
 class StylingEmbeddedContentFragment : StylingSettingsFragment() {
     private var syncingEmbeddedSettings = false
 
@@ -1601,7 +1609,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 "codeBlock", "horizontalLine", "footnote"
             ),
             "menu" to listOf(
-                "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
+                "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
                 "saveAsMdzip",
                 "exportHtml", "search", "switchView", "newWindow", "settings"
             )
@@ -1623,7 +1631,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "mergeLeft", "mergeRight", "mergeUp", "mergeDown", "splitCell",
             "image", "audio", "video", "attachment", "embed", "link", "callout", "inlineCode", "blockQuote",
             "codeBlock", "horizontalLine", "footnote",
-            "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
+            "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "saveAsMdzip",
             "exportHtml", "search", "switchView", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID

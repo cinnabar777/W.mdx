@@ -5642,6 +5642,10 @@ function setupGroupedControlBar() {
     menuBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('menu', menuBtn, [
+        { id: 'newTab', icon: svgIcons.newTab, title: 'New Tab', action: () => {
+          hidePopupStrip();
+          window.leftPanelController?.openNewTab?.();
+        } },
         { id: 'newFile', icon: svgIcons.newFile, title: 'New File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('new') },
         { id: 'openFile', icon: svgIcons.openFile, title: 'Open File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('open') },
         { id: 'saveFile', icon: svgIcons.saveFile, title: 'Save File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save') },
@@ -6001,6 +6005,10 @@ function createToolbarActionRegistry() {
       { id: 'footnote', title: 'Insert Footnote', icon: svgIcons.footnote, action: () => openFootnoteInsertionDialog() }
     ],
     [
+      { id: 'newTab', title: 'New Tab', icon: svgIcons.newTab, action: () => {
+        hidePopupStrip();
+        window.leftPanelController?.openNewTab?.();
+      } },
       { id: 'newFile', title: 'New File', icon: svgIcons.newFile, action: () => window.AndroidNative?.onNativeAction('new') },
       { id: 'openFile', title: 'Open File', icon: svgIcons.openFile, action: () => window.AndroidNative?.onNativeAction('open') },
       { id: 'saveFile', title: 'Save File', icon: svgIcons.saveFile, action: () => window.AndroidNative?.onNativeAction('save') },
@@ -8909,6 +8917,13 @@ function setupKeyboardShortcuts() {
   window.addEventListener('keydown', (e) => {
     if (e.target?.closest?.('input, textarea, select')) return;
 
+    if (parseAndMatchHotkey(e, customHotkeys.open)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.AndroidNative?.onNativeAction?.('open');
+      return;
+    }
+
     let direction = null;
     if (parseAndMatchHotkey(e, customHotkeys.history_back)) {
       direction = 'back';
@@ -8969,10 +8984,7 @@ function setupKeyboardShortcuts() {
 
     if (parseAndMatchHotkey(e, customHotkeys.new)) {
       e.preventDefault();
-      window.AndroidNative && window.AndroidNative.onNativeAction('new');
-    } else if (parseAndMatchHotkey(e, customHotkeys.open)) {
-      e.preventDefault();
-      window.AndroidNative && window.AndroidNative.onNativeAction('open');
+      window.leftPanelController?.openNewTab?.();
     } else if (parseAndMatchHotkey(e, customHotkeys.save_as)) {
       e.preventDefault();
       window.AndroidNative && window.AndroidNative.onNativeAction('save_as');
@@ -9192,6 +9204,36 @@ window.editorBridge = {
     } else {
       document.body.classList.remove('light-theme');
     }
+
+    setCssVar('--start-page-bg-color', androidArgbToCss(prefs.pref_start_page_bg_color));
+    setCssVar('--start-page-title-color', androidArgbToCss(prefs.pref_start_page_title_color));
+    setCssVar(
+      '--start-page-action-text-color',
+      androidArgbToCss(prefs.pref_start_page_action_text_color)
+    );
+    setCssVar(
+      '--start-page-action-bg-color',
+      androidArgbToCss(prefs.pref_start_page_action_bg_color)
+    );
+    setCssVar(
+      '--start-page-action-border-color',
+      androidArgbToCss(prefs.pref_start_page_action_border_color)
+    );
+    setCssVar('--start-page-title-size', prefs.pref_start_page_title_size, 'px');
+    setCssVar(
+      '--start-page-action-border-width',
+      prefs.pref_start_page_action_border_width,
+      'px'
+    );
+    setCssVar('--start-page-action-radius', prefs.pref_start_page_action_radius, 'px');
+    setCssVar(
+      '--start-page-action-text-size',
+      prefs.pref_start_page_action_text_size,
+      'px'
+    );
+    setCssVar('--start-page-action-width', prefs.pref_start_page_action_width, 'px');
+    setCssVar('--start-page-action-height', prefs.pref_start_page_action_height, 'px');
+    setCssVar('--start-page-action-gap', prefs.pref_start_page_action_gap, 'px');
 
     setCssVar(
       '--media-player-bg',

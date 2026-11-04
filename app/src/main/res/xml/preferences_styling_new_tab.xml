@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Page">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_start_page_bg_color"
+            app:title="Background Color"
+            app:summary="Background behind the new-tab page"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_start_page_title_color"
+            app:title="Title Text Color"
+            app:summary="Text color for the New tab title"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_start_page_title_size"
+            app:title="Title Text Size (px)"
+            app:summary="Size of the New tab title"
+            app:min="10"
+            android:max="40"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Actions">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_start_page_action_text_color"
+            app:title="Action Text Color"
+            app:summary="Text and icon color for the page actions"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_start_page_action_bg_color"
+            app:title="Action Background Color"
+            app:summary="Fill color for the action buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_start_page_action_border_color"
+            app:title="Action Border Color"
+            app:summary="Outline color for the action buttons"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_start_page_action_border_width"
+            app:title="Action Border Width (px)"
+            app:summary="Outline thickness"
+            app:min="0"
+            android:max="8"
+            app:defaultValue="1"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_start_page_action_radius"
+            app:title="Action Corner Radius (px)"
+            app:summary="Roundness of the action buttons"
+            app:min="0"
+            android:max="48"
+            app:defaultValue="24"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_start_page_action_text_size"
+            app:title="Action Text Size (px)"
+            app:summary="Size of action button labels"
+            app:min="10"
+            android:max="32"
+            app:defaultValue="14"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_start_page_action_width"
+            app:title="Action Minimum Width (px)"
+            app:summary="Minimum width of each action button"
+            app:min="100"
+            android:max="320"
+            app:defaultValue="154"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_start_page_action_height"
+            app:title="Action Minimum Height (px)"
+            app:summary="Minimum height of each action button"
+            app:min="36"
+            android:max="88"
+            app:defaultValue="48"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_start_page_action_gap"
+            app:title="Action Spacing (px)"
+            app:summary="Space between action buttons"
+            app:min="0"
+            android:max="40"
+            app:defaultValue="12"
+            app:showSeekBarValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

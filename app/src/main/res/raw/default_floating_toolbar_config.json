@@ -20,7 +20,7 @@
     "highlightGreen", "highlightPink", "highlightYellow", "horizontalLine", "image",
     "indent", "inlineCode", "insertColumnRight", "insertRowBelow", "insertTable",
     "italic", "line-numbers", "link", "mergeDown", "mergeLeft", "mergeRight",
-    "mergeUp", "newFile", "newWindow", "numberedList", "openFile", "outdent",
+    "mergeUp", "newFile", "newTab", "newWindow", "numberedList", "openFile", "outdent",
     "paragraph", "penBlue", "penGreen", "penPurple", "penRed", "saveAsFile",
     "saveAsTextPack", "saveFile", "saveTabs", "search", "settings", "splitCell",
     "strikethrough", "switchView", "todoList", "underlineDashed", "underlineDotted",

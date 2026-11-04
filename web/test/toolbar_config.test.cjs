@@ -137,10 +137,29 @@ test('obsolete Files & Tabs toolbar action is removed from saved layouts', async
     holding: ['leftPanel'],
     styles: { leftPanel: { backgroundColor: '#123456' } }
   });
-  assert.deepEqual(oldLayout.popupGroups.menu.order, ['newFile', 'settings', 'saveAsMdzip']);
+  assert.deepEqual(
+    oldLayout.popupGroups.menu.order,
+    ['newTab', 'newFile', 'settings', 'saveAsMdzip']
+  );
   assert.ok(!oldLayout.holding.includes('leftPanel'));
   assert.equal(oldLayout.styles.leftPanel, undefined);
   assert.ok(!BOTTOM_TOOLBAR_GROUP_ITEM_IDS.menu.includes('leftPanel'));
+});
+
+test('existing menu layouts gain New Tab without losing their saved actions', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 11,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      menu: { order: ['newFile', 'settings', 'saveFile'], hidden: [] }
+    }
+  });
+
+  assert.deepEqual(
+    config.popupGroups.menu.order,
+    ['newTab', 'newFile', 'settings', 'saveFile']
+  );
 });
 
 test('invalid saved configuration falls back to the current toolbar order', async () => {

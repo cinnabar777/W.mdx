@@ -91,6 +91,133 @@
       position: relative;
     }
 
+    #start-page {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-sizing: border-box;
+      padding: 28px 20px calc(var(--toolbar-height, 48px) + 28px);
+      color: var(--text-color);
+      background: var(--start-page-bg-color, var(--body-background-color, var(--bg-color)));
+    }
+
+    #start-page[hidden] {
+      display: none !important;
+    }
+
+    .start-page-title {
+      margin: 0;
+      color: var(--start-page-title-color, var(--text-color));
+      font-size: var(--start-page-title-size, 16px);
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .start-page-actions {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--start-page-action-gap, 12px);
+      width: 100%;
+    }
+
+    .start-page-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      min-width: var(--start-page-action-width, 154px);
+      min-height: var(--start-page-action-height, 48px);
+      box-sizing: border-box;
+      padding: 0 20px;
+      border: var(--start-page-action-border-width, 1px) solid
+        var(--start-page-action-border-color, color-mix(in srgb, var(--text-color) 24%, transparent));
+      border-radius: var(--start-page-action-radius, 999px);
+      color: var(--start-page-action-text-color, inherit);
+      background: var(--start-page-action-bg-color, transparent);
+      font: inherit;
+      font-size: var(--start-page-action-text-size, 14px);
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .start-page-action:active {
+      background: color-mix(in srgb, var(--text-color) 9%, transparent);
+    }
+
+    .start-page-action:focus-visible {
+      outline: 2px solid var(--link-color);
+      outline-offset: 3px;
+    }
+
+    .start-page-session-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .start-page-action-new-window {
+      width: 48px;
+      min-width: 48px;
+      padding: 0;
+    }
+
+    .start-page-action-new-window svg {
+      width: 19px;
+      height: 19px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+    }
+
+    #session-save-warning {
+      position: fixed;
+      z-index: 10020;
+      top: max(10px, env(safe-area-inset-top));
+      left: 12px;
+      right: 12px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-sizing: border-box;
+      padding: 14px;
+      border: 2px solid #d35400;
+      border-radius: 12px;
+      color: var(--text-color);
+      background: var(--body-background-color, var(--bg-color));
+      box-shadow: 0 4px 18px rgb(0 0 0 / 45%);
+    }
+
+    #session-save-warning[hidden] {
+      display: none !important;
+    }
+
+    #session-save-warning-message {
+      flex: 1 1 auto;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    #session-save-warning-retry {
+      flex: 0 0 auto;
+      min-height: 40px;
+      padding: 0 14px;
+      border: 1px solid currentColor;
+      border-radius: 8px;
+      color: inherit;
+      background: transparent;
+      font: inherit;
+      font-weight: 600;
+    }
+
     /* Custom Compact Phone-Optimized Find & Replace Bar */
     .search-bar-container {
       background-color: var(--findreplace-panel-bg, #0f0f0f) !important;
@@ -2307,6 +2434,41 @@
       </div>
     </div>
     <div id="editor"></div>
+    <main id="start-page" aria-label="New tab" hidden>
+      <h1 class="start-page-title">New tab</h1>
+      <div class="start-page-actions">
+        <button class="start-page-action" type="button" data-start-page-action="new-markdown">
+          New Markdown
+        </button>
+        <button class="start-page-action" type="button" data-start-page-action="new-mdzip">
+          New MDZip
+        </button>
+        <button class="start-page-action" type="button" data-start-page-action="go-to-file">
+          Go to file
+        </button>
+        <div class="start-page-session-row">
+          <button class="start-page-action" type="button" data-start-page-action="open-session">
+            Open session
+          </button>
+          <button
+            class="start-page-action start-page-action-new-window"
+            type="button"
+            data-start-page-action="open-session-new-window"
+            aria-label="Open session in a new window"
+            title="Open session in a new window"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 4h6v6M20 4l-9 9"></path>
+              <path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+  <div id="session-save-warning" role="alert" aria-live="assertive" hidden>
+    <span id="session-save-warning-message"></span>
+    <button id="session-save-warning-retry" type="button">Retry</button>
   </div>
   <div id="popup-toolbar-strip" class="popup-toolbar-strip hidden"></div>
   <div id="floating-selection-toolbar"

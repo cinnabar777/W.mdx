@@ -16,6 +16,11 @@
         app:defaultValue="amoled" />
 
     <com.wmdx.markdownapp.ResetPreference
+        app:key="pref_page_new_tab_appearance"
+        app:title="New Tab"
+        app:summary="Style the new-tab page and its actions" />
+
+    <com.wmdx.markdownapp.ResetPreference
         app:key="pref_page_findreplace"
         app:title="Find &amp; Replace"
         app:summary="Search panel colors, fields, counter, and buttons" />

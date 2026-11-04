@@ -38,7 +38,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
     'codeBlock', 'horizontalLine', 'footnote'
   ]),
   menu: Object.freeze([
-    'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack', 'saveAsMdzip',
+    'newTab', 'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack', 'saveAsMdzip',
     'exportHtml', 'search', 'switchView', 'newWindow', 'settings'
   ])
 });
@@ -103,7 +103,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 11,
+  version: 12,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -530,6 +530,18 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       !heldActions.has('embed')
     ) {
       popupGroups.insert.order.push('embed');
+    }
+  }
+
+  if (parsedVersion > 0 && parsedVersion < 12 && popupGroups.menu) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    if (
+      !assignedActions.has('newTab') &&
+      !deletedKeyIds.has('newTab') &&
+      !legacyHeldKeys.includes('newTab') &&
+      !legacyHidden.includes('newTab')
+    ) {
+      popupGroups.menu.order.unshift('newTab');
     }
   }
 

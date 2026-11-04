@@ -243,6 +243,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
     assert.deepEqual(
       [...popup.querySelectorAll('[data-preview-popup-item]')].map(button => button.title),
       [
+        'New Tab',
         'New File',
         'Open File',
         'Save File',
