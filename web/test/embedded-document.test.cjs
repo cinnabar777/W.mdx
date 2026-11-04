@@ -195,7 +195,7 @@ test('embedded Markdown renders GFM task lists without enabling table changes', 
   assert.ok(childExtensions, 'the embedded document must create its own editor');
   assert.match(
     childExtensions,
-    /cmMarkdown\(\{ extensions: \[GFM, GFMStrikethrough, GFMTaskList\] \}\)/
+    /cmMarkdown\(\{\s*extensions:\s*\[\s*GFM,\s*GFMStrikethrough,\s*GFMTaskList,\s*wmdxCommonMarkCompatibility\s*\]\s*\}\)/
   );
   assert.match(childExtensions, /syntaxHighlighting\(customHighlightStyle\)/);
   assert.doesNotMatch(childExtensions, /GFMTable/);
