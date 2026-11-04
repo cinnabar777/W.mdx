@@ -564,13 +564,13 @@ breaks, reference links, and autolinks.
 
 ### GitHub Flavored Markdown
 
-**Implemented:** pipe tables, task-list checkboxes, strikethrough, and GFM
-autolinks. Tables and tasks are editable in W.mdx.
+**Implemented:** pipe tables, task-list checkboxes, single- and double-tilde
+strikethrough, and GFM autolinks. Tables and tasks are editable in W.mdx.
 
 **Still to do for full compatibility:**
 
-- Run the official GFM examples and verify edge cases for tables, tasks,
-  strikethrough, autolinks, and links.
+- Extend official GFM example coverage beyond tables 198–205 and selected task,
+  strikethrough, and autolink examples.
 - GitHub.com alerts share the `> [!type]` callout marker with W.mdx, but exact
   alert types and rendering are not a compatibility promise.
 - For GFM raw HTML, use the import-conversion policy above rather than rendering
@@ -661,8 +661,8 @@ cross-dialect round-trip suite.
 | --- | --- | --- |
 | CommonMark core | Parser-semantic checks cover all 575 non-HTML cases in the official 0.31.2 corpus, including tab-separated ATX headings and unresolved references inside emphasis. | Verify exact WYSIWYG rendering and open, edit, save, export, and reopen semantics against representative cases. |
 | CommonMark raw HTML | Arbitrary HTML is not rendered. `<u>...</u>` remains as a compatibility form when Wmdx underline syntax is disabled; 77 HTML-interoperability cases are held out of native parser checks. | Convert supported imported HTML to native Wmdx syntax; define and test visible handling for constructs with no equivalent. Never emit HTML as fallback. |
-| GFM tables | Editable pipe tables; focused coverage includes editing a cell with an escaped pipe, serializing and reparsing the table, and rerendering its alignment. | Cover the official GFM table examples and file-level save/reopen behavior, including delimiter and row-width edge cases. |
-| GFM tasks, strikethrough, and autolinks | Parser extensions are enabled; focused task/formatting behavior exists in `embedded-document.test.cjs` and `markdown-formatting.test.cjs`. | Run GFM examples in both main and embedded editors and verify edits survive save/export/reopen. |
+| GFM tables | Editable pipe tables; tests cover official table examples 198–205, cell-count normalization, escaped pipes, alignment, editing, serialized Markdown reopening, and MDZip archive open/save/reopen. | Verify direct Android Markdown file save/open and the MDZip content-provider write path. |
+| GFM tasks, strikethrough, and autolinks | Main and embedded parser tests cover task examples 279–280, strikethrough examples 491–493, and autolink examples 622–630; single and double tildes render as strike, while runs of three remain literal. | Expand conformance beyond selected examples and verify direct Android file save/open plus export/reopen. |
 | Obsidian links and document embeds | Wiki links, aliases, current-document heading links, whole-document embeds, and nested embeds; focused coverage in `navigation_link_mapping.test.cjs` and `embedded-document.test.cjs`. | Verify resolution and round trips across Markdown and MDZip. Heading/block transclusion and Obsidian media-embed shorthand remain unsupported. |
 | Obsidian callouts and footnotes | Callout and reference-footnote behavior has focused coverage in `callout.test.cjs`, `footnotes.test.cjs`, and `embedded-document.test.cjs`. | Build a documented built-in syntax fixture set and verify behavior across source, WYSIWYG, save, and reopen. Plugin and app-only behavior is out of scope. |
 | Wmdx word-processing syntax | Underline, highlighting, and pen syntax are implemented; focused tests include `markdown-formatting.test.cjs` and `underline-delimiters.test.cjs`. | Keep new syntax text-based, readable, and minimally intrusive. Heading alternatives such as `.1`, `.2`, and `.3` are planned, not implemented. Replace HTML dependence for authoring as native equivalents become available. |

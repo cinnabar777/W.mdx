@@ -1,0 +1,122 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+function readProjectFile(relativePath) {
+  return fs.readFileSync(path.join(__dirname, '../../', relativePath), 'utf8');
+}
+
+const gfmInlineExamples = [
+  '- [ ] foo',
+  '- [X] bar',
+  '  - [ ] baz',
+  '',
+  '~~Hi~~ Hello, ~there~ world!',
+  'This will ~~~not~~~ strike.',
+  'www.commonmark.org.',
+  'Visit https://commonmark.org/help.',
+  'foo@bar.example.com'
+].join('\n');
+
+async function createEditorState(markdownText, { embedded }) {
+  const { EditorState } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { Autolink, Table, TaskList } = await import('@lezer/markdown');
+  const { wmdxGfmStrikethrough } = await import('../src/gfm-strikethrough.mjs');
+  const { wmdxCommonMarkCompatibility } = await import('../src/commonmark-compat.mjs');
+  const extensions = [
+    Autolink,
+    ...(embedded ? [] : [Table]),
+    TaskList,
+    wmdxGfmStrikethrough,
+    wmdxCommonMarkCompatibility
+  ];
+
+  return EditorState.create({
+    doc: markdownText,
+    extensions: [markdown({ extensions })]
+  });
+}
+
+function collectNodes(state, syntaxTree) {
+  const nodes = [];
+  const source = state.doc.toString();
+  syntaxTree(state).iterate({
+    enter(node) {
+      nodes.push({
+        name: node.name,
+        from: node.from,
+        to: node.to,
+        text: source.slice(node.from, node.to)
+      });
+    }
+  });
+  return nodes;
+}
+
+for (const embedded of [false, true]) {
+  const editorName = embedded ? 'embedded editor' : 'main editor';
+
+  test(`${editorName} follows GFM task, strikethrough, and autolink examples through edit and reopen`, async () => {
+    const { syntaxTree } = await import('@codemirror/language');
+    const state = await createEditorState(gfmInlineExamples, { embedded });
+    let nodes = collectNodes(state, syntaxTree);
+
+    assert.equal(nodes.filter(node => node.name === 'TaskMarker').length, 3);
+    assert.deepEqual(
+      nodes.filter(node => node.name === 'Strikethrough').map(node => node.text),
+      ['~~Hi~~', '~there~']
+    );
+    assert.deepEqual(
+      nodes.filter(node => node.name === 'URL').map(node => node.text),
+      [
+        'www.commonmark.org',
+        'https://commonmark.org/help',
+        'foo@bar.example.com'
+      ]
+    );
+    assert.equal(state.doc.toString(), gfmInlineExamples);
+
+    const unchecked = nodes.find(node =>
+      node.name === 'TaskMarker' && node.text === '[ ]'
+    );
+    const toggledState = state.update({
+      changes: {
+        from: unchecked.from + 1,
+        to: unchecked.to - 1,
+        insert: 'x'
+      }
+    }).state;
+    const savedMarkdown = toggledState.doc.toString();
+    const reopenedState = await createEditorState(savedMarkdown, { embedded });
+    nodes = collectNodes(reopenedState, syntaxTree);
+
+    assert.match(savedMarkdown, /^- \[x\] foo/m);
+    assert.equal(nodes.filter(node => node.name === 'TaskMarker').length, 3);
+    assert.deepEqual(
+      nodes.filter(node => node.name === 'Strikethrough').map(node => node.text),
+      ['~~Hi~~', '~there~']
+    );
+    assert.deepEqual(
+      nodes.filter(node => node.name === 'URL').map(node => node.text),
+      [
+        'www.commonmark.org',
+        'https://commonmark.org/help',
+        'foo@bar.example.com'
+      ]
+    );
+  });
+}
+
+test('main and embedded parser configurations use explicit GFM extensions', () => {
+  const source = readProjectFile('web/src/main.js');
+  assert.match(
+    source,
+    /GFMAutolink,\s*GFMTable,\s*GFMTaskList,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
+  );
+  assert.match(
+    source,
+    /GFMAutolink,\s*GFMTaskList,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
+  );
+});

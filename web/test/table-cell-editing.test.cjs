@@ -324,20 +324,20 @@ test('long-press opens the horizontal table action menu above the touch point wi
   });
 });
 
-test('GFM table cell edits preserve alignment and escaped pipes through serialization and rerendering', async () => {
+test('GFM table cell edits preserve alignment and escaped pipes through serialization and reopening', async () => {
   const markdown = [
     '| Name | Value |',
     '| :--- | ---: |',
     '| Alpha \\| beta | `one\\|two` |'
   ].join('\n');
 
-  await withTableEditor(markdown, async ({ view, container, tapCell, flushFrames, remountWidget }) => {
+  await withTableEditor(markdown, async ({ view, container, tapCell, flushFrames }) => {
     const originalCell = container.querySelector('tbody td[data-row="1"][data-col="0"]');
     assert.equal(originalCell.textContent, 'Alpha | beta', 'escaped pipes render as cell text');
     assert.equal(
       container.querySelector('tbody td[data-row="1"][data-col="1"]').textContent,
-      'one\\|two',
-      'backslash escapes remain literal inside code spans'
+      'one|two',
+      'escaped pipes render correctly inside code spans'
     );
 
     tapCell(originalCell);
@@ -356,16 +356,48 @@ test('GFM table cell edits preserve alignment and escaped pipes through serializ
     assert.equal(reopenedModel.rows[1][0], 'Gamma \\| delta');
     assert.equal(reopenedModel.rows[1][1], '`one\\|two`');
 
-    const reopenedContainer = remountWidget();
-    assert.equal(
-      reopenedContainer.querySelector('tbody td[data-row="1"][data-col="0"]').textContent,
-      'Gamma | delta',
-      'the reparsed table renders the edited escaped-pipe cell'
+    const { EditorState } = await import('@codemirror/state');
+    const { WordProcessorTableWidget } = await import('../src/tableWidget.js');
+    const reopenedView = {
+      ...view,
+      state: EditorState.create({ doc: serialized })
+    };
+    const reopenedWidget = new WordProcessorTableWidget(
+      serialized,
+      0,
+      serialized.length
     );
-    assert.equal(
-      reopenedContainer.querySelector('thead th[data-col="1"]').style.textAlign,
-      'right',
-      'column alignment survives serialization and rerendering'
-    );
+    const reopenedContainer = reopenedWidget.toDOM(reopenedView);
+    try {
+      assert.equal(
+        reopenedContainer.querySelector('tbody td[data-row="1"][data-col="0"]').textContent,
+        'Gamma | delta',
+        'the reopened document renders the edited escaped-pipe cell'
+      );
+      assert.equal(
+        reopenedContainer.querySelector('thead th[data-col="1"]').style.textAlign,
+        'right',
+        'column alignment survives serialization and reopening'
+      );
+    } finally {
+      reopenedWidget.destroy(reopenedContainer);
+    }
+  });
+});
+
+test('GFM escaped pipes render inside code and emphasis spans in table cells', async () => {
+  const markdown = [
+    '| Style | Cell |',
+    '| --- | --- |',
+    '| code | `\\|` |',
+    '| emphasis | **\\|** |'
+  ].join('\n');
+
+  await withTableEditor(markdown, async ({ container }) => {
+    const codeCell = container.querySelector('tbody td[data-row="1"][data-col="1"]');
+    const emphasisCell = container.querySelector('tbody td[data-row="2"][data-col="1"]');
+
+    assert.equal(codeCell.querySelector('code')?.textContent, '|');
+    assert.equal(emphasisCell.querySelector('strong')?.textContent, '|');
   });
 });

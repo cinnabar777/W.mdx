@@ -138,8 +138,13 @@ import {
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, syntaxTree, forceParsing, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
-import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
+import {
+  Autolink as GFMAutolink,
+  Table as GFMTable,
+  TaskList as GFMTaskList
+} from '@lezer/markdown';
 import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
+import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
 
 let activeAdapter = null;
 let lastFocusedEditorView = null;
@@ -2074,9 +2079,9 @@ class EmbeddedDocumentWidget extends WidgetType {
       extensions: [
         cmMarkdown({
           extensions: [
-            GFM,
-            GFMStrikethrough,
+            GFMAutolink,
             GFMTaskList,
+            wmdxGfmStrikethrough,
             wmdxCommonMarkCompatibility
           ]
         }),
@@ -4867,10 +4872,10 @@ class CodeMirrorAdapter {
         codeFolding(),
         cmMarkdown({
           extensions: [
-            GFM,
+            GFMAutolink,
             GFMTable,
-            GFMStrikethrough,
             GFMTaskList,
+            wmdxGfmStrikethrough,
             wmdxCommonMarkCompatibility
           ]
         }),

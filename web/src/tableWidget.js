@@ -925,9 +925,7 @@ function renderMarkdownInline(text, searchQuery, isSelectedCell) {
   escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
   escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
-  escaped = escaped.replace(/(<code>.*?<\/code>)|\\\|/g, (match, codeSpan) =>
-    codeSpan || '|'
-  );
+  escaped = escaped.replace(/\\\|/g, '|');
 
   if (searchQuery && typeof searchQuery === 'string' && searchQuery.trim().length > 0) {
     try {
