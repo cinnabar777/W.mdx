@@ -1047,6 +1047,15 @@ export function setupLeftPanel() {
       if (!documentData?.ok) {
         folderStatus.textContent =
           documentData?.error || `Could not access ${active.name} from this session.`;
+        if (documentData?.needsFolderAccess) {
+          await showDialog({
+            title: 'Folder access required',
+            message: `This session cannot be restored because W.mdx cannot access ${active.name}. Grant access to the folder containing this document in Settings > File & Folder Access, then reopen the session.`,
+            actions: [
+              { label: 'OK', value: true, primary: true }
+            ]
+          });
+        }
         return false;
       }
       active.name = documentData.name || active.name;

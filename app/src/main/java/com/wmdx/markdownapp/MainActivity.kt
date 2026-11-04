@@ -4368,7 +4368,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun readLeftPanelDocument(uri: Uri): org.json.JSONObject {
         if (!hasLeftPanelDocumentAccess(uri)) {
-            return org.json.JSONObject().put("ok", false).put("error", "This file is outside the folders approved for the panel.")
+            return org.json.JSONObject()
+                .put("ok", false)
+                .put("needsFolderAccess", true)
+                .put("error", "This file is outside the folders approved for the panel.")
         }
         return runCatching {
             val name = getFileNameFromUri(uri)

@@ -981,6 +981,17 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(toolbarIconsSource, /saveTabs:/);
 });
 
+test('session restore clearly explains when referenced files need folder access', () => {
+  assert.match(
+    mainActivitySource,
+    /put\("needsFolderAccess", true\)/
+  );
+  assert.match(
+    leftPanelSource,
+    /if \(documentData\?\.needsFolderAccess\)[\s\S]*?title: 'Folder access required'[\s\S]*?cannot be restored[\s\S]*?Settings > File & Folder Access[\s\S]*?reopen the session/
+  );
+});
+
 test('New tab saves new documents before opening them and keeps an empty launcher at the start page', () => {
   const html = fs.readFileSync(path.join(__dirname, '../../web/index.html'), 'utf8');
 
