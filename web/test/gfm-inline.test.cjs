@@ -120,3 +120,10 @@ test('main and embedded parser configurations use explicit GFM extensions', () =
     /GFMAutolink,\s*GFMTaskList,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
   );
 });
+
+test('Android Markdown open, save, and Save As use the tested UTF-8 file codec', () => {
+  const activity = readProjectFile('app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
+  assert.match(activity, /MarkdownTextFileCodec\.read\(inputStream\)/);
+  assert.match(activity, /MarkdownTextFileCodec\.prepareForSave\(/);
+  assert.match(activity, /MarkdownTextFileCodec\.write\(outputStream, markdownText\)/);
+});

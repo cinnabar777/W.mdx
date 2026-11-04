@@ -1966,10 +1966,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val inputStream = contentResolver.openInputStream(uri)
                     ?: throw java.io.FileNotFoundException("Could not read the selected file")
                 inputStream.use {
-                    val reader = BufferedReader(InputStreamReader(inputStream))
-                    val content = reader.readText()
-                    hasBom = content.startsWith("\uFEFF")
-                    hasCrlf = content.contains("\r\n")
+                    val loadedMarkdown = MarkdownTextFileCodec.read(inputStream)
+                    val content = loadedMarkdown.markdown
+                    hasBom = loadedMarkdown.hadBom
+                    hasCrlf = loadedMarkdown.hadCrlf
                     clearEmbeddedMdzipSessions()
                     currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                     currentRevision = 0
@@ -2638,12 +2638,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             AppDiagnostics.record(this, "snapshot_taken", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length}")
 
-            if (hasCrlf && !markdownText.contains("\r\n") && markdownText.contains("\n")) {
-                markdownText = markdownText.replace("\r\n", "\n").replace("\n", "\r\n")
-            }
-            if (hasBom && !markdownText.startsWith("\uFEFF")) {
-                markdownText = "\uFEFF$markdownText"
-            }
+            markdownText = MarkdownTextFileCodec.prepareForSave(
+                markdownText,
+                hadBom = hasBom,
+                hadCrlf = hasCrlf
+            )
 
             try {
                 val targetFileName = getFileNameFromUri(uri)
@@ -2689,9 +2688,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     val output = contentResolver.openOutputStream(uri, "rwt")
                         ?: throw java.io.IOException("Could not open document for writing")
                     output.use { outputStream ->
-                        val writer = OutputStreamWriter(outputStream, Charsets.UTF_8)
-                        writer.write(markdownText)
-                        writer.flush()
+                        MarkdownTextFileCodec.write(outputStream, markdownText)
                     }
                     currentTextPackSession = null
                     currentMdzipSession = null
