@@ -243,13 +243,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
     private val openWmdxTabSessionLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val openInNewWindow = pendingSessionOpenInNewWindow
             pendingSessionOpenInNewWindow = false
-            if (uri != null) {
-                val permissionFlags =
+            val resultIntent = result.data
+            val uri = resultIntent?.data
+            if (result.resultCode == android.app.Activity.RESULT_OK && uri != null) {
+                val permissionFlags = (resultIntent?.flags ?: 0) and (
                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                         android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
                 if (!isWmdxTabSession(uri)) {
                     Toast.makeText(
                         this,
@@ -2751,12 +2754,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val intent = android.content.Intent(this, MainActivity::class.java).apply {
             action = android.content.Intent.ACTION_MAIN
             data = Uri.parse("wmdx://window/$newWindowId")
+            clipData = android.content.ClipData.newRawUri("W.mdx session", uri)
             addFlags(
                 android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
                     android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
                     android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    permissionFlags
             )
             putExtra("is_new_document", true)
             putExtra("open_wmdx_tab_session_uri", uri.toString())
@@ -2767,6 +2770,18 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } catch (error: Exception) {
             AppDiagnostics.record(this, "open_session_new_window_failed", error.javaClass.simpleName)
             ThemedToast.show(this, "Could not open the session in a new window", Toast.LENGTH_LONG)
+        }
+    }
+
+    private fun createOpenWmdxTabSessionIntent(): android.content.Intent {
+        return android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
         }
     }
 
@@ -5257,11 +5272,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "new_mdzip" -> requestNewDocument(DocumentFormat.MDZIP)
                     "open_session" -> {
                         pendingSessionOpenInNewWindow = false
-                        openWmdxTabSessionLauncher.launch(arrayOf("*/*"))
+                        openWmdxTabSessionLauncher.launch(createOpenWmdxTabSessionIntent())
                     }
                     "open_session_new_window" -> {
                         pendingSessionOpenInNewWindow = true
-                        openWmdxTabSessionLauncher.launch(arrayOf("*/*"))
+                        openWmdxTabSessionLauncher.launch(createOpenWmdxTabSessionIntent())
                     }
                     "open" -> handleOpenFile()
                     "save" -> handleSaveFile()

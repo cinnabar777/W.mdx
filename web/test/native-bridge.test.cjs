@@ -721,7 +721,10 @@ test('New Tab keeps open documents and exposes session, search, and styling path
   assert.match(hotkeysXml, /app:key="pref_hotkey_new"[\s\S]*?app:title="Document: New Tab"/);
   assert.match(leftPanelHtml, /data-start-page-action="open-session-new-window"/);
 
-  assert.match(mainActivitySource, /openWmdxTabSessionLauncher\.launch\(arrayOf\("\*\/\*"\)\)/);
+  assert.match(
+    mainActivitySource,
+    /openWmdxTabSessionLauncher\.launch\(createOpenWmdxTabSessionIntent\(\)\)/
+  );
   assert.match(mainActivitySource, /if \(!isWmdxTabSession\(uri\)\)/);
   assert.match(mainActivitySource, /openWmdxTabSessionInNewWindow\(uri, permissionFlags\)/);
   assert.match(mainActivitySource, /putExtra\("open_wmdx_tab_session_uri"/);
@@ -940,6 +943,13 @@ test('tab sessions save and restore tab references and scroll positions only', (
   assert.match(leftPanelSource, /scrollTop: Number\.isFinite\(tab\.scrollTop\)/);
   assert.match(mainActivitySource, /saveWmdxTabSession\(sessionJson: String\)/);
   assert.match(mainActivitySource, /readWmdxTabSession\(uriString: String\)/);
+  assert.match(
+    mainActivitySource,
+    /openWmdxTabSessionLauncher[\s\S]*?StartActivityForResult\(\)\)[\s\S]*?resultIntent\?\.flags/
+  );
+  assert.match(mainActivitySource, /createOpenWmdxTabSessionIntent\(\)/);
+  assert.match(mainActivitySource, /clipData = android\.content\.ClipData\.newRawUri\("W\.mdx session", uri\)/);
+  assert.match(mainActivitySource, /open_session[\s\S]*?openWmdxTabSessionLauncher\.launch\(createOpenWmdxTabSessionIntent\(\)\)/);
   assert.match(mainActivitySource, /Wmdx Session\.wmdx/);
   assert.match(mainActivitySource, /name\.endsWith\("\.wmdx", ignoreCase = true\)/);
   assert.doesNotMatch(mainActivitySource, /name\.endsWith\("\.wmds", ignoreCase = true\)/);
