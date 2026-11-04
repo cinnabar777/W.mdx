@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
-const projectRoot = path.resolve(process.cwd(), '..');
+const projectRoot = path.resolve(__dirname, '../..');
 const appAssets = path.join(projectRoot, 'app/src/main/assets/www');
 
 test('embedded documents survive WYSIWYG, Live Preview, and Source transitions', async () => {
