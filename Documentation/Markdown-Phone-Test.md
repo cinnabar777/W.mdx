@@ -1,8 +1,15 @@
 # Markdown Phone Rendering Test
 
-Open this file in W.mdx and view it in Live/WYSIWYG mode. The examples are
-intended to be checked visually on the phone. Links to `example.com` are
-placeholders; they do not need to open.
+This is a visual smoke test, not a complete CommonMark, GFM, or Obsidian
+compatibility suite. It samples common cases for a quick phone check; the
+specification corpora and import/export round trips are tested separately.
+
+Open this file in W.mdx and check it in Live Preview and WYSIWYG. In rendered
+views, reference-link syntax and its definition should be hidden, and nested
+quotes should indent farther than their parent quote. Tap automatic links to
+confirm they open the browser or email app, and tap the wiki link to confirm it
+opens the sibling Markdown guide. Source view should continue to show the
+original Markdown syntax.
 
 The table below is a rendering check only. Table-cell cursor/editing is a known
 separate issue and is not part of this test.
@@ -65,6 +72,8 @@ The code span should show `**these marks literally**`, not bold text.
 >
 > > This is a nested quote.
 
+The nested quote should be visibly indented farther than the first quote.
+
 ### Code blocks
 
 The block should be visually distinct from the surrounding text. The code and
@@ -89,6 +98,9 @@ Inline link: [CommonMark site](https://commonmark.org "Optional link title").
 Reference link: read the [CommonMark specification][commonmark-spec].
 
 Autolinks: <https://commonmark.org/> and <reader@example.com>.
+
+In rendered views, these should appear as clickable links without the
+surrounding Markdown punctuation.
 
 Image using a small inline SVG:
 
@@ -142,6 +154,9 @@ www.commonmark.org
 https://github.com/
 
 reader@example.com
+
+Each automatic link should be styled and open its browser or email app when
+tapped.
 
 ## Obsidian
 

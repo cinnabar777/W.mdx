@@ -5483,6 +5483,117 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun openMarkdownLink(
+            target: String,
+            documentSessionId: String?,
+            sourceContextJson: String?
+        ): Boolean {
+            if (documentSessionId != currentDocumentSessionId) return false
+
+            val link = target.trim()
+            if (link.isBlank()) return false
+
+            val externalUri = when {
+                link.startsWith("https://", ignoreCase = true) ||
+                    link.startsWith("http://", ignoreCase = true) ||
+                    link.startsWith("mailto:", ignoreCase = true) ->
+                    runCatching { Uri.parse(link) }.getOrNull()
+                link.startsWith("www.", ignoreCase = true) ->
+                    Uri.parse("https://$link")
+                Regex("""^[^@\s]+@[^@\s]+\.[^@\s]+$""").matches(link) ->
+                    Uri.parse("mailto:$link")
+                else -> null
+            }
+
+            if (externalUri != null) {
+                runOnUiThread {
+                    if (documentSessionId != currentDocumentSessionId) return@runOnUiThread
+                    try {
+                        startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                externalUri
+                            )
+                        )
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        ThemedToast.show(
+                            this@MainActivity,
+                            "No app on this device can open that link.",
+                            Toast.LENGTH_LONG
+                        )
+                    } catch (error: Exception) {
+                        ThemedToast.show(
+                            this@MainActivity,
+                            "Could not open the link: ${error.localizedMessage ?: "unknown error"}",
+                            Toast.LENGTH_LONG
+                        )
+                    }
+                }
+                return true
+            }
+
+            val uriScheme = runCatching { Uri.parse(link).scheme }.getOrNull()
+            val relativePath = link.substringBefore('#').substringBefore('?').trim()
+            val sourceLinks = parseEmbeddedSourceLinks(sourceContextJson)
+            val embeddedTarget = if (
+                sourceLinks?.isNotEmpty() == true ||
+                currentDocumentFormat == DocumentFormat.MDZIP
+            ) {
+                runCatching {
+                    resolveEmbeddedDocumentTarget(relativePath, sourceContextJson)
+                }.getOrNull()
+            } else {
+                null
+            }
+            val targetIsInsideArchive = embeddedTarget?.archiveSession != null
+            val linkedUri = when {
+                uriScheme != null ||
+                    relativePath.isBlank() ||
+                    relativePath.startsWith("/") ||
+                    relativePath.startsWith("\\") -> null
+                targetIsInsideArchive -> null
+                embeddedTarget != null -> embeddedTarget.uri
+                currentDocumentFormat == DocumentFormat.MARKDOWN ->
+                    currentFileUri?.let { parentUri ->
+                        runCatching {
+                            resolveExternalEmbeddedDocumentUri(parentUri, relativePath)
+                        }.getOrNull()
+                    }
+                else -> null
+            }
+
+            if (linkedUri == null) {
+                runOnUiThread {
+                    if (documentSessionId == currentDocumentSessionId) {
+                        ThemedToast.show(
+                            this@MainActivity,
+                            if (targetIsInsideArchive) {
+                                "A linked file inside an MDZip archive cannot be opened for editing yet."
+                            } else {
+                                "Could not open the linked file. Confirm its path and folder access, then try again."
+                            },
+                            Toast.LENGTH_LONG
+                        )
+                    }
+                }
+                return false
+            }
+
+            if (linkedUri == currentFileUri) return true
+
+            runOnUiThread {
+                if (documentSessionId != currentDocumentSessionId) return@runOnUiThread
+                val openLinkedFile = { openFile(linkedUri) }
+                if (isDirty) {
+                    showUnsavedChangesDialog(openLinkedFile)
+                } else {
+                    openLinkedFile()
+                }
+            }
+            return true
+        }
+
+        @JavascriptInterface
         fun openAttachment(
             relativeLink: String,
             documentSessionId: String?,

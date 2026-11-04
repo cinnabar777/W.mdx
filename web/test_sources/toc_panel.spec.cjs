@@ -172,8 +172,10 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     document.body.dispatchEvent(event);
   };
   const swipeStartX = window.innerWidth - 2;
+  const swipeEndX = Math.max(0, swipeStartX - window.innerWidth * 0.6);
   dispatchTouch('touchstart', 'touches', { clientX: swipeStartX, clientY: 100 });
-  dispatchTouch('touchend', 'changedTouches', { clientX: swipeStartX - 100, clientY: 100 });
+  dispatchTouch('touchmove', 'touches', { clientX: swipeEndX, clientY: 100 });
+  dispatchTouch('touchend', 'changedTouches', { clientX: swipeEndX, clientY: 100 });
 
   assert.ok(panel.classList.contains('open'), 'right-edge swipe opens the TOC panel');
   assert.equal(keyboardHideCalls, 1, 'opening the panel hides the software keyboard');
@@ -418,7 +420,8 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
   );
   assert.equal(panel.classList.contains('open'), false, 'choosing a heading closes the panel');
   dispatchTouch('touchstart', 'touches', { clientX: swipeStartX, clientY: 100 });
-  dispatchTouch('touchend', 'changedTouches', { clientX: swipeStartX - 100, clientY: 100 });
+  dispatchTouch('touchmove', 'touches', { clientX: swipeEndX, clientY: 100 });
+  dispatchTouch('touchend', 'changedTouches', { clientX: swipeEndX, clientY: 100 });
   assert.equal(
     document.querySelector('#toc-history-back').disabled,
     false,

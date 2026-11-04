@@ -36,6 +36,10 @@ import { setupLeftPanel } from './leftPanel.js';
 import { setupPanelSwipe } from './panelSwipe.js';
 import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
 import {
+  collectMarkdownReferenceTargets,
+  getMarkdownLinkInfo
+} from './markdown-link-utils.mjs';
+import {
   extractMarkdownAudioLinks,
   extractMarkdownVideoLinks,
   formatMarkdownAudioLink,
@@ -148,6 +152,7 @@ import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
 
 let activeAdapter = null;
 let lastFocusedEditorView = null;
+let activeSelectionDragView = null;
 let embeddedContentInteractionMode = 'checkboxes';
 const pendingEmbeddedDocumentEdits = new Map();
 let activeEmbeddedEditSaveWarning = null;
@@ -598,27 +603,6 @@ function activeTypographySignature() {
   });
 }
 
-class EmptyLineCursorAnchorWidget extends WidgetType {
-  eq(other) {
-    return other instanceof EmptyLineCursorAnchorWidget;
-  }
-
-  toDOM() {
-    const anchor = document.createElement('span');
-    anchor.className = 'cm-empty-line-cursor-anchor';
-    anchor.setAttribute('aria-hidden', 'true');
-    anchor.setAttribute('contenteditable', 'false');
-    anchor.textContent = '\u200b';
-    return anchor;
-  }
-
-  ignoreEvent() {
-    return true;
-  }
-}
-
-const emptyLineCursorAnchorWidget = new EmptyLineCursorAnchorWidget();
-
 class CodeBlockHeaderWidget extends WidgetType {
   constructor(lang, codeText) {
     super();
@@ -1053,17 +1037,19 @@ export function scrollToHeading(view, targetHeading) {
 }
 
 class WikilinkWidget extends WidgetType {
-  constructor(label, target) {
+  constructor(label, target, sourceContextJson = '[]') {
     super();
     this.label = label;
     this.target = target;
+    this.sourceContextJson = sourceContextJson;
   }
 
   eq(other) {
     return (
       other instanceof WikilinkWidget &&
       other.label === this.label &&
-      other.target === this.target
+      other.target === this.target &&
+      other.sourceContextJson === this.sourceContextJson
     );
   }
 
@@ -1072,23 +1058,31 @@ class WikilinkWidget extends WidgetType {
     span.className = 'cm-link cm-wikilink';
     span.textContent = this.label;
 
+    const activate = () => {
+      if (this.target.startsWith('#')) {
+        scrollToHeading(view, this.target.slice(1));
+        return;
+      }
+      window.AndroidNative?.openMarkdownLink?.(
+        this.target,
+        window.AndroidNative?.getCurrentDocumentSessionId?.(),
+        this.sourceContextJson
+      );
+    };
+
     if (this.target) {
       span.setAttribute('role', 'link');
       span.setAttribute('tabindex', '0');
       span.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (this.target.startsWith('#')) {
-          scrollToHeading(view, this.target.slice(1));
-        }
+        activate();
       });
       span.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           e.stopPropagation();
-          if (this.target.startsWith('#')) {
-            scrollToHeading(view, this.target.slice(1));
-          }
+          activate();
         }
       });
     }
@@ -2251,6 +2245,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const selection = view.state.selection.main;
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
     const doc = view.state.doc;
+    const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
+    const markdownLinkRanges = [];
     const decorationRanges = view.visibleRanges;
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
@@ -2355,7 +2351,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (!isLineActive) {
             if (!isPureWysiwyg) {
               builder.push(Decoration.replace({
-                widget: new WikilinkWidget(displayLabel, target)
+                widget: new WikilinkWidget(
+                  displayLabel,
+                  target,
+                  JSON.stringify(view.state.facet(embeddedDocumentSourceFacet))
+                )
               }).range(matchStart, matchEnd));
             }
           } else if (labelEnd > labelStart) {
@@ -2518,6 +2518,32 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               : selection.from < node.to && selection.to > node.from
           );
 
+          if (node.name === 'LinkReference') {
+            if (!isNodeActive) {
+              const firstLine = doc.lineAt(node.from).number;
+              const lastLine = doc.lineAt(Math.max(node.from, node.to - 1)).number;
+              for (let lineNumber = firstLine; lineNumber <= lastLine; lineNumber++) {
+                addLineClass(doc.line(lineNumber).from, 'cm-link-reference-definition');
+              }
+            }
+            return false;
+          }
+
+          if (node.name === 'Autolink') {
+            const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
+            if (linkInfo) {
+              builder.push(
+                Decoration.mark({ class: 'cm-link' })
+                  .range(linkInfo.labelFrom, linkInfo.labelTo)
+              );
+              if (!isNodeActive && !isPureWysiwyg) {
+                hideSyntax(node.from, linkInfo.labelFrom);
+                hideSyntax(linkInfo.labelTo, node.to);
+              }
+            }
+            return false;
+          }
+
           const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
           const setextHeading = /^SetextHeading([12])$/.exec(node.name);
           const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
@@ -2677,6 +2703,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'Link' || node.name === 'URL') {
+            if (node.name === 'Link') {
+              markdownLinkRanges.push({ from: node.from, to: node.to });
+            } else if (markdownLinkRanges.some(range =>
+              node.from >= range.from && node.to <= range.to
+            )) {
+              return false;
+            }
+
             const raw = view.state.doc.sliceString(node.from, node.to);
             const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
             const videoUrl = videoLink ? resolveDocumentAssetUrl(view.state, videoLink.url) : null;
@@ -2749,10 +2783,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               hiddenSyntaxRanges.push(attachmentDecoration);
               return false;
             }
-            const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-            if (match) {
-              const labelFrom = node.from + 1;
-              const labelTo = labelFrom + match[1].length;
+            const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
+            if (linkInfo) {
+              const { labelFrom, labelTo } = linkInfo;
               builder.push(
                 Decoration.mark({ class: 'cm-link' }).range(labelFrom, labelTo)
               );
@@ -3580,17 +3613,6 @@ function buildHeightMapValue(state) {
   const tree = syntaxTree(state);
   const replacements = [];
   const hiddenSyntaxRanges = [];
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
-    const line = doc.line(lineNumber);
-    if (line.length === 0) {
-      replacements.push(
-        Decoration.widget({
-          widget: emptyLineCursorAnchorWidget,
-          side: 1
-        }).range(line.from)
-      );
-    }
-  }
 
   const hideSyntax = (from, to) => {
     if (to > from) {
@@ -3656,7 +3678,11 @@ function buildHeightMapValue(state) {
         : (target.startsWith('#') ? target.slice(1) : target);
 
       replacements.push(Decoration.replace({
-        widget: new WikilinkWidget(displayLabel, target)
+        widget: new WikilinkWidget(
+          displayLabel,
+          target,
+          JSON.stringify(state.facet(embeddedDocumentSourceFacet))
+        )
       }).range(matchStart, matchEnd));
     }
   }
@@ -4125,7 +4151,9 @@ export function buildPersistentLayoutDecorations(state) {
   const tree = syntaxTree(state);
   const classesByLine = new Map();
   const calloutAttributesByLine = new Map();
+  const blockquoteDepthByLine = new Map();
   const activeCallouts = [];
+  let currentBlockquoteDepth = 0;
 
   const addClass = (lineNumber, className) => {
     if (!classesByLine.has(lineNumber)) {
@@ -4170,8 +4198,10 @@ export function buildPersistentLayoutDecorations(state) {
     const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
     if (!insideBlockquote || !quotePrefix) {
       activeCallouts.length = 0;
+      if (!insideBlockquote) currentBlockquoteDepth = 0;
     } else {
       const depth = (quotePrefix[1].match(/>/g) || []).length;
+      currentBlockquoteDepth = depth;
       while (
         activeCallouts.length > 0 &&
         activeCallouts[activeCallouts.length - 1].depth > depth
@@ -4219,6 +4249,10 @@ export function buildPersistentLayoutDecorations(state) {
       });
     } else if (insideBlockquote) {
       addClass(number, 'cm-blockquote');
+      blockquoteDepthByLine.set(
+        number,
+        Math.max(1, currentBlockquoteDepth)
+      );
     }
     if (isHorizontalRule) addClass(number, 'cm-hr');
 
@@ -4259,6 +4293,7 @@ export function buildPersistentLayoutDecorations(state) {
   for (const [lineNumber, classes] of classesByLine) {
     const lineObj = doc.line(lineNumber);
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
+    const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
     ranges.push(
       Decoration.line({
         attributes: {
@@ -4269,7 +4304,12 @@ export function buildPersistentLayoutDecorations(state) {
                 'data-callout-depth': String(calloutAttributes.depth),
                 style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
               }
-            : {})
+            : blockquoteDepth
+              ? {
+                  'data-blockquote-depth': String(blockquoteDepth),
+                  style: `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`
+                }
+              : {})
         }
       }).range(lineObj.from)
     );
@@ -5128,6 +5168,7 @@ class CodeMirrorAdapter {
         !start ||
         start.pointerId !== event.pointerId ||
         start.longPressTriggered ||
+        event.target instanceof HTMLElement && event.target.closest('.cm-link') ||
         Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12
       ) {
         return;
@@ -5142,6 +5183,41 @@ class CodeMirrorAdapter {
       editorTapStart = null;
       cancelEmptyAreaLongPress();
     }, { capture: true });
+    const onGlobalPointerMove = event => {
+      const start = editorTapStart;
+      if (!start || start.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 10) return;
+      cancelEmptyAreaLongPress();
+      start.dragging = true;
+      activeSelectionDragView = this.view;
+      floatingToolbarAnchorPoint = null;
+      hideFloatingSelectionToolbar();
+    };
+    const finishGlobalPointerGesture = event => {
+      const start = editorTapStart;
+      if (!start || start.pointerId !== event.pointerId) return;
+      if (activeSelectionDragView === this.view) {
+        activeSelectionDragView = null;
+        requestAnimationFrame(() => {
+          if (editorTapStart?.pointerId === event.pointerId) {
+            editorTapStart = null;
+          }
+          if (this.view?.dom?.isConnected) updateFloatingSelectionToolbar(this.view);
+        });
+      } else if (event.type === 'pointercancel') {
+        editorTapStart = null;
+      }
+    };
+    window.addEventListener('pointermove', onGlobalPointerMove, true);
+    window.addEventListener('pointerup', finishGlobalPointerGesture, true);
+    window.addEventListener('pointercancel', finishGlobalPointerGesture, true);
+    this.pointerGestureCleanup = () => {
+      window.removeEventListener('pointermove', onGlobalPointerMove, true);
+      window.removeEventListener('pointerup', finishGlobalPointerGesture, true);
+      window.removeEventListener('pointercancel', finishGlobalPointerGesture, true);
+      if (activeSelectionDragView === this.view) activeSelectionDragView = null;
+      cancelEmptyAreaLongPress();
+    };
     this.view.contentDOM.addEventListener('contextmenu', event => {
       const selection = this.view?.state?.selection?.main;
       if (selection && !selection.empty) return;
@@ -5151,6 +5227,56 @@ class CodeMirrorAdapter {
       if (editorTapStart) editorTapStart.longPressTriggered = true;
       cancelEmptyAreaLongPress();
     });
+    this.markdownLinkClickHandler = event => {
+      const element = event.target?.closest?.('.cm-link:not(.cm-wikilink)');
+      if (!element || !this.view?.contentDOM?.contains(element)) return;
+
+      const position = this.view.posAtCoords({
+        x: event.clientX,
+        y: event.clientY
+      });
+      if (position == null) return;
+
+      const tree = syntaxTree(this.view.state);
+      const resolved = tree.resolveInner(position, 1);
+      let linkNode = null;
+      for (let node = resolved; node; node = node.parent) {
+        if (node.name === 'Link' || node.name === 'Autolink') {
+          linkNode = node;
+          break;
+        }
+        if (node.name === 'URL' && !linkNode) linkNode = node;
+      }
+      const references = collectMarkdownReferenceTargets(this.view.state.doc, tree);
+      const linkInfo = getMarkdownLinkInfo(
+        linkNode,
+        this.view.state.doc,
+        references
+      );
+      if (!linkInfo?.target) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (linkInfo.target.startsWith('#')) {
+        scrollToHeading(this.view, linkInfo.target.slice(1));
+        return;
+      }
+
+      const nativeBridge = window.AndroidNative;
+      if (nativeBridge?.openMarkdownLink) {
+        nativeBridge.openMarkdownLink(
+          linkInfo.target,
+          nativeBridge.getCurrentDocumentSessionId?.(),
+          JSON.stringify(this.view.state.facet(embeddedDocumentSourceFacet))
+        );
+      } else if (/^(?:https?:|mailto:)/i.test(linkInfo.target)) {
+        window.open(linkInfo.target, '_blank', 'noopener');
+      }
+    };
+    this.view.contentDOM.addEventListener(
+      'click',
+      this.markdownLinkClickHandler
+    );
 
     this.view.scrollDOM.style.overflowAnchor = 'auto';
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
@@ -5406,6 +5532,15 @@ class CodeMirrorAdapter {
 
   destroy() {
     this.persistScrollPosition();
+    this.pointerGestureCleanup?.();
+    this.pointerGestureCleanup = null;
+    if (this.markdownLinkClickHandler && this.view?.contentDOM) {
+      this.view.contentDOM.removeEventListener(
+        'click',
+        this.markdownLinkClickHandler
+      );
+      this.markdownLinkClickHandler = null;
+    }
     if (this.syntaxRefreshFrame !== null) {
       cancelAnimationFrame(this.syntaxRefreshFrame);
       this.syntaxRefreshFrame = null;
@@ -5944,6 +6079,10 @@ function updateFloatingSelectionToolbar(
     bar.classList.remove('is-visible');
     bar.setAttribute('aria-hidden', 'true');
     if (activePopupSurface === 'floating') hidePopupStrip();
+    return;
+  }
+  if (view && activeSelectionDragView === view) {
+    hideFloatingSelectionToolbar();
     return;
   }
   const selection = view?.state?.selection?.main;
