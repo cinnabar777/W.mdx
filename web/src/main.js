@@ -1634,7 +1634,6 @@ class EmbeddedDocumentWidget extends WidgetType {
     from,
     to,
     documentSessionId,
-    mediaBaseUrl = null,
     depth = 0,
     interactionMode = 'checkboxes'
   ) {
@@ -1644,7 +1643,6 @@ class EmbeddedDocumentWidget extends WidgetType {
     this.from = from;
     this.to = to;
     this.documentSessionId = documentSessionId;
-    this.mediaBaseUrl = mediaBaseUrl;
     this.depth = depth;
     this.interactionMode = interactionMode;
   }
@@ -1656,7 +1654,6 @@ class EmbeddedDocumentWidget extends WidgetType {
       other.from === this.from &&
       other.to === this.to &&
       other.documentSessionId === this.documentSessionId &&
-      other.mediaBaseUrl === this.mediaBaseUrl &&
       other.depth === this.depth &&
       other.interactionMode === this.interactionMode;
   }
@@ -1787,7 +1784,6 @@ class EmbeddedDocumentWidget extends WidgetType {
           to: this.to,
           label: this.label,
           url: this.url,
-          mediaBaseUrl: this.mediaBaseUrl
         });
       }),
       createAction('Remove embed', () => removeEmbeddedDocument(false))
@@ -2054,7 +2050,7 @@ class EmbeddedDocumentWidget extends WidgetType {
         persistentLayoutField,
         heightMapField,
         hiddenSyntaxAtomicRanges,
-        embeddedDocumentSourceFacet.of(this.mediaBaseUrl || this.url),
+        embeddedDocumentSourceFacet.of(this.url),
         embeddedDocumentDepthFacet.of(this.depth + 1),
         EditorState.transactionFilter.of(transaction => {
           if (
@@ -2615,11 +2611,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             return;
           }
 
-          if (node.name === 'Link' || node.name === 'URL') {
-            const raw = view.state.doc.sliceString(node.from, node.to);
-            const embeddedLink = node.name === 'Link'
-              ? parseMarkdownEmbeddedDocumentLink(raw)
-              : null;
+        if (node.name === 'Link' || node.name === 'URL' || node.name === 'Image') {
+          const raw = view.state.doc.sliceString(node.from, node.to);
+          const embeddedLink = node.name === 'Image'
+            ? parseMarkdownEmbeddedDocumentLink(raw)
+            : null;
             if (
               embeddedLink &&
               isStandaloneEmbeddedDocument(view.state.doc, node, raw) &&
@@ -2633,7 +2629,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   node.from,
                   node.to,
                   window.AndroidNative?.getCurrentDocumentSessionId?.(),
-                  embeddedLink.mediaBaseUrl,
                   view.state.facet(embeddedDocumentDepthFacet),
                   embeddedContentInteractionMode
                 ),
@@ -3768,9 +3763,9 @@ function buildHeightMapValue(state) {
         return false;
       }
 
-      if (node.name === 'Link' || node.name === 'URL') {
+      if (node.name === 'Link' || node.name === 'URL' || node.name === 'Image') {
         const raw = doc.sliceString(node.from, node.to);
-        const embeddedLink = node.name === 'Link'
+        const embeddedLink = node.name === 'Image'
           ? parseMarkdownEmbeddedDocumentLink(raw)
           : null;
         if (embeddedLink && isStandaloneEmbeddedDocument(doc, node, raw)) {
@@ -3781,7 +3776,6 @@ function buildHeightMapValue(state) {
               node.from,
               node.to,
               window.AndroidNative?.getCurrentDocumentSessionId?.(),
-              embeddedLink.mediaBaseUrl,
               state.facet(embeddedDocumentDepthFacet),
               embeddedContentInteractionMode
             ),
@@ -4696,7 +4690,7 @@ class CodeMirrorAdapter {
     const references = new Set();
     syntaxTree(update.state).iterate({
       enter: node => {
-        if (node.name !== 'Link') return;
+        if (node.name !== 'Link' && node.name !== 'Image') return;
         const raw = update.state.doc.sliceString(node.from, node.to);
         const parsed = parseMarkdownAudioLink(raw) ||
           parseMarkdownVideoLink(raw) ||
@@ -5249,9 +5243,9 @@ class CodeMirrorAdapter {
     this.view.focus();
   }
 
-  insertEmbeddedDocumentLink(relativeUrl, label, mediaBaseUrl = null) {
+  insertEmbeddedDocumentLink(relativeUrl, label) {
     if (!this.view) return;
-    const markdown = formatMarkdownEmbeddedDocumentLink(label, relativeUrl, mediaBaseUrl);
+    const markdown = formatMarkdownEmbeddedDocumentLink(label, relativeUrl);
     const selection = this.view.state.selection.main;
     const before = this.view.state.doc.sliceString(0, selection.from);
     const after = this.view.state.doc.sliceString(selection.to);
@@ -6873,8 +6867,7 @@ function openEmbeddedDocumentEditDialog(view, embeddedItem) {
     );
     if (
       !currentItem ||
-      currentItem.url !== embeddedItem.url ||
-      currentItem.mediaBaseUrl !== embeddedItem.mediaBaseUrl
+      currentItem.url !== embeddedItem.url
     ) {
       close();
       return;
@@ -6886,8 +6879,7 @@ function openEmbeddedDocumentEditDialog(view, embeddedItem) {
     }
     const markdown = formatMarkdownEmbeddedDocumentLink(
       label,
-      embeddedItem.url,
-      embeddedItem.mediaBaseUrl
+      embeddedItem.url
     );
     view.dispatch({
       changes: { from, to, insert: markdown },
@@ -10325,9 +10317,9 @@ window.editorBridge = {
       activeAdapter.insertAttachmentLink(relativeUrl, label);
     }
   },
-  insertEmbeddedDocumentLink: function(relativeUrl, label = 'Embedded document', mediaBaseUrl = null) {
+  insertEmbeddedDocumentLink: function(relativeUrl, label = 'Embedded document') {
     if (activeAdapter && typeof activeAdapter.insertEmbeddedDocumentLink === 'function') {
-      activeAdapter.insertEmbeddedDocumentLink(relativeUrl, label, mediaBaseUrl);
+      activeAdapter.insertEmbeddedDocumentLink(relativeUrl, label);
     }
   },
   reloadMdzipAudio: function(relativeUrl) {

@@ -7,23 +7,20 @@ const projectRoot = path.resolve(__dirname, '..', '..');
 const readProjectFile = relativePath =>
   fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
 
-test('formats embedded Markdown and MDZip links while retaining media base metadata', async () => {
+test('formats and parses Obsidian-style embedded document links', async () => {
   const {
     formatMarkdownEmbeddedDocumentLink,
     parseMarkdownEmbeddedDocumentLink
   } = await import('../src/markdownMedia.js');
-  const originalFolder = 'content://provider/tree/folder/document/notes%3AProject.md';
   const markdown = formatMarkdownEmbeddedDocumentLink(
     'Project notes',
-    'assets/Project notes (final).md',
-    originalFolder
+    'assets/Project notes (final).md'
   );
 
-  assert.match(markdown, /^\[Project notes\]\(assets\/Project%20notes%20%28final%29\.md /);
+  assert.equal(markdown, '![[assets/Project notes (final).md|Project notes]]');
   assert.deepEqual(parseMarkdownEmbeddedDocumentLink(markdown), {
     label: 'Project notes',
-    url: 'assets/Project%20notes%20%28final%29.md',
-    mediaBaseUrl: originalFolder
+    url: 'assets/Project notes (final).md'
   });
   assert.deepEqual(
     parseMarkdownEmbeddedDocumentLink(
@@ -31,49 +28,65 @@ test('formats embedded Markdown and MDZip links while retaining media base metad
     ),
     {
       label: 'Archive',
-      url: 'attachments/Archive.mdz',
-      mediaBaseUrl: null
+      url: 'attachments/Archive.mdz'
     }
+  );
+  assert.equal(
+    formatMarkdownEmbeddedDocumentLink('Archive', 'attachments/Archive.mdz'),
+    '![[attachments/Archive.mdz]]'
+  );
+  assert.equal(
+    parseMarkdownEmbeddedDocumentLink(
+      formatMarkdownEmbeddedDocumentLink('A | B', 'assets/A B.md')
+    )?.label,
+    'A | B'
   );
 });
 
-test('text-based files and MDZip can be embedded, but legacy formats cannot', async () => {
+test('Obsidian embeds accept renderer-readable files and reject unsupported sources', async () => {
   const { parseMarkdownEmbeddedDocumentLink } =
     await import('../src/markdownMedia.js');
 
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Notes](assets/notes.txt "wmdx-embed")')?.url,
+    parseMarkdownEmbeddedDocumentLink('![[assets/notes.txt]]')?.url,
     'assets/notes.txt'
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Source](assets/MainActivity.kt "wmdx-embed")')?.url,
-    'assets/MainActivity.kt'
+    parseMarkdownEmbeddedDocumentLink('![[assets/MainActivity.kt|Source code]]')?.label,
+    'Source code'
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Readme](assets/README "wmdx-embed")')?.url,
+    parseMarkdownEmbeddedDocumentLink('![[assets/README]]')?.url,
     'assets/README'
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Legacy](assets/Legacy.textpack "wmdx-embed")'),
+    parseMarkdownEmbeddedDocumentLink('![[assets/Legacy.textpack]]'),
     null
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Legacy](assets/Legacy.textpack.zip "wmdx-embed")'),
+    parseMarkdownEmbeddedDocumentLink('![[assets/Legacy.textpack.zip]]'),
     null
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Old](assets/Old.mdx "wmdx-embed")'),
+    parseMarkdownEmbeddedDocumentLink('![[https://example.com/notes.md]]'),
     null
   );
   assert.equal(
-    parseMarkdownEmbeddedDocumentLink('[Remote](https://example.com/notes.md "wmdx-embed")'),
-    null
+    parseMarkdownEmbeddedDocumentLink('![[assets/notes.md#Heading]]'),
+    null,
+    'heading and block selectors are not supported'
   );
+  assert.equal(parseMarkdownEmbeddedDocumentLink('![[assets/photo.png]]'), null);
   assert.equal(
     parseMarkdownEmbeddedDocumentLink(
-      '[Local](content%3A%2F%2Fprovider%2Fdocument%2Fid "wmdx-embed")'
+      '![[content://provider/document/id|Local]]'
     )?.url,
-    'content%3A%2F%2Fprovider%2Fdocument%2Fid'
+    'content://provider/document/id'
+  );
+  assert.equal(
+    parseMarkdownEmbeddedDocumentLink('[Notes](assets/notes.txt "wmdx-embed")'),
+    null,
+    'the old Wmdx-only marker is intentionally not supported'
   );
 });
 
@@ -103,6 +116,7 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(preview, /\{ id: 'embed', title: 'Embed Document', icon: svgIcons\.embed \}/);
   assert.match(main, /customHotkeys\.embed/);
   assert.match(main, /window\.AndroidNative\?\.loadEmbeddedMarkdown/);
+  assert.match(main, /node\.name === 'Link' \|\| node\.name === 'URL' \|\| node\.name === 'Image'/);
   assert.match(hotkeys, /app:key="pref_hotkey_embed"[\s\S]*?app:title="Document: Embed"/);
   assert.doesNotMatch(settings, /app:key="pref_embedded_document_method"/);
   assert.match(stylingPage, /app:key="pref_embedded_document_method_copy"[\s\S]*?android:defaultValue="true"/);
@@ -158,6 +172,7 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   assert.match(native, /\.put\("message", message\)/);
   assert.match(native, /fun saveEmbeddedMarkdown/);
   assert.match(native, /fun resolveEmbeddedAssetUrl/);
+  assert.match(native, /rememberEmbeddedMediaBase\(link, mediaBaseUrl\)/);
 });
 
 test('embedded Markdown renders GFM task lists without enabling table changes', async () => {
@@ -237,6 +252,7 @@ test('unset embedded-document source routes ordinary media through the normal re
     /if \(embeddedSource\) \{\s*return window\.AndroidNative\?\.resolveEmbeddedAssetUrl/
   );
   assert.match(main, /return window\.AndroidNative\?\.resolveMdzipMediaUrl/);
+  assert.match(main, /embeddedDocumentSourceFacet\.of\(this\.url\)/);
 
   const sourceFacet = Facet.define({ combine: values => values[0] ?? null });
   const regularDocument = EditorState.create({ extensions: [] });
@@ -273,7 +289,7 @@ test('migrates existing toolbar layouts to include Embed without restoring remov
 test('inserting an embed does not force keyboard focus back into the editor', () => {
   const main = readProjectFile('web/src/main.js');
   const method = main.match(
-    /insertEmbeddedDocumentLink\(relativeUrl, label, mediaBaseUrl = null\) \{([\s\S]*?)\n  \}/
+    /insertEmbeddedDocumentLink\(relativeUrl, label\) \{([\s\S]*?)\n  \}/
   )?.[1];
   assert.ok(method, 'the editor adapter must provide embedded-document insertion');
   assert.doesNotMatch(method, /this\.view\.focus\(\)/);

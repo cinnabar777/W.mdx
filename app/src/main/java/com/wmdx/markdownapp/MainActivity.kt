@@ -3292,7 +3292,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         if (!isMdzip && isUnsupportedEmbeddedFileName(fileName)) {
             ThemedToast.show(
                 this,
-                "Legacy TextPack and .mdx files cannot be embedded.",
+                "Legacy TextPack documents cannot be embedded.",
                 Toast.LENGTH_LONG
             )
             return
@@ -3385,11 +3385,16 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             }
             val label = fileName.substringBeforeLast('.', fileName).ifBlank { fileName }
+            if (
+                !mediaBaseUrl.isNullOrBlank() &&
+                !link.startsWith("content://", ignoreCase = true)
+            ) {
+                rememberEmbeddedMediaBase(link, mediaBaseUrl)
+            }
             val safeUrl = JSONObjectWrapper.quote(link)
             val safeLabel = JSONObjectWrapper.quote(label)
-            val safeMediaBaseUrl = JSONObjectWrapper.quote(mediaBaseUrl.orEmpty())
             webView.evaluateJavascript(
-                "window.editorBridge?.insertEmbeddedDocumentLink?.($safeUrl, $safeLabel, $safeMediaBaseUrl);",
+                "window.editorBridge?.insertEmbeddedDocumentLink?.($safeUrl, $safeLabel);",
                 null
             )
         }.onFailure { error ->
@@ -3402,16 +3407,40 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     }
 
     private fun isUnsupportedEmbeddedFileName(fileName: String): Boolean =
-        fileName.endsWith(".mdx", ignoreCase = true) ||
-            fileName.endsWith(".textpack", ignoreCase = true) ||
+        fileName.endsWith(".textpack", ignoreCase = true) ||
             fileName.endsWith(".textpack.zip", ignoreCase = true)
+
+    private fun embeddedMediaBasePreferenceKey(relativeLink: String): String? {
+        val documentUri = currentFileUri?.toString() ?: return null
+        val identity = "$documentUri\u0000${Uri.decode(relativeLink)}"
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(identity.toByteArray(Charsets.UTF_8))
+        val suffix = digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return "embedded_media_base_$suffix"
+    }
+
+    private fun rememberEmbeddedMediaBase(relativeLink: String, mediaBaseUrl: String) {
+        val key = embeddedMediaBasePreferenceKey(relativeLink) ?: return
+        PreferenceManager.getDefaultSharedPreferences(this)
+            .edit()
+            .putString(key, mediaBaseUrl)
+            .apply()
+    }
+
+    private fun embeddedMediaBaseFor(relativeLink: String): Uri? {
+        val key = embeddedMediaBasePreferenceKey(relativeLink) ?: return null
+        val value = PreferenceManager.getDefaultSharedPreferences(this)
+            .getString(key, null)
+            ?: return null
+        return runCatching { Uri.parse(value) }.getOrNull()
+    }
 
     private fun readEmbeddedMarkdown(uri: Uri, fileName: String, isMdzip: Boolean): String {
         if (isMdzip) {
             return getEmbeddedMdzipSession(uri).markdownContent
         }
         if (isUnsupportedEmbeddedFileName(fileName)) {
-            throw java.io.IOException("Legacy TextPack and .mdx files cannot be embedded.")
+            throw java.io.IOException("Legacy TextPack documents cannot be embedded.")
         }
         val input = contentResolver.openInputStream(uri)
             ?: throw java.io.FileNotFoundException("Could not read the selected text document.")
@@ -5589,7 +5618,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         ): String {
             if (documentSessionId != currentDocumentSessionId) return ""
             return runCatching {
-                val sourceUri = resolveEmbeddedDocumentUri(embeddedDocumentLink) ?: return ""
+                val sourceUri = embeddedMediaBaseFor(embeddedDocumentLink)
+                    ?.let { resolveEmbeddedDocumentUri(it.toString()) }
+                    ?: resolveEmbeddedDocumentUri(embeddedDocumentLink)
+                    ?: return ""
                 val sourceName = getFileNameFromUri(sourceUri)
                 if (MdzipManager.isMdzipFileName(sourceName)) {
                     val sourceSession = getEmbeddedMdzipSession(sourceUri)

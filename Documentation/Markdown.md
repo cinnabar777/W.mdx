@@ -341,9 +341,8 @@ Markdown.
 
 **Rendered:** [[#Quick reference|Jump to the quick reference]].
 
-`![[Target]]` is Obsidian's embed syntax; W.mdx does not currently render it as
-an embedded file. W.mdx has its own local-document embed syntax, described in
-[Embedded documents](#embedded-documents).
+`[[Target]]` is an Obsidian-style wikilink. Prefixing it with `!` embeds a
+supported local document inline; see [Embedded documents](#embedded-documents).
 
 ### Images
 
@@ -423,12 +422,15 @@ text; it does not rename the file.
 
 ## Embedded documents
 
-W.mdx can render a local document inline at the link's position. Use a Markdown
-link with the W.mdx `wmdx-embed` title:
+W.mdx uses Obsidian's embed form for supported local documents:
 
 ```markdown
-[Project notes](notes.md "wmdx-embed")
+![[notes.md]]
+![[notes.md|Project notes]]
 ```
+
+The part after `|` is an optional display alias. W.mdx embeds the whole document;
+Obsidian heading and block selectors are not currently supported.
 
 The Embed action can copy the selected document into the current document's
 assets or link to the original file. Choose the method in **Document Appearance
@@ -531,10 +533,11 @@ HTML is not Markdown. Some renderers accept inline HTML such as
 consistent formatting in W.mdx, use the Wmdx underline, highlighter, and pen
 syntax above.
 
-The following are Obsidian or plugin features, not standard Markdown syntax:
+W.mdx supports local document embeds using the Obsidian-style `![[path]]` syntax
+described above. The following Obsidian or plugin features are not currently
+supported:
 
 - `%% comments %%`
-- `![[file]]` embeds (use W.mdx's `wmdx-embed` link syntax for local documents)
 - Obsidian queries such as fenced `query` blocks
 - Template variables such as `{{title}}`
 - Obsidian tags and YAML properties
