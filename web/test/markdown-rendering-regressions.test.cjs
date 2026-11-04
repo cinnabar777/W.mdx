@@ -73,6 +73,9 @@ test('rendering and interaction regressions stay covered without changing table 
   const main = projectFile('web/src/main.js');
   const activity = projectFile('app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const styles = projectFile('web/index.html');
+  const heightMapStart = main.indexOf('function buildHeightMapValue(state)');
+  const heightMapEnd = main.indexOf('const heightMapField =', heightMapStart);
+  const heightMapBuilder = main.slice(heightMapStart, heightMapEnd);
 
   assert.match(main, /node\.name === 'LinkReference'/);
   assert.match(main, /node\.name === 'Autolink'/);
@@ -84,6 +87,10 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(main, /activeSelectionDragView = this\.view/);
   assert.match(main, /window\.addEventListener\('pointermove', onGlobalPointerMove, true\)/);
   assert.doesNotMatch(main, /EmptyLineCursorAnchorWidget|emptyLineCursorAnchorWidget/);
+  assert.notEqual(heightMapEnd, -1);
+  assert.match(heightMapBuilder, /node\.name === 'LinkReference'/);
+  assert.match(heightMapBuilder, /node\.name === 'Autolink'/);
+  assert.match(heightMapBuilder, /getMarkdownLinkInfo\(node, doc, linkReferenceTargets\)/);
 
   assert.match(activity, /fun openMarkdownLink\(/);
   assert.match(activity, /resolveExternalEmbeddedDocumentUri\(parentUri, relativePath\)/);
@@ -102,7 +109,8 @@ test('rendering and interaction regressions stay covered without changing table 
 test('phone fixture states the manual expected behavior and its limited coverage', () => {
   const fixture = projectFile('Documentation/Markdown-Phone-Test.md');
   assert.match(fixture, /visual smoke test/i);
-  assert.match(fixture, /reference-link syntax and its definition should be hidden/i);
+  assert.match(fixture, /inline and reference-link source syntax should be hidden/i);
+  assert.match(fixture, /outer quote border should continue/i);
   assert.match(fixture, /nested quote.*indent/i);
   assert.match(fixture, /tap.*automatic links/i);
 });

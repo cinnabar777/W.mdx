@@ -3625,6 +3625,7 @@ function buildHeightMapValue(state) {
 
   const doc = state.doc;
   const tree = syntaxTree(state);
+  const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
   const replacements = [];
   const hiddenSyntaxRanges = [];
 
@@ -3855,6 +3856,20 @@ function buildHeightMapValue(state) {
         return false;
       }
 
+      if (node.name === 'LinkReference') {
+        hideSyntax(node.from, node.to);
+        return false;
+      }
+
+      if (node.name === 'Autolink') {
+        const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
+        if (linkInfo) {
+          hideSyntax(node.from, linkInfo.labelFrom);
+          hideSyntax(linkInfo.labelTo, node.to);
+        }
+        return false;
+      }
+
       if (node.name === 'Link' || node.name === 'URL' || node.name === 'Image') {
         const raw = doc.sliceString(node.from, node.to);
         const embeddedLink = node.name === 'Image'
@@ -3949,10 +3964,9 @@ function buildHeightMapValue(state) {
           hiddenSyntaxRanges.push(attachmentDecoration);
           return false;
         }
-        const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-        if (match) {
-          const labelFrom = node.from + 1;
-          const labelTo = labelFrom + match[1].length;
+        const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
+        if (linkInfo) {
+          const { labelFrom, labelTo } = linkInfo;
           if (labelFrom > node.from) {
             hideSyntax(node.from, labelFrom);
           }
