@@ -1924,12 +1924,27 @@ class EmbeddedDocumentWidget extends WidgetType {
     content.style.cssText =
       'background:transparent;color:inherit;font-size:inherit;max-width:100%;';
     shell.appendChild(content);
+    const appendUnavailableNotice = message => {
+      const unavailable = document.createElement('div');
+      unavailable.className = 'cm-embedded-document-unavailable';
+      unavailable.textContent = message;
+      unavailable.setAttribute('role', 'status');
+      unavailable.style.cssText = [
+        'box-sizing:border-box',
+        'display:block',
+        'width:100%',
+        'max-width:100%',
+        'min-width:0',
+        'padding:8px 10px',
+        'white-space:normal',
+        'overflow-wrap:anywhere',
+        'word-break:normal'
+      ].join(';');
+      content.appendChild(unavailable);
+    };
 
     if (this.depth >= MAX_EMBEDDED_DOCUMENT_DEPTH) {
-      const unavailable = document.createElement('div');
-      unavailable.textContent = 'Embedded document nesting limit reached.';
-      unavailable.setAttribute('role', 'status');
-      content.appendChild(unavailable);
+      appendUnavailableNotice('Embedded document nesting limit reached.');
       return shell;
     }
 
@@ -1950,11 +1965,9 @@ class EmbeddedDocumentWidget extends WidgetType {
       // An older bridge or an inaccessible source should render an error card.
     }
     if (markdownText === null) {
-      const unavailable = document.createElement('div');
-      unavailable.textContent =
-        loadErrorMessage || 'Could not load this embedded document.';
-      unavailable.setAttribute('role', 'status');
-      content.appendChild(unavailable);
+      appendUnavailableNotice(
+        loadErrorMessage || 'Could not load this embedded document.'
+      );
       return shell;
     }
 

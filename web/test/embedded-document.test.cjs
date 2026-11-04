@@ -155,8 +155,11 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
   );
   assert.match(
     main,
-    /unavailable\.textContent =\s*loadErrorMessage \|\| 'Could not load this embedded document\.'/
+    /appendUnavailableNotice\(\s*loadErrorMessage \|\| 'Could not load this embedded document\.'\s*\)/
   );
+  assert.match(main, /const appendUnavailableNotice = message =>/);
+  assert.match(main, /'white-space:normal'[\s\S]*?'overflow-wrap:anywhere'/);
+  assert.match(main, /'width:100%'[\s\S]*?'max-width:100%'[\s\S]*?'min-width:0'/);
   assert.match(main, /width:calc\(100% \+ var\(--body-margin-left,16px\) \+ var\(--body-margin-right,16px\)\)/);
   assert.match(main, /margin-left:calc\(-1 \* var\(--body-margin-left,16px\)\)/);
   assert.match(main, /childEditor\.scrollDOM\.style\.background = 'transparent'/);
