@@ -1143,13 +1143,16 @@ class ImagePreviewWidget extends WidgetType {
 
     const img = document.createElement('img');
     const embeddedSource = view?.state?.facet?.(embeddedDocumentSourceFacet);
-    const embeddedAssetUrl = embeddedSource
+    const hasEmbeddedSource = Array.isArray(embeddedSource)
+      ? embeddedSource.length > 0
+      : Boolean(embeddedSource);
+    const embeddedAssetUrl = hasEmbeddedSource
       ? resolveDocumentAssetUrl(view.state, this.url)
       : null;
     const textPackAssetUrl = window.AndroidNative?.resolveTextPackAssetUrl?.(this.url);
     const mdzipAttachmentUrl = window.AndroidNative?.resolveMdzipAttachmentUrl?.(this.url);
     const markdownAssetUrl = window.AndroidNative?.resolveMarkdownAssetUrl?.(this.url);
-    img.src = embeddedSource
+    img.src = hasEmbeddedSource
       ? (embeddedAssetUrl || this.url)
       : (textPackAssetUrl || mdzipAttachmentUrl || markdownAssetUrl || this.url);
     img.alt = this.alt;

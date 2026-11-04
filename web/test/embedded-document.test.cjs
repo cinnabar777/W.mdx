@@ -265,6 +265,11 @@ test('unset embedded-document source routes ordinary media through the normal re
   assert.match(main, /return window\.AndroidNative\?\.resolveMdzipMediaUrl/);
   assert.match(
     main,
+    /const hasEmbeddedSource = Array\.isArray\(embeddedSource\)\s*\? embeddedSource\.length > 0\s*: Boolean\(embeddedSource\);/
+  );
+  assert.match(main, /img\.src = hasEmbeddedSource[\s\S]*?mdzipAttachmentUrl/);
+  assert.match(
+    main,
     /embeddedDocumentSourceFacet\.of\(\[\.\.\.this\.sourceContext, this\.url\]\)/
   );
 
