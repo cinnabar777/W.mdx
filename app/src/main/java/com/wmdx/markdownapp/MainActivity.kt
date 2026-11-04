@@ -5517,6 +5517,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             if (documentSessionId != currentDocumentSessionId) {
                 return JSONObject().put("ok", false).toString()
             }
+            var loadStage = "resolve"
             return runCatching {
                 val sourceUri = resolveEmbeddedDocumentUri(relativeLink)
                     ?: throw java.io.FileNotFoundException(
@@ -5527,8 +5528,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         }
                     )
                 val fileName = getFileNameFromUri(sourceUri)
+                val isMdzip = MdzipManager.isMdzipFileName(fileName)
+                loadStage = if (isMdzip) "open_mdzip" else "read_text"
                 val markdown = when {
-                    MdzipManager.isMdzipFileName(fileName) ->
+                    isMdzip ->
                         getEmbeddedMdzipSession(sourceUri).markdownContent
                     else -> readEmbeddedMarkdown(sourceUri, fileName, isMdzip = false)
                 }
@@ -5537,14 +5540,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     .put("markdown", markdown)
                     .toString()
             }.getOrElse { error ->
+                AppDiagnostics.record(
+                    this@MainActivity,
+                    "embedded_document_load_failed",
+                    "stage=$loadStage error=${error.javaClass.simpleName}"
+                )
                 val message =
-                    if (
+                    when {
+                        error is SecurityException ->
+                            EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE
                         currentDocumentFormat == DocumentFormat.MARKDOWN &&
-                        (error is SecurityException || error is java.io.FileNotFoundException)
-                    ) {
-                        EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE
-                    } else {
-                        error.localizedMessage ?: "Could not load this embedded document."
+                            loadStage == "resolve" &&
+                            error is java.io.FileNotFoundException ->
+                            EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE
+                        else ->
+                            error.localizedMessage ?: "Could not load this embedded document."
                     }
                 JSONObject()
                     .put("ok", false)

@@ -169,6 +169,14 @@ test('embedded document action is wired to toolbar, shortcut, native picker, and
     native,
     /EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE[\s\S]*?Settings > File & Folder Access[\s\S]*?Read access is enough to display it/
   );
+  assert.match(
+    native,
+    /var loadStage = "resolve"[\s\S]*?loadStage = if \(isMdzip\) "open_mdzip" else "read_text"[\s\S]*?stage=\$loadStage error=\$\{error\.javaClass\.simpleName\}/
+  );
+  assert.match(
+    native,
+    /loadStage == "resolve" &&\s*error is java\.io\.FileNotFoundException[\s\S]*?EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE/
+  );
   assert.match(native, /\.put\("message", message\)/);
   assert.match(native, /fun saveEmbeddedMarkdown/);
   assert.match(native, /fun resolveEmbeddedAssetUrl/);
