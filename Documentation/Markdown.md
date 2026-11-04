@@ -615,10 +615,8 @@ separate target unless users need to exchange those documents.
 **MDX** is not a plain-Markdown flavor: it combines Markdown with JSX and
 JavaScript expressions. It is not a compatibility target for W.mdx documents.
 
-**Suggested scope:** treat CommonMark core plus GFM's portable extensions and
-the documented Obsidian subset above as the main compatibility targets. Track
-Pandoc as a possible later target; add other syntax only when a concrete
-import/export workflow needs it.
+**Current scope:** CommonMark, GFM, and Obsidian's built-in Markdown syntax.
+Do not add another dialect target until the compatibility goal below is met.
 
 ### Specifications and references
 
@@ -633,3 +631,20 @@ import/export workflow needs it.
 - [Pandoc's Markdown](https://pandoc.org/MANUAL.html#pandocs-markdown)
 - [Markdown Extra](https://michelf.ca/projects/php-markdown/extra/)
 - [MDX: Markdown for the component era](https://mdxjs.com/docs/what-is-mdx/)
+
+## Compatibility goal
+
+- **CommonMark and GFM:** provide full comparability and import/export support
+  for each target, verified against their specifications and representative
+  documents.
+- **Obsidian:** W.mdx is not intended to reproduce the entire Obsidian app.
+  Make the documented built-in Markdown syntax and features that W.mdx supports
+  work reliably and as closely to Obsidian as practical. This does not include
+  third-party plugins or every Obsidian app feature.
+- **Import and export:** preserve supported meaning through open, edit, save,
+  export, and reopen. If a target format cannot represent a feature, convert it
+  explicitly or warn the user rather than silently dropping it.
+
+**Next step:** create a feature-by-feature acceptance matrix and regression
+fixtures for all three targets. Test each applicable path through import/open,
+rendering and editing, save/export, and reopen before expanding the syntax.
