@@ -5420,9 +5420,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun canOpenAttachment(relativeLink: String, documentSessionId: String?): Boolean {
+        fun canOpenAttachment(
+            relativeLink: String,
+            documentSessionId: String?,
+            sourceContextJson: String?
+        ): Boolean {
             if (documentSessionId != currentDocumentSessionId) return false
-            return resolveAttachmentUri(relativeLink) != null
+            return resolveEmbeddedAttachmentUri(relativeLink, sourceContextJson) != null
         }
 
         @JavascriptInterface
@@ -5482,15 +5486,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
-        fun openAttachment(relativeLink: String, documentSessionId: String?): Boolean {
+        fun openAttachment(
+            relativeLink: String,
+            documentSessionId: String?,
+            sourceContextJson: String?
+        ): Boolean {
             if (documentSessionId != currentDocumentSessionId) return false
-            if (resolveAttachmentUri(relativeLink) == null) return false
+            val attachmentUri =
+                resolveEmbeddedAttachmentUri(relativeLink, sourceContextJson) ?: return false
             runOnUiThread {
                 if (documentSessionId != currentDocumentSessionId) {
                     return@runOnUiThread
                 }
                 try {
-                    val uri = resolveAttachmentUri(relativeLink) ?: return@runOnUiThread
+                    val uri = attachmentUri
                     val fileName = getFileNameFromUri(uri)
                     val mimeType = android.webkit.MimeTypeMap.getSingleton()
                         .getMimeTypeFromExtension(fileName.substringAfterLast('.', "").lowercase())
@@ -5520,11 +5529,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun canOpenMdzipAttachment(relativeLink: String, documentSessionId: String?): Boolean =
-            canOpenAttachment(relativeLink, documentSessionId)
+            canOpenAttachment(relativeLink, documentSessionId, null)
 
         @JavascriptInterface
         fun openMdzipAttachment(relativeLink: String, documentSessionId: String?): Boolean =
-            openAttachment(relativeLink, documentSessionId)
+            openAttachment(relativeLink, documentSessionId, null)
 
         @JavascriptInterface
         fun loadEmbeddedMarkdown(
@@ -5894,6 +5903,30 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         private fun resolveEmbeddedDocumentUri(relativeLink: String): Uri? =
             resolveEmbeddedContentUri(relativeLink) ?: resolveAttachmentUri(relativeLink)
+
+        private fun resolveEmbeddedAttachmentUri(
+            relativeLink: String,
+            sourceContextJson: String?
+        ): Uri? {
+            val sourceLinks = parseEmbeddedSourceLinks(sourceContextJson) ?: return null
+            if (sourceLinks.isEmpty() || currentDocumentFormat == DocumentFormat.TEXT_PACK) {
+                return resolveAttachmentUri(relativeLink)
+            }
+
+            return when (val parent = resolveEmbeddedSourceContext(sourceLinks) ?: return null) {
+                is EmbeddedDocumentSourceContext.MdzipFile -> {
+                    val archivePath = MdzipManager.resolveAttachmentArchivePath(
+                        parent.markdownPath,
+                        relativeLink
+                    ) ?: return null
+                    val file = MdzipManager.attachmentArchiveFile(parent.session, archivePath)
+                        ?: return null
+                    embeddedFileProviderUri(file)
+                }
+                is EmbeddedDocumentSourceContext.ExternalFile ->
+                    resolveExternalEmbeddedDocumentUri(parent.uri, relativeLink)
+            }
+        }
 
         private fun resolveAttachmentUri(relativeLink: String): Uri? {
             val file = when (currentDocumentFormat) {

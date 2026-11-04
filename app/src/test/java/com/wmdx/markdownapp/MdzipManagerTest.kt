@@ -442,6 +442,20 @@ class MdzipManagerTest {
                 "images/photo.png"
             )
         )
+        assertEquals(
+            "attachments/reference.doc",
+            MdzipManager.resolveAttachmentArchivePath(
+                "attachments/doc.md",
+                "reference.doc"
+            )
+        )
+        assertEquals(
+            null,
+            MdzipManager.resolveAttachmentArchivePath(
+                "attachments/doc.md",
+                "../../outside.doc"
+            )
+        )
     }
 
     @Test

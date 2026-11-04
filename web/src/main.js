@@ -2707,8 +2707,15 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             const attachmentSessionId = attachmentLink
               ? window.AndroidNative?.getCurrentDocumentSessionId?.()
               : null;
+            const attachmentSourceContext = attachmentLink
+              ? state.facet(embeddedDocumentSourceFacet)
+              : [];
             const attachmentExists = attachmentLink && window.AndroidNative
-              ?.canOpenAttachment?.(attachmentLink.url, attachmentSessionId);
+              ?.canOpenAttachment?.(
+                attachmentLink.url,
+                attachmentSessionId,
+                JSON.stringify(attachmentSourceContext)
+              );
             if (attachmentLink && attachmentExists && !isNodeActive && !isPureWysiwyg) {
               const attachmentDecoration = Decoration.replace({
                 widget: new MdzipAttachmentWidget(
@@ -2718,7 +2725,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   node.from,
                   node.to,
                   attachmentLink.layout,
-                  (editView, item) => openAttachmentEditDialog(editView, item)
+                  (editView, item) => openAttachmentEditDialog(editView, item),
+                  attachmentSourceContext
                 )
               }).range(node.from, node.to);
               builder.push(attachmentDecoration);
@@ -3859,8 +3867,15 @@ function buildHeightMapValue(state) {
         const attachmentSessionId = attachmentLink
           ? window.AndroidNative?.getCurrentDocumentSessionId?.()
           : null;
+        const attachmentSourceContext = attachmentLink
+          ? state.facet(embeddedDocumentSourceFacet)
+          : [];
         const attachmentExists = attachmentLink && window.AndroidNative
-          ?.canOpenAttachment?.(attachmentLink.url, attachmentSessionId);
+          ?.canOpenAttachment?.(
+            attachmentLink.url,
+            attachmentSessionId,
+            JSON.stringify(attachmentSourceContext)
+          );
         if (attachmentLink && attachmentExists) {
           const attachmentDecoration = Decoration.replace({
             widget: new MdzipAttachmentWidget(
@@ -3870,7 +3885,8 @@ function buildHeightMapValue(state) {
               node.from,
               node.to,
               attachmentLink.layout,
-              (editView, item) => openAttachmentEditDialog(editView, item)
+              (editView, item) => openAttachmentEditDialog(editView, item),
+              attachmentSourceContext
             )
           }).range(node.from, node.to);
           replacements.push(attachmentDecoration);

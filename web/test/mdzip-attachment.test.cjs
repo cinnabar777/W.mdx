@@ -11,6 +11,10 @@ test('attachment links parse local package paths and marked external asset paths
     { label: 'Reference PDF', url: 'attachments/reference.pdf' }
   );
   assert.deepEqual(
+    parseMarkdownAttachmentLink('[Word document](attachments/reference.doc)'),
+    { label: 'Word document', url: 'attachments/reference.doc' }
+  );
+  assert.deepEqual(
     parseMarkdownAttachmentLink('[A & B](../attachments/a%20%26%20b.pdf)'),
     { label: 'A & B', url: '../attachments/a%20%26%20b.pdf' }
   );
@@ -116,7 +120,13 @@ test('all document formats can resolve and open inserted attachments', () => {
   assert.match(native, /pickAttachmentLauncher\.launch\(arrayOf\("\*\/\*"\)\)/);
   assert.match(native, /fun canOpenAttachment/);
   assert.match(native, /fun openAttachment/);
+  assert.match(native, /resolveEmbeddedAttachmentUri\(relativeLink, sourceContextJson\)/);
+  assert.match(native, /MdzipManager\.resolveAttachmentArchivePath\(/);
   assert.match(native, /DocumentFormat\.TEXT_PACK -> currentTextPackSession/);
   assert.match(native, /DocumentFormat\.MARKDOWN -> resolveMarkdownAssetUrl/);
-  assert.match(widget, /openAttachment\?\./);
+  assert.match(
+    main,
+    /canOpenAttachment\?\.\([\s\S]*?JSON\.stringify\(attachmentSourceContext\)/
+  );
+  assert.match(widget, /openAttachment\?\.\([\s\S]*?this\.sourceContextJson/);
 });
