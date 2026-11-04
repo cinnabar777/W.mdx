@@ -1927,7 +1927,12 @@
       pointer-events: none !important;
       top: 0 !important;
       bottom: 0 !important;
-      left: calc(-1 * var(--blockquote-depth-offset, 0px)) !important;
+      left: calc(
+        -1 * (
+          var(--blockquote-depth-offset, 0px) +
+          var(--blockquote-border-width, 4px)
+        )
+      ) !important;
       width: var(--blockquote-depth-offset, 0px) !important;
       background: repeating-linear-gradient(
         to right,

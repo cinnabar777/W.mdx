@@ -101,6 +101,7 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(styles, /--blockquote-depth-offset/);
   assert.match(styles, /margin-left:\s*calc\([\s\S]*?blockquote-depth-offset/);
   assert.match(styles, /cm-line\.cm-blockquote\[data-blockquote-depth\][\s\S]*?::before/);
+  assert.match(styles, /left:\s*calc\([\s\S]*blockquote-depth-offset[\s\S]*blockquote-border-width/);
   assert.match(styles, /cm-paragraph-first\.cm-blockquote[\s\S]*?padding-top:/);
   assert.match(styles, /cm-paragraph-last\.cm-blockquote[\s\S]*?padding-bottom:/);
   assert.match(main, /Table cell\/editing|Table rendering in WYSIWYG/);
