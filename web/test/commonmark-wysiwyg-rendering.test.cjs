@@ -23,7 +23,7 @@ function assertHardBreakRendering(lines, window) {
   assert.equal(window.getComputedStyle(backslashMarker).display, 'none');
 }
 
-test('CommonMark inline syntax and hard breaks render without changing source', async () => {
+test('CommonMark inline syntax, hard breaks, and list indentation render without changing source', async () => {
   const html = fs.readFileSync(path.join(appAssets, 'index.html'), 'utf8');
   const bundle = fs.readFileSync(path.join(appAssets, 'bundle.js'), 'utf8');
   const errors = [];
@@ -148,6 +148,40 @@ test('CommonMark inline syntax and hard breaks render without changing source', 
     assert.ok(sourceContent.textContent.includes('\\*literal\\* \\&amp; \\|'));
     assert.ok(sourceContent.textContent.includes('Hard break by spaces:  '));
     assert.ok(sourceContent.textContent.includes('Hard break by slash\\'));
+
+    const listSource = [
+      'CommonMark list indentation example:',
+      '- a',
+      ' - b',
+      '  - c',
+      '   - d',
+      '  - e',
+      ' - f',
+      '- g',
+      '',
+      '- foo',
+      '  - bar',
+      '    - baz',
+      '',
+      '> - quoted item'
+    ].join('\n');
+    window.editorBridge.setMarkdown(listSource);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    await window.editorBridge.setEditorMode('wysiwyg');
+    const wysiwygListItems = [...window.document.querySelectorAll('.cm-line.cm-list-item')];
+    assert.deepEqual(wysiwygListItems.map(line => line.textContent), [
+      '• a', '• b', '• c', '• d', '• e', '• f', '• g',
+      '• foo', '  • bar', '    • baz', '• quoted item'
+    ]);
+    assert.equal(window.editorBridge.getMarkdown(), listSource);
+
+    await window.editorBridge.setEditorMode('live_preview');
+    const livePreviewListItems = [...window.document.querySelectorAll('.cm-line.cm-list-item')];
+    assert.deepEqual(livePreviewListItems.map(line => line.textContent), [
+      '• a', '• b', '• c', '• d', '• e', '• f', '• g',
+      '• foo', '  • bar', '    • baz', '• quoted item'
+    ]);
+    assert.equal(window.editorBridge.getMarkdown(), listSource);
     assert.deepEqual(errors, []);
   } finally {
     dom.window.close();

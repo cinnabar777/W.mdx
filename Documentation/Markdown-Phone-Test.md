@@ -9,10 +9,12 @@ views, inline and reference-link source syntax should be hidden, including while
 the link is active. The reference definition should also be hidden. Autolink
 angle brackets should not appear. Nested quotes should indent farther than their
 parent, and the outer quote border should continue through both paragraphs and
-the nested quote. Tap inline, reference, angle, and automatic links to confirm
-they open the browser or email app. Tap the wiki link to confirm it opens the
-sibling Markdown guide. Source view should continue to show the original
-Markdown syntax.
+the nested quote. The list with up to three leading spaces before its markers
+should stay flat, the nested list should stay nested, and the quoted list should
+stay inside its quote. Tap inline, reference, angle, and automatic links to
+confirm they open the browser or email app. Tap the wiki link to confirm it
+opens the sibling Markdown guide. Source view should continue to show the
+original Markdown syntax.
 
 The table below is a rendering check only. Table-cell cursor/editing is a known
 separate issue and is not part of this test.
@@ -66,6 +68,17 @@ The code span should show `**these marks literally**`, not bold text.
    1. Nested numbered item
 3. Third numbered item
 
+Items indented by up to three spaces before their markers should stay at one
+list level:
+
+- First
+ - Second
+  - Third
+   - Fourth
+  - Fifth
+ - Sixth
+- Seventh
+
 ### Block quotes
 
 > This is a block quote.
@@ -74,6 +87,8 @@ The code span should show `**these marks literally**`, not bold text.
 > This is a second paragraph in the quote.
 >
 > > This is a nested quote.
+>
+> - A list item inside a block quote.
 
 The nested quote should be visibly indented farther than the first quote, with
 an inset border while the outer border remains continuous.

@@ -503,6 +503,32 @@ function listItemTextRange(tree, doc, line, markerEnd) {
   return from < line.to ? { from, to: line.to } : null;
 }
 
+function listMarkerIndentRange(doc, node) {
+  const line = doc.lineAt(node.from);
+  const leadingIndent = doc.sliceString(line.from, node.from);
+  // CommonMark allows up to three leading spaces without nesting the list item.
+  return /^[ \t]+$/.test(leadingIndent)
+    ? { from: line.from, to: node.from }
+    : null;
+}
+
+function collectListMarkerNestingDepths(tree, from = 0, to = tree.length) {
+  const depths = new Map();
+  let listItemDepth = 0;
+  tree.iterate({
+    from,
+    to,
+    enter(node) {
+      if (node.name === 'ListItem') listItemDepth++;
+      if (node.name === 'ListMark') depths.set(node.from, Math.max(0, listItemDepth - 1));
+    },
+    leave(node) {
+      if (node.name === 'ListItem') listItemDepth--;
+    }
+  });
+  return depths;
+}
+
 function scheduleListMarkerMeasurements(view, force = false) {
   if (
     !view ||
@@ -2335,6 +2361,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
     const markdownLinkRanges = [];
     const decorationRanges = view.visibleRanges;
+    const firstVisibleRange = decorationRanges[0];
+    const lastVisibleRange = decorationRanges[decorationRanges.length - 1];
+    const listMarkerDepths = collectListMarkerNestingDepths(
+      tree,
+      firstVisibleRange?.from ?? 0,
+      lastVisibleRange?.to ?? doc.length
+    );
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
@@ -2380,8 +2413,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
       for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
         const line = doc.line(lineNumber);
-        const firstText = /\S/.exec(line.text);
-        const probe = firstText ? line.from + firstText.index : line.from;
+        const quotePrefix = getQuotedLineInfo(lineNumber)?.quotePrefix || '';
+        const firstText = /\S/.exec(line.text.slice(quotePrefix.length));
+        const probe = firstText
+          ? line.from + quotePrefix.length + firstText.index
+          : line.from;
         const resolvedNode = tree.resolveInner(probe, 1);
 
         let paragraphNode = null;
@@ -2735,6 +2771,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             const isBullet = /^[-*+]$/.test(marker.trim());
             if (!isNodeActive) {
               if (!isPureWysiwyg) {
+                if (listMarkerDepths.get(node.from) === 0) {
+                  const indentRange = listMarkerIndentRange(doc, node);
+                  if (indentRange) hideSyntax(indentRange.from, indentRange.to);
+                }
                 builder.push(Decoration.replace({
                   widget: new ListMarkerWidget(marker, isBullet)
                 }).range(node.from, node.to));
@@ -3734,6 +3774,7 @@ function buildHeightMapValue(state) {
 
   const doc = state.doc;
   const tree = syntaxTree(state);
+  const listMarkerDepths = collectListMarkerNestingDepths(tree);
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
   const replacements = [];
   const hiddenSyntaxRanges = [];
@@ -3939,6 +3980,10 @@ function buildHeightMapValue(state) {
       if (node.name === 'ListMark') {
         const marker = doc.sliceString(node.from, node.to);
         const isBullet = /^[-*+]$/.test(marker.trim());
+        if (listMarkerDepths.get(node.from) === 0) {
+          const indentRange = listMarkerIndentRange(doc, node);
+          if (indentRange) hideSyntax(indentRange.from, indentRange.to);
+        }
         replacements.push(Decoration.replace({
           widget: new ListMarkerWidget(marker, isBullet)
         }).range(node.from, node.to));
@@ -4372,8 +4417,12 @@ export function buildPersistentLayoutDecorations(state) {
 
   for (let number = 1; number <= doc.lines; number++) {
     const line = doc.line(number);
-    const firstText = /\S/.exec(line.text);
-    const probe = firstText ? line.from + firstText.index : line.from;
+    const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
+    const quotePrefixLength = quotePrefix?.[1].length ?? 0;
+    const firstText = /\S/.exec(line.text.slice(quotePrefixLength));
+    const probe = firstText
+      ? line.from + quotePrefixLength + firstText.index
+      : line.from;
     const resolved = tree.resolveInner(probe, 1);
 
     let paragraphNode = null;
@@ -4403,7 +4452,6 @@ export function buildPersistentLayoutDecorations(state) {
     if (insideTable || insideCodeBlock) continue;
 
     let calloutInfo = null;
-    const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
     const isBlockquoteLine = insideBlockquote || Boolean(quotePrefix);
     if (!isBlockquoteLine) {
       activeCallouts.length = 0;
