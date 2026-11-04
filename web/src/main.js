@@ -2049,6 +2049,7 @@ class EmbeddedDocumentWidget extends WidgetType {
         footnoteStateField,
         persistentLayoutField,
         heightMapField,
+        liveEmbeddedDocumentField,
         hiddenSyntaxAtomicRanges,
         embeddedDocumentSourceFacet.of(this.url),
         embeddedDocumentDepthFacet.of(this.depth + 1),
@@ -2611,33 +2612,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             return;
           }
 
-        if (node.name === 'Link' || node.name === 'URL' || node.name === 'Image') {
-          const raw = view.state.doc.sliceString(node.from, node.to);
-          const embeddedLink = node.name === 'Image'
-            ? parseMarkdownEmbeddedDocumentLink(raw)
-            : null;
-            if (
-              embeddedLink &&
-              isStandaloneEmbeddedDocument(view.state.doc, node, raw) &&
-              !isNodeActive &&
-              !isPureWysiwyg
-            ) {
-              const embeddedDecoration = Decoration.replace({
-                widget: new EmbeddedDocumentWidget(
-                  embeddedLink.label,
-                  embeddedLink.url,
-                  node.from,
-                  node.to,
-                  window.AndroidNative?.getCurrentDocumentSessionId?.(),
-                  view.state.facet(embeddedDocumentDepthFacet),
-                  embeddedContentInteractionMode
-                ),
-                block: true
-              }).range(node.from, node.to);
-              builder.push(embeddedDecoration);
-              hiddenSyntaxRanges.push(embeddedDecoration);
-              return false;
-            }
+          if (node.name === 'Link' || node.name === 'URL') {
+            const raw = view.state.doc.sliceString(node.from, node.to);
             const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
             const videoUrl = videoLink ? resolveDocumentAssetUrl(view.state, videoLink.url) : null;
             if (videoLink && videoUrl && !isNodeActive && !isPureWysiwyg) {
@@ -2965,6 +2941,8 @@ function hiddenSyntaxRangesForView(view) {
     view.state.field(heightMapField, false)?.hiddenSyntaxRanges;
   const livePreviewRanges =
     view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
+  const liveEmbeddedRanges =
+    view.state.field(liveEmbeddedDocumentField, false)?.hiddenSyntaxRanges;
   const baseRanges = currentEditorMode === 'wysiwyg'
     ? (wysiwygRanges ?? livePreviewRanges)
     : (livePreviewRanges ?? wysiwygRanges);
@@ -2975,6 +2953,7 @@ function hiddenSyntaxRangesForView(view) {
   return mergeHiddenSyntaxRanges(
     view.state.doc.length,
     baseRanges,
+    liveEmbeddedRanges,
     codeBlockRanges,
     footnoteRanges
   );
@@ -2984,6 +2963,7 @@ function hiddenSyntaxRangesForState(state) {
   const ranges = [];
   const sets = [
     state.field(heightMapField, false)?.hiddenSyntaxRanges,
+    state.field(liveEmbeddedDocumentField, false)?.hiddenSyntaxRanges,
     state.field(wysiwygCodeBlockField, false)?.hiddenSyntaxRanges,
     state.field(footnoteStateField, false)?.hiddenSyntaxRanges
   ];
@@ -3930,6 +3910,73 @@ function buildHeightMapValue(state) {
   };
 }
 
+function buildLiveEmbeddedDocumentValue(state) {
+  if (currentEditorMode !== 'live_preview') {
+    return {
+      decorations: Decoration.none,
+      hiddenSyntaxRanges: Decoration.none
+    };
+  }
+
+  const decorations = [];
+  const hiddenSyntaxRanges = [];
+  const doc = state.doc;
+  syntaxTree(state).iterate({
+    enter: node => {
+      if (node.name !== 'Image') return;
+      const raw = doc.sliceString(node.from, node.to);
+      const embeddedLink = parseMarkdownEmbeddedDocumentLink(raw);
+      if (!embeddedLink || !isStandaloneEmbeddedDocument(doc, node, raw)) return;
+
+      const decoration = Decoration.replace({
+        widget: new EmbeddedDocumentWidget(
+          embeddedLink.label,
+          embeddedLink.url,
+          node.from,
+          node.to,
+          window.AndroidNative?.getCurrentDocumentSessionId?.(),
+          state.facet(embeddedDocumentDepthFacet),
+          embeddedContentInteractionMode
+        ),
+        block: true
+      }).range(node.from, node.to);
+      decorations.push(decoration);
+      hiddenSyntaxRanges.push(decoration);
+      return false;
+    }
+  });
+
+  return {
+    decorations: Decoration.set(decorations, true),
+    hiddenSyntaxRanges: Decoration.set(hiddenSyntaxRanges, true)
+  };
+}
+
+const liveEmbeddedDocumentField = StateField.define({
+  create: buildLiveEmbeddedDocumentValue,
+  update(current, tr) {
+    if (currentEditorMode !== 'live_preview') return current;
+    const refresh = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect) ||
+      effect.is(typographySettingsEffect)
+    );
+    if (!tr.docChanged && !refresh) return current;
+    if (
+      tr.docChanged &&
+      !refresh &&
+      !transactionTouchesStructure(tr, { nodeNames: ['Image'] })
+    ) {
+      return {
+        decorations: current.decorations.map(tr.changes),
+        hiddenSyntaxRanges: current.hiddenSyntaxRanges.map(tr.changes)
+      };
+    }
+    return buildLiveEmbeddedDocumentValue(tr.state);
+  },
+  provide: field =>
+    EditorView.decorations.from(field, value => value.decorations)
+});
+
 export const heightMapField = StateField.define({
   create: buildHeightMapValue,
   update(current, tr) {
@@ -4857,6 +4904,7 @@ class CodeMirrorAdapter {
         footnoteStateField,
         persistentLayoutField,
         heightMapField,
+        liveEmbeddedDocumentField,
         Prec.highest([tableNavigationKeymap, markdownIndentKeymap]),
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
