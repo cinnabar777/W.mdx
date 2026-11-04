@@ -547,8 +547,8 @@ another renderer.
 ### CommonMark
 
 **Implemented for everyday documents:** headings, paragraphs, lists, block
-quotes, code spans and blocks, emphasis, links, images, escapes, thematic
-breaks, reference links, and autolinks.
+quotes, code spans and blocks, emphasis, links, images, escapes, hard line
+breaks, thematic breaks, reference links, and autolinks.
 
 **Still to do for full compatibility:**
 
@@ -659,7 +659,7 @@ cross-dialect round-trip suite.
 
 | Target or area | Current support and focused test evidence | Remaining acceptance work |
 | --- | --- | --- |
-| CommonMark core | Parser-semantic checks cover all 575 non-HTML cases in the official 0.31.2 corpus, including tab-separated ATX headings and unresolved references inside emphasis. A focused WYSIWYG/Live Preview test covers named and numeric character references plus escaped punctuation while preserving source spelling. | Verify exact WYSIWYG rendering and open, edit, save, export, and reopen semantics against representative cases. |
+| CommonMark core | Parser-semantic checks cover all 575 non-HTML cases in the official 0.31.2 corpus, including tab-separated ATX headings and unresolved references inside emphasis. Focused WYSIWYG/Live Preview tests cover character references, escaped punctuation, hard-break markers, and code-span whitespace/line-ending normalization while preserving source spelling. | Verify exact WYSIWYG rendering and open, edit, save, export, and reopen semantics against representative cases. |
 | CommonMark raw HTML | Arbitrary HTML is not rendered. `<u>...</u>` remains as a compatibility form when Wmdx underline syntax is disabled; 77 HTML-interoperability cases are held out of native parser checks. | Convert supported imported HTML to native Wmdx syntax; define and test visible handling for constructs with no equivalent. Never emit HTML as fallback. |
 | GFM tables | Editable pipe tables; tests cover official table examples 198–205, cell-count normalization, escaped pipes, alignment, editing, serialized Markdown reopening, and MDZip archive open/save/reopen. | Verify direct Android Markdown file save/open and the MDZip content-provider write path. |
 | GFM tasks, strikethrough, and autolinks | Main and embedded parser tests cover task examples 279–280, strikethrough examples 491–493, and autolink examples 622–630; Markdown stream-codec and MDZip archive tests cover open/save/reopen preservation. Single and double tildes render as strike, while runs of three remain literal. | Expand official conformance coverage and validate the Android document-provider path. The separate Export action produces HTML/MHTML, not a Markdown dialect export. |

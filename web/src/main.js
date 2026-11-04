@@ -319,6 +319,33 @@ function decodeMarkdownEntity(entitySource) {
   return decoded;
 }
 
+function hardBreakSyntaxEnd(doc, node) {
+  return node.to > node.from && doc.sliceString(node.to - 1, node.to) === '\n'
+    ? node.to - 1
+    : node.to;
+}
+
+function hardBreakSyntaxDecoration(doc, node) {
+  const end = hardBreakSyntaxEnd(doc, node);
+  return end > node.from
+    ? Decoration.mark({ class: 'cm-hardbreak-syntax' }).range(node.from, end)
+    : null;
+}
+
+function markdownCodeSpanDisplayText(doc, node) {
+  const source = doc.sliceString(node.from, node.to);
+  const opening = /^`+/.exec(source)?.[0];
+  if (!opening || source.length < opening.length * 2) return null;
+
+  const content = source.slice(opening.length, -opening.length);
+  let text = content.replace(/\r\n?|\n/g, ' ');
+  if (text.startsWith(' ') && text.endsWith(' ') && /[^ ]/.test(text)) {
+    text = text.slice(1, -1);
+  }
+
+  return { content, text, hasLineBreaks: /[\r\n]/.test(content), needsNormalization: content !== text };
+}
+
 class MarkdownEntityWidget extends WidgetType {
   constructor(text) {
     super();
@@ -332,6 +359,24 @@ class MarkdownEntityWidget extends WidgetType {
   toDOM() {
     const span = document.createElement('span');
     span.className = 'cm-markdown-entity';
+    span.textContent = this.text;
+    return span;
+  }
+}
+
+class MarkdownCodeSpanWidget extends WidgetType {
+  constructor(text) {
+    super();
+    this.text = text;
+  }
+
+  eq(other) {
+    return other instanceof MarkdownCodeSpanWidget && other.text === this.text;
+  }
+
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-inline-code cm-inline-code-normalized';
     span.textContent = this.text;
     return span;
   }
@@ -2598,6 +2643,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             return false;
           }
 
+          if (!isPureWysiwyg && !isNodeActive && node.name === 'HardBreak') {
+            const decoration = hardBreakSyntaxDecoration(doc, node);
+            if (decoration) {
+              builder.push(decoration);
+              hiddenSyntaxRanges.push(decoration);
+            }
+          }
+
           if (!isPureWysiwyg && !isNodeActive && node.name === 'Entity') {
             const entity = doc.sliceString(node.from, node.to);
             builder.push(Decoration.replace({
@@ -2659,6 +2712,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'InlineCode') {
+            const codeSpan = markdownCodeSpanDisplayText(doc, node);
+            if (codeSpan?.needsNormalization) {
+              if (isPureWysiwyg) return false;
+              if (!isNodeActive) {
+                if (codeSpan.hasLineBreaks) return false;
+                builder.push(Decoration.replace({
+                  widget: new MarkdownCodeSpanWidget(codeSpan.text)
+                }).range(node.from, node.to));
+                return false;
+              }
+            }
             builder.push(Decoration.mark({ class: 'cm-inline-code' }).range(node.from, node.to));
           }
           if (node.name === 'CodeMark' && !isNodeActive) {
@@ -3860,6 +3924,18 @@ function buildHeightMapValue(state) {
         hideSyntax(node.from, node.to);
       }
 
+      if (node.name === 'InlineCode') {
+        const codeSpan = markdownCodeSpanDisplayText(doc, node);
+        if (codeSpan?.needsNormalization) {
+          const decoration = Decoration.replace({
+            widget: new MarkdownCodeSpanWidget(codeSpan.text)
+          }).range(node.from, node.to);
+          replacements.push(decoration);
+          hiddenSyntaxRanges.push(decoration);
+          return false;
+        }
+      }
+
       if (node.name === 'ListMark') {
         const marker = doc.sliceString(node.from, node.to);
         const isBullet = /^[-*+]$/.test(marker.trim());
@@ -3882,6 +3958,14 @@ function buildHeightMapValue(state) {
       if (node.name === 'Escape') {
         hideSyntax(node.from, Math.min(node.from + 1, node.to));
         return false;
+      }
+
+      if (node.name === 'HardBreak') {
+        const decoration = hardBreakSyntaxDecoration(doc, node);
+        if (decoration) {
+          replacements.push(decoration);
+          hiddenSyntaxRanges.push(decoration);
+        }
       }
 
       if (node.name === 'Entity') {
@@ -4171,6 +4255,44 @@ const liveEmbeddedDocumentField = StateField.define({
     EditorView.decorations.from(field, value => value.decorations)
 });
 
+function buildLivePreviewCodeSpanValue(state) {
+  if (currentEditorMode !== 'live_preview') return Decoration.none;
+
+  const doc = state.doc;
+  const decorations = [];
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== 'InlineCode') return;
+      const codeSpan = markdownCodeSpanDisplayText(doc, node);
+      if (!codeSpan?.hasLineBreaks || !codeSpan.needsNormalization) return;
+
+      const active = state.selection.ranges.some(range =>
+        range.empty
+          ? range.head >= node.from && range.head <= node.to
+          : range.from < node.to && range.to > node.from
+      );
+      if (active) return;
+
+      decorations.push(Decoration.replace({
+        widget: new MarkdownCodeSpanWidget(codeSpan.text)
+      }).range(node.from, node.to));
+      return false;
+    }
+  });
+  return decorations.length ? Decoration.set(decorations, true) : Decoration.none;
+}
+
+const livePreviewCodeSpanField = StateField.define({
+  create: buildLivePreviewCodeSpanValue,
+  update(current, tr) {
+    if (tr.docChanged || tr.selectionSet) {
+      return buildLivePreviewCodeSpanValue(tr.state);
+    }
+    return current.map(tr.changes);
+  },
+  provide: field => EditorView.decorations.from(field)
+});
+
 export const heightMapField = StateField.define({
   create: buildHeightMapValue,
   update(current, tr) {
@@ -4188,7 +4310,7 @@ export const heightMapField = StateField.define({
           'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
           'SetextHeading1', 'SetextHeading2', 'ListItem',
           'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
-          'HorizontalRule', 'TaskMarker', 'Link', 'Image'
+          'HorizontalRule', 'TaskMarker', 'Link', 'Image', 'InlineCode'
         ]
       })
     ) {
@@ -5123,6 +5245,7 @@ class CodeMirrorAdapter {
         footnoteStateField,
         persistentLayoutField,
         heightMapField,
+        livePreviewCodeSpanField,
         liveEmbeddedDocumentField,
         Prec.highest([tableNavigationKeymap, markdownIndentKeymap]),
         renderedRowNavigationKeymap,
