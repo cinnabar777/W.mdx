@@ -305,6 +305,38 @@ class ListMarkerWidget extends WidgetType {
   }
 }
 
+const markdownEntityDisplayCache = new Map();
+
+function decodeMarkdownEntity(entitySource) {
+  if (markdownEntityDisplayCache.has(entitySource)) {
+    return markdownEntityDisplayCache.get(entitySource);
+  }
+
+  const decoder = document.createElement('textarea');
+  decoder.innerHTML = entitySource;
+  const decoded = decoder.value;
+  markdownEntityDisplayCache.set(entitySource, decoded);
+  return decoded;
+}
+
+class MarkdownEntityWidget extends WidgetType {
+  constructor(text) {
+    super();
+    this.text = text;
+  }
+
+  eq(other) {
+    return other instanceof MarkdownEntityWidget && other.text === this.text;
+  }
+
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-markdown-entity';
+    span.textContent = this.text;
+    return span;
+  }
+}
+
 class CheckboxWidget extends WidgetType {
   constructor(checked, pos, len) {
     super();
@@ -2561,6 +2593,19 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             return false;
           }
 
+          if (!isPureWysiwyg && !isNodeActive && node.name === 'Escape') {
+            hideSyntax(node.from, Math.min(node.from + 1, node.to));
+            return false;
+          }
+
+          if (!isPureWysiwyg && !isNodeActive && node.name === 'Entity') {
+            const entity = doc.sliceString(node.from, node.to);
+            builder.push(Decoration.replace({
+              widget: new MarkdownEntityWidget(decodeMarkdownEntity(entity))
+            }).range(node.from, node.to));
+            return false;
+          }
+
           const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
           const setextHeading = /^SetextHeading([12])$/.exec(node.name);
           const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
@@ -3832,6 +3877,19 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'QuoteMark') {
         hideSyntax(node.from, Math.min(node.to + 1, line.to));
+      }
+
+      if (node.name === 'Escape') {
+        hideSyntax(node.from, Math.min(node.from + 1, node.to));
+        return false;
+      }
+
+      if (node.name === 'Entity') {
+        const entity = doc.sliceString(node.from, node.to);
+        replacements.push(Decoration.replace({
+          widget: new MarkdownEntityWidget(decodeMarkdownEntity(entity))
+        }).range(node.from, node.to));
+        return false;
       }
 
       if (node.name === 'TaskMarker') {
