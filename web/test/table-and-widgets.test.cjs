@@ -120,6 +120,20 @@ test('table action menu stays horizontal and provides scrollable named icon butt
   assert.match(html, /\.cm-wp-table-action:disabled/);
 });
 
+test('table and floating toolbars remain available and separate when they overlap', () => {
+  const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  assert.match(main, /const isTableCell = target instanceof HTMLElement &&[\s\S]*?closest\('\.cm-wp-table-container'\)/);
+  assert.match(main, /event\.pointerType === 'touch'/);
+  assert.doesNotMatch(main, /event\.pointerType === 'touch' && !isTableCell/);
+  assert.doesNotMatch(main, /if \(isTableCell\) hideFloatingSelectionToolbar\(\)/);
+  assert.match(main, /separateTableMenuFromFloatingToolbar\(\)/);
+  assert.match(main, /start\.isTableCell/);
+  assert.match(html, /\.cm-wp-table th,[\s\S]*?user-select: none !important/);
+  assert.match(html, /\.cm-wp-cell-editor \{[\s\S]*?user-select: text !important/);
+});
+
 test('TableModel insertRow and insertCol add empty cells and preserve alignments and merges', async () => {
   const { TableModel } = await import('../src/tableModule.js');
 

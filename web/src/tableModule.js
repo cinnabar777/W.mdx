@@ -7,15 +7,30 @@ export function isEscapedPipe(text, index) {
   return backslashes % 2 === 1;
 }
 
-export function parsePipeRow(lineText) {
-  const pipeOffsets = [];
-  for (let i = 0; i < lineText.length; i++) {
-    if (lineText[i] === '|' && !isEscapedPipe(lineText, i)) pipeOffsets.push(i);
+export function getUnescapedPipeOffsets(text) {
+  const offsets = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '|' && !isEscapedPipe(text, i)) offsets.push(i);
   }
-  if (pipeOffsets.length === 0) return null;
+  return offsets;
+}
 
-  const hasLeadingPipe = /^\s*\|/.test(lineText);
-  const hasTrailingPipe = /\|\s*$/.test(lineText);
+export function hasTrailingUnescapedPipe(text, pipeOffsets = getUnescapedPipeOffsets(text)) {
+  const trailingWhitespaceOffset = text.search(/\s*$/);
+  return pipeOffsets.length > 0 &&
+    pipeOffsets[pipeOffsets.length - 1] === trailingWhitespaceOffset - 1;
+}
+
+export function parsePipeRow(lineText) {
+  const pipeOffsets = getUnescapedPipeOffsets(lineText);
+  if (pipeOffsets.length === 0) {
+    const cell = lineText.trim();
+    return cell ? [cell] : null;
+  }
+
+  const firstContentOffset = lineText.search(/\S|$/);
+  const hasLeadingPipe = pipeOffsets[0] === firstContentOffset;
+  const hasTrailingPipe = hasTrailingUnescapedPipe(lineText, pipeOffsets);
 
   const firstCellStart = hasLeadingPipe ? pipeOffsets[0] + 1 : 0;
   const lastCellEnd = hasTrailingPipe ? pipeOffsets[pipeOffsets.length - 1] : lineText.length;
@@ -40,7 +55,7 @@ export function parsePipeRow(lineText) {
 
 export function isTableSeparatorRow(cells) {
   return cells.length > 0 &&
-    cells.every(c => /^:?-{3,}:?$/.test(c.trim()));
+    cells.every(c => /^:?-+:?$/.test(c.trim()));
 }
 
 export function parseAlignments(cells) {
@@ -65,37 +80,29 @@ export class TableModel {
     const lines = tableMarkdown.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length < 2) return null;
 
-    const parsedRows = [];
-    let sepIndex = -1;
-    let alignments = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const cells = parsePipeRow(lines[i]);
-      if (!cells) continue;
-      if (isTableSeparatorRow(cells)) {
-        sepIndex = i;
-        alignments = parseAlignments(cells);
-      } else {
-        parsedRows.push(cells);
-      }
+    const parsedRows = lines.map(parsePipeRow);
+    const header = parsedRows[0];
+    const delimiter = parsedRows[1];
+    if (
+      !header ||
+      !delimiter ||
+      !isTableSeparatorRow(delimiter) ||
+      header.length !== delimiter.length
+    ) {
+      return null;
     }
 
-    if (parsedRows.length === 0) return null;
-
-    // Normalize max column count
-    let maxCols = alignments.length;
-    for (const r of parsedRows) {
-      if (r.length > maxCols) maxCols = r.length;
-    }
-    if (maxCols === 0) return null;
-
-    while (alignments.length < maxCols) alignments.push('left');
-
-    const normalizedRows = parsedRows.map(row => {
-      const r = [...row];
-      while (r.length < maxCols) r.push('');
-      return r;
-    });
+    const columnCount = header.length;
+    if (columnCount === 0) return null;
+    const alignments = parseAlignments(delimiter);
+    const normalizedRows = [
+      header,
+      ...parsedRows.slice(2).filter(Boolean).map(row => {
+        const cells = row.slice(0, columnCount);
+        while (cells.length < columnCount) cells.push('');
+        return cells;
+      })
+    ];
 
     return new TableModel(normalizedRows, alignments);
   }

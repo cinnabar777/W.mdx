@@ -68,6 +68,88 @@ class MdzipManagerTest {
     }
 
     @Test
+    fun preservesGfmTableMarkdownThroughMdzipOpenSaveAndReopen() {
+        val originalMarkdown = """# Table
+| Name | Notes |
+| :--- | :---: |
+| Alpha \| beta | **bold** |
+"""
+        val editedMarkdown = originalMarkdown.replace(
+            """Alpha \| beta""",
+            """Gamma \| delta"""
+        )
+        val sourceArchive = File.createTempFile("mdzip-table-source-", ".mdz")
+        val sessionDir = createSessionDirectory()
+        val savedArchive = File.createTempFile("mdzip-table-saved-", ".mdz")
+        val reopenedDir = createSessionDirectory()
+
+        try {
+            writeZip(
+                sourceArchive,
+                listOf(
+                    "manifest.json" to """{"entryPoint":"index.md"}""",
+                    "index.md" to originalMarkdown
+                )
+            )
+
+            val opened = MdzipManager.loadArchive(sourceArchive, sessionDir)
+            assertEquals(originalMarkdown, opened.markdownContent)
+
+            File(sessionDir, opened.entryPoint).writeText(editedMarkdown, Charsets.UTF_8)
+            MdzipManager.writeSessionArchive(sessionDir, emptySet(), savedArchive)
+            MdzipManager.verifyStagedArchive(savedArchive)
+
+            val reopened = MdzipManager.loadArchive(savedArchive, reopenedDir)
+            assertEquals(editedMarkdown, reopened.markdownContent)
+        } finally {
+            sourceArchive.delete()
+            sessionDir.deleteRecursively()
+            savedArchive.delete()
+            reopenedDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun preservesGfmInlineMarkdownThroughMdzipOpenSaveAndReopen() {
+        val originalMarkdown = """- [ ] Open task
+- [x] Finished task
+
+Single: ~removed~. Double: ~~also removed~~. Triple: ~~~literal~~~.
+Links: www.example.com, https://example.com/path, person@example.com.
+"""
+        val editedMarkdown = originalMarkdown.replace("Open task", "Updated task")
+        val sourceArchive = File.createTempFile("mdzip-gfm-inline-source-", ".mdz")
+        val sessionDir = createSessionDirectory()
+        val savedArchive = File.createTempFile("mdzip-gfm-inline-saved-", ".mdz")
+        val reopenedDir = createSessionDirectory()
+
+        try {
+            writeZip(
+                sourceArchive,
+                listOf(
+                    "manifest.json" to """{"entryPoint":"index.md"}""",
+                    "index.md" to originalMarkdown
+                )
+            )
+
+            val opened = MdzipManager.loadArchive(sourceArchive, sessionDir)
+            assertEquals(originalMarkdown, opened.markdownContent)
+
+            File(sessionDir, opened.entryPoint).writeText(editedMarkdown, Charsets.UTF_8)
+            MdzipManager.writeSessionArchive(sessionDir, emptySet(), savedArchive)
+            MdzipManager.verifyStagedArchive(savedArchive)
+
+            val reopened = MdzipManager.loadArchive(savedArchive, reopenedDir)
+            assertEquals(editedMarkdown, reopened.markdownContent)
+        } finally {
+            sourceArchive.delete()
+            sessionDir.deleteRecursively()
+            savedArchive.delete()
+            reopenedDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun acceptsMp3AacM4aWavFlacOpusOggAndOgaAudioFiles() {
         assertEquals(true, MdzipManager.isSupportedAudioFileName("voice.mp3"))
         assertEquals(true, MdzipManager.isSupportedAudioFileName("voice.aac"))

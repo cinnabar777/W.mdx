@@ -1389,6 +1389,11 @@
       background: var(--table-cell-bg, transparent);
       color: var(--table-cell-color, var(--text-color, #ffffff));
     }
+    .cm-wp-table th,
+    .cm-wp-table td {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+    }
 
     .cm-wp-table-context-menu {
       position: fixed;
@@ -1471,6 +1476,8 @@
       outline: none;
       resize: none;
       border-radius: 4px;
+      user-select: text !important;
+      -webkit-user-select: text !important;
     }
     .cm-activeLine {
       background-color: var(--active-line-bg, rgba(255, 255, 255, 0.05)) !important;
@@ -1488,6 +1495,9 @@
       color: var(--text-color, #ffffff) !important;
     }
 
+    .cm-content .cm-hardbreak-syntax {
+      display: none;
+    }
 
     /* Paragraph settings apply only to Markdown Paragraph nodes that are NOT list items. */
     .cm-content .cm-paragraph:not(.cm-list-item) {
@@ -1912,9 +1922,41 @@
       text-align: var(--blockquote-text-align, var(--paragraph-align, left)) !important;
       line-height: var(--blockquote-line-height, var(--paragraph-line-height, 1.6)) !important;
       hyphens: var(--blockquote-hyphens, var(--paragraph-hyphens, none)) !important;
-      margin-left: var(--blockquote-left-margin, 0px) !important;
+      margin-left: calc(
+        var(--blockquote-left-margin, 0px) +
+        var(--blockquote-depth-offset, 0px)
+      ) !important;
       margin-right: var(--blockquote-right-margin, 0px) !important;
       padding-left: var(--blockquote-padding, 12px) !important;
+      position: relative !important;
+    }
+    .cm-content .cm-line.cm-blockquote[data-blockquote-depth]:not(.cm-callout)::before {
+      content: "" !important;
+      position: absolute !important;
+      z-index: 0 !important;
+      pointer-events: none !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      left: calc(
+        -1 * (
+          var(--blockquote-depth-offset, 0px) +
+          var(--blockquote-border-width, 4px)
+        )
+      ) !important;
+      width: var(--blockquote-depth-offset, 0px) !important;
+      background: repeating-linear-gradient(
+        to right,
+        var(--blockquote-border-color, #444444) 0 var(--blockquote-border-width, 4px),
+        transparent var(--blockquote-border-width, 4px) 12px
+      ) !important;
+    }
+    .cm-content .cm-line.cm-paragraph-first.cm-blockquote:not(.cm-callout):not(.cm-list-item) {
+      margin-top: 0 !important;
+      padding-top: var(--paragraph-margin-top, 0px) !important;
+    }
+    .cm-content .cm-line.cm-paragraph-last.cm-blockquote:not(.cm-callout):not(.cm-list-item) {
+      margin-bottom: 0 !important;
+      padding-bottom: var(--paragraph-margin-bottom, 8px) !important;
     }
     .cm-content .cm-callout {
       border-left: var(--callout-border-width, 4px) var(--callout-border-style, solid) var(--callout-border-color, var(--callout-type-border, #29b6f6)) !important;
@@ -2159,15 +2201,8 @@
       border-width: 0 2px 2px 0 !important;
       transform: rotate(45deg) !important;
     }
-    .cm-empty-line-cursor-anchor {
-      display: inline-block !important;
-      width: 1px !important;
-      height: 1em !important;
-      overflow: hidden !important;
-      opacity: 0 !important;
-      vertical-align: text-bottom !important;
-      pointer-events: none !important;
-      user-select: none !important;
+    .cm-content .cm-line.cm-link-reference-definition {
+      display: none !important;
     }
     .cm-content .cm-link {
       color: var(--link-color, #29b6f6) !important;

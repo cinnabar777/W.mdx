@@ -387,7 +387,8 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(indexHtml.includes('margin-right: var(--list-margin-right, 0px) !important;'));
   assert.ok(indexHtml.includes('margin-left: var(--code-block-margin-left, 0px) !important;'));
   assert.ok(indexHtml.includes('margin-right: var(--code-block-margin-right, 0px) !important;'));
-  assert.ok(indexHtml.includes('margin-left: var(--blockquote-left-margin, 0px) !important;'));
+  assert.ok(indexHtml.includes('margin-left: calc('));
+  assert.ok(indexHtml.includes('var(--blockquote-left-margin, 0px)'));
   assert.ok(indexHtml.includes('margin-right: var(--blockquote-right-margin, 0px) !important;'));
   assert.ok(indexHtml.includes('margin-left: var(--callout-margin-left, 0px) !important;'));
   assert.ok(indexHtml.includes('margin-right: var(--callout-margin-right, 0px) !important;'));

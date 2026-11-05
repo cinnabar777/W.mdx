@@ -1,0 +1,247 @@
+{
+  "specification": "GitHub Flavored Markdown 0.29",
+  "source": "https://github.com/github/cmark-gfm/blob/master/test/spec.txt",
+  "license": "CC-BY-SA-4.0",
+  "attribution": "GitHub Flavored Markdown Spec, version 0.29; adapted to store semantic expectations instead of rendered HTML.",
+  "examples": [
+    {
+      "number": 198,
+      "section": "Tables (extension)",
+      "extension": "table",
+      "markdown": "| foo | bar |\n| --- | --- |\n| baz | bim |\n",
+      "expected": {
+        "tables": 1,
+        "strikethrough": 0,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 199,
+      "section": "Tables (extension)",
+      "extension": "table",
+      "markdown": "| abc | defghi |\n:-: | -----------:\nbar | baz\n",
+      "expected": {
+        "tables": 1,
+        "strikethrough": 0,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 200,
+      "section": "Tables (extension)",
+      "extension": "table",
+      "markdown": "| f\\|oo  |\n| ------ |\n| b `\\|` az |\n| b **\\|** im |\n",
+      "expected": {
+        "tables": 1,
+        "strikethrough": 0,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 201,
+      "section": "Tables (extension)",
+      "extension": "table",
+      "markdown": "| abc | def |\n| --- | --- |\n| bar | baz |\n> bar\n",
+      "expected": {
+        "tables": 1,
+        "strikethrough": 0,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 202,
+      "section": "Tables (extension)",
+      "extension": "table",
+      "markdown": "| abc | def |\n| --- | --- |\n| bar | baz |\nbar\n\nbar\n",
+      "expected": {
+        "tables": 1,
+        "strikethrough": 0,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 203,
+      "section": "Tables (extension)",
+      "extension": "table",
+      "markdown": "| abc | def |\n| --- |\n| bar |\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 204,
+      "section": "Tables (extension)",
+      "extension": "table",
+      "markdown": "| abc | def |\n| --- | --- |\n| bar |\n| bar | baz | boo |\n",
+      "expected": {
+        "tables": 1,
+        "strikethrough": 0,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 205,
+      "section": "Tables (extension)",
+      "extension": "table",
+      "markdown": "| abc | def |\n| --- | --- |\n",
+      "expected": {
+        "tables": 1,
+        "strikethrough": 0,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 491,
+      "section": "Strikethrough (extension)",
+      "extension": "strikethrough",
+      "markdown": "~~Hi~~ Hello, world!\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 1,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 492,
+      "section": "Strikethrough (extension)",
+      "extension": "strikethrough",
+      "markdown": "This ~~has a\n\nnew paragraph~~.\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 0
+      }
+    },
+    {
+      "number": 621,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "www.commonmark.org\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 1
+      }
+    },
+    {
+      "number": 622,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "Visit www.commonmark.org/help for more information.\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 1
+      }
+    },
+    {
+      "number": 623,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "Visit www.commonmark.org.\n\nVisit www.commonmark.org/a.b.\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 2
+      }
+    },
+    {
+      "number": 624,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "www.google.com/search?q=Markup+(business)\n\nwww.google.com/search?q=Markup+(business)))\n\n(www.google.com/search?q=Markup+(business))\n\n(www.google.com/search?q=Markup+(business)\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 4
+      }
+    },
+    {
+      "number": 625,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "www.google.com/search?q=(business))+ok\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 1
+      }
+    },
+    {
+      "number": 626,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "www.google.com/search?q=commonmark&hl=en\n\nwww.google.com/search?q=commonmark&hl;\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 2
+      }
+    },
+    {
+      "number": 627,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "www.commonmark.org/he<lp\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 1
+      }
+    },
+    {
+      "number": 628,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "http://commonmark.org\n\n(Visit https://encrypted.google.com/search?q=Markup+(business))\n\nAnonymous FTP is available at ftp://foo.bar.baz.\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 3
+      }
+    },
+    {
+      "number": 629,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "foo@bar.baz\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 1
+      }
+    },
+    {
+      "number": 630,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "hello@mail+xyz.example isn't valid, but hello+xyz@mail.example is.\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 1
+      }
+    },
+    {
+      "number": 631,
+      "section": "Autolinks (extension)",
+      "extension": "autolink",
+      "markdown": "a.b-c_d@a.b\n\na.b-c_d@a.b.\n\na.b-c_d@a.b-\n\na.b-c_d@a.b_\n",
+      "expected": {
+        "tables": 0,
+        "strikethrough": 0,
+        "autolinks": 2
+      }
+    }
+  ],
+  "excludedExamples": [
+    {
+      "number": 651,
+      "section": "Disallowed Raw HTML (extension)",
+      "extension": "tagfilter",
+      "reason": "Raw HTML tag filtering is tracked under Wmdx's no-HTML compatibility policy."
+    }
+  ]
+}

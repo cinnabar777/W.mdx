@@ -702,6 +702,11 @@ test('runtime toolbar consumes the saved bottom toolbar configuration', () => {
 test('Paste as Plain Text is available as an action and configurable shortcut', () => {
   assert.match(mainSource, /id: 'pasteAsPlainText'[\s\S]*?title: 'Paste as Plain Text'/);
   assert.match(mainSource, /actionId === 'paste' \|\| actionId === 'pasteAsPlainText'/);
+  assert.match(mainSource, /quotePasteInsertionRange\(view\.state, from, to\)/);
+  assert.match(
+    mainSource,
+    /quoteMultilinePaste\(\s*view\.state,\s*pasteRange\.from,\s*pasteRange\.to,\s*text\s*\)/
+  );
   assert.match(mainSource, /customHotkeys\.paste_as_plain_text/);
   assert.match(settingsSource, /id: 'pasteAsPlainText'[\s\S]*?Paste as Plain Text/);
   assert.match(androidSource, /"pasteAsPlainText"/);
@@ -723,6 +728,13 @@ test('toolbar-local touch handling preserves tap and gesture dispatch', () => {
   assert.match(mainSource, /installToolbarTouchHandling\(document, toolbarTouchSurfaceSelector\)/);
   assert.match(mainSource, /function installToolbarTapActions\(container\)/);
   assert.match(mainSource, /onGesture: \(id, gestureId, event, button\) =>/);
-  assert.match(mainActivitySource, /fun showEditorKeyboard\(\)[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/);
+  assert.match(
+    mainActivitySource,
+    /fun showEditorKeyboard\(\)\s*\{\s*this@MainActivity\.requestEditorKeyboard\(refocusWebView = true\)/
+  );
+  assert.match(
+    mainActivitySource,
+    /private fun requestEditorKeyboard\(refocusWebView: Boolean\)[\s\S]*?showSoftInput\(webView, InputMethodManager\.SHOW_IMPLICIT\)/
+  );
   assert.doesNotMatch(mainActivitySource, /toolbarImeInteraction|toolbarImeSuppressedUntilEditorTouch|setImeInputAllowed/);
 });

@@ -848,6 +848,52 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         return visible
     }
 
+    private fun requestEditorKeyboard(refocusWebView: Boolean) {
+        runOnUiThread {
+            val visibleBefore = editorImeVisible()
+            AppDiagnostics.record(
+                this,
+                "ime_show_requested",
+                "suppressed=${suppressImeUntilUserTouch} generation=${imeHideGeneration} " +
+                    "viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} " +
+                    "imeVisible=${visibleBefore} refocusWebView=${refocusWebView}"
+            )
+            suppressImeUntilUserTouch = false
+            val generation = ++imeHideGeneration
+            window.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+            )
+            val touchFocusRequested =
+                if (refocusWebView) webView.requestFocusFromTouch() else false
+            val focusRequested =
+                if (refocusWebView) touchFocusRequested || webView.requestFocus()
+                else webView.isFocused
+            val insetsController = ViewCompat.getWindowInsetsController(webView)
+            insetsController?.show(WindowInsetsCompat.Type.ime())
+            val showAccepted =
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
+            AppDiagnostics.record(
+                this,
+                "ime_show_dispatched",
+                "generation=${generation} touchFocus=${touchFocusRequested} " +
+                    "focusRequested=${focusRequested} viewFocused=${webView.isFocused} " +
+                    "immAccepted=${showAccepted} touchFocusable=${webView.isFocusableInTouchMode} " +
+                    "refocusWebView=${refocusWebView}"
+            )
+            webView.postDelayed({
+                AppDiagnostics.record(
+                    this,
+                    "ime_show_observed",
+                    "generation=${generation} viewFocused=${webView.isFocused} " +
+                        "windowFocused=${window.decorView.hasWindowFocus()} " +
+                        "imeVisible=${editorImeVisible()} refocusWebView=${refocusWebView}"
+                )
+            }, 350L)
+        }
+    }
+
     private fun hideImeWhileResumeIsSuppressed(generation: Int) {
         if (!suppressImeUntilUserTouch || generation != imeHideGeneration || !::webView.isInitialized) {
             return
@@ -1966,10 +2012,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 val inputStream = contentResolver.openInputStream(uri)
                     ?: throw java.io.FileNotFoundException("Could not read the selected file")
                 inputStream.use {
-                    val reader = BufferedReader(InputStreamReader(inputStream))
-                    val content = reader.readText()
-                    hasBom = content.startsWith("\uFEFF")
-                    hasCrlf = content.contains("\r\n")
+                    val loadedMarkdown = MarkdownTextFileCodec.read(inputStream)
+                    val content = loadedMarkdown.markdown
+                    hasBom = loadedMarkdown.hadBom
+                    hasCrlf = loadedMarkdown.hadCrlf
                     clearEmbeddedMdzipSessions()
                     currentDocumentSessionId = java.util.UUID.randomUUID().toString()
                     currentRevision = 0
@@ -2638,12 +2684,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
             AppDiagnostics.record(this, "snapshot_taken", "source=$snapshotSource mode=$currentEditorMode rev=$currentRevision chars=${markdownText.length}")
 
-            if (hasCrlf && !markdownText.contains("\r\n") && markdownText.contains("\n")) {
-                markdownText = markdownText.replace("\r\n", "\n").replace("\n", "\r\n")
-            }
-            if (hasBom && !markdownText.startsWith("\uFEFF")) {
-                markdownText = "\uFEFF$markdownText"
-            }
+            markdownText = MarkdownTextFileCodec.prepareForSave(
+                markdownText,
+                hadBom = hasBom,
+                hadCrlf = hasCrlf
+            )
 
             try {
                 val targetFileName = getFileNameFromUri(uri)
@@ -2689,9 +2734,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     val output = contentResolver.openOutputStream(uri, "rwt")
                         ?: throw java.io.IOException("Could not open document for writing")
                     output.use { outputStream ->
-                        val writer = OutputStreamWriter(outputStream, Charsets.UTF_8)
-                        writer.write(markdownText)
-                        writer.flush()
+                        MarkdownTextFileCodec.write(outputStream, markdownText)
                     }
                     currentTextPackSession = null
                     currentMdzipSession = null
@@ -5486,6 +5529,118 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun openMarkdownLink(
+            target: String,
+            documentSessionId: String?,
+            sourceContextJson: String?
+        ): Boolean {
+            if (documentSessionId != currentDocumentSessionId) return false
+
+            val link = target.trim()
+            if (link.isBlank()) return false
+
+            val externalUri = when {
+                link.startsWith("https://", ignoreCase = true) ||
+                    link.startsWith("http://", ignoreCase = true) ||
+                    link.startsWith("ftp://", ignoreCase = true) ||
+                    link.startsWith("mailto:", ignoreCase = true) ->
+                    runCatching { Uri.parse(link) }.getOrNull()
+                link.startsWith("www.", ignoreCase = true) ->
+                    Uri.parse("https://$link")
+                Regex("""^[^@\s]+@[^@\s]+\.[^@\s]+$""").matches(link) ->
+                    Uri.parse("mailto:$link")
+                else -> null
+            }
+
+            if (externalUri != null) {
+                runOnUiThread {
+                    if (documentSessionId != currentDocumentSessionId) return@runOnUiThread
+                    try {
+                        startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                externalUri
+                            )
+                        )
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        ThemedToast.show(
+                            this@MainActivity,
+                            "No app on this device can open that link.",
+                            Toast.LENGTH_LONG
+                        )
+                    } catch (error: Exception) {
+                        ThemedToast.show(
+                            this@MainActivity,
+                            "Could not open the link: ${error.localizedMessage ?: "unknown error"}",
+                            Toast.LENGTH_LONG
+                        )
+                    }
+                }
+                return true
+            }
+
+            val uriScheme = runCatching { Uri.parse(link).scheme }.getOrNull()
+            val relativePath = link.substringBefore('#').substringBefore('?').trim()
+            val sourceLinks = parseEmbeddedSourceLinks(sourceContextJson)
+            val embeddedTarget = if (
+                sourceLinks?.isNotEmpty() == true ||
+                currentDocumentFormat == DocumentFormat.MDZIP
+            ) {
+                runCatching {
+                    resolveEmbeddedDocumentTarget(relativePath, sourceContextJson)
+                }.getOrNull()
+            } else {
+                null
+            }
+            val targetIsInsideArchive = embeddedTarget?.archiveSession != null
+            val linkedUri = when {
+                uriScheme != null ||
+                    relativePath.isBlank() ||
+                    relativePath.startsWith("/") ||
+                    relativePath.startsWith("\\") -> null
+                targetIsInsideArchive -> null
+                embeddedTarget != null -> embeddedTarget.uri
+                currentDocumentFormat == DocumentFormat.MARKDOWN ->
+                    currentFileUri?.let { parentUri ->
+                        runCatching {
+                            resolveExternalEmbeddedDocumentUri(parentUri, relativePath)
+                        }.getOrNull()
+                    }
+                else -> null
+            }
+
+            if (linkedUri == null) {
+                runOnUiThread {
+                    if (documentSessionId == currentDocumentSessionId) {
+                        ThemedToast.show(
+                            this@MainActivity,
+                            if (targetIsInsideArchive) {
+                                "A linked file inside an MDZip archive cannot be opened for editing yet."
+                            } else {
+                                "Could not open the linked file. Confirm its path and folder access, then try again."
+                            },
+                            Toast.LENGTH_LONG
+                        )
+                    }
+                }
+                return false
+            }
+
+            if (linkedUri == currentFileUri) return true
+
+            runOnUiThread {
+                if (documentSessionId != currentDocumentSessionId) return@runOnUiThread
+                val openLinkedFile = { openFile(linkedUri) }
+                if (isDirty) {
+                    showUnsavedChangesDialog(openLinkedFile)
+                } else {
+                    openLinkedFile()
+                }
+            }
+            return true
+        }
+
+        @JavascriptInterface
         fun openAttachment(
             relativeLink: String,
             documentSessionId: String?,
@@ -6107,39 +6262,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun showEditorKeyboard() {
-            runOnUiThread {
-                val visibleBefore = editorImeVisible()
-                AppDiagnostics.record(
-                    this@MainActivity,
-                    "ime_show_requested",
-                    "suppressed=${suppressImeUntilUserTouch} generation=${imeHideGeneration} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${visibleBefore}"
-                )
-                suppressImeUntilUserTouch = false
-                val generation = ++imeHideGeneration
-                window.setSoftInputMode(
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
-                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
-                )
-                val touchFocusRequested = webView.requestFocusFromTouch()
-                val focusRequested = touchFocusRequested || webView.requestFocus()
-                val insetsController = ViewCompat.getWindowInsetsController(webView)
-                insetsController?.show(WindowInsetsCompat.Type.ime())
-                val showAccepted =
-                    (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-                        ?.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
-                AppDiagnostics.record(
-                    this@MainActivity,
-                    "ime_show_dispatched",
-                    "generation=${generation} touchFocus=${touchFocusRequested} focusRequested=${focusRequested} viewFocused=${webView.isFocused} immAccepted=${showAccepted} touchFocusable=${webView.isFocusableInTouchMode}"
-                )
-                webView.postDelayed({
-                    AppDiagnostics.record(
-                        this@MainActivity,
-                        "ime_show_observed",
-                        "generation=${generation} viewFocused=${webView.isFocused} windowFocused=${window.decorView.hasWindowFocus()} imeVisible=${editorImeVisible()}"
-                    )
-                }, 350L)
-            }
+            this@MainActivity.requestEditorKeyboard(refocusWebView = true)
+        }
+
+        @JavascriptInterface
+        fun showEditorKeyboardForFocusedInput() {
+            this@MainActivity.requestEditorKeyboard(refocusWebView = false)
         }
         @JavascriptInterface
         fun renameCurrentDocument(newName: String) {

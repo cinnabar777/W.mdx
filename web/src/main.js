@@ -2,6 +2,8 @@ import { EditorState, EditorSelection, Compartment, Transaction, StateField, Sta
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
+import { getUnescapedPipeOffsets, hasTrailingUnescapedPipe, isEscapedPipe } from './tableModule.js';
+import { separateTableMenuFromFloatingToolbar } from './toolbarOverlap.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
 import { parseAndMatchHotkey } from './hotkeys.js';
@@ -29,12 +31,26 @@ import {
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import { applyMarkdownIndent } from './markdownIndent.js';
+import {
+  markdownBlockquotePaste,
+  quoteMultilinePaste,
+  quotePasteInsertionRange
+} from './markdownPaste.mjs';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { applyAutoHeading } from './autoHeading.js';
 import { toCssFontFamily } from './fontFamilies.js';
 import { setupLeftPanel } from './leftPanel.js';
 import { setupPanelSwipe } from './panelSwipe.js';
-import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
+import {
+  formatMarkdownImage,
+  formatObsidianImageEmbed,
+  parseMarkdownImage,
+  parseObsidianImageEmbed
+} from './markdownImages.js';
+import {
+  collectMarkdownReferenceTargets,
+  getMarkdownLinkInfo
+} from './markdown-link-utils.mjs';
 import {
   extractMarkdownAudioLinks,
   extractMarkdownVideoLinks,
@@ -79,7 +95,15 @@ document.addEventListener('pointerdown', event => {
   );
   const isEditable = target.closest('[contenteditable="true"]:not(.cm-content)');
   if (!isTextInput && !isEditable) return;
-  window.AndroidNative?.showEditorKeyboard?.();
+  const native = window.AndroidNative;
+  if (
+    target.matches('.cm-wp-cell-editor') &&
+    typeof native?.showEditorKeyboardForFocusedInput === 'function'
+  ) {
+    native.showEditorKeyboardForFocusedInput();
+  } else {
+    native?.showEditorKeyboard?.();
+  }
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
@@ -135,13 +159,25 @@ import {
   replaceNext,
   replaceAll
 } from '@codemirror/search';
+import {
+  clearFindHighlights,
+  handleFindEnterKey
+} from './findReplaceActions.mjs';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, syntaxTree, forceParsing, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
-import { GFM, Table as GFMTable, Strikethrough as GFMStrikethrough, TaskList as GFMTaskList } from '@lezer/markdown';
+import {
+  Autolink as GFMAutolink,
+  Table as GFMTable,
+  TaskList as GFMTaskList
+} from '@lezer/markdown';
+import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
+import { wmdxGfmFtpAutolink } from './gfm-autolink.mjs';
+import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
 
 let activeAdapter = null;
 let lastFocusedEditorView = null;
+let activeSelectionDragView = null;
 let embeddedContentInteractionMode = 'checkboxes';
 const pendingEmbeddedDocumentEdits = new Map();
 let activeEmbeddedEditSaveWarning = null;
@@ -284,6 +320,83 @@ class ListMarkerWidget extends WidgetType {
   }
 }
 
+const markdownEntityDisplayCache = new Map();
+
+function decodeMarkdownEntity(entitySource) {
+  if (markdownEntityDisplayCache.has(entitySource)) {
+    return markdownEntityDisplayCache.get(entitySource);
+  }
+
+  const decoder = document.createElement('textarea');
+  decoder.innerHTML = entitySource;
+  const decoded = decoder.value;
+  markdownEntityDisplayCache.set(entitySource, decoded);
+  return decoded;
+}
+
+function hardBreakSyntaxEnd(doc, node) {
+  return node.to > node.from && doc.sliceString(node.to - 1, node.to) === '\n'
+    ? node.to - 1
+    : node.to;
+}
+
+function hardBreakSyntaxDecoration(doc, node) {
+  const end = hardBreakSyntaxEnd(doc, node);
+  // Keep the two-space hard-break spelling visible; only hide a backslash marker.
+  if (end <= node.from || doc.sliceString(end - 1, end) !== '\\') return null;
+  return Decoration.mark({ class: 'cm-hardbreak-syntax' }).range(end - 1, end);
+}
+
+function markdownCodeSpanDisplayText(doc, node) {
+  const source = doc.sliceString(node.from, node.to);
+  const opening = /^`+/.exec(source)?.[0];
+  if (!opening || source.length < opening.length * 2) return null;
+
+  const content = source.slice(opening.length, -opening.length);
+  let text = content.replace(/\r\n?|\n/g, ' ');
+  if (text.startsWith(' ') && text.endsWith(' ') && /[^ ]/.test(text)) {
+    text = text.slice(1, -1);
+  }
+
+  return { content, text, hasLineBreaks: /[\r\n]/.test(content), needsNormalization: content !== text };
+}
+
+class MarkdownEntityWidget extends WidgetType {
+  constructor(text) {
+    super();
+    this.text = text;
+  }
+
+  eq(other) {
+    return other instanceof MarkdownEntityWidget && other.text === this.text;
+  }
+
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-markdown-entity';
+    span.textContent = this.text;
+    return span;
+  }
+}
+
+class MarkdownCodeSpanWidget extends WidgetType {
+  constructor(text) {
+    super();
+    this.text = text;
+  }
+
+  eq(other) {
+    return other instanceof MarkdownCodeSpanWidget && other.text === this.text;
+  }
+
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-inline-code cm-inline-code-normalized';
+    span.textContent = this.text;
+    return span;
+  }
+}
+
 class CheckboxWidget extends WidgetType {
   constructor(checked, pos, len) {
     super();
@@ -403,6 +516,32 @@ function listItemTextRange(tree, doc, line, markerEnd) {
     from++;
   }
   return from < line.to ? { from, to: line.to } : null;
+}
+
+function listMarkerIndentRange(doc, node) {
+  const line = doc.lineAt(node.from);
+  const leadingIndent = doc.sliceString(line.from, node.from);
+  // CommonMark allows up to three leading spaces without nesting the list item.
+  return /^[ \t]+$/.test(leadingIndent)
+    ? { from: line.from, to: node.from }
+    : null;
+}
+
+function collectListMarkerNestingDepths(tree, from = 0, to = tree.length) {
+  const depths = new Map();
+  let listItemDepth = 0;
+  tree.iterate({
+    from,
+    to,
+    enter(node) {
+      if (node.name === 'ListItem') listItemDepth++;
+      if (node.name === 'ListMark') depths.set(node.from, Math.max(0, listItemDepth - 1));
+    },
+    leave(node) {
+      if (node.name === 'ListItem') listItemDepth--;
+    }
+  });
+  return depths;
 }
 
 function scheduleListMarkerMeasurements(view, force = false) {
@@ -591,27 +730,6 @@ function activeTypographySignature() {
     ])
   });
 }
-
-class EmptyLineCursorAnchorWidget extends WidgetType {
-  eq(other) {
-    return other instanceof EmptyLineCursorAnchorWidget;
-  }
-
-  toDOM() {
-    const anchor = document.createElement('span');
-    anchor.className = 'cm-empty-line-cursor-anchor';
-    anchor.setAttribute('aria-hidden', 'true');
-    anchor.setAttribute('contenteditable', 'false');
-    anchor.textContent = '\u200b';
-    return anchor;
-  }
-
-  ignoreEvent() {
-    return true;
-  }
-}
-
-const emptyLineCursorAnchorWidget = new EmptyLineCursorAnchorWidget();
 
 class CodeBlockHeaderWidget extends WidgetType {
   constructor(lang, codeText) {
@@ -1047,17 +1165,19 @@ export function scrollToHeading(view, targetHeading) {
 }
 
 class WikilinkWidget extends WidgetType {
-  constructor(label, target) {
+  constructor(label, target, sourceContextJson = '[]') {
     super();
     this.label = label;
     this.target = target;
+    this.sourceContextJson = sourceContextJson;
   }
 
   eq(other) {
     return (
       other instanceof WikilinkWidget &&
       other.label === this.label &&
-      other.target === this.target
+      other.target === this.target &&
+      other.sourceContextJson === this.sourceContextJson
     );
   }
 
@@ -1066,23 +1186,31 @@ class WikilinkWidget extends WidgetType {
     span.className = 'cm-link cm-wikilink';
     span.textContent = this.label;
 
+    const activate = () => {
+      if (this.target.startsWith('#')) {
+        scrollToHeading(view, this.target.slice(1));
+        return;
+      }
+      window.AndroidNative?.openMarkdownLink?.(
+        this.target,
+        window.AndroidNative?.getCurrentDocumentSessionId?.(),
+        this.sourceContextJson
+      );
+    };
+
     if (this.target) {
       span.setAttribute('role', 'link');
       span.setAttribute('tabindex', '0');
       span.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (this.target.startsWith('#')) {
-          scrollToHeading(view, this.target.slice(1));
-        }
+        activate();
       });
       span.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           e.stopPropagation();
-          if (this.target.startsWith('#')) {
-            scrollToHeading(view, this.target.slice(1));
-          }
+          activate();
         }
       });
     }
@@ -1097,18 +1225,28 @@ export const typographySettingsEffect = StateEffect.define();
 const imageAspectCache = new Map();
 
 class ImagePreviewWidget extends WidgetType {
-  constructor(url, alt, from, to, imageWidth = null) {
+  constructor(
+    url,
+    alt,
+    from,
+    to,
+    imageWidth = null,
+    imageHeight = null,
+    sourceFormat = 'markdown'
+  ) {
     super();
     this.url = url;
     this.alt = alt || 'image';
     this.from = from;
     this.to = to;
     this.imageWidth = imageWidth;
+    this.imageHeight = imageHeight;
+    this.sourceFormat = sourceFormat;
     const contentWidth = activeContentWidth();
     const sig = activeTypographySignature();
     this.heightKey = measuredWidgetHeightKey(
       'image-preview',
-      `${this.url}:${this.imageWidth ?? 'auto'}`,
+      `${this.url}:${this.imageWidth ?? 'auto'}x${this.imageHeight ?? 'auto'}`,
       contentWidth,
       sig
     );
@@ -1116,7 +1254,8 @@ class ImagePreviewWidget extends WidgetType {
     const estimatedWidth = this.imageWidth
       ? Math.min(this.imageWidth, contentWidth)
       : contentWidth;
-    const fallbackHeight = aspect ? Math.round(estimatedWidth / aspect) : 180;
+    const fallbackHeight = this.imageHeight ??
+      (aspect ? Math.round(estimatedWidth / aspect) : 180);
     this.heightEstimate = estimatedWidgetHeight(this.heightKey, fallbackHeight);
   }
 
@@ -1130,6 +1269,8 @@ class ImagePreviewWidget extends WidgetType {
       other.url === this.url &&
       other.alt === this.alt &&
       other.imageWidth === this.imageWidth &&
+      other.imageHeight === this.imageHeight &&
+      other.sourceFormat === this.sourceFormat &&
       other.from === this.from &&
       other.to === this.to &&
       other.heightEstimate === this.heightEstimate
@@ -1157,7 +1298,7 @@ class ImagePreviewWidget extends WidgetType {
       : (textPackAssetUrl || mdzipAttachmentUrl || markdownAssetUrl || this.url);
     img.alt = this.alt;
     img.draggable = false;
-    img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;
+    img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: ${this.imageHeight ? `${this.imageHeight}px` : 'auto'}; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;
 
     img.onload = () => {
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -1197,7 +1338,16 @@ class ImagePreviewWidget extends WidgetType {
       event.preventDefault();
       event.stopPropagation();
       hideActions();
-      openImageEditDialog(view, this.from, this.to, this.alt, this.url, this.imageWidth);
+      openImageEditDialog(
+        view,
+        this.from,
+        this.to,
+        this.alt,
+        this.url,
+        this.imageWidth,
+        this.imageHeight,
+        this.sourceFormat
+      );
     });
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
@@ -1208,7 +1358,7 @@ class ImagePreviewWidget extends WidgetType {
       event.preventDefault();
       event.stopPropagation();
       hideActions();
-      openImageDeleteConfirmation(view, this.from, this.to);
+      openImageDeleteConfirmation(view, this.from, this.to, this.sourceFormat);
     });
     actions.append(editButton, deleteButton);
 
@@ -2071,7 +2221,16 @@ class EmbeddedDocumentWidget extends WidgetType {
     const state = EditorState.create({
       doc: markdownText,
       extensions: [
-        cmMarkdown({ extensions: [GFM, GFMStrikethrough, GFMTaskList] }),
+        cmMarkdown({
+          extensions: [
+            GFMAutolink,
+            GFMTaskList,
+            wmdxGfmFtpAutolink,
+            wmdxGfmStrikethrough,
+            wmdxCommonMarkCompatibility
+          ]
+        }),
+        markdownBlockquotePaste,
         syntaxHighlighting(customHighlightStyle),
         ...(fullInlineEditing
           ? [
@@ -2238,7 +2397,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const selection = view.state.selection.main;
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
     const doc = view.state.doc;
+    const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
+    const markdownLinkRanges = [];
     const decorationRanges = view.visibleRanges;
+    const firstVisibleRange = decorationRanges[0];
+    const lastVisibleRange = decorationRanges[decorationRanges.length - 1];
+    const listMarkerDepths = collectListMarkerNestingDepths(
+      tree,
+      firstVisibleRange?.from ?? 0,
+      lastVisibleRange?.to ?? doc.length
+    );
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
@@ -2284,8 +2452,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
       for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
         const line = doc.line(lineNumber);
-        const firstText = /\S/.exec(line.text);
-        const probe = firstText ? line.from + firstText.index : line.from;
+        const quotePrefix = getQuotedLineInfo(lineNumber)?.quotePrefix || '';
+        const firstText = /\S/.exec(line.text.slice(quotePrefix.length));
+        const probe = firstText
+          ? line.from + quotePrefix.length + firstText.index
+          : line.from;
         const resolvedNode = tree.resolveInner(probe, 1);
 
         let paragraphNode = null;
@@ -2342,7 +2513,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (!isLineActive) {
             if (!isPureWysiwyg) {
               builder.push(Decoration.replace({
-                widget: new WikilinkWidget(displayLabel, target)
+                widget: new WikilinkWidget(
+                  displayLabel,
+                  target,
+                  JSON.stringify(view.state.facet(embeddedDocumentSourceFacet))
+                )
               }).range(matchStart, matchEnd));
             }
           } else if (labelEnd > labelStart) {
@@ -2505,6 +2680,60 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               : selection.from < node.to && selection.to > node.from
           );
 
+          if (node.name === 'LinkReference') {
+            if (!isNodeActive) {
+              const firstLine = doc.lineAt(node.from).number;
+              const lastLine = doc.lineAt(Math.max(node.from, node.to - 1)).number;
+              for (let lineNumber = firstLine; lineNumber <= lastLine; lineNumber++) {
+                addLineClass(doc.line(lineNumber).from, 'cm-link-reference-definition');
+              }
+            }
+            return false;
+          }
+
+          if (node.name === 'Autolink') {
+            const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
+            if (linkInfo) {
+              builder.push(
+                Decoration.mark({
+                  tagName: 'a',
+                  class: 'cm-link',
+                  attributes: {
+                    href: linkInfo.target,
+                    'data-wmdx-link-target': linkInfo.target
+                  }
+                })
+                  .range(linkInfo.labelFrom, linkInfo.labelTo)
+              );
+              if (!isPureWysiwyg) {
+                hideSyntax(node.from, linkInfo.labelFrom);
+                hideSyntax(linkInfo.labelTo, node.to);
+              }
+            }
+            return false;
+          }
+
+          if (!isPureWysiwyg && !isNodeActive && node.name === 'Escape') {
+            hideSyntax(node.from, Math.min(node.from + 1, node.to));
+            return false;
+          }
+
+          if (!isPureWysiwyg && !isNodeActive && node.name === 'HardBreak') {
+            const decoration = hardBreakSyntaxDecoration(doc, node);
+            if (decoration) {
+              builder.push(decoration);
+              hiddenSyntaxRanges.push(decoration);
+            }
+          }
+
+          if (!isPureWysiwyg && !isNodeActive && node.name === 'Entity') {
+            const entity = doc.sliceString(node.from, node.to);
+            builder.push(Decoration.replace({
+              widget: new MarkdownEntityWidget(decodeMarkdownEntity(entity))
+            }).range(node.from, node.to));
+            return false;
+          }
+
           const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
           const setextHeading = /^SetextHeading([12])$/.exec(node.name);
           const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
@@ -2558,6 +2787,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'InlineCode') {
+            const codeSpan = markdownCodeSpanDisplayText(doc, node);
+            if (codeSpan?.needsNormalization) {
+              if (isPureWysiwyg) return false;
+              if (!isNodeActive) {
+                if (codeSpan.hasLineBreaks) return false;
+                builder.push(Decoration.replace({
+                  widget: new MarkdownCodeSpanWidget(codeSpan.text)
+                }).range(node.from, node.to));
+                return false;
+              }
+            }
             builder.push(Decoration.mark({ class: 'cm-inline-code' }).range(node.from, node.to));
           }
           if (node.name === 'CodeMark' && !isNodeActive) {
@@ -2570,6 +2810,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             const isBullet = /^[-*+]$/.test(marker.trim());
             if (!isNodeActive) {
               if (!isPureWysiwyg) {
+                if (listMarkerDepths.get(node.from) === 0) {
+                  const indentRange = listMarkerIndentRange(doc, node);
+                  if (indentRange) hideSyntax(indentRange.from, indentRange.to);
+                }
                 builder.push(Decoration.replace({
                   widget: new ListMarkerWidget(marker, isBullet)
                 }).range(node.from, node.to));
@@ -2664,6 +2908,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'Link' || node.name === 'URL') {
+            if (node.name === 'Link') {
+              markdownLinkRanges.push({ from: node.from, to: node.to });
+            } else if (markdownLinkRanges.some(range =>
+              node.from >= range.from && node.to <= range.to
+            )) {
+              return false;
+            }
+
             const raw = view.state.doc.sliceString(node.from, node.to);
             const videoLink = node.name === 'Link' ? parseMarkdownVideoLink(raw) : null;
             const videoUrl = videoLink ? resolveDocumentAssetUrl(view.state, videoLink.url) : null;
@@ -2736,15 +2988,21 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               hiddenSyntaxRanges.push(attachmentDecoration);
               return false;
             }
-            const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-            if (match) {
-              const labelFrom = node.from + 1;
-              const labelTo = labelFrom + match[1].length;
+            const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
+            if (linkInfo) {
+              const { labelFrom, labelTo } = linkInfo;
               builder.push(
-                Decoration.mark({ class: 'cm-link' }).range(labelFrom, labelTo)
+                Decoration.mark({
+                  tagName: 'a',
+                  class: 'cm-link',
+                  attributes: {
+                    href: linkInfo.target,
+                    'data-wmdx-link-target': linkInfo.target
+                  }
+                }).range(labelFrom, labelTo)
               );
 
-              if (!isNodeActive && !isPureWysiwyg) {
+              if (!isPureWysiwyg) {
                 if (labelFrom > node.from) {
                   hideSyntax(node.from, labelFrom);
                 }
@@ -2757,7 +3015,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'Image') {
             const imgText = view.state.doc.sliceString(node.from, node.to);
-            const image = parseMarkdownImage(imgText);
+            const obsidianImage = parseObsidianImageEmbed(imgText);
+            const image = obsidianImage ?? parseMarkdownImage(imgText);
             if (image && !isNodeActive && !isPureWysiwyg) {
               builder.push(Decoration.replace({
                 widget: new ImagePreviewWidget(
@@ -2765,10 +3024,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   image.alt,
                   node.from,
                   node.to,
-                  image.width ?? null
+                  image.width ?? null,
+                  image.height ?? null,
+                  obsidianImage ? 'obsidian' : 'markdown'
                 )
               }).range(node.from, node.to));
             }
+            if (image) return false;
           }
         }
       });
@@ -3154,14 +3416,7 @@ function focusEditorAfterCommand(view, options = {}) {
   view?.focus();
 }
 
-export function isEscapedPipe(text, index) {
-  if (text[index] !== '|') return false;
-  let backslashes = 0;
-  for (let i = index - 1; i >= 0 && text[i] === '\\'; i--) {
-    backslashes++;
-  }
-  return backslashes % 2 === 1;
-}
+export { isEscapedPipe };
 
 export function trimCellRange(text, start, end, lineFrom) {
   const cellStart = start;
@@ -3190,14 +3445,11 @@ export function trimCellRange(text, start, end, lineFrom) {
 
 export function parsePipeRow(line) {
   const text = line.text;
-  const pipeOffsets = [];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '|' && !isEscapedPipe(text, i)) pipeOffsets.push(i);
-  }
+  const pipeOffsets = getUnescapedPipeOffsets(text);
   if (pipeOffsets.length === 0) return null;
 
   const hasLeadingPipe = /^\s*\|/.test(text);
-  const hasTrailingPipe = /\|\s*$/.test(text);
+  const hasTrailingPipe = hasTrailingUnescapedPipe(text, pipeOffsets);
   const firstCellStart = hasLeadingPipe ? pipeOffsets[0] + 1 : 0;
   const lastCellEnd = hasTrailingPipe
     ? pipeOffsets[pipeOffsets.length - 1]
@@ -3565,19 +3817,10 @@ function buildHeightMapValue(state) {
 
   const doc = state.doc;
   const tree = syntaxTree(state);
+  const listMarkerDepths = collectListMarkerNestingDepths(tree);
+  const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
   const replacements = [];
   const hiddenSyntaxRanges = [];
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
-    const line = doc.line(lineNumber);
-    if (line.length === 0) {
-      replacements.push(
-        Decoration.widget({
-          widget: emptyLineCursorAnchorWidget,
-          side: 1
-        }).range(line.from)
-      );
-    }
-  }
 
   const hideSyntax = (from, to) => {
     if (to > from) {
@@ -3643,7 +3886,11 @@ function buildHeightMapValue(state) {
         : (target.startsWith('#') ? target.slice(1) : target);
 
       replacements.push(Decoration.replace({
-        widget: new WikilinkWidget(displayLabel, target)
+        widget: new WikilinkWidget(
+          displayLabel,
+          target,
+          JSON.stringify(state.facet(embeddedDocumentSourceFacet))
+        )
       }).range(matchStart, matchEnd));
     }
   }
@@ -3761,9 +4008,25 @@ function buildHeightMapValue(state) {
         hideSyntax(node.from, node.to);
       }
 
+      if (node.name === 'InlineCode') {
+        const codeSpan = markdownCodeSpanDisplayText(doc, node);
+        if (codeSpan?.needsNormalization) {
+          const decoration = Decoration.replace({
+            widget: new MarkdownCodeSpanWidget(codeSpan.text)
+          }).range(node.from, node.to);
+          replacements.push(decoration);
+          hiddenSyntaxRanges.push(decoration);
+          return false;
+        }
+      }
+
       if (node.name === 'ListMark') {
         const marker = doc.sliceString(node.from, node.to);
         const isBullet = /^[-*+]$/.test(marker.trim());
+        if (listMarkerDepths.get(node.from) === 0) {
+          const indentRange = listMarkerIndentRange(doc, node);
+          if (indentRange) hideSyntax(indentRange.from, indentRange.to);
+        }
         replacements.push(Decoration.replace({
           widget: new ListMarkerWidget(marker, isBullet)
         }).range(node.from, node.to));
@@ -3778,6 +4041,27 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'QuoteMark') {
         hideSyntax(node.from, Math.min(node.to + 1, line.to));
+      }
+
+      if (node.name === 'Escape') {
+        hideSyntax(node.from, Math.min(node.from + 1, node.to));
+        return false;
+      }
+
+      if (node.name === 'HardBreak') {
+        const decoration = hardBreakSyntaxDecoration(doc, node);
+        if (decoration) {
+          replacements.push(decoration);
+          hiddenSyntaxRanges.push(decoration);
+        }
+      }
+
+      if (node.name === 'Entity') {
+        const entity = doc.sliceString(node.from, node.to);
+        replacements.push(Decoration.replace({
+          widget: new MarkdownEntityWidget(decodeMarkdownEntity(entity))
+        }).range(node.from, node.to));
+        return false;
       }
 
       if (node.name === 'TaskMarker') {
@@ -3799,6 +4083,20 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'Table' || node.name === 'FencedCode' || node.name === 'CodeBlock') {
+        return false;
+      }
+
+      if (node.name === 'LinkReference') {
+        hideSyntax(node.from, node.to);
+        return false;
+      }
+
+      if (node.name === 'Autolink') {
+        const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
+        if (linkInfo) {
+          hideSyntax(node.from, linkInfo.labelFrom);
+          hideSyntax(linkInfo.labelTo, node.to);
+        }
         return false;
       }
 
@@ -3896,10 +4194,9 @@ function buildHeightMapValue(state) {
           hiddenSyntaxRanges.push(attachmentDecoration);
           return false;
         }
-        const match = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-        if (match) {
-          const labelFrom = node.from + 1;
-          const labelTo = labelFrom + match[1].length;
+        const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
+        if (linkInfo) {
+          const { labelFrom, labelTo } = linkInfo;
           if (labelFrom > node.from) {
             hideSyntax(node.from, labelFrom);
           }
@@ -3911,7 +4208,8 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'Image') {
         const imgText = doc.sliceString(node.from, node.to);
-        const image = parseMarkdownImage(imgText);
+        const obsidianImage = parseObsidianImageEmbed(imgText);
+        const image = obsidianImage ?? parseMarkdownImage(imgText);
         if (image) {
           replacements.push(Decoration.replace({
             widget: new ImagePreviewWidget(
@@ -3919,9 +4217,12 @@ function buildHeightMapValue(state) {
               image.alt,
               node.from,
               node.to,
-              image.width ?? null
+              image.width ?? null,
+              image.height ?? null,
+              obsidianImage ? 'obsidian' : 'markdown'
             )
           }).range(node.from, node.to));
+          return false;
         }
       }
     }
@@ -4046,6 +4347,44 @@ const liveEmbeddedDocumentField = StateField.define({
     EditorView.decorations.from(field, value => value.decorations)
 });
 
+function buildLivePreviewCodeSpanValue(state) {
+  if (currentEditorMode !== 'live_preview') return Decoration.none;
+
+  const doc = state.doc;
+  const decorations = [];
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== 'InlineCode') return;
+      const codeSpan = markdownCodeSpanDisplayText(doc, node);
+      if (!codeSpan?.hasLineBreaks || !codeSpan.needsNormalization) return;
+
+      const active = state.selection.ranges.some(range =>
+        range.empty
+          ? range.head >= node.from && range.head <= node.to
+          : range.from < node.to && range.to > node.from
+      );
+      if (active) return;
+
+      decorations.push(Decoration.replace({
+        widget: new MarkdownCodeSpanWidget(codeSpan.text)
+      }).range(node.from, node.to));
+      return false;
+    }
+  });
+  return decorations.length ? Decoration.set(decorations, true) : Decoration.none;
+}
+
+const livePreviewCodeSpanField = StateField.define({
+  create: buildLivePreviewCodeSpanValue,
+  update(current, tr) {
+    if (tr.docChanged || tr.selectionSet) {
+      return buildLivePreviewCodeSpanValue(tr.state);
+    }
+    return current.map(tr.changes);
+  },
+  provide: field => EditorView.decorations.from(field)
+});
+
 export const heightMapField = StateField.define({
   create: buildHeightMapValue,
   update(current, tr) {
@@ -4063,7 +4402,7 @@ export const heightMapField = StateField.define({
           'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
           'SetextHeading1', 'SetextHeading2', 'ListItem',
           'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
-          'HorizontalRule', 'TaskMarker', 'Link', 'Image'
+          'HorizontalRule', 'TaskMarker', 'Link', 'Image', 'InlineCode'
         ]
       })
     ) {
@@ -4112,7 +4451,9 @@ export function buildPersistentLayoutDecorations(state) {
   const tree = syntaxTree(state);
   const classesByLine = new Map();
   const calloutAttributesByLine = new Map();
+  const blockquoteDepthByLine = new Map();
   const activeCallouts = [];
+  let currentBlockquoteDepth = 0;
 
   const addClass = (lineNumber, className) => {
     if (!classesByLine.has(lineNumber)) {
@@ -4123,8 +4464,12 @@ export function buildPersistentLayoutDecorations(state) {
 
   for (let number = 1; number <= doc.lines; number++) {
     const line = doc.line(number);
-    const firstText = /\S/.exec(line.text);
-    const probe = firstText ? line.from + firstText.index : line.from;
+    const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
+    const quotePrefixLength = quotePrefix?.[1].length ?? 0;
+    const firstText = /\S/.exec(line.text.slice(quotePrefixLength));
+    const probe = firstText
+      ? line.from + quotePrefixLength + firstText.index
+      : line.from;
     const resolved = tree.resolveInner(probe, 1);
 
     let paragraphNode = null;
@@ -4154,11 +4499,15 @@ export function buildPersistentLayoutDecorations(state) {
     if (insideTable || insideCodeBlock) continue;
 
     let calloutInfo = null;
-    const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
-    if (!insideBlockquote || !quotePrefix) {
+    const isBlockquoteLine = insideBlockquote || Boolean(quotePrefix);
+    if (!isBlockquoteLine) {
       activeCallouts.length = 0;
+      currentBlockquoteDepth = 0;
     } else {
-      const depth = (quotePrefix[1].match(/>/g) || []).length;
+      const depth = quotePrefix
+        ? (quotePrefix[1].match(/>/g) || []).length
+        : Math.max(1, currentBlockquoteDepth);
+      if (quotePrefix) currentBlockquoteDepth = depth;
       while (
         activeCallouts.length > 0 &&
         activeCallouts[activeCallouts.length - 1].depth > depth
@@ -4166,7 +4515,7 @@ export function buildPersistentLayoutDecorations(state) {
         activeCallouts.pop();
       }
 
-      const opener = line.text.match(
+      const opener = quotePrefix && line.text.match(
         /^(\s*(?:>\s*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i
       );
       if (opener) {
@@ -4204,8 +4553,12 @@ export function buildPersistentLayoutDecorations(state) {
         type: calloutInfo.type,
         depth: calloutInfo.depth
       });
-    } else if (insideBlockquote) {
+    } else if (isBlockquoteLine) {
       addClass(number, 'cm-blockquote');
+      blockquoteDepthByLine.set(
+        number,
+        Math.max(1, currentBlockquoteDepth)
+      );
     }
     if (isHorizontalRule) addClass(number, 'cm-hr');
 
@@ -4246,6 +4599,7 @@ export function buildPersistentLayoutDecorations(state) {
   for (const [lineNumber, classes] of classesByLine) {
     const lineObj = doc.line(lineNumber);
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
+    const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
     ranges.push(
       Decoration.line({
         attributes: {
@@ -4256,7 +4610,12 @@ export function buildPersistentLayoutDecorations(state) {
                 'data-callout-depth': String(calloutAttributes.depth),
                 style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
               }
-            : {})
+            : blockquoteDepth
+              ? {
+                  'data-blockquote-depth': String(blockquoteDepth),
+                  style: `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`
+                }
+              : {})
         }
       }).range(lineObj.from)
     );
@@ -4857,7 +5216,17 @@ class CodeMirrorAdapter {
         crosshairCursor(),
         highlightActiveLine(),
         codeFolding(),
-        cmMarkdown({ extensions: [GFM, GFMTable, GFMStrikethrough, GFMTaskList] }),
+        cmMarkdown({
+          extensions: [
+            GFMAutolink,
+            GFMTable,
+            GFMTaskList,
+            wmdxGfmFtpAutolink,
+            wmdxGfmStrikethrough,
+            wmdxCommonMarkCompatibility
+          ]
+        }),
+        markdownBlockquotePaste,
         syntaxHighlighting(customHighlightStyle),
         livePreviewPlugin,
         listMarkerMeasurementPlugin,
@@ -4973,6 +5342,7 @@ class CodeMirrorAdapter {
         footnoteStateField,
         persistentLayoutField,
         heightMapField,
+        livePreviewCodeSpanField,
         liveEmbeddedDocumentField,
         Prec.highest([tableNavigationKeymap, markdownIndentKeymap]),
         renderedRowNavigationKeymap,
@@ -5045,6 +5415,8 @@ class CodeMirrorAdapter {
     };
     this.view.contentDOM.addEventListener('pointerdown', event => {
       const target = event.target;
+      const isTableCell = target instanceof HTMLElement &&
+        Boolean(target.closest('.cm-wp-table-container'));
       if (
         target instanceof HTMLElement &&
         target.closest(
@@ -5068,6 +5440,7 @@ class CodeMirrorAdapter {
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
+        isTableCell,
         longPressTriggered: false
       };
       if (event.pointerType === 'touch') {
@@ -5086,7 +5459,7 @@ class CodeMirrorAdapter {
           }
           emptyAreaLongPressTimer = null;
           emptyAreaLongPressStart = null;
-        }, 550);
+        }, isTableCell ? 500 : 550);
       }
     }, { capture: true });
     this.view.contentDOM.addEventListener('pointermove', event => {
@@ -5106,7 +5479,9 @@ class CodeMirrorAdapter {
       if (
         !start ||
         start.pointerId !== event.pointerId ||
+        start.isTableCell ||
         start.longPressTriggered ||
+        event.target instanceof HTMLElement && event.target.closest('.cm-link') ||
         Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12
       ) {
         return;
@@ -5121,6 +5496,41 @@ class CodeMirrorAdapter {
       editorTapStart = null;
       cancelEmptyAreaLongPress();
     }, { capture: true });
+    const onGlobalPointerMove = event => {
+      const start = editorTapStart;
+      if (!start || start.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 10) return;
+      cancelEmptyAreaLongPress();
+      start.dragging = true;
+      activeSelectionDragView = this.view;
+      floatingToolbarAnchorPoint = null;
+      hideFloatingSelectionToolbar();
+    };
+    const finishGlobalPointerGesture = event => {
+      const start = editorTapStart;
+      if (!start || start.pointerId !== event.pointerId) return;
+      if (activeSelectionDragView === this.view) {
+        activeSelectionDragView = null;
+        requestAnimationFrame(() => {
+          if (editorTapStart?.pointerId === event.pointerId) {
+            editorTapStart = null;
+          }
+          if (this.view?.dom?.isConnected) updateFloatingSelectionToolbar(this.view);
+        });
+      } else if (event.type === 'pointercancel') {
+        editorTapStart = null;
+      }
+    };
+    window.addEventListener('pointermove', onGlobalPointerMove, true);
+    window.addEventListener('pointerup', finishGlobalPointerGesture, true);
+    window.addEventListener('pointercancel', finishGlobalPointerGesture, true);
+    this.pointerGestureCleanup = () => {
+      window.removeEventListener('pointermove', onGlobalPointerMove, true);
+      window.removeEventListener('pointerup', finishGlobalPointerGesture, true);
+      window.removeEventListener('pointercancel', finishGlobalPointerGesture, true);
+      if (activeSelectionDragView === this.view) activeSelectionDragView = null;
+      cancelEmptyAreaLongPress();
+    };
     this.view.contentDOM.addEventListener('contextmenu', event => {
       const selection = this.view?.state?.selection?.main;
       if (selection && !selection.empty) return;
@@ -5130,6 +5540,36 @@ class CodeMirrorAdapter {
       if (editorTapStart) editorTapStart.longPressTriggered = true;
       cancelEmptyAreaLongPress();
     });
+    this.markdownLinkClickHandler = event => {
+      const element = event.target?.closest?.(
+        'a.cm-link[data-wmdx-link-target]'
+      );
+      if (!element || !this.view?.contentDOM?.contains(element)) return;
+      const target = element.getAttribute('data-wmdx-link-target');
+      if (!target) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (target.startsWith('#')) {
+        scrollToHeading(this.view, target.slice(1));
+        return;
+      }
+
+      const nativeBridge = window.AndroidNative;
+      if (nativeBridge?.openMarkdownLink) {
+        nativeBridge.openMarkdownLink(
+          target,
+          nativeBridge.getCurrentDocumentSessionId?.(),
+          JSON.stringify(this.view.state.facet(embeddedDocumentSourceFacet))
+        );
+      } else if (/^(?:https?:|ftp:\/\/|mailto:)/i.test(target)) {
+        window.open(target, '_blank', 'noopener');
+      }
+    };
+    this.view.contentDOM.addEventListener(
+      'click',
+      this.markdownLinkClickHandler
+    );
 
     this.view.scrollDOM.style.overflowAnchor = 'auto';
     this.scrollPersistHandler = () => this.queueScrollPositionSave();
@@ -5385,6 +5825,15 @@ class CodeMirrorAdapter {
 
   destroy() {
     this.persistScrollPosition();
+    this.pointerGestureCleanup?.();
+    this.pointerGestureCleanup = null;
+    if (this.markdownLinkClickHandler && this.view?.contentDOM) {
+      this.view.contentDOM.removeEventListener(
+        'click',
+        this.markdownLinkClickHandler
+      );
+      this.markdownLinkClickHandler = null;
+    }
     if (this.syntaxRefreshFrame !== null) {
       cancelAnimationFrame(this.syntaxRefreshFrame);
       this.syntaxRefreshFrame = null;
@@ -5925,6 +6374,10 @@ function updateFloatingSelectionToolbar(
     if (activePopupSurface === 'floating') hidePopupStrip();
     return;
   }
+  if (view && activeSelectionDragView === view) {
+    hideFloatingSelectionToolbar();
+    return;
+  }
   const selection = view?.state?.selection?.main;
   const hasSelection = Boolean(selection && !selection.empty);
   floatingSelectionToolbarVisibility.updateSelection(view, selection, {
@@ -6000,6 +6453,7 @@ function updateFloatingSelectionToolbar(
   bar.style.width = `${position.width}px`;
   bar.style.left = `${position.left}px`;
   bar.style.top = `${position.top}px`;
+  separateTableMenuFromFloatingToolbar();
   if (activePopupSurface === 'floating') positionFloatingPopupStrip();
 }
 
@@ -6417,9 +6871,20 @@ async function runToolbarClipboardAction(actionId, preserveKeyboard = false) {
       return false;
     }
     const { from, to } = view.state.selection.main;
+    const pasteRange = quotePasteInsertionRange(view.state, from, to);
+    const pastedText = quoteMultilinePaste(
+      view.state,
+      pasteRange.from,
+      pasteRange.to,
+      text
+    );
     view.dispatch({
-      changes: { from, to, insert: text },
-      selection: { anchor: from + text.length },
+      changes: {
+        from: pasteRange.from,
+        to: pasteRange.to,
+        insert: pastedText
+      },
+      selection: { anchor: pasteRange.from + pastedText.length },
       userEvent: 'input.paste'
     });
     focusEditorAfterCommand(view, { preserveKeyboard });
@@ -7210,17 +7675,34 @@ function openAttachmentEditDialog(view, attachmentItem) {
   requestAnimationFrame(() => labelInput.focus());
 }
 
-function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
+function openImageEditDialog(
+  view,
+  from,
+  to,
+  alt,
+  url,
+  imageWidth = null,
+  imageHeight = null,
+  sourceFormat = 'markdown'
+) {
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog || !view) return;
 
-  dialog.innerHTML = `
-    <h3 class="modal-title">Edit Image</h3>
+  const isObsidianEmbed = sourceFormat === 'obsidian';
+  const altField = isObsidianEmbed ? '' : `
     <div class="modal-field-group">
       <label class="modal-label" for="modal-image-alt">Description (alt text)</label>
       <input id="modal-image-alt" class="modal-input" type="text" autocomplete="off" />
-    </div>
+    </div>`;
+  const heightField = isObsidianEmbed ? `
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-image-height">Height in pixels (optional)</label>
+      <input id="modal-image-height" class="modal-input" type="number" min="1" max="10000" step="1" inputmode="numeric" placeholder="Automatic" />
+    </div>` : '';
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Image</h3>
+    ${altField}
     <div class="modal-field-group">
       <label class="modal-label" for="modal-image-url">Image location</label>
       <input id="modal-image-url" class="modal-input" type="text" autocomplete="off" />
@@ -7229,6 +7711,7 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
         <label class="modal-label" for="modal-image-width">Width in pixels (optional)</label>
         <input id="modal-image-width" class="modal-input" type="number" min="1" max="10000" step="1" inputmode="numeric" placeholder="Automatic" />
       </div>
+    ${heightField}
     <div class="modal-actions">
       <button type="button" class="modal-btn modal-btn-cancel" id="modal-image-cancel">Cancel</button>
       <button type="button" class="modal-btn modal-btn-confirm" id="modal-image-save">Save</button>
@@ -7238,14 +7721,16 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
   const altInput = dialog.querySelector('#modal-image-alt');
   const urlInput = dialog.querySelector('#modal-image-url');
   const widthInput = dialog.querySelector('#modal-image-width');
+  const heightInput = dialog.querySelector('#modal-image-height');
   const error = document.createElement('p');
   error.className = 'modal-error';
   error.setAttribute('role', 'alert');
   error.hidden = true;
   dialog.querySelector('.modal-actions').before(error);
-  altInput.value = alt;
+  if (altInput) altInput.value = alt;
   urlInput.value = url;
   widthInput.value = imageWidth ?? '';
+  if (heightInput) heightInput.value = imageHeight ?? '';
 
   const close = () => {
     overlay.classList.remove('open');
@@ -7267,6 +7752,8 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
     }
     const widthText = widthInput.value.trim();
     const newWidth = widthText === '' ? null : Number(widthText);
+    const heightText = heightInput?.value.trim() ?? '';
+    const newHeight = heightText === '' ? null : Number(heightText);
     if (newWidth !== null &&
       (!Number.isInteger(newWidth) || newWidth < 1 || newWidth > 10000)
     ) {
@@ -7275,18 +7762,50 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
       widthInput.focus();
       return;
     }
+    if (newHeight !== null &&
+      (!Number.isInteger(newHeight) || newHeight < 1 || newHeight > 10000)
+    ) {
+      error.textContent = 'Height must be a whole number from 1 to 10000 pixels.';
+      error.hidden = false;
+      heightInput.focus();
+      return;
+    }
+    if (newHeight !== null && newWidth === null) {
+      error.textContent = 'Enter a width when setting a fixed height.';
+      error.hidden = false;
+      widthInput.focus();
+      return;
+    }
     if (
       from < 0 ||
       to > view.state.doc.length ||
-      from >= to ||
-      !parseMarkdownImage(view.state.doc.sliceString(from, to))
+      from >= to
     ) {
       error.textContent = 'This image is no longer in the document.';
       error.hidden = false;
       return;
     }
+    const currentSource = view.state.doc.sliceString(from, to);
+    const currentImage = isObsidianEmbed
+      ? parseObsidianImageEmbed(currentSource)
+      : parseMarkdownImage(currentSource);
+    if (!currentImage) {
+      error.textContent = 'This image is no longer in the document.';
+      error.hidden = false;
+      return;
+    }
 
-    const markdown = formatMarkdownImage(altInput.value, newUrl, newWidth);
+    let markdown;
+    try {
+      markdown = isObsidianEmbed
+        ? formatObsidianImageEmbed(newUrl, newWidth, newHeight)
+        : formatMarkdownImage(altInput.value, newUrl, newWidth);
+    } catch (formatError) {
+      error.textContent = formatError.message;
+      error.hidden = false;
+      urlInput.focus();
+      return;
+    }
     view.dispatch({
       changes: { from, to, insert: markdown },
       selection: { anchor: from + markdown.length, head: from + markdown.length }
@@ -7295,10 +7814,15 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
   });
 
   overlay.classList.add('open');
-  requestAnimationFrame(() => altInput.focus());
+  requestAnimationFrame(() => (altInput || urlInput).focus());
 }
 
-function openImageDeleteConfirmation(view, from, to) {
+function openImageDeleteConfirmation(
+  view,
+  from,
+  to,
+  sourceFormat = 'markdown'
+) {
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog || !view) return;
@@ -7327,9 +7851,16 @@ function openImageDeleteConfirmation(view, from, to) {
     if (
       from < 0 ||
       to > view.state.doc.length ||
-      from >= to ||
-      !parseMarkdownImage(view.state.doc.sliceString(from, to))
+      from >= to
     ) {
+      close();
+      return;
+    }
+    const currentSource = view.state.doc.sliceString(from, to);
+    const currentImage = sourceFormat === 'obsidian'
+      ? parseObsidianImageEmbed(currentSource)
+      : parseMarkdownImage(currentSource);
+    if (!currentImage) {
       close();
       return;
     }
@@ -8128,6 +8659,18 @@ function initCustomSearchBar() {
 
   searchInput.addEventListener('input', () => commitSearchQuery());
   replaceInput.addEventListener('input', () => commitSearchQuery());
+  searchInput.addEventListener('keydown', event => {
+    handleFindEnterKey(event, reverse => {
+      if (!commitSearchQuery()) return;
+
+      const view = activeAdapter?.view;
+      const query = buildSearchQuery(searchInput, replaceInput);
+      if (!view || !query.search || !query.valid) return;
+
+      runFindAndCenter(reverse ? findPrevious : findNext, view);
+      updateMatchCounterFromQuery(query, view);
+    });
+  });
 
   attachButtonBehavior(btnPrev, 'Find Previous match in document', () => {
     if (activeAdapter && activeAdapter.view) {
@@ -8214,6 +8757,13 @@ function toggleFindAndReplaceBar(forceState) {
   } else {
     // Intentionally do not call closeSearchPanel(view): that detaches
     // the custom #custom-search-bar element from CodeMirror's panel host.
+    if (countDebounceTimer) {
+      clearTimeout(countDebounceTimer);
+      countDebounceTimer = null;
+    }
+    clearFindHighlights(view);
+    clearMatchCounter();
+    clearInlineSearchError();
     view.focus();
   }
 }
