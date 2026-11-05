@@ -368,6 +368,17 @@ test('callout title layout and editing behavior match each view', () => {
     indexHtml.includes('border-left: max(var(--callout-header-accent-thickness, 0px), var(--callout-border-width, 4px))'),
     'The existing callout border styling remains unchanged'
   );
+  assert.ok(
+    mainSource.includes("view.dom.addEventListener('keydown', this.calloutEnterHandler, true)") &&
+      mainSource.includes('getWmdxCalloutContinuationIndent('),
+    'Enter continues native callout indentation'
+  );
+  assert.ok(
+    mainSource.includes('data-wmdx-callout-title-from') &&
+      mainSource.includes('handleWmdxCalloutTitleClick') &&
+      mainSource.includes('view.posAtCoords({ x: event.clientX, y: event.clientY })'),
+    'Tapping a native callout title places the cursor within its editable source text'
+  );
 });
 
 test('wysiwygCodeBlockField, coordsForTargetRow, and selection paint styling', () => {

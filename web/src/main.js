@@ -106,7 +106,10 @@ document.addEventListener('pointerdown', event => {
   }
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
-import { parseWmdxCallouts } from './wmdxCallouts.js';
+import {
+  getWmdxCalloutContinuationIndent,
+  parseWmdxCallouts
+} from './wmdxCallouts.js';
 import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
@@ -2337,11 +2340,103 @@ class EmbeddedDocumentWidget extends WidgetType {
   }
 }
 
+function wmdxCalloutPositionIsExcluded(state, position) {
+  for (
+    let node = syntaxTree(state).resolveInner(position, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function handleWmdxCalloutTitleClick(view, event) {
+  const eventTarget = event.target instanceof Element
+    ? event.target
+    : event.target?.parentElement;
+  const titleElement = eventTarget?.closest?.(
+    '.cm-callout-title-text.is-source[data-wmdx-callout-title-from]'
+  );
+  if (!titleElement) return false;
+
+  const from = Number(titleElement.dataset.wmdxCalloutTitleFrom);
+  const to = Number(titleElement.dataset.wmdxCalloutTitleTo);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || to < from) return false;
+
+  const mapped = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  const position = mapped == null || mapped < from || mapped > to
+    ? to
+    : mapped;
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({ selection: EditorSelection.cursor(position) });
+  view.focus();
+  return true;
+}
+
+function handleWmdxCalloutEnter(view, event) {
+  if (
+    event.key !== 'Enter' ||
+    event.isComposing ||
+    event.keyCode === 229 ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey
+  ) {
+    return false;
+  }
+
+  const state = view.state;
+  const selection = state.selection.main;
+  const indent = getWmdxCalloutContinuationIndent(
+    state.doc.toString(),
+    selection.head,
+    position => wmdxCalloutPositionIsExcluded(state, position)
+  );
+  if (indent == null) return false;
+
+  const insert = `\n${' '.repeat(indent)}`;
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({
+    changes: { from: selection.from, to: selection.to, insert },
+    selection: EditorSelection.cursor(selection.from + insert.length),
+    userEvent: 'input'
+  });
+  return true;
+}
+
 export const livePreviewPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
     this.initializedFoldLines = new Set();
     this.hiddenSyntaxRanges = Decoration.none;
+    this.calloutEventDom = view.dom;
+    this.calloutTitleClickHandler = event =>
+      handleWmdxCalloutTitleClick(view, event);
+    this.calloutEnterHandler = event =>
+      handleWmdxCalloutEnter(view, event);
+    view.dom.addEventListener('click', this.calloutTitleClickHandler, true);
+    view.dom.addEventListener('keydown', this.calloutEnterHandler, true);
     this.decorations = this.buildDecorations(view);
+  }
+
+  destroy() {
+    this.calloutEventDom?.removeEventListener(
+      'click',
+      this.calloutTitleClickHandler,
+      true
+    );
+    this.calloutEventDom?.removeEventListener(
+      'keydown',
+      this.calloutEnterHandler,
+      true
+    );
+    this.calloutEventDom = null;
+    this.calloutTitleClickHandler = null;
+    this.calloutEnterHandler = null;
   }
 
   update(update) {
@@ -3211,7 +3306,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         if (titleIsInSource) {
           builder.push(Decoration.mark({
-            class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`
+            class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`,
+            attributes: {
+              'data-wmdx-callout-title-from': String(info.titleStart),
+              'data-wmdx-callout-title-to': String(line.to)
+            }
           }).range(info.titleStart, line.to));
         }
         lineClasses.get(lineFrom)?.add('cm-callout-title-rendered');
@@ -4373,7 +4472,11 @@ function buildHeightMapValue(state) {
 
     if (titleIsInSource) {
       replacements.push(Decoration.mark({
-        class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`
+        class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`,
+        attributes: {
+          'data-wmdx-callout-title-from': String(info.titleStart),
+          'data-wmdx-callout-title-to': String(line.to)
+        }
       }).range(info.titleStart, line.to));
     }
   }

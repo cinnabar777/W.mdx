@@ -64,6 +64,43 @@ test('native callouts retain paragraph gaps and hide only callout indentation', 
   assert.equal(parsed.lineAttributes.get(secondBodyLine).indentToHide, 4);
 });
 
+test('Enter continues callout titles, nested bodies, and indented blank lines', async () => {
+  const { getWmdxCalloutContinuationIndent } = await import('../src/wmdxCallouts.js');
+  const source = '±note Title\n  Body\n  ';
+
+  assert.equal(
+    getWmdxCalloutContinuationIndent(source, source.indexOf('Title')),
+    2
+  );
+  assert.equal(
+    getWmdxCalloutContinuationIndent(source, source.indexOf('Body')),
+    2
+  );
+  assert.equal(
+    getWmdxCalloutContinuationIndent(source, source.length),
+    2
+  );
+
+  const nested = '±note Outer\n  ±tip Inner\n    Body';
+  assert.equal(
+    getWmdxCalloutContinuationIndent(nested, nested.indexOf('Inner')),
+    4
+  );
+  assert.equal(
+    getWmdxCalloutContinuationIndent(nested, nested.indexOf('Body')),
+    4
+  );
+  assert.equal(
+    getWmdxCalloutContinuationIndent(nested, nested.indexOf('Outer')),
+    2
+  );
+  assert.equal(
+    getWmdxCalloutContinuationIndent(nested, nested.indexOf('Body') + 4),
+    4
+  );
+  assert.equal(getWmdxCalloutContinuationIndent('Outside', 3), null);
+});
+
 test('callout-like markers in excluded code and table ranges are ignored', async () => {
   const { parseWmdxCallouts } = await import('../src/wmdxCallouts.js');
   const source = '±note Visible\n  Body\n\n±warning Hidden';

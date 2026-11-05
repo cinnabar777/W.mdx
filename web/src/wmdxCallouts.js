@@ -49,6 +49,7 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
     lineAttributes.set(line.from, {
       type: callout.type,
       depth: callout.depth,
+      continuationIndent: callout.indent + 2,
       indentToHide: isBlank
         ? 0
         : Math.min(callout.indent + 2, indentationOf(line.text)),
@@ -99,6 +100,7 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
       lineAttributes.set(line.from, {
         type: info.type,
         depth: info.depth,
+        continuationIndent: indent + 2,
         indentToHide: indent,
         isTitle: true
       });
@@ -109,5 +111,35 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
     if (isIndentedBody) markBodyLine(line, parent);
   }
 
+  if (stack.length && pendingBlankLines.length) {
+    const activeCallout = stack[stack.length - 1];
+    for (const blankLine of pendingBlankLines) {
+      if (indentationOf(blankLine.text) > activeCallout.indent) {
+        markBodyLine(blankLine, activeCallout, true);
+      }
+    }
+  }
+
   return { openers, lineAttributes };
+}
+
+export function getWmdxCalloutContinuationIndent(
+  text,
+  position,
+  isExcluded = () => false
+) {
+  const source = String(text ?? '');
+  const line = splitLines(source).find(
+    candidate => position >= candidate.from && position <= candidate.to
+  );
+  if (!line) return null;
+
+  const attributes = parseWmdxCallouts(source, isExcluded)
+    .lineAttributes.get(line.from);
+  if (!attributes) return null;
+
+  if (attributes.isTitle || !line.text.trim()) {
+    return attributes.continuationIndent;
+  }
+  return indentationOf(line.text);
 }

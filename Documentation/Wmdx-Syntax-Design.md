@@ -530,8 +530,9 @@ a separate later phase.
 
 - `.1`–`.6` headings map to the six structural heading levels while preserving
   their original source.
-- Native `±type`, `±type-`, and `±type+` callouts support titles, nested
-  indentation, blank paragraphs, and dedenting.
+- Native `±type`, `±type-`, and `±type+` callouts support editable titles,
+  Return-driven body indentation, nested indentation, blank paragraphs, and
+  dedenting.
 - Native task markers `[ ]` and `[x]` render as interactive checkboxes without
   a leading list bullet.
 - Native footnote references and definitions support automatic numbering and
