@@ -250,18 +250,18 @@ conversion behavior, and only then include it in an implementation plan.
 
 ### Gaps that need syntax or conversion decisions
 
-Every treatment in this table is tentative:
+Items marked **Agreed direction** reflect choices made so far; the remaining
+treatments are tentative:
 
 | HTML feature | Tentative treatment to revisit |
 | --- | --- |
-| `details`/`summary` | Tentative candidate: use the existing fold-block grammar with a dedicated `details` type, e.g. `> [!details]- Summary` plus quoted body. Render it as a neutral disclosure with no callout icon/accent; marker and appearance are not approved |
+| `details`/`summary` | **Agreed direction:** reuse the existing fold-block grammar with a dedicated `details` type, e.g. `> [!details]- Summary` plus quoted body. Render it as a neutral disclosure with no callout icon/accent; no separate folding marker |
 | Definition lists (`dl`/`dt`/`dd`) | Leading tentative candidate, retained for now: a term paragraph followed by definition lines beginning `: `, such as `Term` then `: Definition`; a new term paragraph starts the next group. This is not yet approved syntax |
-| Different image alt text and figure caption | Tentative candidate: keep `TITLE` as alt text and add `caption=...` after `ALIGN` only when the visible caption differs |
-| Decorative images with `alt=""` | The current empty-title rule falls back to the filename, so it cannot represent intentionally empty alt text. Consider an explicit option such as `alt=none`; not approved |
+| HTML image alt text and visible caption differ or one is absent | Tentative candidate: keep `TITLE` as alt text; append ` (CAPTION)` within the title field for a different visible caption, or ` ()` to suppress it. Without parentheses, `TITLE` remains both alt text and caption. Escape literal parentheses in the title. Since empty `TITLE` falls back to the filename, `alt=""` still needs an explicit no-alt option such as `alt=none`. Not approved |
 | Responsive images (`picture`/`srcset`) | `srcset` and `picture` can contain multiple candidates, media conditions, and MIME types; a single `srcset=...` option would not model them fully. Tentative first-pass policy: keep the `img` fallback source and report dropped alternatives. Design multi-source syntax only if lossless responsive-image support is required |
 | HTML comments | Tentative first-pass policy: omit non-rendered comments and report that they were skipped; do not expose hidden source notes as visible text. If Wmdx needs hidden authoring notes, design that separately rather than adopting Obsidian's `%%` syntax automatically |
 | Named anchors (`id`/`name`) not attached to headings | Preserve the target and links to `#name`; a native target marker is needed. Candidate `.anchor name`, but its exact spelling remains undecided |
-| Custom CSS colors and typography | Map properties with an existing Wmdx equivalent. For exact custom values, define a value-based native style form; keep the agreed Unicode subscript selectors for palette styles |
+| Custom CSS colors and typography | Map supported properties to existing Wmdx formatting. Exact arbitrary values need a general native style/value syntax designed for authoring and toolbar use, not a one-off HTML-import marker. Until that syntax is agreed, report unsupported style values; keep the Unicode subscript selectors for palette styles |
 | `script` and `style` blocks | Convert supported CSS properties to native formatting; never execute scripts or apply imported CSS. Omit non-rendered scripts and unsupported stylesheet rules with a conversion warning, rather than inserting them as visible code by default |
 | Tables with `rowspan`/`colspan` | Do not change table syntax. Tentative conversion: keep each source value once in the first covered cell, leave covered cells empty, and report that merged layout was flattened |
 | Forms, iframes, custom elements, and other active or unknown content | Convert recognized media to resource syntax and retain readable labels/text and ordinary links. Do not preserve interactive behavior, execute active content, or retain raw tags; report meaningful losses |
