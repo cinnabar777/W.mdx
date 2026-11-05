@@ -41,7 +41,12 @@ import { applyAutoHeading } from './autoHeading.js';
 import { toCssFontFamily } from './fontFamilies.js';
 import { setupLeftPanel } from './leftPanel.js';
 import { setupPanelSwipe } from './panelSwipe.js';
-import { formatMarkdownImage, parseMarkdownImage } from './markdownImages.js';
+import {
+  formatMarkdownImage,
+  formatObsidianImageEmbed,
+  parseMarkdownImage,
+  parseObsidianImageEmbed
+} from './markdownImages.js';
 import {
   collectMarkdownReferenceTargets,
   getMarkdownLinkInfo
@@ -1220,18 +1225,28 @@ export const typographySettingsEffect = StateEffect.define();
 const imageAspectCache = new Map();
 
 class ImagePreviewWidget extends WidgetType {
-  constructor(url, alt, from, to, imageWidth = null) {
+  constructor(
+    url,
+    alt,
+    from,
+    to,
+    imageWidth = null,
+    imageHeight = null,
+    sourceFormat = 'markdown'
+  ) {
     super();
     this.url = url;
     this.alt = alt || 'image';
     this.from = from;
     this.to = to;
     this.imageWidth = imageWidth;
+    this.imageHeight = imageHeight;
+    this.sourceFormat = sourceFormat;
     const contentWidth = activeContentWidth();
     const sig = activeTypographySignature();
     this.heightKey = measuredWidgetHeightKey(
       'image-preview',
-      `${this.url}:${this.imageWidth ?? 'auto'}`,
+      `${this.url}:${this.imageWidth ?? 'auto'}x${this.imageHeight ?? 'auto'}`,
       contentWidth,
       sig
     );
@@ -1239,7 +1254,8 @@ class ImagePreviewWidget extends WidgetType {
     const estimatedWidth = this.imageWidth
       ? Math.min(this.imageWidth, contentWidth)
       : contentWidth;
-    const fallbackHeight = aspect ? Math.round(estimatedWidth / aspect) : 180;
+    const fallbackHeight = this.imageHeight ??
+      (aspect ? Math.round(estimatedWidth / aspect) : 180);
     this.heightEstimate = estimatedWidgetHeight(this.heightKey, fallbackHeight);
   }
 
@@ -1253,6 +1269,8 @@ class ImagePreviewWidget extends WidgetType {
       other.url === this.url &&
       other.alt === this.alt &&
       other.imageWidth === this.imageWidth &&
+      other.imageHeight === this.imageHeight &&
+      other.sourceFormat === this.sourceFormat &&
       other.from === this.from &&
       other.to === this.to &&
       other.heightEstimate === this.heightEstimate
@@ -1280,7 +1298,7 @@ class ImagePreviewWidget extends WidgetType {
       : (textPackAssetUrl || mdzipAttachmentUrl || markdownAssetUrl || this.url);
     img.alt = this.alt;
     img.draggable = false;
-    img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: auto; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;
+    img.style.cssText = `max-width: 100%; width: ${this.imageWidth ? `${this.imageWidth}px` : 'auto'}; height: ${this.imageHeight ? `${this.imageHeight}px` : 'auto'}; border-radius: 6px; display: block; border: 1px solid var(--border-color, #444);`;
 
     img.onload = () => {
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -1320,7 +1338,16 @@ class ImagePreviewWidget extends WidgetType {
       event.preventDefault();
       event.stopPropagation();
       hideActions();
-      openImageEditDialog(view, this.from, this.to, this.alt, this.url, this.imageWidth);
+      openImageEditDialog(
+        view,
+        this.from,
+        this.to,
+        this.alt,
+        this.url,
+        this.imageWidth,
+        this.imageHeight,
+        this.sourceFormat
+      );
     });
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
@@ -1331,7 +1358,7 @@ class ImagePreviewWidget extends WidgetType {
       event.preventDefault();
       event.stopPropagation();
       hideActions();
-      openImageDeleteConfirmation(view, this.from, this.to);
+      openImageDeleteConfirmation(view, this.from, this.to, this.sourceFormat);
     });
     actions.append(editButton, deleteButton);
 
@@ -2988,7 +3015,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'Image') {
             const imgText = view.state.doc.sliceString(node.from, node.to);
-            const image = parseMarkdownImage(imgText);
+            const obsidianImage = parseObsidianImageEmbed(imgText);
+            const image = obsidianImage ?? parseMarkdownImage(imgText);
             if (image && !isNodeActive && !isPureWysiwyg) {
               builder.push(Decoration.replace({
                 widget: new ImagePreviewWidget(
@@ -2996,10 +3024,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   image.alt,
                   node.from,
                   node.to,
-                  image.width ?? null
+                  image.width ?? null,
+                  image.height ?? null,
+                  obsidianImage ? 'obsidian' : 'markdown'
                 )
               }).range(node.from, node.to));
             }
+            if (image) return false;
           }
         }
       });
@@ -4177,7 +4208,8 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'Image') {
         const imgText = doc.sliceString(node.from, node.to);
-        const image = parseMarkdownImage(imgText);
+        const obsidianImage = parseObsidianImageEmbed(imgText);
+        const image = obsidianImage ?? parseMarkdownImage(imgText);
         if (image) {
           replacements.push(Decoration.replace({
             widget: new ImagePreviewWidget(
@@ -4185,9 +4217,12 @@ function buildHeightMapValue(state) {
               image.alt,
               node.from,
               node.to,
-              image.width ?? null
+              image.width ?? null,
+              image.height ?? null,
+              obsidianImage ? 'obsidian' : 'markdown'
             )
           }).range(node.from, node.to));
+          return false;
         }
       }
     }
@@ -7640,17 +7675,34 @@ function openAttachmentEditDialog(view, attachmentItem) {
   requestAnimationFrame(() => labelInput.focus());
 }
 
-function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
+function openImageEditDialog(
+  view,
+  from,
+  to,
+  alt,
+  url,
+  imageWidth = null,
+  imageHeight = null,
+  sourceFormat = 'markdown'
+) {
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog || !view) return;
 
-  dialog.innerHTML = `
-    <h3 class="modal-title">Edit Image</h3>
+  const isObsidianEmbed = sourceFormat === 'obsidian';
+  const altField = isObsidianEmbed ? '' : `
     <div class="modal-field-group">
       <label class="modal-label" for="modal-image-alt">Description (alt text)</label>
       <input id="modal-image-alt" class="modal-input" type="text" autocomplete="off" />
-    </div>
+    </div>`;
+  const heightField = isObsidianEmbed ? `
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-image-height">Height in pixels (optional)</label>
+      <input id="modal-image-height" class="modal-input" type="number" min="1" max="10000" step="1" inputmode="numeric" placeholder="Automatic" />
+    </div>` : '';
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Image</h3>
+    ${altField}
     <div class="modal-field-group">
       <label class="modal-label" for="modal-image-url">Image location</label>
       <input id="modal-image-url" class="modal-input" type="text" autocomplete="off" />
@@ -7659,6 +7711,7 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
         <label class="modal-label" for="modal-image-width">Width in pixels (optional)</label>
         <input id="modal-image-width" class="modal-input" type="number" min="1" max="10000" step="1" inputmode="numeric" placeholder="Automatic" />
       </div>
+    ${heightField}
     <div class="modal-actions">
       <button type="button" class="modal-btn modal-btn-cancel" id="modal-image-cancel">Cancel</button>
       <button type="button" class="modal-btn modal-btn-confirm" id="modal-image-save">Save</button>
@@ -7668,14 +7721,16 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
   const altInput = dialog.querySelector('#modal-image-alt');
   const urlInput = dialog.querySelector('#modal-image-url');
   const widthInput = dialog.querySelector('#modal-image-width');
+  const heightInput = dialog.querySelector('#modal-image-height');
   const error = document.createElement('p');
   error.className = 'modal-error';
   error.setAttribute('role', 'alert');
   error.hidden = true;
   dialog.querySelector('.modal-actions').before(error);
-  altInput.value = alt;
+  if (altInput) altInput.value = alt;
   urlInput.value = url;
   widthInput.value = imageWidth ?? '';
+  if (heightInput) heightInput.value = imageHeight ?? '';
 
   const close = () => {
     overlay.classList.remove('open');
@@ -7697,6 +7752,8 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
     }
     const widthText = widthInput.value.trim();
     const newWidth = widthText === '' ? null : Number(widthText);
+    const heightText = heightInput?.value.trim() ?? '';
+    const newHeight = heightText === '' ? null : Number(heightText);
     if (newWidth !== null &&
       (!Number.isInteger(newWidth) || newWidth < 1 || newWidth > 10000)
     ) {
@@ -7705,18 +7762,50 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
       widthInput.focus();
       return;
     }
+    if (newHeight !== null &&
+      (!Number.isInteger(newHeight) || newHeight < 1 || newHeight > 10000)
+    ) {
+      error.textContent = 'Height must be a whole number from 1 to 10000 pixels.';
+      error.hidden = false;
+      heightInput.focus();
+      return;
+    }
+    if (newHeight !== null && newWidth === null) {
+      error.textContent = 'Enter a width when setting a fixed height.';
+      error.hidden = false;
+      widthInput.focus();
+      return;
+    }
     if (
       from < 0 ||
       to > view.state.doc.length ||
-      from >= to ||
-      !parseMarkdownImage(view.state.doc.sliceString(from, to))
+      from >= to
     ) {
       error.textContent = 'This image is no longer in the document.';
       error.hidden = false;
       return;
     }
+    const currentSource = view.state.doc.sliceString(from, to);
+    const currentImage = isObsidianEmbed
+      ? parseObsidianImageEmbed(currentSource)
+      : parseMarkdownImage(currentSource);
+    if (!currentImage) {
+      error.textContent = 'This image is no longer in the document.';
+      error.hidden = false;
+      return;
+    }
 
-    const markdown = formatMarkdownImage(altInput.value, newUrl, newWidth);
+    let markdown;
+    try {
+      markdown = isObsidianEmbed
+        ? formatObsidianImageEmbed(newUrl, newWidth, newHeight)
+        : formatMarkdownImage(altInput.value, newUrl, newWidth);
+    } catch (formatError) {
+      error.textContent = formatError.message;
+      error.hidden = false;
+      urlInput.focus();
+      return;
+    }
     view.dispatch({
       changes: { from, to, insert: markdown },
       selection: { anchor: from + markdown.length, head: from + markdown.length }
@@ -7725,10 +7814,15 @@ function openImageEditDialog(view, from, to, alt, url, imageWidth = null) {
   });
 
   overlay.classList.add('open');
-  requestAnimationFrame(() => altInput.focus());
+  requestAnimationFrame(() => (altInput || urlInput).focus());
 }
 
-function openImageDeleteConfirmation(view, from, to) {
+function openImageDeleteConfirmation(
+  view,
+  from,
+  to,
+  sourceFormat = 'markdown'
+) {
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog || !view) return;
@@ -7757,9 +7851,16 @@ function openImageDeleteConfirmation(view, from, to) {
     if (
       from < 0 ||
       to > view.state.doc.length ||
-      from >= to ||
-      !parseMarkdownImage(view.state.doc.sliceString(from, to))
+      from >= to
     ) {
+      close();
+      return;
+    }
+    const currentSource = view.state.doc.sliceString(from, to);
+    const currentImage = sourceFormat === 'obsidian'
+      ? parseObsidianImageEmbed(currentSource)
+      : parseMarkdownImage(currentSource);
+    if (!currentImage) {
       close();
       return;
     }

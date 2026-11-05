@@ -232,6 +232,15 @@ The next card loads a small Markdown file beside this test file:
 
 ![[Markdown-Phone-Test-Embed.md|Embedded sample document]]
 
+### Embedded image
+
+The first image should display at its natural size; the second should display
+at 32 pixels wide:
+
+![[Markdown-Phone-Test-Image.png]]
+
+![[Markdown-Phone-Test-Image.png|32]]
+
 ### Callouts
 
 > [!info] Information callout
@@ -267,7 +276,7 @@ Pen slots: =pen 1=, =₀pen 2=, =₁pen 3=, and =₂pen 4=.
 The following forms are listed as current limitations, not rendering tests:
 
 - Heading or block transclusion such as `![[note.md#Heading]]`.
-- Obsidian image/media embeds such as `![[image.png]]` and `![[clip.mp4]]`.
+- Obsidian audio, video, and PDF embeds such as `![[clip.mp4]]`.
 - Inline footnotes such as `^[a short note]`.
 - `%% comments %%`, YAML properties/frontmatter, math, Mermaid, and plugin syntax.
 

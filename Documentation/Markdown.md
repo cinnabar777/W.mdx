@@ -588,15 +588,15 @@ strikethrough, and GFM autolinks. Tables and tasks are editable in W.mdx.
 **Implemented:** `[[target]]` wiki links, aliases such as
 `[[target|display text]]`, current-document heading links such as
 `[[#Heading]]`, whole-document `![[path]]` embeds with optional aliases,
-Obsidian-style callout markers, highlights, task lists, and reference
-footnotes.
+local image embeds such as `![[image.png]]` (including pixel-size modifiers),
+Obsidian-style callout markers, highlights, task lists, and reference footnotes.
 
 **Not implemented or only partially compatible:**
 
 - Heading and block transclusion such as `![[note#Heading]]` and
   `![[note#^block]]`; W.mdx embeds the whole supported document.
-- Obsidian's `![[image.png]]`, audio, video, and PDF embed forms. Use standard
-  Markdown image syntax and W.mdx's Markdown media links or attachment links.
+- Obsidian audio, video, and PDF embed forms. Use W.mdx's Markdown media links
+  or attachment links for these files.
 - `%% comments %%`, semantic tags (a `#tag` is plain text), YAML
   properties/frontmatter, math, Mermaid diagrams, and plugin-specific syntax.
 - Inline footnotes such as `^[note]`; W.mdx supports reference footnotes, with
@@ -667,7 +667,7 @@ cross-dialect round-trip suite.
 | CommonMark raw HTML | Arbitrary HTML is not rendered. `<u>...</u>` remains as a compatibility form when Wmdx underline syntax is disabled; 77 HTML-interoperability cases are held out of native parser checks. | Convert supported imported HTML to native Wmdx syntax; define and test visible handling for constructs with no equivalent. Never emit HTML as fallback. |
 | GFM tables | Editable pipe tables; tests cover official table examples 198–205, cell-count normalization, escaped pipes, alignment, editing, serialized Markdown reopening, and MDZip archive open/save/reopen. | Verify direct Android Markdown file save/open and the MDZip content-provider write path. |
 | GFM tasks, strikethrough, and autolinks | The GFM 0.29 fixture checks all 21 non-HTML extension examples: tables 198–205, strikethrough 491–492, and autolinks 621–631, including FTP. Main and embedded tests cover task examples 279–280; Markdown stream-codec and MDZip tests cover open/save/reopen preservation. | Verify WYSIWYG rendering and Android document-provider round trips. Raw-HTML tag filtering remains under the no-HTML policy. The separate Export action produces HTML/MHTML, not a Markdown dialect export. |
-| Obsidian links and document embeds | Wiki links, aliases, current-document heading links, whole-document embeds, and nested embeds; focused coverage in `navigation_link_mapping.test.cjs` and `embedded-document.test.cjs`. | Verify resolution and round trips across Markdown and MDZip. Heading/block transclusion and Obsidian media-embed shorthand remain unsupported. |
+| Obsidian links and embeds | Wiki links, aliases, current-document heading links, whole-document and nested embeds, and local image embeds including pixel sizing; focused coverage in `navigation_link_mapping.test.cjs`, `embedded-document.test.cjs`, and `obsidian-image-embed.test.cjs`. | Verify image resolution and round trips across Markdown and MDZip. Heading/block transclusion and audio, video, and PDF embed shorthand remain unsupported. |
 | Obsidian callouts and footnotes | Callout and reference-footnote behavior has focused coverage in `callout.test.cjs`, `footnotes.test.cjs`, and `embedded-document.test.cjs`. | Build a documented built-in syntax fixture set and verify behavior across source, WYSIWYG, save, and reopen. Plugin and app-only behavior is out of scope. |
 | Wmdx word-processing syntax | Underline, highlighting, and pen syntax are implemented; focused tests include `markdown-formatting.test.cjs` and `underline-delimiters.test.cjs`. | Keep new syntax text-based, readable, and minimally intrusive. Heading alternatives such as `.1`, `.2`, and `.3` are planned, not implemented. Replace HTML dependence for authoring as native equivalents become available. |
 | Cross-dialect import/export | Markdown files can be opened and saved, but no dialect-specific export profiles or complete round-trip acceptance suite are established. | Define conversion rules for each target; preserve supported meaning through import/edit/export/reopen and warn when a target cannot represent content without loss. |
