@@ -51,14 +51,21 @@ import {
 } from './markdownImages.js';
 import {
   collectMarkdownReferenceTargets,
-  getMarkdownLinkInfo
+  getMarkdownLinkInfo,
+  getMarkdownReferenceDefinitionInfo,
+  normalizeMarkdownReferenceLabel
 } from './markdown-link-utils.mjs';
 import {
+  encodeMarkdownDestination,
   formatMarkdownLinkInsertion,
+  formatMarkdownLinkForFlavor,
+  getMarkdownReferenceLabel,
   getMarkdownLinkFlavor,
   isLinkFlavorEnabled,
   linkActionAvailability,
-  normalizeLinkSyntaxSettings
+  normalizeBareWebDestination,
+  normalizeLinkSyntaxSettings,
+  parseObsidianLinkSyntax
 } from './wmdxLinkSyntax.mjs';
 import {
   extractMarkdownAudioLinks,
@@ -1185,12 +1192,24 @@ function navigateTocHistory(direction) {
 export function scrollToHeading(view, targetHeading) {
   if (!view || !targetHeading) return false;
   const targetClean = cleanHeadingText(targetHeading).toLowerCase();
+  const targetSlug = targetClean
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .trim()
+    .replace(/\s+/g, '-');
   const doc = view.state.doc;
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
-    if (/^#{1,6}\s+/.test(line.text.trim())) {
+    if (/^(?:#{1,6}|\.([1-6]))[ \t]+/.test(line.text.trim())) {
       const lineClean = cleanHeadingText(line.text).toLowerCase();
-      if (lineClean === targetClean) {
+      const lineSlug = lineClean
+        .normalize('NFKD')
+        .replace(/\p{M}/gu, '')
+        .replace(/[^\p{L}\p{N}\s-]/gu, '')
+        .trim()
+        .replace(/\s+/g, '-');
+      if (lineClean === targetClean || lineSlug === targetSlug) {
         recordTocNavigation(view, line.from);
         return scrollToPositionUpperMiddle(view, line.from);
       }
@@ -1200,11 +1219,13 @@ export function scrollToHeading(view, targetHeading) {
 }
 
 class WikilinkWidget extends WidgetType {
-  constructor(label, target, sourceContextJson = '[]') {
+  constructor(label, target, sourceContextJson = '[]', from = null, to = null) {
     super();
     this.label = label;
     this.target = target;
     this.sourceContextJson = sourceContextJson;
+    this.from = from;
+    this.to = to;
   }
 
   eq(other) {
@@ -1212,45 +1233,23 @@ class WikilinkWidget extends WidgetType {
       other instanceof WikilinkWidget &&
       other.label === this.label &&
       other.target === this.target &&
-      other.sourceContextJson === this.sourceContextJson
+      other.sourceContextJson === this.sourceContextJson &&
+      other.from === this.from &&
+      other.to === this.to
     );
   }
 
-  toDOM(view) {
-    const span = document.createElement('span');
-    span.className = 'cm-link cm-wikilink';
-    span.textContent = this.label;
-
-    const activate = () => {
-      if (this.target.startsWith('#')) {
-        scrollToHeading(view, this.target.slice(1));
-        return;
-      }
-      window.AndroidNative?.openMarkdownLink?.(
-        this.target,
-        window.AndroidNative?.getCurrentDocumentSessionId?.(),
-        this.sourceContextJson
-      );
-    };
-
-    if (this.target) {
-      span.setAttribute('role', 'link');
-      span.setAttribute('tabindex', '0');
-      span.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        activate();
-      });
-      span.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          e.stopPropagation();
-          activate();
-        }
-      });
-    }
-
-    return span;
+  toDOM() {
+    const link = document.createElement('a');
+    link.className = 'cm-link cm-wikilink';
+    link.href = this.target.startsWith('#')
+      ? this.target
+      : resolveWmdxResourceTarget(this.target);
+    link.textContent = this.label;
+    link.setAttribute('data-wmdx-link-target', this.target);
+    link.setAttribute('data-wmdx-link-from', String(this.from));
+    link.setAttribute('data-wmdx-link-to', String(this.to));
+    return link;
   }
 }
 
@@ -2752,12 +2751,23 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   widget: new WikilinkWidget(
                     displayLabel,
                     target,
-                    JSON.stringify(view.state.facet(embeddedDocumentSourceFacet))
+                    JSON.stringify(view.state.facet(embeddedDocumentSourceFacet)),
+                    matchStart,
+                    matchEnd
                   )
                 }).range(matchStart, matchEnd));
               }
             } else if (labelEnd > labelStart) {
-              builder.push(Decoration.mark({ class: 'cm-link cm-wikilink' }).range(labelStart, labelEnd));
+              builder.push(Decoration.mark({
+                tagName: 'a',
+                class: 'cm-link cm-wikilink',
+                attributes: {
+                  href: target.startsWith('#') ? target : resolveWmdxResourceTarget(target),
+                  'data-wmdx-link-target': target,
+                  'data-wmdx-link-from': String(matchStart),
+                  'data-wmdx-link-to': String(matchEnd)
+                }
+              }).range(labelStart, labelEnd));
             }
           }
         }
@@ -2995,12 +3005,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   class: 'cm-link',
                   attributes: {
                     href: linkInfo.target,
-                    'data-wmdx-link-target': linkInfo.target
+                    'data-wmdx-link-target': linkInfo.target,
+                    'data-wmdx-link-from': String(node.from),
+                    'data-wmdx-link-to': String(node.to)
                   }
                 })
                   .range(linkInfo.labelFrom, linkInfo.labelTo)
               );
-              if (!isPureWysiwyg) {
+              if (!isPureWysiwyg && !isNodeActive) {
                 hideSyntax(node.from, linkInfo.labelFrom);
                 hideSyntax(linkInfo.labelTo, node.to);
               }
@@ -3335,12 +3347,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   class: 'cm-link',
                   attributes: {
                     href: linkInfo.target,
-                    'data-wmdx-link-target': linkInfo.target
+                    'data-wmdx-link-target': linkInfo.target,
+                    'data-wmdx-link-from': String(node.from),
+                    'data-wmdx-link-to': String(node.to)
                   }
                 }).range(labelFrom, labelTo)
               );
 
-              if (!isPureWysiwyg) {
+              if (!isPureWysiwyg && !isNodeActive) {
                 if (labelFrom > node.from) {
                   hideSyntax(node.from, labelFrom);
                 }
@@ -4255,7 +4269,9 @@ function buildHeightMapValue(state) {
           widget: new WikilinkWidget(
             displayLabel,
             target,
-            JSON.stringify(state.facet(embeddedDocumentSourceFacet))
+            JSON.stringify(state.facet(embeddedDocumentSourceFacet)),
+            matchStart,
+            matchEnd
           )
         }).range(matchStart, matchEnd));
       }
@@ -4500,6 +4516,16 @@ function buildHeightMapValue(state) {
         if (!isLinkFlavorEnabledNow('commonmark')) return false;
         const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
         if (linkInfo) {
+          replacements.push(Decoration.mark({
+            tagName: 'a',
+            class: 'cm-link',
+            attributes: {
+              href: linkInfo.target,
+              'data-wmdx-link-target': linkInfo.target,
+              'data-wmdx-link-from': String(node.from),
+              'data-wmdx-link-to': String(node.to)
+            }
+          }).range(linkInfo.labelFrom, linkInfo.labelTo));
           hideSyntax(node.from, linkInfo.labelFrom);
           hideSyntax(linkInfo.labelTo, node.to);
         }
@@ -4626,6 +4652,16 @@ function buildHeightMapValue(state) {
         const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
         if (linkInfo) {
           const { labelFrom, labelTo } = linkInfo;
+          replacements.push(Decoration.mark({
+            tagName: 'a',
+            class: 'cm-link',
+            attributes: {
+              href: linkInfo.target,
+              'data-wmdx-link-target': linkInfo.target,
+              'data-wmdx-link-from': String(node.from),
+              'data-wmdx-link-to': String(node.to)
+            }
+          }).range(labelFrom, labelTo));
           if (labelFrom > node.from) {
             hideSyntax(node.from, labelFrom);
           }
@@ -7855,12 +7891,16 @@ export function openLinkInsertionDialog() {
             ? '\n'
             : '\n\n';
       const definitionText = `${separator}${insertion.definition}\n`;
+      const definitionStart = view.state.doc.length;
+      const definitionEnd = definitionStart + definitionText.length;
       view.dispatch({
         changes: {
-          from: view.state.doc.length,
-          to: view.state.doc.length,
+          from: definitionStart,
+          to: definitionStart,
           insert: definitionText
-        }
+        },
+        selection: { anchor: definitionEnd, head: definitionEnd },
+        effects: EditorView.scrollIntoView(definitionEnd, { y: 'nearest' })
       });
     }
 
@@ -7898,7 +7938,14 @@ function showWmdxResourceLinkActions(view, link, x, y) {
   closeWmdxResourceLinkActions();
   const from = Number(link.getAttribute('data-wmdx-link-from'));
   const to = Number(link.getAttribute('data-wmdx-link-to'));
-  if (!Number.isInteger(from) || !Number.isInteger(to) || from >= to) return;
+  if (
+    !Number.isInteger(from) ||
+    !Number.isInteger(to) ||
+    from >= to ||
+    !getEditableMarkdownLinkAtRange(view, from, to)
+  ) {
+    return;
+  }
 
   const menu = document.createElement('div');
   menu.className = 'cm-image-actions cm-link-actions visible';
@@ -7913,7 +7960,12 @@ function showWmdxResourceLinkActions(view, link, x, y) {
     event.preventDefault();
     event.stopPropagation();
     closeWmdxResourceLinkActions();
-    openWmdxResourceLinkEditDialog(view, from, to);
+    const current = getEditableMarkdownLinkAtRange(view, from, to);
+    if (current?.flavor === 'wmdx') {
+      openWmdxResourceLinkEditDialog(view, from, to);
+    } else {
+      openMarkdownLinkEditDialog(view, from, to);
+    }
   });
 
   const deleteButton = document.createElement('button');
@@ -7924,7 +7976,7 @@ function showWmdxResourceLinkActions(view, link, x, y) {
     event.preventDefault();
     event.stopPropagation();
     closeWmdxResourceLinkActions();
-    openWmdxResourceLinkDeleteConfirmation(view, from, to);
+    openMarkdownLinkDeleteConfirmation(view, from, to);
   });
 
   menu.append(editButton, deleteButton);
@@ -8001,6 +8053,91 @@ function getWmdxResourceLinkAtRange(view, from, to) {
   const raw = view.state.doc.sliceString(from, to);
   const resource = parseWmdxResourceSyntax(raw);
   return resource && !resource.embed ? { raw, resource } : null;
+}
+
+function unescapeLinkDisplayText(value) {
+  return String(value ?? '').replace(
+    /\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g,
+    '$1'
+  );
+}
+
+function getEditableMarkdownLinkAtRange(view, from, to) {
+  if (!view || from < 0 || to > view.state.doc.length || from >= to) return null;
+  const doc = view.state.doc;
+  const raw = doc.sliceString(from, to);
+  const resource = parseWmdxResourceSyntax(raw);
+  if (resource && !resource.embed) {
+    return {
+      raw,
+      flavor: 'wmdx',
+      target: resource.source,
+      title: resource.title || resource.displayTitle,
+      alignment: resource.alignmentMarker
+    };
+  }
+
+  const obsidian = parseObsidianLinkSyntax(raw);
+  if (obsidian && !obsidian.embed) {
+    return {
+      raw,
+      flavor: 'obsidian',
+      target: obsidian.target,
+      title: obsidian.title,
+      alias: obsidian.alias
+    };
+  }
+
+  let linkNode = null;
+  const tree = syntaxTree(view.state);
+  tree.iterate({
+    from,
+    to,
+    enter(node) {
+      if (
+        node.from === from &&
+        node.to === to &&
+        ['Link', 'Autolink', 'URL'].includes(node.name)
+      ) {
+        linkNode = node;
+        return false;
+      }
+    }
+  });
+  if (!linkNode) return null;
+
+  const flavor = getMarkdownLinkFlavor(linkNode, doc);
+  if (!flavor || !isLinkFlavorEnabledNow(flavor)) return null;
+  const referenceTargets = collectMarkdownReferenceTargets(doc, tree);
+  const info = getMarkdownLinkInfo(linkNode, doc, referenceTargets);
+  if (!info) return null;
+  return {
+    raw,
+    flavor,
+    target: info.target,
+    title: unescapeLinkDisplayText(doc.sliceString(info.labelFrom, info.labelTo)),
+    referenceLabel: flavor === 'reference'
+      ? getMarkdownReferenceLabel(raw)
+      : null
+  };
+}
+
+function findMarkdownReferenceDefinition(view, referenceLabel) {
+  const wanted = normalizeMarkdownReferenceLabel(referenceLabel);
+  if (!wanted) return null;
+  const doc = view.state.doc;
+  let result = null;
+  syntaxTree(view.state).iterate({
+    enter(node) {
+      if (node.name !== 'LinkReference') return;
+      const definition = getMarkdownReferenceDefinitionInfo(node, doc);
+      if (definition?.normalizedLabel === wanted) {
+        result = { node, definition };
+        return false;
+      }
+    }
+  });
+  return result;
 }
 
 function openWmdxResourceLinkEditDialog(view, from, to) {
@@ -8101,6 +8238,179 @@ function openWmdxResourceLinkEditDialog(view, from, to) {
 
   overlay.classList.add('open');
   requestAnimationFrame(() => titleInput.focus());
+}
+
+function openMarkdownLinkEditDialog(view, from, to) {
+  const current = getEditableMarkdownLinkAtRange(view, from, to);
+  if (!current || current.flavor === 'wmdx') return;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Link</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-markdown-link-target">Destination</label>
+      <input id="modal-markdown-link-target" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-markdown-link-title">Displayed text</label>
+      <input id="modal-markdown-link-title" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <p class="modal-message" id="modal-markdown-link-help"></p>
+    <p class="modal-error" id="modal-markdown-link-error" role="alert" hidden></p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-markdown-link-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-markdown-link-save">Save</button>
+    </div>
+  `;
+
+  const targetInput = dialog.querySelector('#modal-markdown-link-target');
+  const titleInput = dialog.querySelector('#modal-markdown-link-title');
+  const help = dialog.querySelector('#modal-markdown-link-help');
+  const error = dialog.querySelector('#modal-markdown-link-error');
+  targetInput.value = current.target;
+  titleInput.value = current.title;
+  if (current.flavor === 'reference') {
+    help.textContent = 'This reference destination is shared; changing it updates every link that uses it.';
+  }
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-markdown-link-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-markdown-link-save').addEventListener('click', event => {
+    event.preventDefault();
+    const target = targetInput.value.trim();
+    if (!target) {
+      error.textContent = 'Enter a destination before saving.';
+      error.hidden = false;
+      targetInput.focus();
+      return;
+    }
+
+    const latest = getEditableMarkdownLinkAtRange(view, from, to);
+    if (!latest || latest.raw !== current.raw) {
+      error.textContent = 'This link is no longer in the document.';
+      error.hidden = false;
+      return;
+    }
+
+    let replacement;
+    let linkDestination = target;
+    let referenceDefinition = null;
+    try {
+      linkDestination = latest.flavor === 'reference'
+        ? normalizeBareWebDestination(target)
+        : target;
+      replacement = formatMarkdownLinkForFlavor({
+        flavor: latest.flavor,
+        target: linkDestination,
+        title: titleInput.value,
+        referenceLabel: latest.referenceLabel,
+        aliasPresent: latest.flavor === 'obsidian' && Boolean(latest.alias)
+      });
+      if (latest.flavor === 'reference' && linkDestination !== latest.target) {
+        referenceDefinition = findMarkdownReferenceDefinition(
+          view,
+          latest.referenceLabel
+        );
+        if (!referenceDefinition) {
+          error.textContent = 'The definition for this reference could not be found.';
+          error.hidden = false;
+          return;
+        }
+      }
+    } catch (formatError) {
+      error.textContent = formatError.message;
+      error.hidden = false;
+      targetInput.focus();
+      return;
+    }
+
+    const changes = [];
+    if (replacement !== latest.raw) {
+      changes.push({ from, to, insert: replacement });
+    }
+    if (referenceDefinition) {
+      const { definition } = referenceDefinition;
+      const encodedTarget = encodeMarkdownDestination(linkDestination);
+      if (encodedTarget !== definition.target) {
+        changes.push({
+          from: definition.targetFrom,
+          to: definition.targetTo,
+          insert: encodedTarget
+        });
+      }
+    }
+    if (changes.length) {
+      changes.sort((left, right) => left.from - right.from);
+      const shiftBeforeLink = changes
+        .filter(change => change.to <= from)
+        .reduce(
+          (total, change) => total + change.insert.length - (change.to - change.from),
+          0
+        );
+      const cursor = from + shiftBeforeLink + replacement.length;
+      view.dispatch({
+        changes,
+        selection: { anchor: cursor, head: cursor },
+        userEvent: 'input.markdown-link-edit'
+      });
+    }
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => titleInput.focus());
+}
+
+function openMarkdownLinkDeleteConfirmation(view, from, to) {
+  const current = getEditableMarkdownLinkAtRange(view, from, to);
+  if (!current) return;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  const referenceNote = current.flavor === 'reference'
+    ? ' Its shared definition is kept in case another link uses it.'
+    : '';
+  dialog.innerHTML = `
+    <h3 class="modal-title">Delete Link?</h3>
+    <p class="modal-message">This removes the link and keeps its displayed text as plain text.${referenceNote}</p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-markdown-link-keep">Keep Link</button>
+      <button type="button" class="modal-btn modal-btn-delete" id="modal-markdown-link-delete">Delete</button>
+    </div>
+  `;
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-markdown-link-keep').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-markdown-link-delete').addEventListener('click', event => {
+    event.preventDefault();
+    const latest = getEditableMarkdownLinkAtRange(view, from, to);
+    if (latest && latest.raw === current.raw) {
+      const plainText = latest.title;
+      view.dispatch({
+        changes: { from, to, insert: plainText },
+        selection: { anchor: from + plainText.length, head: from + plainText.length },
+        userEvent: 'input.markdown-link-delete'
+      });
+    }
+    close();
+  });
+  overlay.classList.add('open');
 }
 
 function openWmdxResourceLinkDeleteConfirmation(view, from, to) {

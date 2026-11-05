@@ -82,7 +82,8 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(main, /tagName: 'a'[\s\S]*?'data-wmdx-link-target'/);
   assert.match(main, /a\.cm-link\[data-wmdx-link-target\]/);
   assert.match(main, /new WikilinkWidget\([\s\S]*?embeddedDocumentSourceFacet/);
-  assert.match(main, /openMarkdownLink\?\.\(/);
+  assert.match(main, /markdownLinkClickHandler = event =>/);
+  assert.match(main, /nativeBridge\.openMarkdownLink\(/);
   assert.match(main, /const isBlockquoteLine = insideBlockquote \|\| Boolean\(quotePrefix\)/);
   assert.match(main, /activeSelectionDragView = this\.view/);
   assert.match(main, /window\.addEventListener\('pointermove', onGlobalPointerMove, true\)/);

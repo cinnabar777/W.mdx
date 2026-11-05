@@ -49,6 +49,10 @@ function findLabelEnd(raw) {
   return -1;
 }
 
+function unescapeMarkdown(value) {
+  return String(value ?? '').replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, '$1');
+}
+
 export function getMarkdownLinkFlavor(node, doc) {
   if (!node) return null;
   if (node.name === 'LinkReference') return 'reference';
@@ -61,6 +65,52 @@ export function getMarkdownLinkFlavor(node, doc) {
   return raw.slice(labelEnd + 1).trimStart().startsWith('(')
     ? 'commonmark'
     : 'reference';
+}
+
+export function getMarkdownReferenceLabel(raw) {
+  const source = String(raw ?? '');
+  const labelEnd = findLabelEnd(source);
+  if (labelEnd < 1) return null;
+  const suffix = source.slice(labelEnd + 1);
+  if (suffix.startsWith('[')) {
+    const referenceEnd = findLabelEnd(suffix);
+    if (referenceEnd < 1) return null;
+    return unescapeMarkdown(suffix.slice(1, referenceEnd)) ||
+      unescapeMarkdown(source.slice(1, labelEnd));
+  }
+  return unescapeMarkdown(source.slice(1, labelEnd));
+}
+
+export function parseObsidianLinkSyntax(raw) {
+  const match = /^(!?)\[\[([\s\S]*)\]\]$/.exec(String(raw ?? ''));
+  if (!match) return null;
+  const body = match[2];
+  let separator = -1;
+  for (let index = 0; index < body.length; index += 1) {
+    if (body[index] === '\\') {
+      index += 1;
+      continue;
+    }
+    if (body[index] === '|') {
+      separator = index;
+      break;
+    }
+  }
+  const target = unescapeMarkdown(
+    separator < 0 ? body : body.slice(0, separator)
+  ).trim();
+  if (!target) return null;
+  const alias = separator < 0
+    ? ''
+    : unescapeMarkdown(body.slice(separator + 1)).trim();
+  return {
+    embed: Boolean(match[1]),
+    target,
+    alias,
+    title: alias || (target.startsWith('#')
+      ? target.slice(1)
+      : getWmdxResourceFallbackTitle(target))
+  };
 }
 
 export function linkActionAvailability(settings) {
@@ -96,13 +146,13 @@ function escapeMarkdownLabel(value) {
     .replace(/([[\]])/g, '\\$1');
 }
 
-function encodeMarkdownDestination(value) {
+export function encodeMarkdownDestination(value) {
   return encodeURI(String(value ?? '').trim()).replace(/[()]/g, character =>
     character === '(' ? '%28' : '%29'
   );
 }
 
-function normalizeBareWebDestination(value) {
+export function normalizeBareWebDestination(value, { force = false } = {}) {
   const target = String(value ?? '').trim();
   if (!target || /^[a-z][a-z\d+.-]*:/i.test(target) || target.startsWith('//')) {
     return target;
@@ -110,7 +160,18 @@ function normalizeBareWebDestination(value) {
   if (/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(target)) {
     return `mailto:${target}`;
   }
-  if (/^(?:www\.)?(?:[\w-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#].*)?$/i.test(target)) {
+  const host = target.replace(/^www\./i, '').split(/[/?#]/, 1)[0];
+  const topLevel = host.split('.').at(-1)?.toLowerCase();
+  const localFileExtensions = new Set([
+    'md', 'markdown', 'txt', 'html', 'htm', 'pdf', 'doc', 'docx',
+    'odt', 'rtf', 'csv', 'json', 'xml', 'yaml', 'yml', 'zip',
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp3', 'm4a',
+    'wav', 'ogg', 'mp4', 'webm', 'mov'
+  ]);
+  if (
+    /^(?:www\.)?(?:[\w-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#].*)?$/i.test(target) &&
+    (force || !localFileExtensions.has(topLevel))
+  ) {
     return `https://${target}`;
   }
   return target;
@@ -161,6 +222,41 @@ export function createMarkdownReferenceInsertion({
   };
 }
 
+export function formatMarkdownLinkForFlavor({
+  flavor,
+  target,
+  title = '',
+  referenceLabel = '',
+  aliasPresent = false
+} = {}) {
+  const cleanTarget = String(target ?? '').trim();
+  if (!cleanTarget) throw new TypeError('A link needs a destination.');
+  const cleanTitle = String(title ?? '').trim() ||
+    getWmdxResourceFallbackTitle(cleanTarget);
+  const escapedTitle = escapeMarkdownLabel(cleanTitle);
+
+  if (flavor === 'obsidian') {
+    const escapedTarget = cleanTarget
+      .replace(/\\/g, '\\\\')
+      .replace(/\|/g, '\\|');
+    const fallbackTitle = cleanTarget.startsWith('#')
+      ? cleanTarget.slice(1)
+      : getWmdxResourceFallbackTitle(cleanTarget);
+    return !aliasPresent && cleanTitle === fallbackTitle
+      ? `[[${escapedTarget}]]`
+      : `[[${escapedTarget}|${escapedTitle}]]`;
+  }
+  if (flavor === 'reference') {
+    const id = String(referenceLabel ?? '').trim();
+    if (!id) throw new TypeError('A reference link needs its existing label.');
+    return `[${escapedTitle}][${escapeMarkdownLabel(id)}]`;
+  }
+  if (flavor === 'commonmark') {
+    return `[${escapedTitle}](${encodeMarkdownDestination(cleanTarget)})`;
+  }
+  throw new TypeError('Unknown link syntax.');
+}
+
 export function formatMarkdownLinkInsertion({
   kind = 'external',
   target,
@@ -199,7 +295,9 @@ export function formatMarkdownLinkInsertion({
   }
 
   const encodedTarget = encodeMarkdownDestination(
-    kind === 'external' ? normalizeBareWebDestination(cleanTarget) : cleanTarget
+    kind === 'external'
+      ? normalizeBareWebDestination(cleanTarget, { force: true })
+      : cleanTarget
   );
   const escapedTitle = escapeMarkdownLabel(cleanTitle);
   if (syntax === 'obsidian' && kind === 'internal') {

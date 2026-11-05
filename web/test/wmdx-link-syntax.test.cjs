@@ -76,6 +76,9 @@ test('link insertion uses the chosen authoring syntax and creates reusable refer
   const {
     createMarkdownReferenceInsertion,
     formatMarkdownLinkInsertion,
+    formatMarkdownLinkForFlavor,
+    normalizeBareWebDestination,
+    parseObsidianLinkSyntax,
     DEFAULT_LINK_SYNTAX_SETTINGS
   } = await import('../src/wmdxLinkSyntax.mjs');
 
@@ -123,6 +126,30 @@ test('link insertion uses the chosen authoring syntax and creates reusable refer
     }).definition,
     '[website]: https://example.com'
   );
+  assert.equal(normalizeBareWebDestination('Guide.md'), 'Guide.md');
+  assert.deepEqual(parseObsidianLinkSyntax('[[#cumque|Ob3]]'), {
+    embed: false,
+    target: '#cumque',
+    alias: 'Ob3',
+    title: 'Ob3'
+  });
+  assert.equal(
+    formatMarkdownLinkForFlavor({
+      flavor: 'obsidian',
+      target: '#cumque',
+      title: 'Ob3',
+      aliasPresent: true
+    }),
+    '[[#cumque|Ob3]]'
+  );
+  assert.equal(
+    formatMarkdownLinkForFlavor({
+      flavor: 'commonmark',
+      target: '#debitis',
+      title: 'Ob2'
+    }),
+    '[Ob2](#debitis)'
+  );
   const reused = createMarkdownReferenceInsertion({
     label: 'Guide again',
     target: 'https://example.com/guide',
@@ -130,6 +157,35 @@ test('link insertion uses the chosen authoring syntax and creates reusable refer
   });
   assert.equal(reused.markdown, '[Guide again][commonmark-guide]');
   assert.equal(reused.definition, null);
+});
+
+test('reference definitions expose the exact destination range for safe edits', async () => {
+  const { getMarkdownReferenceDefinitionInfo } =
+    await import('../src/markdown-link-utils.mjs');
+  const source = '[guide]: <https://example.com/guide>\n[other]: Notes/Other.md';
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdown()]
+  });
+  const definitions = [];
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== 'LinkReference') return;
+      const definition = getMarkdownReferenceDefinitionInfo(node, state.doc);
+      if (definition) definitions.push(definition);
+    }
+  });
+
+  assert.equal(definitions.length, 2);
+  assert.equal(definitions[0].label, 'guide');
+  assert.equal(definitions[0].target, 'https://example.com/guide');
+  assert.equal(
+    state.doc.sliceString(definitions[0].targetFrom, definitions[0].targetTo),
+    'https://example.com/guide'
+  );
+  assert.equal(definitions[0].wrappedInAngles, true);
+  assert.equal(definitions[1].target, 'Notes/Other.md');
+  assert.equal(definitions[1].wrappedInAngles, false);
 });
 
 test('Links settings, one blank shortcut, and the unified toolbar action are wired', () => {
@@ -158,6 +214,12 @@ test('Links settings, one blank shortcut, and the unified toolbar action are wir
   assert.match(main, /customHotkeys\.link[\s\S]*?execCmd\('link'\)/);
   assert.match(main, /formatMarkdownLinkInsertion\(/);
   assert.match(main, /option value="reference"[\s\S]*?availability\.reference/);
+  assert.match(main, /openMarkdownLinkEditDialog/);
+  assert.match(main, /openMarkdownLinkDeleteConfirmation/);
+  assert.match(main, /getEditableMarkdownLinkAtRange/);
+  assert.match(main, /data-wmdx-link-from/);
+  assert.match(main, /EditorView\.scrollIntoView\(definitionEnd/);
+  assert.match(main, /lineSlug === targetSlug/);
   assert.match(toolbarPreview, /id: 'link', title: 'Links'/);
 });
 

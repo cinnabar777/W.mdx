@@ -66,6 +66,8 @@ the syntax the current app supports.
 - Turning off a flavor prevents its visual link rendering without rewriting
   the source. Import/export conversion remains separate from these authoring
   preferences.
+- Obsidian links keep Obsidian's target-first order, `[[TARGET|ALIAS]]`.
+  CommonMark internal links use `[ALIAS](#heading)` or a relative file path.
 
 ## Agreed native syntax
 
@@ -620,7 +622,11 @@ editing still require normal project/device verification.
 - Link settings now control CommonMark/GFM links, reference links, Obsidian
   wikilinks, and Wmdx resource links. The single Links toolbar action opens
   external/internal/reference insertion choices, with one blank-by-default
-  shortcut. Reference insertion creates or reuses a Markdown definition.
+  shortcut. Reference insertion creates or reuses a Markdown definition and
+  moves the cursor to a new definition. Long-press Edit/Delete actions cover
+  Wmdx, CommonMark, reference, and Obsidian text links.
+- Heading links resolve both native decimal headings and CommonMark headings;
+  live-preview link syntax uses the same active-line behavior across flavors.
 - Image/media rendering and edit dialogs, media insertion controls, and
   import/export are still pending. Table syntax and editing remain unchanged;
   its row splitter treats pipes inside a valid resource token as field
