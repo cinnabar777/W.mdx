@@ -254,8 +254,8 @@ Every treatment in this table is tentative:
 
 | HTML feature | Tentative treatment to revisit |
 | --- | --- |
-| `details`/`summary` | Tentative recommendation: use a distinct, neutral disclosure block that reuses fold behavior. Do not map it directly to a callout by default: Wmdx callouts have type-specific styling and icons. The native marker remains undecided. |
-| Definition lists (`dl`/`dt`/`dd`) | Tentative candidate: a term paragraph followed by definition lines beginning `: `, such as `Term` then `: Definition`; a new term paragraph starts the next group |
+| `details`/`summary` | Tentative candidate: use the existing fold-block grammar with a dedicated `details` type, e.g. `> [!details]- Summary` plus quoted body. Render it as a neutral disclosure with no callout icon/accent; marker and appearance are not approved |
+| Definition lists (`dl`/`dt`/`dd`) | Leading tentative candidate, retained for now: a term paragraph followed by definition lines beginning `: `, such as `Term` then `: Definition`; a new term paragraph starts the next group. This is not yet approved syntax |
 | Different image alt text and figure caption | Tentative candidate: keep `TITLE` as alt text and add `caption=...` after `ALIGN` only when the visible caption differs |
 | Decorative images with `alt=""` | The current empty-title rule falls back to the filename, so it cannot represent intentionally empty alt text. Consider an explicit option such as `alt=none`; not approved |
 | Responsive images (`picture`/`srcset`) | `srcset` and `picture` can contain multiple candidates, media conditions, and MIME types; a single `srcset=...` option would not model them fully. Tentative first-pass policy: keep the `img` fallback source and report dropped alternatives. Design multi-source syntax only if lossless responsive-image support is required |
