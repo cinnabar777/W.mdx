@@ -104,6 +104,75 @@ test('empty callout title drafts stay editable until text is entered', async () 
   );
 });
 
+test('callout Return recognizes Android beforeinput paragraphs, not generic IME keys', async () => {
+  const { isWmdxCalloutEnterEvent } = await import('../src/wmdxCallouts.js');
+
+  assert.equal(
+    isWmdxCalloutEnterEvent({
+      type: 'keydown',
+      key: 'Unidentified',
+      keyCode: 229,
+      isComposing: false
+    }),
+    false
+  );
+  assert.equal(
+    isWmdxCalloutEnterEvent({
+      type: 'beforeinput',
+      inputType: 'insertParagraph',
+      isComposing: false,
+      cancelable: true
+    }),
+    true
+  );
+  assert.equal(
+    isWmdxCalloutEnterEvent({
+      type: 'beforeinput',
+      inputType: 'insertLineBreak',
+      isComposing: false,
+      cancelable: true
+    }),
+    true
+  );
+  assert.equal(
+    isWmdxCalloutEnterEvent({
+      type: 'beforeinput',
+      inputType: 'insertText',
+      data: '\n',
+      isComposing: false,
+      cancelable: true
+    }),
+    true
+  );
+  assert.equal(
+    isWmdxCalloutEnterEvent({
+      type: 'beforeinput',
+      inputType: 'insertText',
+      data: 'a',
+      isComposing: false
+    }),
+    false
+  );
+  assert.equal(
+    isWmdxCalloutEnterEvent({
+      type: 'beforeinput',
+      inputType: 'insertParagraph',
+      isComposing: true,
+      cancelable: true
+    }),
+    false
+  );
+  assert.equal(
+    isWmdxCalloutEnterEvent({
+      type: 'beforeinput',
+      inputType: 'insertParagraph',
+      isComposing: false,
+      cancelable: false
+    }),
+    false
+  );
+});
+
 test('Enter continues callout content and exits the current level on a blank line', async () => {
   const {
     getWmdxCalloutContinuationIndent,

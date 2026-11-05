@@ -108,6 +108,7 @@ document.addEventListener('pointerdown', event => {
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
   getWmdxCalloutEnterEdit,
+  isWmdxCalloutEnterEvent,
   isWmdxCalloutTitleDraftActive,
   parseWmdxCallouts
 } from './wmdxCallouts.js';
@@ -2399,16 +2400,7 @@ function handleWmdxCalloutTitleClick(view, event) {
 }
 
 function handleWmdxCalloutEnter(view, event) {
-  if (
-    event.key !== 'Enter' ||
-    event.isComposing ||
-    event.keyCode === 229 ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.altKey
-  ) {
-    return false;
-  }
+  if (!isWmdxCalloutEnterEvent(event)) return false;
 
   const state = view.state;
   const selection = state.selection.main;
@@ -2438,8 +2430,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       handleWmdxCalloutTitleClick(view, event);
     this.calloutEnterHandler = event =>
       handleWmdxCalloutEnter(view, event);
+    this.calloutBeforeInputHandler = event =>
+      handleWmdxCalloutEnter(view, event);
     view.dom.addEventListener('click', this.calloutTitleClickHandler, true);
     view.dom.addEventListener('keydown', this.calloutEnterHandler, true);
+    view.dom.addEventListener('beforeinput', this.calloutBeforeInputHandler, true);
     this.decorations = this.buildDecorations(view);
   }
 
@@ -2454,9 +2449,15 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       this.calloutEnterHandler,
       true
     );
+    this.calloutEventDom?.removeEventListener(
+      'beforeinput',
+      this.calloutBeforeInputHandler,
+      true
+    );
     this.calloutEventDom = null;
     this.calloutTitleClickHandler = null;
     this.calloutEnterHandler = null;
+    this.calloutBeforeInputHandler = null;
   }
 
   update(update) {

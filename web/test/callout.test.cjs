@@ -376,8 +376,10 @@ test('callout title layout and editing behavior match each view', () => {
   );
   assert.ok(
     mainSource.includes("view.dom.addEventListener('keydown', this.calloutEnterHandler, true)") &&
+      mainSource.includes("view.dom.addEventListener('beforeinput', this.calloutBeforeInputHandler, true)") &&
+      mainSource.includes('isWmdxCalloutEnterEvent(event)') &&
       mainSource.includes('getWmdxCalloutEnterEdit('),
-    'Enter continues native callout indentation'
+    'Keyboard and mobile paragraph events continue native callout indentation'
   );
   assert.ok(
     mainSource.includes('getWmdxCalloutEnterEdit(') &&

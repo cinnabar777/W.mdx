@@ -153,6 +153,29 @@ export function getWmdxCalloutContinuationIndent(
   return indentationOf(line.text);
 }
 
+export function isWmdxCalloutEnterEvent(event) {
+  if (
+    !event ||
+    event.isComposing ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey
+  ) {
+    return false;
+  }
+
+  if (event.type === 'beforeinput') {
+    if (event.cancelable === false) return false;
+    return event.inputType === 'insertParagraph' ||
+      event.inputType === 'insertLineBreak' ||
+      (event.inputType === 'insertText' && /^\r?\n$/.test(event.data || ''));
+  }
+
+  return event.type === 'keydown' &&
+    event.key === 'Enter' &&
+    event.keyCode !== 229;
+}
+
 export function getWmdxCalloutEnterEdit(
   text,
   selection,
