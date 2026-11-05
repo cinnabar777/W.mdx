@@ -279,7 +279,7 @@ treatments are tentative:
 | CSS stylesheets, `<style>` blocks, and `style` attributes | Do not import or apply them; CSS is not document content. Convert semantic HTML formatting elements instead |
 | `<script>` blocks | Never execute them; omit script behavior as non-document content |
 | Tables with `rowspan`/`colspan` | Do not change table syntax. Tentative conversion: keep each source value once in the first covered cell, leave covered cells empty, and report that merged layout was flattened |
-| Forms, iframes, custom elements, and other active or unknown content | Convert recognized media to resource syntax and retain readable labels/text and ordinary links. Do not preserve interactive behavior, execute active content, or retain raw tags; report meaningful losses |
+| Forms, iframes, custom elements, and other active or unknown content | **Agreed direction:** retain readable text, labels, and ordinary links; convert recognized media to resource syntax; omit interactive controls and behavior; never execute active content or retain raw tags; report meaningful losses |
 
 HTML document metadata such as `<title>` and `<meta>` is not ordinary body text.
 Tentative policy: use `<title>` as the suggested output filename and report
