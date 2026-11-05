@@ -224,12 +224,16 @@ recognized elements to existing Wmdx syntax. When an HTML feature has no
 suitable Wmdx equivalent, identify the feature and propose a native syntax
 before implementing that conversion.
 
-## HTML import inventory — initial proposals
+## HTML import inventory — tentative ideas to revisit individually
 
 The CommonMark 0.31.2 parser suite holds 77 HTML-interoperability examples out
 of native Markdown parsing. These are parser conformance cases, not 77 distinct
 features: they include ordinary elements, custom or malformed tags, comments,
 processing instructions, and script/style blocks.
+
+The ideas below are a working inventory, not approved Wmdx syntax or a batch
+implementation plan. Revisit each gap separately, agree on its syntax or
+conversion behavior, and only then include it in an implementation plan.
 
 ### Existing Wmdx equivalents
 
@@ -246,9 +250,9 @@ processing instructions, and script/style blocks.
 
 ### Gaps that need syntax or conversion decisions
 
-These are proposals for review, not approved syntax:
+Every treatment in this table is tentative:
 
-| HTML feature | Candidate treatment |
+| HTML feature | Tentative treatment to revisit |
 | --- | --- |
 | `details`/`summary` | A neutral collapsible block using the existing fold behavior, tentatively `> [!details]- Summary` followed by quoted content |
 | Definition lists (`dl`/`dt`/`dd`) | `Term` followed by `: Definition`, supporting multiple term/definition pairs |
@@ -271,9 +275,10 @@ must be agreed before implementation.
   rules above are also agreed for code spans, escapes, `~` versus `~~`, and
   unmatched formatting markers. Crossing pairs and other ambiguous edge cases
   still need a shared test matrix.
-- **HTML conversion coverage:** review the inventory above, decide which
-  proposed gaps need native syntax, and set the conversion policy for metadata
-  and unsupported or malformed input.
+- **HTML conversion coverage:** revisit each tentative item individually;
+  decide its native syntax or conversion behavior before planning its
+  implementation. Also set the policy for metadata and unsupported or
+  malformed input.
 
 ## Wmdx-owned implementation work
 
