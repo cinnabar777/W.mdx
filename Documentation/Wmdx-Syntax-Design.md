@@ -229,7 +229,7 @@ superscript or subscript; use HTML `<sup>` and `<sub>` when converting them.
 | Unmatched marker | `*unfinished` or `unfinished*` | Keep the text and unmatched marker literal and visible; do not leak styling |
 | Crossed pairs | `*italic _underlined* later_` | Keep the crossing span literal and visible; never auto-correct the source |
 
-### Inline formatting import/export proposal
+### Inline formatting import/export rules
 
 | Wmdx style | CommonMark/GFM | Obsidian |
 | --- | --- | --- |
@@ -273,6 +273,14 @@ create a manually numbered note.
 
 The current Markdown spelling `[^label]` with a matching `[^label]:`
 definition remains an import/export format, not Wmdx-native syntax.
+
+| Footnote case | Source | Rule |
+| --- | --- | --- |
+| New note | `Sentence.^` and a matching `^ note text` definition | Assign the next number and create one definition |
+| Reuse | `Sentence.^2` | Link to the existing footnote 2; do not create a definition |
+| Superscript | `^2^` | Treat as paired superscript, not a footnote reference |
+| Literal caret | `\^` | Show a literal caret |
+| Table merge marker | `^` in a table cell | Keep the existing vertical-merge meaning |
 
 Preserve callout and expandable-dropdown functionality. Use these native
 callout markers:
@@ -319,32 +327,34 @@ system. It requires a state suffix: `±dropdown-` starts closed and
 rules as other callouts. Obsidian's `> [!type]` remains an import format, not
 native Wmdx syntax.
 
-### Footnote and callout mapping proposal
+### Footnote and callout mapping rules
 
 | Wmdx structure | CommonMark | GFM | Obsidian |
 | --- | --- | --- | --- |
-| Automatically numbered footnotes | CommonMark has no native footnote syntax; export linked HTML references and definitions. | Generate labels for GitHub's `[^label]` references and matching definitions. | Generate labels for Obsidian's `[^label]` references and matching definitions. |
-| Unfolded callouts | Use a semantic `<aside>` with the type and title visible in its content; styling may differ. | Use GitHub alerts for supported types (`NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`); put an optional Wmdx title on the first bold body line. Use the HTML fallback for other types. | Preserve the existing `> [!type]` syntax and optional title. |
-| Folded/expanded callouts | Use ordinary `<details>` and `<summary>`, with the type and title visible in the summary; add `open` when initially expanded. | Use the same HTML fallback when fold state matters; GitHub alerts do not fold. | Preserve `-` for initially collapsed and `+` for initially expanded. |
+| Automatically numbered footnotes | CommonMark has no native footnotes; emit linked HTML `<sup>` references and ordered definitions with back-links. If raw HTML is removed, report that footnotes were lost. | Emit `[^1]` references and `[^1]:` definitions, generating numeric labels; `^N` reuses the same label. | Same numeric-label mapping as GFM. |
+| Unfolded callouts | Use semantic `<aside>` markup with the callout type, title, and body visible. | Map supported types to GitHub alerts (`NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`); put an optional Wmdx title on the first bold body line. Use HTML `<aside>` for other types. | Emit `> [!type] Title` and prefix each body line with `>`. |
+| Folded/expanded callouts and dropdowns | Use `<details><summary>Title</summary>…</details>`; add `open` for initially expanded content. | Use the same `<details>` representation; alerts do not encode fold state. | Emit `> [!type]- Title` when closed and `> [!type]+ Title` when open, including `dropdown` as the type. Prefix every body line with `>`. |
 
 Do not reinterpret ordinary block quotes as callouts. Import callouts only from
 Obsidian syntax or recognized GFM alerts. Import generic HTML `<details>` as
 the Wmdx `dropdown` type, mapping the `open` state to `+` or `-` and its
 `summary` to the visible title. Generic HTML `<aside>` does not identify a
 specific Wmdx callout type; preserve visible content and convert it to the
-closest native Wmdx structure, reporting any classification loss. HTML is the portable export users can take
-to other tools for conversion, not a Wmdx round-trip format. Emit standard,
-usable HTML without hidden Wmdx-specific metadata. Recognize HTML footnotes only
-when reference links match their definitions; ordinary `<sup>` elements remain
-superscript text. These mappings follow
+closest native Wmdx structure, reporting any classification loss. For Markdown
+footnote imports, resolve reference labels and definitions first, then assign
+Wmdx numbers by first-reference order; repeated references keep the same number.
+For HTML, recognize footnotes only when linked references match definitions;
+ordinary `<sup>` elements remain superscript text. HTML is portable export, not
+a Wmdx round-trip format. Emit usable standard HTML without hidden Wmdx metadata.
+These mappings follow
 [GitHub footnotes and alerts](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax),
 [Obsidian footnotes](https://help.obsidian.md/Editing+and+formatting/Basic+formatting+syntax),
 and [Obsidian callouts](https://help.obsidian.md/callouts).
 GitHub footnotes and alerts are GitHub-specific extensions and may not work in
-generic GFM renderers. Map Wmdx `info`/`note` to GitHub `NOTE` and `tip` to
-`TIP`; use the HTML fallback for unsupported types such as `question`. GitHub
-alerts cannot fold or nest, so those cases use HTML and may lose native alert
-styling.
+generic GFM renderers. Map Wmdx `info`/`note` to `NOTE`, `tip` to `TIP`,
+`important` to `IMPORTANT`, `warning` to `WARNING`, and `caution` to `CAUTION`;
+use the HTML fallback for unsupported types such as `question`. GitHub alerts
+cannot fold or nest, so those cases use HTML and may lose native alert styling.
 
 ## Import, paste, and export
 
@@ -368,7 +378,7 @@ the original page or document perfectly. HTML export is the portable handoff
 format users can take to other tools for conversion, using standard HTML rather
 than Wmdx-specific metadata.
 
-### Resource mapping proposal: links and embeds
+### Resource mapping rules: links and embeds
 
 Prefer the target format's native link syntax. Use HTML in exported Markdown
 when needed to preserve Wmdx image captions or layout; HTML import still
@@ -395,7 +405,7 @@ replacing the link label or image title. These mappings follow [CommonMark links
 [embeds](https://help.obsidian.md/embeds), and
 [accepted file formats](https://help.obsidian.md/file-formats).
 
-### Block mapping proposal: headings, lists, and tables
+### Block mapping rules: headings, lists, and tables
 
 | Wmdx structure | CommonMark/GFM export | Obsidian export |
 | --- | --- | --- |
@@ -403,7 +413,7 @@ replacing the link label or image title. These mappings follow [CommonMark links
 | Unordered lists `-`, `+`, `*` | Keep the same marker character so a Wmdx round trip retains the bullet-shape choice. Other Markdown renderers may display all three with the same bullet shape. | Same marker-preserving rule. |
 | Decimal ordered lists | Use ordinary numbered Markdown lists. | Same. |
 | Alphabetic/Roman ordered lists | Use HTML `<ol type="a">`, `<ol type="A">`, `<ol type="i">`, or `<ol type="I">` to preserve numbering; if raw HTML is removed by the target, fall back to decimal and report the style loss. | Same. |
-| Task lists | Use GFM task-list markers. For CommonMark, use disabled HTML checkboxes so checked state is retained without creating interactive controls. | Use GFM task-list markers. |
+| Task lists | Export as `- [ ]`/`- [x]` in GFM and Obsidian. For CommonMark, use list items with disabled HTML checkboxes so state is retained without interactive controls. Add the dialect's list marker on export; remove it when importing into Wmdx's `[ ]`/`[x]` form. Preserve nesting and checkbox state. |
 | Unmerged tables | CommonMark has no native table syntax, so export as HTML `<table>`. GFM uses pipe tables. | Use GFM pipe tables. |
 | Merged tables | Export as HTML `<table>` with `colspan`/`rowspan`; pipe-table syntax cannot represent merged cells. | Same. |
 
@@ -414,7 +424,7 @@ Wmdx list style/task state. Preserve list nesting. These mappings follow
 [task lists](https://github.github.com/gfm/#task-list-items-extension-), and
 [Obsidian Flavored Markdown](https://help.obsidian.md/obsidian-flavored-markdown).
 
-### Alignment, anchors, and tags mapping proposal
+### Alignment, anchors, and tags mapping rules
 
 | Wmdx structure | CommonMark/GFM | Obsidian |
 | --- | --- | --- |
@@ -432,11 +442,11 @@ attributes as paragraph/object alignment; continue to ignore CSS `style`
 attributes on import. The same alignment wrapper applies to media embeds, while
 percentage sizing may require an output-only style attribute.
 
-### Paragraph, quote, code, and definition-list mapping proposal
+### Paragraph, quote, code, and definition-list mapping rules
 
 | Wmdx structure | CommonMark/GFM | Obsidian |
 | --- | --- | --- |
-| Paragraphs and forced line breaks | Separate paragraphs with blank lines. For a forced line break, emit two trailing spaces before the newline; do not use the backslash form. | Same. |
+| Paragraphs and line breaks | Separate paragraphs with blank lines. Join Markdown soft line breaks as spaces on import; preserve explicit hard breaks. Export Wmdx hard line breaks with two trailing spaces before the newline, not a backslash. | Same. |
 | Horizontal rule | Emit the existing `---` form. | Same. |
 | Fenced code block | Preserve the language label and use matching backtick or tilde fences; choose a fence longer than any matching run inside the code. | Same. |
 | Block quotes | Preserve `>` nesting and prefix every quoted line, including blank lines between quoted paragraphs. | Same. |
@@ -526,6 +536,8 @@ markers; ordinary quotes retain them.
 - Confirm the remaining native grammar and parser edge-case rules.
 - Finish the CommonMark, GFM, Obsidian, and HTML conversion matrix, including
   explicit losses and HTML's best-effort content-import behavior.
+- Test automatic footnote numbering, `^N` reuse, paired superscript, escaped
+  carets, and the unchanged table merge marker.
 - Keep the current table syntax and editing behavior unchanged.
 - Prepare examples that exercise valid, nested, escaped, unmatched, and
   malformed syntax before implementing parser changes.
