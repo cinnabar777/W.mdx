@@ -348,7 +348,12 @@ test('callout title layout and editing behavior match each view', () => {
       mainSource.includes('selection.from < info.markerEnd && selection.to > info.markerStart'),
     'Live Preview checks whether the selection touches the callout marker itself'
   );
-  assert.ok(mainSource.includes('if (!isMarkerActive && !isPureWysiwyg)'), 'Live Preview renders the callout unless its marker syntax is active');
+  assert.ok(
+    mainSource.includes('isWmdxCalloutTitleDraftActive(') &&
+      mainSource.includes('const isTitleDraftActive =') &&
+      mainSource.includes('state.selection.main, info, line.to'),
+    'Live Preview and WYSIWYG keep an empty title editable while its opener is active'
+  );
   assert.ok(!mainSource.includes('isTitleActive'), 'Moving the cursor into the title does not reveal syntax');
   assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG replaces the marker while leaving the title editable');
   assert.ok(
@@ -358,6 +363,7 @@ test('callout title layout and editing behavior match each view', () => {
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important[^}]*align-self:\s*center\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[^}]*flex:\s*1 1 auto\s*!important/s);
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered > \.cm-callout-title-text\.is-source\s*\{[^}]*flex:\s*0 1 auto\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*static\s*!important[^}]*width:\s*24px\s*!important/s);
   assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
@@ -370,8 +376,13 @@ test('callout title layout and editing behavior match each view', () => {
   );
   assert.ok(
     mainSource.includes("view.dom.addEventListener('keydown', this.calloutEnterHandler, true)") &&
-      mainSource.includes('getWmdxCalloutContinuationIndent('),
+      mainSource.includes('getWmdxCalloutEnterEdit('),
     'Enter continues native callout indentation'
+  );
+  assert.ok(
+    mainSource.includes('getWmdxCalloutEnterEdit(') &&
+      mainSource.includes('selection: EditorSelection.cursor(edit.cursor)'),
+    'Enter on an indented blank line exits one callout level'
   );
   assert.ok(
     mainSource.includes('data-wmdx-callout-title-from') &&

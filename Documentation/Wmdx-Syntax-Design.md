@@ -538,6 +538,8 @@ a separate later phase.
   Return-driven body indentation, nested indentation, blank paragraphs, and
   dedenting. Foldable callouts use a leading `+`/`−` control, and the visible
   heading toggles the body while editable title text still receives the caret.
+  While an empty title is being typed, the opener stays editable; Return on a
+  blank body line exits one callout level.
 - Native task markers `[ ]` and `[x]` render as interactive checkboxes without
   a leading list bullet.
 - Native footnote references and definitions support automatic numbering and

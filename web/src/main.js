@@ -107,7 +107,8 @@ document.addEventListener('pointerdown', event => {
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
-  getWmdxCalloutContinuationIndent,
+  getWmdxCalloutEnterEdit,
+  isWmdxCalloutTitleDraftActive,
   parseWmdxCallouts
 } from './wmdxCallouts.js';
 import {
@@ -810,10 +811,12 @@ class CodeBlockHeaderWidget extends WidgetType {
 let calloutTypeIconOverrides = {};
 
 function getCalloutTitleStart(line, match) {
-  const customTitle = match[5];
-  if (!customTitle || !customTitle.trim()) return null;
-  const index = line.text.indexOf(customTitle, match[1].length + match[2].length);
-  return index < 0 ? null : line.from + index;
+  if (match[5] === undefined) return null;
+  const markerEnd = match[1].length + match[2].length;
+  const separator = /^[ \t]+/.exec(line.text.slice(markerEnd));
+  return separator
+    ? line.from + markerEnd + separator[0].length
+    : null;
 }
 
 class CalloutTitleWidget extends WidgetType {
@@ -2409,19 +2412,18 @@ function handleWmdxCalloutEnter(view, event) {
 
   const state = view.state;
   const selection = state.selection.main;
-  const indent = getWmdxCalloutContinuationIndent(
+  const edit = getWmdxCalloutEnterEdit(
     state.doc.toString(),
-    selection.head,
+    selection,
     position => wmdxCalloutPositionIsExcluded(state, position)
   );
-  if (indent == null) return false;
+  if (!edit) return false;
 
-  const insert = `\n${' '.repeat(indent)}`;
   event.preventDefault();
   event.stopPropagation();
   view.dispatch({
-    changes: { from: selection.from, to: selection.to, insert },
-    selection: EditorSelection.cursor(selection.from + insert.length),
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(edit.cursor),
     userEvent: 'input'
   });
   return true;
@@ -3266,6 +3268,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     for (const [lineFrom, info] of calloutOpenerInfo) {
       const line = doc.lineAt(lineFrom);
       const customTitle = info.customTitle?.trim() || '';
+      const isTitleDraftActive = isWmdxCalloutTitleDraftActive(
+        selection,
+        info,
+        line.to
+      );
       const isMarkerActive = !isPureWysiwyg && (
         selection.empty
           ? selection.head >= info.markerStart && selection.head <= info.markerEnd
@@ -3295,7 +3302,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
       }
 
-      if (!isMarkerActive && !isPureWysiwyg) {
+      if (!isMarkerActive && !isTitleDraftActive && !isPureWysiwyg) {
         let isFolded = false;
         if (hasBody) {
           activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
@@ -3307,7 +3314,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         const displayTitle = customTitle ||
           (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
-        const titleIsInSource = info.titleStart != null;
+        const titleIsInSource = Boolean(customTitle);
         const widgetEnd = titleIsInSource ? info.titleStart : line.to;
 
         builder.push(Decoration.replace({
@@ -4468,6 +4475,9 @@ function buildHeightMapValue(state) {
     const hasBody = info.bodyTo > info.bodyFrom;
     const line = doc.lineAt(lineFrom);
     const customTitle = info.customTitle?.trim() || '';
+    if (isWmdxCalloutTitleDraftActive(state.selection.main, info, line.to)) {
+      continue;
+    }
     let isFolded = false;
     if (hasBody) {
       activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
@@ -4479,7 +4489,7 @@ function buildHeightMapValue(state) {
 
     const displayTitle = customTitle ||
       (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
-    const titleIsInSource = info.titleStart != null;
+    const titleIsInSource = Boolean(customTitle);
     const widgetEnd = titleIsInSource ? info.titleStart : line.to;
 
     replacements.push(Decoration.replace({

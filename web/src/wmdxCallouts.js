@@ -27,7 +27,9 @@ function calloutMarker(line, indent) {
 
   const markerStart = line.from + indent;
   const markerLength = 1 + match[1].length + match[2].length;
-  const titleStart = match[4] ? markerStart + markerLength + match[3].length : null;
+  const titleStart = match[3]
+    ? markerStart + markerLength + match[3].length
+    : null;
   return {
     type: match[1].toLowerCase(),
     foldMarker: match[2] || null,
@@ -46,10 +48,13 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
   let pendingBlankLines = [];
 
   const markBodyLine = (line, callout, isBlank = false) => {
+    const calloutIndex = stack.lastIndexOf(callout);
+    const parentCallout = calloutIndex > 0 ? stack[calloutIndex - 1] : null;
     lineAttributes.set(line.from, {
       type: callout.type,
       depth: callout.depth,
       continuationIndent: callout.indent + 2,
+      exitIndent: parentCallout ? parentCallout.indent + 2 : 0,
       indentToHide: isBlank
         ? 0
         : Math.min(callout.indent + 2, indentationOf(line.text)),
@@ -112,11 +117,12 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
   }
 
   if (stack.length && pendingBlankLines.length) {
-    const activeCallout = stack[stack.length - 1];
     for (const blankLine of pendingBlankLines) {
-      if (indentationOf(blankLine.text) > activeCallout.indent) {
-        markBodyLine(blankLine, activeCallout, true);
-      }
+      const blankIndent = indentationOf(blankLine.text);
+      const containingCallout = [...stack]
+        .reverse()
+        .find(callout => blankIndent > callout.indent);
+      if (containingCallout) markBodyLine(blankLine, containingCallout, true);
     }
   }
 
@@ -138,8 +144,62 @@ export function getWmdxCalloutContinuationIndent(
     .lineAttributes.get(line.from);
   if (!attributes) return null;
 
-  if (attributes.isTitle || !line.text.trim()) {
+  if (!line.text.trim()) {
+    return attributes.exitIndent ?? 0;
+  }
+  if (attributes.isTitle) {
     return attributes.continuationIndent;
   }
   return indentationOf(line.text);
+}
+
+export function getWmdxCalloutEnterEdit(
+  text,
+  selection,
+  isExcluded = () => false
+) {
+  const source = String(text ?? '');
+  const position = selection?.head;
+  if (!Number.isInteger(position)) return null;
+
+  const line = splitLines(source).find(
+    candidate => position >= candidate.from && position <= candidate.to
+  );
+  if (!line) return null;
+
+  const indent = getWmdxCalloutContinuationIndent(
+    source,
+    position,
+    isExcluded
+  );
+  if (indent == null) return null;
+
+  const exitsCurrentCallout = Boolean(
+    selection.empty && !line.text.trim()
+  );
+  const from = exitsCurrentCallout ? line.from : selection.from;
+  const to = exitsCurrentCallout ? line.to : selection.to;
+  const insert = `\n${' '.repeat(indent)}`;
+  return {
+    from,
+    to,
+    insert,
+    cursor: from + insert.length,
+    exitsCurrentCallout
+  };
+}
+
+export function isWmdxCalloutTitleDraftActive(selection, info, lineTo) {
+  if (
+    !selection?.empty ||
+    !info ||
+    !Number.isInteger(info.markerStart) ||
+    !Number.isInteger(lineTo)
+  ) {
+    return false;
+  }
+
+  return !info.customTitle?.trim() &&
+    selection.head >= info.markerStart &&
+    selection.head <= lineTo;
 }
