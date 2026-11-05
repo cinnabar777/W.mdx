@@ -212,7 +212,8 @@ reader@example.com
 ftp://foo.bar.baz.
 
 Each automatic link should be styled and open its browser or email app when
-tapped. The FTP link should exclude the trailing period.
+tapped. For the FTP example, verify the trailing period is not part of the link;
+`foo.bar.baz` is a specification placeholder, not a live server.
 
 ## Obsidian
 

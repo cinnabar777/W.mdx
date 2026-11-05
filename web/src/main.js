@@ -154,6 +154,10 @@ import {
   replaceNext,
   replaceAll
 } from '@codemirror/search';
+import {
+  clearFindHighlights,
+  handleFindEnterKey
+} from './findReplaceActions.mjs';
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, syntaxTree, forceParsing, HighlightStyle, foldEffect, unfoldEffect, codeFolding, foldedRanges } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
@@ -8554,6 +8558,18 @@ function initCustomSearchBar() {
 
   searchInput.addEventListener('input', () => commitSearchQuery());
   replaceInput.addEventListener('input', () => commitSearchQuery());
+  searchInput.addEventListener('keydown', event => {
+    handleFindEnterKey(event, reverse => {
+      if (!commitSearchQuery()) return;
+
+      const view = activeAdapter?.view;
+      const query = buildSearchQuery(searchInput, replaceInput);
+      if (!view || !query.search || !query.valid) return;
+
+      runFindAndCenter(reverse ? findPrevious : findNext, view);
+      updateMatchCounterFromQuery(query, view);
+    });
+  });
 
   attachButtonBehavior(btnPrev, 'Find Previous match in document', () => {
     if (activeAdapter && activeAdapter.view) {
@@ -8640,6 +8656,13 @@ function toggleFindAndReplaceBar(forceState) {
   } else {
     // Intentionally do not call closeSearchPanel(view): that detaches
     // the custom #custom-search-bar element from CodeMirror's panel host.
+    if (countDebounceTimer) {
+      clearTimeout(countDebounceTimer);
+      countDebounceTimer = null;
+    }
+    clearFindHighlights(view);
+    clearMatchCounter();
+    clearInlineSearchError();
     view.focus();
   }
 }
