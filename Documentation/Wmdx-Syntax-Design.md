@@ -252,9 +252,10 @@ same `±type` marker at a deeper indentation level. Ordinary blockquotes keep
 `>` and repeated `>` markers for nested quoted lines. Callout body lines do not
 each need a `>` prefix; reserve `>` for quoted content inside a callout.
 
-**Proposed body scope (not yet agreed):** indent the callout body one level;
-blank lines separate paragraphs, and dedenting ends the callout. A nested
-callout marker appears at the parent body's indentation, with its body indented
+The body scope is agreed: indent the callout content using the same convention
+as lists; the editor adds continuation indentation automatically. Blank lines
+separate paragraphs, and dedenting ends the callout. A nested callout marker
+appears at the parent body's indentation, with its body automatically indented
 one further level:
 
 ```text
@@ -271,9 +272,8 @@ one further level:
 Normal paragraph outside.
 ```
 
-The exact indentation width, title form, and representation of a generic
-dropdown remain open. Obsidian's `> [!type]` remains an import format, not
-native Wmdx syntax.
+The title form and representation of a generic dropdown remain open. Obsidian's
+`> [!type]` remains an import format, not native Wmdx syntax.
 
 ### Footnote and callout mapping proposal
 
@@ -470,9 +470,9 @@ Do not begin implementation until the native syntax and conversion rules are
 frozen. In particular, the callout/dropdown behavior stays in scope, but its
 agreed markers are `±type`, `±type-`, and `±type+`, with `-` initially closed
 and `+` initially open. Before coding, define the title and body boundaries,
-the indentation width and dedent rule for callout bodies, and how generic
-dropdowns are represented. Callout body lines do not need repeated `>` markers;
-ordinary quotes retain them.
+and how generic dropdowns are represented. Callout bodies use automatic list-like
+indentation, blank lines for paragraphs, and dedenting to end the block.
+Callout body lines do not need repeated `>` markers; ordinary quotes retain them.
 
 ### 0. Finish the specification
 
@@ -506,6 +506,8 @@ editor contexts and remains intact through view changes and persistence.
   fields that should not require users to memorize the full grammar.
 - Verify selection, caret placement, undo/redo, and keyboard behavior for
   inserted and edited syntax.
+- Verify automatic list-like indentation in callouts, including blank-line
+  paragraphs, dedenting, and nested callouts.
 - Keep Source view usable for direct editing and ensure visual modes expose
   malformed syntax instead of silently changing user text.
 
