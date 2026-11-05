@@ -260,6 +260,38 @@ test('Enter continues callout content and exits the current level on a blank lin
     getWmdxCalloutContinuationIndent(outerBlank, outerBlank.length),
     0
   );
+
+  const nestedWithOutsideParagraph = `${nested}\n\n  \nOutside paragraph`;
+  const nestedParentBlank = nestedWithOutsideParagraph.indexOf('\n  \n') + 1;
+  const nestedParentAttributes = parseWmdxCallouts(nestedWithOutsideParagraph)
+    .lineAttributes.get(nestedParentBlank);
+  assert.equal(nestedParentAttributes.depth, 1);
+  assert.equal(nestedParentAttributes.exitIndent, 0);
+  assert.equal(
+    getWmdxCalloutContinuationIndent(
+      nestedWithOutsideParagraph,
+      nestedParentBlank + 2
+    ),
+    0
+  );
+  const nestedParentExit = getWmdxCalloutEnterEdit(
+    nestedWithOutsideParagraph,
+    {
+      empty: true,
+      from: nestedParentBlank + 2,
+      head: nestedParentBlank + 2,
+      to: nestedParentBlank + 2
+    }
+  );
+  assert.equal(nestedParentExit.insert, '\n');
+  assert.equal(nestedParentExit.exitsCurrentCallout, true);
+
+  const indentedCallout = '  ±note Title\n    Body\n    \n  Outside paragraph';
+  const indentedBlank = indentedCallout.indexOf('\n    \n') + 1;
+  assert.equal(
+    getWmdxCalloutContinuationIndent(indentedCallout, indentedBlank + 4),
+    2
+  );
 });
 
 test('callout-like markers in excluded code and table ranges are ignored', async () => {

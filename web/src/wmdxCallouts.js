@@ -48,19 +48,24 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
   let pendingBlankLines = [];
 
   const markBodyLine = (line, callout, isBlank = false) => {
-    const calloutIndex = stack.lastIndexOf(callout);
-    const parentCallout = calloutIndex > 0 ? stack[calloutIndex - 1] : null;
+    const parentCallout = callout.parent || null;
     lineAttributes.set(line.from, {
       type: callout.type,
       depth: callout.depth,
       continuationIndent: callout.indent + 2,
-      exitIndent: parentCallout ? parentCallout.indent + 2 : 0,
+      exitIndent: parentCallout
+        ? parentCallout.indent + 2
+        : callout.indent,
       indentToHide: isBlank
         ? 0
         : Math.min(callout.indent + 2, indentationOf(line.text)),
       isTitle: false
     });
-    for (const ancestor of stack) {
+    for (
+      let ancestor = callout;
+      ancestor;
+      ancestor = ancestor.parent
+    ) {
       if (indentationOf(line.text) > ancestor.indent) {
         ancestor.info.bodyTo = line.to;
       }
@@ -73,6 +78,7 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
       continue;
     }
 
+    const calloutsBeforeLine = stack.slice();
     const indent = indentationOf(line.text);
     while (stack.length && indent <= stack[stack.length - 1].indent) {
       stack.pop();
@@ -81,8 +87,14 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
     const parent = stack[stack.length - 1] || null;
     const isIndentedBody = parent && indent > parent.indent;
     if (pendingBlankLines.length) {
-      if (isIndentedBody) {
-        for (const blankLine of pendingBlankLines) {
+      for (const blankLine of pendingBlankLines) {
+        const blankIndent = indentationOf(blankLine.text);
+        const containingCallout = [...calloutsBeforeLine]
+          .reverse()
+          .find(callout => blankIndent > callout.indent);
+        if (containingCallout) {
+          markBodyLine(blankLine, containingCallout, true);
+        } else if (isIndentedBody) {
           markBodyLine(blankLine, parent, true);
         }
       }
@@ -100,7 +112,13 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
         bodyFrom: line.to,
         bodyTo: line.to
       };
-      const callout = { indent, depth: info.depth, type: info.type, info };
+      const callout = {
+        indent,
+        depth: info.depth,
+        type: info.type,
+        parent,
+        info
+      };
       openers.push({ lineFrom: line.from, info });
       lineAttributes.set(line.from, {
         type: info.type,
