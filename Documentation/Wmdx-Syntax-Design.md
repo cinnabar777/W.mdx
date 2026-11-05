@@ -57,12 +57,18 @@ Read [https://example.com|the guide||] in this paragraph.
 [attachments/archive.zip|Project archive||]
 ![images/sunset.png|Sunset|320x240|><]
 ![images/sunset.png| Sunset |320x240|><]
+![images/sunset.png|Sunset|80%|><]
 ![https://example.com/sunset.png|Sunset|320|<>]
 ![notes.md|Project notes||]
 ```
 
-The two `Sunset` examples are equivalent; spaces around the title are optional.
-An empty title, as in `[assets/image.png||320|><]`, uses the source filename.
+The proposed size encoding uses bare numbers for pixels (`320`, `320x240`) and
+a `%` suffix for percentages (`80%`). An insertion dialog could default to
+pixels and append `%` when the user switches to percentage.
+
+The two pixel-based `Sunset` examples are equivalent; spaces around the title
+are optional. An empty title, as in `[assets/image.png||320|><]`, uses the
+source filename.
 
 ### Alignment
 
@@ -184,10 +190,13 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
 
 ## Decisions still to finalize
 
-- **Resource size units:** The recommendation is to use pixels for width and
-  height (for example, `320` or `320x240`), scaling down to the available content
-  width without changing proportions. This needs confirmation. Existing image
-  sizing is pixel-based; existing audio/video layout uses percentages.
+- **Resource size semantics:** The user prefers percentage sizing but wants
+  pixels available too. The current proposal is bare numbers for pixels and a
+  `%` suffix for percentages, with a pixel default in the insertion dialog.
+  Confirm whether percentages mean width relative to the available content width
+  and whether percentage sizing should be width-only, with height derived from
+  the media's proportions. Percentage height would need a defined reference
+  height.
 - **Parser precedence and nesting:** The delimiter rules above are agreed for
   code spans, escapes, and `~` versus `~~`. Nesting and ambiguous edge cases
   still need a shared test matrix.
