@@ -163,6 +163,7 @@ import {
   TaskList as GFMTaskList
 } from '@lezer/markdown';
 import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
+import { wmdxGfmFtpAutolink } from './gfm-autolink.mjs';
 import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
 
 let activeAdapter = null;
@@ -2193,6 +2194,7 @@ class EmbeddedDocumentWidget extends WidgetType {
           extensions: [
             GFMAutolink,
             GFMTaskList,
+            wmdxGfmFtpAutolink,
             wmdxGfmStrikethrough,
             wmdxCommonMarkCompatibility
           ]
@@ -5180,6 +5182,7 @@ class CodeMirrorAdapter {
             GFMAutolink,
             GFMTable,
             GFMTaskList,
+            wmdxGfmFtpAutolink,
             wmdxGfmStrikethrough,
             wmdxCommonMarkCompatibility
           ]
@@ -5520,7 +5523,7 @@ class CodeMirrorAdapter {
           nativeBridge.getCurrentDocumentSessionId?.(),
           JSON.stringify(this.view.state.facet(embeddedDocumentSourceFacet))
         );
-      } else if (/^(?:https?:|mailto:)/i.test(target)) {
+      } else if (/^(?:https?:|ftp:\/\/|mailto:)/i.test(target)) {
         window.open(target, '_blank', 'noopener');
       }
     };

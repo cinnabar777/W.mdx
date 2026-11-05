@@ -53,7 +53,7 @@ function normalizeAutolinkTarget(target) {
 
 function normalizeSupportedTarget(target) {
   const value = normalizeAutolinkTarget(target);
-  if (/^(?:https?:|mailto:)/i.test(value) || value.startsWith('#')) return value;
+  if (/^(?:https?:|ftp:\/\/|mailto:)/i.test(value) || value.startsWith('#')) return value;
   if (/^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith('//')) return null;
   return value;
 }

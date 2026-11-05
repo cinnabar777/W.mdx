@@ -5542,6 +5542,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val externalUri = when {
                 link.startsWith("https://", ignoreCase = true) ||
                     link.startsWith("http://", ignoreCase = true) ||
+                    link.startsWith("ftp://", ignoreCase = true) ||
                     link.startsWith("mailto:", ignoreCase = true) ->
                     runCatching { Uri.parse(link) }.getOrNull()
                 link.startsWith("www.", ignoreCase = true) ->

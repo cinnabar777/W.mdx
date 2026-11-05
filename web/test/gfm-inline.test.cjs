@@ -16,19 +16,22 @@ const gfmInlineExamples = [
   'This will ~~~not~~~ strike.',
   'www.commonmark.org.',
   'Visit https://commonmark.org/help.',
-  'foo@bar.example.com'
+  'foo@bar.example.com',
+  'ftp://foo.bar.baz.'
 ].join('\n');
 
 async function createEditorState(markdownText, { embedded }) {
   const { EditorState } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
   const { Autolink, Table, TaskList } = await import('@lezer/markdown');
+  const { wmdxGfmFtpAutolink } = await import('../src/gfm-autolink.mjs');
   const { wmdxGfmStrikethrough } = await import('../src/gfm-strikethrough.mjs');
   const { wmdxCommonMarkCompatibility } = await import('../src/commonmark-compat.mjs');
   const extensions = [
     Autolink,
     ...(embedded ? [] : [Table]),
     TaskList,
+    wmdxGfmFtpAutolink,
     wmdxGfmStrikethrough,
     wmdxCommonMarkCompatibility
   ];
@@ -73,7 +76,8 @@ for (const embedded of [false, true]) {
       [
         'www.commonmark.org',
         'https://commonmark.org/help',
-        'foo@bar.example.com'
+        'foo@bar.example.com',
+        'ftp://foo.bar.baz'
       ]
     );
     assert.equal(state.doc.toString(), gfmInlineExamples);
@@ -103,7 +107,8 @@ for (const embedded of [false, true]) {
       [
         'www.commonmark.org',
         'https://commonmark.org/help',
-        'foo@bar.example.com'
+        'foo@bar.example.com',
+        'ftp://foo.bar.baz'
       ]
     );
   });
@@ -113,11 +118,11 @@ test('main and embedded parser configurations use explicit GFM extensions', () =
   const source = readProjectFile('web/src/main.js');
   assert.match(
     source,
-    /GFMAutolink,\s*GFMTable,\s*GFMTaskList,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
+    /GFMAutolink,\s*GFMTable,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
   );
   assert.match(
     source,
-    /GFMAutolink,\s*GFMTaskList,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
+    /GFMAutolink,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
   );
 });
 

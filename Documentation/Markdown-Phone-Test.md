@@ -209,8 +209,10 @@ https://github.com/
 
 reader@example.com
 
+ftp://foo.bar.baz.
+
 Each automatic link should be styled and open its browser or email app when
-tapped.
+tapped. The FTP link should exclude the trailing period.
 
 ## Obsidian
 

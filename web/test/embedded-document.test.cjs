@@ -195,7 +195,7 @@ test('embedded Markdown uses GFM tasks and inline syntax without enabling tables
   assert.ok(childExtensions, 'the embedded document must create its own editor');
   assert.match(
     childExtensions,
-    /cmMarkdown\(\{\s*extensions:\s*\[\s*GFMAutolink,\s*GFMTaskList,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility\s*\]\s*\}\)/
+    /cmMarkdown\(\{\s*extensions:\s*\[\s*GFMAutolink,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility\s*\]\s*\}\)/
   );
   assert.match(childExtensions, /syntaxHighlighting\(customHighlightStyle\)/);
   assert.doesNotMatch(childExtensions, /GFMTable/);
@@ -230,6 +230,7 @@ test('embedded Markdown uses GFM tasks and inline syntax without enabling tables
   const { syntaxTree } = await import('@codemirror/language');
   const { markdown } = await import('@codemirror/lang-markdown');
   const { Autolink, TaskList } = await import('@lezer/markdown');
+  const { wmdxGfmFtpAutolink } = await import('../src/gfm-autolink.mjs');
   const { wmdxGfmStrikethrough } = await import('../src/gfm-strikethrough.mjs');
   const { wmdxCommonMarkCompatibility } = await import('../src/commonmark-compat.mjs');
   const state = EditorState.create({
@@ -238,6 +239,7 @@ test('embedded Markdown uses GFM tasks and inline syntax without enabling tables
       extensions: [
         Autolink,
         TaskList,
+        wmdxGfmFtpAutolink,
         wmdxGfmStrikethrough,
         wmdxCommonMarkCompatibility
       ]

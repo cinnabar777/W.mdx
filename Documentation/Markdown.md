@@ -572,8 +572,9 @@ strikethrough, and GFM autolinks. Tables and tasks are editable in W.mdx.
 
 **Still to do for full compatibility:**
 
-- Extend official GFM example coverage beyond tables 198–205 and selected task,
-  strikethrough, and autolink examples.
+- The GFM 0.29 extension corpus now has parser-semantic checks for all 21
+  non-HTML table, strikethrough, and autolink examples. This does not yet verify
+  exact WYSIWYG rendering or full Markdown import/export round trips.
 - GitHub.com alerts share the `> [!type]` callout marker with W.mdx, but exact
   alert types and rendering are not a compatibility promise.
 - For GFM raw HTML, use the import-conversion policy above rather than rendering
@@ -665,7 +666,7 @@ cross-dialect round-trip suite.
 | CommonMark core | Parser-semantic checks cover all 575 non-HTML cases in the official 0.31.2 corpus, including tab-separated ATX headings and unresolved references inside emphasis. Focused WYSIWYG/Live Preview tests cover character references, escapes, hard breaks, code-span normalization, flat-list indentation, nested lists, and lists inside block quotes while preserving source spelling. | Verify exact WYSIWYG rendering and open, edit, save, export, and reopen semantics against representative cases. |
 | CommonMark raw HTML | Arbitrary HTML is not rendered. `<u>...</u>` remains as a compatibility form when Wmdx underline syntax is disabled; 77 HTML-interoperability cases are held out of native parser checks. | Convert supported imported HTML to native Wmdx syntax; define and test visible handling for constructs with no equivalent. Never emit HTML as fallback. |
 | GFM tables | Editable pipe tables; tests cover official table examples 198–205, cell-count normalization, escaped pipes, alignment, editing, serialized Markdown reopening, and MDZip archive open/save/reopen. | Verify direct Android Markdown file save/open and the MDZip content-provider write path. |
-| GFM tasks, strikethrough, and autolinks | Main and embedded parser tests cover task examples 279–280, strikethrough examples 491–493, and autolink examples 622–630; Markdown stream-codec and MDZip archive tests cover open/save/reopen preservation. Single and double tildes render as strike, while runs of three remain literal. | Expand official conformance coverage and validate the Android document-provider path. The separate Export action produces HTML/MHTML, not a Markdown dialect export. |
+| GFM tasks, strikethrough, and autolinks | The GFM 0.29 fixture checks all 21 non-HTML extension examples: tables 198–205, strikethrough 491–492, and autolinks 621–631, including FTP. Main and embedded tests cover task examples 279–280; Markdown stream-codec and MDZip tests cover open/save/reopen preservation. | Verify WYSIWYG rendering and Android document-provider round trips. Raw-HTML tag filtering remains under the no-HTML policy. The separate Export action produces HTML/MHTML, not a Markdown dialect export. |
 | Obsidian links and document embeds | Wiki links, aliases, current-document heading links, whole-document embeds, and nested embeds; focused coverage in `navigation_link_mapping.test.cjs` and `embedded-document.test.cjs`. | Verify resolution and round trips across Markdown and MDZip. Heading/block transclusion and Obsidian media-embed shorthand remain unsupported. |
 | Obsidian callouts and footnotes | Callout and reference-footnote behavior has focused coverage in `callout.test.cjs`, `footnotes.test.cjs`, and `embedded-document.test.cjs`. | Build a documented built-in syntax fixture set and verify behavior across source, WYSIWYG, save, and reopen. Plugin and app-only behavior is out of scope. |
 | Wmdx word-processing syntax | Underline, highlighting, and pen syntax are implemented; focused tests include `markdown-formatting.test.cjs` and `underline-delimiters.test.cjs`. | Keep new syntax text-based, readable, and minimally intrusive. Heading alternatives such as `.1`, `.2`, and `.3` are planned, not implemented. Replace HTML dependence for authoring as native equivalents become available. |
