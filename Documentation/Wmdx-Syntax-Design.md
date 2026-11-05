@@ -282,9 +282,9 @@ treatments are tentative:
 | Forms, iframes, custom elements, and other active or unknown content | **Agreed direction:** retain readable text, labels, and ordinary links; convert recognized media to resource syntax; omit interactive controls and behavior; never execute active content or retain raw tags; report meaningful losses |
 
 HTML document metadata such as `<title>` and `<meta>` is not ordinary body text.
-Tentative policy: use `<title>` as the suggested output filename and report
-other metadata that has no Wmdx equivalent instead of inserting it into the
-document body.
+**Agreed direction:** use `<title>` only as a suggested filename when creating
+a new Wmdx document; never insert it into the body. Ignore other `<meta>` fields.
+Paste-from imports leave the current document filename unchanged.
 
 ## Decisions still to finalize
 
