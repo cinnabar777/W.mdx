@@ -255,8 +255,9 @@ Footnotes are automatically numbered. Use a single trailing `^` for an
 in-text reference and a line beginning `^ ` for its definition. Pair references
 and definitions in document order; render the reference and its definition
 with the generated number in the footnotes section. Paired `^text^` remains
-superscript syntax, and `\^` represents a literal caret. Reuse an existing
-footnote through the editor rather than adding labels to the source.
+superscript syntax, and `\^` represents a literal caret. This form does not yet
+specify how multiple references can point to the same definition after
+save/reopen; resolve that before implementation.
 
 ```text
 This sentence has a footnote.^
