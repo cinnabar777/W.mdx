@@ -56,7 +56,7 @@ Examples:
 
 ```text
 Read [https://example.com|the guide||] in this paragraph.
-[https://example.com|Visit site||->]
+[example.com|Visit site||>]
 [attachments/archive.zip|Project archive||]
 ![images/sunset.png|Sunset|320x240|><]
 ![images/sunset.png| Sunset |320x240|><]
@@ -77,19 +77,21 @@ source filename.
 
 ### Alignment
 
-Use the same keyboard-friendly markers in the resource `ALIGN` field and at the
-start of a paragraph:
+Use keyboard-friendly markers in the resource `ALIGN` field:
 
 | Marker | Meaning |
 | --- | --- |
 | `<` | Left |
 | `><` | Center |
-| `->` | Right |
+| `>` | Right |
 | `<>` | Justified |
 
-Paragraph alignment applies to the whole paragraph. The document appearance
-setting remains the default when no local alignment marker is present. A link
-within a paragraph does not override that paragraph's alignment.
+Resource alignment markers are inside the bracketed syntax, so `>` is
+unambiguous there. Paragraph alignment applies to the whole paragraph. Its
+right-alignment marker remains `->` because a bare `>` at the start of a line
+could be mistaken for a block quote. The document appearance setting remains
+the default when no local alignment marker is present. A link within a
+paragraph does not override that paragraph's alignment.
 
 Examples:
 
@@ -99,6 +101,11 @@ Examples:
 -> Right-aligned paragraph.
 <> Justified paragraph.
 ```
+
+For external web links, a bare domain such as `example.com` is valid source
+text. W.mdx adds `https://` when opening a bare domain because a browser treats
+it as a relative path otherwise. Explicit schemes such as `https://`, `ftp://`,
+and `mailto:` are kept as entered.
 
 ### Headings
 
@@ -556,11 +563,13 @@ editing still require normal project/device verification.
 
 - The fixed-slot resource parser/formatter validates `[SOURCE|TITLE|SIZE|ALIGN]`
   and `![SOURCE|TITLE|SIZE|ALIGN]`, including escaped pipes, optional title
-  fallback, pixel/percentage sizing, and the four alignment markers.
+  fallback, pixel/percentage sizing, and the four resource alignment markers.
 - The CodeMirror parser recognizes valid resource references and embeds as one
   native token; escaped text and code spans remain literal.
 - Text resource links now render as clickable titles with optional alignment
-  when they stand alone; the link toolbar inserts the native form.
+  when they stand alone; the link toolbar inserts the native form. Resource
+  right alignment uses `>`; legacy `->` remains readable. Bare web domains are
+  stored without a scheme and opened using HTTPS.
 - Image/media rendering and edit dialogs, media insertion controls, and
   import/export are still pending. Table syntax and editing remain unchanged;
   its row splitter treats pipes inside a valid resource token as field

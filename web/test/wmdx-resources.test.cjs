@@ -7,17 +7,22 @@ test('parses a text link with fixed empty slots and standalone alignment', async
   const { parseWmdxResourceSyntax } = await import('../src/wmdxResources.js');
 
   assert.deepEqual(
-    parseWmdxResourceSyntax('[https://example.com| Visit site ||->]'),
+    parseWmdxResourceSyntax('[example.com| Visit site ||>]'),
     {
       embed: false,
-      source: 'https://example.com',
+      source: 'example.com',
       title: 'Visit site',
       displayTitle: 'Visit site',
       sizeText: '',
       size: { width: null, height: null, unit: null },
       alignment: 'right',
-      alignmentMarker: '->'
+      alignmentMarker: '>'
     }
+  );
+  assert.equal(
+    parseWmdxResourceSyntax('[https://example.com|Visit site||->]').alignment,
+    'right',
+    'older resource links using -> remain readable'
   );
 });
 
@@ -91,9 +96,31 @@ test('formats alignment names as keyboard-friendly markers', async () => {
     '[https://example.com|Visit site||<>]'
   );
   assert.equal(
+    formatWmdxResourceSyntax({
+      source: 'example.com',
+      title: 'Visit site',
+      alignment: 'right'
+    }),
+    '[example.com|Visit site||>]'
+  );
+  assert.equal(
     formatWmdxResourceSyntax({ embed: true, source: 'image.png' }),
     '![image.png|||]'
   );
+});
+
+test('adds HTTPS when opening bare web domains, not for local paths or schemes', async () => {
+  const { resolveWmdxResourceTarget } = await import('../src/wmdxResources.js');
+
+  assert.equal(resolveWmdxResourceTarget('example.com'), 'https://example.com/');
+  assert.equal(
+    resolveWmdxResourceTarget('example.com/page?q=1'),
+    'https://example.com/page?q=1'
+  );
+  assert.equal(resolveWmdxResourceTarget('ftp://example.com/file.zip'), 'ftp://example.com/file.zip');
+  assert.equal(resolveWmdxResourceTarget('mailto:user@example.com'), 'mailto:user@example.com');
+  assert.equal(resolveWmdxResourceTarget('notes/guide.md'), 'notes/guide.md');
+  assert.equal(resolveWmdxResourceTarget('#section'), '#section');
 });
 
 test('finds the visible title range while ignoring escaped field pipes', async () => {
@@ -124,6 +151,7 @@ test('link insertion and visual rendering use native resource syntax', () => {
   assert.match(main, /data-wmdx-link-target/);
   assert.match(main, /formatWmdxResourceSyntax\(\{\s*source: url/);
   assert.match(main, /modal-link-alignment/);
+  assert.match(main, /placeholder="example\.com" value=""/);
 });
 
 test('rejects malformed fields, invalid sizes, and sized text links', async () => {

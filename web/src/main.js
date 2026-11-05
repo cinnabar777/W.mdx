@@ -68,7 +68,8 @@ import {
   formatWmdxResourceSyntax,
   getWmdxResourceTitleEscapeRanges,
   getWmdxResourceTitleRange,
-  parseWmdxResourceSyntax
+  parseWmdxResourceSyntax,
+  resolveWmdxResourceTarget
 } from './wmdxResources.js';
 import { MdzipAttachmentWidget } from './mdzipAttachmentWidget.js';
 import { AudioPreviewWidget } from './audioPreviewWidget.js';
@@ -1253,7 +1254,7 @@ class WmdxResourceLinkWidget extends WidgetType {
   toDOM() {
     const link = document.createElement('a');
     link.className = 'cm-link';
-    link.href = this.target;
+    link.href = resolveWmdxResourceTarget(this.target);
     link.textContent = this.title;
     link.setAttribute('data-wmdx-link-target', this.target);
     if (this.alignment) {
@@ -1278,7 +1279,7 @@ function addWmdxResourceLinkDecorations({
     ? resource.alignment
     : null;
   const linkAttributes = {
-    href: resource.source,
+    href: resolveWmdxResourceTarget(resource.source),
     'data-wmdx-link-target': resource.source,
     ...(alignment
       ? { style: `display:block;text-align:${alignment};` }
@@ -6008,8 +6009,9 @@ class CodeMirrorAdapter {
         'a.cm-link[data-wmdx-link-target]'
       );
       if (!element || !this.view?.contentDOM?.contains(element)) return;
-      const target = element.getAttribute('data-wmdx-link-target');
-      if (!target) return;
+      const rawTarget = element.getAttribute('data-wmdx-link-target');
+      if (!rawTarget) return;
+      const target = resolveWmdxResourceTarget(rawTarget);
 
       event.preventDefault();
       event.stopPropagation();
@@ -7562,7 +7564,7 @@ export function openLinkInsertionDialog() {
     </div>
     <div class="modal-field-group" id="group-web-url">
       <label class="modal-label">Web URL</label>
-      <input type="text" id="modal-link-url" class="modal-input" placeholder="https://" value="https://" />
+      <input type="text" id="modal-link-url" class="modal-input" placeholder="example.com" value="" />
     </div>
     <div class="modal-field-group hidden" id="group-heading-picker" style="display:none;">
       <label class="modal-label">Target Heading</label>
@@ -7578,7 +7580,7 @@ export function openLinkInsertionDialog() {
         <option value="">Default</option>
         <option value="&lt;">Left</option>
         <option value="&gt;&lt;">Center</option>
-        <option value="-&gt;">Right</option>
+        <option value="&gt;">Right</option>
         <option value="&lt;&gt;">Justified</option>
       </select>
     </div>
@@ -7630,11 +7632,14 @@ export function openLinkInsertionDialog() {
     let replacement = '';
 
     if (kind === 'web') {
-      const url = urlInput.value.trim() || 'https://';
-      const label = displayText || url;
+      const url = urlInput.value.trim();
+      if (!url) {
+        urlInput.focus();
+        return;
+      }
       replacement = formatWmdxResourceSyntax({
         source: url,
-        title: label,
+        title: displayText,
         alignment: alignmentSelect.value
       });
     } else {

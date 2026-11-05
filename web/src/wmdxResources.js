@@ -1,8 +1,12 @@
 const ALIGNMENT_NAMES = new Map([
   ['<', 'left'],
   ['><', 'center'],
-  ['->', 'right'],
+  ['>', 'right'],
   ['<>', 'justify']
+]);
+
+const LEGACY_ALIGNMENT_NAMES = new Map([
+  ['->', 'right']
 ]);
 
 const ALIGNMENT_MARKERS = new Map(
@@ -80,6 +84,30 @@ export function getWmdxResourceFallbackTitle(source) {
   return basename || host || rawSource;
 }
 
+export function resolveWmdxResourceTarget(value) {
+  const source = String(value ?? '').trim();
+  if (!source) return source;
+
+  try {
+    new URL(source);
+    return source;
+  } catch {
+    // Bare web domains need a scheme when assigned to an HTML link.
+  }
+
+  if (/^(?:\/|\.\/|\.\.\/|#|\?)/.test(source)) return source;
+
+  try {
+    const url = new URL(`https://${source}`);
+    if (url.hostname.includes('.') || url.hostname === 'localhost') {
+      return url.href;
+    }
+  } catch {
+    // Keep document-relative paths and other non-URL resource names unchanged.
+  }
+  return source;
+}
+
 export function parseWmdxResourceSyntax(value) {
   const text = String(value ?? '');
   const match = /^(!?)\[([^\r\n]*)\]$/.exec(text);
@@ -96,7 +124,9 @@ export function parseWmdxResourceSyntax(value) {
   if (!size || (!match[1] && sizeText)) return null;
 
   const alignmentMarker = rawAlignment.trim();
-  const alignmentName = ALIGNMENT_NAMES.get(alignmentMarker);
+  const alignmentName =
+    ALIGNMENT_NAMES.get(alignmentMarker) ??
+    LEGACY_ALIGNMENT_NAMES.get(alignmentMarker);
   if (alignmentMarker && !alignmentName) return null;
 
   const title = rawTitle.trim();
