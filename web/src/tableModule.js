@@ -1,3 +1,5 @@
+import { parseWmdxResourceSyntax } from './wmdxResources.js';
+
 export function isEscapedPipe(text, index) {
   if (text[index] !== '|') return false;
   let backslashes = 0;
@@ -7,9 +9,41 @@ export function isEscapedPipe(text, index) {
   return backslashes % 2 === 1;
 }
 
+function resourceTokenEnd(text, start) {
+  const isEmbed = text[start] === '!' && text[start + 1] === '[';
+  let precedingBackslashes = 0;
+  for (let index = start - 1; index >= 0 && text[index] === '\\'; index -= 1) {
+    precedingBackslashes += 1;
+  }
+  if (
+    (!isEmbed && text[start] !== '[') ||
+    precedingBackslashes % 2 === 1 ||
+    (start > 0 && text[start - 1] === '!')
+  ) {
+    return -1;
+  }
+
+  let backslashes = 0;
+  for (let index = start + (isEmbed ? 2 : 1); index < text.length; index += 1) {
+    const character = text[index];
+    if (character === ']' && backslashes % 2 === 0) {
+      const end = index + 1;
+      return parseWmdxResourceSyntax(text.slice(start, end)) ? index : -1;
+    }
+    if (character === '\\') backslashes += 1;
+    else backslashes = 0;
+  }
+  return -1;
+}
+
 export function getUnescapedPipeOffsets(text) {
   const offsets = [];
   for (let i = 0; i < text.length; i++) {
+    const resourceEnd = resourceTokenEnd(text, i);
+    if (resourceEnd >= 0) {
+      i = resourceEnd;
+      continue;
+    }
     if (text[i] === '|' && !isEscapedPipe(text, i)) offsets.push(i);
   }
   return offsets;

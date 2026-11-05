@@ -159,3 +159,24 @@ test('an escaped pipe at row end remains content, not the table closing boundary
     'WYSIWYG table navigation uses escape-aware trailing-pipe detection'
   );
 });
+
+test('table cell splitting ignores only valid Wmdx resource field pipes', async () => {
+  const { TableModel, getUnescapedPipeOffsets } =
+    await import('../src/tableModule.js');
+  const source = [
+    '| Link | Embed |',
+    '| --- | --- |',
+    '| [https://example.com|Guide||] | ![images/sunset.png|Sunset|80%|><] |'
+  ].join('\n');
+
+  const row = source.split('\n')[2];
+  assert.equal(
+    getUnescapedPipeOffsets(row).length,
+    3,
+    'only the table-cell boundaries count as separators'
+  );
+  assert.deepEqual(TableModel.parse(source)?.rows, [
+    ['Link', 'Embed'],
+    ['[https://example.com|Guide||]', '![images/sunset.png|Sunset|80%|><]']
+  ]);
+});

@@ -560,7 +560,9 @@ editing still require normal project/device verification.
 - The CodeMirror parser recognizes valid resource references and embeds as one
   native token; escaped text and code spans remain literal.
 - Visual rendering, media/link edit dialogs, toolbar insertion, and import/export
-  are still pending. Table parsing and behavior remain unchanged.
+  are still pending. Table syntax and editing remain unchanged; its row splitter
+  treats pipes inside a valid resource token as field separators, not cell
+  boundaries.
 
 ### 0. Finish remaining specification details
 
