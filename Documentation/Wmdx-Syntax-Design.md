@@ -259,6 +259,10 @@ order with newly created footnotes. Render references and definitions with
 their generated number in the footnotes section. Paired `^text^` remains
 superscript syntax, and `\^` represents a literal caret.
 
+In editable views, keep a native footnote marker visible while the cursor is in
+it. This lets the user type a reuse number after `^`; format the reference after
+the cursor leaves it.
+
 ```text
 This sentence creates footnote 1.^
 This refers to footnote 1 again.^1
@@ -532,7 +536,8 @@ a separate later phase.
   their original source.
 - Native `±type`, `±type-`, and `±type+` callouts support editable titles,
   Return-driven body indentation, nested indentation, blank paragraphs, and
-  dedenting.
+  dedenting. Foldable callouts use a leading `+`/`−` control, and the visible
+  heading toggles the body while editable title text still receives the caret.
 - Native task markers `[ ]` and `[x]` render as interactive checkboxes without
   a leading list bullet.
 - Native footnote references and definitions support automatic numbering and

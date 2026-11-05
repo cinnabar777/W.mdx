@@ -67,10 +67,12 @@ test('Callout widget structure and eq implementation', () => {
 test('callout title wraps after its icon and keeps a unified rounded card background', () => {
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[\s\S]*?display:\s*flex[\s\S]*?position:\s*relative/);
-  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*inline-flex[\s\S]*?position:\s*static/);
-  assert.match(indexHtml, /\.cm-callout-icon\s*\{[\s\S]*?position:\s*static[\s\S]*?flex:\s*0 0 16px/);
+  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*inline-flex[\s\S]*?align-items:\s*center[\s\S]*?position:\s*static/);
+  assert.match(indexHtml, /\.cm-callout-icon\s*\{[\s\S]*?position:\s*static[\s\S]*?flex:\s*0 0 16px[\s\S]*?align-self:\s*center/);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[\s\S]*?flex:\s*1 1 auto/);
-  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[\s\S]*?position:\s*absolute/);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[\s\S]*?position:\s*static[\s\S]*?width:\s*24px/);
+  assert.ok(mainSource.includes("btn.textContent = currentlyFolded ? '+' : '−'"), 'Fold state uses a leading plus or minus indicator');
+  assert.ok(mainSource.includes("span.addEventListener('click', event => {"), 'The callout heading itself toggles its fold state');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title\s*\{[\s\S]*?border-top-left-radius/);
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-body:not\(:has\(\+ \.cm-line\.cm-callout-body\)\)/);
   assert.match(indexHtml, /--callout-type-header-bg:[\s\S]*?var\(--callout-bg-color/);
@@ -172,17 +174,15 @@ test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => 
   assert.ok(mainSource.includes('cm-callout-title-container'), 'Title container class exists');
   assert.ok(mainSource.includes("btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Fold button has an accessible expand/collapse label');
   assert.ok(mainSource.includes("btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true')"), 'Fold button exposes its current state');
-  assert.ok(mainSource.includes("btn.addEventListener('click', toggleFold)"), 'Chevron button toggles callout folding');
-  assert.ok(!mainSource.includes("iconSpan.addEventListener('click', toggleFold)"), 'Type icon does not toggle folding');
+  assert.ok(mainSource.includes("btn.addEventListener('click', toggleFold)"), 'Leading plus/minus control toggles callout folding');
   const titleWidget = mainSource.slice(
     mainSource.indexOf('class CalloutTitleWidget'),
     mainSource.indexOf('export function cleanHeadingText')
   );
-  assert.ok(!titleWidget.includes("span.addEventListener('keydown'"), 'The whole title row is not a fold control');
+  assert.ok(titleWidget.includes("span.addEventListener('click', event => {"), 'The heading icon and generated title toggle the callout');
   assert.ok(mainSource.includes('foldEffect.of'), 'Title container dispatches foldEffect');
   assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
-  assert.match(mainSource, /foldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Folding refreshes the title widget so the arrow reflects the folded state');
-  assert.match(mainSource, /unfoldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Unfolding refreshes the title widget so the arrow reflects the expanded state');
+  assert.match(mainSource, /unfoldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\)\s*:\s*foldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Toggling refreshes the title widget so the leading indicator reflects its folded state');
   assert.match(mainSource, /foldEffect\.of\(\{ from: info\.bodyFrom, to: info\.bodyTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Callouts that start collapsed also refresh their initial arrow state');
 });
 
@@ -356,9 +356,9 @@ test('callout title layout and editing behavior match each view', () => {
     'Source view leaves the callout Markdown visible'
   );
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
-  assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important[^}]*align-self:\s*center\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[^}]*flex:\s*1 1 auto\s*!important/s);
-  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*absolute\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*static\s*!important[^}]*width:\s*24px\s*!important/s);
   assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-list-item\[data-callout-depth\]/, 'Nested callout list items retain list indentation');
@@ -376,8 +376,9 @@ test('callout title layout and editing behavior match each view', () => {
   assert.ok(
     mainSource.includes('data-wmdx-callout-title-from') &&
       mainSource.includes('handleWmdxCalloutTitleClick') &&
-      mainSource.includes('view.posAtCoords({ x: event.clientX, y: event.clientY })'),
-    'Tapping a native callout title places the cursor within its editable source text'
+      mainSource.includes('view.posAtCoords({ x: event.clientX, y: event.clientY })') &&
+      mainSource.includes('data-wmdx-callout-fold-from'),
+    'Tapping an editable callout title places the cursor there and toggles the callout'
   );
 });
 

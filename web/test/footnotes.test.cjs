@@ -61,6 +61,59 @@ test('native footnotes auto-number new notes and reuse existing numbers', async 
   );
 });
 
+test('WYSIWYG leaves native footnote markers editable until the cursor leaves', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { buildFootnoteDecorations } = await import('../src/footnotes.js');
+  const doc = 'Reuse.^2\n\n^ First definition.\n^ Second definition.';
+  const referenceFrom = doc.indexOf('^2');
+  const activeState = EditorState.create({
+    doc,
+    selection: { anchor: referenceFrom + 2 }
+  });
+  const active = buildFootnoteDecorations(activeState, { mode: 'wysiwyg' });
+  const activeReferenceDecorations = [];
+  active.decorations.between(referenceFrom, referenceFrom + 2, (from, to, decoration) => {
+    if (from === referenceFrom && to === referenceFrom + 2) {
+      activeReferenceDecorations.push(decoration);
+    }
+  });
+  assert.equal(activeReferenceDecorations.length, 0);
+
+  const inactiveState = EditorState.create({ doc, selection: { anchor: 0 } });
+  const inactive = buildFootnoteDecorations(inactiveState, { mode: 'wysiwyg' });
+  const inactiveReferenceDecorations = [];
+  inactive.decorations.between(referenceFrom, referenceFrom + 2, (from, to, decoration) => {
+    if (from === referenceFrom && to === referenceFrom + 2) {
+      inactiveReferenceDecorations.push(decoration);
+    }
+  });
+  assert.equal(inactiveReferenceDecorations.length, 1);
+
+  const unfinishedDoc = 'New note.^\n\n^ First definition.';
+  const bareMarker = unfinishedDoc.indexOf('^');
+  const unfinished = buildFootnoteDecorations(
+    EditorState.create({
+      doc: unfinishedDoc,
+      selection: { anchor: bareMarker + 1 }
+    }),
+    { mode: 'wysiwyg' }
+  );
+  let unfinishedMarkerDecorated = false;
+  unfinished.decorations.between(bareMarker, bareMarker + 1, (from, to) => {
+    if (from === bareMarker && to === bareMarker + 1) {
+      unfinishedMarkerDecorated = true;
+    }
+  });
+  assert.equal(unfinishedMarkerDecorated, false);
+});
+
+test('footnote decorations refresh after the cursor leaves a native marker', () => {
+  assert.match(
+    source,
+    /const revealRefresh =\s*currentEditorMode !== 'source' &&\s*tr\.selectionSet &&\s*current\.hasFootnotes/
+  );
+});
+
 test('native footnote markers are ignored in tables and code', async () => {
   const { parseFootnotes } = await import('../src/footnotes.js');
   const source = 'Table cell ^\n\n```\nText.^\n^ code definition\n```';

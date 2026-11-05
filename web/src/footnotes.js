@@ -366,14 +366,22 @@ function buildFootnoteDecorationsFromParsed(
   }
 
   const activeSelection = state.selection.main;
-  const shouldReveal = range => mode === 'live_preview' && (
-    (activeSelection.empty &&
-      activeSelection.head >= range.from &&
-      activeSelection.head <= range.to) ||
-    (!activeSelection.empty &&
-      activeSelection.from < range.to &&
-      activeSelection.to > range.from)
+  const nativeReferences = new Set(
+    footnotes.references.filter(reference => reference.syntax === 'wmdx')
   );
+  const shouldReveal = range => {
+    const cursorInside = activeSelection.empty &&
+      activeSelection.head >= range.from &&
+      activeSelection.head <= range.to;
+    const selectionTouches = !activeSelection.empty &&
+      activeSelection.from < range.to &&
+      activeSelection.to > range.from;
+
+    return (
+      (mode === 'live_preview' && (cursorInside || selectionTouches)) ||
+      (mode !== 'source' && nativeReferences.has(range) && cursorInside)
+    );
+  };
   const decorations = [];
   const hiddenSyntaxRanges = [];
   const referencesByLabel = new Map();

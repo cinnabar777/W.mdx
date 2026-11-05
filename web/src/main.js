@@ -866,6 +866,48 @@ class CalloutTitleWidget extends WidgetType {
       (this.foldMarker ? ' is-foldable' : '') +
       (this.titleIsInSource ? ' has-source-title' : '');
 
+    const toggleFold = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.foldFrom == null || this.foldTo == null || this.foldTo <= this.foldFrom) {
+        return;
+      }
+
+      const liveFolds = foldedRanges(view.state);
+      let isFoldedNow = false;
+      liveFolds.between(this.foldFrom, this.foldTo, (from, to) => {
+        if (from === this.foldFrom && to === this.foldTo) isFoldedNow = true;
+      });
+
+      view.dispatch({
+        effects: [
+          isFoldedNow
+            ? unfoldEffect.of({ from: this.foldFrom, to: this.foldTo })
+            : foldEffect.of({ from: this.foldFrom, to: this.foldTo }),
+          heightMapRefreshEffect.of(null)
+        ]
+      });
+    };
+
+    if (this.foldMarker) {
+      const btn = document.createElement('button');
+      btn.className = 'cm-callout-fold-btn';
+      btn.type = 'button';
+      btn.tabIndex = 0;
+      btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
+      btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
+      btn.textContent = currentlyFolded ? '+' : '−';
+      btn.addEventListener('click', toggleFold);
+      span.appendChild(btn);
+      span.addEventListener('click', event => {
+        const clickedElement = event.target instanceof Element
+          ? event.target
+          : event.target?.parentElement;
+        if (clickedElement?.closest('.cm-callout-fold-btn')) return;
+        toggleFold(event);
+      });
+    }
+
     const iconOverride = calloutTypeIconOverrides[this.type];
     const allowedIcons = ['info', 'question', 'faq', 'todo', 'example', 'note', 'tip', 'warning', 'important', 'danger'];
     const activeIconKey = (iconOverride && iconOverride !== 'default' && allowedIcons.includes(iconOverride))
@@ -884,50 +926,6 @@ class CalloutTitleWidget extends WidgetType {
       titleSpan.className = 'cm-callout-title-text';
       titleSpan.textContent = this.title;
       span.appendChild(titleSpan);
-    }
-
-    if (this.foldMarker) {
-      const btn = document.createElement('button');
-      btn.className = 'cm-callout-fold-btn';
-      btn.type = 'button';
-      btn.tabIndex = 0;
-      btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
-      btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
-      btn.innerHTML = currentlyFolded ? svgIcons.chevronRight : svgIcons.chevronDown;
-
-      span.appendChild(btn);
-
-      const toggleFold = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (this.foldFrom != null && this.foldTo != null && this.foldTo > this.foldFrom) {
-          const liveFolds = foldedRanges(view.state);
-          let isFoldedNow = false;
-          liveFolds.between(this.foldFrom, this.foldTo, (from, to) => {
-            if (from === this.foldFrom && to === this.foldTo) {
-              isFoldedNow = true;
-            }
-          });
-
-          if (isFoldedNow) {
-            view.dispatch({
-              effects: [
-                unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }),
-                heightMapRefreshEffect.of(null)
-              ]
-            });
-          } else {
-            view.dispatch({
-              effects: [
-                foldEffect.of({ from: this.foldFrom, to: this.foldTo }),
-                heightMapRefreshEffect.of(null)
-              ]
-            });
-          }
-        }
-      };
-
-      btn.addEventListener('click', toggleFold);
     }
 
     rememberWidgetHeight(view, this.heightKey, span, 'callout_title', this.heightEstimate);
@@ -2353,6 +2351,18 @@ function wmdxCalloutPositionIsExcluded(state, position) {
   return false;
 }
 
+function calloutFoldToggleEffect(view, from, to) {
+  if (!Number.isInteger(from) || !Number.isInteger(to) || to <= from) return null;
+
+  let isFolded = false;
+  foldedRanges(view.state).between(from, to, (foldFrom, foldTo) => {
+    if (foldFrom === from && foldTo === to) isFolded = true;
+  });
+  return isFolded
+    ? unfoldEffect.of({ from, to })
+    : foldEffect.of({ from, to });
+}
+
 function handleWmdxCalloutTitleClick(view, event) {
   const eventTarget = event.target instanceof Element
     ? event.target
@@ -2370,9 +2380,17 @@ function handleWmdxCalloutTitleClick(view, event) {
   const position = mapped == null || mapped < from || mapped > to
     ? to
     : mapped;
+  const foldFrom = Number(titleElement.dataset.wmdxCalloutFoldFrom);
+  const foldTo = Number(titleElement.dataset.wmdxCalloutFoldTo);
+  const foldEffect = calloutFoldToggleEffect(view, foldFrom, foldTo);
   event.preventDefault();
   event.stopPropagation();
-  view.dispatch({ selection: EditorSelection.cursor(position) });
+  view.dispatch({
+    selection: EditorSelection.cursor(position),
+    ...(foldEffect
+      ? { effects: [foldEffect, heightMapRefreshEffect.of(null)] }
+      : {})
+  });
   view.focus();
   return true;
 }
@@ -3309,7 +3327,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`,
             attributes: {
               'data-wmdx-callout-title-from': String(info.titleStart),
-              'data-wmdx-callout-title-to': String(line.to)
+              'data-wmdx-callout-title-to': String(line.to),
+              ...(info.foldMarker
+                ? {
+                    'data-wmdx-callout-fold-from': String(info.bodyFrom),
+                    'data-wmdx-callout-fold-to': String(info.bodyTo)
+                  }
+                : {})
             }
           }).range(info.titleStart, line.to));
         }
@@ -3382,7 +3406,7 @@ const footnoteStateField = StateField.define({
   update(current, tr) {
     const refresh = tr.effects.some(effect => effect.is(typographySettingsEffect));
     const revealRefresh =
-      currentEditorMode === 'live_preview' &&
+      currentEditorMode !== 'source' &&
       tr.selectionSet &&
       current.hasFootnotes;
     if (
@@ -4475,7 +4499,13 @@ function buildHeightMapValue(state) {
         class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`,
         attributes: {
           'data-wmdx-callout-title-from': String(info.titleStart),
-          'data-wmdx-callout-title-to': String(line.to)
+          'data-wmdx-callout-title-to': String(line.to),
+          ...(info.foldMarker
+            ? {
+                'data-wmdx-callout-fold-from': String(info.bodyFrom),
+                'data-wmdx-callout-fold-to': String(info.bodyTo)
+              }
+            : {})
         }
       }).range(info.titleStart, line.to));
     }
