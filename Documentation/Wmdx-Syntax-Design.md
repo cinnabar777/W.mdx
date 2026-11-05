@@ -245,7 +245,7 @@ conversion behavior, and only then include it in an implementation plan.
 | Bold, italic, underline, strike, superscript, subscript, highlight, and inline code | Existing Wmdx inline formatting markers |
 | Links, images, audio, video, and supported documents | The unified resource syntax; map URL, label/alt text, size, and alignment where present |
 | `text-align`, and media width/height | Paragraph or resource alignment; resource size with proportions preserved |
-| `figure`/`figcaption` when its caption matches the image title | The resource title, which serves as alt text and visible caption |
+| `figure`/`figcaption` when its caption matches the image alt text | The resource title, which serves as alt text and visible caption |
 | `pre`/`code` | Fenced code, preserving the code text and a recognized language |
 
 ### Gaps that need syntax or conversion decisions
@@ -254,20 +254,22 @@ Every treatment in this table is tentative:
 
 | HTML feature | Tentative treatment to revisit |
 | --- | --- |
-| `details`/`summary` | A neutral collapsible block using the existing fold behavior, tentatively `> [!details]- Summary` followed by quoted content |
-| Definition lists (`dl`/`dt`/`dd`) | `Term` followed by `: Definition`, supporting multiple term/definition pairs |
-| Different image alt text and figure caption | Keep the title as both by default; add an optional `caption=...` field after `ALIGN` only when they differ |
-| Responsive images (`picture`/`srcset`) | Add a recognizable `srcset=...` option after `ALIGN`, keeping `SOURCE` as the fallback |
-| HTML comments | Convert to a text-only comment marker, tentatively Obsidian's `%%comment%%` form |
-| Named anchors (`id`/`name`) not attached to headings | Add a small native anchor target marker; candidate `.anchor name`, with links targeting `#name` |
+| `details`/`summary` | Tentative recommendation: use a distinct, neutral disclosure block that reuses fold behavior. Do not map it directly to a callout by default: Wmdx callouts have type-specific styling and icons. The native marker remains undecided. |
+| Definition lists (`dl`/`dt`/`dd`) | Tentative candidate: a term paragraph followed by definition lines beginning `: `, such as `Term` then `: Definition`; a new term paragraph starts the next group |
+| Different image alt text and figure caption | Tentative candidate: keep `TITLE` as alt text and add `caption=...` after `ALIGN` only when the visible caption differs |
+| Decorative images with `alt=""` | The current empty-title rule falls back to the filename, so it cannot represent intentionally empty alt text. Consider an explicit option such as `alt=none`; not approved |
+| Responsive images (`picture`/`srcset`) | `srcset` and `picture` can contain multiple candidates, media conditions, and MIME types; a single `srcset=...` option would not model them fully. Tentative first-pass policy: keep the `img` fallback source and report dropped alternatives. Design multi-source syntax only if lossless responsive-image support is required |
+| HTML comments | Tentative first-pass policy: omit non-rendered comments and report that they were skipped; do not expose hidden source notes as visible text. If Wmdx needs hidden authoring notes, design that separately rather than adopting Obsidian's `%%` syntax automatically |
+| Named anchors (`id`/`name`) not attached to headings | Preserve the target and links to `#name`; a native target marker is needed. Candidate `.anchor name`, but its exact spelling remains undecided |
 | Custom CSS colors and typography | Map properties with an existing Wmdx equivalent. For exact custom values, define a value-based native style form; keep the agreed Unicode subscript selectors for palette styles |
-| `script` and `style` blocks | Preserve their contents as fenced code with a language label; never execute scripts or apply imported CSS |
-| Tables with `rowspan`/`colspan` | No table syntax change is proposed. Decide how conversion preserves cell text while respecting the existing table limits |
-| Forms, iframes, custom elements, and other active or unknown content | Convert supported media to resource syntax; do not execute active behavior. Define a per-feature conversion that preserves readable content rather than retaining raw tags |
+| `script` and `style` blocks | Convert supported CSS properties to native formatting; never execute scripts or apply imported CSS. Omit non-rendered scripts and unsupported stylesheet rules with a conversion warning, rather than inserting them as visible code by default |
+| Tables with `rowspan`/`colspan` | Do not change table syntax. Tentative conversion: keep each source value once in the first covered cell, leave covered cells empty, and report that merged layout was flattened |
+| Forms, iframes, custom elements, and other active or unknown content | Convert recognized media to resource syntax and retain readable labels/text and ordinary links. Do not preserve interactive behavior, execute active content, or retain raw tags; report meaningful losses |
 
-HTML document metadata such as `<title>` and `<meta>` also needs a file-conversion
-policy; it is not ordinary body text. The exact import scope and any new syntax
-must be agreed before implementation.
+HTML document metadata such as `<title>` and `<meta>` is not ordinary body text.
+Tentative policy: use `<title>` as the suggested output filename and report
+other metadata that has no Wmdx equivalent instead of inserting it into the
+document body.
 
 ## Decisions still to finalize
 
