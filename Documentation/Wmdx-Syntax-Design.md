@@ -233,10 +233,11 @@ remain to be assigned after checking the existing keymap. Markdown export is a
 separate action that selects CommonMark, GFM, or Obsidian as the destination.
 Existing HTML export remains supported.
 
-HTML input must not be retained as raw HTML in a Wmdx document. Convert
-recognized elements to existing Wmdx syntax. When an HTML feature has no
-suitable Wmdx equivalent, identify the feature and propose a native syntax
-before implementing that conversion.
+HTML input is document-content conversion, not webpage-styling import. Do not
+read or apply CSS stylesheets or inline `style` attributes, and never execute
+scripts. Convert recognized HTML structure and semantic formatting elements to
+Wmdx syntax. When document content has no suitable Wmdx equivalent, identify it
+and propose a native syntax before implementing that conversion.
 
 ## HTML import inventory — tentative ideas to revisit individually
 
@@ -258,7 +259,7 @@ conversion behavior, and only then include it in an implementation plan.
 | Block quotes and simple tables | Existing `>` quotes and current pipe tables; do not change table syntax or editing behavior |
 | Bold, italic, underline, strike, superscript, subscript, highlight, and inline code | Existing Wmdx inline formatting markers |
 | Links, images, audio, video, and supported documents | The unified resource syntax; map URL, label/alt text, size, and alignment where present |
-| `text-align`, and media width/height | Paragraph or resource alignment; resource size with proportions preserved |
+| HTML media `width`/`height` attributes | Resource size with proportions preserved; do not derive dimensions from CSS |
 | `figure`/`figcaption` when its caption matches the image alt text | The resource title, which serves as alt text and visible caption |
 | `pre`/`code` | Fenced code, preserving the code text and a recognized language |
 
@@ -275,8 +276,8 @@ treatments are tentative:
 | Responsive images (`picture`/`srcset`) | **Agreed direction:** import the file path from `<img src>` as one Wmdx resource and let Wmdx sizing control its display. Ignore alternate `srcset` and `<picture><source>` candidates; do not add multi-source syntax for responsive display variants |
 | HTML comments | **Agreed direction:** use `/* comment */` for both inline and multiline Wmdx comments, with the same opening and closing markers. Convert HTML `<!-- ... -->` and Obsidian `%% ... %%` comments to this native form and map them back on export. Recognize comment markers before italic syntax; do not use backslash as a comment marker |
 | Named anchors (`id`/`name`) | **Agreed direction:** a standalone `#id` line declares a named target, and links refer to it with `#id`. Headings remain targets automatically. Tags remain `#tag` in tag context. Import/export converters translate Wmdx anchors to each target format's syntax |
-| Custom CSS colors and typography | Map supported properties to Wmdx formatting. Preserve arbitrary color values with the general custom-color syntax above, not an HTML-import-only marker. Keep the existing Unicode subscript palette selectors unchanged |
-| `script` and `style` blocks | Convert supported CSS properties to native formatting; never execute scripts or apply imported CSS. Omit non-rendered scripts and unsupported stylesheet rules with a conversion warning, rather than inserting them as visible code by default |
+| CSS stylesheets, `<style>` blocks, and `style` attributes | Do not import or apply them; CSS is not document content. Convert semantic HTML formatting elements instead |
+| `<script>` blocks | Never execute them; omit script behavior as non-document content |
 | Tables with `rowspan`/`colspan` | Do not change table syntax. Tentative conversion: keep each source value once in the first covered cell, leave covered cells empty, and report that merged layout was flattened |
 | Forms, iframes, custom elements, and other active or unknown content | Convert recognized media to resource syntax and retain readable labels/text and ordinary links. Do not preserve interactive behavior, execute active content, or retain raw tags; report meaningful losses |
 
