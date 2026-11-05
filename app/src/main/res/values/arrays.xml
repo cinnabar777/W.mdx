@@ -38,6 +38,16 @@
         <item>commonmark</item>
         <item>obsidian</item>
     </string-array>
+    <string-array name="heading_authoring_syntax_entries">
+        <item>Wmdx Decimal</item>
+        <item>Hash (#)</item>
+        <item>Underline (Setext)</item>
+    </string-array>
+    <string-array name="heading_authoring_syntax_values">
+        <item>wmdx</item>
+        <item>hash</item>
+        <item>setext</item>
+    </string-array>
     <string-array name="pref_theme_entries">
         <item>Dark AMOLED (Black)</item>
         <item>Light Mode</item>

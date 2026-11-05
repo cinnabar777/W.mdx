@@ -72,6 +72,20 @@ the syntax the current app supports.
 - Obsidian links keep Obsidian's target-first order, `[[TARGET|ALIAS]]`.
   CommonMark internal links use `[ALIAS](#heading)` or a relative file path.
 
+### Heading syntax settings (implemented)
+
+- Heading recognition has one app-wide enable switch, separate switches for
+  Wmdx, hash/ATX, and Setext syntax, and one preferred authoring syntax.
+- Wmdx headings use `.1` through `.6`. Hash/ATX headings use `#` through
+  `######` and are shared by CommonMark, GFM, and Obsidian. Setext headings use
+  `===` for level 1 and `---` for level 2; Setext cannot represent levels 3–6.
+- All three forms are enabled by default, with Wmdx as the default authoring
+  syntax. The heading toolbar and shortcuts insert the preferred enabled form.
+  Selecting Setext disables heading levels 3–6 in the heading menu and
+  shortcuts. Auto Heading follows the selected authoring syntax.
+- Disabled heading flavors remain visible as literal source. These preferences
+  do not affect CommonMark, GFM, Obsidian, or HTML import/export conversion.
+
 ## Agreed native syntax
 
 ### Resource references, links, and embeds

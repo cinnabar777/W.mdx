@@ -291,8 +291,8 @@ test('toolbar insertion opens the footnote dialog and all footnote settings reac
   assert.match(source, /const marker = '\^'/, 'new toolbar footnotes use the native marker');
   assert.match(source, /Reuse footnote \$\{label\}/, 'the toolbar can link to an existing numbered note');
   assert.match(source, /cmdName === 'todoList'\) cmToggleLinePrefix\(view, '\[ \] '\)/);
-  assert.match(source, /val === 'heading1'\) cmToggleLinePrefix\(view, '\.1 '\)/);
-  assert.match(source, /val === 'heading6'\) cmToggleLinePrefix\(view, '\.6 '\)/);
+  assert.match(source, /applyHeadingCommand\(view, val\)/);
+  assert.match(source, /getHeadingPrefix\(level, syntax\)/);
   assert.match(source, /footnoteStateField/);
   assert.match(source, /--footnote-text-color/);
   assert.match(source, /setCssVar\('--footnote-bg-color', androidArgbToCss/);

@@ -754,7 +754,12 @@ object PreferenceResetHelper {
                 key == "pref_links_commonmark_enabled" ||
                 key == "pref_links_reference_enabled" ||
                 key == "pref_links_obsidian_enabled" ||
-                key == "pref_links_wmdx_enabled" -> true
+                key == "pref_links_wmdx_enabled" ||
+                key == "pref_heading_syntax_enabled" ||
+                key == "pref_heading_syntax_wmdx_enabled" ||
+                key == "pref_heading_syntax_hash_enabled" ||
+                key == "pref_heading_syntax_setext_enabled" -> true
+            key == "pref_heading_authoring_syntax" -> "wmdx"
             key.startsWith("pref_underline_") && key.endsWith("_color") -> "default"
             key.startsWith("pref_underline_") && key.endsWith("_thickness") -> 1
             else -> null

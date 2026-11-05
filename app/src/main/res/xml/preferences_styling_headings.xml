@@ -41,6 +41,44 @@
             app:summary="Tap to pick a font file (.ttf, .otf, .woff, .woff2)" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Heading Syntax">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_heading_syntax_enabled"
+            app:title="Enable Headings"
+            app:summary="Recognize and render heading syntax"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_heading_syntax_wmdx_enabled"
+            app:title="Wmdx Decimal Headings"
+            app:summary="Recognize .1 through .6"
+            app:defaultValue="true"
+            app:dependency="pref_heading_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_heading_syntax_hash_enabled"
+            app:title="Hash Headings"
+            app:summary="Recognize # through ######"
+            app:defaultValue="true"
+            app:dependency="pref_heading_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_heading_syntax_setext_enabled"
+            app:title="Underlined Headings"
+            app:summary="Recognize === for level 1 and --- for level 2"
+            app:defaultValue="true"
+            app:dependency="pref_heading_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_heading_authoring_syntax"
+            app:title="Preferred Heading Syntax"
+            app:summary="Syntax inserted by heading toolbar and shortcuts"
+            android:entries="@array/heading_authoring_syntax_entries"
+            android:entryValues="@array/heading_authoring_syntax_values"
+            app:defaultValue="wmdx"
+            app:dependency="pref_heading_syntax_enabled" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Typography &amp; Alignment">
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_heading_align"

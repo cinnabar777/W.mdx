@@ -69,6 +69,14 @@ import {
   parseObsidianLinkSyntax
 } from './wmdxLinkSyntax.mjs';
 import {
+  getHeadingFlavor,
+  getHeadingLevel,
+  getHeadingPrefix,
+  isHeadingFlavorEnabled,
+  isHeadingLevelAvailable,
+  normalizeHeadingSyntaxSettings
+} from './headingSyntax.mjs';
+import {
   extractMarkdownAudioLinks,
   extractMarkdownVideoLinks,
   formatMarkdownAudioLink,
@@ -332,6 +340,18 @@ let customHotkeys = {
 };
 
 let linkSyntaxSettings = normalizeLinkSyntaxSettings();
+let headingSyntaxSettings = normalizeHeadingSyntaxSettings();
+
+function isHeadingFlavorEnabledNow(flavor) {
+  return isHeadingFlavorEnabled(headingSyntaxSettings, flavor);
+}
+
+function getHeadingFlavorAtNode(node, doc) {
+  return getHeadingFlavor(
+    node?.name,
+    doc?.sliceString(node.from, node.to) ?? ''
+  );
+}
 
 function isLinkFlavorEnabledNow(flavor) {
   return isLinkFlavorEnabled(linkSyntaxSettings, flavor);
@@ -3042,28 +3062,41 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             return false;
           }
 
-          const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
-          const setextHeading = /^SetextHeading([12])$/.exec(node.name);
-          const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
+          const headingLevel = getHeadingLevel(node.name);
+          const headingEnabled = isHeadingFlavorEnabledNow(
+            getHeadingFlavorAtNode(node, doc)
+          );
 
-          if (headingLevel && !isPureWysiwyg) {
+          if (headingLevel && headingEnabled && !isPureWysiwyg) {
             addLineClass(
               line.from,
               'cm-heading',
               `cm-heading-${headingLevel}`
             );
+          } else if (headingLevel && !headingEnabled && !isPureWysiwyg) {
+            addLineClass(line.from, 'cm-heading-syntax-literal');
           }
 
           if (node.name === 'HeaderMark' && !isNodeActive) {
-            if (!isPureWysiwyg) {
+            if (headingEnabled && !isPureWysiwyg) {
               const end = Math.min(node.to + 1, line.to);
               if (end > node.from && end <= line.to) {
                 hideSyntax(node.from, end);
               }
+            } else if (!headingEnabled && !isPureWysiwyg) {
+              addLineClass(line.from, 'cm-heading-syntax-literal');
             }
           }
-          if (node.name === 'WmdxHeadingMarker' && !isNodeActive && !isPureWysiwyg) {
-            hideSyntax(node.from, node.to);
+          if (
+            node.name === 'WmdxHeadingMarker' &&
+            !isNodeActive &&
+            !isPureWysiwyg
+          ) {
+            if (isHeadingFlavorEnabledNow('wmdx')) {
+              hideSyntax(node.from, node.to);
+            } else {
+              addLineClass(line.from, 'cm-heading-syntax-literal');
+            }
           }
 
           if (node.name === 'StrongEmphasis') {
@@ -3715,6 +3748,24 @@ export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
 const toolbarLinePrefixPattern =
   /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|#{1,6}[ \t]+|\.([1-6])[ \t]+|> ?)/;
 
+function getSetextHeadingAtLine(state, lineNumber) {
+  let match = null;
+  syntaxTree(state).iterate({
+    enter(node) {
+      const level = getHeadingLevel(node.name);
+      if (
+        node.name.startsWith('SetextHeading') &&
+        level &&
+        state.doc.lineAt(node.from).number === lineNumber
+      ) {
+        match = { from: node.from, to: node.to, level };
+        return false;
+      }
+    }
+  });
+  return match;
+}
+
 function cmToggleLinePrefix(view, prefix) {
   if (!view) return;
   const selection = view.state.selection.main;
@@ -3722,12 +3773,31 @@ function cmToggleLinePrefix(view, prefix) {
   const lineText = line.text;
   const indent = /^[ \t]*/.exec(lineText)?.[0] ?? '';
   const content = lineText.slice(indent.length);
+  const setextHeading = getSetextHeadingAtLine(view.state, line.number);
 
   if (prefix === '') {
     const cleanText = content.replace(toolbarLinePrefixPattern, '');
     view.dispatch({
-      changes: { from: line.from, to: line.to, insert: indent + cleanText }
+      changes: {
+        from: line.from,
+        to: setextHeading?.to ?? line.to,
+        insert: indent + cleanText
+      }
     });
+    return;
+  }
+
+  if (setextHeading) {
+    const cleanText = content.replace(toolbarLinePrefixPattern, '');
+    const newText = indent + prefix + cleanText;
+    view.dispatch({
+      changes: { from: line.from, to: setextHeading.to, insert: newText },
+      selection: {
+        anchor: line.from + indent.length + prefix.length,
+        head: line.from + indent.length + prefix.length
+      }
+    });
+    focusEditorAfterCommand(view);
     return;
   }
 
@@ -3751,6 +3821,67 @@ function cmToggleLinePrefix(view, prefix) {
     });
   }
   focusEditorAfterCommand(view);
+}
+
+function applySetextHeading(view, level) {
+  if (!view || (level !== 1 && level !== 2)) return false;
+  const state = view.state;
+  const selection = state.selection.main;
+  const line = state.doc.lineAt(selection.head);
+  const indent = /^[ \t]*/.exec(line.text)?.[0] ?? '';
+  const content = line.text.slice(indent.length);
+  const setextHeading = getSetextHeadingAtLine(state, line.number);
+  const prefix = getHeadingPrefix(level, 'setext');
+  if (!prefix) return false;
+
+  if (setextHeading?.level === level) {
+    view.dispatch({
+      changes: { from: line.from, to: setextHeading.to, insert: line.text },
+      selection: {
+        anchor: line.from + indent.length,
+        head: line.from + indent.length
+      }
+    });
+    focusEditorAfterCommand(view);
+    return true;
+  }
+
+  const cleanTitle = content.replace(toolbarLinePrefixPattern, '');
+  const titleLength = Math.max(1, cleanTitle.trim().length);
+  const underline = prefix.repeat(titleLength);
+  const replacement = `${indent}${cleanTitle}\n${indent}${underline}`;
+  view.dispatch({
+    changes: {
+      from: line.from,
+      to: setextHeading?.to ?? line.to,
+      insert: replacement
+    },
+    selection: {
+      anchor: line.from + indent.length,
+      head: line.from + indent.length
+    }
+  });
+  focusEditorAfterCommand(view);
+  return true;
+}
+
+function applyHeadingCommand(view, value) {
+  if (!view || !headingSyntaxSettings.enabled) return false;
+  if (value === 'paragraph') {
+    cmToggleLinePrefix(view, '');
+    return true;
+  }
+
+  const match = /^heading([1-6])$/.exec(String(value ?? ''));
+  if (!match) return false;
+  const level = Number(match[1]);
+  if (!isHeadingLevelAvailable(headingSyntaxSettings, level)) return false;
+  const syntax = headingSyntaxSettings.authoringSyntax;
+  if (syntax === 'setext') return applySetextHeading(view, level);
+  const prefix = getHeadingPrefix(level, syntax);
+  if (!prefix) return false;
+  cmToggleLinePrefix(view, prefix);
+  return true;
 }
 
 function cmWrapSelection(view, before, after = before, options = {}) {
@@ -4372,29 +4503,48 @@ function buildHeightMapValue(state) {
     enter: (node) => {
       const line = doc.lineAt(node.from);
 
-      const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
-      const setextHeading = /^SetextHeading([12])$/.exec(node.name);
-      const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
+      const headingLevel = getHeadingLevel(node.name);
+      const headingEnabled = isHeadingFlavorEnabledNow(
+        getHeadingFlavorAtNode(node, doc)
+      );
 
       if (headingLevel) {
         const headingLine = doc.lineAt(node.from);
         replacements.push(
           Decoration.line({
             attributes: {
-              class: `cm-heading cm-heading-${headingLevel}`
+              class: headingEnabled
+                ? `cm-heading cm-heading-${headingLevel}`
+                : 'cm-heading-syntax-literal'
             }
           }).range(headingLine.from)
         );
       }
 
       if (node.name === 'HeaderMark') {
-        const end = Math.min(node.to + 1, line.to);
-        if (end > node.from && end <= line.to) {
-          hideSyntax(node.from, end);
+        if (isHeadingFlavorEnabledNow(getHeadingFlavorAtNode(node, doc))) {
+          const end = Math.min(node.to + 1, line.to);
+          if (end > node.from && end <= line.to) {
+            hideSyntax(node.from, end);
+          }
+        } else {
+          replacements.push(
+            Decoration.line({
+              attributes: { class: 'cm-heading-syntax-literal' }
+            }).range(line.from)
+          );
         }
       }
       if (node.name === 'WmdxHeadingMarker') {
-        hideSyntax(node.from, node.to);
+        if (isHeadingFlavorEnabledNow('wmdx')) {
+          hideSyntax(node.from, node.to);
+        } else {
+          replacements.push(
+            Decoration.line({
+              attributes: { class: 'cm-heading-syntax-literal' }
+            }).range(line.from)
+          );
+        }
       }
 
       if (node.name === 'EmphasisMark') {
@@ -4972,6 +5122,7 @@ export function buildPersistentLayoutDecorations(state) {
     let insideTable = false;
     let insideBlockquote = false;
     let headingLevel = null;
+    let headingFlavor = null;
     let isHorizontalRule = false;
     let hasWmdxTask = false;
 
@@ -4985,9 +5136,11 @@ export function buildPersistentLayoutDecorations(state) {
       if (node.name === 'Blockquote') insideBlockquote = true;
       if (node.name === 'HorizontalRule') isHorizontalRule = true;
 
-      const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
-      const setextHeading = /^SetextHeading([12])$/.exec(node.name);
-      headingLevel = headingLevel ?? atxHeading?.[1] ?? setextHeading?.[1] ?? null;
+      const nodeHeadingLevel = getHeadingLevel(node.name);
+      if (nodeHeadingLevel && headingLevel === null) {
+        headingLevel = headingLevel ?? String(nodeHeadingLevel);
+        headingFlavor = getHeadingFlavorAtNode(node, doc);
+      }
     }
 
     // These blocks already have their own full-document decoration fields.
@@ -5041,8 +5194,12 @@ export function buildPersistentLayoutDecorations(state) {
     }
 
     if (headingLevel) {
-      addClass(number, 'cm-heading');
-      addClass(number, `cm-heading-${headingLevel}`);
+      if (isHeadingFlavorEnabledNow(headingFlavor)) {
+        addClass(number, 'cm-heading');
+        addClass(number, `cm-heading-${headingLevel}`);
+      } else {
+        addClass(number, 'cm-heading-syntax-literal');
+      }
     }
     if (calloutInfo) {
       addClass(number, 'cm-callout');
@@ -6717,14 +6874,18 @@ function setupGroupedControlBar() {
     headingBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('heading', headingBtn, [
-        { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', action: () => execCmd('heading', { value: 'paragraph' }) },
-        { title: 'Heading 1', icon: 'H1', command: 'heading1', action: () => execCmd('heading', { value: 'heading1' }) },
-        { title: 'Heading 2', icon: 'H2', command: 'heading2', action: () => execCmd('heading', { value: 'heading2' }) },
-        { title: 'Heading 3', icon: 'H3', command: 'heading3', action: () => execCmd('heading', { value: 'heading3' }) },
-        { title: 'Heading 4', icon: 'H4', command: 'heading4', action: () => execCmd('heading', { value: 'heading4' }) },
-        { title: 'Heading 5', icon: 'H5', command: 'heading5', action: () => execCmd('heading', { value: 'heading5' }) },
-        { title: 'Heading 6', icon: 'H6', command: 'heading6', action: () => execCmd('heading', { value: 'heading6' }) },
-        { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
+        { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', disabled: !headingSyntaxSettings.enabled, action: () => execCmd('heading', { value: 'paragraph' }) },
+        ...Array.from({ length: 6 }, (_, index) => {
+          const level = index + 1;
+          return {
+            title: `Heading ${level}`,
+            icon: `H${level}`,
+            command: `heading${level}`,
+            disabled: !isHeadingLevelAvailable(headingSyntaxSettings, level),
+            action: () => execCmd('heading', { value: `heading${level}` })
+          };
+        }),
+        { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', disabled: !headingSyntaxSettings.enabled, action: () => execCmd('autoHeading') },
         { id: 'wrap', icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
         { id: 'line-numbers', icon: svgIcons.lineNumbers, title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
       ]);
@@ -7123,15 +7284,16 @@ function positionFloatingPopupStrip(targetButton = null) {
 function createToolbarActionRegistry() {
   const groups = [
     [
-      { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', action: () => execCmd('heading', { value: 'paragraph' }) },
+      { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', disabled: !headingSyntaxSettings.enabled, action: () => execCmd('heading', { value: 'paragraph' }) },
       ...Array.from({ length: 6 }, (_, index) => ({
         id: `heading${index + 1}`,
         title: `Heading ${index + 1}`,
         icon: `H${index + 1}`,
         command: `heading${index + 1}`,
+        disabled: !isHeadingLevelAvailable(headingSyntaxSettings, index + 1),
         action: () => execCmd('heading', { value: `heading${index + 1}` })
       })),
-      { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
+      { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', disabled: !headingSyntaxSettings.enabled, action: () => execCmd('autoHeading') },
       { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap, action: () => window.editorBridge.toggleLineWrap() },
       { id: 'line-numbers', title: 'Toggle Line Numbers', icon: svgIcons.lineNumbers, action: () => window.editorBridge.toggleLineNumbers() }
     ],
@@ -7640,13 +7802,24 @@ function getRuntimeToolbarGroupItemsForConfig(groupId, toolbarConfig) {
     .filter(Boolean);
 }
 
-export function getDocumentHeadings(doc) {
+export function getDocumentHeadings(doc, settings = headingSyntaxSettings) {
   const headings = [];
-  if (!doc) return headings;
+  if (!doc || settings?.enabled === false) return headings;
   for (let i = 1; i <= doc.lines; i++) {
-    const lineText = doc.line(i).text.trim();
-    if (/^(?:#{1,6}|\.([1-6]))[ \t]+/.test(lineText)) {
-      headings.push(cleanHeadingText(lineText));
+    const lineText = doc.line(i).text;
+    const atxOrWmdx = /^\s{0,3}(#{1,6}|\.([1-6]))[ \t]+/.exec(lineText);
+    if (atxOrWmdx) {
+      const flavor = atxOrWmdx[2] ? 'wmdx' : 'hash';
+      if (isHeadingFlavorEnabled(settings, flavor)) {
+        headings.push(cleanHeadingText(lineText));
+      }
+      continue;
+    }
+    if (i < doc.lines && lineText.trim()) {
+      const underline = /^\s{0,3}(=+|-+)\s*$/.exec(doc.line(i + 1).text);
+      if (underline && isHeadingFlavorEnabled(settings, 'setext')) {
+        headings.push(cleanHeadingText(lineText));
+      }
     }
   }
   return headings;
@@ -9347,16 +9520,12 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'link') openLinkInsertionDialog();
     else if (cmdName === 'callout') openCalloutInsertionDialog();
     else if (cmdName === 'insertTable') cmWrapSelection(view, '\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '');
-    else if (cmdName === 'autoHeading') applyAutoHeading(view);
+    else if (cmdName === 'autoHeading') {
+      applyAutoHeading(view, headingSyntaxSettings);
+    }
     else if (cmdName === 'heading') {
       const val = options ? options.value : '';
-      if (val === 'paragraph') cmToggleLinePrefix(view, '');
-      else if (val === 'heading1') cmToggleLinePrefix(view, '.1 ');
-      else if (val === 'heading2') cmToggleLinePrefix(view, '.2 ');
-      else if (val === 'heading3') cmToggleLinePrefix(view, '.3 ');
-      else if (val === 'heading4') cmToggleLinePrefix(view, '.4 ');
-      else if (val === 'heading5') cmToggleLinePrefix(view, '.5 ');
-      else if (val === 'heading6') cmToggleLinePrefix(view, '.6 ');
+      applyHeadingCommand(view, val);
     } else if (cmdName === 'highlight') {
       const val = options ? options.value : null;
       toggleWmdxColorFormat(view, val, editorCommandOptions);
@@ -9554,10 +9723,19 @@ function getToolbarSyntaxState(view) {
   if (!view?.state) return {};
   const state = getMarkdownFormattingState(view);
   const selection = view.state.selection.main;
-  const line = view.state.doc.lineAt(selection.head).text;
+  const editorLine = view.state.doc.lineAt(selection.head);
+  const line = editorLine.text;
   const heading = /^\s{0,3}(?:(#{1,6})|\.([1-6]))[ \t]+/.exec(line);
-  const headingLevel = heading
-    ? heading[1]?.length ?? Number(heading[2])
+  const headingFlavor = heading
+    ? heading[1] ? 'hash' : 'wmdx'
+    : getSetextHeadingAtLine(view.state, editorLine.number)
+      ? 'setext'
+      : null;
+  const headingLevel = headingFlavor &&
+    isHeadingFlavorEnabledNow(headingFlavor)
+    ? heading
+      ? heading[1]?.length ?? Number(heading[2])
+      : getSetextHeadingAtLine(view.state, editorLine.number)?.level ?? null
     : null;
   const todo = /^\s*(?:\[[ xX]\]|[-*+]\s+\[[ xX]\]|\d+[.)]\s+\[[ xX]\])[ \t]+/.test(line);
   const numbered = /^\s*\d+[.)]\s+/.test(line);
@@ -9599,6 +9777,16 @@ function refreshToolbarSyntaxState(view = activeAdapter?.view) {
         button.setAttribute('aria-pressed', String(active));
       });
   }
+  const headingActionAvailable = headingSyntaxSettings.enabled &&
+    ['wmdx', 'hash', 'setext'].some(flavor =>
+      isHeadingFlavorEnabledNow(flavor)
+    );
+  document.querySelectorAll(
+    '#grp-btn-heading, [data-toolbar-key="heading"]'
+  ).forEach(button => {
+    if ('disabled' in button) button.disabled = !headingActionAvailable;
+    button.setAttribute('aria-disabled', String(!headingActionAvailable));
+  });
 }
 
 let regexHistory = [];
@@ -10451,7 +10639,7 @@ function setupTocGestureAndPanel(scrollDOM) {
       characters.textContent = `Characters: ${counts.characters.toLocaleString()}`;
       documentStatsRow.append(words, characters);
     }
-    const items = extractTocHeadings(markdown);
+    const items = extractTocHeadings(markdown, headingSyntaxSettings);
 
     if (items.length === 0) {
       tocExpansionState.collapsedHeadingKeys.clear();
@@ -11096,11 +11284,16 @@ window.editorBridge = {
     const nextLinkSyntaxSettings = normalizeLinkSyntaxSettings(prefs);
     const linkSyntaxChanged =
       JSON.stringify(nextLinkSyntaxSettings) !== JSON.stringify(linkSyntaxSettings);
+    const nextHeadingSyntaxSettings = normalizeHeadingSyntaxSettings(prefs);
+    const headingSyntaxChanged =
+      JSON.stringify(nextHeadingSyntaxSettings) !==
+      JSON.stringify(headingSyntaxSettings);
     linkSyntaxSettings = nextLinkSyntaxSettings;
-    if (linkSyntaxChanged) hidePopupStrip();
+    headingSyntaxSettings = nextHeadingSyntaxSettings;
+    if (linkSyntaxChanged || headingSyntaxChanged) hidePopupStrip();
     if (activeAdapter?.view) {
       activeAdapter.view.dispatch({
-        effects: linkSyntaxChanged
+        effects: linkSyntaxChanged || headingSyntaxChanged
           ? [
               heightMapRefreshEffect.of(null),
               typographySettingsEffect.of(Date.now())
@@ -12463,7 +12656,12 @@ function getBlockCategory(view, pos) {
 
     for (let cur = node; cur; cur = cur.parent) {
       const name = cur.name;
-      if (name.startsWith('ATXHeading') || name.startsWith('SetextHeading') || name === 'HeaderMark') {
+      if (
+        getHeadingLevel(name) &&
+        isHeadingFlavorEnabledNow(
+          getHeadingFlavorAtNode(cur, view.state.doc)
+        )
+      ) {
         return 'heading';
       }
       if (name === 'ListItem' || name === 'ListMark' || name === 'TaskMarker') {

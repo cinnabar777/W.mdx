@@ -1043,6 +1043,43 @@ class StylingHeadingsFragment : StylingSettingsFragment() {
         addHeadingLevelPreferences()
         configureFontPreferences()
     }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (
+            key != "pref_heading_syntax_enabled" &&
+            key != "pref_heading_syntax_wmdx_enabled" &&
+            key != "pref_heading_syntax_hash_enabled" &&
+            key != "pref_heading_syntax_setext_enabled" &&
+            key != "pref_heading_authoring_syntax"
+        ) {
+            return
+        }
+        if (!sharedPreferences.getBoolean("pref_heading_syntax_enabled", true)) return
+
+        val enabledFlavors = listOf(
+            "wmdx" to "pref_heading_syntax_wmdx_enabled",
+            "hash" to "pref_heading_syntax_hash_enabled",
+            "setext" to "pref_heading_syntax_setext_enabled"
+        ).filter { (_, preferenceKey) ->
+            sharedPreferences.getBoolean(preferenceKey, true)
+        }.map { (flavor, _) -> flavor }
+        if (enabledFlavors.isEmpty()) return
+
+        val current = sharedPreferences.getString("pref_heading_authoring_syntax", "wmdx")
+        val resolved = when {
+            enabledFlavors.size == 1 -> enabledFlavors.single()
+            current != null && enabledFlavors.contains(current) -> current
+            else -> enabledFlavors.first()
+        }
+        if (resolved != current) {
+            sharedPreferences.edit()
+                .putString("pref_heading_authoring_syntax", resolved)
+                .apply()
+        }
+    }
 }
 
 class StylingParagraphFragment : StylingSettingsFragment() {
