@@ -238,7 +238,10 @@ and [raw HTML](https://github.github.com/gfm/#raw-html), and Obsidian's
 
 ### Footnotes and callouts
 
-**Agreed:** keep the current footnote and callout syntax:
+**Agreed:** keep the current footnote syntax. Callout and expandable-dropdown
+functionality remains in scope, but its Wmdx syntax is being redesigned. The
+current callout form below is shown only as a reference to existing behavior,
+not as the final native syntax:
 
 ```text
 Text with a note.[^source]
@@ -256,7 +259,9 @@ Text with a note.[^source]
 ```
 
 Footnotes use a reference and matching definition. Callouts extend block quotes;
-`+` and `-` select their initial expanded or collapsed state.
+the current `+` and `-` markers select initial expansion state. Whether
+callouts and generic dropdowns share one simpler form is unresolved. The user
+proposed `±` as a candidate marker; its role and grammar are not yet decided.
 
 ### Footnote and callout mapping proposal
 
@@ -443,5 +448,77 @@ Paste-from imports leave the current document filename unchanged.
 For CommonMark, GFM, Obsidian, and HTML, define how input is converted to native
 Wmdx and how native constructs are exported. Preserve semantics where possible
 and make unavoidable information loss explicit. Use the same conversion rules
-for **Convert from** and **Paste from**; test both entry points and round trips.
+for **Convert from** and **Paste from**; test both entry points and dialect
+round trips where relevant. HTML export is portable output, while HTML import is
+best-effort content conversion; do not treat them as a promised round trip.
+
+## Implementation plan (draft; syntax freeze required)
+
+Do not begin implementation until the native syntax and conversion rules are
+frozen. In particular, the callout/dropdown behavior stays in scope, but its
+native marker is undecided; assess the proposed `±` against phone-keyboard
+availability and agree what it means before coding.
+
+### 0. Finish the specification
+
+- Confirm the remaining native grammar and parser edge-case rules.
+- Finish the CommonMark, GFM, Obsidian, and HTML conversion matrix, including
+  explicit losses and HTML's best-effort content-import behavior.
+- Keep the current table syntax and editing behavior unchanged.
+- Prepare examples that exercise valid, nested, escaped, unmatched, and
+  malformed syntax before implementing parser changes.
+
+**Gate:** the native grammar and conversion behavior are documented as agreed,
+not merely proposed.
+
+### 1. Implement and verify the native parser
+
+- Extend the existing CodeMirror/Lezer Markdown parser with the agreed Wmdx
+  grammar; preserve the original source instead of rewriting it when parsing.
+- Share the Wmdx grammar configuration across the main and embedded editors,
+  while retaining their intentional differences in Markdown extensions.
+- Verify Source, Live Preview, and WYSIWYG behavior, including view changes,
+  save/reopen, Markdown files, MDZip files, and embedded documents.
+- Add parser and serialization tests for precedence, escaping, literal code,
+  nested formatting, malformed markers, and table non-regressions.
+
+**Gate:** the same source has consistent intended meaning in all applicable
+editor contexts and remains intact through view changes and persistence.
+
+### 2. Add editing and insertion controls
+
+- Add toolbar and shortcut actions for the agreed syntax, with dialogs for
+  fields that should not require users to memorize the full grammar.
+- Verify selection, caret placement, undo/redo, and keyboard behavior for
+  inserted and edited syntax.
+- Keep Source view usable for direct editing and ensure visual modes expose
+  malformed syntax instead of silently changing user text.
+
+**Gate:** toolbar and keyboard actions produce the same valid source and
+behavior as direct Source-view entry.
+
+### 3. Add format converters
+
+- Implement CommonMark, GFM, and Obsidian import and export using the agreed
+  mapping matrix.
+- Implement HTML paste/import as best-effort conversion of readable web or
+  document content; do not apply CSS or promise pixel-perfect reproduction.
+- Keep HTML export standards-based and portable, without Wmdx-only metadata.
+- Use the same source-format conversion rules for **Convert from** and
+  **Paste from**, with explicit reporting for meaningful conversion losses.
+
+**Gate:** each supported input/output mapping has focused tests for content,
+structure, and known losses.
+
+### 4. Integrate and validate on Android
+
+- Connect the converters to the agreed toolbar actions and shortcuts for file
+  conversion, clipboard paste, and export.
+- Run the web test suite, Android editor-bridge and unit checks, and the normal
+  Android build/CI path.
+- Use a phone checklist covering all editor views, direct file save/open,
+  clipboard paste, Markdown/MDZip, embeds, and converter loss notices.
+
+**Gate:** automated checks pass and the phone checklist confirms the user-facing
+flows before considering the syntax revision complete.
 
