@@ -238,22 +238,21 @@ and [raw HTML](https://github.github.com/gfm/#raw-html), and Obsidian's
 
 ### Footnotes and callouts
 
-**Agreed:** keep the current footnote syntax. Callout and expandable-dropdown
-functionality remains in scope, with a simpler native marker proposed:
+**Agreed:** keep the current footnote syntax and preserve callout and
+expandable-dropdown functionality. Use these native callout markers:
 
-```text
-Text with a note.[^source]
+| Form | Meaning |
+| --- | --- |
+| `±type` | Non-collapsible callout |
+| `±type-` | Collapsible callout, initially closed |
+| `±type+` | Collapsible callout, initially open |
 
-[^source]: Footnote text.
-```
-
-Footnotes use a reference and matching definition. The user's proposed callout
-forms are `±type`, `±type-`, and `±type+`. Working interpretation: `±type` is
-not collapsible; the suffixed forms are collapsible, with `-` initially closed
-and `+` initially open, carrying forward the current state meanings. Confirm
-that interpretation before implementation. The callout title form, body
-boundary, nesting, and representation of a generic dropdown still need to be
-defined. Obsidian's `> [!type]` remains an import format, not native Wmdx syntax.
+Footnotes use a reference and matching definition. Nested callouts reuse the
+same `±type` marker at a deeper indentation level. Ordinary blockquotes keep
+`>` and repeated `>` markers for nested quoted lines. Whether callout body lines
+also require `>` prefixes is not yet decided. The title form, body boundary,
+and representation of a generic dropdown also remain open. Obsidian's
+`> [!type]` remains an import format, not native Wmdx syntax.
 
 ### Footnote and callout mapping proposal
 
@@ -448,9 +447,9 @@ best-effort content conversion; do not treat them as a promised round trip.
 
 Do not begin implementation until the native syntax and conversion rules are
 frozen. In particular, the callout/dropdown behavior stays in scope, but its
-proposed forms are `±type`, `±type-`, and `±type+`. Confirm the suffix meanings
-and define the title, body boundary, nesting, and generic-dropdown behavior
-before coding.
+agreed markers are `±type`, `±type-`, and `±type+`, with `-` initially closed
+and `+` initially open. Before coding, define the title and body boundaries,
+whether callout body lines use `>`, and how generic dropdowns are represented.
 
 ### 0. Finish the specification
 
