@@ -172,7 +172,7 @@ translate as appropriate.
 
 ### Footnotes and callouts
 
-The current forms are recommended to remain:
+**Agreed:** keep the current footnote and callout syntax:
 
 ```text
 Text with a note.[^source]
@@ -197,8 +197,6 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
 - **Parser precedence and nesting:** The delimiter rules above are agreed for
   code spans, escapes, and `~` versus `~~`. Nesting and ambiguous edge cases
   still need a shared test matrix.
-- **Footnotes and callouts:** Keeping their current syntax is recommended, but
-  remains a recommendation until explicitly confirmed.
 
 ## Wmdx-owned implementation work
 
