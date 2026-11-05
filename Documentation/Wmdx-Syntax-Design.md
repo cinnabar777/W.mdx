@@ -165,6 +165,12 @@ The native W.mdx meanings are:
 toggle. Keep the existing highlighter (`==...==`) and pen (`=...=`) forms,
 including their Unicode subscript color-slot selectors.
 
+Inline formatting styles can be combined inside one another:
+
+```text
+**Bold with *italic*, ==highlight==, =pen=, and _underline_ inside**
+```
+
 For parsing, recognize `~~` before `~`; code spans remain literal, and
 backslash-escaped markers remain literal. If a formatting marker has no matching
 closing marker, show it and its text as ordinary text; keep the marker visible in
@@ -196,9 +202,10 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
 
 ## Decisions still to finalize
 
-- **Parser precedence and nesting:** The delimiter rules above are agreed for
-  code spans, escapes, `~` versus `~~`, and unmatched formatting markers.
-  Nesting and other ambiguous edge cases still need a shared test matrix.
+- **Parser precedence and nesting:** Nesting styles is agreed. The delimiter
+  rules above are also agreed for code spans, escapes, `~` versus `~~`, and
+  unmatched formatting markers. Crossing pairs and other ambiguous edge cases
+  still need a shared test matrix.
 
 ## Wmdx-owned implementation work
 
