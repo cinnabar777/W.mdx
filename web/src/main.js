@@ -54,6 +54,13 @@ import {
   getMarkdownLinkInfo
 } from './markdown-link-utils.mjs';
 import {
+  formatMarkdownLinkInsertion,
+  getMarkdownLinkFlavor,
+  isLinkFlavorEnabled,
+  linkActionAvailability,
+  normalizeLinkSyntaxSettings
+} from './wmdxLinkSyntax.mjs';
+import {
   extractMarkdownAudioLinks,
   extractMarkdownVideoLinks,
   formatMarkdownAudioLink,
@@ -277,7 +284,7 @@ let customHotkeys = {
   strikethrough: 'ctrl+shift+x',
   code: 'ctrl+e',
   clearFormatting: 'ctrl+\\',
-  link: 'ctrl+k',
+  link: '',
   footnote: 'ctrl+shift+f',
   sourceEditing: 'ctrl+shift+u',
   blockQuote: 'ctrl+shift+q',
@@ -315,6 +322,17 @@ let customHotkeys = {
   penBlue: '',
   penPurple: ''
 };
+
+let linkSyntaxSettings = normalizeLinkSyntaxSettings();
+
+function isLinkFlavorEnabledNow(flavor) {
+  return isLinkFlavorEnabled(linkSyntaxSettings, flavor);
+}
+
+function isMarkdownLinkEnabledNow(node, doc) {
+  const flavor = getMarkdownLinkFlavor(node, doc);
+  return flavor !== null && isLinkFlavorEnabledNow(flavor);
+}
 
 class ListMarkerWidget extends WidgetType {
   constructor(source, isBullet) {
@@ -957,6 +975,7 @@ class CalloutTitleWidget extends WidgetType {
 export function cleanHeadingText(rawText) {
   return rawText
     .replace(/^#{1,6}\s+/, '')
+    .replace(/^\.([1-6])[ \t]+/, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1')
@@ -2704,40 +2723,42 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             : selection.from < line.to && selection.to > line.from
         );
 
-        const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
-        let wikilinkMatch;
-        while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
-          if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
+        if (isLinkFlavorEnabledNow('obsidian')) {
+          const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+          let wikilinkMatch;
+          while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+            if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
 
-          const matchStart = line.from + wikilinkMatch.index;
-          const matchEnd = matchStart + wikilinkMatch[0].length;
-          const target = wikilinkMatch[1];
-          const alias = wikilinkMatch[2];
-          const displayLabel = (alias !== undefined && alias.trim().length > 0)
-            ? alias
-            : (target.startsWith('#') ? target.slice(1) : target);
+            const matchStart = line.from + wikilinkMatch.index;
+            const matchEnd = matchStart + wikilinkMatch[0].length;
+            const target = wikilinkMatch[1];
+            const alias = wikilinkMatch[2];
+            const displayLabel = (alias !== undefined && alias.trim().length > 0)
+              ? alias
+              : (target.startsWith('#') ? target.slice(1) : target);
 
-          let labelStart, labelEnd;
-          if (alias !== undefined) {
-            labelStart = matchStart + 2 + target.length + 1;
-            labelEnd = matchEnd - 2;
-          } else {
-            labelStart = matchStart + 2;
-            labelEnd = matchEnd - 2;
-          }
-
-          if (!isLineActive) {
-            if (!isPureWysiwyg) {
-              builder.push(Decoration.replace({
-                widget: new WikilinkWidget(
-                  displayLabel,
-                  target,
-                  JSON.stringify(view.state.facet(embeddedDocumentSourceFacet))
-                )
-              }).range(matchStart, matchEnd));
+            let labelStart, labelEnd;
+            if (alias !== undefined) {
+              labelStart = matchStart + 2 + target.length + 1;
+              labelEnd = matchEnd - 2;
+            } else {
+              labelStart = matchStart + 2;
+              labelEnd = matchEnd - 2;
             }
-          } else if (labelEnd > labelStart) {
-            builder.push(Decoration.mark({ class: 'cm-link cm-wikilink' }).range(labelStart, labelEnd));
+
+            if (!isLineActive) {
+              if (!isPureWysiwyg) {
+                builder.push(Decoration.replace({
+                  widget: new WikilinkWidget(
+                    displayLabel,
+                    target,
+                    JSON.stringify(view.state.facet(embeddedDocumentSourceFacet))
+                  )
+                }).range(matchStart, matchEnd));
+              }
+            } else if (labelEnd > labelStart) {
+              builder.push(Decoration.mark({ class: 'cm-link cm-wikilink' }).range(labelStart, labelEnd));
+            }
           }
         }
 
@@ -2935,7 +2956,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             const resource = parseWmdxResourceSyntax(
               doc.sliceString(node.from, node.to)
             );
-            if (resource && !resource.embed && !isNodeActive) {
+            if (
+              resource &&
+              !resource.embed &&
+              isLinkFlavorEnabledNow('wmdx') &&
+              !isNodeActive
+            ) {
               addWmdxResourceLinkDecorations({
                 node,
                 doc,
@@ -2949,7 +2975,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'LinkReference') {
-            if (!isNodeActive) {
+            if (isLinkFlavorEnabledNow('reference') && !isNodeActive) {
               const firstLine = doc.lineAt(node.from).number;
               const lastLine = doc.lineAt(Math.max(node.from, node.to - 1)).number;
               for (let lineNumber = firstLine; lineNumber <= lastLine; lineNumber++) {
@@ -2960,6 +2986,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'Autolink') {
+            if (!isLinkFlavorEnabledNow('commonmark')) return false;
             const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
             if (linkInfo) {
               builder.push(
@@ -3291,6 +3318,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               }).range(node.from, node.to);
               builder.push(attachmentDecoration);
               hiddenSyntaxRanges.push(attachmentDecoration);
+              return false;
+            }
+            if (
+              node.name !== 'Image' &&
+              !isMarkdownLinkEnabledNow(node, doc)
+            ) {
               return false;
             }
             const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
@@ -4204,26 +4237,28 @@ function buildHeightMapValue(state) {
 
     if (insideCodeBlock || insideTable) continue;
 
-    const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
-    let wikilinkMatch;
-    while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
-      if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
+    if (isLinkFlavorEnabledNow('obsidian')) {
+      const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+      let wikilinkMatch;
+      while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+        if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
 
-      const matchStart = line.from + wikilinkMatch.index;
-      const matchEnd = matchStart + wikilinkMatch[0].length;
-      const target = wikilinkMatch[1];
-      const alias = wikilinkMatch[2];
-      const displayLabel = (alias !== undefined && alias.trim().length > 0)
-        ? alias
-        : (target.startsWith('#') ? target.slice(1) : target);
+        const matchStart = line.from + wikilinkMatch.index;
+        const matchEnd = matchStart + wikilinkMatch[0].length;
+        const target = wikilinkMatch[1];
+        const alias = wikilinkMatch[2];
+        const displayLabel = (alias !== undefined && alias.trim().length > 0)
+          ? alias
+          : (target.startsWith('#') ? target.slice(1) : target);
 
-      replacements.push(Decoration.replace({
-        widget: new WikilinkWidget(
-          displayLabel,
-          target,
-          JSON.stringify(state.facet(embeddedDocumentSourceFacet))
-        )
-      }).range(matchStart, matchEnd));
+        replacements.push(Decoration.replace({
+          widget: new WikilinkWidget(
+            displayLabel,
+            target,
+            JSON.stringify(state.facet(embeddedDocumentSourceFacet))
+          )
+        }).range(matchStart, matchEnd));
+      }
     }
   }
 
@@ -4457,11 +4492,12 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'LinkReference') {
-        hideSyntax(node.from, node.to);
+        if (isLinkFlavorEnabledNow('reference')) hideSyntax(node.from, node.to);
         return false;
       }
 
       if (node.name === 'Autolink') {
+        if (!isLinkFlavorEnabledNow('commonmark')) return false;
         const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
         if (linkInfo) {
           hideSyntax(node.from, linkInfo.labelFrom);
@@ -4474,7 +4510,7 @@ function buildHeightMapValue(state) {
         const resource = parseWmdxResourceSyntax(
           doc.sliceString(node.from, node.to)
         );
-        if (resource && !resource.embed) {
+        if (resource && !resource.embed && isLinkFlavorEnabledNow('wmdx')) {
           addWmdxResourceLinkDecorations({
             node,
             doc,
@@ -4579,6 +4615,12 @@ function buildHeightMapValue(state) {
           }).range(node.from, node.to);
           replacements.push(attachmentDecoration);
           hiddenSyntaxRanges.push(attachmentDecoration);
+          return false;
+        }
+        if (
+          node.name !== 'Image' &&
+          !isMarkdownLinkEnabledNow(node, doc)
+        ) {
           return false;
         }
         const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
@@ -6732,7 +6774,7 @@ function setupGroupedControlBar() {
         { id: 'video', icon: svgIcons.video, title: 'Insert Video', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('video') },
         { id: 'attachment', icon: svgIcons.attachment, title: 'Attach File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('attachment') },
         { id: 'embed', icon: svgIcons.embed, title: 'Embed Document', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('embed') },
-        { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
+        { id: 'link', icon: svgIcons.link, title: 'Links', disabled: !linkSyntaxSettings.enabled, action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
         { id: 'blockQuote', icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
@@ -7107,7 +7149,7 @@ function createToolbarActionRegistry() {
       { id: 'video', title: 'Insert Video', icon: svgIcons.video, action: () => window.AndroidNative?.onNativeAction('video') },
       { id: 'attachment', title: 'Attach File', icon: svgIcons.attachment, action: () => window.AndroidNative?.onNativeAction('attachment') },
       { id: 'embed', title: 'Embed Document', icon: svgIcons.embed, action: () => window.AndroidNative?.onNativeAction('embed') },
-      { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
+      { id: 'link', title: 'Links', icon: svgIcons.link, disabled: !linkSyntaxSettings.enabled, action: () => execCmd('link') },
       { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
       { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote, action: () => execCmd('blockQuote') },
@@ -7566,7 +7608,7 @@ export function getDocumentHeadings(doc) {
   if (!doc) return headings;
   for (let i = 1; i <= doc.lines; i++) {
     const lineText = doc.line(i).text.trim();
-    if (/^#{1,6}\s+/.test(lineText)) {
+    if (/^(?:#{1,6}|\.([1-6]))[ \t]+/.test(lineText)) {
       headings.push(cleanHeadingText(lineText));
     }
   }
@@ -7574,7 +7616,7 @@ export function getDocumentHeadings(doc) {
 }
 
 export function openLinkInsertionDialog() {
-  if (!activeAdapter || !activeAdapter.view) return;
+  if (!activeAdapter || !activeAdapter.view || !linkSyntaxSettings.enabled) return;
   const view = activeAdapter.view;
 
   let selectionSnapshot = null;
@@ -7624,35 +7666,48 @@ export function openLinkInsertionDialog() {
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog) return;
-
+  const availability = linkActionAvailability(linkSyntaxSettings);
   const headings = getDocumentHeadings(view.state.doc);
+  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]);
+  const hasAvailableLinkType = Object.values(availability).some(Boolean);
+  const initialLinkType =
+    ['external', 'internal', 'reference'].find(kind => availability[kind]) || 'external';
 
   dialog.innerHTML = `
-    <h3 class="modal-title">Insert Link</h3>
+    <h3 class="modal-title">Links</h3>
     <div class="modal-field-group">
-      <label class="modal-label">Link Kind</label>
+      <label class="modal-label" for="modal-link-kind">Link type</label>
       <select id="modal-link-kind" class="modal-select">
-        <option value="web">Web URL</option>
-        <option value="heading">Heading in this document</option>
+        <option value="external" ${availability.external ? '' : 'disabled'} ${initialLinkType === 'external' ? 'selected' : ''}>External link</option>
+        <option value="internal" ${availability.internal ? '' : 'disabled'} ${initialLinkType === 'internal' ? 'selected' : ''}>Internal link</option>
+        <option value="reference" ${availability.reference ? '' : 'disabled'} ${initialLinkType === 'reference' ? 'selected' : ''}>Reference link</option>
       </select>
     </div>
     <div class="modal-field-group">
-      <label class="modal-label" id="modal-label-text">Display Text</label>
-      <input type="text" id="modal-link-text" class="modal-input" placeholder="Text to display" value="${selectedText.replace(/"/g, '&quot;')}" />
+      <label class="modal-label" for="modal-link-text">Text to display</label>
+      <input type="text" id="modal-link-text" class="modal-input" placeholder="Text to display" value="${escapeHtml(selectedText)}" />
     </div>
-    <div class="modal-field-group" id="group-web-url">
-      <label class="modal-label">Web URL</label>
-      <input type="text" id="modal-link-url" class="modal-input" placeholder="example.com" value="" />
+    <div class="modal-field-group">
+      <label class="modal-label" id="modal-link-target-label" for="modal-link-target">Destination</label>
+      <input type="text" id="modal-link-target" class="modal-input" placeholder="example.com" value="" />
     </div>
-    <div class="modal-field-group hidden" id="group-heading-picker" style="display:none;">
-      <label class="modal-label">Target Heading</label>
+    <div class="modal-field-group" id="group-heading-picker" style="display:none;">
+      <label class="modal-label" for="modal-heading-select">Or choose a heading here</label>
       <select id="modal-heading-select" class="modal-select">
-        ${headings.length > 0
-          ? headings.map(h => `<option value="${h.replace(/"/g, '&quot;')}">${h}</option>`).join('')
-          : '<option value="">(No headings found in document)</option>'}
+        <option value="">Choose a heading</option>
+        ${headings.map(heading =>
+          `<option value="${escapeHtml(`#${heading}`)}">${escapeHtml(heading)}</option>`
+        ).join('')}
       </select>
     </div>
-    <div class="modal-field-group">
+    <p class="modal-message" id="modal-link-help"></p>
+    <div class="modal-field-group" id="group-link-alignment">
       <label class="modal-label" for="modal-link-alignment">Standalone alignment</label>
       <select id="modal-link-alignment" class="modal-select">
         <option value="">Default</option>
@@ -7664,32 +7719,57 @@ export function openLinkInsertionDialog() {
     </div>
     <div class="modal-actions">
       <button type="button" class="modal-btn modal-btn-cancel" id="modal-btn-cancel">Cancel</button>
-      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm">Insert</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm" ${hasAvailableLinkType ? '' : 'disabled'}>Insert</button>
     </div>
   `;
 
   const kindSelect = dialog.querySelector('#modal-link-kind');
-  const groupWeb = dialog.querySelector('#group-web-url');
-  const groupHeading = dialog.querySelector('#group-heading-picker');
-  const labelText = dialog.querySelector('#modal-label-text');
   const textInput = dialog.querySelector('#modal-link-text');
-  const urlInput = dialog.querySelector('#modal-link-url');
+  const targetInput = dialog.querySelector('#modal-link-target');
+  const targetLabel = dialog.querySelector('#modal-link-target-label');
+  const headingGroup = dialog.querySelector('#group-heading-picker');
   const headingSelect = dialog.querySelector('#modal-heading-select');
+  const helpText = dialog.querySelector('#modal-link-help');
+  const alignmentGroup = dialog.querySelector('#group-link-alignment');
   const alignmentSelect = dialog.querySelector('#modal-link-alignment');
   const btnCancel = dialog.querySelector('#modal-btn-cancel');
   const btnConfirm = dialog.querySelector('#modal-btn-confirm');
 
-  kindSelect.addEventListener('change', () => {
-    if (kindSelect.value === 'web') {
-      groupWeb.style.display = 'flex';
-      groupHeading.style.display = 'none';
-      labelText.textContent = 'Display Text';
+  const updateLinkDialog = () => {
+    const kind = kindSelect.value;
+    const enabled = availability[kind] === true;
+    btnConfirm.disabled = !enabled;
+    alignmentGroup.style.display =
+      kind !== 'reference' &&
+      linkSyntaxSettings.wmdx &&
+      linkSyntaxSettings.authoringSyntax === 'wmdx'
+        ? 'flex'
+        : 'none';
+    if (kind === 'internal') {
+      targetLabel.textContent = 'File path or heading';
+      targetInput.placeholder = 'Notes.md or #Heading';
+      headingGroup.style.display = headings.length ? 'flex' : 'none';
+      helpText.textContent = '';
+    } else if (kind === 'reference') {
+      targetLabel.textContent = 'Destination';
+      targetInput.placeholder = 'URL or local path';
+      headingGroup.style.display = 'none';
+      helpText.textContent = 'A matching reference definition is added at the end of the document.';
     } else {
-      groupWeb.style.display = 'none';
-      groupHeading.style.display = 'flex';
-      labelText.textContent = 'Link Alias (Optional)';
+      targetLabel.textContent = 'Web address';
+      targetInput.placeholder = 'example.com';
+      headingGroup.style.display = 'none';
+      helpText.textContent = '';
     }
+    if (!hasAvailableLinkType) {
+      helpText.textContent = 'Enable a link syntax in Typography → Links to insert links.';
+    }
+  };
+  kindSelect.addEventListener('change', updateLinkDialog);
+  headingSelect.addEventListener('change', () => {
+    if (headingSelect.value) targetInput.value = headingSelect.value;
   });
+  updateLinkDialog();
 
   const closeModal = () => {
     overlay.classList.remove('open');
@@ -7707,33 +7787,30 @@ export function openLinkInsertionDialog() {
     e.preventDefault();
     const kind = kindSelect.value;
     const displayText = textInput.value.trim();
-    let replacement = '';
-
-    if (kind === 'web') {
-      const url = urlInput.value.trim();
-      if (!url) {
-        urlInput.focus();
-        return;
-      }
-      replacement = formatWmdxResourceSyntax({
-        source: url,
-        title: displayText,
-        alignment: alignmentSelect.value
-      });
-    } else {
-      const targetHeading = headingSelect.value;
-      if (!targetHeading) {
-        window._lastActiveCellSelection = null;
-        closeModal();
-        view.focus();
-        return;
-      }
-      replacement = formatWmdxResourceSyntax({
-        source: `#${targetHeading}`,
-        title: displayText || targetHeading,
-        alignment: alignmentSelect.value
-      });
+    const target = targetInput.value.trim();
+    if (!target || !availability[kind]) {
+      targetInput.focus();
+      return;
     }
+
+    let insertion;
+    try {
+      insertion = formatMarkdownLinkInsertion({
+        kind,
+        target,
+        title: displayText,
+        alignment: alignmentSelect.value,
+        settings: linkSyntaxSettings,
+        existingTargets: collectMarkdownReferenceTargets(
+          view.state.doc,
+          syntaxTree(view.state)
+        )
+      });
+    } catch (error) {
+      helpText.textContent = error?.message || 'Could not create this link.';
+      return;
+    }
+    const replacement = insertion.markdown;
 
     if (selectionSnapshot && selectionSnapshot.type === 'table-cell') {
       const snap = selectionSnapshot;
@@ -7765,6 +7842,25 @@ export function openLinkInsertionDialog() {
       view.dispatch({
         changes: { from, to, insert: replacement },
         selection: { anchor: from + replacement.length, head: from + replacement.length }
+      });
+    }
+
+    if (insertion.definition) {
+      const currentDocument = view.state.doc.toString();
+      const separator = currentDocument.length === 0
+        ? ''
+        : currentDocument.endsWith('\n\n')
+          ? ''
+          : currentDocument.endsWith('\n')
+            ? '\n'
+            : '\n\n';
+      const definitionText = `${separator}${insertion.definition}\n`;
+      view.dispatch({
+        changes: {
+          from: view.state.doc.length,
+          to: view.state.doc.length,
+          insert: definitionText
+        }
       });
     }
 
@@ -10700,8 +10796,20 @@ window.editorBridge = {
     embeddedContentInteractionMode =
       !limitedInteraction && fullInlineEditing ? 'full' : 'checkboxes';
     setWmdxUnderlineSyntaxEnabled(prefs.pref_underline_use_wmdx_syntax !== false);
+    const nextLinkSyntaxSettings = normalizeLinkSyntaxSettings(prefs);
+    const linkSyntaxChanged =
+      JSON.stringify(nextLinkSyntaxSettings) !== JSON.stringify(linkSyntaxSettings);
+    linkSyntaxSettings = nextLinkSyntaxSettings;
+    if (linkSyntaxChanged) hidePopupStrip();
     if (activeAdapter?.view) {
-      activeAdapter.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
+      activeAdapter.view.dispatch({
+        effects: linkSyntaxChanged
+          ? [
+              heightMapRefreshEffect.of(null),
+              typographySettingsEffect.of(Date.now())
+            ]
+          : heightMapRefreshEffect.of(null)
+      });
       refreshToolbarSyntaxState(activeAdapter.view);
     }
 

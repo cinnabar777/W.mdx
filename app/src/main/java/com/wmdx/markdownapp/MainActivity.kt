@@ -1586,7 +1586,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "code" to prefs.getString("pref_hotkey_code", "ctrl+e"),
             "clearFormatting" to prefs.getString("pref_hotkey_clearFormatting", "ctrl+\\"),
             "callout" to prefs.getString("pref_hotkey_callout", "ctrl+alt+q"),
-            "link" to prefs.getString("pref_hotkey_link", "ctrl+k"),
+            "link" to prefs.getString("pref_hotkey_link", ""),
             "footnote" to prefs.getString("pref_hotkey_footnote", "ctrl+shift+f"),
             "blockQuote" to prefs.getString("pref_hotkey_blockQuote", "ctrl+shift+q"),
             "codeBlock" to prefs.getString("pref_hotkey_codeBlock", "ctrl+shift+c"),

@@ -169,6 +169,10 @@ test('link insertion and visual rendering use native resource syntax', () => {
     path.join(__dirname, '../src/main.js'),
     'utf8'
   );
+  const linkSyntax = fs.readFileSync(
+    path.join(__dirname, '../src/wmdxLinkSyntax.mjs'),
+    'utf8'
+  );
   assert.match(main, /node\.name === 'WmdxResource'/);
   assert.match(main, /data-wmdx-link-target/);
   assert.match(main, /data-wmdx-link-from/);
@@ -181,7 +185,8 @@ test('link insertion and visual rendering use native resource syntax', () => {
       main.indexOf('for="modal-wmdx-link-title"'),
     'the edit dialog presents fields in SOURCE then TITLE order'
   );
-  assert.match(main, /formatWmdxResourceSyntax\(\{\s*source: url/);
+  assert.match(main, /formatMarkdownLinkInsertion\(/);
+  assert.match(linkSyntax, /formatWmdxResourceSyntax\(\{\s*source:/);
   assert.match(main, /modal-link-alignment/);
   assert.match(main, /placeholder="example\.com" value=""/);
 });

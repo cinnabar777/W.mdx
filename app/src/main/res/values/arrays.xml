@@ -28,6 +28,16 @@
         <item>live_preview</item>
         <item>source</item>
     </string-array>
+    <string-array name="link_authoring_syntax_entries">
+        <item>Wmdx</item>
+        <item>CommonMark</item>
+        <item>Obsidian</item>
+    </string-array>
+    <string-array name="link_authoring_syntax_values">
+        <item>wmdx</item>
+        <item>commonmark</item>
+        <item>obsidian</item>
+    </string-array>
     <string-array name="pref_theme_entries">
         <item>Dark AMOLED (Black)</item>
         <item>Light Mode</item>

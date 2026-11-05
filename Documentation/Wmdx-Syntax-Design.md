@@ -40,6 +40,33 @@ the syntax the current app supports.
 - Disabling a feature or flavor makes its source syntax literal in the editor;
   it does not convert or rewrite existing documents.
 
+### Link syntax settings and insertion (implemented)
+
+- Links have one app-wide enable switch and separate recognition switches for
+  CommonMark/GFM inline links and automatic URLs, reference links, Obsidian
+  internal links, and Wmdx resource links. All are enabled by default to keep
+  existing documents rendering as before. GFM `@` mention links are not
+  included.
+- The preferred link authoring syntax is app-wide: Wmdx, CommonMark, or
+  Obsidian. External links use Wmdx resource syntax when Wmdx is preferred;
+  otherwise they use the standard Markdown inline form. Internal links use
+  Wmdx resource syntax, Obsidian wikilinks, or Markdown relative/anchor links
+  according to the preference and enabled flavors.
+- Reference links remain a distinct insertion choice and use Markdown's
+  `[label][id]` form. Insertion reuses a definition for the same destination
+  when possible; otherwise it creates a unique definition at the end of the
+  document.
+- One **Links** toolbar action opens a dialog for External, Internal, or
+  Reference links. Choices unavailable under the current flavor settings are
+  disabled. One configurable keyboard shortcut opens the same dialog; its
+  default is blank.
+- The dialog accepts a URL, local file path, or `#Heading` target. It can also
+  choose a heading from the current document. Wmdx standalone alignment is
+  offered only when Wmdx is the selected authoring syntax.
+- Turning off a flavor prevents its visual link rendering without rewriting
+  the source. Import/export conversion remains separate from these authoring
+  preferences.
+
 ## Agreed native syntax
 
 ### Resource references, links, and embeds
@@ -590,6 +617,10 @@ editing still require normal project/device verification.
   stored without a scheme and opened using HTTPS. In WYSIWYG, long-pressing a
   native text link opens Edit and Delete actions; deleting removes the link
   syntax while keeping its displayed title as plain text.
+- Link settings now control CommonMark/GFM links, reference links, Obsidian
+  wikilinks, and Wmdx resource links. The single Links toolbar action opens
+  external/internal/reference insertion choices, with one blank-by-default
+  shortcut. Reference insertion creates or reuses a Markdown definition.
 - Image/media rendering and edit dialogs, media insertion controls, and
   import/export are still pending. Table syntax and editing remain unchanged;
   its row splitter treats pipes inside a valid resource token as field

@@ -376,6 +376,7 @@ object PreferenceResetHelper {
             key == "pref_paragraph_margin_bottom" -> 8
             key == "pref_link_decoration" -> "solid"
             key == "pref_link_underline_thickness" -> 1
+            key == "pref_links_authoring_syntax" -> "wmdx"
             key == "pref_code_padding" -> 4
             key == "pref_code_border_radius" -> 4
             key == "pref_body_margin_left" -> 16
@@ -703,7 +704,7 @@ object PreferenceResetHelper {
                 key == "pref_hotkey_underlineWavy" -> ""
             key == "pref_hotkey_strikethrough" -> "ctrl+shift+x"
             key == "pref_hotkey_code" -> "ctrl+e"
-            key == "pref_hotkey_link" -> "ctrl+k"
+            key == "pref_hotkey_link" -> ""
             key == "pref_hotkey_blockQuote" -> "ctrl+shift+q"
             key == "pref_hotkey_callout" -> "ctrl+alt+q"
             key == "pref_hotkey_codeBlock" -> "ctrl+shift+c"
@@ -749,6 +750,11 @@ object PreferenceResetHelper {
                     "pref_pen_purple_text_color" to "#845ef7"
                 )[key]
             key == "pref_underline_use_wmdx_syntax" -> true
+            key == "pref_links_enabled" ||
+                key == "pref_links_commonmark_enabled" ||
+                key == "pref_links_reference_enabled" ||
+                key == "pref_links_obsidian_enabled" ||
+                key == "pref_links_wmdx_enabled" -> true
             key.startsWith("pref_underline_") && key.endsWith("_color") -> "default"
             key.startsWith("pref_underline_") && key.endsWith("_thickness") -> 1
             else -> null

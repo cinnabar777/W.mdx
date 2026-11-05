@@ -203,8 +203,8 @@
 
     <com.wmdx.markdownapp.ResetEditTextPreference
         app:key="pref_hotkey_link"
-        app:title="Link"
-        app:defaultValue="ctrl+k" />
+        app:title="Links"
+        app:defaultValue="" />
 
     <com.wmdx.markdownapp.ResetEditTextPreference
         app:key="pref_hotkey_cycleListType"
