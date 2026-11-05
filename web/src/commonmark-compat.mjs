@@ -1,5 +1,6 @@
 import { Element, parser as baseMarkdownParser } from '@lezer/markdown';
 import { tags } from '@lezer/highlight';
+import { parseWmdxResourceSyntax } from './wmdxResources.js';
 
 const referenceLabelsByInput = new WeakMap();
 let activeInput = null;
@@ -248,6 +249,75 @@ const unresolvedShortcutReferenceGuard = {
   }
 };
 
+function findWmdxResourceEnd(text, start) {
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '\n' || character === '\r') return -1;
+    if (character === ']' && !escaped) return index;
+    if (character === '\\' && !escaped) {
+      escaped = true;
+    } else {
+      escaped = false;
+    }
+  }
+  return -1;
+}
+
+function isEscapedCharacter(text, index) {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && text[cursor] === '\\'; cursor -= 1) {
+    backslashes += 1;
+  }
+  return backslashes % 2 === 1;
+}
+
+function addWmdxResource(cx, pos, tokenStart, bracketStart) {
+  if (isEscapedCharacter(cx.text, tokenStart)) return -1;
+  const closingBracket = findWmdxResourceEnd(cx.text, bracketStart + 1);
+  if (closingBracket < 0) return -1;
+
+  const tokenEnd = closingBracket + 1;
+  if (!parseWmdxResourceSyntax(cx.text.slice(tokenStart, tokenEnd))) return -1;
+  return cx.addElement(cx.elt(
+    'WmdxResource',
+    cx.offset + tokenStart,
+    cx.offset + tokenEnd
+  ));
+}
+
+const wmdxResourceEmbedParser = {
+  name: 'WmdxResourceEmbed',
+  before: 'Image',
+  parse(cx, next, pos) {
+    if (
+      next !== 33 ||
+      cx.char(pos + 1) !== 91 ||
+      cx.hasOpenLink
+    ) {
+      return -1;
+    }
+    const tokenStart = pos - cx.offset;
+    return addWmdxResource(cx, pos, tokenStart, tokenStart + 1);
+  }
+};
+
+const wmdxResourceLinkParser = {
+  name: 'WmdxResourceLink',
+  before: 'Link',
+  parse(cx, next, pos) {
+    if (next !== 91 || cx.hasOpenLink) return -1;
+    const tokenStart = pos - cx.offset;
+    if (
+      isEscapedCharacter(cx.text, tokenStart) ||
+      (tokenStart > 0 && cx.text[tokenStart - 1] === '!')
+    ) {
+      return -1;
+    }
+    return addWmdxResource(cx, pos, tokenStart, tokenStart);
+  }
+};
+
 const wmdxTaskMarker = {
   name: 'WmdxTaskMarker',
   before: 'Link',
@@ -273,6 +343,9 @@ export const wmdxCommonMarkCompatibility = {
   }, {
     name: 'WmdxTaskMarker',
     style: tags.processingInstruction
+  }, {
+    name: 'WmdxResource',
+    style: tags.content
   }],
   parseBlock: [{
     name: 'WmdxDecimalHeading',
@@ -283,7 +356,12 @@ export const wmdxCommonMarkCompatibility = {
     before: 'ATXHeading',
     parse: tabSeparatedAtxHeading
   }],
-  parseInline: [wmdxTaskMarker, unresolvedShortcutReferenceGuard],
+  parseInline: [
+    wmdxTaskMarker,
+    wmdxResourceEmbedParser,
+    wmdxResourceLinkParser,
+    unresolvedShortcutReferenceGuard
+  ],
   wrap(inner, input) {
     return {
       get parsedPos() {

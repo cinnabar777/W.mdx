@@ -191,6 +191,40 @@ test('native task markers parse as checkbox markers, not shortcut links', () => 
   assert.equal(state.doc.toString(), source);
 });
 
+test('native resource references parse as one token without changing source', () => {
+  const source = [
+    '[https://example.com|Visit site||->]',
+    '![assets/photo.png|Sunset|80%|><]',
+    '`![code.png|||]`',
+    '\\![escaped.png|||]',
+    '[ordinary shortcut]'
+  ].join('\n');
+  const state = EditorState.create({
+    doc: source,
+    extensions: [wmdxMarkdown]
+  });
+  const resources = [];
+  const markdownImages = [];
+
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === 'WmdxResource') {
+        resources.push(source.slice(node.from, node.to));
+      }
+      if (node.name === 'Image') {
+        markdownImages.push(source.slice(node.from, node.to));
+      }
+    }
+  });
+
+  assert.deepEqual(resources, [
+    '[https://example.com|Visit site||->]',
+    '![assets/photo.png|Sunset|80%|><]'
+  ]);
+  assert.ok(!markdownImages.some(text => text.includes('code.png')));
+  assert.equal(state.doc.toString(), source);
+});
+
 test.todo('CommonMark raw HTML examples: define and test Wmdx-native import conversion');
 
 test('CommonMark fixtures check parser semantics, not full WYSIWYG rendering or export', () => {

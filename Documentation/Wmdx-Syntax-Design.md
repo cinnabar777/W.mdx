@@ -552,6 +552,16 @@ a separate later phase.
 These slices pass the focused web test suite. Android phone rendering and
 editing still require normal project/device verification.
 
+### Resource syntax groundwork
+
+- The fixed-slot resource parser/formatter validates `[SOURCE|TITLE|SIZE|ALIGN]`
+  and `![SOURCE|TITLE|SIZE|ALIGN]`, including escaped pipes, optional title
+  fallback, pixel/percentage sizing, and the four alignment markers.
+- The CodeMirror parser recognizes valid resource references and embeds as one
+  native token; escaped text and code spans remain literal.
+- Visual rendering, media/link edit dialogs, toolbar insertion, and import/export
+  are still pending. Table parsing and behavior remain unchanged.
+
 ### 0. Finish remaining specification details
 
 In particular, the callout/dropdown behavior stays in scope, with
