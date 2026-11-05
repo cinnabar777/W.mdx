@@ -300,7 +300,11 @@ Each action has its own toolbar action and keyboard shortcut. All use the same
 conversion engine, configured for the selected source format. Shortcut keys
 remain to be assigned after checking the existing keymap. Markdown export is a
 separate action that selects CommonMark, GFM, or Obsidian as the destination.
-Existing HTML export remains supported.
+HTML import is best-effort content conversion, especially for copied web
+content and standalone HTML documents or ebooks; it is not expected to reproduce
+the original page or document perfectly. HTML export is the portable handoff
+format users can take to other tools for conversion, using standard HTML rather
+than Wmdx-specific metadata.
 
 ### Resource mapping proposal: links and embeds
 
@@ -380,11 +384,13 @@ On import, preserve explicit line breaks and fenced-code content literally.
 Convert HTML definition lists to a term paragraph followed by Wmdx definition
 lines beginning `: `, as already agreed.
 
-HTML input is document-content conversion, not webpage-styling import. Do not
-read or apply CSS stylesheets or inline `style` attributes, and never execute
-scripts. Convert recognized HTML structure and semantic formatting elements to
-Wmdx syntax. When document content has no suitable Wmdx equivalent, identify it
-and propose a native syntax before implementing that conversion.
+HTML input is best-effort content conversion for copied web pages and
+standalone HTML documents or ebooks, not a pixel-perfect page importer. Extract
+readable content and semantic structure; do not read or apply CSS stylesheets or
+inline `style` attributes, and never execute scripts. Convert recognized HTML
+structure and semantic formatting elements to Wmdx syntax, and report meaningful
+losses. When document content has no suitable Wmdx equivalent, identify it and
+propose a native syntax before implementing that conversion.
 
 ## HTML import inventory
 
