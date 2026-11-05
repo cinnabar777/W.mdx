@@ -272,8 +272,10 @@ one further level:
 Normal paragraph outside.
 ```
 
-The title form and representation of a generic dropdown remain open. Obsidian's
-`> [!type]` remains an import format, not native Wmdx syntax.
+The title form remains open. For a generic dropdown, the user suggested
+`±dropdown`; because the agreed bare `±type` form is non-collapsible, whether
+the dropdown must use `±dropdown-` or `±dropdown+` remains to be decided.
+Obsidian's `> [!type]` remains an import format, not native Wmdx syntax.
 
 ### Footnote and callout mapping proposal
 
@@ -470,9 +472,10 @@ Do not begin implementation until the native syntax and conversion rules are
 frozen. In particular, the callout/dropdown behavior stays in scope, but its
 agreed markers are `±type`, `±type-`, and `±type+`, with `-` initially closed
 and `+` initially open. Before coding, define the title and body boundaries,
-and how generic dropdowns are represented. Callout bodies use automatic list-like
-indentation, blank lines for paragraphs, and dedenting to end the block.
-Callout body lines do not need repeated `>` markers; ordinary quotes retain them.
+and finalize the generic dropdown form, currently proposed as `±dropdown`.
+Callout bodies use automatic list-like indentation, blank lines for paragraphs,
+and dedenting to end the block. Callout body lines do not need repeated `>`
+markers; ordinary quotes retain them.
 
 ### 0. Finish the specification
 
