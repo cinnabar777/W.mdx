@@ -251,10 +251,21 @@ and [raw HTML](https://github.github.com/gfm/#raw-html), and Obsidian's
 
 ### Footnotes and callouts
 
-Footnotes are automatically numbered. Keep the feature, but do not use the
-current Markdown spelling `[^label]` with a matching `[^label]:` definition as
-Wmdx-native syntax. The simpler native marker and definition form remains to be
-designed.
+Footnotes are automatically numbered. Use a single trailing `^` for an
+in-text reference and a line beginning `^ ` for its definition. Pair references
+and definitions in document order; render the reference and its definition
+with the generated number in the footnotes section. Paired `^text^` remains
+superscript syntax, and `\^` represents a literal caret. Reuse an existing
+footnote through the editor rather than adding labels to the source.
+
+```text
+This sentence has a footnote.^
+
+^ The footnote text.
+```
+
+The current Markdown spelling `[^label]` with a matching `[^label]:`
+definition remains an import/export format, not Wmdx-native syntax.
 
 Preserve callout and expandable-dropdown functionality. Use these native
 callout markers:
@@ -270,7 +281,8 @@ example `±warning Safety note`, `±warning- Safety note`, or
 `±warning+ Safety note`.
 
 Each automatic footnote number refers to its matching definition. Nested
-callouts reuse the same `±type` marker at a deeper indentation level. Ordinary blockquotes keep
+callouts reuse the same `±type` marker at a deeper indentation level. Ordinary
+blockquotes keep
 `>` and repeated `>` markers for nested quoted lines. Callout body lines do not
 each need a `>` prefix; reserve `>` for quoted content inside a callout.
 
