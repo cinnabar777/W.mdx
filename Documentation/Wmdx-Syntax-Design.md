@@ -249,10 +249,31 @@ expandable-dropdown functionality. Use these native callout markers:
 
 Footnotes use a reference and matching definition. Nested callouts reuse the
 same `±type` marker at a deeper indentation level. Ordinary blockquotes keep
-`>` and repeated `>` markers for nested quoted lines. Whether callout body lines
-also require `>` prefixes is not yet decided. The title form, body boundary,
-and representation of a generic dropdown also remain open. Obsidian's
-`> [!type]` remains an import format, not native Wmdx syntax.
+`>` and repeated `>` markers for nested quoted lines. Callout body lines do not
+each need a `>` prefix; reserve `>` for quoted content inside a callout.
+
+**Proposed body scope (not yet agreed):** indent the callout body one level;
+blank lines separate paragraphs, and dedenting ends the callout. A nested
+callout marker appears at the parent body's indentation, with its body indented
+one further level:
+
+```text
+±warning-
+  First paragraph.
+
+  Second paragraph.
+
+  ±note
+    Nested paragraph.
+
+  Back in the outer callout.
+
+Normal paragraph outside.
+```
+
+The exact indentation width, title form, and representation of a generic
+dropdown remain open. Obsidian's `> [!type]` remains an import format, not
+native Wmdx syntax.
 
 ### Footnote and callout mapping proposal
 
@@ -449,7 +470,9 @@ Do not begin implementation until the native syntax and conversion rules are
 frozen. In particular, the callout/dropdown behavior stays in scope, but its
 agreed markers are `±type`, `±type-`, and `±type+`, with `-` initially closed
 and `+` initially open. Before coding, define the title and body boundaries,
-whether callout body lines use `>`, and how generic dropdowns are represented.
+the indentation width and dedent rule for callout bodies, and how generic
+dropdowns are represented. Callout body lines do not need repeated `>` markers;
+ordinary quotes retain them.
 
 ### 0. Finish the specification
 
