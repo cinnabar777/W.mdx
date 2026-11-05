@@ -149,6 +149,10 @@ test('link insertion and visual rendering use native resource syntax', () => {
   );
   assert.match(main, /node\.name === 'WmdxResource'/);
   assert.match(main, /data-wmdx-link-target/);
+  assert.match(main, /data-wmdx-link-from/);
+  assert.match(main, /showWmdxResourceLinkActions/);
+  assert.match(main, /function openWmdxResourceLinkEditDialog/);
+  assert.match(main, /function openWmdxResourceLinkDeleteConfirmation/);
   assert.match(main, /formatWmdxResourceSyntax\(\{\s*source: url/);
   assert.match(main, /modal-link-alignment/);
   assert.match(main, /placeholder="example\.com" value=""/);

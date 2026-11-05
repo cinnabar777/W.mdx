@@ -1237,18 +1237,22 @@ class WikilinkWidget extends WidgetType {
 export const typographySettingsEffect = StateEffect.define();
 
 class WmdxResourceLinkWidget extends WidgetType {
-  constructor(title, target, alignment = null) {
+  constructor(title, target, alignment = null, from = null, to = null) {
     super();
     this.title = title;
     this.target = target;
     this.alignment = alignment;
+    this.from = from;
+    this.to = to;
   }
 
   eq(other) {
     return other instanceof WmdxResourceLinkWidget &&
       other.title === this.title &&
       other.target === this.target &&
-      other.alignment === this.alignment;
+      other.alignment === this.alignment &&
+      other.from === this.from &&
+      other.to === this.to;
   }
 
   toDOM() {
@@ -1257,6 +1261,8 @@ class WmdxResourceLinkWidget extends WidgetType {
     link.href = resolveWmdxResourceTarget(this.target);
     link.textContent = this.title;
     link.setAttribute('data-wmdx-link-target', this.target);
+    link.setAttribute('data-wmdx-link-from', String(this.from));
+    link.setAttribute('data-wmdx-link-to', String(this.to));
     if (this.alignment) {
       link.style.cssText = `display:block;text-align:${this.alignment};`;
     }
@@ -1281,6 +1287,8 @@ function addWmdxResourceLinkDecorations({
   const linkAttributes = {
     href: resolveWmdxResourceTarget(resource.source),
     'data-wmdx-link-target': resource.source,
+    'data-wmdx-link-from': String(node.from),
+    'data-wmdx-link-to': String(node.to),
     ...(alignment
       ? { style: `display:block;text-align:${alignment};` }
       : {})
@@ -1309,7 +1317,9 @@ function addWmdxResourceLinkDecorations({
     widget: new WmdxResourceLinkWidget(
       resource.displayTitle,
       resource.source,
-      alignment
+      alignment,
+      node.from,
+      node.to
     )
   }).range(node.from, node.to);
   pushDecoration(decoration);
@@ -5996,6 +6006,22 @@ class CodeMirrorAdapter {
       cancelEmptyAreaLongPress();
     };
     this.view.contentDOM.addEventListener('contextmenu', event => {
+      const resourceLink = event.target?.closest?.(
+        'a.cm-link[data-wmdx-link-from][data-wmdx-link-to]'
+      );
+      if (resourceLink && this.view?.contentDOM?.contains(resourceLink)) {
+        event.preventDefault();
+        event.stopPropagation();
+        showWmdxResourceLinkActions(
+          this.view,
+          resourceLink,
+          event.clientX,
+          event.clientY
+        );
+        if (editorTapStart) editorTapStart.longPressTriggered = true;
+        cancelEmptyAreaLongPress();
+        return;
+      }
       const selection = this.view?.state?.selection?.main;
       if (selection && !selection.empty) return;
       if (!showFloatingSelectionToolbarAtPoint(event.clientX, event.clientY, this.view)) return;
@@ -6292,6 +6318,7 @@ class CodeMirrorAdapter {
     this.persistScrollPosition();
     this.pointerGestureCleanup?.();
     this.pointerGestureCleanup = null;
+    closeWmdxResourceLinkActions();
     if (this.markdownLinkClickHandler && this.view?.contentDOM) {
       this.view.contentDOM.removeEventListener(
         'click',
@@ -7698,6 +7725,237 @@ export function openLinkInsertionDialog() {
   requestAnimationFrame(() => {
     textInput.focus();
   });
+}
+
+let activeWmdxResourceLinkActions = null;
+
+function closeWmdxResourceLinkActions() {
+  const active = activeWmdxResourceLinkActions;
+  if (!active) return;
+  activeWmdxResourceLinkActions = null;
+  document.removeEventListener('pointerdown', active.dismiss, true);
+  document.removeEventListener('keydown', active.keydown, true);
+  window.visualViewport?.removeEventListener('resize', active.reposition);
+  active.menu.remove();
+}
+
+function showWmdxResourceLinkActions(view, link, x, y) {
+  closeWmdxResourceLinkActions();
+  const from = Number(link.getAttribute('data-wmdx-link-from'));
+  const to = Number(link.getAttribute('data-wmdx-link-to'));
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from >= to) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'cm-image-actions cm-link-actions visible';
+  menu.setAttribute('role', 'toolbar');
+  menu.setAttribute('aria-label', 'Link actions');
+
+  const editButton = document.createElement('button');
+  editButton.type = 'button';
+  editButton.className = 'cm-image-action-edit';
+  editButton.innerHTML = `${svgIcons.edit}<span>Edit</span>`;
+  editButton.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeWmdxResourceLinkActions();
+    openWmdxResourceLinkEditDialog(view, from, to);
+  });
+
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'cm-image-action-delete';
+  deleteButton.innerHTML = `${svgIcons.delete}<span>Delete</span>`;
+  deleteButton.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeWmdxResourceLinkActions();
+    openWmdxResourceLinkDeleteConfirmation(view, from, to);
+  });
+
+  menu.append(editButton, deleteButton);
+  document.body.appendChild(menu);
+  const point = {
+    x: Number.isFinite(x) ? x : window.innerWidth / 2,
+    y: Number.isFinite(y) ? y : window.innerHeight / 2
+  };
+  const reposition = () => {
+    if (!menu.isConnected) return;
+    const viewport = window.visualViewport;
+    const leftEdge = viewport?.offsetLeft ?? 0;
+    const topEdge = viewport?.offsetTop ?? 0;
+    const width = viewport?.width ?? window.innerWidth;
+    const height = viewport?.height ?? window.innerHeight;
+    const menuWidth = menu.offsetWidth || 150;
+    const menuHeight = menu.offsetHeight || 48;
+    const left = Math.max(
+      leftEdge + 8,
+      Math.min(point.x - menuWidth / 2, leftEdge + width - menuWidth - 8)
+    );
+    const preferredTop = point.y - menuHeight - 14;
+    const top = preferredTop >= topEdge + 8
+      ? preferredTop
+      : Math.min(point.y + 14, topEdge + height - menuHeight - 8);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${Math.max(topEdge + 8, top)}px`;
+  };
+  const dismiss = event => {
+    if (!menu.contains(event.target)) closeWmdxResourceLinkActions();
+  };
+  const keydown = event => {
+    if (event.key === 'Escape') closeWmdxResourceLinkActions();
+  };
+  activeWmdxResourceLinkActions = { menu, dismiss, keydown, reposition };
+  document.addEventListener('pointerdown', dismiss, true);
+  document.addEventListener('keydown', keydown, true);
+  window.visualViewport?.addEventListener('resize', reposition);
+  reposition();
+}
+
+function getWmdxResourceLinkAtRange(view, from, to) {
+  if (!view || from < 0 || to > view.state.doc.length || from >= to) return null;
+  const raw = view.state.doc.sliceString(from, to);
+  const resource = parseWmdxResourceSyntax(raw);
+  return resource && !resource.embed ? { raw, resource } : null;
+}
+
+function openWmdxResourceLinkEditDialog(view, from, to) {
+  const current = getWmdxResourceLinkAtRange(view, from, to);
+  if (!current) return;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+  const { resource } = current;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Link</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-wmdx-link-title">Link text</label>
+      <input id="modal-wmdx-link-title" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-wmdx-link-source">Destination</label>
+      <input id="modal-wmdx-link-source" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-wmdx-link-alignment">Standalone alignment</label>
+      <select id="modal-wmdx-link-alignment" class="modal-select">
+        <option value="">Default</option>
+        <option value="&lt;">Left</option>
+        <option value="&gt;&lt;">Center</option>
+        <option value="&gt;">Right</option>
+        <option value="&lt;&gt;">Justified</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-wmdx-link-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-wmdx-link-save">Save</button>
+    </div>
+  `;
+
+  const titleInput = dialog.querySelector('#modal-wmdx-link-title');
+  const sourceInput = dialog.querySelector('#modal-wmdx-link-source');
+  const alignmentInput = dialog.querySelector('#modal-wmdx-link-alignment');
+  const error = document.createElement('p');
+  error.className = 'modal-error';
+  error.setAttribute('role', 'alert');
+  error.hidden = true;
+  dialog.querySelector('.modal-actions').before(error);
+  titleInput.value = resource.title || resource.displayTitle;
+  sourceInput.value = resource.source;
+  alignmentInput.value = ({
+    left: '<',
+    center: '><',
+    right: '>',
+    justify: '<>'
+  })[resource.alignment] || '';
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-wmdx-link-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-wmdx-link-save').addEventListener('click', event => {
+    event.preventDefault();
+    const source = sourceInput.value.trim();
+    if (!source) {
+      error.textContent = 'Enter a destination before saving.';
+      error.hidden = false;
+      sourceInput.focus();
+      return;
+    }
+    const currentAtRange = getWmdxResourceLinkAtRange(view, from, to);
+    if (!currentAtRange || currentAtRange.raw !== current.raw) {
+      error.textContent = 'This link is no longer in the document.';
+      error.hidden = false;
+      return;
+    }
+    let replacement;
+    try {
+      replacement = formatWmdxResourceSyntax({
+        source,
+        title: titleInput.value,
+        alignment: alignmentInput.value
+      });
+    } catch (formatError) {
+      error.textContent = formatError.message;
+      error.hidden = false;
+      sourceInput.focus();
+      return;
+    }
+    view.dispatch({
+      changes: { from, to, insert: replacement },
+      selection: { anchor: from + replacement.length, head: from + replacement.length },
+      userEvent: 'input.wmdx-link-edit'
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => titleInput.focus());
+}
+
+function openWmdxResourceLinkDeleteConfirmation(view, from, to) {
+  const current = getWmdxResourceLinkAtRange(view, from, to);
+  if (!current) return;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Delete Link?</h3>
+    <p class="modal-message">This removes the link and keeps its displayed text as plain text.</p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-wmdx-link-keep">Keep Link</button>
+      <button type="button" class="modal-btn modal-btn-delete" id="modal-wmdx-link-delete">Delete</button>
+    </div>
+  `;
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-wmdx-link-keep').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-wmdx-link-delete').addEventListener('click', event => {
+    event.preventDefault();
+    const currentAtRange = getWmdxResourceLinkAtRange(view, from, to);
+    if (currentAtRange && currentAtRange.raw === current.raw) {
+      const plainText = currentAtRange.resource.displayTitle;
+      view.dispatch({
+        changes: { from, to, insert: plainText },
+        selection: { anchor: from + plainText.length, head: from + plainText.length },
+        userEvent: 'input.wmdx-link-delete'
+      });
+    }
+    close();
+  });
+  overlay.classList.add('open');
 }
 
 export function openFootnoteInsertionDialog(options = {}) {

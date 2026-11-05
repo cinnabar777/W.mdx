@@ -569,7 +569,9 @@ editing still require normal project/device verification.
 - Text resource links now render as clickable titles with optional alignment
   when they stand alone; the link toolbar inserts the native form. Resource
   right alignment uses `>`; legacy `->` remains readable. Bare web domains are
-  stored without a scheme and opened using HTTPS.
+  stored without a scheme and opened using HTTPS. In WYSIWYG, long-pressing a
+  native text link opens Edit and Delete actions; deleting removes the link
+  syntax while keeping its displayed title as plain text.
 - Image/media rendering and edit dialogs, media insertion controls, and
   import/export are still pending. Table syntax and editing remain unchanged;
   its row splitter treats pipes inside a valid resource token as field
