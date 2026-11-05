@@ -141,9 +141,16 @@ I. Uppercase Roman item
 
 The marker selects the numbering style; following items auto-increment.
 
-Task checkboxes use `[ ]` for unchecked and `[x]` for checked items. The compact
-checkbox marker is considered clear; keep it rather than redesigning it solely
-to avoid square brackets.
+Task items begin directly with `[ ]` for unchecked or `[x]` for checked; do not
+put a leading `-` before the checkbox. The checkbox marker is itself the task
+marker, and indentation represents nesting. Add dialect-specific list markers
+when exporting formats that require them.
+
+```text
+[ ] Unfinished task
+[x] Finished task
+  [ ] Nested task
+```
 
 ### Block quotes and tables
 
@@ -244,10 +251,10 @@ and [raw HTML](https://github.github.com/gfm/#raw-html), and Obsidian's
 
 ### Footnotes and callouts
 
-**Under review:** keep footnote functionality, but reconsider the current
-Markdown spelling `[^label]` with a matching `[^label]:` definition. It is not
-settled as Wmdx-native syntax; design a simpler native form before
-implementation.
+Footnotes are automatically numbered. Keep the feature, but do not use the
+current Markdown spelling `[^label]` with a matching `[^label]:` definition as
+Wmdx-native syntax. The simpler native marker and definition form remains to be
+designed.
 
 Preserve callout and expandable-dropdown functionality. Use these native
 callout markers:
@@ -262,8 +269,8 @@ An optional title follows the type and state marker after one space, for
 example `±warning Safety note`, `±warning- Safety note`, or
 `±warning+ Safety note`.
 
-Footnotes use a reference and matching definition. Nested callouts reuse the
-same `±type` marker at a deeper indentation level. Ordinary blockquotes keep
+Each automatic footnote number refers to its matching definition. Nested
+callouts reuse the same `±type` marker at a deeper indentation level. Ordinary blockquotes keep
 `>` and repeated `>` markers for nested quoted lines. Callout body lines do not
 each need a `>` prefix; reserve `>` for quoted content inside a callout.
 
@@ -297,7 +304,7 @@ native Wmdx syntax.
 
 | Wmdx structure | CommonMark | GFM | Obsidian |
 | --- | --- | --- | --- |
-| Footnotes | CommonMark has no native footnote syntax; export linked HTML references and definitions. | Use GitHub's `[^label]` footnote extension and matching definitions. | Use native `[^label]` references and definitions. |
+| Automatically numbered footnotes | CommonMark has no native footnote syntax; export linked HTML references and definitions. | Generate labels for GitHub's `[^label]` references and matching definitions. | Generate labels for Obsidian's `[^label]` references and matching definitions. |
 | Unfolded callouts | Use a semantic `<aside>` with the type and title visible in its content; styling may differ. | Use GitHub alerts for supported types (`NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`); put an optional Wmdx title on the first bold body line. Use the HTML fallback for other types. | Preserve the existing `> [!type]` syntax and optional title. |
 | Folded/expanded callouts | Use ordinary `<details>` and `<summary>`, with the type and title visible in the summary; add `open` when initially expanded. | Use the same HTML fallback when fold state matters; GitHub alerts do not fold. | Preserve `-` for initially collapsed and `+` for initially expanded. |
 
