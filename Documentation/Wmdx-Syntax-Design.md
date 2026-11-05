@@ -239,29 +239,21 @@ and [raw HTML](https://github.github.com/gfm/#raw-html), and Obsidian's
 ### Footnotes and callouts
 
 **Agreed:** keep the current footnote syntax. Callout and expandable-dropdown
-functionality remains in scope, but its Wmdx syntax is being redesigned. The
-current callout form below is shown only as a reference to existing behavior,
-not as the final native syntax:
+functionality remains in scope, with a simpler native marker proposed:
 
 ```text
 Text with a note.[^source]
 
 [^source]: Footnote text.
-
-> [!info] Optional title
-> Callout body.
-
-> [!question]- Starts collapsed
-> The user can expand it.
-
-> [!tip]+ Starts expanded
-> The body is initially visible.
 ```
 
-Footnotes use a reference and matching definition. Callouts extend block quotes;
-the current `+` and `-` markers select initial expansion state. Whether
-callouts and generic dropdowns share one simpler form is unresolved. The user
-proposed `±` as a candidate marker; its role and grammar are not yet decided.
+Footnotes use a reference and matching definition. The user's proposed callout
+forms are `±type`, `±type-`, and `±type+`. Working interpretation: `±type` is
+not collapsible; the suffixed forms are collapsible, with `-` initially closed
+and `+` initially open, carrying forward the current state meanings. Confirm
+that interpretation before implementation. The callout title form, body
+boundary, nesting, and representation of a generic dropdown still need to be
+defined. Obsidian's `> [!type]` remains an import format, not native Wmdx syntax.
 
 ### Footnote and callout mapping proposal
 
@@ -456,8 +448,9 @@ best-effort content conversion; do not treat them as a promised round trip.
 
 Do not begin implementation until the native syntax and conversion rules are
 frozen. In particular, the callout/dropdown behavior stays in scope, but its
-native marker is undecided; assess the proposed `±` against phone-keyboard
-availability and agree what it means before coding.
+proposed forms are `±type`, `±type-`, and `±type+`. Confirm the suffix meanings
+and define the title, body boundary, nesting, and generic-dropdown behavior
+before coding.
 
 ### 0. Finish the specification
 
