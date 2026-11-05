@@ -62,11 +62,11 @@ Read [https://example.com|the guide||] in this paragraph.
 ![notes.md|Project notes||]
 ```
 
-The proposed size encoding uses bare numbers for pixels (`320`, `320x240`) and
-a `%` suffix for percentages (`80%`). An insertion dialog could default to
-pixels and append `%` when the user switches to percentage. A percentage applies
-to width relative to the available content width; height follows the media's
-proportions. Percentage height is not used.
+Use bare numbers for pixels (`320`, `320x240`) and a `%` suffix for percentage
+width (`80%`). The insertion dialog defaults to percentage; switching to pixels
+writes the size without `%`. A percentage applies to width relative to the
+available content width; height follows the media's proportions. Percentage
+height is not used.
 
 The two pixel-based `Sunset` examples are equivalent; spaces around the title
 are optional. An empty title, as in `[assets/image.png||320|><]`, uses the
@@ -192,10 +192,6 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
 
 ## Decisions still to finalize
 
-- **Dialog default unit:** The user prefers percentage sizing and wants pixels
-  available too. The proposed encoding is bare numbers for pixels and a `%`
-  suffix for percentage width. The user suggested a pixel default, but the
-  dialog's initial unit is not yet confirmed.
 - **Parser precedence and nesting:** The delimiter rules above are agreed for
   code spans, escapes, and `~` versus `~~`. Nesting and ambiguous edge cases
   still need a shared test matrix.
