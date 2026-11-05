@@ -285,6 +285,39 @@ test('Enter continues callout content and exits the current level on a blank lin
   );
   assert.equal(nestedParentExit.insert, '\n');
   assert.equal(nestedParentExit.exitsCurrentCallout, true);
+  const afterNestedParentExit =
+    nestedWithOutsideParagraph.slice(0, nestedParentExit.from) +
+    nestedParentExit.insert +
+    nestedWithOutsideParagraph.slice(nestedParentExit.to);
+  const nextReturnAfterExit = getWmdxCalloutEnterEdit(
+    afterNestedParentExit,
+    {
+      empty: true,
+      from: nestedParentExit.cursor,
+      head: nestedParentExit.cursor,
+      to: nestedParentExit.cursor
+    }
+  );
+  assert.equal(nextReturnAfterExit.insert, '\n');
+
+  const rootWithOutsideParagraph = '±note Title\n  Body\n\nOutside paragraph';
+  const rootBlankLine = rootWithOutsideParagraph.indexOf('\n\n') + 1;
+  assert.equal(
+    getWmdxCalloutContinuationIndent(
+      rootWithOutsideParagraph,
+      rootBlankLine
+    ),
+    0
+  );
+  assert.equal(
+    getWmdxCalloutEnterEdit(rootWithOutsideParagraph, {
+      empty: true,
+      from: rootBlankLine,
+      head: rootBlankLine,
+      to: rootBlankLine
+    }).insert,
+    '\n'
+  );
 
   const indentedCallout = '  ±note Title\n    Body\n    \n  Outside paragraph';
   const indentedBlank = indentedCallout.indexOf('\n    \n') + 1;

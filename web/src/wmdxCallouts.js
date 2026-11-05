@@ -44,6 +44,9 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
   const lines = splitLines(text);
   const openers = [];
   const lineAttributes = new Map();
+  // Keep outside blank-line indentation separate from callout styling so
+  // Markdown's default Enter handling cannot re-indent after an exit.
+  const returnIndentByLine = new Map();
   const stack = [];
   let pendingBlankLines = [];
 
@@ -96,6 +99,11 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
           markBodyLine(blankLine, containingCallout, true);
         } else if (isIndentedBody) {
           markBodyLine(blankLine, parent, true);
+        } else if (calloutsBeforeLine.length) {
+          returnIndentByLine.set(
+            blankLine.from,
+            calloutsBeforeLine[0].indent
+          );
         }
       }
       pendingBlankLines = [];
@@ -140,11 +148,15 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
       const containingCallout = [...stack]
         .reverse()
         .find(callout => blankIndent > callout.indent);
-      if (containingCallout) markBodyLine(blankLine, containingCallout, true);
+      if (containingCallout) {
+        markBodyLine(blankLine, containingCallout, true);
+      } else {
+        returnIndentByLine.set(blankLine.from, stack[0].indent);
+      }
     }
   }
 
-  return { openers, lineAttributes };
+  return { openers, lineAttributes, returnIndentByLine };
 }
 
 export function getWmdxCalloutContinuationIndent(
@@ -158,9 +170,11 @@ export function getWmdxCalloutContinuationIndent(
   );
   if (!line) return null;
 
-  const attributes = parseWmdxCallouts(source, isExcluded)
-    .lineAttributes.get(line.from);
-  if (!attributes) return null;
+  const parsed = parseWmdxCallouts(source, isExcluded);
+  const attributes = parsed.lineAttributes.get(line.from);
+  if (!attributes) {
+    return parsed.returnIndentByLine.get(line.from) ?? null;
+  }
 
   if (!line.text.trim()) {
     return attributes.exitIndent ?? 0;
