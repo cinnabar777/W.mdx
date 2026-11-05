@@ -141,9 +141,11 @@ The marker selects the numbering style; following items auto-increment.
 ### Block quotes and tables
 
 - Keep `>` for block quotes and repeat it for nested quotes.
-- **Agreed:** justified table columns are not needed.
-- **Recommendation:** retain the current pipe-table grid and its left, center,
-  and right column alignment syntax because it is compact and already works.
+- **Agreed:** tables are out of scope for this syntax revision; leave their
+  syntax and behavior unchanged. Keep the current pipe rows and separator row,
+  colon-based left/center/right alignment, optional outside pipes, `\|` for a
+  literal cell pipe, and existing cell-content limits. Do not add justified
+  columns or alter table editing behavior.
 
 ### Inline formatting
 
@@ -195,9 +197,6 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
 - **Parser precedence and nesting:** The delimiter rules above are agreed for
   code spans, escapes, and `~` versus `~~`. Nesting and ambiguous edge cases
   still need a shared test matrix.
-- **Table notation:** Keeping the pipe grid and current left/center/right
-  alignment syntax is recommended, but the user has not explicitly confirmed
-  retaining that exact notation.
 - **Footnotes and callouts:** Keeping their current syntax is recommended, but
   remains a recommendation until explicitly confirmed.
 
