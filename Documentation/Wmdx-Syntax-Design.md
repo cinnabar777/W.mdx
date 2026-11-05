@@ -145,8 +145,9 @@ The marker selects the numbering style; following items auto-increment.
 - **Agreed:** tables are out of scope for this syntax revision; leave their
   syntax and behavior unchanged. Keep the current pipe rows and separator row,
   colon-based left/center/right alignment, optional outside pipes, `\|` for a
-  literal cell pipe, and existing cell-content limits. Do not add justified
-  columns or alter table editing behavior.
+  literal cell pipe, and existing cell-content limits. Merged cells use `<` in
+  horizontally covered cells and `^` in vertically covered cells. Do not add
+  justified columns or alter table editing behavior.
 
 ### Inline formatting
 
@@ -278,7 +279,7 @@ treatments are tentative:
 | Named anchors (`id`/`name`) | **Agreed direction:** a standalone `#id` line declares a named target, and links refer to it with `#id`. Headings remain targets automatically. Tags remain `#tag` in tag context. Import/export converters translate Wmdx anchors to each target format's syntax |
 | CSS stylesheets, `<style>` blocks, and `style` attributes | Do not import or apply them; CSS is not document content. Convert semantic HTML formatting elements instead |
 | `<script>` blocks | Never execute them; omit script behavior as non-document content |
-| Tables with `rowspan`/`colspan` | Do not change table syntax. Tentative conversion: keep each source value once in the first covered cell, leave covered cells empty, and report that merged layout was flattened |
+| HTML tables with `rowspan`/`colspan` | **Agreed direction:** preserve spans using the existing Wmdx merge markers: `<` for horizontally covered cells and `^` for vertically covered cells. Keep the source cell content once in its origin cell. Do not change table syntax or editing behavior |
 | Forms, iframes, custom elements, and other active or unknown content | **Agreed direction:** retain readable text, labels, and ordinary links; convert recognized media to resource syntax; omit interactive controls and behavior; never execute active content or retain raw tags; report meaningful losses |
 
 HTML document metadata such as `<title>` and `<meta>` is not ordinary body text.
