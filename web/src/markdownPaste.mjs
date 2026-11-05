@@ -107,53 +107,86 @@ export function quoteMultilinePaste(state, from, to, text) {
     .join('\n');
 }
 
+function readAndroidClipboard() {
+  try {
+    const readClipboard = globalThis.window?.AndroidNative?.readClipboard;
+    return typeof readClipboard === 'function'
+      ? globalThis.window.AndroidNative.readClipboard()
+      : '';
+  } catch {
+    return '';
+  }
+}
+
+function pasteQuotedText(event, view, text) {
+  if (
+    view.state.readOnly ||
+    view.state.selection.ranges.length !== 1 ||
+    typeof text !== 'string' ||
+    !text.includes('\n')
+  ) {
+    return false;
+  }
+
+  const { from, to } = view.state.selection.main;
+  const pasteRange = quotePasteInsertionRange(view.state, from, to);
+  const quotedText = quoteMultilinePaste(
+    view.state,
+    pasteRange.from,
+    pasteRange.to,
+    text
+  );
+  if (
+    quotedText === text &&
+    pasteRange.from === from &&
+    pasteRange.to === to
+  ) {
+    return false;
+  }
+
+  event.preventDefault();
+  view.dispatch({
+    changes: {
+      from: pasteRange.from,
+      to: pasteRange.to,
+      insert: quotedText
+    },
+    selection: { anchor: pasteRange.from + quotedText.length },
+    userEvent: 'input.paste'
+  });
+  return true;
+}
+
 export const markdownBlockquotePaste = EditorView.domEventHandlers({
   paste(event, view) {
-    if (view.state.readOnly || view.state.selection.ranges.length !== 1) {
-      return false;
-    }
-
     let text;
     try {
       text = event.clipboardData?.getData('text/plain');
       if (!text) text = event.clipboardData?.getData('text');
-      if (
-        !text &&
-        typeof globalThis.window?.AndroidNative?.readClipboard === 'function'
-      ) {
-        text = globalThis.window.AndroidNative.readClipboard();
-      }
     } catch {
-      return false;
+      text = '';
     }
-    if (typeof text !== 'string' || !text.includes('\n')) return false;
-
-    const { from, to } = view.state.selection.main;
-    const pasteRange = quotePasteInsertionRange(view.state, from, to);
-    const quotedText = quoteMultilinePaste(
-      view.state,
-      pasteRange.from,
-      pasteRange.to,
-      text
-    );
-    if (
-      quotedText === text &&
-      pasteRange.from === from &&
-      pasteRange.to === to
-    ) {
-      return false;
+    if (!text) text = readAndroidClipboard();
+    return pasteQuotedText(event, view, text);
+  },
+  keydown(event, view) {
+    const isPasteShortcut =
+      (event.ctrlKey || event.metaKey) &&
+      !event.altKey &&
+      (event.key || '').toLowerCase() === 'v';
+    if (!isPasteShortcut) return false;
+    return pasteQuotedText(event, view, readAndroidClipboard());
+  },
+  beforeinput(event, view) {
+    let text = '';
+    try {
+      text = event.dataTransfer?.getData('text/plain') || event.data || '';
+    } catch {
+      text = event.data || '';
     }
-
-    event.preventDefault();
-    view.dispatch({
-      changes: {
-        from: pasteRange.from,
-        to: pasteRange.to,
-        insert: quotedText
-      },
-      selection: { anchor: pasteRange.from + quotedText.length },
-      userEvent: 'input.paste'
-    });
-    return true;
+    if (!text && event.inputType === 'insertFromPaste') {
+      text = readAndroidClipboard();
+    }
+    return pasteQuotedText(event, view, text);
   }
 });

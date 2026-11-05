@@ -172,6 +172,55 @@ test('native paste event adds quote markers to continuation lines', () => {
 
     assert.equal(androidPasteEvent.defaultPrevented, true);
     assert.equal(view.state.doc.toString(), '> quote\n> Alpha\n> Beta');
+
+    const blankQuoteDoc = '> quote\n>';
+    const blankQuoteLine = EditorState.create({
+      doc: blankQuoteDoc,
+      extensions: [markdown()]
+    }).doc.line(2);
+    view.dispatch({
+      changes: {
+        from: 0,
+        to: view.state.doc.length,
+        insert: blankQuoteDoc
+      },
+      selection: { anchor: blankQuoteLine.from }
+    });
+    window.AndroidNative.readClipboard = () => '- First\n  - Second';
+    const keyboardPasteEvent = new window.KeyboardEvent('keydown', {
+      key: 'v',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true
+    });
+
+    view.contentDOM.dispatchEvent(keyboardPasteEvent);
+
+    assert.equal(keyboardPasteEvent.defaultPrevented, true);
+    assert.equal(
+      view.state.doc.toString(),
+      '> quote\n> - First\n>   - Second'
+    );
+
+    view.dispatch({
+      changes: {
+        from: 0,
+        to: view.state.doc.length,
+        insert: blankQuoteDoc
+      },
+      selection: { anchor: blankQuoteLine.from }
+    });
+    const imePasteEvent = new window.InputEvent('beforeinput', {
+      inputType: 'insertText',
+      data: 'Alpha\nBeta',
+      bubbles: true,
+      cancelable: true
+    });
+
+    view.contentDOM.dispatchEvent(imePasteEvent);
+
+    assert.equal(imePasteEvent.defaultPrevented, true);
+    assert.equal(view.state.doc.toString(), '> quote\n> Alpha\n> Beta');
   } finally {
     view?.destroy();
     dom.window.close();

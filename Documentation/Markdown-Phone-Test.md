@@ -120,6 +120,9 @@ The source should keep every pasted line inside the quote:
 >     - Third
 ```
 
+Repeat the paste with the long-press Paste action, Ctrl+V, and the keyboard
+clipboard. Each path should produce the same quoted source.
+
 ### Code blocks
 
 The block should be visually distinct from the surrounding text. The code and
