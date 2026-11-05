@@ -247,6 +247,10 @@ expandable-dropdown functionality. Use these native callout markers:
 | `±type-` | Collapsible callout, initially closed |
 | `±type+` | Collapsible callout, initially open |
 
+An optional title follows the type and state marker after one space, for
+example `±warning Safety note`, `±warning- Safety note`, or
+`±warning+ Safety note`.
+
 Footnotes use a reference and matching definition. Nested callouts reuse the
 same `±type` marker at a deeper indentation level. Ordinary blockquotes keep
 `>` and repeated `>` markers for nested quoted lines. Callout body lines do not
@@ -473,8 +477,9 @@ best-effort content conversion; do not treat them as a promised round trip.
 Do not begin implementation until the native syntax and conversion rules are
 frozen. In particular, the callout/dropdown behavior stays in scope, with
 agreed markers `±type`, `±type-`, and `±type+`; `-` starts closed and `+`
-starts open. The generic dropdown is the `dropdown` callout type and requires
-one of those suffixes. The title form still needs to be defined.
+starts open. Optional titles follow the type and state marker after one space.
+The generic dropdown is the `dropdown` callout type and requires one of those
+suffixes. Its body uses the same automatic indentation rules as other callouts.
 Callout bodies use automatic list-like indentation, blank lines for paragraphs,
 and dedenting to end the block. Callout body lines do not need repeated `>`
 markers; ordinary quotes retain them.
