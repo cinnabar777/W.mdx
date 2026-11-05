@@ -263,13 +263,18 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
 | Wmdx structure | CommonMark | GFM | Obsidian |
 | --- | --- | --- | --- |
 | Footnotes | CommonMark has no native footnote syntax; export linked HTML references and definitions. | Use GitHub's `[^label]` footnote extension and matching definitions. | Use native `[^label]` references and definitions. |
-| Unfolded callouts | Use `<aside data-wmdx-callout="TYPE">` with a visible type and title; styling may differ. | Use GitHub alerts for supported types (`NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`); put an optional Wmdx title on the first bold body line. Use the HTML fallback for other types. | Preserve the existing `> [!type]` syntax and optional title. |
-| Folded/expanded callouts | Use `<details data-wmdx-callout="TYPE">` with a summary and body; add `open` when initially expanded. | Use the same HTML fallback when fold state matters; GitHub alerts do not fold. | Preserve `-` for initially collapsed and `+` for initially expanded. |
+| Unfolded callouts | Use a semantic `<aside>` with the type and title visible in its content; styling may differ. | Use GitHub alerts for supported types (`NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`); put an optional Wmdx title on the first bold body line. Use the HTML fallback for other types. | Preserve the existing `> [!type]` syntax and optional title. |
+| Folded/expanded callouts | Use ordinary `<details>` and `<summary>`, with the type and title visible in the summary; add `open` when initially expanded. | Use the same HTML fallback when fold state matters; GitHub alerts do not fold. | Preserve `-` for initially collapsed and `+` for initially expanded. |
 
 Do not reinterpret ordinary block quotes as callouts. Import callouts only from
-Obsidian syntax, recognized GFM alerts, or explicit HTML callout markup.
-Recognize HTML footnotes only when reference links match their definitions;
-ordinary `<sup>` elements remain superscript text. These mappings follow
+Obsidian syntax or recognized GFM alerts. Generic HTML `<aside>` and
+`<details>` do not by themselves identify a Wmdx callout type; preserve visible
+content and convert the HTML structure to the closest native Wmdx structure,
+reporting any classification loss. HTML is the portable export users can take
+to other tools for conversion, not a Wmdx round-trip format. Emit standard,
+usable HTML without hidden Wmdx-specific metadata. Recognize HTML footnotes only
+when reference links match their definitions; ordinary `<sup>` elements remain
+superscript text. These mappings follow
 [GitHub footnotes and alerts](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax),
 [Obsidian footnotes](https://help.obsidian.md/Editing+and+formatting/Basic+formatting+syntax),
 and [Obsidian callouts](https://help.obsidian.md/callouts).
@@ -277,8 +282,7 @@ GitHub footnotes and alerts are GitHub-specific extensions and may not work in
 generic GFM renderers. Map Wmdx `info`/`note` to GitHub `NOTE` and `tip` to
 `TIP`; use the HTML fallback for unsupported types such as `question`. GitHub
 alerts cannot fold or nest, so those cases use HTML and may lose native alert
-styling. The `data-wmdx-callout` attribute is an HTML export marker so importing
-that HTML restores a callout; it is not Wmdx authoring syntax.
+styling.
 
 ## Import, paste, and export
 
@@ -411,8 +415,7 @@ The following entries record agreed conversion behavior:
 
 | HTML feature | Wmdx conversion or handling |
 | --- | --- |
-| `<aside data-wmdx-callout="TYPE">` | Import as the matching Wmdx callout type and convert its child content normally. The attribute is an export marker, not Wmdx authoring syntax |
-| `details`/`summary` | **Agreed direction:** ordinary details reuse the existing fold-block grammar with a dedicated neutral `details` type, e.g. `> [!details]- Summary` plus quoted body. HTML `<details data-wmdx-callout="TYPE">` restores a callout type instead; the attribute is an export marker, not Wmdx authoring syntax |
+| `details`/`summary` | **Agreed direction:** ordinary details reuse the existing fold-block grammar with a dedicated neutral `details` type, e.g. `> [!details]- Summary` plus quoted body. Do not infer a Wmdx callout type from generic HTML disclosure elements |
 | Definition lists (`dl`/`dt`/`dd`) | **Agreed direction:** a term paragraph followed by definition lines beginning `: `; a new term paragraph starts the next group |
 | HTML image alt text and visible caption | **Agreed direction:** the unified resource `TITLE` serves as both alt text and visible caption. An empty title falls back to the source filename; an empty HTML `alt` is treated as missing. Do not add a separate caption field or parentheses sub-syntax |
 | Responsive images (`picture`/`srcset`) | **Agreed direction:** import the file path from `<img src>` as one Wmdx resource and let Wmdx sizing control its display. Ignore alternate `srcset` and `<picture><source>` candidates; do not add multi-source syntax for responsive display variants |
