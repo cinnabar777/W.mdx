@@ -559,10 +559,12 @@ editing still require normal project/device verification.
   fallback, pixel/percentage sizing, and the four alignment markers.
 - The CodeMirror parser recognizes valid resource references and embeds as one
   native token; escaped text and code spans remain literal.
-- Visual rendering, media/link edit dialogs, toolbar insertion, and import/export
-  are still pending. Table syntax and editing remain unchanged; its row splitter
-  treats pipes inside a valid resource token as field separators, not cell
-  boundaries.
+- Text resource links now render as clickable titles with optional alignment
+  when they stand alone; the link toolbar inserts the native form.
+- Image/media rendering and edit dialogs, media insertion controls, and
+  import/export are still pending. Table syntax and editing remain unchanged;
+  its row splitter treats pipes inside a valid resource token as field
+  separators, not cell boundaries.
 
 ### 0. Finish remaining specification details
 

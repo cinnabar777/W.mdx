@@ -64,6 +64,12 @@ import {
   parseMarkdownEmbeddedDocumentLink,
   parseMarkdownVideoLink
 } from './markdownMedia.js';
+import {
+  formatWmdxResourceSyntax,
+  getWmdxResourceTitleEscapeRanges,
+  getWmdxResourceTitleRange,
+  parseWmdxResourceSyntax
+} from './wmdxResources.js';
 import { MdzipAttachmentWidget } from './mdzipAttachmentWidget.js';
 import { AudioPreviewWidget } from './audioPreviewWidget.js';
 import { VideoPreviewWidget } from './videoPreviewWidget.js';
@@ -1229,6 +1235,85 @@ class WikilinkWidget extends WidgetType {
 
 export const typographySettingsEffect = StateEffect.define();
 
+class WmdxResourceLinkWidget extends WidgetType {
+  constructor(title, target, alignment = null) {
+    super();
+    this.title = title;
+    this.target = target;
+    this.alignment = alignment;
+  }
+
+  eq(other) {
+    return other instanceof WmdxResourceLinkWidget &&
+      other.title === this.title &&
+      other.target === this.target &&
+      other.alignment === this.alignment;
+  }
+
+  toDOM() {
+    const link = document.createElement('a');
+    link.className = 'cm-link';
+    link.href = this.target;
+    link.textContent = this.title;
+    link.setAttribute('data-wmdx-link-target', this.target);
+    if (this.alignment) {
+      link.style.cssText = `display:block;text-align:${this.alignment};`;
+    }
+    return link;
+  }
+}
+
+function addWmdxResourceLinkDecorations({
+  node,
+  doc,
+  resource,
+  pushDecoration,
+  hideSyntax,
+  hiddenSyntaxRanges
+}) {
+  const raw = doc.sliceString(node.from, node.to);
+  const titleRange = getWmdxResourceTitleRange(raw);
+  const line = doc.lineAt(node.from);
+  const alignment = line.from === node.from && line.to === node.to
+    ? resource.alignment
+    : null;
+  const linkAttributes = {
+    href: resource.source,
+    'data-wmdx-link-target': resource.source,
+    ...(alignment
+      ? { style: `display:block;text-align:${alignment};` }
+      : {})
+  };
+
+  if (resource.title && titleRange && titleRange.to > titleRange.from) {
+    const labelFrom = node.from + titleRange.from;
+    const labelTo = node.from + titleRange.to;
+    pushDecoration(Decoration.mark({
+      tagName: 'a',
+      class: 'cm-link',
+      attributes: linkAttributes
+    }).range(labelFrom, labelTo));
+    hideSyntax(node.from, labelFrom);
+    for (const escapeRange of getWmdxResourceTitleEscapeRanges(raw)) {
+      hideSyntax(
+        node.from + escapeRange.from,
+        node.from + escapeRange.to
+      );
+    }
+    hideSyntax(labelTo, node.to);
+    return;
+  }
+
+  const decoration = Decoration.replace({
+    widget: new WmdxResourceLinkWidget(
+      resource.displayTitle,
+      resource.source,
+      alignment
+    )
+  }).range(node.from, node.to);
+  pushDecoration(decoration);
+  hiddenSyntaxRanges.push(decoration);
+}
 
 const imageAspectCache = new Map();
 
@@ -2834,6 +2919,23 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               : selection.from < node.to && selection.to > node.from
           );
 
+          if (node.name === 'WmdxResource') {
+            const resource = parseWmdxResourceSyntax(
+              doc.sliceString(node.from, node.to)
+            );
+            if (resource && !resource.embed && !isNodeActive) {
+              addWmdxResourceLinkDecorations({
+                node,
+                doc,
+                resource,
+                pushDecoration: decoration => builder.push(decoration),
+                hideSyntax,
+                hiddenSyntaxRanges
+              });
+            }
+            return false;
+          }
+
           if (node.name === 'LinkReference') {
             if (!isNodeActive) {
               const firstLine = doc.lineAt(node.from).number;
@@ -4352,6 +4454,23 @@ function buildHeightMapValue(state) {
         if (linkInfo) {
           hideSyntax(node.from, linkInfo.labelFrom);
           hideSyntax(linkInfo.labelTo, node.to);
+        }
+        return false;
+      }
+
+      if (node.name === 'WmdxResource') {
+        const resource = parseWmdxResourceSyntax(
+          doc.sliceString(node.from, node.to)
+        );
+        if (resource && !resource.embed) {
+          addWmdxResourceLinkDecorations({
+            node,
+            doc,
+            resource,
+            pushDecoration: decoration => replacements.push(decoration),
+            hideSyntax,
+            hiddenSyntaxRanges
+          });
         }
         return false;
       }
@@ -7453,6 +7572,16 @@ export function openLinkInsertionDialog() {
           : '<option value="">(No headings found in document)</option>'}
       </select>
     </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-link-alignment">Standalone alignment</label>
+      <select id="modal-link-alignment" class="modal-select">
+        <option value="">Default</option>
+        <option value="&lt;">Left</option>
+        <option value="&gt;&lt;">Center</option>
+        <option value="-&gt;">Right</option>
+        <option value="&lt;&gt;">Justified</option>
+      </select>
+    </div>
     <div class="modal-actions">
       <button type="button" class="modal-btn modal-btn-cancel" id="modal-btn-cancel">Cancel</button>
       <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm">Insert</button>
@@ -7466,6 +7595,7 @@ export function openLinkInsertionDialog() {
   const textInput = dialog.querySelector('#modal-link-text');
   const urlInput = dialog.querySelector('#modal-link-url');
   const headingSelect = dialog.querySelector('#modal-heading-select');
+  const alignmentSelect = dialog.querySelector('#modal-link-alignment');
   const btnCancel = dialog.querySelector('#modal-btn-cancel');
   const btnConfirm = dialog.querySelector('#modal-btn-confirm');
 
@@ -7502,7 +7632,11 @@ export function openLinkInsertionDialog() {
     if (kind === 'web') {
       const url = urlInput.value.trim() || 'https://';
       const label = displayText || url;
-      replacement = `[${label}](${url})`;
+      replacement = formatWmdxResourceSyntax({
+        source: url,
+        title: label,
+        alignment: alignmentSelect.value
+      });
     } else {
       const targetHeading = headingSelect.value;
       if (!targetHeading) {
@@ -7511,11 +7645,11 @@ export function openLinkInsertionDialog() {
         view.focus();
         return;
       }
-      if (displayText) {
-        replacement = `[[#${targetHeading}|${displayText}]]`;
-      } else {
-        replacement = `[[#${targetHeading}]]`;
-      }
+      replacement = formatWmdxResourceSyntax({
+        source: `#${targetHeading}`,
+        title: displayText || targetHeading,
+        alignment: alignmentSelect.value
+      });
     }
 
     if (selectionSnapshot && selectionSnapshot.type === 'table-cell') {

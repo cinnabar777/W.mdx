@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 test('parses a text link with fixed empty slots and standalone alignment', async () => {
   const { parseWmdxResourceSyntax } = await import('../src/wmdxResources.js');
@@ -92,6 +94,36 @@ test('formats alignment names as keyboard-friendly markers', async () => {
     formatWmdxResourceSyntax({ embed: true, source: 'image.png' }),
     '![image.png|||]'
   );
+});
+
+test('finds the visible title range while ignoring escaped field pipes', async () => {
+  const {
+    getWmdxResourceTitleEscapeRanges,
+    getWmdxResourceTitleRange,
+    parseWmdxResourceSyntax
+  } = await import('../src/wmdxResources.js');
+  const syntax = '[https://example.com|Rain \\| shine||]';
+  const range = getWmdxResourceTitleRange(syntax);
+
+  assert.equal(
+    syntax.slice(range.from, range.to),
+    'Rain \\| shine'
+  );
+  assert.deepEqual(getWmdxResourceTitleEscapeRanges(syntax), [
+    { from: syntax.indexOf('\\|'), to: syntax.indexOf('\\|') + 1 }
+  ]);
+  assert.equal(parseWmdxResourceSyntax(syntax).title, 'Rain | shine');
+});
+
+test('link insertion and visual rendering use native resource syntax', () => {
+  const main = fs.readFileSync(
+    path.join(__dirname, '../src/main.js'),
+    'utf8'
+  );
+  assert.match(main, /node\.name === 'WmdxResource'/);
+  assert.match(main, /data-wmdx-link-target/);
+  assert.match(main, /formatWmdxResourceSyntax\(\{\s*source: url/);
+  assert.match(main, /modal-link-alignment/);
 });
 
 test('rejects malformed fields, invalid sizes, and sized text links', async () => {

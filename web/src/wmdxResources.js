@@ -112,6 +112,49 @@ export function parseWmdxResourceSyntax(value) {
   };
 }
 
+function resourceFieldSeparators(value, embed) {
+  const text = String(value ?? '');
+  const separators = [];
+  const fieldStart = embed ? 2 : 1;
+  for (let index = fieldStart; index < text.length - 1; index += 1) {
+    if (
+      text[index] === '\\' &&
+      ['\\', '|'].includes(text[index + 1])
+    ) {
+      index += 1;
+    } else if (text[index] === '|') {
+      separators.push(index);
+    }
+  }
+  return separators;
+}
+
+export function getWmdxResourceTitleRange(value) {
+  const resource = parseWmdxResourceSyntax(value);
+  if (!resource) return null;
+  const separators = resourceFieldSeparators(value, resource.embed);
+  return separators.length === 3
+    ? { from: separators[0] + 1, to: separators[1] }
+    : null;
+}
+
+export function getWmdxResourceTitleEscapeRanges(value) {
+  const titleRange = getWmdxResourceTitleRange(value);
+  if (!titleRange) return [];
+  const text = String(value ?? '');
+  const ranges = [];
+  for (let index = titleRange.from; index < titleRange.to - 1; index += 1) {
+    if (
+      text[index] === '\\' &&
+      ['\\', '|'].includes(text[index + 1])
+    ) {
+      ranges.push({ from: index, to: index + 1 });
+      index += 1;
+    }
+  }
+  return ranges;
+}
+
 function serializeSize(value) {
   if (value == null || value === '') return '';
   const text = typeof value === 'number' ? String(value) : String(value).trim();
