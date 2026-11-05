@@ -167,6 +167,12 @@ The native W.mdx meanings are:
 toggle. Keep the existing highlighter (`==...==`) and pen (`=...=`) forms,
 including their Unicode subscript color-slot selectors.
 
+Properly nested formatting is valid. A crossed pair closes in a different
+order than it opened, for example `*italic _underlined* later_`. Its intended
+formatting is ambiguous. **Agreed direction:** do not rewrite the source; show
+the conflicting markers literally in visual editing rather than guessing at
+the intended formatting.
+
 `==` selects a background highlight color; `=` selects a text/pen color. Add a
 toolbar action for custom colors, with the hex value after the opening marker
 and `:` separating the value from the text:
@@ -240,16 +246,15 @@ scripts. Convert recognized HTML structure and semantic formatting elements to
 Wmdx syntax. When document content has no suitable Wmdx equivalent, identify it
 and propose a native syntax before implementing that conversion.
 
-## HTML import inventory — tentative ideas to revisit individually
+## HTML import inventory
 
 The CommonMark 0.31.2 parser suite holds 77 HTML-interoperability examples out
 of native Markdown parsing. These are parser conformance cases, not 77 distinct
 features: they include ordinary elements, custom or malformed tags, comments,
 processing instructions, and script/style blocks.
 
-The ideas below are a working inventory, not approved Wmdx syntax or a batch
-implementation plan. Revisit each gap separately, agree on its syntax or
-conversion behavior, and only then include it in an implementation plan.
+The entries below record agreed conversion behavior. This inventory is not a
+batch implementation plan.
 
 ### Existing Wmdx equivalents
 
@@ -264,12 +269,11 @@ conversion behavior, and only then include it in an implementation plan.
 | `figure`/`figcaption` when its caption matches the image alt text | The resource title, which serves as alt text and visible caption |
 | `pre`/`code` | Fenced code, preserving the code text and a recognized language |
 
-### Gaps that need syntax or conversion decisions
+### Additional agreed HTML conversions and exclusions
 
-Items marked **Agreed direction** reflect choices made so far; the remaining
-treatments are tentative:
+The following entries record agreed conversion behavior:
 
-| HTML feature | Tentative treatment to revisit |
+| HTML feature | Wmdx conversion or handling |
 | --- | --- |
 | `details`/`summary` | **Agreed direction:** reuse the existing fold-block grammar with a dedicated `details` type, e.g. `> [!details]- Summary` plus quoted body. Render it as a neutral disclosure with no callout icon/accent; no separate folding marker |
 | Definition lists (`dl`/`dt`/`dd`) | **Agreed direction:** a term paragraph followed by definition lines beginning `: `; a new term paragraph starts the next group |
@@ -277,8 +281,8 @@ treatments are tentative:
 | Responsive images (`picture`/`srcset`) | **Agreed direction:** import the file path from `<img src>` as one Wmdx resource and let Wmdx sizing control its display. Ignore alternate `srcset` and `<picture><source>` candidates; do not add multi-source syntax for responsive display variants |
 | HTML comments | **Agreed direction:** use `/* comment */` for both inline and multiline Wmdx comments, with the same opening and closing markers. Convert HTML `<!-- ... -->` and Obsidian `%% ... %%` comments to this native form and map them back on export. Recognize comment markers before italic syntax; do not use backslash as a comment marker |
 | Named anchors (`id`/`name`) | **Agreed direction:** a standalone `#id` line declares a named target, and links refer to it with `#id`. Headings remain targets automatically. Tags remain `#tag` in tag context. Import/export converters translate Wmdx anchors to each target format's syntax |
-| CSS stylesheets, `<style>` blocks, and `style` attributes | Do not import or apply them; CSS is not document content. Convert semantic HTML formatting elements instead |
-| `<script>` blocks | Never execute them; omit script behavior as non-document content |
+| CSS stylesheets, `<style>` blocks, and `style` attributes | **Agreed direction:** do not import or apply them; CSS is not document content. Convert semantic HTML formatting elements instead |
+| `<script>` blocks | **Agreed direction:** never execute them; omit script behavior as non-document content |
 | HTML tables with `rowspan`/`colspan` | **Agreed direction:** preserve spans using the existing Wmdx merge markers: `<` for horizontally covered cells and `^` for vertically covered cells. Keep the source cell content once in its origin cell. Do not change table syntax or editing behavior |
 | Forms, iframes, custom elements, and other active or unknown content | **Agreed direction:** retain readable text, labels, and ordinary links; convert recognized media to resource syntax; omit interactive controls and behavior; never execute active content or retain raw tags; report meaningful losses |
 
@@ -291,12 +295,12 @@ Paste-from imports leave the current document filename unchanged.
 
 - **Parser precedence and nesting:** Nesting styles is agreed. The delimiter
   rules above are also agreed for code spans, escapes, `~` versus `~~`, and
-  unmatched formatting markers. Crossing pairs and other ambiguous edge cases
-  still need a shared test matrix.
-- **HTML conversion coverage:** revisit each tentative item individually;
-  decide its native syntax or conversion behavior before planning its
-  implementation. Also set the policy for metadata and unsupported or
-  malformed input.
+  unmatched formatting markers. Crossed pairs stay visible as literal text and
+  are never auto-corrected; other ambiguous combinations need a shared test
+  matrix.
+- **Malformed HTML:** **Proposed:** recover and convert recognizable document
+  content, reporting meaningful losses. If no usable content can be recovered,
+  stop and leave the destination unchanged.
 
 ## Wmdx-owned implementation work
 
