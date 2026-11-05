@@ -166,6 +166,16 @@ The native W.mdx meanings are:
 toggle. Keep the existing highlighter (`==...==`) and pen (`=...=`) forms,
 including their Unicode subscript color-slot selectors.
 
+`==` selects a background highlight color; `=` selects a text/pen color. Add a
+toolbar action for custom colors, with the chosen hex value after the opening
+marker and before the text. The user prefers a subscript spelling, such as
+`=₇₇₇text=`. Unicode has subscript digits but does not provide a complete
+subscript alphabet for hexadecimal A–F, so arbitrary colors cannot all be
+stored as literal subscript characters. The picker can insert subscript-only
+hex when the value contains only digits; representing every color in a
+subscript-looking form remains open. Keep the existing palette selectors
+unchanged.
+
 Inline formatting styles can be combined inside one another:
 
 ```text
@@ -261,7 +271,7 @@ treatments are tentative:
 | Responsive images (`picture`/`srcset`) | `srcset` and `picture` can contain multiple candidates, media conditions, and MIME types; a single `srcset=...` option would not model them fully. Tentative first-pass policy: keep the `img` fallback source and report dropped alternatives. Design multi-source syntax only if lossless responsive-image support is required |
 | HTML comments | Tentative first-pass policy: omit non-rendered comments and report that they were skipped; do not expose hidden source notes as visible text. If Wmdx needs hidden authoring notes, design that separately rather than adopting Obsidian's `%%` syntax automatically |
 | Named anchors (`id`/`name`) | **Agreed direction:** a standalone `#id` line declares a named target, and links refer to it with `#id`. Headings remain targets automatically. Tags remain `#tag` in tag context. Import/export converters translate Wmdx anchors to each target format's syntax |
-| Custom CSS colors and typography | Wmdx currently has four configurable highlight slots and four configurable pen slots, selected by the existing Unicode subscript markers. Keep those markers unchanged. They represent user-configurable slots, not exact per-span CSS values. Map properties with existing Wmdx equivalents; exact arbitrary values need a general native style/value syntax designed for authoring and toolbar use, not an HTML-import-only marker. Until then, report unsupported values |
+| Custom CSS colors and typography | Map supported properties to Wmdx formatting. Preserve arbitrary color values with the general custom-color syntax under design above, not an HTML-import-only marker. Keep the existing Unicode subscript palette selectors unchanged |
 | `script` and `style` blocks | Convert supported CSS properties to native formatting; never execute scripts or apply imported CSS. Omit non-rendered scripts and unsupported stylesheet rules with a conversion warning, rather than inserting them as visible code by default |
 | Tables with `rowspan`/`colspan` | Do not change table syntax. Tentative conversion: keep each source value once in the first covered cell, leave covered cells empty, and report that merged layout was flattened |
 | Forms, iframes, custom elements, and other active or unknown content | Convert recognized media to resource syntax and retain readable labels/text and ordinary links. Do not preserve interactive behavior, execute active content, or retain raw tags; report meaningful losses |
