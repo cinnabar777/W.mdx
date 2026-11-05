@@ -221,6 +221,43 @@ test('native paste event adds quote markers to continuation lines', () => {
 
     assert.equal(imePasteEvent.defaultPrevented, true);
     assert.equal(view.state.doc.toString(), '> quote\n> Alpha\n> Beta');
+
+    view.dispatch({
+      changes: {
+        from: 0,
+        to: view.state.doc.length,
+        insert: blankQuoteDoc
+      },
+      selection: { anchor: blankQuoteLine.from }
+    });
+    const inputHandlers = view.state.facet(EditorView.inputHandler);
+    const simulateTextInput = text => {
+      const { from, to } = view.state.selection.main;
+      const defaultInsert = () => view.state.update({
+        changes: { from, to, insert: text },
+        selection: { anchor: from + text.length },
+        userEvent: 'input.type'
+      });
+      const handled = inputHandlers.some(handler => handler(
+        view,
+        from,
+        to,
+        text,
+        defaultInsert
+      ));
+      if (!handled) view.dispatch(defaultInsert());
+    };
+
+    simulateTextInput('- First');
+    simulateTextInput('\n');
+    simulateTextInput('  - Second');
+    simulateTextInput('\n');
+    simulateTextInput('    - Third');
+
+    assert.equal(
+      view.state.doc.toString(),
+      '> quote\n> - First\n>   - Second\n>     - Third'
+    );
   } finally {
     view?.destroy();
     dom.window.close();
