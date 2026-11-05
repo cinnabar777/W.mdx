@@ -20,13 +20,56 @@ function isInsideFencedCode(state, position) {
   return false;
 }
 
+function isInsideTable(state, position) {
+  const probe = Math.max(0, Math.min(position, state.doc.length));
+  for (let node = syntaxTree(state).resolveInner(probe, 1); node; node = node.parent) {
+    if (node.name === 'Table') return true;
+  }
+  return false;
+}
+
+function isEscaped(text, position) {
+  let backslashes = 0;
+  for (let index = position - 1; index >= 0 && text[index] === '\\'; index--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 1;
+}
+
+function getPairedSuperscriptRanges(text) {
+  const ranges = [];
+  for (let from = 0; from < text.length; from++) {
+    if (text[from] !== '^' || isEscaped(text, from)) continue;
+    const first = text[from + 1] || '';
+    if (!first || /[\s.,;:!?)}\]]/.test(first)) continue;
+
+    if (/\d/.test(first)) {
+      const numericPair = /^\^(\d+)\^/.exec(text.slice(from));
+      if (numericPair && !isEscaped(text, from + numericPair[0].length - 1)) {
+        ranges.push({ from, to: from + numericPair[0].length });
+        from += numericPair[0].length - 1;
+      }
+      continue;
+    }
+
+    for (let to = from + 1; to < text.length && text[to] !== '\n'; to++) {
+      if (text[to] !== '^' || isEscaped(text, to)) continue;
+      ranges.push({ from, to: to + 1 });
+      from = to;
+      break;
+    }
+  }
+  return ranges;
+}
+
 export function parseFootnotes(
   text,
   isCodePosition = () => false,
-  isFencedCodePosition = () => false
+  isFencedCodePosition = () => false,
+  isTablePosition = () => false
 ) {
   text = String(text ?? '');
-  if (!text.includes('[^')) return { definitions: [], references: [] };
+  if (!text.includes('^')) return { definitions: [], references: [] };
 
   const lines = [];
   let offset = 0;
@@ -38,53 +81,139 @@ export function parseFootnotes(
 
   const definitions = [];
   const definitionsByLabel = new Map();
+  const definitionRanges = [];
+  const nativeDefinitions = [];
   for (let index = 0; index < lines.length; index++) {
     const firstLine = lines[index];
     const match = /^\s*\[\^([^\]\s]+)\]:\s?(.*)$/.exec(firstLine.text);
-    if (!match || isCodePosition(firstLine.from + match[0].indexOf('[^'))) continue;
+    if (match && !isCodePosition(firstLine.from + match[0].indexOf('[^')) &&
+        !isTablePosition(firstLine.from + match[0].indexOf('[^'))) {
+      const bodyParts = [match[2]];
+      let lastLine = firstLine;
+      while (index + 1 < lines.length) {
+        const nextLine = lines[index + 1];
+        const continuation = /^ {4,}(.*)$/.exec(nextLine.text);
+        if (!continuation || isFencedCodePosition(nextLine.from)) break;
+        bodyParts.push(continuation[1]);
+        lastLine = nextLine;
+        index++;
+      }
 
-    const bodyParts = [match[2]];
-    let lastLine = firstLine;
-    while (index + 1 < lines.length) {
-      const nextLine = lines[index + 1];
-      const continuation = /^ {4,}(.*)$/.exec(nextLine.text);
-      if (!continuation || isFencedCodePosition(nextLine.from)) break;
-      bodyParts.push(continuation[1]);
-      lastLine = nextLine;
-      index++;
+      const label = match[1];
+      const definition = {
+        label,
+        normalizedLabel: label.toLowerCase(),
+        body: bodyParts.join('\n'),
+        from: firstLine.from,
+        to: lastLine.to,
+        syntax: 'markdown'
+      };
+      definitions.push(definition);
+      definitionRanges.push(definition);
+      if (!definitionsByLabel.has(definition.normalizedLabel)) {
+        definitionsByLabel.set(definition.normalizedLabel, definition);
+      }
+      continue;
     }
 
-    const label = match[1];
-    const definition = {
-      label,
-      normalizedLabel: label.toLowerCase(),
-      body: bodyParts.join('\n'),
+    const nativeMatch = /^\^ (.*)$/.exec(firstLine.text);
+    if (!nativeMatch ||
+        isCodePosition(firstLine.from) ||
+        isTablePosition(firstLine.from)) {
+      continue;
+    }
+
+    nativeDefinitions.push({
+      body: nativeMatch[1],
       from: firstLine.from,
-      to: lastLine.to
-    };
-    definitions.push(definition);
-    if (!definitionsByLabel.has(definition.normalizedLabel)) {
-      definitionsByLabel.set(definition.normalizedLabel, definition);
-    }
+      to: firstLine.to,
+      syntax: 'wmdx'
+    });
   }
 
+  nativeDefinitions.forEach((definition, index) => {
+    const label = String(index + 1);
+    const numberedDefinition = {
+      ...definition,
+      label,
+      normalizedLabel: label
+    };
+    definitions.push(numberedDefinition);
+    definitionRanges.push(numberedDefinition);
+    if (!definitionsByLabel.has(label)) {
+      definitionsByLabel.set(label, numberedDefinition);
+    }
+  });
+
   const references = [];
+  const pairedSuperscripts = getPairedSuperscriptRanges(text);
   const referencePattern = /\[\^([^\]\s]+)\]/g;
   let referenceMatch;
   while ((referenceMatch = referencePattern.exec(text)) !== null) {
     const from = referenceMatch.index;
     const to = from + referenceMatch[0].length;
-    if (definitions.some(definition => from >= definition.from && from < definition.to)) continue;
+    if (definitionRanges.some(definition => from >= definition.from && from < definition.to)) continue;
     if (!definitionsByLabel.has(referenceMatch[1].toLowerCase())) continue;
     if (isCodePosition(from + 2)) continue;
+    if (isTablePosition(from + 2)) continue;
     references.push({
       label: referenceMatch[1],
       normalizedLabel: referenceMatch[1].toLowerCase(),
       from,
-      to
+      to,
+      syntax: 'markdown'
     });
   }
 
+  let nextAutomaticNumber = 1;
+  for (let position = 0; position < text.length;) {
+    const from = text.indexOf('^', position);
+    if (from < 0) break;
+    position = from + 1;
+
+    if (isEscaped(text, from) ||
+        definitionRanges.some(definition => from >= definition.from && from < definition.to) ||
+        pairedSuperscripts.some(range => from >= range.from && from < range.to) ||
+        isCodePosition(from) ||
+        isTablePosition(from) ||
+        text[from - 1] === '[') {
+      continue;
+    }
+
+    const numeric = /^\^(\d+)/.exec(text.slice(from));
+    const label = numeric?.[1];
+    const to = from + (numeric ? numeric[0].length : 1);
+    const after = text[to] || '';
+    if (after === '^' ||
+        (after && !/[\s.,;:!?)}\]]/.test(after))) {
+      continue;
+    }
+    if (/\s/.test(text[from - 1] || '')) continue;
+
+    if (label) {
+      if (!definitionsByLabel.has(label.toLowerCase())) continue;
+      references.push({
+        label,
+        normalizedLabel: label.toLowerCase(),
+        from,
+        to,
+        syntax: 'wmdx'
+      });
+      continue;
+    }
+
+    const assignedLabel = String(nextAutomaticNumber++);
+    references.push({
+      label: assignedLabel,
+      normalizedLabel: assignedLabel,
+      from,
+      to,
+      syntax: 'wmdx'
+    });
+  }
+
+  definitions.sort((left, right) => left.from - right.from);
+  references.sort((left, right) => left.from - right.from);
   return { definitions, references };
 }
 
@@ -312,7 +441,8 @@ export function buildFootnoteDecorations(state, options = {}) {
     : parseFootnotes(
         state.doc.toString(),
         position => isInsideCode(state, position),
-        position => isInsideFencedCode(state, position)
+        position => isInsideFencedCode(state, position),
+        position => isInsideTable(state, position)
       );
   return buildFootnoteDecorationsFromParsed(state, footnotes, options);
 }

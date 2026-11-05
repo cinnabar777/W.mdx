@@ -5,7 +5,7 @@ additional syntax W.mdx recognizes. Settings can change the appearance of
 formatting, but do not change the syntax shown here. The code samples show what
 to type; the examples labeled **Rendered** show the result in the editor.
 
-For the planned W.mdx-native syntax (not yet implemented), see
+For the agreed W.mdx-native syntax and its current implementation status, see
 [W.mdx Native Syntax — Design Draft](Wmdx-Syntax-Design.md).
 
 ## Quick reference

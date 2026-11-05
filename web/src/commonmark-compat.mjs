@@ -185,6 +185,37 @@ function tabSeparatedAtxHeading(cx, line) {
   return true;
 }
 
+function wmdxDecimalHeading(cx, line) {
+  if (line.indent > 3) return false;
+
+  const offset = line.pos;
+  const marker = /^\.([1-6])(?=[ \t])/.exec(line.text.slice(offset));
+  if (!marker) return false;
+
+  let contentStart = offset + marker[0].length;
+  while (line.text[contentStart] === ' ' || line.text[contentStart] === '\t') {
+    contentStart++;
+  }
+
+  const from = cx.lineStart + offset;
+  const markerEnd = cx.lineStart + contentStart;
+  const heading = new Element(
+    nodeTypeId(cx.parser, `ATXHeading${marker[1]}`),
+    from,
+    cx.lineStart + line.text.length,
+    [
+      new Element(nodeTypeId(cx.parser, 'WmdxHeadingMarker'), from, markerEnd),
+      ...cx.parser.parseInline(
+        line.text.slice(contentStart),
+        cx.lineStart + contentStart
+      )
+    ]
+  );
+  cx.nextLine();
+  cx.addElement(heading);
+  return true;
+}
+
 const unresolvedShortcutReferenceGuard = {
   name: 'WmdxUnresolvedShortcutReference',
   before: 'Link',
@@ -217,17 +248,42 @@ const unresolvedShortcutReferenceGuard = {
   }
 };
 
+const wmdxTaskMarker = {
+  name: 'WmdxTaskMarker',
+  before: 'Link',
+  parse(cx, next, pos) {
+    if (next !== 91 || cx.hasOpenLink) return -1;
+
+    const offset = pos - cx.offset;
+    const linePrefix = cx.text.slice(0, offset).split(/\r?\n/).at(-1);
+    if (!/^[ \t]*$/.test(linePrefix)) return -1;
+    const marker = /^\[[ xX]\](?=[ \t]|$)/.exec(cx.text.slice(offset));
+    if (!marker) return -1;
+    return cx.addElement(cx.elt('WmdxTaskMarker', pos, pos + 3));
+  }
+};
+
 export const wmdxCommonMarkCompatibility = {
   defineNodes: [{
     name: 'WmdxLiteralBracket',
     style: tags.content
+  }, {
+    name: 'WmdxHeadingMarker',
+    style: tags.processingInstruction
+  }, {
+    name: 'WmdxTaskMarker',
+    style: tags.processingInstruction
   }],
   parseBlock: [{
+    name: 'WmdxDecimalHeading',
+    before: 'ATXHeading',
+    parse: wmdxDecimalHeading
+  }, {
     name: 'WmdxTabSeparatedATXHeading',
     before: 'ATXHeading',
     parse: tabSeparatedAtxHeading
   }],
-  parseInline: [unresolvedShortcutReferenceGuard],
+  parseInline: [wmdxTaskMarker, unresolvedShortcutReferenceGuard],
   wrap(inner, input) {
     return {
       get parsedPos() {

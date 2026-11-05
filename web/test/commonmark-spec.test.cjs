@@ -138,6 +138,59 @@ test('CommonMark tab-separated headings and undefined-reference emphasis parse c
   assert.ok(multilineReference.has('Link'), 'multiline reference labels remain valid');
 });
 
+test('native decimal heading markers parse as the six structural heading levels', () => {
+  const source = '.1 Level one\n.2 Level two\n.3 Level three\n.4 Level four\n.5 Level five\n.6 Level six\n.7 Not a heading';
+  const state = EditorState.create({
+    doc: source,
+    extensions: [wmdxMarkdown]
+  });
+  const headings = [];
+  const markers = [];
+
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (/^ATXHeading[1-6]$/.test(node.name)) headings.push(node.name);
+      if (node.name === 'WmdxHeadingMarker') {
+        markers.push(source.slice(node.from, node.to));
+      }
+    }
+  });
+
+  assert.deepEqual(headings, [
+    'ATXHeading1',
+    'ATXHeading2',
+    'ATXHeading3',
+    'ATXHeading4',
+    'ATXHeading5',
+    'ATXHeading6'
+  ]);
+  assert.deepEqual(markers, ['.1 ', '.2 ', '.3 ', '.4 ', '.5 ', '.6 ']);
+  assert.equal(state.doc.toString(), source, 'parsing leaves the saved source unchanged');
+});
+
+test('native task markers parse as checkbox markers, not shortcut links', () => {
+  const source = '[ ] Open\n[x] Done\n  [ ] Nested\ninline [ ] text';
+  const state = EditorState.create({
+    doc: source,
+    extensions: [wmdxMarkdown]
+  });
+  const taskMarkers = [];
+  const links = [];
+
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === 'WmdxTaskMarker') {
+        taskMarkers.push(source.slice(node.from, node.to));
+      }
+      if (node.name === 'Link') links.push(source.slice(node.from, node.to));
+    }
+  });
+
+  assert.deepEqual(taskMarkers, ['[ ]', '[x]', '[ ]']);
+  assert.ok(!links.includes('[ ]') && !links.includes('[x]'));
+  assert.equal(state.doc.toString(), source);
+});
+
 test.todo('CommonMark raw HTML examples: define and test Wmdx-native import conversion');
 
 test('CommonMark fixtures check parser semantics, not full WYSIWYG rendering or export', () => {

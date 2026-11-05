@@ -519,10 +519,30 @@ for **Convert from** and **Paste from**; test both entry points and dialect
 round trips where relevant. HTML export is portable output, while HTML import is
 best-effort content conversion; do not treat them as a promised round trip.
 
-## Implementation plan (draft; syntax freeze required)
+## Implementation plan (syntax agreed; implementation in progress)
 
-Do not begin implementation until the native syntax and conversion rules are
-frozen. In particular, the callout/dropdown behavior stays in scope, with
+The agreed syntax is being implemented in small, testable slices. A syntax
+listed here is not considered fully supported until its parser, visual modes,
+editing behavior, and persistence are verified. Import/export conversion remains
+a separate later phase.
+
+### Implemented parser and rendering slices
+
+- `.1`–`.6` headings map to the six structural heading levels while preserving
+  their original source.
+- Native `±type`, `±type-`, and `±type+` callouts support titles, nested
+  indentation, blank paragraphs, and dedenting.
+- Native task markers `[ ]` and `[x]` render as interactive checkboxes without
+  a leading list bullet.
+- Native footnote references and definitions support automatic numbering and
+  reuse of an existing `^N` note.
+
+These slices pass the focused web test suite. Android phone rendering and
+editing still require normal project/device verification.
+
+### 0. Finish remaining specification details
+
+In particular, the callout/dropdown behavior stays in scope, with
 agreed markers `±type`, `±type-`, and `±type+`; `-` starts closed and `+`
 starts open. Optional titles follow the type and state marker after one space.
 The generic dropdown is the `dropdown` callout type and requires one of those
@@ -531,9 +551,7 @@ Callout bodies use automatic list-like indentation, blank lines for paragraphs,
 and dedenting to end the block. Callout body lines do not need repeated `>`
 markers; ordinary quotes retain them.
 
-### 0. Finish the specification
-
-- Confirm the remaining native grammar and parser edge-case rules.
+- Confirm remaining native grammar and parser edge cases.
 - Finish the CommonMark, GFM, Obsidian, and HTML conversion matrix, including
   explicit losses and HTML's best-effort content-import behavior.
 - Test automatic footnote numbering, `^N` reuse, paired superscript, escaped

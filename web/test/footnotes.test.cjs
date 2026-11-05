@@ -37,6 +37,46 @@ test('footnote parsing handles references, numbered definitions, and continued l
   );
 });
 
+test('native footnotes auto-number new notes and reuse existing numbers', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'First note.^',
+    'Reuse the first note.^1',
+    'Second note.^',
+    '',
+    '^ First definition.',
+    '^ Second definition.',
+    '',
+    'Superscript ^text^ and ^2^; escaped \\^.'
+  ].join('\n');
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => [reference.label, reference.syntax]),
+    [['1', 'wmdx'], ['1', 'wmdx'], ['2', 'wmdx']]
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [definition.label, definition.body]),
+    [['1', 'First definition.'], ['2', 'Second definition.']]
+  );
+});
+
+test('native footnote markers are ignored in tables and code', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = 'Table cell ^\n\n```\nText.^\n^ code definition\n```';
+  const codeStart = source.indexOf('```');
+  const codeEnd = source.lastIndexOf('```') + 3;
+  const parsed = parseFootnotes(
+    source,
+    position => position >= codeStart && position < codeEnd,
+    position => position >= codeStart && position < codeEnd,
+    position => position < source.indexOf('\n\n')
+  );
+
+  assert.deepEqual(parsed.definitions, []);
+  assert.deepEqual(parsed.references, []);
+});
+
 test('footnote parser ignores references and definitions in code when given syntax ranges', async () => {
   const { parseFootnotes } = await import('../src/footnotes.js');
   const markdown = 'Text [^1]\n\n[^1]: note\n\n```md\n[^2]: code\n```\n`[^1]`';

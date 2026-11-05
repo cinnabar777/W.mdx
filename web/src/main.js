@@ -106,6 +106,7 @@ document.addEventListener('pointerdown', event => {
   }
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
+import { parseWmdxCallouts } from './wmdxCallouts.js';
 import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
@@ -2650,6 +2651,41 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
       }
     }
+    const nativeCallouts = parseWmdxCallouts(doc.toString(), position => {
+      for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+        if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
+          return true;
+        }
+      }
+      return false;
+    });
+    for (const { lineFrom, info } of nativeCallouts.openers) {
+      if (!processedBlockquoteLines.has(doc.lineAt(lineFrom).number)) {
+        calloutOpenerInfo.set(lineFrom, info);
+      }
+    }
+    for (const [lineFrom, attrs] of nativeCallouts.lineAttributes) {
+      if (processedBlockquoteLines.has(doc.lineAt(lineFrom).number)) continue;
+      calloutLineAttributes.set(lineFrom, attrs);
+      addLineClass(
+        lineFrom,
+        'cm-blockquote',
+        'cm-callout',
+        attrs.isTitle ? 'cm-callout-title' : 'cm-callout-body'
+      );
+
+      if (attrs.indentToHide > 0) {
+        const line = doc.lineAt(lineFrom);
+        const end = Math.min(line.from + attrs.indentToHide, line.to);
+        const isIndentActive = !isPureWysiwyg && (
+          selection.empty
+            ? selection.head >= line.from && selection.head <= end
+            : selection.from < end && selection.to > line.from
+        );
+        if (!isIndentActive) hideSyntax(line.from, end);
+      }
+    }
+
     for (const lineFrom of calloutLineAttributes.keys()) {
       const line = doc.lineAt(lineFrom);
       const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
@@ -2754,6 +2790,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               }
             }
           }
+          if (node.name === 'WmdxHeadingMarker' && !isNodeActive && !isPureWysiwyg) {
+            hideSyntax(node.from, node.to);
+          }
 
           if (node.name === 'StrongEmphasis') {
             builder.push(Decoration.mark({ class: 'cm-bold' }).range(node.from, node.to));
@@ -2846,7 +2885,41 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             }
           }
 
-          if (node.name === 'TaskMarker') {
+          if (node.name === 'TaskMarker' || node.name === 'WmdxTaskMarker') {
+            const isWmdxTask = node.name === 'WmdxTaskMarker';
+            if (isWmdxTask) {
+              let insideCodeOrTable = false;
+              for (
+                let ancestor = tree.resolveInner(node.from, 1);
+                ancestor;
+                ancestor = ancestor.parent
+              ) {
+                if (
+                  ancestor.name === 'FencedCode' ||
+                  ancestor.name === 'CodeBlock' ||
+                  ancestor.name === 'Table'
+                ) {
+                  insideCodeOrTable = true;
+                  break;
+                }
+              }
+              if (insideCodeOrTable) return false;
+
+              addLineClass(
+                line.from,
+                'cm-list-item',
+                'cm-todo-list-item',
+                'cm-wmdx-task-item'
+              );
+              if (node.from > line.from) {
+                const indentIsActive = !isPureWysiwyg && (
+                  selection.empty
+                    ? selection.head >= line.from && selection.head <= node.from
+                    : selection.from < node.from && selection.to > line.from
+                );
+                if (!indentIsActive) hideSyntax(line.from, node.from);
+              }
+            }
             const taskText = view.state.doc.sliceString(node.from, node.to);
             const isChecked = taskText.toLowerCase().includes('x');
             if (!isNodeActive && node.to > node.from) {
@@ -3968,6 +4041,20 @@ function buildHeightMapValue(state) {
     }
   }
 
+  const nativeCallouts = parseWmdxCallouts(doc.toString(), position => {
+    for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+      if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
+        return true;
+      }
+    }
+    return false;
+  });
+  for (const { lineFrom, info } of nativeCallouts.openers) {
+    if (!processedBlockquoteLines.has(doc.lineAt(lineFrom).number)) {
+      calloutOpenerInfo.set(lineFrom, info);
+    }
+  }
+
   tree.iterate({
     from: 0,
     to: doc.length,
@@ -3994,6 +4081,9 @@ function buildHeightMapValue(state) {
         if (end > node.from && end <= line.to) {
           hideSyntax(node.from, end);
         }
+      }
+      if (node.name === 'WmdxHeadingMarker') {
+        hideSyntax(node.from, node.to);
       }
 
       if (node.name === 'EmphasisMark') {
@@ -4064,7 +4154,28 @@ function buildHeightMapValue(state) {
         return false;
       }
 
-      if (node.name === 'TaskMarker') {
+      if (node.name === 'TaskMarker' || node.name === 'WmdxTaskMarker') {
+        const isWmdxTask = node.name === 'WmdxTaskMarker';
+        if (isWmdxTask) {
+          let insideCodeOrTable = false;
+          for (
+            let ancestor = tree.resolveInner(node.from, 1);
+            ancestor;
+            ancestor = ancestor.parent
+          ) {
+            if (
+              ancestor.name === 'FencedCode' ||
+              ancestor.name === 'CodeBlock' ||
+              ancestor.name === 'Table'
+            ) {
+              insideCodeOrTable = true;
+              break;
+            }
+          }
+          if (insideCodeOrTable) return false;
+          const line = doc.lineAt(node.from);
+          if (node.from > line.from) hideSyntax(line.from, node.from);
+        }
         const taskText = doc.sliceString(node.from, node.to);
         const isChecked = taskText.toLowerCase().includes('x');
         if (node.to > node.from) {
@@ -4449,9 +4560,24 @@ export function buildPersistentLayoutDecorations(state) {
 
   const { doc } = state;
   const tree = syntaxTree(state);
+  const nativeCallouts = parseWmdxCallouts(doc.toString(), position => {
+    for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+      if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
+        return true;
+      }
+    }
+    return false;
+  });
+  const nativeCalloutsByLine = new Map(
+    [...nativeCallouts.lineAttributes].map(([from, attrs]) => [
+      doc.lineAt(from).number,
+      attrs
+    ])
+  );
   const classesByLine = new Map();
   const calloutAttributesByLine = new Map();
   const blockquoteDepthByLine = new Map();
+  const wmdxTaskIndentByLine = new Map();
   const activeCallouts = [];
   let currentBlockquoteDepth = 0;
 
@@ -4479,6 +4605,7 @@ export function buildPersistentLayoutDecorations(state) {
     let insideBlockquote = false;
     let headingLevel = null;
     let isHorizontalRule = false;
+    let hasWmdxTask = false;
 
     for (let node = resolved; node; node = node.parent) {
       if (node.name === 'Paragraph') paragraphNode = node;
@@ -4498,11 +4625,19 @@ export function buildPersistentLayoutDecorations(state) {
     // These blocks already have their own full-document decoration fields.
     if (insideTable || insideCodeBlock) continue;
 
+    const nativeCalloutLine = nativeCalloutsByLine.get(number);
     let calloutInfo = null;
     const isBlockquoteLine = insideBlockquote || Boolean(quotePrefix);
     if (!isBlockquoteLine) {
       activeCallouts.length = 0;
       currentBlockquoteDepth = 0;
+      if (nativeCalloutLine) {
+        calloutInfo = {
+          type: nativeCalloutLine.type,
+          depth: nativeCalloutLine.depth,
+          isTitle: nativeCalloutLine.isTitle
+        };
+      }
     } else {
       const depth = quotePrefix
         ? (quotePrefix[1].match(/>/g) || []).length
@@ -4562,6 +4697,37 @@ export function buildPersistentLayoutDecorations(state) {
     }
     if (isHorizontalRule) addClass(number, 'cm-hr');
 
+    const nativeTaskMarker = /^([ \t]*)\[([ xX])\](?=[ \t]|$)/.exec(line.text);
+    if (nativeTaskMarker) {
+      const markerFrom = line.from + nativeTaskMarker[1].length;
+      let hasNativeTaskMarker = false;
+      for (
+        let node = tree.resolveInner(markerFrom, 1);
+        node;
+        node = node.parent
+      ) {
+        if (node.name === 'WmdxTaskMarker') {
+          hasNativeTaskMarker = true;
+          break;
+        }
+      }
+      if (hasNativeTaskMarker) {
+        hasWmdxTask = true;
+        addClass(number, 'cm-list-item');
+        addClass(number, 'cm-todo-list-item');
+        addClass(number, 'cm-wmdx-task-item');
+        const calloutIndent = nativeCalloutLine?.indentToHide ?? 0;
+        const nestedIndent = Math.max(
+          0,
+          nativeTaskMarker[1].length - calloutIndent
+        );
+        wmdxTaskIndentByLine.set(
+          number,
+          Math.floor(nestedIndent / 2) * 24
+        );
+      }
+    }
+
     const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
     if (calloutInfo) {
       if (hasListMarker) {
@@ -4580,6 +4746,8 @@ export function buildPersistentLayoutDecorations(state) {
       }
       continue;
     }
+
+    if (hasWmdxTask) continue;
 
     if (paragraphNode) {
       addClass(number, 'cm-paragraph');
@@ -4600,6 +4768,20 @@ export function buildPersistentLayoutDecorations(state) {
     const lineObj = doc.line(lineNumber);
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
     const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
+    const taskIndent = wmdxTaskIndentByLine.get(lineNumber);
+    const lineStyles = [];
+    if (calloutAttributes) {
+      lineStyles.push(
+        `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
+      );
+    } else if (blockquoteDepth) {
+      lineStyles.push(
+        `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`
+      );
+    }
+    if (taskIndent != null) {
+      lineStyles.push(`--wmdx-task-extra-indent:${taskIndent}px`);
+    }
     ranges.push(
       Decoration.line({
         attributes: {
@@ -4607,15 +4789,13 @@ export function buildPersistentLayoutDecorations(state) {
           ...(calloutAttributes
             ? {
                 'data-callout-type': calloutAttributes.type,
-                'data-callout-depth': String(calloutAttributes.depth),
-                style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
+                'data-callout-depth': String(calloutAttributes.depth)
               }
-            : blockquoteDepth
-              ? {
-                  'data-blockquote-depth': String(blockquoteDepth),
-                  style: `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`
-                }
-              : {})
+            : {}),
+          ...(blockquoteDepth
+            ? { 'data-blockquote-depth': String(blockquoteDepth) }
+            : {}),
+          ...(lineStyles.length ? { style: lineStyles.join(';') } : {})
         }
       }).range(lineObj.from)
     );
@@ -4635,15 +4815,21 @@ export const persistentLayoutField = StateField.define({
       effect.is(heightMapRefreshEffect)
     );
     if (!tr.docChanged && !refresh) return current;
+    const hasNativeCallouts = source => /(^|\n)[ \t]*±[A-Za-z]/.test(source);
+    const nativeCalloutEdit = tr.docChanged && (
+      hasNativeCallouts(tr.startState.doc.toString()) ||
+      hasNativeCallouts(tr.newDoc.toString())
+    );
     if (
       tr.docChanged &&
       !refresh &&
+      !nativeCalloutEdit &&
       !transactionTouchesStructure(tr, {
         nodeNames: [
           'ATXHeading1', 'ATXHeading2', 'ATXHeading3',
           'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
           'SetextHeading1', 'SetextHeading2', 'ListItem',
-          'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
+          'Blockquote', 'FencedCode', 'CodeBlock', 'Table', 'WmdxTaskMarker',
           'HorizontalRule'
         ]
       })

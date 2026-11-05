@@ -362,8 +362,8 @@ test('callout title layout and editing behavior match each view', () => {
   assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-list-item\[data-callout-depth\]/, 'Nested callout list items retain list indentation');
-  assert.ok(mainSource.includes('style: `--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`'), 'Preview lines calculate indentation from nesting depth');
-  assert.ok(mainSource.includes('style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`'), 'WYSIWYG lines calculate indentation from nesting depth');
+  assert.ok(mainSource.includes('`--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`'), 'Preview lines calculate indentation from nesting depth');
+  assert.ok(mainSource.includes('`--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`'), 'WYSIWYG lines calculate indentation from nesting depth');
   assert.ok(
     indexHtml.includes('border-left: max(var(--callout-header-accent-thickness, 0px), var(--callout-border-width, 4px))'),
     'The existing callout border styling remains unchanged'
