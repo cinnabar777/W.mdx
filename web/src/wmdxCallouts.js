@@ -159,6 +159,54 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
   return { openers, lineAttributes, returnIndentByLine };
 }
 
+export function buildWmdxCalloutInsertion(
+  source,
+  selection,
+  { type = 'note', fold = '', title = '' } = {}
+) {
+  const text = String(source ?? '');
+  const from = selection?.from;
+  const to = selection?.to;
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from > to) {
+    return null;
+  }
+
+  const lines = splitLines(text);
+  const firstLine = lines.find(line => from >= line.from && from <= line.to);
+  const lastPosition = to > from ? to - 1 : to;
+  const lastLine = lines.find(
+    line => lastPosition >= line.from && lastPosition <= line.to
+  );
+  if (!firstLine || !lastLine) return null;
+
+  const firstIndex = lines.indexOf(firstLine);
+  const lastIndex = lines.indexOf(lastLine);
+  if (firstIndex < 0 || lastIndex < firstIndex) return null;
+
+  const indent = /^[ \t]*/.exec(firstLine.text)?.[0] ?? '';
+  const safeType = /^[a-z][a-z0-9_-]*$/i.test(type) ? type : 'note';
+  const safeFold = fold === '+' || fold === '-' ? fold : '';
+  const safeTitle = String(title ?? '').trim();
+  const opener = `±${safeType}${safeFold}${safeTitle ? ` ${safeTitle}` : ''}`;
+  const bodyLines = lines
+    .slice(firstIndex, lastIndex + 1)
+    .map(line => {
+      const body = line.text.startsWith(indent)
+        ? line.text.slice(indent.length)
+        : line.text;
+      return `${indent}  ${body}`;
+    });
+  const insert = `${indent}${opener}\n${bodyLines.join('\n')}`;
+  const changeFrom = firstLine.from;
+
+  return {
+    from: changeFrom,
+    to: lastLine.to,
+    insert,
+    cursor: changeFrom + insert.length
+  };
+}
+
 export function getWmdxCalloutContinuationIndent(
   text,
   position,

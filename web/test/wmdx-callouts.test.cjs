@@ -47,6 +47,30 @@ test('native callouts parse titles, fold state, nested bodies, and dedent bounda
   assert.equal(parsed.lineAttributes.has(source.indexOf('Outside.')), false);
 });
 
+test('callout toolbar insertion uses native syntax and wraps whole lines', async () => {
+  const { buildWmdxCalloutInsertion } = await import('../src/wmdxCallouts.js');
+  const source = 'First line\nSecond line';
+  const insertion = buildWmdxCalloutInsertion(
+    source,
+    { from: 0, to: source.length },
+    { type: 'note', fold: '+', title: 'A title' }
+  );
+
+  assert.deepEqual(insertion, {
+    from: 0,
+    to: source.length,
+    insert: '±note+ A title\n  First line\n  Second line',
+    cursor: '±note+ A title\n  First line\n  Second line'.length
+  });
+
+  const blankLineInsertion = buildWmdxCalloutInsertion(
+    'Before\n\nAfter',
+    { from: 7, to: 7 },
+    { type: 'tip', fold: '-' }
+  );
+  assert.equal(blankLineInsertion.insert, '±tip-\n  ');
+});
+
 test('native callouts retain paragraph gaps and hide only callout indentation', async () => {
   const { parseWmdxCallouts } = await import('../src/wmdxCallouts.js');
   const source = '  ±dropdown+\n    First paragraph.\n\n    Second paragraph.\n';

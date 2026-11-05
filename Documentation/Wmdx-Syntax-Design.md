@@ -255,9 +255,10 @@ Footnotes are automatically numbered. Use a single trailing `^` to create a
 reference to the next new footnote. Use `^N` to reference an existing footnote
 number `N` again; this links to that definition and does not create a new note
 or advance the automatic number. Definition lines begin with `^ ` and pair in
-order with newly created footnotes. Render references and definitions with
-their generated number in the footnotes section. Paired `^text^` remains
-superscript syntax, and `\^` represents a literal caret.
+order with newly created footnotes. Continuation lines in a multiline
+definition begin with two spaces. Render references and definitions with their
+generated number in the footnotes section. Paired `^text^` remains superscript
+syntax, and `\^` represents a literal caret.
 
 In editable views, keep a native footnote marker visible while the cursor is in
 it. This lets the user type a reuse number after `^`; format the reference after
@@ -598,6 +599,11 @@ editor contexts and remains intact through view changes and persistence.
 
 **Gate:** toolbar and keyboard actions produce the same valid source and
 behavior as direct Source-view entry.
+
+**Implementation update:** Existing toolbar actions now insert native `.1`–`.6`
+headings, `[ ]` tasks, `±type` callouts, and `^` footnotes. The callout action
+wraps whole lines, and the footnote dialog can reuse an existing numbered note
+with `^N`.
 
 ### 3. Add format converters
 

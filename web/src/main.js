@@ -16,7 +16,8 @@ import {
   buildFootnoteDecorations,
   footnoteEditRequiresReparse,
   formatFootnoteDefinition,
-  nextFootnoteLabel,
+  formatWmdxFootnoteDefinition,
+  parseFootnotesForState,
   updateFootnoteDecorationsFromCached
 } from './footnotes.js';
 import {
@@ -107,6 +108,7 @@ document.addEventListener('pointerdown', event => {
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
+  buildWmdxCalloutInsertion,
   getWmdxCalloutEnterEdit,
   isWmdxCalloutEnterEvent,
   isWmdxCalloutTitleDraftActive,
@@ -3548,30 +3550,42 @@ export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
   view => hiddenSyntaxRangesForView(view)
 );
 
+const toolbarLinePrefixPattern =
+  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|#{1,6}[ \t]+|\.([1-6])[ \t]+|> ?)/;
+
 function cmToggleLinePrefix(view, prefix) {
   if (!view) return;
   const selection = view.state.selection.main;
   const line = view.state.doc.lineAt(selection.head);
   const lineText = line.text;
+  const indent = /^[ \t]*/.exec(lineText)?.[0] ?? '';
+  const content = lineText.slice(indent.length);
 
   if (prefix === '') {
-    const cleanText = lineText.replace(/^(#{1,6}\s+|- \[\s?[xX]?\]\s+|- |\d+\.\s+|> )/, '');
+    const cleanText = content.replace(toolbarLinePrefixPattern, '');
     view.dispatch({
-      changes: { from: line.from, to: line.to, insert: cleanText }
+      changes: { from: line.from, to: line.to, insert: indent + cleanText }
     });
     return;
   }
 
-  if (lineText.startsWith(prefix)) {
+  if (content.startsWith(prefix)) {
     view.dispatch({
-      changes: { from: line.from, to: line.from + prefix.length, insert: '' }
+      changes: {
+        from: line.from + indent.length,
+        to: line.from + indent.length + prefix.length,
+        insert: ''
+      }
     });
   } else {
-    const cleanText = lineText.replace(/^(#{1,6}\s+|- \[\s?[xX]?\]\s+|- |\d+\.\s+|> )/, '');
-    const newText = prefix + cleanText;
+    const cleanText = content.replace(toolbarLinePrefixPattern, '');
+    const newText = indent + prefix + cleanText;
     view.dispatch({
       changes: { from: line.from, to: line.to, insert: newText },
-      selection: { anchor: line.from + prefix.length, head: line.from + prefix.length }
+      selection: {
+        anchor: line.from + indent.length + prefix.length,
+        head: line.from + indent.length + prefix.length
+      }
     });
   }
   focusEditorAfterCommand(view);
@@ -7557,9 +7571,28 @@ export function openFootnoteInsertionDialog(options = {}) {
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog) return;
 
+  const reusableFootnoteLabels = definition
+    ? []
+    : [...new Set(
+        parseFootnotesForState(view.state).definitions
+          .map(item => String(item.label))
+          .filter(label => /^\d+$/.test(label))
+      )].sort((a, b) => Number(a) - Number(b));
+
   dialog.innerHTML = `
     <h3 class="modal-title">${definition ? 'Edit Footnote' : 'Insert Footnote'}</h3>
-    <div class="modal-field-group">
+    ${reusableFootnoteLabels.length ? `
+      <div class="modal-field-group">
+        <label class="modal-label" for="modal-footnote-action">Footnote</label>
+        <select id="modal-footnote-action" class="modal-input">
+          <option value="new">Create a new footnote</option>
+          ${reusableFootnoteLabels.map(label =>
+            `<option value="reuse:${label}">Reuse footnote ${label}</option>`
+          ).join('')}
+        </select>
+      </div>
+    ` : ''}
+    <div class="modal-field-group" id="modal-footnote-text-group">
       <label class="modal-label" for="modal-footnote-text">Footnote text</label>
       <textarea id="modal-footnote-text" class="modal-input modal-textarea"
         placeholder="Write the footnote here"></textarea>
@@ -7573,9 +7606,15 @@ export function openFootnoteInsertionDialog(options = {}) {
   `;
 
   const textInput = dialog.querySelector('#modal-footnote-text');
+  const textGroup = dialog.querySelector('#modal-footnote-text-group');
+  const actionSelect = dialog.querySelector('#modal-footnote-action');
   const btnCancel = dialog.querySelector('#modal-btn-cancel');
   const btnConfirm = dialog.querySelector('#modal-btn-confirm');
   textInput.value = definition?.body ?? '';
+
+  actionSelect?.addEventListener('change', () => {
+    textGroup.hidden = actionSelect.value.startsWith('reuse:');
+  });
 
   const closeModal = () => {
     overlay.classList.remove('open');
@@ -7590,6 +7629,20 @@ export function openFootnoteInsertionDialog(options = {}) {
 
   btnConfirm.addEventListener('click', event => {
     event.preventDefault();
+    const action = actionSelect?.value ?? 'new';
+    if (!definition && action.startsWith('reuse:')) {
+      const label = action.slice('reuse:'.length);
+      const marker = `^${label}`;
+      const markerEnd = selectionSnapshot.to + marker.length;
+      view.dispatch({
+        changes: { from: selectionSnapshot.to, insert: marker },
+        selection: EditorSelection.cursor(markerEnd)
+      });
+      closeModal();
+      view.focus();
+      return;
+    }
+
     const body = textInput.value.trim();
     if (!body) {
       textInput.focus();
@@ -7597,22 +7650,20 @@ export function openFootnoteInsertionDialog(options = {}) {
     }
 
     if (definition) {
-      const formattedDefinition = formatFootnoteDefinition(definition.label, body);
+      const formattedDefinition = definition.syntax === 'wmdx'
+        ? formatWmdxFootnoteDefinition(body)
+        : formatFootnoteDefinition(definition.label, body);
       view.dispatch({
         changes: {
           from: definition.from,
           to: definition.to,
           insert: formattedDefinition
         },
-        selection: {
-          anchor: definition.from + formattedDefinition.length,
-          head: definition.from + formattedDefinition.length
-        }
+        selection: EditorSelection.cursor(definition.from + formattedDefinition.length)
       });
     } else {
-      const label = nextFootnoteLabel(view.state.doc.toString());
-      const marker = `[^${label}]`;
-      const formattedDefinition = formatFootnoteDefinition(label, body);
+      const marker = '^';
+      const formattedDefinition = formatWmdxFootnoteDefinition(body);
       const docText = view.state.doc.toString();
       const separatorFor = text => {
         if (!text) return '\n\n';
@@ -7638,7 +7689,7 @@ export function openFootnoteInsertionDialog(options = {}) {
 
       view.dispatch({
         changes,
-        selection: { anchor: markerEnd, head: markerEnd }
+        selection: EditorSelection.cursor(markerEnd)
       });
     }
 
@@ -8207,7 +8258,7 @@ export function openCalloutInsertionDialog() {
   if (!activeAdapter || !activeAdapter.view) return;
   const view = activeAdapter.view;
   const sel = view.state.selection.main;
-  const selectedText = view.state.doc.sliceString(sel.from, sel.to);
+  const sourceText = view.state.doc.toString();
 
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
@@ -8263,25 +8314,20 @@ export function openCalloutInsertionDialog() {
     const type = typeSelect.value || 'note';
     const fold = foldSelect.value;
     const title = titleInput.value.trim();
-
-    let opener = `> [!${type}${fold}]`;
-    if (title) opener += ` ${title}`;
-
-    let replacement = '';
-    let caretOffset = 0;
-
-    if (selectedText.length > 0) {
-      const quotedBody = selectedText.split('\n').map(l => `> ${l}`).join('\n');
-      replacement = `${opener}\n${quotedBody}\n`;
-      caretOffset = replacement.length;
-    } else {
-      replacement = `${opener}\n> `;
-      caretOffset = replacement.length;
-    }
+    const insertion = buildWmdxCalloutInsertion(
+      sourceText,
+      { from: sel.from, to: sel.to },
+      { type, fold, title }
+    );
+    if (!insertion) return;
 
     view.dispatch({
-      changes: { from: sel.from, to: sel.to, insert: replacement },
-      selection: { anchor: sel.from + caretOffset, head: sel.from + caretOffset }
+      changes: {
+        from: insertion.from,
+        to: insertion.to,
+        insert: insertion.insert
+      },
+      selection: EditorSelection.cursor(insertion.cursor)
     });
 
     closeModal();
@@ -8403,7 +8449,7 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
     else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
     else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
-    else if (cmdName === 'todoList') cmToggleLinePrefix(view, '- [ ] ');
+    else if (cmdName === 'todoList') cmToggleLinePrefix(view, '[ ] ');
     else if (cmdName === 'cycleListType') cycleMarkdownListType(view);
     else if (cmdName === 'indent') {
       applyMarkdownIndent(view, 'indent', '  ', editorCommandOptions);
@@ -8426,12 +8472,12 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'heading') {
       const val = options ? options.value : '';
       if (val === 'paragraph') cmToggleLinePrefix(view, '');
-      else if (val === 'heading1') cmToggleLinePrefix(view, '# ');
-      else if (val === 'heading2') cmToggleLinePrefix(view, '## ');
-      else if (val === 'heading3') cmToggleLinePrefix(view, '### ');
-      else if (val === 'heading4') cmToggleLinePrefix(view, '#### ');
-      else if (val === 'heading5') cmToggleLinePrefix(view, '##### ');
-      else if (val === 'heading6') cmToggleLinePrefix(view, '###### ');
+      else if (val === 'heading1') cmToggleLinePrefix(view, '.1 ');
+      else if (val === 'heading2') cmToggleLinePrefix(view, '.2 ');
+      else if (val === 'heading3') cmToggleLinePrefix(view, '.3 ');
+      else if (val === 'heading4') cmToggleLinePrefix(view, '.4 ');
+      else if (val === 'heading5') cmToggleLinePrefix(view, '.5 ');
+      else if (val === 'heading6') cmToggleLinePrefix(view, '.6 ');
     } else if (cmdName === 'highlight') {
       const val = options ? options.value : null;
       toggleWmdxColorFormat(view, val, editorCommandOptions);
@@ -8630,13 +8676,16 @@ function getToolbarSyntaxState(view) {
   const state = getMarkdownFormattingState(view);
   const selection = view.state.selection.main;
   const line = view.state.doc.lineAt(selection.head).text;
-  const heading = /^\s{0,3}(#{1,6})\s+/.exec(line);
-  const todo = /^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+/.test(line);
+  const heading = /^\s{0,3}(?:(#{1,6})|\.([1-6]))[ \t]+/.exec(line);
+  const headingLevel = heading
+    ? heading[1]?.length ?? Number(heading[2])
+    : null;
+  const todo = /^\s*(?:\[[ xX]\]|[-*+]\s+\[[ xX]\]|\d+[.)]\s+\[[ xX]\])[ \t]+/.test(line);
   const numbered = /^\s*\d+[.)]\s+/.test(line);
   const bullet = /^\s*[-*+]\s+/.test(line) && !todo;
   state.paragraph = !heading && !todo && !numbered && !bullet;
   for (let level = 1; level <= 6; level++) {
-    state[`heading${level}`] = Number(heading?.[1].length) === level;
+    state[`heading${level}`] = headingLevel === level;
   }
   state.todoList = todo;
   state.numberedList = numbered && !todo;

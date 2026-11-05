@@ -61,6 +61,34 @@ test('native footnotes auto-number new notes and reuse existing numbers', async 
   );
 });
 
+test('native multiline footnotes retain continuations and automatic numbering skips reused numbers', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'First note.^',
+    'Reuse note two.^2',
+    'Third note.^',
+    '',
+    '^ First definition.',
+    '^ Second definition.',
+    '^ Third definition.',
+    '  Continued definition line.'
+  ].join('\n');
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => reference.label),
+    ['1', '2', '3']
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [definition.label, definition.body]),
+    [
+      ['1', 'First definition.'],
+      ['2', 'Second definition.'],
+      ['3', 'Third definition.\nContinued definition line.']
+    ]
+  );
+});
+
 test('WYSIWYG leaves native footnote markers editable until the cursor leaves', async () => {
   const { EditorState } = await import('@codemirror/state');
   const { buildFootnoteDecorations } = await import('../src/footnotes.js');
@@ -193,17 +221,27 @@ test('ordinary edits reuse cached footnote positions; note edits trigger a full 
   assert.equal(footnoteEditRequiresReparse(noFootnotes, addReference, 'wysiwyg'), true);
 });
 
-test('footnote labels remain unique and multiline definitions use Markdown continuation indentation', async () => {
-  const { formatFootnoteDefinition, nextFootnoteLabel } = await import('../src/footnotes.js');
+test('footnote formatters keep Markdown and native Wmdx definitions distinct', async () => {
+  const {
+    formatFootnoteDefinition,
+    formatWmdxFootnoteDefinition,
+    nextFootnoteLabel
+  } = await import('../src/footnotes.js');
 
   assert.equal(nextFootnoteLabel('Text [^1]\n\n[^1]: note\n[^3]: other'), '4');
   assert.equal(formatFootnoteDefinition('4', 'First line\nSecond line'), '[^4]: First line\n    Second line');
+  assert.equal(formatWmdxFootnoteDefinition('First line\nSecond line'), '^ First line\n  Second line');
 });
 
 test('toolbar insertion opens the footnote dialog and all footnote settings reach rendered styles', () => {
   assert.match(source, /title: 'Insert Footnote', action: \(\) => openFootnoteInsertionDialog\(\)/);
   assert.match(source, /function openFootnoteInsertionDialog/);
   assert.match(source, /formattedDefinition \+ '\\n\\n'/, 'inserted footnotes leave a blank editable line after the final definition');
+  assert.match(source, /const marker = '\^'/, 'new toolbar footnotes use the native marker');
+  assert.match(source, /Reuse footnote \$\{label\}/, 'the toolbar can link to an existing numbered note');
+  assert.match(source, /cmdName === 'todoList'\) cmToggleLinePrefix\(view, '\[ \] '\)/);
+  assert.match(source, /val === 'heading1'\) cmToggleLinePrefix\(view, '\.1 '\)/);
+  assert.match(source, /val === 'heading6'\) cmToggleLinePrefix\(view, '\.6 '\)/);
   assert.match(source, /footnoteStateField/);
   assert.match(source, /--footnote-text-color/);
   assert.match(source, /setCssVar\('--footnote-bg-color', androidArgbToCss/);

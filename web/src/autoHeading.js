@@ -69,9 +69,10 @@ function parseCurrentLine(lineText) {
   bodyStart += quotePrefix.length;
 
   const rest = lineText.slice(bodyStart);
-  const heading = /^(#{1,6})(?:[ \t]+|$)/.exec(rest);
+  const hashHeading = /^(#{1,6})(?:[ \t]+|$)/.exec(rest);
+  const wmdxHeading = /^\.([1-6])(?:[ \t]+|$)/.exec(rest);
   const list = /^(?:- \[[ \t]?[xX ]?\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+)/.exec(rest);
-  const oldPrefix = heading?.[0] ?? list?.[0] ?? '';
+  const oldPrefix = hashHeading?.[0] ?? wmdxHeading?.[0] ?? list?.[0] ?? '';
   bodyStart += oldPrefix.length;
 
   return {
@@ -79,7 +80,11 @@ function parseCurrentLine(lineText) {
     quotePrefix,
     bodyStart,
     body: lineText.slice(bodyStart),
-    currentLevel: heading ? heading[1].length : null
+    currentLevel: hashHeading
+      ? hashHeading[1].length
+      : wmdxHeading
+        ? Number(wmdxHeading[1])
+        : null
   };
 }
 
@@ -101,7 +106,7 @@ export function applyAutoHeading(view) {
     priorProgress.lastAppliedLevel === current.currentLevel;
   const tapNumber = isContinuation ? priorProgress.nextTap : 0;
   const level = getAutoHeadingLevel(previousLevel, tapNumber);
-  const nextPrefix = `${current.indent}${current.quotePrefix}${'#'.repeat(level)} `;
+  const nextPrefix = `${current.indent}${current.quotePrefix}.${level} `;
   const replacement = `${nextPrefix}${current.body}`;
   const setextEndLine = getSetextHeadingEndLine(state, cursorLine.number);
   const changeEnd = setextEndLine?.to ?? cursorLine.to;

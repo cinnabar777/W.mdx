@@ -123,10 +123,27 @@ export function parseFootnotes(
       continue;
     }
 
+    const bodyParts = [nativeMatch[1]];
+    let lastLine = firstLine;
+    while (index + 1 < lines.length) {
+      const nextLine = lines[index + 1];
+      const continuation = /^ {2,}(.*)$/.exec(nextLine.text);
+      if (
+        !continuation ||
+        isCodePosition(nextLine.from) ||
+        isTablePosition(nextLine.from)
+      ) {
+        break;
+      }
+      bodyParts.push(continuation[1]);
+      lastLine = nextLine;
+      index++;
+    }
+
     nativeDefinitions.push({
-      body: nativeMatch[1],
+      body: bodyParts.join('\n'),
       from: firstLine.from,
-      to: firstLine.to,
+      to: lastLine.to,
       syntax: 'wmdx'
     });
   }
@@ -146,6 +163,7 @@ export function parseFootnotes(
   });
 
   const references = [];
+  const referencedNumberLabels = new Set();
   const pairedSuperscripts = getPairedSuperscriptRanges(text);
   const referencePattern = /\[\^([^\]\s]+)\]/g;
   let referenceMatch;
@@ -163,6 +181,9 @@ export function parseFootnotes(
       to,
       syntax: 'markdown'
     });
+    if (/^\d+$/.test(referenceMatch[1])) {
+      referencedNumberLabels.add(referenceMatch[1]);
+    }
   }
 
   let nextAutomaticNumber = 1;
@@ -199,10 +220,15 @@ export function parseFootnotes(
         to,
         syntax: 'wmdx'
       });
+      referencedNumberLabels.add(label);
       continue;
     }
 
+    while (referencedNumberLabels.has(String(nextAutomaticNumber))) {
+      nextAutomaticNumber++;
+    }
     const assignedLabel = String(nextAutomaticNumber++);
+    referencedNumberLabels.add(assignedLabel);
     references.push({
       label: assignedLabel,
       normalizedLabel: assignedLabel,
@@ -217,6 +243,16 @@ export function parseFootnotes(
   return { definitions, references };
 }
 
+export function parseFootnotesForState(state) {
+  if (!state?.doc) return { definitions: [], references: [] };
+  return parseFootnotes(
+    state.doc.toString(),
+    position => isInsideCode(state, position),
+    position => isInsideFencedCode(state, position),
+    position => isInsideTable(state, position)
+  );
+}
+
 export function nextFootnoteLabel(text) {
   let highest = 0;
   for (const match of String(text ?? '').matchAll(/\[\^(\d+)\]/g)) {
@@ -229,6 +265,12 @@ export function formatFootnoteDefinition(label, body) {
   const normalizedBody = String(body ?? '').replace(/\r\n?/g, '\n').trim();
   const lines = normalizedBody.split('\n');
   return `[^${label}]: ${lines[0]}${lines.slice(1).map(line => `\n    ${line}`).join('')}`;
+}
+
+export function formatWmdxFootnoteDefinition(body) {
+  const normalizedBody = String(body ?? '').replace(/\r\n?/g, '\n').trim();
+  const lines = normalizedBody.split('\n');
+  return `^ ${lines[0]}${lines.slice(1).map(line => `\n  ${line}`).join('')}`;
 }
 
 class FootnoteReferenceWidget extends WidgetType {
