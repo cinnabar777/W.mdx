@@ -166,9 +166,11 @@ toggle. Keep the existing highlighter (`==...==`) and pen (`=...=`) forms,
 including their Unicode subscript color-slot selectors.
 
 For parsing, recognize `~~` before `~`; code spans remain literal, and
-backslash-escaped markers remain literal. CommonMark and GFM do not define
-superscript or subscript syntax; Obsidian does. Import/export adapters must
-translate as appropriate.
+backslash-escaped markers remain literal. If a formatting marker has no matching
+closing marker, show it and its text as ordinary text; keep the marker visible in
+WYSIWYG so the user can spot the unfinished formatting. CommonMark and GFM do
+not define superscript or subscript syntax; Obsidian does. Import/export adapters
+must translate as appropriate.
 
 ### Footnotes and callouts
 
@@ -195,8 +197,8 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
 ## Decisions still to finalize
 
 - **Parser precedence and nesting:** The delimiter rules above are agreed for
-  code spans, escapes, and `~` versus `~~`. Nesting and ambiguous edge cases
-  still need a shared test matrix.
+  code spans, escapes, `~` versus `~~`, and unmatched formatting markers.
+  Nesting and other ambiguous edge cases still need a shared test matrix.
 
 ## Wmdx-owned implementation work
 
