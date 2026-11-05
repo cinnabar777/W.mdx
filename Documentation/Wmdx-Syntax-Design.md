@@ -259,6 +259,9 @@ order with newly created footnotes. Continuation lines in a multiline
 definition begin with two spaces. Render references and definitions with their
 generated number in the footnotes section. Paired `^text^` remains superscript
 syntax, and `\^` represents a literal caret.
+When numbered Markdown footnotes are imported alongside native footnotes, keep
+their numbers and continue native definitions after the existing numeric
+labels.
 
 In editable views, keep a native footnote marker visible while the cursor is in
 it. This lets the user type a reuse number after `^`; format the reference after

@@ -89,6 +89,57 @@ test('native multiline footnotes retain continuations and automatic numbering sk
   );
 });
 
+test('new native notes continue imported numbering and reserve later explicit references', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'New note.^',
+    'Reuse one.^1',
+    'Reuse two.^2',
+    'Reuse three.^3',
+    '',
+    '[^1]: First imported definition',
+    '[^2]: Second imported definition',
+    '[^3]: Third imported definition',
+    '^ New native definition'
+  ].join('\n');
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => reference.label),
+    ['4', '1', '2', '3']
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [definition.label, definition.syntax]),
+    [
+      ['1', 'markdown'],
+      ['2', 'markdown'],
+      ['3', 'markdown'],
+      ['4', 'wmdx']
+    ]
+  );
+
+  const nativeSource = [
+    'New note.^',
+    'Reuse one.^1',
+    'Reuse two.^2',
+    'Reuse three.^3',
+    '',
+    '^ First definition',
+    '^ Second definition',
+    '^ Third definition',
+    '^ New definition'
+  ].join('\n');
+  const nativeParsed = parseFootnotes(nativeSource);
+  assert.deepEqual(
+    nativeParsed.references.map(reference => reference.label),
+    ['4', '1', '2', '3']
+  );
+  assert.deepEqual(
+    nativeParsed.definitions.map(definition => definition.label),
+    ['1', '2', '3', '4']
+  );
+});
+
 test('WYSIWYG leaves native footnote markers editable until the cursor leaves', async () => {
   const { EditorState } = await import('@codemirror/state');
   const { buildFootnoteDecorations } = await import('../src/footnotes.js');

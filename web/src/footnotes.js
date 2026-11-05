@@ -148,8 +148,18 @@ export function parseFootnotes(
     });
   }
 
-  nativeDefinitions.forEach((definition, index) => {
-    const label = String(index + 1);
+  const markdownNumericLabels = definitions
+    .map(definition => Number(definition.label))
+    .filter(Number.isInteger)
+    .filter(label => label > 0);
+  let nextNativeDefinitionNumber = markdownNumericLabels.length
+    ? Math.max(...markdownNumericLabels) + 1
+    : 1;
+  nativeDefinitions.forEach(definition => {
+    while (definitionsByLabel.has(String(nextNativeDefinitionNumber))) {
+      nextNativeDefinitionNumber++;
+    }
+    const label = String(nextNativeDefinitionNumber++);
     const numberedDefinition = {
       ...definition,
       label,
@@ -163,7 +173,7 @@ export function parseFootnotes(
   });
 
   const references = [];
-  const referencedNumberLabels = new Set();
+  const markdownReferencedNumberLabels = new Set();
   const pairedSuperscripts = getPairedSuperscriptRanges(text);
   const referencePattern = /\[\^([^\]\s]+)\]/g;
   let referenceMatch;
@@ -182,11 +192,11 @@ export function parseFootnotes(
       syntax: 'markdown'
     });
     if (/^\d+$/.test(referenceMatch[1])) {
-      referencedNumberLabels.add(referenceMatch[1]);
+      markdownReferencedNumberLabels.add(referenceMatch[1]);
     }
   }
 
-  let nextAutomaticNumber = 1;
+  const nativeReferenceCandidates = [];
   for (let position = 0; position < text.length;) {
     const from = text.indexOf('^', position);
     if (from < 0) break;
@@ -213,6 +223,36 @@ export function parseFootnotes(
 
     if (label) {
       if (!definitionsByLabel.has(label.toLowerCase())) continue;
+    }
+    nativeReferenceCandidates.push({ from, to, label });
+  }
+
+  const explicitNativeLabels = new Set(
+    nativeReferenceCandidates
+      .map(reference => reference.label)
+      .filter(Boolean)
+  );
+  const explicitlyReferencedLabels = new Set([
+    ...markdownReferencedNumberLabels,
+    ...explicitNativeLabels
+  ]);
+  const definedNumberLabels = [...definitionsByLabel.keys()]
+    .filter(label => /^\d+$/.test(label))
+    .sort((left, right) => Number(left) - Number(right));
+  const unreferencedDefinitionLabels = definedNumberLabels
+    .filter(label => !explicitlyReferencedLabels.has(label));
+  const automaticCandidates = nativeReferenceCandidates
+    .filter(reference => !reference.label);
+  // Toolbar references are inserted at the caret while their definitions are
+  // appended, so match them to unused definitions before falling back to
+  // source-order numbering (where explicit refs may simply be reuses).
+  const assignFromUnreferencedDefinitions =
+    automaticCandidates.length <= unreferencedDefinitionLabels.length;
+  let unreferencedDefinitionIndex = 0;
+  const sequentiallyUsedLabels = new Set();
+  let nextAutomaticNumber = 1;
+  for (const { from, to, label } of nativeReferenceCandidates) {
+    if (label) {
       references.push({
         label,
         normalizedLabel: label.toLowerCase(),
@@ -220,22 +260,28 @@ export function parseFootnotes(
         to,
         syntax: 'wmdx'
       });
-      referencedNumberLabels.add(label);
-      continue;
+      sequentiallyUsedLabels.add(label);
+    } else {
+      let assignedLabel;
+      if (assignFromUnreferencedDefinitions) {
+        assignedLabel =
+          unreferencedDefinitionLabels[unreferencedDefinitionIndex++];
+      } else {
+        while (sequentiallyUsedLabels.has(String(nextAutomaticNumber))) {
+          nextAutomaticNumber++;
+        }
+        assignedLabel = String(nextAutomaticNumber++);
+        sequentiallyUsedLabels.add(assignedLabel);
+      }
+      if (!assignedLabel) continue;
+      references.push({
+        label: assignedLabel,
+        normalizedLabel: assignedLabel,
+        from,
+        to,
+        syntax: 'wmdx'
+      });
     }
-
-    while (referencedNumberLabels.has(String(nextAutomaticNumber))) {
-      nextAutomaticNumber++;
-    }
-    const assignedLabel = String(nextAutomaticNumber++);
-    referencedNumberLabels.add(assignedLabel);
-    references.push({
-      label: assignedLabel,
-      normalizedLabel: assignedLabel,
-      from,
-      to,
-      syntax: 'wmdx'
-    });
   }
 
   definitions.sort((left, right) => left.from - right.from);
