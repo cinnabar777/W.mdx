@@ -203,19 +203,67 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
 
 ## Import, paste, and export
 
-- **Convert from** converts a selected document from CommonMark, GFM, Obsidian,
-  or HTML into native Wmdx syntax.
-- **Paste from** converts clipboard content from a selected source format into
-  native Wmdx syntax at the current insertion point.
-- Both actions use the same parser and conversion rules, but have separate
-  toolbar actions and keyboard shortcuts. Shortcut keys remain to be assigned
-  after checking the existing keymap.
-- Markdown export selects CommonMark, GFM, or Obsidian as the destination.
-  Existing HTML export remains supported.
-- HTML input must not be retained as raw HTML in a Wmdx document. Convert
-  recognized elements to existing Wmdx syntax. When an HTML feature has no
-  suitable Wmdx equivalent, identify the feature and propose a native syntax
-  before implementing that conversion.
+Provide one **Convert from** action and one **Paste from** action for each input
+format:
+
+| Input format | Document conversion | Clipboard conversion |
+| --- | --- | --- |
+| CommonMark | Convert from CommonMark | Paste from CommonMark |
+| GFM | Convert from GFM | Paste from GFM |
+| Obsidian | Convert from Obsidian | Paste from Obsidian |
+| HTML | Convert from HTML | Paste from HTML |
+
+Each action has its own toolbar action and keyboard shortcut. All use the same
+conversion engine, configured for the selected source format. Shortcut keys
+remain to be assigned after checking the existing keymap. Markdown export is a
+separate action that selects CommonMark, GFM, or Obsidian as the destination.
+Existing HTML export remains supported.
+
+HTML input must not be retained as raw HTML in a Wmdx document. Convert
+recognized elements to existing Wmdx syntax. When an HTML feature has no
+suitable Wmdx equivalent, identify the feature and propose a native syntax
+before implementing that conversion.
+
+## HTML import inventory — initial proposals
+
+The CommonMark 0.31.2 parser suite holds 77 HTML-interoperability examples out
+of native Markdown parsing. These are parser conformance cases, not 77 distinct
+features: they include ordinary elements, custom or malformed tags, comments,
+processing instructions, and script/style blocks.
+
+### Existing Wmdx equivalents
+
+| HTML construct | Wmdx conversion |
+| --- | --- |
+| `h1`–`h6`, paragraphs, line breaks, and thematic breaks | `.1`–`.6`, normal paragraphs, the existing hard-break spelling, and the existing thematic-break syntax |
+| Lists and nested lists | Existing list markers and nesting; HTML checkboxes inside list items map to task items |
+| Block quotes and simple tables | Existing `>` quotes and current pipe tables; do not change table syntax or editing behavior |
+| Bold, italic, underline, strike, superscript, subscript, highlight, and inline code | Existing Wmdx inline formatting markers |
+| Links, images, audio, video, and supported documents | The unified resource syntax; map URL, label/alt text, size, and alignment where present |
+| `text-align`, and media width/height | Paragraph or resource alignment; resource size with proportions preserved |
+| `figure`/`figcaption` when its caption matches the image title | The resource title, which serves as alt text and visible caption |
+| `pre`/`code` | Fenced code, preserving the code text and a recognized language |
+
+### Gaps that need syntax or conversion decisions
+
+These are proposals for review, not approved syntax:
+
+| HTML feature | Candidate treatment |
+| --- | --- |
+| `details`/`summary` | A neutral collapsible block using the existing fold behavior, tentatively `> [!details]- Summary` followed by quoted content |
+| Definition lists (`dl`/`dt`/`dd`) | `Term` followed by `: Definition`, supporting multiple term/definition pairs |
+| Different image alt text and figure caption | Keep the title as both by default; add an optional `caption=...` field after `ALIGN` only when they differ |
+| Responsive images (`picture`/`srcset`) | Add a recognizable `srcset=...` option after `ALIGN`, keeping `SOURCE` as the fallback |
+| HTML comments | Convert to a text-only comment marker, tentatively Obsidian's `%%comment%%` form |
+| Named anchors (`id`/`name`) not attached to headings | Add a small native anchor target marker; candidate `.anchor name`, with links targeting `#name` |
+| Custom CSS colors and typography | Map properties with an existing Wmdx equivalent. For exact custom values, define a value-based native style form; keep the agreed Unicode subscript selectors for palette styles |
+| `script` and `style` blocks | Preserve their contents as fenced code with a language label; never execute scripts or apply imported CSS |
+| Tables with `rowspan`/`colspan` | No table syntax change is proposed. Decide how conversion preserves cell text while respecting the existing table limits |
+| Forms, iframes, custom elements, and other active or unknown content | Convert supported media to resource syntax; do not execute active behavior. Define a per-feature conversion that preserves readable content rather than retaining raw tags |
+
+HTML document metadata such as `<title>` and `<meta>` also needs a file-conversion
+policy; it is not ordinary body text. The exact import scope and any new syntax
+must be agreed before implementation.
 
 ## Decisions still to finalize
 
@@ -223,9 +271,9 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
   rules above are also agreed for code spans, escapes, `~` versus `~~`, and
   unmatched formatting markers. Crossing pairs and other ambiguous edge cases
   still need a shared test matrix.
-- **HTML conversion coverage:** inventory the HTML constructs that must be
-  converted and propose native syntax for constructs without an existing
-  equivalent before implementing those cases.
+- **HTML conversion coverage:** review the inventory above, decide which
+  proposed gaps need native syntax, and set the conversion policy for metadata
+  and unsupported or malformed input.
 
 ## Wmdx-owned implementation work
 

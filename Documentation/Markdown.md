@@ -646,10 +646,11 @@ Do not add another dialect target until the compatibility goal below is met.
   Make the documented built-in Markdown syntax and features that W.mdx supports
   work reliably and as closely to Obsidian as practical. This does not include
   third-party plugins or every Obsidian app feature.
-- **Import, paste, and export:** provide separate **Convert from** and **Paste
-  from** actions, each with its own toolbar action and keyboard shortcut, using
-  the same source parser and conversion rules. Export supports the chosen
-  Markdown dialect, and HTML export remains allowed.
+- **Import, paste, and export:** provide a **Convert from** and **Paste from**
+  action for each source format: CommonMark, GFM, Obsidian, and HTML. Each action
+  has its own toolbar action and keyboard shortcut; all use the same conversion
+  engine configured for the selected source format. Markdown export selects a
+  target dialect, and HTML export remains allowed.
 
 **Next step:** create a feature-by-feature acceptance matrix and regression
 fixtures for all three targets. Test each applicable path through import/open,
