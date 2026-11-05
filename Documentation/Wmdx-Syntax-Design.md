@@ -28,8 +28,8 @@ the syntax the current app supports.
 Use one fixed-slot form for local paths and URLs:
 
 ```text
-[SOURCE| Title |SIZE|ALIGN]
-![SOURCE| Title |SIZE|ALIGN]
+[SOURCE|TITLE|SIZE|ALIGN]
+![SOURCE|TITLE|SIZE|ALIGN]
 ```
 
 - Without `!`, the reference opens or follows its source. With `!`, it displays
@@ -37,9 +37,10 @@ Use one fixed-slot form for local paths and URLs:
 - The same form accepts local paths and URLs. The resource type determines the
   appropriate open, attachment, or inline-display behavior.
 - The title is the displayed label. For images it can serve as both alt text and
-  a visible caption.
-- Keep all field separators when fields are empty. Spaces belong around a
-  non-empty title only; `\|` represents a literal pipe inside a field.
+  a visible caption. When the title is empty, use the source filename.
+- Keep all field separators when fields are empty. Whitespace around a title is
+  optional and is only for readability; `\|` represents a literal pipe inside a
+  field.
 - Size applies only to displayed objects, never to text links. A size can give a
   width alone or a width-and-height box. Media must preserve its proportions and
   must not be stretched.
@@ -51,13 +52,17 @@ Use one fixed-slot form for local paths and URLs:
 Examples:
 
 ```text
-Read [https://example.com| the guide ||] in this paragraph.
-[https://example.com| Visit site ||->]
-[attachments/archive.zip| Project archive ||]
+Read [https://example.com|the guide||] in this paragraph.
+[https://example.com|Visit site||->]
+[attachments/archive.zip|Project archive||]
+![images/sunset.png|Sunset|320x240|><]
 ![images/sunset.png| Sunset |320x240|><]
-![https://example.com/sunset.png| Sunset |320|<>]
-![notes.md| Project notes ||]
+![https://example.com/sunset.png|Sunset|320|<>]
+![notes.md|Project notes||]
 ```
+
+The two `Sunset` examples are equivalent; spaces around the title are optional.
+An empty title, as in `[assets/image.png||320|><]`, uses the source filename.
 
 ### Alignment
 
@@ -179,14 +184,10 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
 
 ## Decisions still to finalize
 
-- **Resource size units:** Width and height behavior is agreed, but the unit
-  should be explicitly stated in the syntax. Existing image sizing is
-  pixel-based; existing audio/video layout uses percentages.
-- **Resource title fallback:** The title field's empty-value fallback should be
-  written down before implementation.
-- **Import/export behavior:** Define how each native construct maps to
-  CommonMark, GFM, and Obsidian, and how unsupported or lossy conversions are
-  reported.
+- **Resource size units:** The recommendation is to use pixels for width and
+  height (for example, `320` or `320x240`), scaling down to the available content
+  width without changing proportions. This needs confirmation. Existing image
+  sizing is pixel-based; existing audio/video layout uses percentages.
 - **Parser precedence and nesting:** The delimiter rules above are agreed for
   code spans, escapes, and `~` versus `~~`. Nesting and ambiguous edge cases
   still need a shared test matrix.
@@ -195,4 +196,12 @@ Footnotes use a reference and matching definition. Callouts extend block quotes;
   retaining that exact notation.
 - **Footnotes and callouts:** Keeping their current syntax is recommended, but
   remains a recommendation until explicitly confirmed.
+
+## Wmdx-owned implementation work
+
+Import/export mapping is implementation work for Wmdx, not a syntax decision for
+the user to supply. For each of CommonMark, GFM, and Obsidian, define how native
+constructs are imported and exported, preserve semantics where possible, and
+make unavoidable information loss explicit. Include round-trip cases in the
+format test matrix.
 
