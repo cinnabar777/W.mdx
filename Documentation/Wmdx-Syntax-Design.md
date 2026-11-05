@@ -272,10 +272,11 @@ one further level:
 Normal paragraph outside.
 ```
 
-The title form remains open. For a generic dropdown, the user suggested
-`±dropdown`; because the agreed bare `±type` form is non-collapsible, whether
-the dropdown must use `±dropdown-` or `±dropdown+` remains to be decided.
-Obsidian's `> [!type]` remains an import format, not native Wmdx syntax.
+The dropdown is a callout type with its own styling, not a separate block
+system. It requires a state suffix: `±dropdown-` starts closed and
+`±dropdown+` starts open. Both use the same body indentation and paragraph
+rules as other callouts. Obsidian's `> [!type]` remains an import format, not
+native Wmdx syntax.
 
 ### Footnote and callout mapping proposal
 
@@ -286,10 +287,11 @@ Obsidian's `> [!type]` remains an import format, not native Wmdx syntax.
 | Folded/expanded callouts | Use ordinary `<details>` and `<summary>`, with the type and title visible in the summary; add `open` when initially expanded. | Use the same HTML fallback when fold state matters; GitHub alerts do not fold. | Preserve `-` for initially collapsed and `+` for initially expanded. |
 
 Do not reinterpret ordinary block quotes as callouts. Import callouts only from
-Obsidian syntax or recognized GFM alerts. Generic HTML `<aside>` and
-`<details>` do not by themselves identify a Wmdx callout type; preserve visible
-content and convert the HTML structure to the closest native Wmdx structure,
-reporting any classification loss. HTML is the portable export users can take
+Obsidian syntax or recognized GFM alerts. Import generic HTML `<details>` as
+the Wmdx `dropdown` type, mapping the `open` state to `+` or `-` and its
+`summary` to the visible title. Generic HTML `<aside>` does not identify a
+specific Wmdx callout type; preserve visible content and convert it to the
+closest native Wmdx structure, reporting any classification loss. HTML is the portable export users can take
 to other tools for conversion, not a Wmdx round-trip format. Emit standard,
 usable HTML without hidden Wmdx-specific metadata. Recognize HTML footnotes only
 when reference links match their definitions; ordinary `<sup>` elements remain
@@ -440,7 +442,7 @@ The following entries record agreed conversion behavior:
 
 | HTML feature | Wmdx conversion or handling |
 | --- | --- |
-| `details`/`summary` | **Agreed direction:** ordinary details reuse the existing fold-block grammar with a dedicated neutral `details` type, e.g. `> [!details]- Summary` plus quoted body. Do not infer a Wmdx callout type from generic HTML disclosure elements |
+| `details`/`summary` | **Agreed direction:** convert to the `dropdown` callout type. Map a closed `<details>` to `±dropdown-` and an open `<details open>` to `±dropdown+`; use `<summary>` as its title and the body as automatically indented content. |
 | Definition lists (`dl`/`dt`/`dd`) | **Agreed direction:** a term paragraph followed by definition lines beginning `: `; a new term paragraph starts the next group |
 | HTML image alt text and visible caption | **Agreed direction:** the unified resource `TITLE` serves as both alt text and visible caption. An empty title falls back to the source filename; an empty HTML `alt` is treated as missing. Do not add a separate caption field or parentheses sub-syntax |
 | Responsive images (`picture`/`srcset`) | **Agreed direction:** import the file path from `<img src>` as one Wmdx resource and let Wmdx sizing control its display. Ignore alternate `srcset` and `<picture><source>` candidates; do not add multi-source syntax for responsive display variants |
@@ -469,10 +471,10 @@ best-effort content conversion; do not treat them as a promised round trip.
 ## Implementation plan (draft; syntax freeze required)
 
 Do not begin implementation until the native syntax and conversion rules are
-frozen. In particular, the callout/dropdown behavior stays in scope, but its
-agreed markers are `±type`, `±type-`, and `±type+`, with `-` initially closed
-and `+` initially open. Before coding, define the title and body boundaries,
-and finalize the generic dropdown form, currently proposed as `±dropdown`.
+frozen. In particular, the callout/dropdown behavior stays in scope, with
+agreed markers `±type`, `±type-`, and `±type+`; `-` starts closed and `+`
+starts open. The generic dropdown is the `dropdown` callout type and requires
+one of those suffixes. The title form still needs to be defined.
 Callout bodies use automatic list-like indentation, blank lines for paragraphs,
 and dedenting to end the block. Callout body lines do not need repeated `>`
 markers; ordinary quotes retain them.
