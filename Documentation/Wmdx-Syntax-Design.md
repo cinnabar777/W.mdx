@@ -251,19 +251,25 @@ and [raw HTML](https://github.github.com/gfm/#raw-html), and Obsidian's
 
 ### Footnotes and callouts
 
-Footnotes are automatically numbered. Use a single trailing `^` for an
-in-text reference and a line beginning `^ ` for its definition. Pair references
-and definitions in document order; render the reference and its definition
-with the generated number in the footnotes section. Paired `^text^` remains
-superscript syntax, and `\^` represents a literal caret. This form does not yet
-specify how multiple references can point to the same definition after
-save/reopen; resolve that before implementation.
+Footnotes are automatically numbered. Use a single trailing `^` to create a
+reference to the next new footnote. Use `^N` to reference an existing footnote
+number `N` again; this links to that definition and does not create a new note
+or advance the automatic number. Definition lines begin with `^ ` and pair in
+order with newly created footnotes. Render references and definitions with
+their generated number in the footnotes section. Paired `^text^` remains
+superscript syntax, and `\^` represents a literal caret.
 
 ```text
-This sentence has a footnote.^
+This sentence creates footnote 1.^
+This refers to footnote 1 again.^1
+This creates the next footnote.^
 
-^ The footnote text.
+^ First footnote text.
+^ Second footnote text.
 ```
+
+A `^N` reference must resolve to an existing footnote; it is not a way to
+create a manually numbered note.
 
 The current Markdown spelling `[^label]` with a matching `[^label]:`
 definition remains an import/export format, not Wmdx-native syntax.
@@ -281,9 +287,9 @@ An optional title follows the type and state marker after one space, for
 example `±warning Safety note`, `±warning- Safety note`, or
 `±warning+ Safety note`.
 
-Each automatic footnote number refers to its matching definition. Nested
-callouts reuse the same `±type` marker at a deeper indentation level. Ordinary
-blockquotes keep
+Each automatic footnote number refers to its matching definition; `^N` reuses
+an existing numbered footnote. Nested callouts reuse the same `±type` marker at
+a deeper indentation level. Ordinary blockquotes keep
 `>` and repeated `>` markers for nested quoted lines. Callout body lines do not
 each need a `>` prefix; reserve `>` for quoted content inside a callout.
 
