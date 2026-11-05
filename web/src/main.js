@@ -5891,6 +5891,9 @@ class CodeMirrorAdapter {
       const target = event.target;
       const isTableCell = target instanceof HTMLElement &&
         Boolean(target.closest('.cm-wp-table-container'));
+      const resourceLink = target instanceof HTMLElement
+        ? target.closest('a.cm-link[data-wmdx-link-from][data-wmdx-link-to]')
+        : null;
       if (
         target instanceof HTMLElement &&
         target.closest(
@@ -5921,14 +5924,23 @@ class CodeMirrorAdapter {
         emptyAreaLongPressStart = {
           pointerId: event.pointerId,
           x: event.clientX,
-          y: event.clientY
+          y: event.clientY,
+          resourceLink
         };
         emptyAreaLongPressTimer = setTimeout(() => {
           const press = emptyAreaLongPressStart;
           if (!press || press.pointerId !== event.pointerId) return;
           const selection = this.view?.state?.selection?.main;
           if (selection && !selection.empty) return;
-          if (showFloatingSelectionToolbarAtPoint(press.x, press.y, this.view) && editorTapStart) {
+          const toolbarShown = press.resourceLink?.isConnected
+            ? showWmdxResourceLinkActions(
+                this.view,
+                press.resourceLink,
+                press.x,
+                press.y
+              )
+            : showFloatingSelectionToolbarAtPoint(press.x, press.y, this.view);
+          if (toolbarShown && editorTapStart) {
             editorTapStart.longPressTriggered = true;
           }
           emptyAreaLongPressTimer = null;
@@ -7740,6 +7752,13 @@ function closeWmdxResourceLinkActions() {
 }
 
 function showWmdxResourceLinkActions(view, link, x, y) {
+  if (activeWmdxResourceLinkActions?.link === link) {
+    const active = activeWmdxResourceLinkActions;
+    active.point.x = Number.isFinite(x) ? x : active.point.x;
+    active.point.y = Number.isFinite(y) ? y : active.point.y;
+    active.reposition();
+    return true;
+  }
   closeWmdxResourceLinkActions();
   const from = Number(link.getAttribute('data-wmdx-link-from'));
   const to = Number(link.getAttribute('data-wmdx-link-to'));
@@ -7797,6 +7816,35 @@ function showWmdxResourceLinkActions(view, link, x, y) {
       : Math.min(point.y + 14, topEdge + height - menuHeight - 8);
     menu.style.left = `${left}px`;
     menu.style.top = `${Math.max(topEdge + 8, top)}px`;
+
+    const floatingToolbar = document.querySelector('#floating-selection-toolbar');
+    if (!floatingToolbar?.classList.contains('is-visible')) return;
+    const toolbarRect = floatingToolbar.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const overlapsHorizontally =
+      menuRect.left < toolbarRect.right && menuRect.right > toolbarRect.left;
+    const overlapsVertically =
+      menuRect.top < toolbarRect.bottom && menuRect.bottom > toolbarRect.top;
+    if (!overlapsHorizontally || !overlapsVertically) return;
+
+    const minTop = topEdge + 8;
+    const maxTop = Math.max(minTop, topEdge + height - menuRect.height - 8);
+    const candidates = [
+      toolbarRect.top - menuRect.height - 8,
+      toolbarRect.bottom + 8
+    ].filter(candidate =>
+      candidate >= minTop &&
+      candidate <= maxTop &&
+      (candidate + menuRect.height <= toolbarRect.top ||
+        candidate >= toolbarRect.bottom)
+    );
+    const separatedTop = candidates.length
+      ? candidates.sort(
+          (leftTop, rightTop) =>
+            Math.abs(leftTop - menuRect.top) - Math.abs(rightTop - menuRect.top)
+        )[0]
+      : Math.max(minTop, Math.min(toolbarRect.bottom + 8, maxTop));
+    menu.style.top = `${separatedTop}px`;
   };
   const dismiss = event => {
     if (!menu.contains(event.target)) closeWmdxResourceLinkActions();
@@ -7804,11 +7852,12 @@ function showWmdxResourceLinkActions(view, link, x, y) {
   const keydown = event => {
     if (event.key === 'Escape') closeWmdxResourceLinkActions();
   };
-  activeWmdxResourceLinkActions = { menu, dismiss, keydown, reposition };
+  activeWmdxResourceLinkActions = { menu, link, point, dismiss, keydown, reposition };
   document.addEventListener('pointerdown', dismiss, true);
   document.addEventListener('keydown', keydown, true);
   window.visualViewport?.addEventListener('resize', reposition);
   reposition();
+  return true;
 }
 
 function getWmdxResourceLinkAtRange(view, from, to) {
@@ -7829,12 +7878,12 @@ function openWmdxResourceLinkEditDialog(view, from, to) {
   dialog.innerHTML = `
     <h3 class="modal-title">Edit Link</h3>
     <div class="modal-field-group">
-      <label class="modal-label" for="modal-wmdx-link-title">Link text</label>
-      <input id="modal-wmdx-link-title" class="modal-input" type="text" autocomplete="off" />
-    </div>
-    <div class="modal-field-group">
       <label class="modal-label" for="modal-wmdx-link-source">Destination</label>
       <input id="modal-wmdx-link-source" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-wmdx-link-title">Displayed text</label>
+      <input id="modal-wmdx-link-title" class="modal-input" type="text" autocomplete="off" />
     </div>
     <div class="modal-field-group">
       <label class="modal-label" for="modal-wmdx-link-alignment">Standalone alignment</label>

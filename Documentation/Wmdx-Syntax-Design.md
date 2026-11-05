@@ -22,6 +22,21 @@ the syntax the current app supports.
   subscript selectors for typography colors and styles are an intentional
   exception: they are unobtrusive in text and are rarely typed by hand.
 
+### Editor syntax preferences (planned)
+
+- Syntax choices are app-wide per feature, not saved per document. Users who
+  settle on a convention should not have to choose it again for every file.
+- Each feature can be enabled or disabled. When enabled, its settings can
+  independently turn recognition/rendering on or off for each supported flavor.
+- If multiple flavors are enabled, the editor may render all of them, but exactly
+  one enabled flavor is the preferred authoring syntax used by the toolbar and
+  shortcuts. If only one flavor is enabled, it is preferred automatically.
+- These preferences affect normal editing only. CommonMark, GFM, Obsidian, and
+  HTML import/export conversion remains available regardless of the selected
+  authoring syntax.
+- Disabling a feature or flavor makes its source syntax literal in the editor;
+  it does not convert or rewrite existing documents.
+
 ## Agreed native syntax
 
 ### Resource references, links, and embeds

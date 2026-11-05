@@ -61,6 +61,28 @@ test('uses the source filename when the title field is empty', async () => {
   );
 });
 
+test('repeated link edits keep source and title in their fixed resource slots', async () => {
+  const { formatWmdxResourceSyntax, parseWmdxResourceSyntax } =
+    await import('../src/wmdxResources.js');
+
+  let syntax = '[example.com|A title||>]';
+  for (const edit of [
+    { source: 'example.com/first', title: 'First edit' },
+    { source: 'example.org/second', title: 'Second edit' }
+  ]) {
+    const current = parseWmdxResourceSyntax(syntax);
+    syntax = formatWmdxResourceSyntax({
+      source: edit.source,
+      title: edit.title,
+      alignment: current.alignment
+    });
+    const next = parseWmdxResourceSyntax(syntax);
+    assert.equal(next.source, edit.source);
+    assert.equal(next.title, edit.title);
+    assert.equal(next.alignment, 'right');
+  }
+});
+
 test('escapes literal pipes and backslashes inside resource fields', async () => {
   const { formatWmdxResourceSyntax, parseWmdxResourceSyntax } =
     await import('../src/wmdxResources.js');
@@ -153,6 +175,13 @@ test('link insertion and visual rendering use native resource syntax', () => {
   assert.match(main, /showWmdxResourceLinkActions/);
   assert.match(main, /function openWmdxResourceLinkEditDialog/);
   assert.match(main, /function openWmdxResourceLinkDeleteConfirmation/);
+  assert.match(main, /resourceLink,\s*press\.x,\s*press\.y/);
+  assert.match(main, /overlapsHorizontally/);
+  assert.ok(
+    main.indexOf('for="modal-wmdx-link-source"') <
+      main.indexOf('for="modal-wmdx-link-title"'),
+    'the edit dialog presents fields in SOURCE then TITLE order'
+  );
   assert.match(main, /formatWmdxResourceSyntax\(\{\s*source: url/);
   assert.match(main, /modal-link-alignment/);
   assert.match(main, /placeholder="example\.com" value=""/);
