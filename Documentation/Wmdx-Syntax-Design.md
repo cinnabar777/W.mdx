@@ -14,7 +14,8 @@ the syntax the current app supports.
   processor features Markdown does not cover.
 - CommonMark, GitHub Flavored Markdown (GFM), and Obsidian are import/export
   targets. Their limitations do not constrain W.mdx's native syntax; conversion
-  belongs in format-specific adapters.
+  belongs in a shared pipeline with a selected source or destination format.
+  HTML export is allowed; HTML is not native Wmdx authoring syntax.
 - Do not introduce syntax piecemeal. Agree on a coherent grammar before
   implementing parser, renderer, toolbar, or import/export changes.
 - Prefer characters users can type on a phone keyboard. The existing Unicode
@@ -200,18 +201,36 @@ Text with a note.[^source]
 Footnotes use a reference and matching definition. Callouts extend block quotes;
 `+` and `-` select their initial expanded or collapsed state.
 
+## Import, paste, and export
+
+- **Convert from** converts a selected document from CommonMark, GFM, Obsidian,
+  or HTML into native Wmdx syntax.
+- **Paste from** converts clipboard content from a selected source format into
+  native Wmdx syntax at the current insertion point.
+- Both actions use the same parser and conversion rules, but have separate
+  toolbar actions and keyboard shortcuts. Shortcut keys remain to be assigned
+  after checking the existing keymap.
+- Markdown export selects CommonMark, GFM, or Obsidian as the destination.
+  Existing HTML export remains supported.
+- HTML input must not be retained as raw HTML in a Wmdx document. Convert
+  recognized elements to existing Wmdx syntax. When an HTML feature has no
+  suitable Wmdx equivalent, identify the feature and propose a native syntax
+  before implementing that conversion.
+
 ## Decisions still to finalize
 
 - **Parser precedence and nesting:** Nesting styles is agreed. The delimiter
   rules above are also agreed for code spans, escapes, `~` versus `~~`, and
   unmatched formatting markers. Crossing pairs and other ambiguous edge cases
   still need a shared test matrix.
+- **HTML conversion coverage:** inventory the HTML constructs that must be
+  converted and propose native syntax for constructs without an existing
+  equivalent before implementing those cases.
 
 ## Wmdx-owned implementation work
 
-Import/export mapping is implementation work for Wmdx, not a syntax decision for
-the user to supply. For each of CommonMark, GFM, and Obsidian, define how native
-constructs are imported and exported, preserve semantics where possible, and
-make unavoidable information loss explicit. Include round-trip cases in the
-format test matrix.
+For CommonMark, GFM, Obsidian, and HTML, define how input is converted to native
+Wmdx and how native constructs are exported. Preserve semantics where possible
+and make unavoidable information loss explicit. Use the same conversion rules
+for **Convert from** and **Paste from**; test both entry points and round trips.
 
