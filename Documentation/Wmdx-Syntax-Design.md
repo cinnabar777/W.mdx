@@ -31,6 +31,9 @@ the syntax the current app supports.
 - If multiple flavors are enabled, the editor may render all of them, but exactly
   one enabled flavor is the preferred authoring syntax used by the toolbar and
   shortcuts. If only one flavor is enabled, it is preferred automatically.
+- Keep one toolbar key and shortcut path per feature, not a duplicate set for
+  every flavor. They insert the preferred syntax; enabled alternatives are
+  recognized and rendered without adding more toolbar keys.
 - These preferences affect normal editing only. CommonMark, GFM, Obsidian, and
   HTML import/export conversion remains available regardless of the selected
   authoring syntax.

@@ -5882,6 +5882,24 @@ class CodeMirrorAdapter {
     let editorTapStart = null;
     let emptyAreaLongPressTimer = null;
     let emptyAreaLongPressStart = null;
+    this.suppressNextLongPressResourceLinkClick = null;
+    this.longPressResourceLinkClickResetTimer = null;
+    this.longPressResourceLinkClickHandler = event => {
+      const link = event.target?.closest?.(
+        'a.cm-link[data-wmdx-link-from][data-wmdx-link-to]'
+      );
+      if (!link || link !== this.suppressNextLongPressResourceLinkClick) return;
+      this.suppressNextLongPressResourceLinkClick = null;
+      clearTimeout(this.longPressResourceLinkClickResetTimer);
+      this.longPressResourceLinkClickResetTimer = null;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    this.view.contentDOM.addEventListener(
+      'click',
+      this.longPressResourceLinkClickHandler,
+      true
+    );
     const cancelEmptyAreaLongPress = () => {
       clearTimeout(emptyAreaLongPressTimer);
       emptyAreaLongPressTimer = null;
@@ -5918,6 +5936,7 @@ class CodeMirrorAdapter {
         x: event.clientX,
         y: event.clientY,
         isTableCell,
+        resourceLink,
         longPressTriggered: false
       };
       if (event.pointerType === 'touch') {
@@ -5931,7 +5950,7 @@ class CodeMirrorAdapter {
           const press = emptyAreaLongPressStart;
           if (!press || press.pointerId !== event.pointerId) return;
           const selection = this.view?.state?.selection?.main;
-          if (selection && !selection.empty) return;
+          if (!press.resourceLink && selection && !selection.empty) return;
           const toolbarShown = press.resourceLink?.isConnected
             ? showWmdxResourceLinkActions(
                 this.view,
@@ -5945,7 +5964,7 @@ class CodeMirrorAdapter {
           }
           emptyAreaLongPressTimer = null;
           emptyAreaLongPressStart = null;
-        }, isTableCell ? 500 : 550);
+        }, resourceLink ? 400 : isTableCell ? 500 : 550);
       }
     }, { capture: true });
     this.view.contentDOM.addEventListener('pointermove', event => {
@@ -5962,6 +5981,14 @@ class CodeMirrorAdapter {
       const start = editorTapStart;
       editorTapStart = null;
       cancelEmptyAreaLongPress();
+      if (start?.longPressTriggered && start.resourceLink) {
+        this.suppressNextLongPressResourceLinkClick = start.resourceLink;
+        clearTimeout(this.longPressResourceLinkClickResetTimer);
+        this.longPressResourceLinkClickResetTimer = setTimeout(() => {
+          this.suppressNextLongPressResourceLinkClick = null;
+          this.longPressResourceLinkClickResetTimer = null;
+        }, 1000);
+      }
       if (
         !start ||
         start.pointerId !== event.pointerId ||
@@ -6338,6 +6365,17 @@ class CodeMirrorAdapter {
       );
       this.markdownLinkClickHandler = null;
     }
+    if (this.longPressResourceLinkClickHandler && this.view?.contentDOM) {
+      this.view.contentDOM.removeEventListener(
+        'click',
+        this.longPressResourceLinkClickHandler,
+        true
+      );
+      this.longPressResourceLinkClickHandler = null;
+    }
+    clearTimeout(this.longPressResourceLinkClickResetTimer);
+    this.longPressResourceLinkClickResetTimer = null;
+    this.suppressNextLongPressResourceLinkClick = null;
     if (this.syntaxRefreshFrame !== null) {
       cancelAnimationFrame(this.syntaxRefreshFrame);
       this.syntaxRefreshFrame = null;

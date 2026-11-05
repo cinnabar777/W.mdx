@@ -187,6 +187,25 @@ test('link insertion and visual rendering use native resource syntax', () => {
   assert.match(main, /placeholder="example\.com" value=""/);
 });
 
+test('Wmdx link long-press actions avoid native selection balloons', () => {
+  const main = fs.readFileSync(
+    path.join(__dirname, '../src/main.js'),
+    'utf8'
+  );
+  const html = fs.readFileSync(
+    path.join(__dirname, '../index.html'),
+    'utf8'
+  );
+
+  assert.match(
+    html,
+    /\.cm-content a\.cm-link\[data-wmdx-link-from\]\[data-wmdx-link-to\]\s*\{[^}]*-webkit-user-select:\s*none[^}]*user-select:\s*none[^}]*-webkit-touch-callout:\s*none/s
+  );
+  assert.match(main, /if \(!press\.resourceLink && selection && !selection\.empty\) return/);
+  assert.match(main, /resourceLink \? 400 : isTableCell \? 500 : 550/);
+  assert.match(main, /longPressResourceLinkClickHandler/);
+});
+
 test('rejects malformed fields, invalid sizes, and sized text links', async () => {
   const { formatWmdxResourceSyntax, parseWmdxResourceSyntax } =
     await import('../src/wmdxResources.js');
