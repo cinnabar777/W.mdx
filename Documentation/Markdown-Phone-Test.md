@@ -93,6 +93,32 @@ list level:
 The nested quote should be visibly indented farther than the first quote, with
 an inset border while the outer border remains continuous.
 
+#### Pasting multiline content into a quote
+
+Start with this quote and place the cursor after the `>` on the blank line:
+
+```md
+> Paste here
+>
+```
+
+Paste these lines:
+
+```md
+- First
+  - Second
+    - Third
+```
+
+The source should keep every pasted line inside the quote:
+
+```md
+> Paste here
+> - First
+>   - Second
+>     - Third
+```
+
 ### Code blocks
 
 The block should be visually distinct from the surrounding text. The code and

@@ -31,6 +31,7 @@ import {
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import { applyMarkdownIndent } from './markdownIndent.js';
+import { markdownBlockquotePaste, quoteMultilinePaste } from './markdownPaste.mjs';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { applyAutoHeading } from './autoHeading.js';
 import { toCssFontFamily } from './fontFamilies.js';
@@ -2192,6 +2193,7 @@ class EmbeddedDocumentWidget extends WidgetType {
             wmdxCommonMarkCompatibility
           ]
         }),
+        markdownBlockquotePaste,
         syntaxHighlighting(customHighlightStyle),
         ...(fullInlineEditing
           ? [
@@ -5178,6 +5180,7 @@ class CodeMirrorAdapter {
             wmdxCommonMarkCompatibility
           ]
         }),
+        markdownBlockquotePaste,
         syntaxHighlighting(customHighlightStyle),
         livePreviewPlugin,
         listMarkerMeasurementPlugin,
@@ -6822,9 +6825,10 @@ async function runToolbarClipboardAction(actionId, preserveKeyboard = false) {
       return false;
     }
     const { from, to } = view.state.selection.main;
+    const pastedText = quoteMultilinePaste(view.state, from, to, text);
     view.dispatch({
-      changes: { from, to, insert: text },
-      selection: { anchor: from + text.length },
+      changes: { from, to, insert: pastedText },
+      selection: { anchor: from + pastedText.length },
       userEvent: 'input.paste'
     });
     focusEditorAfterCommand(view, { preserveKeyboard });
