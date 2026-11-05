@@ -55,6 +55,7 @@ import {
   getMarkdownReferenceDefinitionInfo,
   normalizeMarkdownReferenceLabel
 } from './markdown-link-utils.mjs';
+import { findMarkdownLinkNodeAtRange } from './markdownLinkTree.mjs';
 import {
   encodeMarkdownDestination,
   formatMarkdownLinkInsertion,
@@ -6030,7 +6031,7 @@ class CodeMirrorAdapter {
           if (!press || press.pointerId !== event.pointerId) return;
           const selection = this.view?.state?.selection?.main;
           if (!press.resourceLink && selection && !selection.empty) return;
-          const toolbarShown = press.resourceLink?.isConnected
+          const toolbarShown = press.resourceLink
             ? showWmdxResourceLinkActions(
                 this.view,
                 press.resourceLink,
@@ -8078,7 +8079,7 @@ function getEditableMarkdownLinkAtRange(view, from, to) {
   }
 
   const obsidian = parseObsidianLinkSyntax(raw);
-  if (obsidian && !obsidian.embed) {
+  if (obsidian && !obsidian.embed && isLinkFlavorEnabledNow('obsidian')) {
     return {
       raw,
       flavor: 'obsidian',
@@ -8088,22 +8089,8 @@ function getEditableMarkdownLinkAtRange(view, from, to) {
     };
   }
 
-  let linkNode = null;
   const tree = syntaxTree(view.state);
-  tree.iterate({
-    from,
-    to,
-    enter(node) {
-      if (
-        node.from === from &&
-        node.to === to &&
-        ['Link', 'Autolink', 'URL'].includes(node.name)
-      ) {
-        linkNode = node;
-        return false;
-      }
-    }
-  });
+  const linkNode = findMarkdownLinkNodeAtRange(view.state, from, to);
   if (!linkNode) return null;
 
   const flavor = getMarkdownLinkFlavor(linkNode, doc);

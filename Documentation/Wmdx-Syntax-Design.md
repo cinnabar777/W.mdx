@@ -56,6 +56,9 @@ the syntax the current app supports.
   `[label][id]` form. Insertion reuses a definition for the same destination
   when possible; otherwise it creates a unique definition at the end of the
   document.
+- Reference links are mainly useful when the same destination is used several
+  times: each in-text link points to one shared destination definition. For a
+  one-off link, the inline form is shorter and simpler.
 - One **Links** toolbar action opens a dialog for External, Internal, or
   Reference links. Choices unavailable under the current flavor settings are
   disabled. One configurable keyboard shortcut opens the same dialog; its

@@ -160,8 +160,15 @@ test('link insertion uses the chosen authoring syntax and creates reusable refer
 });
 
 test('reference definitions expose the exact destination range for safe edits', async () => {
-  const { getMarkdownReferenceDefinitionInfo } =
+  const {
+    collectMarkdownReferenceTargets,
+    getMarkdownLinkInfo,
+    getMarkdownReferenceDefinitionInfo
+  } =
     await import('../src/markdown-link-utils.mjs');
+  const { findMarkdownLinkNodeAtRange } =
+    await import('../src/markdownLinkTree.mjs');
+  const { getMarkdownLinkFlavor } = await import('../src/wmdxLinkSyntax.mjs');
   const source = '[guide]: <https://example.com/guide>\n[other]: Notes/Other.md';
   const state = EditorState.create({
     doc: source,
@@ -186,6 +193,57 @@ test('reference definitions expose the exact destination range for safe edits', 
   assert.equal(definitions[0].wrappedInAngles, true);
   assert.equal(definitions[1].target, 'Notes/Other.md');
   assert.equal(definitions[1].wrappedInAngles, false);
+
+  const referenceState = EditorState.create({
+    doc: '[Reference][reference]\n\n[reference]: https://example.com',
+    extensions: [markdown()]
+  });
+  const referenceTree = syntaxTree(referenceState);
+  const referenceTargets = collectMarkdownReferenceTargets(
+    referenceState.doc,
+    referenceTree
+  );
+  const usage = findMarkdownLinkNodeAtRange(referenceState, 0, 22);
+  assert.deepEqual(usage, { name: 'Link', from: 0, to: 22 });
+  assert.equal(getMarkdownLinkFlavor(usage, referenceState.doc), 'reference');
+  assert.deepEqual(
+    getMarkdownLinkInfo(usage, referenceState.doc, referenceTargets),
+    { target: 'https://example.com', labelFrom: 1, labelTo: 10 }
+  );
+});
+
+test('CommonMark and reference link actions retain stable source ranges', async () => {
+  const { findMarkdownLinkNodeAtRange } =
+    await import('../src/markdownLinkTree.mjs');
+  const source = [
+    '[Inline](https://example.com)',
+    '',
+    '[Reference][guide]',
+    '',
+    '[guide]: https://example.com/guide',
+    '',
+    '[[#heading|Wiki]]',
+    '',
+    '`[code](https://example.com)`'
+  ].join('\n');
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdown({ extensions: [Autolink] })]
+  });
+  const cases = [
+    ['[Inline](https://example.com)', source.indexOf('[Inline]')],
+    ['[Reference][guide]', source.indexOf('[Reference]')]
+  ];
+
+  for (const [expected, from] of cases) {
+    const node = findMarkdownLinkNodeAtRange(state, from, from + expected.length);
+    assert.deepEqual(node, {
+      name: 'Link',
+      from,
+      to: from + expected.length
+    });
+  }
+  assert.equal(findMarkdownLinkNodeAtRange(state, source.lastIndexOf('[code]'), source.lastIndexOf('[code]') + 30), null);
 });
 
 test('Links settings, one blank shortcut, and the unified toolbar action are wired', () => {
@@ -217,6 +275,7 @@ test('Links settings, one blank shortcut, and the unified toolbar action are wir
   assert.match(main, /openMarkdownLinkEditDialog/);
   assert.match(main, /openMarkdownLinkDeleteConfirmation/);
   assert.match(main, /getEditableMarkdownLinkAtRange/);
+  assert.match(main, /findMarkdownLinkNodeAtRange/);
   assert.match(main, /data-wmdx-link-from/);
   assert.match(main, /EditorView\.scrollIntoView\(definitionEnd/);
   assert.match(main, /lineSlug === targetSlug/);
