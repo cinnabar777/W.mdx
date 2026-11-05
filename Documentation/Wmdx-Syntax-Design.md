@@ -35,6 +35,8 @@ Use one fixed-slot form for local paths and URLs:
 
 - Without `!`, the reference opens or follows its source. With `!`, it displays
   the source inline when that resource type has an inline viewer.
+- This is intentionally a structured form: resource references may need to
+  carry source, title, size, and alignment together.
 - The same form accepts local paths and URLs. The resource type determines the
   appropriate open, attachment, or inline-display behavior.
 - The title is the displayed label. For images it can serve as both alt text and
@@ -139,6 +141,10 @@ I. Uppercase Roman item
 
 The marker selects the numbering style; following items auto-increment.
 
+Task checkboxes use `[ ]` for unchecked and `[x]` for checked items. The compact
+checkbox marker is considered clear; keep it rather than redesigning it solely
+to avoid square brackets.
+
 ### Block quotes and tables
 
 - Keep `>` for block quotes and repeat it for nested quotes.
@@ -238,8 +244,13 @@ and [raw HTML](https://github.github.com/gfm/#raw-html), and Obsidian's
 
 ### Footnotes and callouts
 
-**Agreed:** keep the current footnote syntax and preserve callout and
-expandable-dropdown functionality. Use these native callout markers:
+**Under review:** keep footnote functionality, but reconsider the current
+Markdown spelling `[^label]` with a matching `[^label]:` definition. It is not
+settled as Wmdx-native syntax; design a simpler native form before
+implementation.
+
+Preserve callout and expandable-dropdown functionality. Use these native
+callout markers:
 
 | Form | Meaning |
 | --- | --- |
