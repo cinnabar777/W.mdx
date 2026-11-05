@@ -95,7 +95,8 @@ an inset border while the outer border remains continuous.
 
 #### Pasting multiline content into a quote
 
-Start with this quote and place the cursor after the `>` on the blank line:
+Start with this quote and place the cursor at the start of the blank quote
+line, before its `>` marker:
 
 ```md
 > Paste here

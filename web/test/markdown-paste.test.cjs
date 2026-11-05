@@ -4,6 +4,7 @@ const { JSDOM } = require('jsdom');
 
 let markdownBlockquotePaste;
 let quoteMultilinePaste;
+let quotePasteInsertionRange;
 let EditorState;
 let markdown;
 let EditorView;
@@ -17,13 +18,13 @@ before(async () => {
   ]);
   markdownBlockquotePaste = pasteModule.markdownBlockquotePaste;
   quoteMultilinePaste = pasteModule.quoteMultilinePaste;
+  quotePasteInsertionRange = pasteModule.quotePasteInsertionRange;
   EditorState = stateModule.EditorState;
   markdown = markdownModule.markdown;
   EditorView = viewModule.EditorView;
 });
 
 test('multiline paste preserves explicit and nested blockquote context', () => {
-
   const doc = '> what is this\n> ';
   const state = EditorState.create({
     doc,
@@ -49,6 +50,29 @@ test('multiline paste preserves explicit and nested blockquote context', () => {
       'First\nSecond'
     ),
     'First\n> > Second'
+  );
+});
+
+test('paste before a trailing quote marker inserts after the marker', () => {
+  const doc = '> quote\n> ';
+  const state = EditorState.create({ doc, extensions: [markdown()] });
+  const blankQuoteLine = state.doc.line(2);
+  const range = quotePasteInsertionRange(
+    state,
+    blankQuoteLine.from,
+    blankQuoteLine.from
+  );
+  const pasted = quoteMultilinePaste(
+    state,
+    range.from,
+    range.to,
+    'First\nSecond'
+  );
+
+  assert.deepEqual(range, { from: doc.length, to: doc.length });
+  assert.equal(
+    doc.slice(0, range.from) + pasted + doc.slice(range.to),
+    '> quote\n> First\n> Second'
   );
 });
 
@@ -88,7 +112,7 @@ test('native paste event adds quote markers to continuation lines', () => {
       parent: window.document.querySelector('#editor'),
       state: EditorState.create({
         doc,
-        selection: { anchor: doc.length },
+        selection: { anchor: doc.length - 2 },
         extensions: [markdown(), markdownBlockquotePaste]
       })
     });

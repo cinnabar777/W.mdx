@@ -702,7 +702,11 @@ test('runtime toolbar consumes the saved bottom toolbar configuration', () => {
 test('Paste as Plain Text is available as an action and configurable shortcut', () => {
   assert.match(mainSource, /id: 'pasteAsPlainText'[\s\S]*?title: 'Paste as Plain Text'/);
   assert.match(mainSource, /actionId === 'paste' \|\| actionId === 'pasteAsPlainText'/);
-  assert.match(mainSource, /quoteMultilinePaste\(view\.state, from, to, text\)/);
+  assert.match(mainSource, /quotePasteInsertionRange\(view\.state, from, to\)/);
+  assert.match(
+    mainSource,
+    /quoteMultilinePaste\(\s*view\.state,\s*pasteRange\.from,\s*pasteRange\.to,\s*text\s*\)/
+  );
   assert.match(mainSource, /customHotkeys\.paste_as_plain_text/);
   assert.match(settingsSource, /id: 'pasteAsPlainText'[\s\S]*?Paste as Plain Text/);
   assert.match(androidSource, /"pasteAsPlainText"/);

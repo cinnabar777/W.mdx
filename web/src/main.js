@@ -31,7 +31,11 @@ import {
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import { applyMarkdownIndent } from './markdownIndent.js';
-import { markdownBlockquotePaste, quoteMultilinePaste } from './markdownPaste.mjs';
+import {
+  markdownBlockquotePaste,
+  quoteMultilinePaste,
+  quotePasteInsertionRange
+} from './markdownPaste.mjs';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { applyAutoHeading } from './autoHeading.js';
 import { toCssFontFamily } from './fontFamilies.js';
@@ -6825,10 +6829,20 @@ async function runToolbarClipboardAction(actionId, preserveKeyboard = false) {
       return false;
     }
     const { from, to } = view.state.selection.main;
-    const pastedText = quoteMultilinePaste(view.state, from, to, text);
+    const pasteRange = quotePasteInsertionRange(view.state, from, to);
+    const pastedText = quoteMultilinePaste(
+      view.state,
+      pasteRange.from,
+      pasteRange.to,
+      text
+    );
     view.dispatch({
-      changes: { from, to, insert: pastedText },
-      selection: { anchor: from + pastedText.length },
+      changes: {
+        from: pasteRange.from,
+        to: pasteRange.to,
+        insert: pastedText
+      },
+      selection: { anchor: pasteRange.from + pastedText.length },
       userEvent: 'input.paste'
     });
     focusEditorAfterCommand(view, { preserveKeyboard });

@@ -38,6 +38,27 @@ function blockquoteContext(state, position) {
   };
 }
 
+export function quotePasteInsertionRange(state, from, to) {
+  if (!state?.doc || from !== to || !Number.isInteger(from)) {
+    return { from, to };
+  }
+
+  const safePosition = Math.max(0, Math.min(from, state.doc.length));
+  const line = state.doc.lineAt(safePosition);
+  const quotePrefix = /^[ \t]*(?:>[ \t]*)+/.exec(line.text);
+  if (!quotePrefix) return { from, to };
+
+  const quotePrefixEnd = line.from + quotePrefix[0].length;
+  if (
+    safePosition >= quotePrefixEnd ||
+    line.text.slice(quotePrefix[0].length).trim() !== ''
+  ) {
+    return { from, to };
+  }
+
+  return { from: quotePrefixEnd, to: quotePrefixEnd };
+}
+
 export function quoteMultilinePaste(state, from, to, text) {
   if (typeof text !== 'string' || !text.includes('\n')) return text;
 
@@ -82,13 +103,29 @@ export const markdownBlockquotePaste = EditorView.domEventHandlers({
     if (typeof text !== 'string' || !text.includes('\n')) return false;
 
     const { from, to } = view.state.selection.main;
-    const quotedText = quoteMultilinePaste(view.state, from, to, text);
-    if (quotedText === text) return false;
+    const pasteRange = quotePasteInsertionRange(view.state, from, to);
+    const quotedText = quoteMultilinePaste(
+      view.state,
+      pasteRange.from,
+      pasteRange.to,
+      text
+    );
+    if (
+      quotedText === text &&
+      pasteRange.from === from &&
+      pasteRange.to === to
+    ) {
+      return false;
+    }
 
     event.preventDefault();
     view.dispatch({
-      changes: { from, to, insert: quotedText },
-      selection: { anchor: from + quotedText.length },
+      changes: {
+        from: pasteRange.from,
+        to: pasteRange.to,
+        insert: quotedText
+      },
+      selection: { anchor: pasteRange.from + quotedText.length },
       userEvent: 'input.paste'
     });
     return true;
