@@ -3,7 +3,11 @@ import { EditorView } from '@codemirror/view';
 
 function blockquoteContext(state, position) {
   if (!state?.doc || !Number.isInteger(position)) {
-    return { depth: 0, firstLineIsQuoted: false };
+    return {
+      depth: 0,
+      firstLineIsQuoted: false,
+      needsSeparatorAfterPrefix: false
+    };
   }
 
   const safePosition = Math.max(0, Math.min(position, state.doc.length));
@@ -12,7 +16,11 @@ function blockquoteContext(state, position) {
   const quotePrefixEnd = line.from + (quotePrefix?.[0].length ?? 0);
 
   if (quotePrefix && safePosition < quotePrefixEnd) {
-    return { depth: 0, firstLineIsQuoted: false };
+    return {
+      depth: 0,
+      firstLineIsQuoted: false,
+      needsSeparatorAfterPrefix: false
+    };
   }
 
   const firstText = /\S/.exec(line.text);
@@ -23,18 +31,36 @@ function blockquoteContext(state, position) {
       : Math.max(line.from, line.to - 1);
 
   let depth = 0;
+  let blockedContext = false;
   for (
     let node = syntaxTree(state).resolveInner(probe, 1);
     node;
     node = node.parent
   ) {
     if (node.name === 'Blockquote') depth++;
+    if (
+      node.name === 'FencedCode' ||
+      node.name === 'CodeBlock' ||
+      node.name === 'Table'
+    ) {
+      blockedContext = true;
+    }
+  }
+  if (blockedContext) depth = 0;
+  else if (depth === 0 && quotePrefix) {
+    depth = (quotePrefix[0].match(/>/g) || []).length;
   }
 
   return {
     depth,
     firstLineIsQuoted: depth > 0 &&
-      (!quotePrefix || safePosition >= quotePrefixEnd)
+      (!quotePrefix || safePosition >= quotePrefixEnd),
+    needsSeparatorAfterPrefix: Boolean(
+      depth > 0 &&
+      quotePrefix &&
+      safePosition === quotePrefixEnd &&
+      !/[ \t]$/.test(quotePrefix[0])
+    )
   };
 }
 
@@ -75,7 +101,7 @@ export function quoteMultilinePaste(state, from, to, text) {
     .split('\n')
     .map((line, index) => (
       index === 0 && startContext.firstLineIsQuoted
-        ? line
+        ? `${startContext.needsSeparatorAfterPrefix ? ' ' : ''}${line}`
         : `${quotePrefix}${line}`
     ))
     .join('\n');

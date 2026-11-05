@@ -76,6 +76,28 @@ test('paste before a trailing quote marker inserts after the marker', () => {
   );
 });
 
+test('pasted list keeps a separator after a quote marker without trailing space', () => {
+  const doc = '> quote\n>';
+  const state = EditorState.create({ doc, extensions: [markdown()] });
+  const blankQuoteLine = state.doc.line(2);
+  const range = quotePasteInsertionRange(
+    state,
+    blankQuoteLine.from,
+    blankQuoteLine.from
+  );
+  const pasted = quoteMultilinePaste(
+    state,
+    range.from,
+    range.to,
+    '- First\n  - Second'
+  );
+
+  assert.equal(
+    doc.slice(0, range.from) + pasted + doc.slice(range.to),
+    '> quote\n> - First\n>   - Second'
+  );
+});
+
 test('native paste event adds quote markers to continuation lines', () => {
   const dom = new JSDOM('<div id="editor"></div>', {
     pretendToBeVisual: true
@@ -165,6 +187,16 @@ test('multiline paste outside a blockquote keeps its original text', () => {
   const state = EditorState.create({ doc, extensions: [markdown()] });
   assert.equal(
     quoteMultilinePaste(state, doc.length, doc.length, 'First\nSecond'),
+    'First\nSecond'
+  );
+});
+
+test('quote-like text in a fenced code block is not treated as a quote', () => {
+  const doc = '```\n> code\n```';
+  const position = doc.indexOf('code') + 2;
+  const state = EditorState.create({ doc, extensions: [markdown()] });
+  assert.equal(
+    quoteMultilinePaste(state, position, position, 'First\nSecond'),
     'First\nSecond'
   );
 });
