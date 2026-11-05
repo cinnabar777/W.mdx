@@ -176,7 +176,6 @@ test('link insertion and visual rendering use native resource syntax', () => {
   assert.match(main, /function openWmdxResourceLinkEditDialog/);
   assert.match(main, /function openWmdxResourceLinkDeleteConfirmation/);
   assert.match(main, /resourceLink,\s*press\.x,\s*press\.y/);
-  assert.match(main, /overlapsHorizontally/);
   assert.ok(
     main.indexOf('for="modal-wmdx-link-source"') <
       main.indexOf('for="modal-wmdx-link-title"'),
@@ -187,23 +186,18 @@ test('link insertion and visual rendering use native resource syntax', () => {
   assert.match(main, /placeholder="example\.com" value=""/);
 });
 
-test('Wmdx link long-press actions avoid native selection balloons', () => {
+test('Wmdx link long-press actions reposition after native selection changes', () => {
   const main = fs.readFileSync(
     path.join(__dirname, '../src/main.js'),
     'utf8'
   );
-  const html = fs.readFileSync(
-    path.join(__dirname, '../index.html'),
-    'utf8'
-  );
 
-  assert.match(
-    html,
-    /\.cm-content a\.cm-link\[data-wmdx-link-from\]\[data-wmdx-link-to\]\s*\{[^}]*-webkit-user-select:\s*none[^}]*user-select:\s*none[^}]*-webkit-touch-callout:\s*none/s
-  );
   assert.match(main, /if \(!press\.resourceLink && selection && !selection\.empty\) return/);
   assert.match(main, /resourceLink \? 400 : isTableCell \? 500 : 550/);
   assert.match(main, /longPressResourceLinkClickHandler/);
+  assert.match(main, /range\.intersectsNode\?\.\(link\)/);
+  assert.match(main, /document\.addEventListener\('selectionchange', reposition\)/);
+  assert.match(main, /getResourceLinkActionTop\(\{/);
 });
 
 test('rejects malformed fields, invalid sizes, and sized text links', async () => {

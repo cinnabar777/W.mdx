@@ -4,6 +4,7 @@ import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { getUnescapedPipeOffsets, hasTrailingUnescapedPipe, isEscapedPipe } from './tableModule.js';
 import { separateTableMenuFromFloatingToolbar } from './toolbarOverlap.js';
+import { getResourceLinkActionTop } from './resourceLinkMenuPosition.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
 import { parseAndMatchHotkey } from './hotkeys.js';
@@ -7785,6 +7786,7 @@ function closeWmdxResourceLinkActions() {
   activeWmdxResourceLinkActions = null;
   document.removeEventListener('pointerdown', active.dismiss, true);
   document.removeEventListener('keydown', active.keydown, true);
+  document.removeEventListener('selectionchange', active.reposition);
   window.visualViewport?.removeEventListener('resize', active.reposition);
   active.menu.remove();
 }
@@ -7848,41 +7850,40 @@ function showWmdxResourceLinkActions(view, link, x, y) {
       leftEdge + 8,
       Math.min(point.x - menuWidth / 2, leftEdge + width - menuWidth - 8)
     );
-    const preferredTop = point.y - menuHeight - 14;
-    const top = preferredTop >= topEdge + 8
-      ? preferredTop
-      : Math.min(point.y + 14, topEdge + height - menuHeight - 8);
     menu.style.left = `${left}px`;
-    menu.style.top = `${Math.max(topEdge + 8, top)}px`;
-
     const floatingToolbar = document.querySelector('#floating-selection-toolbar');
-    if (!floatingToolbar?.classList.contains('is-visible')) return;
-    const toolbarRect = floatingToolbar.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-    const overlapsHorizontally =
-      menuRect.left < toolbarRect.right && menuRect.right > toolbarRect.left;
-    const overlapsVertically =
-      menuRect.top < toolbarRect.bottom && menuRect.bottom > toolbarRect.top;
-    if (!overlapsHorizontally || !overlapsVertically) return;
-
-    const minTop = topEdge + 8;
-    const maxTop = Math.max(minTop, topEdge + height - menuRect.height - 8);
-    const candidates = [
-      toolbarRect.top - menuRect.height - 8,
-      toolbarRect.bottom + 8
-    ].filter(candidate =>
-      candidate >= minTop &&
-      candidate <= maxTop &&
-      (candidate + menuRect.height <= toolbarRect.top ||
-        candidate >= toolbarRect.bottom)
-    );
-    const separatedTop = candidates.length
-      ? candidates.sort(
-          (leftTop, rightTop) =>
-            Math.abs(leftTop - menuRect.top) - Math.abs(rightTop - menuRect.top)
-        )[0]
-      : Math.max(minTop, Math.min(toolbarRect.bottom + 8, maxTop));
-    menu.style.top = `${separatedTop}px`;
+    let targetRect = link.getBoundingClientRect();
+    const selection = window.getSelection?.();
+    if (selection?.rangeCount) {
+      try {
+        const range = selection.getRangeAt(0);
+        if (range.intersectsNode?.(link)) {
+          const rangeRect = range.getBoundingClientRect();
+          if (rangeRect.width > 0 || rangeRect.height > 0) {
+            targetRect = rangeRect;
+          }
+        }
+      } catch {
+        // A stale native selection can briefly reference a detached editor node.
+      }
+    }
+    const avoidRects = [];
+    if (floatingToolbar?.classList.contains('is-visible')) {
+      avoidRects.push(floatingToolbar.getBoundingClientRect());
+    }
+    const bottomToolbar = document.querySelector('#bottom-toolbar');
+    if (bottomToolbar) avoidRects.push(bottomToolbar.getBoundingClientRect());
+    const popupToolbar = document.querySelector('#popup-toolbar-strip');
+    if (popupToolbar) avoidRects.push(popupToolbar.getBoundingClientRect());
+    menu.style.top = `${getResourceLinkActionTop({
+      targetRect,
+      menuHeight,
+      menuLeft: left,
+      menuWidth,
+      viewportTop: topEdge,
+      viewportBottom: topEdge + height,
+      avoidRects
+    })}px`;
   };
   const dismiss = event => {
     if (!menu.contains(event.target)) closeWmdxResourceLinkActions();
@@ -7893,6 +7894,7 @@ function showWmdxResourceLinkActions(view, link, x, y) {
   activeWmdxResourceLinkActions = { menu, link, point, dismiss, keydown, reposition };
   document.addEventListener('pointerdown', dismiss, true);
   document.addEventListener('keydown', keydown, true);
+  document.addEventListener('selectionchange', reposition);
   window.visualViewport?.addEventListener('resize', reposition);
   reposition();
   return true;
