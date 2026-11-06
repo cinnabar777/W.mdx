@@ -357,9 +357,10 @@ test('callout title layout and editing behavior match each view', () => {
   assert.ok(!mainSource.includes('isTitleActive'), 'Moving the cursor into the title does not reveal syntax');
   assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG replaces the marker while leaving the title editable');
   assert.ok(
-    mainSource.includes('if (markdownPresentation(currentEditorMode).raw) return Decoration.none;') &&
+    mainSource.includes("const isSourceMode = currentEditorMode === 'source';") &&
+      mainSource.includes('if (!isSourceMode && to > from)') &&
       mainSource.includes('for (const line of documentLayout(state).lines.values())'),
-    'Source keeps callout syntax visible while consuming shared block layout'
+    'Source keeps syntax visible while inline styles and shared block layout remain active'
   );
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important[^}]*align-self:\s*center\s*!important/s);

@@ -6661,7 +6661,12 @@ async function setEditorMode(mode) {
   const containerEl = document.querySelector('#editor');
   await adapter.init(containerEl, existingText, modeSnapshot);
   activeAdapter = adapter;
-  if (modeSnapshot?.scrollAnchor) {
+  if (pendingMarkdown !== null) {
+    const latestPendingMarkdown = pendingMarkdown;
+    pendingMarkdown = null;
+    window.editorBridge?.setMarkdown?.(latestPendingMarkdown);
+  }
+  if (modeSnapshot?.scrollAnchor && adapter.getMarkdown() === existingText) {
     const view = adapter.view;
     view.scrollDOM.style.overflowAnchor = 'none';
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -6701,11 +6706,6 @@ async function setEditorMode(mode) {
       };
       stabilizeAnchor();
     }));
-  }
-  if (pendingMarkdown !== null) {
-    const latestPendingMarkdown = pendingMarkdown;
-    pendingMarkdown = null;
-    window.editorBridge?.setMarkdown?.(latestPendingMarkdown);
   }
 
   if (document.querySelector('#toc-panel')?.classList.contains('open')) {

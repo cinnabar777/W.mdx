@@ -294,40 +294,51 @@ async function main() {
     await page.waitForTimeout(120);
     await page.evaluate(() => {
       const scroller = document.querySelector('.cm-scroller');
-      if (scroller) scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * 0.65;
+      if (scroller) scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * 0.5;
     });
     await page.waitForTimeout(80);
     for (const mode of ['source', 'live_preview', 'wysiwyg', 'source']) {
-      const before = await page.evaluate(() => {
+      const anchor = await page.evaluate(() => {
         const scroller = document.querySelector('.cm-scroller');
-        const target = [...document.querySelectorAll('.cm-line')]
-          .find(line => line.textContent.includes('Anchor-090'));
-        if (!scroller || !target) return null;
+        if (!scroller) return null;
         const bounds = scroller.getBoundingClientRect();
+        const target = [...document.querySelectorAll('.cm-line')].find(line => {
+          const rect = line.getBoundingClientRect();
+          return rect.bottom > bounds.top && rect.top < bounds.bottom &&
+            /\bAnchor-\d{3}\b/.test(line.textContent);
+        });
+        if (!target) return null;
+        const token = /\bAnchor-\d{3}\b/.exec(target.textContent)?.[0];
+        if (!token) return null;
         const targetBounds = target.getBoundingClientRect();
         const desiredOffset = Math.round(scroller.clientHeight * 0.35);
         scroller.scrollTop += targetBounds.top - bounds.top - desiredOffset;
         return new Promise(resolve => requestAnimationFrame(() => {
           const nextBounds = scroller.getBoundingClientRect();
-          resolve(target.getBoundingClientRect().top - nextBounds.top);
+          const nextTarget = [...document.querySelectorAll('.cm-line')]
+            .find(line => line.textContent.includes(token));
+          resolve(nextTarget ? {
+            token,
+            offset: nextTarget.getBoundingClientRect().top - nextBounds.top
+          } : null);
         }));
       });
-      assert.ok(Number.isFinite(before), `missing scroll anchor before ${mode}`);
+      assert.ok(anchor && Number.isFinite(anchor.offset), `missing scroll anchor before ${mode}`);
       await page.evaluate(async mode => {
         await window.editorBridge.setEditorMode(mode);
       }, mode);
       await page.waitForTimeout(240);
-      const after = await page.evaluate(() => {
+      const anchoredAfter = await page.evaluate(token => {
         const scroller = document.querySelector('.cm-scroller');
         const target = [...document.querySelectorAll('.cm-line')]
-          .find(line => line.textContent.includes('Anchor-090'));
+          .find(line => line.textContent.includes(token));
         return scroller && target
           ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
           : null;
-      });
-      assert.ok(Number.isFinite(after), `missing scroll anchor after ${mode}`);
-      assert.ok(Math.abs(after - before) < 4,
-        `mode switch moved the visible document position: ${mode} (${before}px -> ${after}px)`);
+      }, anchor.token);
+      assert.ok(Number.isFinite(anchoredAfter), `missing scroll anchor after ${mode}`);
+      assert.ok(Math.abs(anchoredAfter - anchor.offset) < 4,
+        `mode switch moved the visible document position: ${mode} (${anchor.offset}px -> ${anchoredAfter}px)`);
     }
 
     for (const mode of ['wysiwyg', 'live_preview']) {
