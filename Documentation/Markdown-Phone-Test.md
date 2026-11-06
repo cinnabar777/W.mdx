@@ -104,10 +104,12 @@ At a collapsed cursor, the action should indent the whole paragraph, not just
 the current source line. In Live Preview and WYSIWYG, leading indentation
 spaces should stay hidden even when the cursor is on the line. Source view keeps
 the spaces visible, but the first row and every wrapped row must begin at the
-same content position. Repeat on an ordinary paragraph, then indent it twice.
-It must remain a paragraph rather than becoming indented code, and every
-wrapped row must move with the paragraph. The quote border must stay at the same
-left position in both cases:
+same content position. On an ordinary paragraph, set Indent Step to one space
+and verify each action moves every wrapped row with the paragraph. Then choose
+two spaces and verify one action moves it by two spaces. With either choice,
+enough indentation may create a CommonMark indented code block; this is separate
+from the fenced-code toolbar action. The quote border must stay at the same
+left position:
 
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.

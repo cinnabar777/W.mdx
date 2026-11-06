@@ -96,6 +96,14 @@
         <item>right</item>
         <item>justify</item>
     </string-array>
+    <string-array name="indent_step_entries">
+        <item>One space</item>
+        <item>Two spaces</item>
+    </string-array>
+    <string-array name="indent_step_values">
+        <item>1</item>
+        <item>2</item>
+    </string-array>
 
     <string-array name="toc_text_overflow_entries">
         <item>Truncate with ellipsis</item>

@@ -757,12 +757,14 @@ row and its wrapped rows share the same content edge. Live Preview and WYSIWYG
 hide leading indentation syntax and apply the same block-level layout. This is
 separate from the paragraph typography preference for first-line indentation.
 Toolbar Indent and Outdent never change the paragraph-first-line preference.
-Ordinary paragraph actions add one leading Markdown space per level, move all
-source lines together, and stop before four spaces would turn the paragraph
-into indented code. Indent and Outdent at a collapsed cursor target all source
-lines in the current paragraph. List items use hanging indentation by default,
+Ordinary paragraph actions add the selected one or two Markdown spaces per
+level, move all source lines together, and allow four leading spaces to create
+CommonMark indented code. This is distinct from the fenced-code toolbar action.
+The default is one space, configurable under Settings → Document Appearance →
+Paragraph. Indent and Outdent at a collapsed cursor target all source lines in
+the current paragraph. List items use hanging indentation by default,
 independent of Block List Layout; do not gate their wrapped-line alignment on
-that preference. The list option remains separate from ordinary indentation.
+that preference. List nesting remains based on marker width.
 
 **Current verification checklist:**
 

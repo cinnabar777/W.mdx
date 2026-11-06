@@ -35,6 +35,7 @@ import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import {
   applyMarkdownIndent,
+  getMarkdownIndentSpaces,
   getMarkdownIndentTargetSelection,
   getMarkdownListItemLineRange,
   getMarkdownSourceIndentColumns,
@@ -268,6 +269,7 @@ let activeEmbeddedEditSaveWarningKey = null;
 let refreshOpenTocPanel = null;
 let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
+let markdownIndentSpaces = getMarkdownIndentSpaces('1');
 
 function getUndoTargetView(parentView) {
   if (!parentView) return null;
@@ -556,32 +558,12 @@ function getCurrentParagraphLineRange(state, position, options = {}) {
   };
 }
 
-function selectionTouchesCodeBlock(tree, doc, selection) {
-  const isCodeBlock = node =>
-    node.name === 'FencedCode' || node.name === 'CodeBlock';
-  if (selection.empty) {
-    for (
-      let node = tree.resolveInner(selection.head, 1);
-      node;
-      node = node.parent
-    ) {
-      if (isCodeBlock(node)) return true;
-    }
-    return false;
-  }
-
-  let found = false;
-  tree.iterate({
-    from: doc.lineAt(selection.from).from,
-    to: doc.lineAt(selection.to).to,
-    enter(node) {
-      if (isCodeBlock(node)) found = true;
-    }
-  });
-  return found;
-}
-
-function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {}) {
+function applyEditorMarkdownIndent(
+  view,
+  direction,
+  spaces = markdownIndentSpaces,
+  options = {}
+) {
   if (direction === 'outdent') {
     const selection = view.state.selection.main;
     const quoteChanges = getBlockquoteOutdentChanges(
@@ -604,11 +586,6 @@ function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {})
 
   const selection = view.state.selection.main;
   const tree = syntaxTree(view.state);
-  const touchesCodeBlock = selectionTouchesCodeBlock(
-    tree,
-    view.state.doc,
-    selection
-  );
   const wmdxListItems = getWmdxOrderedListItems(view.state.doc, tree);
   const paragraphRange = selection.empty
     ? getMarkdownListItemLineRange(view.state, selection.head) ??
@@ -629,8 +606,6 @@ function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {})
   return applyMarkdownIndent(view, direction, spaces, {
     ...options,
     selection: indentSelection,
-    paragraphSpaces: touchesCodeBlock ? spaces : ' ',
-    paragraphIndentLimit: touchesCodeBlock ? Infinity : 3,
     renumberWmdx: isListFlavorEnabledNow('wmdx'),
     renumberMarkdown: isListFlavorEnabledNow('markdown'),
     isExcluded: position => wmdxOrderedListPositionIsExcluded(tree, position)
@@ -10233,9 +10208,9 @@ function execCmd(cmdName, options) {
       }
     }
     else if (cmdName === 'indent') {
-      applyEditorMarkdownIndent(view, 'indent', '  ', editorCommandOptions);
+      applyEditorMarkdownIndent(view, 'indent', markdownIndentSpaces, editorCommandOptions);
     } else if (cmdName === 'outdent') {
-      applyEditorMarkdownIndent(view, 'outdent', '  ', editorCommandOptions);
+      applyEditorMarkdownIndent(view, 'outdent', markdownIndentSpaces, editorCommandOptions);
     }
     else if (cmdName === 'moveLineUp') {
       if (cmMoveLineUp(view)) focusEditorAfterCommand(view);
@@ -12050,6 +12025,9 @@ window.editorBridge = {
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
     const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
+    markdownIndentSpaces = getMarkdownIndentSpaces(
+      prefs.pref_indent_step_spaces
+    );
     const limitedInteraction =
       prefs.pref_embedded_content_limited_interaction !== false;
     const fullInlineEditing =

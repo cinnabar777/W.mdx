@@ -371,6 +371,7 @@ object PreferenceResetHelper {
             key == "pref_heading_margin_top" -> 16
             key == "pref_heading_margin_bottom" -> 8
             key == "pref_paragraph_align" -> "left"
+            key == "pref_indent_step_spaces" -> "1"
             key == "pref_paragraph_first_line_indent" -> 0
             key == "pref_paragraph_margin_top" -> 0
             key == "pref_paragraph_margin_bottom" -> 8

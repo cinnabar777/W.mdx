@@ -54,6 +54,7 @@ test('Paragraph and Body have separate pages with their own controls', () => {
     'pref_paragraph_line_height',
     'pref_letter_spacing',
     'pref_paragraph_align',
+    'pref_indent_step_spaces',
     'pref_paragraph_first_line_indent',
     'pref_justify_paragraph',
     'pref_paragraph_hyphenate',

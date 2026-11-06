@@ -19,6 +19,7 @@ test('applyAllPreferences handles Android XML preference keys correctly', () => 
   assert.ok(source.includes('pref_paragraph_line_height'), 'Missing pref_paragraph_line_height');
   assert.ok(source.includes('pref_letter_spacing'), 'Missing pref_letter_spacing');
   assert.ok(source.includes('pref_paragraph_align'), 'Missing pref_paragraph_align');
+  assert.ok(source.includes('pref_indent_step_spaces'), 'Missing pref_indent_step_spaces');
   assert.ok(source.includes('pref_paragraph_first_line_indent'), 'Missing pref_paragraph_first_line_indent');
 
   assert.ok(source.includes('pref_heading_scale_percent'), 'Missing pref_heading_scale_percent');
@@ -189,6 +190,26 @@ test('paragraph and list typography selectors have matching editor line classes'
     /\.cm-line\.cm-source-indented\.cm-heading[^{}]*\{[^}]*padding-left:\s*var\(--source-indent-offset/
   );
   assert.match(indexHtml, /\.cm-content \.cm-list-item/);
+});
+
+test('paragraph indent step offers one or two spaces and defaults to one', () => {
+  const arrays = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/values/arrays.xml'),
+    'utf8'
+  );
+  assert.match(
+    paragraphSettings,
+    /app:key="pref_indent_step_spaces"[\s\S]*?android:entries="@array\/indent_step_entries"[\s\S]*?android:entryValues="@array\/indent_step_values"[\s\S]*?android:defaultValue="1"/
+  );
+  assert.match(
+    arrays,
+    /<string-array name="indent_step_entries">[\s\S]*?<item>One space<\/item>[\s\S]*?<item>Two spaces<\/item>/
+  );
+  assert.match(
+    arrays,
+    /<string-array name="indent_step_values">[\s\S]*?<item>1<\/item>[\s\S]*?<item>2<\/item>/
+  );
+  assert.match(resetSource, /key == "pref_indent_step_spaces" -> "1"/);
 });
 
 test('letter-spacing control is labeled as paragraph-only, not global', () => {

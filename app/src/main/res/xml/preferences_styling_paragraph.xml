@@ -22,6 +22,14 @@
         android:entryValues="@array/align_values"
         android:defaultValue="left" />
 
+    <com.wmdx.markdownapp.ResetListPreference
+        app:key="pref_indent_step_spaces"
+        app:title="Indent Step (spaces)"
+        app:summary="Spaces added by each Indent action; list nesting follows its marker width"
+        android:entries="@array/indent_step_entries"
+        android:entryValues="@array/indent_step_values"
+        android:defaultValue="1" />
+
     <com.wmdx.markdownapp.ResetSeekBarPreference
         app:key="pref_paragraph_first_line_indent"
         app:title="Paragraph First-Line Indent (px)"
