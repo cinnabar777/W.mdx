@@ -1231,6 +1231,7 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_blockquotes, rootKey)
         keepPreferenceCategories(
+            "styling_callout_syntax",
             "styling_callout_body_typography",
             "styling_callout_settings",
             "styling_callout_shared_header",
@@ -1251,11 +1252,43 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
 
     override fun onSettingPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {
         super.onSettingPreferenceChanged(sharedPreferences, key)
+        if (
+            key == "pref_callout_syntax_enabled" ||
+            key == "pref_callout_syntax_wmdx_enabled" ||
+            key == "pref_callout_syntax_obsidian_enabled" ||
+            key == "pref_callout_authoring_syntax"
+        ) {
+            updateCalloutAuthoringPreference(sharedPreferences)
+        }
         if (key == "pref_callout_type_selector") {
             updateTypeOverrideVisibility()
         }
         if (key.startsWith("pref_callout_")) {
             refreshCalloutPreview(sharedPreferences)
+        }
+    }
+
+    private fun updateCalloutAuthoringPreference(sharedPreferences: SharedPreferences) {
+        if (!sharedPreferences.getBoolean("pref_callout_syntax_enabled", true)) return
+
+        val enabledFlavors = listOf(
+            "wmdx" to "pref_callout_syntax_wmdx_enabled",
+            "obsidian" to "pref_callout_syntax_obsidian_enabled"
+        ).filter { (_, preferenceKey) ->
+            sharedPreferences.getBoolean(preferenceKey, true)
+        }.map { (flavor, _) -> flavor }
+        if (enabledFlavors.isEmpty()) return
+
+        val current = sharedPreferences.getString("pref_callout_authoring_syntax", "wmdx")
+        val resolved = when {
+            enabledFlavors.size == 1 -> enabledFlavors.single()
+            current != null && enabledFlavors.contains(current) -> current
+            else -> enabledFlavors.first()
+        }
+        if (resolved != current) {
+            sharedPreferences.edit()
+                .putString("pref_callout_authoring_syntax", resolved)
+                .apply()
         }
     }
 

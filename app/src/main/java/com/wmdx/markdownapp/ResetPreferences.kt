@@ -423,6 +423,10 @@ object PreferenceResetHelper {
             key == "pref_callout_line_thickness" -> 4
             key == "pref_callout_line_style" -> "solid"
             key == "pref_callout_line_color" -> "default"
+            key == "pref_callout_syntax_enabled" ||
+                key == "pref_callout_syntax_wmdx_enabled" ||
+                key == "pref_callout_syntax_obsidian_enabled" -> true
+            key == "pref_callout_authoring_syntax" -> "wmdx"
             key == "pref_callout_bg_color" -> "default"
             key == "pref_callout_text_color" -> "default"
             key == "pref_callout_inherit_body_typography" -> true

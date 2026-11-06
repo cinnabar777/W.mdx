@@ -195,6 +195,14 @@
         <item>todo</item>
         <item>example</item>
     </string-array>
+    <string-array name="callout_authoring_syntax_entries">
+        <item>Wmdx</item>
+        <item>Obsidian</item>
+    </string-array>
+    <string-array name="callout_authoring_syntax_values">
+        <item>wmdx</item>
+        <item>obsidian</item>
+    </string-array>
 
     <string-array name="callout_icon_entries">
         <item>Default (Type Built-in)</item>

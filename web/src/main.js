@@ -143,8 +143,13 @@ import {
   getWmdxCalloutEnterEdit,
   isWmdxCalloutEnterEvent,
   isWmdxCalloutTitleDraftActive,
-  parseWmdxCallouts
+  parseWmdxCallouts as parseWmdxCalloutsRaw
 } from './wmdxCallouts.js';
+import {
+  buildObsidianCalloutInsertion,
+  isCalloutFlavorEnabled,
+  normalizeCalloutSyntaxSettings
+} from './calloutSyntax.mjs';
 import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
@@ -341,9 +346,31 @@ let customHotkeys = {
 
 let linkSyntaxSettings = normalizeLinkSyntaxSettings();
 let headingSyntaxSettings = normalizeHeadingSyntaxSettings();
+let calloutSyntaxSettings = normalizeCalloutSyntaxSettings();
 
 function isHeadingFlavorEnabledNow(flavor) {
   return isHeadingFlavorEnabled(headingSyntaxSettings, flavor);
+}
+
+function isCalloutFlavorEnabledNow(flavor) {
+  return isCalloutFlavorEnabled(calloutSyntaxSettings, flavor);
+}
+
+function isCalloutAuthoringAvailable() {
+  return calloutSyntaxSettings.enabled &&
+    Boolean(calloutSyntaxSettings.authoringSyntax) &&
+    ['wmdx', 'obsidian'].some(isCalloutFlavorEnabledNow);
+}
+
+function parseWmdxCallouts(text, isExcluded) {
+  if (!isCalloutFlavorEnabledNow('wmdx')) {
+    return {
+      openers: [],
+      lineAttributes: new Map(),
+      returnIndentByLine: new Map()
+    };
+  }
+  return parseWmdxCalloutsRaw(text, isExcluded);
 }
 
 function getHeadingFlavorAtNode(node, doc) {
@@ -2538,7 +2565,12 @@ function handleWmdxCalloutTitleClick(view, event) {
 }
 
 function handleWmdxCalloutEnter(view, event) {
-  if (!isWmdxCalloutEnterEvent(event)) return false;
+  if (
+    !isCalloutFlavorEnabledNow('wmdx') ||
+    !isWmdxCalloutEnterEvent(event)
+  ) {
+    return false;
+  }
 
   const state = view.state;
   const selection = state.selection.main;
@@ -2846,7 +2878,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               activeCalloutsStack.pop();
             }
 
-            const match = line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i);
+            const match = isCalloutFlavorEnabledNow('obsidian')
+              ? line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i)
+              : null;
 
             if (match) {
               const type = match[3].toLowerCase();
@@ -4432,7 +4466,9 @@ function buildHeightMapValue(state) {
           activeCalloutsStack.pop();
         }
 
-        const match = line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i);
+        const match = isCalloutFlavorEnabledNow('obsidian')
+          ? line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i)
+          : null;
 
         if (match) {
           const type = match[3].toLowerCase();
@@ -5171,9 +5207,11 @@ export function buildPersistentLayoutDecorations(state) {
         activeCallouts.pop();
       }
 
-      const opener = quotePrefix && line.text.match(
-        /^(\s*(?:>\s*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i
-      );
+      const opener = isCalloutFlavorEnabledNow('obsidian') &&
+        quotePrefix &&
+        line.text.match(
+          /^(\s*(?:>\s*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i
+        );
       if (opener) {
         calloutInfo = {
           type: opener[2].toLowerCase(),
@@ -6973,7 +7011,7 @@ function setupGroupedControlBar() {
         { id: 'attachment', icon: svgIcons.attachment, title: 'Attach File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('attachment') },
         { id: 'embed', icon: svgIcons.embed, title: 'Embed Document', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('embed') },
         { id: 'link', icon: svgIcons.link, title: 'Links', disabled: !linkSyntaxSettings.enabled, action: () => execCmd('link') },
-        { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
+        { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', disabled: !isCalloutAuthoringAvailable(), action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
         { id: 'blockQuote', icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
         { id: 'codeBlock', icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
@@ -7349,7 +7387,7 @@ function createToolbarActionRegistry() {
       { id: 'attachment', title: 'Attach File', icon: svgIcons.attachment, action: () => window.AndroidNative?.onNativeAction('attachment') },
       { id: 'embed', title: 'Embed Document', icon: svgIcons.embed, action: () => window.AndroidNative?.onNativeAction('embed') },
       { id: 'link', title: 'Links', icon: svgIcons.link, disabled: !linkSyntaxSettings.enabled, action: () => execCmd('link') },
-      { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
+      { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, disabled: !isCalloutAuthoringAvailable(), action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
       { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote, action: () => execCmd('blockQuote') },
       { id: 'codeBlock', title: 'Code Block', icon: svgIcons.codeBlock, action: () => execCmd('codeBlock') },
@@ -9307,7 +9345,7 @@ function openImageDeleteConfirmation(
 }
 
 export function openCalloutInsertionDialog() {
-  if (!activeAdapter || !activeAdapter.view) return;
+  if (!activeAdapter?.view || !isCalloutAuthoringAvailable()) return;
   const view = activeAdapter.view;
   const sel = view.state.selection.main;
   const sourceText = view.state.doc.toString();
@@ -9366,7 +9404,11 @@ export function openCalloutInsertionDialog() {
     const type = typeSelect.value || 'note';
     const fold = foldSelect.value;
     const title = titleInput.value.trim();
-    const insertion = buildWmdxCalloutInsertion(
+    const buildInsertion =
+      calloutSyntaxSettings.authoringSyntax === 'obsidian'
+        ? buildObsidianCalloutInsertion
+        : buildWmdxCalloutInsertion;
+    const insertion = buildInsertion(
       sourceText,
       { from: sel.from, to: sel.to },
       { type, fold, title }
@@ -9786,6 +9828,13 @@ function refreshToolbarSyntaxState(view = activeAdapter?.view) {
   ).forEach(button => {
     if ('disabled' in button) button.disabled = !headingActionAvailable;
     button.setAttribute('aria-disabled', String(!headingActionAvailable));
+  });
+  const calloutActionAvailable = isCalloutAuthoringAvailable();
+  document.querySelectorAll(
+    '#grp-btn-callout, [data-toolbar-key="callout"]'
+  ).forEach(button => {
+    if ('disabled' in button) button.disabled = !calloutActionAvailable;
+    button.setAttribute('aria-disabled', String(!calloutActionAvailable));
   });
 }
 
@@ -11161,7 +11210,10 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
     else if (parseAndMatchHotkey(e, customHotkeys.footnote)) { e.preventDefault(); execCmd('InsertFootnote'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.callout)) { e.preventDefault(); execCmd('callout'); }
+    else if (
+      isCalloutAuthoringAvailable() &&
+      parseAndMatchHotkey(e, customHotkeys.callout)
+    ) { e.preventDefault(); execCmd('callout'); }
     else if (parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.codeBlock)) { e.preventDefault(); execCmd('codeBlock'); }
     else if (parseAndMatchHotkey(e, customHotkeys.moveLineUp)) { e.preventDefault(); execCmd('moveLineUp'); }
@@ -11288,12 +11340,19 @@ window.editorBridge = {
     const headingSyntaxChanged =
       JSON.stringify(nextHeadingSyntaxSettings) !==
       JSON.stringify(headingSyntaxSettings);
+    const nextCalloutSyntaxSettings = normalizeCalloutSyntaxSettings(prefs);
+    const calloutSyntaxChanged =
+      JSON.stringify(nextCalloutSyntaxSettings) !==
+      JSON.stringify(calloutSyntaxSettings);
     linkSyntaxSettings = nextLinkSyntaxSettings;
     headingSyntaxSettings = nextHeadingSyntaxSettings;
-    if (linkSyntaxChanged || headingSyntaxChanged) hidePopupStrip();
+    calloutSyntaxSettings = nextCalloutSyntaxSettings;
+    if (linkSyntaxChanged || headingSyntaxChanged || calloutSyntaxChanged) {
+      hidePopupStrip();
+    }
     if (activeAdapter?.view) {
       activeAdapter.view.dispatch({
-        effects: linkSyntaxChanged || headingSyntaxChanged
+        effects: linkSyntaxChanged || headingSyntaxChanged || calloutSyntaxChanged
           ? [
               heightMapRefreshEffect.of(null),
               typographySettingsEffect.of(Date.now())

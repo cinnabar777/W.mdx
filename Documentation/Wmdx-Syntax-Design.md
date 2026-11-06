@@ -86,6 +86,19 @@ the syntax the current app supports.
 - Disabled heading flavors remain visible as literal source. These preferences
   do not affect CommonMark, GFM, Obsidian, or HTML import/export conversion.
 
+### Callout syntax settings (implemented)
+
+- Callouts have one app-wide enable switch, separate Wmdx and Obsidian flavor
+  switches, and a preferred authoring syntax.
+- Both flavors are enabled by default, with Wmdx as the default authoring
+  syntax. If only one flavor remains enabled, it becomes the authoring syntax.
+- Wmdx callouts use `±type`, `±type-`, and `±type+` with automatically indented
+  bodies. Obsidian callouts use `> [!type]` with quoted body lines; this also
+  recognizes the overlapping GFM alert syntax. Ordinary blockquotes are not
+  treated as callouts.
+- Disabling callouts stops rendering both callout flavors; ordinary blockquotes
+  remain available. These preferences do not change import/export conversion.
+
 ## Agreed native syntax
 
 ### Resource references, links, and embeds
@@ -404,7 +417,8 @@ The dropdown is a callout type with its own styling, not a separate block
 system. It requires a state suffix: `±dropdown-` starts closed and
 `±dropdown+` starts open. Both use the same body indentation and paragraph
 rules as other callouts. Obsidian's `> [!type]` remains an import format, not
-native Wmdx syntax.
+the Wmdx default syntax. It is also available as an optional authoring and
+rendering flavor in the editor; the Wmdx `±` form remains the default.
 
 ### Footnote and callout mapping rules
 

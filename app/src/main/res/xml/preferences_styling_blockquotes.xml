@@ -86,6 +86,39 @@
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_callout_syntax"
+        app:title="Callout Syntax">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_callout_syntax_enabled"
+            app:title="Enable Callouts"
+            app:summary="Recognize and render callout syntax"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_callout_syntax_wmdx_enabled"
+            app:title="Wmdx Callouts"
+            app:summary="Recognize ±type, ±type-, and ±type+"
+            app:defaultValue="true"
+            app:dependency="pref_callout_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_callout_syntax_obsidian_enabled"
+            app:title="Obsidian Callouts"
+            app:summary="Recognize > [!type] callouts, including GFM alerts"
+            app:defaultValue="true"
+            app:dependency="pref_callout_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_callout_authoring_syntax"
+            app:title="Preferred Callout Syntax"
+            app:summary="Syntax inserted by the callout toolbar and shortcut"
+            android:entries="@array/callout_authoring_syntax_entries"
+            android:entryValues="@array/callout_authoring_syntax_values"
+            app:defaultValue="wmdx"
+            app:dependency="pref_callout_syntax_enabled" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_callout_body_typography"
         app:title="Callout Body">
         <com.wmdx.markdownapp.ResetSwitchPreference
