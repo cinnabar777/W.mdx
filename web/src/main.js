@@ -3032,11 +3032,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             : layout.kind === 'quote'
               ? 'cm-source-quote-wrapped'
               : 'cm-source-paragraph-wrapped';
+          const sourceOffsetColumns = layout.kind === 'list-continuation'
+            ? layout.sourceOffsetColumns
+            : layout.contentOffsetColumns;
           sourceDecorations.push(
             Decoration.line({
               attributes: {
                 class: className,
-                style: `--source-hanging-offset:${layout.contentOffsetColumns}ch`
+                style: `--source-hanging-offset:${sourceOffsetColumns}ch`
               }
             }).range(line.from)
           );
@@ -5732,8 +5735,6 @@ function premeasureTableHeights(view) {
 }
 
 export function buildPersistentLayoutDecorations(state) {
-  if (currentEditorMode === 'source') return Decoration.none;
-
   const { doc } = state;
   const tree = syntaxTree(state);
   const wmdxOrderedListByLine = new Map(
@@ -5949,10 +5950,7 @@ export function buildPersistentLayoutDecorations(state) {
     }
     if (insideListItem && listsEnabled) {
       const listLayout = getMarkdownSourceLineLayoutForState(state, number);
-      if (
-        currentEditorMode !== 'source' &&
-        listLayout?.kind === 'list-continuation'
-      ) {
+      if (listLayout?.kind === 'list-continuation') {
         addClass(number, 'cm-list-continuation');
         listContinuationIndentByLine.set(
           number,

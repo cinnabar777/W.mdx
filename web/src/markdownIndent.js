@@ -130,13 +130,20 @@ export function getMarkdownSourceLineLayoutForState(state, lineNumber) {
     if (itemLayout?.kind !== 'list' || directLayout?.kind === 'list') {
       return directLayout;
     }
-    const additionalIndent = directLayout?.kind === 'paragraph'
+    const explicitIndentColumns = directLayout?.kind === 'paragraph'
       ? directLayout.contentOffsetColumns
       : 0;
+    const contentOffsetColumns = Math.max(
+      itemLayout.contentOffsetColumns,
+      explicitIndentColumns
+    );
     return {
       kind: 'list-continuation',
-      contentOffsetColumns:
-        itemLayout.contentOffsetColumns + additionalIndent
+      contentOffsetColumns,
+      sourceOffsetColumns: Math.max(
+        0,
+        contentOffsetColumns - explicitIndentColumns
+      )
     };
   }
   return directLayout;

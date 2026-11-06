@@ -2000,6 +2000,27 @@
       padding-left: var(--source-hanging-offset, 0ch) !important;
       text-indent: 0 !important;
     }
+    body:not(.list-wrap-under-text) .cm-content .cm-line.cm-source-list-continuation,
+    body.list-wrap-under-text .cm-content .cm-line.cm-source-list-continuation {
+      padding-left: var(--source-hanging-offset, 0ch) !important;
+      text-indent: 0 !important;
+    }
+    body:not(.list-wrap-under-text) .cm-content .cm-line.cm-source-list-wrapped {
+      padding-left: 0 !important;
+      text-indent: 0 !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-source-list-wrapped {
+      display: block !important;
+      padding-left: var(--source-hanging-offset, 0ch) !important;
+      text-indent: calc(0ch - var(--source-hanging-offset, 0ch)) !important;
+    }
+    .cm-content .cm-line.cm-source-quote-wrapped.cm-blockquote {
+      padding-left: calc(
+        var(--blockquote-padding, 12px) +
+        var(--source-hanging-offset, 0ch)
+      ) !important;
+      text-indent: calc(0ch - var(--source-hanging-offset, 0ch)) !important;
+    }
     .cm-content .cm-line.cm-blockquote[data-blockquote-depth]:not(.cm-callout)::before {
       content: "" !important;
       position: absolute !important;

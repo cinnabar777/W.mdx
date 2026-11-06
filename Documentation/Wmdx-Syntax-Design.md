@@ -36,6 +36,9 @@ the syntax the current app supports.
 - These are syntax-visibility and editing differences, not separate block-
   layout systems. Live Preview must not become a raw-source view when the caret
   enters a rendered table or another rich structure.
+- Apply the shared structural layout in Source too. Source-only line handling
+  may compensate for visible markers or indentation, but must not replace the
+  shared paragraph, heading, list, and quote layout.
 - Visible syntax occupies its natural inline width, so exposing it can shift
   text and change wrap points. Hidden syntax occupies no reserved or phantom
   width. In particular, hiding a heading marker must not leave its width as an
@@ -784,14 +787,26 @@ level, move all source lines together, and allow four leading spaces to create
 CommonMark indented code. This is distinct from the fenced-code toolbar action.
 The default is one space, configurable under Settings → Document Appearance →
 Paragraph. Indent and Outdent at a collapsed cursor target all source lines in
-the current paragraph. List items use hanging indentation by default,
-independent of Block List Layout; do not gate their wrapped-line alignment on
-that preference. In Source view, a paragraph continuation that becomes part of
-a list item after its blank separator is removed must wrap under the item text.
+the current paragraph. Block List Layout controls whether wrapped list text
+aligns under the item text or marker, consistently across all modes; it is not
+first-line indentation. In Source, visible markers determine the source offset;
+rendered modes apply the equivalent selected alignment. A paragraph continuation
+that becomes part of a list item after its blank separator is removed must wrap
+under the item text.
+For a list continuation, calculate one absolute text column as the farther of
+the item's content column or the explicit source indentation. Source adds only
+the remaining offset because its literal indentation stays visible; rendered
+modes use the full column because that syntax is hidden.
 Rendered indented code blocks hide the structural indentation parsed as Markdown
 syntax. Shared leading code indentation is rendered as block padding across all
 wrapped rows, while relative indentation between code lines remains visible.
 List nesting remains based on marker width.
+
+The persistent structural layout now runs in Source, Live Preview, and WYSIWYG.
+Source-only line decorations account for visible syntax without replacing the
+shared layout. Web tests check the shared paragraph, list, and quote classes in
+all three modes, rendered/editable tables in Live Preview and WYSIWYG, and raw
+table syntax in Source. Those tests do not measure Android line-wrap geometry.
 
 **Current verification checklist:**
 
@@ -815,7 +830,7 @@ List nesting remains based on marker width.
    Edit and Delete are reachable, edits keep destination and title in their
    correct fields, and Delete leaves the displayed text. The last device report
    confirmed Wmdx and Obsidian internal links but did not confirm these two.
-5. Recheck Source, Live Preview, and WYSIWYG after those edits and after
+6. Recheck Source, Live Preview, and WYSIWYG after those edits and after
    save/reopen; import/export must still parse all flavors.
 
 **Next:** resolve any failures from this checklist. Do not start another syntax

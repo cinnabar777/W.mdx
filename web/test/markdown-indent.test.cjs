@@ -285,7 +285,11 @@ test('list continuation stays under its item text after a blank line is deleted'
   });
   assert.deepEqual(
     getMarkdownSourceLineLayoutForState(continuedList, 2),
-    { kind: 'list-continuation', contentOffsetColumns: 3 }
+    {
+      kind: 'list-continuation',
+      contentOffsetColumns: 3,
+      sourceOffsetColumns: 3
+    }
   );
   const indentedContinuation = EditorState.create({
     doc: '1. item\n  paragraph',
@@ -293,7 +297,23 @@ test('list continuation stays under its item text after a blank line is deleted'
   });
   assert.deepEqual(
     getMarkdownSourceLineLayoutForState(indentedContinuation, 2),
-    { kind: 'list-continuation', contentOffsetColumns: 5 }
+    {
+      kind: 'list-continuation',
+      contentOffsetColumns: 3,
+      sourceOffsetColumns: 1
+    }
+  );
+  const furtherIndentedContinuation = EditorState.create({
+    doc: '1. item\n    paragraph',
+    extensions: [markdown()]
+  });
+  assert.deepEqual(
+    getMarkdownSourceLineLayoutForState(furtherIndentedContinuation, 2),
+    {
+      kind: 'list-continuation',
+      contentOffsetColumns: 4,
+      sourceOffsetColumns: 0
+    }
   );
 
   const separateParagraph = EditorState.create({
@@ -312,6 +332,10 @@ test('list continuation stays under its item text after a blank line is deleted'
   assert.ok(continuationRule, 'list continuation source layout rule is missing');
   assert.match(continuationRule, /padding-left:\s*var\(--source-hanging-offset/);
   assert.match(continuationRule, /text-indent:\s*0/);
+  assert.match(
+    html,
+    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-source-list-continuation,[\s\S]*?body\.list-wrap-under-text \.cm-content \.cm-line\.cm-source-list-continuation\s*\{[^}]*padding-left:\s*var\(--source-hanging-offset/
+  );
   const renderedContinuationRule = html.match(
     /\.cm-content \.cm-line\.cm-list-continuation\s*\{([^}]+)\}/
   )?.[1];
@@ -325,9 +349,23 @@ test('list continuation stays under its item text after a blank line is deleted'
     html,
     /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-continuation[\s\S]*?padding-left:\s*calc\([\s\S]*?\+ 0\.4em\s*\)/
   );
+  const sourceListMarkerWrapRule = html.match(
+    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-source-list-wrapped\s*\{([^}]+)\}/
+  )?.[1];
+  assert.ok(sourceListMarkerWrapRule, 'source marker-wrap layout rule is missing');
+  assert.match(sourceListMarkerWrapRule, /padding-left:\s*0/);
+  assert.match(sourceListMarkerWrapRule, /text-indent:\s*0/);
+  assert.match(
+    html,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-source-list-wrapped[\s\S]*?padding-left:\s*var\(--source-hanging-offset/
+  );
   const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
   assert.match(main, /listLayout\?\.kind === 'list-continuation'/);
   assert.match(main, /cm-list-continuation/);
+  assert.match(
+    main,
+    /layout\.kind === 'list-continuation'[\s\S]*?layout\.sourceOffsetColumns/
+  );
 });
 
 test('rendered indented code moves shared leading spaces to every wrapped row', async () => {

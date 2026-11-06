@@ -149,6 +149,70 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     assert.ok(sourceContent.textContent.includes('Hard break by spaces:  '));
     assert.ok(sourceContent.textContent.includes('Hard break by slash\\'));
 
+    const tableSource = [
+      '| Left | Center | Right |',
+      '| :--- | :---: | ---: |',
+      '| Bold | centered | right |',
+      '| A | B | C |'
+    ].join('\n');
+    window.editorBridge.setMarkdown(tableSource);
+    for (const mode of ['live_preview', 'wysiwyg']) {
+      await window.editorBridge.setEditorMode(mode);
+      const renderedTableContent = window.document.querySelector('.cm-content');
+      assert.ok(
+        renderedTableContent.querySelector('.cm-wp-table-container'),
+        `${mode} keeps the table rendered and editable`
+      );
+      assert.equal(
+        renderedTableContent.textContent.includes('|'),
+        false,
+        `${mode} does not expose table pipe syntax while editing its cells`
+      );
+      assert.equal(window.editorBridge.getMarkdown(), tableSource);
+    }
+
+    await window.editorBridge.setEditorMode('source');
+    const sourceTableContent = window.document.querySelector('.cm-content');
+    assert.equal(
+      sourceTableContent.querySelector('.cm-wp-table-container'),
+      null,
+      'Source keeps the table as Markdown text'
+    );
+    assert.ok(sourceTableContent.textContent.includes('| Left | Center | Right |'));
+    assert.equal(window.editorBridge.getMarkdown(), tableSource);
+
+    const sharedLayoutSource = [
+      '> a quoted paragraph',
+      '',
+      '1. a list item',
+      '  its continuation',
+      '',
+      'a regular paragraph'
+    ].join('\n');
+    window.editorBridge.setMarkdown(sharedLayoutSource);
+    for (const mode of ['source', 'live_preview', 'wysiwyg']) {
+      await window.editorBridge.setEditorMode(mode);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      const modeContent = window.document.querySelector('.cm-content');
+      assert.ok(
+        modeContent.querySelector('.cm-line.cm-blockquote'),
+        `${mode} applies shared blockquote layout`
+      );
+      assert.ok(
+        modeContent.querySelector('.cm-line.cm-list-item'),
+        `${mode} applies shared list-item layout`
+      );
+      assert.ok(
+        modeContent.querySelector('.cm-line.cm-list-continuation'),
+        `${mode} applies shared list-continuation layout`
+      );
+      assert.ok(
+        modeContent.querySelector('.cm-line.cm-paragraph'),
+        `${mode} applies shared paragraph layout`
+      );
+      assert.equal(window.editorBridge.getMarkdown(), sharedLayoutSource);
+    }
+
     const listSource = [
       'CommonMark list indentation example:',
       '- a',
