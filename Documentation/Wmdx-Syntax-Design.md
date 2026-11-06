@@ -800,13 +800,19 @@ modes use the full column because that syntax is hidden.
 Rendered indented code blocks hide the structural indentation parsed as Markdown
 syntax. Shared leading code indentation is rendered as block padding across all
 wrapped rows, while relative indentation between code lines remains visible.
-List nesting remains based on marker width.
+Rendered list nesting comes from parsed list depth, not visible leading spaces.
+Live Preview and WYSIWYG hide that indentation syntax and offset the complete
+list item, including every wrapped row. Source keeps its literal indentation and
+does not add a second depth offset. This nesting offset is independent of the
+Block List Layout choice for where wrapped text aligns.
 
 The persistent structural layout now runs in Source, Live Preview, and WYSIWYG.
 Source-only line decorations account for visible syntax without replacing the
-shared layout. Web tests check the shared paragraph, list, and quote classes in
-all three modes, rendered/editable tables in Live Preview and WYSIWYG, and raw
-table syntax in Source. Those tests do not measure Android line-wrap geometry.
+shared layout. Web tests now check nested-list depth and indentation visibility
+in all three modes, nested quotes and quoted lists, rendered/editable tables in
+Live Preview and WYSIWYG, and raw table syntax in Source. A narrow Chromium phone
+viewport confirmed the wrapped nested list stays at its own depth with Block
+List Layout enabled. Android device line-wrap geometry still needs confirmation.
 
 **Current verification checklist:**
 
@@ -817,11 +823,14 @@ table syntax in Source. Those tests do not measure Android line-wrap geometry.
    In Source, Live Preview, and WYSIWYG, every wrapped line should align with
    the first line's content edge; the quote border should stay at the left edge.
 3. With Block List Layout off, indent and outdent a nested item that has
-   continuation text and child items. The item subtree should move together.
-   At every nesting depth, wrapped lines should align under that item's own text,
-   not under its marker, its parent's text, or the left margin. Verify the same
-   hanging behavior with Block List Layout enabled; it must not become a
-   first-line-only indent.
+   continuation text and child items. The marker, first row, and wrapped rows
+   must move together at every depth; a nested item must not fall back to its
+   parent's column or the document margin. The wrap anchor follows the selected
+   Block List Layout choice, but nesting must never become a first-line-only
+   offset. Live Preview and WYSIWYG hide the leading Markdown indentation and
+   apply parsed depth to the whole item; Source keeps the spaces visible and
+   must not add a second depth offset. Verify this with the preference both off
+   and on.
 4. With no selection, Clear Formatting should remove the current paragraph's
    heading, list/task, quote/callout, indentation, link, or inline style syntax
    while keeping its visible text. With a selection, it should clear only the

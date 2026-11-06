@@ -3598,12 +3598,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             }
             const marker = view.state.doc.sliceString(node.from, node.to);
             const isBullet = /^[-*+]$/.test(marker.trim());
+            const indentRange = listMarkerIndentRange(doc, node);
+            if (indentRange) hideSyntax(indentRange.from, indentRange.to);
             if (!isNodeActive) {
               if (!isPureWysiwyg) {
-                if (listMarkerDepths.get(node.from) === 0) {
-                  const indentRange = listMarkerIndentRange(doc, node);
-                  if (indentRange) hideSyntax(indentRange.from, indentRange.to);
-                }
                 builder.push(Decoration.replace({
                   widget: new ListMarkerWidget(
                     marker,
@@ -4067,6 +4065,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const item of wmdxOrderedListItems) {
+      const leadingIndent = /^[ \t]*/.exec(item.line.text)?.[0] ?? '';
+      if (leadingIndent.length > 0) {
+        hideSyntax(item.line.from, item.line.from + leadingIndent.length);
+      }
       if (
         !decorationRanges.some(range =>
           item.from <= range.to && item.to >= range.from
@@ -5187,10 +5189,8 @@ function buildHeightMapValue(state) {
         }
         const marker = doc.sliceString(node.from, node.to);
         const isBullet = /^[-*+]$/.test(marker.trim());
-        if (listMarkerDepths.get(node.from) === 0) {
-          const indentRange = listMarkerIndentRange(doc, node);
-          if (indentRange) hideSyntax(indentRange.from, indentRange.to);
-        }
+        const indentRange = listMarkerIndentRange(doc, node);
+        if (indentRange) hideSyntax(indentRange.from, indentRange.to);
         replacements.push(Decoration.replace({
           widget: new ListMarkerWidget(
             marker,
@@ -5532,6 +5532,10 @@ function buildHeightMapValue(state) {
   }
 
   for (const item of wmdxOrderedListItems) {
+    const leadingIndent = /^[ \t]*/.exec(item.line.text)?.[0] ?? '';
+    if (leadingIndent.length > 0) {
+      hideSyntax(item.line.from, item.line.from + leadingIndent.length);
+    }
     const active = state.selection.ranges.some(range =>
       range.empty
         ? range.head >= item.from && range.head <= item.to
@@ -5737,12 +5741,30 @@ function premeasureTableHeights(view) {
 export function buildPersistentLayoutDecorations(state) {
   const { doc } = state;
   const tree = syntaxTree(state);
+  const markerDepths = collectListMarkerNestingDepths(tree);
+  const listDepthByLine = new Map();
+  tree.iterate({
+    enter(node) {
+      if (node.name === 'ListMark') {
+        listDepthByLine.set(
+          doc.lineAt(node.from).number,
+          markerDepths.get(node.from) ?? 0
+        );
+      }
+    }
+  });
   const wmdxOrderedListByLine = new Map(
     getWmdxOrderedListItems(doc, tree).map(item => [
       item.line.number,
       item
     ])
   );
+  for (const item of wmdxOrderedListByLine.values()) {
+    listDepthByLine.set(
+      item.line.number,
+      Math.floor(Math.max(0, item.indent ?? 0) / 2)
+    );
+  }
   const nativeCallouts = parseWmdxCallouts(doc.toString(), position => {
     for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
       if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
@@ -6025,6 +6047,15 @@ export function buildPersistentLayoutDecorations(state) {
     if (listContinuationIndent > 0) {
       lineStyles.push(
         `--list-continuation-offset:${listContinuationIndent}ch`
+      );
+    }
+    if (classes.has('cm-list-item') || classes.has('cm-callout-list-item')) {
+      const listDepth = currentEditorMode === 'source'
+        ? 0
+        : listDepthByLine.get(lineNumber) ?? 0;
+      lineStyles.push(`--list-depth-offset:${listDepth * 24}px`);
+      lineStyles.push(
+        `--list-quote-inset:${currentEditorMode === 'source' ? '0px' : 'var(--list-left-indent, 24px)'}`
       );
     }
     ranges.push(

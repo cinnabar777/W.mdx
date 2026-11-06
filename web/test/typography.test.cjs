@@ -451,7 +451,10 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(indexHtml.includes('margin-left: var(--table-margin-left, 0px) !important;'));
   assert.ok(indexHtml.includes('margin-right: var(--table-margin-right, 0px) !important;'));
   assert.ok(indexHtml.includes('var(--callout-depth-offset, 0px)'));
-  assert.ok(indexHtml.includes('var(--callout-depth-offset, 0px) + var(--list-left-indent, 24px)'));
+  const normalizedIndexHtml = indexHtml.replace(/\s+/g, ' ');
+  assert.ok(normalizedIndexHtml.includes(
+    'var(--callout-depth-offset, 0px) + var(--list-left-indent, 24px) + var(--list-depth-offset, 0px)'
+  ));
   assert.ok(indexHtml.includes('max-width: calc(100% - var(--hr-margin-left, 0%) - var(--hr-margin-right, 0%)) !important;'));
 
   const hrPreferences = fs.readFileSync(

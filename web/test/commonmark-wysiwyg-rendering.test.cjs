@@ -183,6 +183,8 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
 
     const sharedLayoutSource = [
       '> a quoted paragraph',
+      '> > a nested quoted paragraph',
+      '> - a list item inside a quote',
       '',
       '1. a list item',
       '  its continuation',
@@ -212,6 +214,23 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       );
       assert.equal(window.editorBridge.getMarkdown(), sharedLayoutSource);
     }
+    const nestedQuote = [...window.document.querySelectorAll('.cm-line.cm-blockquote')]
+      .find(line => line.textContent.includes('nested quoted paragraph'));
+    assert.ok(nestedQuote, 'nested quote content keeps shared quote styling');
+    assert.equal(nestedQuote.dataset.blockquoteDepth, '2');
+    assert.equal(
+      nestedQuote.style.getPropertyValue('--blockquote-depth-offset'),
+      '12px'
+    );
+    const quotedListItem = [...window.document.querySelectorAll('.cm-line.cm-list-item')]
+      .find(line => line.textContent.includes('a list item inside a quote'));
+    assert.ok(quotedListItem, 'a list inside a quote keeps its list marker');
+    assert.ok(quotedListItem.classList.contains('cm-blockquote'));
+    assert.ok(quotedListItem.textContent.startsWith('• '));
+    assert.equal(
+      quotedListItem.style.getPropertyValue('--list-quote-inset'),
+      'var(--list-left-indent, 24px)'
+    );
 
     const listSource = [
       'CommonMark list indentation example:',
@@ -228,6 +247,8 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       '    - baz',
       '',
       '> - quoted item',
+      '- [ ] task parent',
+      '  - [ ] nested task',
       '',
       '1. Numbered parent',
       '   2. Numbered child',
@@ -235,38 +256,97 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       '      4. Grandchild',
       '      5. Next grandchild',
       '   6. Third child',
-      '7. Next parent'
+      '7. Next parent',
+      '',
+      'I. Native ordered parent',
+      '  I. Native ordered child with a long line to wrap and verify nested marker alignment.'
     ].join('\n');
     window.editorBridge.setMarkdown(listSource);
     await new Promise(resolve => setTimeout(resolve, 20));
     await window.editorBridge.setEditorMode('wysiwyg');
     const wysiwygListItems = [...window.document.querySelectorAll('.cm-line.cm-list-item')];
-    assert.deepEqual(wysiwygListItems.map(line => line.textContent), [
+    const normalizedListText = line =>
+      line.textContent.replace(/\s{2,}/g, ' ');
+    assert.deepEqual(wysiwygListItems.map(normalizedListText), [
       '• a', '• b', '• c', '• d', '• e', '• f', '• g',
-      '• foo', '  • bar', '    • baz', '• quoted item',
+      '• foo', '• bar', '• baz', '• quoted item',
+      '• task parent', '• nested task',
       '1. Numbered parent',
-      '   1. Numbered child',
-      '   2. Next child',
-      '      1. Grandchild',
-      '      2. Next grandchild',
-      '   3. Third child',
-      '2. Next parent'
+      '1. Numbered child',
+      '2. Next child',
+      '1. Grandchild',
+      '2. Next grandchild',
+      '3. Third child',
+      '2. Next parent',
+      'I. Native ordered parent',
+      'I. Native ordered child with a long line to wrap and verify nested marker alignment.'
     ]);
+    const listLine = text =>
+      wysiwygListItems.find(line => line.textContent === text);
+    assert.equal(
+      listLine('• foo').style.getPropertyValue('--list-depth-offset'),
+      '0px'
+    );
+    assert.equal(
+      listLine('• bar').style.getPropertyValue('--list-depth-offset'),
+      '24px'
+    );
+    assert.equal(
+      listLine('• baz').style.getPropertyValue('--list-depth-offset'),
+      '48px'
+    );
+    assert.equal(
+      wysiwygListItems
+        .find(line => line.textContent.includes('nested task'))
+        .style.getPropertyValue('--list-depth-offset'),
+      '24px'
+    );
+    assert.equal(
+      listLine(
+        'I. Native ordered child with a long line to wrap and verify nested marker alignment.'
+      ).style.getPropertyValue('--list-depth-offset'),
+      '24px'
+    );
     assert.equal(window.editorBridge.getMarkdown(), listSource);
 
     await window.editorBridge.setEditorMode('live_preview');
     const livePreviewListItems = [...window.document.querySelectorAll('.cm-line.cm-list-item')];
-    assert.deepEqual(livePreviewListItems.map(line => line.textContent), [
+    assert.deepEqual(livePreviewListItems.map(normalizedListText), [
       '• a', '• b', '• c', '• d', '• e', '• f', '• g',
-      '• foo', '  • bar', '    • baz', '• quoted item',
+      '• foo', '• bar', '• baz', '• quoted item',
+      '• task parent', '• nested task',
       '1. Numbered parent',
-      '   1. Numbered child',
-      '   2. Next child',
-      '      1. Grandchild',
-      '      2. Next grandchild',
-      '   3. Third child',
-      '2. Next parent'
+      '1. Numbered child',
+      '2. Next child',
+      '1. Grandchild',
+      '2. Next grandchild',
+      '3. Third child',
+      '2. Next parent',
+      'I. Native ordered parent',
+      'I. Native ordered child with a long line to wrap and verify nested marker alignment.'
     ]);
+    const liveNestedItem = livePreviewListItems.find(
+      line => line.textContent === '• bar'
+    );
+    assert.equal(
+      liveNestedItem.style.getPropertyValue('--list-depth-offset'),
+      '24px'
+    );
+    assert.equal(window.editorBridge.getMarkdown(), listSource);
+
+    await window.editorBridge.setEditorMode('source');
+    const sourceListItems = [
+      ...window.document.querySelectorAll('.cm-line.cm-list-item')
+    ];
+    const sourceNestedItem = sourceListItems.find(
+      line => line.textContent.includes('- bar')
+    );
+    assert.ok(sourceNestedItem?.textContent.startsWith('  - bar'));
+    assert.equal(
+      sourceNestedItem.style.getPropertyValue('--list-depth-offset'),
+      '0px',
+      'Source uses its visible indentation syntax without adding another offset'
+    );
     assert.equal(window.editorBridge.getMarkdown(), listSource);
     assert.deepEqual(errors, []);
   } finally {
