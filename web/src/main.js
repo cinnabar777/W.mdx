@@ -764,7 +764,7 @@ function measureListMarkerGutter(line, marker) {
 
   while ((textNode = walker.nextNode())) {
     if (textNode.parentElement?.closest(
-      '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-hidden-syntax'
+      '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-list-marker-syntax, .cm-hidden-syntax'
     )) {
       continue;
     }
@@ -832,8 +832,7 @@ function collectListMarkerNestingDepths(tree, from = 0, to = tree.length) {
 function scheduleListMarkerMeasurements(view, force = false) {
   if (
     !view ||
-    !view.dom?.isConnected ||
-    !document.body.classList.contains('list-wrap-under-text')
+    !view.dom?.isConnected
   ) {
     return;
   }
@@ -856,7 +855,7 @@ function scheduleListMarkerMeasurements(view, force = false) {
         }
 
         const marker = line.querySelector(
-          '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox'
+          '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-list-marker-syntax'
         );
         if (!marker) {
           measurements.push({ line });
@@ -2987,8 +2986,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     if (currentEditorMode === 'source') {
       const sourceDecorations = [];
       const seenLines = new Set();
-      const listWrapUnderText =
-        document.body.classList.contains('list-wrap-under-text');
       const doc = view.state.doc;
       for (const range of view.visibleRanges) {
         const firstLine = doc.lineAt(range.from).number;
@@ -2998,9 +2995,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (seenLines.has(line.from)) continue;
           seenLines.add(line.from);
           const layout = getMarkdownSourceLineLayout(line.text);
-          if (!layout || (layout.kind === 'list' && !listWrapUnderText)) {
-            continue;
-          }
+          if (!layout) continue;
           const className = layout.kind === 'list'
             ? 'cm-source-list-wrapped'
             : layout.kind === 'quote'
@@ -3566,20 +3561,24 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                     )
                   )
                 }).range(node.from, node.to));
+              } else {
+                builder.push(
+                  Decoration.mark({
+                    class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
+                  }).range(node.from, node.to)
+                );
               }
             } else {
               builder.push(Decoration.mark({
                 class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
               }).range(node.from, node.to));
             }
-            if (!isPureWysiwyg) {
-              const textRange = listItemTextRange(tree, doc, line, node.to);
-              if (textRange) {
-                builder.push(
-                  Decoration.mark({ class: 'cm-list-block-text' })
-                    .range(textRange.from, textRange.to)
-                );
-              }
+            const textRange = listItemTextRange(tree, doc, line, node.to);
+            if (textRange) {
+              builder.push(
+                Decoration.mark({ class: 'cm-list-block-text' })
+                  .range(textRange.from, textRange.to)
+              );
             }
           }
 
@@ -3649,6 +3648,26 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             if (!isNodeActive && node.to > node.from) {
               if (!isPureWysiwyg) {
                 builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+              } else if (isWmdxTask) {
+                builder.push(
+                  Decoration.mark({ class: 'cm-list-marker-syntax' })
+                    .range(node.from, node.to)
+                );
+              }
+            }
+            if (isWmdxTask) {
+              let textFrom = node.to;
+              while (
+                textFrom < line.to &&
+                /[ \t]/.test(doc.sliceString(textFrom, textFrom + 1))
+              ) {
+                textFrom += 1;
+              }
+              if (textFrom < line.to) {
+                builder.push(
+                  Decoration.mark({ class: 'cm-list-block-text' })
+                    .range(textFrom, line.to)
+                );
               }
             }
           }

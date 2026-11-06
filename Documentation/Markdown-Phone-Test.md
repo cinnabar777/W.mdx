@@ -110,13 +110,14 @@ stay at the same left position in both cases:
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.
 
-For lists, turn on the list setting that wraps continuation text under the item
-text. Check a root item and a nested item that both wrap across multiple visual
-lines. At every depth, each item's wrapped lines must align under that item's
-text—not under its marker, the parent's text, or the left margin. Place the
-cursor in a nested item with a continuation line and a child item. Increase and
-decrease indent with both the toolbar and Tab/Shift-Tab. The item, continuation,
-and child must move together, and numbering must remain correct.
+For ordinary lists, leave Block List Layout off. Check a root item and nested
+items that wrap across multiple visual lines. At every depth, each item's
+wrapped lines must align under that item's text—not under its marker, the
+parent's text, or the left margin. Place the cursor in a nested item with a
+continuation line and a child item. Increase and decrease indent with both the
+toolbar and Tab/Shift-Tab. The item, continuation, and child must move together,
+and numbering must remain correct. Then enable Block List Layout and verify its
+separate left-gutter alignment without losing the nested item's text indent.
 
 #### Pasting multiline content into a quote
 

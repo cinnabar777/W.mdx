@@ -116,15 +116,30 @@ test('rendering and interaction regressions stay covered without changing table 
   );
   assert.match(
     styles,
-    /body\.list-wrap-under-text[\s\S]*?cm-source-list-wrapped/
+    /\.cm-content \.cm-line\.cm-source-list-wrapped/
   );
   assert.match(
     styles,
-    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*padding-left:\s*var\(--list-marker-gutter[\s\S]*?text-indent:\s*calc\(0px - var\(--list-marker-gutter/
+    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*padding-left:\s*var\(--list-marker-gutter[\s\S]*?text-indent:\s*calc\(0px - var\(--list-marker-gutter/
   );
   assert.doesNotMatch(
-    styles.match(/body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/)?.[0] ?? '',
+    styles.match(/body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/)?.[0] ?? '',
     /display:\s*flex/
+  );
+  assert.match(
+    styles,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*display:\s*flex/
+  );
+  assert.match(
+    main,
+    /else \{\s*builder\.push\(\s*Decoration\.mark\(\{\s*class: isBullet \? 'cm-list-bullet' : 'cm-list-number'/
+  );
+  assert.match(main, /const textRange = listItemTextRange[\s\S]*?cm-list-block-text/);
+  assert.match(main, /else if \(isWmdxTask\)[\s\S]*?cm-list-marker-syntax/);
+  assert.match(main, /if \(isWmdxTask\) \{[\s\S]*?cm-list-block-text/);
+  assert.doesNotMatch(
+    main.match(/function scheduleListMarkerMeasurements\([\s\S]*?const listMarkerMeasurementPlugin/)?.[0] ?? '',
+    /classList\.contains\('list-wrap-under-text'\)/
   );
   assert.match(main, /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)/);
   assert.match(main, /getMarkdownSourceLineLayout\(line\.text\)/);
