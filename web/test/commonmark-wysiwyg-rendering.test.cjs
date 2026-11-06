@@ -346,6 +346,35 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       'flex',
       'the default text-hanging layout is active for ordered list markers'
     );
+    window.editorBridge.applyAllPreferences(JSON.stringify({
+      pref_list_non_hanging: true
+    }));
+    assert.equal(
+      window.document.body.classList.contains('list-wrap-under-text'),
+      false,
+      'the optional non-hanging setting disables text-column alignment'
+    );
+    assert.notEqual(
+      window.getComputedStyle(
+        listLine(
+          'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
+        )
+      ).display,
+      'flex',
+      'non-hanging ordered items do not retain the hanging layout'
+    );
+    window.editorBridge.applyAllPreferences(JSON.stringify({
+      pref_list_non_hanging: false
+    }));
+    assert.equal(
+      window.getComputedStyle(
+        listLine(
+          'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
+        )
+      ).display,
+      'flex',
+      'the default hanging layout is restored after switching back'
+    );
     assert.ok(
       wysiwygListItems
         .find(line => line.textContent.includes('nested task'))
@@ -414,6 +443,19 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       sourceNestedItem.style.getPropertyValue('--source-marker-offset'),
       '2ch',
       'Source keeps wrapped nested text at the nested marker column'
+    );
+    const sourceTaskItem = sourceListItems.find(
+      line => line.textContent.includes('nested task')
+    );
+    assert.ok(sourceTaskItem);
+    assert.ok(
+      sourceTaskItem.classList.contains('cm-source-list-wrapped'),
+      'Source applies the shared wrapped-line layout to task items'
+    );
+    assert.equal(
+      sourceTaskItem.style.getPropertyValue('--source-marker-offset'),
+      '2ch',
+      'Source retains the nested task marker column'
     );
     const sourceAlphaItem = sourceListItems.find(
       line => line.textContent.includes('Native alphabetic child')
