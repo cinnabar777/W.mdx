@@ -142,6 +142,37 @@ test('indent still inserts spaces for ordinary paragraph text', async () => {
   assert.equal(applyChanges(source, changes), '  plain text');
 });
 
+test('a collapsed indent targets all source lines of the current paragraph', async () => {
+  const {
+    applyMarkdownIndent,
+    getMarkdownIndentTargetSelection
+  } = await import('../src/markdownIndent.js');
+  const source = 'first source line\nwrapped source line\nnext paragraph';
+  const doc = makeDoc(source);
+  const cursor = doc.line(1).from + 5;
+  const selection = { from: cursor, to: cursor, empty: true };
+  const target = getMarkdownIndentTargetSelection(doc, selection, {
+    first: 1,
+    last: 2
+  });
+  const dispatches = [];
+  const view = {
+    state: {
+      doc,
+      selection: { main: selection, map: changes => changes },
+      changes: changes => changes
+    },
+    dispatch: transaction => dispatches.push(transaction),
+    focus() {}
+  };
+
+  applyMarkdownIndent(view, 'indent', '  ', { selection: target });
+  assert.equal(
+    applyChanges(source, dispatches[0].changes),
+    '  first source line\n  wrapped source line\nnext paragraph'
+  );
+});
+
 test('source indentation counts paragraph and blockquote content spacing', async () => {
   const { getMarkdownSourceIndentColumns } =
     await import('../src/markdownIndent.js');
@@ -199,6 +230,11 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   );
   assert.match(main, /cmdName === 'indent'\) \{\s*applyEditorMarkdownIndent\(view, 'indent', '  ', editorCommandOptions\)/);
   assert.match(main, /cmdName === 'outdent'\) \{\s*applyEditorMarkdownIndent\(view, 'outdent', '  ', editorCommandOptions\)/);
+  assert.match(
+    main,
+    /getCurrentParagraphLineRange\(view\.state,\s*selection\.head,\s*\{\s*excludeListItems:\s*true\s*\}\)/
+  );
+  assert.match(main, /selection:\s*indentSelection/);
   assert.match(
     main,
     /const tabInEditor = e\.key === 'Tab' &&\s*activeAdapter\?\.view\?\.contentDOM\?\.contains\(e\.target\)/,

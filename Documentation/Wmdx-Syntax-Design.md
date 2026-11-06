@@ -751,7 +751,9 @@ found that the first rendered row in an indented paragraph was shifted relative
 to wrapped rows. Explicit source indentation already defines the paragraph's
 left edge, so the paragraph-first-line typography preference must not add a
 second indent to that first row. The layout now uses the same left padding and
-zero text indent for every row in an explicitly indented paragraph.
+zero text indent for every row in an explicitly indented paragraph. Indent and
+Outdent at a collapsed cursor now target all source lines in the current
+paragraph; list items retain their existing item-nesting behavior.
 
 **Current verification checklist:**
 

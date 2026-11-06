@@ -124,6 +124,17 @@ function selectedLineNumbers(doc, selection) {
   return { first, last: Math.max(first, last) };
 }
 
+export function getMarkdownIndentTargetSelection(doc, selection, paragraphRange) {
+  if (!doc || !selection || !paragraphRange) return selection;
+  const isCollapsed = selection.empty ?? selection.from === selection.to;
+  if (!isCollapsed) return selection;
+
+  const firstLine = doc.line(paragraphRange.first);
+  const lastLine = doc.line(paragraphRange.last);
+  if (!firstLine || !lastLine) return selection;
+  return { from: firstLine.from, to: lastLine.to };
+}
+
 export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  ') {
   if (!doc || !selection || !['indent', 'outdent'].includes(direction)) return [];
 
@@ -335,7 +346,7 @@ export function applyMarkdownIndent(view, direction, spaces = '  ', options = {}
 
   const indentChanges = getMarkdownIndentChanges(
     view.state.doc,
-    view.state.selection.main,
+    options.selection ?? view.state.selection.main,
     direction,
     spaces
   );

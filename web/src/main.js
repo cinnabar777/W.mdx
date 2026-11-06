@@ -35,6 +35,7 @@ import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import {
   applyMarkdownIndent,
+  getMarkdownIndentTargetSelection,
   getMarkdownSourceIndentColumns
 } from './markdownIndent.js';
 import {
@@ -528,9 +529,10 @@ function getWmdxOrderedListItems(doc, tree) {
   );
 }
 
-function getCurrentParagraphLineRange(state, position) {
+function getCurrentParagraphLineRange(state, position, options = {}) {
   const tree = syntaxTree(state);
   let paragraph = null;
+  let insideListItem = false;
   for (
     let node = tree.resolveInner(position, 1);
     node;
@@ -538,10 +540,10 @@ function getCurrentParagraphLineRange(state, position) {
   ) {
     if (node.name === 'Paragraph') {
       paragraph = node;
-      break;
     }
+    if (node.name === 'ListItem') insideListItem = true;
   }
-  if (!paragraph) return null;
+  if (!paragraph || (options.excludeListItems && insideListItem)) return null;
 
   const lastPosition = Math.max(paragraph.from, paragraph.to - 1);
   return {
@@ -571,9 +573,21 @@ function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {})
     }
   }
 
+  const selection = view.state.selection.main;
+  const paragraphRange = selection.empty
+    ? getCurrentParagraphLineRange(view.state, selection.head, {
+        excludeListItems: true
+      })
+    : null;
+  const indentSelection = getMarkdownIndentTargetSelection(
+    view.state.doc,
+    selection,
+    paragraphRange
+  );
   const tree = syntaxTree(view.state);
   return applyMarkdownIndent(view, direction, spaces, {
     ...options,
+    selection: indentSelection,
     renumberWmdx: isListFlavorEnabledNow('wmdx'),
     renumberMarkdown: isListFlavorEnabledNow('markdown'),
     isExcluded: position => wmdxOrderedListPositionIsExcluded(tree, position)
