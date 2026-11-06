@@ -22,6 +22,23 @@ the syntax the current app supports.
   subscript selectors for typography colors and styles are an intentional
   exception: they are unobtrusive in text and are rarely typed by hand.
 
+### Editor view modes and layout
+
+- Source, Live Preview, and WYSIWYG share one semantic block-layout model for
+  paragraphs, headings, lists, quotes, code blocks, indentation, and wrapping.
+  A view mode must not select a separate layout algorithm for those blocks.
+- Source shows recognized syntax. Live Preview hides syntax away from the
+  active editing context. WYSIWYG hides supported syntax and may use interactive
+  widgets, such as checkboxes. These are presentation and editing differences,
+  not separate block-layout systems.
+- Visible syntax occupies its natural inline width, so exposing it can shift
+  text and change wrap points. Hidden syntax occupies no reserved or phantom
+  width. In particular, hiding a heading marker must not leave its width as an
+  indent before the heading text.
+- Keep the underlying Markdown source unchanged when switching modes. Shared
+  block layout does not require identical inline positions or line breaks when
+  syntax visibility differs.
+
 ### Editor syntax preferences
 
 - Syntax choices are app-wide per feature, not saved per document. Users who
