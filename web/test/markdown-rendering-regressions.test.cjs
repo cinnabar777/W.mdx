@@ -118,6 +118,14 @@ test('rendering and interaction regressions stay covered without changing table 
     styles,
     /body\.list-wrap-under-text[\s\S]*?cm-source-list-wrapped/
   );
+  assert.match(
+    styles,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*padding-left:\s*var\(--list-marker-gutter[\s\S]*?text-indent:\s*calc\(0px - var\(--list-marker-gutter/
+  );
+  assert.doesNotMatch(
+    styles.match(/body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/)?.[0] ?? '',
+    /display:\s*flex/
+  );
   assert.match(main, /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)/);
   assert.match(main, /getMarkdownSourceLineLayout\(line\.text\)/);
   assert.match(main, /getMarkdownSourceIndentRanges\(line\.text\)/);

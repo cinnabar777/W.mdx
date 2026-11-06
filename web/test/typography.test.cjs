@@ -395,14 +395,17 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(indexHtml.includes('.cm-content .cm-blockquote:not(.cm-callout)'));
   assert.ok(indexHtml.includes('.cm-content .cm-paragraph-first.cm-callout'));
   assert.ok(indexHtml.includes('body.list-wrap-under-text .cm-content .cm-line.cm-list-item'));
-  assert.ok(indexHtml.includes('.cm-list-block-text'));
-  assert.ok(indexHtml.includes('display: flex !important;'));
-  assert.ok(indexHtml.includes('align-items: flex-start !important;'));
-  assert.ok(indexHtml.includes('flex: 1 1 0% !important;'));
+  assert.ok(source.includes("class: 'cm-list-block-text'"));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout:not(.cm-list-item)'));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-body:not(.cm-callout-list-item)'));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-list-item'));
-  assert.ok(indexHtml.includes('text-indent: 0 !important;'));
+  const listWrapRule = indexHtml.match(
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/
+  )?.[0] ?? '';
+  assert.match(listWrapRule, /padding-left:\s*var\(--list-marker-gutter, 0px\)/);
+  assert.match(listWrapRule, /text-indent:\s*calc\(0px - var\(--list-marker-gutter, 0px\)\)/);
+  assert.doesNotMatch(listWrapRule, /display:\s*flex/);
+  assert.ok(source.includes("line.style.setProperty('--list-marker-gutter', nextValue)"));
   assert.ok(indexHtml.includes('body.hr-centered .cm-content .cm-line.cm-hr'));
   assert.ok(indexHtml.includes('margin-left: var(--table-margin-left, 0px) !important;'));
   assert.ok(indexHtml.includes('margin-right: var(--table-margin-right, 0px) !important;'));

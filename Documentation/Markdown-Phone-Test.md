@@ -111,10 +111,12 @@ stay at the same left position in both cases:
 > Its next source line should remain aligned with the indented quote block.
 
 For lists, turn on the list setting that wraps continuation text under the item
-text. Place the cursor in a nested item with a continuation line and a child
-item. Increase and decrease indent with both the toolbar and Tab/Shift-Tab.
-The item, continuation, and child must move together; wrapped text must remain
-aligned under the item's text, and numbering must remain correct.
+text. Check a root item and a nested item that both wrap across multiple visual
+lines. At every depth, each item's wrapped lines must align under that item's
+text—not under its marker, the parent's text, or the left margin. Place the
+cursor in a nested item with a continuation line and a child item. Increase and
+decrease indent with both the toolbar and Tab/Shift-Tab. The item, continuation,
+and child must move together, and numbering must remain correct.
 
 #### Pasting multiline content into a quote
 

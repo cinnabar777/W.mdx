@@ -1707,22 +1707,9 @@
     }
 
     body.list-wrap-under-text .cm-content .cm-line.cm-list-item {
-      display: flex !important;
-      align-items: flex-start !important;
-      column-gap: 0.4em !important;
-    }
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-bullet,
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-number,
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-todo-checkbox {
-      flex: 0 0 auto !important;
-    }
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-block-text {
-      display: block !important;
-      flex: 1 1 0% !important;
       box-sizing: border-box !important;
-      width: auto !important;
-      min-width: 0 !important;
-      white-space: pre-wrap !important;
+      padding-left: var(--list-marker-gutter, 0px) !important;
+      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
     }
 
     .cm-list-bullet { color: var(--list-bullet-color, currentColor) !important; }

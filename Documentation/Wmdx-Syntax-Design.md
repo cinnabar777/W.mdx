@@ -770,8 +770,9 @@ setting controls wrapped item alignment.
    In Source, Live Preview, and WYSIWYG, every wrapped line should align with
    the first line's content edge; the quote border should stay at the left edge.
 3. In a list with wrap-under-text enabled, indent and outdent a nested item that
-   has continuation text and child items. The item subtree should move together
-   and wrapped text should remain aligned under the item text.
+   has continuation text and child items. The item subtree should move together.
+   At every nesting depth, wrapped lines should align under that item's own text,
+   not under its marker, its parent's text, or the left margin.
 4. With no selection, Clear Formatting should remove the current paragraph's
    heading, list/task, quote/callout, indentation, link, or inline style syntax
    while keeping its visible text. With a selection, it should clear only the
