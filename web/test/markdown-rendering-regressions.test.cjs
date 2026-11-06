@@ -178,7 +178,19 @@ test('rendering and interaction regressions stay covered without changing table 
 test('phone fixture states the manual expected behavior and its limited coverage', () => {
   const fixture = projectFile('Documentation/Markdown-Phone-Test.md');
   assert.match(fixture, /visual smoke test/i);
-  assert.match(fixture, /inline and reference-link source syntax should be hidden/i);
+  assert.match(
+    fixture,
+    /WYSIWYG should\s+hide supported inline and reference-link syntax/i
+  );
+  assert.match(
+    fixture,
+    /Live Preview should keep the\s+rendered text and reveal relevant syntax contextually/i
+  );
+  assert.match(
+    fixture,
+    /table below should render as an editable table in Live Preview and WYSIWYG/i
+  );
+  assert.match(fixture, /Source should show its raw Markdown table syntax/i);
   assert.match(fixture, /outer quote border should continue/i);
   assert.match(fixture, /nested quote.*indent/i);
   assert.match(fixture, /up to three leading spaces before its markers\s+should stay flat/i);
