@@ -705,7 +705,7 @@ a separate later phase.
 These slices pass the focused web test suite. Android phone rendering and
 editing still require normal project/device verification.
 
-### Resource syntax groundwork
+### Link syntax and editing
 
 - The fixed-slot resource parser/formatter validates `[SOURCE|TITLE|SIZE|ALIGN]`
   and `![SOURCE|TITLE|SIZE|ALIGN]`, including escaped pipes, optional title
@@ -726,89 +726,45 @@ editing still require normal project/device verification.
   Wmdx, CommonMark, reference, and Obsidian text links.
 - Heading links resolve both native decimal headings and CommonMark headings;
   live-preview link syntax uses the same active-line behavior across flavors.
-- Image/media rendering and edit dialogs, media insertion controls, and
-  import/export are still pending. Table syntax and editing remain unchanged;
-  its row splitter treats pipes inside a valid resource token as field
-  separators, not cell boundaries.
+Import and export must continue to recognize every supported flavor regardless
+of which flavor is enabled for authoring or rendering. Table syntax and editing
+remain unchanged; the row splitter treats pipes inside a valid resource token
+as field separators, not cell boundaries.
 
-### 0. Finish remaining specification details
+### Current status and remaining work
 
-In particular, the callout/dropdown behavior stays in scope, with
-agreed markers `±type`, `±type-`, and `±type+`; `-` starts closed and `+`
-starts open. Optional titles follow the type and state marker after one space.
-The generic dropdown is the `dropdown` callout type and requires one of those
-suffixes. Its body uses the same automatic indentation rules as other callouts.
-Callout bodies use automatic list-like indentation, blank lines for paragraphs,
-and dedenting to end the block. Callout body lines do not need repeated `>`
-markers; ordinary quotes retain them.
+**User-reported working:** heading flavors (including Setext's two levels),
+Wmdx and Obsidian callouts, footnotes, list styles and checkboxes, and link
+insertion for external, internal, and reference links. Keep each feature's
+enable switch, recognized flavors, and preferred authoring syntax app-wide;
+do not move those choices to individual documents.
 
-- Confirm remaining native grammar and parser edge cases.
-- Finish the CommonMark, GFM, Obsidian, and HTML conversion matrix, including
-  explicit losses and HTML's best-effort content-import behavior.
-- Test automatic footnote numbering, `^N` reuse, paired superscript, escaped
-  carets, and the unchanged table merge marker.
-- Keep the current table syntax and editing behavior unchanged.
-- Prepare examples that exercise valid, nested, escaped, unmatched, and
-  malformed syntax before implementing parser changes.
+**Implemented and awaiting device verification:** quote nesting now targets
+only the paragraph at the caret (or the selected lines); ordinary indentation
+moves wrapped text without moving a quote border; Clear Formatting handles
+block syntax and inline formatting for the current paragraph or selected text.
+Focused web tests pass and the web bundle builds, but those checks do not verify
+Android rendering or touch behavior.
 
-**Gate:** the native grammar and conversion behavior are documented as agreed,
-not merely proposed.
+**Current verification checklist:**
 
-### 1. Implement and verify the native parser
+1. In a quoted block with blank quoted lines between paragraphs, place the
+   caret in one paragraph and use Block Quote. Only that paragraph should gain
+   one `>` level. Outdent should affect only that paragraph as well.
+2. Increase indentation on a long normal paragraph and on a quoted paragraph.
+   Every wrapped line should move with the paragraph; the quote border should
+   stay at the left edge.
+3. With no selection, Clear Formatting should remove the current paragraph's
+   heading, list/task, quote/callout, indentation, link, or inline style syntax
+   while keeping its visible text. With a selection, it should clear only the
+   selected text and affected block lines.
+4. Long-press CommonMark external links and reference links in WYSIWYG. Confirm
+   Edit and Delete are reachable, edits keep destination and title in their
+   correct fields, and Delete leaves the displayed text. The last device report
+   confirmed Wmdx and Obsidian internal links but did not confirm these two.
+5. Recheck Source, Live Preview, and WYSIWYG after those edits and after
+   save/reopen; import/export must still parse all flavors.
 
-- Extend the existing CodeMirror/Lezer Markdown parser with the agreed Wmdx
-  grammar; preserve the original source instead of rewriting it when parsing.
-- Share the Wmdx grammar configuration across the main and embedded editors,
-  while retaining their intentional differences in Markdown extensions.
-- Verify Source, Live Preview, and WYSIWYG behavior, including view changes,
-  save/reopen, Markdown files, MDZip files, and embedded documents.
-- Add parser and serialization tests for precedence, escaping, literal code,
-  nested formatting, malformed markers, and table non-regressions.
-
-**Gate:** the same source has consistent intended meaning in all applicable
-editor contexts and remains intact through view changes and persistence.
-
-### 2. Add editing and insertion controls
-
-- Add toolbar and shortcut actions for the agreed syntax, with dialogs for
-  fields that should not require users to memorize the full grammar.
-- Verify selection, caret placement, undo/redo, and keyboard behavior for
-  inserted and edited syntax.
-- Verify automatic list-like indentation in callouts, including blank-line
-  paragraphs, dedenting, and nested callouts.
-- Keep Source view usable for direct editing and ensure visual modes expose
-  malformed syntax instead of silently changing user text.
-
-**Gate:** toolbar and keyboard actions produce the same valid source and
-behavior as direct Source-view entry.
-
-**Implementation update:** Existing toolbar actions now insert native `.1`–`.6`
-headings, `[ ]` tasks, `±type` callouts, and the selected footnote flavor. The
-callout action wraps whole lines, and the footnote dialog can reuse an existing
-numbered note with Wmdx `^N` or a Markdown reference.
-
-### 3. Add format converters
-
-- Implement CommonMark, GFM, and Obsidian import and export using the agreed
-  mapping matrix.
-- Implement HTML paste/import as best-effort conversion of readable web or
-  document content; do not apply CSS or promise pixel-perfect reproduction.
-- Keep HTML export standards-based and portable, without Wmdx-only metadata.
-- Use the same source-format conversion rules for **Convert from** and
-  **Paste from**, with explicit reporting for meaningful conversion losses.
-
-**Gate:** each supported input/output mapping has focused tests for content,
-structure, and known losses.
-
-### 4. Integrate and validate on Android
-
-- Connect the converters to the agreed toolbar actions and shortcuts for file
-  conversion, clipboard paste, and export.
-- Run the web test suite, Android editor-bridge and unit checks, and the normal
-  Android build/CI path.
-- Use a phone checklist covering all editor views, direct file save/open,
-  clipboard paste, Markdown/MDZip, embeds, and converter loss notices.
-
-**Gate:** automated checks pass and the phone checklist confirms the user-facing
-flows before considering the syntax revision complete.
+**Next:** resolve any failures from this checklist. Do not start another syntax
+family or broader conversion project until the user picks it.
 
