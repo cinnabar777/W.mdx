@@ -160,24 +160,72 @@ async function main() {
 
     await page.evaluate(async () => {
       await window.editorBridge.setEditorMode('live_preview');
-      window.editorBridge.setMarkdown('- Contextual marker with **bold text**\n\nTail');
+      window.editorBridge.setMarkdown(
+        '- Contextual marker with **bold text** and enough additional words to wrap across several lines without losing the list block alignment.'
+      );
     });
     await page.waitForTimeout(100);
     await page.locator('.cm-line').last().click();
     const inactive = await page.locator('.cm-list-item').evaluate(line => ({
       text: line.textContent, depth: line.style.getPropertyValue('--list-depth-offset'),
-      margin: getComputedStyle(line).marginLeft
+      margin: getComputedStyle(line).marginLeft,
+      rows: (() => {
+        const rows = new Map();
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          if (node.parentElement.closest('.cm-layout-prefix, .cm-list-bullet, .cm-list-number, .cm-todo-checkbox')) continue;
+          for (let index = 0; index < node.length; index++) {
+            if (/\s/.test(node.data[index])) continue;
+            const range = document.createRange();
+            range.setStart(node, index); range.setEnd(node, index + 1);
+            const rect = range.getBoundingClientRect();
+            if (rect.width && rect.height) rows.set(Math.round(rect.top), Math.min(rows.get(Math.round(rect.top)) ?? Infinity, rect.left));
+          }
+        }
+        return [...rows.values()];
+      })(),
+      gutter: line.style.getPropertyValue('--list-marker-gutter'),
+      visibleIndent: line.style.getPropertyValue('--layout-visible-indent'),
+      paddingLeft: getComputedStyle(line).paddingLeft,
+      textIndent: getComputedStyle(line).textIndent,
+      startX: line.querySelector('.cm-layout-start')?.getBoundingClientRect().left,
+      contentX: line.querySelector('.cm-layout-content')?.getBoundingClientRect().left
     }));
+    assert.ok(inactive.rows.length >= 2, 'inactive list fixture should wrap');
+    for (const x of inactive.rows.slice(1)) {
+      assert.ok(Math.abs(x - inactive.rows[0]) < 1.5, `inactive wrapped list text drifted: ${JSON.stringify(inactive)}`);
+    }
     await page.locator('.cm-list-item').click({ position: { x: 2, y: 8 } });
     await page.waitForTimeout(100);
     const active = await page.locator('.cm-list-item').evaluate(line => ({
       text: line.textContent, depth: line.style.getPropertyValue('--list-depth-offset'),
-      margin: getComputedStyle(line).marginLeft
+      margin: getComputedStyle(line).marginLeft,
+      rows: (() => {
+        const rows = new Map();
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          if (node.parentElement.closest('.cm-layout-prefix, .cm-list-bullet, .cm-list-number, .cm-todo-checkbox')) continue;
+          for (let index = 0; index < node.length; index++) {
+            if (/\s/.test(node.data[index])) continue;
+            const range = document.createRange();
+            range.setStart(node, index); range.setEnd(node, index + 1);
+            const rect = range.getBoundingClientRect();
+            if (rect.width && rect.height) rows.set(Math.round(rect.top), Math.min(rows.get(Math.round(rect.top)) ?? Infinity, rect.left));
+          }
+        }
+        return [...rows.values()];
+      })()
     }));
     assert.ok(inactive.text.startsWith('•'), 'inactive Live Preview marker should be rendered');
     assert.ok(active.text.startsWith('-'), 'active Live Preview marker should reveal source syntax');
     assert.equal(active.depth, inactive.depth);
     assert.equal(active.margin, inactive.margin);
+    assert.ok(active.rows.length >= 2, 'active list fixture should wrap');
+    for (const x of active.rows.slice(1)) {
+      assert.ok(Math.abs(x - active.rows[0]) < 1.5, `active wrapped list text drifted: ${active.rows}`);
+    }
 
     const mixed = '# Heading\n\nParagraph.\n\n> Quote text that should retain the same border and typography.\n\n```js\n- not a list\n```\n\n    literal code\n\n| Head | Other |\n| --- | --- |\n| Cell | Value |\n\nTail';
     for (const mode of modes) {
@@ -200,6 +248,86 @@ async function main() {
       assert.ok(blocks.quote >= 1);
       assert.equal(blocks.tables, mode === 'source' ? 0 : 1);
       assert.equal(blocks.markdown, mixed);
+    }
+
+    const colorFixture = 'Highlighter slots: ==highlight 1==, ==₀highlight 2==, ==₁highlight 3==, ==₂highlight 4==.\n\nPen slots: =pen 1=, =₀pen 2=, =₁pen 3=, =₂pen 4=.\n\nSolid _underline_.';
+    await page.evaluate(async colorFixture => {
+      await window.editorBridge.setEditorMode('wysiwyg');
+      window.editorBridge.setMarkdown(colorFixture);
+    }, colorFixture);
+    await page.waitForTimeout(120);
+    const renderedColors = await page.evaluate(() => ({
+      highlight: [...document.querySelectorAll('[class*="cm-wmdx-highlight-"]')]
+        .map(element => element.className),
+      pen: [...document.querySelectorAll('[class*="cm-wmdx-pen-"]')]
+        .map(element => element.className),
+      underlines: document.querySelectorAll('.cm-underline').length,
+      delimitersVisible: document.querySelector('.cm-content')?.textContent.includes('==') ||
+        document.querySelector('.cm-content')?.textContent.includes('=pen')
+    }));
+    assert.equal(renderedColors.highlight.length, 4, 'all highlight color slots should render');
+    assert.equal(renderedColors.pen.length, 4, 'all pen color slots should render');
+    assert.ok(renderedColors.underlines >= 1, 'WYSIWYG should style W.mdx underline');
+    assert.equal(renderedColors.delimitersVisible, false, 'WYSIWYG should hide valid color syntax');
+    await page.evaluate(() => window.editorBridge.setEditorMode('source'));
+    await page.waitForTimeout(80);
+    assert.equal(await page.evaluate(() => window.editorBridge.getMarkdown()), colorFixture);
+    const sourceColors = await page.evaluate(() => ({
+      highlights: document.querySelectorAll('[class*="cm-wmdx-highlight-"]').length,
+      pens: document.querySelectorAll('[class*="cm-wmdx-pen-"]').length,
+      underlines: document.querySelectorAll('.cm-underline').length,
+      syntaxVisible: document.querySelector('.cm-content')?.textContent.includes('==₀highlight') &&
+        document.querySelector('.cm-content')?.textContent.includes('=₀pen')
+    }));
+    assert.equal(sourceColors.highlights, 4, 'Source should style all highlights');
+    assert.equal(sourceColors.pens, 4, 'Source should style all pen colors');
+    assert.ok(sourceColors.underlines >= 1, 'Source should style W.mdx underline');
+    assert.equal(sourceColors.syntaxVisible, true, 'Source should keep W.mdx delimiters visible');
+
+    const scrollFixture = Array.from({ length: 140 }, (_, index) =>
+      `- Anchor-${String(index).padStart(3, '0')} wrapped list text with **bold syntax** and enough words to exercise line wrapping across source and rendered modes.`
+    ).join('\n');
+    await page.evaluate(async scrollFixture => {
+      await window.editorBridge.setEditorMode('wysiwyg');
+      window.editorBridge.setMarkdown(scrollFixture);
+    }, scrollFixture);
+    await page.waitForTimeout(120);
+    await page.evaluate(() => {
+      const scroller = document.querySelector('.cm-scroller');
+      if (scroller) scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * 0.65;
+    });
+    await page.waitForTimeout(80);
+    for (const mode of ['source', 'live_preview', 'wysiwyg', 'source']) {
+      const before = await page.evaluate(() => {
+        const scroller = document.querySelector('.cm-scroller');
+        const target = [...document.querySelectorAll('.cm-line')]
+          .find(line => line.textContent.includes('Anchor-090'));
+        if (!scroller || !target) return null;
+        const bounds = scroller.getBoundingClientRect();
+        const targetBounds = target.getBoundingClientRect();
+        const desiredOffset = Math.round(scroller.clientHeight * 0.35);
+        scroller.scrollTop += targetBounds.top - bounds.top - desiredOffset;
+        return new Promise(resolve => requestAnimationFrame(() => {
+          const nextBounds = scroller.getBoundingClientRect();
+          resolve(target.getBoundingClientRect().top - nextBounds.top);
+        }));
+      });
+      assert.ok(Number.isFinite(before), `missing scroll anchor before ${mode}`);
+      await page.evaluate(async mode => {
+        await window.editorBridge.setEditorMode(mode);
+      }, mode);
+      await page.waitForTimeout(240);
+      const after = await page.evaluate(() => {
+        const scroller = document.querySelector('.cm-scroller');
+        const target = [...document.querySelectorAll('.cm-line')]
+          .find(line => line.textContent.includes('Anchor-090'));
+        return scroller && target
+          ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+          : null;
+      });
+      assert.ok(Number.isFinite(after), `missing scroll anchor after ${mode}`);
+      assert.ok(Math.abs(after - before) < 4,
+        `mode switch moved the visible document position: ${mode} (${before}px -> ${after}px)`);
     }
 
     for (const mode of ['wysiwyg', 'live_preview']) {

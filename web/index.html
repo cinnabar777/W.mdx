@@ -1705,6 +1705,22 @@
       box-sizing: border-box !important;
       line-height: var(--list-line-height, 1.5) !important;
     }
+    /* Markdown collapses ordinary spaces at soft-wrap boundaries. Keeping
+       CodeMirror's pre-wrap whitespace here lets a wrapped row start one
+       character farther right when its first source space is preserved. Keep
+       the visible syntax prefix and explicit indentation exact. */
+    .cm-content .cm-line.cm-list-item,
+    .cm-content .cm-line.cm-list-continuation {
+      white-space: normal !important;
+    }
+    .cm-content .cm-line.cm-list-item .cm-layout-prefix,
+    .cm-content .cm-line.cm-list-continuation .cm-layout-prefix,
+    .cm-content .cm-line.cm-list-item .cm-layout-indent,
+    .cm-content .cm-line.cm-list-continuation .cm-layout-indent,
+    .cm-content .cm-line.cm-list-item .cm-inline-code,
+    .cm-content .cm-line.cm-list-continuation .cm-inline-code {
+      white-space: pre-wrap !important;
+    }
 
     .cm-content .cm-line.cm-list-continuation {
       padding-left: max(0px, calc(var(--list-continuation-offset, 0ch) - var(--layout-visible-indent, 0px))) !important;

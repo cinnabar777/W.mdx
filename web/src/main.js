@@ -2933,8 +2933,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   _buildDecorationsInternal(view) {
     const builder = [];
     const hiddenSyntaxRanges = [];
+    const isSourceMode = currentEditorMode === 'source';
     const hideSyntax = (from, to) => {
-      if (to > from) {
+      if (!isSourceMode && to > from) {
         const range = Decoration.replace({}).range(from, to);
         builder.push(range);
         hiddenSyntaxRanges.push(range);
@@ -2952,8 +2953,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
     // This plugin owns contextual syntax only. Block layout is supplied by
     // persistentLayoutField in ALL modes, including raw Source.
-    if (markdownPresentation(currentEditorMode).raw) return Decoration.none;
-
     const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
@@ -2990,11 +2989,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         const semantic = layout.lines.get(line.from);
         if (!semantic || semantic.kind === 'code' || semantic.kind === 'table') continue;
 
-        const isLineActive = !isPureWysiwyg && (
+        const isLineActive = isSourceMode || (!isPureWysiwyg && (
           selection.empty
             ? selection.head >= line.from && selection.head <= line.to
             : selection.from < line.to && selection.to > line.from
-        );
+        ));
 
         if (isLinkFlavorEnabledNow('obsidian')) {
           const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
@@ -3109,11 +3108,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         to,
         enter: (node) => {
           const line = view.state.doc.lineAt(node.from);
-          const isNodeActive = !isPureWysiwyg && (
+          const isNodeActive = isSourceMode || (!isPureWysiwyg && (
             selection.empty
               ? selection.head >= node.from && selection.head <= node.to
               : selection.from < node.to && selection.to > node.from
-          );
+          ));
 
           if (node.name === 'WmdxResource') {
             const resource = parseWmdxResourceSyntax(
@@ -3585,11 +3584,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const range of underlineSyntaxRanges) {
-      const isRangeActive = !isPureWysiwyg && (
+      const isRangeActive = isSourceMode || (!isPureWysiwyg && (
         selection.empty
           ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
           : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
-      );
+      ));
       if (range.kind === 'html' && !isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
@@ -3609,11 +3608,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const range of colorSyntaxRanges) {
-      const isRangeActive = !isPureWysiwyg && (
+      const isRangeActive = isSourceMode || (!isPureWysiwyg && (
         selection.empty
           ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
           : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
-      );
+      ));
       if (!isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
@@ -6569,6 +6568,56 @@ class CodeMirrorAdapter {
   }
 }
 
+function captureModeScrollAnchor(view) {
+  if (!view?.dom?.isConnected) return null;
+  const scroller = view.scrollDOM;
+  const bounds = scroller.getBoundingClientRect();
+  if (scroller.clientHeight < 32 || scroller.clientWidth < 32) return null;
+  const viewportY = Math.min(
+    scroller.clientHeight - 2,
+    Math.max(2, Math.round(scroller.clientHeight * 0.35))
+  );
+  const block = view.lineBlockAtHeight(scroller.scrollTop + viewportY);
+  const position = Number.isInteger(block?.from)
+    ? block.from
+    : view.posAtCoords({
+        x: bounds.left + Math.min(scroller.clientWidth - 2, Math.max(8, Math.round(scroller.clientWidth * 0.12))),
+        y: bounds.top + viewportY
+      });
+  if (!Number.isInteger(position)) return null;
+  const coords = view.coordsAtPos(position, 1);
+  if (!coords || !Number.isFinite(coords.top)) return null;
+  const from = Math.max(0, position - 24);
+  const to = Math.min(view.state.doc.length, position + 24);
+  const anchor = {
+    position,
+    viewportY: coords.top - bounds.top,
+    documentLength: view.state.doc.length,
+    context: view.state.doc.sliceString(from, to)
+  };
+  return anchor;
+}
+
+function restoreModeScrollAnchor(view, anchor) {
+  if (!anchor || !view?.dom?.isConnected) return false;
+  if (
+    anchor.position > view.state.doc.length ||
+    anchor.documentLength !== view.state.doc.length
+  ) return false;
+  const from = Math.max(0, anchor.position - 24);
+  const to = Math.min(view.state.doc.length, anchor.position + 24);
+  if (view.state.doc.sliceString(from, to) !== anchor.context) return false;
+  const scroller = view.scrollDOM;
+  const bounds = scroller.getBoundingClientRect();
+  const coords = view.coordsAtPos(anchor.position, 1);
+  if (!coords || !Number.isFinite(coords.top)) return false;
+  const correction = coords.top - (bounds.top + anchor.viewportY);
+  if (Math.abs(correction) < 1) return true;
+  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  scroller.scrollTop = Math.max(0, Math.min(maxScrollTop, scroller.scrollTop + correction));
+  return true;
+}
+
 async function setEditorMode(mode) {
   const targetMode = (mode === 'live_preview' || mode === 'source') ? mode : 'wysiwyg';
 
@@ -6582,6 +6631,7 @@ async function setEditorMode(mode) {
     ? {
         selection: activeAdapter.view.state.selection,
         scroll: activeAdapter.view.scrollSnapshot(),
+        scrollAnchor: captureModeScrollAnchor(activeAdapter.view),
         historyState: activeAdapter.view.state.toJSON({
           history: historyField
         })
@@ -6611,6 +6661,47 @@ async function setEditorMode(mode) {
   const containerEl = document.querySelector('#editor');
   await adapter.init(containerEl, existingText, modeSnapshot);
   activeAdapter = adapter;
+  if (modeSnapshot?.scrollAnchor) {
+    const view = adapter.view;
+    view.scrollDOM.style.overflowAnchor = 'none';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      let previousOffset = null;
+      let stableFrames = 0;
+      let attempts = 0;
+      const stabilizeAnchor = () => {
+        if (activeAdapter !== adapter) return;
+        if (!adapter.syntaxRefreshComplete) {
+          attempts++;
+          if (attempts < 90) {
+            requestAnimationFrame(stabilizeAnchor);
+          } else {
+            view.scrollDOM.style.overflowAnchor = 'auto';
+          }
+          return;
+        }
+        if (!restoreModeScrollAnchor(view, modeSnapshot.scrollAnchor)) {
+          view.scrollDOM.style.overflowAnchor = 'auto';
+          return;
+        }
+        const bounds = view.scrollDOM.getBoundingClientRect();
+        const coords = view.coordsAtPos(modeSnapshot.scrollAnchor.position, 1);
+        const offset = coords?.top - bounds.top;
+        if (Number.isFinite(offset) && previousOffset !== null && Math.abs(offset - previousOffset) < 0.5) {
+          stableFrames++;
+        } else {
+          stableFrames = 0;
+        }
+        previousOffset = offset;
+        attempts++;
+        if (stableFrames >= 3 || attempts >= 18) {
+          view.scrollDOM.style.overflowAnchor = 'auto';
+          return;
+        }
+        requestAnimationFrame(stabilizeAnchor);
+      };
+      stabilizeAnchor();
+    }));
+  }
   if (pendingMarkdown !== null) {
     const latestPendingMarkdown = pendingMarkdown;
     pendingMarkdown = null;
