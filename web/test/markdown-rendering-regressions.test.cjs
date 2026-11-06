@@ -132,6 +132,10 @@ test('rendering and interaction regressions stay covered without changing table 
   );
   assert.match(
     styles,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item,[\s\S]*?\{[^}]*column-gap:\s*1ch/
+  );
+  assert.match(
+    styles,
     /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-source-list-wrapped\s*\{[^}]*padding-left:\s*var\(--source-marker-offset/
   );
   assert.match(

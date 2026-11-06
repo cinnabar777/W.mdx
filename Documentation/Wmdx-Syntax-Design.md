@@ -808,11 +808,12 @@ wrapped rows, while relative indentation between code lines remains visible.
 Clear Formatting removes the structural indentation from an indented code block,
 including when it is the first paragraph. Backspace at the visual start removes
 one literal indentation character at a time; fenced-code behavior is unchanged.
-Rendered list nesting comes from parsed list depth, not visible leading spaces.
-Live Preview and WYSIWYG hide that indentation syntax and offset the complete
-list item, including every wrapped row. Source keeps its literal indentation and
-does not add a second depth offset. This nesting offset is independent of the
-Non-hanging List Wrapping choice for where wrapped text aligns.
+All views use the same source-column model for list marker and text positions.
+Source keeps indentation and marker syntax visible; Live Preview and WYSIWYG
+hide the leading indentation but apply the same indentation-column offset.
+Rendered markers and item text use a one-character gap, matching the visible
+separator in Source. This shared offset applies to every wrapped row and is
+independent of the Non-hanging List Wrapping choice.
 
 The persistent structural layout now runs in Source, Live Preview, and WYSIWYG.
 Source-only line decorations account for visible syntax without replacing the

@@ -1706,10 +1706,6 @@
       line-height: var(--list-line-height, 1.5) !important;
     }
 
-    .cm-content .cm-line.cm-wmdx-task-item {
-      margin-left: calc(var(--list-left-indent, 24px) + var(--wmdx-task-extra-indent, 0px)) !important;
-    }
-
     .cm-content .cm-line.cm-list-continuation {
       padding-left: var(--list-continuation-offset, 0ch) !important;
       text-indent: 0 !important;
@@ -1724,7 +1720,7 @@
     body.list-wrap-under-text .cm-content .cm-line.cm-wmdx-task-item:not(.cm-source-list-wrapped) {
       display: flex !important;
       align-items: flex-start !important;
-      column-gap: 0.4em !important;
+      column-gap: 1ch !important;
     }
     body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-bullet,
     body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-number,

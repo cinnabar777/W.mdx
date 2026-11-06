@@ -301,23 +301,28 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     );
     assert.equal(
       listLine('• bar').style.getPropertyValue('--list-depth-offset'),
-      '24px'
+      '2ch'
     );
     assert.equal(
       listLine('• baz').style.getPropertyValue('--list-depth-offset'),
-      '48px'
+      '4ch'
+    );
+    assert.equal(
+      listLine('1. Numbered child').style.getPropertyValue('--list-depth-offset'),
+      '3ch',
+      'rendered ordered items use the same source-column indentation'
     );
     assert.equal(
       wysiwygListItems
         .find(line => line.textContent.includes('nested task'))
         .style.getPropertyValue('--list-depth-offset'),
-      '24px'
+      '2ch'
     );
     assert.equal(
       listLine(
         'I. Native ordered child with a long line to wrap and verify nested marker alignment.'
       ).style.getPropertyValue('--list-depth-offset'),
-      '24px'
+      '2ch'
     );
     assert.ok(
       listLine(
@@ -329,7 +334,7 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       listLine(
         'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
       ).style.getPropertyValue('--list-depth-offset'),
-      '24px'
+      '2ch'
     );
     assert.ok(
       listLine(
@@ -406,7 +411,7 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     );
     assert.equal(
       liveNestedItem.style.getPropertyValue('--list-depth-offset'),
-      '24px'
+      '2ch'
     );
     assert.ok(
       liveNestedItem.querySelector('.cm-list-block-text'),
@@ -465,6 +470,19 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       sourceAlphaItem.style.getPropertyValue('--source-marker-offset'),
       '2ch',
       'Source preserves the alphabetic child indentation as its own marker column'
+    );
+    const sourceNumberedChild = sourceListItems.find(
+      line => line.textContent.includes('Numbered child')
+    );
+    assert.ok(sourceNumberedChild);
+    assert.equal(
+      sourceNumberedChild.style.getPropertyValue('--source-marker-offset'),
+      '3ch'
+    );
+    assert.equal(
+      listLine('1. Numbered child').style.getPropertyValue('--list-depth-offset'),
+      sourceNumberedChild.style.getPropertyValue('--source-marker-offset'),
+      'Source and rendered ordered items share the same marker column'
     );
 
     const orderedStyleSource = [

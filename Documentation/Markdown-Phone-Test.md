@@ -117,11 +117,12 @@ must remain. The quote border must stay at the same left position:
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.
 
-Check root and nested bullet, ordered, and task items that wrap across multiple
-visual lines. By default, wrapped lines align under the item text. Enable
-Non-hanging List Wrapping to align them at the marker instead. Verify both
-settings in Source, Live Preview, and WYSIWYG. Place the cursor in an item, then
-close the keyboard; its wrapping must not jump to the parent or document margin.
+Check root and nested bullet and task items, plus decimal, upper/lower
+alphabetic, and upper/lower Roman ordered items with long text. By default,
+wrapped lines align under the item text. Enable Non-hanging List Wrapping to
+align them at the marker instead. Compare each item in Source, Live Preview, and
+WYSIWYG. Place the cursor in an item, then close the keyboard; its wrapping must
+not jump to the parent or document margin.
 Increase and decrease indent with both the toolbar and Tab/Shift-Tab. The item,
 continuation, and child must move together, and numbering must remain correct.
 Showing list syntax may naturally shift the text after a visible marker, but

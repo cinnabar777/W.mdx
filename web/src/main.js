@@ -836,23 +836,6 @@ function listMarkerIndentRange(doc, node) {
     : null;
 }
 
-function collectListMarkerNestingDepths(tree, from = 0, to = tree.length) {
-  const depths = new Map();
-  let listItemDepth = 0;
-  tree.iterate({
-    from,
-    to,
-    enter(node) {
-      if (node.name === 'ListItem') listItemDepth++;
-      if (node.name === 'ListMark') depths.set(node.from, Math.max(0, listItemDepth - 1));
-    },
-    leave(node) {
-      if (node.name === 'ListItem') listItemDepth--;
-    }
-  });
-  return depths;
-}
-
 function scheduleListMarkerMeasurements(view, force = false) {
   if (
     !view ||
@@ -3061,13 +3044,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
     const markdownLinkRanges = [];
     const decorationRanges = view.visibleRanges;
-    const firstVisibleRange = decorationRanges[0];
-    const lastVisibleRange = decorationRanges[decorationRanges.length - 1];
-    const listMarkerDepths = collectListMarkerNestingDepths(
-      tree,
-      firstVisibleRange?.from ?? 0,
-      lastVisibleRange?.to ?? doc.length
-    );
     const wmdxOrderedListItems = getWmdxOrderedListItems(doc, tree);
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
@@ -4949,7 +4925,6 @@ function buildHeightMapValue(state) {
 
   const doc = state.doc;
   const tree = syntaxTree(state);
-  const listMarkerDepths = collectListMarkerNestingDepths(tree);
   const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
   const wmdxOrderedListItems = getWmdxOrderedListItems(doc, tree);
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
@@ -5764,30 +5739,12 @@ function premeasureTableHeights(view) {
 export function buildPersistentLayoutDecorations(state) {
   const { doc } = state;
   const tree = syntaxTree(state);
-  const markerDepths = collectListMarkerNestingDepths(tree);
-  const listDepthByLine = new Map();
-  tree.iterate({
-    enter(node) {
-      if (node.name === 'ListMark') {
-        listDepthByLine.set(
-          doc.lineAt(node.from).number,
-          markerDepths.get(node.from) ?? 0
-        );
-      }
-    }
-  });
   const wmdxOrderedListByLine = new Map(
     getWmdxOrderedListItems(doc, tree).map(item => [
       item.line.number,
       item
     ])
   );
-  for (const item of wmdxOrderedListByLine.values()) {
-    listDepthByLine.set(
-      item.line.number,
-      Math.floor(Math.max(0, item.indent ?? 0) / 2)
-    );
-  }
   const nativeCallouts = parseWmdxCallouts(doc.toString(), position => {
     for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
       if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
@@ -5807,7 +5764,6 @@ export function buildPersistentLayoutDecorations(state) {
   const blockquoteDepthByLine = new Map();
   const paragraphIndentByLine = new Map();
   const listContinuationIndentByLine = new Map();
-  const wmdxTaskIndentByLine = new Map();
   const activeCallouts = [];
   let currentBlockquoteDepth = 0;
 
@@ -5957,15 +5913,6 @@ export function buildPersistentLayoutDecorations(state) {
         addClass(number, 'cm-list-item');
         addClass(number, 'cm-todo-list-item');
         addClass(number, 'cm-wmdx-task-item');
-        const calloutIndent = nativeCalloutLine?.indentToHide ?? 0;
-        const nestedIndent = Math.max(
-          0,
-          nativeTaskMarker[1].length - calloutIndent
-        );
-        wmdxTaskIndentByLine.set(
-          number,
-          Math.floor(nestedIndent / 2) * 24
-        );
       }
     }
 
@@ -6042,7 +5989,6 @@ export function buildPersistentLayoutDecorations(state) {
     const paragraphIndent = paragraphIndentByLine.get(lineNumber) ?? 0;
     const listContinuationIndent =
       listContinuationIndentByLine.get(lineNumber) ?? 0;
-    const taskIndent = wmdxTaskIndentByLine.get(lineNumber);
     const lineStyles = [];
     const sourceLineIndent = getMarkdownSourceIndentColumns(lineObj.text);
     const sourceIndent = sourceLineIndent || paragraphIndent;
@@ -6064,19 +6010,18 @@ export function buildPersistentLayoutDecorations(state) {
       classes.add('cm-source-indented');
       lineStyles.push(`--source-indent-offset:${sourceIndent * 12}px`);
     }
-    if (taskIndent != null) {
-      lineStyles.push(`--wmdx-task-extra-indent:${taskIndent}px`);
-    }
     if (listContinuationIndent > 0) {
       lineStyles.push(
         `--list-continuation-offset:${listContinuationIndent}ch`
       );
     }
     if (classes.has('cm-list-item') || classes.has('cm-callout-list-item')) {
-      const listDepth = currentEditorMode === 'source'
+      const listIndentColumns = currentEditorMode === 'source'
         ? 0
-        : listDepthByLine.get(lineNumber) ?? 0;
-      lineStyles.push(`--list-depth-offset:${listDepth * 24}px`);
+        : sourceLineIndent;
+      lineStyles.push(
+        `--list-depth-offset:${listIndentColumns ? `${listIndentColumns}ch` : '0px'}`
+      );
       lineStyles.push(
         `--list-quote-inset:${currentEditorMode === 'source' ? '0px' : 'var(--list-left-indent, 24px)'}`
       );
