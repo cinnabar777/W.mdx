@@ -1,4 +1,12 @@
 import { syntaxTree } from '@codemirror/language';
+import {
+  collectMarkdownReferenceTargets,
+  getMarkdownLinkInfo
+} from './markdown-link-utils.mjs';
+import {
+  getWmdxResourceTitleRange,
+  parseWmdxResourceSyntax
+} from './wmdxResources.js';
 
 const UNDERLINE_STYLE_MARKERS = Object.freeze({
   solid: '',
@@ -411,6 +419,7 @@ function focusEditor(view, options = {}) {
 
 function unwrapFormattedRange(view, range, selection, format, options = {}) {
   const doc = view.state.doc;
+  const replacementText = range.replacementText;
   const selectedInsideContent =
     selection.from >= range.contentFrom &&
     selection.to <= range.contentTo;
@@ -419,7 +428,8 @@ function unwrapFormattedRange(view, range, selection, format, options = {}) {
     selection.to >= range.wrapperTo;
 
   if (selectsWholeWrapper) {
-    const content = doc.sliceString(range.contentFrom, range.contentTo);
+    const content = replacementText ??
+      doc.sliceString(range.contentFrom, range.contentTo);
     const insertAt = range.wrapperFrom;
     view.dispatch({
       changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: content },
@@ -427,6 +437,22 @@ function unwrapFormattedRange(view, range, selection, format, options = {}) {
         anchor: insertAt,
         head: insertAt + content.length
       }
+    });
+    focusEditor(view, options);
+    return true;
+  }
+
+  if (
+    range.replaceWholeOnPartial &&
+    range.wrapperTo > selection.from &&
+    range.wrapperFrom < selection.to
+  ) {
+    const content = replacementText ??
+      doc.sliceString(range.contentFrom, range.contentTo);
+    const cursor = range.wrapperFrom + content.length;
+    view.dispatch({
+      changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: content },
+      selection: { anchor: cursor, head: cursor }
     });
     focusEditor(view, options);
     return true;
@@ -452,7 +478,8 @@ function unwrapFormattedRange(view, range, selection, format, options = {}) {
   }
 
   if (selection.empty && selection.head >= range.contentFrom && selection.head <= range.contentTo) {
-    const content = doc.sliceString(range.contentFrom, range.contentTo);
+    const content = replacementText ??
+      doc.sliceString(range.contentFrom, range.contentTo);
     const cursor = range.wrapperFrom + Math.min(selection.head - range.contentFrom, content.length);
     view.dispatch({
       changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: content },
@@ -465,19 +492,397 @@ function unwrapFormattedRange(view, range, selection, format, options = {}) {
   return false;
 }
 
+function unwrapRangeWithinSelection(view, range, selection, options = {}) {
+  const state = view.state;
+  const doc = state.doc;
+  if (
+    range.wrapperTo <= selection.from ||
+    range.wrapperFrom >= selection.to
+  ) return false;
+
+  if (range.replacementText !== undefined) {
+    const insert = range.replacementText;
+    const delta = insert.length - (range.wrapperTo - range.wrapperFrom);
+    const mapOutside = position => position >= range.wrapperTo
+      ? position + delta
+      : position;
+    const selectedFrom = selection.from <= range.wrapperFrom
+      ? selection.from
+      : range.wrapperFrom;
+    const selectedTo = selection.to >= range.wrapperTo
+      ? mapOutside(selection.to)
+      : range.wrapperFrom + insert.length;
+    view.dispatch({
+      changes: { from: range.wrapperFrom, to: range.wrapperTo, insert },
+      selection: selection.anchor <= selection.head
+        ? { anchor: selectedFrom, head: selectedTo }
+        : { anchor: selectedTo, head: selectedFrom }
+    });
+    focusEditor(view, options);
+    return true;
+  }
+
+  const selectedContentFrom = Math.max(selection.from, range.contentFrom);
+  const selectedContentTo = Math.min(selection.to, range.contentTo);
+  if (selectedContentTo <= selectedContentFrom) return false;
+
+  const left = doc.sliceString(range.contentFrom, selectedContentFrom);
+  const selected = doc.sliceString(selectedContentFrom, selectedContentTo);
+  const right = doc.sliceString(selectedContentTo, range.contentTo);
+  const wrappedLeft = wrapSegment(
+    left,
+    range.open,
+    range.close
+  );
+  const wrappedRight = wrapSegment(
+    right,
+    range.open,
+    range.close
+  );
+  const insert = `${wrappedLeft}${selected}${wrappedRight}`;
+  const insertedSelectionFrom = range.wrapperFrom + wrappedLeft.length;
+  const insertedSelectionTo = insertedSelectionFrom + selected.length;
+  const delta = insert.length - (range.wrapperTo - range.wrapperFrom);
+  const mappedFrom = selection.from <= range.wrapperFrom
+    ? selection.from
+    : selection.from >= range.wrapperTo
+      ? selection.from + delta
+      : insertedSelectionFrom;
+  const mappedTo = selection.to >= range.wrapperTo
+    ? selection.to + delta
+    : selection.to <= range.wrapperFrom
+      ? selection.to
+      : insertedSelectionTo;
+
+  view.dispatch({
+    changes: { from: range.wrapperFrom, to: range.wrapperTo, insert },
+    selection: selection.anchor <= selection.head
+      ? { anchor: mappedFrom, head: mappedTo }
+      : { anchor: mappedTo, head: mappedFrom }
+  });
+  focusEditor(view, options);
+  return true;
+}
+
 function getInlineFormattingRanges(view, bounds) {
   const ranges = Object.keys(MARKDOWN_FORMATS).flatMap(formatName =>
     getMarkdownFormatRanges(view, formatName, bounds)
   );
   ranges.push(...getWmdxColorSyntaxRanges(view.state, bounds));
 
+  const { state } = view;
+  const { doc } = state;
+  const tree = syntaxTree(state);
+  const referenceTargets = collectMarkdownReferenceTargets(doc, tree);
+  const code = codeRanges(state, bounds);
+  tree.iterate({
+    ...(bounds ? { from: bounds.from, to: bounds.to } : {}),
+    enter(node) {
+      if (node.name === 'Link') {
+        const info = getMarkdownLinkInfo(node, doc, referenceTargets);
+        if (!info) return;
+        ranges.push({
+          wrapperFrom: node.from,
+          wrapperTo: node.to,
+          contentFrom: info.labelFrom,
+          contentTo: info.labelTo,
+          open: doc.sliceString(node.from, info.labelFrom),
+          close: doc.sliceString(info.labelTo, node.to),
+          kind: 'link'
+        });
+      } else if (node.name === 'WmdxResource') {
+        const raw = doc.sliceString(node.from, node.to);
+        const resource = parseWmdxResourceSyntax(raw);
+        if (!resource || resource.embed) return;
+        const titleRange = getWmdxResourceTitleRange(raw);
+        if (!titleRange) return;
+        const contentFrom = node.from + titleRange.from;
+        const contentTo = node.from + titleRange.to;
+        if (contentFrom === contentTo) {
+          ranges.push({
+            wrapperFrom: node.from,
+            wrapperTo: node.to,
+            contentFrom: node.from,
+            contentTo: node.to,
+            replacementText: resource.displayTitle,
+            replaceWholeOnPartial: true,
+            open: '',
+            close: '',
+            kind: 'link'
+          });
+          return;
+        }
+        ranges.push({
+          wrapperFrom: node.from,
+          wrapperTo: node.to,
+          contentFrom,
+          contentTo,
+          open: doc.sliceString(node.from, contentFrom),
+          close: doc.sliceString(contentTo, node.to),
+          kind: 'link'
+        });
+      }
+    }
+  });
+
+  const scanFrom = bounds ? doc.lineAt(bounds.from).from : 0;
+  const scanTo = bounds
+    ? doc.lineAt(Math.max(bounds.from, bounds.to - 1)).to
+    : doc.length;
+  const source = doc.sliceString(scanFrom, scanTo);
+  const footnoteRanges = [
+    {
+      expression: /\^\[([^\]\n]+)\]/gu,
+      openLength: 2,
+      closeLength: 1,
+      kind: 'footnote'
+    },
+    {
+      expression: /\[\^([^\]\n]+)\]/gu,
+      openLength: 2,
+      closeLength: 1,
+      kind: 'footnote'
+    },
+    {
+      expression: /(?<![\\])\^([^\s^\n](?:[^^\n]*?[^\s^\n])?)\^/gu,
+      openLength: 1,
+      closeLength: 1,
+      kind: 'superscript'
+    },
+    {
+      expression: /(?<![\\])\^(\d+)(?!\^)/gu,
+      openLength: 1,
+      closeLength: 0,
+      kind: 'footnote'
+    }
+  ];
+  for (const syntax of footnoteRanges) {
+    let match;
+    while ((match = syntax.expression.exec(source))) {
+      const wrapperFrom = scanFrom + match.index;
+      const wrapperTo = wrapperFrom + match[0].length;
+      if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
+      const contentFrom = wrapperFrom + syntax.openLength;
+      const contentTo = wrapperTo - syntax.closeLength;
+      ranges.push({
+        wrapperFrom,
+        wrapperTo,
+        contentFrom,
+        contentTo,
+        open: doc.sliceString(wrapperFrom, contentFrom),
+        close: doc.sliceString(contentTo, wrapperTo),
+        kind: syntax.kind
+      });
+    }
+  }
+
+  const wikiLinks = /\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/gu;
+  let wikiMatch;
+  while ((wikiMatch = wikiLinks.exec(source))) {
+    const wrapperFrom = scanFrom + wikiMatch.index;
+    const wrapperTo = wrapperFrom + wikiMatch[0].length;
+    if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
+    const aliasOffset = wikiMatch[2] === undefined
+      ? 2
+      : wikiMatch[0].lastIndexOf('|') + 1;
+    const contentFrom = wrapperFrom + aliasOffset;
+    const contentTo = wrapperTo - 2;
+    ranges.push({
+      wrapperFrom,
+      wrapperTo,
+      contentFrom,
+      contentTo,
+      open: doc.sliceString(wrapperFrom, contentFrom),
+      close: doc.sliceString(contentTo, wrapperTo),
+      kind: 'link'
+    });
+  }
+
   const seen = new Set();
   return ranges.filter(range => {
-    const key = `${range.wrapperFrom}:${range.wrapperTo}:${range.open}:${range.close}`;
+    const key = `${range.wrapperFrom}:${range.wrapperTo}:${range.open}:${range.close}:${range.replacementText ?? ''}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function getHeadingNodeAt(state, position) {
+  for (
+    let node = syntaxTree(state).resolveInner(position, 1);
+    node;
+    node = node.parent
+  ) {
+    if (
+      /^(?:ATXHeading|SetextHeading)[1-6]$/.test(node.name) ||
+      node.name === 'WmdxDecimalHeading'
+    ) return node;
+  }
+  return null;
+}
+
+function getClearFormattingScope(state) {
+  const { doc, selection } = state;
+  const main = selection.main;
+  if (!main.empty) {
+    const firstHeading = getHeadingNodeAt(state, main.from);
+    const lastHeading = getHeadingNodeAt(state, Math.max(main.from, main.to - 1));
+    if (
+      firstHeading &&
+      lastHeading &&
+      firstHeading.from === lastHeading.from &&
+      firstHeading.to === lastHeading.to
+    ) {
+      const lastPosition = Math.max(firstHeading.from, firstHeading.to - 1);
+      return {
+        from: doc.lineAt(firstHeading.from).from,
+        to: doc.lineAt(lastPosition).to
+      };
+    }
+    const firstLine = doc.lineAt(main.from);
+    const lastPosition = main.to > main.from ? main.to - 1 : main.to;
+    const lastLine = doc.lineAt(lastPosition);
+    return { from: firstLine.from, to: lastLine.to };
+  }
+
+  let block = getHeadingNodeAt(state, main.head);
+  for (
+    let node = block ? null : syntaxTree(state).resolveInner(main.head, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === 'Paragraph') {
+      block = node;
+      break;
+    }
+  }
+  if (!block) {
+    const line = doc.lineAt(main.head);
+    return { from: line.from, to: line.to };
+  }
+
+  const lastPosition = Math.max(block.from, block.to - 1);
+  return {
+    from: doc.lineAt(block.from).from,
+    to: doc.lineAt(lastPosition).to
+  };
+}
+
+function getBlockFormattingPrefixLength(text) {
+  let offset = 0;
+  const consume = expression => {
+    const match = expression.exec(text.slice(offset));
+    if (!match || match.index !== 0 || !match[0]) return false;
+    offset += match[0].length;
+    return true;
+  };
+
+  consume(/^[ \t]+/);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if (
+      consume(/^(?:>[ \t]*)+/) ||
+      consume(/^\[![A-Za-z][A-Za-z0-9_-]*\][+-]?[ \t]*/) ||
+      consume(/^±[A-Za-z][A-Za-z0-9_-]*[-+]?(?:[ \t]+|$)/) ||
+      consume(/^#{1,6}(?:[ \t]+|$)/) ||
+      consume(/^\.[1-6](?:[ \t]+|$)/) ||
+      consume(/^(?:(?:\d+|[A-Za-z]+)[.)]|[-+*])[ \t]+(?:\[[ xX]\][ \t]+)?/) ||
+      consume(/^\[[ xX]\][ \t]+/) ||
+      consume(/^(?:->|><|<>|<)(?:[ \t]+|$)/) ||
+      consume(/^\[\^[^\]]+\]:[ \t]*/) ||
+      consume(/^\[[^\]]+\]:[ \t]*/)
+    ) {
+      continue;
+    }
+    break;
+  }
+
+  const remainder = text.slice(offset);
+  if (/^(?:={1,}|-{3,})[ \t]*$/.test(remainder)) return text.length;
+  return offset;
+}
+
+function isCodeBlockLine(state, line) {
+  const probe = line.from + (/^[ \t]*/.exec(line.text)?.[0].length ?? 0);
+  for (let node = syntaxTree(state).resolveInner(probe, 1); node; node = node.parent) {
+    if (node.name === 'FencedCode' || node.name === 'CodeBlock') return true;
+  }
+  return false;
+}
+
+function stripBlockFormatting(view, scope) {
+  const { state } = view;
+  const firstLine = state.doc.lineAt(scope.from).number;
+  const lastLine = state.doc.lineAt(Math.max(scope.from, scope.to - 1)).number;
+  const changes = [];
+  for (let number = firstLine; number <= lastLine; number += 1) {
+    const line = state.doc.line(number);
+    if (isCodeBlockLine(state, line)) continue;
+    const heading = getHeadingNodeAt(state, line.from);
+    if (
+      heading?.name.startsWith('SetextHeading') &&
+      state.doc.lineAt(heading.from).number < number
+    ) {
+      changes.push({
+        from: Math.max(0, line.from - 1),
+        to: line.to,
+        insert: ''
+      });
+      continue;
+    }
+    const prefixLength = getBlockFormattingPrefixLength(line.text);
+    if (prefixLength > 0) {
+      changes.push({
+        from: line.from,
+        to: line.from + prefixLength,
+        insert: ''
+      });
+    }
+  }
+  if (!changes.length) return false;
+  changes.sort((first, second) => first.from - second.from);
+  const changeSet = state.changes(changes);
+  view.dispatch({
+    changes: changeSet,
+    selection: state.selection.map(changeSet, 1)
+  });
+  return true;
+}
+
+function stripCollapsedInlineFormatting(view, scope) {
+  const { state } = view;
+  const ranges = getInlineFormattingRanges(view, scope);
+  const changes = [];
+  for (const range of ranges) {
+    if (
+      range.wrapperFrom < scope.from ||
+      range.wrapperTo > scope.to
+    ) continue;
+    if (range.replacementText !== undefined) {
+      changes.push({
+        from: range.wrapperFrom,
+        to: range.wrapperTo,
+        insert: range.replacementText
+      });
+      continue;
+    }
+    changes.push(
+      { from: range.wrapperFrom, to: range.contentFrom, insert: '' },
+      { from: range.contentTo, to: range.wrapperTo, insert: '' }
+    );
+  }
+  const uniqueChanges = [...new Map(
+    changes
+      .filter(change => change.to > change.from)
+      .map(change => [`${change.from}:${change.to}`, change])
+  ).values()].sort((first, second) => first.from - second.from);
+  if (!uniqueChanges.length) return false;
+
+  const changeSet = state.changes(uniqueChanges);
+  view.dispatch({
+    changes: changeSet,
+    selection: state.selection.map(changeSet, 1)
+  });
+  return true;
 }
 
 export function clearMarkdownFormatting(view, options = {}) {
@@ -500,13 +905,25 @@ export function clearMarkdownFormatting(view, options = {}) {
     focus() {}
   };
 
+  const initiallyCollapsed = originalState.selection.main.empty;
+  let scope = getClearFormattingScope(workingState);
+  stripBlockFormatting(workingView, scope);
+  if (initiallyCollapsed) {
+    scope = getClearFormattingScope(workingState);
+    stripCollapsedInlineFormatting(workingView, scope);
+  }
+
   for (let attempt = 0; attempt < 128; attempt += 1) {
     const selection = workingState.selection.main;
-    const bounds = { from: selection.from, to: selection.to };
+    if (selection.empty && initiallyCollapsed) break;
+    const bounds = selection.empty
+      ? getClearFormattingScope(workingState)
+      : { from: selection.from, to: selection.to };
     const ranges = getInlineFormattingRanges(workingView, bounds)
-      .filter(range => selection.empty
-        ? selection.head >= range.contentFrom && selection.head <= range.contentTo
-        : range.wrapperTo > selection.from && range.wrapperFrom < selection.to)
+      .filter(range =>
+        range.wrapperTo > selection.from &&
+        range.wrapperFrom < selection.to
+      )
       .sort((first, second) =>
         (first.wrapperTo - first.wrapperFrom) - (second.wrapperTo - second.wrapperFrom) ||
         second.wrapperFrom - first.wrapperFrom
@@ -514,11 +931,10 @@ export function clearMarkdownFormatting(view, options = {}) {
 
     let unwrapped = false;
     for (const range of ranges) {
-      if (unwrapFormattedRange(
+      if (unwrapRangeWithinSelection(
         workingView,
         range,
         selection,
-        { open: range.open, close: range.close },
         options
       )) {
         unwrapped = true;

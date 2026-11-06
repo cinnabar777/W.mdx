@@ -528,11 +528,37 @@ function getWmdxOrderedListItems(doc, tree) {
   );
 }
 
+function getCurrentParagraphLineRange(state, position) {
+  const tree = syntaxTree(state);
+  let paragraph = null;
+  for (
+    let node = tree.resolveInner(position, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === 'Paragraph') {
+      paragraph = node;
+      break;
+    }
+  }
+  if (!paragraph) return null;
+
+  const lastPosition = Math.max(paragraph.from, paragraph.to - 1);
+  return {
+    first: state.doc.lineAt(paragraph.from).number,
+    last: state.doc.lineAt(lastPosition).number
+  };
+}
+
 function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {}) {
   if (direction === 'outdent') {
+    const selection = view.state.selection.main;
     const quoteChanges = getBlockquoteOutdentChanges(
       view.state.doc,
-      view.state.selection.main
+      selection,
+      selection.empty
+        ? getCurrentParagraphLineRange(view.state, selection.head)
+        : null
     );
     if (quoteChanges.length) {
       const changeSet = view.state.changes(quoteChanges);
@@ -10039,9 +10065,13 @@ function execCmd(cmdName, options) {
       );
     } else if (cmdName === 'blockQuote') {
       if (isBlockquoteSyntaxEnabledNow()) {
+        const selection = view.state.selection.main;
         const changes = getBlockquoteNestingChanges(
           view.state.doc,
-          view.state.selection.main
+          selection,
+          selection.empty
+            ? getCurrentParagraphLineRange(view.state, selection.head)
+            : null
         );
         if (changes.length) {
           const changeSet = view.state.changes(changes);

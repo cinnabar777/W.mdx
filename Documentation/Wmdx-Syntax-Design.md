@@ -692,10 +692,15 @@ a separate later phase.
   reuse of an existing `^N` note.
 - Standard `>` block quotes support Return continuation and one-level-at-a-time
   exit from blank nested quote lines, with app-wide enable/disable preferences.
-  Applying the Block Quote toolbar action to an existing quote adds a nested
-  `>` level to the current quoted block or selected lines; Outdent removes one
-  quote level. Ordinary source indentation is separate from quote nesting, and
-  wrapped lines remain aligned with the indented paragraph or quote block.
+  Applying the Block Quote toolbar action at a caret adds a nested `>` level
+  only to the current paragraph; a selection affects its selected lines.
+  Outdent removes one quote level from that same scope. Ordinary source
+  indentation is separate from quote nesting, moves wrapped paragraph text as
+  a unit, and does not move a quote's border.
+- Clear Formatting without a selection removes block and inline syntax from
+  the current paragraph. With a selection, it removes syntax from the selected
+  text and affected block lines while preserving visible text and leaving
+  unselected formatting in place.
 
 These slices pass the focused web test suite. Android phone rendering and
 editing still require normal project/device verification.

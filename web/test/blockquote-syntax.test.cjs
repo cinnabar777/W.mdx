@@ -81,30 +81,31 @@ test('the quote toolbar nests selected lines and Outdent removes one level', asy
   );
 });
 
-test('a caret action nests or outdents the current quote block', async () => {
+test('a caret action nests or outdents only the current quoted paragraph', async () => {
   const {
     getBlockquoteNestingChanges,
     getBlockquoteOutdentChanges
   } = await import('../src/blockquoteSyntax.mjs');
-  const source = '> Parent\n> > Child\n> > Grandchild\n> Sibling\nOutside';
+  const source = '> Parent\n>\n> Child\n> continuation\n>\n> Sibling\nOutside';
   const doc = makeDoc(source);
-  const nestedCaret = doc.line(2).from + 3;
+  const nestedCaret = doc.line(3).from + 3;
   const caretSelection = { from: nestedCaret, to: nestedCaret };
+  const paragraphLines = { first: 3, last: 4 };
 
   assert.equal(
     applyChangesForTest(
       source,
-      getBlockquoteNestingChanges(doc, caretSelection)
+      getBlockquoteNestingChanges(doc, caretSelection, paragraphLines)
     ),
-    '> Parent\n> > > Child\n> > > Grandchild\n> Sibling\nOutside'
+    '> Parent\n>\n> > Child\n> > continuation\n>\n> Sibling\nOutside'
   );
 
   assert.equal(
     applyChangesForTest(
       source,
-      getBlockquoteOutdentChanges(doc, caretSelection)
+      getBlockquoteOutdentChanges(doc, caretSelection, paragraphLines)
     ),
-    '> Parent\n> Child\n> Grandchild\n> Sibling\nOutside'
+    '> Parent\n>\nChild\ncontinuation\n>\n> Sibling\nOutside'
   );
 });
 
