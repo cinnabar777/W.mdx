@@ -466,7 +466,60 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       '2ch',
       'Source preserves the alphabetic child indentation as its own marker column'
     );
-    assert.equal(window.editorBridge.getMarkdown(), listSource);
+
+    const orderedStyleSource = [
+      'A. Upper alpha marker with enough text to wrap beneath the item text.',
+      'B. Another upper alpha marker with enough text to wrap beneath the item text.',
+      '',
+      'a. Lower alpha marker with enough text to wrap beneath the item text.',
+      'b. Another lower alpha marker with enough text to wrap beneath the item text.',
+      '',
+      'IV. Upper Roman marker with enough text to wrap beneath the item text.',
+      'V. Another upper Roman marker with enough text to wrap beneath the item text.',
+      '',
+      'iv. Lower Roman marker with enough text to wrap beneath the item text.',
+      'v. Another lower Roman marker with enough text to wrap beneath the item text.'
+    ].join('\n');
+    window.editorBridge.setMarkdown(orderedStyleSource);
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    for (const mode of ['wysiwyg', 'live_preview']) {
+      await window.editorBridge.setEditorMode(mode);
+      const orderedLines = [
+        ...window.document.querySelectorAll('.cm-line.cm-list-item')
+      ];
+      assert.equal(orderedLines.length, 8, `${mode} renders all ordered styles`);
+      for (const line of orderedLines) {
+        const textBlock = line.querySelector('.cm-list-block-text');
+        assert.ok(textBlock, `${mode} separates marker and text`);
+        assert.equal(
+          textBlock.textContent.trimStart(),
+          textBlock.textContent,
+          `${mode} excludes marker-separator spaces from the text column`
+        );
+        assert.equal(
+          window.getComputedStyle(line).display,
+          'flex',
+          `${mode} applies hanging layout to every ordered style`
+        );
+      }
+    }
+
+    await window.editorBridge.setEditorMode('source');
+    const sourceOrderedLines = [
+      ...window.document.querySelectorAll('.cm-line.cm-source-list-wrapped')
+    ];
+    assert.equal(sourceOrderedLines.length, 8);
+    for (const line of sourceOrderedLines) {
+      const markerPrefix = /^[A-Za-z]+[.)][ \t]+/.exec(line.textContent)?.[0];
+      assert.ok(markerPrefix, 'Source preserves each alphabetic or Roman marker');
+      assert.equal(
+        line.style.getPropertyValue('--source-hanging-offset'),
+        `${markerPrefix.length}ch`,
+        'Source wraps each ordered style at its text column'
+      );
+    }
+    assert.equal(window.editorBridge.getMarkdown(), orderedStyleSource);
     assert.deepEqual(errors, []);
   } finally {
     dom.window.close();

@@ -4104,10 +4104,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         builder.push(decoration);
         hiddenSyntaxRanges.push(decoration);
       }
-      if (item.textTo > item.to) {
+      const textRange = listItemTextRange(
+        tree,
+        doc,
+        item.line,
+        item.to
+      );
+      if (textRange) {
         builder.push(
           Decoration.mark({ class: 'cm-list-block-text' })
-            .range(item.to, item.textTo)
+            .range(textRange.from, textRange.to)
         );
       }
     }
@@ -5563,10 +5569,16 @@ function buildHeightMapValue(state) {
       replacements.push(decoration);
       hiddenSyntaxRanges.push(decoration);
     }
-    if (item.textTo > item.to) {
+    const textRange = listItemTextRange(
+      tree,
+      doc,
+      item.line,
+      item.to
+    );
+    if (textRange) {
       replacements.push(
         Decoration.mark({ class: 'cm-list-block-text' })
-          .range(item.to, item.textTo)
+          .range(textRange.from, textRange.to)
       );
     }
   }
