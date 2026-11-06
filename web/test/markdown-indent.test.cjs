@@ -179,15 +179,15 @@ test('a selection ending at the next line start does not indent that line', asyn
 
 test('Tab and toolbar indent actions share the same Markdown-aware implementation', () => {
   const main = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8');
-  assert.match(main, /export const markdownIndentKeymap = keymap\.of\([\s\S]*?key: 'Tab'[\s\S]*?applyMarkdownIndent\(view, 'indent'\)/);
-  assert.match(main, /key: 'Shift-Tab'[\s\S]*?applyMarkdownIndent\(view, 'outdent'\)/);
+  assert.match(main, /export const markdownIndentKeymap = keymap\.of\([\s\S]*?key: 'Tab'[\s\S]*?applyEditorMarkdownIndent\(view, 'indent'\)/);
+  assert.match(main, /key: 'Shift-Tab'[\s\S]*?applyEditorMarkdownIndent\(view, 'outdent'\)/);
   assert.match(
     main,
     /Prec\.highest\(\[tableNavigationKeymap,\s*markdownIndentKeymap\]\)/,
     'table navigation and list indentation must run before CodeMirror default Tab behavior'
   );
-  assert.match(main, /cmdName === 'indent'\) \{\s*applyMarkdownIndent\(view, 'indent', '  ', editorCommandOptions\)/);
-  assert.match(main, /cmdName === 'outdent'\) \{\s*applyMarkdownIndent\(view, 'outdent', '  ', editorCommandOptions\)/);
+  assert.match(main, /cmdName === 'indent'\) \{\s*applyEditorMarkdownIndent\(view, 'indent', '  ', editorCommandOptions\)/);
+  assert.match(main, /cmdName === 'outdent'\) \{\s*applyEditorMarkdownIndent\(view, 'outdent', '  ', editorCommandOptions\)/);
   assert.match(
     main,
     /const tabInEditor = e\.key === 'Tab' &&\s*activeAdapter\?\.view\?\.contentDOM\?\.contains\(e\.target\)/,
@@ -235,4 +235,93 @@ test('the shared indent command dispatches mapped changes and consumes an empty 
     true
   );
   assert.equal(focused, false, 'toolbar indentation does not reopen a closed keyboard');
+});
+
+test('indent and outdent update Wmdx numbering at each list depth', async () => {
+  const { ChangeSet, EditorState } = await import('@codemirror/state');
+  const { applyMarkdownIndent } = await import('../src/markdownIndent.js');
+  const initial = 'I. Parent\nII. Child\nIII. Next child\nIV. Next parent';
+  const doc = EditorState.create({ doc: initial }).doc;
+  const selection = {
+    from: doc.line(2).from,
+    to: doc.line(3).to
+  };
+  const dispatches = [];
+  const view = {
+    state: {
+      doc,
+      selection: {
+        main: selection,
+        map: (changes, assoc) => ({ changes, assoc })
+      },
+      changes: changes => changes
+    },
+    dispatch: transaction => dispatches.push(transaction),
+    focus: () => {}
+  };
+
+  applyMarkdownIndent(view, 'indent', '  ', { renumberWmdx: true });
+  const changes = ChangeSet.of(dispatches[0].changes, doc.length);
+  assert.equal(
+    changes.apply(doc).toString(),
+    'I. Parent\n   I. Child\n   II. Next child\nII. Next parent'
+  );
+
+  const nestedSource =
+    'I. Parent\n  II. Child\n  III. Next child\nII. Next parent';
+  const nestedDoc = EditorState.create({ doc: nestedSource }).doc;
+  const nestedSelection = {
+    from: nestedDoc.line(2).from,
+    to: nestedDoc.line(3).to
+  };
+  const outdentDispatches = [];
+  const outdentView = {
+    state: {
+      doc: nestedDoc,
+      selection: {
+        main: nestedSelection,
+        map: (changes, assoc) => ({ changes, assoc })
+      },
+      changes: changes => changes
+    },
+    dispatch: transaction => outdentDispatches.push(transaction),
+    focus: () => {}
+  };
+  applyMarkdownIndent(outdentView, 'outdent', '  ', { renumberWmdx: true });
+  const outdentChanges = ChangeSet.of(
+    outdentDispatches[0].changes,
+    nestedDoc.length
+  );
+  assert.equal(
+    outdentChanges.apply(nestedDoc).toString(),
+    'I. Parent\nII. Child\nIII. Next child\nIV. Next parent'
+  );
+});
+
+test('indent does not normalize unrelated Wmdx lists elsewhere in the document', async () => {
+  const { ChangeSet, EditorState } = await import('@codemirror/state');
+  const { applyMarkdownIndent } = await import('../src/markdownIndent.js');
+  const source = 'A. First\nA. Second\n\nParagraph';
+  const doc = EditorState.create({ doc: source }).doc;
+  const selection = { from: doc.line(4).from, to: doc.line(4).from };
+  const dispatches = [];
+  const view = {
+    state: {
+      doc,
+      selection: {
+        main: selection,
+        map: (changes, assoc) => ({ changes, assoc })
+      },
+      changes: changes => changes
+    },
+    dispatch: transaction => dispatches.push(transaction),
+    focus: () => {}
+  };
+
+  applyMarkdownIndent(view, 'indent', '  ', { renumberWmdx: true });
+  const changeSet = ChangeSet.of(dispatches[0].changes, doc.length);
+  assert.equal(
+    changeSet.apply(doc).toString(),
+    'A. First\nA. Second\n\n  Paragraph'
+  );
 });

@@ -113,6 +113,46 @@ test('ordered Wmdx list markers auto-increment alphabetic and Roman labels', asy
   assert.equal(parseWmdxOrderedListMarker('inline a. text'), null);
 });
 
+test('ordered Wmdx numbering restarts at each indentation level', async () => {
+  const {
+    getOrderedListPrefixGenerator,
+    getWmdxOrderedListMarkerChanges,
+    getWmdxOrderedListSequence
+  } = await import('../src/listSyntax.mjs');
+  const source = [
+    'I. Parent',
+    '  II. Child',
+    '    III. Grandchild',
+    '  IV. Next child',
+    'II. Next parent'
+  ];
+  let from = 0;
+  const lines = source.map((text, index) => {
+    const line = { from, to: from + text.length, number: index + 1, text };
+    from = line.to + 1;
+    return line;
+  });
+  const items = getWmdxOrderedListSequence(lines);
+  assert.deepEqual(
+    items.map(item => item.displayText),
+    ['I.', 'I.', 'I.', 'II.', 'II.']
+  );
+  assert.deepEqual(
+    getWmdxOrderedListMarkerChanges(lines),
+    [
+      { from: 12, to: 15, insert: 'I.' },
+      { from: 26, to: 30, insert: 'I.' },
+      { from: 44, to: 47, insert: 'II.' }
+    ]
+  );
+
+  const prefix = getOrderedListPrefixGenerator('roman_upper');
+  assert.deepEqual(
+    source.map((text, index) => prefix(index, { text, number: index + 1 })),
+    ['I. ', 'I. ', 'I. ', 'II. ', 'II. ']
+  );
+});
+
 test('selected lines receive a list prefix and matching prefixes toggle off together', async () => {
   const { getSelectedListPrefixChanges } = await import('../src/listSyntax.mjs');
   const lines = [
@@ -205,7 +245,7 @@ test('list toolbar actions cover selected lines and custom markers refresh while
   assert.match(mainSource, /cmdName === 'numberedList'[\s\S]*?cmToggleSelectedListPrefix\(view, prefix\)/);
   assert.match(mainSource, /cmdName === 'todoList'[\s\S]*?cmToggleSelectedListPrefix\(view, prefix\)/);
   assert.match(mainSource, /getDefaultOrderedStyle\(listSyntaxSettings\)/);
-  assert.match(mainSource, /getOrderedMarkerLabel\([\s\S]*?index \+ 1/);
+  assert.match(mainSource, /getOrderedListPrefixGenerator\(/);
   assert.match(mainSource, /handleCalloutEnter\(view, event\) \|\|[\s\S]*?handleWmdxOrderedListEnter\(view, event\)/);
   assert.equal(
     (mainSource.match(/linePattern: \/\^\[ \\t\]\*\[A-Za-z\]\+\[\.\)\]\(\?:\[ \\t\]\|\$\)\//g) || []).length,
@@ -293,6 +333,40 @@ test('Return continues Wmdx alpha and Roman lists, and a blank item exits', asyn
       to: 3,
       insert: '',
       cursor: 0,
+      exitsList: true
+    }
+  );
+  const nestedContinuation = 'I. Parent\n  II. Child';
+  assert.equal(
+    getWmdxOrderedListEnterEdit(
+      nestedContinuation,
+      cursor(nestedContinuation.length)
+    ).insert,
+    '\n  II. '
+  );
+  assert.deepEqual(
+    getWmdxOrderedListEnterEdit(
+      'I. Parent\n  II. ',
+      cursor('I. Parent\n  II. '.length)
+    ),
+    {
+      from: 10,
+      to: 16,
+      insert: '',
+      cursor: 10,
+      exitsList: true
+    }
+  );
+  assert.deepEqual(
+    getWmdxOrderedListEnterEdit(
+      'I. Parent\n  II. Child\n    III. ',
+      cursor('I. Parent\n  II. Child\n    III. '.length)
+    ),
+    {
+      from: 22,
+      to: 31,
+      insert: '  ',
+      cursor: 24,
       exitsList: true
     }
   );

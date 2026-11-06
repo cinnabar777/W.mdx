@@ -1,3 +1,8 @@
+import {
+  getWmdxOrderedListMarkerChanges,
+  parseWmdxOrderedListMarker
+} from './listSyntax.mjs';
+
 const ROOT_LIST_MARKER = /^([-+*]|(?:\d+|[A-Za-z]+)[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/;
 const LIST_MARKER_PREFIX = /^([-+*]|(?:\d+|[A-Za-z]+)[.)])[ \t]+/;
 
@@ -158,15 +163,137 @@ export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  
   return changes;
 }
 
+function renumberWmdxListsAfterIndent(doc, indentChanges, isExcluded) {
+  if (!Number.isInteger(doc?.lines) || !indentChanges.length) return indentChanges;
+  const changesByLine = new Map(
+    indentChanges.map(change => [change.from, change])
+  );
+  const lines = [];
+  const affectedListLines = [];
+  let updatedFrom = 0;
+  for (let number = 1; number <= doc.lines; number += 1) {
+    const originalLine = doc.line(number);
+    const indentChange = changesByLine.get(originalLine.from);
+    let text = originalLine.text;
+    let lineDelta = 0;
+    if (indentChange) {
+      const from = indentChange.from - originalLine.from;
+      const to = indentChange.to - originalLine.from;
+      text = text.slice(0, from) + indentChange.insert + text.slice(to);
+      lineDelta = text.length - originalLine.text.length;
+    }
+    const line = {
+      from: updatedFrom,
+      to: updatedFrom + text.length,
+      number,
+      text,
+      originalLine,
+      lineDelta
+    };
+    lines.push(line);
+    if (indentChange && (
+      parseWmdxOrderedListMarker(originalLine.text) ||
+      parseWmdxOrderedListMarker(text)
+    )) {
+      affectedListLines.push(line);
+    }
+    updatedFrom = line.to + 1;
+  }
+  if (!affectedListLines.length) return indentChanges;
+
+  const affectedNumbers = new Set();
+  for (const affectedLine of affectedListLines) {
+    const parsed = parseWmdxOrderedListMarker(affectedLine.text) ||
+      parseWmdxOrderedListMarker(affectedLine.originalLine.text);
+    const baseIndent = parsed?.indent ?? 0;
+    let first = affectedLine.number - 1;
+    let last = affectedLine.number - 1;
+    const canJoinBlock = line =>
+      !line.text.trim() ||
+      Boolean(parseWmdxOrderedListMarker(line.text)) ||
+      indentationWidth(leadingWhitespace(line.text)) > baseIndent;
+    while (first > 0 && canJoinBlock(lines[first - 1])) first -= 1;
+    while (last + 1 < lines.length && canJoinBlock(lines[last + 1])) last += 1;
+    for (let index = first; index <= last; index += 1) {
+      affectedNumbers.add(lines[index].number);
+    }
+  }
+
+  const lineAtUpdatedPosition = position => {
+    let low = 0;
+    let high = lines.length - 1;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      const line = lines[middle];
+      if (position < line.from) high = middle - 1;
+      else if (position > line.to) low = middle + 1;
+      else return line;
+    }
+    return null;
+  };
+  const mapExcludedPosition = position => {
+    const line = lineAtUpdatedPosition(position);
+    if (!line) return false;
+    const originalPosition =
+      line.originalLine.from + position - line.from - line.lineDelta;
+    return isExcluded?.(originalPosition) ?? false;
+  };
+
+  const markerChanges = getWmdxOrderedListMarkerChanges(lines, mapExcludedPosition)
+    .filter(change => {
+      const line = lineAtUpdatedPosition(change.from);
+      return line && affectedNumbers.has(line.number);
+    })
+    .flatMap(change => {
+      const line = lineAtUpdatedPosition(change.from);
+      if (!line) return [];
+      const from =
+        line.originalLine.from + change.from - line.from - line.lineDelta;
+      const to =
+        line.originalLine.from + change.to - line.from - line.lineDelta;
+      return [{ from, to, insert: change.insert, line: line.originalLine }];
+    });
+  const combinedChanges = indentChanges.map(change => ({ ...change }));
+  for (const markerChange of markerChanges) {
+    const indentIndex = combinedChanges.findIndex(change =>
+      change.from === markerChange.line.from &&
+      change.to === markerChange.line.from
+    );
+    if (indentIndex >= 0 && markerChange.from === markerChange.line.from) {
+      const indentChange = combinedChanges[indentIndex];
+      combinedChanges[indentIndex] = {
+        from: indentChange.from,
+        to: markerChange.to,
+        insert: indentChange.insert + markerChange.insert
+      };
+    } else {
+      combinedChanges.push({
+        from: markerChange.from,
+        to: markerChange.to,
+        insert: markerChange.insert
+      });
+    }
+  }
+  return combinedChanges;
+}
+
 export function applyMarkdownIndent(view, direction, spaces = '  ', options = {}) {
   if (!view?.state) return false;
 
-  const changes = getMarkdownIndentChanges(
+  const indentChanges = getMarkdownIndentChanges(
     view.state.doc,
     view.state.selection.main,
     direction,
     spaces
   );
+  const changes = options.renumberWmdx === true
+    ? renumberWmdxListsAfterIndent(
+        view.state.doc,
+        indentChanges,
+        options.isExcluded
+      )
+    : indentChanges;
+  changes.sort((a, b) => a.from - b.from || a.to - b.to);
   if (changes.length) {
     const changeSet = view.state.changes(changes);
     view.dispatch({

@@ -125,6 +125,36 @@ export function getOrderedMarkerLabel(style, ordinal, delimiter = '.') {
   return `${index}${delimiter}`;
 }
 
+export function getOrderedListPrefixGenerator(style, delimiter = '.') {
+  const ordinalByDepth = new Map();
+  let previousLineNumber = null;
+  return (_index, line) => {
+    if (
+      Number.isInteger(line.number) &&
+      previousLineNumber !== null &&
+      line.number > previousLineNumber + 1
+    ) {
+      ordinalByDepth.clear();
+    }
+    if (Number.isInteger(line.number)) previousLineNumber = line.number;
+
+    const indent = (/^[ \t]*/.exec(line.text)?.[0] ?? '');
+    let columns = 0;
+    for (const character of indent) {
+      columns = character === '\t'
+        ? columns + (4 - (columns % 4))
+        : columns + 1;
+    }
+    const afterIndent = line.text.slice(indent.length);
+    const quotePrefix = /^(?:>[ \t]*)+/.exec(afterIndent)?.[0] ?? '';
+    const quoteDepth = (quotePrefix.match(/>/g) || []).length;
+    const depth = `${columns}:${quoteDepth}`;
+    const ordinal = (ordinalByDepth.get(depth) ?? 0) + 1;
+    ordinalByDepth.set(depth, ordinal);
+    return `${getOrderedMarkerLabel(style, ordinal, delimiter)} `;
+  };
+}
+
 export function parseWmdxOrderedListMarker(lineText, preferredStyle = null) {
   const match = /^([ \t]*(?:>\s*)*)([A-Za-z]+)([.)])(?=[ \t]|$)/.exec(
     String(lineText ?? '')
@@ -144,6 +174,107 @@ export function parseWmdxOrderedListMarker(lineText, preferredStyle = null) {
     ordinal: parsedStyle.ordinal,
     delimiter: match[3]
   };
+}
+
+export function getWmdxOrderedListSequence(
+  lines,
+  isExcluded = () => false
+) {
+  const items = [];
+  const activeLists = new Map();
+  for (const line of lines) {
+    let parsed = parseWmdxOrderedListMarker(line.text);
+    if (!parsed) {
+      if (line.text.trim()) {
+        const indent = (/^[ \t]*/.exec(line.text)?.[0] ?? '').length;
+        for (const depth of activeLists.keys()) {
+          if (depth >= indent) activeLists.delete(depth);
+        }
+      } else {
+        for (const active of activeLists.values()) active.gap = true;
+      }
+      continue;
+    }
+    if (isExcluded(line.from + parsed.markerFrom)) continue;
+
+    for (const depth of activeLists.keys()) {
+      if (depth > parsed.indent) activeLists.delete(depth);
+    }
+    let active = activeLists.get(parsed.indent);
+    if (active) {
+      const candidate = parseWmdxOrderedListMarker(line.text, active.style);
+      const ambiguousRomanOne =
+        parsed.marker.slice(0, -1).toUpperCase() === 'I';
+      if (
+        candidate?.style === active.style &&
+        (
+          parsed.style === active.style ||
+          (
+            !active.gap &&
+            (
+              candidate.ordinal === active.ordinal + 1 ||
+              candidate.ordinal === 1
+            )
+          ) ||
+          (
+            active.gap &&
+            !ambiguousRomanOne &&
+            candidate.ordinal === active.ordinal + 1
+          )
+        )
+      ) {
+        parsed = candidate;
+      }
+    }
+    if (
+      !active ||
+      active.style !== parsed.style ||
+      active.delimiter !== parsed.delimiter
+    ) {
+      const hasParentList = [...activeLists.keys()].some(
+        depth => depth < parsed.indent
+      );
+      active = {
+        style: parsed.style,
+        delimiter: parsed.delimiter,
+        ordinal: hasParentList ? 0 : parsed.ordinal - 1,
+        gap: false
+      };
+      activeLists.set(parsed.indent, active);
+    }
+    active.ordinal++;
+    active.gap = false;
+    items.push({
+      ...parsed,
+      line,
+      from: line.from + parsed.markerFrom,
+      to: line.from + parsed.markerTo,
+      textTo: line.to,
+      ordinal: active.ordinal,
+      displayText: getOrderedMarkerLabel(
+        parsed.style,
+        active.ordinal,
+        parsed.delimiter
+      )
+    });
+  }
+  return items;
+}
+
+export function getWmdxOrderedListMarkerChanges(
+  lines,
+  isExcluded = () => false
+) {
+  return getWmdxOrderedListSequence(lines, isExcluded).flatMap(item => {
+    const marker = getOrderedMarkerLabel(
+      item.style,
+      item.ordinal,
+      item.delimiter
+    );
+    return item.marker === marker
+      ? []
+      : [{ from: item.from, to: item.to, insert: marker }];
+  });
 }
 
 export function getWmdxOrderedListEnterEdit(
@@ -169,35 +300,64 @@ export function getWmdxOrderedListEnterEdit(
   if (from < lineFrom || to > lineTo) return null;
 
   const lineText = source.slice(lineFrom, lineTo);
-  const listPosition = getWmdxOrderedListPosition(
-    source,
-    lineFrom,
-    lineText
-  );
-  const parsed = parseWmdxOrderedListMarker(
-    lineText,
-    listPosition?.style ?? null
-  );
-  if (!parsed || isExcluded(lineFrom + parsed.markerFrom)) return null;
+  let sourceLineFrom = 0;
+  const lines = [];
+  let lineNumber = 1;
+  while (sourceLineFrom <= lineFrom) {
+    const newline = source.indexOf('\n', sourceLineFrom);
+    const text = source.slice(
+      sourceLineFrom,
+      newline < 0 ? source.length : newline
+    );
+    const from = sourceLineFrom;
+    const to = from + text.length;
+    lines.push({ from, to, number: lineNumber, text });
+    if (from === lineFrom || newline < 0) break;
+    sourceLineFrom = to + 1;
+    lineNumber += 1;
+  }
+  const orderedItems = getWmdxOrderedListSequence(lines, isExcluded);
+  const itemIndex = orderedItems.findIndex(item => item.line.from === lineFrom);
+  if (itemIndex < 0) return null;
+  const item = orderedItems[itemIndex];
 
-  if (selection?.empty && !lineText.slice(parsed.markerTo).trim()) {
-    const exitFrom = lineFrom + parsed.markerFrom;
+  if (selection?.empty && !lineText.slice(item.markerTo).trim()) {
+    const parent = orderedItems
+      .slice(0, itemIndex)
+      .reverse()
+      .find(previous => previous.indent < item.indent);
+    const parentIndent = parent?.indent ?? 0;
+    const leadingIndent = (/^[ \t]*/.exec(lineText)?.[0] ?? '');
+    let columns = 0;
+    let keepLength = 0;
+    for (const character of leadingIndent) {
+      const nextColumns = character === '\t'
+        ? columns + (4 - (columns % 4))
+        : columns + 1;
+      if (nextColumns > parentIndent) break;
+      columns = nextColumns;
+      keepLength++;
+    }
+    const quotePrefix = /^(?:>[ \t]*)+/.exec(
+      lineText.slice(leadingIndent.length)
+    )?.[0] ?? '';
+    const retainedPrefix = leadingIndent.slice(0, keepLength) + quotePrefix;
     return {
-      from: exitFrom,
+      from: lineFrom,
       to: lineTo,
-      insert: '',
-      cursor: exitFrom,
+      insert: retainedPrefix,
+      cursor: lineFrom + retainedPrefix.length,
       exitsList: true
     };
   }
 
   const nextMarker = getOrderedMarkerLabel(
-    parsed.style,
-    (listPosition?.ordinal ?? parsed.ordinal) + 1,
-    parsed.delimiter
+    item.style,
+    item.ordinal + 1,
+    item.delimiter
   );
   const insert =
-    `\n${lineText.slice(0, parsed.markerFrom)}${nextMarker} `;
+    `\n${lineText.slice(0, item.markerFrom)}${nextMarker} `;
   return {
     from,
     to,
@@ -205,90 +365,6 @@ export function getWmdxOrderedListEnterEdit(
     cursor: from + insert.length,
     exitsList: false
   };
-}
-
-function getWmdxOrderedListPosition(source, lineFrom, lineText) {
-  const current = parseWmdxOrderedListMarker(lineText);
-  if (!current) return null;
-  const targetPrefix = lineText.slice(0, current.markerFrom);
-  const listLines = [{
-    text: lineText,
-    defaultParsed: current,
-    gapBefore: false
-  }];
-  let previousLineFrom = lineFrom;
-  let crossedBlankLine = false;
-
-  while (previousLineFrom > 0) {
-    const previousEnd = previousLineFrom - 1;
-    const previousStart = source.lastIndexOf('\n', previousEnd - 1) + 1;
-    const previousText = source.slice(previousStart, previousEnd);
-    if (!previousText.trim()) {
-      if (crossedBlankLine) break;
-      crossedBlankLine = true;
-      previousLineFrom = previousStart;
-      continue;
-    }
-    const parsed = parseWmdxOrderedListMarker(previousText);
-    if (
-      !parsed ||
-      parsed.indent !== current.indent ||
-      previousText.slice(0, parsed.markerFrom) !== targetPrefix
-    ) {
-      break;
-    }
-    listLines[0].gapBefore = crossedBlankLine;
-    listLines.unshift({
-      text: previousText,
-      defaultParsed: parsed,
-      gapBefore: false
-    });
-    crossedBlankLine = false;
-    previousLineFrom = previousStart;
-  }
-
-  let active = null;
-  for (const entry of listLines) {
-    let parsed = entry.defaultParsed;
-    if (active) {
-      const candidate = parseWmdxOrderedListMarker(entry.text, active.style);
-      const ambiguousRomanOne =
-        entry.defaultParsed.marker.slice(0, -1).toUpperCase() === 'I';
-      if (
-        candidate?.style === active.style &&
-        (
-          parsed.style === active.style ||
-          (
-            !entry.gapBefore &&
-            (
-              candidate.ordinal === active.ordinal + 1 ||
-              candidate.ordinal === 1
-            )
-          ) ||
-          (
-            entry.gapBefore &&
-            !ambiguousRomanOne &&
-            candidate.ordinal === active.ordinal + 1
-          )
-        )
-      ) {
-        parsed = candidate;
-      }
-    }
-    if (
-      !active ||
-      active.style !== parsed.style ||
-      active.delimiter !== parsed.delimiter
-    ) {
-      active = {
-        style: parsed.style,
-        delimiter: parsed.delimiter,
-        ordinal: 0
-      };
-    }
-    active.ordinal = Math.max(active.ordinal + 1, parsed.ordinal);
-  }
-  return active;
 }
 
 export function getSelectedListPrefixChanges(lines, prefix) {

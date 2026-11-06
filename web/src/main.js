@@ -165,10 +165,11 @@ import {
   getSelectedListPrefixChanges,
   getSelectedListLineNumbers,
   getOrderedMarkerLabel,
+  getOrderedListPrefixGenerator,
+  getWmdxOrderedListSequence,
   isListAuthoringAvailable,
   isListFlavorEnabled,
   normalizeListSyntaxSettings,
-  parseWmdxOrderedListMarker,
   getWmdxOrderedListEnterEdit
 } from './listSyntax.mjs';
 import {
@@ -513,83 +514,23 @@ function wmdxOrderedListPositionIsExcluded(tree, position) {
 
 function getWmdxOrderedListItems(doc, tree) {
   if (!isListFlavorEnabledNow('wmdx')) return [];
-  const items = [];
-  const activeLists = new Map();
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
-    const line = doc.line(lineNumber);
-    let parsed = parseWmdxOrderedListMarker(line.text);
-    if (!parsed) {
-      if (line.text.trim()) {
-        const indent = (/^[ \t]*/.exec(line.text)?.[0] ?? '').length;
-        for (const depth of activeLists.keys()) {
-          if (depth >= indent) activeLists.delete(depth);
-        }
-      } else {
-        for (const active of activeLists.values()) active.gap = true;
-      }
-      continue;
-    }
-    const markerPosition = line.from + parsed.markerFrom;
-    if (wmdxOrderedListPositionIsExcluded(tree, markerPosition)) continue;
+  const lines = Array.from(
+    { length: doc.lines },
+    (_, index) => doc.line(index + 1)
+  );
+  return getWmdxOrderedListSequence(
+    lines,
+    position => wmdxOrderedListPositionIsExcluded(tree, position)
+  );
+}
 
-    for (const depth of activeLists.keys()) {
-      if (depth > parsed.indent) activeLists.delete(depth);
-    }
-    let active = activeLists.get(parsed.indent);
-    if (active) {
-      const candidate = parseWmdxOrderedListMarker(line.text, active.style);
-      const ambiguousRomanOne = parsed.marker.slice(0, -1).toUpperCase() === 'I';
-      if (
-        candidate?.style === active.style &&
-        (
-          parsed.style === active.style ||
-          (
-            !active.gap &&
-            (
-              candidate.ordinal === active.ordinal + 1 ||
-              candidate.ordinal === 1
-            )
-          ) ||
-          (
-            active.gap &&
-            !ambiguousRomanOne &&
-            candidate.ordinal === active.ordinal + 1
-          )
-        )
-      ) {
-        parsed = candidate;
-      }
-    }
-    if (
-      !active ||
-      active.style !== parsed.style ||
-      active.delimiter !== parsed.delimiter
-    ) {
-      active = {
-        style: parsed.style,
-        delimiter: parsed.delimiter,
-        ordinal: 0,
-        gap: false
-      };
-      activeLists.set(parsed.indent, active);
-    }
-    active.ordinal = Math.max(active.ordinal + 1, parsed.ordinal);
-    active.gap = false;
-    items.push({
-      ...parsed,
-      line,
-      from: line.from + parsed.markerFrom,
-      to: line.from + parsed.markerTo,
-      textTo: line.to,
-      ordinal: active.ordinal,
-      displayText: getOrderedMarkerLabel(
-        parsed.style,
-        active.ordinal,
-        parsed.delimiter
-      )
-    });
-  }
-  return items;
+function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {}) {
+  const tree = syntaxTree(view.state);
+  return applyMarkdownIndent(view, direction, spaces, {
+    ...options,
+    renumberWmdx: isListFlavorEnabledNow('wmdx'),
+    isExcluded: position => wmdxOrderedListPositionIsExcluded(tree, position)
+  });
 }
 
 const markdownEntityDisplayCache = new Map();
@@ -5820,11 +5761,11 @@ export const tableNavigationKeymap = keymap.of([
 export const markdownIndentKeymap = keymap.of([
   {
     key: 'Tab',
-    run: view => applyMarkdownIndent(view, 'indent')
+    run: view => applyEditorMarkdownIndent(view, 'indent')
   },
   {
     key: 'Shift-Tab',
-    run: view => applyMarkdownIndent(view, 'outdent')
+    run: view => applyEditorMarkdownIndent(view, 'outdent')
   }
 ]);
 
@@ -9959,12 +9900,10 @@ function execCmd(cmdName, options) {
       const prefix = getDefaultOrderedPrefix(listSyntaxSettings);
       if (prefix) {
         const orderedStyle = getDefaultOrderedStyle(listSyntaxSettings);
-        const selectedPrefix = index =>
-          `${getOrderedMarkerLabel(
-            orderedStyle,
-            index + 1,
-            prefix.trimEnd().slice(-1)
-          )} `;
+        const selectedPrefix = getOrderedListPrefixGenerator(
+          orderedStyle,
+          prefix.trimEnd().slice(-1)
+        );
         cmToggleSelectedListPrefix(view, selectedPrefix);
       }
     } else if (cmdName === 'todoList') {
@@ -9980,9 +9919,9 @@ function execCmd(cmdName, options) {
       }
     }
     else if (cmdName === 'indent') {
-      applyMarkdownIndent(view, 'indent', '  ', editorCommandOptions);
+      applyEditorMarkdownIndent(view, 'indent', '  ', editorCommandOptions);
     } else if (cmdName === 'outdent') {
-      applyMarkdownIndent(view, 'outdent', '  ', editorCommandOptions);
+      applyEditorMarkdownIndent(view, 'outdent', '  ', editorCommandOptions);
     }
     else if (cmdName === 'moveLineUp') {
       if (cmMoveLineUp(view)) focusEditorAfterCommand(view);

@@ -237,6 +237,13 @@ Existing repeated style markers such as `A.` followed by `A.` remain recognized
 and auto-number in WYSIWYG. Applying the matching toolbar action to those lines
 rewrites them as an explicit sequence.
 
+Each indentation depth has its own numbering sequence. A nested list starts
+again at its first marker (`I.` / `A.` / `1.`), and the parent sequence resumes
+after the nested block. Indenting or outdenting a Wmdx ordered list updates its
+source markers to match. Return continues a non-empty item; Return on an empty
+nested item removes that marker and steps out one indentation level, while an
+empty top-level item exits the list.
+
 Task items begin directly with `[ ]` for unchecked or `[x]` for checked; do not
 put a leading `-` before the checkbox. The checkbox marker is itself the task
 marker, and indentation represents nesting. Add dialect-specific list markers
