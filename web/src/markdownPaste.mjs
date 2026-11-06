@@ -1,5 +1,6 @@
 import { syntaxTree } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
+import { normalizeMarkdownOrderedListText } from './listSyntax.mjs';
 
 function blockquoteContext(state, position) {
   if (!state?.doc || !Number.isInteger(position)) {
@@ -118,7 +119,14 @@ function readAndroidClipboard() {
   }
 }
 
-function insertQuoteAwareText(view, from, to, text, userEvent) {
+function insertQuoteAwareText(
+  view,
+  from,
+  to,
+  text,
+  userEvent,
+  transformPastedText
+) {
   if (
     view.state.readOnly ||
     view.state.selection.ranges.length !== 1 ||
@@ -128,8 +136,9 @@ function insertQuoteAwareText(view, from, to, text, userEvent) {
     return false;
   }
 
+  const transformedText = transformPastedText(text);
   const pasteRange = quotePasteInsertionRange(view.state, from, to);
-  const multiline = text.includes('\n');
+  const multiline = transformedText.includes('\n');
   const context = multiline
     ? null
     : blockquoteContext(view.state, pasteRange.from);
@@ -138,11 +147,11 @@ function insertQuoteAwareText(view, from, to, text, userEvent) {
         view.state,
         pasteRange.from,
         pasteRange.to,
-        text
+        transformedText
       )
     : context?.needsSeparatorAfterPrefix
-      ? ` ${text}`
-      : text;
+      ? ` ${transformedText}`
+      : transformedText;
   if (
     quotedText === text &&
     pasteRange.from === from &&
@@ -163,74 +172,84 @@ function insertQuoteAwareText(view, from, to, text, userEvent) {
   return true;
 }
 
-export const markdownBlockquotePaste = [
-  EditorView.domEventHandlers({
-    paste(event, view) {
-      let text;
-      try {
-        text = event.clipboardData?.getData('text/plain');
-        if (!text) text = event.clipboardData?.getData('text');
-      } catch {
-        text = '';
+export function createMarkdownBlockquotePaste(
+  transformPastedText = normalizeMarkdownOrderedListText
+) {
+  return [
+    EditorView.domEventHandlers({
+      paste(event, view) {
+        let text;
+        try {
+          text = event.clipboardData?.getData('text/plain');
+          if (!text) text = event.clipboardData?.getData('text');
+        } catch {
+          text = '';
+        }
+        if (!text) text = readAndroidClipboard();
+        const { from, to } = view.state.selection.main;
+        const handled = insertQuoteAwareText(
+          view,
+          from,
+          to,
+          text,
+          'input.paste',
+          transformPastedText
+        );
+        if (handled) event.preventDefault();
+        return handled;
+      },
+      keydown(event, view) {
+        const isPasteShortcut =
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          (event.key || '').toLowerCase() === 'v';
+        if (!isPasteShortcut) return false;
+        const { from, to } = view.state.selection.main;
+        const handled = insertQuoteAwareText(
+          view,
+          from,
+          to,
+          readAndroidClipboard(),
+          'input.paste',
+          transformPastedText
+        );
+        if (handled) event.preventDefault();
+        return handled;
+      },
+      beforeinput(event, view) {
+        let text = '';
+        try {
+          text = event.dataTransfer?.getData('text/plain') || event.data || '';
+        } catch {
+          text = event.data || '';
+        }
+        if (!text && event.inputType === 'insertFromPaste') {
+          text = readAndroidClipboard();
+        }
+        const { from, to } = view.state.selection.main;
+        const handled = insertQuoteAwareText(
+          view,
+          from,
+          to,
+          text,
+          'input.paste',
+          transformPastedText
+        );
+        if (handled) event.preventDefault();
+        return handled;
       }
-      if (!text) text = readAndroidClipboard();
-      const { from, to } = view.state.selection.main;
-      const handled = insertQuoteAwareText(
+    }),
+    EditorView.inputHandler.of((view, from, to, text) =>
+      insertQuoteAwareText(
         view,
         from,
         to,
         text,
-        'input.paste'
-      );
-      if (handled) event.preventDefault();
-      return handled;
-    },
-    keydown(event, view) {
-      const isPasteShortcut =
-        (event.ctrlKey || event.metaKey) &&
-        !event.altKey &&
-        (event.key || '').toLowerCase() === 'v';
-      if (!isPasteShortcut) return false;
-      const { from, to } = view.state.selection.main;
-      const handled = insertQuoteAwareText(
-        view,
-        from,
-        to,
-        readAndroidClipboard(),
-        'input.paste'
-      );
-      if (handled) event.preventDefault();
-      return handled;
-    },
-    beforeinput(event, view) {
-      let text = '';
-      try {
-        text = event.dataTransfer?.getData('text/plain') || event.data || '';
-      } catch {
-        text = event.data || '';
-      }
-      if (!text && event.inputType === 'insertFromPaste') {
-        text = readAndroidClipboard();
-      }
-      const { from, to } = view.state.selection.main;
-      const handled = insertQuoteAwareText(
-        view,
-        from,
-        to,
-        text,
-        'input.paste'
-      );
-      if (handled) event.preventDefault();
-      return handled;
-    }
-  }),
-  EditorView.inputHandler.of((view, from, to, text) =>
-    insertQuoteAwareText(
-      view,
-      from,
-      to,
-      text,
-      text?.includes('\n') ? 'input.paste' : 'input.type'
+        text?.includes('\n') ? 'input.paste' : 'input.type',
+        transformPastedText
+      )
     )
-  )
-];
+  ];
+}
+
+export const markdownBlockquotePaste = createMarkdownBlockquotePaste();

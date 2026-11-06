@@ -705,7 +705,7 @@ test('Paste as Plain Text is available as an action and configurable shortcut', 
   assert.match(mainSource, /quotePasteInsertionRange\(view\.state, from, to\)/);
   assert.match(
     mainSource,
-    /quoteMultilinePaste\(\s*view\.state,\s*pasteRange\.from,\s*pasteRange\.to,\s*text\s*\)/
+    /const sourceText = isListFlavorEnabledNow\('markdown'\)[\s\S]*?normalizeMarkdownOrderedListText\(text\)[\s\S]*?quoteMultilinePaste\(\s*view\.state,\s*pasteRange\.from,\s*pasteRange\.to,\s*sourceText\s*\)/
   );
   assert.match(mainSource, /customHotkeys\.paste_as_plain_text/);
   assert.match(settingsSource, /id: 'pasteAsPlainText'[\s\S]*?Paste as Plain Text/);

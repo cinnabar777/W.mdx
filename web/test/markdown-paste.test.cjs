@@ -155,6 +155,44 @@ test('native paste event adds quote markers to continuation lines', () => {
       '> quote\n> - First\n>   - Second\n>     - Third'
     );
 
+    const nestedNumbers = [
+      '1. Parent',
+      '   2. Child',
+      '   3. Next child',
+      '      4. Grandchild',
+      '      5. Next grandchild',
+      '   6. Third child',
+      '7. Next parent'
+    ].join('\n');
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: '' },
+      selection: { anchor: 0 }
+    });
+    const numberedPasteEvent = new window.Event('paste', {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(numberedPasteEvent, 'clipboardData', {
+      value: {
+        getData: type => type === 'text/plain' ? nestedNumbers : ''
+      }
+    });
+    view.contentDOM.dispatchEvent(numberedPasteEvent);
+
+    assert.equal(numberedPasteEvent.defaultPrevented, true);
+    assert.equal(
+      view.state.doc.toString(),
+      [
+        '1. Parent',
+        '   1. Child',
+        '   2. Next child',
+        '      1. Grandchild',
+        '      2. Next grandchild',
+        '   3. Third child',
+        '2. Next parent'
+      ].join('\n')
+    );
+
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: doc },
       selection: { anchor: doc.length }

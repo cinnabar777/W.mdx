@@ -35,7 +35,7 @@ import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import { applyMarkdownIndent } from './markdownIndent.js';
 import {
-  markdownBlockquotePaste,
+  createMarkdownBlockquotePaste,
   quoteMultilinePaste,
   quotePasteInsertionRange
 } from './markdownPaste.mjs';
@@ -171,7 +171,9 @@ import {
   isListAuthoringAvailable,
   isListFlavorEnabled,
   normalizeListSyntaxSettings,
-  getWmdxOrderedListEnterEdit
+  getWmdxOrderedListEnterEdit,
+  getTaskListEnterEdit,
+  normalizeMarkdownOrderedListText
 } from './listSyntax.mjs';
 import {
   BUILT_IN_HOLDING_ITEMS,
@@ -2514,7 +2516,11 @@ class EmbeddedDocumentWidget extends WidgetType {
             wmdxCommonMarkCompatibility
           ]
         }),
-        markdownBlockquotePaste,
+        createMarkdownBlockquotePaste(text =>
+          isListFlavorEnabledNow('markdown')
+            ? normalizeMarkdownOrderedListText(text)
+            : text
+        ),
         syntaxHighlighting(customHighlightStyle),
         ...(fullInlineEditing
           ? [
@@ -2736,6 +2742,31 @@ function handleWmdxOrderedListEnter(view, event) {
   return true;
 }
 
+function handleTaskListEnter(view, event) {
+  if (!isWmdxCalloutEnterEvent(event)) return false;
+
+  const state = view.state;
+  const selection = state.selection.main;
+  const edit = getTaskListEnterEdit(
+    state.doc.toString(),
+    selection,
+    (_lineText, match) => match[2]
+      ? isListFlavorEnabledNow('markdown') &&
+        listSyntaxSettings.gfmTasks !== false
+      : isListFlavorEnabledNow('wmdx')
+  );
+  if (!edit) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(edit.cursor),
+    userEvent: 'input'
+  });
+  return true;
+}
+
 export const livePreviewPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
     this.initializedFoldLines = new Set();
@@ -2745,9 +2776,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       handleWmdxCalloutTitleClick(view, event);
     this.calloutEnterHandler = event =>
       handleCalloutEnter(view, event) ||
+      handleTaskListEnter(view, event) ||
       handleWmdxOrderedListEnter(view, event);
     this.calloutBeforeInputHandler = event =>
       handleCalloutEnter(view, event) ||
+      handleTaskListEnter(view, event) ||
       handleWmdxOrderedListEnter(view, event);
     view.dom.addEventListener('click', this.calloutTitleClickHandler, true);
     view.dom.addEventListener('keydown', this.calloutEnterHandler, true);
@@ -6280,7 +6313,11 @@ class CodeMirrorAdapter {
             wmdxCommonMarkCompatibility
           ]
         }),
-        markdownBlockquotePaste,
+        createMarkdownBlockquotePaste(text =>
+          isListFlavorEnabledNow('markdown')
+            ? normalizeMarkdownOrderedListText(text)
+            : text
+        ),
         syntaxHighlighting(customHighlightStyle),
         livePreviewPlugin,
         listMarkerMeasurementPlugin,
@@ -7999,11 +8036,14 @@ async function runToolbarClipboardAction(actionId, preserveKeyboard = false) {
     }
     const { from, to } = view.state.selection.main;
     const pasteRange = quotePasteInsertionRange(view.state, from, to);
+    const sourceText = isListFlavorEnabledNow('markdown')
+      ? normalizeMarkdownOrderedListText(text)
+      : text;
     const pastedText = quoteMultilinePaste(
       view.state,
       pasteRange.from,
       pasteRange.to,
-      text
+      sourceText
     );
     view.dispatch({
       changes: {

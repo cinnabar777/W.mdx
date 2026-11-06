@@ -184,6 +184,93 @@ test('CommonMark ordered numbering follows indentation levels', async () => {
   );
 });
 
+test('pasted nested decimal lists are normalized in source by indentation', async () => {
+  const { normalizeMarkdownOrderedListText } =
+    await import('../src/listSyntax.mjs');
+  const pasted = [
+    '1. Parent',
+    '   2. Child',
+    '   3. Next child',
+    '      4. Grandchild',
+    '      5. Next grandchild',
+    '   6. Third child',
+    '7. Next parent'
+  ].join('\n');
+
+  assert.equal(
+    normalizeMarkdownOrderedListText(pasted),
+    [
+      '1. Parent',
+      '   1. Child',
+      '   2. Next child',
+      '      1. Grandchild',
+      '      2. Next grandchild',
+      '   3. Third child',
+      '2. Next parent'
+    ].join('\n')
+  );
+  assert.equal(
+    normalizeMarkdownOrderedListText('1. First\n2. Second'),
+    '1. First\n2. Second'
+  );
+});
+
+test('Return continues Wmdx and GFM checkbox items and exits an empty item', async () => {
+  const { getTaskListEnterEdit } = await import('../src/listSyntax.mjs');
+  const cursor = (source, position = source.length) => ({
+    from: position,
+    to: position,
+    head: position,
+    empty: true
+  });
+
+  assert.deepEqual(
+    getTaskListEnterEdit('[ ] First', cursor('[ ] First')),
+    {
+      from: 9,
+      to: 9,
+      insert: '\n[ ] ',
+      cursor: 14,
+      exitsList: false
+    }
+  );
+  assert.deepEqual(
+    getTaskListEnterEdit('- [x] Done', cursor('- [x] Done')),
+    {
+      from: 10,
+      to: 10,
+      insert: '\n- [ ] ',
+      cursor: 17,
+      exitsList: false
+    }
+  );
+  assert.deepEqual(
+    getTaskListEnterEdit('  [ ] ', cursor('  [ ] ')),
+    {
+      from: 0,
+      to: 6,
+      insert: '',
+      cursor: 0,
+      exitsList: true
+    }
+  );
+  assert.equal(
+    getTaskListEnterEdit('- [ ] Markdown task', cursor('- [ ] Markdown task'), (
+      _lineText,
+      match
+    ) => !match[2]),
+    null
+  );
+  assert.equal(
+    getTaskListEnterEdit(
+      '[ ] Wmdx task',
+      cursor('[ ] Wmdx task'),
+      () => false
+    ),
+    null
+  );
+});
+
 test('selected lines receive a list prefix and matching prefixes toggle off together', async () => {
   const { getSelectedListPrefixChanges } = await import('../src/listSyntax.mjs');
   const lines = [
@@ -277,6 +364,8 @@ test('list toolbar actions cover selected lines and custom markers refresh while
   assert.match(mainSource, /cmdName === 'todoList'[\s\S]*?cmToggleSelectedListPrefix\(view, prefix\)/);
   assert.match(mainSource, /getDefaultOrderedStyle\(listSyntaxSettings\)/);
   assert.match(mainSource, /getOrderedListPrefixGenerator\(/);
+  assert.match(mainSource, /getTaskListEnterEdit\(/);
+  assert.match(mainSource, /handleCalloutEnter\(view, event\) \|\|[\s\S]*?handleTaskListEnter\(view, event\)/);
   assert.match(mainSource, /handleCalloutEnter\(view, event\) \|\|[\s\S]*?handleWmdxOrderedListEnter\(view, event\)/);
   assert.equal(
     (mainSource.match(/linePattern: \/\^\[ \\t\]\*\[A-Za-z\]\+\[\.\)\]\(\?:\[ \\t\]\|\$\)\//g) || []).length,

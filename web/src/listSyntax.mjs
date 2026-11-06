@@ -389,6 +389,31 @@ export function getMarkdownOrderedListMarkerChanges(
   );
 }
 
+export function normalizeMarkdownOrderedListText(text) {
+  const source = String(text ?? '');
+  const lines = [];
+  let from = 0;
+  for (const [index, lineText] of source.split('\n').entries()) {
+    lines.push({
+      from,
+      to: from + lineText.length,
+      number: index + 1,
+      text: lineText
+    });
+    from += lineText.length + 1;
+  }
+
+  const changes = getMarkdownOrderedListMarkerChanges(lines);
+  let normalized = source;
+  for (const change of changes.reverse()) {
+    normalized =
+      normalized.slice(0, change.from) +
+      change.insert +
+      normalized.slice(change.to);
+  }
+  return normalized;
+}
+
 export function getWmdxOrderedListEnterEdit(
   text,
   selection,
@@ -470,6 +495,58 @@ export function getWmdxOrderedListEnterEdit(
   );
   const insert =
     `\n${lineText.slice(0, item.markerFrom)}${nextMarker} `;
+  return {
+    from,
+    to,
+    insert,
+    cursor: from + insert.length,
+    exitsList: false
+  };
+}
+
+export function getTaskListEnterEdit(
+  text,
+  selection,
+  isEligible = () => true
+) {
+  const source = String(text ?? '');
+  const position = selection?.head ?? selection?.to;
+  const from = selection?.from ?? position;
+  const to = selection?.to ?? position;
+  if (
+    !Number.isInteger(position) ||
+    !Number.isInteger(from) ||
+    !Number.isInteger(to)
+  ) {
+    return null;
+  }
+
+  const lineFrom = source.lastIndexOf('\n', position - 1) + 1;
+  const nextBreak = source.indexOf('\n', position);
+  const lineTo = nextBreak < 0 ? source.length : nextBreak;
+  if (from < lineFrom || to > lineTo) return null;
+
+  const lineText = source.slice(lineFrom, lineTo);
+  const match =
+    /^([ \t]*(?:(?:>[ \t]*)+)?)(?:([-+*])[ \t]+)?\[([ xX])\](?:[ \t]+|$)/.exec(lineText);
+  if (!match || !isEligible(lineText, match)) return null;
+
+  const contentFrom = lineFrom + match[0].length;
+  if (from < contentFrom || to < contentFrom) return null;
+
+  if (selection?.empty && !lineText.slice(match[0].length).trim()) {
+    return {
+      from: lineFrom,
+      to: lineTo,
+      insert: '',
+      cursor: lineFrom,
+      exitsList: true
+    };
+  }
+
+  const bulletPrefix = match[2] ? `${match[2]} ` : '';
+  const taskPrefix = `${match[1]}${bulletPrefix}[ ] `;
+  const insert = `\n${taskPrefix}`;
   return {
     from,
     to,
