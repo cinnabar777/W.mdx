@@ -101,9 +101,11 @@ paragraph or quote should remain aligned with the indented block.
 
 For the wrapping check, place the cursor in the following quote and use Indent.
 At a collapsed cursor, the action should indent the whole paragraph, not just
-the current source line. Verify the first rendered row and all wrapped rows
-begin at the same horizontal position. Repeat on an ordinary paragraph. The
-quote border must stay at the same left position in both cases:
+the current source line. In Live Preview and WYSIWYG, the leading indentation
+spaces should be hidden when the line is inactive and rendered as block padding.
+Verify the first rendered row and all wrapped rows begin at the same horizontal
+position. Repeat on an ordinary paragraph. The quote border must stay at the
+same left position in both cases:
 
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.

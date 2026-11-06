@@ -41,6 +41,28 @@ export function getMarkdownSourceIndentColumns(lineText) {
   return columns;
 }
 
+export function getMarkdownSourceIndentRanges(lineText) {
+  const source = String(lineText ?? '');
+  const ranges = [];
+  let index = 0;
+
+  while (source[index] === ' ' || source[index] === '\t') index += 1;
+  if (index > 0) ranges.push({ from: 0, to: index });
+
+  while (source[index] === '>') {
+    index += 1;
+    const separatorStart = index;
+    while (source[index] === ' ' || source[index] === '\t') index += 1;
+    if (source[index] === '>') continue;
+
+    const hideFrom = separatorStart + Math.min(index - separatorStart, 1);
+    if (index > hideFrom) ranges.push({ from: hideFrom, to: index });
+    break;
+  }
+
+  return ranges;
+}
+
 function indentationWidth(value) {
   let width = 0;
   for (const character of value) {

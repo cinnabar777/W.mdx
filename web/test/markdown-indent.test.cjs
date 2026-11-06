@@ -174,7 +174,10 @@ test('a collapsed indent targets all source lines of the current paragraph', asy
 });
 
 test('source indentation counts paragraph and blockquote content spacing', async () => {
-  const { getMarkdownSourceIndentColumns } =
+  const {
+    getMarkdownSourceIndentColumns,
+    getMarkdownSourceIndentRanges
+  } =
     await import('../src/markdownIndent.js');
 
   assert.equal(getMarkdownSourceIndentColumns('  paragraph'), 2);
@@ -182,6 +185,17 @@ test('source indentation counts paragraph and blockquote content spacing', async
   assert.equal(getMarkdownSourceIndentColumns('  > quoted paragraph'), 2);
   assert.equal(getMarkdownSourceIndentColumns('> > nested quote'), 0);
   assert.equal(getMarkdownSourceIndentColumns('\tparagraph'), 4);
+  assert.deepEqual(getMarkdownSourceIndentRanges('  paragraph'), [
+    { from: 0, to: 2 }
+  ]);
+  assert.deepEqual(getMarkdownSourceIndentRanges('>   quoted paragraph'), [
+    { from: 2, to: 4 }
+  ]);
+  assert.deepEqual(getMarkdownSourceIndentRanges('  >   nested paragraph'), [
+    { from: 0, to: 2 },
+    { from: 4, to: 6 }
+  ]);
+  assert.deepEqual(getMarkdownSourceIndentRanges('> > nested quote'), []);
 });
 
 test('outdent reduces nested indentation and removes a root list marker', async () => {

@@ -36,7 +36,8 @@ import { extractTocHeadings } from './tocHeadings.js';
 import {
   applyMarkdownIndent,
   getMarkdownIndentTargetSelection,
-  getMarkdownSourceIndentColumns
+  getMarkdownSourceIndentColumns,
+  getMarkdownSourceIndentRanges
 } from './markdownIndent.js';
 import {
   createMarkdownBlockquotePaste,
@@ -2964,6 +2965,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }
     };
     const lineClasses = new Map();
+    const paragraphIndentSyntaxRanges = new Map();
 
     const addLineClass = (lineFrom, ...classNames) => {
       if (!lineClasses.has(lineFrom)) lineClasses.set(lineFrom, new Set());
@@ -3129,6 +3131,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         if (paragraphNode) {
           addLineClass(line.from, 'cm-paragraph');
+          const indentRanges = getMarkdownSourceIndentRanges(line.text);
+          if (indentRanges.length) {
+            paragraphIndentSyntaxRanges.set(line.from, indentRanges);
+          }
 
           const paragraphFirstLine = doc.lineAt(paragraphNode.from);
           const paragraphLastLine = doc.lineAt(
@@ -3284,6 +3290,20 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             : selection.from < end && selection.to > line.from
         );
         if (!isIndentActive) hideSyntax(line.from, end);
+      }
+    }
+
+    for (const [lineFrom, ranges] of paragraphIndentSyntaxRanges) {
+      if (calloutLineAttributes.has(lineFrom)) continue;
+      const line = doc.lineAt(lineFrom);
+      const isIndentActive = !isPureWysiwyg && (
+        selection.empty
+          ? selection.head >= line.from && selection.head <= line.to
+          : selection.from < line.to && selection.to > line.from
+      );
+      if (isIndentActive) continue;
+      for (const range of ranges) {
+        hideSyntax(line.from + range.from, line.from + range.to);
       }
     }
 

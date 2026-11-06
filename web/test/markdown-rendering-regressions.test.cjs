@@ -110,6 +110,10 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?padding-left:\s*var\(--source-indent-offset/);
   assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?text-indent:\s*0\s*!important/);
   assert.match(styles, /cm-source-indented\.cm-paragraph-first[\s\S]*?text-indent:\s*0\s*!important/);
+  assert.match(main, /getMarkdownSourceIndentRanges\(line\.text\)/);
+  assert.match(main, /paragraphIndentSyntaxRanges/);
+  assert.match(main, /if \(calloutLineAttributes\.has\(lineFrom\)\) continue/);
+  assert.match(main, /hideSyntax\(line\.from \+ range\.from, line\.from \+ range\.to\)/);
   assert.match(styles, /cm-source-indented\.cm-paragraph\.cm-blockquote[\s\S]*?padding-left:\s*calc\([\s\S]*?source-indent-offset/);
   const quoteIndentRule = styles.match(/\.cm-content \.cm-line\.cm-source-indented\.cm-paragraph\.cm-blockquote[\s\S]*?\n    \}/)?.[0] ?? '';
   assert.doesNotMatch(quoteIndentRule, /margin-left:/);
