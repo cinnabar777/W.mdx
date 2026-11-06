@@ -1101,28 +1101,32 @@ export function toggleWmdxColorFormat(view, action = null, options = {}) {
   return true;
 }
 
-function cycleMarkdownListLine(lineText) {
+function cycleMarkdownListLine(
+  lineText,
+  { bulletPrefix = '- ', orderedPrefix = '1. ', taskPrefix = '- [ ] ' } = {}
+) {
   const indent = /^[ \t]*/.exec(lineText)?.[0] ?? '';
   const content = lineText.slice(indent.length);
-  const checkbox = /^[-*+]\s+\[[ xX]\](?:\s+|$)/.exec(content);
+  const checkbox = /^(?:[-*+]\s+)?\[[ xX]\](?:\s+|$)/.exec(content);
   if (checkbox) {
-    return `${indent}1. ${content.slice(checkbox[0].length)}`;
+    return `${indent}${orderedPrefix}${content.slice(checkbox[0].length)}`;
   }
 
-  const numbered = /^\d+[.)](?:\s+|$)/.exec(content);
+  const numbered = /^(?:\d+|[aAiI])[.)](?:\s+|$)/.exec(content);
   if (numbered) {
     return `${indent}${content.slice(numbered[0].length)}`;
   }
 
   const bullet = /^[-*+](?:\s+|$)/.exec(content);
   if (bullet) {
-    return `${indent}- [ ] ${content.slice(bullet[0].length)}`;
+    const prefix = taskPrefix || orderedPrefix;
+    return `${indent}${prefix}${content.slice(bullet[0].length)}`;
   }
 
-  return `${indent}- ${content}`;
+  return `${indent}${bulletPrefix}${content}`;
 }
 
-export function cycleMarkdownListType(view) {
+export function cycleMarkdownListType(view, options = {}) {
   if (!view?.state?.doc || typeof view.dispatch !== 'function') return false;
   const { doc, selection } = view.state;
   const code = codeRanges(view.state);
@@ -1150,7 +1154,7 @@ export function cycleMarkdownListType(view) {
       if (code.some(range => range.from <= line.from && range.to >= line.to)) {
         return [];
       }
-      const insert = cycleMarkdownListLine(line.text);
+      const insert = cycleMarkdownListLine(line.text, options);
       return insert === line.text
         ? []
         : [{ from: line.from, to: line.to, insert }];

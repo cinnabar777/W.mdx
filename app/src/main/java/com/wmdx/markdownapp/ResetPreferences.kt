@@ -766,9 +766,16 @@ object PreferenceResetHelper {
                 key == "pref_footnote_syntax_enabled" ||
                 key == "pref_footnote_syntax_wmdx_enabled" ||
                 key == "pref_footnote_syntax_markdown_enabled" ||
-                key == "pref_footnote_syntax_obsidian_inline_enabled" -> true
+                key == "pref_footnote_syntax_obsidian_inline_enabled" ||
+                key == "pref_list_syntax_enabled" ||
+                key == "pref_list_syntax_markdown_enabled" ||
+                key == "pref_list_syntax_gfm_tasks_enabled" ||
+                key == "pref_list_syntax_wmdx_enabled" -> true
             key == "pref_heading_authoring_syntax" -> "wmdx"
             key == "pref_footnote_authoring_syntax" -> "wmdx"
+            key == "pref_list_authoring_syntax" -> "wmdx"
+            key == "pref_list_default_bullet_marker" -> "-"
+            key == "pref_list_default_ordered_style" -> "decimal"
             key.startsWith("pref_underline_") && key.endsWith("_color") -> "default"
             key.startsWith("pref_underline_") && key.endsWith("_thickness") -> 1
             else -> null

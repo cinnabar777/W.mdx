@@ -240,6 +240,15 @@ when exporting formats that require them.
   [ ] Nested task
 ```
 
+The Lists typography settings control whether lists are rendered, which
+Markdown and Wmdx list flavors are recognized, and which flavor the existing
+toolbar actions and shortcuts insert. If only one flavor is enabled, it is
+selected for authoring automatically. Markdown task lists can be enabled
+separately from other Markdown lists. The default unordered marker and Wmdx
+ordered-list style are configurable; Markdown authoring keeps decimal ordered
+markers. Defaults enable both flavors and task-list syntax, author Wmdx,
+use `-` for bullets, and use decimal numbering.
+
 ### Block quotes and tables
 
 - Keep `>` for block quotes and repeat it for nested quotes.

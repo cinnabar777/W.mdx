@@ -455,7 +455,10 @@ test('toolbar insertion opens the footnote dialog and all footnote settings reac
   assert.match(source, /authoringSyntax === 'obsidian_inline'/);
   assert.match(source, /formatObsidianInlineFootnote/);
   assert.match(source, /Reuse footnote \$\{label\}/, 'the toolbar can link to an existing numbered note');
-  assert.match(source, /cmdName === 'todoList'\) cmToggleLinePrefix\(view, '\[ \] '\)/);
+  assert.match(
+    source,
+    /cmdName === 'todoList'\)\s*\{\s*const prefix = getDefaultTaskPrefix\(listSyntaxSettings\);\s*if \(prefix\) cmToggleLinePrefix\(view, prefix\);/
+  );
   assert.match(source, /applyHeadingCommand\(view, val\)/);
   assert.match(source, /getHeadingPrefix\(level, syntax\)/);
   assert.match(source, /footnoteStateField/);

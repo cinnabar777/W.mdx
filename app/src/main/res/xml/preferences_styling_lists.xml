@@ -2,6 +2,62 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="List Syntax">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_list_syntax_enabled"
+            app:title="Enable Lists"
+            app:summary="Recognize and render list syntax"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_list_syntax_markdown_enabled"
+            app:title="Markdown Lists"
+            app:summary="Recognize standard CommonMark, GFM, and Obsidian lists"
+            android:defaultValue="true"
+            app:dependency="pref_list_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_list_syntax_gfm_tasks_enabled"
+            app:title="Markdown Task Lists"
+            app:summary="Recognize GFM and Obsidian - [ ] task items"
+            android:defaultValue="true"
+            app:dependency="pref_list_syntax_markdown_enabled" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_list_syntax_wmdx_enabled"
+            app:title="Wmdx List Features"
+            app:summary="Use distinct bullets, letter and Roman numbering, and standalone tasks"
+            android:defaultValue="true"
+            app:dependency="pref_list_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_list_authoring_syntax"
+            app:title="Preferred List Syntax"
+            app:summary="Syntax inserted by the list toolbar and shortcuts"
+            android:entries="@array/list_authoring_syntax_entries"
+            android:entryValues="@array/list_authoring_syntax_values"
+            android:defaultValue="wmdx"
+            app:dependency="pref_list_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_list_default_bullet_marker"
+            app:title="Default Bullet Shape"
+            app:summary="The unordered-list marker used by the toolbar"
+            android:entries="@array/list_bullet_marker_entries"
+            android:entryValues="@array/list_bullet_marker_values"
+            android:defaultValue="-"
+            app:dependency="pref_list_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_list_default_ordered_style"
+            app:title="Default Numbering Style"
+            app:summary="Wmdx ordered lists auto-increment this style"
+            android:entries="@array/list_ordered_style_entries"
+            android:entryValues="@array/list_ordered_style_values"
+            android:defaultValue="decimal"
+            app:dependency="pref_list_syntax_wmdx_enabled" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="List Typography">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_list_inherit_body_typography"

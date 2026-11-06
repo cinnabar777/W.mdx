@@ -158,6 +158,16 @@ import {
   normalizeFootnoteSyntaxSettings
 } from './footnoteSyntax.mjs';
 import {
+  getDefaultBulletPrefix,
+  getDefaultOrderedPrefix,
+  getDefaultTaskPrefix,
+  getOrderedMarkerLabel,
+  isListAuthoringAvailable,
+  isListFlavorEnabled,
+  normalizeListSyntaxSettings,
+  parseWmdxOrderedListMarker
+} from './listSyntax.mjs';
+import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
   DEFAULT_FLOATING_TOOLBAR_CONFIG,
@@ -355,6 +365,7 @@ let linkSyntaxSettings = normalizeLinkSyntaxSettings();
 let headingSyntaxSettings = normalizeHeadingSyntaxSettings();
 let calloutSyntaxSettings = normalizeCalloutSyntaxSettings();
 let footnoteSyntaxSettings = normalizeFootnoteSyntaxSettings();
+let listSyntaxSettings = normalizeListSyntaxSettings();
 
 function isHeadingFlavorEnabledNow(flavor) {
   return isHeadingFlavorEnabled(headingSyntaxSettings, flavor);
@@ -370,6 +381,19 @@ function isFootnoteAuthoringAvailableNow() {
       footnoteSyntaxSettings,
       footnoteSyntaxSettings.authoringSyntax
     );
+}
+
+function isListAuthoringAvailableNow() {
+  return isListAuthoringAvailable(listSyntaxSettings);
+}
+
+function isListFlavorEnabledNow(flavor) {
+  return isListFlavorEnabled(listSyntaxSettings, flavor);
+}
+
+function isMarkdownTaskSyntaxEnabledNow() {
+  return isListFlavorEnabledNow('markdown') &&
+    listSyntaxSettings.gfmTasks;
 }
 
 function isCalloutAuthoringAvailable() {
@@ -406,23 +430,136 @@ function isMarkdownLinkEnabledNow(node, doc) {
 }
 
 class ListMarkerWidget extends WidgetType {
-  constructor(source, isBullet) {
+  constructor(source, isBullet, displayText = null) {
     super();
     this.source = source;
     this.isBullet = isBullet;
+    this.displayText = displayText;
   }
   eq(other) {
     return other instanceof ListMarkerWidget &&
       other.source === this.source &&
-      other.isBullet === this.isBullet;
+      other.isBullet === this.isBullet &&
+      other.displayText === this.displayText;
   }
   toDOM() {
     const span = document.createElement('span');
     span.className = this.isBullet ? 'cm-list-bullet' : 'cm-list-number';
-    span.textContent = this.isBullet ? '•' : this.source;
+    span.textContent = this.displayText ??
+      (this.isBullet ? '•' : this.source);
     span.setAttribute('aria-hidden', 'true');
     return span;
   }
+}
+
+function collectOrderedListMarkerLabels(tree, doc) {
+  const labels = new Map();
+  const listStack = [];
+  tree.iterate({
+    enter(node) {
+      if (node.name === 'BulletList') {
+        listStack.push({ ordered: false });
+      } else if (node.name === 'OrderedList') {
+        listStack.push({ ordered: true, start: null, item: 0 });
+      } else if (node.name === 'ListItem') {
+        const currentList = listStack.at(-1);
+        if (currentList?.ordered) currentList.item++;
+      } else if (node.name === 'ListMark') {
+        const currentList = listStack.at(-1);
+        if (!currentList?.ordered) return;
+        const marker = doc.sliceString(node.from, node.to);
+        if (currentList.start === null) {
+          currentList.start = Number.parseInt(marker, 10) || 1;
+        }
+        const delimiter = marker.endsWith(')') ? ')' : '.';
+        labels.set(
+          node.from,
+          `${currentList.start + currentList.item - 1}${delimiter}`
+        );
+      }
+    },
+    leave(node) {
+      if (node.name === 'BulletList' || node.name === 'OrderedList') {
+        listStack.pop();
+      }
+    }
+  });
+  return labels;
+}
+
+function getListMarkerDisplayText(marker, isBullet, position, orderedLabels) {
+  if (!isBullet) return orderedLabels.get(position) ?? marker;
+  if (!isListFlavorEnabledNow('wmdx')) return '•';
+  const bulletShapes = { '-': '•', '+': '◦', '*': '▪' };
+  return bulletShapes[marker.trim()] ?? '•';
+}
+
+function getWmdxOrderedListItems(doc, tree) {
+  if (!isListFlavorEnabledNow('wmdx')) return [];
+  const items = [];
+  const activeLists = new Map();
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+    const line = doc.line(lineNumber);
+    const parsed = parseWmdxOrderedListMarker(line.text);
+    if (!parsed) {
+      if (line.text.trim()) {
+        const indent = (/^[ \t]*/.exec(line.text)?.[0] ?? '').length;
+        for (const depth of activeLists.keys()) {
+          if (depth >= indent) activeLists.delete(depth);
+        }
+      }
+      continue;
+    }
+    const markerPosition = line.from + parsed.markerFrom;
+    let excluded = false;
+    for (
+      let node = tree.resolveInner(markerPosition, 1);
+      node;
+      node = node.parent
+    ) {
+      if (
+        node.name === 'FencedCode' ||
+        node.name === 'CodeBlock' ||
+        node.name === 'Table'
+      ) {
+        excluded = true;
+        break;
+      }
+    }
+    if (excluded) continue;
+
+    for (const depth of activeLists.keys()) {
+      if (depth > parsed.indent) activeLists.delete(depth);
+    }
+    let active = activeLists.get(parsed.indent);
+    if (
+      !active ||
+      active.style !== parsed.style ||
+      active.delimiter !== parsed.delimiter
+    ) {
+      active = {
+        style: parsed.style,
+        delimiter: parsed.delimiter,
+        ordinal: 0
+      };
+      activeLists.set(parsed.indent, active);
+    }
+    active.ordinal++;
+    items.push({
+      ...parsed,
+      line,
+      from: line.from + parsed.markerFrom,
+      to: line.from + parsed.markerTo,
+      textTo: line.to,
+      ordinal: active.ordinal,
+      displayText: getOrderedMarkerLabel(
+        parsed.style,
+        active.ordinal,
+        parsed.delimiter
+      )
+    });
+  }
+  return items;
 }
 
 const markdownEntityDisplayCache = new Map();
@@ -2704,6 +2841,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const selection = view.state.selection.main;
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
     const doc = view.state.doc;
+    const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
     const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
     const markdownLinkRanges = [];
     const decorationRanges = view.visibleRanges;
@@ -2714,6 +2852,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       firstVisibleRange?.from ?? 0,
       lastVisibleRange?.to ?? doc.length
     );
+    const wmdxOrderedListItems = getWmdxOrderedListItems(doc, tree);
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
@@ -3204,6 +3343,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
 
           if (node.name === 'ListMark') {
+            if (
+              !listSyntaxSettings.enabled ||
+              (!isListFlavorEnabledNow('markdown') &&
+                !isListFlavorEnabledNow('wmdx'))
+            ) {
+              return false;
+            }
             const marker = view.state.doc.sliceString(node.from, node.to);
             const isBullet = /^[-*+]$/.test(marker.trim());
             if (!isNodeActive) {
@@ -3213,7 +3359,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   if (indentRange) hideSyntax(indentRange.from, indentRange.to);
                 }
                 builder.push(Decoration.replace({
-                  widget: new ListMarkerWidget(marker, isBullet)
+                  widget: new ListMarkerWidget(
+                    marker,
+                    isBullet,
+                    getListMarkerDisplayText(
+                      marker,
+                      isBullet,
+                      node.from,
+                      orderedListLabels
+                    )
+                  )
                 }).range(node.from, node.to));
               }
             } else {
@@ -3246,6 +3401,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'TaskMarker' || node.name === 'WmdxTaskMarker') {
             const isWmdxTask = node.name === 'WmdxTaskMarker';
+            if (
+              isWmdxTask
+                ? !isListFlavorEnabledNow('wmdx')
+                : !isMarkdownTaskSyntaxEnabledNow()
+            ) {
+              return false;
+            }
             if (isWmdxTask) {
               let insideCodeOrTable = false;
               for (
@@ -3610,6 +3772,39 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }).range(lineFrom));
     }
 
+    for (const item of wmdxOrderedListItems) {
+      if (
+        !decorationRanges.some(range =>
+          item.from <= range.to && item.to >= range.from
+        )
+      ) {
+        continue;
+      }
+      addLineClass(item.line.from, 'cm-list-item');
+      const active = view.state.selection.ranges.some(range =>
+        range.empty
+          ? range.head >= item.from && range.head <= item.to
+          : range.from < item.to && range.to > item.from
+      );
+      if (active) {
+        builder.push(
+          Decoration.mark({ class: 'cm-list-number' }).range(item.from, item.to)
+        );
+      } else {
+        const decoration = Decoration.replace({
+          widget: new ListMarkerWidget(item.marker, false, item.displayText)
+        }).range(item.from, item.to);
+        builder.push(decoration);
+        hiddenSyntaxRanges.push(decoration);
+      }
+      if (item.textTo > item.to) {
+        builder.push(
+          Decoration.mark({ class: 'cm-list-block-text' })
+            .range(item.to, item.textTo)
+        );
+      }
+    }
+
     const persistentLayoutClasses = new Set([
       'cm-paragraph',
       'cm-paragraph-first',
@@ -3802,7 +3997,7 @@ export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
 );
 
 const toolbarLinePrefixPattern =
-  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|#{1,6}[ \t]+|\.([1-6])[ \t]+|> ?)/;
+  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|[aAiI][.)][ \t]+|#{1,6}[ \t]+|\.([1-6])[ \t]+|> ?)/;
 
 function getSetextHeadingAtLine(state, lineNumber) {
   let match = null;
@@ -4385,6 +4580,8 @@ function buildHeightMapValue(state) {
   const doc = state.doc;
   const tree = syntaxTree(state);
   const listMarkerDepths = collectListMarkerNestingDepths(tree);
+  const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
+  const wmdxOrderedListItems = getWmdxOrderedListItems(doc, tree);
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
   const replacements = [];
   const hiddenSyntaxRanges = [];
@@ -4630,6 +4827,13 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'ListMark') {
+        if (
+          !listSyntaxSettings.enabled ||
+          (!isListFlavorEnabledNow('markdown') &&
+            !isListFlavorEnabledNow('wmdx'))
+        ) {
+          return false;
+        }
         const marker = doc.sliceString(node.from, node.to);
         const isBullet = /^[-*+]$/.test(marker.trim());
         if (listMarkerDepths.get(node.from) === 0) {
@@ -4637,7 +4841,16 @@ function buildHeightMapValue(state) {
           if (indentRange) hideSyntax(indentRange.from, indentRange.to);
         }
         replacements.push(Decoration.replace({
-          widget: new ListMarkerWidget(marker, isBullet)
+          widget: new ListMarkerWidget(
+            marker,
+            isBullet,
+            getListMarkerDisplayText(
+              marker,
+              isBullet,
+              node.from,
+              orderedListLabels
+            )
+          )
         }).range(node.from, node.to));
         const textRange = listItemTextRange(tree, doc, line, node.to);
         if (textRange) {
@@ -4675,6 +4888,13 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'TaskMarker' || node.name === 'WmdxTaskMarker') {
         const isWmdxTask = node.name === 'WmdxTaskMarker';
+        if (
+          isWmdxTask
+            ? !isListFlavorEnabledNow('wmdx')
+            : !isMarkdownTaskSyntaxEnabledNow()
+        ) {
+          return false;
+        }
         if (isWmdxTask) {
           let insideCodeOrTable = false;
           for (
@@ -4954,6 +5174,31 @@ function buildHeightMapValue(state) {
     }
   }
 
+  for (const item of wmdxOrderedListItems) {
+    const active = state.selection.ranges.some(range =>
+      range.empty
+        ? range.head >= item.from && range.head <= item.to
+        : range.from < item.to && range.to > item.from
+    );
+    if (active) {
+      replacements.push(
+        Decoration.mark({ class: 'cm-list-number' }).range(item.from, item.to)
+      );
+    } else {
+      const decoration = Decoration.replace({
+        widget: new ListMarkerWidget(item.marker, false, item.displayText)
+      }).range(item.from, item.to);
+      replacements.push(decoration);
+      hiddenSyntaxRanges.push(decoration);
+    }
+    if (item.textTo > item.to) {
+      replacements.push(
+        Decoration.mark({ class: 'cm-list-block-text' })
+          .range(item.to, item.textTo)
+      );
+    }
+  }
+
   const validReplacements = replacements.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
   validReplacements.sort((a, b) => a.from - b.from || a.to - b.to);
 
@@ -5136,6 +5381,12 @@ export function buildPersistentLayoutDecorations(state) {
 
   const { doc } = state;
   const tree = syntaxTree(state);
+  const wmdxOrderedListByLine = new Map(
+    getWmdxOrderedListItems(doc, tree).map(item => [
+      item.line.number,
+      item
+    ])
+  );
   const nativeCallouts = parseWmdxCallouts(doc.toString(), position => {
     for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
       if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
@@ -5282,7 +5533,9 @@ export function buildPersistentLayoutDecorations(state) {
     }
     if (isHorizontalRule) addClass(number, 'cm-hr');
 
-    const nativeTaskMarker = /^([ \t]*)\[([ xX])\](?=[ \t]|$)/.exec(line.text);
+    const nativeTaskMarker = isListFlavorEnabledNow('wmdx')
+      ? /^([ \t]*)\[([ xX])\](?=[ \t]|$)/.exec(line.text)
+      : null;
     if (nativeTaskMarker) {
       const markerFrom = line.from + nativeTaskMarker[1].length;
       let hasNativeTaskMarker = false;
@@ -5313,20 +5566,36 @@ export function buildPersistentLayoutDecorations(state) {
       }
     }
 
-    const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
+    const listsEnabled = listSyntaxSettings.enabled &&
+      (isListFlavorEnabledNow('markdown') || isListFlavorEnabledNow('wmdx'));
+    const wmdxOrderedItem = wmdxOrderedListByLine.get(number);
+    const hasListMarker = listsEnabled && (
+      Boolean(wmdxOrderedItem) ||
+      /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text)
+    );
     if (calloutInfo) {
       if (hasListMarker) {
         addClass(number, 'cm-list-item');
         addClass(number, 'cm-callout-list-item');
       }
-      if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
+      if (
+        isMarkdownTaskSyntaxEnabledNow() &&
+        /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)
+      ) {
         addClass(number, 'cm-todo-list-item');
       }
       continue;
     }
-    if (insideListItem) {
+    if (wmdxOrderedItem && listsEnabled) {
       addClass(number, 'cm-list-item');
-      if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
+      continue;
+    }
+    if (insideListItem && listsEnabled) {
+      addClass(number, 'cm-list-item');
+      if (
+        isMarkdownTaskSyntaxEnabledNow() &&
+        /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)
+      ) {
         addClass(number, 'cm-todo-list-item');
       }
       continue;
@@ -6957,9 +7226,9 @@ function setupGroupedControlBar() {
     listsBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('lists', listsBtn, [
-        { title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
-        { title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', action: () => execCmd('numberedList') },
-        { title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', action: () => execCmd('todoList') },
+        { title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', disabled: !isListAuthoringAvailableNow(), action: () => execCmd('bulletedList') },
+        { title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', disabled: !isListAuthoringAvailableNow(), action: () => execCmd('numberedList') },
+        { title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', disabled: !getDefaultTaskPrefix(listSyntaxSettings), action: () => execCmd('todoList') },
         { id: 'indent', title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
         { id: 'outdent', title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
       ]);
@@ -7358,9 +7627,9 @@ function createToolbarActionRegistry() {
       { id: 'line-numbers', title: 'Toggle Line Numbers', icon: svgIcons.lineNumbers, action: () => window.editorBridge.toggleLineNumbers() }
     ],
     [
-      { id: 'bulletedList', title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
-      { id: 'numberedList', title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', action: () => execCmd('numberedList') },
-      { id: 'todoList', title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', action: () => execCmd('todoList') },
+      { id: 'bulletedList', title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', disabled: !isListAuthoringAvailableNow(), action: () => execCmd('bulletedList') },
+      { id: 'numberedList', title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', disabled: !isListAuthoringAvailableNow(), action: () => execCmd('numberedList') },
+      { id: 'todoList', title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', disabled: !getDefaultTaskPrefix(listSyntaxSettings), action: () => execCmd('todoList') },
       { id: 'indent', title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
       { id: 'outdent', title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
     ],
@@ -9599,10 +9868,24 @@ function execCmd(cmdName, options) {
       );
     } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
-    else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
-    else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
-    else if (cmdName === 'todoList') cmToggleLinePrefix(view, '[ ] ');
-    else if (cmdName === 'cycleListType') cycleMarkdownListType(view);
+    else if (cmdName === 'bulletedList') {
+      const prefix = getDefaultBulletPrefix(listSyntaxSettings);
+      if (prefix) cmToggleLinePrefix(view, prefix);
+    } else if (cmdName === 'numberedList') {
+      const prefix = getDefaultOrderedPrefix(listSyntaxSettings);
+      if (prefix) cmToggleLinePrefix(view, prefix);
+    } else if (cmdName === 'todoList') {
+      const prefix = getDefaultTaskPrefix(listSyntaxSettings);
+      if (prefix) cmToggleLinePrefix(view, prefix);
+    } else if (cmdName === 'cycleListType') {
+      if (isListAuthoringAvailableNow()) {
+        cycleMarkdownListType(view, {
+          bulletPrefix: getDefaultBulletPrefix(listSyntaxSettings) ?? '- ',
+          orderedPrefix: getDefaultOrderedPrefix(listSyntaxSettings) ?? '1. ',
+          taskPrefix: getDefaultTaskPrefix(listSyntaxSettings)
+        });
+      }
+    }
     else if (cmdName === 'indent') {
       applyMarkdownIndent(view, 'indent', '  ', editorCommandOptions);
     } else if (cmdName === 'outdent') {
@@ -9837,9 +10120,18 @@ function getToolbarSyntaxState(view) {
       ? heading[1]?.length ?? Number(heading[2])
       : getSetextHeadingAtLine(view.state, editorLine.number)?.level ?? null
     : null;
-  const todo = /^\s*(?:\[[ xX]\]|[-*+]\s+\[[ xX]\]|\d+[.)]\s+\[[ xX]\])[ \t]+/.test(line);
-  const numbered = /^\s*\d+[.)]\s+/.test(line);
-  const bullet = /^\s*[-*+]\s+/.test(line) && !todo;
+  const listsEnabled = listSyntaxSettings.enabled &&
+    (isListFlavorEnabledNow('markdown') || isListFlavorEnabledNow('wmdx'));
+  const wmdxTask = isListFlavorEnabledNow('wmdx') &&
+    /^\s*\[[ xX]\][ \t]+/.test(line);
+  const markdownTask = isMarkdownTaskSyntaxEnabledNow() &&
+    /^\s*(?:[-*+]\s+\[[ xX]\]|\d+[.)]\s+\[[ xX]\])[ \t]+/.test(line);
+  const todo = listsEnabled && (wmdxTask || markdownTask);
+  const wmdxOrdered = isListFlavorEnabledNow('wmdx') &&
+    /^\s*[aAiI][.)][ \t]+/.test(line);
+  const numbered = listsEnabled &&
+    (/^\s*\d+[.)]\s+/.test(line) || wmdxOrdered);
+  const bullet = listsEnabled && /^\s*[-*+][ \t]+/.test(line) && !todo;
   state.paragraph = !heading && !todo && !numbered && !bullet;
   for (let level = 1; level <= 6; level++) {
     state[`heading${level}`] = headingLevel === level;
@@ -9903,6 +10195,25 @@ function refreshToolbarSyntaxState(view = activeAdapter?.view) {
       String(!isFootnoteAuthoringAvailableNow())
     );
   });
+  const listActionAvailable = isListAuthoringAvailableNow();
+  document.querySelectorAll(
+    '#grp-btn-lists, [data-toolbar-key="lists"]'
+  ).forEach(button => {
+    if ('disabled' in button) button.disabled = !listActionAvailable;
+    button.setAttribute('aria-disabled', String(!listActionAvailable));
+  });
+  const taskActionAvailable = Boolean(getDefaultTaskPrefix(listSyntaxSettings));
+  for (const [command, available] of [
+    ['bulletedList', listActionAvailable],
+    ['numberedList', listActionAvailable],
+    ['todoList', taskActionAvailable]
+  ]) {
+    document.querySelectorAll(`[data-toolbar-command="${command}"]`).forEach(button => {
+      if ('disabled' in button) button.disabled = !available;
+      button.setAttribute('aria-disabled', String(!available));
+      button.classList.toggle('disabled', !available);
+    });
+  }
 }
 
 let regexHistory = [];
@@ -11286,10 +11597,10 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.moveLineUp)) { e.preventDefault(); execCmd('moveLineUp'); }
     else if (parseAndMatchHotkey(e, customHotkeys.moveLineDown)) { e.preventDefault(); execCmd('moveLineDown'); }
     else if (parseAndMatchHotkey(e, customHotkeys.deleteLine)) { e.preventDefault(); execCmd('deleteLine'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.cycleListType)) { e.preventDefault(); execCmd('cycleListType'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.bulletedList)) { e.preventDefault(); execCmd('bulletedList'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.numberedList)) { e.preventDefault(); execCmd('numberedList'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.todoList)) { e.preventDefault(); execCmd('todoList'); }
+    else if (isListAuthoringAvailableNow() && parseAndMatchHotkey(e, customHotkeys.cycleListType)) { e.preventDefault(); execCmd('cycleListType'); }
+    else if (isListAuthoringAvailableNow() && parseAndMatchHotkey(e, customHotkeys.bulletedList)) { e.preventDefault(); execCmd('bulletedList'); }
+    else if (isListAuthoringAvailableNow() && parseAndMatchHotkey(e, customHotkeys.numberedList)) { e.preventDefault(); execCmd('numberedList'); }
+    else if (getDefaultTaskPrefix(listSyntaxSettings) && parseAndMatchHotkey(e, customHotkeys.todoList)) { e.preventDefault(); execCmd('todoList'); }
     else if (parseAndMatchHotkey(e, customHotkeys.indent)) {
       const tabInEditor = e.key === 'Tab' &&
         activeAdapter?.view?.contentDOM?.contains(e.target);
@@ -11415,15 +11726,21 @@ window.editorBridge = {
     const footnoteSyntaxChanged =
       JSON.stringify(nextFootnoteSyntaxSettings) !==
       JSON.stringify(footnoteSyntaxSettings);
+    const nextListSyntaxSettings = normalizeListSyntaxSettings(prefs);
+    const listSyntaxChanged =
+      JSON.stringify(nextListSyntaxSettings) !==
+      JSON.stringify(listSyntaxSettings);
     linkSyntaxSettings = nextLinkSyntaxSettings;
     headingSyntaxSettings = nextHeadingSyntaxSettings;
     calloutSyntaxSettings = nextCalloutSyntaxSettings;
     footnoteSyntaxSettings = nextFootnoteSyntaxSettings;
+    listSyntaxSettings = nextListSyntaxSettings;
     if (
       linkSyntaxChanged ||
       headingSyntaxChanged ||
       calloutSyntaxChanged ||
-      footnoteSyntaxChanged
+      footnoteSyntaxChanged ||
+      listSyntaxChanged
     ) {
       hidePopupStrip();
     }
@@ -11433,7 +11750,8 @@ window.editorBridge = {
           linkSyntaxChanged ||
           headingSyntaxChanged ||
           calloutSyntaxChanged ||
-          footnoteSyntaxChanged
+          footnoteSyntaxChanged ||
+          listSyntaxChanged
           ? [
               heightMapRefreshEffect.of(null),
               typographySettingsEffect.of(Date.now())

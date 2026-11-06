@@ -213,6 +213,38 @@
         <item>markdown</item>
         <item>obsidian_inline</item>
     </string-array>
+    <string-array name="list_bullet_marker_entries">
+        <item>Filled circle (-)</item>
+        <item>Open circle (+)</item>
+        <item>Square (*)</item>
+    </string-array>
+    <string-array name="list_bullet_marker_values">
+        <item>-</item>
+        <item>+</item>
+        <item>*</item>
+    </string-array>
+    <string-array name="list_authoring_syntax_entries">
+        <item>Wmdx</item>
+        <item>Markdown</item>
+    </string-array>
+    <string-array name="list_authoring_syntax_values">
+        <item>wmdx</item>
+        <item>markdown</item>
+    </string-array>
+    <string-array name="list_ordered_style_entries">
+        <item>Numbers (1.)</item>
+        <item>Lowercase letters (a.)</item>
+        <item>Uppercase letters (A.)</item>
+        <item>Lowercase Roman (i.)</item>
+        <item>Uppercase Roman (I.)</item>
+    </string-array>
+    <string-array name="list_ordered_style_values">
+        <item>decimal</item>
+        <item>alpha_lower</item>
+        <item>alpha_upper</item>
+        <item>roman_lower</item>
+        <item>roman_upper</item>
+    </string-array>
 
     <string-array name="callout_icon_entries">
         <item>Default (Type Built-in)</item>
