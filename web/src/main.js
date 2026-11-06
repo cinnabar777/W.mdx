@@ -161,6 +161,8 @@ import {
   getDefaultBulletPrefix,
   getDefaultOrderedPrefix,
   getDefaultTaskPrefix,
+  getSelectedListPrefixChanges,
+  getSelectedListLineNumbers,
   getOrderedMarkerLabel,
   isListAuthoringAvailable,
   isListFlavorEnabled,
@@ -4017,6 +4019,18 @@ function getSetextHeadingAtLine(state, lineNumber) {
   return match;
 }
 
+function cmToggleSelectedListPrefix(view, prefix) {
+  if (!view) return false;
+  const { doc, selection } = view.state;
+  const lines = getSelectedListLineNumbers(doc, selection)
+    .map(number => doc.line(number));
+  const changes = getSelectedListPrefixChanges(lines, prefix);
+  if (!changes.length) return false;
+  view.dispatch({ changes });
+  focusEditorAfterCommand(view);
+  return true;
+}
+
 function cmToggleLinePrefix(view, prefix) {
   if (!view) return;
   const selection = view.state.selection.main;
@@ -4508,7 +4522,8 @@ function rangeTouchesSyntaxNode(state, from, to, nodeNames) {
 
 function transactionTouchesStructure(tr, {
   nodeNames = [],
-  markerPattern = /[\n`~|>#*+\-[\]{}]/
+  markerPattern = /[\n`~|>#*+\-[\]{}]/,
+  linePattern = null
 } = {}) {
   if (!tr.docChanged) return false;
   const names = new Set(nodeNames);
@@ -4524,10 +4539,14 @@ function transactionTouchesStructure(tr, {
     const newTo = Math.max(newFrom, Math.min(toB, newDoc.length));
     const oldText = oldDoc.sliceString(oldFrom, oldTo);
     const newText = newDoc.sliceString(newFrom, newTo);
+    const oldLineText = oldDoc.lineAt(oldFrom).text;
+    const newLineText = newDoc.lineAt(newFrom).text;
 
     if (
       markerPattern.test(oldText) ||
       markerPattern.test(newText) ||
+      (linePattern &&
+        (linePattern.test(oldLineText) || linePattern.test(newLineText))) ||
       oldDoc.lineAt(oldFrom).from === oldFrom ||
       newDoc.lineAt(newFrom).from === newFrom ||
       rangeTouchesSyntaxNode(tr.startState, oldFrom, oldTo, names) ||
@@ -5335,7 +5354,8 @@ export const heightMapField = StateField.define({
           'SetextHeading1', 'SetextHeading2', 'ListItem',
           'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
           'HorizontalRule', 'TaskMarker', 'Link', 'Image', 'InlineCode'
-        ]
+        ],
+        linePattern: /^[ \t]*(?:[aAiI][.)])(?:[ \t]|$)/
       })
     ) {
       return {
@@ -5685,7 +5705,8 @@ export const persistentLayoutField = StateField.define({
           'SetextHeading1', 'SetextHeading2', 'ListItem',
           'Blockquote', 'FencedCode', 'CodeBlock', 'Table', 'WmdxTaskMarker',
           'HorizontalRule'
-        ]
+        ],
+        linePattern: /^[ \t]*(?:[aAiI][.)])(?:[ \t]|$)/
       })
     ) {
       return current.map(tr.changes);
@@ -9870,13 +9891,13 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
     else if (cmdName === 'bulletedList') {
       const prefix = getDefaultBulletPrefix(listSyntaxSettings);
-      if (prefix) cmToggleLinePrefix(view, prefix);
+      if (prefix) cmToggleSelectedListPrefix(view, prefix);
     } else if (cmdName === 'numberedList') {
       const prefix = getDefaultOrderedPrefix(listSyntaxSettings);
-      if (prefix) cmToggleLinePrefix(view, prefix);
+      if (prefix) cmToggleSelectedListPrefix(view, prefix);
     } else if (cmdName === 'todoList') {
       const prefix = getDefaultTaskPrefix(listSyntaxSettings);
-      if (prefix) cmToggleLinePrefix(view, prefix);
+      if (prefix) cmToggleSelectedListPrefix(view, prefix);
     } else if (cmdName === 'cycleListType') {
       if (isListAuthoringAvailableNow()) {
         cycleMarkdownListType(view, {

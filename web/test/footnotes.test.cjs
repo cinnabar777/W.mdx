@@ -457,7 +457,7 @@ test('toolbar insertion opens the footnote dialog and all footnote settings reac
   assert.match(source, /Reuse footnote \$\{label\}/, 'the toolbar can link to an existing numbered note');
   assert.match(
     source,
-    /cmdName === 'todoList'\)\s*\{\s*const prefix = getDefaultTaskPrefix\(listSyntaxSettings\);\s*if \(prefix\) cmToggleLinePrefix\(view, prefix\);/
+    /cmdName === 'todoList'\)\s*\{\s*const prefix = getDefaultTaskPrefix\(listSyntaxSettings\);\s*if \(prefix\) cmToggleSelectedListPrefix\(view, prefix\);/
   );
   assert.match(source, /applyHeadingCommand\(view, val\)/);
   assert.match(source, /getHeadingPrefix\(level, syntax\)/);

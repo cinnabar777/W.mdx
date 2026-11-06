@@ -18,6 +18,8 @@ const ORDERED_STYLES = new Set([
   'roman_lower',
   'roman_upper'
 ]);
+const LIST_ITEM_PREFIX =
+  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|[aAiI][.)][ \t]+)/;
 
 export function normalizeListSyntaxSettings(preferences = {}) {
   const settings = {
@@ -94,6 +96,26 @@ export function getDefaultTaskPrefix(settings) {
   return settings.authoringSyntax === 'wmdx' ? '[ ] ' : null;
 }
 
+export function getSelectedListLineNumbers(doc, selection) {
+  if (!doc || !selection) return [];
+  const lineNumbers = new Set();
+  for (const range of selection.ranges || [selection.main]) {
+    const firstLine = doc.lineAt(range.from).number;
+    let lastLine = doc.lineAt(range.to).number;
+    if (
+      !range.empty &&
+      lastLine > firstLine &&
+      doc.line(lastLine).from === range.to
+    ) {
+      lastLine--;
+    }
+    for (let number = firstLine; number <= lastLine; number++) {
+      lineNumbers.add(number);
+    }
+  }
+  return [...lineNumbers].sort((a, b) => a - b);
+}
+
 export function getOrderedMarkerLabel(style, ordinal, delimiter = '.') {
   const index = Math.max(1, Math.floor(Number(ordinal) || 1));
   if (style === 'alpha_lower') return `${toAlphabetic(index, false)}${delimiter}`;
@@ -124,6 +146,39 @@ export function parseWmdxOrderedListMarker(lineText) {
           : 'alpha_lower',
     delimiter: match[3]
   };
+}
+
+export function getSelectedListPrefixChanges(lines, prefix) {
+  const entries = lines.map(line => {
+    const indent = (/^[ \t]*/.exec(line.text)?.[0] ?? '').length;
+    const afterIndent = line.text.slice(indent);
+    const quotePrefix = /^(?:>[ \t]*)+/.exec(afterIndent)?.[0] ?? '';
+    const contentFrom = line.from + indent + quotePrefix.length;
+    const content = afterIndent.slice(quotePrefix.length);
+    const existingPrefix = LIST_ITEM_PREFIX.exec(content)?.[0] ?? '';
+    return { from: contentFrom, existingPrefix };
+  });
+  const removeTarget = Boolean(
+    prefix &&
+    entries.length > 0 &&
+    entries.every(entry => entry.existingPrefix === prefix)
+  );
+
+  return entries.flatMap(entry => {
+    if (removeTarget) {
+      return [{
+        from: entry.from,
+        to: entry.from + entry.existingPrefix.length,
+        insert: ''
+      }];
+    }
+    if (!prefix && !entry.existingPrefix) return [];
+    return [{
+      from: entry.from,
+      to: entry.from + entry.existingPrefix.length,
+      insert: prefix
+    }];
+  });
 }
 
 function toAlphabetic(value, uppercase) {
