@@ -125,7 +125,8 @@ function insertQuoteAwareText(
   to,
   text,
   userEvent,
-  transformPastedText
+  transformPastedText,
+  isBlockquoteEnabled
 ) {
   if (
     view.state.readOnly ||
@@ -137,12 +138,15 @@ function insertQuoteAwareText(
   }
 
   const transformedText = transformPastedText(text);
-  const pasteRange = quotePasteInsertionRange(view.state, from, to);
+  const blockquotesEnabled = isBlockquoteEnabled();
+  const pasteRange = blockquotesEnabled
+    ? quotePasteInsertionRange(view.state, from, to)
+    : { from, to };
   const multiline = transformedText.includes('\n');
-  const context = multiline
+  const context = multiline || !blockquotesEnabled
     ? null
     : blockquoteContext(view.state, pasteRange.from);
-  const quotedText = multiline
+  const quotedText = multiline && blockquotesEnabled
     ? quoteMultilinePaste(
         view.state,
         pasteRange.from,
@@ -173,7 +177,8 @@ function insertQuoteAwareText(
 }
 
 export function createMarkdownBlockquotePaste(
-  transformPastedText = normalizeMarkdownOrderedListText
+  transformPastedText = normalizeMarkdownOrderedListText,
+  isBlockquoteEnabled = () => true
 ) {
   return [
     EditorView.domEventHandlers({
@@ -193,7 +198,8 @@ export function createMarkdownBlockquotePaste(
           to,
           text,
           'input.paste',
-          transformPastedText
+          transformPastedText,
+          isBlockquoteEnabled
         );
         if (handled) event.preventDefault();
         return handled;
@@ -211,7 +217,8 @@ export function createMarkdownBlockquotePaste(
           to,
           readAndroidClipboard(),
           'input.paste',
-          transformPastedText
+          transformPastedText,
+          isBlockquoteEnabled
         );
         if (handled) event.preventDefault();
         return handled;
@@ -233,7 +240,8 @@ export function createMarkdownBlockquotePaste(
           to,
           text,
           'input.paste',
-          transformPastedText
+          transformPastedText,
+          isBlockquoteEnabled
         );
         if (handled) event.preventDefault();
         return handled;
@@ -246,7 +254,8 @@ export function createMarkdownBlockquotePaste(
         to,
         text,
         text?.includes('\n') ? 'input.paste' : 'input.type',
-        transformPastedText
+        transformPastedText,
+        isBlockquoteEnabled
       )
     )
   ];

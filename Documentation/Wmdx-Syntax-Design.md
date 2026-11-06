@@ -22,7 +22,7 @@ the syntax the current app supports.
   subscript selectors for typography colors and styles are an intentional
   exception: they are unobtrusive in text and are rarely typed by hand.
 
-### Editor syntax preferences (planned)
+### Editor syntax preferences
 
 - Syntax choices are app-wide per feature, not saved per document. Users who
   settle on a convention should not have to choose it again for every file.
@@ -102,6 +102,20 @@ the syntax the current app supports.
   exited.
 - Disabling callouts stops rendering both callout flavors; ordinary blockquotes
   remain available. These preferences do not change import/export conversion.
+
+### Block quote syntax settings (implemented)
+
+- Block quotes have one app-wide enable switch and one shared syntax: `>`.
+  CommonMark, GFM, Obsidian, and Wmdx use the same marker, so there is no
+  separate flavor or preferred-authoring choice.
+- Return on a non-empty quoted line continues at the same quote depth. Return
+  on a blank quoted line removes one level; nested quotes step out one level at
+  a time. The quote toolbar action and shortcut use the same enable switch.
+- With block quotes disabled, ordinary quote markers remain visible and literal
+  in visual editing modes, and quote insertion, continuation, and automatic
+  quote-prefixing on paste are disabled. Obsidian callouts remain governed by
+  their independent callout settings.
+- The setting does not change CommonMark, GFM, Obsidian, or HTML import/export.
 
 ## Agreed native syntax
 
@@ -676,6 +690,8 @@ a separate later phase.
   a leading list bullet.
 - Native footnote references and definitions support automatic numbering and
   reuse of an existing `^N` note.
+- Standard `>` block quotes support Return continuation and one-level-at-a-time
+  exit from blank nested quote lines, with app-wide enable/disable preferences.
 
 These slices pass the focused web test suite. Android phone rendering and
 editing still require normal project/device verification.

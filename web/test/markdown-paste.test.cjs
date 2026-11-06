@@ -3,6 +3,7 @@ const { before, test } = require('node:test');
 const { JSDOM } = require('jsdom');
 
 let markdownBlockquotePaste;
+let createMarkdownBlockquotePaste;
 let quoteMultilinePaste;
 let quotePasteInsertionRange;
 let EditorState;
@@ -17,6 +18,7 @@ before(async () => {
     import('@codemirror/view')
   ]);
   markdownBlockquotePaste = pasteModule.markdownBlockquotePaste;
+  createMarkdownBlockquotePaste = pasteModule.createMarkdownBlockquotePaste;
   quoteMultilinePaste = pasteModule.quoteMultilinePaste;
   quotePasteInsertionRange = pasteModule.quotePasteInsertionRange;
   EditorState = stateModule.EditorState;
@@ -296,6 +298,31 @@ test('native paste event adds quote markers to continuation lines', () => {
       view.state.doc.toString(),
       '> quote\n> - First\n>   - Second\n>     - Third'
     );
+
+    view.destroy();
+    const disabledQuoteDoc = '> quote\n> ';
+    view = new EditorView({
+      parent: window.document.querySelector('#editor'),
+      state: EditorState.create({
+        doc: disabledQuoteDoc,
+        selection: { anchor: disabledQuoteDoc.length },
+        extensions: [
+          markdown(),
+          createMarkdownBlockquotePaste(text => text.toUpperCase(), () => false)
+        ]
+      })
+    });
+    const disabledQuotePasteEvent = new window.Event('paste', {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(disabledQuotePasteEvent, 'clipboardData', {
+      value: { getData: type => type === 'text/plain' ? 'first\nsecond' : '' }
+    });
+    view.contentDOM.dispatchEvent(disabledQuotePasteEvent);
+
+    assert.equal(disabledQuotePasteEvent.defaultPrevented, true);
+    assert.equal(view.state.doc.toString(), '> quote\n> FIRST\nSECOND');
   } finally {
     view?.destroy();
     dom.window.close();

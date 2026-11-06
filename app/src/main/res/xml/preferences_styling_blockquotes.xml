@@ -3,6 +3,16 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <com.wmdx.markdownapp.ResetPreferenceCategory
+        app:key="styling_blockquote_syntax"
+        app:title="Block Quote Syntax">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_blockquote_syntax_enabled"
+            app:title="Enable Block Quotes"
+            app:summary="Recognize and render standard > block quotes"
+            app:defaultValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory
         app:key="styling_blockquote_typography"
         app:title="Block Quote">
         <com.wmdx.markdownapp.ResetSwitchPreference

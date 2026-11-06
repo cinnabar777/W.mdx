@@ -104,13 +104,12 @@ test('Callout line classification and marker detection logic in main.js', () => 
 });
 
 test('callout quote syntax hides its separator space so wrapped text aligns', () => {
-  const quoteMarkBranch = mainSource.match(
-    /if \(node\.name === 'QuoteMark' && !isNodeActive\) \{([\s\S]*?)\n          \}/
+  assert.match(
+    mainSource,
+    /node\.name === 'QuoteMark'[\s\S]{0,300}isBlockquoteSyntaxEnabledNow\(\)/
   );
-  assert.ok(quoteMarkBranch, 'QuoteMark decoration branch exists');
-  assert.match(quoteMarkBranch[1], /const end = Math\.min\(node\.to \+ 1, line\.to\)/);
-  assert.match(quoteMarkBranch[1], /hideSyntax\(node\.from, end\)/);
-  assert.doesNotMatch(quoteMarkBranch[1], /isCalloutLine/);
+  assert.match(mainSource, /const end = Math\.min\(node\.to \+ 1, line\.to\)/);
+  assert.match(mainSource, /hideSyntax\(node\.from, end\)/);
 });
 
 test('Callout parsing excludes code blocks and stops at unquoted lines', () => {

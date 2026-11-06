@@ -140,6 +140,10 @@ document.addEventListener('pointerdown', event => {
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
+  getBlockquoteEnterEdit,
+  normalizeBlockquoteSyntaxSettings
+} from './blockquoteSyntax.mjs';
+import {
   buildWmdxCalloutInsertion,
   getWmdxCalloutEnterEdit,
   isWmdxCalloutEnterEvent,
@@ -372,6 +376,7 @@ let customHotkeys = {
 let linkSyntaxSettings = normalizeLinkSyntaxSettings();
 let headingSyntaxSettings = normalizeHeadingSyntaxSettings();
 let calloutSyntaxSettings = normalizeCalloutSyntaxSettings();
+let blockquoteSyntaxSettings = normalizeBlockquoteSyntaxSettings();
 let footnoteSyntaxSettings = normalizeFootnoteSyntaxSettings();
 let listSyntaxSettings = normalizeListSyntaxSettings();
 
@@ -381,6 +386,10 @@ function isHeadingFlavorEnabledNow(flavor) {
 
 function isCalloutFlavorEnabledNow(flavor) {
   return isCalloutFlavorEnabled(calloutSyntaxSettings, flavor);
+}
+
+function isBlockquoteSyntaxEnabledNow() {
+  return blockquoteSyntaxSettings.enabled;
 }
 
 function isFootnoteAuthoringAvailableNow() {
@@ -2516,10 +2525,11 @@ class EmbeddedDocumentWidget extends WidgetType {
             wmdxCommonMarkCompatibility
           ]
         }),
-        createMarkdownBlockquotePaste(text =>
-          isListFlavorEnabledNow('markdown')
+        createMarkdownBlockquotePaste(
+          text => isListFlavorEnabledNow('markdown')
             ? normalizeMarkdownOrderedListText(text)
-            : text
+            : text,
+          isBlockquoteSyntaxEnabledNow
         ),
         syntaxHighlighting(customHighlightStyle),
         ...(fullInlineEditing
@@ -2714,6 +2724,49 @@ function handleCalloutEnter(view, event) {
   return true;
 }
 
+function handleBlockquoteEnter(view, event) {
+  if (
+    !isBlockquoteSyntaxEnabledNow() ||
+    !isWmdxCalloutEnterEvent(event)
+  ) {
+    return false;
+  }
+
+  const state = view.state;
+  const selection = state.selection.main;
+  const tree = syntaxTree(state);
+  const edit = getBlockquoteEnterEdit(
+    state.doc.toString(),
+    selection,
+    position => {
+      for (
+        let node = tree.resolveInner(Math.min(position, state.doc.length), 1);
+        node;
+        node = node.parent
+      ) {
+        if (
+          node.name === 'FencedCode' ||
+          node.name === 'CodeBlock' ||
+          node.name === 'Table'
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+  );
+  if (!edit) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(edit.cursor),
+    userEvent: 'input'
+  });
+  return true;
+}
+
 function handleWmdxOrderedListEnter(view, event) {
   if (
     !isWmdxCalloutEnterEvent(event) ||
@@ -2777,11 +2830,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     this.calloutEnterHandler = event =>
       handleCalloutEnter(view, event) ||
       handleTaskListEnter(view, event) ||
-      handleWmdxOrderedListEnter(view, event);
+      handleWmdxOrderedListEnter(view, event) ||
+      handleBlockquoteEnter(view, event);
     this.calloutBeforeInputHandler = event =>
       handleCalloutEnter(view, event) ||
       handleTaskListEnter(view, event) ||
-      handleWmdxOrderedListEnter(view, event);
+      handleWmdxOrderedListEnter(view, event) ||
+      handleBlockquoteEnter(view, event);
     view.dom.addEventListener('click', this.calloutTitleClickHandler, true);
     view.dom.addEventListener('keydown', this.calloutEnterHandler, true);
     view.dom.addEventListener('beforeinput', this.calloutBeforeInputHandler, true);
@@ -3116,7 +3171,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-body');
               calloutLineAttributes.set(line.from, { type: currentCallout.type, depth: currentCallout.depth });
             } else {
-              addLineClass(line.from, 'cm-blockquote');
+              if (isBlockquoteSyntaxEnabledNow()) {
+                addLineClass(line.from, 'cm-blockquote');
+              }
             }
 
             curLine++;
@@ -3410,7 +3467,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             }
           }
 
-          if (node.name === 'QuoteMark' && !isNodeActive) {
+          if (
+            node.name === 'QuoteMark' &&
+            !isNodeActive &&
+            (
+              isBlockquoteSyntaxEnabledNow() ||
+              calloutLineAttributes.has(line.from)
+            )
+          ) {
             if (!isPureWysiwyg) {
               // Hide the quote marker and its separator together. Leaving the
               // separator visible shifts the first callout line relative to
@@ -4906,7 +4970,13 @@ function buildHeightMapValue(state) {
         }
       }
 
-      if (node.name === 'QuoteMark') {
+      if (
+        node.name === 'QuoteMark' &&
+        (
+          isBlockquoteSyntaxEnabledNow() ||
+          calloutLineAttributes.has(line.from)
+        )
+      ) {
         hideSyntax(node.from, Math.min(node.to + 1, line.to));
       }
 
@@ -5570,7 +5640,7 @@ export function buildPersistentLayoutDecorations(state) {
         type: calloutInfo.type,
         depth: calloutInfo.depth
       });
-    } else if (isBlockquoteLine) {
+    } else if (isBlockquoteLine && isBlockquoteSyntaxEnabledNow()) {
       addClass(number, 'cm-blockquote');
       blockquoteDepthByLine.set(
         number,
@@ -6313,10 +6383,11 @@ class CodeMirrorAdapter {
             wmdxCommonMarkCompatibility
           ]
         }),
-        createMarkdownBlockquotePaste(text =>
-          isListFlavorEnabledNow('markdown')
+        createMarkdownBlockquotePaste(
+          text => isListFlavorEnabledNow('markdown')
             ? normalizeMarkdownOrderedListText(text)
-            : text
+            : text,
+          isBlockquoteSyntaxEnabledNow
         ),
         syntaxHighlighting(customHighlightStyle),
         livePreviewPlugin,
@@ -7355,7 +7426,7 @@ function setupGroupedControlBar() {
         { id: 'link', icon: svgIcons.link, title: 'Links', disabled: !linkSyntaxSettings.enabled, action: () => execCmd('link') },
         { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', disabled: !isCalloutAuthoringAvailable(), action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
-        { id: 'blockQuote', icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
+        { id: 'blockQuote', icon: svgIcons.blockQuote, title: 'Insert Quote', disabled: !isBlockquoteSyntaxEnabledNow(), action: () => execCmd('blockQuote') },
         { id: 'codeBlock', icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
         { id: 'horizontalLine', icon: svgIcons.horizontalLine, title: 'Insert Line', action: () => execCmd('horizontalLine') },
         { id: 'footnote', icon: svgIcons.footnote, title: 'Insert Footnote', disabled: !isFootnoteAuthoringAvailableNow(), action: () => openFootnoteInsertionDialog() }
@@ -7731,7 +7802,7 @@ function createToolbarActionRegistry() {
       { id: 'link', title: 'Links', icon: svgIcons.link, disabled: !linkSyntaxSettings.enabled, action: () => execCmd('link') },
       { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, disabled: !isCalloutAuthoringAvailable(), action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
-      { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote, action: () => execCmd('blockQuote') },
+      { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote, disabled: !isBlockquoteSyntaxEnabledNow(), action: () => execCmd('blockQuote') },
       { id: 'codeBlock', title: 'Code Block', icon: svgIcons.codeBlock, action: () => execCmd('codeBlock') },
       { id: 'horizontalLine', title: 'Insert Line', icon: svgIcons.horizontalLine, action: () => execCmd('horizontalLine') },
       { id: 'footnote', title: 'Insert Footnote', icon: svgIcons.footnote, disabled: !isFootnoteAuthoringAvailableNow(), action: () => openFootnoteInsertionDialog() }
@@ -8035,16 +8106,20 @@ async function runToolbarClipboardAction(actionId, preserveKeyboard = false) {
       return false;
     }
     const { from, to } = view.state.selection.main;
-    const pasteRange = quotePasteInsertionRange(view.state, from, to);
+    const pasteRange = isBlockquoteSyntaxEnabledNow()
+      ? quotePasteInsertionRange(view.state, from, to)
+      : { from, to };
     const sourceText = isListFlavorEnabledNow('markdown')
       ? normalizeMarkdownOrderedListText(text)
       : text;
-    const pastedText = quoteMultilinePaste(
-      view.state,
-      pasteRange.from,
-      pasteRange.to,
-      sourceText
-    );
+    const pastedText = isBlockquoteSyntaxEnabledNow()
+      ? quoteMultilinePaste(
+          view.state,
+          pasteRange.from,
+          pasteRange.to,
+          sourceText
+        )
+      : sourceText;
     view.dispatch({
       changes: {
         from: pasteRange.from,
@@ -9920,7 +9995,11 @@ function execCmd(cmdName, options) {
         cmdName.slice('underline'.length).toLowerCase(),
         editorCommandOptions
       );
-    } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
+    } else if (cmdName === 'blockQuote') {
+      if (isBlockquoteSyntaxEnabledNow()) {
+        cmToggleLinePrefix(view, '> ');
+      }
+    }
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
     else if (cmdName === 'bulletedList') {
       const prefix = getDefaultBulletPrefix(listSyntaxSettings);
@@ -11653,7 +11732,7 @@ function setupKeyboardShortcuts() {
       isCalloutAuthoringAvailable() &&
       parseAndMatchHotkey(e, customHotkeys.callout)
     ) { e.preventDefault(); execCmd('callout'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
+    else if (isBlockquoteSyntaxEnabledNow() && parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.codeBlock)) { e.preventDefault(); execCmd('codeBlock'); }
     else if (parseAndMatchHotkey(e, customHotkeys.moveLineUp)) { e.preventDefault(); execCmd('moveLineUp'); }
     else if (parseAndMatchHotkey(e, customHotkeys.moveLineDown)) { e.preventDefault(); execCmd('moveLineDown'); }
@@ -11783,6 +11862,11 @@ window.editorBridge = {
     const calloutSyntaxChanged =
       JSON.stringify(nextCalloutSyntaxSettings) !==
       JSON.stringify(calloutSyntaxSettings);
+    const nextBlockquoteSyntaxSettings =
+      normalizeBlockquoteSyntaxSettings(prefs);
+    const blockquoteSyntaxChanged =
+      JSON.stringify(nextBlockquoteSyntaxSettings) !==
+      JSON.stringify(blockquoteSyntaxSettings);
     const nextFootnoteSyntaxSettings = normalizeFootnoteSyntaxSettings(prefs);
     const footnoteSyntaxChanged =
       JSON.stringify(nextFootnoteSyntaxSettings) !==
@@ -11794,12 +11878,14 @@ window.editorBridge = {
     linkSyntaxSettings = nextLinkSyntaxSettings;
     headingSyntaxSettings = nextHeadingSyntaxSettings;
     calloutSyntaxSettings = nextCalloutSyntaxSettings;
+    blockquoteSyntaxSettings = nextBlockquoteSyntaxSettings;
     footnoteSyntaxSettings = nextFootnoteSyntaxSettings;
     listSyntaxSettings = nextListSyntaxSettings;
     if (
       linkSyntaxChanged ||
       headingSyntaxChanged ||
       calloutSyntaxChanged ||
+      blockquoteSyntaxChanged ||
       footnoteSyntaxChanged ||
       listSyntaxChanged
     ) {
@@ -11811,6 +11897,7 @@ window.editorBridge = {
           linkSyntaxChanged ||
           headingSyntaxChanged ||
           calloutSyntaxChanged ||
+          blockquoteSyntaxChanged ||
           footnoteSyntaxChanged ||
           listSyntaxChanged
           ? [

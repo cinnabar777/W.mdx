@@ -420,6 +420,7 @@ object PreferenceResetHelper {
             key == "pref_blockquote_left_indent" -> 0
             key == "pref_blockquote_right_margin" -> 0
             key == "pref_blockquote_padding" -> 12
+            key == "pref_blockquote_syntax_enabled" -> true
             key == "pref_callout_line_thickness" -> 4
             key == "pref_callout_line_style" -> "solid"
             key == "pref_callout_line_color" -> "default"
@@ -759,6 +760,7 @@ object PreferenceResetHelper {
                 key == "pref_links_reference_enabled" ||
                 key == "pref_links_obsidian_enabled" ||
                 key == "pref_links_wmdx_enabled" ||
+                key == "pref_blockquote_syntax_enabled" ||
                 key == "pref_heading_syntax_enabled" ||
                 key == "pref_heading_syntax_wmdx_enabled" ||
                 key == "pref_heading_syntax_hash_enabled" ||
