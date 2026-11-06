@@ -4,20 +4,22 @@ This is a visual smoke test, not a complete CommonMark, GFM, or Obsidian
 compatibility suite. It samples common cases for a quick phone check; the
 specification corpora and import/export round trips are tested separately.
 
-Open this file in W.mdx and check it in Live Preview and WYSIWYG. In rendered
-views, inline and reference-link source syntax should be hidden, including while
-the link is active. The reference definition should also be hidden. Autolink
-angle brackets should not appear. Nested quotes should indent farther than their
+Open this file in W.mdx and check it in Live Preview and WYSIWYG. WYSIWYG should
+hide supported inline and reference-link syntax. Live Preview should keep the
+rendered text and reveal relevant syntax contextually while editing the link.
+The reference definition should stay hidden in rendered views. Autolink angle
+brackets should not appear. Nested quotes should indent farther than their
 parent, and the outer quote border should continue through both paragraphs and
 the nested quote. The list with up to three leading spaces before its markers
 should stay flat, the nested list should stay nested, and the quoted list should
 stay inside its quote. Tap inline, reference, angle, and automatic links to
 confirm they open the browser or email app. Tap the wiki link to confirm it
-opens the sibling Markdown guide. Source view should continue to show the
-original Markdown syntax.
+opens the sibling Markdown guide. Source view should show the original Markdown
+syntax.
 
-The table below is a rendering check only. Table-cell cursor/editing is a known
-separate issue and is not part of this test.
+The table below should render as an editable table in Live Preview and WYSIWYG.
+Source should show its raw Markdown table syntax. The table-cell checks below
+cover cursor placement and editing.
 
 ## CommonMark
 
@@ -241,12 +243,14 @@ Three tildes should stay literal: This will ~~~not~~~ strike.
 | **bold** | `code` | ordinary text |
 
 Check the header, column alignment, cell spacing, and inline formatting. In Live
-Preview and WYSIWYG, tap a cell and verify the caret and keyboard enter that
-cell without relying on a synthesized click; they must not move to the line
-after the table. Edit a cell, tap another cell, then return to confirm the first
-edit was saved. Long-press an unedited cell and confirm both the floating
-toolbar and table action menu remain available without overlapping. Save and
-reopen the document to confirm the edit persists.
+Preview and WYSIWYG, the Markdown table must remain a rendered, editable table.
+Source must show its raw pipe syntax. In Live Preview and WYSIWYG, tap a cell and
+verify the caret and keyboard enter that cell without relying on a synthesized
+click; they must not move to the line after the table or reveal the table source.
+Edit a cell, tap another cell, then return to confirm the first edit was saved.
+Long-press an unedited cell and confirm both the floating toolbar and table
+action menu remain available without overlapping. Save and reopen the document
+to confirm the edit persists.
 
 ### GFM automatic links
 

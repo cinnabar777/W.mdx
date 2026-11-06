@@ -787,41 +787,41 @@ level, move all source lines together, and allow four leading spaces to create
 CommonMark indented code. This is distinct from the fenced-code toolbar action.
 The default is one space, configurable under Settings → Document Appearance →
 Paragraph. Indent and Outdent at a collapsed cursor target all source lines in
-the current paragraph. Lists use hanging wrapping by default: wrapped rows align
-with the start of item text for bullet, ordered, and task lists in every view.
-The optional Non-hanging List Wrapping setting aligns wrapped rows at each
-item's marker instead. Neither behavior is first-line-only indentation. Source
-uses its visible indentation and marker syntax; rendered modes use parsed
-nesting and marker widgets. Showing syntax may naturally move the text after a
-visible marker, but wrapped rows must remain with that item and must not fall
-back to the parent or document margin. The default layout must not depend on a
-measured marker width that can change with selection or keyboard visibility. A
-paragraph continuation that becomes part of a list item after its blank
-separator is removed must wrap under the item text.
-For a list continuation, calculate one absolute text column as the farther of
-the item's content column or the explicit source indentation. Source adds only
-the remaining offset because its literal indentation stays visible; rendered
-modes use the full column because that syntax is hidden.
-Rendered indented code blocks hide the structural indentation parsed as Markdown
-syntax. Shared leading code indentation is rendered as block padding across all
-wrapped rows, while relative indentation between code lines remains visible.
-Clear Formatting removes the structural indentation from an indented code block,
-including when it is the first paragraph. Backspace at the visual start removes
-one literal indentation character at a time; fenced-code behavior is unchanged.
-All views use the same source-column model for list marker and text positions.
-Source keeps indentation and marker syntax visible; Live Preview and WYSIWYG
-hide the leading indentation but apply the same indentation-column offset.
-Rendered markers and item text use a one-character gap, matching the visible
-separator in Source. This shared offset applies to every wrapped row and is
-independent of the Non-hanging List Wrapping choice.
+the current paragraph.
 
-The persistent structural layout now runs in Source, Live Preview, and WYSIWYG.
-Source-only line decorations account for visible syntax without replacing the
-shared layout. Web tests check nested-list depth and indentation visibility in
-all three modes, nested quotes and quoted lists, rendered/editable tables in
-Live Preview and WYSIWYG, and raw table syntax in Source. Repeat narrow-phone
-verification for default hanging wrapping and the optional non-hanging setting;
-Android device line-wrap geometry still needs confirmation.
+**Required list behavior:** Hanging wrapping is the default for every bullet,
+task, and ordered-marker style. Wrapped rows align under the item text. The
+optional Non-hanging List Wrapping setting aligns wrapped rows at the marker;
+neither setting adds a first-line paragraph indent. Indent and Outdent move the
+whole paragraph or list item, and literal spaces can still create an indented
+code block. A paragraph continuation that becomes part of a list item after its
+blank separator is removed must remain aligned with that item.
+
+**Required view-mode behavior:** Use one semantic rendering and layout pipeline
+for the document. WYSIWYG and Live Preview render Markdown structures, including
+tables as editable tables. Source exposes the complete Markdown source,
+including raw table syntax, while retaining the same block styling and layout.
+Live Preview stays close to WYSIWYG and reveals relevant syntax contextually;
+entering a table must not turn it into raw source. Visible syntax takes its
+natural inline width, and hidden syntax reserves no placeholder width.
+
+**Current implementation is not unified.** Source list rendering exits through
+a separate path using `.cm-source-list-wrapped`, padding, and negative
+`text-indent`. Live Preview and WYSIWYG use marker decorations,
+`.cm-list-block-text`, and flex layout; WYSIWYG also has a separate list
+decoration path in its height-map field. The persistent layout field still
+branches on editor mode. Recent source-column offset changes did not remove
+these competing paths and must not be treated as completion of the unified
+rendering work.
+
+**Acceptance:** Compare actual rendered marker, item-text, and wrapped-line
+positions across Source, Live Preview, and WYSIWYG using the same document.
+Cover bullets, tasks, decimal, upper/lower alphabetic, and upper/lower Roman
+markers at multiple nesting levels; repeat with syntax visible and hidden, the
+cursor inside and outside an item, and the keyboard open and closed. Tests that
+only assert CSS variables or classes do not establish visual parity. Also
+verify that Live Preview and WYSIWYG keep tables rendered and editable while
+Source displays raw table syntax.
 
 **Current verification checklist:**
 
@@ -836,10 +836,10 @@ Android device line-wrap geometry still needs confirmation.
    Non-hanging List Wrapping to align them at each item's marker. Verify both
    behaviors in Source, Live Preview, and WYSIWYG, while an item is active and
    after the keyboard closes. No nested wrap may fall back to its parent or the
-   document margin. Live Preview and WYSIWYG hide leading Markdown indentation
-   and apply parsed depth to the whole item; Source keeps its spaces visible and
-   must not add a second depth offset. A continuation that joins the item after
-   deleting its blank separator still wraps under the item text.
+   document margin. All modes must use the same block layout; syntax visibility
+   may shift the inline text naturally, but must not change the list's wrapping
+   rule. A continuation that joins the item after deleting its blank separator
+   still wraps under the item text.
 4. With no selection, Clear Formatting should remove the current paragraph's
    heading, list/task, quote/callout, indentation, link, or inline style syntax
    while keeping its visible text. It must also clear a first-paragraph
