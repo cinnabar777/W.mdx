@@ -747,11 +747,11 @@ Focused web tests pass and the web bundle builds, but those checks do not verify
 Android rendering or touch behavior.
 
 The latest device check confirms nested quotes and Clear Formatting work. It
-found that wrapped rows in both ordinary and quoted paragraphs start one
-indentation unit too far right. The visual layout already applies the source
-indent as left padding; a negative `text-indent` was shifting only the first
-rendered row back to the left. The layout now keeps the same left padding on
-all rows and preserves the paragraph first-line preference separately.
+found that the first rendered row in an indented paragraph was shifted relative
+to wrapped rows. Explicit source indentation already defines the paragraph's
+left edge, so the paragraph-first-line typography preference must not add a
+second indent to that first row. The layout now uses the same left padding and
+zero text indent for every row in an explicitly indented paragraph.
 
 **Current verification checklist:**
 
