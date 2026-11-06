@@ -264,11 +264,19 @@ test('source wrapping keeps paragraph, quote, and list content aligned', async (
   );
   assert.deepEqual(
     getMarkdownSourceLineLayout('  10. [ ] nested item'),
-    { kind: 'list', contentOffsetColumns: 10 }
+    {
+      kind: 'list',
+      markerOffsetColumns: 2,
+      contentOffsetColumns: 10
+    }
   );
   assert.deepEqual(
     getMarkdownSourceLineLayout('[ ] task item'),
-    { kind: 'list', contentOffsetColumns: 4 }
+    {
+      kind: 'list',
+      markerOffsetColumns: 0,
+      contentOffsetColumns: 4
+    }
   );
   assert.equal(getMarkdownSourceLineLayout('ordinary paragraph'), null);
 });
@@ -290,6 +298,19 @@ test('list continuation stays under its item text after a blank line is deleted'
       contentOffsetColumns: 3,
       sourceOffsetColumns: 3
     }
+  );
+  const nestedListItems = EditorState.create({
+    doc: '- parent\n  - child',
+    extensions: [markdown()]
+  });
+  assert.deepEqual(
+    getMarkdownSourceLineLayoutForState(nestedListItems, 2),
+    {
+      kind: 'list',
+      markerOffsetColumns: 2,
+      contentOffsetColumns: 4
+    },
+    'a nested list item must retain its own marker offset in Source'
   );
   const indentedContinuation = EditorState.create({
     doc: '1. item\n  paragraph',
@@ -353,11 +374,25 @@ test('list continuation stays under its item text after a blank line is deleted'
     /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-source-list-wrapped\s*\{([^}]+)\}/
   )?.[1];
   assert.ok(sourceListMarkerWrapRule, 'source marker-wrap layout rule is missing');
-  assert.match(sourceListMarkerWrapRule, /padding-left:\s*0/);
-  assert.match(sourceListMarkerWrapRule, /text-indent:\s*0/);
+  assert.match(
+    sourceListMarkerWrapRule,
+    /padding-left:\s*var\(--source-marker-offset/
+  );
+  assert.match(
+    sourceListMarkerWrapRule,
+    /text-indent:\s*calc\(0ch - var\(--source-marker-offset/
+  );
   assert.match(
     html,
     /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-source-list-wrapped[\s\S]*?padding-left:\s*var\(--source-hanging-offset/
+  );
+  assert.match(
+    html,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-wmdx-task-item:not\(\.cm-source-list-wrapped\)\s*\{[^}]*display:\s*flex/
+  );
+  assert.match(
+    html,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-wmdx-task-item > \.cm-list-block-text/
   );
   const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
   assert.match(main, /listLayout\?\.kind === 'list-continuation'/);
@@ -433,6 +468,44 @@ test('rendered indented code moves shared leading spaces to every wrapped row', 
   assert.match(html, /padding-left:\s*calc\([\s\S]*?--code-block-common-indent/);
   assert.match(main, /--code-block-common-indent:\$\{[^}]+}ch/);
   assert.match(main, /codeBlockLayout\.hiddenRanges/);
+});
+
+test('Backspace removes one indented-code source space at the visual start', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { backspaceIndentedCodeBlockIndent } =
+    await import('../src/markdownIndent.js');
+  const view = {
+    state: EditorState.create({
+      doc: '    code',
+      selection: EditorSelection.cursor(0),
+      extensions: [markdown()]
+    }),
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    }
+  };
+
+  assert.equal(backspaceIndentedCodeBlockIndent(view), true);
+  assert.equal(view.state.doc.toString(), '   code');
+  assert.equal(view.state.selection.main.head, 0);
+  assert.equal(backspaceIndentedCodeBlockIndent(view), false);
+
+  const fencedView = {
+    state: EditorState.create({
+      doc: '```\n    code\n```',
+      selection: EditorSelection.cursor(4),
+      extensions: [markdown()]
+    }),
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    }
+  };
+  assert.equal(backspaceIndentedCodeBlockIndent(fencedView), false);
+
+  const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+  assert.match(main, /indentedCodeBlockBackspaceKeymap/);
+  assert.match(main, /currentEditorMode !== 'source'[\s\S]*backspaceIndentedCodeBlockIndent\(view\)/);
 });
 
 test('indent and outdent move a selected list item with its wrapped and nested lines', async () => {
@@ -707,7 +780,7 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   assert.match(main, /key: 'Shift-Tab'[\s\S]*?applyEditorMarkdownIndent\(view, 'outdent'\)/);
   assert.match(
     main,
-    /Prec\.highest\(\[tableNavigationKeymap,\s*markdownIndentKeymap\]\)/,
+    /Prec\.highest\(\[\s*tableNavigationKeymap,\s*markdownIndentKeymap,\s*indentedCodeBlockBackspaceKeymap\s*\]\)/,
     'table navigation and list indentation must run before CodeMirror default Tab behavior'
   );
   assert.match(main, /cmdName === 'indent'\) \{\s*applyEditorMarkdownIndent\(view, 'indent', markdownIndentSpaces, editorCommandOptions\)/);

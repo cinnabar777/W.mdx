@@ -35,6 +35,7 @@ import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import {
   applyMarkdownIndent,
+  backspaceIndentedCodeBlockIndent,
   getMarkdownIndentSpaces,
   getMarkdownSourceLineLayoutForState,
   getIndentedCodeBlockRenderLayout,
@@ -815,7 +816,9 @@ function listItemTextRange(tree, doc, line, markerEnd) {
     from: markerEnd,
     to: line.to,
     enter: node => {
-      if (node.name === 'TaskMarker') from = Math.max(from, node.to);
+      if (node.name === 'TaskMarker' || node.name === 'WmdxTaskMarker') {
+        from = Math.max(from, node.to);
+      }
     }
   });
   while (from < line.to && /[ \t]/.test(doc.sliceString(from, from + 1))) {
@@ -871,10 +874,7 @@ function scheduleListMarkerMeasurements(view, force = false) {
         const marker = line.querySelector(
           '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-list-marker-syntax'
         );
-        if (!marker) {
-          measurements.push({ line, signature: null });
-          continue;
-        }
+        if (!marker) continue;
         const signature = listMarkerMeasurementSignature(marker);
         if (
           !force &&
@@ -887,8 +887,6 @@ function scheduleListMarkerMeasurements(view, force = false) {
         const gutter = measureListMarkerGutter(line, marker);
         if (Number.isFinite(gutter) && gutter > 0) {
           measurements.push({ line, gutter, signature });
-        } else {
-          measurements.push({ line, signature: null });
         }
       }
       recordListMarkerRead(measurementMode, lines.length, measurements.length);
@@ -896,6 +894,10 @@ function scheduleListMarkerMeasurements(view, force = false) {
     },
     write: result => {
       if (!result) return;
+      if (measurementMode !== currentEditorMode) {
+        scheduleListMarkerMeasurements(view, true);
+        return;
+      }
       let changedCount = 0;
       let totalDeltaPx = 0;
       let maxDeltaPx = 0;
@@ -3035,11 +3037,14 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           const sourceOffsetColumns = layout.kind === 'list-continuation'
             ? layout.sourceOffsetColumns
             : layout.contentOffsetColumns;
+          const sourceMarkerOffsetColumns = layout.kind === 'list'
+            ? layout.markerOffsetColumns
+            : 0;
           sourceDecorations.push(
             Decoration.line({
               attributes: {
                 class: className,
-                style: `--source-hanging-offset:${sourceOffsetColumns}ch`
+                style: `--source-hanging-offset:${sourceOffsetColumns}ch;--source-marker-offset:${sourceMarkerOffsetColumns}ch`
               }
             }).range(line.from)
           );
@@ -3707,6 +3712,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                     .range(node.from, node.to)
                 );
               }
+            }
+            if (isWmdxTask && isNodeActive && !isPureWysiwyg) {
+              builder.push(
+                Decoration.mark({ class: 'cm-list-marker-syntax' })
+                  .range(node.from, node.to)
+              );
             }
             if (isWmdxTask) {
               let textFrom = node.to;
@@ -6167,6 +6178,15 @@ export const markdownIndentKeymap = keymap.of([
   }
 ]);
 
+export const indentedCodeBlockBackspaceKeymap = keymap.of([
+  {
+    key: 'Backspace',
+    run: view =>
+      currentEditorMode !== 'source' &&
+      backspaceIndentedCodeBlockIndent(view)
+  }
+]);
+
 const renderedVerticalGoals = new WeakMap();
 
 function renderedVisualRows(view) {
@@ -6812,7 +6832,11 @@ class CodeMirrorAdapter {
         heightMapField,
         livePreviewCodeSpanField,
         liveEmbeddedDocumentField,
-        Prec.highest([tableNavigationKeymap, markdownIndentKeymap]),
+        Prec.highest([
+          tableNavigationKeymap,
+          markdownIndentKeymap,
+          indentedCodeBlockBackspaceKeymap
+        ]),
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
         keymap.of([

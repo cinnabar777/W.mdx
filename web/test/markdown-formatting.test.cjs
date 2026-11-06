@@ -186,6 +186,54 @@ test('clear formatting without a selection strips block and inline syntax from o
   assert.equal(view.state.selection.main.empty, true);
 });
 
+test('clear formatting removes indented-code syntax from the first paragraph', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '          first line\n          second line\n\noutside';
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(0),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(
+    view.state.doc.toString(),
+    'first line\nsecond line\n\noutside'
+  );
+});
+
+test('clear formatting deindents only selected lines inside an indented code block', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '    first line\n    second line';
+  const from = doc.indexOf('first line');
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.range(from, from + 'first line'.length),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), 'first line\n    second line');
+});
+
 test('clear formatting removes Setext heading syntax with a cursor or selection', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');

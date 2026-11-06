@@ -440,10 +440,10 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   const standardListWrapRule = indexHtml.match(
     /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/
   )?.[0] ?? '';
-  assert.match(standardListWrapRule, /padding-left:\s*var\(--list-marker-gutter, 0px\)/);
-  assert.match(standardListWrapRule, /text-indent:\s*calc\(0px - var\(--list-marker-gutter, 0px\)\)/);
+  assert.match(standardListWrapRule, /padding-left:\s*0/);
+  assert.match(standardListWrapRule, /text-indent:\s*0/);
   const blockListRule = indexHtml.match(
-    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item,[\s\S]*?\{[^}]*\}/
   )?.[0] ?? '';
   assert.match(blockListRule, /display:\s*flex/);
   assert.ok(source.includes("line.style.setProperty('--list-marker-gutter', nextValue)"));

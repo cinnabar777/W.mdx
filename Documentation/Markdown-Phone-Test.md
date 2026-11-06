@@ -117,21 +117,27 @@ must remain. The quote border must stay at the same left position:
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.
 
-For ordinary lists, leave Block List Layout off. Check a root item and nested
-items that wrap across multiple visual lines. At every depth, each item's
-wrapped lines must align under that item's text—not under its marker, the
-parent's text, or the left margin. Place the cursor in a nested item with a
-continuation line and a child item. Increase and decrease indent with both the
-toolbar and Tab/Shift-Tab. The item, continuation, and child must move together,
-and numbering must remain correct. Ordinary hanging indentation must work
-regardless of Block List Layout; enabling that separate option must not turn
-the item into a first-line-only indent.
+Check root and nested bullet, ordered, and task items that wrap across multiple
+visual lines. With Block List Layout off, wrapped lines align at each item's
+marker column; with it on, they align under the item text. Verify both settings
+in Source, Live Preview, and WYSIWYG. Place the cursor in an item, then close
+the keyboard; its wrapping must not jump to the parent or document margin.
+Increase and decrease indent with both the toolbar and Tab/Shift-Tab. The item,
+continuation, and child must move together, and numbering must remain correct.
+Showing list syntax may naturally shift the text after a visible marker, but
+wrapped lines must stay with their item.
 
 When a paragraph follows a list, delete the blank separator at the start of the
 paragraph. Markdown treats the following text as part of the list item; its
 wrapped lines must align under the item text in Source, Live Preview, and
 WYSIWYG. Press Return to create the next item and verify its marker and wrapping
 stay stable without a visible layout jump.
+
+For a document whose first paragraph is an indented code block, use Clear
+Formatting and confirm its structural spaces are removed without deleting code
+text. Restore four spaces, place the caret at the visual start, and press
+Backspace once; it should remove one literal indentation character. Fenced code
+must keep its existing behavior.
 
 #### Pasting multiline content into a quote
 

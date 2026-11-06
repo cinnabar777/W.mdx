@@ -307,6 +307,18 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       ).style.getPropertyValue('--list-depth-offset'),
       '24px'
     );
+    assert.ok(
+      listLine(
+        'I. Native ordered child with a long line to wrap and verify nested marker alignment.'
+      ).querySelector('.cm-list-block-text'),
+      'the ordered-item text has a stable wrapper separate from its marker'
+    );
+    assert.ok(
+      wysiwygListItems
+        .find(line => line.textContent.includes('nested task'))
+        .querySelector('.cm-list-block-text'),
+      'task text wraps in its own block, separate from the checkbox'
+    );
     assert.equal(window.editorBridge.getMarkdown(), listSource);
 
     await window.editorBridge.setEditorMode('live_preview');
@@ -332,6 +344,16 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       liveNestedItem.style.getPropertyValue('--list-depth-offset'),
       '24px'
     );
+    assert.ok(
+      liveNestedItem.querySelector('.cm-list-block-text'),
+      'Live Preview keeps nested item text in its own wrapping block'
+    );
+    assert.ok(
+      livePreviewListItems
+        .find(line => line.textContent.includes('nested task'))
+        .querySelector('.cm-list-block-text'),
+      'Live Preview keeps task text separate from its checkbox marker'
+    );
     assert.equal(window.editorBridge.getMarkdown(), listSource);
 
     await window.editorBridge.setEditorMode('source');
@@ -346,6 +368,11 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       sourceNestedItem.style.getPropertyValue('--list-depth-offset'),
       '0px',
       'Source uses its visible indentation syntax without adding another offset'
+    );
+    assert.equal(
+      sourceNestedItem.style.getPropertyValue('--source-marker-offset'),
+      '2ch',
+      'Source keeps wrapped nested text at the nested marker column'
     );
     assert.equal(window.editorBridge.getMarkdown(), listSource);
     assert.deepEqual(errors, []);

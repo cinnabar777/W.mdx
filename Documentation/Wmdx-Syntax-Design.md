@@ -788,11 +788,15 @@ CommonMark indented code. This is distinct from the fenced-code toolbar action.
 The default is one space, configurable under Settings → Document Appearance →
 Paragraph. Indent and Outdent at a collapsed cursor target all source lines in
 the current paragraph. Block List Layout controls whether wrapped list text
-aligns under the item text or marker, consistently across all modes; it is not
-first-line indentation. In Source, visible markers determine the source offset;
-rendered modes apply the equivalent selected alignment. A paragraph continuation
-that becomes part of a list item after its blank separator is removed must wrap
-under the item text.
+aligns under the item text or marker, consistently across all modes; off means
+the marker column at that item's own nesting depth, and on means the item-text
+column. It is not first-line indentation. Source uses its visible indentation
+and marker syntax; rendered modes use parsed nesting and marker widgets. Showing
+syntax may naturally move the text after a visible marker, but wrapped rows must
+remain with that item and must not fall back to the parent or document margin.
+This layout must not depend on a measured marker width that can change with
+selection or keyboard visibility. A paragraph continuation that becomes part of
+a list item after its blank separator is removed must wrap under the item text.
 For a list continuation, calculate one absolute text column as the farther of
 the item's content column or the explicit source indentation. Source adds only
 the remaining offset because its literal indentation stays visible; rendered
@@ -800,6 +804,9 @@ modes use the full column because that syntax is hidden.
 Rendered indented code blocks hide the structural indentation parsed as Markdown
 syntax. Shared leading code indentation is rendered as block padding across all
 wrapped rows, while relative indentation between code lines remains visible.
+Clear Formatting removes the structural indentation from an indented code block,
+including when it is the first paragraph. Backspace at the visual start removes
+one literal indentation character at a time; fenced-code behavior is unchanged.
 Rendered list nesting comes from parsed list depth, not visible leading spaces.
 Live Preview and WYSIWYG hide that indentation syntax and offset the complete
 list item, including every wrapped row. Source keeps its literal indentation and
@@ -822,19 +829,21 @@ List Layout enabled. Android device line-wrap geometry still needs confirmation.
 2. Increase indentation on a long normal paragraph and on a quoted paragraph.
    In Source, Live Preview, and WYSIWYG, every wrapped line should align with
    the first line's content edge; the quote border should stay at the left edge.
-3. With Block List Layout off, indent and outdent a nested item that has
-   continuation text and child items. The marker, first row, and wrapped rows
-   must move together at every depth; a nested item must not fall back to its
-   parent's column or the document margin. The wrap anchor follows the selected
-   Block List Layout choice, but nesting must never become a first-line-only
-   offset. Live Preview and WYSIWYG hide the leading Markdown indentation and
-   apply parsed depth to the whole item; Source keeps the spaces visible and
-   must not add a second depth offset. Verify this with the preference both off
-   and on.
+3. Indent and outdent nested bullet, ordered, and task items with long text and
+   child items. With Block List Layout off, wrapped rows align under each item's
+   marker; with it on, they align under the item text. Verify both positions in
+   Source, Live Preview, and WYSIWYG, including while the item is active and
+   after the keyboard closes. No nested wrap may fall back to its parent or the
+   document margin. Live Preview and WYSIWYG hide leading Markdown indentation
+   and apply parsed depth to the whole item; Source keeps its spaces visible and
+   must not add a second depth offset. A continuation that joins the item after
+   deleting its blank separator still wraps under the item text.
 4. With no selection, Clear Formatting should remove the current paragraph's
    heading, list/task, quote/callout, indentation, link, or inline style syntax
-   while keeping its visible text. With a selection, it should clear only the
-   selected text and affected block lines.
+   while keeping its visible text. It must also clear a first-paragraph
+   indented-code block. With a selection, it should clear only the selected
+   text and affected block lines. Backspace at the visual start of an indented
+   code block should remove one indentation character; fenced code is unchanged.
 5. Long-press CommonMark external links and reference links in WYSIWYG. Confirm
    Edit and Delete are reachable, edits keep destination and title in their
    correct fields, and Delete leaves the displayed text. The last device report

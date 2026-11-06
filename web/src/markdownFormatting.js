@@ -7,6 +7,10 @@ import {
   getWmdxResourceTitleRange,
   parseWmdxResourceSyntax
 } from './wmdxResources.js';
+import {
+  getIndentedCodeBlockAtLine,
+  getIndentedCodeBlockRenderLayout
+} from './markdownIndent.js';
 
 const UNDERLINE_STYLE_MARKERS = Object.freeze({
   solid: '',
@@ -745,6 +749,16 @@ function getClearFormattingScope(state) {
     return { from: firstLine.from, to: lastLine.to };
   }
 
+  const cursorLine = doc.lineAt(main.head);
+  const codeBlock = getIndentedCodeBlockAtLine(state, cursorLine.number);
+  if (codeBlock) {
+    const lastPosition = Math.max(codeBlock.from, codeBlock.to - 1);
+    return {
+      from: doc.lineAt(codeBlock.from).from,
+      to: doc.lineAt(lastPosition).to
+    };
+  }
+
   let block = getHeadingNodeAt(state, main.head);
   for (
     let node = block ? null : syntaxTree(state).resolveInner(main.head, 1);
@@ -814,8 +828,28 @@ function stripBlockFormatting(view, scope) {
   const firstLine = state.doc.lineAt(scope.from).number;
   const lastLine = state.doc.lineAt(Math.max(scope.from, scope.to - 1)).number;
   const changes = [];
+  const codeBlockLayouts = new Map();
   for (let number = firstLine; number <= lastLine; number += 1) {
     const line = state.doc.line(number);
+    const codeBlock = getIndentedCodeBlockAtLine(state, number);
+    if (codeBlock) {
+      const key = `${codeBlock.from}:${codeBlock.to}`;
+      let layout = codeBlockLayouts.get(key);
+      if (!layout) {
+        layout = getIndentedCodeBlockRenderLayout(
+          state,
+          codeBlock.from,
+          codeBlock.to
+        );
+        codeBlockLayouts.set(key, layout);
+      }
+      for (const range of layout.hiddenRanges) {
+        if (range.from >= line.from && range.to <= line.to) {
+          changes.push({ from: range.from, to: range.to, insert: '' });
+        }
+      }
+      continue;
+    }
     if (isCodeBlockLine(state, line)) continue;
     const heading = getHeadingNodeAt(state, line.from);
     if (

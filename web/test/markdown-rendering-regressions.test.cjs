@@ -120,7 +120,7 @@ test('rendering and interaction regressions stay covered without changing table 
   );
   assert.match(
     styles,
-    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*padding-left:\s*var\(--list-marker-gutter[\s\S]*?text-indent:\s*calc\(0px - var\(--list-marker-gutter/
+    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*padding-left:\s*0[\s\S]*?text-indent:\s*0/
   );
   assert.doesNotMatch(
     styles.match(/body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/)?.[0] ?? '',
@@ -128,7 +128,15 @@ test('rendering and interaction regressions stay covered without changing table 
   );
   assert.match(
     styles,
-    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*display:\s*flex/
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item,[\s\S]*?\{[^}]*display:\s*flex/
+  );
+  assert.match(
+    styles,
+    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-source-list-wrapped\s*\{[^}]*padding-left:\s*var\(--source-marker-offset/
+  );
+  assert.match(
+    styles,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-wmdx-task-item:not\(\.cm-source-list-wrapped\)\s*\{[^}]*display:\s*flex/
   );
   assert.match(
     main,

@@ -92,6 +92,7 @@ export function getMarkdownSourceLineLayout(lineText) {
   if (listPrefix) {
     return {
       kind: 'list',
+      markerOffsetColumns: indentationWidth(leading + quotePrefix),
       contentOffsetColumns: indentationWidth(leading + quotePrefix + listPrefix)
     };
   }
@@ -115,6 +116,7 @@ export function getMarkdownSourceLineLayoutForState(state, lineNumber) {
   const line = state.doc.line(lineNumber);
   const directLayout = getMarkdownSourceLineLayout(line.text);
   if (!line.text.trim()) return directLayout;
+  if (directLayout?.kind === 'list') return directLayout;
 
   const firstTextOffset = line.text.search(/\S/);
   if (firstTextOffset < 0) return null;
@@ -127,9 +129,7 @@ export function getMarkdownSourceLineLayoutForState(state, lineNumber) {
     const firstItemLine = state.doc.lineAt(node.from);
     if (line.number <= firstItemLine.number) return null;
     const itemLayout = getMarkdownSourceLineLayout(firstItemLine.text);
-    if (itemLayout?.kind !== 'list' || directLayout?.kind === 'list') {
-      return directLayout;
-    }
+    if (itemLayout?.kind !== 'list') return directLayout;
     const explicitIndentColumns = directLayout?.kind === 'paragraph'
       ? directLayout.contentOffsetColumns
       : 0;
@@ -239,6 +239,58 @@ export function getIndentedCodeBlockRenderLayout(state, blockFrom, blockTo) {
     }
   }
   return { hiddenRanges: mergedRanges, commonIndentColumns };
+}
+
+export function getIndentedCodeBlockAtLine(state, lineNumber) {
+  if (!state?.doc || !Number.isInteger(lineNumber)) return null;
+  const line = state.doc.line(lineNumber);
+  const probeFrom = line.from;
+  const probeTo = Math.min(state.doc.length, Math.max(line.from + 1, line.to));
+  let codeBlock = null;
+  let fencedCode = false;
+  syntaxTree(state).iterate({
+    from: probeFrom,
+    to: probeTo,
+    enter(node) {
+      if (node.name === 'FencedCode') fencedCode = true;
+      if (node.name === 'CodeBlock') {
+        codeBlock = { from: node.from, to: node.to };
+      }
+    }
+  });
+  return fencedCode ? null : codeBlock;
+}
+
+export function backspaceIndentedCodeBlockIndent(view) {
+  const state = view?.state;
+  const selection = state?.selection?.main;
+  if (!state?.doc || !selection?.empty) return false;
+
+  const line = state.doc.lineAt(selection.head);
+  const codeBlock = getIndentedCodeBlockAtLine(state, line.number);
+  if (!codeBlock) return false;
+
+  const { hiddenRanges } = getIndentedCodeBlockRenderLayout(
+    state,
+    codeBlock.from,
+    codeBlock.to
+  );
+  const indentRange = hiddenRanges.find(range =>
+    range.from >= line.from &&
+    range.to <= line.to &&
+    selection.head >= range.from &&
+    selection.head <= range.to &&
+    /^[ \t]+$/.test(state.doc.sliceString(range.from, range.to))
+  );
+  if (!indentRange || indentRange.to <= indentRange.from) return false;
+
+  const from = indentRange.to - 1;
+  const changes = state.changes({ from, to: indentRange.to, insert: '' });
+  view.dispatch({
+    changes,
+    selection: selection.map(changes, 1)
+  });
+  return true;
 }
 
 function listItemInfo(lineText) {

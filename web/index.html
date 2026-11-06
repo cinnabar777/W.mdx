@@ -1717,10 +1717,11 @@
 
     body:not(.list-wrap-under-text) .cm-content .cm-line.cm-list-item {
       box-sizing: border-box !important;
-      padding-left: var(--list-marker-gutter, 0px) !important;
-      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
+      padding-left: 0 !important;
+      text-indent: 0 !important;
     }
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item {
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item,
+    body.list-wrap-under-text .cm-content .cm-line.cm-wmdx-task-item:not(.cm-source-list-wrapped) {
       display: flex !important;
       align-items: flex-start !important;
       column-gap: 0.4em !important;
@@ -1731,7 +1732,12 @@
     body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-marker-syntax {
       flex: 0 0 auto !important;
     }
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-block-text {
+    body.list-wrap-under-text .cm-content .cm-line.cm-wmdx-task-item > .cm-todo-checkbox,
+    body.list-wrap-under-text .cm-content .cm-line.cm-wmdx-task-item > .cm-list-marker-syntax {
+      flex: 0 0 auto !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-block-text,
+    body.list-wrap-under-text .cm-content .cm-line.cm-wmdx-task-item > .cm-list-block-text {
       display: block !important;
       flex: 1 1 0% !important;
       box-sizing: border-box !important;
@@ -2017,8 +2023,8 @@
       text-indent: 0 !important;
     }
     body:not(.list-wrap-under-text) .cm-content .cm-line.cm-source-list-wrapped {
-      padding-left: 0 !important;
-      text-indent: 0 !important;
+      padding-left: var(--source-marker-offset, 0ch) !important;
+      text-indent: calc(0ch - var(--source-marker-offset, 0ch)) !important;
     }
     body.list-wrap-under-text .cm-content .cm-line.cm-source-list-wrapped {
       display: block !important;
