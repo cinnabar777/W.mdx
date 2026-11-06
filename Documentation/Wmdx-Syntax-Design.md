@@ -27,10 +27,15 @@ the syntax the current app supports.
 - Source, Live Preview, and WYSIWYG share one semantic block-layout model for
   paragraphs, headings, lists, quotes, code blocks, indentation, and wrapping.
   A view mode must not select a separate layout algorithm for those blocks.
-- Source shows recognized syntax. Live Preview hides syntax away from the
-  active editing context. WYSIWYG hides supported syntax and may use interactive
-  widgets, such as checkboxes. These are presentation and editing differences,
-  not separate block-layout systems.
+- Source shows recognized Markdown syntax and keeps structures such as tables
+  in source form. Live Preview is nearly WYSIWYG: rich structures such as tables
+  stay rendered and editable, while relevant inline or text-based syntax may
+  appear contextually when that text is being edited. Being inside a rendered
+  structure does not turn it into raw source. WYSIWYG keeps supported syntax
+  hidden and may use interactive widgets, such as checkboxes.
+- These are syntax-visibility and editing differences, not separate block-
+  layout systems. Live Preview must not become a raw-source view when the caret
+  enters a rendered table or another rich structure.
 - Visible syntax occupies its natural inline width, so exposing it can shift
   text and change wrap points. Hidden syntax occupies no reserved or phantom
   width. In particular, hiding a heading marker must not leave its width as an
