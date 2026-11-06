@@ -3296,12 +3296,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     for (const [lineFrom, ranges] of paragraphIndentSyntaxRanges) {
       if (calloutLineAttributes.has(lineFrom)) continue;
       const line = doc.lineAt(lineFrom);
-      const isIndentActive = !isPureWysiwyg && (
-        selection.empty
-          ? selection.head >= line.from && selection.head <= line.to
-          : selection.from < line.to && selection.to > line.from
-      );
-      if (isIndentActive) continue;
       for (const range of ranges) {
         hideSyntax(line.from + range.from, line.from + range.to);
       }

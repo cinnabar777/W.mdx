@@ -114,6 +114,8 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(main, /paragraphIndentSyntaxRanges/);
   assert.match(main, /if \(calloutLineAttributes\.has\(lineFrom\)\) continue/);
   assert.match(main, /hideSyntax\(line\.from \+ range\.from, line\.from \+ range\.to\)/);
+  const indentSyntaxHide = main.match(/for \(const \[lineFrom, ranges\] of paragraphIndentSyntaxRanges\)[\s\S]*?for \(const lineFrom of calloutLineAttributes\.keys\(\)\)/)?.[0] ?? '';
+  assert.doesNotMatch(indentSyntaxHide, /isIndentActive/);
   assert.match(styles, /cm-source-indented\.cm-paragraph\.cm-blockquote[\s\S]*?padding-left:\s*calc\([\s\S]*?source-indent-offset/);
   const quoteIndentRule = styles.match(/\.cm-content \.cm-line\.cm-source-indented\.cm-paragraph\.cm-blockquote[\s\S]*?\n    \}/)?.[0] ?? '';
   assert.doesNotMatch(quoteIndentRule, /margin-left:/);
