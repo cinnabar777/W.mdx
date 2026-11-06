@@ -161,7 +161,7 @@
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_list_wrap_under_text"
             app:title="Block List Layout"
-            app:summary="Keep each marker in a left gutter and wrap item text beneath itself"
+            app:summary="Use the separate block layout; regular list wrapping is already hanging"
             android:defaultValue="false" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference

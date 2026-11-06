@@ -289,7 +289,14 @@ export function getWmdxOrderedListItemLineRange(doc, position, items = []) {
   };
 }
 
-export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  ') {
+export function getMarkdownIndentChanges(
+  doc,
+  selection,
+  direction,
+  spaces = '  ',
+  paragraphSpaces = spaces,
+  paragraphIndentLimit = Infinity
+) {
   if (!doc || !selection || !['indent', 'outdent'].includes(direction)) return [];
 
   const changes = [];
@@ -308,6 +315,7 @@ export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  
   const isListBlock =
     selectedListLines.length > 0 &&
     selectedListLines.every(({ info }) => info !== null);
+  const paragraphIndentWidth = indentationWidth(paragraphSpaces);
 
   if (!isListBlock) {
     const itemBlock = getSelectedListItemBlock(selectedListLines);
@@ -369,18 +377,36 @@ export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  
     return changes;
   }
 
+  // Keep toolbar paragraph indentation within CommonMark's 0–3 leading-space
+  // paragraph range. Four leading spaces change the block into indented code.
+  if (
+    direction === 'indent' &&
+    Number.isFinite(paragraphIndentLimit) &&
+    nonBlankLines.some(({ line }) =>
+      !listItemInfo(line.text) &&
+      indentationWidth(leadingWhitespace(line.text)) + paragraphIndentWidth >
+        paragraphIndentLimit
+    )
+  ) {
+    return changes;
+  }
+
   for (const { number, line } of selectedLines) {
+    const currentInfo = listItemInfo(line.text);
     if (direction === 'indent') {
-      changes.push({ from: line.from, to: line.from, insert: spaces });
+      changes.push({
+        from: line.from,
+        to: line.from,
+        insert: currentInfo ? spaces : paragraphSpaces
+      });
       continue;
     }
 
-    const currentInfo = listItemInfo(line.text);
     const leadingWhitespace = /^[ \t]*/.exec(line.text)[0];
     if (leadingWhitespace) {
       const removeWidth = currentInfo
         ? getOutdentWidth(doc, number, currentInfo, spaces)
-        : indentationWidth(spaces);
+        : paragraphIndentWidth;
       const removeLength = leadingWhitespaceLengthForWidth(
         leadingWhitespace,
         removeWidth
@@ -550,7 +576,9 @@ export function applyMarkdownIndent(view, direction, spaces = '  ', options = {}
     view.state.doc,
     options.selection ?? view.state.selection.main,
     direction,
-    spaces
+    spaces,
+    options.paragraphSpaces ?? spaces,
+    options.paragraphIndentLimit ?? Infinity
   );
   const changes =
     options.renumberWmdx === true || options.renumberMarkdown === true

@@ -756,10 +756,13 @@ view keeps the syntax visible but applies a hanging indent so the first visual
 row and its wrapped rows share the same content edge. Live Preview and WYSIWYG
 hide leading indentation syntax and apply the same block-level layout. This is
 separate from the paragraph typography preference for first-line indentation.
-Indent and Outdent at a collapsed cursor target all source lines in the current
-paragraph. For lists, the cursor targets the complete parsed list item,
-including continuation lines and nested children; the list's wrap-under-text
-setting controls wrapped item alignment.
+Toolbar Indent and Outdent never change the paragraph-first-line preference.
+Ordinary paragraph actions add one leading Markdown space per level, move all
+source lines together, and stop before four spaces would turn the paragraph
+into indented code. Indent and Outdent at a collapsed cursor target all source
+lines in the current paragraph. List items use hanging indentation by default,
+independent of Block List Layout; do not gate their wrapped-line alignment on
+that preference. The list option remains separate from ordinary indentation.
 
 **Current verification checklist:**
 
@@ -772,8 +775,9 @@ setting controls wrapped item alignment.
 3. With Block List Layout off, indent and outdent a nested item that has
    continuation text and child items. The item subtree should move together.
    At every nesting depth, wrapped lines should align under that item's own text,
-   not under its marker, its parent's text, or the left margin. Then enable Block
-   List Layout and verify its separate left-gutter alignment.
+   not under its marker, its parent's text, or the left margin. Verify the same
+   hanging behavior with Block List Layout enabled; it must not become a
+   first-line-only indent.
 4. With no selection, Clear Formatting should remove the current paragraph's
    heading, list/task, quote/callout, indentation, link, or inline style syntax
    while keeping its visible text. With a selection, it should clear only the

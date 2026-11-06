@@ -143,6 +143,52 @@ test('indent still inserts spaces for ordinary paragraph text', async () => {
   assert.equal(applyChanges(source, changes), '  plain text');
 });
 
+test('toolbar paragraph indentation stays a paragraph and indents every source line', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { syntaxTree } = await import('@codemirror/language');
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  let source = 'first source line\nwrapped source line';
+
+  for (let level = 0; level < 2; level += 1) {
+    const doc = makeDoc(source);
+    source = applyChanges(
+      source,
+      getMarkdownIndentChanges(
+        doc,
+        { from: 0, to: doc.length },
+        'indent',
+        '  ',
+        ' ',
+        3
+      )
+    );
+  }
+
+  assert.equal(source, '  first source line\n  wrapped source line');
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdown()]
+  });
+  assert.equal(syntaxTree(state).topNode.firstChild.name, 'Paragraph');
+});
+
+test('toolbar paragraph indentation cannot turn a paragraph into indented code', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = '   plain text';
+  const changes = getMarkdownIndentChanges(
+    makeDoc(source),
+    { from: 0, to: source.length },
+    'indent',
+    '  ',
+    ' ',
+    3
+  );
+
+  assert.deepEqual(changes, []);
+  assert.equal(applyChanges(source, changes), source);
+});
+
 test('a collapsed indent targets all source lines of the current paragraph', async () => {
   const {
     applyMarkdownIndent,
@@ -476,6 +522,10 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   assert.match(main, /cmdName === 'outdent'\) \{\s*applyEditorMarkdownIndent\(view, 'outdent', '  ', editorCommandOptions\)/);
   assert.match(
     main,
+    /paragraphSpaces: touchesCodeBlock \? spaces : ' ',\s*paragraphIndentLimit: touchesCodeBlock \? Infinity : 3/
+  );
+  assert.match(
+    main,
     /getCurrentParagraphLineRange\(view\.state,\s*selection\.head,\s*\{\s*excludeListItems:\s*true\s*\}\)/
   );
   assert.match(main, /getMarkdownListItemLineRange,/);
@@ -492,6 +542,8 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
     /if \(currentEditorMode === 'source'\) \{[\s\S]*?getMarkdownSourceLineLayout\(line\.text\)/
   );
   assert.match(main, /selection:\s*indentSelection/);
+  assert.match(main, /headingNode = true/);
+  assert.match(main, /classes\.has\('cm-paragraph'\) \|\| classes\.has\('cm-heading'\)/);
   assert.match(
     main,
     /const tabInEditor = e\.key === 'Tab' &&\s*activeAdapter\?\.view\?\.contentDOM\?\.contains\(e\.target\)/,
@@ -539,6 +591,36 @@ test('the shared indent command dispatches mapped changes and consumes an empty 
     true
   );
   assert.equal(focused, false, 'toolbar indentation does not reopen a closed keyboard');
+});
+
+test('the shared indent command uses block-level paragraph indentation settings', async () => {
+  const { applyMarkdownIndent } = await import('../src/markdownIndent.js');
+  const doc = makeDoc('plain text');
+  const selection = { from: 0, to: doc.length };
+  const dispatches = [];
+  const view = {
+    state: {
+      doc,
+      selection: {
+        main: selection,
+        map: changes => changes
+      },
+      changes: changes => changes
+    },
+    dispatch: transaction => dispatches.push(transaction),
+    focus() {}
+  };
+
+  applyMarkdownIndent(view, 'indent', '  ', {
+    paragraphSpaces: ' ',
+    paragraphIndentLimit: 3
+  });
+
+  assert.deepEqual(dispatches[0].changes, [{
+    from: 0,
+    to: 0,
+    insert: ' '
+  }]);
 });
 
 test('indent and outdent update Wmdx numbering at each list depth', async () => {

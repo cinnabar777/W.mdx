@@ -556,6 +556,31 @@ function getCurrentParagraphLineRange(state, position, options = {}) {
   };
 }
 
+function selectionTouchesCodeBlock(tree, doc, selection) {
+  const isCodeBlock = node =>
+    node.name === 'FencedCode' || node.name === 'CodeBlock';
+  if (selection.empty) {
+    for (
+      let node = tree.resolveInner(selection.head, 1);
+      node;
+      node = node.parent
+    ) {
+      if (isCodeBlock(node)) return true;
+    }
+    return false;
+  }
+
+  let found = false;
+  tree.iterate({
+    from: doc.lineAt(selection.from).from,
+    to: doc.lineAt(selection.to).to,
+    enter(node) {
+      if (isCodeBlock(node)) found = true;
+    }
+  });
+  return found;
+}
+
 function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {}) {
   if (direction === 'outdent') {
     const selection = view.state.selection.main;
@@ -579,6 +604,11 @@ function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {})
 
   const selection = view.state.selection.main;
   const tree = syntaxTree(view.state);
+  const touchesCodeBlock = selectionTouchesCodeBlock(
+    tree,
+    view.state.doc,
+    selection
+  );
   const wmdxListItems = getWmdxOrderedListItems(view.state.doc, tree);
   const paragraphRange = selection.empty
     ? getMarkdownListItemLineRange(view.state, selection.head) ??
@@ -599,6 +629,8 @@ function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {})
   return applyMarkdownIndent(view, direction, spaces, {
     ...options,
     selection: indentSelection,
+    paragraphSpaces: touchesCodeBlock ? spaces : ' ',
+    paragraphIndentLimit: touchesCodeBlock ? Infinity : 3,
     renumberWmdx: isListFlavorEnabledNow('wmdx'),
     renumberMarkdown: isListFlavorEnabledNow('markdown'),
     isExcluded: position => wmdxOrderedListPositionIsExcluded(tree, position)
@@ -3083,12 +3115,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         const resolvedNode = tree.resolveInner(probe, 1);
 
         let paragraphNode = null;
+        let headingNode = false;
         let insideListItem = false;
         let insideCodeBlock = false;
         let insideTable = false;
 
         for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
           if (ancestor.name === 'Paragraph') paragraphNode = ancestor;
+          if (/^(?:ATXHeading[1-6]|SetextHeading[12])$/.test(ancestor.name)) {
+            headingNode = true;
+          }
           if (ancestor.name === 'ListItem') insideListItem = true;
           if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock') {
             insideCodeBlock = true;
@@ -3165,23 +3201,25 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           continue;
         }
 
-        if (paragraphNode) {
-          addLineClass(line.from, 'cm-paragraph');
+        if (paragraphNode || headingNode) {
+          if (paragraphNode) addLineClass(line.from, 'cm-paragraph');
           const indentRanges = getMarkdownSourceIndentRanges(line.text);
           if (indentRanges.length) {
             paragraphIndentSyntaxRanges.set(line.from, indentRanges);
           }
 
-          const paragraphFirstLine = doc.lineAt(paragraphNode.from);
-          const paragraphLastLine = doc.lineAt(
-            Math.max(paragraphNode.from, paragraphNode.to - 1)
-          );
+          if (paragraphNode) {
+            const paragraphFirstLine = doc.lineAt(paragraphNode.from);
+            const paragraphLastLine = doc.lineAt(
+              Math.max(paragraphNode.from, paragraphNode.to - 1)
+            );
 
-          if (line.from === paragraphFirstLine.from) {
-            addLineClass(line.from, 'cm-paragraph-first');
-          }
-          if (line.from === paragraphLastLine.from) {
-            addLineClass(line.from, 'cm-paragraph-last');
+            if (line.from === paragraphFirstLine.from) {
+              addLineClass(line.from, 'cm-paragraph-first');
+            }
+            if (line.from === paragraphLastLine.from) {
+              addLineClass(line.from, 'cm-paragraph-last');
+            }
           }
         }
       }
@@ -5895,7 +5933,7 @@ export function buildPersistentLayoutDecorations(state) {
     }
     if (
       sourceIndent > 0 &&
-      classes.has('cm-paragraph') &&
+      (classes.has('cm-paragraph') || classes.has('cm-heading')) &&
       !classes.has('cm-list-item') &&
       !classes.has('cm-callout')
     ) {

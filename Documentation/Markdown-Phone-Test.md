@@ -104,8 +104,10 @@ At a collapsed cursor, the action should indent the whole paragraph, not just
 the current source line. In Live Preview and WYSIWYG, leading indentation
 spaces should stay hidden even when the cursor is on the line. Source view keeps
 the spaces visible, but the first row and every wrapped row must begin at the
-same content position. Repeat on an ordinary paragraph. The quote border must
-stay at the same left position in both cases:
+same content position. Repeat on an ordinary paragraph, then indent it twice.
+It must remain a paragraph rather than becoming indented code, and every
+wrapped row must move with the paragraph. The quote border must stay at the same
+left position in both cases:
 
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.
@@ -116,8 +118,9 @@ wrapped lines must align under that item's text—not under its marker, the
 parent's text, or the left margin. Place the cursor in a nested item with a
 continuation line and a child item. Increase and decrease indent with both the
 toolbar and Tab/Shift-Tab. The item, continuation, and child must move together,
-and numbering must remain correct. Then enable Block List Layout and verify its
-separate left-gutter alignment without losing the nested item's text indent.
+and numbering must remain correct. Ordinary hanging indentation must work
+regardless of Block List Layout; enabling that separate option must not turn
+the item into a first-line-only indent.
 
 #### Pasting multiline content into a quote
 

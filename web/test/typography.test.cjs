@@ -175,6 +175,19 @@ test('paragraph and list typography selectors have matching editor line classes'
   assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-first'\)/);
   assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-last'\)/);
   assert.match(indexHtml, /\.cm-content \.cm-paragraph:not\(\.cm-list-item\)/);
+  assert.match(
+    indexHtml,
+    /\.cm-line\.cm-source-indented\.cm-paragraph-first[^{}]*\{[^}]*text-indent:\s*0\s*!important/
+  );
+  assert.match(indexHtml, /cm-source-indented\.cm-paragraph:not\(\.cm-source-paragraph-wrapped\)/);
+  assert.match(
+    indexHtml,
+    /\.cm-content \.cm-line\.cm-source-paragraph-wrapped[\s\S]*?text-indent:\s*calc\(0ch - var\(--source-hanging-offset/
+  );
+  assert.match(
+    indexHtml,
+    /\.cm-line\.cm-source-indented\.cm-heading[^{}]*\{[^}]*padding-left:\s*var\(--source-indent-offset/
+  );
   assert.match(indexHtml, /\.cm-content \.cm-list-item/);
 });
 
