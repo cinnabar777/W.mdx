@@ -114,7 +114,7 @@ export function getMarkdownSourceLineLayoutForState(state, lineNumber) {
   if (!state?.doc || !Number.isInteger(lineNumber)) return null;
   const line = state.doc.line(lineNumber);
   const directLayout = getMarkdownSourceLineLayout(line.text);
-  if (directLayout || !line.text.trim()) return directLayout;
+  if (!line.text.trim()) return directLayout;
 
   const firstTextOffset = line.text.search(/\S/);
   if (firstTextOffset < 0) return null;
@@ -127,20 +127,25 @@ export function getMarkdownSourceLineLayoutForState(state, lineNumber) {
     const firstItemLine = state.doc.lineAt(node.from);
     if (line.number <= firstItemLine.number) return null;
     const itemLayout = getMarkdownSourceLineLayout(firstItemLine.text);
-    return itemLayout?.kind === 'list'
-      ? {
-          kind: 'list-continuation',
-          contentOffsetColumns: itemLayout.contentOffsetColumns
-        }
-      : null;
+    if (itemLayout?.kind !== 'list' || directLayout?.kind === 'list') {
+      return directLayout;
+    }
+    const additionalIndent = directLayout?.kind === 'paragraph'
+      ? directLayout.contentOffsetColumns
+      : 0;
+    return {
+      kind: 'list-continuation',
+      contentOffsetColumns:
+        itemLayout.contentOffsetColumns + additionalIndent
+    };
   }
-  return null;
+  return directLayout;
 }
 
-export function getIndentedCodeBlockIndentRanges(state, blockFrom, blockTo) {
+export function getIndentedCodeBlockRenderLayout(state, blockFrom, blockTo) {
   const doc = state?.doc;
   if (!doc || !Number.isInteger(blockFrom) || !Number.isInteger(blockTo)) {
-    return [];
+    return { hiddenRanges: [], commonIndentColumns: 0 };
   }
 
   let matchingCodeBlock = false;
@@ -161,9 +166,12 @@ export function getIndentedCodeBlockIndentRanges(state, blockFrom, blockTo) {
       }
     }
   });
-  if (!matchingCodeBlock) return [];
+  if (!matchingCodeBlock) {
+    return { hiddenRanges: [], commonIndentColumns: 0 };
+  }
 
-  const ranges = [];
+  const hiddenRanges = [];
+  const textLines = new Map();
   const seenLineStarts = new Set();
   for (const child of codeTextRanges) {
     if (child.to <= child.from) continue;
@@ -177,11 +185,53 @@ export function getIndentedCodeBlockIndentRanges(state, blockFrom, blockTo) {
       if (contentFrom <= line.from) continue;
       const prefix = doc.sliceString(line.from, contentFrom);
       if (/^[ \t]+$/.test(prefix)) {
-        ranges.push({ from: line.from, to: contentFrom });
+        hiddenRanges.push({ from: line.from, to: contentFrom });
+      }
+      let leadingSpaces = 0;
+      while (
+        contentFrom + leadingSpaces < line.to &&
+        doc.sliceString(
+          contentFrom + leadingSpaces,
+          contentFrom + leadingSpaces + 1
+        ) === ' '
+      ) {
+        leadingSpaces += 1;
+      }
+      if (
+        leadingSpaces > 0 &&
+        doc.sliceString(contentFrom + leadingSpaces, line.to).trim()
+      ) {
+        textLines.set(line.from, {
+          from: contentFrom,
+          leadingSpaces
+        });
       }
     }
   }
-  return ranges;
+
+  const commonIndentColumns = textLines.size
+    ? Math.min(...[...textLines.values()].map(line => line.leadingSpaces))
+    : 0;
+  if (commonIndentColumns > 0) {
+    for (const line of textLines.values()) {
+      hiddenRanges.push({
+        from: line.from,
+        to: line.from + commonIndentColumns
+      });
+    }
+  }
+
+  hiddenRanges.sort((a, b) => a.from - b.from || a.to - b.to);
+  const mergedRanges = [];
+  for (const range of hiddenRanges) {
+    const previous = mergedRanges[mergedRanges.length - 1];
+    if (previous && range.from <= previous.to) {
+      previous.to = Math.max(previous.to, range.to);
+    } else {
+      mergedRanges.push({ ...range });
+    }
+  }
+  return { hiddenRanges: mergedRanges, commonIndentColumns };
 }
 
 function listItemInfo(lineText) {

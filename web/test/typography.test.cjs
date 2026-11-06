@@ -172,7 +172,8 @@ test('paragraph and list typography selectors have matching editor line classes'
   assert.match(source, /ancestor\.name === 'Paragraph'/);
   assert.match(source, /ancestor\.name === 'ListItem'/);
   assert.match(source, /addLineClass\(line\.from, 'cm-paragraph'\)/);
-  assert.match(source, /addLineClass\(line\.from, 'cm-list-item'\)/);
+  assert.match(source, /listLayout\?\.kind === 'list-continuation'/);
+  assert.match(source, /addClass\(number, 'cm-list-continuation'\)/);
   assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-first'\)/);
   assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-last'\)/);
   assert.match(indexHtml, /\.cm-content \.cm-paragraph:not\(\.cm-list-item\)/);
@@ -363,7 +364,10 @@ test('Link underline thickness and dialog insertion helpers in main.js and XML p
 });
 
 test('Heading links inside lists and upper-middle scroll helper', () => {
-  assert.match(source, /if \(insideListItem\) \{\s*addLineClass\(line\.from, 'cm-list-item'\);/);
+  assert.match(
+    source,
+    /if \(insideListItem\) \{\s*const listLayout = getMarkdownSourceLineLayoutForState\(/
+  );
   assert.match(source, /export function scrollToPositionUpperMiddle/);
 });
 

@@ -110,8 +110,9 @@ two spaces and verify one action moves it by two spaces. With either choice,
 enough indentation may create a CommonMark indented code block; this is separate
 from the fenced-code toolbar action. In Live Preview and WYSIWYG, the four
 structural spaces that create an indented code block must not appear as a
-first-line text indent; additional code indentation must remain. The quote
-border must stay at the same left position:
+first-line text indent. Any shared leading code indentation must shift the whole
+rendered block, including wrapped rows; relative indentation between code lines
+must remain. The quote border must stay at the same left position:
 
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.

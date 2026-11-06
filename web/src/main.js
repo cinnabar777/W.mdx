@@ -37,7 +37,7 @@ import {
   applyMarkdownIndent,
   getMarkdownIndentSpaces,
   getMarkdownSourceLineLayoutForState,
-  getIndentedCodeBlockIndentRanges,
+  getIndentedCodeBlockRenderLayout,
   getMarkdownIndentTargetSelection,
   getMarkdownListItemLineRange,
   getMarkdownSourceIndentColumns,
@@ -2998,6 +2998,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }
     };
     const lineClasses = new Map();
+    const codeBlockIndentByLine = new Map();
+    const listContinuationIndentByLine = new Map();
     const paragraphIndentSyntaxRanges = new Map();
 
     const addLineClass = (lineFrom, ...classNames) => {
@@ -3132,7 +3134,22 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         if (insideCodeBlock || insideTable) continue;
 
         if (insideListItem) {
-          addLineClass(line.from, 'cm-list-item');
+          const listLayout = getMarkdownSourceLineLayoutForState(
+            view.state,
+            line.number
+          );
+          if (listLayout?.kind === 'list-continuation') {
+            listContinuationIndentByLine.set(
+              line.from,
+              listLayout.contentOffsetColumns
+            );
+          }
+          addLineClass(
+            line.from,
+            listLayout?.kind === 'list-continuation'
+              ? 'cm-list-continuation'
+              : 'cm-list-item'
+          );
           if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
             addLineClass(line.from, 'cm-todo-list-item');
           }
@@ -3718,20 +3735,28 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             if (currentEditorMode === 'wysiwyg') {
               return;
             }
-        if (node.name === 'CodeBlock') {
-          for (const range of getIndentedCodeBlockIndentRanges(
-            view.state,
-            node.from,
-            node.to
-          )) {
-            hideSyntax(range.from, range.to);
-          }
-        }
+            let codeBlockLayout = null;
+            if (node.name === 'CodeBlock') {
+              codeBlockLayout = getIndentedCodeBlockRenderLayout(
+                view.state,
+                node.from,
+                node.to
+              );
+              for (const range of codeBlockLayout.hiddenRanges) {
+                hideSyntax(range.from, range.to);
+              }
+            }
             const startLine = view.state.doc.lineAt(node.from);
             const endLine = view.state.doc.lineAt(node.to);
             for (let l = startLine.number; l <= endLine.number; l++) {
               const codeLine = view.state.doc.line(l);
               addLineClass(codeLine.from, 'cm-codeblock-line');
+              if (codeBlockLayout?.commonIndentColumns > 0) {
+                codeBlockIndentByLine.set(
+                  codeLine.from,
+                  codeBlockLayout.commonIndentColumns
+                );
+              }
               if (l === startLine.number) addLineClass(codeLine.from, 'cm-codeblock-first');
               if (l === endLine.number) addLineClass(codeLine.from, 'cm-codeblock-last');
               const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(codeLine.text);
@@ -4076,6 +4101,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       'cm-paragraph-first',
       'cm-paragraph-last',
       'cm-list-item',
+      'cm-list-continuation',
       'cm-heading',
       'cm-heading-1',
       'cm-heading-2',
@@ -4094,9 +4120,23 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       );
       if (!remaining.length) continue;
 
+      const lineStyles = [];
+      const codeBlockIndent = codeBlockIndentByLine.get(lineFrom);
+      if (codeBlockIndent > 0) {
+        lineStyles.push(`--code-block-common-indent:${codeBlockIndent}ch`);
+      }
+      const listContinuationIndent = listContinuationIndentByLine.get(lineFrom);
+      if (listContinuationIndent > 0) {
+        lineStyles.push(
+          `--list-continuation-offset:${listContinuationIndent}ch`
+        );
+      }
       builder.push(
         Decoration.line({
-          attributes: { class: remaining.join(' ') }
+          attributes: {
+            class: remaining.join(' '),
+            ...(lineStyles.length ? { style: lineStyles.join(';') } : {})
+          }
         }).range(lineFrom)
       );
     }
@@ -4701,14 +4741,13 @@ function buildWysiwygCodeBlockDecorations(state) {
     enter(node) {
       if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') return;
 
+      const codeBlockLayout = node.name === 'CodeBlock'
+        ? getIndentedCodeBlockRenderLayout(state, node.from, node.to)
+        : null;
       const firstLine = doc.lineAt(node.from);
       const lastLine = doc.lineAt(node.to);
       if (node.name === 'CodeBlock') {
-        for (const range of getIndentedCodeBlockIndentRanges(
-          state,
-          node.from,
-          node.to
-        )) {
+        for (const range of codeBlockLayout.hiddenRanges) {
           const hiddenRange = Decoration.replace({}).range(
             range.from,
             range.to
@@ -4725,7 +4764,14 @@ function buildWysiwygCodeBlockDecorations(state) {
         if (number === lastLine.number) classes.push('cm-codeblock-last');
         builder.push(
           Decoration.line({
-            attributes: { class: classes.join(' ') }
+            attributes: {
+              class: classes.join(' '),
+              ...(codeBlockLayout?.commonIndentColumns > 0
+                ? {
+                    style: `--code-block-common-indent:${codeBlockLayout.commonIndentColumns}ch`
+                  }
+                : {})
+            }
           }).range(line.from)
         );
         const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(line.text);
@@ -5714,6 +5760,7 @@ export function buildPersistentLayoutDecorations(state) {
   const calloutAttributesByLine = new Map();
   const blockquoteDepthByLine = new Map();
   const paragraphIndentByLine = new Map();
+  const listContinuationIndentByLine = new Map();
   const wmdxTaskIndentByLine = new Map();
   const activeCallouts = [];
   let currentBlockquoteDepth = 0;
@@ -5901,7 +5948,19 @@ export function buildPersistentLayoutDecorations(state) {
       continue;
     }
     if (insideListItem && listsEnabled) {
-      addClass(number, 'cm-list-item');
+      const listLayout = getMarkdownSourceLineLayoutForState(state, number);
+      if (
+        currentEditorMode !== 'source' &&
+        listLayout?.kind === 'list-continuation'
+      ) {
+        addClass(number, 'cm-list-continuation');
+        listContinuationIndentByLine.set(
+          number,
+          listLayout.contentOffsetColumns
+        );
+      } else {
+        addClass(number, 'cm-list-item');
+      }
       if (
         isMarkdownTaskSyntaxEnabledNow() &&
         /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)
@@ -5938,6 +5997,8 @@ export function buildPersistentLayoutDecorations(state) {
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
     const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
     const paragraphIndent = paragraphIndentByLine.get(lineNumber) ?? 0;
+    const listContinuationIndent =
+      listContinuationIndentByLine.get(lineNumber) ?? 0;
     const taskIndent = wmdxTaskIndentByLine.get(lineNumber);
     const lineStyles = [];
     const sourceLineIndent = getMarkdownSourceIndentColumns(lineObj.text);
@@ -5962,6 +6023,11 @@ export function buildPersistentLayoutDecorations(state) {
     }
     if (taskIndent != null) {
       lineStyles.push(`--wmdx-task-extra-indent:${taskIndent}px`);
+    }
+    if (listContinuationIndent > 0) {
+      lineStyles.push(
+        `--list-continuation-offset:${listContinuationIndent}ch`
+      );
     }
     ranges.push(
       Decoration.line({

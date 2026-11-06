@@ -766,9 +766,10 @@ the current paragraph. List items use hanging indentation by default,
 independent of Block List Layout; do not gate their wrapped-line alignment on
 that preference. In Source view, a paragraph continuation that becomes part of
 a list item after its blank separator is removed must wrap under the item text.
-Rendered indented code blocks hide only the structural indentation parsed as
-Markdown syntax; any additional code indentation remains visible. List nesting
-remains based on marker width.
+Rendered indented code blocks hide the structural indentation parsed as Markdown
+syntax. Shared leading code indentation is rendered as block padding across all
+wrapped rows, while relative indentation between code lines remains visible.
+List nesting remains based on marker width.
 
 **Current verification checklist:**
 

@@ -273,7 +273,7 @@ test('source wrapping keeps paragraph, quote, and list content aligned', async (
   assert.equal(getMarkdownSourceLineLayout('ordinary paragraph'), null);
 });
 
-test('source list continuation stays under its item text after a blank line is deleted', async () => {
+test('list continuation stays under its item text after a blank line is deleted', async () => {
   const { EditorState } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
   const { getMarkdownSourceLineLayoutForState } =
@@ -286,6 +286,14 @@ test('source list continuation stays under its item text after a blank line is d
   assert.deepEqual(
     getMarkdownSourceLineLayoutForState(continuedList, 2),
     { kind: 'list-continuation', contentOffsetColumns: 3 }
+  );
+  const indentedContinuation = EditorState.create({
+    doc: '1. item\n  paragraph',
+    extensions: [markdown()]
+  });
+  assert.deepEqual(
+    getMarkdownSourceLineLayoutForState(indentedContinuation, 2),
+    { kind: 'list-continuation', contentOffsetColumns: 5 }
   );
 
   const separateParagraph = EditorState.create({
@@ -304,16 +312,32 @@ test('source list continuation stays under its item text after a blank line is d
   assert.ok(continuationRule, 'list continuation source layout rule is missing');
   assert.match(continuationRule, /padding-left:\s*var\(--source-hanging-offset/);
   assert.match(continuationRule, /text-indent:\s*0/);
+  const renderedContinuationRule = html.match(
+    /\.cm-content \.cm-line\.cm-list-continuation\s*\{([^}]+)\}/
+  )?.[1];
+  assert.ok(renderedContinuationRule, 'rendered list continuation rule is missing');
+  assert.match(
+    renderedContinuationRule,
+    /padding-left:\s*var\(--list-continuation-offset/
+  );
+  assert.match(renderedContinuationRule, /text-indent:\s*0/);
+  assert.match(
+    html,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-continuation[\s\S]*?padding-left:\s*calc\([\s\S]*?\+ 0\.4em\s*\)/
+  );
+  const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+  assert.match(main, /listLayout\?\.kind === 'list-continuation'/);
+  assert.match(main, /cm-list-continuation/);
 });
 
-test('rendered indented code hides only structural indentation spaces', async () => {
+test('rendered indented code moves shared leading spaces to every wrapped row', async () => {
   const { EditorState } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
   const { syntaxTree } = await import('@codemirror/language');
-  const { getIndentedCodeBlockIndentRanges } =
+  const { getIndentedCodeBlockRenderLayout } =
     await import('../src/markdownIndent.js');
 
-  const source = '    first\n      second';
+  const source = '     first\n      second';
   const state = EditorState.create({
     doc: source,
     extensions: [markdown()]
@@ -327,16 +351,20 @@ test('rendered indented code hides only structural indentation spaces', async ()
     }
   });
   assert.ok(codeBlockRange, 'indented source should parse as a code block');
-  const ranges = getIndentedCodeBlockIndentRanges(
+  const layout = getIndentedCodeBlockRenderLayout(
     state,
     codeBlockRange.from,
     codeBlockRange.to
   );
-  assert.deepEqual(ranges, [
-    { from: 0, to: 4 },
-    { from: 10, to: 14 }
-  ]);
-  assert.equal(state.doc.sliceString(14, state.doc.line(2).to), '  second');
+  assert.deepEqual(layout, {
+    hiddenRanges: [
+      { from: 0, to: 5 },
+      { from: 11, to: 16 }
+    ],
+    commonIndentColumns: 1
+  });
+  assert.equal(state.doc.sliceString(5, state.doc.line(1).to), 'first');
+  assert.equal(state.doc.sliceString(16, state.doc.line(2).to), ' second');
 
   const fencedState = EditorState.create({
     doc: '```\n    fenced\n```',
@@ -352,17 +380,21 @@ test('rendered indented code hides only structural indentation spaces', async ()
   });
   assert.ok(fencedBlockRange);
   assert.deepEqual(
-    getIndentedCodeBlockIndentRanges(
+    getIndentedCodeBlockRenderLayout(
       fencedState,
       fencedBlockRange.from,
       fencedBlockRange.to
     ),
-    []
+    { hiddenRanges: [], commonIndentColumns: 0 }
   );
 
   const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
-  assert.match(main, /getIndentedCodeBlockIndentRanges\(\s*view\.state,\s*node\.from,\s*node\.to\s*\)/);
-  assert.match(main, /getIndentedCodeBlockIndentRanges\(\s*state,\s*node\.from,\s*node\.to\s*\)/);
+  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.match(main, /getIndentedCodeBlockRenderLayout\(\s*view\.state,\s*node\.from,\s*node\.to\s*\)/);
+  assert.match(main, /getIndentedCodeBlockRenderLayout\(state,\s*node\.from,\s*node\.to\s*\)/);
+  assert.match(html, /padding-left:\s*calc\([\s\S]*?--code-block-common-indent/);
+  assert.match(main, /--code-block-common-indent:\$\{[^}]+}ch/);
+  assert.match(main, /codeBlockLayout\.hiddenRanges/);
 });
 
 test('indent and outdent move a selected list item with its wrapped and nested lines', async () => {
