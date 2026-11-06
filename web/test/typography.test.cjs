@@ -392,7 +392,7 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
     { key: 'pref_hr_margin_left', default: 0 },
     { key: 'pref_hr_margin_right', default: 0 },
     { key: 'pref_hr_centered', default: false },
-    { key: 'pref_list_wrap_under_text', default: false }
+    { key: 'pref_list_non_hanging', default: false }
   ];
 
   for (const m of marginKeys) {
@@ -415,7 +415,7 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(source.includes("'--hr-margin-left', prefs.pref_hr_margin_left ?? 0, '%'"));
   assert.ok(source.includes("'--hr-margin-right', prefs.pref_hr_margin_right ?? 0, '%'"));
   assert.ok(source.includes("prefs.pref_hr_centered === true"));
-  assert.ok(source.includes("prefs.pref_list_wrap_under_text === true"));
+  assert.ok(source.includes("prefs.pref_list_non_hanging !== true"));
   assert.match(source, /scheduleListMarkerMeasurements\(\s*update\.view,/);
 
   // CSS rules in index.html
@@ -469,5 +469,6 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
     path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_lists.xml'),
     'utf8'
   );
-  assert.match(listPreferences, /app:key="pref_list_wrap_under_text"[\s\S]*?android:defaultValue="false"/);
+  assert.match(listPreferences, /app:key="pref_list_non_hanging"[\s\S]*?android:defaultValue="false"/);
+  assert.match(listPreferences, /app:title="Non-hanging List Wrapping"/);
 });

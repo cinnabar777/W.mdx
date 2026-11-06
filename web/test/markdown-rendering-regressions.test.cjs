@@ -145,6 +145,10 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(main, /const textRange = listItemTextRange[\s\S]*?cm-list-block-text/);
   assert.match(main, /else if \(isWmdxTask\)[\s\S]*?cm-list-marker-syntax/);
   assert.match(main, /if \(isWmdxTask\) \{[\s\S]*?cm-list-block-text/);
+  assert.match(
+    main,
+    /'list-wrap-under-text',\s*prefs\.pref_list_non_hanging !== true/
+  );
   assert.doesNotMatch(
     main.match(/function scheduleListMarkerMeasurements\([\s\S]*?const listMarkerMeasurementPlugin/)?.[0] ?? '',
     /classList\.contains\('list-wrap-under-text'\)/

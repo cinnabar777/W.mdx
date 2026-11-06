@@ -118,10 +118,10 @@ must remain. The quote border must stay at the same left position:
 > Its next source line should remain aligned with the indented quote block.
 
 Check root and nested bullet, ordered, and task items that wrap across multiple
-visual lines. With Block List Layout off, wrapped lines align at each item's
-marker column; with it on, they align under the item text. Verify both settings
-in Source, Live Preview, and WYSIWYG. Place the cursor in an item, then close
-the keyboard; its wrapping must not jump to the parent or document margin.
+visual lines. By default, wrapped lines align under the item text. Enable
+Non-hanging List Wrapping to align them at the marker instead. Verify both
+settings in Source, Live Preview, and WYSIWYG. Place the cursor in an item, then
+close the keyboard; its wrapping must not jump to the parent or document margin.
 Increase and decrease indent with both the toolbar and Tab/Shift-Tab. The item,
 continuation, and child must move together, and numbering must remain correct.
 Showing list syntax may naturally shift the text after a visible marker, but

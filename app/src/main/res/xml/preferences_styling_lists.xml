@@ -159,9 +159,9 @@
             app:showSeekBarValue="true" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
-            app:key="pref_list_wrap_under_text"
-            app:title="Block List Layout"
-            app:summary="Use the separate block layout; regular list wrapping is already hanging"
+            app:key="pref_list_non_hanging"
+            app:title="Non-hanging List Wrapping"
+            app:summary="Align wrapped list lines at the marker instead of the item text"
             android:defaultValue="false" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference

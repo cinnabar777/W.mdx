@@ -12362,7 +12362,7 @@ window.editorBridge = {
     }
     document.body.classList.toggle(
       'list-wrap-under-text',
-      prefs.pref_list_wrap_under_text === true
+      prefs.pref_list_non_hanging !== true
     );
     document.body.classList.toggle(
       'todo-hide-extra-bullet',

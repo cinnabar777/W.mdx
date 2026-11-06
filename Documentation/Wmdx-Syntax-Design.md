@@ -787,16 +787,17 @@ level, move all source lines together, and allow four leading spaces to create
 CommonMark indented code. This is distinct from the fenced-code toolbar action.
 The default is one space, configurable under Settings → Document Appearance →
 Paragraph. Indent and Outdent at a collapsed cursor target all source lines in
-the current paragraph. Block List Layout controls whether wrapped list text
-aligns under the item text or marker, consistently across all modes; off means
-the marker column at that item's own nesting depth, and on means the item-text
-column. It is not first-line indentation. Source uses its visible indentation
-and marker syntax; rendered modes use parsed nesting and marker widgets. Showing
-syntax may naturally move the text after a visible marker, but wrapped rows must
-remain with that item and must not fall back to the parent or document margin.
-This layout must not depend on a measured marker width that can change with
-selection or keyboard visibility. A paragraph continuation that becomes part of
-a list item after its blank separator is removed must wrap under the item text.
+the current paragraph. Lists use hanging wrapping by default: wrapped rows align
+with the start of item text for bullet, ordered, and task lists in every view.
+The optional Non-hanging List Wrapping setting aligns wrapped rows at each
+item's marker instead. Neither behavior is first-line-only indentation. Source
+uses its visible indentation and marker syntax; rendered modes use parsed
+nesting and marker widgets. Showing syntax may naturally move the text after a
+visible marker, but wrapped rows must remain with that item and must not fall
+back to the parent or document margin. The default layout must not depend on a
+measured marker width that can change with selection or keyboard visibility. A
+paragraph continuation that becomes part of a list item after its blank
+separator is removed must wrap under the item text.
 For a list continuation, calculate one absolute text column as the farther of
 the item's content column or the explicit source indentation. Source adds only
 the remaining offset because its literal indentation stays visible; rendered
@@ -811,15 +812,15 @@ Rendered list nesting comes from parsed list depth, not visible leading spaces.
 Live Preview and WYSIWYG hide that indentation syntax and offset the complete
 list item, including every wrapped row. Source keeps its literal indentation and
 does not add a second depth offset. This nesting offset is independent of the
-Block List Layout choice for where wrapped text aligns.
+Non-hanging List Wrapping choice for where wrapped text aligns.
 
 The persistent structural layout now runs in Source, Live Preview, and WYSIWYG.
 Source-only line decorations account for visible syntax without replacing the
-shared layout. Web tests now check nested-list depth and indentation visibility
-in all three modes, nested quotes and quoted lists, rendered/editable tables in
-Live Preview and WYSIWYG, and raw table syntax in Source. A narrow Chromium phone
-viewport confirmed the wrapped nested list stays at its own depth with Block
-List Layout enabled. Android device line-wrap geometry still needs confirmation.
+shared layout. Web tests check nested-list depth and indentation visibility in
+all three modes, nested quotes and quoted lists, rendered/editable tables in
+Live Preview and WYSIWYG, and raw table syntax in Source. Repeat narrow-phone
+verification for default hanging wrapping and the optional non-hanging setting;
+Android device line-wrap geometry still needs confirmation.
 
 **Current verification checklist:**
 
@@ -830,9 +831,9 @@ List Layout enabled. Android device line-wrap geometry still needs confirmation.
    In Source, Live Preview, and WYSIWYG, every wrapped line should align with
    the first line's content edge; the quote border should stay at the left edge.
 3. Indent and outdent nested bullet, ordered, and task items with long text and
-   child items. With Block List Layout off, wrapped rows align under each item's
-   marker; with it on, they align under the item text. Verify both positions in
-   Source, Live Preview, and WYSIWYG, including while the item is active and
+   child items. By default, wrapped rows align under item text. Enable
+   Non-hanging List Wrapping to align them at each item's marker. Verify both
+   behaviors in Source, Live Preview, and WYSIWYG, while an item is active and
    after the keyboard closes. No nested wrap may fall back to its parent or the
    document margin. Live Preview and WYSIWYG hide leading Markdown indentation
    and apply parsed depth to the whole item; Source keeps its spaces visible and

@@ -137,7 +137,7 @@ const x = 42;
     pref_hr_margin_left: 24,
     pref_hr_margin_right: 24,
     pref_hr_centered: true,
-    pref_list_wrap_under_text: true,
+    pref_list_non_hanging: false,
     pref_font_weight_heading: 500,
     pref_heading_1_font_weight: 400,
     pref_heading_1_align: 'center',
@@ -263,7 +263,7 @@ const x = 42;
     pref_hr_margin_left: 0,
     pref_hr_margin_right: 0,
     pref_hr_centered: false,
-    pref_list_wrap_under_text: false
+    pref_list_non_hanging: false
   };
 
   window.editorBridge.applyAllPreferences(JSON.stringify(defaultPrefs));
@@ -280,14 +280,14 @@ const x = 42;
   }
 
   window.editorBridge.applyAllPreferences(JSON.stringify({
-    pref_list_wrap_under_text: true
-  }));
-  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
-
-  window.editorBridge.applyAllPreferences(JSON.stringify({
-    pref_list_wrap_under_text: false
+    pref_list_non_hanging: true
   }));
   assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), false);
+
+  window.editorBridge.applyAllPreferences(JSON.stringify({
+    pref_list_non_hanging: false
+  }));
+  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
 });
 
 test.after(() => dom.window.close());

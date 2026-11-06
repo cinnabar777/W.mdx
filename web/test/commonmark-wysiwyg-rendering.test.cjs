@@ -258,9 +258,19 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       '   6. Third child',
       '7. Next parent',
       '',
+      'A. Native alphabetic parent',
+      '  B. Native alphabetic child with a long line to wrap and verify nested marker alignment.',
       'I. Native ordered parent',
       '  I. Native ordered child with a long line to wrap and verify nested marker alignment.'
     ].join('\n');
+    window.editorBridge.applyAllPreferences(JSON.stringify({
+      pref_list_non_hanging: false
+    }));
+    assert.equal(
+      window.document.body.classList.contains('list-wrap-under-text'),
+      true,
+      'hanging item-text alignment is the default'
+    );
     window.editorBridge.setMarkdown(listSource);
     await new Promise(resolve => setTimeout(resolve, 20));
     await window.editorBridge.setEditorMode('wysiwyg');
@@ -278,6 +288,8 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       '2. Next grandchild',
       '3. Third child',
       '2. Next parent',
+      'A. Native alphabetic parent',
+      'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.',
       'I. Native ordered parent',
       'I. Native ordered child with a long line to wrap and verify nested marker alignment.'
     ]);
@@ -313,6 +325,27 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       ).querySelector('.cm-list-block-text'),
       'the ordered-item text has a stable wrapper separate from its marker'
     );
+    assert.equal(
+      listLine(
+        'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
+      ).style.getPropertyValue('--list-depth-offset'),
+      '24px'
+    );
+    assert.ok(
+      listLine(
+        'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
+      ).querySelector('.cm-list-block-text'),
+      'alphabetic item text uses the same wrapping block'
+    );
+    assert.equal(
+      window.getComputedStyle(
+        listLine(
+          'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
+        )
+      ).display,
+      'flex',
+      'the default text-hanging layout is active for ordered list markers'
+    );
     assert.ok(
       wysiwygListItems
         .find(line => line.textContent.includes('nested task'))
@@ -334,6 +367,8 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       '2. Next grandchild',
       '3. Third child',
       '2. Next parent',
+      'A. Native alphabetic parent',
+      'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.',
       'I. Native ordered parent',
       'I. Native ordered child with a long line to wrap and verify nested marker alignment.'
     ]);
@@ -354,6 +389,12 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
         .querySelector('.cm-list-block-text'),
       'Live Preview keeps task text separate from its checkbox marker'
     );
+    assert.ok(
+      livePreviewListItems
+        .find(line => line.textContent.includes('Native alphabetic child'))
+        .querySelector('.cm-list-block-text'),
+      'Live Preview uses the same wrapping block for alphabetic items'
+    );
     assert.equal(window.editorBridge.getMarkdown(), listSource);
 
     await window.editorBridge.setEditorMode('source');
@@ -373,6 +414,15 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       sourceNestedItem.style.getPropertyValue('--source-marker-offset'),
       '2ch',
       'Source keeps wrapped nested text at the nested marker column'
+    );
+    const sourceAlphaItem = sourceListItems.find(
+      line => line.textContent.includes('Native alphabetic child')
+    );
+    assert.ok(sourceAlphaItem);
+    assert.equal(
+      sourceAlphaItem.style.getPropertyValue('--source-marker-offset'),
+      '2ch',
+      'Source preserves the alphabetic child indentation as its own marker column'
     );
     assert.equal(window.editorBridge.getMarkdown(), listSource);
     assert.deepEqual(errors, []);
