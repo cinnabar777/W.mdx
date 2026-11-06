@@ -105,6 +105,10 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(styles, /left:\s*calc\([\s\S]*blockquote-depth-offset[\s\S]*blockquote-border-width/);
   assert.match(styles, /cm-paragraph-first\.cm-blockquote[\s\S]*?padding-top:/);
   assert.match(styles, /cm-paragraph-last\.cm-blockquote[\s\S]*?padding-bottom:/);
+  assert.match(main, /paragraphIndentByLine/);
+  assert.match(main, /--source-indent-offset:/);
+  assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?text-indent:\s*calc\(0px - var\(--source-line-indent-offset/);
+  assert.match(styles, /cm-source-indented\.cm-paragraph\.cm-blockquote[\s\S]*?blockquote-depth-offset[\s\S]*source-indent-offset/);
   assert.match(main, /Table cell\/editing|Table rendering in WYSIWYG/);
 });
 

@@ -33,7 +33,10 @@ import {
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
-import { applyMarkdownIndent } from './markdownIndent.js';
+import {
+  applyMarkdownIndent,
+  getMarkdownSourceIndentColumns
+} from './markdownIndent.js';
 import {
   createMarkdownBlockquotePaste,
   quoteMultilinePaste,
@@ -140,6 +143,8 @@ document.addEventListener('pointerdown', event => {
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
+  getBlockquoteNestingChanges,
+  getBlockquoteOutdentChanges,
   getBlockquoteEnterEdit,
   normalizeBlockquoteSyntaxSettings
 } from './blockquoteSyntax.mjs';
@@ -524,6 +529,22 @@ function getWmdxOrderedListItems(doc, tree) {
 }
 
 function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {}) {
+  if (direction === 'outdent') {
+    const quoteChanges = getBlockquoteOutdentChanges(
+      view.state.doc,
+      view.state.selection.main
+    );
+    if (quoteChanges.length) {
+      const changeSet = view.state.changes(quoteChanges);
+      view.dispatch({
+        changes: changeSet,
+        selection: view.state.selection.map(changeSet, 1)
+      });
+      if (options.preserveKeyboard !== true) view.focus();
+      return true;
+    }
+  }
+
   const tree = syntaxTree(view.state);
   return applyMarkdownIndent(view, direction, spaces, {
     ...options,
@@ -5520,6 +5541,7 @@ export function buildPersistentLayoutDecorations(state) {
   const classesByLine = new Map();
   const calloutAttributesByLine = new Map();
   const blockquoteDepthByLine = new Map();
+  const paragraphIndentByLine = new Map();
   const wmdxTaskIndentByLine = new Map();
   const activeCallouts = [];
   let currentBlockquoteDepth = 0;
@@ -5721,6 +5743,11 @@ export function buildPersistentLayoutDecorations(state) {
 
     if (paragraphNode) {
       addClass(number, 'cm-paragraph');
+      const paragraphStartLine = doc.lineAt(paragraphNode.from);
+      const indentColumns = getMarkdownSourceIndentColumns(
+        paragraphStartLine.text
+      );
+      if (indentColumns > 0) paragraphIndentByLine.set(number, indentColumns);
       if (line.from === doc.lineAt(paragraphNode.from).from) {
         addClass(number, 'cm-paragraph-first');
       }
@@ -5738,8 +5765,11 @@ export function buildPersistentLayoutDecorations(state) {
     const lineObj = doc.line(lineNumber);
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
     const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
+    const paragraphIndent = paragraphIndentByLine.get(lineNumber) ?? 0;
     const taskIndent = wmdxTaskIndentByLine.get(lineNumber);
     const lineStyles = [];
+    const sourceLineIndent = getMarkdownSourceIndentColumns(lineObj.text);
+    const sourceIndent = sourceLineIndent || paragraphIndent;
     if (calloutAttributes) {
       lineStyles.push(
         `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
@@ -5747,6 +5777,18 @@ export function buildPersistentLayoutDecorations(state) {
     } else if (blockquoteDepth) {
       lineStyles.push(
         `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`
+      );
+    }
+    if (
+      sourceIndent > 0 &&
+      classes.has('cm-paragraph') &&
+      !classes.has('cm-list-item') &&
+      !classes.has('cm-callout')
+    ) {
+      classes.add('cm-source-indented');
+      lineStyles.push(
+        `--source-indent-offset:${sourceIndent * 12}px`,
+        `--source-line-indent-offset:${sourceLineIndent * 12}px`
       );
     }
     if (taskIndent != null) {
@@ -9997,7 +10039,18 @@ function execCmd(cmdName, options) {
       );
     } else if (cmdName === 'blockQuote') {
       if (isBlockquoteSyntaxEnabledNow()) {
-        cmToggleLinePrefix(view, '> ');
+        const changes = getBlockquoteNestingChanges(
+          view.state.doc,
+          view.state.selection.main
+        );
+        if (changes.length) {
+          const changeSet = view.state.changes(changes);
+          view.dispatch({
+            changes: changeSet,
+            selection: view.state.selection.map(changeSet, 1)
+          });
+          focusEditorAfterCommand(view);
+        }
       }
     }
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');

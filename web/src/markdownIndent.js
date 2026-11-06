@@ -12,6 +12,35 @@ function leadingWhitespace(lineText) {
   return /^[ \t]*/.exec(lineText)[0];
 }
 
+export function getMarkdownSourceIndentColumns(lineText) {
+  const leading = leadingWhitespace(String(lineText ?? ''));
+  const countColumns = (value, initial = 0) => {
+    let columns = initial;
+    for (const character of value) {
+      columns = character === '\t'
+        ? columns + (4 - (columns % 4))
+        : columns + 1;
+    }
+    return columns;
+  };
+  let columns = countColumns(leading);
+  let rest = String(lineText ?? '').slice(leading.length);
+
+  while (rest.startsWith('>')) {
+    rest = rest.slice(1);
+    const separator = /^[ \t]*/.exec(rest)[0];
+    rest = rest.slice(separator.length);
+    if (rest.startsWith('>')) continue;
+    columns = countColumns(separator.slice(1), columns);
+    break;
+  }
+
+  if (!leading.length && !String(lineText ?? '').startsWith('>')) {
+    columns = countColumns(leadingWhitespace(rest), columns);
+  }
+  return columns;
+}
+
 function indentationWidth(value) {
   let width = 0;
   for (const character of value) {

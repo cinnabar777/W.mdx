@@ -1950,6 +1950,24 @@
       padding-left: var(--blockquote-padding, 12px) !important;
       position: relative !important;
     }
+    .cm-content .cm-line.cm-source-indented.cm-paragraph:not(.cm-list-item):not(.cm-callout) {
+      margin-left: var(--source-indent-offset, 0px) !important;
+      text-indent: calc(0px - var(--source-line-indent-offset, 0px)) !important;
+    }
+    .cm-content .cm-line.cm-source-indented.cm-paragraph-first:not(.cm-blockquote):not(.cm-list-item):not(.cm-callout) {
+      text-indent: calc(
+        var(--paragraph-indent, 0px) -
+        var(--source-line-indent-offset, 0px)
+      ) !important;
+    }
+    .cm-content .cm-line.cm-source-indented.cm-paragraph.cm-blockquote:not(.cm-list-item):not(.cm-callout) {
+      margin-left: calc(
+        var(--blockquote-left-margin, 0px) +
+        var(--blockquote-depth-offset, 0px) +
+        var(--source-indent-offset, 0px)
+      ) !important;
+      text-indent: calc(0px - var(--source-line-indent-offset, 0px)) !important;
+    }
     .cm-content .cm-line.cm-blockquote[data-blockquote-depth]:not(.cm-callout)::before {
       content: "" !important;
       position: absolute !important;

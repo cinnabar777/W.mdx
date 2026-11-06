@@ -92,6 +92,18 @@ list level:
 
 The nested quote should be visibly indented farther than the first quote, with
 an inset border while the outer border remains continuous.
+CommonMark and Obsidian quote markers stay at the left edge: nested source uses
+`> >`. To create one in the editor, place the cursor in a quote or select quoted
+lines and use the Block Quote toolbar action; it adds another quote level.
+Outdent removes one level. Ordinary
+indentation is separate from quote nesting: any wrapped text in an indented
+paragraph or quote should remain aligned with the indented block.
+
+For the wrapping check, place the cursor in the following quote, use Indent, and
+verify its wrapped lines stay at the same indent:
+
+> This indented quote is deliberately long enough to wrap on a phone screen.
+> Its next source line should remain aligned with the indented quote block.
 
 #### Pasting multiline content into a quote
 

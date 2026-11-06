@@ -6,6 +6,23 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '../..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
+function makeDoc(source) {
+  const lines = [];
+  let from = 0;
+  for (const [index, text] of source.split('\n').entries()) {
+    lines.push({ number: index + 1, from, to: from + text.length, text });
+    from += text.length + 1;
+  }
+  return {
+    length: source.length,
+    lines: lines.length,
+    line: number => lines[number - 1],
+    lineAt: position => lines.find(line =>
+      position >= line.from && position <= line.to
+    ) || lines[lines.length - 1]
+  };
+}
+
 test('block quote syntax is enabled by default and can be disabled app-wide', async () => {
   const {
     DEFAULT_BLOCKQUOTE_SYNTAX_SETTINGS,
@@ -21,6 +38,73 @@ test('block quote syntax is enabled by default and can be disabled app-wide', as
       pref_blockquote_syntax_enabled: false
     }),
     { enabled: false }
+  );
+});
+
+test('the quote toolbar nests selected lines and Outdent removes one level', async () => {
+  const {
+    getBlockquoteNestingChanges,
+    getBlockquoteOutdentChanges
+  } = await import('../src/blockquoteSyntax.mjs');
+  const source = '> Parent\n> Child\n> > Grandchild';
+  const doc = makeDoc(source);
+  const selection = {
+    from: doc.line(2).from,
+    to: doc.line(3).to
+  };
+  const apply = changes => {
+    let result = source;
+    for (const change of [...changes].reverse()) {
+      result = result.slice(0, change.from) +
+        change.insert +
+        result.slice(change.to);
+    }
+    return result;
+  };
+
+  assert.equal(
+    apply(getBlockquoteNestingChanges(doc, selection)),
+    '> Parent\n> > Child\n> > > Grandchild'
+  );
+
+  const nested = '> > Child\n> > Grandchild';
+  const nestedDoc = makeDoc(nested);
+  assert.equal(
+    applyChangesForTest(
+      nested,
+      getBlockquoteOutdentChanges(nestedDoc, {
+        from: 0,
+        to: nested.length
+      })
+    ),
+    '> Child\n> Grandchild'
+  );
+});
+
+test('a caret action nests or outdents the current quote block', async () => {
+  const {
+    getBlockquoteNestingChanges,
+    getBlockquoteOutdentChanges
+  } = await import('../src/blockquoteSyntax.mjs');
+  const source = '> Parent\n> > Child\n> > Grandchild\n> Sibling\nOutside';
+  const doc = makeDoc(source);
+  const nestedCaret = doc.line(2).from + 3;
+  const caretSelection = { from: nestedCaret, to: nestedCaret };
+
+  assert.equal(
+    applyChangesForTest(
+      source,
+      getBlockquoteNestingChanges(doc, caretSelection)
+    ),
+    '> Parent\n> > > Child\n> > > Grandchild\n> Sibling\nOutside'
+  );
+
+  assert.equal(
+    applyChangesForTest(
+      source,
+      getBlockquoteOutdentChanges(doc, caretSelection)
+    ),
+    '> Parent\n> Child\n> Grandchild\n> Sibling\nOutside'
   );
 });
 
@@ -111,4 +195,16 @@ test('block quote setting is wired to typography preferences and editor behavior
     mainSource,
     /node\.name === 'QuoteMark'[\s\S]*?isBlockquoteSyntaxEnabledNow\(\)/
   );
+  assert.match(mainSource, /getBlockquoteNestingChanges\(/);
+  assert.match(mainSource, /getBlockquoteOutdentChanges\(/);
 });
+
+function applyChangesForTest(source, changes) {
+  let result = source;
+  for (const change of [...changes].reverse()) {
+    result = result.slice(0, change.from) +
+      change.insert +
+      result.slice(change.to);
+  }
+  return result;
+}

@@ -142,6 +142,17 @@ test('indent still inserts spaces for ordinary paragraph text', async () => {
   assert.equal(applyChanges(source, changes), '  plain text');
 });
 
+test('source indentation counts paragraph and blockquote content spacing', async () => {
+  const { getMarkdownSourceIndentColumns } =
+    await import('../src/markdownIndent.js');
+
+  assert.equal(getMarkdownSourceIndentColumns('  paragraph'), 2);
+  assert.equal(getMarkdownSourceIndentColumns('>   quoted paragraph'), 2);
+  assert.equal(getMarkdownSourceIndentColumns('  > quoted paragraph'), 2);
+  assert.equal(getMarkdownSourceIndentColumns('> > nested quote'), 0);
+  assert.equal(getMarkdownSourceIndentColumns('\tparagraph'), 4);
+});
+
 test('outdent reduces nested indentation and removes a root list marker', async () => {
   const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
   const source = '  - nested\n  text\n- root';
