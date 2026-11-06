@@ -148,6 +148,53 @@ export function parseWmdxOrderedListMarker(lineText) {
   };
 }
 
+export function getWmdxOrderedListEnterEdit(
+  text,
+  selection,
+  isExcluded = () => false
+) {
+  const source = String(text ?? '');
+  const position = selection?.head ?? selection?.to;
+  const from = selection?.from ?? position;
+  const to = selection?.to ?? position;
+  if (
+    !Number.isInteger(position) ||
+    !Number.isInteger(from) ||
+    !Number.isInteger(to)
+  ) {
+    return null;
+  }
+
+  const lineFrom = source.lastIndexOf('\n', position - 1) + 1;
+  const nextBreak = source.indexOf('\n', position);
+  const lineTo = nextBreak < 0 ? source.length : nextBreak;
+  if (from < lineFrom || to > lineTo) return null;
+
+  const lineText = source.slice(lineFrom, lineTo);
+  const parsed = parseWmdxOrderedListMarker(lineText);
+  if (!parsed || isExcluded(lineFrom + parsed.markerFrom)) return null;
+
+  if (selection?.empty && !lineText.slice(parsed.markerTo).trim()) {
+    const exitFrom = lineFrom + parsed.markerFrom;
+    return {
+      from: exitFrom,
+      to: lineTo,
+      insert: '',
+      cursor: exitFrom,
+      exitsList: true
+    };
+  }
+
+  const insert = `\n${lineText.slice(0, parsed.markerTo)} `;
+  return {
+    from,
+    to,
+    insert,
+    cursor: from + insert.length,
+    exitsList: false
+  };
+}
+
 export function getSelectedListPrefixChanges(lines, prefix) {
   const entries = lines.map(line => {
     const indent = (/^[ \t]*/.exec(line.text)?.[0] ?? '').length;
@@ -158,13 +205,18 @@ export function getSelectedListPrefixChanges(lines, prefix) {
     const existingPrefix = LIST_ITEM_PREFIX.exec(content)?.[0] ?? '';
     return { from: contentFrom, existingPrefix };
   });
+  const targetPrefixes = lines.map((line, index) =>
+    typeof prefix === 'function' ? prefix(index, line) : (prefix ?? '')
+  );
   const removeTarget = Boolean(
-    prefix &&
-    entries.length > 0 &&
-    entries.every(entry => entry.existingPrefix === prefix)
+    targetPrefixes.length > 0 &&
+    targetPrefixes.every(Boolean) &&
+    entries.every((entry, index) =>
+      entry.existingPrefix === targetPrefixes[index]
+    )
   );
 
-  return entries.flatMap(entry => {
+  return entries.flatMap((entry, index) => {
     if (removeTarget) {
       return [{
         from: entry.from,
@@ -172,11 +224,12 @@ export function getSelectedListPrefixChanges(lines, prefix) {
         insert: ''
       }];
     }
-    if (!prefix && !entry.existingPrefix) return [];
+    const targetPrefix = targetPrefixes[index];
+    if (!targetPrefix && !entry.existingPrefix) return [];
     return [{
       from: entry.from,
       to: entry.from + entry.existingPrefix.length,
-      insert: prefix
+      insert: targetPrefix
     }];
   });
 }

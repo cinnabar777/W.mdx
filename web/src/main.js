@@ -160,6 +160,7 @@ import {
 import {
   getDefaultBulletPrefix,
   getDefaultOrderedPrefix,
+  getDefaultOrderedStyle,
   getDefaultTaskPrefix,
   getSelectedListPrefixChanges,
   getSelectedListLineNumbers,
@@ -167,7 +168,8 @@ import {
   isListAuthoringAvailable,
   isListFlavorEnabled,
   normalizeListSyntaxSettings,
-  parseWmdxOrderedListMarker
+  parseWmdxOrderedListMarker,
+  getWmdxOrderedListEnterEdit
 } from './listSyntax.mjs';
 import {
   BUILT_IN_HOLDING_ITEMS,
@@ -496,6 +498,19 @@ function getListMarkerDisplayText(marker, isBullet, position, orderedLabels) {
   return bulletShapes[marker.trim()] ?? '•';
 }
 
+function wmdxOrderedListPositionIsExcluded(tree, position) {
+  for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+    if (
+      node.name === 'FencedCode' ||
+      node.name === 'CodeBlock' ||
+      node.name === 'Table'
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function getWmdxOrderedListItems(doc, tree) {
   if (!isListFlavorEnabledNow('wmdx')) return [];
   const items = [];
@@ -513,22 +528,7 @@ function getWmdxOrderedListItems(doc, tree) {
       continue;
     }
     const markerPosition = line.from + parsed.markerFrom;
-    let excluded = false;
-    for (
-      let node = tree.resolveInner(markerPosition, 1);
-      node;
-      node = node.parent
-    ) {
-      if (
-        node.name === 'FencedCode' ||
-        node.name === 'CodeBlock' ||
-        node.name === 'Table'
-      ) {
-        excluded = true;
-        break;
-      }
-    }
-    if (excluded) continue;
+    if (wmdxOrderedListPositionIsExcluded(tree, markerPosition)) continue;
 
     for (const depth of activeLists.keys()) {
       if (depth > parsed.indent) activeLists.delete(depth);
@@ -2750,6 +2750,34 @@ function handleCalloutEnter(view, event) {
   return true;
 }
 
+function handleWmdxOrderedListEnter(view, event) {
+  if (
+    !isWmdxCalloutEnterEvent(event) ||
+    !isListFlavorEnabledNow('wmdx')
+  ) {
+    return false;
+  }
+
+  const state = view.state;
+  const selection = state.selection.main;
+  const tree = syntaxTree(state);
+  const edit = getWmdxOrderedListEnterEdit(
+    state.doc.toString(),
+    selection,
+    position => wmdxOrderedListPositionIsExcluded(tree, position)
+  );
+  if (!edit) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(edit.cursor),
+    userEvent: 'input'
+  });
+  return true;
+}
+
 export const livePreviewPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
     this.initializedFoldLines = new Set();
@@ -2758,9 +2786,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     this.calloutTitleClickHandler = event =>
       handleWmdxCalloutTitleClick(view, event);
     this.calloutEnterHandler = event =>
-      handleCalloutEnter(view, event);
+      handleCalloutEnter(view, event) ||
+      handleWmdxOrderedListEnter(view, event);
     this.calloutBeforeInputHandler = event =>
-      handleCalloutEnter(view, event);
+      handleCalloutEnter(view, event) ||
+      handleWmdxOrderedListEnter(view, event);
     view.dom.addEventListener('click', this.calloutTitleClickHandler, true);
     view.dom.addEventListener('keydown', this.calloutEnterHandler, true);
     view.dom.addEventListener('beforeinput', this.calloutBeforeInputHandler, true);
@@ -4022,8 +4052,13 @@ function getSetextHeadingAtLine(state, lineNumber) {
 function cmToggleSelectedListPrefix(view, prefix) {
   if (!view) return false;
   const { doc, selection } = view.state;
-  const lines = getSelectedListLineNumbers(doc, selection)
+  const selectedLines = getSelectedListLineNumbers(doc, selection)
     .map(number => doc.line(number));
+  const lines = selectedLines.length > 1
+    ? selectedLines.filter(line =>
+      line.text.replace(/^[ \t]*(?:>[ \t]*)*/, '').trim()
+    )
+    : selectedLines;
   const changes = getSelectedListPrefixChanges(lines, prefix);
   if (!changes.length) return false;
   view.dispatch({ changes });
@@ -9894,7 +9929,13 @@ function execCmd(cmdName, options) {
       if (prefix) cmToggleSelectedListPrefix(view, prefix);
     } else if (cmdName === 'numberedList') {
       const prefix = getDefaultOrderedPrefix(listSyntaxSettings);
-      if (prefix) cmToggleSelectedListPrefix(view, prefix);
+      if (prefix) {
+        const orderedStyle = getDefaultOrderedStyle(listSyntaxSettings);
+        const selectedPrefix = orderedStyle === 'decimal'
+          ? index => `${index + 1}${prefix.trimEnd().slice(-1)} `
+          : prefix;
+        cmToggleSelectedListPrefix(view, selectedPrefix);
+      }
     } else if (cmdName === 'todoList') {
       const prefix = getDefaultTaskPrefix(listSyntaxSettings);
       if (prefix) cmToggleSelectedListPrefix(view, prefix);

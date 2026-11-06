@@ -113,6 +113,33 @@ test('selected lines receive a list prefix and matching prefixes toggle off toge
     { from: 0, to: 2, insert: '' },
     { from: 8, to: 10, insert: '' }
   ]);
+
+  const numberedLines = [
+    { from: 0, text: 'Neque magna' },
+    { from: 13, text: 'nesciunt' },
+    { from: 22, text: 'qui sint' }
+  ];
+  const numberedPrefix = index => `${index + 1}. `;
+  assert.deepEqual(
+    getSelectedListPrefixChanges(numberedLines, numberedPrefix),
+    [
+      { from: 0, to: 0, insert: '1. ' },
+      { from: 13, to: 13, insert: '2. ' },
+      { from: 22, to: 22, insert: '3. ' }
+    ]
+  );
+  assert.deepEqual(
+    getSelectedListPrefixChanges([
+      { from: 0, text: '1. Neque magna' },
+      { from: 16, text: '2. nesciunt' },
+      { from: 28, text: '3. qui sint' }
+    ], numberedPrefix),
+    [
+      { from: 0, to: 3, insert: '' },
+      { from: 16, to: 19, insert: '' },
+      { from: 28, to: 31, insert: '' }
+    ]
+  );
 });
 
 test('selected list conversion preserves quote and indentation prefixes', async () => {
@@ -138,9 +165,57 @@ test('list toolbar actions cover selected lines and custom markers refresh while
   assert.match(mainSource, /cmdName === 'bulletedList'[\s\S]*?cmToggleSelectedListPrefix\(view, prefix\)/);
   assert.match(mainSource, /cmdName === 'numberedList'[\s\S]*?cmToggleSelectedListPrefix\(view, prefix\)/);
   assert.match(mainSource, /cmdName === 'todoList'[\s\S]*?cmToggleSelectedListPrefix\(view, prefix\)/);
+  assert.match(mainSource, /getDefaultOrderedStyle\(listSyntaxSettings\)/);
+  assert.match(mainSource, /index \+ 1\}\$\{prefix\.trimEnd\(\)\.slice\(-1\)\}/);
+  assert.match(mainSource, /handleCalloutEnter\(view, event\) \|\|[\s\S]*?handleWmdxOrderedListEnter\(view, event\)/);
   assert.equal(
     (mainSource.match(/linePattern: \/\^\[ \\t\]\*\(\?:\[aAiI\]\[\.\)\]\)\(\?:\[ \\t\]\|\$\)\//g) || []).length,
     2
+  );
+});
+
+test('Return continues Wmdx alpha and Roman lists, and a blank item exits', async () => {
+  const { getWmdxOrderedListEnterEdit } = await import('../src/listSyntax.mjs');
+  const cursor = position => ({
+    from: position,
+    to: position,
+    head: position,
+    empty: true
+  });
+
+  assert.deepEqual(
+    getWmdxOrderedListEnterEdit('A. First', cursor(8)),
+    {
+      from: 8,
+      to: 8,
+      insert: '\nA. ',
+      cursor: 12,
+      exitsList: false
+    }
+  );
+  assert.deepEqual(
+    getWmdxOrderedListEnterEdit('  > I. First', cursor(12)),
+    {
+      from: 12,
+      to: 12,
+      insert: '\n  > I. ',
+      cursor: 20,
+      exitsList: false
+    }
+  );
+  assert.deepEqual(
+    getWmdxOrderedListEnterEdit('i. ', cursor(3)),
+    {
+      from: 0,
+      to: 3,
+      insert: '',
+      cursor: 0,
+      exitsList: true
+    }
+  );
+  assert.equal(
+    getWmdxOrderedListEnterEdit('A. First', cursor(8), () => true),
+    null
   );
 });
 
