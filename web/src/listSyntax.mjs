@@ -277,6 +277,118 @@ export function getWmdxOrderedListMarkerChanges(
   });
 }
 
+export function parseMarkdownOrderedListMarker(lineText) {
+  const match = /^([ \t]*)((?:>[ \t]*)*)(\d+)([.)])(?=[ \t]|$)/.exec(
+    String(lineText ?? '')
+  );
+  if (!match) return null;
+  const indent = match[1];
+  let indentWidth = 0;
+  for (const character of indent) {
+    indentWidth = character === '\t'
+      ? indentWidth + (4 - (indentWidth % 4))
+      : indentWidth + 1;
+  }
+  const marker = `${match[3]}${match[4]}`;
+  const markerFrom = match[1].length + match[2].length;
+  return {
+    marker,
+    markerFrom,
+    markerTo: markerFrom + marker.length,
+    textFrom: markerFrom + marker.length,
+    indent: indentWidth,
+    quoteDepth: (match[2].match(/>/g) || []).length,
+    ordinal: Number.parseInt(match[3], 10),
+    delimiter: match[4]
+  };
+}
+
+export function getMarkdownOrderedListSequence(
+  lines,
+  isExcluded = () => false
+) {
+  const items = [];
+  const activeLists = new Map();
+  for (const line of lines) {
+    const parsed = parseMarkdownOrderedListMarker(line.text);
+    if (!parsed) {
+      if (line.text.trim()) {
+        const prefix = /^([ \t]*)((?:>[ \t]*)*)/.exec(line.text);
+        let indent = 0;
+        for (const character of prefix?.[1] ?? '') {
+          indent = character === '\t'
+            ? indent + (4 - (indent % 4))
+            : indent + 1;
+        }
+        const quoteDepth = (prefix?.[2]?.match(/>/g) || []).length;
+        for (const [key, active] of activeLists) {
+          if (
+            active.quoteDepth === quoteDepth &&
+            active.indent >= indent
+          ) {
+            activeLists.delete(key);
+          }
+        }
+      } else {
+        continue;
+      }
+      continue;
+    }
+    const markerFrom = line.from + parsed.markerFrom;
+    if (isExcluded(markerFrom)) continue;
+
+    for (const [key, active] of activeLists) {
+      if (
+        active.quoteDepth === parsed.quoteDepth &&
+        active.indent > parsed.indent
+      ) {
+        activeLists.delete(key);
+      }
+    }
+    const key = `${parsed.quoteDepth}:${parsed.indent}`;
+    let active = activeLists.get(key);
+    if (active && active.delimiter !== parsed.delimiter) {
+      active = null;
+    }
+    if (!active) {
+      const hasParentList = [...activeLists.values()].some(
+        previous =>
+          previous.quoteDepth === parsed.quoteDepth &&
+          previous.indent < parsed.indent
+      );
+      active = {
+        quoteDepth: parsed.quoteDepth,
+        indent: parsed.indent,
+        delimiter: parsed.delimiter,
+        ordinal: hasParentList ? 0 : parsed.ordinal - 1
+      };
+      activeLists.set(key, active);
+    }
+    active.ordinal++;
+    items.push({
+      ...parsed,
+      line,
+      from: markerFrom,
+      to: line.from + parsed.markerTo,
+      textTo: line.to,
+      ordinal: active.ordinal,
+      displayText: `${active.ordinal}${parsed.delimiter}`
+    });
+  }
+  return items;
+}
+
+export function getMarkdownOrderedListMarkerChanges(
+  lines,
+  isExcluded = () => false
+) {
+  return getMarkdownOrderedListSequence(lines, isExcluded).flatMap(item =>
+    item.marker === item.displayText
+      ? []
+      : [{ from: item.from, to: item.to, insert: item.displayText }]
+  );
+}
+
 export function getWmdxOrderedListEnterEdit(
   text,
   selection,

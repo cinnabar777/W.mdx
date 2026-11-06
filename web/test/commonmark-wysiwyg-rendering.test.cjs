@@ -163,7 +163,15 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       '  - bar',
       '    - baz',
       '',
-      '> - quoted item'
+      '> - quoted item',
+      '',
+      '1. Numbered parent',
+      '   2. Numbered child',
+      '   3. Next child',
+      '      4. Grandchild',
+      '      5. Next grandchild',
+      '   6. Third child',
+      '7. Next parent'
     ].join('\n');
     window.editorBridge.setMarkdown(listSource);
     await new Promise(resolve => setTimeout(resolve, 20));
@@ -171,7 +179,14 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     const wysiwygListItems = [...window.document.querySelectorAll('.cm-line.cm-list-item')];
     assert.deepEqual(wysiwygListItems.map(line => line.textContent), [
       '• a', '• b', '• c', '• d', '• e', '• f', '• g',
-      '• foo', '  • bar', '    • baz', '• quoted item'
+      '• foo', '  • bar', '    • baz', '• quoted item',
+      '1. Numbered parent',
+      '   1. Numbered child',
+      '   2. Next child',
+      '      1. Grandchild',
+      '      2. Next grandchild',
+      '   3. Third child',
+      '2. Next parent'
     ]);
     assert.equal(window.editorBridge.getMarkdown(), listSource);
 
@@ -179,7 +194,14 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     const livePreviewListItems = [...window.document.querySelectorAll('.cm-line.cm-list-item')];
     assert.deepEqual(livePreviewListItems.map(line => line.textContent), [
       '• a', '• b', '• c', '• d', '• e', '• f', '• g',
-      '• foo', '  • bar', '    • baz', '• quoted item'
+      '• foo', '  • bar', '    • baz', '• quoted item',
+      '1. Numbered parent',
+      '   1. Numbered child',
+      '   2. Next child',
+      '      1. Grandchild',
+      '      2. Next grandchild',
+      '   3. Third child',
+      '2. Next parent'
     ]);
     assert.equal(window.editorBridge.getMarkdown(), listSource);
     assert.deepEqual(errors, []);

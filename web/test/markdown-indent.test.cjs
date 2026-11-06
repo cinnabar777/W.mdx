@@ -298,6 +298,54 @@ test('indent and outdent update Wmdx numbering at each list depth', async () => 
   );
 });
 
+test('indent and outdent normalize Markdown decimal numbering by depth', async () => {
+  const { ChangeSet, EditorState } = await import('@codemirror/state');
+  const { applyMarkdownIndent } = await import('../src/markdownIndent.js');
+  const source = '1. Parent\n2. Child\n3. Next child\n4. Next parent';
+  const doc = EditorState.create({ doc: source }).doc;
+  const selection = { from: doc.line(2).from, to: doc.line(3).to };
+  const dispatches = [];
+  const view = {
+    state: {
+      doc,
+      selection: {
+        main: selection,
+        map: (changes, assoc) => ({ changes, assoc })
+      },
+      changes: changes => changes
+    },
+    dispatch: transaction => dispatches.push(transaction),
+    focus: () => {}
+  };
+
+  applyMarkdownIndent(view, 'indent', '  ', { renumberMarkdown: true });
+  const indentChanges = ChangeSet.of(dispatches[0].changes, doc.length);
+  const nestedSource =
+    '1. Parent\n   1. Child\n   2. Next child\n2. Next parent';
+  assert.equal(indentChanges.apply(doc).toString(), nestedSource);
+
+  const nestedDoc = EditorState.create({ doc: nestedSource }).doc;
+  const outdentDispatches = [];
+  const outdentView = {
+    state: {
+      doc: nestedDoc,
+      selection: {
+        main: { from: nestedDoc.line(2).from, to: nestedDoc.line(3).to },
+        map: (changes, assoc) => ({ changes, assoc })
+      },
+      changes: changes => changes
+    },
+    dispatch: transaction => outdentDispatches.push(transaction),
+    focus: () => {}
+  };
+  applyMarkdownIndent(outdentView, 'outdent', '  ', { renumberMarkdown: true });
+  const outdentChanges = ChangeSet.of(
+    outdentDispatches[0].changes,
+    nestedDoc.length
+  );
+  assert.equal(outdentChanges.apply(nestedDoc).toString(), source);
+});
+
 test('indent does not normalize unrelated Wmdx lists elsewhere in the document', async () => {
   const { ChangeSet, EditorState } = await import('@codemirror/state');
   const { applyMarkdownIndent } = await import('../src/markdownIndent.js');

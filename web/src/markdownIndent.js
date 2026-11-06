@@ -1,5 +1,7 @@
 import {
+  getMarkdownOrderedListMarkerChanges,
   getWmdxOrderedListMarkerChanges,
+  parseMarkdownOrderedListMarker,
   parseWmdxOrderedListMarker
 } from './listSyntax.mjs';
 
@@ -163,8 +165,22 @@ export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  
   return changes;
 }
 
-function renumberWmdxListsAfterIndent(doc, indentChanges, isExcluded) {
-  if (!Number.isInteger(doc?.lines) || !indentChanges.length) return indentChanges;
+function renumberOrderedListsAfterIndent(
+  doc,
+  indentChanges,
+  isExcluded,
+  { renumberMarkdown, renumberWmdx }
+) {
+  if (
+    !Number.isInteger(doc?.lines) ||
+    !indentChanges.length ||
+    (!renumberMarkdown && !renumberWmdx)
+  ) {
+    return indentChanges;
+  }
+  const isOrderedListLine = lineText =>
+    (renumberWmdx && parseWmdxOrderedListMarker(lineText)) ||
+    (renumberMarkdown && parseMarkdownOrderedListMarker(lineText));
   const changesByLine = new Map(
     indentChanges.map(change => [change.from, change])
   );
@@ -191,10 +207,10 @@ function renumberWmdxListsAfterIndent(doc, indentChanges, isExcluded) {
       lineDelta
     };
     lines.push(line);
-    if (indentChange && (
-      parseWmdxOrderedListMarker(originalLine.text) ||
-      parseWmdxOrderedListMarker(text)
-    )) {
+    if (
+      indentChange &&
+      (isOrderedListLine(originalLine.text) || isOrderedListLine(text))
+    ) {
       affectedListLines.push(line);
     }
     updatedFrom = line.to + 1;
@@ -203,14 +219,15 @@ function renumberWmdxListsAfterIndent(doc, indentChanges, isExcluded) {
 
   const affectedNumbers = new Set();
   for (const affectedLine of affectedListLines) {
-    const parsed = parseWmdxOrderedListMarker(affectedLine.text) ||
-      parseWmdxOrderedListMarker(affectedLine.originalLine.text);
+    const parsed =
+      isOrderedListLine(affectedLine.text) ||
+      isOrderedListLine(affectedLine.originalLine.text);
     const baseIndent = parsed?.indent ?? 0;
     let first = affectedLine.number - 1;
     let last = affectedLine.number - 1;
     const canJoinBlock = line =>
       !line.text.trim() ||
-      Boolean(parseWmdxOrderedListMarker(line.text)) ||
+      Boolean(isOrderedListLine(line.text)) ||
       indentationWidth(leadingWhitespace(line.text)) > baseIndent;
     while (first > 0 && canJoinBlock(lines[first - 1])) first -= 1;
     while (last + 1 < lines.length && canJoinBlock(lines[last + 1])) last += 1;
@@ -239,7 +256,14 @@ function renumberWmdxListsAfterIndent(doc, indentChanges, isExcluded) {
     return isExcluded?.(originalPosition) ?? false;
   };
 
-  const markerChanges = getWmdxOrderedListMarkerChanges(lines, mapExcludedPosition)
+  const markerChanges = [
+    ...(renumberWmdx
+      ? getWmdxOrderedListMarkerChanges(lines, mapExcludedPosition)
+      : []),
+    ...(renumberMarkdown
+      ? getMarkdownOrderedListMarkerChanges(lines, mapExcludedPosition)
+      : [])
+  ]
     .filter(change => {
       const line = lineAtUpdatedPosition(change.from);
       return line && affectedNumbers.has(line.number);
@@ -286,11 +310,16 @@ export function applyMarkdownIndent(view, direction, spaces = '  ', options = {}
     direction,
     spaces
   );
-  const changes = options.renumberWmdx === true
-    ? renumberWmdxListsAfterIndent(
+  const changes =
+    options.renumberWmdx === true || options.renumberMarkdown === true
+    ? renumberOrderedListsAfterIndent(
         view.state.doc,
         indentChanges,
-        options.isExcluded
+        options.isExcluded,
+        {
+          renumberMarkdown: options.renumberMarkdown === true,
+          renumberWmdx: options.renumberWmdx === true
+        }
       )
     : indentChanges;
   changes.sort((a, b) => a.from - b.from || a.to - b.to);

@@ -167,6 +167,7 @@ import {
   getOrderedMarkerLabel,
   getOrderedListPrefixGenerator,
   getWmdxOrderedListSequence,
+  getMarkdownOrderedListSequence,
   isListAuthoringAvailable,
   isListFlavorEnabled,
   normalizeListSyntaxSettings,
@@ -458,38 +459,25 @@ class ListMarkerWidget extends WidgetType {
 }
 
 function collectOrderedListMarkerLabels(tree, doc) {
-  const labels = new Map();
-  const listStack = [];
+  const markerPositions = new Set();
   tree.iterate({
     enter(node) {
-      if (node.name === 'BulletList') {
-        listStack.push({ ordered: false });
-      } else if (node.name === 'OrderedList') {
-        listStack.push({ ordered: true, start: null, item: 0 });
-      } else if (node.name === 'ListItem') {
-        const currentList = listStack.at(-1);
-        if (currentList?.ordered) currentList.item++;
-      } else if (node.name === 'ListMark') {
-        const currentList = listStack.at(-1);
-        if (!currentList?.ordered) return;
+      if (node.name === 'ListMark') {
         const marker = doc.sliceString(node.from, node.to);
-        if (currentList.start === null) {
-          currentList.start = Number.parseInt(marker, 10) || 1;
-        }
-        const delimiter = marker.endsWith(')') ? ')' : '.';
-        labels.set(
-          node.from,
-          `${currentList.start + currentList.item - 1}${delimiter}`
-        );
-      }
-    },
-    leave(node) {
-      if (node.name === 'BulletList' || node.name === 'OrderedList') {
-        listStack.pop();
+        if (/^\d+[.)]$/.test(marker)) markerPositions.add(node.from);
       }
     }
   });
-  return labels;
+  const lines = Array.from(
+    { length: doc.lines },
+    (_, index) => doc.line(index + 1)
+  );
+  return new Map(
+    getMarkdownOrderedListSequence(
+      lines,
+      position => !markerPositions.has(position)
+    ).map(item => [item.from, item.displayText])
+  );
 }
 
 function getListMarkerDisplayText(marker, isBullet, position, orderedLabels) {
@@ -529,6 +517,7 @@ function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {})
   return applyMarkdownIndent(view, direction, spaces, {
     ...options,
     renumberWmdx: isListFlavorEnabledNow('wmdx'),
+    renumberMarkdown: isListFlavorEnabledNow('markdown'),
     isExcluded: position => wmdxOrderedListPositionIsExcluded(tree, position)
   });
 }

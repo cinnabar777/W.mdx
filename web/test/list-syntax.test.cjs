@@ -153,6 +153,37 @@ test('ordered Wmdx numbering restarts at each indentation level', async () => {
   );
 });
 
+test('CommonMark ordered numbering follows indentation levels', async () => {
+  const {
+    getMarkdownOrderedListMarkerChanges,
+    getMarkdownOrderedListSequence
+  } = await import('../src/listSyntax.mjs');
+  const source = [
+    '1. Parent',
+    '   2. Child',
+    '   3. Next child',
+    '      4. Grandchild',
+    '      5. Next grandchild',
+    '   6. Third child',
+    '7. Next parent'
+  ];
+  let from = 0;
+  const lines = source.map((text, index) => {
+    const line = { from, to: from + text.length, number: index + 1, text };
+    from = line.to + 1;
+    return line;
+  });
+
+  assert.deepEqual(
+    getMarkdownOrderedListSequence(lines).map(item => item.displayText),
+    ['1.', '1.', '2.', '1.', '2.', '3.', '2.']
+  );
+  assert.deepEqual(
+    getMarkdownOrderedListMarkerChanges(lines).map(change => change.insert),
+    ['1.', '2.', '1.', '2.', '3.', '2.']
+  );
+});
+
 test('selected lines receive a list prefix and matching prefixes toggle off together', async () => {
   const { getSelectedListPrefixChanges } = await import('../src/listSyntax.mjs');
   const lines = [
