@@ -52,6 +52,7 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
 
   const markBodyLine = (line, callout, isBlank = false) => {
     const parentCallout = callout.parent || null;
+    if (!isBlank) callout.hasBodyContent = true;
     lineAttributes.set(line.from, {
       type: callout.type,
       depth: callout.depth,
@@ -125,6 +126,7 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
         depth: info.depth,
         type: info.type,
         parent,
+        hasBodyContent: false,
         info
       };
       openers.push({ lineFrom: line.from, info });
@@ -148,10 +150,16 @@ export function parseWmdxCallouts(text, isExcluded = () => false) {
       const containingCallout = [...stack]
         .reverse()
         .find(callout => blankIndent > callout.indent);
-      if (containingCallout) {
+      if (containingCallout && !containingCallout.hasBodyContent) {
         markBodyLine(blankLine, containingCallout, true);
       } else {
-        returnIndentByLine.set(blankLine.from, stack[0].indent);
+        const exitingCallout = containingCallout || stack[0];
+        returnIndentByLine.set(
+          blankLine.from,
+          exitingCallout.parent
+            ? exitingCallout.parent.indent + 2
+            : exitingCallout.indent
+        );
       }
     }
   }

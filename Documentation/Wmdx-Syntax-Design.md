@@ -96,6 +96,10 @@ the syntax the current app supports.
   bodies. Obsidian callouts use `> [!type]` with quoted body lines; this also
   recognizes the overlapping GFM alert syntax. Ordinary blockquotes are not
   treated as callouts.
+- Return on a blank nested callout line steps out one level at a time.
+  Trailing Wmdx whitespace-only lines after populated callouts do not render as
+  empty body blocks; Obsidian quote markers are reduced on the blank line being
+  exited.
 - Disabling callouts stops rendering both callout flavors; ordinary blockquotes
   remain available. These preferences do not change import/export conversion.
 

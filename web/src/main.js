@@ -147,6 +147,7 @@ import {
 } from './wmdxCallouts.js';
 import {
   buildObsidianCalloutInsertion,
+  getObsidianCalloutEnterEdit,
   isCalloutFlavorEnabled,
   normalizeCalloutSyntaxSettings
 } from './calloutSyntax.mjs';
@@ -2564,9 +2565,8 @@ function handleWmdxCalloutTitleClick(view, event) {
   return true;
 }
 
-function handleWmdxCalloutEnter(view, event) {
+function handleCalloutEnter(view, event) {
   if (
-    !isCalloutFlavorEnabledNow('wmdx') ||
     !isWmdxCalloutEnterEvent(event)
   ) {
     return false;
@@ -2574,10 +2574,15 @@ function handleWmdxCalloutEnter(view, event) {
 
   const state = view.state;
   const selection = state.selection.main;
-  const edit = getWmdxCalloutEnterEdit(
-    state.doc.toString(),
-    selection,
-    position => wmdxCalloutPositionIsExcluded(state, position)
+  const source = state.doc.toString();
+  const isExcluded = position =>
+    wmdxCalloutPositionIsExcluded(state, position);
+  const edit = (
+    isCalloutFlavorEnabledNow('wmdx') &&
+    getWmdxCalloutEnterEdit(source, selection, isExcluded)
+  ) || (
+    isCalloutFlavorEnabledNow('obsidian') &&
+    getObsidianCalloutEnterEdit(source, selection, isExcluded)
   );
   if (!edit) return false;
 
@@ -2599,9 +2604,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     this.calloutTitleClickHandler = event =>
       handleWmdxCalloutTitleClick(view, event);
     this.calloutEnterHandler = event =>
-      handleWmdxCalloutEnter(view, event);
+      handleCalloutEnter(view, event);
     this.calloutBeforeInputHandler = event =>
-      handleWmdxCalloutEnter(view, event);
+      handleCalloutEnter(view, event);
     view.dom.addEventListener('click', this.calloutTitleClickHandler, true);
     view.dom.addEventListener('keydown', this.calloutEnterHandler, true);
     view.dom.addEventListener('beforeinput', this.calloutBeforeInputHandler, true);

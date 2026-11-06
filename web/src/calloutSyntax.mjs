@@ -51,6 +51,98 @@ function splitLines(text) {
   return lines;
 }
 
+const OBSIDIAN_QUOTE_PREFIX = /^([ \t]*)(?:>[ \t]*)+/;
+const OBSIDIAN_CALLOUT_OPENER =
+  /^([ \t]*(?:>[ \t]*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i;
+
+export function getObsidianCalloutEnterEdit(
+  text,
+  selection,
+  isExcluded = () => false
+) {
+  if (!selection?.empty || !Number.isInteger(selection.head)) return null;
+
+  const source = String(text ?? '');
+  const lines = splitLines(source);
+  const lineIndex = lines.findIndex(
+    line => selection.head >= line.from && selection.head <= line.to
+  );
+  if (lineIndex < 0) return null;
+
+  const line = lines[lineIndex];
+  const prefixMatch = OBSIDIAN_QUOTE_PREFIX.exec(line.text);
+  if (!prefixMatch) return null;
+
+  const quotePrefix = prefixMatch[0];
+  const quoteDepth = (quotePrefix.match(/>/g) || []).length;
+  const contentStart = line.from + quotePrefix.length;
+  if (
+    quoteDepth === 0 ||
+    selection.head < contentStart ||
+    line.text.slice(quotePrefix.length).trim() ||
+    isExcluded(contentStart)
+  ) {
+    return null;
+  }
+
+  const activeCalloutDepths = [];
+  for (let index = 0; index <= lineIndex; index++) {
+    const candidate = lines[index];
+    const candidatePrefix = OBSIDIAN_QUOTE_PREFIX.exec(candidate.text);
+    if (!candidatePrefix) {
+      activeCalloutDepths.length = 0;
+      continue;
+    }
+
+    const candidateContentStart =
+      candidate.from + candidatePrefix[0].length;
+    if (isExcluded(candidateContentStart)) continue;
+
+    const depth = (candidatePrefix[0].match(/>/g) || []).length;
+    while (
+      activeCalloutDepths.length &&
+      activeCalloutDepths[activeCalloutDepths.length - 1] > depth
+    ) {
+      activeCalloutDepths.pop();
+    }
+
+    if (OBSIDIAN_CALLOUT_OPENER.test(candidate.text)) {
+      activeCalloutDepths.push(depth);
+    }
+  }
+
+  const activeCalloutDepth = activeCalloutDepths.at(-1);
+  if (activeCalloutDepth == null || activeCalloutDepth > quoteDepth) {
+    return null;
+  }
+
+  for (let index = lineIndex + 1; index < lines.length; index++) {
+    const candidate = lines[index];
+    const candidatePrefix = OBSIDIAN_QUOTE_PREFIX.exec(candidate.text);
+    if (!candidatePrefix) break;
+
+    const candidateContent = candidate.text.slice(candidatePrefix[0].length);
+    if (!candidateContent.trim()) continue;
+
+    const candidateDepth = (candidatePrefix[0].match(/>/g) || []).length;
+    if (candidateDepth >= quoteDepth) return null;
+    break;
+  }
+
+  const remainingDepth = quoteDepth - 1;
+  const indent = prefixMatch[1];
+  const insert = remainingDepth
+    ? `${indent}${Array.from({ length: remainingDepth }, () => '>').join(' ')} `
+    : indent;
+  return {
+    from: line.from,
+    to: line.to,
+    insert,
+    cursor: line.from + insert.length,
+    exitsCurrentCallout: activeCalloutDepth > remainingDepth
+  };
+}
+
 export function buildObsidianCalloutInsertion(
   source,
   selection,

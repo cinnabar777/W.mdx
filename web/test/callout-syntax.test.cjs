@@ -88,6 +88,75 @@ test('Obsidian callout insertion preserves nested quote depth and literal greate
   assert.equal(literal.insert, '> [!tip]\n> A > sign');
 });
 
+test('Return exits Obsidian callout quote levels one at a time', async () => {
+  const { getObsidianCalloutEnterEdit } =
+    await import('../src/calloutSyntax.mjs');
+  const source = [
+    '> [!note] Outer',
+    '> > [!faq] Nested',
+    '> > Inner body',
+    '> > '
+  ].join('\n');
+  const selection = {
+    empty: true,
+    from: source.length,
+    head: source.length,
+    to: source.length
+  };
+
+  const nestedExit = getObsidianCalloutEnterEdit(source, selection);
+  assert.equal(nestedExit.from, source.lastIndexOf('\n') + 1);
+  assert.equal(nestedExit.to, source.length);
+  assert.equal(nestedExit.insert, '> ');
+  assert.equal(nestedExit.exitsCurrentCallout, true);
+
+  const afterNestedExit =
+    source.slice(0, nestedExit.from) +
+    nestedExit.insert +
+    source.slice(nestedExit.to);
+  const outerExit = getObsidianCalloutEnterEdit(afterNestedExit, {
+    empty: true,
+    from: nestedExit.cursor,
+    head: nestedExit.cursor,
+    to: nestedExit.cursor
+  });
+  assert.equal(outerExit.insert, '');
+  assert.equal(outerExit.exitsCurrentCallout, true);
+  assert.equal(
+    afterNestedExit.slice(0, outerExit.from) +
+      outerExit.insert +
+      afterNestedExit.slice(outerExit.to),
+    '> [!note] Outer\n> > [!faq] Nested\n> > Inner body\n'
+  );
+});
+
+test('Obsidian Return leaves ordinary quotes and interior blank paragraphs alone', async () => {
+  const { getObsidianCalloutEnterEdit } =
+    await import('../src/calloutSyntax.mjs');
+  const ordinaryQuote = '> A regular quote\n> ';
+  const interiorBlank = '> [!note] Title\n> First paragraph\n> \n> Second paragraph';
+  const blankPosition = interiorBlank.indexOf('> \n') + 2;
+
+  assert.equal(
+    getObsidianCalloutEnterEdit(ordinaryQuote, {
+      empty: true,
+      from: ordinaryQuote.length,
+      head: ordinaryQuote.length,
+      to: ordinaryQuote.length
+    }),
+    null
+  );
+  assert.equal(
+    getObsidianCalloutEnterEdit(interiorBlank, {
+      empty: true,
+      from: blankPosition,
+      head: blankPosition,
+      to: blankPosition
+    }),
+    null
+  );
+});
+
 test('callout settings and runtime gates cover both rendering and insertion', () => {
   const settingsXml = fs.readFileSync(
     path.join(root, 'app/src/main/res/xml/preferences_styling_blockquotes.xml'),
@@ -122,7 +191,8 @@ test('callout settings and runtime gates cover both rendering and insertion', ()
   assert.match(settingsActivity, /updateCalloutAuthoringPreference/);
   assert.match(resetPreferences, /pref_callout_authoring_syntax" -> "wmdx"/);
   assert.match(main, /isCalloutFlavorEnabledNow\('obsidian'\)/);
-  assert.match(main, /if \(!isCalloutFlavorEnabledNow\('wmdx'\)\)/);
+  assert.match(main, /isCalloutFlavorEnabledNow\('wmdx'\)[\s\S]*?getWmdxCalloutEnterEdit/);
+  assert.match(main, /getObsidianCalloutEnterEdit/);
   assert.match(main, /buildObsidianCalloutInsertion/);
   assert.match(calloutSyntax, /pref_callout_authoring_syntax/);
   assert.match(documentation, /Callout syntax settings \(implemented\)/);

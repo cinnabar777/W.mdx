@@ -279,7 +279,7 @@ test('Enter continues callout content and exits the current level on a blank lin
   const outerBlankLine = outerBlank.lastIndexOf('\n') + 1;
   const outerBlankAttributes = parseWmdxCallouts(outerBlank)
     .lineAttributes.get(outerBlankLine);
-  assert.equal(outerBlankAttributes.depth, 1);
+  assert.equal(outerBlankAttributes, undefined);
   assert.equal(
     getWmdxCalloutContinuationIndent(outerBlank, outerBlank.length),
     0
@@ -348,6 +348,24 @@ test('Enter continues callout content and exits the current level on a blank lin
   assert.equal(
     getWmdxCalloutContinuationIndent(indentedCallout, indentedBlank + 4),
     2
+  );
+
+  const trailingBlank = '±note Title\n  Body\n  ';
+  const trailingBlankLine = trailingBlank.lastIndexOf('\n') + 1;
+  const trailingBlankParsed = parseWmdxCallouts(trailingBlank);
+  assert.equal(
+    trailingBlankParsed.lineAttributes.has(trailingBlankLine),
+    false
+  );
+  assert.equal(
+    trailingBlankParsed.returnIndentByLine.get(trailingBlankLine),
+    0
+  );
+  const resumedBody = parseWmdxCallouts(`${trailingBlank}More text`);
+  assert.equal(
+    resumedBody.lineAttributes.has(trailingBlankLine),
+    true,
+    'typing on the blank continuation returns it to the callout body'
   );
 });
 
