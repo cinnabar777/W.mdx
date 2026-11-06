@@ -347,60 +347,21 @@ test('list continuation stays under its item text after a blank line is deleted'
   );
 
   const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-  const continuationRule = html.match(
-    /\.cm-content \.cm-line\.cm-source-list-continuation\s*\{([^}]+)\}/
-  )?.[1];
-  assert.ok(continuationRule, 'list continuation source layout rule is missing');
-  assert.match(continuationRule, /padding-left:\s*var\(--source-hanging-offset/);
-  assert.match(continuationRule, /text-indent:\s*0/);
-  assert.match(
-    html,
-    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-source-list-continuation,[\s\S]*?body\.list-wrap-under-text \.cm-content \.cm-line\.cm-source-list-continuation\s*\{[^}]*padding-left:\s*var\(--source-hanging-offset/
-  );
   const renderedContinuationRule = html.match(
     /\.cm-content \.cm-line\.cm-list-continuation\s*\{([^}]+)\}/
   )?.[1];
   assert.ok(renderedContinuationRule, 'rendered list continuation rule is missing');
   assert.match(
     renderedContinuationRule,
-    /padding-left:\s*var\(--list-continuation-offset/
+    /padding-left:\s*max\([\s\S]*?--list-continuation-offset/
   );
   assert.match(renderedContinuationRule, /text-indent:\s*0/);
-  assert.match(
-    html,
-    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-continuation[\s\S]*?padding-left:\s*calc\([\s\S]*?\+ 0\.4em\s*\)/
-  );
-  const sourceListMarkerWrapRule = html.match(
-    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-source-list-wrapped\s*\{([^}]+)\}/
-  )?.[1];
-  assert.ok(sourceListMarkerWrapRule, 'source marker-wrap layout rule is missing');
-  assert.match(
-    sourceListMarkerWrapRule,
-    /padding-left:\s*var\(--source-marker-offset/
-  );
-  assert.match(
-    sourceListMarkerWrapRule,
-    /text-indent:\s*calc\(0ch - var\(--source-marker-offset/
-  );
-  assert.match(
-    html,
-    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-source-list-wrapped[\s\S]*?padding-left:\s*var\(--source-hanging-offset/
-  );
-  assert.match(
-    html,
-    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-wmdx-task-item:not\(\.cm-source-list-wrapped\)\s*\{[^}]*display:\s*flex/
-  );
-  assert.match(
-    html,
-    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-wmdx-task-item > \.cm-list-block-text/
-  );
+  assert.doesNotMatch(html, /cm-source-list-(?:continuation|wrapped)/);
+  assert.match(html, /--layout-visible-indent/);
   const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
-  assert.match(main, /listLayout\?\.kind === 'list-continuation'/);
-  assert.match(main, /cm-list-continuation/);
-  assert.match(
-    main,
-    /layout\.kind === 'list-continuation'[\s\S]*?layout\.sourceOffsetColumns/
-  );
+  assert.match(main, /documentLayout\(state\)\.lines\.values/);
+  const shared = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
+  assert.match(shared, /entry\.kind = 'list-continuation'/);
 });
 
 test('rendered indented code moves shared leading spaces to every wrapped row', async () => {
@@ -463,10 +424,11 @@ test('rendered indented code moves shared leading spaces to every wrapped row', 
 
   const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
   const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-  assert.match(main, /getIndentedCodeBlockRenderLayout\(\s*view\.state,\s*node\.from,\s*node\.to\s*\)/);
-  assert.match(main, /getIndentedCodeBlockRenderLayout\(state,\s*node\.from,\s*node\.to\s*\)/);
+  const shared = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
+  assert.match(shared, /getIndentedCodeBlockRenderLayout\(state,\s*node\.from,\s*node\.to\s*\)/);
+  assert.match(main, /documentLayout\(view\.state\)\.codeBlocks/);
   assert.match(html, /padding-left:\s*calc\([\s\S]*?--code-block-common-indent/);
-  assert.match(main, /--code-block-common-indent:\$\{[^}]+}ch/);
+  assert.match(shared, /--code-block-common-indent:\$\{[^}]+}ch/);
   assert.match(main, /codeBlockLayout\.hiddenRanges/);
 });
 
@@ -805,7 +767,7 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   );
   assert.match(
     main,
-    /if \(currentEditorMode === 'source'\) \{[\s\S]*?getMarkdownSourceLineLayoutForState\(\s*view\.state,\s*line\.number\s*\)/
+    /getMarkdownDocumentLayout\(state,/
   );
   assert.match(main, /selection:\s*indentSelection/);
   assert.match(
@@ -814,10 +776,9 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   );
   assert.match(
     main,
-    /scheduleListMarkerMeasurements\(\s*update\.view,\s*typographyChanged\s*\)/
+    /scheduleListMarkerMeasurements\(\s*update\.view,\s*typographyChanged \|\| update\.selectionSet \|\| update\.geometryChanged\s*\)/
   );
-  assert.match(main, /headingNode = true/);
-  assert.match(main, /classes\.has\('cm-paragraph'\) \|\| classes\.has\('cm-heading'\)/);
+  assert.match(main, /semantic\.kind === 'paragraph' \|\| semantic\.kind === 'heading'/);
   assert.match(
     main,
     /const tabInEditor = e\.key === 'Tab' &&\s*activeAdapter\?\.view\?\.contentDOM\?\.contains\(e\.target\)/,
