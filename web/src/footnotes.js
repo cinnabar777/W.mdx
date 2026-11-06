@@ -1,5 +1,6 @@
 import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
+import { normalizeFootnoteSyntaxSettings } from './footnoteSyntax.mjs';
 
 const CODE_NODE_NAMES = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
 const FOOTNOTE_STRUCTURE_CHARS = /[\[\]^:`~\r\n]/;
@@ -36,10 +37,62 @@ function isEscaped(text, position) {
   return backslashes % 2 === 1;
 }
 
-function getPairedSuperscriptRanges(text) {
+function isPositionInRanges(position, ranges) {
+  return ranges.some(range => position >= range.from && position < range.to);
+}
+
+function getObsidianInlineFootnotes(
+  text,
+  isCodePosition,
+  isTablePosition,
+  excludedRanges
+) {
+  const matches = [];
+  for (let from = 0; from < text.length - 2; from++) {
+    if (
+      text[from] !== '^' ||
+      text[from + 1] !== '[' ||
+      isEscaped(text, from) ||
+      isPositionInRanges(from, excludedRanges) ||
+      isCodePosition(from) ||
+      isTablePosition(from)
+    ) {
+      continue;
+    }
+
+    let depth = 1;
+    let close = -1;
+    for (let index = from + 2; index < text.length && text[index] !== '\n'; index++) {
+      if (text[index] === '\\') {
+        index++;
+        continue;
+      }
+      if (text[index] === '[') depth++;
+      else if (text[index] === ']' && --depth === 0) {
+        close = index;
+        break;
+      }
+    }
+    if (close < 0 || !text.slice(from + 2, close).trim()) continue;
+
+    matches.push({
+      from,
+      to: close + 1,
+      body: text.slice(from + 2, close).replace(/\\([\\[\]])/g, '$1')
+    });
+    from = close;
+  }
+  return matches;
+}
+
+function getPairedSuperscriptRanges(text, excludedRanges = []) {
   const ranges = [];
   for (let from = 0; from < text.length; from++) {
-    if (text[from] !== '^' || isEscaped(text, from)) continue;
+    if (
+      text[from] !== '^' ||
+      isEscaped(text, from) ||
+      isPositionInRanges(from, excludedRanges)
+    ) continue;
     const first = text[from + 1] || '';
     if (!first || /[\s.,;:!?)}\]]/.test(first)) continue;
 
@@ -53,6 +106,10 @@ function getPairedSuperscriptRanges(text) {
     }
 
     for (let to = from + 1; to < text.length && text[to] !== '\n'; to++) {
+      if (isPositionInRanges(to, excludedRanges)) {
+        to = excludedRanges.find(range => to >= range.from && to < range.to).to - 1;
+        continue;
+      }
       if (text[to] !== '^' || isEscaped(text, to)) continue;
       ranges.push({ from, to: to + 1 });
       from = to;
@@ -66,10 +123,15 @@ export function parseFootnotes(
   text,
   isCodePosition = () => false,
   isFencedCodePosition = () => false,
-  isTablePosition = () => false
+  isTablePosition = () => false,
+  options = {}
 ) {
   text = String(text ?? '');
   if (!text.includes('^')) return { definitions: [], references: [] };
+  const syntaxSettings = normalizeFootnoteSyntaxSettings(
+    options.syntaxSettings ?? {}
+  );
+  if (!syntaxSettings.enabled) return { definitions: [], references: [] };
 
   const lines = [];
   let offset = 0;
@@ -85,7 +147,9 @@ export function parseFootnotes(
   const nativeDefinitions = [];
   for (let index = 0; index < lines.length; index++) {
     const firstLine = lines[index];
-    const match = /^\s*\[\^([^\]\s]+)\]:\s?(.*)$/.exec(firstLine.text);
+    const match = syntaxSettings.markdown
+      ? /^\s*\[\^([^\]\s]+)\]:\s?(.*)$/.exec(firstLine.text)
+      : null;
     if (match && !isCodePosition(firstLine.from + match[0].indexOf('[^')) &&
         !isTablePosition(firstLine.from + match[0].indexOf('[^'))) {
       const bodyParts = [match[2]];
@@ -116,7 +180,9 @@ export function parseFootnotes(
       continue;
     }
 
-    const nativeMatch = /^\^ (.*)$/.exec(firstLine.text);
+    const nativeMatch = syntaxSettings.wmdx
+      ? /^\^ (.*)$/.exec(firstLine.text)
+      : null;
     if (!nativeMatch ||
         isCodePosition(firstLine.from) ||
         isTablePosition(firstLine.from)) {
@@ -148,6 +214,15 @@ export function parseFootnotes(
     });
   }
 
+  const inlineFootnotes = syntaxSettings.obsidian_inline
+    ? getObsidianInlineFootnotes(
+        text,
+        isCodePosition,
+        isTablePosition,
+        [...definitionRanges, ...nativeDefinitions]
+      )
+    : [];
+
   const markdownNumericLabels = definitions
     .map(definition => Number(definition.label))
     .filter(Number.isInteger)
@@ -172,14 +247,40 @@ export function parseFootnotes(
     }
   });
 
+  const usedNumberLabels = new Set(
+    [...definitionsByLabel.keys()].filter(label => /^\d+$/.test(label))
+  );
+  let nextInlineNumber = Math.max(
+    0,
+    ...[...usedNumberLabels].map(Number)
+  ) + 1;
+  for (const inline of inlineFootnotes) {
+    while (usedNumberLabels.has(String(nextInlineNumber))) nextInlineNumber++;
+    const label = String(nextInlineNumber++);
+    usedNumberLabels.add(label);
+    const definition = {
+      label,
+      normalizedLabel: label,
+      body: inline.body,
+      from: inline.from,
+      to: inline.to,
+      renderAt: text.length,
+      syntax: 'obsidian_inline'
+    };
+    definitions.push(definition);
+    definitionsByLabel.set(label, definition);
+    definitionRanges.push(definition);
+  }
+
   const references = [];
   const markdownReferencedNumberLabels = new Set();
-  const pairedSuperscripts = getPairedSuperscriptRanges(text);
+  const pairedSuperscripts = getPairedSuperscriptRanges(text, inlineFootnotes);
   const referencePattern = /\[\^([^\]\s]+)\]/g;
   let referenceMatch;
   while ((referenceMatch = referencePattern.exec(text)) !== null) {
     const from = referenceMatch.index;
     const to = from + referenceMatch[0].length;
+    if (isPositionInRanges(from, inlineFootnotes)) continue;
     if (definitionRanges.some(definition => from >= definition.from && from < definition.to)) continue;
     if (!definitionsByLabel.has(referenceMatch[1].toLowerCase())) continue;
     if (isCodePosition(from + 2)) continue;
@@ -195,9 +296,22 @@ export function parseFootnotes(
       markdownReferencedNumberLabels.add(referenceMatch[1]);
     }
   }
+  for (const inline of inlineFootnotes) {
+    const definition = definitions.find(
+      item => item.syntax === 'obsidian_inline' && item.from === inline.from
+    );
+    if (!definition) continue;
+    references.push({
+      label: definition.label,
+      normalizedLabel: definition.normalizedLabel,
+      from: inline.from,
+      to: inline.to,
+      syntax: 'obsidian_inline'
+    });
+  }
 
   const nativeReferenceCandidates = [];
-  for (let position = 0; position < text.length;) {
+  for (let position = 0; syntaxSettings.wmdx && position < text.length;) {
     const from = text.indexOf('^', position);
     if (from < 0) break;
     position = from + 1;
@@ -207,6 +321,7 @@ export function parseFootnotes(
         pairedSuperscripts.some(range => from >= range.from && from < range.to) ||
         isCodePosition(from) ||
         isTablePosition(from) ||
+        isPositionInRanges(from, inlineFootnotes) ||
         text[from - 1] === '[') {
       continue;
     }
@@ -232,9 +347,15 @@ export function parseFootnotes(
       .map(reference => reference.label)
       .filter(Boolean)
   );
+  const inlineLabels = inlineFootnotes
+    .map(inline => definitions.find(
+      item => item.syntax === 'obsidian_inline' && item.from === inline.from
+    )?.label)
+    .filter(Boolean);
   const explicitlyReferencedLabels = new Set([
     ...markdownReferencedNumberLabels,
-    ...explicitNativeLabels
+    ...explicitNativeLabels,
+    ...inlineLabels
   ]);
   const definedNumberLabels = [...definitionsByLabel.keys()]
     .filter(label => /^\d+$/.test(label))
@@ -249,8 +370,9 @@ export function parseFootnotes(
   const assignFromUnreferencedDefinitions =
     automaticCandidates.length <= unreferencedDefinitionLabels.length;
   let unreferencedDefinitionIndex = 0;
-  const sequentiallyUsedLabels = new Set();
+  const sequentiallyUsedLabels = new Set(inlineLabels);
   let nextAutomaticNumber = 1;
+  const nativeAutomaticReferencePositions = new Set();
   for (const { from, to, label } of nativeReferenceCandidates) {
     if (label) {
       references.push({
@@ -281,6 +403,87 @@ export function parseFootnotes(
         to,
         syntax: 'wmdx'
       });
+      nativeAutomaticReferencePositions.add(from);
+    }
+  }
+
+  if (inlineFootnotes.length) {
+    const explicitlyReferencedLabels = new Set([
+      ...markdownReferencedNumberLabels,
+      ...explicitNativeLabels
+    ]);
+    const hasPinnedGeneratedDefinition = definitions.some(
+      definition =>
+        (definition.syntax === 'wmdx' ||
+          definition.syntax === 'obsidian_inline') &&
+        explicitlyReferencedLabels.has(definition.normalizedLabel)
+    );
+    if (!hasPinnedGeneratedDefinition) {
+      const generatedItems = [];
+      const matchedDefinitions = new Set();
+      for (const reference of references) {
+        if (
+          reference.syntax === 'wmdx' &&
+          nativeAutomaticReferencePositions.has(reference.from)
+        ) {
+          const definition = definitions.find(
+            item =>
+              item.syntax === 'wmdx' &&
+              item.normalizedLabel === reference.normalizedLabel
+          );
+          if (definition) matchedDefinitions.add(definition);
+          generatedItems.push({
+            from: reference.from,
+            reference,
+            definition
+          });
+        } else if (reference.syntax === 'obsidian_inline') {
+          const definition = definitions.find(
+            item =>
+              item.syntax === 'obsidian_inline' &&
+              item.from === reference.from
+          );
+          if (definition) matchedDefinitions.add(definition);
+          generatedItems.push({
+            from: reference.from,
+            reference,
+            definition
+          });
+        }
+      }
+      for (const definition of definitions) {
+        if (
+          definition.syntax === 'wmdx' &&
+          !matchedDefinitions.has(definition)
+        ) {
+          generatedItems.push({ from: Number.MAX_SAFE_INTEGER, definition });
+        }
+      }
+      generatedItems.sort((left, right) => left.from - right.from);
+
+      for (const item of generatedItems) {
+        const oldLabel =
+          item.definition?.normalizedLabel ??
+          item.reference?.normalizedLabel;
+        if (oldLabel) definitionsByLabel.delete(oldLabel);
+      }
+      const markdownMaxNumber = Math.max(0, ...markdownNumericLabels);
+      let nextGeneratedNumber = markdownMaxNumber + 1;
+      for (const item of generatedItems) {
+        while (definitionsByLabel.has(String(nextGeneratedNumber))) {
+          nextGeneratedNumber++;
+        }
+        const label = String(nextGeneratedNumber++);
+        if (item.definition) {
+          item.definition.label = label;
+          item.definition.normalizedLabel = label;
+          definitionsByLabel.set(label, item.definition);
+        }
+        if (item.reference) {
+          item.reference.label = label;
+          item.reference.normalizedLabel = label;
+        }
+      }
     }
   }
 
@@ -289,13 +492,14 @@ export function parseFootnotes(
   return { definitions, references };
 }
 
-export function parseFootnotesForState(state) {
+export function parseFootnotesForState(state, options = {}) {
   if (!state?.doc) return { definitions: [], references: [] };
   return parseFootnotes(
     state.doc.toString(),
     position => isInsideCode(state, position),
     position => isInsideFencedCode(state, position),
-    position => isInsideTable(state, position)
+    position => isInsideTable(state, position),
+    options
   );
 }
 
@@ -317,6 +521,15 @@ export function formatWmdxFootnoteDefinition(body) {
   const normalizedBody = String(body ?? '').replace(/\r\n?/g, '\n').trim();
   const lines = normalizedBody.split('\n');
   return `^ ${lines[0]}${lines.slice(1).map(line => `\n  ${line}`).join('')}`;
+}
+
+export function formatObsidianInlineFootnote(body) {
+  const normalizedBody = String(body ?? '')
+    .replace(/\r\n?/g, '\n')
+    .trim()
+    .replace(/\s*\n\s*/g, ' ');
+  const escapedBody = normalizedBody.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+  return `^[${escapedBody}]`;
 }
 
 class FootnoteReferenceWidget extends WidgetType {
@@ -429,6 +642,46 @@ class FootnoteDefinitionWidget extends WidgetType {
   }
 }
 
+class FootnoteInlineDefinitionsWidget extends WidgetType {
+  constructor(definitions, referencesByLabel, onEdit, onNavigate) {
+    super();
+    this.definitions = definitions;
+    this.referencesByLabel = referencesByLabel;
+    this.onEdit = onEdit;
+    this.onNavigate = onNavigate;
+  }
+
+  eq(other) {
+    return other instanceof FootnoteInlineDefinitionsWidget &&
+      JSON.stringify(this.definitions) === JSON.stringify(other.definitions) &&
+      this.definitions.every(definition => {
+        const current = this.referencesByLabel.get(definition.normalizedLabel) ?? [];
+        const next = other.referencesByLabel.get(definition.normalizedLabel) ?? [];
+        return current.length === next.length &&
+          current.every((reference, index) => reference.from === next[index].from);
+      });
+  }
+
+  toDOM(view) {
+    const group = document.createElement('div');
+    group.className = 'cm-footnote-inline-definitions';
+    for (const definition of this.definitions) {
+      const widget = new FootnoteDefinitionWidget(
+        definition,
+        this.referencesByLabel.get(definition.normalizedLabel) ?? [],
+        this.onEdit,
+        this.onNavigate
+      );
+      group.appendChild(widget.toDOM(view));
+    }
+    return group;
+  }
+
+  ignoreEvent(event) {
+    return event.type === 'click' || event.type === 'mousedown';
+  }
+}
+
 function buildFootnoteDecorationsFromParsed(
   state,
   footnotes,
@@ -498,6 +751,7 @@ function buildFootnoteDecorationsFromParsed(
   }
 
   for (const definition of footnotes.definitions) {
+    if (Number.isInteger(definition.renderAt)) continue;
     if (shouldReveal(definition)) continue;
     decorations.push(
       Decoration.widget({
@@ -516,6 +770,25 @@ function buildFootnoteDecorationsFromParsed(
     );
     hiddenSyntaxRanges.push(
       Decoration.replace({ block: true }).range(definition.from, definition.to)
+    );
+  }
+
+  const inlineDefinitions = footnotes.definitions.filter(
+    definition => Number.isInteger(definition.renderAt)
+  );
+  if (inlineDefinitions.length) {
+    const renderAt = Math.max(...inlineDefinitions.map(definition => definition.renderAt));
+    decorations.push(
+      Decoration.widget({
+        widget: new FootnoteInlineDefinitionsWidget(
+          inlineDefinitions,
+          referencesByLabel,
+          onEdit,
+          onNavigate
+        ),
+        block: true,
+        side: 1
+      }).range(renderAt)
     );
   }
 
@@ -538,7 +811,8 @@ export function buildFootnoteDecorations(state, options = {}) {
         state.doc.toString(),
         position => isInsideCode(state, position),
         position => isInsideFencedCode(state, position),
-        position => isInsideTable(state, position)
+        position => isInsideTable(state, position),
+        { syntaxSettings: options.syntaxSettings }
       );
   return buildFootnoteDecorationsFromParsed(state, footnotes, options);
 }
@@ -573,7 +847,10 @@ export function updateFootnoteDecorationsFromCached(state, current, changes, opt
   const mapRange = range => ({
     ...range,
     from: changes.mapPos(range.from, -1),
-    to: changes.mapPos(range.to, 1)
+    to: changes.mapPos(range.to, 1),
+    ...(Number.isInteger(range.renderAt)
+      ? { renderAt: changes.mapPos(range.renderAt, 1) }
+      : {})
   });
   const footnotes = {
     definitions: currentFootnotes.definitions.map(mapRange),

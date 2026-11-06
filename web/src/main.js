@@ -17,6 +17,7 @@ import {
   buildFootnoteDecorations,
   footnoteEditRequiresReparse,
   formatFootnoteDefinition,
+  formatObsidianInlineFootnote,
   formatWmdxFootnoteDefinition,
   parseFootnotesForState,
   updateFootnoteDecorationsFromCached
@@ -151,6 +152,11 @@ import {
   isCalloutFlavorEnabled,
   normalizeCalloutSyntaxSettings
 } from './calloutSyntax.mjs';
+import {
+  isFootnoteAuthoringAvailable,
+  isFootnoteFlavorEnabled,
+  normalizeFootnoteSyntaxSettings
+} from './footnoteSyntax.mjs';
 import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
@@ -348,6 +354,7 @@ let customHotkeys = {
 let linkSyntaxSettings = normalizeLinkSyntaxSettings();
 let headingSyntaxSettings = normalizeHeadingSyntaxSettings();
 let calloutSyntaxSettings = normalizeCalloutSyntaxSettings();
+let footnoteSyntaxSettings = normalizeFootnoteSyntaxSettings();
 
 function isHeadingFlavorEnabledNow(flavor) {
   return isHeadingFlavorEnabled(headingSyntaxSettings, flavor);
@@ -355,6 +362,14 @@ function isHeadingFlavorEnabledNow(flavor) {
 
 function isCalloutFlavorEnabledNow(flavor) {
   return isCalloutFlavorEnabled(calloutSyntaxSettings, flavor);
+}
+
+function isFootnoteAuthoringAvailableNow() {
+  return isFootnoteAuthoringAvailable(footnoteSyntaxSettings) &&
+    isFootnoteFlavorEnabled(
+      footnoteSyntaxSettings,
+      footnoteSyntaxSettings.authoringSyntax
+    );
 }
 
 function isCalloutAuthoringAvailable() {
@@ -3643,6 +3658,7 @@ const footnoteStateField = StateField.define({
   create(state) {
     return buildFootnoteDecorations(state, {
       mode: currentEditorMode,
+      syntaxSettings: footnoteSyntaxSettings,
       onEdit: definition => openFootnoteInsertionDialog({ definition }),
       onNavigate: navigateFootnote
     });
@@ -3662,6 +3678,7 @@ const footnoteStateField = StateField.define({
     }
     const options = {
       mode: currentEditorMode,
+      syntaxSettings: footnoteSyntaxSettings,
       onEdit: definition => openFootnoteInsertionDialog({ definition }),
       onNavigate: navigateFootnote
     };
@@ -7021,7 +7038,7 @@ function setupGroupedControlBar() {
         { id: 'blockQuote', icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
         { id: 'codeBlock', icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
         { id: 'horizontalLine', icon: svgIcons.horizontalLine, title: 'Insert Line', action: () => execCmd('horizontalLine') },
-        { id: 'footnote', icon: svgIcons.footnote, title: 'Insert Footnote', action: () => openFootnoteInsertionDialog() }
+        { id: 'footnote', icon: svgIcons.footnote, title: 'Insert Footnote', disabled: !isFootnoteAuthoringAvailableNow(), action: () => openFootnoteInsertionDialog() }
       ]);
     };
   }
@@ -7397,7 +7414,7 @@ function createToolbarActionRegistry() {
       { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote, action: () => execCmd('blockQuote') },
       { id: 'codeBlock', title: 'Code Block', icon: svgIcons.codeBlock, action: () => execCmd('codeBlock') },
       { id: 'horizontalLine', title: 'Insert Line', icon: svgIcons.horizontalLine, action: () => execCmd('horizontalLine') },
-      { id: 'footnote', title: 'Insert Footnote', icon: svgIcons.footnote, action: () => openFootnoteInsertionDialog() }
+      { id: 'footnote', title: 'Insert Footnote', icon: svgIcons.footnote, disabled: !isFootnoteAuthoringAvailableNow(), action: () => openFootnoteInsertionDialog() }
     ],
     [
       { id: 'newTab', title: 'New Tab', icon: svgIcons.newTab, action: () => {
@@ -8657,9 +8674,14 @@ function openWmdxResourceLinkDeleteConfirmation(view, from, to) {
 }
 
 export function openFootnoteInsertionDialog(options = {}) {
-  if (!activeAdapter || !activeAdapter.view) return;
+  if (
+    (!options.definition && !isFootnoteAuthoringAvailableNow()) ||
+    !activeAdapter ||
+    !activeAdapter.view
+  ) return;
   const view = activeAdapter.view;
   const definition = options.definition ?? null;
+  const authoringSyntax = footnoteSyntaxSettings.authoringSyntax;
   const selection = view.state.selection.main;
   const selectionSnapshot = { from: selection.from, to: selection.to };
   const overlay = document.querySelector('#editor-modal-overlay');
@@ -8668,11 +8690,15 @@ export function openFootnoteInsertionDialog(options = {}) {
 
   const reusableFootnoteLabels = definition
     ? []
-    : [...new Set(
-        parseFootnotesForState(view.state).definitions
-          .map(item => String(item.label))
-          .filter(label => /^\d+$/.test(label))
-      )].sort((a, b) => Number(a) - Number(b));
+    : authoringSyntax === 'obsidian_inline'
+      ? []
+      : [...new Set(
+          parseFootnotesForState(view.state, {
+            syntaxSettings: footnoteSyntaxSettings
+          }).definitions
+            .map(item => String(item.label))
+            .filter(label => /^\d+$/.test(label))
+        )].sort((a, b) => Number(a) - Number(b));
 
   dialog.innerHTML = `
     <h3 class="modal-title">${definition ? 'Edit Footnote' : 'Insert Footnote'}</h3>
@@ -8727,7 +8753,9 @@ export function openFootnoteInsertionDialog(options = {}) {
     const action = actionSelect?.value ?? 'new';
     if (!definition && action.startsWith('reuse:')) {
       const label = action.slice('reuse:'.length);
-      const marker = `^${label}`;
+      const marker = authoringSyntax === 'markdown'
+        ? `[^${label}]`
+        : `^${label}`;
       const markerEnd = selectionSnapshot.to + marker.length;
       view.dispatch({
         changes: { from: selectionSnapshot.to, insert: marker },
@@ -8747,7 +8775,9 @@ export function openFootnoteInsertionDialog(options = {}) {
     if (definition) {
       const formattedDefinition = definition.syntax === 'wmdx'
         ? formatWmdxFootnoteDefinition(body)
-        : formatFootnoteDefinition(definition.label, body);
+        : definition.syntax === 'obsidian_inline'
+          ? formatObsidianInlineFootnote(body)
+          : formatFootnoteDefinition(definition.label, body);
       view.dispatch({
         changes: {
           from: definition.from,
@@ -8757,8 +8787,31 @@ export function openFootnoteInsertionDialog(options = {}) {
         selection: EditorSelection.cursor(definition.from + formattedDefinition.length)
       });
     } else {
-      const marker = '^';
-      const formattedDefinition = formatWmdxFootnoteDefinition(body);
+      if (authoringSyntax === 'obsidian_inline') {
+        const marker = formatObsidianInlineFootnote(body);
+        view.dispatch({
+          changes: { from: selectionSnapshot.to, insert: marker },
+          selection: EditorSelection.cursor(
+            selectionSnapshot.to + marker.length
+          )
+        });
+        closeModal();
+        view.focus();
+        return;
+      }
+
+      const currentDefinitions =
+        parseFootnotesForState(view.state).definitions;
+      const usedNumbers = currentDefinitions
+        .map(item => Number(item.label))
+        .filter(number => Number.isInteger(number) && number > 0);
+      const label = String(Math.max(0, ...usedNumbers) + 1);
+      const marker = authoringSyntax === 'markdown'
+        ? `[^${label}]`
+        : '^';
+      const formattedDefinition = authoringSyntax === 'markdown'
+        ? formatFootnoteDefinition(label, body)
+        : formatWmdxFootnoteDefinition(body);
       const docText = view.state.doc.toString();
       const separatorFor = text => {
         if (!text) return '\n\n';
@@ -9840,6 +9893,15 @@ function refreshToolbarSyntaxState(view = activeAdapter?.view) {
   ).forEach(button => {
     if ('disabled' in button) button.disabled = !calloutActionAvailable;
     button.setAttribute('aria-disabled', String(!calloutActionAvailable));
+  });
+  document.querySelectorAll(
+    '#grp-btn-footnote, [data-toolbar-key="footnote"]'
+  ).forEach(button => {
+    if ('disabled' in button) button.disabled = !isFootnoteAuthoringAvailableNow();
+    button.setAttribute(
+      'aria-disabled',
+      String(!isFootnoteAuthoringAvailableNow())
+    );
   });
 }
 
@@ -11349,15 +11411,29 @@ window.editorBridge = {
     const calloutSyntaxChanged =
       JSON.stringify(nextCalloutSyntaxSettings) !==
       JSON.stringify(calloutSyntaxSettings);
+    const nextFootnoteSyntaxSettings = normalizeFootnoteSyntaxSettings(prefs);
+    const footnoteSyntaxChanged =
+      JSON.stringify(nextFootnoteSyntaxSettings) !==
+      JSON.stringify(footnoteSyntaxSettings);
     linkSyntaxSettings = nextLinkSyntaxSettings;
     headingSyntaxSettings = nextHeadingSyntaxSettings;
     calloutSyntaxSettings = nextCalloutSyntaxSettings;
-    if (linkSyntaxChanged || headingSyntaxChanged || calloutSyntaxChanged) {
+    footnoteSyntaxSettings = nextFootnoteSyntaxSettings;
+    if (
+      linkSyntaxChanged ||
+      headingSyntaxChanged ||
+      calloutSyntaxChanged ||
+      footnoteSyntaxChanged
+    ) {
       hidePopupStrip();
     }
     if (activeAdapter?.view) {
       activeAdapter.view.dispatch({
-        effects: linkSyntaxChanged || headingSyntaxChanged || calloutSyntaxChanged
+        effects:
+          linkSyntaxChanged ||
+          headingSyntaxChanged ||
+          calloutSyntaxChanged ||
+          footnoteSyntaxChanged
           ? [
               heightMapRefreshEffect.of(null),
               typographySettingsEffect.of(Date.now())

@@ -367,13 +367,26 @@ This creates the next footnote.^
 A `^N` reference must resolve to an existing footnote; it is not a way to
 create a manually numbered note.
 
-The current Markdown spelling `[^label]` with a matching `[^label]:`
-definition remains an import/export format, not Wmdx-native syntax.
+The `[^label]` reference and `[^label]:` definition form is shared by GFM and
+Obsidian. It is available as one optional Markdown-reference flavor, not as
+separate GFM and Obsidian settings. CommonMark has no native footnote syntax.
+Obsidian also supports the self-contained inline form `^[note text]`; Wmdx
+recognizes it as a separate optional flavor and renders the note in the
+document's footnotes section.
+
+Footnote syntax settings include an overall enable switch, independent Wmdx,
+Markdown-reference, and Obsidian-inline flavor switches, and one preferred
+authoring syntax for the toolbar and shortcut. The default authoring syntax is
+Wmdx. Disabling a flavor affects editor recognition and rendering, not
+import/export conversion. When Wmdx and inline notes are mixed, automatic
+numbers follow reference order unless a generated number is explicitly reused;
+an explicit reuse keeps its existing number.
 
 | Footnote case | Source | Rule |
 | --- | --- | --- |
 | New note | `Sentence.^` and a matching `^ note text` definition | Assign the next number and create one definition |
 | Reuse | `Sentence.^2` | Link to the existing footnote 2; do not create a definition |
+| Obsidian inline note | `Sentence ^[note text]` | Create an automatically numbered note and display it in the footnotes section |
 | Superscript | `^2^` | Treat as paired superscript, not a footnote reference |
 | Literal caret | `\^` | Show a literal caret |
 | Table merge marker | `^` in a table cell | Keep the existing vertical-merge meaning |
@@ -428,7 +441,7 @@ rendering flavor in the editor; the Wmdx `±` form remains the default.
 
 | Wmdx structure | CommonMark | GFM | Obsidian |
 | --- | --- | --- | --- |
-| Automatically numbered footnotes | CommonMark has no native footnotes; emit linked HTML `<sup>` references and ordered definitions with back-links. If raw HTML is removed, report that footnotes were lost. | Emit `[^1]` references and `[^1]:` definitions, generating numeric labels; `^N` reuses the same label. | Same numeric-label mapping as GFM. |
+| Automatically numbered footnotes | CommonMark has no native footnotes; emit linked HTML `<sup>` references and ordered definitions with back-links. If raw HTML is removed, report that footnotes were lost. | Emit `[^1]` references and `[^1]:` definitions, generating numeric labels; `^N` reuses the same label. | Emit `^[note text]` for a single-use note; use `[^label]` plus a definition when a note is reused. |
 | Unfolded callouts | Use semantic `<aside>` markup with the callout type, title, and body visible. | Map supported types to GitHub alerts (`NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`); put an optional Wmdx title on the first bold body line. Use HTML `<aside>` for other types. | Emit `> [!type] Title` and prefix each body line with `>`. |
 | Folded/expanded callouts and dropdowns | Use `<details><summary>Title</summary>…</details>`; add `open` for initially expanded content. | Use the same `<details>` representation; alerts do not encode fold state. | Emit `> [!type]- Title` when closed and `> [!type]+ Title` when open, including `dropdown` as the type. Prefix every body line with `>`. |
 
@@ -439,7 +452,9 @@ the Wmdx `dropdown` type, mapping the `open` state to `+` or `-` and its
 specific Wmdx callout type; preserve visible content and convert it to the
 closest native Wmdx structure, reporting any classification loss. For Markdown
 footnote imports, resolve reference labels and definitions first, then assign
-Wmdx numbers by first-reference order; repeated references keep the same number.
+Wmdx numbers by first-reference order; repeated references keep the same
+number. Convert Obsidian inline footnotes into a Wmdx reference and definition,
+preserving their source order.
 For HTML, recognize footnotes only when linked references match definitions;
 ordinary `<sup>` elements remain superscript text. HTML is portable export, not
 a Wmdx round-trip format. Emit usable standard HTML without hidden Wmdx metadata.
@@ -719,9 +734,9 @@ editor contexts and remains intact through view changes and persistence.
 behavior as direct Source-view entry.
 
 **Implementation update:** Existing toolbar actions now insert native `.1`–`.6`
-headings, `[ ]` tasks, `±type` callouts, and `^` footnotes. The callout action
-wraps whole lines, and the footnote dialog can reuse an existing numbered note
-with `^N`.
+headings, `[ ]` tasks, `±type` callouts, and the selected footnote flavor. The
+callout action wraps whole lines, and the footnote dialog can reuse an existing
+numbered note with Wmdx `^N` or a Markdown reference.
 
 ### 3. Add format converters
 

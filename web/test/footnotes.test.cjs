@@ -22,6 +22,60 @@ const mainActivity = fs.readFileSync(
   'utf8'
 );
 
+test('footnote syntax settings cover Wmdx, shared Markdown, and Obsidian inline', async () => {
+  const {
+    DEFAULT_FOOTNOTE_SYNTAX_SETTINGS,
+    isFootnoteAuthoringAvailable,
+    isFootnoteFlavorEnabled,
+    normalizeFootnoteSyntaxSettings
+  } = await import('../src/footnoteSyntax.mjs');
+  const resetPreferences = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
+    'utf8'
+  );
+  const arrays = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/values/arrays.xml'),
+    'utf8'
+  );
+
+  assert.deepEqual(normalizeFootnoteSyntaxSettings(), {
+    ...DEFAULT_FOOTNOTE_SYNTAX_SETTINGS
+  });
+  assert.equal(
+    normalizeFootnoteSyntaxSettings({
+      pref_footnote_authoring_syntax: 'obsidian_inline'
+    }).authoringSyntax,
+    'obsidian_inline'
+  );
+  const onlyMarkdown = normalizeFootnoteSyntaxSettings({
+    pref_footnote_syntax_wmdx_enabled: false,
+    pref_footnote_syntax_obsidian_inline_enabled: false,
+    pref_footnote_authoring_syntax: 'wmdx'
+  });
+  assert.equal(onlyMarkdown.authoringSyntax, 'markdown');
+  assert.equal(isFootnoteFlavorEnabled(onlyMarkdown, 'markdown'), true);
+  assert.equal(isFootnoteFlavorEnabled(onlyMarkdown, 'wmdx'), false);
+  const disabled = normalizeFootnoteSyntaxSettings({
+    pref_footnote_syntax_enabled: false
+  });
+  assert.equal(isFootnoteAuthoringAvailable(disabled), false);
+  assert.equal(isFootnoteFlavorEnabled(disabled, 'obsidian_inline'), false);
+
+  for (const key of [
+    'pref_footnote_syntax_enabled',
+    'pref_footnote_syntax_wmdx_enabled',
+    'pref_footnote_syntax_markdown_enabled',
+    'pref_footnote_syntax_obsidian_inline_enabled',
+    'pref_footnote_authoring_syntax'
+  ]) {
+    assert.ok(footnotePreferences.includes(key), `settings define ${key}`);
+  }
+  assert.match(arrays, /name="footnote_authoring_syntax_values"[\s\S]*?<item>wmdx<\/item>[\s\S]*?<item>markdown<\/item>[\s\S]*?<item>obsidian_inline<\/item>/);
+  assert.match(settingsActivity, /pref_footnote_authoring_syntax/);
+  assert.match(resetPreferences, /pref_footnote_authoring_syntax" -> "wmdx"/);
+  assert.match(source, /normalizeFootnoteSyntaxSettings\(prefs\)/);
+});
+
 test('footnote parsing handles references, numbered definitions, and continued lines', async () => {
   const { parseFootnotes } = await import('../src/footnotes.js');
   const markdown = 'A reference [^1].\n\n[^1]: First line\n    Second line';
@@ -87,6 +141,110 @@ test('native multiline footnotes retain continuations and automatic numbering sk
       ['3', 'Third definition.\nContinued definition line.']
     ]
   );
+});
+
+test('Obsidian inline footnotes become numbered references with editable notes', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = 'First ^[inline note], then ^[nested [note] text].';
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => [reference.label, reference.syntax]),
+    [['1', 'obsidian_inline'], ['2', 'obsidian_inline']]
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [
+      definition.label,
+      definition.body,
+      definition.syntax,
+      source.slice(definition.from, definition.to),
+      definition.renderAt
+    ]),
+    [
+      ['1', 'inline note', 'obsidian_inline', '^[inline note]', source.length],
+      ['2', 'nested [note] text', 'obsidian_inline', '^[nested [note] text]', source.length]
+    ]
+  );
+});
+
+test('Obsidian inline footnotes ignore escaped markers, code, and tables', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    String.raw`Escaped \^[not a note].`,
+    'Real ^[note].',
+    '',
+    '`^[inline code]`',
+    '',
+    'Table ^[table text]'
+  ].join('\n');
+  const codeStart = source.indexOf('`^[inline code]`');
+  const codeEnd = codeStart + '`^[inline code]`'.length;
+  const tableStart = source.indexOf('Table');
+  const parsed = parseFootnotes(
+    source,
+    position => position >= codeStart && position < codeEnd,
+    () => false,
+    position => position >= tableStart,
+  );
+
+  assert.deepEqual(
+    parsed.definitions.map(definition => definition.body),
+    ['note']
+  );
+  assert.deepEqual(
+    parsed.references.map(reference => reference.label),
+    ['1']
+  );
+});
+
+test('inline Wmdx and Obsidian footnotes remain distinct when mixed', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'Inline note ^[first note].',
+    'Wmdx note.^',
+    '',
+    '^ Wmdx definition.'
+  ].join('\n');
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => [reference.label, reference.syntax]),
+    [['1', 'obsidian_inline'], ['2', 'wmdx']]
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [definition.label, definition.body]),
+    [['1', 'first note'], ['2', 'Wmdx definition.']]
+  );
+});
+
+test('footnote flavor switches independently gate editor parsing', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'Wmdx.^ Markdown [^md]. Inline ^[note].',
+    '',
+    '^ Wmdx definition.',
+    '[^md]: Markdown definition.'
+  ].join('\n');
+  const wmdxOnly = parseFootnotes(source, () => false, () => false, () => false, {
+    syntaxSettings: {
+      pref_footnote_syntax_wmdx_enabled: true,
+      pref_footnote_syntax_markdown_enabled: false,
+      pref_footnote_syntax_obsidian_inline_enabled: false
+    }
+  });
+  assert.deepEqual(
+    wmdxOnly.references.map(reference => reference.syntax),
+    ['wmdx']
+  );
+  assert.deepEqual(
+    wmdxOnly.definitions.map(definition => definition.syntax),
+    ['wmdx']
+  );
+
+  const allDisabled = parseFootnotes(source, () => false, () => false, () => false, {
+    syntaxSettings: { pref_footnote_syntax_enabled: false }
+  });
+  assert.deepEqual(allDisabled, { definitions: [], references: [] });
 });
 
 test('new native notes continue imported numbering and reserve later explicit references', async () => {
@@ -275,6 +433,7 @@ test('ordinary edits reuse cached footnote positions; note edits trigger a full 
 test('footnote formatters keep Markdown and native Wmdx definitions distinct', async () => {
   const {
     formatFootnoteDefinition,
+    formatObsidianInlineFootnote,
     formatWmdxFootnoteDefinition,
     nextFootnoteLabel
   } = await import('../src/footnotes.js');
@@ -282,13 +441,19 @@ test('footnote formatters keep Markdown and native Wmdx definitions distinct', a
   assert.equal(nextFootnoteLabel('Text [^1]\n\n[^1]: note\n[^3]: other'), '4');
   assert.equal(formatFootnoteDefinition('4', 'First line\nSecond line'), '[^4]: First line\n    Second line');
   assert.equal(formatWmdxFootnoteDefinition('First line\nSecond line'), '^ First line\n  Second line');
+  assert.equal(
+    formatObsidianInlineFootnote('First line\nSecond line]'),
+    '^[First line Second line\\]]'
+  );
 });
 
 test('toolbar insertion opens the footnote dialog and all footnote settings reach rendered styles', () => {
-  assert.match(source, /title: 'Insert Footnote', action: \(\) => openFootnoteInsertionDialog\(\)/);
+  assert.match(source, /title: 'Insert Footnote', disabled: !isFootnoteAuthoringAvailableNow\(\), action: \(\) => openFootnoteInsertionDialog\(\)/);
   assert.match(source, /function openFootnoteInsertionDialog/);
   assert.match(source, /formattedDefinition \+ '\\n\\n'/, 'inserted footnotes leave a blank editable line after the final definition');
-  assert.match(source, /const marker = '\^'/, 'new toolbar footnotes use the native marker');
+  assert.match(source, /: '\^'/, 'new Wmdx toolbar footnotes use the native marker');
+  assert.match(source, /authoringSyntax === 'obsidian_inline'/);
+  assert.match(source, /formatObsidianInlineFootnote/);
   assert.match(source, /Reuse footnote \$\{label\}/, 'the toolbar can link to an existing numbered note');
   assert.match(source, /cmdName === 'todoList'\) cmToggleLinePrefix\(view, '\[ \] '\)/);
   assert.match(source, /applyHeadingCommand\(view, val\)/);

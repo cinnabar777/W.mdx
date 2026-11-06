@@ -258,6 +258,8 @@ This sentence has a reference footnote.[^phone-test]
 
 [^phone-test]: The footnote should be displayed with its reference and this definition.
 
+This sentence has an Obsidian inline footnote.^[This note is written at its reference.]
+
 ## W.mdx word-processing syntax
 
 These are W.mdx extensions, separate from CommonMark and GFM. Underline display
@@ -277,7 +279,6 @@ The following forms are listed as current limitations, not rendering tests:
 
 - Heading or block transclusion such as `![[note.md#Heading]]`.
 - Obsidian audio, video, and PDF embeds such as `![[clip.mp4]]`.
-- Inline footnotes such as `^[a short note]`.
 - `%% comments %%`, YAML properties/frontmatter, math, Mermaid, and plugin syntax.
 
 ## Reference

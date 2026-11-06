@@ -762,8 +762,13 @@ object PreferenceResetHelper {
                 key == "pref_heading_syntax_enabled" ||
                 key == "pref_heading_syntax_wmdx_enabled" ||
                 key == "pref_heading_syntax_hash_enabled" ||
-                key == "pref_heading_syntax_setext_enabled" -> true
+                key == "pref_heading_syntax_setext_enabled" ||
+                key == "pref_footnote_syntax_enabled" ||
+                key == "pref_footnote_syntax_wmdx_enabled" ||
+                key == "pref_footnote_syntax_markdown_enabled" ||
+                key == "pref_footnote_syntax_obsidian_inline_enabled" -> true
             key == "pref_heading_authoring_syntax" -> "wmdx"
+            key == "pref_footnote_authoring_syntax" -> "wmdx"
             key.startsWith("pref_underline_") && key.endsWith("_color") -> "default"
             key.startsWith("pref_underline_") && key.endsWith("_thickness") -> 1
             else -> null

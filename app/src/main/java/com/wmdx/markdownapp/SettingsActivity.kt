@@ -1206,6 +1206,43 @@ class StylingFootnotesFragment : StylingSettingsFragment() {
         setPreferencesFromResource(R.xml.preferences_styling_footnotes, rootKey)
         configureFontPreferences()
     }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (
+            key != "pref_footnote_syntax_enabled" &&
+            key != "pref_footnote_syntax_wmdx_enabled" &&
+            key != "pref_footnote_syntax_markdown_enabled" &&
+            key != "pref_footnote_syntax_obsidian_inline_enabled" &&
+            key != "pref_footnote_authoring_syntax"
+        ) {
+            return
+        }
+        if (!sharedPreferences.getBoolean("pref_footnote_syntax_enabled", true)) return
+
+        val enabledFlavors = listOf(
+            "wmdx" to "pref_footnote_syntax_wmdx_enabled",
+            "markdown" to "pref_footnote_syntax_markdown_enabled",
+            "obsidian_inline" to "pref_footnote_syntax_obsidian_inline_enabled"
+        ).filter { (_, preferenceKey) ->
+            sharedPreferences.getBoolean(preferenceKey, true)
+        }.map { (flavor, _) -> flavor }
+        if (enabledFlavors.isEmpty()) return
+
+        val current = sharedPreferences.getString("pref_footnote_authoring_syntax", "wmdx")
+        val resolved = when {
+            enabledFlavors.size == 1 -> enabledFlavors.single()
+            current != null && enabledFlavors.contains(current) -> current
+            else -> enabledFlavors.first()
+        }
+        if (resolved != current) {
+            sharedPreferences.edit()
+                .putString("pref_footnote_authoring_syntax", resolved)
+                .apply()
+        }
+    }
 }
 
 class StylingListsFragment : StylingSettingsFragment() {

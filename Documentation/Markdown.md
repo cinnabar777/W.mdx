@@ -524,7 +524,9 @@ This sentence has a rendered footnote.[^rendered]
 Labels must not contain spaces or closing brackets. Matching is
 case-insensitive. A reference is only treated as a footnote when a definition
 with that label exists. Continuation lines need at least four leading spaces.
-Inline footnotes such as `^[footnote text]` are not supported.
+Obsidian also supports inline footnotes such as `^[footnote text]`. Wmdx can
+recognize and render that syntax when the Obsidian inline footnote flavor is
+enabled; it is not part of GFM or CommonMark.
 
 ## HTML and other app-specific syntax
 
@@ -600,8 +602,6 @@ Obsidian-style callout markers, highlights, task lists, and reference footnotes.
   or attachment links for these files.
 - `%% comments %%`, semantic tags (a `#tag` is plain text), YAML
   properties/frontmatter, math, Mermaid diagrams, and plugin-specific syntax.
-- Inline footnotes such as `^[note]`; W.mdx supports reference footnotes, with
-  four-space-indented continuation lines.
 - Exact Obsidian vault resolution and app behavior. W.mdx's file access and
   linked-file behavior follow its own folder permissions and document settings.
 
