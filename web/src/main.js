@@ -5812,10 +5812,7 @@ export function buildPersistentLayoutDecorations(state) {
       !classes.has('cm-callout')
     ) {
       classes.add('cm-source-indented');
-      lineStyles.push(
-        `--source-indent-offset:${sourceIndent * 12}px`,
-        `--source-line-indent-offset:${sourceLineIndent * 12}px`
-      );
+      lineStyles.push(`--source-indent-offset:${sourceIndent * 12}px`);
     }
     if (taskIndent != null) {
       lineStyles.push(`--wmdx-task-extra-indent:${taskIndent}px`);

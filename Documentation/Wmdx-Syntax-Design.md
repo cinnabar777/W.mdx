@@ -746,6 +746,13 @@ block syntax and inline formatting for the current paragraph or selected text.
 Focused web tests pass and the web bundle builds, but those checks do not verify
 Android rendering or touch behavior.
 
+The latest device check confirms nested quotes and Clear Formatting work. It
+found that wrapped rows in both ordinary and quoted paragraphs start one
+indentation unit too far right. The visual layout already applies the source
+indent as left padding; a negative `text-indent` was shifting only the first
+rendered row back to the left. The layout now keeps the same left padding on
+all rows and preserves the paragraph first-line preference separately.
+
 **Current verification checklist:**
 
 1. In a quoted block with blank quoted lines between paragraphs, place the
@@ -767,4 +774,12 @@ Android rendering or touch behavior.
 
 **Next:** resolve any failures from this checklist. Do not start another syntax
 family or broader conversion project until the user picks it.
+
+### Project instructions
+
+Use this document for current Wmdx syntax decisions, implementation status, and
+remaining checks. Update it as the user reports results. Do not carry
+task-specific branch or workflow directions forward from old sessions; follow
+the user's current request. Keep compatibility parsers available for import and
+export even when an authoring or rendering flavor is disabled.
 

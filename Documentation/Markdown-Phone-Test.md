@@ -100,7 +100,9 @@ indentation is separate from quote nesting: any wrapped text in an indented
 paragraph or quote should remain aligned with the indented block.
 
 For the wrapping check, place the cursor in the following quote, use Indent, and
-verify its wrapped lines stay at the same indent:
+verify the first rendered row and all wrapped rows begin at the same horizontal
+position. Repeat on an ordinary paragraph. The quote border must stay at the
+same left position in both cases:
 
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.
