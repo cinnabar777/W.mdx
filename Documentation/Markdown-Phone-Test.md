@@ -102,13 +102,19 @@ paragraph or quote should remain aligned with the indented block.
 For the wrapping check, place the cursor in the following quote and use Indent.
 At a collapsed cursor, the action should indent the whole paragraph, not just
 the current source line. In Live Preview and WYSIWYG, leading indentation
-spaces should stay hidden even when the cursor is on the line; Source view
-should show the literal spaces. Verify the first rendered row and all wrapped
-rows begin at the same horizontal position. Repeat on an ordinary paragraph.
-The quote border must stay at the same left position in both cases:
+spaces should stay hidden even when the cursor is on the line. Source view keeps
+the spaces visible, but the first row and every wrapped row must begin at the
+same content position. Repeat on an ordinary paragraph. The quote border must
+stay at the same left position in both cases:
 
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.
+
+For lists, turn on the list setting that wraps continuation text under the item
+text. Place the cursor in a nested item with a continuation line and a child
+item. Increase and decrease indent with both the toolbar and Tab/Shift-Tab.
+The item, continuation, and child must move together; wrapped text must remain
+aligned under the item's text, and numbering must remain correct.
 
 #### Pasting multiline content into a quote
 

@@ -4,9 +4,10 @@ import {
   parseMarkdownOrderedListMarker,
   parseWmdxOrderedListMarker
 } from './listSyntax.mjs';
+import { syntaxTree } from '@codemirror/language';
 
-const ROOT_LIST_MARKER = /^([-+*]|(?:\d+|[A-Za-z]+)[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/;
-const LIST_MARKER_PREFIX = /^([-+*]|(?:\d+|[A-Za-z]+)[.)])[ \t]+/;
+const ROOT_LIST_MARKER = /^([-+*]|(?:\d+|[A-Za-z]+)[.)]|\[[ xX]\])[ \t]+(?:\[[ xX]\][ \t]+)?/;
+const LIST_MARKER_PREFIX = /^([-+*]|(?:\d+|[A-Za-z]+)[.)]|\[[ xX]\])[ \t]+/;
 
 function leadingWhitespace(lineText) {
   return /^[ \t]*/.exec(lineText)[0];
@@ -69,6 +70,40 @@ function indentationWidth(value) {
     width = character === '\t' ? width + (4 - (width % 4)) : width + 1;
   }
   return width;
+}
+
+export function getMarkdownSourceLineLayout(lineText) {
+  const source = String(lineText ?? '');
+  if (!source.trim()) return null;
+
+  const leading = leadingWhitespace(source);
+  const leadingWidth = indentationWidth(leading);
+  const rest = source.slice(leading.length);
+  const quotePrefix = /^(?:>[ \t]*)+/.exec(rest)?.[0] ?? '';
+  const afterQuote = rest.slice(quotePrefix.length);
+  const listPrefix =
+    /^(?:[-+*]|\d+[.)]|[A-Za-z]+[.)]|\[[ xX]\])(?:[ \t]+\[[ xX]\])?[ \t]+/.exec(afterQuote)?.[0] ??
+    '';
+
+  if (listPrefix) {
+    return {
+      kind: 'list',
+      contentOffsetColumns: indentationWidth(leading + quotePrefix + listPrefix)
+    };
+  }
+  if (quotePrefix) {
+    return {
+      kind: 'quote',
+      contentOffsetColumns: indentationWidth(leading + quotePrefix)
+    };
+  }
+  if (leadingWidth > 0) {
+    return {
+      kind: 'paragraph',
+      contentOffsetColumns: leadingWidth
+    };
+  }
+  return null;
 }
 
 function listItemInfo(lineText) {
@@ -146,6 +181,26 @@ function selectedLineNumbers(doc, selection) {
   return { first, last: Math.max(first, last) };
 }
 
+function getSelectedListItemBlock(selectedLines) {
+  const nonBlankLines = selectedLines.filter(({ line }) => line.text.trim());
+  const root = nonBlankLines[0];
+  if (!root?.info) return null;
+
+  const rootIndent = root.info.indentWidth;
+  let currentIndent = rootIndent;
+  for (const { line, info } of nonBlankLines.slice(1)) {
+    if (info) {
+      if (info.indentWidth < rootIndent) return null;
+      currentIndent = info.indentWidth;
+    } else {
+      const lineIndent = indentationWidth(leadingWhitespace(line.text));
+      if (lineIndent <= currentIndent) return null;
+    }
+  }
+
+  return root;
+}
+
 export function getMarkdownIndentTargetSelection(doc, selection, paragraphRange) {
   if (!doc || !selection || !paragraphRange) return selection;
   const isCollapsed = selection.empty ?? selection.from === selection.to;
@@ -155,6 +210,83 @@ export function getMarkdownIndentTargetSelection(doc, selection, paragraphRange)
   const lastLine = doc.line(paragraphRange.last);
   if (!firstLine || !lastLine) return selection;
   return { from: firstLine.from, to: lastLine.to };
+}
+
+export function getMarkdownListItemLineRange(state, position) {
+  if (!state?.doc || !Number.isFinite(position)) return null;
+  for (
+    let node = syntaxTree(state).resolveInner(position, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name !== 'ListItem') continue;
+    const lastPosition = Math.max(node.from, node.to - 1);
+    return {
+      first: state.doc.lineAt(node.from).number,
+      last: state.doc.lineAt(lastPosition).number
+    };
+  }
+  return null;
+}
+
+export function getWmdxOrderedListItemLineRange(doc, position, items = []) {
+  if (!doc || !Number.isFinite(position) || !items.length) return null;
+  const itemsByLine = new Map(
+    items.map(item => [item.line.number, item])
+  );
+  const cursorLine = doc.lineAt(position);
+  let currentItem = itemsByLine.get(cursorLine.number);
+
+  if (!currentItem) {
+    const cursorIndent = indentationWidth(leadingWhitespace(cursorLine.text));
+    for (let number = cursorLine.number - 1; number >= 1; number -= 1) {
+      const line = doc.line(number);
+      if (!line.text.trim()) break;
+      const candidate = itemsByLine.get(number);
+      if (candidate) {
+        if (cursorIndent > candidate.indent) currentItem = candidate;
+        break;
+      }
+      if (indentationWidth(leadingWhitespace(line.text)) <= cursorIndent) {
+        break;
+      }
+    }
+  }
+  if (!currentItem) return null;
+
+  let last = currentItem.line.number;
+  let pendingBlankStart = null;
+  for (
+    let number = currentItem.line.number + 1;
+    number <= doc.lines;
+    number += 1
+  ) {
+    const line = doc.line(number);
+    if (!line.text.trim()) {
+      pendingBlankStart ??= number;
+      continue;
+    }
+
+    const nextItem = itemsByLine.get(number);
+    if (nextItem) {
+      if (nextItem.indent <= currentItem.indent) break;
+    } else if (
+      indentationWidth(leadingWhitespace(line.text)) <= currentItem.indent
+    ) {
+      break;
+    }
+
+    if (pendingBlankStart !== null) {
+      last = number - 1;
+      pendingBlankStart = null;
+    }
+    last = number;
+  }
+
+  return {
+    first: currentItem.line.number,
+    last
+  };
 }
 
 export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  ') {
@@ -176,6 +308,54 @@ export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  
   const isListBlock =
     selectedListLines.length > 0 &&
     selectedListLines.every(({ info }) => info !== null);
+
+  if (!isListBlock) {
+    const itemBlock = getSelectedListItemBlock(selectedListLines);
+    if (itemBlock) {
+      if (direction === 'indent') {
+        const parent = findPreviousListSibling(
+          doc,
+          itemBlock.number,
+          itemBlock.info
+        );
+        if (!parent) return changes;
+
+        const indentBy = parent.markerWidth;
+        for (const { line } of selectedLines) {
+          changes.push({
+            from: line.from,
+            to: line.from,
+            insert: ' '.repeat(indentBy)
+          });
+        }
+        return changes;
+      }
+
+      if (itemBlock.info.indentWidth > 0) {
+        const removeWidth = getOutdentWidth(
+          doc,
+          itemBlock.number,
+          itemBlock.info,
+          spaces
+        );
+        for (const { line } of selectedLines) {
+          const leading = leadingWhitespace(line.text);
+          const removeLength = leadingWhitespaceLengthForWidth(
+            leading,
+            removeWidth
+          );
+          if (removeLength > 0) {
+            changes.push({
+              from: line.from,
+              to: line.from + removeLength,
+              insert: ''
+            });
+          }
+        }
+        return changes;
+      }
+    }
+  }
 
   if (direction === 'indent' && isListBlock) {
     const firstListLine = selectedListLines[0];

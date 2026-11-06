@@ -110,6 +110,16 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?padding-left:\s*var\(--source-indent-offset/);
   assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?text-indent:\s*0\s*!important/);
   assert.match(styles, /cm-source-indented\.cm-paragraph-first[\s\S]*?text-indent:\s*0\s*!important/);
+  assert.match(
+    styles,
+    /cm-source-paragraph-wrapped[\s\S]*?padding-left:\s*var\(--source-hanging-offset[\s\S]*?text-indent:\s*calc\(0ch - var\(--source-hanging-offset/
+  );
+  assert.match(
+    styles,
+    /body\.list-wrap-under-text[\s\S]*?cm-source-list-wrapped/
+  );
+  assert.match(main, /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)/);
+  assert.match(main, /getMarkdownSourceLineLayout\(line\.text\)/);
   assert.match(main, /getMarkdownSourceIndentRanges\(line\.text\)/);
   assert.match(main, /paragraphIndentSyntaxRanges/);
   assert.match(main, /if \(calloutLineAttributes\.has\(lineFrom\)\) continue/);

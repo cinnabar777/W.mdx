@@ -36,8 +36,11 @@ import { extractTocHeadings } from './tocHeadings.js';
 import {
   applyMarkdownIndent,
   getMarkdownIndentTargetSelection,
+  getMarkdownListItemLineRange,
   getMarkdownSourceIndentColumns,
-  getMarkdownSourceIndentRanges
+  getMarkdownSourceLineLayout,
+  getMarkdownSourceIndentRanges,
+  getWmdxOrderedListItemLineRange
 } from './markdownIndent.js';
 import {
   createMarkdownBlockquotePaste,
@@ -575,8 +578,16 @@ function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {})
   }
 
   const selection = view.state.selection.main;
+  const tree = syntaxTree(view.state);
+  const wmdxListItems = getWmdxOrderedListItems(view.state.doc, tree);
   const paragraphRange = selection.empty
-    ? getCurrentParagraphLineRange(view.state, selection.head, {
+    ? getMarkdownListItemLineRange(view.state, selection.head) ??
+      getWmdxOrderedListItemLineRange(
+        view.state.doc,
+        selection.head,
+        wmdxListItems
+      ) ??
+      getCurrentParagraphLineRange(view.state, selection.head, {
         excludeListItems: true
       })
     : null;
@@ -585,7 +596,6 @@ function applyEditorMarkdownIndent(view, direction, spaces = '  ', options = {})
     selection,
     paragraphRange
   );
-  const tree = syntaxTree(view.state);
   return applyMarkdownIndent(view, direction, spaces, {
     ...options,
     selection: indentSelection,
@@ -2975,7 +2985,38 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     };
 
     if (currentEditorMode === 'source') {
-      return Decoration.none;
+      const sourceDecorations = [];
+      const seenLines = new Set();
+      const listWrapUnderText =
+        document.body.classList.contains('list-wrap-under-text');
+      const doc = view.state.doc;
+      for (const range of view.visibleRanges) {
+        const firstLine = doc.lineAt(range.from).number;
+        const lastLine = doc.lineAt(Math.max(range.from, range.to - 1)).number;
+        for (let number = firstLine; number <= lastLine; number += 1) {
+          const line = doc.line(number);
+          if (seenLines.has(line.from)) continue;
+          seenLines.add(line.from);
+          const layout = getMarkdownSourceLineLayout(line.text);
+          if (!layout || (layout.kind === 'list' && !listWrapUnderText)) {
+            continue;
+          }
+          const className = layout.kind === 'list'
+            ? 'cm-source-list-wrapped'
+            : layout.kind === 'quote'
+              ? 'cm-source-quote-wrapped'
+              : 'cm-source-paragraph-wrapped';
+          sourceDecorations.push(
+            Decoration.line({
+              attributes: {
+                class: className,
+                style: `--source-hanging-offset:${layout.contentOffsetColumns}ch`
+              }
+            }).range(line.from)
+          );
+        }
+      }
+      return Decoration.set(sourceDecorations, true);
     }
 
     const tree = syntaxTree(view.state);

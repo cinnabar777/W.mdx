@@ -752,10 +752,14 @@ to wrapped rows. Explicit source indentation already defines the paragraph's
 left edge, so the paragraph-first-line typography preference must not add a
 second indent to that first row. The leading source spaces must also be hidden
 in Live Preview and WYSIWYG, including when the cursor is on the line; Source
-view continues to show the syntax. CSS padding supplies the indent for the
-entire block. Indent and Outdent at a collapsed cursor now target all source
-lines in the current paragraph; list items retain their existing item-nesting
-behavior.
+view keeps the syntax visible but applies a hanging indent so the first visual
+row and its wrapped rows share the same content edge. Live Preview and WYSIWYG
+hide leading indentation syntax and apply the same block-level layout. This is
+separate from the paragraph typography preference for first-line indentation.
+Indent and Outdent at a collapsed cursor target all source lines in the current
+paragraph. For lists, the cursor targets the complete parsed list item,
+including continuation lines and nested children; the list's wrap-under-text
+setting controls wrapped item alignment.
 
 **Current verification checklist:**
 
@@ -763,13 +767,16 @@ behavior.
    caret in one paragraph and use Block Quote. Only that paragraph should gain
    one `>` level. Outdent should affect only that paragraph as well.
 2. Increase indentation on a long normal paragraph and on a quoted paragraph.
-   Every wrapped line should move with the paragraph; the quote border should
-   stay at the left edge.
-3. With no selection, Clear Formatting should remove the current paragraph's
+   In Source, Live Preview, and WYSIWYG, every wrapped line should align with
+   the first line's content edge; the quote border should stay at the left edge.
+3. In a list with wrap-under-text enabled, indent and outdent a nested item that
+   has continuation text and child items. The item subtree should move together
+   and wrapped text should remain aligned under the item text.
+4. With no selection, Clear Formatting should remove the current paragraph's
    heading, list/task, quote/callout, indentation, link, or inline style syntax
    while keeping its visible text. With a selection, it should clear only the
    selected text and affected block lines.
-4. Long-press CommonMark external links and reference links in WYSIWYG. Confirm
+5. Long-press CommonMark external links and reference links in WYSIWYG. Confirm
    Edit and Delete are reachable, edits keep destination and title in their
    correct fields, and Delete leaves the displayed text. The last device report
    confirmed Wmdx and Obsidian internal links but did not confirm these two.

@@ -355,9 +355,14 @@ test('callout title layout and editing behavior match each view', () => {
   );
   assert.ok(!mainSource.includes('isTitleActive'), 'Moving the cursor into the title does not reveal syntax');
   assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG replaces the marker while leaving the title editable');
+  const sourceModeBlock = mainSource.match(
+    /if \(currentEditorMode === 'source'\) \{[\s\S]*?\n    \}\n\n    const tree = syntaxTree\(view\.state\);/
+  )?.[0] ?? '';
   assert.ok(
-    mainSource.includes("if (currentEditorMode === 'source') {\n      return Decoration.none;"),
-    'Source view leaves the callout Markdown visible'
+    sourceModeBlock.includes('getMarkdownSourceLineLayout(line.text)') &&
+      sourceModeBlock.includes('return Decoration.set(sourceDecorations, true)') &&
+      !sourceModeBlock.includes('hideSyntax('),
+    'Source view keeps callout Markdown visible and adds only source-line layout decorations'
   );
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important[^}]*align-self:\s*center\s*!important/s);

@@ -12,6 +12,7 @@ function makeDoc(source) {
   }
   return {
     length: source.length,
+    lines: lines.length,
     line: number => lines[number - 1],
     lineAt: position => lines.find(line =>
       position >= line.from && position <= line.to
@@ -173,6 +174,235 @@ test('a collapsed indent targets all source lines of the current paragraph', asy
   );
 });
 
+test('source wrapping keeps paragraph, quote, and list content aligned', async () => {
+  const { getMarkdownSourceLineLayout } =
+    await import('../src/markdownIndent.js');
+
+  assert.deepEqual(
+    getMarkdownSourceLineLayout('  indented paragraph'),
+    { kind: 'paragraph', contentOffsetColumns: 2 }
+  );
+  assert.deepEqual(
+    getMarkdownSourceLineLayout('>   quoted paragraph'),
+    { kind: 'quote', contentOffsetColumns: 4 }
+  );
+  assert.deepEqual(
+    getMarkdownSourceLineLayout('  10. [ ] nested item'),
+    { kind: 'list', contentOffsetColumns: 10 }
+  );
+  assert.deepEqual(
+    getMarkdownSourceLineLayout('[ ] task item'),
+    { kind: 'list', contentOffsetColumns: 4 }
+  );
+  assert.equal(getMarkdownSourceLineLayout('ordinary paragraph'), null);
+});
+
+test('indent and outdent move a selected list item with its wrapped and nested lines', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = [
+    '- parent',
+    '- child',
+    '  wrapped continuation',
+    '  - nested child',
+    '    nested continuation',
+    '- next sibling'
+  ].join('\n');
+  const doc = makeDoc(source);
+  const selection = {
+    from: doc.line(2).from,
+    to: doc.line(5).to
+  };
+  const indented = applyChanges(
+    source,
+    getMarkdownIndentChanges(doc, selection, 'indent')
+  );
+  assert.equal(indented, [
+    '- parent',
+    '  - child',
+    '    wrapped continuation',
+    '    - nested child',
+    '      nested continuation',
+    '- next sibling'
+  ].join('\n'));
+
+  const indentedDoc = makeDoc(indented);
+  const outdented = applyChanges(
+    indented,
+    getMarkdownIndentChanges(
+      indentedDoc,
+      {
+        from: indentedDoc.line(2).from,
+        to: indentedDoc.line(5).to
+      },
+      'outdent'
+    )
+  );
+  assert.equal(outdented, source);
+});
+
+test('a collapsed toolbar indent targets the complete parsed list item', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const {
+    getMarkdownIndentChanges,
+    getMarkdownIndentTargetSelection,
+    getMarkdownListItemLineRange
+  } = await import('../src/markdownIndent.js');
+  const source = [
+    '- parent',
+    '- child',
+    '  wrapped continuation',
+    '  - nested child',
+    '    nested continuation',
+    '- next sibling'
+  ].join('\n');
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdown()]
+  });
+  const cursor = state.doc.line(2).from + 5;
+  const range = getMarkdownListItemLineRange(state, cursor);
+  assert.deepEqual(range, { first: 2, last: 5 });
+
+  const selection = getMarkdownIndentTargetSelection(
+    state.doc,
+    { from: cursor, to: cursor, empty: true },
+    range
+  );
+  assert.equal(
+    applyChanges(
+      source,
+      getMarkdownIndentChanges(state.doc, selection, 'indent')
+    ),
+    [
+      '- parent',
+      '  - child',
+      '    wrapped continuation',
+      '    - nested child',
+      '      nested continuation',
+      '- next sibling'
+    ].join('\n')
+  );
+});
+
+test('a Wmdx ordered item cursor targets its wrapped and nested lines only', async () => {
+  const { getWmdxOrderedListSequence } =
+    await import('../src/listSyntax.mjs');
+  const {
+    getMarkdownIndentChanges,
+    getMarkdownIndentTargetSelection,
+    getWmdxOrderedListItemLineRange
+  } = await import('../src/markdownIndent.js');
+  const source = [
+    'I. Parent',
+    'II. Current item',
+    '  continuation text',
+    '  i. Nested item',
+    '    nested continuation',
+    'III. Next sibling'
+  ].join('\n');
+  const doc = makeDoc(source);
+  const items = getWmdxOrderedListSequence(
+    Array.from({ length: doc.lines }, (_, index) => doc.line(index + 1))
+  );
+  const cursor = doc.line(3).from + 4;
+  const range = getWmdxOrderedListItemLineRange(doc, cursor, items);
+  assert.deepEqual(range, { first: 2, last: 5 });
+
+  const selection = getMarkdownIndentTargetSelection(
+    doc,
+    { from: cursor, to: cursor, empty: true },
+    range
+  );
+  const indented = applyChanges(
+    source,
+    getMarkdownIndentChanges(doc, selection, 'indent')
+  );
+  assert.equal(indented, [
+    'I. Parent',
+    '   II. Current item',
+    '     continuation text',
+    '     i. Nested item',
+    '       nested continuation',
+    'III. Next sibling'
+  ].join('\n'));
+
+  const indentedDoc = makeDoc(indented);
+  const indentedItems = getWmdxOrderedListSequence(
+    Array.from(
+      { length: indentedDoc.lines },
+      (_, index) => indentedDoc.line(index + 1)
+    )
+  );
+  const outdentRange = getWmdxOrderedListItemLineRange(
+    indentedDoc,
+    indentedDoc.line(3).from + 4,
+    indentedItems
+  );
+  assert.deepEqual(outdentRange, { first: 2, last: 5 });
+  const outdentedSelection = getMarkdownIndentTargetSelection(
+    indentedDoc,
+    {
+      from: indentedDoc.line(3).from + 4,
+      to: indentedDoc.line(3).from + 4,
+      empty: true
+    },
+    outdentRange
+  );
+  assert.equal(
+    applyChanges(
+      indented,
+      getMarkdownIndentChanges(indentedDoc, outdentedSelection, 'outdent')
+    ),
+    source
+  );
+});
+
+test('selected list items move with each wrapped continuation line', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = [
+    '- parent',
+    '- first selected item',
+    '  first continuation',
+    '- second selected item',
+    '  second continuation',
+    '- next sibling'
+  ].join('\n');
+  const doc = makeDoc(source);
+  const selection = {
+    from: doc.line(2).from,
+    to: doc.line(5).to
+  };
+
+  assert.equal(
+    applyChanges(source, getMarkdownIndentChanges(doc, selection, 'indent')),
+    [
+      '- parent',
+      '  - first selected item',
+      '    first continuation',
+      '  - second selected item',
+      '    second continuation',
+      '- next sibling'
+    ].join('\n')
+  );
+});
+
+test('Wmdx checkbox indentation moves the task and its continuation together', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = '[ ] parent\n[ ] child\n  task continuation';
+  const doc = makeDoc(source);
+  const changes = getMarkdownIndentChanges(
+    doc,
+    { from: doc.line(2).from, to: doc.line(3).to },
+    'indent'
+  );
+
+  assert.equal(
+    applyChanges(source, changes),
+    '[ ] parent\n    [ ] child\n      task continuation'
+  );
+});
+
 test('source indentation counts paragraph and blockquote content spacing', async () => {
   const {
     getMarkdownSourceIndentColumns,
@@ -247,6 +477,19 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   assert.match(
     main,
     /getCurrentParagraphLineRange\(view\.state,\s*selection\.head,\s*\{\s*excludeListItems:\s*true\s*\}\)/
+  );
+  assert.match(main, /getMarkdownListItemLineRange,/);
+  assert.match(
+    main,
+    /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)\s*\?\?/
+  );
+  assert.match(
+    main,
+    /getWmdxOrderedListItemLineRange\([\s\S]*?wmdxListItems/
+  );
+  assert.match(
+    main,
+    /if \(currentEditorMode === 'source'\) \{[\s\S]*?getMarkdownSourceLineLayout\(line\.text\)/
   );
   assert.match(main, /selection:\s*indentSelection/);
   assert.match(
