@@ -221,13 +221,21 @@ and uppercase forms:
 ```text
 1. Decimal item
 a. Alphabetic item
-a. Next item; it follows the same alphabetic list.
+b. Next alphabetic item
 A. Uppercase alphabetic item
 i. Roman item
+ii. Next lowercase Roman item
 I. Uppercase Roman item
+II. Next uppercase Roman item
 ```
 
-The marker selects the numbering style; following items auto-increment.
+The marker selects the numbering style. Source markers explicitly advance for
+each item, so alphabetic and Roman lists remain clear in Source view as well as
+WYSIWYG. The ordered-list toolbar writes a sequence when applied to multiple
+selected lines, and Return inserts the next marker (`A.` → `B.`, `I.` → `II.`).
+Existing repeated style markers such as `A.` followed by `A.` remain recognized
+and auto-number in WYSIWYG. Applying the matching toolbar action to those lines
+rewrites them as an explicit sequence.
 
 Task items begin directly with `[ ]` for unchecked or `[x]` for checked; do not
 put a leading `-` before the checkbox. The checkbox marker is itself the task

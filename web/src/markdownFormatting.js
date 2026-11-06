@@ -1112,7 +1112,7 @@ function cycleMarkdownListLine(
     return `${indent}${orderedPrefix}${content.slice(checkbox[0].length)}`;
   }
 
-  const numbered = /^(?:\d+|[aAiI])[.)](?:\s+|$)/.exec(content);
+  const numbered = /^(?:\d+|[A-Za-z]+)[.)](?:\s+|$)/.exec(content);
   if (numbered) {
     return `${indent}${content.slice(numbered[0].length)}`;
   }

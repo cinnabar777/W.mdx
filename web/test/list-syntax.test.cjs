@@ -86,8 +86,29 @@ test('ordered Wmdx list markers auto-increment alphabetic and Roman labels', asy
       textFrom: 4,
       indent: 2,
       style: 'roman_lower',
+      ordinal: 1,
       delimiter: '.'
     }
+  );
+  assert.equal(
+    parseWmdxOrderedListMarker('B. Second').style,
+    'alpha_upper'
+  );
+  assert.equal(
+    parseWmdxOrderedListMarker('B. Second').ordinal,
+    2
+  );
+  assert.equal(
+    parseWmdxOrderedListMarker('II. Second').style,
+    'roman_upper'
+  );
+  assert.equal(
+    parseWmdxOrderedListMarker('IV. Fourth').ordinal,
+    4
+  );
+  assert.equal(
+    parseWmdxOrderedListMarker('V. Fifth', 'roman_upper').ordinal,
+    5
   );
   assert.equal(parseWmdxOrderedListMarker('inline a. text'), null);
 });
@@ -128,6 +149,24 @@ test('selected lines receive a list prefix and matching prefixes toggle off toge
       { from: 22, to: 22, insert: '3. ' }
     ]
   );
+  const alphabeticPrefix = index => `${String.fromCharCode(65 + index)}. `;
+  assert.deepEqual(
+    getSelectedListPrefixChanges(numberedLines, alphabeticPrefix),
+    [
+      { from: 0, to: 0, insert: 'A. ' },
+      { from: 13, to: 13, insert: 'B. ' },
+      { from: 22, to: 22, insert: 'C. ' }
+    ]
+  );
+  const romanPrefix = index => `${['I', 'II', 'III'][index]}. `;
+  assert.deepEqual(
+    getSelectedListPrefixChanges(numberedLines, romanPrefix),
+    [
+      { from: 0, to: 0, insert: 'I. ' },
+      { from: 13, to: 13, insert: 'II. ' },
+      { from: 22, to: 22, insert: 'III. ' }
+    ]
+  );
   assert.deepEqual(
     getSelectedListPrefixChanges([
       { from: 0, text: '1. Neque magna' },
@@ -166,10 +205,10 @@ test('list toolbar actions cover selected lines and custom markers refresh while
   assert.match(mainSource, /cmdName === 'numberedList'[\s\S]*?cmToggleSelectedListPrefix\(view, prefix\)/);
   assert.match(mainSource, /cmdName === 'todoList'[\s\S]*?cmToggleSelectedListPrefix\(view, prefix\)/);
   assert.match(mainSource, /getDefaultOrderedStyle\(listSyntaxSettings\)/);
-  assert.match(mainSource, /index \+ 1\}\$\{prefix\.trimEnd\(\)\.slice\(-1\)\}/);
+  assert.match(mainSource, /getOrderedMarkerLabel\([\s\S]*?index \+ 1/);
   assert.match(mainSource, /handleCalloutEnter\(view, event\) \|\|[\s\S]*?handleWmdxOrderedListEnter\(view, event\)/);
   assert.equal(
-    (mainSource.match(/linePattern: \/\^\[ \\t\]\*\(\?:\[aAiI\]\[\.\)\]\)\(\?:\[ \\t\]\|\$\)\//g) || []).length,
+    (mainSource.match(/linePattern: \/\^\[ \\t\]\*\[A-Za-z\]\+\[\.\)\]\(\?:\[ \\t\]\|\$\)\//g) || []).length,
     2
   );
 });
@@ -188,7 +227,7 @@ test('Return continues Wmdx alpha and Roman lists, and a blank item exits', asyn
     {
       from: 8,
       to: 8,
-      insert: '\nA. ',
+      insert: '\nB. ',
       cursor: 12,
       exitsList: false
     }
@@ -198,10 +237,54 @@ test('Return continues Wmdx alpha and Roman lists, and a blank item exits', asyn
     {
       from: 12,
       to: 12,
-      insert: '\n  > I. ',
-      cursor: 20,
+      insert: '\n  > II. ',
+      cursor: 21,
       exitsList: false
     }
+  );
+  const romanContinuation = 'IV. Fourth\nV. Fifth';
+  assert.equal(
+    getWmdxOrderedListEnterEdit(
+      romanContinuation,
+      cursor(romanContinuation.length)
+    ).insert,
+    '\nVI. '
+  );
+  const romanContinuationAfterBlank = 'IV. Fourth\n\nV. Fifth';
+  assert.equal(
+    getWmdxOrderedListEnterEdit(
+      romanContinuationAfterBlank,
+      cursor(romanContinuationAfterBlank.length)
+    ).insert,
+    '\nVI. '
+  );
+  const alphabeticContinuation = 'H. Eighth\nI. Ninth';
+  assert.equal(
+    getWmdxOrderedListEnterEdit(
+      alphabeticContinuation,
+      cursor(alphabeticContinuation.length)
+    ).insert,
+    '\nJ. '
+  );
+  const repeatedAlphabetic = 'A. First\nA. Second';
+  assert.equal(
+    getWmdxOrderedListEnterEdit(
+      repeatedAlphabetic,
+      cursor(repeatedAlphabetic.length)
+    ).insert,
+    '\nC. '
+  );
+  const repeatedRoman = 'I. First\nI. Second';
+  assert.equal(
+    getWmdxOrderedListEnterEdit(
+      repeatedRoman,
+      cursor(repeatedRoman.length)
+    ).insert,
+    '\nIII. '
+  );
+  assert.equal(
+    getWmdxOrderedListEnterEdit('ii. Second', cursor(10)).insert,
+    '\niii. '
   );
   assert.deepEqual(
     getWmdxOrderedListEnterEdit('i. ', cursor(3)),

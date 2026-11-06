@@ -517,13 +517,15 @@ function getWmdxOrderedListItems(doc, tree) {
   const activeLists = new Map();
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
     const line = doc.line(lineNumber);
-    const parsed = parseWmdxOrderedListMarker(line.text);
+    let parsed = parseWmdxOrderedListMarker(line.text);
     if (!parsed) {
       if (line.text.trim()) {
         const indent = (/^[ \t]*/.exec(line.text)?.[0] ?? '').length;
         for (const depth of activeLists.keys()) {
           if (depth >= indent) activeLists.delete(depth);
         }
+      } else {
+        for (const active of activeLists.values()) active.gap = true;
       }
       continue;
     }
@@ -534,6 +536,30 @@ function getWmdxOrderedListItems(doc, tree) {
       if (depth > parsed.indent) activeLists.delete(depth);
     }
     let active = activeLists.get(parsed.indent);
+    if (active) {
+      const candidate = parseWmdxOrderedListMarker(line.text, active.style);
+      const ambiguousRomanOne = parsed.marker.slice(0, -1).toUpperCase() === 'I';
+      if (
+        candidate?.style === active.style &&
+        (
+          parsed.style === active.style ||
+          (
+            !active.gap &&
+            (
+              candidate.ordinal === active.ordinal + 1 ||
+              candidate.ordinal === 1
+            )
+          ) ||
+          (
+            active.gap &&
+            !ambiguousRomanOne &&
+            candidate.ordinal === active.ordinal + 1
+          )
+        )
+      ) {
+        parsed = candidate;
+      }
+    }
     if (
       !active ||
       active.style !== parsed.style ||
@@ -542,11 +568,13 @@ function getWmdxOrderedListItems(doc, tree) {
       active = {
         style: parsed.style,
         delimiter: parsed.delimiter,
-        ordinal: 0
+        ordinal: 0,
+        gap: false
       };
       activeLists.set(parsed.indent, active);
     }
-    active.ordinal++;
+    active.ordinal = Math.max(active.ordinal + 1, parsed.ordinal);
+    active.gap = false;
     items.push({
       ...parsed,
       line,
@@ -4029,7 +4057,7 @@ export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
 );
 
 const toolbarLinePrefixPattern =
-  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|[aAiI][.)][ \t]+|#{1,6}[ \t]+|\.([1-6])[ \t]+|> ?)/;
+  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|[A-Za-z]+[.)][ \t]+|#{1,6}[ \t]+|\.([1-6])[ \t]+|> ?)/;
 
 function getSetextHeadingAtLine(state, lineNumber) {
   let match = null;
@@ -5390,7 +5418,7 @@ export const heightMapField = StateField.define({
           'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
           'HorizontalRule', 'TaskMarker', 'Link', 'Image', 'InlineCode'
         ],
-        linePattern: /^[ \t]*(?:[aAiI][.)])(?:[ \t]|$)/
+        linePattern: /^[ \t]*[A-Za-z]+[.)](?:[ \t]|$)/
       })
     ) {
       return {
@@ -5741,7 +5769,7 @@ export const persistentLayoutField = StateField.define({
           'Blockquote', 'FencedCode', 'CodeBlock', 'Table', 'WmdxTaskMarker',
           'HorizontalRule'
         ],
-        linePattern: /^[ \t]*(?:[aAiI][.)])(?:[ \t]|$)/
+        linePattern: /^[ \t]*[A-Za-z]+[.)](?:[ \t]|$)/
       })
     ) {
       return current.map(tr.changes);
@@ -9931,9 +9959,12 @@ function execCmd(cmdName, options) {
       const prefix = getDefaultOrderedPrefix(listSyntaxSettings);
       if (prefix) {
         const orderedStyle = getDefaultOrderedStyle(listSyntaxSettings);
-        const selectedPrefix = orderedStyle === 'decimal'
-          ? index => `${index + 1}${prefix.trimEnd().slice(-1)} `
-          : prefix;
+        const selectedPrefix = index =>
+          `${getOrderedMarkerLabel(
+            orderedStyle,
+            index + 1,
+            prefix.trimEnd().slice(-1)
+          )} `;
         cmToggleSelectedListPrefix(view, selectedPrefix);
       }
     } else if (cmdName === 'todoList') {
@@ -10190,7 +10221,7 @@ function getToolbarSyntaxState(view) {
     /^\s*(?:[-*+]\s+\[[ xX]\]|\d+[.)]\s+\[[ xX]\])[ \t]+/.test(line);
   const todo = listsEnabled && (wmdxTask || markdownTask);
   const wmdxOrdered = isListFlavorEnabledNow('wmdx') &&
-    /^\s*[aAiI][.)][ \t]+/.test(line);
+    /^\s*[A-Za-z]+[.)][ \t]+/.test(line);
   const numbered = listsEnabled &&
     (/^\s*\d+[.)]\s+/.test(line) || wmdxOrdered);
   const bullet = listsEnabled && /^\s*[-*+][ \t]+/.test(line) && !todo;

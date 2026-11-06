@@ -73,6 +73,19 @@ test('indent uses the preceding ordered marker width for one nested level', asyn
   assert.equal(applyChanges(source, changes), '10. parent\n    1. child');
 });
 
+test('indent recognizes alphabetic and multi-letter Roman Wmdx markers', async () => {
+  const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
+  const source = 'I. parent\nII. child';
+  const doc = makeDoc(source);
+  const changes = getMarkdownIndentChanges(
+    doc,
+    { from: doc.line(2).from, to: doc.line(2).to },
+    'indent'
+  );
+
+  assert.equal(applyChanges(source, changes), 'I. parent\n   II. child');
+});
+
 test('task-list checkboxes do not add extra columns to the nested indent', async () => {
   const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
   const source = '- [ ] parent\n- [ ] child';

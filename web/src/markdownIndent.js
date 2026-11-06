@@ -1,5 +1,5 @@
-const ROOT_LIST_MARKER = /^([-+*]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/;
-const LIST_MARKER_PREFIX = /^([-+*]|\d+[.)])[ \t]+/;
+const ROOT_LIST_MARKER = /^([-+*]|(?:\d+|[A-Za-z]+)[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/;
+const LIST_MARKER_PREFIX = /^([-+*]|(?:\d+|[A-Za-z]+)[.)])[ \t]+/;
 
 function leadingWhitespace(lineText) {
   return /^[ \t]*/.exec(lineText)[0];

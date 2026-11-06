@@ -19,7 +19,7 @@ const ORDERED_STYLES = new Set([
   'roman_upper'
 ]);
 const LIST_ITEM_PREFIX =
-  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|[aAiI][.)][ \t]+)/;
+  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|[A-Za-z]+[.)][ \t]+)/;
 
 export function normalizeListSyntaxSettings(preferences = {}) {
   const settings = {
@@ -125,25 +125,23 @@ export function getOrderedMarkerLabel(style, ordinal, delimiter = '.') {
   return `${index}${delimiter}`;
 }
 
-export function parseWmdxOrderedListMarker(lineText) {
-  const match = /^([ \t]*(?:>\s*)*)([aA]|[iI])([.)])(?=[ \t]|$)/.exec(
+export function parseWmdxOrderedListMarker(lineText, preferredStyle = null) {
+  const match = /^([ \t]*(?:>\s*)*)([A-Za-z]+)([.)])(?=[ \t]|$)/.exec(
     String(lineText ?? '')
   );
   if (!match) return null;
   const marker = `${match[2]}${match[3]}`;
+  const token = match[2];
+  const parsedStyle = getOrderedTokenStyle(token, preferredStyle);
+  if (!parsedStyle) return null;
   return {
     marker,
     markerFrom: match[1].length,
     markerTo: match[1].length + marker.length,
     textFrom: match[1].length + marker.length,
     indent: (/^[ \t]*/.exec(match[1])?.[0] ?? '').length,
-    style: match[2] === 'i'
-      ? 'roman_lower'
-      : match[2] === 'I'
-        ? 'roman_upper'
-        : match[2] === 'A'
-          ? 'alpha_upper'
-          : 'alpha_lower',
+    style: parsedStyle.style,
+    ordinal: parsedStyle.ordinal,
     delimiter: match[3]
   };
 }
@@ -171,7 +169,15 @@ export function getWmdxOrderedListEnterEdit(
   if (from < lineFrom || to > lineTo) return null;
 
   const lineText = source.slice(lineFrom, lineTo);
-  const parsed = parseWmdxOrderedListMarker(lineText);
+  const listPosition = getWmdxOrderedListPosition(
+    source,
+    lineFrom,
+    lineText
+  );
+  const parsed = parseWmdxOrderedListMarker(
+    lineText,
+    listPosition?.style ?? null
+  );
   if (!parsed || isExcluded(lineFrom + parsed.markerFrom)) return null;
 
   if (selection?.empty && !lineText.slice(parsed.markerTo).trim()) {
@@ -185,7 +191,13 @@ export function getWmdxOrderedListEnterEdit(
     };
   }
 
-  const insert = `\n${lineText.slice(0, parsed.markerTo)} `;
+  const nextMarker = getOrderedMarkerLabel(
+    parsed.style,
+    (listPosition?.ordinal ?? parsed.ordinal) + 1,
+    parsed.delimiter
+  );
+  const insert =
+    `\n${lineText.slice(0, parsed.markerFrom)}${nextMarker} `;
   return {
     from,
     to,
@@ -193,6 +205,90 @@ export function getWmdxOrderedListEnterEdit(
     cursor: from + insert.length,
     exitsList: false
   };
+}
+
+function getWmdxOrderedListPosition(source, lineFrom, lineText) {
+  const current = parseWmdxOrderedListMarker(lineText);
+  if (!current) return null;
+  const targetPrefix = lineText.slice(0, current.markerFrom);
+  const listLines = [{
+    text: lineText,
+    defaultParsed: current,
+    gapBefore: false
+  }];
+  let previousLineFrom = lineFrom;
+  let crossedBlankLine = false;
+
+  while (previousLineFrom > 0) {
+    const previousEnd = previousLineFrom - 1;
+    const previousStart = source.lastIndexOf('\n', previousEnd - 1) + 1;
+    const previousText = source.slice(previousStart, previousEnd);
+    if (!previousText.trim()) {
+      if (crossedBlankLine) break;
+      crossedBlankLine = true;
+      previousLineFrom = previousStart;
+      continue;
+    }
+    const parsed = parseWmdxOrderedListMarker(previousText);
+    if (
+      !parsed ||
+      parsed.indent !== current.indent ||
+      previousText.slice(0, parsed.markerFrom) !== targetPrefix
+    ) {
+      break;
+    }
+    listLines[0].gapBefore = crossedBlankLine;
+    listLines.unshift({
+      text: previousText,
+      defaultParsed: parsed,
+      gapBefore: false
+    });
+    crossedBlankLine = false;
+    previousLineFrom = previousStart;
+  }
+
+  let active = null;
+  for (const entry of listLines) {
+    let parsed = entry.defaultParsed;
+    if (active) {
+      const candidate = parseWmdxOrderedListMarker(entry.text, active.style);
+      const ambiguousRomanOne =
+        entry.defaultParsed.marker.slice(0, -1).toUpperCase() === 'I';
+      if (
+        candidate?.style === active.style &&
+        (
+          parsed.style === active.style ||
+          (
+            !entry.gapBefore &&
+            (
+              candidate.ordinal === active.ordinal + 1 ||
+              candidate.ordinal === 1
+            )
+          ) ||
+          (
+            entry.gapBefore &&
+            !ambiguousRomanOne &&
+            candidate.ordinal === active.ordinal + 1
+          )
+        )
+      ) {
+        parsed = candidate;
+      }
+    }
+    if (
+      !active ||
+      active.style !== parsed.style ||
+      active.delimiter !== parsed.delimiter
+    ) {
+      active = {
+        style: parsed.style,
+        delimiter: parsed.delimiter,
+        ordinal: 0
+      };
+    }
+    active.ordinal = Math.max(active.ordinal + 1, parsed.ordinal);
+  }
+  return active;
 }
 
 export function getSelectedListPrefixChanges(lines, prefix) {
@@ -259,4 +355,48 @@ function toRoman(value) {
     }
   }
   return result;
+}
+
+function getOrderedTokenStyle(token, preferredStyle) {
+  const isUppercase = token === token.toUpperCase();
+  const alphaStyle = isUppercase ? 'alpha_upper' : 'alpha_lower';
+  const romanStyle = isUppercase ? 'roman_upper' : 'roman_lower';
+
+  if (preferredStyle === alphaStyle && /^[A-Za-z]+$/.test(token)) {
+    return { style: alphaStyle, ordinal: fromAlphabetic(token) };
+  }
+  if (preferredStyle === romanStyle) {
+    const ordinal = fromRoman(token);
+    if (ordinal !== null) return { style: romanStyle, ordinal };
+  }
+
+  const romanOrdinal = fromRoman(token);
+  if (
+    romanOrdinal !== null &&
+    (token.length > 1 || token.toUpperCase() === 'I')
+  ) {
+    return { style: romanStyle, ordinal: romanOrdinal };
+  }
+  return { style: alphaStyle, ordinal: fromAlphabetic(token) };
+}
+
+function fromAlphabetic(value) {
+  let ordinal = 0;
+  for (const character of value.toLowerCase()) {
+    ordinal = ordinal * 26 + character.charCodeAt(0) - 96;
+  }
+  return ordinal;
+}
+
+function fromRoman(value) {
+  const normalized = value.toUpperCase();
+  if (!/^[IVXLCDM]+$/.test(normalized)) return null;
+  const values = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+  let ordinal = 0;
+  for (let index = 0; index < normalized.length; index += 1) {
+    const current = values[normalized[index]];
+    const next = values[normalized[index + 1]] ?? 0;
+    ordinal += current < next ? -current : current;
+  }
+  return toRoman(ordinal) === normalized ? ordinal : null;
 }
