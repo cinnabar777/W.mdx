@@ -764,7 +764,11 @@ The default is one space, configurable under Settings â†’ Document Appearance â†
 Paragraph. Indent and Outdent at a collapsed cursor target all source lines in
 the current paragraph. List items use hanging indentation by default,
 independent of Block List Layout; do not gate their wrapped-line alignment on
-that preference. List nesting remains based on marker width.
+that preference. In Source view, a paragraph continuation that becomes part of
+a list item after its blank separator is removed must wrap under the item text.
+Rendered indented code blocks hide only the structural indentation parsed as
+Markdown syntax; any additional code indentation remains visible. List nesting
+remains based on marker width.
 
 **Current verification checklist:**
 

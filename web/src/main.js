@@ -36,6 +36,8 @@ import { extractTocHeadings } from './tocHeadings.js';
 import {
   applyMarkdownIndent,
   getMarkdownIndentSpaces,
+  getMarkdownSourceLineLayoutForState,
+  getIndentedCodeBlockIndentRanges,
   getMarkdownIndentTargetSelection,
   getMarkdownListItemLineRange,
   getMarkdownSourceIndentColumns,
@@ -795,6 +797,18 @@ function measureListMarkerGutter(line, marker) {
   return Math.max(0, markerRect.right - lineRect.left + markerGap);
 }
 
+function listMarkerMeasurementSignature(marker) {
+  const style = marker.ownerDocument.defaultView.getComputedStyle(marker);
+  return JSON.stringify([
+    String(marker.className),
+    marker.textContent,
+    style.font,
+    style.marginRight,
+    style.paddingLeft,
+    style.paddingRight
+  ]);
+}
+
 function listItemTextRange(tree, doc, line, markerEnd) {
   let from = markerEnd;
   tree.iterate({
@@ -854,26 +868,27 @@ function scheduleListMarkerMeasurements(view, force = false) {
 
       const measurements = [];
       for (const line of lines) {
-        if (
-          !force &&
-          line.style.getPropertyValue('--list-marker-gutter')
-        ) {
-          continue;
-        }
-
         const marker = line.querySelector(
           '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-list-marker-syntax'
         );
         if (!marker) {
-          measurements.push({ line });
+          measurements.push({ line, signature: null });
+          continue;
+        }
+        const signature = listMarkerMeasurementSignature(marker);
+        if (
+          !force &&
+          line.style.getPropertyValue('--list-marker-gutter') &&
+          line.dataset.listMarkerMeasurementSignature === signature
+        ) {
           continue;
         }
 
         const gutter = measureListMarkerGutter(line, marker);
         if (Number.isFinite(gutter) && gutter > 0) {
-          measurements.push({ line, gutter });
+          measurements.push({ line, gutter, signature });
         } else {
-          measurements.push({ line });
+          measurements.push({ line, signature: null });
         }
       }
       recordListMarkerRead(measurementMode, lines.length, measurements.length);
@@ -884,7 +899,7 @@ function scheduleListMarkerMeasurements(view, force = false) {
       let changedCount = 0;
       let totalDeltaPx = 0;
       let maxDeltaPx = 0;
-      for (const { line, gutter } of result.measurements) {
+      for (const { line, gutter, signature } of result.measurements) {
         if (!line.isConnected || !view.contentDOM.contains(line)) continue;
         if (result.enabled && Number.isFinite(gutter) && gutter > 0) {
           const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
@@ -896,6 +911,7 @@ function scheduleListMarkerMeasurements(view, force = false) {
             maxDeltaPx = Math.max(maxDeltaPx, delta);
           }
           line.style.setProperty('--list-marker-gutter', nextValue);
+          line.dataset.listMarkerMeasurementSignature = signature;
         } else {
           const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
           if (line.style.getPropertyValue('--list-marker-gutter')) {
@@ -904,6 +920,7 @@ function scheduleListMarkerMeasurements(view, force = false) {
             maxDeltaPx = Math.max(maxDeltaPx, previous);
           }
           line.style.removeProperty('--list-marker-gutter');
+          delete line.dataset.listMarkerMeasurementSignature;
         }
       }
       recordListMarkerWrite(measurementMode, changedCount, totalDeltaPx, maxDeltaPx);
@@ -931,7 +948,7 @@ const listMarkerMeasurementPlugin = ViewPlugin.fromClass(class {
     ) {
       scheduleListMarkerMeasurements(
         update.view,
-        update.docChanged || typographyChanged
+        typographyChanged
       );
     }
   }
@@ -3001,10 +3018,15 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           const line = doc.line(number);
           if (seenLines.has(line.from)) continue;
           seenLines.add(line.from);
-          const layout = getMarkdownSourceLineLayout(line.text);
+          const layout = getMarkdownSourceLineLayoutForState(
+            view.state,
+            line.number
+          );
           if (!layout) continue;
           const className = layout.kind === 'list'
             ? 'cm-source-list-wrapped'
+            : layout.kind === 'list-continuation'
+              ? 'cm-source-list-continuation'
             : layout.kind === 'quote'
               ? 'cm-source-quote-wrapped'
               : 'cm-source-paragraph-wrapped';
@@ -3696,6 +3718,15 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             if (currentEditorMode === 'wysiwyg') {
               return;
             }
+        if (node.name === 'CodeBlock') {
+          for (const range of getIndentedCodeBlockIndentRanges(
+            view.state,
+            node.from,
+            node.to
+          )) {
+            hideSyntax(range.from, range.to);
+          }
+        }
             const startLine = view.state.doc.lineAt(node.from);
             const endLine = view.state.doc.lineAt(node.to);
             for (let l = startLine.number; l <= endLine.number; l++) {
@@ -4672,6 +4703,20 @@ function buildWysiwygCodeBlockDecorations(state) {
 
       const firstLine = doc.lineAt(node.from);
       const lastLine = doc.lineAt(node.to);
+      if (node.name === 'CodeBlock') {
+        for (const range of getIndentedCodeBlockIndentRanges(
+          state,
+          node.from,
+          node.to
+        )) {
+          const hiddenRange = Decoration.replace({}).range(
+            range.from,
+            range.to
+          );
+          builder.push(hiddenRange);
+          hiddenSyntaxRanges.push(hiddenRange);
+        }
+      }
 
       for (let number = firstLine.number; number <= lastLine.number; number++) {
         const line = doc.line(number);

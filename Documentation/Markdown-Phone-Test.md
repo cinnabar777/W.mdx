@@ -108,8 +108,10 @@ same content position. On an ordinary paragraph, set Indent Step to one space
 and verify each action moves every wrapped row with the paragraph. Then choose
 two spaces and verify one action moves it by two spaces. With either choice,
 enough indentation may create a CommonMark indented code block; this is separate
-from the fenced-code toolbar action. The quote border must stay at the same
-left position:
+from the fenced-code toolbar action. In Live Preview and WYSIWYG, the four
+structural spaces that create an indented code block must not appear as a
+first-line text indent; additional code indentation must remain. The quote
+border must stay at the same left position:
 
 > This indented quote is deliberately long enough to wrap on a phone screen.
 > Its next source line should remain aligned with the indented quote block.
@@ -123,6 +125,12 @@ toolbar and Tab/Shift-Tab. The item, continuation, and child must move together,
 and numbering must remain correct. Ordinary hanging indentation must work
 regardless of Block List Layout; enabling that separate option must not turn
 the item into a first-line-only indent.
+
+When a paragraph follows a list, delete the blank separator at the start of the
+paragraph. Markdown treats the following text as part of the list item; its
+wrapped lines must align under the item text in Source, Live Preview, and
+WYSIWYG. Press Return to create the next item and verify its marker and wrapping
+stay stable without a visible layout jump.
 
 #### Pasting multiline content into a quote
 

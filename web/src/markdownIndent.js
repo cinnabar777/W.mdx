@@ -110,6 +110,80 @@ export function getMarkdownSourceLineLayout(lineText) {
   return null;
 }
 
+export function getMarkdownSourceLineLayoutForState(state, lineNumber) {
+  if (!state?.doc || !Number.isInteger(lineNumber)) return null;
+  const line = state.doc.line(lineNumber);
+  const directLayout = getMarkdownSourceLineLayout(line.text);
+  if (directLayout || !line.text.trim()) return directLayout;
+
+  const firstTextOffset = line.text.search(/\S/);
+  if (firstTextOffset < 0) return null;
+  for (
+    let node = syntaxTree(state).resolveInner(line.from + firstTextOffset, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name !== 'ListItem') continue;
+    const firstItemLine = state.doc.lineAt(node.from);
+    if (line.number <= firstItemLine.number) return null;
+    const itemLayout = getMarkdownSourceLineLayout(firstItemLine.text);
+    return itemLayout?.kind === 'list'
+      ? {
+          kind: 'list-continuation',
+          contentOffsetColumns: itemLayout.contentOffsetColumns
+        }
+      : null;
+  }
+  return null;
+}
+
+export function getIndentedCodeBlockIndentRanges(state, blockFrom, blockTo) {
+  const doc = state?.doc;
+  if (!doc || !Number.isInteger(blockFrom) || !Number.isInteger(blockTo)) {
+    return [];
+  }
+
+  let matchingCodeBlock = false;
+  const codeTextRanges = [];
+  syntaxTree(state).iterate({
+    from: blockFrom,
+    to: blockTo,
+    enter(node) {
+      if (
+        node.name === 'CodeBlock' &&
+        node.from === blockFrom &&
+        node.to === blockTo
+      ) {
+        matchingCodeBlock = true;
+      }
+      if (node.name === 'CodeText') {
+        codeTextRanges.push({ from: node.from, to: node.to });
+      }
+    }
+  });
+  if (!matchingCodeBlock) return [];
+
+  const ranges = [];
+  const seenLineStarts = new Set();
+  for (const child of codeTextRanges) {
+    if (child.to <= child.from) continue;
+    const firstLine = doc.lineAt(child.from).number;
+    const lastLine = doc.lineAt(child.to - 1).number;
+    for (let number = firstLine; number <= lastLine; number += 1) {
+      const line = doc.line(number);
+      if (seenLineStarts.has(line.from)) continue;
+      seenLineStarts.add(line.from);
+      const contentFrom = Math.max(line.from, child.from);
+      if (contentFrom <= line.from) continue;
+      const prefix = doc.sliceString(line.from, contentFrom);
+      if (/^[ \t]+$/.test(prefix)) {
+        ranges.push({ from: line.from, to: contentFrom });
+      }
+    }
+  }
+  return ranges;
+}
+
 function listItemInfo(lineText) {
   const indent = leadingWhitespace(lineText);
   const marker = LIST_MARKER_PREFIX.exec(lineText.slice(indent.length));

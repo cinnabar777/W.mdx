@@ -273,6 +273,98 @@ test('source wrapping keeps paragraph, quote, and list content aligned', async (
   assert.equal(getMarkdownSourceLineLayout('ordinary paragraph'), null);
 });
 
+test('source list continuation stays under its item text after a blank line is deleted', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { getMarkdownSourceLineLayoutForState } =
+    await import('../src/markdownIndent.js');
+
+  const continuedList = EditorState.create({
+    doc: '1. item\nparagraph',
+    extensions: [markdown()]
+  });
+  assert.deepEqual(
+    getMarkdownSourceLineLayoutForState(continuedList, 2),
+    { kind: 'list-continuation', contentOffsetColumns: 3 }
+  );
+
+  const separateParagraph = EditorState.create({
+    doc: '1. item\n\nparagraph',
+    extensions: [markdown()]
+  });
+  assert.equal(
+    getMarkdownSourceLineLayoutForState(separateParagraph, 3),
+    null
+  );
+
+  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const continuationRule = html.match(
+    /\.cm-content \.cm-line\.cm-source-list-continuation\s*\{([^}]+)\}/
+  )?.[1];
+  assert.ok(continuationRule, 'list continuation source layout rule is missing');
+  assert.match(continuationRule, /padding-left:\s*var\(--source-hanging-offset/);
+  assert.match(continuationRule, /text-indent:\s*0/);
+});
+
+test('rendered indented code hides only structural indentation spaces', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { syntaxTree } = await import('@codemirror/language');
+  const { getIndentedCodeBlockIndentRanges } =
+    await import('../src/markdownIndent.js');
+
+  const source = '    first\n      second';
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdown()]
+  });
+  let codeBlockRange = null;
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === 'CodeBlock') {
+        codeBlockRange = { from: node.from, to: node.to };
+      }
+    }
+  });
+  assert.ok(codeBlockRange, 'indented source should parse as a code block');
+  const ranges = getIndentedCodeBlockIndentRanges(
+    state,
+    codeBlockRange.from,
+    codeBlockRange.to
+  );
+  assert.deepEqual(ranges, [
+    { from: 0, to: 4 },
+    { from: 10, to: 14 }
+  ]);
+  assert.equal(state.doc.sliceString(14, state.doc.line(2).to), '  second');
+
+  const fencedState = EditorState.create({
+    doc: '```\n    fenced\n```',
+    extensions: [markdown()]
+  });
+  let fencedBlockRange = null;
+  syntaxTree(fencedState).iterate({
+    enter(node) {
+      if (node.name === 'FencedCode') {
+        fencedBlockRange = { from: node.from, to: node.to };
+      }
+    }
+  });
+  assert.ok(fencedBlockRange);
+  assert.deepEqual(
+    getIndentedCodeBlockIndentRanges(
+      fencedState,
+      fencedBlockRange.from,
+      fencedBlockRange.to
+    ),
+    []
+  );
+
+  const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+  assert.match(main, /getIndentedCodeBlockIndentRanges\(\s*view\.state,\s*node\.from,\s*node\.to\s*\)/);
+  assert.match(main, /getIndentedCodeBlockIndentRanges\(\s*state,\s*node\.from,\s*node\.to\s*\)/);
+});
+
 test('indent and outdent move a selected list item with its wrapped and nested lines', async () => {
   const { getMarkdownIndentChanges } = await import('../src/markdownIndent.js');
   const source = [
@@ -570,9 +662,17 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   );
   assert.match(
     main,
-    /if \(currentEditorMode === 'source'\) \{[\s\S]*?getMarkdownSourceLineLayout\(line\.text\)/
+    /if \(currentEditorMode === 'source'\) \{[\s\S]*?getMarkdownSourceLineLayoutForState\(\s*view\.state,\s*line\.number\s*\)/
   );
   assert.match(main, /selection:\s*indentSelection/);
+  assert.match(
+    main,
+    /line\.dataset\.listMarkerMeasurementSignature === signature/
+  );
+  assert.match(
+    main,
+    /scheduleListMarkerMeasurements\(\s*update\.view,\s*typographyChanged\s*\)/
+  );
   assert.match(main, /headingNode = true/);
   assert.match(main, /classes\.has\('cm-paragraph'\) \|\| classes\.has\('cm-heading'\)/);
   assert.match(
