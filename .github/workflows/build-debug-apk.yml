@@ -36,9 +36,15 @@ jobs:
         run: |
           node web/build.cjs
 
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
       - name: Run Web Unit Tests
-        run: |
-          node --test web/test/*.test.cjs
+        run: npm --prefix web test
+
+      - name: Run Browser Layout Tests
+        run: npm --prefix web run test:browser
 
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
