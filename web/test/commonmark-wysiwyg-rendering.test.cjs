@@ -327,8 +327,8 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     assert.ok(
       listLine(
         'I. Native ordered child with a long line to wrap and verify nested marker alignment.'
-      ).querySelector('.cm-layout-content'),
-      'the ordered item has a semantic content anchor separate from its marker'
+      ).querySelector('.cm-list-block-text'),
+      'the ordered-item text has a stable wrapper separate from its marker'
     );
     assert.equal(
       listLine(
@@ -339,8 +339,8 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     assert.ok(
       listLine(
         'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
-      ).querySelector('.cm-layout-content'),
-      'alphabetic item text uses the same semantic content role'
+      ).querySelector('.cm-list-block-text'),
+      'alphabetic item text uses the same wrapping block'
     );
     assert.equal(
       window.getComputedStyle(
@@ -348,7 +348,7 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
           'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
         )
       ).display,
-      'block',
+      'flex',
       'the default text-hanging layout is active for ordered list markers'
     );
     window.editorBridge.applyAllPreferences(JSON.stringify({
@@ -359,14 +359,14 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       false,
       'the optional non-hanging setting disables text-column alignment'
     );
-    assert.equal(
+    assert.notEqual(
       window.getComputedStyle(
         listLine(
           'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
         )
       ).display,
-      'block',
-      'non-hanging items retain the shared inline layout; only wrapping alignment changes'
+      'flex',
+      'non-hanging ordered items do not retain the hanging layout'
     );
     window.editorBridge.applyAllPreferences(JSON.stringify({
       pref_list_non_hanging: false
@@ -377,14 +377,14 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
           'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.'
         )
       ).display,
-      'block',
+      'flex',
       'the default hanging layout is restored after switching back'
     );
     assert.ok(
       wysiwygListItems
         .find(line => line.textContent.includes('nested task'))
-        .querySelector('.cm-layout-content'),
-      'task text has a content anchor separate from the checkbox'
+        .querySelector('.cm-list-block-text'),
+      'task text wraps in its own block, separate from the checkbox'
     );
     assert.equal(window.editorBridge.getMarkdown(), listSource);
 
@@ -414,19 +414,19 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       '2ch'
     );
     assert.ok(
-      liveNestedItem.querySelector('.cm-layout-content'),
-      'Live Preview keeps a semantic content anchor for nested item text'
+      liveNestedItem.querySelector('.cm-list-block-text'),
+      'Live Preview keeps nested item text in its own wrapping block'
     );
     assert.ok(
       livePreviewListItems
         .find(line => line.textContent.includes('nested task'))
-        .querySelector('.cm-layout-content'),
+        .querySelector('.cm-list-block-text'),
       'Live Preview keeps task text separate from its checkbox marker'
     );
     assert.ok(
       livePreviewListItems
         .find(line => line.textContent.includes('Native alphabetic child'))
-        .querySelector('.cm-layout-content'),
+        .querySelector('.cm-list-block-text'),
       'Live Preview uses the same wrapping block for alphabetic items'
     );
     assert.equal(window.editorBridge.getMarkdown(), listSource);
@@ -441,11 +441,11 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     assert.ok(sourceNestedItem?.textContent.startsWith('  - bar'));
     assert.equal(
       sourceNestedItem.style.getPropertyValue('--list-depth-offset'),
-      '2ch',
-      'Source consumes the same semantic nesting offset as rendered modes'
+      '0px',
+      'Source uses its visible indentation syntax without adding another offset'
     );
     assert.equal(
-      sourceNestedItem.style.getPropertyValue('--list-depth-offset'),
+      sourceNestedItem.style.getPropertyValue('--source-marker-offset'),
       '2ch',
       'Source keeps wrapped nested text at the nested marker column'
     );
@@ -454,11 +454,11 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     );
     assert.ok(sourceTaskItem);
     assert.ok(
-      Boolean(sourceTaskItem.querySelector('.cm-layout-content')),
-      'Source applies the shared semantic content role to task items'
+      sourceTaskItem.classList.contains('cm-source-list-wrapped'),
+      'Source applies the shared wrapped-line layout to task items'
     );
     assert.equal(
-      sourceTaskItem.style.getPropertyValue('--list-depth-offset'),
+      sourceTaskItem.style.getPropertyValue('--source-marker-offset'),
       '2ch',
       'Source retains the nested task marker column'
     );
@@ -467,7 +467,7 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     );
     assert.ok(sourceAlphaItem);
     assert.equal(
-      sourceAlphaItem.style.getPropertyValue('--list-depth-offset'),
+      sourceAlphaItem.style.getPropertyValue('--source-marker-offset'),
       '2ch',
       'Source preserves the alphabetic child indentation as its own marker column'
     );
@@ -476,12 +476,12 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     );
     assert.ok(sourceNumberedChild);
     assert.equal(
-      sourceNumberedChild.style.getPropertyValue('--list-depth-offset'),
+      sourceNumberedChild.style.getPropertyValue('--source-marker-offset'),
       '3ch'
     );
     assert.equal(
       listLine('1. Numbered child').style.getPropertyValue('--list-depth-offset'),
-      sourceNumberedChild.style.getPropertyValue('--list-depth-offset'),
+      sourceNumberedChild.style.getPropertyValue('--source-marker-offset'),
       'Source and rendered ordered items share the same marker column'
     );
 
@@ -508,12 +508,16 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       ];
       assert.equal(orderedLines.length, 8, `${mode} renders all ordered styles`);
       for (const line of orderedLines) {
-        assert.ok(line.querySelector('.cm-layout-content'), `${mode} identifies content separately from syntax`);
-        assert.equal(line.querySelectorAll('.cm-list-block-text').length, 0,
-          `${mode} does not duplicate content wrappers`);
+        const textBlock = line.querySelector('.cm-list-block-text');
+        assert.ok(textBlock, `${mode} separates marker and text`);
+        assert.equal(
+          textBlock.textContent.trimStart(),
+          textBlock.textContent,
+          `${mode} excludes marker-separator spaces from the text column`
+        );
         assert.equal(
           window.getComputedStyle(line).display,
-          'block',
+          'flex',
           `${mode} applies hanging layout to every ordered style`
         );
       }
@@ -521,14 +525,17 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
 
     await window.editorBridge.setEditorMode('source');
     const sourceOrderedLines = [
-      ...window.document.querySelectorAll('.cm-line.cm-list-item')
+      ...window.document.querySelectorAll('.cm-line.cm-source-list-wrapped')
     ];
     assert.equal(sourceOrderedLines.length, 8);
     for (const line of sourceOrderedLines) {
       const markerPrefix = /^[A-Za-z]+[.)][ \t]+/.exec(line.textContent)?.[0];
       assert.ok(markerPrefix, 'Source preserves each alphabetic or Roman marker');
-      assert.ok(line.querySelector('.cm-layout-content'),
-        'Source uses the shared content anchor for every ordered style');
+      assert.equal(
+        line.style.getPropertyValue('--source-hanging-offset'),
+        `${markerPrefix.length}ch`,
+        'Source wraps each ordered style at its text column'
+      );
     }
     assert.equal(window.editorBridge.getMarkdown(), orderedStyleSource);
     assert.deepEqual(errors, []);

@@ -1697,7 +1697,7 @@
       margin-top: 0 !important;
       margin-left: calc(
         var(--list-left-indent, 24px) +
-        max(0px, calc(var(--list-depth-offset, 0px) - var(--layout-visible-indent, 0px)))
+        var(--list-depth-offset, 0px)
       ) !important;
       margin-right: var(--list-margin-right, 0px) !important;
       margin-bottom: 0 !important;
@@ -1705,26 +1705,10 @@
       box-sizing: border-box !important;
       line-height: var(--list-line-height, 1.5) !important;
     }
-    /* Markdown collapses ordinary spaces at soft-wrap boundaries. Keeping
-       CodeMirror's pre-wrap whitespace here lets a wrapped row start one
-       character farther right when its first source space is preserved. Keep
-       the visible syntax prefix and explicit indentation exact. */
-    .cm-content .cm-list-item {
-      white-space: normal !important;
-    }
-    .cm-content .cm-line.cm-list-item .cm-layout-prefix,
-    .cm-content .cm-line.cm-list-continuation .cm-layout-prefix,
-    .cm-content .cm-line.cm-list-item .cm-layout-indent,
-    .cm-content .cm-line.cm-list-continuation .cm-layout-indent,
-    .cm-content .cm-line.cm-list-item .cm-inline-code,
-    .cm-content .cm-line.cm-list-continuation .cm-inline-code {
-      white-space: pre-wrap !important;
-    }
 
     .cm-content .cm-line.cm-list-continuation {
-      padding-left: max(0px, calc(var(--list-continuation-offset, 0ch) - var(--layout-visible-indent, 0px))) !important;
+      padding-left: var(--list-continuation-offset, 0ch) !important;
       text-indent: 0 !important;
-      white-space: normal !important;
     }
 
     body:not(.list-wrap-under-text) .cm-content .cm-line.cm-list-item {
@@ -1732,37 +1716,61 @@
       padding-left: 0 !important;
       text-indent: 0 !important;
     }
-    /* One inline-flow layout for raw, revealed, and rendered markers. Actual
-       visible prefix width determines hanging wrapping; no hidden syntax gap. */
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item {
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item,
+    body.list-wrap-under-text .cm-content .cm-line.cm-wmdx-task-item:not(.cm-source-list-wrapped) {
+      display: flex !important;
+      align-items: flex-start !important;
+      column-gap: 1ch !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-bullet,
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-number,
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-todo-checkbox,
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-marker-syntax {
+      flex: 0 0 auto !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-wmdx-task-item > .cm-todo-checkbox,
+    body.list-wrap-under-text .cm-content .cm-line.cm-wmdx-task-item > .cm-list-marker-syntax {
+      flex: 0 0 auto !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-block-text,
+    body.list-wrap-under-text .cm-content .cm-line.cm-wmdx-task-item > .cm-list-block-text {
       display: block !important;
+      flex: 1 1 0% !important;
       box-sizing: border-box !important;
-      padding-left: var(--list-marker-gutter, 0px) !important;
-      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
+      width: auto !important;
+      min-width: 0 !important;
+      white-space: pre-wrap !important;
     }
     body.list-wrap-under-text .cm-content .cm-line.cm-list-continuation {
-      padding-left: max(0px, calc(var(--list-continuation-offset, 0ch) - var(--layout-visible-indent, 0px))) !important;
+      padding-left: calc(
+        var(--list-continuation-offset, 0ch) + 0.4em
+      ) !important;
     }
 
-    .cm-content .cm-table-source-line {
-      font-family: var(--table-font-family, var(--body-font-family, inherit)) !important;
-      font-size: var(--table-font-size, 15px) !important;
-      font-weight: var(--table-font-weight, 400) !important;
-      letter-spacing: var(--table-letter-spacing, 0px) !important;
-      line-height: var(--table-line-height, 1.6) !important;
-      color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))) !important;
-      white-space: pre !important;
-      width: max-content !important;
-      min-width: 100% !important;
-    }
-    .cm-content .cm-table-header-source-line {
-      font-weight: var(--table-header-font-weight, 700) !important;
-      color: var(--table-header-color, var(--text-color, #fff)) !important;
-    }
     .cm-list-bullet { color: var(--list-bullet-color, currentColor) !important; }
     .cm-list-number { color: var(--list-number-color, currentColor) !important; }
-    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item .cm-list-bullet {
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item > .cm-list-bullet {
       display: none !important;
+    }
+
+    /* Source tables stay raw and editable without widening the document.
+       Each pipe-delimited row owns its horizontal scroll area. */
+    .cm-content .cm-line.cm-table-source-line {
+      display: block !important;
+      box-sizing: border-box !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      white-space: pre !important;
+      text-wrap: nowrap !important;
+      contain: inline-size !important;
+      overscroll-behavior-inline: contain;
+    }
+    .cm-content .cm-line.cm-table-header-source-line {
+      font-weight: var(--table-header-font-weight, 700) !important;
+      color: var(--table-header-color, var(--text-color, #fff)) !important;
     }
 
     .cm-content .cm-bold {
@@ -1992,34 +2000,59 @@
         var(--blockquote-left-margin, 0px) +
         var(--blockquote-depth-offset, 0px) +
         var(--list-quote-inset, 0px) +
-        max(0px, calc(var(--list-depth-offset, 0px) - var(--layout-visible-indent, 0px)))
+        var(--list-depth-offset, 0px)
       ) !important;
     }
-    .cm-content .cm-line.cm-source-indented.cm-paragraph:not(.cm-list-item):not(.cm-callout) {
-      padding-left: max(0px, calc(var(--source-indent-offset, 0px) - var(--layout-visible-indent, 0px))) !important;
+    .cm-content .cm-line.cm-source-indented.cm-paragraph:not(.cm-source-paragraph-wrapped):not(.cm-source-quote-wrapped):not(.cm-list-item):not(.cm-callout) {
+      padding-left: var(--source-indent-offset, 0px) !important;
       text-indent: 0 !important;
     }
-    .cm-content .cm-line.cm-source-indented.cm-paragraph-first:not(.cm-blockquote):not(.cm-list-item):not(.cm-callout) {
+    .cm-content .cm-line.cm-source-indented.cm-paragraph-first:not(.cm-source-paragraph-wrapped):not(.cm-source-quote-wrapped):not(.cm-blockquote):not(.cm-list-item):not(.cm-callout) {
       text-indent: 0 !important;
     }
-    .cm-content .cm-line.cm-source-indented.cm-paragraph.cm-blockquote:not(.cm-list-item):not(.cm-callout) {
+    .cm-content .cm-line.cm-source-indented.cm-paragraph.cm-blockquote:not(.cm-source-quote-wrapped):not(.cm-list-item):not(.cm-callout) {
       padding-left: calc(
         var(--blockquote-padding, 12px) +
-        max(0px, calc(var(--source-indent-offset, 0px) - var(--layout-visible-indent, 0px))) +
-        var(--list-marker-gutter, 0px)
+        var(--source-indent-offset, 0px)
       ) !important;
-      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
-    }
-    .cm-content .cm-line.cm-source-indented.cm-heading {
-      padding-left: max(0px, calc(var(--source-indent-offset, 0px) - var(--layout-visible-indent, 0px))) !important;
       text-indent: 0 !important;
     }
-    .cm-content .cm-line.cm-blockquote:not(.cm-list-item) {
+    .cm-content .cm-line.cm-source-indented.cm-heading:not(.cm-source-paragraph-wrapped):not(.cm-source-quote-wrapped) {
+      padding-left: var(--source-indent-offset, 0px) !important;
+      text-indent: 0 !important;
+    }
+    .cm-content .cm-line.cm-source-paragraph-wrapped,
+    .cm-content .cm-line.cm-source-quote-wrapped,
+    .cm-content .cm-line.cm-source-list-wrapped {
+      box-sizing: border-box !important;
+      padding-left: var(--source-hanging-offset, 0ch) !important;
+      text-indent: calc(0ch - var(--source-hanging-offset, 0ch)) !important;
+    }
+    .cm-content .cm-line.cm-source-list-continuation {
+      box-sizing: border-box !important;
+      padding-left: var(--source-hanging-offset, 0ch) !important;
+      text-indent: 0 !important;
+    }
+    body:not(.list-wrap-under-text) .cm-content .cm-line.cm-source-list-continuation,
+    body.list-wrap-under-text .cm-content .cm-line.cm-source-list-continuation {
+      padding-left: var(--source-hanging-offset, 0ch) !important;
+      text-indent: 0 !important;
+    }
+    body:not(.list-wrap-under-text) .cm-content .cm-line.cm-source-list-wrapped {
+      padding-left: var(--source-marker-offset, 0ch) !important;
+      text-indent: calc(0ch - var(--source-marker-offset, 0ch)) !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-source-list-wrapped {
+      display: block !important;
+      padding-left: var(--source-hanging-offset, 0ch) !important;
+      text-indent: calc(0ch - var(--source-hanging-offset, 0ch)) !important;
+    }
+    .cm-content .cm-line.cm-source-quote-wrapped.cm-blockquote {
       padding-left: calc(
         var(--blockquote-padding, 12px) +
-        var(--list-marker-gutter, 0px)
+        var(--source-hanging-offset, 0ch)
       ) !important;
-      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
+      text-indent: calc(0ch - var(--source-hanging-offset, 0ch)) !important;
     }
     .cm-content .cm-line.cm-blockquote[data-blockquote-depth]:not(.cm-callout)::before {
       content: "" !important;
@@ -2085,7 +2118,7 @@
       margin-left: calc(
         var(--callout-margin-left, 0px) +
         var(--list-left-indent, 24px) +
-        max(0px, calc(var(--list-depth-offset, 0px) - var(--layout-visible-indent, 0px)))
+        var(--list-depth-offset, 0px)
       ) !important;
       margin-right: var(--callout-margin-right, 0px) !important;
       text-indent: 0 !important;
@@ -2094,7 +2127,7 @@
     .cm-content .cm-paragraph-first.cm-blockquote:not(.cm-callout),
     .cm-content .cm-paragraph-first.cm-callout,
     .cm-content .cm-callout-title {
-      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
+      text-indent: 0 !important;
     }
 
     .cm-content .cm-line.cm-callout[data-callout-depth]:not(.cm-callout-list-item) {

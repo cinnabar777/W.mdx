@@ -196,10 +196,9 @@ test('Nested callout rendering and attributes at depths 1, 2, and 3', () => {
 
   const state = EditorState.create({ doc: nestedMd, extensions: [markdown()] });
   assert.equal(state.doc.toString(), nestedMd, 'Nested document text remains byte-for-byte identical');
-  assert.ok(mainSource.includes("data-callout-type': line.callout.type"), 'Shared line decoration sets data-callout-type attribute');
-  assert.ok(mainSource.includes("data-callout-depth': String(line.callout.depth)"), 'Shared line decoration sets data-callout-depth attribute');
-  const shared = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
-  assert.ok(shared.includes('ancestor.info.bodyTo = line.to'), 'Semantic model extends ancestor body ranges across nested callouts');
+  assert.ok(mainSource.includes("data-callout-type': attrs.type"), 'Line decoration sets data-callout-type attribute');
+  assert.ok(mainSource.includes("data-callout-depth': String(attrs.depth)"), 'Line decoration sets data-callout-depth attribute');
+  assert.ok(mainSource.includes('ancestor.info.bodyTo = line.to'), 'Ancestor bodyTo extended across 3-level callout depths');
 });
 
 test('Callout fold placeholder is hidden via CSS in index.html', () => {
@@ -356,11 +355,14 @@ test('callout title layout and editing behavior match each view', () => {
   );
   assert.ok(!mainSource.includes('isTitleActive'), 'Moving the cursor into the title does not reveal syntax');
   assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG replaces the marker while leaving the title editable');
+  const sourceModeBlock = mainSource.match(
+    /if \(currentEditorMode === 'source'\) \{[\s\S]*?\n    \}\n\n    const tree = syntaxTree\(view\.state\);/
+  )?.[0] ?? '';
   assert.ok(
-    mainSource.includes("const isSourceMode = currentEditorMode === 'source';") &&
-      mainSource.includes('if (!isSourceMode && to > from)') &&
-      mainSource.includes('for (const line of documentLayout(state).lines.values())'),
-    'Source keeps syntax visible while inline styles and shared block layout remain active'
+    sourceModeBlock.includes('getMarkdownSourceLineLayoutForState(') &&
+      sourceModeBlock.includes('return Decoration.set(sourceDecorations, true)') &&
+      !sourceModeBlock.includes('hideSyntax('),
+    'Source view keeps callout Markdown visible and adds only source-line layout decorations'
   );
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important[^}]*align-self:\s*center\s*!important/s);
@@ -370,9 +372,8 @@ test('callout title layout and editing behavior match each view', () => {
   assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-list-item\[data-callout-depth\]/, 'Nested callout list items retain list indentation');
-  const shared = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
-  assert.ok(shared.includes('`--callout-depth-offset:${Math.max(0, callout.depth - 1) * 12}px`'),
-    'Every mode consumes one callout nesting calculation');
+  assert.ok(mainSource.includes('`--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`'), 'Preview lines calculate indentation from nesting depth');
+  assert.ok(mainSource.includes('`--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`'), 'WYSIWYG lines calculate indentation from nesting depth');
   assert.ok(
     indexHtml.includes('border-left: max(var(--callout-header-accent-thickness, 0px), var(--callout-border-width, 4px))'),
     'The existing callout border styling remains unchanged'

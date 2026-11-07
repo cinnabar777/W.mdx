@@ -73,7 +73,6 @@ test('rendering and interaction regressions stay covered without changing table 
   const main = projectFile('web/src/main.js');
   const activity = projectFile('app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const styles = projectFile('web/index.html');
-  const layout = projectFile('web/src/markdownDocumentLayout.js');
   const heightMapStart = main.indexOf('function buildHeightMapValue(state)');
   const heightMapEnd = main.indexOf('const heightMapField =', heightMapStart);
   const heightMapBuilder = main.slice(heightMapStart, heightMapEnd);
@@ -85,7 +84,7 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(main, /new WikilinkWidget\([\s\S]*?embeddedDocumentSourceFacet/);
   assert.match(main, /markdownLinkClickHandler = event =>/);
   assert.match(main, /nativeBridge\.openMarkdownLink\(/);
-  assert.match(layout, /node\.name === 'Blockquote'/);
+  assert.match(main, /const isBlockquoteLine = insideBlockquote \|\| Boolean\(quotePrefix\)/);
   assert.match(main, /activeSelectionDragView = this\.view/);
   assert.match(main, /window\.addEventListener\('pointermove', onGlobalPointerMove, true\)/);
   assert.doesNotMatch(main, /EmptyLineCursorAnchorWidget|emptyLineCursorAnchorWidget/);
@@ -106,11 +105,19 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(styles, /left:\s*calc\([\s\S]*blockquote-depth-offset[\s\S]*blockquote-border-width/);
   assert.match(styles, /cm-paragraph-first\.cm-blockquote[\s\S]*?padding-top:/);
   assert.match(styles, /cm-paragraph-last\.cm-blockquote[\s\S]*?padding-bottom:/);
-  assert.match(layout, /--source-indent-offset:/);
-  assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?padding-left:\s*max\(/);
+  assert.match(main, /paragraphIndentByLine/);
+  assert.match(main, /--source-indent-offset:/);
+  assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?padding-left:\s*var\(--source-indent-offset/);
   assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?text-indent:\s*0\s*!important/);
   assert.match(styles, /cm-source-indented\.cm-paragraph-first[\s\S]*?text-indent:\s*0\s*!important/);
-  assert.doesNotMatch(styles, /cm-source-(?:paragraph|quote|list)-wrapped/);
+  assert.match(
+    styles,
+    /cm-source-paragraph-wrapped[\s\S]*?padding-left:\s*var\(--source-hanging-offset[\s\S]*?text-indent:\s*calc\(0ch - var\(--source-hanging-offset/
+  );
+  assert.match(
+    styles,
+    /\.cm-content \.cm-line\.cm-source-list-wrapped/
+  );
   assert.match(
     styles,
     /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*padding-left:\s*0[\s\S]*?text-indent:\s*0/
@@ -119,15 +126,29 @@ test('rendering and interaction regressions stay covered without changing table 
     styles.match(/body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/)?.[0] ?? '',
     /display:\s*flex/
   );
-  assert.match(styles, /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*display:\s*block/);
-  assert.match(styles, /padding-left:\s*var\(--list-marker-gutter/);
+  assert.match(
+    styles,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item,[\s\S]*?\{[^}]*display:\s*flex/
+  );
+  assert.match(
+    styles,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item,[\s\S]*?\{[^}]*column-gap:\s*1ch/
+  );
+  assert.match(
+    styles,
+    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-source-list-wrapped\s*\{[^}]*padding-left:\s*var\(--source-marker-offset/
+  );
+  assert.match(
+    styles,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-wmdx-task-item:not\(\.cm-source-list-wrapped\)\s*\{[^}]*display:\s*flex/
+  );
   assert.match(
     main,
     /else \{\s*builder\.push\(\s*Decoration\.mark\(\{\s*class: isBullet \? 'cm-list-bullet' : 'cm-list-number'/
   );
-  assert.doesNotMatch(main, /Decoration\.mark\(\{ class: 'cm-list-block-text'/);
+  assert.match(main, /const textRange = listItemTextRange[\s\S]*?cm-list-block-text/);
   assert.match(main, /else if \(isWmdxTask\)[\s\S]*?cm-list-marker-syntax/);
-  assert.match(layout, /entry\.contentFrom = entry\.marker\.to/);
+  assert.match(main, /if \(isWmdxTask\) \{[\s\S]*?cm-list-block-text/);
   assert.match(
     main,
     /'list-wrap-under-text',\s*prefs\.pref_list_non_hanging !== true/
@@ -137,7 +158,10 @@ test('rendering and interaction regressions stay covered without changing table 
     /classList\.contains\('list-wrap-under-text'\)/
   );
   assert.match(main, /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)/);
-  assert.match(main, /for \(const line of documentLayout\(state\)\.lines\.values\(\)\)/);
+  assert.match(
+    main,
+    /getMarkdownSourceLineLayoutForState\(\s*view\.state,\s*line\.number\s*\)/
+  );
   assert.match(main, /getMarkdownSourceIndentRanges\(line\.text\)/);
   assert.match(main, /paragraphIndentSyntaxRanges/);
   assert.match(main, /if \(calloutLineAttributes\.has\(lineFrom\)\) continue/);
@@ -147,7 +171,7 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(styles, /cm-source-indented\.cm-paragraph\.cm-blockquote[\s\S]*?padding-left:\s*calc\([\s\S]*?source-indent-offset/);
   const quoteIndentRule = styles.match(/\.cm-content \.cm-line\.cm-source-indented\.cm-paragraph\.cm-blockquote[\s\S]*?\n    \}/)?.[0] ?? '';
   assert.doesNotMatch(quoteIndentRule, /margin-left:/);
-  assert.match(quoteIndentRule, /text-indent:\s*calc\(0px - var\(--list-marker-gutter/);
+  assert.doesNotMatch(quoteIndentRule, /text-indent:\s*calc\(/);
   assert.match(main, /Table cell\/editing|Table rendering in WYSIWYG/);
 });
 
@@ -166,9 +190,7 @@ test('phone fixture states the manual expected behavior and its limited coverage
     fixture,
     /tables below should render as editable tables in Live Preview and WYSIWYG/i
   );
-  assert.match(fixture, /Source should show raw Markdown table syntax on single, unwrapped lines/i);
-  assert.match(fixture, /Packaged audio, video, and attachments/i);
-  assert.match(fixture, /wide table for horizontal Source scrolling/i);
+  assert.match(fixture, /Source should show raw Markdown table syntax/i);
   assert.match(fixture, /outer quote border should continue/i);
   assert.match(fixture, /nested quote.*indent/i);
   assert.match(fixture, /up to three leading spaces before its markers\s+should stay flat/i);

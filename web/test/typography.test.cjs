@@ -5,7 +5,6 @@ const path = require('node:path');
 
 const mainJsPath = path.join(__dirname, '../src/main.js');
 const source = fs.readFileSync(mainJsPath, 'utf8');
-const layoutSource = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
 const settingsSource = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
   'utf8'
@@ -169,27 +168,27 @@ const codeSettingsPath = path.join(
 const codeSettings = fs.readFileSync(codeSettingsPath, 'utf8');
 
 test('paragraph and list typography selectors have matching editor line classes', () => {
-  assert.match(layoutSource, /tree\.resolveInner\(probe, 1\)/);
-  assert.match(layoutSource, /node\.name === 'Paragraph'/);
-  assert.match(layoutSource, /node\.name === 'ListItem'/);
-  assert.match(layoutSource, /entry\.classes\.add\('cm-paragraph'\)/);
-  assert.match(layoutSource, /entry\.kind = 'list-continuation'/);
-  assert.match(layoutSource, /entry\.classes\.add\('cm-list-continuation'\)/);
-  assert.match(layoutSource, /cm-paragraph-first/);
-  assert.match(layoutSource, /cm-paragraph-last/);
+  assert.match(source, /tree\.resolveInner\(probe, 1\)/);
+  assert.match(source, /ancestor\.name === 'Paragraph'/);
+  assert.match(source, /ancestor\.name === 'ListItem'/);
+  assert.match(source, /addLineClass\(line\.from, 'cm-paragraph'\)/);
+  assert.match(source, /listLayout\?\.kind === 'list-continuation'/);
+  assert.match(source, /addClass\(number, 'cm-list-continuation'\)/);
+  assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-first'\)/);
+  assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-last'\)/);
   assert.match(indexHtml, /\.cm-content \.cm-paragraph:not\(\.cm-list-item\)/);
   assert.match(
     indexHtml,
     /\.cm-line\.cm-source-indented\.cm-paragraph-first[^{}]*\{[^}]*text-indent:\s*0\s*!important/
   );
-  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-source-indented\.cm-paragraph/);
+  assert.match(indexHtml, /cm-source-indented\.cm-paragraph:not\(\.cm-source-paragraph-wrapped\)/);
   assert.match(
     indexHtml,
-    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item[\s\S]*?text-indent:\s*calc\(0px - var\(--list-marker-gutter/
+    /\.cm-content \.cm-line\.cm-source-paragraph-wrapped[\s\S]*?text-indent:\s*calc\(0ch - var\(--source-hanging-offset/
   );
   assert.match(
     indexHtml,
-    /\.cm-content \.cm-line\.cm-source-indented\.cm-heading[^{}]*\{[^}]*padding-left:\s*max\(0px,\s*calc/
+    /\.cm-line\.cm-source-indented\.cm-heading[^{}]*\{[^}]*padding-left:\s*var\(--source-indent-offset/
   );
   assert.match(indexHtml, /\.cm-content \.cm-list-item/);
 });
@@ -367,9 +366,8 @@ test('Link underline thickness and dialog insertion helpers in main.js and XML p
 test('Heading links inside lists and upper-middle scroll helper', () => {
   assert.match(
     source,
-    /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)/
+    /if \(insideListItem\) \{\s*const listLayout = getMarkdownSourceLineLayoutForState\(/
   );
-  assert.match(source, /getWmdxOrderedListItemLineRange\(/);
   assert.match(source, /export function scrollToPositionUpperMiddle/);
 });
 
@@ -435,7 +433,7 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(indexHtml.includes('.cm-content .cm-blockquote:not(.cm-callout)'));
   assert.ok(indexHtml.includes('.cm-content .cm-paragraph-first.cm-callout'));
   assert.ok(indexHtml.includes('body.list-wrap-under-text .cm-content .cm-line.cm-list-item'));
-  assert.match(source, /LayoutAnchorWidget\('content'\)/);
+  assert.ok(source.includes("class: 'cm-list-block-text'"));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout:not(.cm-list-item)'));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-body:not(.cm-callout-list-item)'));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-list-item'));
@@ -445,10 +443,9 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.match(standardListWrapRule, /padding-left:\s*0/);
   assert.match(standardListWrapRule, /text-indent:\s*0/);
   const blockListRule = indexHtml.match(
-    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item,[\s\S]*?\{[^}]*\}/
   )?.[0] ?? '';
-  assert.match(blockListRule, /display:\s*block/);
-  assert.match(blockListRule, /padding-left:\s*var\(--list-marker-gutter/);
+  assert.match(blockListRule, /display:\s*flex/);
   assert.ok(source.includes("line.style.setProperty('--list-marker-gutter', nextValue)"));
   assert.ok(indexHtml.includes('body.hr-centered .cm-content .cm-line.cm-hr'));
   assert.ok(indexHtml.includes('margin-left: var(--table-margin-left, 0px) !important;'));

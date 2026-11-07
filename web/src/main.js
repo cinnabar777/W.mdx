@@ -1,5 +1,4 @@
 import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect, Facet, Prec } from '@codemirror/state';
-import { getMarkdownDocumentLayout, mapMarkdownDocumentLayout, markdownPresentation } from './markdownDocumentLayout.js';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
@@ -38,9 +37,12 @@ import {
   applyMarkdownIndent,
   backspaceIndentedCodeBlockIndent,
   getMarkdownIndentSpaces,
+  getMarkdownSourceLineLayoutForState,
+  getIndentedCodeBlockRenderLayout,
   getMarkdownIndentTargetSelection,
   getMarkdownListItemLineRange,
   getMarkdownSourceIndentColumns,
+  getMarkdownSourceLineLayout,
   getMarkdownSourceIndentRanges,
   getWmdxOrderedListItemLineRange
 } from './markdownIndent.js';
@@ -754,23 +756,48 @@ const listMarkerMeasurementKey = {};
 function measureListMarkerGutter(line, marker) {
   const lineRect = line.getBoundingClientRect();
   if (!lineRect.width) return null;
-  // The same semantic prefix range contains raw syntax, rendered markers, or
-  // zero-width hidden syntax. Measure its actual inline width in every mode.
-  const start = line.querySelector('.cm-layout-start');
-  const content = line.querySelector('.cm-layout-content');
-  return start && content
-    ? Math.max(0, content.getBoundingClientRect().left - start.getBoundingClientRect().left)
-    : 0;
+
+  const ownerDocument = line.ownerDocument;
+  const textBlock = line.querySelector('.cm-list-block-text');
+  if (textBlock) {
+    const textRect = Array.from(textBlock.getClientRects()).find(
+      candidate => candidate.width > 0 && candidate.height > 0
+    ) || textBlock.getBoundingClientRect();
+    if (textRect.width > 0 && textRect.height > 0) {
+      return Math.max(0, textRect.left - lineRect.left);
+    }
+  }
+
+  const showText = ownerDocument.defaultView.NodeFilter.SHOW_TEXT;
+  const walker = ownerDocument.createTreeWalker(line, showText);
+  let textNode;
+
+  while ((textNode = walker.nextNode())) {
+    if (textNode.parentElement?.closest(
+      '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-list-marker-syntax, .cm-hidden-syntax'
+    )) {
+      continue;
+    }
+
+    for (let offset = 0; offset < textNode.nodeValue.length; offset++) {
+      const range = ownerDocument.createRange();
+      range.setStart(textNode, offset);
+      range.setEnd(textNode, offset + 1);
+      const rect = Array.from(range.getClientRects()).find(
+        candidate => candidate.width > 0 && candidate.height > 0
+      );
+      if (rect) {
+        return Math.max(0, rect.left - lineRect.left);
+      }
+    }
+  }
+
+  const markerRect = marker.getBoundingClientRect();
+  const markerStyle = ownerDocument.defaultView.getComputedStyle(marker);
+  const markerGap = Number.parseFloat(markerStyle.marginRight) || 4;
+  return Math.max(0, markerRect.right - lineRect.left + markerGap);
 }
 
-function inlineRangeWidth(line, selector) {
-  let width = 0;
-  for (const span of line.querySelectorAll(selector)) {
-    if (span.parentElement?.closest(selector)) continue;
-    for (const rect of span.getClientRects()) width += rect.width;
-  }
-  return width;
-}
 function listMarkerMeasurementSignature(marker) {
   const style = marker.ownerDocument.defaultView.getComputedStyle(marker);
   return JSON.stringify([
@@ -783,6 +810,23 @@ function listMarkerMeasurementSignature(marker) {
   ]);
 }
 
+function listItemTextRange(tree, doc, line, markerEnd) {
+  let from = markerEnd;
+  tree.iterate({
+    from: markerEnd,
+    to: line.to,
+    enter: node => {
+      if (node.name === 'TaskMarker' || node.name === 'WmdxTaskMarker') {
+        from = Math.max(from, node.to);
+      }
+    }
+  });
+  while (from < line.to && /[ \t]/.test(doc.sliceString(from, from + 1))) {
+    from++;
+  }
+  return from < line.to ? { from, to: line.to } : null;
+}
+
 function listMarkerIndentRange(doc, node) {
   const line = doc.lineAt(node.from);
   const leadingIndent = doc.sliceString(line.from, node.from);
@@ -792,7 +836,7 @@ function listMarkerIndentRange(doc, node) {
     : null;
 }
 
-function scheduleListMarkerMeasurements(view, force = false, retryAttempt = 0) {
+function scheduleListMarkerMeasurements(view, force = false) {
   if (
     !view ||
     !view.dom?.isConnected
@@ -804,11 +848,16 @@ function scheduleListMarkerMeasurements(view, force = false, retryAttempt = 0) {
   view.requestMeasure({
     key: listMarkerMeasurementKey,
     read: () => {
-      const lines = Array.from(view.contentDOM.querySelectorAll('.cm-line[data-layout-kind]'));
+      const lines = Array.from(
+        view.contentDOM.querySelectorAll('.cm-line.cm-list-item')
+      );
 
       const measurements = [];
       for (const line of lines) {
-        const marker = line.querySelector('.cm-layout-prefix') || line;
+        const marker = line.querySelector(
+          '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-list-marker-syntax'
+        );
+        if (!marker) continue;
         const signature = listMarkerMeasurementSignature(marker);
         if (
           !force &&
@@ -819,11 +868,8 @@ function scheduleListMarkerMeasurements(view, force = false, retryAttempt = 0) {
         }
 
         const gutter = measureListMarkerGutter(line, marker);
-        if (Number.isFinite(gutter)) {
-          measurements.push({
-            line, gutter, signature,
-            visibleIndent: inlineRangeWidth(line, '.cm-layout-indent')
-          });
+        if (Number.isFinite(gutter) && gutter > 0) {
+          measurements.push({ line, gutter, signature });
         }
       }
       recordListMarkerRead(measurementMode, lines.length, measurements.length);
@@ -838,14 +884,9 @@ function scheduleListMarkerMeasurements(view, force = false, retryAttempt = 0) {
       let changedCount = 0;
       let totalDeltaPx = 0;
       let maxDeltaPx = 0;
-      let staleLineCount = 0;
-      for (const { line, gutter, signature, visibleIndent } of result.measurements) {
-        if (!line.isConnected || !view.contentDOM.contains(line)) {
-          staleLineCount++;
-          continue;
-        }
-        line.style.setProperty('--layout-visible-indent', `${visibleIndent}px`);
-        if (result.enabled && Number.isFinite(gutter) && gutter >= 0) {
+      for (const { line, gutter, signature } of result.measurements) {
+        if (!line.isConnected || !view.contentDOM.contains(line)) continue;
+        if (result.enabled && Number.isFinite(gutter) && gutter > 0) {
           const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
           const nextValue = `${gutter}px`;
           if (line.style.getPropertyValue('--list-marker-gutter') !== nextValue) {
@@ -868,18 +909,6 @@ function scheduleListMarkerMeasurements(view, force = false, retryAttempt = 0) {
         }
       }
       recordListMarkerWrite(measurementMode, changedCount, totalDeltaPx, maxDeltaPx);
-      const hasUnmeasuredListLine = Array.from(
-        view.contentDOM.querySelectorAll('.cm-line.cm-list-item[data-layout-kind]')
-      ).some(line => !line.style.getPropertyValue('--list-marker-gutter'));
-      if (
-        (staleLineCount > 0 || hasUnmeasuredListLine) &&
-        retryAttempt < 3 &&
-        view.dom?.isConnected
-      ) {
-        requestAnimationFrame(() =>
-          scheduleListMarkerMeasurements(view, false, retryAttempt + 1)
-        );
-      }
     }
   });
 }
@@ -898,8 +927,6 @@ const listMarkerMeasurementPlugin = ViewPlugin.fromClass(class {
     );
     if (
       update.docChanged ||
-      update.selectionSet ||
-      update.focusChanged ||
       update.viewportChanged ||
       update.geometryChanged ||
       typographyChanged
@@ -2604,7 +2631,6 @@ class EmbeddedDocumentWidget extends WidgetType {
               })
             ]
           : []),
-        semanticLayoutField,
         livePreviewPlugin,
         tableStateField,
         wysiwygCodeBlockField,
@@ -2924,7 +2950,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       update.docChanged ||
       update.viewportChanged ||
       update.selectionSet ||
-      syntaxTree(update.startState) !== syntaxTree(update.state) ||
       update.transactions.some((transaction) =>
         transaction.effects.some((effect) => effect.is(heightMapRefreshEffect))
       );
@@ -2950,15 +2975,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   _buildDecorationsInternal(view) {
     const builder = [];
     const hiddenSyntaxRanges = [];
-    const isSourceMode = currentEditorMode === 'source';
     const hideSyntax = (from, to) => {
-      if (!isSourceMode && to > from) {
+      if (to > from) {
         const range = Decoration.replace({}).range(from, to);
         builder.push(range);
         hiddenSyntaxRanges.push(range);
       }
     };
     const lineClasses = new Map();
+    const codeBlockIndentByLine = new Map();
+    const listContinuationIndentByLine = new Map();
     const paragraphIndentSyntaxRanges = new Map();
 
     const addLineClass = (lineFrom, ...classNames) => {
@@ -2968,18 +2994,57 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }
     };
 
-    // This plugin owns contextual syntax only. Block layout is supplied by
-    // persistentLayoutField in ALL modes, including raw Source.
+    if (currentEditorMode === 'source') {
+      const sourceDecorations = [];
+      const seenLines = new Set();
+      const doc = view.state.doc;
+      for (const range of view.visibleRanges) {
+        const firstLine = doc.lineAt(range.from).number;
+        const lastLine = doc.lineAt(Math.max(range.from, range.to - 1)).number;
+        for (let number = firstLine; number <= lastLine; number += 1) {
+          const line = doc.line(number);
+          if (seenLines.has(line.from)) continue;
+          seenLines.add(line.from);
+          const layout = getMarkdownSourceLineLayoutForState(
+            view.state,
+            line.number
+          );
+          if (!layout) continue;
+          const className = layout.kind === 'list'
+            ? 'cm-source-list-wrapped'
+            : layout.kind === 'list-continuation'
+              ? 'cm-source-list-continuation'
+            : layout.kind === 'quote'
+              ? 'cm-source-quote-wrapped'
+              : 'cm-source-paragraph-wrapped';
+          const sourceOffsetColumns = layout.kind === 'list-continuation'
+            ? layout.sourceOffsetColumns
+            : layout.contentOffsetColumns;
+          const sourceMarkerOffsetColumns = layout.kind === 'list'
+            ? layout.markerOffsetColumns
+            : 0;
+          sourceDecorations.push(
+            Decoration.line({
+              attributes: {
+                class: className,
+                style: `--source-hanging-offset:${sourceOffsetColumns}ch;--source-marker-offset:${sourceMarkerOffsetColumns}ch`
+              }
+            }).range(line.from)
+          );
+        }
+      }
+      return Decoration.set(sourceDecorations, true);
+    }
+
     const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
     const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
     const doc = view.state.doc;
-    const layout = documentLayout(view.state);
     const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
     const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
     const markdownLinkRanges = [];
     const decorationRanges = view.visibleRanges;
-    const wmdxOrderedListItems = layout.orderedItems;
+    const wmdxOrderedListItems = getWmdxOrderedListItems(doc, tree);
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
@@ -2992,10 +3057,32 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       .flatMap(range => getWmdxColorSyntaxRanges(view.state, range))
       .map(range => [`${range.group}:${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
 
-    const calloutOpenerInfo = layout.calloutOpeners;
-    const calloutLineAttributes = new Map(
-      [...layout.lines].filter(([, line]) => line.callout).map(([from, line]) => [from, line.callout])
-    );
+    const getQuotedLineInfo = (lineNum) => {
+      if (lineNum < 1 || lineNum > doc.lines) return null;
+      const l = doc.line(lineNum);
+      const match = l.text.match(/^(\s*(?:>\s*)+)/);
+      if (!match) return null;
+
+      const firstText = /\S/.exec(l.text);
+      const probe = firstText ? l.from + firstText.index : l.from;
+      const resolvedNode = tree.resolveInner(probe, 1);
+
+      for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+        if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock' || ancestor.name === 'Table') {
+          return null;
+        }
+      }
+
+      const quotePrefix = match[1];
+      const depth = (quotePrefix.match(/>/g) || []).length;
+      return { line: l, quotePrefix, depth };
+    };
+
+    const isQuotedLine = (lineNum) => getQuotedLineInfo(lineNum) !== null;
+
+    const calloutOpenerInfo = new Map();
+    const processedBlockquoteLines = new Set();
+    const calloutLineAttributes = new Map(); // lineFrom -> { type, depth }
 
     for (const { from, to } of decorationRanges) {
       const firstVisibleLine = doc.lineAt(from).number;
@@ -3003,14 +3090,60 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
       for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
         const line = doc.line(lineNumber);
-        const semantic = layout.lines.get(line.from);
-        if (!semantic || semantic.kind === 'code' || semantic.kind === 'table') continue;
+        const quotePrefix = getQuotedLineInfo(lineNumber)?.quotePrefix || '';
+        const firstText = /\S/.exec(line.text.slice(quotePrefix.length));
+        const probe = firstText
+          ? line.from + quotePrefix.length + firstText.index
+          : line.from;
+        const resolvedNode = tree.resolveInner(probe, 1);
 
-        const isLineActive = isSourceMode || (!isPureWysiwyg && (
+        let paragraphNode = null;
+        let headingNode = false;
+        let insideListItem = false;
+        let insideCodeBlock = false;
+        let insideTable = false;
+
+        for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+          if (ancestor.name === 'Paragraph') paragraphNode = ancestor;
+          if (/^(?:ATXHeading[1-6]|SetextHeading[12])$/.test(ancestor.name)) {
+            headingNode = true;
+          }
+          if (ancestor.name === 'ListItem') insideListItem = true;
+          if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock') {
+            insideCodeBlock = true;
+          }
+          if (ancestor.name === 'Table') insideTable = true;
+        }
+
+        if (insideCodeBlock || insideTable) continue;
+
+        if (insideListItem) {
+          const listLayout = getMarkdownSourceLineLayoutForState(
+            view.state,
+            line.number
+          );
+          if (listLayout?.kind === 'list-continuation') {
+            listContinuationIndentByLine.set(
+              line.from,
+              listLayout.contentOffsetColumns
+            );
+          }
+          addLineClass(
+            line.from,
+            listLayout?.kind === 'list-continuation'
+              ? 'cm-list-continuation'
+              : 'cm-list-item'
+          );
+          if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
+            addLineClass(line.from, 'cm-todo-list-item');
+          }
+        }
+
+        const isLineActive = !isPureWysiwyg && (
           selection.empty
             ? selection.head >= line.from && selection.head <= line.to
             : selection.from < line.to && selection.to > line.from
-        ));
+        );
 
         if (isLinkFlavorEnabledNow('obsidian')) {
           const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
@@ -3062,17 +3195,156 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
         }
 
-        if (semantic.kind === 'paragraph' || semantic.kind === 'heading') {
+        if (insideListItem) {
+          continue;
+        }
+
+        if (paragraphNode || headingNode) {
+          if (paragraphNode) addLineClass(line.from, 'cm-paragraph');
           const indentRanges = getMarkdownSourceIndentRanges(line.text);
           if (indentRanges.length) {
             paragraphIndentSyntaxRanges.set(line.from, indentRanges);
           }
 
+          if (paragraphNode) {
+            const paragraphFirstLine = doc.lineAt(paragraphNode.from);
+            const paragraphLastLine = doc.lineAt(
+              Math.max(paragraphNode.from, paragraphNode.to - 1)
+            );
+
+            if (line.from === paragraphFirstLine.from) {
+              addLineClass(line.from, 'cm-paragraph-first');
+            }
+            if (line.from === paragraphLastLine.from) {
+              addLineClass(line.from, 'cm-paragraph-last');
+            }
+          }
         }
       }
     }
-    const nativeCallouts = layout.nativeCallouts;
+    for (const { from, to } of view.visibleRanges) {
+      const firstVisibleLine = doc.lineAt(from).number;
+      const lastVisibleLine = doc.lineAt(Math.max(from, to - 1)).number;
+
+      for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
+        if (processedBlockquoteLines.has(lineNumber)) continue;
+
+        if (isQuotedLine(lineNumber)) {
+          let blockStart = lineNumber;
+          while (blockStart > 1 && isQuotedLine(blockStart - 1)) {
+            blockStart--;
+          }
+
+          let curLine = blockStart;
+          let inCallout = false;
+
+          let openerLineNum = null;
+          let lastBodyLineNum = null;
+
+          const activeCalloutsStack = []; // [{ depth, type, openerLineNum, lastBodyLineNum }]
+
+          while (curLine <= doc.lines && isQuotedLine(curLine)) {
+            processedBlockquoteLines.add(curLine);
+            const lineInfo = getQuotedLineInfo(curLine);
+            const line = lineInfo.line;
+            const currentDepth = lineInfo.depth;
+
+            // Unwind stack if current line depth is shallow
+            while (activeCalloutsStack.length > 0 && activeCalloutsStack[activeCalloutsStack.length - 1].depth > currentDepth) {
+              activeCalloutsStack.pop();
+            }
+
+            const match = isCalloutFlavorEnabledNow('obsidian')
+              ? line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i)
+              : null;
+
+            if (match) {
+              const type = match[3].toLowerCase();
+              const foldMarker = match[4]; // '+' or '-' or undefined
+              const customTitle = match[5];
+              const markerStart = line.from + match[1].length;
+              const markerEnd = markerStart + match[2].length;
+              const titleStart = getCalloutTitleStart(line, match);
+
+              const calloutObj = {
+                depth: currentDepth,
+                type,
+                openerLineNum: curLine,
+                lastBodyLineNum: curLine,
+                info: {
+                  type,
+                  depth: currentDepth,
+                  foldMarker,
+                  customTitle,
+                  markerStart,
+                  markerEnd,
+                  titleStart,
+                  bodyFrom: line.to,
+                  bodyTo: line.to
+                }
+              };
+
+              activeCalloutsStack.push(calloutObj);
+              calloutOpenerInfo.set(line.from, calloutObj.info);
+
+              // Update bodyTo for all ancestor callouts on stack
+              for (const ancestor of activeCalloutsStack) {
+                if (ancestor !== calloutObj) {
+                  ancestor.lastBodyLineNum = curLine;
+                  ancestor.info.bodyTo = line.to;
+                }
+              }
+
+              addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-title');
+              calloutLineAttributes.set(line.from, { type, depth: currentDepth });
+            } else if (activeCalloutsStack.length > 0) {
+              // Update all callouts on stack whose depth <= currentDepth
+              for (const calloutObj of activeCalloutsStack) {
+                if (calloutObj.depth <= currentDepth) {
+                  calloutObj.lastBodyLineNum = curLine;
+                  calloutObj.info.bodyTo = line.to;
+                }
+              }
+
+              const currentCallout = activeCalloutsStack[activeCalloutsStack.length - 1];
+              addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-body');
+              calloutLineAttributes.set(line.from, { type: currentCallout.type, depth: currentCallout.depth });
+            } else {
+              if (isBlockquoteSyntaxEnabledNow()) {
+                addLineClass(line.from, 'cm-blockquote');
+              }
+            }
+
+            curLine++;
+          }
+
+          if (openerLineNum && lastBodyLineNum && lastBodyLineNum > openerLineNum) {
+            const openerLine = doc.line(openerLineNum);
+            const lastBodyLine = doc.line(lastBodyLineNum);
+            const info = calloutOpenerInfo.get(openerLine.from);
+            if (info) {
+              info.bodyFrom = openerLine.to;
+              info.bodyTo = lastBodyLine.to;
+            }
+          }
+        }
+      }
+    }
+    const nativeCallouts = parseWmdxCallouts(doc.toString(), position => {
+      for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+        if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
+          return true;
+        }
+      }
+      return false;
+    });
+    for (const { lineFrom, info } of nativeCallouts.openers) {
+      if (!processedBlockquoteLines.has(doc.lineAt(lineFrom).number)) {
+        calloutOpenerInfo.set(lineFrom, info);
+      }
+    }
     for (const [lineFrom, attrs] of nativeCallouts.lineAttributes) {
+      if (processedBlockquoteLines.has(doc.lineAt(lineFrom).number)) continue;
       calloutLineAttributes.set(lineFrom, attrs);
       addLineClass(
         lineFrom,
@@ -3125,11 +3397,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         to,
         enter: (node) => {
           const line = view.state.doc.lineAt(node.from);
-          const isNodeActive = isSourceMode || (!isPureWysiwyg && (
+          const isNodeActive = !isPureWysiwyg && (
             selection.empty
               ? selection.head >= node.from && selection.head <= node.to
               : selection.from < node.to && selection.to > node.from
-          ));
+          );
 
           if (node.name === 'WmdxResource') {
             const resource = parseWmdxResourceSyntax(
@@ -3298,7 +3570,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
 
           if (node.name === 'ListMark') {
-            if (isPureWysiwyg) return false;
             if (
               !listSyntaxSettings.enabled ||
               (!isListFlavorEnabledNow('markdown') &&
@@ -3336,6 +3607,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                 class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
               }).range(node.from, node.to));
             }
+            const textRange = listItemTextRange(tree, doc, line, node.to);
+            if (textRange) {
+              builder.push(
+                Decoration.mark({ class: 'cm-list-block-text' })
+                  .range(textRange.from, textRange.to)
+              );
+            }
           }
 
           if (
@@ -3358,7 +3636,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'TaskMarker' || node.name === 'WmdxTaskMarker') {
-            if (isPureWysiwyg) return false;
             const isWmdxTask = node.name === 'WmdxTaskMarker';
             if (
               isWmdxTask
@@ -3418,6 +3695,21 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   .range(node.from, node.to)
               );
             }
+            if (isWmdxTask) {
+              let textFrom = node.to;
+              while (
+                textFrom < line.to &&
+                /[ \t]/.test(doc.sliceString(textFrom, textFrom + 1))
+              ) {
+                textFrom += 1;
+              }
+              if (textFrom < line.to) {
+                builder.push(
+                  Decoration.mark({ class: 'cm-list-block-text' })
+                    .range(textFrom, line.to)
+                );
+              }
+            }
           }
 
           if (node.name === 'HorizontalRule') {
@@ -3431,11 +3723,36 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             if (currentEditorMode === 'wysiwyg') {
               return;
             }
-            const codeBlockLayout = documentLayout(view.state).codeBlocks
-              .find(block => block.from === node.from)?.indent;
-            if (node.name === 'CodeBlock' && codeBlockLayout) {
+            let codeBlockLayout = null;
+            if (node.name === 'CodeBlock') {
+              codeBlockLayout = getIndentedCodeBlockRenderLayout(
+                view.state,
+                node.from,
+                node.to
+              );
               for (const range of codeBlockLayout.hiddenRanges) {
                 hideSyntax(range.from, range.to);
+              }
+            }
+            const startLine = view.state.doc.lineAt(node.from);
+            const endLine = view.state.doc.lineAt(node.to);
+            for (let l = startLine.number; l <= endLine.number; l++) {
+              const codeLine = view.state.doc.line(l);
+              addLineClass(codeLine.from, 'cm-codeblock-line');
+              if (codeBlockLayout?.commonIndentColumns > 0) {
+                codeBlockIndentByLine.set(
+                  codeLine.from,
+                  codeBlockLayout.commonIndentColumns
+                );
+              }
+              if (l === startLine.number) addLineClass(codeLine.from, 'cm-codeblock-first');
+              if (l === endLine.number) addLineClass(codeLine.from, 'cm-codeblock-last');
+              const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(codeLine.text);
+              if (codeLine.to > codeLine.from && !isFenceLine) {
+                builder.push(
+                  Decoration.mark({ class: 'cm-codeblock-text' })
+                    .range(codeLine.from, codeLine.to)
+                );
               }
             }
             if (line.from === node.from) {
@@ -3601,11 +3918,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const range of underlineSyntaxRanges) {
-      const isRangeActive = isSourceMode || (!isPureWysiwyg && (
+      const isRangeActive = !isPureWysiwyg && (
         selection.empty
           ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
           : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
-      ));
+      );
       if (range.kind === 'html' && !isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
@@ -3625,11 +3942,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const range of colorSyntaxRanges) {
-      const isRangeActive = isSourceMode || (!isPureWysiwyg && (
+      const isRangeActive = !isPureWysiwyg && (
         selection.empty
           ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
           : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
-      ));
+      );
       if (!isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
@@ -3724,8 +4041,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }
     }
 
+    for (const [lineFrom, attrs] of calloutLineAttributes) {
+      builder.push(Decoration.line({
+        attributes: {
+          'data-callout-type': attrs.type,
+          'data-callout-depth': String(attrs.depth),
+          style: `--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`
+        }
+      }).range(lineFrom));
+    }
+
     for (const item of wmdxOrderedListItems) {
-      if (isPureWysiwyg) continue;
       const leadingIndent = /^[ \t]*/.exec(item.line.text)?.[0] ?? '';
       if (leadingIndent.length > 0) {
         hideSyntax(item.line.from, item.line.from + leadingIndent.length);
@@ -3754,6 +4080,18 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         builder.push(decoration);
         hiddenSyntaxRanges.push(decoration);
       }
+      const textRange = listItemTextRange(
+        tree,
+        doc,
+        item.line,
+        item.to
+      );
+      if (textRange) {
+        builder.push(
+          Decoration.mark({ class: 'cm-list-block-text' })
+            .range(textRange.from, textRange.to)
+        );
+      }
     }
 
     const persistentLayoutClasses = new Set([
@@ -3770,12 +4108,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       'cm-heading-5',
       'cm-heading-6',
       'cm-blockquote',
-      'cm-callout',
-      'cm-callout-title',
-      'cm-callout-body',
-      'cm-callout-list-item',
-      'cm-todo-list-item',
-      'cm-wmdx-task-item',
       'cm-hr'
     ]);
 
@@ -3787,6 +4119,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       if (!remaining.length) continue;
 
       const lineStyles = [];
+      const codeBlockIndent = codeBlockIndentByLine.get(lineFrom);
+      if (codeBlockIndent > 0) {
+        lineStyles.push(`--code-block-common-indent:${codeBlockIndent}ch`);
+      }
+      const listContinuationIndent = listContinuationIndentByLine.get(lineFrom);
+      if (listContinuationIndent > 0) {
+        lineStyles.push(
+          `--list-continuation-offset:${listContinuationIndent}ch`
+        );
+      }
       builder.push(
         Decoration.line({
           attributes: {
@@ -4328,9 +4670,16 @@ function isHorizontalRuleLine(state, lineNumber) {
 }
 
 function buildTableBlockDecorations(state) {
-  if (!markdownPresentation(currentEditorMode).renderedTables) return Decoration.none;
+  if (currentEditorMode === 'source') return Decoration.none;
+
   const builder = [];
-  for (const node of documentLayout(state).tables) {
+  const tree = syntaxTree(state);
+
+  tree.iterate({
+    from: 0,
+    to: state.doc.length,
+    enter: (node) => {
+      if (node.name === 'Table') {
         const tableText = state.doc.sliceString(node.from, node.to);
         const widget = new WordProcessorTableWidget(tableText, node.from, node.to);
 
@@ -4344,7 +4693,10 @@ function buildTableBlockDecorations(state) {
           block: true
         }).range(node.from, node.to));
 
-  }
+        return false;
+      }
+    }
+  });
 
   builder.sort((a, b) => a.from - b.from || a.to - b.to);
   return Decoration.set(builder, true);
@@ -4381,11 +4733,18 @@ function buildWysiwygCodeBlockDecorations(state) {
   const builder = [];
   const hiddenSyntaxRanges = [];
 
-  for (const node of documentLayout(state).codeBlocks) {
-      const codeBlockLayout = node.indent;
+  syntaxTree(state).iterate({
+    from: 0,
+    to: doc.length,
+    enter(node) {
+      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') return;
+
+      const codeBlockLayout = node.name === 'CodeBlock'
+        ? getIndentedCodeBlockRenderLayout(state, node.from, node.to)
+        : null;
       const firstLine = doc.lineAt(node.from);
       const lastLine = doc.lineAt(node.to);
-      if (node.kind === 'CodeBlock') {
+      if (node.name === 'CodeBlock') {
         for (const range of codeBlockLayout.hiddenRanges) {
           const hiddenRange = Decoration.replace({}).range(
             range.from,
@@ -4398,7 +4757,28 @@ function buildWysiwygCodeBlockDecorations(state) {
 
       for (let number = firstLine.number; number <= lastLine.number; number++) {
         const line = doc.line(number);
+        const classes = ['cm-codeblock-line'];
+        if (number === firstLine.number) classes.push('cm-codeblock-first');
+        if (number === lastLine.number) classes.push('cm-codeblock-last');
+        builder.push(
+          Decoration.line({
+            attributes: {
+              class: classes.join(' '),
+              ...(codeBlockLayout?.commonIndentColumns > 0
+                ? {
+                    style: `--code-block-common-indent:${codeBlockLayout.commonIndentColumns}ch`
+                  }
+                : {})
+            }
+          }).range(line.from)
+        );
         const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(line.text);
+        if (line.to > line.from && !isFenceLine) {
+          builder.push(
+            Decoration.mark({ class: 'cm-codeblock-text' })
+              .range(line.from, line.to)
+          );
+        }
         if (
           isFenceLine &&
           number === lastLine.number &&
@@ -4424,7 +4804,9 @@ function buildWysiwygCodeBlockDecorations(state) {
         hiddenSyntaxRanges.push(headerRange);
       }
 
-  }
+      return false;
+    }
+  });
 
   builder.sort((a, b) => a.from - b.from || a.to - b.to);
   hiddenSyntaxRanges.sort((a, b) => a.from - b.from || a.to - b.to);
@@ -4511,7 +4893,7 @@ const wysiwygCodeBlockField = StateField.define({
   update(current, tr) {
     const refresh = tr.effects.some(effect =>
       effect.is(heightMapRefreshEffect) || effect.is(typographySettingsEffect)
-    ) || (!tr.docChanged && syntaxTree(tr.startState) !== syntaxTree(tr.state));
+    );
     if (!tr.docChanged && !refresh) return current;
     if (
       tr.docChanged &&
@@ -4544,8 +4926,7 @@ function buildHeightMapValue(state) {
   const doc = state.doc;
   const tree = syntaxTree(state);
   const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
-  const layout = documentLayout(state);
-  const wmdxOrderedListItems = layout.orderedItems;
+  const wmdxOrderedListItems = getWmdxOrderedListItems(doc, tree);
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
   const replacements = [];
   const hiddenSyntaxRanges = [];
@@ -4558,12 +4939,47 @@ function buildHeightMapValue(state) {
     }
   };
 
-  const calloutOpenerInfo = layout.calloutOpeners;
+  const calloutOpenerInfo = new Map();
+  const processedBlockquoteLines = new Set();
+
+  const getQuotedLineInfo = (lineNum) => {
+    if (lineNum < 1 || lineNum > doc.lines) return null;
+    const l = doc.line(lineNum);
+    const match = l.text.match(/^(\s*(?:>\s*)+)/);
+    if (!match) return null;
+
+    const firstText = /\S/.exec(l.text);
+    const probe = firstText ? l.from + firstText.index : l.from;
+    const resolvedNode = tree.resolveInner(probe, 1);
+
+    for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock' || ancestor.name === 'Table') {
+        return null;
+      }
+    }
+
+    const quotePrefix = match[1];
+    const depth = (quotePrefix.match(/>/g) || []).length;
+    return { line: l, quotePrefix, depth };
+  };
+
+  const isQuotedLine = (lineNum) => getQuotedLineInfo(lineNum) !== null;
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
     const line = doc.line(lineNumber);
-    const semantic = layout.lines.get(line.from);
-    if (semantic?.kind === 'code' || semantic?.kind === 'table') continue;
+    const firstText = /\S/.exec(line.text);
+    const probe = firstText ? line.from + firstText.index : line.from;
+    const resolvedNode = tree.resolveInner(probe, 1);
+
+    let insideCodeBlock = false;
+    let insideTable = false;
+
+    for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
+      if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock') insideCodeBlock = true;
+      if (ancestor.name === 'Table') insideTable = true;
+    }
+
+    if (insideCodeBlock || insideTable) continue;
 
     if (isLinkFlavorEnabledNow('obsidian')) {
       const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
@@ -4592,6 +5008,95 @@ function buildHeightMapValue(state) {
     }
   }
 
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+    if (processedBlockquoteLines.has(lineNumber)) continue;
+
+    if (isQuotedLine(lineNumber)) {
+      let blockStart = lineNumber;
+      while (blockStart > 1 && isQuotedLine(blockStart - 1)) {
+        blockStart--;
+      }
+
+      let curLine = blockStart;
+      const activeCalloutsStack = [];
+
+      while (curLine <= doc.lines && isQuotedLine(curLine)) {
+        processedBlockquoteLines.add(curLine);
+        const lineInfo = getQuotedLineInfo(curLine);
+        const line = lineInfo.line;
+        const currentDepth = lineInfo.depth;
+
+        while (activeCalloutsStack.length > 0 && activeCalloutsStack[activeCalloutsStack.length - 1].depth > currentDepth) {
+          activeCalloutsStack.pop();
+        }
+
+        const match = isCalloutFlavorEnabledNow('obsidian')
+          ? line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i)
+          : null;
+
+        if (match) {
+          const type = match[3].toLowerCase();
+          const foldMarker = match[4];
+          const customTitle = match[5];
+          const markerStart = line.from + match[1].length;
+          const markerEnd = markerStart + match[2].length;
+          const titleStart = getCalloutTitleStart(line, match);
+
+          const calloutObj = {
+            depth: currentDepth,
+            type,
+            openerLineNum: curLine,
+            lastBodyLineNum: curLine,
+            info: {
+              type,
+              depth: currentDepth,
+              foldMarker,
+              customTitle,
+              markerStart,
+              markerEnd,
+              titleStart,
+              bodyFrom: line.to,
+              bodyTo: line.to
+            }
+          };
+
+          activeCalloutsStack.push(calloutObj);
+          calloutOpenerInfo.set(line.from, calloutObj.info);
+
+          for (const ancestor of activeCalloutsStack) {
+            if (ancestor !== calloutObj) {
+              ancestor.lastBodyLineNum = curLine;
+              ancestor.info.bodyTo = line.to;
+            }
+          }
+        } else if (activeCalloutsStack.length > 0) {
+          for (const calloutObj of activeCalloutsStack) {
+            if (calloutObj.depth <= currentDepth) {
+              calloutObj.lastBodyLineNum = curLine;
+              calloutObj.info.bodyTo = line.to;
+            }
+          }
+        }
+
+        curLine++;
+      }
+    }
+  }
+
+  const nativeCallouts = parseWmdxCallouts(doc.toString(), position => {
+    for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+      if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
+        return true;
+      }
+    }
+    return false;
+  });
+  for (const { lineFrom, info } of nativeCallouts.openers) {
+    if (!processedBlockquoteLines.has(doc.lineAt(lineFrom).number)) {
+      calloutOpenerInfo.set(lineFrom, info);
+    }
+  }
+
   tree.iterate({
     from: 0,
     to: doc.length,
@@ -4603,6 +5108,18 @@ function buildHeightMapValue(state) {
         getHeadingFlavorAtNode(node, doc)
       );
 
+      if (headingLevel) {
+        const headingLine = doc.lineAt(node.from);
+        replacements.push(
+          Decoration.line({
+            attributes: {
+              class: headingEnabled
+                ? `cm-heading cm-heading-${headingLevel}`
+                : 'cm-heading-syntax-literal'
+            }
+          }).range(headingLine.from)
+        );
+      }
 
       if (node.name === 'HeaderMark') {
         if (isHeadingFlavorEnabledNow(getHeadingFlavorAtNode(node, doc))) {
@@ -4610,11 +5127,23 @@ function buildHeightMapValue(state) {
           if (end > node.from && end <= line.to) {
             hideSyntax(node.from, end);
           }
+        } else {
+          replacements.push(
+            Decoration.line({
+              attributes: { class: 'cm-heading-syntax-literal' }
+            }).range(line.from)
+          );
         }
       }
       if (node.name === 'WmdxHeadingMarker') {
         if (isHeadingFlavorEnabledNow('wmdx')) {
           hideSyntax(node.from, node.to);
+        } else {
+          replacements.push(
+            Decoration.line({
+              attributes: { class: 'cm-heading-syntax-literal' }
+            }).range(line.from)
+          );
         }
       }
 
@@ -4666,13 +5195,20 @@ function buildHeightMapValue(state) {
             )
           )
         }).range(node.from, node.to));
+        const textRange = listItemTextRange(tree, doc, line, node.to);
+        if (textRange) {
+          replacements.push(
+            Decoration.mark({ class: 'cm-list-block-text' })
+              .range(textRange.from, textRange.to)
+          );
+        }
       }
 
       if (
         node.name === 'QuoteMark' &&
         (
           isBlockquoteSyntaxEnabledNow() ||
-          layout.lines.get(line.from)?.callout
+          calloutLineAttributes.has(line.from)
         )
       ) {
         hideSyntax(node.from, Math.min(node.to + 1, line.to));
@@ -4992,11 +5528,34 @@ function buildHeightMapValue(state) {
     if (leadingIndent.length > 0) {
       hideSyntax(item.line.from, item.line.from + leadingIndent.length);
     }
+    const active = state.selection.ranges.some(range =>
+      range.empty
+        ? range.head >= item.from && range.head <= item.to
+        : range.from < item.to && range.to > item.from
+    );
+    if (active) {
+      replacements.push(
+        Decoration.mark({ class: 'cm-list-number' }).range(item.from, item.to)
+      );
+    } else {
       const decoration = Decoration.replace({
         widget: new ListMarkerWidget(item.marker, false, item.displayText)
       }).range(item.from, item.to);
       replacements.push(decoration);
       hiddenSyntaxRanges.push(decoration);
+    }
+    const textRange = listItemTextRange(
+      tree,
+      doc,
+      item.line,
+      item.to
+    );
+    if (textRange) {
+      replacements.push(
+        Decoration.mark({ class: 'cm-list-block-text' })
+          .range(textRange.from, textRange.to)
+      );
+    }
   }
 
   const validReplacements = replacements.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
@@ -5123,7 +5682,7 @@ export const heightMapField = StateField.define({
     const refresh = tr.effects.some(effect =>
       effect.is(heightMapRefreshEffect) ||
       effect.is(typographySettingsEffect)
-    ) || (!tr.docChanged && syntaxTree(tr.startState) !== syntaxTree(tr.state));
+    );
     if (!tr.docChanged && !refresh) return current;
     if (
       tr.docChanged &&
@@ -5177,93 +5736,343 @@ function premeasureTableHeights(view) {
   }
 }
 
-class LayoutAnchorWidget extends WidgetType {
-  constructor(role) { super(); this.role = role; }
-  eq(other) { return other.role === this.role; }
-  toDOM() {
-    const anchor = document.createElement('span');
-    anchor.className = `cm-layout-${this.role}`;
-    anchor.setAttribute('aria-hidden', 'true');
-    anchor.style.cssText = 'display:inline-block;width:0;height:0;overflow:hidden;pointer-events:none';
-    return anchor;
-  }
-}
-
 export function buildPersistentLayoutDecorations(state) {
+  const { doc } = state;
+  const tree = syntaxTree(state);
+  const tableHeaderLines = new Set();
+  const tableLines = new Set();
+  tree.iterate({
+    enter(node) {
+      if (node.name !== 'Table') return;
+      const firstLine = doc.lineAt(node.from).number;
+      const lastLine = doc.lineAt(Math.max(node.from, node.to - 1)).number;
+      tableHeaderLines.add(firstLine);
+      for (let number = firstLine; number <= lastLine; number++) {
+        tableLines.add(number);
+      }
+      return false;
+    }
+  });
+  const wmdxOrderedListByLine = new Map(
+    getWmdxOrderedListItems(doc, tree).map(item => [
+      item.line.number,
+      item
+    ])
+  );
+  const nativeCallouts = parseWmdxCallouts(doc.toString(), position => {
+    for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+      if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
+        return true;
+      }
+    }
+    return false;
+  });
+  const nativeCalloutsByLine = new Map(
+    [...nativeCallouts.lineAttributes].map(([from, attrs]) => [
+      doc.lineAt(from).number,
+      attrs
+    ])
+  );
+  const classesByLine = new Map();
+  const calloutAttributesByLine = new Map();
+  const blockquoteDepthByLine = new Map();
+  const paragraphIndentByLine = new Map();
+  const listContinuationIndentByLine = new Map();
+  const activeCallouts = [];
+  let currentBlockquoteDepth = 0;
+
+  const addClass = (lineNumber, className) => {
+    if (!classesByLine.has(lineNumber)) {
+      classesByLine.set(lineNumber, new Set());
+    }
+    classesByLine.get(lineNumber).add(className);
+  };
+
+  for (let number = 1; number <= doc.lines; number++) {
+    const line = doc.line(number);
+    const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
+    const quotePrefixLength = quotePrefix?.[1].length ?? 0;
+    const firstText = /\S/.exec(line.text.slice(quotePrefixLength));
+    const probe = firstText
+      ? line.from + quotePrefixLength + firstText.index
+      : line.from;
+    const resolved = tree.resolveInner(probe, 1);
+
+    let paragraphNode = null;
+    let insideListItem = false;
+    let insideCodeBlock = false;
+    let insideTable = false;
+    let insideBlockquote = false;
+    let headingLevel = null;
+    let headingFlavor = null;
+    let isHorizontalRule = false;
+    let hasWmdxTask = false;
+
+    for (let node = resolved; node; node = node.parent) {
+      if (node.name === 'Paragraph') paragraphNode = node;
+      if (node.name === 'ListItem') insideListItem = true;
+      if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+        insideCodeBlock = true;
+      }
+      if (node.name === 'Table') insideTable = true;
+      if (node.name === 'Blockquote') insideBlockquote = true;
+      if (node.name === 'HorizontalRule') isHorizontalRule = true;
+
+      const nodeHeadingLevel = getHeadingLevel(node.name);
+      if (nodeHeadingLevel && headingLevel === null) {
+        headingLevel = headingLevel ?? String(nodeHeadingLevel);
+        headingFlavor = getHeadingFlavorAtNode(node, doc);
+      }
+    }
+
+    // In Source, keep raw table rows on one line and scroll each row locally.
+    // The visual modes replace this range with the shared editable table widget.
+    if (insideTable || tableLines.has(number)) {
+      if (currentEditorMode === 'source') {
+        addClass(number, 'cm-table-source-line');
+        if (tableHeaderLines.has(number)) {
+          addClass(number, 'cm-table-header-source-line');
+        }
+      }
+      continue;
+    }
+    // Code blocks have their own full-document decoration fields.
+    if (insideCodeBlock) continue;
+
+    const nativeCalloutLine = nativeCalloutsByLine.get(number);
+    let calloutInfo = null;
+    const isBlockquoteLine = insideBlockquote || Boolean(quotePrefix);
+    if (!isBlockquoteLine) {
+      activeCallouts.length = 0;
+      currentBlockquoteDepth = 0;
+      if (nativeCalloutLine) {
+        calloutInfo = {
+          type: nativeCalloutLine.type,
+          depth: nativeCalloutLine.depth,
+          isTitle: nativeCalloutLine.isTitle
+        };
+      }
+    } else {
+      const depth = quotePrefix
+        ? (quotePrefix[1].match(/>/g) || []).length
+        : Math.max(1, currentBlockquoteDepth);
+      if (quotePrefix) currentBlockquoteDepth = depth;
+      while (
+        activeCallouts.length > 0 &&
+        activeCallouts[activeCallouts.length - 1].depth > depth
+      ) {
+        activeCallouts.pop();
+      }
+
+      const opener = isCalloutFlavorEnabledNow('obsidian') &&
+        quotePrefix &&
+        line.text.match(
+          /^(\s*(?:>\s*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i
+        );
+      if (opener) {
+        calloutInfo = {
+          type: opener[2].toLowerCase(),
+          depth,
+          isTitle: true
+        };
+        activeCallouts.push(calloutInfo);
+      } else {
+        const currentCallout = activeCallouts[activeCallouts.length - 1];
+        if (currentCallout && currentCallout.depth <= depth) {
+          calloutInfo = {
+            type: currentCallout.type,
+            depth: currentCallout.depth,
+            isTitle: false
+          };
+        }
+      }
+    }
+
+    if (headingLevel) {
+      if (isHeadingFlavorEnabledNow(headingFlavor)) {
+        addClass(number, 'cm-heading');
+        addClass(number, `cm-heading-${headingLevel}`);
+      } else {
+        addClass(number, 'cm-heading-syntax-literal');
+      }
+    }
+    if (calloutInfo) {
+      addClass(number, 'cm-callout');
+      if (calloutInfo.isTitle) {
+        addClass(number, 'cm-callout-title');
+        addClass(number, 'cm-callout-title-rendered');
+      } else {
+        addClass(number, 'cm-callout-body');
+      }
+      calloutAttributesByLine.set(number, {
+        type: calloutInfo.type,
+        depth: calloutInfo.depth
+      });
+    } else if (isBlockquoteLine && isBlockquoteSyntaxEnabledNow()) {
+      addClass(number, 'cm-blockquote');
+      blockquoteDepthByLine.set(
+        number,
+        Math.max(1, currentBlockquoteDepth)
+      );
+    }
+    if (isHorizontalRule) addClass(number, 'cm-hr');
+
+    const nativeTaskMarker = isListFlavorEnabledNow('wmdx')
+      ? /^([ \t]*)\[([ xX])\](?=[ \t]|$)/.exec(line.text)
+      : null;
+    if (nativeTaskMarker) {
+      const markerFrom = line.from + nativeTaskMarker[1].length;
+      let hasNativeTaskMarker = false;
+      for (
+        let node = tree.resolveInner(markerFrom, 1);
+        node;
+        node = node.parent
+      ) {
+        if (node.name === 'WmdxTaskMarker') {
+          hasNativeTaskMarker = true;
+          break;
+        }
+      }
+      if (hasNativeTaskMarker) {
+        hasWmdxTask = true;
+        addClass(number, 'cm-list-item');
+        addClass(number, 'cm-todo-list-item');
+        addClass(number, 'cm-wmdx-task-item');
+      }
+    }
+
+    const listsEnabled = listSyntaxSettings.enabled &&
+      (isListFlavorEnabledNow('markdown') || isListFlavorEnabledNow('wmdx'));
+    const wmdxOrderedItem = wmdxOrderedListByLine.get(number);
+    const hasListMarker = listsEnabled && (
+      Boolean(wmdxOrderedItem) ||
+      /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text)
+    );
+    if (calloutInfo) {
+      if (hasListMarker) {
+        addClass(number, 'cm-list-item');
+        addClass(number, 'cm-callout-list-item');
+      }
+      if (
+        isMarkdownTaskSyntaxEnabledNow() &&
+        /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)
+      ) {
+        addClass(number, 'cm-todo-list-item');
+      }
+      continue;
+    }
+    if (wmdxOrderedItem && listsEnabled) {
+      addClass(number, 'cm-list-item');
+      continue;
+    }
+    if (insideListItem && listsEnabled) {
+      const listLayout = getMarkdownSourceLineLayoutForState(state, number);
+      if (listLayout?.kind === 'list-continuation') {
+        addClass(number, 'cm-list-continuation');
+        listContinuationIndentByLine.set(
+          number,
+          listLayout.contentOffsetColumns
+        );
+      } else {
+        addClass(number, 'cm-list-item');
+      }
+      if (
+        isMarkdownTaskSyntaxEnabledNow() &&
+        /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)
+      ) {
+        addClass(number, 'cm-todo-list-item');
+      }
+      continue;
+    }
+
+    if (hasWmdxTask) continue;
+
+    if (paragraphNode) {
+      addClass(number, 'cm-paragraph');
+      const paragraphStartLine = doc.lineAt(paragraphNode.from);
+      const indentColumns = getMarkdownSourceIndentColumns(
+        paragraphStartLine.text
+      );
+      if (indentColumns > 0) paragraphIndentByLine.set(number, indentColumns);
+      if (line.from === doc.lineAt(paragraphNode.from).from) {
+        addClass(number, 'cm-paragraph-first');
+      }
+      if (
+        line.from ===
+        doc.lineAt(Math.max(paragraphNode.from, paragraphNode.to - 1)).from
+      ) {
+        addClass(number, 'cm-paragraph-last');
+      }
+    }
+  }
+
   const ranges = [];
-  for (const line of documentLayout(state).lines.values()) {
-    if (!line.classes.size) continue;
+  for (const [lineNumber, classes] of classesByLine) {
+    const lineObj = doc.line(lineNumber);
+    const calloutAttributes = calloutAttributesByLine.get(lineNumber);
+    const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
+    const paragraphIndent = paragraphIndentByLine.get(lineNumber) ?? 0;
+    const listContinuationIndent =
+      listContinuationIndentByLine.get(lineNumber) ?? 0;
+    const lineStyles = [];
+    const sourceLineIndent = getMarkdownSourceIndentColumns(lineObj.text);
+    const sourceIndent = sourceLineIndent || paragraphIndent;
+    if (calloutAttributes) {
+      lineStyles.push(
+        `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
+      );
+    } else if (blockquoteDepth) {
+      lineStyles.push(
+        `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`
+      );
+    }
+    if (
+      sourceIndent > 0 &&
+      (classes.has('cm-paragraph') || classes.has('cm-heading')) &&
+      !classes.has('cm-list-item') &&
+      !classes.has('cm-callout')
+    ) {
+      classes.add('cm-source-indented');
+      lineStyles.push(`--source-indent-offset:${sourceIndent * 12}px`);
+    }
+    if (listContinuationIndent > 0) {
+      lineStyles.push(
+        `--list-continuation-offset:${listContinuationIndent}ch`
+      );
+    }
+    if (classes.has('cm-list-item') || classes.has('cm-callout-list-item')) {
+      const listIndentColumns = currentEditorMode === 'source'
+        ? 0
+        : sourceLineIndent;
+      lineStyles.push(
+        `--list-depth-offset:${listIndentColumns ? `${listIndentColumns}ch` : '0px'}`
+      );
+      lineStyles.push(
+        `--list-quote-inset:${currentEditorMode === 'source' ? '0px' : 'var(--list-left-indent, 24px)'}`
+      );
+    }
     ranges.push(
       Decoration.line({
         attributes: {
-          class: [...line.classes].join(' '),
-          'data-layout-kind': line.kind,
-          ...(line.callout
+          class: [...classes].join(' '),
+          ...(calloutAttributes
             ? {
-                'data-callout-type': line.callout.type,
-                'data-callout-depth': String(line.callout.depth)
+                'data-callout-type': calloutAttributes.type,
+                'data-callout-depth': String(calloutAttributes.depth)
               }
             : {}),
-          ...(line.quoteDepth
-            ? { 'data-blockquote-depth': String(line.quoteDepth) }
+          ...(blockquoteDepth
+            ? { 'data-blockquote-depth': String(blockquoteDepth) }
             : {}),
-          ...(line.styles.length ? { style: line.styles.join(';') } : {})
+          ...(lineStyles.length ? { style: lineStyles.join(';') } : {})
         }
-      }).range(line.from)
+      }).range(lineObj.from)
     );
-    if (line.contentFrom > line.from) {
-      ranges.push(Decoration.mark({ class: 'cm-layout-prefix' }).range(line.from, line.contentFrom));
-      ranges.push(Decoration.widget({ widget: new LayoutAnchorWidget('start'), side: -1 }).range(line.from));
-      ranges.push(Decoration.widget({ widget: new LayoutAnchorWidget('content'), side: -1 }).range(line.contentFrom));
-    }
-    if (line.indentTo > line.from && line.kind !== 'code' && line.kind !== 'table') {
-      ranges.push(Decoration.mark({ class: 'cm-layout-indent' }).range(line.from, line.indentTo));
-    }
-    if (line.kind === 'code' && line.to > line.from &&
-        !/^[ \t]*(?:`{3,}|~{3,})/.test(state.doc.sliceString(line.from, line.to))) {
-      ranges.push(Decoration.mark({ class: 'cm-codeblock-text' }).range(line.from, line.to));
-    }
   }
+
+  ranges.sort((a, b) => a.from - b.from);
   return Decoration.set(ranges, true);
 }
-
-function documentLayoutSettings() {
-  return {
-    list: listSyntaxSettings,
-    heading: headingSyntaxSettings,
-    callout: calloutSyntaxSettings,
-    blockquote: blockquoteSyntaxSettings
-  };
-}
-
-function documentLayout(state) {
-  return getMarkdownDocumentLayout(state, documentLayoutSettings());
-}
-
-const semanticLayoutField = StateField.define({
-  create: documentLayout,
-  update(previous, tr) {
-    const refresh = tr.effects.some(effect =>
-      effect.is(typographySettingsEffect) || effect.is(heightMapRefreshEffect)
-    );
-    if (!tr.docChanged && !refresh && syntaxTree(tr.startState) === syntaxTree(tr.state)) return previous;
-    const nativeCalloutEdit = /(^|\n)[ \t]*±[A-Za-z]/.test(tr.startState.doc.toString()) ||
-      /(^|\n)[ \t]*±[A-Za-z]/.test(tr.newDoc.toString());
-    if (tr.docChanged && !refresh && !nativeCalloutEdit &&
-        !transactionTouchesStructure(tr, {
-          nodeNames: [
-            'ATXHeading1', 'ATXHeading2', 'ATXHeading3', 'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
-            'SetextHeading1', 'SetextHeading2', 'ListItem', 'Blockquote',
-            'FencedCode', 'CodeBlock', 'Table', 'WmdxTaskMarker', 'HorizontalRule'
-          ],
-          markerPattern: /[\n`~|>#*+\-[\]{}()=.:±]/,
-          linePattern: /^[ \t]*[A-Za-z]+[.)](?:[ \t]|$)/
-        })) {
-      return mapMarkdownDocumentLayout(previous, tr, documentLayoutSettings());
-    }
-    return documentLayout(tr.state);
-  }
-});
 
 export const persistentLayoutField = StateField.define({
   create(state) {
@@ -5274,7 +6083,29 @@ export const persistentLayoutField = StateField.define({
       effect.is(typographySettingsEffect) ||
       effect.is(heightMapRefreshEffect)
     );
-    if (!tr.docChanged && !refresh && syntaxTree(tr.startState) === syntaxTree(tr.state)) return current;
+    if (!tr.docChanged && !refresh) return current;
+    const hasNativeCallouts = source => /(^|\n)[ \t]*±[A-Za-z]/.test(source);
+    const nativeCalloutEdit = tr.docChanged && (
+      hasNativeCallouts(tr.startState.doc.toString()) ||
+      hasNativeCallouts(tr.newDoc.toString())
+    );
+    if (
+      tr.docChanged &&
+      !refresh &&
+      !nativeCalloutEdit &&
+      !transactionTouchesStructure(tr, {
+        nodeNames: [
+          'ATXHeading1', 'ATXHeading2', 'ATXHeading3',
+          'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
+          'SetextHeading1', 'SetextHeading2', 'ListItem',
+          'Blockquote', 'FencedCode', 'CodeBlock', 'Table', 'WmdxTaskMarker',
+          'HorizontalRule'
+        ],
+        linePattern: /^[ \t]*[A-Za-z]+[.)](?:[ \t]|$)/
+      })
+    ) {
+      return current.map(tr.changes);
+    }
     return buildPersistentLayoutDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
@@ -5289,7 +6120,7 @@ export const tableStateField = StateField.define({
       effect.is(tableHeightEstimatesChanged) ||
       effect.is(heightMapRefreshEffect) ||
       effect.is(typographySettingsEffect)
-    ) || (!tr.docChanged && syntaxTree(tr.startState) !== syntaxTree(tr.state));
+    );
     if (!tr.docChanged && !refresh) return current;
     if (
       tr.docChanged &&
@@ -5598,6 +6429,13 @@ class CodeMirrorAdapter {
     const refresh = () => {
       if (this.view !== view || !view.dom.isConnected) return;
 
+      if (currentEditorMode === 'source') {
+        this.syntaxRefreshComplete = true;
+        this.syntaxRefreshFrame = null;
+        this.scheduleRestoredScrollTop();
+        return;
+      }
+
       const parsed = forceParsing(view, view.state.doc.length, 8);
       if (parsed) {
         dispatchWithScrollSnapshot(
@@ -5860,7 +6698,6 @@ class CodeMirrorAdapter {
           isBlockquoteSyntaxEnabledNow
         ),
         syntaxHighlighting(customHighlightStyle),
-        semanticLayoutField,
         livePreviewPlugin,
         listMarkerMeasurementPlugin,
         hiddenSyntaxAtomicRanges,
@@ -6585,70 +7422,15 @@ class CodeMirrorAdapter {
   }
 }
 
-function captureModeScrollAnchor(view) {
-  if (!view?.dom?.isConnected) return null;
-  const scroller = view.scrollDOM;
-  const bounds = scroller.getBoundingClientRect();
-  if (scroller.clientHeight < 32 || scroller.clientWidth < 32) return null;
-  const viewportY = Math.min(
-    scroller.clientHeight - 2,
-    Math.max(2, Math.round(scroller.clientHeight * 0.35))
-  );
-  const block = view.lineBlockAtHeight(scroller.scrollTop + viewportY);
-  const position = Number.isInteger(block?.from)
-    ? block.from
-    : view.posAtCoords({
-        x: bounds.left + Math.min(scroller.clientWidth - 2, Math.max(8, Math.round(scroller.clientWidth * 0.12))),
-        y: bounds.top + viewportY
-      });
-  if (!Number.isInteger(position)) return null;
-  const coords = view.coordsAtPos(position, 1);
-  if (!coords || !Number.isFinite(coords.top)) return null;
-  const from = Math.max(0, position - 24);
-  const to = Math.min(view.state.doc.length, position + 24);
-  const anchor = {
-    position,
-    viewportY: coords.top - bounds.top,
-    documentLength: view.state.doc.length,
-    context: view.state.doc.sliceString(from, to)
-  };
-  return anchor;
-}
-
-function restoreModeScrollAnchor(view, anchor) {
-  if (!anchor || !view?.dom?.isConnected) return false;
-  if (
-    anchor.position > view.state.doc.length ||
-    anchor.documentLength !== view.state.doc.length
-  ) return false;
-  const from = Math.max(0, anchor.position - 24);
-  const to = Math.min(view.state.doc.length, anchor.position + 24);
-  if (view.state.doc.sliceString(from, to) !== anchor.context) return false;
-  const scroller = view.scrollDOM;
-  const bounds = scroller.getBoundingClientRect();
-  const coords = view.coordsAtPos(anchor.position, 1);
-  if (!coords || !Number.isFinite(coords.top)) return false;
-  const correction = coords.top - (bounds.top + anchor.viewportY);
-  if (Math.abs(correction) < 1) return true;
-  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-  scroller.scrollTop = Math.max(0, Math.min(maxScrollTop, scroller.scrollTop + correction));
-  return true;
-}
-
 async function setEditorMode(mode) {
   const targetMode = (mode === 'live_preview' || mode === 'source') ? mode : 'wysiwyg';
 
-  // Commit the table's textarea before taking the document/history snapshot.
-  // Removing a focused textarea does not reliably dispatch blur in WebViews.
-  const cellEditor = activeAdapter?.view?.dom.querySelector('.cm-wp-cell-editor');
-  cellEditor?._commitAndClose?.();
   const existingText = activeAdapter ? activeAdapter.getMarkdown() : (pendingMarkdown || '');
 
   const modeSnapshot = activeAdapter?.view
     ? {
         selection: activeAdapter.view.state.selection,
         scroll: activeAdapter.view.scrollSnapshot(),
-        scrollAnchor: captureModeScrollAnchor(activeAdapter.view),
         historyState: activeAdapter.view.state.toJSON({
           history: historyField
         })
@@ -6682,47 +7464,6 @@ async function setEditorMode(mode) {
     const latestPendingMarkdown = pendingMarkdown;
     pendingMarkdown = null;
     window.editorBridge?.setMarkdown?.(latestPendingMarkdown);
-  }
-  if (modeSnapshot?.scrollAnchor && adapter.getMarkdown() === existingText) {
-    const view = adapter.view;
-    view.scrollDOM.style.overflowAnchor = 'none';
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      let previousOffset = null;
-      let stableFrames = 0;
-      let attempts = 0;
-      const stabilizeAnchor = () => {
-        if (activeAdapter !== adapter) return;
-        if (!adapter.syntaxRefreshComplete) {
-          attempts++;
-          if (attempts < 90) {
-            requestAnimationFrame(stabilizeAnchor);
-          } else {
-            view.scrollDOM.style.overflowAnchor = 'auto';
-          }
-          return;
-        }
-        if (!restoreModeScrollAnchor(view, modeSnapshot.scrollAnchor)) {
-          view.scrollDOM.style.overflowAnchor = 'auto';
-          return;
-        }
-        const bounds = view.scrollDOM.getBoundingClientRect();
-        const coords = view.coordsAtPos(modeSnapshot.scrollAnchor.position, 1);
-        const offset = coords?.top - bounds.top;
-        if (Number.isFinite(offset) && previousOffset !== null && Math.abs(offset - previousOffset) < 0.5) {
-          stableFrames++;
-        } else {
-          stableFrames = 0;
-        }
-        previousOffset = offset;
-        attempts++;
-        if (stableFrames >= 3 || attempts >= 18) {
-          view.scrollDOM.style.overflowAnchor = 'auto';
-          return;
-        }
-        requestAnimationFrame(stabilizeAnchor);
-      };
-      stabilizeAnchor();
-    }));
   }
 
   if (document.querySelector('#toc-panel')?.classList.contains('open')) {
