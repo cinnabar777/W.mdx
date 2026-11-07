@@ -265,6 +265,8 @@ import {
 import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
 import { wmdxGfmFtpAutolink } from './gfm-autolink.mjs';
 import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
+import { wmdxSubSuperExtension } from './wmdxSubSuper.mjs';
+import { wmdxCommentsExtension } from './wmdxComments.mjs';
 
 let activeAdapter = null;
 let lastFocusedEditorView = null;
@@ -2585,6 +2587,8 @@ class EmbeddedDocumentWidget extends WidgetType {
             GFMTaskList,
             wmdxGfmFtpAutolink,
             wmdxGfmStrikethrough,
+            wmdxSubSuperExtension,
+            wmdxCommentsExtension,
             wmdxCommonMarkCompatibility
           ]
         }),
@@ -3286,6 +3290,28 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
           if (node.name === 'StrikethroughMark' && !isNodeActive) {
             if (!isPureWysiwyg) hideSyntax(node.from, node.to);
+          }
+
+          if (node.name === 'Superscript') {
+            builder.push(Decoration.mark({ class: 'cm-superscript' }).range(node.from, node.to));
+          }
+          if (node.name === 'SuperscriptMark' && !isNodeActive) {
+            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
+          }
+
+          if (node.name === 'Subscript') {
+            builder.push(Decoration.mark({ class: 'cm-subscript' }).range(node.from, node.to));
+          }
+          if (node.name === 'SubscriptMark' && !isNodeActive) {
+            if (!isPureWysiwyg) hideSyntax(node.from, node.to);
+          }
+
+          if (node.name === 'Comment') {
+            if (!isNodeActive && !isPureWysiwyg) {
+              hideSyntax(node.from, node.to);
+            } else {
+              builder.push(Decoration.mark({ class: 'cm-comment' }).range(node.from, node.to));
+            }
           }
 
           if (node.name === 'InlineCode') {
@@ -5866,6 +5892,8 @@ class CodeMirrorAdapter {
             GFMTaskList,
             wmdxGfmFtpAutolink,
             wmdxGfmStrikethrough,
+            wmdxSubSuperExtension,
+            wmdxCommentsExtension,
             wmdxCommonMarkCompatibility
           ]
         }),
@@ -7738,13 +7766,16 @@ function openMarkdownConversionDialog(action) {
   if (!view || !overlay || !dialog) return false;
 
   const labels = {
-    commonmark: 'CommonMark',
-    gfm: 'GitHub Flavored Markdown',
-    obsidian: 'Obsidian',
-    html: 'HTML'
+    commonmark: 'CommonMark (.md)',
+    gfm: 'GitHub Flavored Markdown (.md)',
+    obsidian: 'Obsidian (.md)',
+    wmdx: 'Wmdx Markdown (.md)',
+    html: 'HTML Document (.html)',
+    mhtml: 'MHTML Web Archive (.mht)',
+    mdz: 'MDZip Package (.mdz)'
   };
   const formats = action === 'export'
-    ? ['commonmark', 'gfm', 'obsidian']
+    ? ['commonmark', 'gfm', 'obsidian', 'wmdx', 'html', 'mhtml', 'mdz']
     : ['commonmark', 'gfm', 'obsidian', 'html'];
   const title = action === 'convert'
     ? 'Convert current document'
@@ -7824,11 +7855,25 @@ function openMarkdownConversionDialog(action) {
         sourceText = view.state.doc.toString();
       }
 
-      pending = action === 'export'
-        ? exportMarkdown(sourceText, format)
-        : format === 'html'
+      if (action === 'export') {
+        if (format === 'html' || format === 'mhtml') {
+          pending = {
+            markdown: '<!DOCTYPE html>\n<!-- Rendered export preview -->\n' + (document.querySelector('.cm-content')?.innerHTML || sourceText),
+            warnings: []
+          };
+        } else if (format === 'mdz') {
+          pending = {
+            markdown: '[MDZip Package Archive containing document, assets, and media]',
+            warnings: []
+          };
+        } else {
+          pending = exportMarkdown(sourceText, format);
+        }
+      } else {
+        pending = format === 'html'
           ? convertFromHtml(sourceText)
           : convertFromMarkdown(sourceText, format);
+      }
       preview.value = pending.markdown.length > 6000
         ? `${pending.markdown.slice(0, 6000)}\n\n[Preview truncated]`
         : pending.markdown;
@@ -7885,9 +7930,20 @@ function openMarkdownConversionDialog(action) {
       return;
     }
     const native = window.AndroidNative;
+    const exportFormat = formatSelect.value;
+    if (exportFormat === 'html' || exportFormat === 'mhtml') {
+      close();
+      native?.onNativeAction?.('export');
+      return;
+    }
+    if (exportFormat === 'mdz') {
+      close();
+      native?.onNativeAction?.('saveAsMdzip');
+      return;
+    }
     if (typeof native?.saveMarkdownExport === 'function') {
       native.saveMarkdownExport(
-        formatSelect.value,
+        exportFormat,
         pending.markdown,
         JSON.stringify(pending.warnings)
       );
@@ -11665,6 +11721,9 @@ function setupKeyboardShortcuts() {
 
 // Global JS Bridge exposure
 window.editorBridge = {
+  openConversionDialog: function(action) {
+    return openMarkdownConversionDialog(action);
+  },
   destroy: function() {
     if (activeAdapter) {
       activeAdapter.destroy();

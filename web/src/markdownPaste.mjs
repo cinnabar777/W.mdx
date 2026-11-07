@@ -1,6 +1,7 @@
 import { syntaxTree } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
 import { normalizeMarkdownOrderedListText } from './listSyntax.mjs';
+import { convertPastedContent } from './intelligentPaste.mjs';
 
 function blockquoteContext(state, position) {
   if (!state?.doc || !Number.isInteger(position)) {
@@ -137,7 +138,11 @@ function insertQuoteAwareText(
     return false;
   }
 
-  const transformedText = transformPastedText(text);
+  const convertedText = convertPastedContent(
+    text,
+    globalThis.activePreferredAuthoringFlavor || 'wmdx'
+  );
+  const transformedText = transformPastedText(convertedText);
   const blockquotesEnabled = isBlockquoteEnabled();
   const pasteRange = blockquotesEnabled
     ? quotePasteInsertionRange(view.state, from, to)

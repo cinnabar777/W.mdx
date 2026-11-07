@@ -73,6 +73,7 @@ class SettingsActivity : AppCompatActivity() {
                 is TocPanelSettingsFragment -> "Right Panel: TOC"
                 is LeftPanelSettingsFragment -> "Left Panel"
                 is StorageAccessSettingsFragment -> "File & Folder Access"
+                is MarkdownFlavorsSettingsFragment -> "Markdown Flavors & Presets"
                 is StylingSettingsFragment -> "Document Appearance"
                 is ExportSettingsFragment -> "HTML & MHTML Export"
                 is HotkeysSettingsFragment -> "Keyboard Shortcuts"
@@ -260,6 +261,13 @@ class SettingsFragment : BaseSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         val key = preference.key ?: return super.onPreferenceTreeClick(preference)
         when (key) {
+            "pref_page_markdown_flavors" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, MarkdownFlavorsSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
             "pref_page_ui_appearance" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, UIAppearanceSettingsFragment())
@@ -637,6 +645,224 @@ class UIAppearanceSettingsFragment : BaseSettingsFragment() {
             "pref_page_left_panel" -> LeftPanelSettingsFragment()
             "pref_page_toc" -> TocPanelSettingsFragment()
             "pref_page_bottom_toolbar" -> StylingControlbarFragment()
+            else -> null
+        }
+        if (targetFragment != null) {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.settings_container, targetFragment)
+                .addToBackStack(null)
+                .commit()
+            return true
+        }
+        return super.onPreferenceTreeClick(preference)
+    }
+}
+
+
+class MarkdownFlavorsSettingsFragment : BaseSettingsFragment() {
+    private var isUpdatingFromPreset = false
+
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_markdown_flavors, rootKey)
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (isUpdatingFromPreset) return
+
+        if (key == "pref_markdown_flavor_preset") {
+            val preset = sharedPreferences.getString("pref_markdown_flavor_preset", "wmdx") ?: "wmdx"
+            if (preset != "custom") {
+                applyPreset(sharedPreferences, preset)
+            }
+        } else if (
+            key.startsWith("pref_heading_syntax_") ||
+            key.startsWith("pref_list_syntax_") ||
+            key.startsWith("pref_links_") ||
+            key.startsWith("pref_callout_syntax_") ||
+            key.startsWith("pref_footnote_syntax_") ||
+            key.startsWith("pref_underline_")
+        ) {
+            val currentPreset = sharedPreferences.getString("pref_markdown_flavor_preset", "wmdx")
+            if (currentPreset != "custom") {
+                val matched = detectMatchingPreset(sharedPreferences)
+                if (matched != currentPreset) {
+                    isUpdatingFromPreset = true
+                    sharedPreferences.edit()
+                        .putString("pref_markdown_flavor_preset", matched ?: "custom")
+                        .apply()
+                    isUpdatingFromPreset = false
+                    val pref = findPreference<ResetListPreference>("pref_markdown_flavor_preset")
+                    pref?.value = matched ?: "custom"
+                }
+            }
+        }
+    }
+
+    private fun applyPreset(prefs: SharedPreferences, preset: String) {
+        isUpdatingFromPreset = true
+        val editor = prefs.edit()
+        when (preset) {
+            "wmdx" -> {
+                editor.putString("pref_markdown_preferred_authoring_flavor", "wmdx")
+                editor.putBoolean("pref_heading_syntax_enabled", true)
+                editor.putBoolean("pref_heading_syntax_wmdx_enabled", true)
+                editor.putBoolean("pref_heading_syntax_hash_enabled", true)
+                editor.putBoolean("pref_heading_syntax_setext_enabled", true)
+                editor.putString("pref_heading_authoring_syntax", "wmdx")
+                editor.putBoolean("pref_list_syntax_enabled", true)
+                editor.putBoolean("pref_list_syntax_markdown_enabled", true)
+                editor.putBoolean("pref_list_syntax_gfm_tasks_enabled", true)
+                editor.putBoolean("pref_list_syntax_wmdx_enabled", true)
+                editor.putString("pref_list_authoring_syntax", "wmdx")
+                editor.putBoolean("pref_links_enabled", true)
+                editor.putBoolean("pref_links_commonmark_enabled", true)
+                editor.putBoolean("pref_links_reference_enabled", true)
+                editor.putBoolean("pref_links_obsidian_enabled", true)
+                editor.putBoolean("pref_links_wmdx_enabled", true)
+                editor.putString("pref_links_authoring_syntax", "wmdx")
+                editor.putBoolean("pref_blockquote_syntax_enabled", true)
+                editor.putBoolean("pref_callout_syntax_enabled", true)
+                editor.putBoolean("pref_callout_syntax_wmdx_enabled", true)
+                editor.putBoolean("pref_callout_syntax_obsidian_enabled", true)
+                editor.putString("pref_callout_authoring_syntax", "wmdx")
+                editor.putBoolean("pref_footnote_syntax_enabled", true)
+                editor.putBoolean("pref_footnote_syntax_wmdx_enabled", true)
+                editor.putBoolean("pref_footnote_syntax_markdown_enabled", true)
+                editor.putBoolean("pref_footnote_syntax_obsidian_inline_enabled", true)
+                editor.putString("pref_footnote_authoring_syntax", "wmdx")
+                editor.putBoolean("pref_underline_use_wmdx_syntax", true)
+            }
+            "obsidian" -> {
+                editor.putString("pref_markdown_preferred_authoring_flavor", "obsidian")
+                editor.putBoolean("pref_heading_syntax_enabled", true)
+                editor.putBoolean("pref_heading_syntax_wmdx_enabled", false)
+                editor.putBoolean("pref_heading_syntax_hash_enabled", true)
+                editor.putBoolean("pref_heading_syntax_setext_enabled", true)
+                editor.putString("pref_heading_authoring_syntax", "hash")
+                editor.putBoolean("pref_list_syntax_enabled", true)
+                editor.putBoolean("pref_list_syntax_markdown_enabled", true)
+                editor.putBoolean("pref_list_syntax_gfm_tasks_enabled", true)
+                editor.putBoolean("pref_list_syntax_wmdx_enabled", false)
+                editor.putString("pref_list_authoring_syntax", "markdown")
+                editor.putBoolean("pref_links_enabled", true)
+                editor.putBoolean("pref_links_commonmark_enabled", true)
+                editor.putBoolean("pref_links_reference_enabled", true)
+                editor.putBoolean("pref_links_obsidian_enabled", true)
+                editor.putBoolean("pref_links_wmdx_enabled", false)
+                editor.putString("pref_links_authoring_syntax", "obsidian")
+                editor.putBoolean("pref_blockquote_syntax_enabled", true)
+                editor.putBoolean("pref_callout_syntax_enabled", true)
+                editor.putBoolean("pref_callout_syntax_wmdx_enabled", false)
+                editor.putBoolean("pref_callout_syntax_obsidian_enabled", true)
+                editor.putString("pref_callout_authoring_syntax", "obsidian")
+                editor.putBoolean("pref_footnote_syntax_enabled", true)
+                editor.putBoolean("pref_footnote_syntax_wmdx_enabled", false)
+                editor.putBoolean("pref_footnote_syntax_markdown_enabled", true)
+                editor.putBoolean("pref_footnote_syntax_obsidian_inline_enabled", true)
+                editor.putString("pref_footnote_authoring_syntax", "obsidian_inline")
+                editor.putBoolean("pref_underline_use_wmdx_syntax", false)
+            }
+            "gfm" -> {
+                editor.putString("pref_markdown_preferred_authoring_flavor", "gfm")
+                editor.putBoolean("pref_heading_syntax_enabled", true)
+                editor.putBoolean("pref_heading_syntax_wmdx_enabled", false)
+                editor.putBoolean("pref_heading_syntax_hash_enabled", true)
+                editor.putBoolean("pref_heading_syntax_setext_enabled", true)
+                editor.putString("pref_heading_authoring_syntax", "hash")
+                editor.putBoolean("pref_list_syntax_enabled", true)
+                editor.putBoolean("pref_list_syntax_markdown_enabled", true)
+                editor.putBoolean("pref_list_syntax_gfm_tasks_enabled", true)
+                editor.putBoolean("pref_list_syntax_wmdx_enabled", false)
+                editor.putString("pref_list_authoring_syntax", "markdown")
+                editor.putBoolean("pref_links_enabled", true)
+                editor.putBoolean("pref_links_commonmark_enabled", true)
+                editor.putBoolean("pref_links_reference_enabled", true)
+                editor.putBoolean("pref_links_obsidian_enabled", false)
+                editor.putBoolean("pref_links_wmdx_enabled", false)
+                editor.putString("pref_links_authoring_syntax", "commonmark")
+                editor.putBoolean("pref_blockquote_syntax_enabled", true)
+                editor.putBoolean("pref_callout_syntax_enabled", true)
+                editor.putBoolean("pref_callout_syntax_wmdx_enabled", false)
+                editor.putBoolean("pref_callout_syntax_obsidian_enabled", true)
+                editor.putString("pref_callout_authoring_syntax", "obsidian")
+                editor.putBoolean("pref_footnote_syntax_enabled", true)
+                editor.putBoolean("pref_footnote_syntax_wmdx_enabled", false)
+                editor.putBoolean("pref_footnote_syntax_markdown_enabled", true)
+                editor.putBoolean("pref_footnote_syntax_obsidian_inline_enabled", false)
+                editor.putString("pref_footnote_authoring_syntax", "markdown")
+                editor.putBoolean("pref_underline_use_wmdx_syntax", false)
+            }
+            "commonmark" -> {
+                editor.putString("pref_markdown_preferred_authoring_flavor", "commonmark")
+                editor.putBoolean("pref_heading_syntax_enabled", true)
+                editor.putBoolean("pref_heading_syntax_wmdx_enabled", false)
+                editor.putBoolean("pref_heading_syntax_hash_enabled", true)
+                editor.putBoolean("pref_heading_syntax_setext_enabled", true)
+                editor.putString("pref_heading_authoring_syntax", "hash")
+                editor.putBoolean("pref_list_syntax_enabled", true)
+                editor.putBoolean("pref_list_syntax_markdown_enabled", true)
+                editor.putBoolean("pref_list_syntax_gfm_tasks_enabled", false)
+                editor.putBoolean("pref_list_syntax_wmdx_enabled", false)
+                editor.putString("pref_list_authoring_syntax", "markdown")
+                editor.putBoolean("pref_links_enabled", true)
+                editor.putBoolean("pref_links_commonmark_enabled", true)
+                editor.putBoolean("pref_links_reference_enabled", true)
+                editor.putBoolean("pref_links_obsidian_enabled", false)
+                editor.putBoolean("pref_links_wmdx_enabled", false)
+                editor.putString("pref_links_authoring_syntax", "commonmark")
+                editor.putBoolean("pref_blockquote_syntax_enabled", true)
+                editor.putBoolean("pref_callout_syntax_enabled", false)
+                editor.putBoolean("pref_callout_syntax_wmdx_enabled", false)
+                editor.putBoolean("pref_callout_syntax_obsidian_enabled", false)
+                editor.putBoolean("pref_footnote_syntax_enabled", false)
+                editor.putBoolean("pref_footnote_syntax_wmdx_enabled", false)
+                editor.putBoolean("pref_footnote_syntax_markdown_enabled", false)
+                editor.putBoolean("pref_footnote_syntax_obsidian_inline_enabled", false)
+                editor.putBoolean("pref_underline_use_wmdx_syntax", false)
+            }
+        }
+        editor.apply()
+        isUpdatingFromPreset = false
+        findPreference<ResetListPreference>("pref_markdown_preferred_authoring_flavor")?.value =
+            prefs.getString("pref_markdown_preferred_authoring_flavor", "wmdx")
+    }
+
+    private fun detectMatchingPreset(prefs: SharedPreferences): String? {
+        val wmdxHeadings = prefs.getBoolean("pref_heading_syntax_wmdx_enabled", true)
+        val wmdxLists = prefs.getBoolean("pref_list_syntax_wmdx_enabled", true)
+        val wmdxLinks = prefs.getBoolean("pref_links_wmdx_enabled", true)
+        if (wmdxHeadings && wmdxLists && wmdxLinks) return "wmdx"
+
+        val gfmTasks = prefs.getBoolean("pref_list_syntax_gfm_tasks_enabled", true)
+        val obsidianLinks = prefs.getBoolean("pref_links_obsidian_enabled", true)
+        val obsidianCallouts = prefs.getBoolean("pref_callout_syntax_obsidian_enabled", true)
+        if (obsidianLinks && obsidianCallouts) return "obsidian"
+
+        if (gfmTasks && !obsidianLinks) return "gfm"
+
+        val footnotes = prefs.getBoolean("pref_footnote_syntax_enabled", true)
+        val callouts = prefs.getBoolean("pref_callout_syntax_enabled", true)
+        if (!footnotes && !callouts && !gfmTasks) return "commonmark"
+
+        return "custom"
+    }
+
+    override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        val key = preference.key ?: return super.onPreferenceTreeClick(preference)
+        val targetFragment: PreferenceFragmentCompat? = when (key) {
+            "pref_styling_page_headings" -> StylingHeadingsFragment()
+            "pref_styling_page_lists" -> StylingListsFragment()
+            "pref_styling_page_inline" -> StylingLinksFragment()
+            "pref_styling_page_blockquotes" -> StylingBlockquotesFragment()
+            "pref_styling_page_footnotes" -> StylingFootnotesFragment()
+            "pref_styling_page_underline" -> StylingUnderlineFragment()
+            "pref_styling_page_highlights_pens" -> StylingHighlightsPensFragment()
+            "pref_styling_page_code" -> StylingCodeFragment()
+            "pref_styling_page_tables" -> StylingTablesFragment()
+            "pref_styling_page_hr" -> StylingHrFragment()
             else -> null
         }
         if (targetFragment != null) {

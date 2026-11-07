@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Active Flavor Preset">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_markdown_flavor_preset"
+            app:title="Markdown Flavor Preset"
+            app:summary="Select Wmdx Native, Obsidian, GitHub Flavored Markdown (GFM), CommonMark, or Custom"
+            app:entries="@array/pref_markdown_flavor_preset_entries"
+            app:entryValues="@array/pref_markdown_flavor_preset_values"
+            app:defaultValue="wmdx" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_markdown_preferred_authoring_flavor"
+            app:title="Preferred Authoring Flavor"
+            app:summary="Flavor inserted by toolbar and shortcuts when multiple flavors are enabled"
+            app:entries="@array/pref_markdown_preferred_authoring_flavor_entries"
+            app:entryValues="@array/pref_markdown_preferred_authoring_flavor_values"
+            app:defaultValue="wmdx" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Element Syntax Controls">
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_headings"
+            app:title="Headings Syntax"
+            app:summary="Wmdx (.1-.6), ATX (#), and Setext (===) heading controls" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_lists"
+            app:title="Lists &amp; Tasks Syntax"
+            app:summary="Markdown bullets, Roman/alphabetic markers, GFM tasks, and Wmdx tasks" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_inline"
+            app:title="Links &amp; Inline Syntax"
+            app:summary="Wmdx resource links, Obsidian wikilinks, CommonMark links, and reference links" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_blockquotes"
+            app:title="Quotes &amp; Callouts Syntax"
+            app:summary="Markdown blockquotes, Wmdx ± callouts, and Obsidian > [!type] callouts" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_footnotes"
+            app:title="Footnotes Syntax"
+            app:summary="Wmdx automatic numbered notes, Markdown reference notes, and Obsidian inline notes" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_underline"
+            app:title="Underline Syntax"
+            app:summary="Wmdx _underline_ styles and HTML &lt;u&gt; compatibility" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_highlights_pens"
+            app:title="Highlights &amp; Pens Syntax"
+            app:summary="Wmdx ==highlight==, =pen= text, hex color codes, and Obsidian highlights" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_code"
+            app:title="Code Blocks &amp; Fences"
+            app:summary="Code block fences, language labels, and syntax highlighting" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_tables"
+            app:title="Tables &amp; Cell Alignment"
+            app:summary="GFM pipe tables, row/column spans (&lt;, ^), and cell formatting" />
+
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_styling_page_hr"
+            app:title="Horizontal Rules"
+            app:summary="Thematic break dividers (---, ***, ___)" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

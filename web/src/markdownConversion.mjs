@@ -12,7 +12,7 @@ export const MARKDOWN_IMPORT_FORMATS = Object.freeze([
   'commonmark', 'gfm', 'obsidian', 'html'
 ]);
 export const MARKDOWN_EXPORT_FORMATS = Object.freeze([
-  'commonmark', 'gfm', 'obsidian'
+  'commonmark', 'gfm', 'obsidian', 'wmdx'
 ]);
 
 function addWarning(warnings, message) {
@@ -786,6 +786,9 @@ function mapWmdxTaskItems(lines, protectedLines, dialect, warnings) {
 export function exportMarkdown(source, dialect = 'commonmark') {
   if (!MARKDOWN_EXPORT_FORMATS.includes(dialect)) {
     throw new TypeError(`Unsupported Markdown export format: ${dialect}`);
+  }
+  if (dialect === 'wmdx') {
+    return { markdown: String(source ?? ''), warnings: [] };
   }
   const warnings = [];
   const markdown = protectCodeFences(source, (originalLines, protectedLines) => {

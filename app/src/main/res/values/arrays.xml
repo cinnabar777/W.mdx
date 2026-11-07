@@ -298,4 +298,33 @@
         <item>system-ui</item>
     </string-array>
 
+
+    <string-array name="pref_markdown_flavor_preset_entries">
+        <item>Wmdx Native (Word Processor &amp; Extended Syntax)</item>
+        <item>Obsidian (Wikilinks, Alerts, Callouts &amp; Tags)</item>
+        <item>GitHub Flavored Markdown (GFM Pipe Tables &amp; Tasks)</item>
+        <item>CommonMark (Standard Strict Markdown)</item>
+        <item>Custom Configuration</item>
+    </string-array>
+    <string-array name="pref_markdown_flavor_preset_values">
+        <item>wmdx</item>
+        <item>obsidian</item>
+        <item>gfm</item>
+        <item>commonmark</item>
+        <item>custom</item>
+    </string-array>
+
+    <string-array name="pref_markdown_preferred_authoring_flavor_entries">
+        <item>Wmdx Native</item>
+        <item>Obsidian</item>
+        <item>GitHub Flavored Markdown (GFM)</item>
+        <item>CommonMark</item>
+    </string-array>
+    <string-array name="pref_markdown_preferred_authoring_flavor_values">
+        <item>wmdx</item>
+        <item>obsidian</item>
+        <item>gfm</item>
+        <item>commonmark</item>
+    </string-array>
+
 </resources>

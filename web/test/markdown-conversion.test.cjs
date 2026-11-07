@@ -130,3 +130,18 @@ test('HTML import converts semantic content and omits active elements', async ()
   const comments = convertFromHtml('<p>Text</p><!-- hidden note -->', Parser);
   assert.ok(comments.warnings.some(warning => warning.includes('comments')));
 });
+
+test("Wmdx export returns source without modification", async () => {
+  const { exportMarkdown } = await import("../src/markdownConversion.mjs");
+  const source = [
+    ".1 Heading",
+    "",
+    "±note Title",
+    "  Body content",
+    "",
+    "[source|Title||]"
+  ].join("\n");
+  const result = exportMarkdown(source, "wmdx");
+  assert.equal(result.markdown, source);
+  assert.deepEqual(result.warnings, []);
+});

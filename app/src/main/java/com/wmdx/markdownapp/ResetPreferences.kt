@@ -778,6 +778,8 @@ object PreferenceResetHelper {
                 key == "pref_list_syntax_markdown_enabled" ||
                 key == "pref_list_syntax_gfm_tasks_enabled" ||
                 key == "pref_list_syntax_wmdx_enabled" -> true
+            key == "pref_markdown_flavor_preset" -> "wmdx"
+            key == "pref_markdown_preferred_authoring_flavor" -> "wmdx"
             key == "pref_heading_authoring_syntax" -> "wmdx"
             key == "pref_footnote_authoring_syntax" -> "wmdx"
             key == "pref_list_authoring_syntax" -> "wmdx"

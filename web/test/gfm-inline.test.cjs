@@ -118,11 +118,11 @@ test('main and embedded parser configurations use explicit GFM extensions', () =
   const source = readProjectFile('web/src/main.js');
   assert.match(
     source,
-    /GFMAutolink,\s*GFMTable,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
+    /GFMAutolink,\s*GFMTable,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough[\s\S]*?wmdxCommonMarkCompatibility/
   );
   assert.match(
     source,
-    /GFMAutolink,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
+    /GFMAutolink,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough[\s\S]*?wmdxCommonMarkCompatibility/
   );
 });
 

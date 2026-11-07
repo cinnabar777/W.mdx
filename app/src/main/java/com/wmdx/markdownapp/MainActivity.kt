@@ -6297,7 +6297,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             val markdown = markdownText ?: return
             val dialect = dialectText
                 ?.lowercase()
-                ?.takeIf { it in setOf("commonmark", "gfm", "obsidian") }
+                ?.takeIf { it in setOf("commonmark", "gfm", "obsidian", "wmdx") }
                 ?: return
             val warnings = runCatching {
                 val values = JSONArray(warningsJson ?: "[]")

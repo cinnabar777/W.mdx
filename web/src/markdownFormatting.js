@@ -55,6 +55,8 @@ const MARKDOWN_FORMATS = {
   italic: { node: 'Emphasis', open: '*', close: '*' },
   strikethrough: { node: 'Strikethrough', open: '~~', close: '~~' },
   code: { node: 'InlineCode', open: '`', close: '`' },
+  superscript: { node: 'Superscript', open: '^', close: '^' },
+  subscript: { node: 'Subscript', open: '~', close: '~' },
   underline: { htmlTag: 'u', open: '<u>', close: '</u>' }
 };
 

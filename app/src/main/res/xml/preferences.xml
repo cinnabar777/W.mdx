@@ -4,6 +4,11 @@
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Preferences">
         <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_markdown_flavors"
+            app:title="Markdown Flavors &amp; Presets"
+            app:summary="Configure Wmdx, Obsidian, GFM, or CommonMark presets and syntax rules" />
+
+        <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_ui_appearance"
             app:title="UI Appearance"
             app:summary="Settings appearance, app theme, system bars, panels, Find &amp; Replace, and toolbars" />
