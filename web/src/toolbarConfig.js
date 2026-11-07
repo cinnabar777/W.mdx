@@ -39,6 +39,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   ]),
   menu: Object.freeze([
     'newTab', 'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack', 'saveAsMdzip',
+    'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown',
     'exportHtml', 'search', 'switchView', 'newWindow', 'settings'
   ])
 });
@@ -103,7 +104,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 12,
+  version: 14,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -542,6 +543,33 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       !legacyHidden.includes('newTab')
     ) {
       popupGroups.menu.order.unshift('newTab');
+    }
+  }
+
+  if (parsedVersion > 0 && parsedVersion < 13 && popupGroups.menu) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    for (const id of ['convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown']) {
+      if (
+        !assignedActions.has(id) &&
+        !deletedKeyIds.has(id) &&
+        !legacyHeldKeys.includes(id) &&
+        !legacyHidden.includes(id)
+      ) {
+        popupGroups.menu.order.push(id);
+        assignedActions.add(id);
+      }
+    }
+  }
+
+  if (parsedVersion > 0 && parsedVersion < 14 && popupGroups.menu) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    if (
+      !assignedActions.has('lintMarkdown') &&
+      !deletedKeyIds.has('lintMarkdown') &&
+      !legacyHeldKeys.includes('lintMarkdown') &&
+      !legacyHidden.includes('lintMarkdown')
+    ) {
+      popupGroups.menu.order.push('lintMarkdown');
     }
   }
 

@@ -139,7 +139,10 @@ test('obsolete Files & Tabs toolbar action is removed from saved layouts', async
   });
   assert.deepEqual(
     oldLayout.popupGroups.menu.order,
-    ['newTab', 'newFile', 'settings', 'saveAsMdzip']
+    [
+      'newTab', 'newFile', 'settings', 'saveAsMdzip',
+      'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown'
+    ]
   );
   assert.ok(!oldLayout.holding.includes('leftPanel'));
   assert.equal(oldLayout.styles.leftPanel, undefined);
@@ -158,8 +161,27 @@ test('existing menu layouts gain New Tab without losing their saved actions', as
 
   assert.deepEqual(
     config.popupGroups.menu.order,
-    ['newTab', 'newFile', 'settings', 'saveFile']
+    [
+      'newTab', 'newFile', 'settings', 'saveFile',
+      'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown'
+    ]
   );
+});
+
+test('version 13 menu layouts gain the linter without restoring deleted conversion actions', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 13,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      menu: { order: ['newFile', 'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown'], hidden: [] }
+    },
+    deletedKeys: ['lintMarkdown']
+  });
+
+  assert.deepEqual(config.popupGroups.menu.order, [
+    'newFile', 'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown'
+  ]);
 });
 
 test('invalid saved configuration falls back to the current toolbar order', async () => {

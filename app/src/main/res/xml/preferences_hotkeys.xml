@@ -212,6 +212,30 @@
         app:defaultValue="ctrl+alt+shift+l" />
 
     <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_convert_from"
+        app:title="Markdown: Convert from dialect"
+        app:summary="Preview and convert the open document (e.g. ctrl+shift+alt+c)"
+        app:defaultValue="ctrl+shift+alt+c" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_export_markdown"
+        app:title="Markdown: Export dialect"
+        app:summary="Export a copy as CommonMark, GFM, or Obsidian"
+        app:defaultValue="ctrl+shift+alt+x" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_paste_from"
+        app:title="Markdown: Paste from dialect"
+        app:summary="Convert clipboard text before inserting it (e.g. ctrl+shift+alt+p)"
+        app:defaultValue="ctrl+shift+alt+p" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_lint_markdown"
+        app:title="Markdown: Run linter"
+        app:summary="Check the current document for common structural problems"
+        app:defaultValue="ctrl+shift+alt+l" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
         app:key="pref_hotkey_marker_yellow"
         app:title="Marker 1"
         app:defaultValue="" />

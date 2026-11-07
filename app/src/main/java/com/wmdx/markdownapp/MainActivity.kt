@@ -142,6 +142,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private var pendingCreateDocumentAsMdzip: Boolean? = null
     private var pendingCreateDocumentSessionId: String? = null
     private var pendingCreateNewDocumentFormat: DocumentFormat? = null
+    private var pendingMarkdownExportContent: String? = null
+    private var pendingMarkdownExportWarnings: List<String> = emptyList()
     private var pendingInsertAudioDocumentSessionId: String? = null
     private var pendingInsertVideoDocumentSessionId: String? = null
     private var pendingInsertAttachmentDocumentSessionId: String? = null
@@ -400,6 +402,37 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private val exportDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         uri?.let { saveExportToUri(it) }
     }
+
+    private val markdownExportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
+            val markdown = pendingMarkdownExportContent
+            val warnings = pendingMarkdownExportWarnings
+            pendingMarkdownExportContent = null
+            pendingMarkdownExportWarnings = emptyList()
+            if (uri == null || markdown == null) return@registerForActivityResult
+            try {
+                contentResolver.openOutputStream(uri, "rwt")?.use { output ->
+                    OutputStreamWriter(output, Charsets.UTF_8).use { writer ->
+                        writer.write(markdown)
+                    }
+                } ?: throw IOException("Could not open the selected destination.")
+                if (warnings.isEmpty()) {
+                    ThemedToast.show(this, "Markdown export saved.", Toast.LENGTH_SHORT)
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Markdown export saved with conversion notes")
+                        .setMessage(warnings.joinToString("\n\n"))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                }
+            } catch (error: Exception) {
+                ThemedToast.show(
+                    this,
+                    "Markdown export failed: ${error.localizedMessage ?: "Could not write the file."}",
+                    Toast.LENGTH_LONG
+                )
+            }
+        }
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { insertImageFromUri(it, embedBase64 = false) }
@@ -1568,6 +1601,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "save_as_textpack" to prefs.getString("pref_hotkey_save_as_textpack", "ctrl+shift+alt+s"),
             "save_as_mdzip" to prefs.getString("pref_hotkey_save_as_mdzip", "ctrl+shift+alt+m"),
             "export" to prefs.getString("pref_hotkey_export", "ctrl+shift+e"),
+            "convert_from" to prefs.getString("pref_hotkey_convert_from", "ctrl+shift+alt+c"),
+            "paste_from" to prefs.getString("pref_hotkey_paste_from", "ctrl+shift+alt+p"),
+            "export_markdown" to prefs.getString("pref_hotkey_export_markdown", "ctrl+shift+alt+x"),
+            "lint_markdown" to prefs.getString("pref_hotkey_lint_markdown", "ctrl+shift+alt+l"),
             "image" to prefs.getString("pref_hotkey_image", "ctrl+shift+i"),
             "settings" to prefs.getString("pref_hotkey_settings", "ctrl+,"),
             "open_with" to prefs.getString("pref_hotkey_open_with", "ctrl+shift+o"),
@@ -6248,6 +6285,34 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 clip.getItemAt(0).coerceToText(this@MainActivity)?.toString() ?: ""
             } catch (_: Exception) {
                 ""
+            }
+        }
+
+        @JavascriptInterface
+        fun saveMarkdownExport(
+            dialectText: String?,
+            markdownText: String?,
+            warningsJson: String?
+        ) {
+            val markdown = markdownText ?: return
+            val dialect = dialectText
+                ?.lowercase()
+                ?.takeIf { it in setOf("commonmark", "gfm", "obsidian") }
+                ?: return
+            val warnings = runCatching {
+                val values = JSONArray(warningsJson ?: "[]")
+                (0 until values.length()).mapNotNull { index ->
+                    values.optString(index).takeIf { it.isNotBlank() }
+                }
+            }.getOrDefault(emptyList())
+            runOnUiThread {
+                pendingMarkdownExportContent = markdown
+                pendingMarkdownExportWarnings = warnings
+                val baseName = currentFileName
+                    .substringBeforeLast('.', currentFileName)
+                    .trim()
+                    .ifBlank { "Wmdx-export" }
+                markdownExportLauncher.launch("$baseName-$dialect.md")
             }
         }
 

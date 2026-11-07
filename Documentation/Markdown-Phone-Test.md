@@ -1,26 +1,8 @@
 # Markdown Phone Rendering Test
 
-This is a visual smoke test, not a complete CommonMark, GFM, or Obsidian
-compatibility suite. It samples common cases for a quick phone check; the
-specification corpora and import/export round trips are tested separately.
-
-Open this file in W.mdx and check it in Live Preview and WYSIWYG. WYSIWYG should
-hide supported inline and reference-link syntax. Live Preview should keep the
-rendered text and reveal relevant syntax contextually while editing the link.
-The reference definition should stay hidden in rendered views. Autolink angle
-brackets should not appear. Nested quotes should indent farther than their
-parent, and the outer quote border should continue through both paragraphs and
-the nested quote. The list with up to three leading spaces before its markers
-should stay flat, the nested list should stay nested, and the quoted list should
-stay inside its quote. Tap inline, reference, angle, and automatic links to
-confirm they open the browser or email app. Tap the wiki link to confirm it
-opens the packaged companion document. Source view should show the original
-Markdown syntax.
-
-The tables below should render as editable tables in Live Preview and WYSIWYG.
-Source should show raw Markdown table syntax on single, unwrapped lines; scroll
-horizontally to inspect wide rows. The table-cell checks cover cursor placement
-and editing.
+Examples in this document cover the common syntax families and packaged media.
+The companion [interaction checklist](Markdown-Phone-Test-Checklist.md) is
+included in this MDZip package; this document stays focused on readable examples.
 
 ## CommonMark
 
@@ -71,8 +53,7 @@ The code span should show `**these marks literally**`, not bold text.
    1. Nested numbered item
 3. Third numbered item
 
-Items indented by up to three spaces before their markers should stay at one
-list level:
+Up to three leading spaces do not create another list level:
 
 - First
  - Second
@@ -93,85 +74,8 @@ list level:
 >
 > - A list item inside a block quote.
 
-The nested quote should be visibly indented farther than the first quote, with
-an inset border while the outer border remains continuous.
-CommonMark and Obsidian quote markers stay at the left edge: nested source uses
-`> >`. To create one in the editor, place the cursor in a quote or select quoted
-lines and use the Block Quote toolbar action; it adds another quote level.
-Outdent removes one level. Ordinary
-indentation is separate from quote nesting: any wrapped text in an indented
-paragraph or quote should remain aligned with the indented block.
-
-For the wrapping check, place the cursor in the following quote and use Indent.
-At a collapsed cursor, the action should indent the whole paragraph, not just
-the current source line. In Live Preview and WYSIWYG, leading indentation
-spaces should stay hidden even when the cursor is on the line. Source view keeps
-the spaces visible, but the first row and every wrapped row must begin at the
-same content position. On an ordinary paragraph, set Indent Step to one space
-and verify each action moves every wrapped row with the paragraph. Then choose
-two spaces and verify one action moves it by two spaces. With either choice,
-enough indentation may create a CommonMark indented code block; this is separate
-from the fenced-code toolbar action. In Live Preview and WYSIWYG, the four
-structural spaces that create an indented code block must not appear as a
-first-line text indent. Any shared leading code indentation must shift the whole
-rendered block, including wrapped rows; relative indentation between code lines
-must remain. The quote border must stay at the same left position:
-
-> This indented quote is deliberately long enough to wrap on a phone screen.
-> Its next source line should remain aligned with the indented quote block.
-
-Check root and nested bullet and task items, plus decimal, upper/lower
-alphabetic, and upper/lower Roman ordered items with long text. By default,
-wrapped lines align under the item text. Enable Non-hanging List Wrapping to
-align them at the marker instead. Compare each item in Source, Live Preview, and
-WYSIWYG. Place the cursor in an item, then close the keyboard; its wrapping must
-not jump to the parent or document margin.
-Increase and decrease indent with both the toolbar and Tab/Shift-Tab. The item,
-continuation, and child must move together, and numbering must remain correct.
-Showing list syntax may naturally shift the text after a visible marker, but
-wrapped lines must stay with their item.
-
-When a paragraph follows a list, delete the blank separator at the start of the
-paragraph. Markdown treats the following text as part of the list item; its
-wrapped lines must align under the item text in Source, Live Preview, and
-WYSIWYG. Press Return to create the next item and verify its marker and wrapping
-stay stable without a visible layout jump.
-
-For a document whose first paragraph is an indented code block, use Clear
-Formatting and confirm its structural spaces are removed without deleting code
-text. Restore four spaces, place the caret at the visual start, and press
-Backspace once; it should remove one literal indentation character. Fenced code
-must keep its existing behavior.
-
-#### Pasting multiline content into a quote
-
-Start with this quote and place the cursor at the start of the blank quote
-line, before its `>` marker:
-
-```md
-> Paste here
->
-```
-
-Paste these lines:
-
-```md
-- First
-  - Second
-    - Third
-```
-
-The source should keep every pasted line inside the quote:
-
-```md
-> Paste here
-> - First
->   - Second
->     - Third
-```
-
-Repeat the paste with the long-press Paste action, Ctrl+V, and the keyboard
-clipboard. Each path should produce the same quoted source.
+The quote contains a second paragraph, a nested quote, and a list. The full
+indentation, wrapping, editing, and paste scenarios are in the checklist.
 
 ### Code blocks
 
@@ -205,6 +109,10 @@ Image using a small inline SVG:
 
 ![Cyan sample image|120](data:image/svg+xml,%3Csvg%20xmlns%3D'http://www.w3.org/2000/svg'%20width%3D'120'%20height%3D'60'%3E%3Crect%20width%3D'120'%20height%3D'60'%20fill%3D'%2300bfc5'/%3E%3C/svg%3E)
 
+Packaged PNG image resolved from the MDZ document root:
+
+![Packaged sample image|120](Markdown-Phone-Test-Image.png)
+
 Packaged landscape photograph at a fixed display width:
 
 ![Alpine lake at golden hour|240](media/phone-test-lake.jpg)
@@ -217,8 +125,7 @@ Packaged close-up photograph using the local Obsidian image-embed form:
 
 ### Packaged audio, video, and attachments
 
-These sample files are included inside `Markdown-Phone-Test.mdz`; none of these
-links should depend on a network connection:
+The sample files are packaged with this document:
 
 [Short WAV chime](audio/phone-test-chime.wav "wmdx-audio:width=80;align=center")
 
@@ -229,11 +136,6 @@ links should depend on a network connection:
 [Text attachment](attachments/phone-test-notes.txt "wmdx-attachment:width=80;align=center")
 
 [ZIP attachment with a CSV](attachments/phone-test-data.zip "wmdx-attachment")
-
-In each rendered mode, verify the image, audio player, video player, and
-attachment buttons appear. Play and pause the WAV and MP4. The links should
-retain their titles and width/alignment settings; Source should show the raw
-Markdown links and metadata.
 
 ### Thematic break
 
@@ -254,8 +156,6 @@ These examples cover the GFM features that CommonMark does not define.
 - [X] Also checked
   - [ ] Nested unchecked task
 
-Checkboxes should render and remain tappable.
-
 ### Strikethrough
 
 Double tilde: ~~removed text~~.
@@ -271,24 +171,11 @@ Three tildes should stay literal: This will ~~~not~~~ strike.
 | left | center | right |
 | **bold** | `code` | ordinary text |
 
-Check the header, column alignment, cell spacing, and inline formatting. In Live
-Preview and WYSIWYG, the Markdown table must remain a rendered, editable table.
-Source must show its raw pipe syntax. In Live Preview and WYSIWYG, tap a cell and
-verify the caret and keyboard enter that cell without relying on a synthesized
-click; they must not move to the line after the table or reveal the table source.
-Edit a cell, tap another cell, then return to confirm the first edit was saved.
-Long-press an unedited cell and confirm both the floating toolbar and table
-action menu remain available without overlapping. Save and reopen the document
-to confirm the edit persists.
-
 #### Wide table for horizontal Source scrolling
 
 | Identifier | Description | Owner | Updated | State | Notes |
 | :--- | :--- | :--- | ---: | :---: | :--- |
 | WMDX-001 | A deliberately long row that should remain on one source line | Editor | 2026-11-06 | Open | Keep every pipe and separator intact |
-
-Source should not wrap these rows. Drag horizontally to inspect the whole source
-table, then switch modes and confirm it becomes a normal editable table.
 
 ### GFM automatic links
 
@@ -299,10 +186,6 @@ https://github.com/
 reader@example.com
 
 ftp://foo.bar.baz.
-
-Each automatic link should be styled and open its browser or email app when
-tapped. For the FTP example, verify the trailing period is not part of the link;
-`foo.bar.baz` is a specification placeholder, not a live server.
 
 ## Obsidian
 
@@ -332,12 +215,11 @@ at 32 pixels wide:
 
 ### Callouts
 
-> [!info] Information callout
-> The callout title and body should appear together in a styled block.
-> **Markdown formatting** should work inside the body.
+> [!info] Information
+> A short callout body with **bold text** and a second sentence.
 
 > [!warning]- Collapsed callout
-> This body should be hidden initially and appear when the callout is expanded.
+> This body is revealed when the callout is expanded.
 
 ### Highlight and reference footnote
 
@@ -350,9 +232,6 @@ This sentence has a reference footnote.[^phone-test]
 This sentence has an Obsidian inline footnote.^[This note is written at its reference.]
 
 ## W.mdx word-processing syntax
-
-These are W.mdx extensions, separate from CommonMark and GFM. Underline display
-depends on the **Use Wmdx syntax** setting.
 
 Solid _underline_, dotted _₀underline_, dashed _₁underline_, double
 _₂underline_, and wavy _₃underline_.
@@ -380,17 +259,6 @@ ii. Second lowercase Roman item
 
 [ ] Native unchecked task
 [x] Native checked task
-
-Check numbering, nesting, wrapped text, and cursor entry in all three modes.
-CommonMark/GFM decimal lists and checkbox forms are tested above.
-
-## Known Obsidian gaps — not expected to pass
-
-The following forms are listed as current limitations, not rendering tests:
-
-- Heading or block transclusion such as `![[note.md#Heading]]`.
-- Obsidian audio, video, and PDF embeds such as `![[clip.mp4]]`.
-- `%% comments %%`, YAML properties/frontmatter, math, Mermaid, and plugin syntax.
 
 ## Reference
 

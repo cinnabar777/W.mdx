@@ -758,103 +758,60 @@ as field separators, not cell boundaries.
 
 ### Current status and remaining work
 
-**User-reported working:** heading flavors (including Setext's two levels),
-Wmdx and Obsidian callouts, footnotes, list styles and checkboxes, and link
-insertion for external, internal, and reference links. Keep each feature's
-enable switch, recognized flavors, and preferred authoring syntax app-wide;
-do not move those choices to individual documents.
+The user selected the broader CommonMark/GFM/Obsidian/Wmdx implementation,
+including import, paste conversion, Markdown export, and a linter. The current
+worktree now includes:
 
-**Implemented and awaiting device verification:** quote nesting now targets
-only the paragraph at the caret (or the selected lines); ordinary indentation
-moves wrapped text without moving a quote border; Clear Formatting handles
-block syntax and inline formatting for the current paragraph or selected text.
-Focused web tests pass and the web bundle builds, but those checks do not verify
-Android rendering or touch behavior.
+- A shared whole-document semantic layout module consumed by the three editor
+  views, with browser geometry coverage for list flavors, nesting, mixed blocks,
+  source-table scrolling, table edits, keyboard viewport changes, and scroll
+  anchoring across mode switches.
+- A conversion module for CommonMark, GFM, Obsidian, and HTML input, with a
+  preview-before-replace flow and a shared clipboard-paste flow.
+- CommonMark, GFM, and Obsidian Markdown export, with warnings when a target
+  cannot preserve Wmdx semantics or presentation.
+- A structural linter for common source problems, shown in the editor with
+  line-jump actions.
+- An offline MDZip phone fixture with packaged images, audio, video, and
+  attachments, plus a separate interaction checklist.
 
-The latest device check confirms nested quotes and Clear Formatting work. It
-found that the first rendered row in an indented paragraph was shifted relative
-to wrapped rows. Explicit source indentation already defines the paragraph's
-left edge, so the paragraph-first-line typography preference must not add a
-second indent to that first row. The leading source spaces must also be hidden
-in Live Preview and WYSIWYG, including when the cursor is on the line; Source
-view keeps the syntax visible but applies a hanging indent so the first visual
-row and its wrapped rows share the same content edge. Live Preview and WYSIWYG
-hide leading indentation syntax and apply the same block-level layout. This is
-separate from the paragraph typography preference for first-line indentation.
-Toolbar Indent and Outdent never change the paragraph-first-line preference.
-Ordinary paragraph actions add the selected one or two Markdown spaces per
-level, move all source lines together, and allow four leading spaces to create
-CommonMark indented code. This is distinct from the fenced-code toolbar action.
-The default is one space, configurable under Settings → Document Appearance →
-Paragraph. Indent and Outdent at a collapsed cursor target all source lines in
-the current paragraph.
+**Latest local verification (2026-11-07):** 559 web tests, 352 real-browser
+layout/interaction cases, and 62 Android unit tests pass; the Debug APK assembles
+with JDK 17 and Android API 34. The browser run does not prove Android touch,
+keyboard, URI-provider, media playback, or device-rendering behavior; those
+remain unverified until an on-device run. GitHub Actions must still verify the
+pushed commit and uploaded APK artifact.
 
-**Required list behavior:** Hanging wrapping is the default for every bullet,
-task, and ordered-marker style. Wrapped rows align under the item text. The
-optional Non-hanging List Wrapping setting aligns wrapped rows at the marker;
-neither setting adds a first-line paragraph indent. Indent and Outdent move the
-whole paragraph or list item, and literal spaces can still create an indented
-code block. A paragraph continuation that becomes part of a list item after its
-blank separator is removed must remain aligned with that item.
+**View contract:** Source shows complete syntax and raw tables. Live Preview and
+WYSIWYG use the same rendered structures; Live Preview reveals syntax
+contextually. All views consume shared block layout. Visible syntax can
+naturally change inline width and wrapping. Do not reserve placeholder width for
+hidden markers.
 
-**Required view-mode behavior:** Use one semantic rendering and layout pipeline
-for the document. WYSIWYG and Live Preview render Markdown structures, including
-tables as editable tables. Source exposes the complete Markdown source,
-including raw table syntax, while retaining the same block styling and layout.
-Live Preview stays close to WYSIWYG and reveals relevant syntax contextually;
-entering a table must not turn it into raw source. Visible syntax takes its
-natural inline width, and hidden syntax reserves no placeholder width.
+**List contract:** Hanging wrapping is the default for bullets, tasks, and
+ordered markers. Non-hanging mode aligns wrapped rows at the item block edge;
+neither mode adds a first-line paragraph indent. Indent and Outdent move the
+whole item or paragraph. A continuation that becomes part of a list item after
+its blank separator is removed must remain aligned with that item. A visible
+source marker may change natural line wrapping, but must not reset list nesting,
+block margin, or the selected wrapping rule.
 
-**Current implementation is not unified.** Source list rendering exits through
-a separate path using `.cm-source-list-wrapped`, padding, and negative
-`text-indent`. Live Preview and WYSIWYG use marker decorations,
-`.cm-list-block-text`, and flex layout; WYSIWYG also has a separate list
-decoration path in its height-map field. The persistent layout field still
-branches on editor mode. Recent source-column offset changes did not remove
-these competing paths and must not be treated as completion of the unified
-rendering work.
+**Dialect conversion boundaries:** The conversion actions are implemented but
+are not full specification certifications. Wmdx alphabetic/Roman lists export
+as decimal markers; CommonMark tasks use inline HTML; CommonMark pipe tables are
+preserved with a warning because they are a GFM extension; unsupported callout
+styling, color slots, and pen annotations are warned about. HTML import omits
+active content and warns about unsupported presentation. Obsidian
+heading/block transclusion and plugin syntax remain out of scope. Keep this
+document and `Markdown-Dialects-and-File-Formats.md` aligned with tests and
+shipped behavior.
 
-**Acceptance:** Compare actual rendered marker, item-text, and wrapped-line
-positions across Source, Live Preview, and WYSIWYG using the same document.
-Cover bullets, tasks, decimal, upper/lower alphabetic, and upper/lower Roman
-markers at multiple nesting levels; repeat with syntax visible and hidden, the
-cursor inside and outside an item, and the keyboard open and closed. Tests that
-only assert CSS variables or classes do not establish visual parity. Also
-verify that Live Preview and WYSIWYG keep tables rendered and editable while
-Source displays raw table syntax.
-
-**Current verification checklist:**
-
-1. In a quoted block with blank quoted lines between paragraphs, place the
-   caret in one paragraph and use Block Quote. Only that paragraph should gain
-   one `>` level. Outdent should affect only that paragraph as well.
-2. Increase indentation on a long normal paragraph and on a quoted paragraph.
-   In Source, Live Preview, and WYSIWYG, every wrapped line should align with
-   the first line's content edge; the quote border should stay at the left edge.
-3. Indent and outdent nested bullet, ordered, and task items with long text and
-   child items. By default, wrapped rows align under item text. Enable
-   Non-hanging List Wrapping to align them at each item's marker. Verify both
-   behaviors in Source, Live Preview, and WYSIWYG, while an item is active and
-   after the keyboard closes. No nested wrap may fall back to its parent or the
-   document margin. All modes must use the same block layout; syntax visibility
-   may shift the inline text naturally, but must not change the list's wrapping
-   rule. A continuation that joins the item after deleting its blank separator
-   still wraps under the item text.
-4. With no selection, Clear Formatting should remove the current paragraph's
-   heading, list/task, quote/callout, indentation, link, or inline style syntax
-   while keeping its visible text. It must also clear a first-paragraph
-   indented-code block. With a selection, it should clear only the selected
-   text and affected block lines. Backspace at the visual start of an indented
-   code block should remove one indentation character; fenced code is unchanged.
-5. Long-press CommonMark external links and reference links in WYSIWYG. Confirm
-   Edit and Delete are reachable, edits keep destination and title in their
-   correct fields, and Delete leaves the displayed text. The last device report
-   confirmed Wmdx and Obsidian internal links but did not confirm these two.
-6. Recheck Source, Live Preview, and WYSIWYG after those edits and after
-   save/reopen; import/export must still parse all flavors.
-
-**Next:** resolve any failures from this checklist. Do not start another syntax
-family or broader conversion project until the user picks it.
+**Remaining acceptance:** After pushing, inspect every GitHub workflow step and
+confirm the Debug APK artifact. On a device, verify the fixture in all three
+modes, edit/save/reopen an MDZip, test audio/video/attachment providers, and
+check keyboard open/close behavior. Follow
+`Markdown-Phone-Test-Checklist.md`; describe unverified device behavior as
+unverified.
 
 ### Project instructions
 

@@ -367,10 +367,10 @@ test('list toolbar actions cover selected lines and custom markers refresh while
   assert.match(mainSource, /getTaskListEnterEdit\(/);
   assert.match(mainSource, /handleCalloutEnter\(view, event\) \|\|[\s\S]*?handleTaskListEnter\(view, event\)/);
   assert.match(mainSource, /handleCalloutEnter\(view, event\) \|\|[\s\S]*?handleWmdxOrderedListEnter\(view, event\)/);
-  assert.equal(
-    (mainSource.match(/linePattern: \/\^\[ \\t\]\*\[A-Za-z\]\+\[\.\)\]\(\?:\[ \\t\]\|\$\)\//g) || []).length,
-    2
-  );
+  // Syntax presentation retains its incremental structural guard. Shared
+  // semantic layout is now rebuilt from the cached document model on edits.
+  assert.match(mainSource, /linePattern: \/\^\[ \\t\]\*\[A-Za-z\]\+\[\.\)\]/);
+  assert.match(mainSource, /return buildPersistentLayoutDecorations\(tr\.state\)/);
 });
 
 test('Return continues Wmdx alpha and Roman lists, and a blank item exits', async () => {

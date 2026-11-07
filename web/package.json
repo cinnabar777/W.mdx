@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node build.cjs",
     "test": "node build_tests.cjs && node --test test/*.test.cjs dist/*.test.cjs",
-    "test:browser": "node browser-tests/source-table-scroll.cjs"
+    "test:browser": "node browser-tests/unified-layout.cjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",

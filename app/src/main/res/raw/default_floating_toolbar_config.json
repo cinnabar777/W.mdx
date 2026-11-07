@@ -1,5 +1,5 @@
 {
-  "version": 11,
+  "version": 14,
   "order": [
     "highlightCycle",
     "underline",
@@ -15,13 +15,14 @@
   "deletedGroups": ["heading", "lists", "format", "menu", "table", "insert"],
   "deletedKeys": [
     "attachment", "audio", "autoHeading", "blockQuote", "bulletedList", "callout", "clearFormatting",
-    "codeBlock", "deleteColumn", "deleteRow", "embed", "exportHtml", "footnote", "heading1",
+    "codeBlock", "convertFromMarkdown", "deleteColumn", "deleteRow", "embed", "exportHtml",
+    "exportMarkdown", "footnote", "heading1",
     "heading2", "heading3", "heading4", "heading5", "heading6", "highlightBlue",
     "highlightGreen", "highlightPink", "highlightYellow", "horizontalLine", "image",
     "indent", "inlineCode", "insertColumnRight", "insertRowBelow", "insertTable",
-    "italic", "line-numbers", "link", "mergeDown", "mergeLeft", "mergeRight",
+    "italic", "line-numbers", "link", "lintMarkdown", "mergeDown", "mergeLeft", "mergeRight",
     "mergeUp", "newFile", "newTab", "newWindow", "numberedList", "openFile", "outdent",
-    "paragraph", "penBlue", "penGreen", "penPurple", "penRed", "saveAsFile",
+    "paragraph", "pasteFromDialect", "penBlue", "penGreen", "penPurple", "penRed", "saveAsFile",
     "saveAsTextPack", "saveFile", "saveTabs", "search", "settings", "splitCell",
     "strikethrough", "switchView", "todoList", "underlineDashed", "underlineDotted",
     "underlineDouble", "underlineSolid", "underlineWavy", "undo", "video", "wrap",

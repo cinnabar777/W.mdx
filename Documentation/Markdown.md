@@ -7,6 +7,9 @@ to type; the examples labeled **Rendered** show the result in the editor.
 
 For the agreed W.mdx-native syntax and its current implementation status, see
 [W.mdx Native Syntax — Design Draft](Wmdx-Syntax-Design.md).
+For how CommonMark, GFM, Obsidian, and Wmdx settings interact with file opening,
+saving, and export, see
+[Markdown Dialects, Settings, and File Formats](Markdown-Dialects-and-File-Formats.md).
 
 ## Quick reference
 
@@ -534,15 +537,15 @@ The old `md...` entries were text-expansion abbreviations, not Markdown syntax.
 Any expansion depends on your keyboard or an external text expander; Wmdx does
 not define those abbreviations.
 
-Wmdx does not use HTML as its native authoring syntax. HTML export is allowed.
-Currently, when **Use Wmdx syntax** is disabled, underline formatting uses the
-`<u>...</u>` compatibility form; when enabled, it uses Wmdx's text-based
-underline markers.
+Wmdx does not use HTML as its native authoring syntax. The editor can export
+HTML/MHTML and explicitly convert HTML input to Wmdx. That conversion maps
+common semantic blocks, lists, links, images, media, attachments, and tables;
+unsupported active content is omitted, and known losses are shown as warnings.
+It is a semantic conversion, not a browser-layout snapshot. See
+[Markdown Dialects, Settings, and File Formats](Markdown-Dialects-and-File-Formats.md).
 
-HTML input must be converted to native Wmdx syntax rather than retained as raw
-HTML. Use existing Wmdx syntax where it represents the imported feature. When a
-feature has no suitable equivalent, identify it and agree on a native syntax
-before implementing that conversion.
+When **Use Wmdx syntax** is disabled, underline formatting uses the `<u>...</u>`
+compatibility form; when enabled, it uses Wmdx's text-based underline markers.
 
 ## Markdown dialect compatibility
 
@@ -558,13 +561,14 @@ another renderer.
 quotes, code spans and blocks, emphasis, links, images, escapes, hard line
 breaks, thematic breaks, reference links, and autolinks.
 
-**Still to do for full compatibility:**
+**Remaining compatibility work:**
 
 - The pinned CommonMark 0.31.2 corpus now checks parser-level semantic nodes for
   all 575 non-HTML examples. This does not yet verify exact WYSIWYG rendering,
   edits, or exported Markdown.
-- Define and test HTML-to-Wmdx conversion, including native syntax for imported
-  HTML features that have no existing Wmdx equivalent. HTML export is allowed.
+- The explicit HTML-to-Wmdx conversion action now maps common semantic content.
+  It still needs broad HTML-interoperability coverage and Android file-provider
+  verification; unsupported styles and structures are reported as warnings.
 - Keep the optional **Use Wmdx syntax** underline setting in mind: when enabled,
   `_text_` means underline rather than CommonMark italic. Use `*text*` for
   portable italics in that setting.
@@ -574,14 +578,15 @@ breaks, thematic breaks, reference links, and autolinks.
 **Implemented:** pipe tables, task-list checkboxes, single- and double-tilde
 strikethrough, and GFM autolinks. Tables and tasks are editable in W.mdx.
 
-**Still to do for full compatibility:**
+**Remaining compatibility work:**
 
 - The GFM 0.29 extension corpus now has parser-semantic checks for all 21
   non-HTML table, strikethrough, and autolink examples. This does not yet verify
   exact WYSIWYG rendering or full Markdown import/export round trips.
 - GitHub.com alerts share the `> [!type]` callout marker with W.mdx, but exact
   alert types and rendering are not a compatibility promise.
-- For GFM raw HTML, use the HTML-to-Wmdx import-conversion policy above.
+- Raw HTML can be passed through the explicit HTML-to-Wmdx conversion action;
+  raw HTML in ordinary Markdown is not a promise of browser-equivalent output.
 - GitHub-specific issue, pull-request, commit, and `@mention` links are not
   general Markdown syntax; W.mdx does not resolve them to GitHub or send
   notifications.
@@ -611,16 +616,17 @@ full Obsidian callout or plugin parity.
 
 ### Other dialects outside the current scope
 
-Pandoc Markdown and Markdown Extra are not current targets. Their syntax may be
-considered for import only after the CommonMark, GFM, and Obsidian goals below
-are met. If that happens, specify the individual extensions needed instead of
-promising compatibility with an entire dialect.
+Pandoc Markdown and Markdown Extra are not current targets. Consider them only
+after the CommonMark, GFM, and Obsidian acceptance work is complete. Specify
+individual extensions rather than promising compatibility with an entire
+dialect.
 
 MDX combines Markdown with JSX and JavaScript expressions; it is not a plain
 Markdown dialect or a compatibility target for Wmdx documents.
 
 **Current scope:** CommonMark, GFM, and Obsidian's built-in Markdown syntax.
-Do not add another dialect target until the compatibility goal below is met.
+Do not add another dialect target until the current feature matrix and
+round-trip/device acceptance work is complete.
 
 ### Specifications and references
 
@@ -636,53 +642,30 @@ Do not add another dialect target until the compatibility goal below is met.
 - [Markdown Extra](https://michelf.ca/projects/php-markdown/extra/)
 - [MDX: Markdown for the component era](https://mdxjs.com/docs/what-is-mdx/)
 
-## Compatibility goal
+## Compatibility and verification status
 
-- **CommonMark and GFM:** provide full comparability and import/export support
-  for each dialect's Markdown syntax, verified against its specification and
-  representative documents. Convert imported HTML to native Wmdx syntax; HTML
-  export is also supported.
-- **Obsidian:** W.mdx is not intended to reproduce the entire Obsidian app.
-  Make the documented built-in Markdown syntax and features that W.mdx supports
-  work reliably and as closely to Obsidian as practical. This does not include
-  third-party plugins or every Obsidian app feature.
-- **Import, paste, and export:** provide a **Convert from** and **Paste from**
-  action for each source format: CommonMark, GFM, Obsidian, and HTML. Each action
-  has its own toolbar action and keyboard shortcut; all use the same conversion
-  engine configured for the selected source format. Markdown export selects a
-  target dialect, and HTML export remains allowed.
+Focused tests verify named Wmdx behaviors; they do not establish full
+specification compatibility or identical rendering in another application.
+The official CommonMark 0.31.2 corpus has 575 non-HTML cases checked for parser
+semantics. The remaining 77 HTML-interoperability cases are not certification
+of HTML conversion. The project does not claim a complete GFM or Obsidian
+conformance suite.
 
-**Next step:** create a feature-by-feature acceptance matrix and regression
-fixtures for all three targets. Test each applicable path through import/open,
-rendering and editing, save/export, and reopen before expanding the syntax.
-
-## Compatibility matrix
-
-“Focused tests” below verify specific app behavior; they do not establish full
-specification compatibility. The official CommonMark 0.31.2 corpus is included:
-575 non-HTML cases pass a parser-semantic check, and 77 HTML-interoperability
-cases are held pending HTML-to-Wmdx conversion coverage. The suite does not yet
-verify full WYSIWYG rendering or export, and there is no official GFM corpus or
-complete cross-dialect round-trip suite.
-
-| Target or area | Current support and focused test evidence | Remaining acceptance work |
+| Area | Implemented behavior and tests | Known remaining work |
 | --- | --- | --- |
-| CommonMark core | Parser-semantic checks cover all 575 non-HTML cases in the official 0.31.2 corpus, including tab-separated ATX headings and unresolved references inside emphasis. Focused WYSIWYG/Live Preview tests cover character references, escapes, hard breaks, code-span normalization, flat-list indentation, nested lists, and lists inside block quotes while preserving source spelling. | Verify exact WYSIWYG rendering and open, edit, save, export, and reopen semantics against representative cases. |
-| CommonMark raw HTML | Raw HTML is not rendered as native Wmdx content. `<u>...</u>` remains as a compatibility form when Wmdx underline syntax is disabled; 77 HTML-interoperability cases are held out of native parser checks. | Convert imported HTML to native Wmdx syntax, proposing native syntax for features without an existing equivalent. HTML export is allowed. |
-| GFM tables | Editable pipe tables; tests cover official table examples 198–205, cell-count normalization, escaped pipes, alignment, editing, serialized Markdown reopening, and MDZip archive open/save/reopen. | Verify direct Android Markdown file save/open and the MDZip content-provider write path. |
-| GFM tasks, strikethrough, and autolinks | The GFM 0.29 fixture checks all 21 non-HTML extension examples: tables 198–205, strikethrough 491–492, and autolinks 621–631, including FTP. Main and embedded tests cover task examples 279–280; Markdown stream-codec and MDZip tests cover open/save/reopen preservation. The separate Export action currently produces HTML/MHTML, not a Markdown dialect export. | Verify WYSIWYG rendering and Android document-provider round trips. Convert imported GFM raw HTML through the shared HTML-to-Wmdx conversion path; add dialect-specific Markdown export. |
-| Obsidian links and embeds | Wiki links, aliases, current-document heading links, whole-document and nested embeds, and local image embeds including pixel sizing; focused coverage in `navigation_link_mapping.test.cjs`, `embedded-document.test.cjs`, and `obsidian-image-embed.test.cjs`. | Verify image resolution and round trips across Markdown and MDZip. Heading/block transclusion and audio, video, and PDF embed shorthand remain unsupported. |
-| Obsidian callouts and footnotes | Callout and reference-footnote behavior has focused coverage in `callout.test.cjs`, `footnotes.test.cjs`, and `embedded-document.test.cjs`. | Build a documented built-in syntax fixture set and verify behavior across source, WYSIWYG, save, and reopen. Plugin and app-only behavior is out of scope. |
-| Wmdx word-processing syntax | Underline, highlighting, and pen syntax are implemented; focused tests include `markdown-formatting.test.cjs` and `underline-delimiters.test.cjs`. | Keep new syntax text-based, readable, and minimally intrusive. Heading alternatives such as `.1`, `.2`, and `.3` are planned, not implemented. Replace HTML dependence for authoring as native equivalents become available. |
-| Cross-dialect import/export | Markdown files can be opened and saved, but no dialect-specific export profiles or complete round-trip acceptance suite are established. | Define conversion rules for each target; preserve supported meaning through import/edit/export/reopen and warn when a target cannot represent content without loss. |
+| CommonMark core | Parser-semantic checks cover the 575 non-HTML examples. Focused editor tests cover character references, escapes, hard breaks, code spans, nested lists, and lists in quotes while preserving source. | Full rendering, editing, file-provider, and export comparisons against the specification are not complete. |
+| GFM extensions | Pipe tables, tasks, strikethrough, and autolinks are recognized; focused fixtures cover GFM extension examples and editable tables. | GitHub-specific mentions/issue references and full GFM interoperability are not promised. |
+| Obsidian conventions | Wiki links/aliases, document and image embeds, callouts, and footnotes are supported. | Heading/block transclusion, plugin syntax, YAML properties, and full vault behavior are outside scope. |
+| Wmdx syntax | Decimal headings, alphabetic/Roman list markers, native tasks, resource links, media/attachment metadata, callouts, numbered footnotes, underline styles, highlight slots, and pen slots are implemented. | App/device acceptance remains necessary; export can lose style or dialect-specific semantics and reports known losses. |
+| Import and paste | Menu actions preview conversion from CommonMark, GFM, Obsidian, or HTML into Wmdx. Paste uses the same conversion engine. | Complex HTML styling, HTML comments, merged table cells, and unsupported dialect features may be omitted with warnings. |
+| Markdown export | Menu action exports CommonMark, GFM, or Obsidian and saves a separate Markdown file. Headings, links, supported callouts/tasks, and Wmdx formatting have explicit mappings. | CommonMark tables are preserved as pipe-table source with a warning; Wmdx ordered styles become decimal; color and pen semantics may be lost. Test all target renderers and round trips. |
+| HTML/MHTML | Existing rendered-document export remains separate from Markdown export. | Verify on Android and review media/resource URI handling on devices. |
+| Linter | In-app structural checks cover unclosed fences, missing references/footnotes, malformed Wmdx resources, table row width, empty callouts, active HTML, and unsupported Obsidian transclusion. | A clean lint report is not a complete dialect validator; grow checks only with regression tests. |
 
 ### Wmdx authoring goal
 
-Wmdx is intended to grow from a simple, readable Markdown editor into a text-based
-word processor. Use standard Markdown where it is clear and sufficient. For
-features Markdown does not cover well, add Wmdx-native syntax alternatives that
-are obvious to novice users, minimally intrusive, and easy to read in plain
-text. Do not use HTML as the authoring or export mechanism for those features.
-
-The heading markers `.1`, `.2`, `.3`, and similar are a planned example of this
-direction; their exact syntax and behavior still need to be defined.
+Wmdx is a readable, text-based word processor. It uses standard Markdown where
+that syntax is clear and sufficient, and adds native syntax for word-processing
+features that Markdown does not express well. Import/export may use portable
+HTML fallbacks for specific semantics, but the editor's authoring syntax should
+remain readable in plain text and avoid silently discarding information.

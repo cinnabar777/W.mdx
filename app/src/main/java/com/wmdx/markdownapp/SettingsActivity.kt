@@ -1752,7 +1752,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             ),
             "menu" to listOf(
                 "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
-                "saveAsMdzip",
+                "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
                 "exportHtml", "search", "switchView", "newWindow", "settings"
             )
         )
@@ -1774,7 +1774,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "image", "audio", "video", "attachment", "embed", "link", "callout", "inlineCode", "blockQuote",
             "codeBlock", "horizontalLine", "footnote",
             "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
-            "saveAsMdzip",
+            "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
             "exportHtml", "search", "switchView", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID
         )

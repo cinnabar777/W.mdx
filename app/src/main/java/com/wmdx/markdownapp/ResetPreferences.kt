@@ -669,6 +669,10 @@ object PreferenceResetHelper {
             key == "pref_export_include_toc" -> true
             key == "pref_export_toc_levels" -> 3
             key == "pref_hotkey_export" -> "ctrl+shift+e"
+            key == "pref_hotkey_convert_from" -> "ctrl+shift+alt+c"
+            key == "pref_hotkey_paste_from" -> "ctrl+shift+alt+p"
+            key == "pref_hotkey_export_markdown" -> "ctrl+shift+alt+x"
+            key == "pref_hotkey_lint_markdown" -> "ctrl+shift+alt+l"
             key == "pref_hotkey_open_with" -> "ctrl+shift+o"
             key == "pref_hotkey_line_numbers" -> "ctrl+alt+l"
             key == "pref_hotkey_footnote" -> "ctrl+shift+f"

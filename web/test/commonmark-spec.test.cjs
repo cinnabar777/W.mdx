@@ -225,7 +225,24 @@ test('native resource references parse as one token without changing source', ()
   assert.equal(state.doc.toString(), source);
 });
 
-test.todo('CommonMark raw HTML examples: define and test Wmdx-native import conversion');
+test('representative CommonMark HTML examples convert through the explicit HTML importer', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const examples = new Map(commonmarkCases.map(example => [example.example, example]));
+
+  const table = convertFromHtml(examples.get(160).html, Parser);
+  assert.match(table.markdown, /^\| foo \|$/m);
+  assert.match(table.markdown, /^\| --- \|$/m);
+
+  const activeHtml = convertFromHtml(examples.get(170).html, Parser);
+  assert.match(activeHtml.markdown, /okay/);
+  assert.doesNotMatch(activeHtml.markdown, /Hello JavaScript|document\.getElementById/);
+
+  const comment = convertFromHtml(examples.get(179).html, Parser);
+  assert.match(comment.markdown, /okay/);
+  assert.doesNotMatch(comment.markdown, /Foo|bar|baz/);
+});
 
 test('CommonMark fixtures check parser semantics, not full WYSIWYG rendering or export', () => {
   assert.ok(parserComparableCases.length < commonmarkCases.length);

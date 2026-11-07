@@ -15,7 +15,23 @@ ENTRY_POINT = "Markdown-Phone-Test.md"
 SOURCE_FILES = (
     ROOT / ENTRY_POINT,
     ROOT / "Markdown-Phone-Test-Embed.md",
+    ROOT / "Markdown-Phone-Test-Checklist.md",
+    ROOT / "Markdown-Phone-Test-Image.png",
 )
+REQUIRED_ASSET_PATHS = {
+    "attachments/phone-test-attachment.pdf",
+    "attachments/phone-test-data.zip",
+    "attachments/phone-test-notes.txt",
+    "audio/phone-test-chime.wav",
+    "media/phone-test-fern.png",
+    "media/phone-test-lake.jpg",
+    "video/phone-test-portrait.mp4",
+}
+REQUIRED_REFERENCED_PATHS = REQUIRED_ASSET_PATHS | {
+    "Markdown-Phone-Test-Embed.md",
+    "Markdown-Phone-Test-Checklist.md",
+    "Markdown-Phone-Test-Image.png",
+}
 
 MANIFEST = {
     "spec": {"name": "mdzip-spec", "version": "1.2.1"},
@@ -32,6 +48,28 @@ def build() -> None:
         raise SystemExit(f"Missing MDZip source file(s): {', '.join(missing_sources)}")
     if not assets:
         raise SystemExit(f"No packaged media files found under {ASSETS}")
+    asset_paths = {path.relative_to(ASSETS).as_posix() for path in assets}
+    missing_assets = sorted(REQUIRED_ASSET_PATHS - asset_paths)
+    if missing_assets:
+        raise SystemExit(f"Missing required test asset(s): {', '.join(missing_assets)}")
+    source_paths = {path.relative_to(ROOT).as_posix() for path in SOURCE_FILES}
+    missing_packaged_references = sorted(
+        REQUIRED_REFERENCED_PATHS - source_paths - asset_paths
+    )
+    if missing_packaged_references:
+        raise SystemExit(
+            "Required fixture references are not packaged: "
+            + ", ".join(missing_packaged_references)
+        )
+    fixture_text = (ROOT / ENTRY_POINT).read_text(encoding="utf-8")
+    unreferenced_required_paths = sorted(
+        path for path in REQUIRED_REFERENCED_PATHS if path not in fixture_text
+    )
+    if unreferenced_required_paths:
+        raise SystemExit(
+            "Required packaged fixture references are missing from the entry document: "
+            + ", ".join(unreferenced_required_paths)
+        )
 
     with ZipFile(OUTPUT, "w", compression=ZIP_DEFLATED, compresslevel=8) as archive:
         archive.writestr("manifest.json", json.dumps(MANIFEST, indent=2) + "\n")

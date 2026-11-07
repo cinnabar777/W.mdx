@@ -1,0 +1,132 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+test('CommonMark import converts headings and ordinary links without touching code', async () => {
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = [
+    '# Main title',
+    '',
+    'Section title',
+    '=============',
+    '',
+    '[Project](docs/Project%20Notes.md)',
+    '',
+    '```md',
+    '# literal heading',
+    '[literal](https://example.com)',
+    '```'
+  ].join('\n');
+
+  const result = convertFromMarkdown(source, 'commonmark');
+  assert.match(result.markdown, /^\.1 Main title/m);
+  assert.match(result.markdown, /^\.1 Section title/m);
+  assert.match(result.markdown, /\[docs\/Project%20Notes\.md\|Project\|\|\]/);
+  assert.match(result.markdown, /# literal heading/);
+  assert.match(result.markdown, /\[literal\]\(https:\/\/example\.com\)/);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies', async () => {
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const obsidian = convertFromMarkdown([
+    '> [!warning]- Careful',
+    '> First paragraph.',
+    '>',
+    '> Second paragraph.',
+    '',
+    '[[Project Notes|Project]] and %%private%%.'
+  ].join('\n'), 'obsidian');
+  assert.match(obsidian.markdown, /^±warning- Careful/m);
+  assert.match(obsidian.markdown, /^  First paragraph\.$/m);
+  assert.match(obsidian.markdown, /^  Second paragraph\.$/m);
+  assert.match(obsidian.markdown, /\[\[Project Notes\|Project\]\]/);
+  assert.match(obsidian.markdown, /%%private%%/);
+  assert.ok(obsidian.warnings.some(warning => warning.includes('comments')));
+
+  const gfm = convertFromMarkdown([
+    '> [!TIP] Heading',
+    '> Useful detail.'
+  ].join('\n'), 'gfm');
+  assert.match(gfm.markdown, /^±tip Heading$/m);
+  assert.match(gfm.markdown, /^  Useful detail\.$/m);
+});
+
+test('Markdown export maps Wmdx headings, links, tables, and callout states by target', async () => {
+  const { exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = [
+    '.1 Overview',
+    '',
+    '[docs/Project.md|Project||]',
+    '',
+    '| Name | Count |',
+    '| --- | ---: |',
+    '| Item | 3 |',
+    '',
+    'A. Alpha item',
+    'B. Next alpha item',
+    '',
+    'I. Roman item',
+    'II. Next Roman item',
+    '',
+    '[x] Complete a task',
+    '',
+    '±warning- Read carefully',
+    '  This body is folded.'
+  ].join('\n');
+
+  const commonmark = exportMarkdown(source, 'commonmark');
+  assert.match(commonmark.markdown, /^# Overview/m);
+  assert.match(commonmark.markdown, /\[Project\]\(docs\/Project\.md\)/);
+  assert.match(commonmark.markdown, /\| Name \| Count \|/);
+  assert.match(commonmark.markdown, /1\. Alpha item/);
+  assert.match(commonmark.markdown, /2\. Next alpha item/);
+  assert.match(commonmark.markdown, /1\. Roman item/);
+  assert.match(commonmark.markdown, /2\. Next Roman item/);
+  assert.match(commonmark.markdown, /- <input type="checkbox" disabled checked> Complete a task/);
+  assert.match(commonmark.markdown, /> \*\*Read carefully\*\*/);
+  assert.ok(commonmark.warnings.some(warning => warning.includes('Pipe tables')));
+  assert.ok(commonmark.warnings.some(warning => warning.includes('alphabetic and Roman')));
+  assert.ok(commonmark.warnings.some(warning => warning.includes('CommonMark has no task-list')));
+  assert.ok(commonmark.warnings.some(warning => warning.includes('callout')));
+
+  const obsidian = exportMarkdown(source, 'obsidian');
+  assert.match(obsidian.markdown, /^\[\[docs\/Project\.md\|Project\]\]/m);
+  assert.match(obsidian.markdown, /^- \[x\] Complete a task/m);
+  assert.match(obsidian.markdown, /^> \[!warning\]- Read carefully/m);
+
+  const inline = exportMarkdown('`==literal== and _code_` plus ==highlight==, =₁pen=, and _₃wave_.', 'commonmark');
+  assert.match(inline.markdown, /`==literal== and _code_`/);
+  assert.match(inline.markdown, /<mark>highlight<\/mark>/);
+  assert.match(inline.markdown, /pen/);
+  assert.doesNotMatch(inline.markdown, /=₁pen=/);
+  assert.match(inline.markdown, /<u>wave<\/u>/);
+  assert.ok(inline.warnings.some(warning => warning.includes('Colored or styled underline')));
+});
+
+test('HTML import converts semantic content and omits active elements', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const result = convertFromHtml(
+    '<h1>Title</h1><p><strong>Bold</strong> and <u>underlined</u>.</p>' +
+    '<ul><li>One<ul><li>Nested</li></ul></li><li><input type="checkbox" checked>Done</li></ul>' +
+    '<div align="center"><p>Centered</p></div>' +
+    '<figure style="text-align:center"><img src="images/photo.png" alt="Photo" width="120" height="60">' +
+    '<figcaption>Caption</figcaption></figure>' +
+    '<a href="files/notes.pdf" download>PDF attachment</a>' +
+    '<script>alert(1)</script>',
+    Parser
+  );
+  assert.match(result.markdown, /^\.1 Title/m);
+  assert.match(result.markdown, /\*\*Bold\*\*/);
+  assert.match(result.markdown, /<u>underlined<\/u>/);
+  assert.match(result.markdown, /- One\n  - Nested/);
+  assert.match(result.markdown, /- \[x\] Done/);
+  assert.match(result.markdown, /^><\nCentered$/m);
+  assert.match(result.markdown, /!\[images\/photo\.png\|Caption\|120x60\|><\]/);
+  assert.match(result.markdown, /\[PDF attachment\]\(files\/notes\.pdf "wmdx-attachment"\)/);
+  assert.doesNotMatch(result.markdown, /alert\(1\)/);
+  assert.ok(result.warnings.some(warning => warning.includes('script')));
+  const comments = convertFromHtml('<p>Text</p><!-- hidden note -->', Parser);
+  assert.ok(comments.warnings.some(warning => warning.includes('comments')));
+});
