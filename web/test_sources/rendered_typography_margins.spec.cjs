@@ -205,13 +205,15 @@ const x = 42;
   const wpTable = dom.window.document.querySelector('.cm-wp-table-container');
   assert.ok(wpTable !== null, 'WYSIWYG table container is rendered');
 
+  const listLine = dom.window.document.querySelector('.cm-line.cm-list-item');
+  const listPrefix = listLine?.querySelector('.cm-layout-prefix');
+  const listContentAnchor = listLine?.querySelector('.cm-layout-content');
+  assert.ok(listPrefix, 'list marker syntax shares the semantic layout prefix');
+  assert.ok(listContentAnchor, 'list item content has a shared semantic layout anchor');
   assert.ok(
-    dom.window.document.querySelector('.cm-line.cm-list-item .cm-list-block-text'),
-    'list item text has a dedicated block wrapper for hanging-indent wrapping'
-  );
-  assert.ok(
-    !dom.window.document.querySelector('.cm-line.cm-list-item .cm-list-block-text').textContent.startsWith(' '),
-    'the block wrapper begins after marker padding so wrapped lines align with the first text character'
+    listPrefix.compareDocumentPosition(listContentAnchor) &
+      dom.window.Node.DOCUMENT_POSITION_FOLLOWING,
+    'the shared content anchor follows the list marker prefix'
   );
 
   const calloutLines = Array.from(

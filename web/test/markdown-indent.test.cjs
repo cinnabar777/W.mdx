@@ -776,7 +776,11 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   );
   assert.match(
     main,
-    /scheduleListMarkerMeasurements\(\s*update\.view,\s*typographyChanged \|\| update\.selectionSet \|\| update\.geometryChanged\s*\)/
+    /scheduleListMarkerMeasurements\(\s*update\.view,\s*typographyChanged\s*\)/
+  );
+  assert.match(
+    main,
+    /update\.selectionSet \|\|\s*update\.focusChanged \|\|\s*update\.viewportChanged \|\|\s*update\.geometryChanged/
   );
   assert.match(main, /semantic\.kind === 'paragraph' \|\| semantic\.kind === 'heading'/);
   assert.match(
