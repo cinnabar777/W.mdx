@@ -14,12 +14,13 @@ the nested quote. The list with up to three leading spaces before its markers
 should stay flat, the nested list should stay nested, and the quoted list should
 stay inside its quote. Tap inline, reference, angle, and automatic links to
 confirm they open the browser or email app. Tap the wiki link to confirm it
-opens the sibling Markdown guide. Source view should show the original Markdown
-syntax.
+opens the packaged companion document. Source view should show the original
+Markdown syntax.
 
-The table below should render as an editable table in Live Preview and WYSIWYG.
-Source should show its raw Markdown table syntax. The table-cell checks below
-cover cursor placement and editing.
+The tables below should render as editable tables in Live Preview and WYSIWYG.
+Source should show raw Markdown table syntax on single, unwrapped lines; scroll
+horizontally to inspect wide rows. The table-cell checks cover cursor placement
+and editing.
 
 ## CommonMark
 
@@ -204,7 +205,35 @@ Image using a small inline SVG:
 
 ![Cyan sample image|120](data:image/svg+xml,%3Csvg%20xmlns%3D'http://www.w3.org/2000/svg'%20width%3D'120'%20height%3D'60'%3E%3Crect%20width%3D'120'%20height%3D'60'%20fill%3D'%2300bfc5'/%3E%3C/svg%3E)
 
+Packaged landscape photograph at a fixed display width:
+
+![Alpine lake at golden hour|240](media/phone-test-lake.jpg)
+
+Packaged close-up photograph using the local Obsidian image-embed form:
+
+![[media/phone-test-fern.png|240]]
+
 [commonmark-spec]: https://spec.commonmark.org/0.31.2/
+
+### Packaged audio, video, and attachments
+
+These sample files are included inside `Markdown-Phone-Test.mdz`; none of these
+links should depend on a network connection:
+
+[Short WAV chime](audio/phone-test-chime.wav "wmdx-audio:width=80;align=center")
+
+[Portrait MP4 sample](video/phone-test-portrait.mp4 "wmdx-video:width=85;align=center")
+
+[PDF attachment](attachments/phone-test-attachment.pdf "wmdx-attachment")
+
+[Text attachment](attachments/phone-test-notes.txt "wmdx-attachment:width=80;align=center")
+
+[ZIP attachment with a CSV](attachments/phone-test-data.zip "wmdx-attachment")
+
+In each rendered mode, verify the image, audio player, video player, and
+attachment buttons appear. Play and pause the WAV and MP4. The links should
+retain their titles and width/alignment settings; Source should show the raw
+Markdown links and metadata.
 
 ### Thematic break
 
@@ -252,6 +281,15 @@ Long-press an unedited cell and confirm both the floating toolbar and table
 action menu remain available without overlapping. Save and reopen the document
 to confirm the edit persists.
 
+#### Wide table for horizontal Source scrolling
+
+| Identifier | Description | Owner | Updated | State | Notes |
+| :--- | :--- | :--- | ---: | :---: | :--- |
+| WMDX-001 | A deliberately long row that should remain on one source line | Editor | 2026-11-06 | Open | Keep every pipe and separator intact |
+
+Source should not wrap these rows. Drag horizontally to inspect the whole source
+table, then switch modes and confirm it becomes a normal editable table.
+
 ### GFM automatic links
 
 www.commonmark.org
@@ -273,7 +311,7 @@ or plugin compatibility.
 
 ### Wiki links
 
-[[Markdown.md|Open the Markdown guide in this folder]]
+[[Markdown-Phone-Test-Embed.md|Open the packaged companion document]]
 
 [[#Obsidian|Jump to this section]]
 
@@ -288,9 +326,9 @@ The next card loads a small Markdown file beside this test file:
 The first image should display at its natural size; the second should display
 at 32 pixels wide:
 
-![[Markdown-Phone-Test-Image.png]]
+![[media/phone-test-fern.png]]
 
-![[Markdown-Phone-Test-Image.png|32]]
+![[media/phone-test-fern.png|32]]
 
 ### Callouts
 
@@ -323,6 +361,28 @@ Highlighter slots: ==highlight 1==, ==₀highlight 2==, ==₁highlight 3==, and
 ==₂highlight 4==.
 
 Pen slots: =pen 1=, =₀pen 2=, =₁pen 3=, and =₂pen 4=.
+
+### W.mdx ordered-list styles and task markers
+
+The app supports additional ordered markers and its native task form:
+
+A. Uppercase alphabetic item
+B. Second uppercase alphabetic item
+
+a. Lowercase alphabetic item
+b. Second lowercase alphabetic item
+
+I. Uppercase Roman item
+II. Second uppercase Roman item
+
+i. Lowercase Roman item
+ii. Second lowercase Roman item
+
+[ ] Native unchecked task
+[x] Native checked task
+
+Check numbering, nesting, wrapped text, and cursor entry in all three modes.
+CommonMark/GFM decimal lists and checkbox forms are tested above.
 
 ## Known Obsidian gaps — not expected to pass
 

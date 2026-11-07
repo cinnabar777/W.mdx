@@ -792,7 +792,7 @@ function listMarkerIndentRange(doc, node) {
     : null;
 }
 
-function scheduleListMarkerMeasurements(view, force = false) {
+function scheduleListMarkerMeasurements(view, force = false, retryAttempt = 0) {
   if (
     !view ||
     !view.dom?.isConnected
@@ -838,8 +838,12 @@ function scheduleListMarkerMeasurements(view, force = false) {
       let changedCount = 0;
       let totalDeltaPx = 0;
       let maxDeltaPx = 0;
+      let staleLineCount = 0;
       for (const { line, gutter, signature, visibleIndent } of result.measurements) {
-        if (!line.isConnected || !view.contentDOM.contains(line)) continue;
+        if (!line.isConnected || !view.contentDOM.contains(line)) {
+          staleLineCount++;
+          continue;
+        }
         line.style.setProperty('--layout-visible-indent', `${visibleIndent}px`);
         if (result.enabled && Number.isFinite(gutter) && gutter >= 0) {
           const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
@@ -864,6 +868,18 @@ function scheduleListMarkerMeasurements(view, force = false) {
         }
       }
       recordListMarkerWrite(measurementMode, changedCount, totalDeltaPx, maxDeltaPx);
+      const hasUnmeasuredListLine = Array.from(
+        view.contentDOM.querySelectorAll('.cm-line.cm-list-item[data-layout-kind]')
+      ).some(line => !line.style.getPropertyValue('--list-marker-gutter'));
+      if (
+        (staleLineCount > 0 || hasUnmeasuredListLine) &&
+        retryAttempt < 3 &&
+        view.dom?.isConnected
+      ) {
+        requestAnimationFrame(() =>
+          scheduleListMarkerMeasurements(view, false, retryAttempt + 1)
+        );
+      }
     }
   });
 }
@@ -883,13 +899,14 @@ const listMarkerMeasurementPlugin = ViewPlugin.fromClass(class {
     if (
       update.docChanged ||
       update.selectionSet ||
+      update.focusChanged ||
       update.viewportChanged ||
       update.geometryChanged ||
       typographyChanged
     ) {
       scheduleListMarkerMeasurements(
         update.view,
-        typographyChanged || update.selectionSet || update.geometryChanged
+        typographyChanged
       );
     }
   }

@@ -164,9 +164,11 @@ test('phone fixture states the manual expected behavior and its limited coverage
   );
   assert.match(
     fixture,
-    /table below should render as an editable table in Live Preview and WYSIWYG/i
+    /tables below should render as editable tables in Live Preview and WYSIWYG/i
   );
-  assert.match(fixture, /Source should show its raw Markdown table syntax/i);
+  assert.match(fixture, /Source should show raw Markdown table syntax on single, unwrapped lines/i);
+  assert.match(fixture, /Packaged audio, video, and attachments/i);
+  assert.match(fixture, /wide table for horizontal Source scrolling/i);
   assert.match(fixture, /outer quote border should continue/i);
   assert.match(fixture, /nested quote.*indent/i);
   assert.match(fixture, /up to three leading spaces before its markers\s+should stay flat/i);

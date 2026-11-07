@@ -166,6 +166,12 @@ async function main() {
     });
     await page.waitForTimeout(100);
     await page.locator('.cm-line').last().click();
+    await page.waitForFunction(() => {
+      const lines = [...document.querySelectorAll('.cm-list-item')];
+      return lines.length > 0 &&
+        lines.every(line => line.style.getPropertyValue('--list-marker-gutter') !== '');
+    });
+    await page.waitForTimeout(20);
     const inactive = await page.locator('.cm-list-item').evaluate(line => ({
       text: line.textContent, depth: line.style.getPropertyValue('--list-depth-offset'),
       margin: getComputedStyle(line).marginLeft,
@@ -225,6 +231,159 @@ async function main() {
     assert.ok(active.rows.length >= 2, 'active list fixture should wrap');
     for (const x of active.rows.slice(1)) {
       assert.ok(Math.abs(x - active.rows[0]) < 1.5, `active wrapped list text drifted: ${active.rows}`);
+    }
+
+    const cursorStressText =
+      'Long wrapped text keeps this list item readable while the caret moves between siblings and nested levels.';
+    const cursorStressDoc = [
+      `- Root alpha ${cursorStressText}`,
+      `- Root beta ${cursorStressText}`,
+      `  - Nested alpha ${cursorStressText}`,
+      `  - Nested beta ${cursorStressText}`,
+      '',
+      `1. Numbered alpha ${cursorStressText}`,
+      `2. Numbered beta ${cursorStressText}`,
+      `   1. Numbered child ${cursorStressText}`,
+      '',
+      'Tail'
+    ].join('\n');
+    for (const mode of modes) {
+      await page.evaluate(async ({ mode, markdown }) => {
+        await window.editorBridge.setEditorMode(mode);
+        window.editorBridge.applyAllPreferences(JSON.stringify({ pref_list_non_hanging: false }));
+        window.editorBridge.setMarkdown(markdown);
+      }, { mode, markdown: cursorStressDoc });
+      await page.waitForTimeout(120);
+      await page.waitForFunction(() => {
+        const lines = [...document.querySelectorAll('.cm-list-item')];
+        return lines.length === 7 &&
+          lines.every(line => line.style.getPropertyValue('--list-marker-gutter') !== '');
+      });
+      const readListPositions = () => page.evaluate(() =>
+        [...document.querySelectorAll('.cm-list-item')].map(line => {
+          const rows = new Map();
+          const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+          let node;
+          while ((node = walker.nextNode())) {
+            if (node.parentElement.closest(
+              '.cm-layout-prefix, .cm-list-bullet, .cm-list-number, .cm-todo-checkbox'
+            )) continue;
+            for (let index = 0; index < node.length; index++) {
+              if (/\s/.test(node.data[index])) continue;
+              const range = document.createRange();
+              range.setStart(node, index);
+              range.setEnd(node, index + 1);
+              const rect = range.getBoundingClientRect();
+              if (rect.width && rect.height) {
+                const y = Math.round(rect.top);
+                rows.set(y, Math.min(rows.get(y) ?? Infinity, rect.left));
+              }
+            }
+          }
+          return {
+            text: line.textContent.replace(/\s+/g, ' ').trim(),
+            depth: line.style.getPropertyValue('--list-depth-offset'),
+            margin: parseFloat(getComputedStyle(line).marginLeft),
+            lineLeft: line.getBoundingClientRect().left,
+            contentX: line.querySelector('.cm-layout-content')?.getBoundingClientRect().left,
+            startX: line.querySelector('.cm-layout-start')?.getBoundingClientRect().left,
+            gutter: line.style.getPropertyValue('--list-marker-gutter'),
+            paddingLeft: getComputedStyle(line).paddingLeft,
+            textIndent: getComputedStyle(line).textIndent,
+            rows: [...rows.values()]
+          };
+        })
+      );
+      let previous = await readListPositions();
+      assert.equal(previous.length, 7, `${mode}: all stress-test list items should be laid out`);
+      assert.notEqual(previous[2].depth, previous[0].depth, `${mode}: nested bullet lost its semantic depth`);
+      assert.notEqual(previous[6].depth, previous[5].depth, `${mode}: nested ordered item lost its semantic depth`);
+      let previousActive = -1;
+      for (const activeIndex of [0, 2, 5, 6, 1, 4]) {
+        await page.locator('.cm-list-item').nth(activeIndex).click({ position: { x: 8, y: 8 } });
+        await page.waitForTimeout(100);
+        const current = await readListPositions();
+        assert.equal(current.length, previous.length, `${mode}: cursor entry changed list recognition`);
+        assert.ok(current.every(line => line.gutter !== ''),
+          `${mode}: list marker measurement was lost after cursor entry: ${JSON.stringify(current)}`);
+        assert.ok(current[activeIndex].rows.length >= 2,
+          `${mode}: stress-test item should wrap: ${current[activeIndex].text}`);
+        for (const x of current[activeIndex].rows.slice(1)) {
+          assert.ok(Math.abs(x - current[activeIndex].rows[0]) < 1.5,
+            `${mode}: wrapped text moved relative to its block: ${JSON.stringify(current[activeIndex])}`);
+        }
+        for (let index = 0; index < current.length; index++) {
+          if (index === previousActive || index === activeIndex) continue;
+          assert.equal(current[index].depth, previous[index].depth,
+            `${mode}: cursor movement changed list depth for ${current[index].text}`);
+          assert.ok(Math.abs(current[index].margin - previous[index].margin) < 1.5,
+            `${mode}: cursor movement shifted another list block: ${current[index].text}`);
+          assert.ok(Math.abs(current[index].contentX - previous[index].contentX) < 1.5,
+            `${mode}: cursor movement shifted another list item's text: ${current[index].text}`);
+        }
+        previous = current;
+        previousActive = activeIndex;
+        cases++;
+      }
+
+      await page.setViewportSize({ width: 390, height: 480 });
+      await page.waitForTimeout(80);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForTimeout(100);
+      const afterKeyboardCycle = await readListPositions();
+      assert.equal(afterKeyboardCycle.length, previous.length, `${mode}: viewport resize hid list items`);
+      assert.ok(afterKeyboardCycle.every(line => line.gutter !== ''),
+        `${mode}: list marker measurement was lost on keyboard close: ${JSON.stringify(afterKeyboardCycle)}`);
+      for (let index = 0; index < previous.length; index++) {
+        assert.equal(afterKeyboardCycle[index].depth, previous[index].depth,
+          `${mode}: keyboard-sized viewport changed list depth`);
+        assert.ok(Math.abs(afterKeyboardCycle[index].margin - previous[index].margin) < 1.5,
+          `${mode}: keyboard-sized viewport moved list block ${afterKeyboardCycle[index].text}`);
+        assert.ok(Math.abs(afterKeyboardCycle[index].contentX - previous[index].contentX) < 1.5,
+          `${mode}: keyboard close shifted list text ${afterKeyboardCycle[index].text}`);
+        assert.equal(afterKeyboardCycle[index].rows.length, previous[index].rows.length,
+          `${mode}: keyboard close changed wrapped rows for ${afterKeyboardCycle[index].text}`);
+        for (let row = 0; row < previous[index].rows.length; row++) {
+          assert.ok(Math.abs(afterKeyboardCycle[index].rows[row] - previous[index].rows[row]) < 1.5,
+            `${mode}: keyboard close moved a wrapped row for ${afterKeyboardCycle[index].text}`);
+        }
+      }
+    }
+
+    const wideSourceTable = [
+      '| Identifier | Description | Owner | Updated | State | Notes |',
+      '| :--- | :--- | :--- | ---: | :---: | :--- |',
+      '| WMDX-001 | A deliberately long table row that should remain on one source line | Editor | 2026-11-06 | Open | Keep every pipe and separator intact |'
+    ].join('\n');
+    for (const mode of modes) {
+      await page.evaluate(async ({ mode, markdown }) => {
+        await window.editorBridge.setEditorMode(mode);
+        window.editorBridge.setMarkdown(markdown);
+      }, { mode, markdown: wideSourceTable });
+      await page.waitForTimeout(100);
+      const tableLayout = await page.evaluate(() => {
+        const scroller = document.querySelector('.cm-scroller');
+        const line = document.querySelector('.cm-table-source-line');
+        if (!scroller) return null;
+        if (!line) return { renderedTables: document.querySelectorAll('.cm-wp-table-container').length };
+        const style = getComputedStyle(line);
+        scroller.scrollLeft = scroller.scrollWidth;
+        return {
+          whiteSpace: style.whiteSpace,
+          renderedTables: document.querySelectorAll('.cm-wp-table-container').length,
+          horizontalOverflow: scroller.scrollWidth > scroller.clientWidth,
+          horizontalScrollWorks: scroller.scrollLeft > 0
+        };
+      });
+      if (mode === 'source') {
+        assert.equal(tableLayout.whiteSpace, 'pre', 'Source table rows should not wrap');
+        assert.ok(tableLayout.horizontalOverflow, 'Source table should use horizontal scrolling');
+        assert.ok(tableLayout.horizontalScrollWorks, 'Source table horizontal scrolling should move the editor');
+        assert.equal(tableLayout.renderedTables, 0, 'Source should retain raw table syntax');
+      } else {
+        assert.ok(tableLayout.renderedTables >= 1, `${mode}: table should remain rendered and editable`);
+      }
+      cases++;
     }
 
     const mixed = '# Heading\n\nParagraph.\n\n> Quote text that should retain the same border and typography.\n\n```js\n- not a list\n```\n\n    literal code\n\n| Head | Other |\n| --- | --- |\n| Cell | Value |\n\nTail';

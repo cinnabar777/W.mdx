@@ -151,6 +151,21 @@ export function getWmdxColorSyntaxRanges(state, bounds = null) {
   const scanFrom = scanBounds.from;
   const source = state.doc.sliceString(scanFrom, scanBounds.to);
   const code = codeRanges(state, scanBounds);
+  const setextUnderlineLines = new Set();
+  syntaxTree(state).iterate({
+    from: scanFrom,
+    to: scanBounds.to,
+    enter(node) {
+      if (node.name !== 'SetextHeading1' && node.name !== 'SetextHeading2') return;
+      const underlineLine = state.doc.lineAt(Math.max(node.from, node.to - 1));
+      if (
+        underlineLine.from > node.from &&
+        /^[ \t]*(?:=+|-+)[ \t]*$/.test(underlineLine.text)
+      ) {
+        setextUnderlineLines.add(underlineLine.from);
+      }
+    }
+  });
   const ranges = [];
 
   for (const [group, config] of Object.entries(WMDX_COLOR_GROUPS)) {
@@ -162,6 +177,7 @@ export function getWmdxColorSyntaxRanges(state, bounds = null) {
       while ((match = expression.exec(source))) {
         const wrapperFrom = scanFrom + match.index;
         const wrapperTo = wrapperFrom + match[0].length;
+        if (setextUnderlineLines.has(state.doc.lineAt(wrapperFrom).from)) continue;
         if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
         const marker = match[1] ?? '';
         const color = config.colors.find(([, value]) => value === marker)?.[0];
