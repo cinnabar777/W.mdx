@@ -258,17 +258,61 @@ function extractMarkdownLinks(markdown, parser) {
   const text = String(markdown ?? '');
   const codeRanges = markdownCodeRanges(text);
   const links = [];
-  const pattern = /\[((?:\\.|[^\]])*)\]\(((?:\\.|[^)])*)\)/g;
-  let match;
+  const len = text.length;
+  let i = 0;
 
-  while ((match = pattern.exec(text))) {
-    const from = match.index;
-    const to = pattern.lastIndex;
-    if (from > 0 && text[from - 1] === '!') continue;
-    if (codeRanges.some(range => from < range.to && to > range.from)) continue;
-
-    const parsed = parser(match[0]);
-    if (parsed) links.push({ ...parsed, from, to });
+  while (i < len) {
+    if (text[i] === '[' && (i === 0 || text[i - 1] !== '!')) {
+      const openBracket = i;
+      let j = i + 1;
+      let labelEnd = -1;
+      while (j < len) {
+        if (text[j] === '\\') {
+          j += 2;
+          continue;
+        }
+        if (text[j] === '[') {
+          break;
+        }
+        if (text[j] === ']') {
+          labelEnd = j;
+          break;
+        }
+        j++;
+      }
+      if (labelEnd !== -1 && labelEnd + 1 < len && text[labelEnd + 1] === '(') {
+        let k = labelEnd + 2;
+        let parenEnd = -1;
+        let parenDepth = 1;
+        while (k < len) {
+          if (text[k] === '\\') {
+            k += 2;
+            continue;
+          }
+          if (text[k] === '(') {
+            parenDepth++;
+          } else if (text[k] === ')') {
+            parenDepth--;
+            if (parenDepth === 0) {
+              parenEnd = k;
+              break;
+            }
+          }
+          k++;
+        }
+        if (parenEnd !== -1) {
+          const from = openBracket;
+          const to = parenEnd + 1;
+          if (!codeRanges.some(range => from < range.to && to > range.from)) {
+            const parsed = parser(text.slice(from, to));
+            if (parsed) links.push({ ...parsed, from, to });
+          }
+          i = to;
+          continue;
+        }
+      }
+    }
+    i++;
   }
 
   return links;
