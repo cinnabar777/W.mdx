@@ -519,6 +519,24 @@ function listItemTextRange(tree, doc, line, markerEnd) {
   return from < line.to ? { from, to: line.to } : null;
 }
 
+function findTaskMarkerForListMark(tree, listMarkTo, lineTo) {
+  let taskMarker = null;
+  tree.iterate({
+    from: listMarkTo,
+    to: lineTo,
+    enter: node => {
+      if (node.name === 'TaskMarker') {
+        taskMarker = { from: node.from, to: node.to };
+        return false;
+      }
+      if (node.name === 'ListItem' && node.from > listMarkTo) {
+        return false;
+      }
+    }
+  });
+  return taskMarker;
+}
+
 function listMarkerIndentRange(doc, node) {
   const line = doc.lineAt(node.from);
   const leadingIndent = doc.sliceString(line.from, node.from);
@@ -618,9 +636,11 @@ function scheduleListMarkerMeasurements(view, force = false) {
           continue;
         }
 
-        const marker = line.querySelector(
-          '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox'
-        );
+        const hideExtraBullet = line.ownerDocument?.body?.classList.contains('todo-hide-extra-bullet');
+        const markerSelector = (hideExtraBullet && line.classList.contains('cm-todo-list-item'))
+          ? '.cm-todo-checkbox, .cm-list-bullet, .cm-list-number'
+          : '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox';
+        const marker = line.querySelector(markerSelector);
         if (!marker) {
           measurements.push({ line });
           continue;
@@ -2878,6 +2898,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                 class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
               }).range(node.from, node.to));
             }
+            const taskMarker = findTaskMarkerForListMark(tree, node.to, line.to);
+            if (taskMarker && taskMarker.from > node.to) {
+              builder.push(
+                Decoration.mark({ class: 'cm-todo-bullet-separator' })
+                  .range(node.to, taskMarker.from)
+              );
+            }
             if (!isPureWysiwyg) {
               const textRange = listItemTextRange(tree, doc, line, node.to);
               if (textRange) {
@@ -4087,6 +4114,13 @@ function buildHeightMapValue(state) {
         replacements.push(Decoration.replace({
           widget: new ListMarkerWidget(displayMarker, isBullet)
         }).range(node.from, node.to));
+        const taskMarker = findTaskMarkerForListMark(tree, node.to, line.to);
+        if (taskMarker && taskMarker.from > node.to) {
+          replacements.push(
+            Decoration.mark({ class: 'cm-todo-bullet-separator' })
+              .range(node.to, taskMarker.from)
+          );
+        }
         const textRange = listItemTextRange(tree, doc, line, node.to);
         if (textRange) {
           replacements.push(

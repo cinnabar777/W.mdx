@@ -483,3 +483,64 @@ test('popup toolbar items expose syntax state and follow editor selection update
   assert.ok(styles.includes('.grouped-key-btn.has-active-syntax'), 'closed toolbar groups show when their syntax is active');
   assert.ok(styles.includes('.popup-strip-btn.active'), 'the matching popup action is visibly highlighted');
 });
+
+test('toggleMarkdownList applies list styles across multiline selections', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { toggleMarkdownList } = await import('../src/markdownFormatting.js');
+
+  const createView = (doc, selection = null) => {
+    const state = EditorState.create({
+      doc,
+      selection: selection || EditorSelection.range(0, doc.length),
+      extensions: [markdown()]
+    });
+    return {
+      state,
+      dispatch(transaction) {
+        this.state = this.state.update(transaction).state;
+      },
+      focus() {}
+    };
+  };
+
+  const docText = 'Line one\nLine two\n\nLine three';
+  const view = createView(docText);
+
+  // 1. Apply ordered list to multiline selection: increments numbers and skips blank lines
+  assert.equal(toggleMarkdownList(view, 'ordered'), true);
+  assert.equal(view.state.doc.toString(), '1. Line one\n2. Line two\n\n1. Line three');
+
+  // 2. Select all and convert to bullet list
+  view.dispatch({
+    selection: EditorSelection.range(0, view.state.doc.length)
+  });
+  assert.equal(toggleMarkdownList(view, 'bullet'), true);
+  assert.equal(view.state.doc.toString(), '- Line one\n- Line two\n\n- Line three');
+
+  // 3. Select all and convert to todo list
+  view.dispatch({
+    selection: EditorSelection.range(0, view.state.doc.length)
+  });
+  assert.equal(toggleMarkdownList(view, 'todo'), true);
+  assert.equal(view.state.doc.toString(), '- [ ] Line one\n- [ ] Line two\n\n- [ ] Line three');
+
+  // 4. Toggle todo list again: all items match todo, so toggle off
+  view.dispatch({
+    selection: EditorSelection.range(0, view.state.doc.length)
+  });
+  assert.equal(toggleMarkdownList(view, 'todo'), true);
+  assert.equal(view.state.doc.toString(), 'Line one\nLine two\n\nLine three');
+
+  // 5. Preserves container prefixes like blockquotes
+  const quoteDoc = '> Line A\n> Line B';
+  const quoteView = createView(quoteDoc);
+  assert.equal(toggleMarkdownList(quoteView, 'ordered'), true);
+  assert.equal(quoteView.state.doc.toString(), '> 1. Line A\n> 2. Line B');
+
+  // 6. Nested indentation hierarchical ordered list
+  const nestedDoc = 'Level 1\n  Level 2\n  Level 2 next\nLevel 1 next';
+  const nestedView = createView(nestedDoc);
+  assert.equal(toggleMarkdownList(nestedView, 'ordered'), true);
+  assert.equal(nestedView.state.doc.toString(), '1. Level 1\n  1. Level 2\n  2. Level 2 next\n2. Level 1 next');
+});

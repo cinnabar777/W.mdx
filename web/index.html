@@ -1711,8 +1711,13 @@
 
     .cm-list-bullet { color: var(--list-bullet-color, currentColor) !important; }
     .cm-list-number { color: var(--list-number-color, currentColor) !important; }
-    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item > .cm-list-bullet {
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item > .cm-list-bullet,
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item > .cm-todo-bullet-separator {
       display: none !important;
+    }
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item > .cm-todo-checkbox {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
     }
 
     .cm-content .cm-bold {

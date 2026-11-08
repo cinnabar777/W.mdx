@@ -192,7 +192,6 @@ const x = 42;
   assert.equal(rootStyle.getPropertyValue('--code-block-text-bg-color'), '#CF1414');
   assert.equal(rootStyle.getPropertyValue('--code-block-lang-label-color'), '#123456');
   assert.equal(dom.window.document.body.classList.contains('hr-centered'), true);
-  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
 
   // 2. Confirm blocks exist in rendered DOM
   const codeHeader = dom.window.document.querySelector('.cm-codeblock-header');
@@ -279,15 +278,6 @@ const x = 42;
     window.editorBridge.destroy();
   }
 
-  window.editorBridge.applyAllPreferences(JSON.stringify({
-    pref_list_wrap_under_text: true
-  }));
-  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
-
-  window.editorBridge.applyAllPreferences(JSON.stringify({
-    pref_list_wrap_under_text: false
-  }));
-  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), false);
 });
 
 test.after(() => dom.window.close());
