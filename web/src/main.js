@@ -544,6 +544,54 @@ function collectListMarkerNestingDepths(tree, from = 0, to = tree.length) {
   return depths;
 }
 
+function collectNormalizedOrderedMarkers(tree, doc, from = 0, to = tree.length) {
+  const normalizedMarkers = new Map();
+  const listStack = [];
+  let listItemDepth = 0;
+
+  tree.iterate({
+    from,
+    to,
+    enter(node) {
+      if (node.name === 'ListItem') {
+        listItemDepth++;
+      }
+      if (node.name === 'OrderedList') {
+        const isSublist = listItemDepth > 0;
+        let startNum = 1;
+        if (!isSublist) {
+          const firstItem = doc.sliceString(node.from, Math.min(node.to, node.from + 20));
+          const match = firstItem.match(/^\s*(\d+)([.)])/);
+          if (match) {
+            startNum = parseInt(match[1], 10);
+          }
+        }
+        listStack.push({ count: startNum, isSublist });
+      }
+      if (node.name === 'ListMark') {
+        const raw = doc.sliceString(node.from, node.to);
+        const match = raw.match(/^(\d+)([.)])/);
+        if (match && listStack.length > 0) {
+          const currentList = listStack[listStack.length - 1];
+          const delim = match[2];
+          normalizedMarkers.set(node.from, `${currentList.count}${delim}`);
+          currentList.count++;
+        }
+      }
+    },
+    leave(node) {
+      if (node.name === 'OrderedList') {
+        listStack.pop();
+      }
+      if (node.name === 'ListItem') {
+        listItemDepth--;
+      }
+    }
+  });
+
+  return normalizedMarkers;
+}
+
 function scheduleListMarkerMeasurements(view, force = false) {
   if (
     !view ||
@@ -2406,6 +2454,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       firstVisibleRange?.from ?? 0,
       lastVisibleRange?.to ?? doc.length
     );
+    const normalizedOrderedMarkers = collectNormalizedOrderedMarkers(
+      tree,
+      doc,
+      firstVisibleRange?.from ?? 0,
+      lastVisibleRange?.to ?? doc.length
+    );
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
@@ -2807,6 +2861,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'ListMark') {
             const marker = view.state.doc.sliceString(node.from, node.to);
             const isBullet = /^[-*+]$/.test(marker.trim());
+            const displayMarker = isBullet ? marker : (normalizedOrderedMarkers.get(node.from) || marker);
             if (!isNodeActive) {
               if (!isPureWysiwyg) {
                 if (listMarkerDepths.get(node.from) === 0) {
@@ -2814,7 +2869,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   if (indentRange) hideSyntax(indentRange.from, indentRange.to);
                 }
                 builder.push(Decoration.replace({
-                  widget: new ListMarkerWidget(marker, isBullet)
+                  widget: new ListMarkerWidget(displayMarker, isBullet)
                 }).range(node.from, node.to));
               }
             } else {
@@ -3817,6 +3872,7 @@ function buildHeightMapValue(state) {
   const doc = state.doc;
   const tree = syntaxTree(state);
   const listMarkerDepths = collectListMarkerNestingDepths(tree);
+  const normalizedOrderedMarkers = collectNormalizedOrderedMarkers(tree, doc);
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
   const replacements = [];
   const hiddenSyntaxRanges = [];
@@ -4022,12 +4078,13 @@ function buildHeightMapValue(state) {
       if (node.name === 'ListMark') {
         const marker = doc.sliceString(node.from, node.to);
         const isBullet = /^[-*+]$/.test(marker.trim());
+        const displayMarker = isBullet ? marker : (normalizedOrderedMarkers.get(node.from) || marker);
         if (listMarkerDepths.get(node.from) === 0) {
           const indentRange = listMarkerIndentRange(doc, node);
           if (indentRange) hideSyntax(indentRange.from, indentRange.to);
         }
         replacements.push(Decoration.replace({
-          widget: new ListMarkerWidget(marker, isBullet)
+          widget: new ListMarkerWidget(displayMarker, isBullet)
         }).range(node.from, node.to));
         const textRange = listItemTextRange(tree, doc, line, node.to);
         if (textRange) {
@@ -4444,7 +4501,28 @@ function premeasureTableHeights(view) {
 }
 
 export function buildPersistentLayoutDecorations(state) {
-  if (currentEditorMode === 'source') return Decoration.none;
+  if (currentEditorMode === 'source') {
+    const { doc } = state;
+    const ranges = [];
+    const sourceListRegex = /^(\s*)([-*+]|\d+[.)])(\s+\[[ xX]\])?(\s+)/;
+    for (let number = 1; number <= doc.lines; number++) {
+      const line = doc.line(number);
+      const match = line.text.match(sourceListRegex);
+      if (match) {
+        const prefixLength = match[0].length;
+        ranges.push(
+          Decoration.line({
+            attributes: {
+              class: 'cm-source-list-item',
+              style: `padding-left: ${prefixLength}ch !important; text-indent: -${prefixLength}ch !important;`
+            }
+          }).range(line.from)
+        );
+      }
+    }
+    ranges.sort((a, b) => a.from - b.from);
+    return Decoration.set(ranges, true);
+  }
 
   const { doc } = state;
   const tree = syntaxTree(state);
@@ -4612,13 +4690,6 @@ export function buildPersistentLayoutDecorations(state) {
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
     const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
     const listDepth = listDepthByLine.get(lineNumber);
-    const styleAttr = calloutAttributes
-      ? `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px${listDepth ? `;--list-depth-offset:${listDepth * 24}px` : ''}`
-      : blockquoteDepth
-        ? `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px${listDepth ? `;--list-depth-offset:${listDepth * 24}px` : ''}`
-        : listDepth
-          ? `--list-depth-offset:${listDepth * 24}px`
-          : null;
     ranges.push(
       Decoration.line({
         attributes: {

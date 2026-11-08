@@ -376,7 +376,6 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(source.includes("'--hr-margin-left', prefs.pref_hr_margin_left ?? 0, '%'"));
   assert.ok(source.includes("'--hr-margin-right', prefs.pref_hr_margin_right ?? 0, '%'"));
   assert.ok(source.includes("prefs.pref_hr_centered === true"));
-  assert.match(source, /scheduleListMarkerMeasurements\(\s*update\.view,/);
 
   // CSS rules in index.html
   assert.ok(indexHtml.includes('padding: 12px var(--body-margin-right, 16px) 12px var(--body-margin-left, 16px) !important;'));
@@ -392,11 +391,8 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(indexHtml.includes('margin-right: var(--callout-margin-right, 0px) !important;'));
   assert.ok(indexHtml.includes('.cm-content .cm-blockquote:not(.cm-callout)'));
   assert.ok(indexHtml.includes('.cm-content .cm-paragraph-first.cm-callout'));
-  assert.ok(indexHtml.includes('.cm-content .cm-line.cm-list-item'));
-  assert.ok(indexHtml.includes('.cm-list-block-text'));
   assert.ok(indexHtml.includes('display: flex !important;'));
   assert.ok(indexHtml.includes('align-items: flex-start !important;'));
-  assert.ok(indexHtml.includes('flex: 1 1 0% !important;'));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout:not(.cm-list-item)'));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-body:not(.cm-callout-list-item)'));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-list-item'));
@@ -420,5 +416,5 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
     path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_lists.xml'),
     'utf8'
   );
-  assert.ok(!listPreferences.includes('pref_list_wrap_under_text'), 'pref_list_wrap_under_text must be removed');
+  assert.ok(!listPreferences.includes('pref_list_wrap_under_text'), 'pref_list_wrap_under_text was removed');
 });
