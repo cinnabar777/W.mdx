@@ -4612,15 +4612,18 @@ export function buildPersistentLayoutDecorations(state) {
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
     const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
     const listDepth = listDepthByLine.get(lineNumber);
-    const styles = [];
-    if (calloutAttributes) {
-      styles.push(`--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`);
-    } else if (blockquoteDepth) {
-      styles.push(`--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`);
-    }
-    if (listDepth) {
-      styles.push(`--list-depth-offset:${listDepth * 24}px`);
-    }
+    const baseStyle = calloutAttributes
+      ? `style: \`--callout-depth-offset:\${Math.max(0, calloutAttributes.depth - 1) * 12}px\``
+      : blockquoteDepth
+        ? `style: \`--blockquote-depth-offset:\${Math.max(0, blockquoteDepth - 1) * 12}px\``
+        : '';
+    const styleAttr = calloutAttributes
+      ? `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px${listDepth ? `;--list-depth-offset:${listDepth * 24}px` : ''}`
+      : blockquoteDepth
+        ? `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px${listDepth ? `;--list-depth-offset:${listDepth * 24}px` : ''}`
+        : listDepth
+          ? `--list-depth-offset:${listDepth * 24}px`
+          : null;
     ranges.push(
       Decoration.line({
         attributes: {
@@ -4628,15 +4631,20 @@ export function buildPersistentLayoutDecorations(state) {
           ...(calloutAttributes
             ? {
                 'data-callout-type': calloutAttributes.type,
-                'data-callout-depth': String(calloutAttributes.depth)
+                'data-callout-depth': String(calloutAttributes.depth),
+                style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px` + (listDepth ? `;--list-depth-offset:${listDepth * 24}px` : '')
               }
             : blockquoteDepth
               ? {
-                  'data-blockquote-depth': String(blockquoteDepth)
+                  'data-blockquote-depth': String(blockquoteDepth),
+                  style: `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px` + (listDepth ? `;--list-depth-offset:${listDepth * 24}px` : '')
                 }
-              : {}),
-          ...(listDepth ? { 'data-list-depth': String(listDepth) } : {}),
-          ...(styles.length ? { style: styles.join(';') } : {})
+              : listDepth
+                ? {
+                    style: `--list-depth-offset:${listDepth * 24}px`
+                  }
+                : {}),
+          ...(listDepth ? { 'data-list-depth': String(listDepth) } : {})
         }
       }).range(lineObj.from)
     );
