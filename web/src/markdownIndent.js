@@ -88,10 +88,60 @@ function selectedLineNumbers(doc, selection) {
   return { first, last: Math.max(first, last) };
 }
 
+const ORDERED_ITEM_REGEX = /^(\s*)(\d+)([.)])(\s+(?:\[[ xX]\]\s+)?)(.*)$/;
+
+export function renumberOrderedListLines(lines) {
+  const stack = [];
+  const result = [];
+
+  for (const line of lines) {
+    const match = line.match(ORDERED_ITEM_REGEX);
+    if (!match) {
+      if (!line.trim()) {
+        result.push(line);
+        continue;
+      }
+      const indentMatch = line.match(/^(\s*)/);
+      const indentLen = indentMatch ? indentMatch[1].length : 0;
+      while (stack.length > 0 && stack[stack.length - 1].indent >= indentLen) {
+        stack.pop();
+      }
+      result.push(line);
+      continue;
+    }
+
+    const [_, leadingSpace, numStr, delim, postMarker, content] = match;
+    const indentLen = leadingSpace.length;
+
+    while (stack.length > 0 && stack[stack.length - 1].indent > indentLen) {
+      stack.pop();
+    }
+
+    if (stack.length === 0 || stack[stack.length - 1].indent < indentLen) {
+      const isSublist = stack.length > 0;
+      const initialNum = isSublist ? 1 : parseInt(numStr, 10);
+      stack.push({ indent: indentLen, currentNum: initialNum });
+      result.push(`${leadingSpace}${initialNum}${delim}${postMarker}${content}`);
+      stack[stack.length - 1].currentNum++;
+    } else {
+      const currentLevel = stack[stack.length - 1];
+      result.push(`${leadingSpace}${currentLevel.currentNum}${delim}${postMarker}${content}`);
+      currentLevel.currentNum++;
+    }
+  }
+
+  return result;
+}
+
+function isListOrContinuationLine(lineText) {
+  if (!lineText.trim()) return false;
+  return ROOT_LIST_MARKER.test(lineText.trimStart()) || /^\s+/.test(lineText);
+}
+
 export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  ') {
   if (!doc || !selection || !['indent', 'outdent'].includes(direction)) return [];
 
-  const changes = [];
+  const initialChanges = [];
   const { first, last } = selectedLineNumbers(doc, selection);
   const selectedLines = [];
   for (let number = first; number <= last; number += 1) {
@@ -111,51 +161,96 @@ export function getMarkdownIndentChanges(doc, selection, direction, spaces = '  
   if (direction === 'indent' && isListBlock) {
     const firstListLine = selectedListLines[0];
     const parent = findPreviousListSibling(doc, firstListLine.number, firstListLine.info);
-    if (!parent) return changes;
+    if (!parent) return initialChanges;
 
     const indentBy = parent.markerWidth;
     for (const { line } of selectedLines) {
-      changes.push({ from: line.from, to: line.from, insert: ' '.repeat(indentBy) });
+      initialChanges.push({ from: line.from, to: line.from, insert: ' '.repeat(indentBy) });
     }
-    return changes;
+  } else {
+    for (const { number, line } of selectedLines) {
+      if (direction === 'indent') {
+        initialChanges.push({ from: line.from, to: line.from, insert: spaces });
+        continue;
+      }
+
+      const currentInfo = listItemInfo(line.text);
+      const leadingWhitespace = /^[ \t]*/.exec(line.text)[0];
+      if (leadingWhitespace) {
+        const removeWidth = currentInfo
+          ? getOutdentWidth(doc, number, currentInfo, spaces)
+          : indentationWidth(spaces);
+        const removeLength = leadingWhitespaceLengthForWidth(
+          leadingWhitespace,
+          removeWidth
+        );
+        if (removeLength === 0) continue;
+        initialChanges.push({
+          from: line.from,
+          to: line.from + removeLength,
+          insert: ''
+        });
+        continue;
+      }
+
+      const listMarker = ROOT_LIST_MARKER.exec(line.text);
+      if (listMarker) {
+        initialChanges.push({
+          from: line.from,
+          to: line.from + listMarker[0].length,
+          insert: ''
+        });
+      }
+    }
   }
 
-  for (const { number, line } of selectedLines) {
-    if (direction === 'indent') {
-      changes.push({ from: line.from, to: line.from, insert: spaces });
-      continue;
-    }
+  if (initialChanges.length === 0) return initialChanges;
 
-    const currentInfo = listItemInfo(line.text);
-    const leadingWhitespace = /^[ \t]*/.exec(line.text)[0];
-    if (leadingWhitespace) {
-      const removeWidth = currentInfo
-        ? getOutdentWidth(doc, number, currentInfo, spaces)
-        : indentationWidth(spaces);
-      const removeLength = leadingWhitespaceLengthForWidth(
-        leadingWhitespace,
-        removeWidth
-      );
-      if (removeLength === 0) continue;
-      changes.push({
-        from: line.from,
-        to: line.from + removeLength,
-        insert: ''
-      });
-      continue;
-    }
+  const totalLines = doc.lines || (doc.lineAt(doc.length).number);
+  let blockStart = first;
+  while (blockStart > 1 && isListOrContinuationLine(doc.line(blockStart - 1).text)) {
+    blockStart--;
+  }
+  let blockEnd = last;
+  while (blockEnd < totalLines && isListOrContinuationLine(doc.line(blockEnd + 1).text)) {
+    blockEnd++;
+  }
 
-    const listMarker = ROOT_LIST_MARKER.exec(line.text);
-    if (listMarker) {
-      changes.push({
-        from: line.from,
-        to: line.from + listMarker[0].length,
-        insert: ''
+  const blockLines = [];
+  for (let num = blockStart; num <= blockEnd; num++) {
+    const line = doc.line(num);
+    const lineChange = initialChanges.find(c => c.from >= line.from && c.to <= line.to);
+    let lineText = line.text;
+    if (lineChange) {
+      const relFrom = lineChange.from - line.from;
+      const relTo = lineChange.to - line.from;
+      lineText = lineText.slice(0, relFrom) + lineChange.insert + lineText.slice(relTo);
+    }
+    blockLines.push(lineText);
+  }
+
+  const hasOrdered = blockLines.some(l => ORDERED_ITEM_REGEX.test(l));
+  if (!hasOrdered) {
+    return initialChanges;
+  }
+
+  const renumbered = renumberOrderedListLines(blockLines);
+
+  const finalChanges = [];
+  for (let i = 0; i < blockLines.length; i++) {
+    const lineNum = blockStart + i;
+    const origLine = doc.line(lineNum);
+    const nextText = renumbered[i];
+    if (origLine.text !== nextText) {
+      finalChanges.push({
+        from: origLine.from,
+        to: origLine.to,
+        insert: nextText
       });
     }
   }
 
-  return changes;
+  return finalChanges;
 }
 
 export function applyMarkdownIndent(view, direction, spaces = '  ', options = {}) {

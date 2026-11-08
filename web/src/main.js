@@ -544,11 +544,58 @@ function collectListMarkerNestingDepths(tree, from = 0, to = tree.length) {
   return depths;
 }
 
+function collectNormalizedOrderedMarkers(tree, doc, from = 0, to = tree.length) {
+  const normalizedMarkers = new Map();
+  const listStack = [];
+  let listItemDepth = 0;
+
+  tree.iterate({
+    from,
+    to,
+    enter(node) {
+      if (node.name === 'ListItem') {
+        listItemDepth++;
+      }
+      if (node.name === 'OrderedList') {
+        const isSublist = listItemDepth > 0;
+        let startNum = 1;
+        if (!isSublist) {
+          const firstItem = doc.sliceString(node.from, Math.min(node.to, node.from + 20));
+          const match = firstItem.match(/^\s*(\d+)([.)])/);
+          if (match) {
+            startNum = parseInt(match[1], 10);
+          }
+        }
+        listStack.push({ count: startNum, isSublist });
+      }
+      if (node.name === 'ListMark') {
+        const raw = doc.sliceString(node.from, node.to);
+        const match = raw.match(/^(\d+)([.)])/);
+        if (match && listStack.length > 0) {
+          const currentList = listStack[listStack.length - 1];
+          const delim = match[2];
+          normalizedMarkers.set(node.from, `${currentList.count}${delim}`);
+          currentList.count++;
+        }
+      }
+    },
+    leave(node) {
+      if (node.name === 'OrderedList') {
+        listStack.pop();
+      }
+      if (node.name === 'ListItem') {
+        listItemDepth--;
+      }
+    }
+  });
+
+  return normalizedMarkers;
+}
+
 function scheduleListMarkerMeasurements(view, force = false) {
   if (
     !view ||
-    !view.dom?.isConnected ||
-    !document.body.classList.contains('list-wrap-under-text')
+    !view.dom?.isConnected
   ) {
     return;
   }
@@ -2407,6 +2454,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       firstVisibleRange?.from ?? 0,
       lastVisibleRange?.to ?? doc.length
     );
+    const normalizedOrderedMarkers = collectNormalizedOrderedMarkers(
+      tree,
+      doc,
+      firstVisibleRange?.from ?? 0,
+      lastVisibleRange?.to ?? doc.length
+    );
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
@@ -2808,6 +2861,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'ListMark') {
             const marker = view.state.doc.sliceString(node.from, node.to);
             const isBullet = /^[-*+]$/.test(marker.trim());
+            const displayMarker = isBullet ? marker : (normalizedOrderedMarkers.get(node.from) || marker);
             if (!isNodeActive) {
               if (!isPureWysiwyg) {
                 if (listMarkerDepths.get(node.from) === 0) {
@@ -2815,7 +2869,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   if (indentRange) hideSyntax(indentRange.from, indentRange.to);
                 }
                 builder.push(Decoration.replace({
-                  widget: new ListMarkerWidget(marker, isBullet)
+                  widget: new ListMarkerWidget(displayMarker, isBullet)
                 }).range(node.from, node.to));
               }
             } else {
@@ -3818,6 +3872,7 @@ function buildHeightMapValue(state) {
   const doc = state.doc;
   const tree = syntaxTree(state);
   const listMarkerDepths = collectListMarkerNestingDepths(tree);
+  const normalizedOrderedMarkers = collectNormalizedOrderedMarkers(tree, doc);
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
   const replacements = [];
   const hiddenSyntaxRanges = [];
@@ -4023,12 +4078,13 @@ function buildHeightMapValue(state) {
       if (node.name === 'ListMark') {
         const marker = doc.sliceString(node.from, node.to);
         const isBullet = /^[-*+]$/.test(marker.trim());
+        const displayMarker = isBullet ? marker : (normalizedOrderedMarkers.get(node.from) || marker);
         if (listMarkerDepths.get(node.from) === 0) {
           const indentRange = listMarkerIndentRange(doc, node);
           if (indentRange) hideSyntax(indentRange.from, indentRange.to);
         }
         replacements.push(Decoration.replace({
-          widget: new ListMarkerWidget(marker, isBullet)
+          widget: new ListMarkerWidget(displayMarker, isBullet)
         }).range(node.from, node.to));
         const textRange = listItemTextRange(tree, doc, line, node.to);
         if (textRange) {
@@ -4445,13 +4501,35 @@ function premeasureTableHeights(view) {
 }
 
 export function buildPersistentLayoutDecorations(state) {
-  if (currentEditorMode === 'source') return Decoration.none;
+  if (currentEditorMode === 'source') {
+    const { doc } = state;
+    const ranges = [];
+    const sourceListRegex = /^(\s*)([-*+]|\d+[.)])(\s+\[[ xX]\])?(\s+)/;
+    for (let number = 1; number <= doc.lines; number++) {
+      const line = doc.line(number);
+      const match = line.text.match(sourceListRegex);
+      if (match) {
+        const prefixLength = match[0].length;
+        ranges.push(
+          Decoration.line({
+            attributes: {
+              class: 'cm-source-list-item',
+              style: `padding-left: ${prefixLength}ch !important; text-indent: -${prefixLength}ch !important;`
+            }
+          }).range(line.from)
+        );
+      }
+    }
+    ranges.sort((a, b) => a.from - b.from);
+    return Decoration.set(ranges, true);
+  }
 
   const { doc } = state;
   const tree = syntaxTree(state);
   const classesByLine = new Map();
   const calloutAttributesByLine = new Map();
   const blockquoteDepthByLine = new Map();
+  const listDepthByLine = new Map();
   const activeCallouts = [];
   let currentBlockquoteDepth = 0;
 
@@ -4562,11 +4640,19 @@ export function buildPersistentLayoutDecorations(state) {
     }
     if (isHorizontalRule) addClass(number, 'cm-hr');
 
+    let listItemDepth = 0;
+    for (let node = resolved; node; node = node.parent) {
+      if (node.name === 'ListItem') listItemDepth++;
+    }
+
     const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
     if (calloutInfo) {
       if (hasListMarker) {
         addClass(number, 'cm-list-item');
         addClass(number, 'cm-callout-list-item');
+        if (listItemDepth > 1) {
+          listDepthByLine.set(number, listItemDepth - 1);
+        }
       }
       if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
         addClass(number, 'cm-todo-list-item');
@@ -4575,6 +4661,9 @@ export function buildPersistentLayoutDecorations(state) {
     }
     if (insideListItem) {
       addClass(number, 'cm-list-item');
+      if (listItemDepth > 1) {
+        listDepthByLine.set(number, listItemDepth - 1);
+      }
       if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
         addClass(number, 'cm-todo-list-item');
       }
@@ -4600,6 +4689,7 @@ export function buildPersistentLayoutDecorations(state) {
     const lineObj = doc.line(lineNumber);
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
     const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
+    const listDepth = listDepthByLine.get(lineNumber);
     ranges.push(
       Decoration.line({
         attributes: {
@@ -4608,14 +4698,19 @@ export function buildPersistentLayoutDecorations(state) {
             ? {
                 'data-callout-type': calloutAttributes.type,
                 'data-callout-depth': String(calloutAttributes.depth),
-                style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
+                style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px` + (listDepth ? `;--list-depth-offset:${listDepth * 24}px` : '')
               }
             : blockquoteDepth
               ? {
                   'data-blockquote-depth': String(blockquoteDepth),
-                  style: `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`
+                  style: `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px` + (listDepth ? `;--list-depth-offset:${listDepth * 24}px` : '')
                 }
-              : {})
+              : listDepth
+                ? {
+                    style: `--list-depth-offset:${listDepth * 24}px`
+                  }
+                : {}),
+          ...(listDepth ? { 'data-list-depth': String(listDepth) } : {})
         }
       }).range(lineObj.from)
     );
@@ -9943,10 +10038,6 @@ window.editorBridge = {
     } else if (prefs.pref_line_wrap === true) {
       document.body.classList.remove('no-line-wrap');
     }
-    document.body.classList.toggle(
-      'list-wrap-under-text',
-      prefs.pref_list_wrap_under_text === true
-    );
     document.body.classList.toggle(
       'todo-hide-extra-bullet',
       prefs.pref_todo_hide_extra_bullet === true
