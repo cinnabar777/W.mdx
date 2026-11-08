@@ -75,6 +75,7 @@ import {
   setWmdxUnderlineSyntaxEnabled,
   clearMarkdownFormatting,
   cycleMarkdownListType,
+  toggleMarkdownList,
   toggleMarkdownFormat,
   toggleWmdxColorFormat,
   toggleUnderlineFormat
@@ -8166,9 +8167,9 @@ function execCmd(cmdName, options) {
       );
     } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
-    else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
-    else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
-    else if (cmdName === 'todoList') cmToggleLinePrefix(view, '- [ ] ');
+    else if (cmdName === 'bulletedList') toggleMarkdownList(view, 'bullet', editorCommandOptions);
+    else if (cmdName === 'numberedList') toggleMarkdownList(view, 'ordered', editorCommandOptions);
+    else if (cmdName === 'todoList') toggleMarkdownList(view, 'todo', editorCommandOptions);
     else if (cmdName === 'cycleListType') cycleMarkdownListType(view);
     else if (cmdName === 'indent') {
       applyMarkdownIndent(view, 'indent', '  ', editorCommandOptions);
@@ -11114,6 +11115,12 @@ window.editorBridge = {
     } else {
       document.body.classList.remove('light-theme');
     }
+  },
+  execCommand: function(cmdName, options) {
+    execCmd(cmdName, options);
+  },
+  getView: function() {
+    return activeAdapter?.view;
   },
   setDocumentTitle: function(title, documentKey) {
     const titleEl = document.querySelector('#file-title');

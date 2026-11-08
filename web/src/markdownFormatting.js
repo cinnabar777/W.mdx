@@ -1343,6 +1343,164 @@ function cycleMarkdownListLine(lineText) {
   return `${indent}- ${content}`;
 }
 
+export function parseLineListInfo(text) {
+  const isBlank = text.trim().length === 0;
+  const prefixMatch = /^([ \t]*(?:>[ \t]*)*)/.exec(text);
+  const containerPrefix = prefixMatch ? prefixMatch[0] : '';
+  const rest = text.slice(containerPrefix.length);
+
+  const todoMatch = /^(- \[\s?[xX]?\](?:\s+|$))/.exec(rest);
+  if (todoMatch) {
+    return {
+      isBlank,
+      containerPrefix,
+      type: 'todo',
+      markerLength: todoMatch[1].length,
+      content: rest.slice(todoMatch[1].length)
+    };
+  }
+
+  const bulletMatch = /^([-*+](?:\s+|$))/.exec(rest);
+  if (bulletMatch) {
+    return {
+      isBlank,
+      containerPrefix,
+      type: 'bullet',
+      markerLength: bulletMatch[1].length,
+      content: rest.slice(bulletMatch[1].length)
+    };
+  }
+
+  const orderedMatch = /^(\d+[.)](?:\s+|$))/.exec(rest);
+  if (orderedMatch) {
+    return {
+      isBlank,
+      containerPrefix,
+      type: 'ordered',
+      markerLength: orderedMatch[1].length,
+      content: rest.slice(orderedMatch[1].length)
+    };
+  }
+
+  return {
+    isBlank,
+    containerPrefix,
+    type: 'none',
+    markerLength: 0,
+    content: rest
+  };
+}
+
+function getIndentLevel(prefix) {
+  let spaces = 0;
+  for (const ch of prefix) {
+    if (ch === '\t') spaces += 2;
+    else if (ch === ' ' || ch === '>') spaces += 1;
+  }
+  return spaces;
+}
+
+export function toggleMarkdownList(view, listType, options = {}) {
+  if (!view?.state?.doc || typeof view.dispatch !== 'function') return false;
+  const { doc, selection } = view.state;
+  const code = codeRanges(view.state);
+  const lineNumbers = new Set();
+  const ranges = selection.ranges || [selection.main];
+
+  for (const range of ranges) {
+    const firstLine = doc.lineAt(range.from).number;
+    let lastLine = doc.lineAt(range.to).number;
+    if (
+      !range.empty &&
+      lastLine > firstLine &&
+      doc.line(lastLine).from === range.to
+    ) {
+      lastLine--;
+    }
+    for (let num = firstLine; num <= lastLine; num++) {
+      lineNumbers.add(num);
+    }
+  }
+
+  const isMultilineOrRange = lineNumbers.size > 1 || !ranges[0].empty;
+  const sortedLines = [...lineNumbers]
+    .sort((a, b) => a - b)
+    .map(n => doc.line(n))
+    .filter(line => !code.some(range => range.from <= line.from && range.to >= line.to));
+
+  const parsed = sortedLines.map(line => ({ line, info: parseLineListInfo(line.text) }));
+
+  const activeItems = isMultilineOrRange
+    ? parsed.filter(item => !item.info.isBlank)
+    : parsed;
+
+  if (activeItems.length === 0) return false;
+
+  const toggleOff = activeItems.every(item => item.info.type === listType);
+
+  let orderedNumbers = [];
+  if (!toggleOff && listType === 'ordered') {
+    const stack = [];
+    for (let i = 0; i < activeItems.length; i++) {
+      const item = activeItems[i];
+      const prev = activeItems[i - 1];
+      const isContiguous = prev && item.line.number === prev.line.number + 1;
+      if (!isContiguous) {
+        stack.length = 0;
+      }
+      const indent = getIndentLevel(item.info.containerPrefix);
+      while (stack.length > 0 && stack[stack.length - 1].indent > indent) {
+        stack.pop();
+      }
+      if (stack.length === 0 || stack[stack.length - 1].indent < indent) {
+        stack.push({ indent, count: 1 });
+        orderedNumbers.push(1);
+      } else {
+        stack[stack.length - 1].count++;
+        orderedNumbers.push(stack[stack.length - 1].count);
+      }
+    }
+  }
+
+  const changes = [];
+  for (let i = 0; i < activeItems.length; i++) {
+    const { line, info } = activeItems[i];
+    const markerStart = line.from + info.containerPrefix.length;
+    const markerEnd = markerStart + info.markerLength;
+
+    if (toggleOff) {
+      if (info.markerLength > 0) {
+        changes.push({ from: markerStart, to: markerEnd, insert: '' });
+      }
+    } else {
+      let newMarker = '';
+      if (listType === 'bullet') {
+        newMarker = '- ';
+      } else if (listType === 'todo') {
+        newMarker = '- [ ] ';
+      } else if (listType === 'ordered') {
+        newMarker = `${orderedNumbers[i]}. `;
+      }
+
+      if (info.markerLength > 0) {
+        changes.push({ from: markerStart, to: markerEnd, insert: newMarker });
+      } else {
+        changes.push({ from: markerStart, to: markerStart, insert: newMarker });
+      }
+    }
+  }
+
+  if (changes.length === 0) return false;
+
+  const changeSet = view.state.changes(changes);
+  view.dispatch({
+    changes: changeSet,
+    selection: view.state.selection.map(changeSet, 1)
+  });
+  if (options.preserveKeyboard !== true) view.focus?.();
+  return true;
+}
+
 export function cycleMarkdownListType(view) {
   if (!view?.state?.doc || typeof view.dispatch !== 'function') return false;
   const { doc, selection } = view.state;
