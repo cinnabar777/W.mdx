@@ -480,7 +480,169 @@ function getInlineFormattingRanges(view, bounds) {
   });
 }
 
+export function stripMarkdownInline(text) {
+  let res = text;
+  // images ![alt](url) -> alt, ![[file|alt]] -> alt or file
+  res = res.replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, f, a) => a || f || '');
+  res = res.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1');
+  // links [[file|alias]] -> alias or file, [text](url) -> text
+  res = res.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, f, a) => a || f || '');
+  res = res.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+  // footnotes [^1]
+  res = res.replace(/\[\^[^\]]+\]/g, '');
+
+  for (let i = 0; i < 6; i++) {
+    const prev = res;
+    res = res.replace(/(?<!\w)(\*\*\*|___)(.*?)\1(?!\w)/g, '$2');
+    res = res.replace(/(?<!\w)(\*\*|__)(.*?)\1(?!\w)/g, '$2');
+    res = res.replace(/(?<!\w)(\*|_)(.*?)\1(?!\w)/g, '$2');
+    res = res.replace(/~~(.*?)~~/g, '$1');
+    res = res.replace(/==[₀₁₂]?(.*?)==/gu, '$1');
+    res = res.replace(/(?<![=\w])=[₀₁₂]?([^=\n]+)=(?![=\w])/gu, '$1');
+    res = res.replace(/(?<![\w])_[₀₁₂₃]?([^_\n]+)_(?![\w])/gu, '$1');
+    res = res.replace(/`+([^`]+)`+/g, '$1');
+    res = res.replace(/\$\$?([^\$]+)\$\$?/g, '$1');
+    res = res.replace(/<\/?(?:u|b|i|em|strong|mark|span|p|div|code|pre|del|s)[^>]*>/gi, '');
+    if (res === prev) break;
+  }
+  return res;
+}
+
+export function stripLineBlockPrefixes(lineText) {
+  let text = lineText;
+  if (/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(text)) {
+    return '';
+  }
+  if (/^\s*(`{3,}|~{3,})[\w-]*\s*$/.test(text)) {
+    return '';
+  }
+  while (/^\s*>+\s*/.test(text)) {
+    text = text.replace(/^\s*>+\s*/, '');
+    text = text.replace(/^\[![^\]]+\][-+]?\s*/i, '');
+  }
+  text = text.replace(/^#{1,6}\s+/, '');
+  text = text.replace(/^\s*(?:[-*+]|\d+\.)\s+(?:\[[ xX]\]\s+)?/, '');
+  return text;
+}
+
+export function stripMarkdownFormatting(text) {
+  const lines = text.split('\n');
+  return lines.map(line => stripMarkdownInline(stripLineBlockPrefixes(line))).join('\n');
+}
+
+export function stripTableCellFormatting(cellText) {
+  const lines = cellText.split(/<br\s*\/?>|\n/gi);
+  return lines.map(line => stripMarkdownInline(stripLineBlockPrefixes(line))).join('<br>');
+}
+
+function getCursorTargetLines(state, pos) {
+  const doc = state.doc;
+  const line = doc.lineAt(pos);
+  const tree = syntaxTree(state);
+
+  let nextLine = line.number < doc.lines ? doc.line(line.number + 1) : null;
+  if (nextLine && /^\s*(=+|-+)\s*$/.test(nextLine.text)) {
+    return { from: line.from, to: nextLine.to, isSetext: true };
+  }
+  let prevLine = line.number > 1 ? doc.line(line.number - 1) : null;
+  if (prevLine && /^\s*(=+|-+)\s*$/.test(line.text)) {
+    return { from: prevLine.from, to: line.to, isSetext: true };
+  }
+
+  let targetNode = null;
+  for (const bias of [-1, 1]) {
+    let node = tree.resolveInner(pos, bias);
+    while (node && node.name !== 'Document') {
+      if (
+        node.name === 'ListItem' ||
+        node.name === 'Paragraph' ||
+        node.name.startsWith('ATXHeading') ||
+        node.name.startsWith('SetextHeading') ||
+        node.name === 'FencedCode' ||
+        node.name === 'HorizontalRule'
+      ) {
+        targetNode = node;
+        break;
+      }
+      if (node.name === 'Blockquote') {
+        targetNode = node;
+      }
+      node = node.parent;
+    }
+    if (targetNode) break;
+  }
+
+  if (targetNode) {
+    const fromLine = doc.lineAt(targetNode.from);
+    const toLine = doc.lineAt(targetNode.to);
+    return { from: fromLine.from, to: toLine.to };
+  }
+  return { from: line.from, to: line.to };
+}
+
 export function clearMarkdownFormatting(view, options = {}) {
+  // Check if an active table cell editor overlay is open
+  if (typeof document !== 'undefined') {
+    const activeOverlay = document.querySelector('.cm-wp-cell-editor');
+    if (activeOverlay && activeOverlay._cellMeta) {
+      const selStart = activeOverlay.selectionStart ?? 0;
+      const selEnd = activeOverlay.selectionEnd ?? 0;
+      const cellVal = activeOverlay.value || '';
+      let newVal = cellVal;
+      let newStart = selStart;
+      let newEnd = selEnd;
+
+      if (selStart !== selEnd) {
+        const selected = cellVal.substring(selStart, selEnd);
+        const cleaned = stripMarkdownInline(selected);
+        if (cleaned !== selected) {
+          newVal = cellVal.substring(0, selStart) + cleaned + cellVal.substring(selEnd);
+          newStart = selStart;
+          newEnd = selStart + cleaned.length;
+        }
+      } else {
+        const cleaned = stripTableCellFormatting(cellVal);
+        if (cleaned !== cellVal) {
+          newVal = cleaned;
+          newStart = cleaned.length;
+          newEnd = cleaned.length;
+        }
+      }
+
+      if (newVal !== cellVal) {
+        activeOverlay.value = newVal;
+        activeOverlay.setSelectionRange(newStart, newEnd);
+        if (activeOverlay._cellMeta && activeOverlay._cellMeta.model) {
+          const meta = activeOverlay._cellMeta;
+          meta.model.rows[meta.row][meta.col] = newVal.replace(/\r\n?/g, '\n').replace(/\n/g, '<br>');
+        }
+        return true;
+      }
+      return false;
+    }
+  }
+
+  // Check if active table cell is selected in table widget
+  if (typeof window !== 'undefined' && window.wmdxTableActions?.active) {
+    const activeTable = window.wmdxTableActions.active;
+    const bridgeContext = window.wmdxTableActions.context;
+    if (activeTable.view === view && bridgeContext && bridgeContext.owner) {
+      const widget = bridgeContext.owner._tableWidget || bridgeContext.owner.__tableWidget;
+      // Also check _lastActiveCellSelection
+      if (window._lastActiveCellSelection && window._lastActiveCellSelection.model) {
+        const snap = window._lastActiveCellSelection;
+        const oldVal = snap.model.rows[snap.row][snap.col] || '';
+        const cleaned = stripTableCellFormatting(oldVal);
+        if (cleaned !== oldVal) {
+          snap.model.rows[snap.row][snap.col] = cleaned;
+          snap.widget?.commitTableChange?.();
+          snap.widget?.renderTableCells?.();
+          return true;
+        }
+      }
+    }
+  }
+
   if (!view?.state) return false;
 
   const originalState = view.state;
@@ -500,6 +662,7 @@ export function clearMarkdownFormatting(view, options = {}) {
     focus() {}
   };
 
+  // Step 1: Unwrap standard inline formatting using existing tree-aware logic
   for (let attempt = 0; attempt < 128; attempt += 1) {
     const selection = workingState.selection.main;
     const bounds = { from: selection.from, to: selection.to };
@@ -526,6 +689,64 @@ export function clearMarkdownFormatting(view, options = {}) {
       }
     }
     if (!unwrapped) break;
+  }
+
+  // Step 2: Clear any remaining inline formatting and block markers
+  const currSelection = workingState.selection.main;
+  const doc = workingState.doc;
+
+  if (!currSelection.empty) {
+    const fromLine = doc.lineAt(currSelection.from);
+    const toLine = doc.lineAt(currSelection.to);
+
+    // If selection is partial inside a single line
+    if (fromLine.number === toLine.number && (currSelection.from > fromLine.from || currSelection.to < fromLine.to)) {
+      const selectedText = doc.sliceString(currSelection.from, currSelection.to);
+      const cleaned = stripMarkdownInline(selectedText);
+      if (cleaned !== selectedText) {
+        workingView.dispatch({
+          changes: { from: currSelection.from, to: currSelection.to, insert: cleaned },
+          selection: { anchor: currSelection.from, head: currSelection.from + cleaned.length }
+        });
+      }
+    } else {
+      // Selection spans the entire line or multiple lines
+      const targetFrom = fromLine.from;
+      const targetTo = toLine.to;
+      const lines = [];
+      for (let n = fromLine.number; n <= toLine.number; n++) {
+        lines.push(stripMarkdownInline(stripLineBlockPrefixes(doc.line(n).text)));
+      }
+      const cleaned = lines.join('\n');
+      const oldText = doc.sliceString(targetFrom, targetTo);
+      if (cleaned !== oldText) {
+        workingView.dispatch({
+          changes: { from: targetFrom, to: targetTo, insert: cleaned },
+          selection: { anchor: targetFrom, head: targetFrom + cleaned.length }
+        });
+      }
+    }
+  } else {
+    // Caret only: clear the enclosing line/paragraph/block
+    const target = getCursorTargetLines(workingState, currSelection.head);
+    const fromLine = doc.lineAt(target.from);
+    const toLine = doc.lineAt(target.to);
+    const lines = [];
+    for (let n = fromLine.number; n <= toLine.number; n++) {
+      const lText = doc.line(n).text;
+      if (target.isSetext && /^\s*(=+|-+)\s*$/.test(lText)) {
+        continue;
+      }
+      lines.push(stripMarkdownInline(stripLineBlockPrefixes(lText)));
+    }
+    const cleaned = lines.join('\n');
+    const oldText = doc.sliceString(target.from, target.to);
+    if (cleaned !== oldText) {
+      workingView.dispatch({
+        changes: { from: target.from, to: target.to, insert: cleaned },
+        selection: { anchor: target.from + cleaned.length, head: target.from + cleaned.length }
+      });
+    }
   }
 
   if (!changed) return false;

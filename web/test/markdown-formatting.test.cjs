@@ -483,3 +483,139 @@ test('popup toolbar items expose syntax state and follow editor selection update
   assert.ok(styles.includes('.grouped-key-btn.has-active-syntax'), 'closed toolbar groups show when their syntax is active');
   assert.ok(styles.includes('.popup-strip-btn.active'), 'the matching popup action is visibly highlighted');
 });
+
+test('clear formatting removes block prefixes and formatting with selection and cursor', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { GFM, Strikethrough } = await import('@lezer/markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+
+  function runTest(doc, selection) {
+    const state = EditorState.create({
+      doc,
+      selection,
+      extensions: [markdown({ extensions: [GFM, Strikethrough] })]
+    });
+    let dispatched = state;
+    const view = {
+      state,
+      dispatch(tr) {
+        dispatched = dispatched.update(tr).state;
+        this.state = dispatched;
+      },
+      focus() {}
+    };
+    const res = clearMarkdownFormatting(view);
+    return { res, doc: dispatched.doc.toString() };
+  }
+
+  // 1. Bullet list with cursor
+  const r1 = runTest('- item with **bold** text', EditorSelection.cursor(2));
+  assert.equal(r1.res, true);
+  assert.equal(r1.doc, 'item with bold text');
+
+  // 2. Task list with cursor
+  const r2 = runTest('- [ ] task item with *italic*', EditorSelection.cursor(5));
+  assert.equal(r2.res, true);
+  assert.equal(r2.doc, 'task item with italic');
+
+  // 3. Numbered list with cursor
+  const r3 = runTest('1. numbered `code` item', EditorSelection.cursor(3));
+  assert.equal(r3.res, true);
+  assert.equal(r3.doc, 'numbered code item');
+
+  // 4. Blockquote with cursor
+  const r4 = runTest('> quote line with **bold**', EditorSelection.cursor(3));
+  assert.equal(r4.res, true);
+  assert.equal(r4.doc, 'quote line with bold');
+
+  // 5. Callout with cursor
+  const r5 = runTest('> [!note] Callout title\n> continuation line', EditorSelection.cursor(3));
+  assert.equal(r5.res, true);
+  assert.equal(r5.doc, 'Callout title\ncontinuation line');
+
+  // 6. Heading with cursor
+  const r6 = runTest('### Heading Level 3', EditorSelection.cursor(4));
+  assert.equal(r6.res, true);
+  assert.equal(r6.doc, 'Heading Level 3');
+
+  // 7. Setext heading with cursor
+  const r7 = runTest('Setext Title\n===', EditorSelection.cursor(3));
+  assert.equal(r7.res, true);
+  assert.equal(r7.doc, 'Setext Title');
+
+  // 8. Multi-line selection spanning lists, blockquotes, and headings
+  const multilineDoc = '# Title\n- list item\n> quote line';
+  const r8 = runTest(multilineDoc, EditorSelection.range(0, multilineDoc.length));
+  assert.equal(r8.res, true);
+  assert.equal(r8.doc, 'Title\nlist item\nquote line');
+
+  // 9. Links, wikilinks, and images inside selection
+  const linkDoc = 'See [my link](https://test.com) and [[Page#Sec|Alias]] and ![img](pic.png)';
+  const r9 = runTest(linkDoc, EditorSelection.range(0, linkDoc.length));
+  assert.equal(r9.res, true);
+  assert.equal(r9.doc, 'See my link and Alias and img');
+});
+
+test('clear formatting handles table cell editor overlay with selection and cursor', async () => {
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+
+  // Mock overlay with selection
+  const overlay1 = {
+    value: 'Prefix **bold** suffix',
+    selectionStart: 7,
+    selectionEnd: 15,
+    _cellMeta: {
+      model: { rows: [['Prefix **bold** suffix']] },
+      row: 0,
+      col: 0
+    },
+    setSelectionRange(s, e) {
+      this.selectionStart = s;
+      this.selectionEnd = e;
+    }
+  };
+
+  global.document = {
+    querySelector(sel) {
+      if (sel === '.cm-wp-cell-editor') return overlay1;
+      return null;
+    }
+  };
+
+  const res1 = clearMarkdownFormatting(null);
+  assert.equal(res1, true);
+  assert.equal(overlay1.value, 'Prefix bold suffix');
+  assert.equal(overlay1.selectionStart, 7);
+  assert.equal(overlay1.selectionEnd, 11);
+
+  // Mock overlay with cursor (no selection)
+  const overlay2 = {
+    value: '**bold** and *italic* in cell',
+    selectionStart: 4,
+    selectionEnd: 4,
+    _cellMeta: {
+      model: { rows: [['**bold** and *italic* in cell']] },
+      row: 0,
+      col: 0
+    },
+    setSelectionRange(s, e) {
+      this.selectionStart = s;
+      this.selectionEnd = e;
+    }
+  };
+
+  global.document = {
+    querySelector(sel) {
+      if (sel === '.cm-wp-cell-editor') return overlay2;
+      return null;
+    }
+  };
+
+  const res2 = clearMarkdownFormatting(null);
+  assert.equal(res2, true);
+  assert.equal(overlay2.value, 'bold and italic in cell');
+  assert.equal(overlay2._cellMeta.model.rows[0][0], 'bold and italic in cell');
+
+  delete global.document;
+});
