@@ -1682,7 +1682,7 @@
       hyphens: var(--list-hyphens, none) !important;
       text-indent: 0 !important;
       margin-top: 0 !important;
-      margin-left: var(--list-left-indent, 24px) !important;
+      margin-left: calc(var(--list-left-indent, 24px) + var(--list-depth-offset, 0px)) !important;
       margin-right: var(--list-margin-right, 0px) !important;
       margin-bottom: 0 !important;
       padding-bottom: var(--list-item-spacing, 4px) !important;
@@ -1690,17 +1690,17 @@
       line-height: var(--list-line-height, 1.5) !important;
     }
 
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item {
+    .cm-content .cm-line.cm-list-item {
       display: flex !important;
       align-items: flex-start !important;
       column-gap: 0.4em !important;
     }
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-bullet,
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-number,
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-todo-checkbox {
+    .cm-content .cm-line.cm-list-item > .cm-list-bullet,
+    .cm-content .cm-line.cm-list-item > .cm-list-number,
+    .cm-content .cm-line.cm-list-item > .cm-todo-checkbox {
       flex: 0 0 auto !important;
     }
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-block-text {
+    .cm-content .cm-line.cm-list-item > .cm-list-block-text {
       display: block !important;
       flex: 1 1 0% !important;
       box-sizing: border-box !important;

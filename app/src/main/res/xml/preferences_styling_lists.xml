@@ -102,12 +102,6 @@
             app:defaultValue="0"
             app:showSeekBarValue="true" />
 
-        <com.wmdx.markdownapp.ResetSwitchPreference
-            app:key="pref_list_wrap_under_text"
-            app:title="Block List Layout"
-            app:summary="Keep each marker in a left gutter and wrap item text beneath itself"
-            android:defaultValue="false" />
-
         <com.wmdx.markdownapp.ResetSeekBarPreference
             app:key="pref_list_item_spacing"
             app:title="List Item Vertical Spacing (px)"

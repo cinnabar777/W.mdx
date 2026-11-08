@@ -137,7 +137,6 @@ const x = 42;
     pref_hr_margin_left: 24,
     pref_hr_margin_right: 24,
     pref_hr_centered: true,
-    pref_list_wrap_under_text: true,
     pref_font_weight_heading: 500,
     pref_heading_1_font_weight: 400,
     pref_heading_1_align: 'center',
@@ -192,7 +191,6 @@ const x = 42;
   assert.equal(rootStyle.getPropertyValue('--code-block-text-bg-color'), '#CF1414');
   assert.equal(rootStyle.getPropertyValue('--code-block-lang-label-color'), '#123456');
   assert.equal(dom.window.document.body.classList.contains('hr-centered'), true);
-  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
 
   // 2. Confirm blocks exist in rendered DOM
   const codeHeader = dom.window.document.querySelector('.cm-codeblock-header');
@@ -262,8 +260,7 @@ const x = 42;
     pref_table_margin_right: 0,
     pref_hr_margin_left: 0,
     pref_hr_margin_right: 0,
-    pref_hr_centered: false,
-    pref_list_wrap_under_text: false
+    pref_hr_centered: false
   };
 
   window.editorBridge.applyAllPreferences(JSON.stringify(defaultPrefs));
@@ -278,16 +275,6 @@ const x = 42;
   if (window.editorBridge && typeof window.editorBridge.destroy === 'function') {
     window.editorBridge.destroy();
   }
-
-  window.editorBridge.applyAllPreferences(JSON.stringify({
-    pref_list_wrap_under_text: true
-  }));
-  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
-
-  window.editorBridge.applyAllPreferences(JSON.stringify({
-    pref_list_wrap_under_text: false
-  }));
-  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), false);
 });
 
 test.after(() => dom.window.close());

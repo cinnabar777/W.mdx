@@ -393,7 +393,6 @@ object PreferenceResetHelper {
             key == "pref_list_text_align" -> "default"
             key == "pref_list_hyphenate" -> false
             key == "pref_list_right_margin" -> 0
-            key == "pref_list_wrap_under_text" -> false
             key == "pref_list_item_spacing" -> 4
             key == "pref_list_line_height" -> "1.5"
             key == "pref_list_bullet_color" -> "default"

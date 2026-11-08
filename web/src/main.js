@@ -547,8 +547,7 @@ function collectListMarkerNestingDepths(tree, from = 0, to = tree.length) {
 function scheduleListMarkerMeasurements(view, force = false) {
   if (
     !view ||
-    !view.dom?.isConnected ||
-    !document.body.classList.contains('list-wrap-under-text')
+    !view.dom?.isConnected
   ) {
     return;
   }
@@ -4452,6 +4451,7 @@ export function buildPersistentLayoutDecorations(state) {
   const classesByLine = new Map();
   const calloutAttributesByLine = new Map();
   const blockquoteDepthByLine = new Map();
+  const listDepthByLine = new Map();
   const activeCallouts = [];
   let currentBlockquoteDepth = 0;
 
@@ -4562,11 +4562,19 @@ export function buildPersistentLayoutDecorations(state) {
     }
     if (isHorizontalRule) addClass(number, 'cm-hr');
 
+    let listItemDepth = 0;
+    for (let node = resolved; node; node = node.parent) {
+      if (node.name === 'ListItem') listItemDepth++;
+    }
+
     const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
     if (calloutInfo) {
       if (hasListMarker) {
         addClass(number, 'cm-list-item');
         addClass(number, 'cm-callout-list-item');
+        if (listItemDepth > 1) {
+          listDepthByLine.set(number, listItemDepth - 1);
+        }
       }
       if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
         addClass(number, 'cm-todo-list-item');
@@ -4575,6 +4583,9 @@ export function buildPersistentLayoutDecorations(state) {
     }
     if (insideListItem) {
       addClass(number, 'cm-list-item');
+      if (listItemDepth > 1) {
+        listDepthByLine.set(number, listItemDepth - 1);
+      }
       if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
         addClass(number, 'cm-todo-list-item');
       }
@@ -4600,6 +4611,16 @@ export function buildPersistentLayoutDecorations(state) {
     const lineObj = doc.line(lineNumber);
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
     const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
+    const listDepth = listDepthByLine.get(lineNumber);
+    const styles = [];
+    if (calloutAttributes) {
+      styles.push(`--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`);
+    } else if (blockquoteDepth) {
+      styles.push(`--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`);
+    }
+    if (listDepth) {
+      styles.push(`--list-depth-offset:${listDepth * 24}px`);
+    }
     ranges.push(
       Decoration.line({
         attributes: {
@@ -4607,15 +4628,15 @@ export function buildPersistentLayoutDecorations(state) {
           ...(calloutAttributes
             ? {
                 'data-callout-type': calloutAttributes.type,
-                'data-callout-depth': String(calloutAttributes.depth),
-                style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
+                'data-callout-depth': String(calloutAttributes.depth)
               }
             : blockquoteDepth
               ? {
-                  'data-blockquote-depth': String(blockquoteDepth),
-                  style: `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`
+                  'data-blockquote-depth': String(blockquoteDepth)
                 }
-              : {})
+              : {}),
+          ...(listDepth ? { 'data-list-depth': String(listDepth) } : {}),
+          ...(styles.length ? { style: styles.join(';') } : {})
         }
       }).range(lineObj.from)
     );
@@ -9943,10 +9964,6 @@ window.editorBridge = {
     } else if (prefs.pref_line_wrap === true) {
       document.body.classList.remove('no-line-wrap');
     }
-    document.body.classList.toggle(
-      'list-wrap-under-text',
-      prefs.pref_list_wrap_under_text === true
-    );
     document.body.classList.toggle(
       'todo-hide-extra-bullet',
       prefs.pref_todo_hide_extra_bullet === true
