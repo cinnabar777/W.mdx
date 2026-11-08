@@ -1031,9 +1031,12 @@ test('session restore clearly explains when referenced files need folder access'
 test('New tab saves new documents before opening them and keeps an empty launcher at the start page', () => {
   const html = fs.readFileSync(path.join(__dirname, '../../web/index.html'), 'utf8');
 
-  for (const action of ['new-markdown', 'new-mdzip', 'go-to-file', 'open-session']) {
+  for (const action of ['new-markdown', 'new-mdzip', 'go-to-file', 'open-file', 'open-session']) {
     assert.match(html, new RegExp(`data-start-page-action="${action}"`));
   }
+  assert.match(html, /<button[^>]+data-start-page-action="go-to-file"[^>]*>\s*Search\s*<\/button>/);
+  assert.match(html, /<button[^>]+data-start-page-action="open-file"[^>]*>\s*Open file\s*<\/button>/);
+  assert.match(leftPanelSource, /case 'open-file':\s*native\?\.onNativeAction\?\.\('open'\);/);
   assert.match(leftPanelSource, /const activateStartPage = \(\) =>/);
   assert.match(leftPanelSource, /else activateStartPage\(\);/);
   assert.match(leftPanelSource, /false,\s*false,\s*false,\s*false,\s*false,\s*'\{\}'/);
