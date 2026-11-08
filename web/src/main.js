@@ -4612,11 +4612,6 @@ export function buildPersistentLayoutDecorations(state) {
     const calloutAttributes = calloutAttributesByLine.get(lineNumber);
     const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
     const listDepth = listDepthByLine.get(lineNumber);
-    const baseStyle = calloutAttributes
-      ? `style: \`--callout-depth-offset:\${Math.max(0, calloutAttributes.depth - 1) * 12}px\``
-      : blockquoteDepth
-        ? `style: \`--blockquote-depth-offset:\${Math.max(0, blockquoteDepth - 1) * 12}px\``
-        : '';
     const styleAttr = calloutAttributes
       ? `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px${listDepth ? `;--list-depth-offset:${listDepth * 24}px` : ''}`
       : blockquoteDepth
