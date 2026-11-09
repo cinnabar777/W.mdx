@@ -74,6 +74,10 @@ whole-document renderer refactor is still unfinished:
 - `semanticLayoutField` keeps that model current; `persistentLayoutField`
   applies shared line classes, source-prefix ranges, and semantic layout
   attributes in all three modes.
+- `livePreviewPlugin` no longer re-emits semantic paragraph/list/heading/
+  blockquote/callout/rule classes; those now come only from
+  `persistentLayoutField`. The plugin retains mode-specific syntax and
+  contextual inline decorations.
 - `livePreviewPlugin._buildDecorationsInternal()` runs in all modes and chooses
   syntax visibility and contextual inline behavior based on the current mode.
 - `heightMapField` still owns WYSIWYG inline formatting and syntax hiding, while

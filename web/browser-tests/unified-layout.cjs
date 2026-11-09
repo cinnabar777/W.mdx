@@ -1228,6 +1228,21 @@ async function main() {
       await action.evaluate(button => button.click());
     };
 
+    await page.evaluate(() => {
+      window.editorBridge.applyAllPreferences({ pref_markdown_profile: 'gfm' });
+    });
+    await openMenuAction('Lint document');
+    assert.equal(
+      await page.locator('#markdown-lint-dialect').inputValue(),
+      'gfm',
+      'the linter defaults to the selected global dialect profile'
+    );
+    await page.locator('#markdown-lint-close').click();
+    await page.evaluate(() => {
+      window.editorBridge.applyAllPreferences({ pref_markdown_profile: 'wmdx' });
+    });
+    cases += 1;
+
     await page.evaluate(() => window.editorBridge.setMarkdown(
       '# Imported title\n\n[Project](docs/Project%20Notes.md)'
     ));

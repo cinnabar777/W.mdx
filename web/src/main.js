@@ -8032,6 +8032,9 @@ function openMarkdownLintDialog() {
   const status = dialog.querySelector('#markdown-lint-status');
   const results = dialog.querySelector('#markdown-lint-results');
   const dialect = dialog.querySelector('#markdown-lint-dialect');
+  if (['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(currentMarkdownProfile)) {
+    dialect.value = currentMarkdownProfile;
+  }
   const close = () => {
     overlay.classList.remove('open');
     dialog.innerHTML = '';
