@@ -1185,17 +1185,27 @@ object PreferenceResetHelper {
         } else {
             null
         }
+        val inheritedMarkdownProfileValue = if (
+            key == "pref_wmdx_subscript_enabled"
+        ) {
+            prefs.getString("pref_markdown_profile", "wmdx") == "wmdx"
+        } else {
+            null
+        }
+        val keepsInheritedValue = isHeadingOverride || inheritedMarkdownProfileValue != null
 
         prefs.edit().remove(key).apply()
 
-        val defVal = if (isHeadingOverride) {
+        val defVal = when {
+            inheritedMarkdownProfileValue != null -> inheritedMarkdownProfileValue
+            isHeadingOverride ->
             inheritedHeadingValue ?: getDefaultValue(key)
-        } else {
-            getDefaultValue(key)
+            else -> getDefaultValue(key)
         }
         if (isHeadingOverride && defVal != null) {
             pref.setDefaultValue(defVal)
         }
+        if (keepsInheritedValue) pref.isPersistent = false
         when (pref) {
             is SeekBarPreference -> {
                 if (defVal is Int) {
@@ -1215,6 +1225,10 @@ object PreferenceResetHelper {
         // Setters above may persist their value. For a heading override, the
         // value shown by the control is inherited; its key must remain absent.
         if (isHeadingOverride) {
+            prefs.edit().remove(key).apply()
+        }
+        if (keepsInheritedValue) {
+            pref.isPersistent = true
             prefs.edit().remove(key).apply()
         }
         if (pref is ResettablePreference) {

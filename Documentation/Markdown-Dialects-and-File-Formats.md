@@ -44,12 +44,14 @@ conversion remain separate actions.
 | Callouts | Wmdx `±type`, `±type-`, `±type+`; Obsidian `> [!type]` and fold markers. GitHub alerts overlap with the Obsidian spelling for `note`, `tip`, `important`, `warning`, and `caution`; other alert-like blockquotes remain ordinary quotes on GFM import. |
 | Footnotes | Markdown reference footnotes (`[^label]`), Wmdx numbered footnotes, and Obsidian inline footnotes (`^[text]`) have syntax controls. |
 | Underline | **Use Wmdx syntax** recognizes Wmdx underline forms. When disabled, HTML `<u>...</u>` is the compatibility form. |
-| Tables and inline formatting | When GFM Extensions is enabled, GFM pipe tables, task markers, double-tilde strikethrough, and bare-URL autolinks are parsed. Wmdx single-tilde `~text~` is subscript, and paired-caret `^text^` is superscript. |
+| Wmdx subscript | **Wmdx Subscript Syntax** independently controls single-tilde `~text~`. It defaults on for Wmdx and off for CommonMark, GFM, and Obsidian profiles, so single tildes stay literal in standard-only profiles. |
+| Tables and inline formatting | GFM pipe tables, task markers, double-tilde strikethrough, and bare-URL autolinks are parsed when GFM Extensions is enabled. Wmdx paired-caret `^text^` superscript is described in the cheat sheet. |
 
 The Wmdx extensions include resource links and embeds, decimal headings,
 additional list markers, native tasks, callouts, footnotes, subscript,
 superscript, underline styles, highlight/pen color slots, and media/attachment
-metadata. Script formatting is recognized without a separate dialect toggle.
+metadata. Wmdx superscript is currently recognized without a separate dialect
+toggle.
 The cheat sheet gives the exact source spelling.
 
 ## Convert, paste, and export

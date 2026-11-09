@@ -270,7 +270,7 @@ import {
 } from '@lezer/markdown';
 import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
 import { wmdxGfmFtpAutolink } from './gfm-autolink.mjs';
-import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
+import { createWmdxGfmTildeExtension } from './gfm-strikethrough.mjs';
 
 let activeAdapter = null;
 let lastFocusedEditorView = null;
@@ -411,6 +411,7 @@ let listSyntaxSettings = normalizeListSyntaxSettings();
 let currentMarkdownProfile = 'wmdx';
 let markdownAutoPasteEnabled = true;
 let gfmExtensionsEnabled = true;
+let wmdxSubscriptEnabled = true;
 const markdownParserViewRegistry = new Map();
 
 function createMarkdownLanguageExtension(includeTables = false) {
@@ -419,10 +420,18 @@ function createMarkdownLanguageExtension(includeTables = false) {
     extensions.push(
       GFMAutolink,
       GFMTaskList,
-      wmdxGfmStrikethrough,
+      createWmdxGfmTildeExtension({
+        gfmStrikethrough: true,
+        wmdxSubscript: wmdxSubscriptEnabled
+      }),
       wmdxGfmFtpAutolink
     );
     if (includeTables) extensions.push(GFMTable);
+  } else if (wmdxSubscriptEnabled) {
+    extensions.push(createWmdxGfmTildeExtension({
+      gfmStrikethrough: false,
+      wmdxSubscript: true
+    }));
   }
   extensions.push(wmdxCommonMarkCompatibility);
   return cmMarkdown({ extensions });
@@ -11940,8 +11949,14 @@ window.editorBridge = {
     currentMarkdownProfile = prefs.pref_markdown_profile;
     markdownAutoPasteEnabled = prefs.pref_markdown_auto_paste_enabled !== false;
     const nextGfmExtensionsEnabled = prefs.pref_gfm_extensions_enabled !== false;
-    if (nextGfmExtensionsEnabled !== gfmExtensionsEnabled) {
+    const nextWmdxSubscriptEnabled =
+      prefs.pref_wmdx_subscript_enabled !== false;
+    if (
+      nextGfmExtensionsEnabled !== gfmExtensionsEnabled ||
+      nextWmdxSubscriptEnabled !== wmdxSubscriptEnabled
+    ) {
       gfmExtensionsEnabled = nextGfmExtensionsEnabled;
+      wmdxSubscriptEnabled = nextWmdxSubscriptEnabled;
       reconfigureMarkdownParserViews();
     }
     markdownIndentSpaces = getMarkdownIndentSpaces(

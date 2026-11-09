@@ -18,6 +18,12 @@
             app:defaultValue="true" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_wmdx_subscript_enabled"
+            app:title="Wmdx Subscript Syntax"
+            app:summary="Recognize single-tilde subscript; enabled by the Wmdx profile unless changed"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_markdown_auto_paste_enabled"
             app:title="Convert Recognized Clipboard Content"
             app:summary="Convert supported Markdown or rich HTML to this profile when conversion is safe; leave ambiguous or lossy content unchanged"

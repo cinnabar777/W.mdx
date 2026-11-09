@@ -135,6 +135,7 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to false,
                 "pref_footnote_authoring_syntax" to "markdown",
+                "pref_wmdx_subscript_enabled" to false,
                 "pref_underline_use_wmdx_syntax" to false
             )
             "gfm" -> mapOf(
@@ -153,6 +154,7 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to false,
                 "pref_footnote_authoring_syntax" to "markdown",
+                "pref_wmdx_subscript_enabled" to false,
                 "pref_underline_use_wmdx_syntax" to false
             )
             "obsidian" -> mapOf(
@@ -171,6 +173,7 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to true,
                 "pref_footnote_authoring_syntax" to "markdown",
+                "pref_wmdx_subscript_enabled" to false,
                 "pref_underline_use_wmdx_syntax" to false
             )
             else -> mapOf(
@@ -190,6 +193,7 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_footnote_syntax_wmdx_enabled" to true,
                 "pref_footnote_syntax_obsidian_inline_enabled" to true,
                 "pref_footnote_authoring_syntax" to "wmdx",
+                "pref_wmdx_subscript_enabled" to true,
                 "pref_underline_use_wmdx_syntax" to true
             )
         }
@@ -4163,6 +4167,24 @@ class ExportSettingsFragment : BaseSettingsFragment() {
 class MarkdownDialectSettingsFragment : BaseSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_markdown_dialects, rootKey)
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (key != "pref_markdown_profile" ||
+            sharedPreferences.contains("pref_wmdx_subscript_enabled")
+        ) {
+            return
+        }
+        val subscriptPreference =
+            findPreference<ResetSwitchPreference>("pref_wmdx_subscript_enabled")
+                ?: return
+        val profile = sharedPreferences.getString("pref_markdown_profile", "wmdx")
+        subscriptPreference.isPersistent = false
+        subscriptPreference.isChecked = profile == "wmdx"
+        subscriptPreference.isPersistent = true
     }
 }
 

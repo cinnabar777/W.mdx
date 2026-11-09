@@ -1360,7 +1360,19 @@ async function main() {
     );
     cases += 1;
 
-    const gfmFixture = '| Name | Value |\n| --- | --- |\n| Item | 2 |\n\n~~removed~~';
+    const tildeFixture = '~subscript~ ~~strike~~';
+    await page.evaluate(markdown => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_profile: 'wmdx'
+      });
+      window.editorBridge.setEditorMode('wysiwyg');
+      window.editorBridge.setMarkdown(markdown);
+    }, tildeFixture);
+    await page.waitForTimeout(120);
+    assert.ok(await page.locator('.cm-subscript').count() > 0,
+      'Wmdx profile recognizes its single-tilde subscript');
+
+    const gfmFixture = '| Name | Value |\n| --- | --- |\n| Item | 2 |\n\n~~removed~~\n\n~literal~';
     await page.evaluate(markdown => {
       window.editorBridge.applyAllPreferences({
         pref_markdown_profile: 'gfm'
@@ -1371,6 +1383,11 @@ async function main() {
     await page.waitForTimeout(140);
     assert.equal(await page.locator('.cm-wp-table-container').count(), 1);
     assert.ok(await page.locator('.cm-strikethrough').count() > 0);
+    assert.equal(
+      await page.locator('.cm-subscript').count(),
+      0,
+      'GFM profile must leave Wmdx single-tilde subscript disabled'
+    );
 
     await page.evaluate(markdown => {
       window.editorBridge.applyAllPreferences({
@@ -1389,7 +1406,12 @@ async function main() {
       0,
       'CommonMark profile does not recognize GFM strikethrough'
     );
-    cases += 2;
+    assert.equal(
+      await page.locator('.cm-subscript').count(),
+      0,
+      'CommonMark profile leaves single tilde literal'
+    );
+    cases += 4;
 
     assert.deepEqual(failures, [], 'uncaught browser exceptions');
     assert.deepEqual(await page.evaluate(() => window.layoutDiagnostics), [], 'editor diagnostics');

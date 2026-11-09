@@ -20,21 +20,34 @@ const gfmInlineExamples = [
   'ftp://foo.bar.baz.'
 ].join('\n');
 
-async function createEditorState(markdownText, { embedded }) {
+async function createEditorState(markdownText, {
+  embedded,
+  gfmExtensions = true,
+  wmdxSubscript = true
+}) {
   const { EditorState } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
   const { Autolink, Table, TaskList } = await import('@lezer/markdown');
   const { wmdxGfmFtpAutolink } = await import('../src/gfm-autolink.mjs');
-  const { wmdxGfmStrikethrough } = await import('../src/gfm-strikethrough.mjs');
+  const { createWmdxGfmTildeExtension } =
+    await import('../src/gfm-strikethrough.mjs');
   const { wmdxCommonMarkCompatibility } = await import('../src/commonmark-compat.mjs');
-  const extensions = [
-    Autolink,
-    ...(embedded ? [] : [Table]),
-    TaskList,
-    wmdxGfmFtpAutolink,
-    wmdxGfmStrikethrough,
-    wmdxCommonMarkCompatibility
-  ];
+  const extensions = [];
+  if (gfmExtensions) {
+    extensions.push(
+      Autolink,
+      ...(!embedded ? [Table] : []),
+      TaskList,
+      wmdxGfmFtpAutolink
+    );
+  }
+  if (gfmExtensions || wmdxSubscript) {
+    extensions.push(createWmdxGfmTildeExtension({
+      gfmStrikethrough: gfmExtensions,
+      wmdxSubscript
+    }));
+  }
+  extensions.push(wmdxCommonMarkCompatibility);
 
   return EditorState.create({
     doc: markdownText,
@@ -132,11 +145,54 @@ test('single tilde is Wmdx subscript, not GFM strikethrough', async () => {
   );
 });
 
+test('GFM-only parses double-tilde strikethrough but leaves single tildes literal', async () => {
+  const { syntaxTree } = await import('@codemirror/language');
+  const state = await createEditorState('~literal~ ~~strike~~', {
+    embedded: false,
+    gfmExtensions: true,
+    wmdxSubscript: false
+  });
+  const nodes = collectNodes(state, syntaxTree);
+  assert.equal(nodes.some(node => node.name === 'Subscript'), false);
+  assert.deepEqual(
+    nodes.filter(node => node.name === 'Strikethrough').map(node => node.text),
+    ['~~strike~~']
+  );
+});
+
+test('Wmdx subscript remains independently selectable with GFM extensions off', async () => {
+  const { syntaxTree } = await import('@codemirror/language');
+  const state = await createEditorState('~sub~ ~~literal~~', {
+    embedded: false,
+    gfmExtensions: false,
+    wmdxSubscript: true
+  });
+  const nodes = collectNodes(state, syntaxTree);
+  assert.deepEqual(
+    nodes.filter(node => node.name === 'Subscript').map(node => node.text),
+    ['~sub~']
+  );
+  assert.equal(nodes.some(node => node.name === 'Strikethrough'), false);
+});
+
+test('CommonMark-only leaves GFM and Wmdx tilde forms literal', async () => {
+  const { syntaxTree } = await import('@codemirror/language');
+  const state = await createEditorState('~literal~ ~~literal~~', {
+    embedded: false,
+    gfmExtensions: false,
+    wmdxSubscript: false
+  });
+  const nodes = collectNodes(state, syntaxTree);
+  assert.equal(nodes.some(node =>
+    node.name === 'Subscript' || node.name === 'Strikethrough'
+  ), false);
+});
+
 test('main and embedded parser configurations use explicit GFM extensions', () => {
   const source = readProjectFile('web/src/main.js');
   assert.match(
     source,
-    /if \(gfmExtensionsEnabled\) \{\s*extensions\.push\(\s*GFMAutolink,\s*GFMTaskList,\s*wmdxGfmStrikethrough,\s*wmdxGfmFtpAutolink\s*\);\s*if \(includeTables\) extensions\.push\(GFMTable\);/
+    /if \(gfmExtensionsEnabled\) \{\s*extensions\.push\(\s*GFMAutolink,\s*GFMTaskList,\s*createWmdxGfmTildeExtension\(\{[\s\S]*?wmdxSubscript:\s*wmdxSubscriptEnabled[\s\S]*?wmdxGfmFtpAutolink\s*\);[\s\S]*?if \(includeTables\) extensions\.push\(GFMTable\);/
   );
   assert.match(
     source,
