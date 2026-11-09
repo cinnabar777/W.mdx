@@ -756,7 +756,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             isDirty = false
             updateTitle()
             if (isEditorReady) {
-                webView.evaluateJavascript("window.editorBridge.setMarkdown('');", null)
+                webView.evaluateJavascript(
+                    "window.editorBridge.setMarkdown('', ${JSONObjectWrapper.quote(currentFileName)});",
+                    null
+                )
                 pendingOpenUri?.let { uri ->
                     pendingOpenUri = null
                     val permissionFlags = pendingOpenPermissionFlags
@@ -1846,7 +1849,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         currentFileName = getString(R.string.untitled_document)
         isDirty = false
         updateTitle()
-        webView.evaluateJavascript("window.editorBridge.setMarkdown('');", null)
+        webView.evaluateJavascript(
+            "window.editorBridge.setMarkdown('', ${JSONObjectWrapper.quote(currentFileName)});",
+            null
+        )
     }
 
     private fun navigateBackOrFinish() {
@@ -2018,7 +2024,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 prefs.edit().putString("last_opened_uri", uri.toString()).apply()
 
                 val escaped = JSONObjectWrapper.quote(text)
-                webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
+                webView.evaluateJavascript(
+                    "window.editorBridge.setMarkdown($escaped, ${JSONObjectWrapper.quote(fileName)});"
+                ) {
                     webView.post {
                         webView.requestFocus()
                         webView.requestLayout()
@@ -2051,7 +2059,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 prefs.edit().putString("last_opened_uri", uri.toString()).apply()
 
                 val escaped = JSONObjectWrapper.quote(text)
-                webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
+                webView.evaluateJavascript(
+                    "window.editorBridge.setMarkdown($escaped, ${JSONObjectWrapper.quote(fileName)});"
+                ) {
                     webView.post {
                         webView.requestFocus()
                         webView.requestLayout()
@@ -2087,7 +2097,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     prefs.edit().putString("last_opened_uri", uri.toString()).apply()
 
                     val escaped = JSONObjectWrapper.quote(content)
-                    webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
+                    webView.evaluateJavascript(
+                        "window.editorBridge.setMarkdown($escaped, ${JSONObjectWrapper.quote(fileName)});"
+                    ) {
                         webView.post {
                             webView.requestFocus()
                             webView.requestLayout()
@@ -5393,7 +5405,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     latestMarkdownContent = text
                     isDirty = text.isNotEmpty()
                     val escaped = JSONObjectWrapper.quote(text)
-                    webView.evaluateJavascript("window.editorBridge.setMarkdown($escaped);") {
+                    webView.evaluateJavascript(
+                        "window.editorBridge.setMarkdown($escaped, ${JSONObjectWrapper.quote(currentFileName)});"
+                    ) {
                         updateTitle()
                     }
                 }

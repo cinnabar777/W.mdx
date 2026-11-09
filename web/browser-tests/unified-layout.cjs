@@ -127,6 +127,65 @@ async function main() {
     await page.waitForFunction(() => window.editorBridge);
     await page.evaluate(() => window.editorBridge.setEditorMode('wysiwyg'));
 
+    const jsonDocuments = [
+      ['chrono_backup.json', JSON.stringify({ payload: 'x'.repeat(48_000) })],
+      [
+        'Clock_backup.json',
+        JSON.stringify(
+          Object.fromEntries(Array.from({ length: 420 }, (_, index) => [
+            `preference_${index}`,
+            { enabled: index % 2 === 0, label: `Clock preference ${index}` }
+          ])),
+          null,
+          2
+        )
+      ]
+    ];
+    for (const [fileName, jsonText] of jsonDocuments) {
+      await page.evaluate(async ({ text, name }) => {
+        await window.editorBridge.setMarkdown(text, name);
+      }, { text: jsonText, name: fileName });
+      assert.equal(
+        await page.evaluate(() => window.editorBridge.getEditorMode()),
+        'source',
+        `${fileName}: non-Markdown files should open in Source/Code mode`
+      );
+      assert.equal(
+        await page.evaluate(() => window.editorBridge.getMarkdown()),
+        jsonText,
+        `${fileName}: source loading must preserve the entire JSON document`
+      );
+
+      await page.evaluate(async () => {
+        await window.editorBridge.setMarkdown('', 'Untitled.md');
+      });
+      assert.equal(
+        await page.evaluate(() => window.editorBridge.getEditorMode()),
+        'rendered',
+        'a new Markdown tab should return to the saved rendered-mode preference'
+      );
+      assert.equal(
+        await page.evaluate(() => window.editorBridge.getMarkdown()),
+        '',
+        'the JSON document must be cleared before returning to rendered Markdown'
+      );
+      const markdownAfterCode = `# Markdown after ${fileName}\n\nSafe to render.`;
+      await page.evaluate(async ({ text, name }) => {
+        await window.editorBridge.setMarkdown(text, name);
+      }, { text: markdownAfterCode, name: `${fileName}.md` });
+      assert.equal(
+        await page.evaluate(() => window.editorBridge.getEditorMode()),
+        'rendered',
+        'Markdown files should return to the selected Markdown view'
+      );
+      assert.equal(
+        await page.evaluate(() => window.editorBridge.getMarkdown()),
+        markdownAfterCode,
+        'Markdown loading after a JSON file should not retain JSON content'
+      );
+      cases++;
+    }
+
     const cheatSheet = await fs.readFile(cheatSheetFixture, 'utf8');
     await page.setViewportSize({ width: 390, height: 844 });
     for (const mode of ['live_preview', 'wysiwyg', 'source']) {

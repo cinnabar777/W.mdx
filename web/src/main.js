@@ -296,10 +296,13 @@ let refreshOpenTocPanel = null;
 let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // internal rendered presentation or 'source'
 let currentModePreference = 'rendered'; // 'rendered' | 'source' | legacy test preset
+let preferredMarkdownMode = 'rendered';
 let markdownSyntaxExposureScope = 'hidden';
 let activeSyntaxExposureScope = 'hidden';
 let currentEditorFileName = 'Untitled.md';
 let currentSourceDocumentKey = 'untitled';
+let lastLoadedEditorFileName = 'Untitled.md';
+let editorDocumentLoadGeneration = 0;
 const sourceLanguageOverridesStorageKey = 'wmdx.source-language-overrides.v1';
 const sessionSourceLanguageOverrides = new Map();
 let markdownIndentSpaces = getMarkdownIndentSpaces('1');
@@ -7026,7 +7029,7 @@ function restoreModeScrollAnchor(view, anchor) {
   return true;
 }
 
-async function setEditorMode(mode) {
+async function setEditorMode(mode, { preserveMarkdownPreference = false } = {}) {
   let nextModePreference;
   let nextSyntaxExposureScope;
   if (mode === 'source') {
@@ -7049,6 +7052,9 @@ async function setEditorMode(mode) {
     : nextSyntaxExposureScope === 'hidden'
       ? 'wysiwyg'
       : 'live_preview';
+  if (!preserveMarkdownPreference) {
+    preferredMarkdownMode = targetMode === 'source' ? 'source' : 'rendered';
+  }
 
   // Commit the table's textarea before taking the document/history snapshot.
   // Removing a focused textarea does not reliably dispatch blur in WebViews.
@@ -13438,22 +13444,70 @@ window.editorBridge = {
     if (pendingMarkdown !== null) return pendingMarkdown;
     return '';
   },
-  setMarkdown: function(markdownText) {
-    if (typeof activeAdapter !== 'undefined' && activeAdapter) {
-      pendingMarkdown = null;
-      isProgrammaticChange = true;
-      try {
-        activeAdapter.setMarkdown(markdownText || '');
-      } catch (e) {
-        console.error('Error setting markdown:', e);
+  setMarkdown: function(markdownText, fileName) {
+    const hasDocumentFileName = typeof fileName === 'string' && fileName.trim();
+    const requestGeneration = hasDocumentFileName
+      ? ++editorDocumentLoadGeneration
+      : editorDocumentLoadGeneration;
+    const applyMarkdown = (value) => {
+      const nextMarkdown = value || '';
+      if (typeof activeAdapter !== 'undefined' && activeAdapter) {
+        pendingMarkdown = null;
+        isProgrammaticChange = true;
+        try {
+          activeAdapter.setMarkdown(nextMarkdown);
+        } catch (e) {
+          console.error('Error setting markdown:', e);
+        }
+        window.leftPanelController?.onNativeDocumentLoaded?.(nextMarkdown);
+        window.AndroidNative?.restoreNativeCursorAndScrollState?.(
+          activeAdapter.documentSessionId
+        );
+        setTimeout(() => { isProgrammaticChange = false; }, 50);
+      } else {
+        pendingMarkdown = nextMarkdown;
       }
-      window.leftPanelController?.onNativeDocumentLoaded?.(markdownText || '');
-      window.AndroidNative?.restoreNativeCursorAndScrollState?.(
-        activeAdapter.documentSessionId
-      );
-      setTimeout(() => { isProgrammaticChange = false; }, 50);
-    } else {
-      pendingMarkdown = markdownText;
+    };
+    if (hasDocumentFileName) {
+      const nextFileName = fileName.trim();
+      const previousLoadedFileName = lastLoadedEditorFileName;
+      setCurrentEditorFileName(nextFileName, true);
+      const isMarkdownFile = sourceLanguageExtension(nextFileName) === null;
+      const targetMode = isMarkdownFile ? preferredMarkdownMode : 'source';
+      const currentDocumentMode = currentEditorMode === 'source' ? 'source' : 'rendered';
+      const applyCurrentDocument = () => {
+        if (requestGeneration !== editorDocumentLoadGeneration) return;
+        lastLoadedEditorFileName = nextFileName;
+        applyMarkdown(markdownText);
+      };
+
+      if (targetMode !== currentDocumentMode) {
+        if (
+          targetMode === 'rendered' &&
+          sourceLanguageExtension(previousLoadedFileName) !== null &&
+          activeAdapter
+        ) {
+          const wasProgrammatic = isProgrammaticChange;
+          isProgrammaticChange = true;
+          try {
+            activeAdapter.setMarkdown('');
+          } finally {
+            isProgrammaticChange = wasProgrammatic;
+          }
+        }
+        return setEditorMode(targetMode, {
+          preserveMarkdownPreference: true
+        }).then(applyCurrentDocument);
+      }
+
+      applyCurrentDocument();
+      return;
+    }
+
+    const generationIsCurrent = () =>
+      requestGeneration === editorDocumentLoadGeneration;
+    if (generationIsCurrent()) {
+      applyMarkdown(markdownText);
     }
   },
   persistCurrentScrollPosition: function() {

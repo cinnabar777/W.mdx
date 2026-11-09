@@ -159,6 +159,21 @@ test('Android Open With advertises text and supported source-code MIME types', (
   );
 });
 
+test('non-Markdown documents select Source before their text is parsed', () => {
+  assert.match(
+    source,
+    /setMarkdown:\s*function\(markdownText,\s*fileName\)[\s\S]*?sourceLanguageExtension\(nextFileName\)\s*===\s*null[\s\S]*?targetMode\s*=\s*isMarkdownFile\s*\?\s*preferredMarkdownMode\s*:\s*'source'/
+  );
+  assert.match(
+    mainActivitySource,
+    /window\.editorBridge\.setMarkdown\(\$escaped,\s*\$\{JSONObjectWrapper\.quote\(fileName\)\}\)/
+  );
+  assert.match(
+    leftPanelSource,
+    /setMarkdown\?\.\(\s*next\.markdown,\s*next\.isStartPage\s*\?\s*'Untitled\.md'\s*:\s*next\.name\s*\)/s
+  );
+});
+
 test('returning to the app keeps the keyboard hidden until the user touches the editor', () => {
   assert.ok(mainActivitySource.includes('suppressImeUntilUserTouch = true'));
   assert.ok(mainActivitySource.includes('SOFT_INPUT_STATE_ALWAYS_HIDDEN'));

@@ -15,7 +15,7 @@ families in one editor, not separate document modes.
 | Editor surface | Behavior |
 | --- | --- |
 | Rendered Markdown editor | One shared block/layout pipeline. A syntax-exposure setting controls whether syntax stays hidden, appears around the caret, or expands to the active line/block. WYSIWYG and Live Preview are exposure presets, not separate renderers. |
-| Source/Code editor | Raw editable text with filename-based highlighting for Markdown, JavaScript/TypeScript/JSX/TSX, JSON, YAML, Python, SQL, Java, Rust, C/C++, Go, PHP, HTML/XML/SVG, and CSS. A Menu action can override the language per document; unknown extensions default to plain text. All source characters remain visible; Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded. |
+| Source/Code editor | Non-Markdown text files open in Source/Code automatically; Markdown files use the selected Markdown view. The editor provides filename-based highlighting for Markdown, JavaScript/TypeScript/JSX/TSX, JSON, YAML, Python, SQL, Java, Rust, C/C++, Go, PHP, HTML/XML/SVG, and CSS. A Menu action can override the language per document; unknown extensions default to plain text. All source characters remain visible; Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded. |
 
 Source-editor appearance and token colors are separate from rendered
 Document Appearance settings. In the interim, the app still exposes the
