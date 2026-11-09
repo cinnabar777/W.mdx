@@ -9,6 +9,10 @@ const { syntaxTree } = require('@codemirror/language');
 
 const mainJsPath = path.join(__dirname, '../src/main.js');
 const mainSource = fs.readFileSync(mainJsPath, 'utf8');
+const documentLayoutSource = fs.readFileSync(
+  path.join(__dirname, '../src/markdownDocumentLayout.js'),
+  'utf8'
+);
 
 test('Callout regex pattern logic matches types and optional fold markers', () => {
   const re = /^(\s*>\s*)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i;
@@ -97,10 +101,10 @@ test('code text background is applied to the text mark, not substituted for the 
   assert.ok(mainSource.includes("Decoration.mark({ class: 'cm-codeblock-text' })"));
 });
 
-test('Callout line classification and marker detection logic in main.js', () => {
-  assert.ok(mainSource.includes('cm-callout'), 'Main JS assigns cm-callout line class');
-  assert.ok(mainSource.includes('cm-callout-title'), 'Main JS assigns cm-callout-title line class');
-  assert.ok(mainSource.includes('cm-blockquote'), 'Main JS retains cm-blockquote line class');
+test('shared document layout owns callout and blockquote line classification', () => {
+  assert.ok(documentLayoutSource.includes("'cm-callout'"), 'shared layout assigns cm-callout');
+  assert.ok(documentLayoutSource.includes("'cm-callout-title'"), 'shared layout assigns callout title class');
+  assert.ok(documentLayoutSource.includes("'cm-blockquote'"), 'shared layout assigns cm-blockquote');
 });
 
 test('callout quote syntax hides its separator space so wrapped text aligns', () => {
@@ -412,11 +416,12 @@ test('wysiwygCodeBlockField, coordsForTargetRow, and selection paint styling', (
   assert.ok(indexHtml.includes('.cm-wp-table-container.cm-document-selection .cm-wp-table th'), 'index.html has gradient overlay rule for selected tables');
 });
 
-test('persistentLayoutField StateField and persistentLayoutClasses filtering in main.js', () => {
+test('persistentLayoutField owns semantic block classes in every mode', () => {
   assert.ok(mainSource.includes('export function buildPersistentLayoutDecorations'), 'buildPersistentLayoutDecorations function exists');
   assert.ok(mainSource.includes('export const persistentLayoutField = StateField.define'), 'persistentLayoutField StateField exists');
-  assert.ok(mainSource.includes('const persistentLayoutClasses = new Set(['), 'persistentLayoutClasses Set exists');
-  assert.ok(mainSource.includes('!persistentLayoutClasses.has(className)'), 'persistentLayoutClasses is filtered in WYSIWYG mode');
+  assert.ok(mainSource.includes("'data-layout-kind': line.kind"), 'shared layout decorates semantic lines');
+  assert.ok(mainSource.includes("class: [...classes].join(' ')"), 'contextual decorations emit only their own line classes');
+  assert.equal(mainSource.includes('persistentLayoutClasses'), false, 'the contextual plugin does not duplicate shared block classes');
 });
 
 test('typographySettingsEffect, no viewportMargin, and ImagePreviewWidget estimatedHeight', () => {

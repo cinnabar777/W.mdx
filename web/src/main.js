@@ -3194,12 +3194,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const nativeCallouts = layout.nativeCallouts;
     for (const [lineFrom, attrs] of nativeCallouts.lineAttributes) {
       calloutLineAttributes.set(lineFrom, attrs);
-      addLineClass(
-        lineFrom,
-        'cm-blockquote',
-        'cm-callout',
-        attrs.isTitle ? 'cm-callout-title' : 'cm-callout-body'
-      );
 
       if (attrs.indentToHide > 0) {
         const line = doc.lineAt(lineFrom);
@@ -3218,24 +3212,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       const line = doc.lineAt(lineFrom);
       for (const range of ranges) {
         hideSyntax(line.from + range.from, line.from + range.to);
-      }
-    }
-
-    for (const lineFrom of calloutLineAttributes.keys()) {
-      const line = doc.lineAt(lineFrom);
-      const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
-      const hasTaskMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text);
-      const classes = lineClasses.get(lineFrom);
-      if (classes) {
-        if (hasListMarker) {
-          classes.add('cm-list-item');
-          classes.add('cm-callout-list-item');
-        } else {
-          classes.delete('cm-list-item');
-          classes.delete('cm-callout-list-item');
-        }
-        if (hasTaskMarker) classes.add('cm-todo-list-item');
-        else classes.delete('cm-todo-list-item');
       }
     }
 
@@ -3335,13 +3311,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             getHeadingFlavorAtNode(node, doc)
           );
 
-          if (headingLevel && headingEnabled && !isPureWysiwyg) {
-            addLineClass(
-              line.from,
-              'cm-heading',
-              `cm-heading-${headingLevel}`
-            );
-          } else if (headingLevel && !headingEnabled && !isPureWysiwyg) {
+          if (headingLevel && !headingEnabled && !isPureWysiwyg) {
             addLineClass(line.from, 'cm-heading-syntax-literal');
           }
 
@@ -3519,12 +3489,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               }
               if (insideCodeOrTable) return false;
 
-              addLineClass(
-                line.from,
-                'cm-list-item',
-                'cm-todo-list-item',
-                'cm-wmdx-task-item'
-              );
               if (node.from > line.from) {
                 const indentIsActive = !isPureWysiwyg && (
                   selection.empty
@@ -3555,7 +3519,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'HorizontalRule') {
-            addLineClass(line.from, 'cm-hr');
             if (!isNodeActive && node.to > node.from) {
               if (!isPureWysiwyg) hideSyntax(node.from, node.to);
             }
@@ -3892,7 +3855,6 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       ) {
         continue;
       }
-      addLineClass(item.line.from, 'cm-list-item');
       const active = isSourceMode || view.state.selection.ranges.some(range =>
         range.empty
           ? range.head >= item.from && range.head <= item.to
@@ -3913,41 +3875,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }
     }
 
-    const persistentLayoutClasses = new Set([
-      'cm-paragraph',
-      'cm-paragraph-first',
-      'cm-paragraph-last',
-      'cm-list-item',
-      'cm-list-continuation',
-      'cm-heading',
-      'cm-heading-1',
-      'cm-heading-2',
-      'cm-heading-3',
-      'cm-heading-4',
-      'cm-heading-5',
-      'cm-heading-6',
-      'cm-blockquote',
-      'cm-callout',
-      'cm-callout-title',
-      'cm-callout-body',
-      'cm-callout-list-item',
-      'cm-todo-list-item',
-      'cm-wmdx-task-item',
-      'cm-hr'
-    ]);
-
     for (const [lineFrom, classes] of lineClasses) {
-      const remaining = [...classes].filter(className =>
-        currentEditorMode === 'source' ||
-        !persistentLayoutClasses.has(className)
-      );
-      if (!remaining.length) continue;
-
+      if (!classes.size) continue;
       const lineStyles = [];
       builder.push(
         Decoration.line({
           attributes: {
-            class: remaining.join(' '),
+            class: [...classes].join(' '),
             ...(lineStyles.length ? { style: lineStyles.join(';') } : {})
           }
         }).range(lineFrom)
