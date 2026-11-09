@@ -149,6 +149,23 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     assert.ok(sourceContent.textContent.includes('Hard break by spaces:  '));
     assert.ok(sourceContent.textContent.includes('Hard break by slash\\'));
 
+    const inlineFormattingSource = '**bold** *italic* ~~strike~~ H~2~O `code`';
+    window.editorBridge.setMarkdown(inlineFormattingSource);
+    for (const mode of ['source', 'live_preview', 'wysiwyg']) {
+      await window.editorBridge.setEditorMode(mode);
+      const modeContent = window.document.querySelector('.cm-content');
+      for (const className of [
+        'cm-bold', 'cm-italic', 'cm-strikethrough', 'cm-subscript', 'cm-inline-code'
+      ]) {
+        assert.equal(
+          modeContent.querySelectorAll(`.${className}`).length,
+          1,
+          `${mode} applies ${className} exactly once`
+        );
+      }
+      assert.equal(window.editorBridge.getMarkdown(), inlineFormattingSource);
+    }
+
     const tableSource = [
       '| Left | Center | Right |',
       '| :--- | :---: | ---: |',

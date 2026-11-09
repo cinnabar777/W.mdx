@@ -80,8 +80,9 @@ whole-document renderer refactor is still unfinished:
   contextual inline decorations.
 - `livePreviewPlugin._buildDecorationsInternal()` runs in all modes and chooses
   syntax visibility and contextual inline behavior based on the current mode.
-- `heightMapField` still owns WYSIWYG inline formatting and syntax hiding, while
-  `livePreviewPlugin` owns contextual syntax and many other inline widgets.
+- `livePreviewPlugin` owns semantic inline-format marks in all three modes;
+  `heightMapField` remains responsible for WYSIWYG syntax hiding and special replacements.
+  The plugin also owns contextual syntax and many other inline widgets.
   Rendering code is therefore still distributed across fields and plugins,
   even though their block decisions now come from the shared plan.
 

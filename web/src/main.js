@@ -3367,7 +3367,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'StrikethroughMark' && !isNodeActive) {
             if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
-          if (node.name === 'Subscript' && !isPureWysiwyg) {
+          if (node.name === 'Subscript') {
             builder.push(Decoration.mark({ class: 'cm-subscript' }).range(node.from, node.to));
           }
           if (node.name === 'SubscriptMark' && !isNodeActive && !isPureWysiwyg) {
@@ -4718,11 +4718,6 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'StrikethroughMark') {
         hideSyntax(node.from, node.to);
-      }
-      if (node.name === 'Subscript') {
-        replacements.push(
-          Decoration.mark({ class: 'cm-subscript' }).range(node.from, node.to)
-        );
       }
       if (node.name === 'SubscriptMark') {
         hideSyntax(node.from, node.to);
