@@ -360,13 +360,17 @@ test('callout title layout and editing behavior match each view', () => {
     mainSource.includes("const isSourceMode = currentEditorMode === 'source';") &&
       mainSource.includes('if (!isSourceMode && to > from)') &&
       mainSource.includes('for (const line of documentLayout(state).lines.values())'),
-    'Source keeps syntax visible while inline styles and shared block layout remain active'
+    'Source keeps syntax visible while shared structural layout remains active'
   );
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important[^}]*align-self:\s*center\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[^}]*flex:\s*1 1 auto\s*!important/s);
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered > \.cm-callout-title-text\.is-source\s*\{[^}]*flex:\s*0 1 auto\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*static\s*!important[^}]*width:\s*24px\s*!important/s);
+  assert.match(indexHtml, /#editor-container\.source-mode \.cm-content \.cm-line\.cm-callout\s*\{[^}]*background:\s*transparent\s*!important[^}]*padding:\s*0\s*!important/s,
+    'Source callouts must show Markdown syntax without rendered block styling');
+  assert.match(mainSource, /if \(!isSourceMode &&\s+info\.foldMarker === '-'/,
+    'Source must not hide the body of a callout that is folded in rendered modes');
   assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-list-item\[data-callout-depth\]/, 'Nested callout list items retain list indentation');

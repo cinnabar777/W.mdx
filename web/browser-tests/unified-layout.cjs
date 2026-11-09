@@ -691,9 +691,11 @@ async function main() {
       '> [!info] Information callout',
       '> The title and body stay in one styled callout.',
       '> **Markdown formatting** remains available inside the body.',
+      '> > [!tip] Nested callout',
+      '> > The nested quote markers remain literal in Source.',
       '',
-      '> [!question]+ Foldable callout',
-      '> Its source title must remain intact.'
+      '> [!question]- Foldable callout',
+      '> Its collapsed body must remain visible in Source.'
     ].join('\n');
     await page.evaluate(async markdown => {
       await window.editorBridge.setEditorMode('source');
@@ -703,6 +705,10 @@ async function main() {
     const sourceCallout = await page.evaluate(() => {
       const lines = [...document.querySelectorAll('.cm-line.cm-callout')];
       const title = lines.find(line => line.classList.contains('cm-callout-title'));
+      const nestedTitle = lines.find(line =>
+        line.classList.contains('cm-callout-title') &&
+        line.textContent.includes('[!tip]')
+      );
       let markerNode = null;
       if (title) {
         const walker = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
@@ -722,31 +728,69 @@ async function main() {
         range.setEnd(markerNode, offset + 1);
         markerX = range.getBoundingClientRect().left;
       }
+      let nestedMarkerX = null;
+      if (nestedTitle) {
+        const walker = document.createTreeWalker(nestedTitle, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          const offset = node.textContent.indexOf('>');
+          if (offset < 0) continue;
+          const range = document.createRange();
+          range.setStart(node, offset);
+          range.setEnd(node, offset + 1);
+          nestedMarkerX = range.getBoundingClientRect().left;
+          break;
+        }
+      }
       return {
         text: window.editorBridge.getMarkdown(),
+        sourceModeClass: document.querySelector('#editor-container')
+          ?.classList.contains('source-mode'),
         titleWidgets: document.querySelectorAll('.cm-callout-title-container').length,
+        calloutIcons: document.querySelectorAll('.cm-callout-icon').length,
         renderedTitleRows: document.querySelectorAll('.cm-callout-title-rendered').length,
         calloutRows: lines.length,
         titleText: title?.textContent ?? '',
         markerX,
         lineX: title?.getBoundingClientRect().left ?? null,
-        expectedMarkerX: title
-          ? title.getBoundingClientRect().left +
-            parseFloat(getComputedStyle(title).borderLeftWidth || '0') +
-            parseFloat(getComputedStyle(title).paddingLeft || '0') -
-            parseFloat(title.style.getPropertyValue('--list-marker-gutter') || '0')
-          : null
+        titleStyle: title ? {
+          background: getComputedStyle(title).backgroundColor,
+          borderLeftWidth: getComputedStyle(title).borderLeftWidth,
+          paddingLeft: getComputedStyle(title).paddingLeft,
+          fontWeight: getComputedStyle(title).fontWeight
+        } : null,
+        nestedTitleText: nestedTitle?.textContent ?? '',
+        nestedMarkerX,
+        nestedLineX: nestedTitle?.getBoundingClientRect().left ?? null,
+        collapsedBodyVisible: lines.some(line =>
+          line.textContent.includes('Its collapsed body must remain visible in Source.')
+        )
       };
     });
     assert.equal(sourceCallout.text, calloutFixture, 'Source must preserve the exact callout Markdown');
+    assert.equal(sourceCallout.sourceModeClass, true, 'Source mode must activate raw callout styling');
     assert.equal(sourceCallout.titleWidgets, 0, 'Source must not replace the callout title with a widget');
+    assert.equal(sourceCallout.calloutIcons, 0, 'Source must not overlay a callout icon');
     assert.equal(sourceCallout.renderedTitleRows, 0, 'Source must not claim a rendered callout title row');
-    assert.ok(sourceCallout.calloutRows >= 5, 'Source should retain semantic callout styling on each quote line');
+    assert.ok(sourceCallout.calloutRows >= 5, 'Source should retain callout line semantics for layout');
     assert.match(sourceCallout.titleText, /^>\s*\[!info\]\s+Information callout/,
       'Source callout title syntax must stay on its original top row');
     assert.ok(Number.isFinite(sourceCallout.markerX) &&
-      Math.abs(sourceCallout.markerX - sourceCallout.expectedMarkerX) < 2,
-    `Source quote marker should stay at the callout content edge: ${JSON.stringify(sourceCallout)}`);
+      Math.abs(sourceCallout.markerX - sourceCallout.lineX) < 2,
+    `Source quote marker should stay at the unstyled line edge: ${JSON.stringify(sourceCallout)}`);
+    assert.equal(sourceCallout.titleStyle.background, 'rgba(0, 0, 0, 0)',
+      'Source callout titles must not show a rendered block background');
+    assert.equal(sourceCallout.titleStyle.borderLeftWidth, '0px',
+      'Source callout titles must not paint over the visible quote marker');
+    assert.equal(sourceCallout.titleStyle.paddingLeft, '0px',
+      'Source callout titles must not shift the raw quote syntax');
+    assert.equal(sourceCallout.collapsedBodyVisible, true,
+      'Source must expose the body of callouts collapsed in rendered modes');
+    assert.match(sourceCallout.nestedTitleText, /^>\s*>\s*\[!tip\]/,
+      'Nested callout quote markers must remain literal and ordered');
+    assert.ok(Number.isFinite(sourceCallout.nestedMarkerX) &&
+      Math.abs(sourceCallout.nestedMarkerX - sourceCallout.nestedLineX) < 2,
+    `Nested source callouts should begin at the raw line edge: ${JSON.stringify(sourceCallout)}`);
 
     for (const mode of ['live_preview', 'wysiwyg']) {
       await page.evaluate(async ({ mode, markdown }) => {

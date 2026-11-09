@@ -2297,6 +2297,35 @@
     .cm-content .cm-callout .cm-foldPlaceholder {
       display: none !important;
     }
+    /* Source is literal Markdown: don't paint callout blocks beneath the
+       visible `>` and `[!type]` syntax. This avoids combining two competing
+       representations and keeps the authored quote marker at the text edge. */
+    #editor-container.source-mode .cm-content .cm-line.cm-callout {
+      border: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      color: inherit !important;
+      font-family: inherit !important;
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      line-height: inherit !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      text-indent: 0 !important;
+    }
+    #editor-container.source-mode .cm-content .cm-line.cm-callout-title {
+      border-left: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      color: inherit !important;
+      font-family: inherit !important;
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      padding: 0 !important;
+    }
+    #editor-container.source-mode .cm-content .cm-line.cm-callout[data-callout-depth] {
+      margin-left: 0 !important;
+    }
     .cm-todo-checkbox {
       appearance: none !important;
       -webkit-appearance: none !important;

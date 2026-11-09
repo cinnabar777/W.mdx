@@ -3676,7 +3676,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
         });
 
-        if (info.foldMarker === '-' && !isCurrentlyFolded && !this.initializedFoldLines.has(info.bodyFrom)) {
+        if (!isSourceMode &&
+            info.foldMarker === '-' &&
+            !isCurrentlyFolded &&
+            !this.initializedFoldLines.has(info.bodyFrom)) {
           this.initializedFoldLines.add(info.bodyFrom);
           Promise.resolve().then(() => {
             view.dispatch({
@@ -6680,6 +6683,7 @@ async function setEditorMode(mode) {
   currentEditorMode = targetMode;
   const container = document.querySelector('#editor-container');
   if (container) {
+    container.classList.toggle('source-mode', targetMode === 'source');
     let editorEl = container.querySelector('#editor');
     if (!editorEl) {
       editorEl = document.createElement('div');
