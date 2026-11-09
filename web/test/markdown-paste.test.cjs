@@ -50,6 +50,11 @@ test('clipboard Markdown detection is conservative across supported flavors', ()
     detectMarkdownPasteDialect('![[image.png|640]]'),
     'obsidian'
   );
+  assert.equal(detectMarkdownPasteDialect('H~2~O'), 'wmdx');
+  assert.equal(detectMarkdownPasteDialect('x^2^'), 'wmdx');
+  assert.equal(detectMarkdownPasteDialect('==₀highlight=='), 'wmdx');
+  assert.equal(detectMarkdownPasteDialect('=pen='), 'wmdx');
+  assert.equal(detectMarkdownPasteDialect('==highlight=='), 'obsidian');
 });
 
 test('Markdown paste converts only when the source and target profiles differ', () => {
@@ -81,6 +86,13 @@ test('Markdown paste converts only when the source and target profiles differ', 
     'commonmark'
   );
   assert.equal(convertedWmdx.markdown, '# Heading\n\n[Guide](docs/Guide.md)');
+
+  const convertedInlineWmdx = convertClipboardToMarkdownProfile(
+    { text: 'H~2~O and x^2^' },
+    'commonmark'
+  );
+  assert.equal(convertedInlineWmdx.sourceDialect, 'wmdx');
+  assert.equal(convertedInlineWmdx.markdown, 'H<sub>2</sub>O and x<sup>2</sup>');
 
   const lossyWmdx = '±warning- Keep this callout\n  body';
   assert.equal(

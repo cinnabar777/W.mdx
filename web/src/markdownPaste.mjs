@@ -14,7 +14,11 @@ const MAX_AUTO_PASTE_HTML_LENGTH = 200_000;
 function containsWmdxSyntax(text) {
   if (/^[ \t]*\.[1-6][ \t]+\S/m.test(text) ||
       /^[ \t]*±[A-Za-z][\w-]*(?:[+-])?(?:[ \t]|$)/m.test(text) ||
-      /(?:^|[^\\])(?:==[^=\n]+==|=[₁₂₃₄]pen=)/m.test(text) ||
+      /(?<![~\\])~(?!~)(\S(?:[^~\n]*?\S)?)~(?!~)/u.test(text) ||
+      /(?<![\\^])\^([^\s^\n](?:[^^\n]*?[^\s^\n])?)\^(?!\^)/u.test(text) ||
+      /==[₀₁₂]\S[^=\n]*==/u.test(text) ||
+      /(?<![=\\])=(?:[₀₁₂])?\S[^=\n]*?=(?![=])/u.test(text) ||
+      /(?<![_\\])_[₀₁₂₃]\S[^_\n]*?_/u.test(text) ||
       /^[ \t]*_[0-9]+_[ \t]*$/m.test(text)) {
     return true;
   }
@@ -26,7 +30,10 @@ export function detectMarkdownPasteDialect(source) {
   const text = String(source ?? '');
   if (!text.trim()) return null;
   if (containsWmdxSyntax(text)) return 'wmdx';
-  if (/!\[\[[^\]\n]+\]\]|\[\[[^\]\n]+\]\]|>\s*\[![\w-]+\]|%%|\^\[[^\]\n]+\]/.test(text)) {
+  if (
+    /!\[\[[^\]\n]+\]\]|\[\[[^\]\n]+\]\]|>\s*\[![\w-]+\]|%%|\^\[[^\]\n]+\]/.test(text) ||
+    /(?<![\\])==(?!(?:[₀₁₂]))[^=\n]+==/u.test(text)
+  ) {
     return 'obsidian';
   }
   if (

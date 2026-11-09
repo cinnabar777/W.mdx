@@ -1310,6 +1310,27 @@ async function main() {
     assert.match(autoConvertedMarkdown, /\[Site\]\(https:\/\/example\.com\)/);
 
     await page.evaluate(() => {
+      window.editorBridge.setMarkdown('Replace with Wmdx inline syntax');
+    });
+    await page.waitForTimeout(60);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('Control+A');
+    await page.locator('.cm-content').evaluate(element => {
+      const transfer = new DataTransfer();
+      transfer.setData('text/plain', 'H~2~O and x^2^');
+      element.dispatchEvent(new ClipboardEvent('paste', {
+        clipboardData: transfer, bubbles: true, cancelable: true
+      }));
+    });
+    await page.waitForTimeout(80);
+    assert.equal(
+      await page.evaluate(() => window.editorBridge.getMarkdown()),
+      'H<sub>2</sub>O and x<sup>2</sup>',
+      'recognized Wmdx inline syntax is converted to the CommonMark profile'
+    );
+    cases += 1;
+
+    await page.evaluate(() => {
       window.editorBridge.setMarkdown('Replace with rich HTML');
     });
     await page.waitForTimeout(60);
