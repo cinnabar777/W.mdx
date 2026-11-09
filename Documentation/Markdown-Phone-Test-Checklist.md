@@ -51,9 +51,8 @@ as an MDZip package with real media and attachment assets.
 ## Tables
 
 - Live Preview and WYSIWYG show editable tables; Source shows raw Markdown.
-- In Source, a wide table uses the editor's single horizontal scrollbar; every
-  row moves together so columns stay aligned. The app's document viewport does
-  not widen.
+- In Source, a wide table scrolls as one local block; every row moves together,
+  surrounding text stays put, and the app's document viewport does not widen.
 - In rendered views, enter a cell and verify the caret and keyboard enter that
   cell without moving to the line after the table or revealing raw table source.
 - Edit a cell, move to another cell, return, and confirm the first edit remains.

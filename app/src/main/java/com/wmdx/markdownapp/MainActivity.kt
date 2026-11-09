@@ -1113,12 +1113,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val dirtyIndicator = if (isDirty) " *" else ""
         val titleText = "$currentFileName$dirtyIndicator"
         val escapedTitle = JSONObjectWrapper.quote(titleText)
+        val escapedFileName = JSONObjectWrapper.quote(currentFileName)
         val escapedDocumentKey = JSONObjectWrapper.quote(currentDocumentHistoryKey())
         val escapedHistoryState = JSONObjectWrapper.quote(documentHistoryStateJson())
         val canGoBack = canNavigateDocumentBack()
         val canGoForward = canNavigateDocumentForward()
         webView.evaluateJavascript(
-            "if (window.editorBridge) { window.editorBridge.setDocumentTitle($escapedTitle, $escapedDocumentKey); window.editorBridge.setDocumentHistoryState($canGoBack, $canGoForward); window.leftPanelController?.onDocumentHistoryStateChanged?.($escapedHistoryState); }",
+            "if (window.editorBridge) { window.editorBridge.setDocumentTitle($escapedTitle, $escapedDocumentKey, $escapedFileName); window.editorBridge.setDocumentHistoryState($canGoBack, $canGoForward); window.leftPanelController?.onDocumentHistoryStateChanged?.($escapedHistoryState); }",
             null
         )
     }

@@ -84,18 +84,20 @@ have separate policy branches and the full mode consolidation is unfinished:
   editable tables, and only WYSIWYG replaces fenced code blocks.
 - `persistentLayoutField` applies the semantic block classes to rendered modes.
   Source exits the shared decoration plugin before Markdown layout decorations
-  are created; its only structural line decorations are for source-table rows.
-- A Source table remains editable literal text and its rows stay unwrapped. One
-  horizontal scroller on the CodeMirror editor moves all rows together, keeping
-  columns aligned without widening the app's document viewport.
+  are created; raw Markdown tables are replaced visually by one editable nested
+  CodeMirror block, while the parent document text stays unchanged.
+- A Source table remains literal Markdown in the document model. Its nested
+  editor scrolls the whole table locally; surrounding Source text and the app's
+  document viewport do not move horizontally.
 - `livePreviewPlugin` owns much of the contextual syntax and inline behavior.
   It exits early for Source. WYSIWYG-only code-block replacement and
   Live-Preview-only contextual behavior are still mode branches that need to be
   translated into explicit syntax-exposure policy.
-- Source currently has an independent token-highlight style and monospace
-  defaults. User-facing Source appearance controls and language selection for
-  non-Markdown files are not yet implemented; Markdown is still the installed
-  CodeMirror language package.
+- Source has its own font, text-color, and token-color settings. Markdown uses
+  the Markdown parser; Source/Code selects JavaScript/TypeScript/JSX/TSX,
+  JavaScript-based JSON, HTML/XML/SVG, or CSS from the filename, and leaves
+  unknown extensions as plain text. Other language packages and a per-document
+  manual language override remain to be added.
 
 The next architectural work is to map every remaining WYSIWYG/Live Preview
 branch to either shared rendering behavior or a syntax-exposure policy, then
@@ -120,9 +122,10 @@ preserve the old mode settings as aliases. Keep Source separate.
    semantic block layout.
 4. Verify paragraph, heading, quote, code-block, and table rendering alongside
    lists. In Source, assert exact text fidelity, independent token styling, and
-   whole-table horizontal scrolling through the shared editor scroller, without
-   page overflow.
-   Add explicit language detection and manual override tests for text/code files.
+    whole-table horizontal scrolling inside a bounded table block, without
+    shifting surrounding text or widening the page.
+    Add device checks for extension-based language selection; add a per-document
+    manual language override and tests for it.
 5. Run the full test suite and build. Do not declare completion based only on
    CSS-variable assertions. Confirm phone-sized layout and editing behavior
    with a device or browser rendering check when available. Browser checks do

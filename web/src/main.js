@@ -37,6 +37,8 @@ import {
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
+import { sourceLanguageExtension } from './sourceLanguage.js';
+import { SourceTableWidget } from './sourceTableWidget.js';
 import {
   applyMarkdownIndent,
   backspaceIndentedCodeBlockIndent,
@@ -285,6 +287,7 @@ let activeEmbeddedEditSaveWarningKey = null;
 let refreshOpenTocPanel = null;
 let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
+let currentEditorFileName = 'Untitled.md';
 let markdownIndentSpaces = getMarkdownIndentSpaces('1');
 
 function getUndoTargetView(parentView) {
@@ -440,9 +443,22 @@ function createMarkdownLanguageExtension(includeTables = false) {
   return cmMarkdown({ extensions });
 }
 
-function registerMarkdownParserView(view, compartment, includeTables = false) {
+function getEditorLanguageExtension() {
+  if (currentEditorMode === 'source') {
+    const sourceExtension = sourceLanguageExtension(currentEditorFileName);
+    if (sourceExtension !== null) return sourceExtension;
+  }
+  return createMarkdownLanguageExtension(true);
+}
+
+function registerMarkdownParserView(
+  view,
+  compartment,
+  includeTables = false,
+  getExtension = () => createMarkdownLanguageExtension(includeTables)
+) {
   if (view && compartment) {
-    markdownParserViewRegistry.set(view, { compartment, includeTables });
+    markdownParserViewRegistry.set(view, { compartment, getExtension });
   }
 }
 
@@ -455,9 +471,7 @@ function reconfigureMarkdownParserViews() {
     try {
       dispatchWithScrollSnapshot(
         view,
-        config.compartment.reconfigure(
-          createMarkdownLanguageExtension(config.includeTables)
-        )
+        config.compartment.reconfigure(config.getExtension())
       );
       forceParsing(view, view.state.doc.length, 40);
       dispatchWithScrollSnapshot(view, heightMapRefreshEffect.of(null));
@@ -5335,17 +5349,26 @@ export function buildPersistentLayoutDecorations(state) {
   const ranges = [];
   const renderPlan = markdownRenderPlan(state);
   if (renderPlan.raw) {
-    // Raw Source has no Markdown block layout. Keep pipe-table rows unwrapped;
-    // their shared editor scroller moves every row together.
+    // Raw Source keeps a pipe table editable as literal Markdown, but groups
+    // its rows into one local scroller so surrounding text cannot shift.
     for (const table of renderPlan.sourceTables) {
-      for (let number = table.first; number <= table.last; number++) {
-        const line = state.doc.line(number);
-        ranges.push(
-          Decoration.line({
-            attributes: { class: 'cm-table-source-line' }
-          }).range(line.from)
-        );
-      }
+      const firstLine = state.doc.line(table.first);
+      const lastLine = state.doc.line(table.last);
+      const from = firstLine.from;
+      const to = lastLine.to;
+      if (to <= from) continue;
+      ranges.push(
+        Decoration.replace({
+          widget: new SourceTableWidget({
+            markdown: state.doc.sliceString(from, to),
+            from,
+            to,
+            language: createMarkdownLanguageExtension(true),
+            highlightStyle: sourceHighlightStyle
+          }),
+          block: true
+        }).range(from, to)
+      );
     }
     return ranges.length ? Decoration.set(ranges, true) : Decoration.none;
   }
@@ -6008,7 +6031,7 @@ class CodeMirrorAdapter {
         highlightActiveLine(),
         codeFolding(),
         this.markdownLanguageCompartment.of(
-          createMarkdownLanguageExtension(true)
+          getEditorLanguageExtension()
         ),
         createMarkdownBlockquotePaste(
           transformMarkdownPaste,
@@ -6202,7 +6225,8 @@ class CodeMirrorAdapter {
     registerMarkdownParserView(
       this.view,
       this.markdownLanguageCompartment,
-      true
+      true,
+      getEditorLanguageExtension
     );
     let editorTapStart = null;
     let emptyAreaLongPressTimer = null;
@@ -6903,6 +6927,19 @@ async function setEditorMode(mode) {
   }
 
   return activeAdapter;
+}
+
+function setCurrentEditorFileName(fileName) {
+  const nextFileName = String(fileName || 'Untitled.md');
+  if (nextFileName === currentEditorFileName) return;
+  currentEditorFileName = nextFileName;
+  if (!activeAdapter?.view || currentEditorMode !== 'source') return;
+  activeAdapter.view.dispatch({
+    effects: activeAdapter.markdownLanguageCompartment.reconfigure(
+      getEditorLanguageExtension()
+    )
+  });
+  activeAdapter.scheduleSyntaxRefresh();
 }
 
 function installToolbarTapActions(container) {
@@ -13230,10 +13267,13 @@ window.editorBridge = {
       document.body.classList.remove('light-theme');
     }
   },
-  setDocumentTitle: function(title, documentKey) {
+  setDocumentTitle: function(title, documentKey, fileName) {
     const titleEl = document.querySelector('#file-title');
     if (titleEl) {
       titleEl.textContent = title;
+    }
+    if (fileName !== undefined && fileName !== null) {
+      setCurrentEditorFileName(fileName);
     }
     const displayName = String(title || '').replace(/\s+\*$/, '');
     if (documentKey !== undefined && documentKey !== null) {

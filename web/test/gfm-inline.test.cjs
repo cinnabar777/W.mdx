@@ -196,7 +196,7 @@ test('main and embedded parser configurations use explicit GFM extensions', () =
   );
   assert.match(
     source,
-    /markdownLanguageCompartment\.of\(\s*createMarkdownLanguageExtension\(true\)\s*\)/
+    /markdownLanguageCompartment\.of\(\s*getEditorLanguageExtension\(\)\s*\)/
   );
   assert.match(
     source,

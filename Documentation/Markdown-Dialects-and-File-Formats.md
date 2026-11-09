@@ -15,16 +15,16 @@ families in one editor, not separate document modes.
 | Editor surface | Behavior |
 | --- | --- |
 | Rendered Markdown editor | One shared block/layout pipeline. A syntax-exposure setting controls whether syntax stays hidden, appears around the caret, or expands to the active line/block. The old WYSIWYG and Live Preview options should become presets for this setting, not separate renderers. |
-| Source/Code editor | Raw editable text with language-aware token coloring. All source characters remain visible; Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded. |
+| Source/Code editor | Raw editable text with extension-based highlighting for Markdown, JavaScript/TypeScript/JSX/TSX, JSON, HTML/XML/SVG, and CSS; unknown extensions stay plain text. All source characters remain visible; Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded. |
 
 Source-editor appearance and token colors are separate from rendered
 Document Appearance settings. In the interim, the app still exposes the
 legacy WYSIWYG, Live Preview, and Source values while the rendered-mode
 consolidation is implemented.
 
-Source pipe tables stay literal and editable. Their rows are unwrapped and move
-together through the CodeMirror editor's single horizontal scroller, keeping
-columns aligned without widening the app's document viewport.
+Source pipe tables stay literal and editable. A nested Source editor scrolls
+the whole table as a unit, keeping columns aligned without shifting surrounding
+text or widening the app's document viewport.
 
 ## What the syntax toggles do
 

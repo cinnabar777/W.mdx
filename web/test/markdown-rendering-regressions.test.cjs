@@ -147,11 +147,11 @@ test('rendering and interaction regressions stay covered without changing table 
   );
   assert.match(
     styles,
-    /#editor-container\.source-mode \.cm-scroller\s*\{[^}]*overflow-x:\s*auto\s*!important/
+    /\.cm-source-table-editor \.cm-scroller\s*\{[^}]*overflow-x:\s*auto\s*!important/
   );
   assert.match(
     styles,
-    /\.cm-content \.cm-table-source-line\s*\{[^}]*overflow:\s*visible\s*!important/
+    /#editor-container\.source-mode \.cm-source-table-widget\s*\{[^}]*overflow:\s*hidden\s*!important/
   );
   assert.match(main, /Table cell\/editing|Table rendering in WYSIWYG/);
 });
@@ -172,7 +172,7 @@ test('phone fixture is paired with an interaction checklist and packaged media',
   assert.match(checklist, /Live Preview renders supported structures/);
   assert.match(checklist, /outer quote border should remain continuous/i);
   assert.match(checklist, /nested\s+quotes render farther inward/i);
-  assert.match(checklist, /Source, a wide table uses the editor's single horizontal scrollbar/);
+  assert.match(checklist, /In Source, a wide table scrolls as one local block/);
   assert.match(checklist, /CommonMark inline\/reference links and autolinks/);
 });
 

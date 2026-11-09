@@ -1761,22 +1761,50 @@
       padding-left: max(0px, calc(var(--list-continuation-offset, 0ch) - var(--layout-visible-indent, 0px))) !important;
     }
 
-    .cm-content .cm-table-source-line {
+    #editor-container.source-mode .cm-source-table-widget {
       display: block !important;
+      box-sizing: border-box !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      margin: 10px 0 !important;
+      overflow: hidden !important;
+      contain: inline-size;
+    }
+    .cm-source-table-editor {
+      box-sizing: border-box !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+    .cm-source-table-editor .cm-scroller {
+      box-sizing: border-box !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      scrollbar-width: thin;
+    }
+    .cm-source-table-editor .cm-scroller::-webkit-scrollbar {
+      height: 5px;
+    }
+    .cm-source-table-editor .cm-scroller::-webkit-scrollbar-thumb {
+      background: rgba(180, 180, 190, 0.7);
+      border-radius: 4px;
+    }
+    .cm-source-table-editor .cm-content {
       box-sizing: border-box !important;
       width: max-content !important;
       min-width: 100% !important;
       max-width: none !important;
-      overflow: visible !important;
+    }
+    .cm-source-table-editor .cm-line {
+      box-sizing: border-box !important;
+      width: max-content !important;
+      min-width: 100% !important;
+      max-width: none !important;
       white-space: pre !important;
-      text-wrap: nowrap !important;
-    }
-    #editor-container.source-mode .cm-scroller {
-      overflow-x: auto !important;
-    }
-    #editor-container.source-mode .cm-content {
-      width: 100% !important;
-      max-width: 100% !important;
     }
     .cm-content .cm-table-header-source-line {
       font-weight: var(--table-header-font-weight, 700) !important;

@@ -770,7 +770,7 @@ worktree now includes:
 
 - A shared whole-document semantic layout module consumed by the three editor
   views, with browser geometry coverage for list flavors, nesting, mixed blocks,
-  source-table scrolling, table edits, keyboard viewport changes, and scroll
+  source-table local scrolling and editing, table edits, keyboard viewport changes, and scroll
   anchoring across mode switches.
 - A conversion module for CommonMark, GFM, Obsidian, and HTML input, with a
   preview-before-replace flow and a shared clipboard-paste flow.
@@ -781,20 +781,23 @@ worktree now includes:
 - An offline MDZip phone fixture with packaged images, audio, video, and
   attachments, plus a separate interaction checklist.
 
-**Latest local verification (2026-11-09):** 590 web tests and 260
+**Latest local verification (2026-11-09):** 592 web tests and 260
 real-browser layout/interaction cases pass. The browser run does not prove
 Android WebView touch, keyboard, URI-provider, media playback, or device
-rendering behavior. Android compilation and GitHub Actions verification of the
-current changes are still pending.
+rendering behavior. GitHub Actions verification of the latest changes is
+pending.
 
 **View contract:** The target is one rendered Markdown editor whose syntax
 exposure is configurable, plus a separate raw Source/Code editor. The legacy
 WYSIWYG and Live Preview choices are compatibility presets, not separate
 rendering engines. Source retains every source character, with its own syntax
-token colors and editor typography; source tables scroll as a synchronized
-block through one CodeMirror editor scroller, so all columns move together
-without widening the app viewport. The rendered-mode consolidation and
-language-mode support for non-Markdown files remain implementation work.
+token colors and editor typography; source tables use a nested editable
+CodeMirror block whose local scroller moves all rows together without shifting
+surrounding text or widening the app viewport. Source appearance controls are independent
+from Document Appearance. Initial extension-based code highlighting supports
+JavaScript/TypeScript/JSX/TSX, JSON, HTML/XML/SVG, and CSS; unknown types stay
+plain text. Additional language packages, per-document language override, and
+the rendered-mode consolidation remain implementation work.
 
 **List contract:** Hanging wrapping is the default for bullets, tasks, and
 ordered markers. Non-hanging mode aligns wrapped rows at the item block edge;

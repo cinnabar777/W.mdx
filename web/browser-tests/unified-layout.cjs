@@ -786,60 +786,111 @@ async function main() {
       '| :--- | :--- | :--- | ---: | :---: | :--- |',
       '| WMDX-001 | A deliberately long table row that should remain on one source line | Editor | 2026-11-06 | Open | Keep every pipe and separator intact |'
     ].join('\n');
+    const wideSourceDocument = [
+      'Text before the table stays at the normal editor width.',
+      '',
+      wideSourceTable,
+      '',
+      'Text after the table also stays at the normal editor width.'
+    ].join('\n');
     for (const mode of modes) {
       await page.evaluate(async ({ mode, markdown }) => {
         await window.editorBridge.setEditorMode(mode);
         window.editorBridge.setMarkdown(markdown);
-      }, { mode, markdown: wideSourceTable });
+      }, { mode, markdown: wideSourceDocument });
       await page.waitForTimeout(100);
       const tableLayout = await page.evaluate(async () => {
-        const scroller = document.querySelector('.cm-scroller');
-        const rows = [...document.querySelectorAll('.cm-table-source-line')];
-        if (!scroller) return null;
-        if (!rows.length) return {
+        const outerScroller = document.querySelector('#editor > .cm-editor > .cm-scroller');
+        const tableWidget = document.querySelector('.cm-source-table-widget');
+        if (!outerScroller) return null;
+        if (!tableWidget) return {
           renderedTables: document.querySelectorAll('.cm-wp-table-container').length
         };
+        const tableScroller = tableWidget.querySelector('.cm-source-table-editor .cm-scroller');
+        const rows = [...tableWidget.querySelectorAll('.cm-source-table-editor .cm-line')];
+        const surroundingLines = [...document.querySelectorAll('#editor > .cm-editor > .cm-scroller > .cm-content > .cm-line')]
+          .filter(line =>
+            !line.closest('.cm-source-table-widget') &&
+            (
+              line.textContent.includes('Text before the table') ||
+              line.textContent.includes('Text after the table')
+            )
+          );
+        const beforeLefts = surroundingLines.map(line => line.getBoundingClientRect().left);
         const first = rows[0];
         const style = getComputedStyle(first);
-        const beforeLefts = rows.map(row => row.getBoundingClientRect().left);
-        scroller.scrollLeft = Math.min(180, scroller.scrollWidth - scroller.clientWidth);
+        const beforeRowLefts = rows.map(row => row.getBoundingClientRect().left);
+        tableScroller.scrollLeft = Math.min(180, tableScroller.scrollWidth - tableScroller.clientWidth);
         await new Promise(resolve => requestAnimationFrame(() =>
           requestAnimationFrame(resolve)
         ));
-        const afterLefts = rows.map(row => row.getBoundingClientRect().left);
-        const shifts = afterLefts.map((left, index) => left - beforeLefts[index]);
+        const afterRowLefts = rows.map(row => row.getBoundingClientRect().left);
+        const shifts = afterRowLefts.map((left, index) => left - beforeRowLefts[index]);
+        const afterSurroundingLefts = surroundingLines.map(line => line.getBoundingClientRect().left);
         return {
           whiteSpace: style.whiteSpace,
           renderedTables: document.querySelectorAll('.cm-wp-table-container').length,
-          editorHorizontalOverflow: scroller.scrollWidth > scroller.clientWidth + 1,
+          tableHorizontalOverflow: tableScroller.scrollWidth > tableScroller.clientWidth + 1,
+          tableScrollWorks: tableScroller.scrollLeft > 0,
+          outerHorizontalOverflow: outerScroller.scrollWidth > outerScroller.clientWidth + 1,
+          surroundingTextFixed: beforeLefts.every((left, index) =>
+            Math.abs(left - afterSurroundingLefts[index]) < 1
+          ),
+          tableRowsMoveTogether: shifts.every(shift => Math.abs(shift - shifts[0]) < 1),
+          tableWidth: tableWidget.getBoundingClientRect().width,
+          viewportWidth: outerScroller.clientWidth,
           documentHorizontalOverflow:
             document.documentElement.scrollWidth > window.innerWidth + 1,
-          rowHorizontalOverflow: first.getBoundingClientRect().width > scroller.clientWidth + 1,
-          rowScrollWorks: scroller.scrollLeft > 0,
-          rowsMoveTogether: shifts.every(shift => Math.abs(shift - shifts[0]) < 1),
-          rowOverflowX: [...new Set(rows.map(row => getComputedStyle(row).overflowX))],
-          contentWidth: document.querySelector('.cm-content').getBoundingClientRect().width,
-          rowWidths: rows.map(row => row.clientWidth),
-          viewportWidth: scroller.clientWidth
+          outerScrollLeft: outerScroller.scrollLeft,
+          contentWidth: document.querySelector('#editor > .cm-editor > .cm-scroller > .cm-content')
+            .getBoundingClientRect().width,
+          rawSourcePreserved: window.editorBridge.getMarkdown().includes(
+            '| WMDX-001 | A deliberately long table row'
+          ),
+          childMarkdown: tableWidget.querySelector('.cm-source-table-editor')
+            ._sourceTableEditor.state.doc.toString()
         };
       });
       if (mode === 'source') {
         assert.equal(tableLayout.whiteSpace, 'pre', 'Source table rows should not wrap');
-        assert.ok(tableLayout.rowHorizontalOverflow,
-          `Source table rows should extend past the editor viewport: ${JSON.stringify(tableLayout)}`);
-        assert.ok(tableLayout.rowScrollWorks,
-          `Source editor should scroll horizontally: ${JSON.stringify(tableLayout)}`);
-        assert.ok(tableLayout.rowsMoveTogether,
-          `Every table row must move together: ${JSON.stringify(tableLayout)}`);
-        assert.deepEqual(tableLayout.rowOverflowX, ['visible'],
-          `Rows must not have independent scrollbars: ${JSON.stringify(tableLayout)}`);
-        assert.ok(tableLayout.editorHorizontalOverflow,
-          `The source editor should own the table's horizontal scroll: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.tableHorizontalOverflow,
+          `Only the source table should overflow horizontally: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.tableScrollWorks,
+          `The source table's own scroller must move: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.tableRowsMoveTogether,
+          `Every row in the source table must move together: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.surroundingTextFixed,
+          `Text above and below the table must not move horizontally: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.tableWidth <= tableLayout.viewportWidth + 1,
+          `The source table widget must stay within the viewport: ${JSON.stringify(tableLayout)}`);
+        assert.ok(!tableLayout.outerHorizontalOverflow,
+          `The outer source editor must not become horizontally scrollable: ${JSON.stringify(tableLayout)}`);
+        assert.equal(tableLayout.outerScrollLeft, 0,
+          `The outer source editor must not scroll with the table: ${JSON.stringify(tableLayout)}`);
         assert.ok(!tableLayout.documentHorizontalOverflow,
           `Source table must not widen the document viewport: ${JSON.stringify(tableLayout)}`);
         assert.ok(tableLayout.contentWidth <= tableLayout.viewportWidth + 1,
           `Source content should stay within the editor viewport: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.rawSourcePreserved,
+          'The parent document must retain the literal Markdown table text');
+        assert.equal(tableLayout.childMarkdown, wideSourceTable,
+          'The nested source editor must show the exact original Markdown table');
         assert.equal(tableLayout.renderedTables, 0, 'Source should retain raw table syntax');
+        const editedTable = page.locator('.cm-source-table-editor .cm-content');
+        await editedTable.click();
+        await page.evaluate(() => {
+          const view = document.querySelector('.cm-source-table-editor')._sourceTableEditor;
+          view.dispatch({ selection: { anchor: view.state.doc.length } });
+          view.focus();
+        });
+        await page.keyboard.type(' | Edited');
+        await page.waitForFunction(() =>
+          window.editorBridge.getMarkdown().includes('| Keep every pipe and separator intact | | Edited')
+        );
+        await page.keyboard.press('Control+Z');
+        await page.waitForFunction(markdown =>
+          window.editorBridge.getMarkdown() === markdown
+        , wideSourceDocument);
       } else {
         assert.ok(tableLayout.renderedTables >= 1, `${mode}: table should remain rendered and editable`);
       }
@@ -860,10 +911,13 @@ async function main() {
         scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight) * position;
         await new Promise(resolve => setTimeout(resolve, 80));
         const content = document.querySelector('.cm-content');
-        const tableRows = [...document.querySelectorAll('.cm-table-source-line')];
+        const tableWidgets = [...document.querySelectorAll('.cm-source-table-widget')];
+        const tableRows = tableWidgets.flatMap(widget =>
+          [...widget.querySelectorAll('.cm-source-table-editor .cm-line')]
+        );
         const nonTableOverflowingRows = [...document.querySelectorAll('.cm-line')]
           .filter(line =>
-            !line.classList.contains('cm-table-source-line') &&
+            !line.closest('.cm-source-table-widget') &&
             line.getBoundingClientRect().width > scroller.clientWidth + 1
           )
           .slice(0, 8)
@@ -880,6 +934,13 @@ async function main() {
           contentWidth: Math.round(content.getBoundingClientRect().width),
           contentScrollWidth: content.scrollWidth,
           tableRowCount: tableRows.length,
+          tableScrollers: tableWidgets.map(widget => {
+            const tableScroller = widget.querySelector('.cm-source-table-editor .cm-scroller');
+            return {
+              width: tableScroller.clientWidth,
+              scrollWidth: tableScroller.scrollWidth
+            };
+          }),
           nonTableOverflowingRows
         });
       }
@@ -888,11 +949,15 @@ async function main() {
     assert.ok(fullFixtureSourceLayouts.some(layout => layout.tableRowCount >= 3),
       `Phone fixture should expose raw source table rows: ${JSON.stringify(fullFixtureSourceLayouts)}`);
     assert.ok(fullFixtureSourceLayouts.every(layout =>
-      layout.scrollerScrollWidth >= layout.scrollerWidth - 1 &&
+      layout.scrollerScrollWidth <= layout.scrollerWidth + 1 &&
       layout.documentWidth <= 390 + 1 &&
       layout.contentWidth <= layout.scrollerWidth + 1 &&
+      layout.tableScrollers.every(table => table.width <= layout.scrollerWidth + 1) &&
       layout.nonTableOverflowingRows.length === 0
     ), `Source tables must scroll inside the editor without widening the app viewport: ${JSON.stringify(fullFixtureSourceLayouts)}`);
+    assert.ok(fullFixtureSourceLayouts.some(layout =>
+      layout.tableScrollers.some(table => table.scrollWidth > table.width + 1)
+    ), `At least one phone-fixture table should scroll inside its own block: ${JSON.stringify(fullFixtureSourceLayouts)}`);
     cases++;
 
     const repeatedWmdxList = 'A. First item\nA. Second item\n\nTail';
