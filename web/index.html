@@ -1778,8 +1778,13 @@
     }
     .cm-list-bullet { color: var(--list-bullet-color, currentColor) !important; }
     .cm-list-number { color: var(--list-number-color, currentColor) !important; }
-    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item .cm-list-bullet {
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item .cm-list-bullet,
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item .cm-todo-bullet-separator {
       display: none !important;
+    }
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item .cm-todo-checkbox {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
     }
 
     .cm-content .cm-bold {
@@ -2691,7 +2696,10 @@
           New MDZip
         </button>
         <button class="start-page-action" type="button" data-start-page-action="go-to-file">
-          Go to file
+          Search
+        </button>
+        <button class="start-page-action" type="button" data-start-page-action="open-file">
+          Open file
         </button>
         <div class="start-page-session-row">
           <button class="start-page-action" type="button" data-start-page-action="open-session">

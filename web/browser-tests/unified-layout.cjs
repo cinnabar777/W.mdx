@@ -102,6 +102,37 @@ async function main() {
     await page.waitForFunction(() => window.editorBridge);
     await page.evaluate(() => window.editorBridge.setEditorMode('wysiwyg'));
 
+    const touchContext = await browser.newContext({
+      viewport: { width: 412, height: 915 },
+      deviceScaleFactor: 1,
+      isMobile: true,
+      hasTouch: true
+    });
+    const touchPage = await touchContext.newPage();
+    await touchPage.goto(`http://127.0.0.1:${server.address().port}/`);
+    await touchPage.waitForFunction(() => window.editorBridge);
+    const floatingTouchAction = await touchPage.evaluate(() => {
+      const button = document.querySelector(
+        '#floating-selection-toolbar [data-toolbar-key]'
+      );
+      return {
+        title: button?.getAttribute('title') ?? null,
+        label: button?.getAttribute('aria-label') ?? null
+      };
+    });
+    assert.equal(floatingTouchAction.title, null, 'touch toolbar must not show native title tooltips');
+    assert.ok(floatingTouchAction.label, 'touch toolbar keeps its accessible action label');
+    await touchPage.locator('#grp-btn-menu').evaluate(button => button.click());
+    const pasteTooltipAction = touchPage.locator(
+      '#popup-toolbar-strip [data-toolbar-style-id="pasteFromDialect"]'
+    );
+    await pasteTooltipAction.waitFor({ state: 'visible' });
+    assert.equal(await pasteTooltipAction.getAttribute('title'), null);
+    assert.equal(
+      await pasteTooltipAction.getAttribute('aria-label'),
+      'Paste from Markdown dialect'
+    );
+
     for (const mode of modes) {
       await page.evaluate(async ({ mode }) => {
         await window.editorBridge.setEditorMode(mode);
@@ -359,6 +390,38 @@ async function main() {
     cases++;
     }
 
+    for (const mode of ['wysiwyg', 'live_preview', 'source']) {
+      await page.evaluate(async mode => {
+        await window.editorBridge.setEditorMode(mode);
+        window.editorBridge.applyAllPreferences(JSON.stringify({
+          pref_todo_hide_extra_bullet: true
+        }));
+        window.editorBridge.setMarkdown('- [ ] A task with enough text to wrap cleanly in this narrow editor view.');
+      }, mode);
+      await page.waitForTimeout(100);
+      const taskMarker = await page.evaluate(() => {
+        const line = document.querySelector('.cm-todo-list-item');
+        const bullet = line?.querySelector('.cm-list-bullet');
+        const separator = line?.querySelector('.cm-todo-bullet-separator');
+        const checkbox = line?.querySelector('.cm-todo-checkbox');
+        return {
+          line: Boolean(line),
+          separatorDisplay: separator ? getComputedStyle(separator).display : null,
+          bulletDisplay: bullet ? getComputedStyle(bullet).display : null,
+          checkboxMarginLeft: checkbox ? getComputedStyle(checkbox).marginLeft : null,
+          checkboxMarginRight: checkbox ? getComputedStyle(checkbox).marginRight : null
+        };
+      });
+      assert.equal(taskMarker.line, true, `${mode}: task item is rendered`);
+      assert.equal(taskMarker.separatorDisplay, 'none', `${mode}: redundant marker separator is hidden`);
+      assert.equal(taskMarker.bulletDisplay, 'none', `${mode}: extra list bullet is hidden`);
+      if (taskMarker.checkboxMarginLeft !== null) {
+        assert.equal(taskMarker.checkboxMarginLeft, '0px', `${mode}: checkbox begins at the marker column`);
+        assert.equal(taskMarker.checkboxMarginRight, '0px', `${mode}: checkbox has no phantom bullet gap`);
+      }
+      cases++;
+    }
+
     const orderedMarkerDoc = [
       ...Array.from({ length: 10 }, (_, index) =>
         `1. Ordered item ${index + 1} with **formatted text** and enough additional words to wrap across several rows in a narrow phone editor without shifting its list block.`
@@ -508,6 +571,11 @@ async function main() {
         assert.equal(current.length, previous.length, `${mode}: cursor entry changed list recognition`);
         assert.equal(current[activeIndex].activeLine, true,
           `${mode}: test cursor must be inside the selected list item`);
+        assert.equal(
+          await page.evaluate(() => window.editorBridge.getMarkdown()),
+          cursorStressDoc,
+          `${mode}: placing the cursor must not alter a list item's source text`
+        );
         if (previousActive >= 0 && previousActive !== activeIndex) {
           assert.equal(current[previousActive].activeLine, false,
             `${mode}: leaving an item should move the active line`);
@@ -550,6 +618,11 @@ async function main() {
       await page.waitForTimeout(100);
       const afterKeyboardCycle = await readListPositions();
       assert.equal(afterKeyboardCycle.length, previous.length, `${mode}: viewport resize hid list items`);
+      assert.equal(
+        await page.evaluate(() => window.editorBridge.getMarkdown()),
+        cursorStressDoc,
+        `${mode}: closing the simulated keyboard must not alter list source text`
+      );
       assert.ok(afterKeyboardCycle.every(line => line.gutter !== ''),
         `${mode}: list marker measurement was lost on keyboard close: ${JSON.stringify(afterKeyboardCycle)}`);
       for (let index = 0; index < previous.length; index++) {

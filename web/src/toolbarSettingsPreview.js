@@ -23,6 +23,7 @@ import { renderIconChoices } from './appIconCatalog.js';
 import {
   renderBottomToolbarKeys,
   sanitizeToolbarSvg,
+  setToolbarTooltip,
   toToolbarCssColor
 } from './toolbarRenderer.js';
 import { TABLE_ACTIONS } from './tableActions.js';
@@ -778,7 +779,7 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   button.type = 'button';
   button.className = 'popup-strip-btn toolbar-preview-popup-key';
   const title = config.styles[item.id]?.title || item.title;
-  button.title = title;
+  setToolbarTooltip(button, title);
   button.setAttribute('aria-label', title);
   button.setAttribute('aria-current', item.id === selectedPopupItem ? 'true' : 'false');
   button.classList.toggle('active', item.id === selectedPopupItem);
@@ -845,7 +846,7 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
           `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
         marker.dataset.gesturePosition = position;
         marker.setAttribute('aria-hidden', 'true');
-        marker.title = `${gestureId} action`;
+        setToolbarTooltip(marker, `${gestureId} action`);
         marker.innerHTML = gestureIcon;
         button.appendChild(marker);
       }

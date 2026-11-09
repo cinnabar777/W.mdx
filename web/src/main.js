@@ -218,6 +218,7 @@ import {
 import {
   renderBottomToolbarKeys,
   sanitizeToolbarSvg,
+  setToolbarTooltip,
   toToolbarCssColor
 } from './toolbarRenderer.js';
 import {
@@ -519,6 +520,22 @@ function getListMarkerDisplayText(marker, isBullet, position, orderedLabels) {
   if (!isListFlavorEnabledNow('wmdx')) return '•';
   const bulletShapes = { '-': '•', '+': '◦', '*': '▪' };
   return bulletShapes[marker.trim()] ?? '•';
+}
+
+function findTaskMarkerForListMark(tree, listMarkTo, lineTo) {
+  let taskMarker = null;
+  tree.iterate({
+    from: listMarkTo,
+    to: lineTo,
+    enter(node) {
+      if (node.name === 'TaskMarker') {
+        taskMarker = { from: node.from, to: node.to };
+        return false;
+      }
+      if (node.name === 'ListItem' && node.from > listMarkTo) return false;
+    }
+  });
+  return taskMarker;
 }
 
 function wmdxOrderedListPositionIsExcluded(tree, position) {
@@ -3356,6 +3373,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                 class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
               }).range(node.from, node.to));
             }
+            const taskMarker = findTaskMarkerForListMark(tree, node.to, line.to);
+            if (taskMarker && taskMarker.from > node.to) {
+              builder.push(
+                Decoration.mark({ class: 'cm-todo-bullet-separator' })
+                  .range(node.to, taskMarker.from)
+              );
+            }
           }
 
           if (
@@ -4717,6 +4741,13 @@ function buildHeightMapValue(state) {
             )
           )
         }).range(node.from, node.to));
+        const taskMarker = findTaskMarkerForListMark(tree, node.to, line.to);
+        if (taskMarker && taskMarker.from > node.to) {
+          replacements.push(
+            Decoration.mark({ class: 'cm-todo-bullet-separator' })
+              .range(node.to, taskMarker.from)
+          );
+        }
       }
 
       if (
@@ -10061,7 +10092,7 @@ function togglePopupStrip(
     }
     const title = style.title || item.title;
     if (title) {
-      btn.title = title;
+      setToolbarTooltip(btn, title);
       btn.setAttribute('aria-label', title);
     }
     if (item.disabled) {

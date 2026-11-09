@@ -1,3 +1,9 @@
+import { EditorSelection, EditorState } from '@codemirror/state';
+import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
+import {
+  Autolink as GFMAutolink,
+  TaskList as GFMTaskList
+} from '@lezer/markdown';
 import { syntaxTree } from '@codemirror/language';
 import {
   collectMarkdownReferenceTargets,
@@ -11,6 +17,9 @@ import {
   getIndentedCodeBlockAtLine,
   getIndentedCodeBlockRenderLayout
 } from './markdownIndent.js';
+import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
+import { wmdxGfmFtpAutolink } from './gfm-autolink.mjs';
+import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
 
 const UNDERLINE_STYLE_MARKERS = Object.freeze({
   solid: '',
@@ -963,7 +972,115 @@ function stripCollapsedInlineFormatting(view, scope) {
   return true;
 }
 
+function clearTableCellFormatting(view, options = {}) {
+  if (options.skipTableCellRouting === true) return null;
+  const activeTable = globalThis.window?.wmdxTableActions?.active;
+  if (activeTable?.view !== view) return null;
+
+  const overlay = globalThis.document?.querySelector('.cm-wp-cell-editor');
+  const meta = overlay?._cellMeta;
+  const snapshot = globalThis.window?._lastActiveCellSelection;
+  const useOverlay = Boolean(meta?.model && Number.isInteger(meta.row) && Number.isInteger(meta.col));
+  const useSnapshot = !useOverlay &&
+    snapshot?.widget &&
+    snapshot?.model &&
+    Number.isInteger(snapshot.row) &&
+    Number.isInteger(snapshot.col) &&
+    Date.now() - Number(snapshot.timestamp || 0) < 3000;
+  if (!useOverlay && !useSnapshot) return null;
+
+  const cellMeta = useOverlay ? meta : snapshot;
+  const rows = cellMeta.model.rows;
+  if (
+    !Array.isArray(rows) ||
+    cellMeta.row < 0 ||
+    cellMeta.col < 0 ||
+    cellMeta.row >= rows.length
+  ) {
+    return null;
+  }
+  const modelRow = rows[cellMeta.row];
+  if (!Array.isArray(modelRow) || cellMeta.col >= modelRow.length) return null;
+  const cellText = useOverlay
+    ? String(overlay.value ?? '')
+    : String(snapshot.cellValue ?? modelRow[cellMeta.col] ?? '');
+  const selectionStart = useOverlay
+    ? (overlay.selectionStart ?? 0)
+    : (snapshot.selStart ?? cellText.length);
+  const selectionEnd = useOverlay
+    ? (overlay.selectionEnd ?? selectionStart)
+    : (snapshot.selEnd ?? selectionStart);
+  const selection = selectionStart === selectionEnd
+    ? EditorSelection.cursor(selectionStart)
+    : EditorSelection.range(selectionStart, selectionEnd);
+  let state = EditorState.create({
+    doc: cellText,
+    selection,
+    extensions: [
+      cmMarkdown({
+        extensions: [
+          GFMAutolink,
+          GFMTaskList,
+          wmdxGfmFtpAutolink,
+          wmdxGfmStrikethrough,
+          wmdxCommonMarkCompatibility
+        ]
+      })
+    ]
+  });
+  const cellView = {
+    get state() {
+      return state;
+    },
+    dispatch(transaction) {
+      state = state.update(transaction).state;
+    },
+    focus() {}
+  };
+  if (!clearMarkdownFormatting(cellView, {
+    ...options,
+    preserveKeyboard: true,
+    skipTableCellRouting: true
+  })) {
+    return false;
+  }
+
+  const cleaned = state.doc.toString();
+  const mappedSelection = state.selection.main;
+  const serialized = cleaned.replace(/\r\n?/g, '\n').replace(/\n/g, '<br>');
+  cellMeta.model.rows[cellMeta.row][cellMeta.col] = serialized;
+
+  if (useOverlay) {
+    overlay.value = cleaned;
+    overlay.setSelectionRange(mappedSelection.from, mappedSelection.to);
+    if (globalThis.window) {
+      globalThis.window._lastActiveCellSelection = {
+        widget: meta.widget,
+        model: meta.model,
+        row: meta.row,
+        col: meta.col,
+        selStart: mappedSelection.from,
+        selEnd: mappedSelection.to,
+        cellValue: cleaned,
+        selectedText: cleaned.slice(mappedSelection.from, mappedSelection.to),
+        timestamp: Date.now()
+      };
+    }
+    return true;
+  }
+
+  snapshot.cellValue = cleaned;
+  snapshot.selStart = mappedSelection.from;
+  snapshot.selEnd = mappedSelection.to;
+  snapshot.selectedText = cleaned.slice(mappedSelection.from, mappedSelection.to);
+  snapshot.timestamp = Date.now();
+  snapshot.widget.commitModel?.(view, cellMeta.model);
+  return true;
+}
+
 export function clearMarkdownFormatting(view, options = {}) {
+  const tableCellResult = clearTableCellFormatting(view, options);
+  if (tableCellResult !== null) return tableCellResult;
   if (!view?.state) return false;
 
   const originalState = view.state;

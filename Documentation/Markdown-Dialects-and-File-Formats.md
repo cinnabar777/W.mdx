@@ -65,6 +65,34 @@ Each conversion previews the result and reports known losses before applying it.
 | HTML / MHTML export | Existing HTML/MHTML export remains a separate action; it exports rendered content, not a Markdown dialect. |
 | Open/save Markdown or MDZip | Opens and saves source or packages it with its related assets; file operations do not silently convert syntax. |
 
+## Default-flavor and paste workflow direction
+
+Most users should be able to choose one preferred flavor once, without losing
+the ability to work with mixed or different-flavor documents. A centralized
+Markdown settings page should offer CommonMark, GFM, Obsidian, and Wmdx as
+starting profiles, then expose per-feature overrides. The profile supplies
+defaults for syntax recognition, toolbar authoring, and paste conversion; an
+explicit feature override wins. Changing a default must not silently rewrite
+existing documents or prevent a user from opening a document that uses another
+flavor.
+
+Pasting should normally avoid asking the source flavor on every paste:
+
+1. Inspect all clipboard representations available from Android, including rich
+   HTML and plain text, and preserve the richest safe representation.
+2. Convert HTML semantically when it is available; otherwise detect supported
+   Markdown flavor markers in plain text.
+3. When the source can be identified with confidence, convert it using the
+   user's saved feature defaults and insert it without another prompt.
+4. When the text is ambiguous or contains unsupported syntax, preserve it
+   conservatively and make the explicit “Paste from Markdown dialect” action
+   available as an override. Do not silently reinterpret uncertain text.
+
+The automatic-detection confidence rules and clipboard MIME coverage need tests
+on Android WebView before this behavior is implemented. This is a product
+direction, not current behavior: **Paste from Markdown dialect** still asks the
+user to choose a source format.
+
 HTML conversion is semantic, not a browser snapshot. It maps supported headings,
 paragraphs, lists/tasks, quotes, code, tables, links, images, audio/video,
 attachments, details, and alignment where possible. Scripts and active embedded

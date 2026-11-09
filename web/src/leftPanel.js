@@ -2609,6 +2609,9 @@ export function setupLeftPanel() {
         case 'go-to-file':
           controller.openStartPageSearch();
           break;
+        case 'open-file':
+          native?.onNativeAction?.('open');
+          break;
         case 'open-session':
           native?.onNativeAction?.(
             launcherWindow ? 'open_session_new_window' : 'open_session'

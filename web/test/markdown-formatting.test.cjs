@@ -434,6 +434,68 @@ test('clear formatting removes WMDX resource-link syntax but keeps its title', a
   assert.equal(view.state.doc.toString(), 'Visit Visit site now');
 });
 
+test('clear formatting handles an active table-cell editor and commits a closed cell selection', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { JSDOM } = require('jsdom');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const dom = new JSDOM('<textarea class="cm-wp-cell-editor"></textarea>');
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  try {
+    const view = {
+      state: EditorState.create({ doc: '| Cell |', extensions: [markdown()] }),
+      dispatch(transaction) {
+        this.state = this.state.update(transaction).state;
+      },
+      focus() {}
+    };
+    const overlay = dom.window.document.querySelector('.cm-wp-cell-editor');
+    const activeModel = { rows: [['**bold** and ==marked==']] };
+    overlay.value = activeModel.rows[0][0];
+    overlay._cellMeta = { model: activeModel, row: 0, col: 0, widget: {} };
+    overlay.setSelectionRange(2, 6);
+    dom.window.wmdxTableActions = { active: { view } };
+
+    assert.equal(clearMarkdownFormatting(view), true);
+    assert.equal(overlay.value, 'bold and ==marked==');
+    assert.equal(activeModel.rows[0][0], 'bold and ==marked==');
+
+    overlay.remove();
+    const committedModel = { rows: [['**plain**']] };
+    let commitCount = 0;
+    const widget = {
+      commitModel(targetView, model) {
+        assert.strictEqual(targetView, view);
+        assert.strictEqual(model, committedModel);
+        commitCount += 1;
+      }
+    };
+    dom.window._lastActiveCellSelection = {
+      widget,
+      model: committedModel,
+      row: 0,
+      col: 0,
+      cellValue: '**plain**',
+      selStart: 0,
+      selEnd: 0,
+      timestamp: Date.now()
+    };
+
+    assert.equal(clearMarkdownFormatting(view), true);
+    assert.equal(committedModel.rows[0][0], 'plain');
+    assert.equal(commitCount, 1);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    dom.window.close();
+  }
+});
+
 test('partial formatting removal keeps the unselected text formatted', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
