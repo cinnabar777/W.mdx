@@ -136,11 +136,15 @@ test('main and embedded parser configurations use explicit GFM extensions', () =
   const source = readProjectFile('web/src/main.js');
   assert.match(
     source,
-    /GFMAutolink,\s*GFMTable,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
+    /if \(gfmExtensionsEnabled\) \{\s*extensions\.push\(\s*GFMAutolink,\s*GFMTaskList,\s*wmdxGfmStrikethrough,\s*wmdxGfmFtpAutolink\s*\);\s*if \(includeTables\) extensions\.push\(GFMTable\);/
   );
   assert.match(
     source,
-    /GFMAutolink,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility/
+    /markdownLanguageCompartment\.of\(\s*createMarkdownLanguageExtension\(true\)\s*\)/
+  );
+  assert.match(
+    source,
+    /markdownLanguageCompartment\.of\(createMarkdownLanguageExtension\(\)\)/
   );
 });
 

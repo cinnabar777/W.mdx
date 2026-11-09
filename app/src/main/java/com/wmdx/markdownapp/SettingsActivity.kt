@@ -109,6 +109,116 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
         preferenceScreen?.let {
             applyCustomLayouts(it)
             configureDeviceFontChoices(it)
+            applyMarkdownProfileDefaults(it)
+        }
+    }
+
+    private fun applyMarkdownProfileDefaults(group: androidx.preference.PreferenceGroup) {
+        val storedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val profile = storedPreferences.getString("pref_markdown_profile", "wmdx")
+            ?.takeIf { it in setOf("wmdx", "commonmark", "gfm", "obsidian") }
+            ?: "wmdx"
+        val defaults = when (profile) {
+            "commonmark" -> mapOf(
+                "pref_gfm_extensions_enabled" to false,
+                "pref_heading_syntax_wmdx_enabled" to false,
+                "pref_heading_authoring_syntax" to "hash",
+                "pref_list_syntax_gfm_tasks_enabled" to false,
+                "pref_list_syntax_wmdx_enabled" to false,
+                "pref_list_authoring_syntax" to "markdown",
+                "pref_links_obsidian_enabled" to false,
+                "pref_links_wmdx_enabled" to false,
+                "pref_links_authoring_syntax" to "commonmark",
+                "pref_callout_syntax_enabled" to false,
+                "pref_callout_syntax_wmdx_enabled" to false,
+                "pref_callout_syntax_obsidian_enabled" to false,
+                "pref_footnote_syntax_wmdx_enabled" to false,
+                "pref_footnote_syntax_obsidian_inline_enabled" to false,
+                "pref_footnote_authoring_syntax" to "markdown",
+                "pref_underline_use_wmdx_syntax" to false
+            )
+            "gfm" -> mapOf(
+                "pref_gfm_extensions_enabled" to true,
+                "pref_heading_syntax_wmdx_enabled" to false,
+                "pref_heading_authoring_syntax" to "hash",
+                "pref_list_syntax_gfm_tasks_enabled" to true,
+                "pref_list_syntax_wmdx_enabled" to false,
+                "pref_list_authoring_syntax" to "markdown",
+                "pref_links_obsidian_enabled" to false,
+                "pref_links_wmdx_enabled" to false,
+                "pref_links_authoring_syntax" to "commonmark",
+                "pref_callout_syntax_wmdx_enabled" to false,
+                "pref_callout_syntax_obsidian_enabled" to true,
+                "pref_callout_authoring_syntax" to "obsidian",
+                "pref_footnote_syntax_wmdx_enabled" to false,
+                "pref_footnote_syntax_obsidian_inline_enabled" to false,
+                "pref_footnote_authoring_syntax" to "markdown",
+                "pref_underline_use_wmdx_syntax" to false
+            )
+            "obsidian" -> mapOf(
+                "pref_gfm_extensions_enabled" to true,
+                "pref_heading_syntax_wmdx_enabled" to false,
+                "pref_heading_authoring_syntax" to "hash",
+                "pref_list_syntax_gfm_tasks_enabled" to true,
+                "pref_list_syntax_wmdx_enabled" to false,
+                "pref_list_authoring_syntax" to "markdown",
+                "pref_links_obsidian_enabled" to true,
+                "pref_links_wmdx_enabled" to false,
+                "pref_links_authoring_syntax" to "obsidian",
+                "pref_callout_syntax_wmdx_enabled" to false,
+                "pref_callout_syntax_obsidian_enabled" to true,
+                "pref_callout_authoring_syntax" to "obsidian",
+                "pref_footnote_syntax_wmdx_enabled" to false,
+                "pref_footnote_syntax_obsidian_inline_enabled" to true,
+                "pref_footnote_authoring_syntax" to "markdown",
+                "pref_underline_use_wmdx_syntax" to false
+            )
+            else -> mapOf(
+                "pref_gfm_extensions_enabled" to true,
+                "pref_heading_syntax_wmdx_enabled" to true,
+                "pref_heading_authoring_syntax" to "wmdx",
+                "pref_list_syntax_gfm_tasks_enabled" to true,
+                "pref_list_syntax_wmdx_enabled" to true,
+                "pref_list_authoring_syntax" to "wmdx",
+                "pref_links_obsidian_enabled" to true,
+                "pref_links_wmdx_enabled" to true,
+                "pref_links_authoring_syntax" to "wmdx",
+                "pref_callout_syntax_enabled" to true,
+                "pref_callout_syntax_wmdx_enabled" to true,
+                "pref_callout_syntax_obsidian_enabled" to true,
+                "pref_callout_authoring_syntax" to "wmdx",
+                "pref_footnote_syntax_wmdx_enabled" to true,
+                "pref_footnote_syntax_obsidian_inline_enabled" to true,
+                "pref_footnote_authoring_syntax" to "wmdx",
+                "pref_underline_use_wmdx_syntax" to true
+            )
+        }
+
+        for (index in 0 until group.preferenceCount) {
+            val preference = group.getPreference(index)
+            if (preference is androidx.preference.PreferenceGroup) {
+                applyMarkdownProfileDefaults(preference)
+                continue
+            }
+            val key = preference.key ?: continue
+            val value = defaults[key] ?: continue
+            if (storedPreferences.contains(key)) continue
+            when {
+                preference is androidx.preference.TwoStatePreference &&
+                    value is Boolean -> {
+                    preference.setDefaultValue(value)
+                    preference.isPersistent = false
+                    preference.isChecked = value
+                    preference.isPersistent = true
+                }
+                preference is androidx.preference.ListPreference &&
+                    value is String -> {
+                    preference.setDefaultValue(value)
+                    preference.isPersistent = false
+                    preference.value = value
+                    preference.isPersistent = true
+                }
+            }
         }
     }
 
@@ -277,6 +387,13 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_export", "pref_export_page" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, ExportSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_markdown_dialects" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, MarkdownDialectSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -4043,6 +4160,11 @@ class ExportSettingsFragment : BaseSettingsFragment() {
     }
 }
 
+class MarkdownDialectSettingsFragment : BaseSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_markdown_dialects, rootKey)
+    }
+}
 
 class SettingsThemeFragment : BaseSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {

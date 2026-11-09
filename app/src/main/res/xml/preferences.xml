@@ -25,6 +25,10 @@
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Documents &amp; Access">
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_markdown_dialects"
+            app:title="Markdown &amp; Dialects"
+            app:summary="Choose a default syntax flavor, control dialect-specific features, and convert recognized clipboard content" />
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_editor_mode"
             app:title="Editor Mode"

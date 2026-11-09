@@ -46,6 +46,7 @@ import {
 } from './markdownIndent.js';
 import {
   createMarkdownBlockquotePaste,
+  convertClipboardToMarkdownProfile,
   quoteMultilinePaste,
   quotePasteInsertionRange
 } from './markdownPaste.mjs';
@@ -54,6 +55,7 @@ import {
   convertFromMarkdown,
   exportMarkdown
 } from './markdownConversion.mjs';
+import { applyMarkdownDialectProfile } from './markdownDialectPreferences.mjs';
 import { lintMarkdown } from './markdownLinter.mjs';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { applyAutoHeading } from './autoHeading.js';
@@ -403,6 +405,68 @@ let calloutSyntaxSettings = normalizeCalloutSyntaxSettings();
 let blockquoteSyntaxSettings = normalizeBlockquoteSyntaxSettings();
 let footnoteSyntaxSettings = normalizeFootnoteSyntaxSettings();
 let listSyntaxSettings = normalizeListSyntaxSettings();
+let currentMarkdownProfile = 'wmdx';
+let markdownAutoPasteEnabled = true;
+let gfmExtensionsEnabled = true;
+const markdownParserViewRegistry = new Map();
+
+function createMarkdownLanguageExtension(includeTables = false) {
+  const extensions = [];
+  if (gfmExtensionsEnabled) {
+    extensions.push(
+      GFMAutolink,
+      GFMTaskList,
+      wmdxGfmStrikethrough,
+      wmdxGfmFtpAutolink
+    );
+    if (includeTables) extensions.push(GFMTable);
+  }
+  extensions.push(wmdxCommonMarkCompatibility);
+  return cmMarkdown({ extensions });
+}
+
+function registerMarkdownParserView(view, compartment, includeTables = false) {
+  if (view && compartment) {
+    markdownParserViewRegistry.set(view, { compartment, includeTables });
+  }
+}
+
+function unregisterMarkdownParserView(view) {
+  if (view) markdownParserViewRegistry.delete(view);
+}
+
+function reconfigureMarkdownParserViews() {
+  for (const [view, config] of markdownParserViewRegistry) {
+    try {
+      dispatchWithScrollSnapshot(
+        view,
+        config.compartment.reconfigure(
+          createMarkdownLanguageExtension(config.includeTables)
+        )
+      );
+      forceParsing(view, view.state.doc.length, 40);
+      dispatchWithScrollSnapshot(view, heightMapRefreshEffect.of(null));
+    } catch (error) {
+      window.AndroidNative?.reportDiagnostic?.(
+        'markdown_parser_reconfigure_failed',
+        error?.message || 'parser reconfiguration failed'
+      );
+    }
+  }
+}
+
+function transformMarkdownPaste(text, payload = {}) {
+  let transformed = String(text ?? '');
+  if (payload.isPaste && markdownAutoPasteEnabled) {
+    transformed = convertClipboardToMarkdownProfile(
+      { text: transformed, html: payload.html },
+      currentMarkdownProfile
+    ).markdown;
+  }
+  return isListFlavorEnabledNow('markdown')
+    ? normalizeMarkdownOrderedListText(transformed)
+    : transformed;
+}
 
 function isHeadingFlavorEnabledNow(flavor) {
   return isHeadingFlavorEnabled(headingSyntaxSettings, flavor);
@@ -2593,22 +2657,13 @@ class EmbeddedDocumentWidget extends WidgetType {
       flushEmbeddedSave();
     });
 
+    const markdownLanguageCompartment = new Compartment();
     const state = EditorState.create({
       doc: markdownText,
       extensions: [
-        cmMarkdown({
-          extensions: [
-            GFMAutolink,
-            GFMTaskList,
-            wmdxGfmFtpAutolink,
-            wmdxGfmStrikethrough,
-            wmdxCommonMarkCompatibility
-          ]
-        }),
+        markdownLanguageCompartment.of(createMarkdownLanguageExtension()),
         createMarkdownBlockquotePaste(
-          text => isListFlavorEnabledNow('markdown')
-            ? normalizeMarkdownOrderedListText(text)
-            : text,
+          transformMarkdownPaste,
           isBlockquoteSyntaxEnabledNow
         ),
         syntaxHighlighting(customHighlightStyle),
@@ -2676,6 +2731,7 @@ class EmbeddedDocumentWidget extends WidgetType {
       ]
     });
     childEditor = new EditorView({ state, parent: content });
+    registerMarkdownParserView(childEditor, markdownLanguageCompartment);
     childEditor.dom.classList.add('cm-embedded-document-child');
     childEditor.dom.style.background = 'transparent';
     childEditor.dom.style.color = 'inherit';
@@ -2698,6 +2754,7 @@ class EmbeddedDocumentWidget extends WidgetType {
     }
     shell.__flushEmbeddedDocumentSave = flushEmbeddedSave;
     shell.__embeddedDocumentEditor = childEditor;
+    shell.__markdownLanguageCompartment = markdownLanguageCompartment;
     if (pendingEmbeddedDocumentEdits.has(saveKey)) {
       saveTimer = setTimeout(flushEmbeddedSave, 0);
     }
@@ -2708,6 +2765,7 @@ class EmbeddedDocumentWidget extends WidgetType {
     dom?._clearEmbeddedPressTimer?.();
     dom?.__flushEmbeddedDocumentSave?.();
     const embeddedEditor = dom?.__embeddedDocumentEditor;
+    unregisterMarkdownParserView(embeddedEditor);
     clearLastFocusedEditorViewWithin(embeddedEditor);
     embeddedEditor?.destroy?.();
   }
@@ -5667,6 +5725,7 @@ class CodeMirrorAdapter {
     this.historyCompartment = new Compartment();
     this.lineWrapCompartment = new Compartment();
     this.lineNumbersCompartment = new Compartment();
+    this.markdownLanguageCompartment = new Compartment();
     this.showLineNumbers = false;
     this.revision = 0;
     this.isProgrammatic = false;
@@ -5941,20 +6000,11 @@ class CodeMirrorAdapter {
         crosshairCursor(),
         highlightActiveLine(),
         codeFolding(),
-        cmMarkdown({
-          extensions: [
-            GFMAutolink,
-            GFMTable,
-            GFMTaskList,
-            wmdxGfmFtpAutolink,
-            wmdxGfmStrikethrough,
-            wmdxCommonMarkCompatibility
-          ]
-        }),
+        this.markdownLanguageCompartment.of(
+          createMarkdownLanguageExtension(true)
+        ),
         createMarkdownBlockquotePaste(
-          text => isListFlavorEnabledNow('markdown')
-            ? normalizeMarkdownOrderedListText(text)
-            : text,
+          transformMarkdownPaste,
           isBlockquoteSyntaxEnabledNow
         ),
         syntaxHighlighting(customHighlightStyle),
@@ -6140,6 +6190,11 @@ class CodeMirrorAdapter {
       parent: containerEl,
       scrollTo: modeSnapshot?.scroll
     });
+    registerMarkdownParserView(
+      this.view,
+      this.markdownLanguageCompartment,
+      true
+    );
     let editorTapStart = null;
     let emptyAreaLongPressTimer = null;
     let emptyAreaLongPressStart = null;
@@ -6677,6 +6732,7 @@ class CodeMirrorAdapter {
 
     if (this.view) {
       clearLastFocusedEditorViewWithin(this.view);
+      unregisterMarkdownParserView(this.view);
       this.view.destroy();
       this.view = null;
     }
@@ -7892,13 +7948,10 @@ function openMarkdownConversionDialog(action) {
     const format = formatSelect.value;
     try {
       if (action === 'paste') {
-        if (typeof window.AndroidNative?.readClipboard === 'function') {
-          sourceText = window.AndroidNative.readClipboard();
-        } else if (typeof navigator.clipboard?.readText === 'function') {
-          sourceText = await navigator.clipboard.readText();
-        } else {
-          sourceText = '';
-        }
+        const clipboard = await readMarkdownClipboardPayload();
+        sourceText = format === 'html' && clipboard.html
+          ? clipboard.html
+          : clipboard.text;
         if (!sourceText) {
           status.textContent = 'The clipboard is empty or unavailable.';
           return;
@@ -8478,6 +8531,58 @@ export function openLinkInsertionDialog() {
   requestAnimationFrame(() => {
     textInput.focus();
   });
+}
+
+async function readMarkdownClipboardPayload() {
+  try {
+    const raw = window.AndroidNative?.readClipboardPayload?.();
+    if (raw) {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (parsed && typeof parsed === 'object') {
+        return {
+          text: String(parsed.text ?? ''),
+          html: String(parsed.html ?? '')
+        };
+      }
+    }
+  } catch {
+    // Older Android builds and clipboard providers expose plain text only.
+  }
+  try {
+    const readClipboard = window.AndroidNative?.readClipboard;
+    if (typeof readClipboard === 'function') {
+      const text = String(readClipboard() ?? '');
+      if (text) return { text, html: '' };
+    }
+  } catch {
+    // Use the browser clipboard API when the native fallback is unavailable.
+  }
+  try {
+    if (typeof navigator.clipboard?.read === 'function') {
+      const payload = { text: '', html: '' };
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        if (!payload.html && item.types.includes('text/html')) {
+          payload.html = await (await item.getType('text/html')).text();
+        }
+        if (!payload.text && item.types.includes('text/plain')) {
+          payload.text = await (await item.getType('text/plain')).text();
+        }
+      }
+      if (payload.text || payload.html) return payload;
+    }
+  } catch {
+    // Fall back to the widely supported text-only clipboard API.
+  }
+  try {
+    const readText = navigator.clipboard?.readText;
+    return {
+      text: typeof readText === 'function' ? await readText.call(navigator.clipboard) : '',
+      html: ''
+    };
+  } catch {
+    return { text: '', html: '' };
+  }
 }
 
 let activeWmdxResourceLinkActions = null;
@@ -11812,7 +11917,17 @@ window.editorBridge = {
   },
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
-    const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
+    const storedPreferences = typeof prefsJson === 'string'
+      ? JSON.parse(prefsJson)
+      : prefsJson;
+    const prefs = applyMarkdownDialectProfile(storedPreferences);
+    currentMarkdownProfile = prefs.pref_markdown_profile;
+    markdownAutoPasteEnabled = prefs.pref_markdown_auto_paste_enabled !== false;
+    const nextGfmExtensionsEnabled = prefs.pref_gfm_extensions_enabled !== false;
+    if (nextGfmExtensionsEnabled !== gfmExtensionsEnabled) {
+      gfmExtensionsEnabled = nextGfmExtensionsEnabled;
+      reconfigureMarkdownParserViews();
+    }
     markdownIndentSpaces = getMarkdownIndentSpaces(
       prefs.pref_indent_step_spaces
     );

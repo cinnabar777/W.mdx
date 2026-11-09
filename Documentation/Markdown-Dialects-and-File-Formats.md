@@ -24,18 +24,19 @@ does not reserve placeholder width.
 
 ## What the syntax toggles do
 
-Settings are app-wide, not stored in each document. Wmdx does **not** have one
-master “CommonMark,” “GFM,” or “Obsidian” switch. Instead, the settings for each
-feature turn that feature on or off, select recognized dialect spellings, and
-where offered choose what the toolbar and shortcut author.
+Settings are app-wide, not stored in each document. **Markdown & Dialects**
+provides a primary Wmdx, CommonMark, GFM, or Obsidian profile. The profile sets
+default syntax recognition and authoring choices for supported features. A
+saved feature-specific choice overrides the profile; changing the profile does
+not rewrite source or replace an explicitly saved choice.
 
 Turning a feature or spelling off does not rewrite or delete source. It only
 changes recognition/rendering and authoring behavior. Import and export
-conversion are separate actions and do not depend on which spelling is selected
-for authoring.
+conversion remain separate actions.
 
 | Feature | Syntax families and relevant controls |
 | --- | --- |
+| GFM extensions | The central **GFM Extensions** switch controls parser recognition of pipe tables, task markers, double-tilde strikethrough, and bare-URL autolinks. It defaults off for CommonMark and on for Wmdx, GFM, and Obsidian profiles; it can be overridden independently. |
 | Links | CommonMark inline/automatic links, Markdown reference links, Obsidian `[[wikilinks]]`, and Wmdx four-field resource links have separate flavor switches. The preferred-link setting controls what the Link action inserts. |
 | Headings | CommonMark/GFM/Obsidian ATX (`#`) and Setext (`===` / `---`) headings, plus Wmdx decimal headings (`.1`–`.6`). |
 | Lists | Standard Markdown lists, Wmdx bullet and ordered-marker styles, and standalone Wmdx tasks. GFM/Obsidian task-list recognition has its own switch. |
@@ -43,7 +44,7 @@ for authoring.
 | Callouts | Wmdx `±type`, `±type-`, `±type+`; Obsidian `> [!type]` and fold markers. GitHub alerts overlap with the Obsidian spelling for `note`, `tip`, `important`, `warning`, and `caution`; other alert-like blockquotes remain ordinary quotes on GFM import. |
 | Footnotes | Markdown reference footnotes (`[^label]`), Wmdx numbered footnotes, and Obsidian inline footnotes (`^[text]`) have syntax controls. |
 | Underline | **Use Wmdx syntax** recognizes Wmdx underline forms. When disabled, HTML `<u>...</u>` is the compatibility form. |
-| Tables and inline formatting | GFM pipe tables, task lists, double-tilde strikethrough, and autolinks are parser extensions. Wmdx single-tilde `~text~` is subscript, and paired-caret `^text^` is superscript. Feature settings are separate rather than one global GFM profile. |
+| Tables and inline formatting | When GFM Extensions is enabled, GFM pipe tables, task markers, double-tilde strikethrough, and bare-URL autolinks are parsed. Wmdx single-tilde `~text~` is subscript, and paired-caret `^text^` is superscript. |
 
 The Wmdx extensions include resource links and embeds, decimal headings,
 additional list markers, native tasks, callouts, footnotes, subscript,
@@ -61,37 +62,34 @@ Each conversion previews the result and reports known losses before applying it.
 | --- | --- |
 | Convert from Markdown dialect | Choose CommonMark, GFM, Obsidian, or HTML for the current document; review the Wmdx preview, then explicitly replace the document. Open or paste the source into the editor first. |
 | Paste from Markdown dialect | Choose CommonMark, GFM, Obsidian, or HTML for clipboard text; review the preview, then insert converted Wmdx at the current selection. |
+| Regular paste | When enabled in Markdown & Dialects, safely recognized Markdown or rich HTML is converted to the primary profile. Ambiguous plain text and conversions that report losses are left unchanged. |
 | Export Markdown dialect | Choose CommonMark, GFM, or Obsidian; review the converted text and warnings, then save a separate `.md` copy with Android's Save As dialog. |
 | HTML / MHTML export | Existing HTML/MHTML export remains a separate action; it exports rendered content, not a Markdown dialect. |
 | Open/save Markdown or MDZip | Opens and saves source or packages it with its related assets; file operations do not silently convert syntax. |
 
-## Default-flavor and paste workflow direction
+## Primary flavor and paste behavior
 
-Most users should be able to choose one preferred flavor once, without losing
-the ability to work with mixed or different-flavor documents. A centralized
-Markdown settings page should offer CommonMark, GFM, Obsidian, and Wmdx as
-starting profiles, then expose per-feature overrides. The profile supplies
-defaults for syntax recognition, toolbar authoring, and paste conversion; an
-explicit feature override wins. Changing a default must not silently rewrite
-existing documents or prevent a user from opening a document that uses another
-flavor.
+The Markdown & Dialects page is the centralized place to select a primary
+profile and enable automatic paste conversion. Feature-specific syntax settings
+remain available under Document Appearance and override profile defaults when
+the user has saved a choice there. Profiles select authoring defaults as well as
+which Wmdx-specific, GFM, and Obsidian spellings are recognized by the
+corresponding feature controls.
 
-Pasting should normally avoid asking the source flavor on every paste:
+Regular paste inspects plain text and, on Android, the clipboard's HTML
+representation. Clearly recognized CommonMark/GFM/Obsidian content is converted
+through the app's Wmdx conversion rules to the selected profile. HTML is parsed
+semantically rather than rendered as active content. If conversion reports
+losses, fails, or the text does not look like Markdown, regular paste keeps the
+plain-text representation. The explicit **Paste from Markdown dialect** action
+remains available when the user wants to choose a source format and review
+warnings. HTML clipboard conversion is bounded to 200,000 characters.
 
-1. Inspect all clipboard representations available from Android, including rich
-   HTML and plain text, and preserve the richest safe representation.
-2. Convert HTML semantically when it is available; otherwise detect supported
-   Markdown flavor markers in plain text.
-3. When the source can be identified with confidence, convert it using the
-   user's saved feature defaults and insert it without another prompt.
-4. When the text is ambiguous or contains unsupported syntax, preserve it
-   conservatively and make the explicit “Paste from Markdown dialect” action
-   available as an override. Do not silently reinterpret uncertain text.
-
-The automatic-detection confidence rules and clipboard MIME coverage need tests
-on Android WebView before this behavior is implemented. This is a product
-direction, not current behavior: **Paste from Markdown dialect** still asks the
-user to choose a source format.
+Automatic conversion uses heuristic flavor detection, so it is intentionally
+conservative rather than a full dialect validator. Clipboard HTML is available
+only when the source app publishes that representation. The Android clipboard
+path and the profile-specific paste cases are covered by browser/unit tests;
+device-specific clipboard providers still need acceptance testing.
 
 HTML conversion is semantic, not a browser snapshot. It maps supported headings,
 paragraphs, lists/tasks, quotes, code, tables, links, images, audio/video,
@@ -116,6 +114,9 @@ Conversion is deliberately explicit and conservative:
   double-tilde strikethrough remains semantic.
 - Simple Markdown links become Wmdx resource links. Link tooltip titles and
   formatted link labels stay in Markdown syntax rather than losing their detail.
+- Obsidian wikilinks become Wmdx resource links, and supported image/audio/video
+  or attachment embeds become Wmdx embedded resources. Note transclusions are
+  retained with a warning because Wmdx does not embed another Markdown document.
 - GFM alerts and Obsidian callouts become Wmdx callouts. Obsidian folding markers
   are retained in Wmdx.
 - Obsidian comments are left in their original spelling and warned about because
@@ -131,6 +132,9 @@ Conversion is deliberately explicit and conservative:
   and are exported as plain text with a warning.
 - Wmdx subscript imports from semantic HTML `<sub>` and exports to `<sub>` in
   CommonMark, GFM, and Obsidian documents.
+- Wmdx audio/video embeds export as semantic HTML media elements; other embedded
+  resources export as attachment links. Obsidian exports supported embeds with
+  `![[...]]` where its syntax retains the resource details.
 - Wmdx superscript imports from semantic HTML `<sup>` and exports to `<sup>` in
   CommonMark, GFM, and Obsidian documents.
 - Wmdx strikethrough exports as CommonMark `<del>` and stays `~~text~~` in GFM

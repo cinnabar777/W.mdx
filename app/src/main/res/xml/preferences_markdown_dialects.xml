@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Default Markdown Flavor">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_markdown_profile"
+            app:title="Primary Flavor"
+            app:summary="Sets default syntax recognition and authoring; feature-specific choices override this profile"
+            app:entries="@array/markdown_profile_entries"
+            app:entryValues="@array/markdown_profile_values"
+            app:defaultValue="wmdx" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_gfm_extensions_enabled"
+            app:title="GFM Extensions"
+            app:summary="Enable GFM tables, task lists, strikethrough, and bare-URL autolinks"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_markdown_auto_paste_enabled"
+            app:title="Convert Recognized Clipboard Content"
+            app:summary="Convert supported Markdown or rich HTML to this profile when conversion is safe; leave ambiguous or lossy content unchanged"
+            app:defaultValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

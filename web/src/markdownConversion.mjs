@@ -12,6 +12,7 @@ import {
   getWmdxOrderedListSequence,
   parseWmdxOrderedListMarker
 } from './listSyntax.mjs';
+import { encodeMarkdownDestination } from './wmdxLinkSyntax.mjs';
 
 const markdownConversionParser = markdown({
   extensions: [
@@ -194,6 +195,114 @@ function convertInlineLinksToWmdx(line, warnings) {
       }
     }
     index = parsed.end;
+  }
+  return output;
+}
+
+function findObsidianLinkEnd(line, start) {
+  for (let index = start; index < line.length - 1; index += 1) {
+    if (line[index] === '\\') {
+      index += 1;
+      continue;
+    }
+    if (line[index] === ']' && line[index + 1] === ']') return index;
+  }
+  return -1;
+}
+
+function splitObsidianLinkBody(body) {
+  let separator = -1;
+  for (let index = 0; index < body.length; index += 1) {
+    if (body[index] === '\\') {
+      index += 1;
+      continue;
+    }
+    if (body[index] === '|') {
+      separator = index;
+      break;
+    }
+  }
+  const unescape = value => value.replace(/\\([\\|#])/g, '$1').trim();
+  return {
+    target: unescape(separator < 0 ? body : body.slice(0, separator)),
+    alias: separator < 0 ? '' : unescape(body.slice(separator + 1))
+  };
+}
+
+function convertObsidianLinksToWmdx(line, warnings) {
+  let output = '';
+  let index = 0;
+  let codeTicks = 0;
+
+  while (index < line.length) {
+    if (line[index] === '\\') {
+      output += line.slice(index, index + 2);
+      index += 2;
+      continue;
+    }
+    if (line[index] === '`') {
+      let end = index;
+      while (line[end] === '`') end += 1;
+      const count = end - index;
+      codeTicks = codeTicks === count ? 0 : codeTicks || count;
+      output += line.slice(index, end);
+      index = end;
+      continue;
+    }
+
+    const embed = line[index] === '!' &&
+      line[index + 1] === '[' &&
+      line[index + 2] === '[';
+    const linkStart = line[index] === '[' &&
+      line[index + 1] === '[' ? index : embed ? index + 1 : -1;
+    if (codeTicks || linkStart < 0) {
+      output += line[index++];
+      continue;
+    }
+
+    const close = findObsidianLinkEnd(line, linkStart + 2);
+    if (close < 0) {
+      output += line[index++];
+      continue;
+    }
+
+    const originalEnd = close + 2;
+    const original = line.slice(index, originalEnd);
+    const { target, alias } = splitObsidianLinkBody(
+      line.slice(linkStart + 2, close)
+    );
+    if (!target) {
+      output += original;
+      index = originalEnd;
+      continue;
+    }
+
+    if (!embed) {
+      output += formatWmdxResourceSyntax({
+        source: target,
+        title: alias
+      });
+    } else {
+      const extension = target.split(/[?#]/, 1)[0]
+        .split('.').at(-1)?.toLowerCase() ?? '';
+      if (/^(?:avif|bmp|gif|jpe?g|png|svg|webp|mp3|m4a|aac|wav|ogg|oga|opus|flac|mp4|m4v|mov|webm|mkv|3gp|avi|mpeg|mpg|ogv|wmv|pdf|zip|doc|docx|xls|xlsx|ppt|pptx)$/.test(extension)) {
+        const width = /^[1-9]\d{0,4}$/.test(alias) ? alias : '';
+        const title = width ? '' : alias;
+        output += formatWmdxResourceSyntax({
+          embed: true,
+          source: target,
+          title,
+          size: width
+        });
+      } else {
+        addWarning(
+          warnings,
+          'Obsidian note transclusion cannot be imported as an embedded document and was kept unchanged.'
+        );
+        output += original;
+      }
+    }
+    index = originalEnd;
   }
   return output;
 }
@@ -476,6 +585,9 @@ export function convertFromMarkdown(source, format = 'commonmark') {
       if (protectedLines.has(index)) return line;
       let text = escapeDialectSpecificWmdxSyntax(line, format);
       text = convertInlineHtmlToMarkdown(text, warnings);
+      if (format === 'obsidian') {
+        text = convertObsidianLinksToWmdx(text, warnings);
+      }
       return convertInlineLinksToWmdx(text, warnings);
     });
   });
@@ -761,11 +873,12 @@ function convertWmdxResourceToMarkdown(raw, dialect, warnings) {
   const resource = parseWmdxResourceSyntax(raw);
   if (!resource) return raw;
   const { source, title, size, alignment, embed } = resource;
+  const extension = source.split(/[?#]/, 1)[0].split('.').at(-1)?.toLowerCase() ?? '';
   if (!embed) {
     if (dialect === 'obsidian' && !/^([a-z][a-z\d+.-]*:|\/|\.\/|\.\.\/|#)/i.test(source)) {
       return `[[${source}${title && title !== getWmdxResourceFallbackTitle(source) ? `|${title}` : ''}]]`;
     }
-    return `[${title || getWmdxResourceFallbackTitle(source)}](${source})`;
+    return `[${title || getWmdxResourceFallbackTitle(source)}](${encodeMarkdownDestination(source)})`;
   }
 
   if (dialect === 'obsidian' && !alignment && (!size || size.unit === 'px')) {
@@ -777,19 +890,48 @@ function convertWmdxResourceToMarkdown(raw, dialect, warnings) {
 
   const escapedSource = escapeHtml(source);
   const escapedTitle = escapeHtml(title || getWmdxResourceFallbackTitle(source));
-  const attrs = [];
+  const dimensionAttrs = [];
   if (size?.unit === 'px') {
-    attrs.push(`width="${size.width}"`);
-    if (size.height) attrs.push(`height="${size.height}"`);
+    dimensionAttrs.push(`width="${size.width}"`);
+    if (size.height) dimensionAttrs.push(`height="${size.height}"`);
   } else if (size?.unit === '%') {
-    attrs.push(`style="width:${size.width}%"`);
+    dimensionAttrs.push(`style="width:${size.width}%"`);
   }
-  const image = `<img src="${escapedSource}" alt="${escapedTitle}"${attrs.length ? ` ${attrs.join(' ')}` : ''}>`;
-  const content = title ? `${image}<figcaption>${escapedTitle}</figcaption>` : image;
-  const style = alignment && alignment !== 'left' ? ` style="text-align:${alignment}"` : '';
-  if (alignment || size) {
+  const imageExtensions = new Set([
+    'avif', 'bmp', 'gif', 'jpe', 'jpeg', 'jpg', 'png', 'svg', 'webp'
+  ]);
+  const hasSize = Boolean(size?.unit);
+  const audioExtensions = new Set([
+    'aac', 'flac', 'm4a', 'mp3', 'oga', 'ogg', 'opus', 'wav'
+  ]);
+  const videoExtensions = new Set([
+    '3gp', 'avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg',
+    'ogv', 'webm', 'wmv'
+  ]);
+  if (audioExtensions.has(extension)) {
+    if (alignment || hasSize) {
+      addWarning(warnings, 'Audio size or alignment is not retained in Markdown export.');
+    }
+    return `<audio controls src="${escapeHtml(encodeMarkdownDestination(source))}" aria-label="${escapedTitle}"></audio>`;
+  }
+  if (videoExtensions.has(extension)) {
+    if (alignment) {
+      addWarning(warnings, 'Video alignment is not retained in Markdown export.');
+    }
+    return `<video controls src="${escapeHtml(encodeMarkdownDestination(source))}" aria-label="${escapedTitle}"${dimensionAttrs.length ? ` ${dimensionAttrs.join(' ')}` : ''}></video>`;
+  }
+  if (!imageExtensions.has(extension)) {
+    if (alignment || hasSize) {
+      addWarning(warnings, 'Attachment size or alignment is not retained in Markdown export.');
+    }
+    return `[${title || getWmdxResourceFallbackTitle(source)}](${encodeMarkdownDestination(source)} "wmdx-attachment")`;
+  }
+  if (alignment || hasSize) {
     addWarning(warnings, 'Image size, alignment, or visible caption uses HTML for this Markdown dialect.');
   }
+  const image = `<img src="${escapeHtml(encodeMarkdownDestination(source))}" alt="${escapedTitle}"${dimensionAttrs.length ? ` ${dimensionAttrs.join(' ')}` : ''}>`;
+  const content = title ? `${image}<figcaption>${escapedTitle}</figcaption>` : image;
+  const style = alignment && alignment !== 'left' ? ` style="text-align:${alignment}"` : '';
   return `<figure${style}>${content}</figure>`;
 }
 
@@ -1002,6 +1144,14 @@ export function exportMarkdown(source, dialect = 'commonmark') {
   }
   const warnings = [];
   const markdown = protectCodeFences(source, (originalLines, protectedLines) => {
+    if (dialect !== 'obsidian' && originalLines.some((line, index) =>
+      !protectedLines.has(index) && /(?<!\\)\^\[[^\]\n]+\]/.test(line)
+    )) {
+      addWarning(
+        warnings,
+        'Obsidian inline footnotes were preserved as text because this target dialect has no equivalent.'
+      );
+    }
     let lines = [...originalLines];
     lines = mapWmdxHeadings(lines, protectedLines);
     lines = convertWmdxCallouts(lines, dialect, warnings, protectedLines);

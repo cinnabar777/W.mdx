@@ -137,7 +137,7 @@ test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies
   assert.match(obsidian.markdown, /^±warning- Careful/m);
   assert.match(obsidian.markdown, /^  First paragraph\.$/m);
   assert.match(obsidian.markdown, /^  Second paragraph\.$/m);
-  assert.match(obsidian.markdown, /\[\[Project Notes\|Project\]\]/);
+  assert.match(obsidian.markdown, /\[Project Notes\|Project\|\|\]/);
   assert.match(obsidian.markdown, /%%private%%/);
   assert.ok(obsidian.warnings.some(warning => warning.includes('comments')));
 
@@ -163,6 +163,54 @@ test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies
   ].join('\n'), 'obsidian');
   assert.match(customObsidianCallout.markdown, /^±custom Custom Obsidian type$/m);
   assert.match(customObsidianCallout.markdown, /^  Its body is retained\.$/m);
+});
+
+test('Obsidian wikilinks and media embeds import to Wmdx resources outside code', async () => {
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const result = convertFromMarkdown([
+    '[[Project Notes#Setup|Read this]] and `[[literal]]`.',
+    '',
+    '![[assets/diagram.png|640]]',
+    '![[manual.pdf]]',
+    '![[Another Note]]'
+  ].join('\n'), 'obsidian');
+
+  assert.match(
+    result.markdown,
+    /^\[Project Notes#Setup\|Read this\|\|\] and `\[\[literal\]\]`\.$/m
+  );
+  assert.match(result.markdown, /^!\[assets\/diagram\.png\|\|640\|\]$/m);
+  assert.match(result.markdown, /^!?\[manual\.pdf\|\|\|\]$/m);
+  assert.match(result.markdown, /^!\[\[Another Note\]\]$/m);
+  assert.ok(result.warnings.some(warning => warning.includes('transclusion')));
+});
+
+test('Markdown export uses media elements and attachment links for embedded resources', async () => {
+  const { exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const result = exportMarkdown([
+    '![audio/voice note.mp3|||]',
+    '![video/clip.mp4|||]',
+    '![docs/manual.pdf|||]'
+  ].join('\n'), 'gfm');
+
+  assert.match(result.markdown, /<audio controls src="audio\/voice%20note\.mp3"/);
+  assert.match(result.markdown, /<video controls src="video\/clip\.mp4"/);
+  assert.match(result.markdown, /\[manual\.pdf\]\(docs\/manual\.pdf "wmdx-attachment"\)/);
+  assert.equal(
+    result.warnings.some(warning => /Audio size|Video alignment|Attachment size/.test(warning)),
+    false
+  );
+});
+
+test('Obsidian inline footnotes warn when exported to a dialect without footnotes', async () => {
+  const { exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = 'A note^[inline detail] remains attached to its sentence.';
+  const commonmark = exportMarkdown(source, 'commonmark');
+  const obsidian = exportMarkdown(source, 'obsidian');
+
+  assert.equal(commonmark.markdown, source);
+  assert.ok(commonmark.warnings.some(warning => warning.includes('inline footnotes')));
+  assert.deepEqual(obsidian.warnings, []);
 });
 
 test('Markdown export maps Wmdx headings, links, tables, and callout states by target', async () => {

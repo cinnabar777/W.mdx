@@ -93,10 +93,17 @@ async function main() {
     await page.addInitScript(() => {
       window.layoutDiagnostics = [];
       window.testClipboardText = '';
+      window.testClipboardHtml = '';
       window.markdownExportCapture = null;
       window.AndroidNative = {
         onHostReady() {}, onEditorReady() {}, onContentChanged() {},
         readClipboard() { return window.testClipboardText; },
+        readClipboardPayload() {
+          return JSON.stringify({
+            text: window.testClipboardText,
+            html: window.testClipboardHtml
+          });
+        },
         saveMarkdownExport(dialect, markdown, warnings) {
           window.markdownExportCapture = { dialect, markdown, warnings };
         },
@@ -1269,6 +1276,113 @@ async function main() {
     const pastedDocument = await page.evaluate(() => window.editorBridge.getMarkdown());
     assert.match(pastedDocument, /^\.1 Pasted heading/m);
     assert.match(pastedDocument, /\[https:\/\/example\.com\|Site\|\|\]/);
+
+    await page.evaluate(() => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_profile: 'commonmark',
+        pref_markdown_auto_paste_enabled: true
+      });
+      window.editorBridge.setMarkdown('Replace with recognized Markdown');
+    });
+    await page.waitForTimeout(80);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('Control+A');
+    await page.locator('.cm-content').evaluate(element => {
+      const transfer = new DataTransfer();
+      transfer.setData('text/plain', '# Automatic heading\n\n[Site](https://example.com)');
+      const event = new ClipboardEvent('paste', {
+        clipboardData: transfer, bubbles: true, cancelable: true
+      });
+      element.dispatchEvent(event);
+    });
+    await page.waitForTimeout(80);
+    const autoConvertedMarkdown = await page.evaluate(
+      () => window.editorBridge.getMarkdown()
+    );
+    assert.match(autoConvertedMarkdown, /^# Automatic heading/m);
+    assert.match(autoConvertedMarkdown, /\[Site\]\(https:\/\/example\.com\)/);
+
+    await page.evaluate(() => {
+      window.editorBridge.setMarkdown('Replace with rich HTML');
+    });
+    await page.waitForTimeout(60);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('Control+A');
+    await page.locator('.cm-content').evaluate(element => {
+      const transfer = new DataTransfer();
+      transfer.setData('text/plain', 'Rich title\nBold text');
+      transfer.setData('text/html', '<h2>Rich title</h2><p><strong>Bold</strong> text</p>');
+      element.dispatchEvent(new ClipboardEvent('paste', {
+        clipboardData: transfer, bubbles: true, cancelable: true
+      }));
+    });
+    await page.waitForTimeout(80);
+    const autoConvertedHtml = await page.evaluate(
+      () => window.editorBridge.getMarkdown()
+    );
+    assert.match(autoConvertedHtml, /^## Rich title/m);
+    assert.match(autoConvertedHtml, /\*\*Bold\*\* text/);
+
+    await page.evaluate(() => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_profile: 'commonmark',
+        pref_markdown_auto_paste_enabled: false
+      });
+      window.editorBridge.setMarkdown('Keep rich clipboard formatting');
+    });
+    await page.waitForTimeout(60);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('Control+A');
+    await page.locator('.cm-content').evaluate(element => {
+      const transfer = new DataTransfer();
+      transfer.setData('text/plain', 'Rich title\nBold text');
+      transfer.setData('text/html', '<h2>Rich title</h2><p><strong>Bold</strong> text</p>');
+      const event = new ClipboardEvent('paste', {
+        clipboardData: transfer, bubbles: true, cancelable: true
+      });
+      element.dispatchEvent(event);
+    });
+    await page.waitForTimeout(80);
+    const plainClipboardPaste = await page.evaluate(
+      () => window.editorBridge.getMarkdown()
+    );
+    assert.equal(
+      plainClipboardPaste,
+      'Rich title\nBold text',
+      'turning off automatic conversion pastes the clipboard plain text unchanged'
+    );
+    cases += 1;
+
+    const gfmFixture = '| Name | Value |\n| --- | --- |\n| Item | 2 |\n\n~~removed~~';
+    await page.evaluate(markdown => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_profile: 'gfm'
+      });
+      window.editorBridge.setEditorMode('wysiwyg');
+      window.editorBridge.setMarkdown(markdown);
+    }, gfmFixture);
+    await page.waitForTimeout(140);
+    assert.equal(await page.locator('.cm-wp-table-container').count(), 1);
+    assert.ok(await page.locator('.cm-strikethrough').count() > 0);
+
+    await page.evaluate(markdown => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_profile: 'commonmark'
+      });
+      window.editorBridge.setMarkdown(markdown);
+    }, gfmFixture);
+    await page.waitForTimeout(140);
+    assert.equal(
+      await page.locator('.cm-wp-table-container').count(),
+      0,
+      'CommonMark profile leaves GFM tables as source'
+    );
+    assert.equal(
+      await page.locator('.cm-strikethrough').count(),
+      0,
+      'CommonMark profile does not recognize GFM strikethrough'
+    );
+    cases += 2;
 
     assert.deepEqual(failures, [], 'uncaught browser exceptions');
     assert.deepEqual(await page.evaluate(() => window.layoutDiagnostics), [], 'editor diagnostics');

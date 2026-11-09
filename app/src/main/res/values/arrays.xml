@@ -82,6 +82,19 @@
         <item>assets</item>
         <item>same-folder</item>
     </string-array>
+    <string-array name="markdown_profile_entries">
+        <item>Wmdx (all supported syntax)</item>
+        <item>CommonMark</item>
+        <item>GitHub Flavored Markdown (GFM)</item>
+        <item>Obsidian</item>
+    </string-array>
+    <string-array name="markdown_profile_values">
+        <item>wmdx</item>
+        <item>commonmark</item>
+        <item>gfm</item>
+        <item>obsidian</item>
+    </string-array>
+
     <string-array name="align_entries">
         <item>Default</item>
         <item>Left</item>

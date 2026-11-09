@@ -6,6 +6,8 @@ let markdownBlockquotePaste;
 let createMarkdownBlockquotePaste;
 let quoteMultilinePaste;
 let quotePasteInsertionRange;
+let detectMarkdownPasteDialect;
+let convertClipboardToMarkdownProfile;
 let EditorState;
 let markdown;
 let EditorView;
@@ -21,9 +23,92 @@ before(async () => {
   createMarkdownBlockquotePaste = pasteModule.createMarkdownBlockquotePaste;
   quoteMultilinePaste = pasteModule.quoteMultilinePaste;
   quotePasteInsertionRange = pasteModule.quotePasteInsertionRange;
+  detectMarkdownPasteDialect = pasteModule.detectMarkdownPasteDialect;
+  convertClipboardToMarkdownProfile =
+    pasteModule.convertClipboardToMarkdownProfile;
   EditorState = stateModule.EditorState;
   markdown = markdownModule.markdown;
   EditorView = viewModule.EditorView;
+});
+
+test('clipboard Markdown detection is conservative across supported flavors', () => {
+  assert.equal(detectMarkdownPasteDialect('Plain sentence without markup.'), null);
+  assert.equal(detectMarkdownPasteDialect('# A standard heading'), 'commonmark');
+  assert.equal(detectMarkdownPasteDialect('- [x] Finished'), 'gfm');
+  assert.equal(detectMarkdownPasteDialect('[[Daily Note]]'), 'obsidian');
+  assert.equal(detectMarkdownPasteDialect('> [!note] Read this'), 'obsidian');
+  assert.equal(detectMarkdownPasteDialect('.2 Wmdx heading'), 'wmdx');
+  assert.equal(
+    detectMarkdownPasteDialect('[image.png|A diagram||]'),
+    'wmdx'
+  );
+  assert.equal(
+    detectMarkdownPasteDialect('![image.png|A diagram|640|]'),
+    'wmdx'
+  );
+  assert.equal(
+    detectMarkdownPasteDialect('![[image.png|640]]'),
+    'obsidian'
+  );
+});
+
+test('Markdown paste converts only when the source and target profiles differ', () => {
+  const commonmark = '# Heading\n\n[Read](https://example.test)';
+  assert.equal(
+    convertClipboardToMarkdownProfile(
+      { text: commonmark },
+      'commonmark'
+    ).markdown,
+    commonmark
+  );
+  const wmdx = convertClipboardToMarkdownProfile(
+    { text: commonmark },
+    'wmdx'
+  );
+  assert.equal(wmdx.converted, true);
+  assert.match(wmdx.markdown, /^\.1 Heading/m);
+  assert.match(wmdx.markdown, /\[https:\/\/example\.test\|Read\|\|\]/);
+
+  const convertedWikiLink = convertClipboardToMarkdownProfile(
+    { text: '[[Project Notes#Setup|Read this]]' },
+    'commonmark'
+  );
+  assert.equal(convertedWikiLink.sourceDialect, 'obsidian');
+  assert.equal(convertedWikiLink.markdown, '[Read this](Project%20Notes#Setup)');
+
+  const convertedWmdx = convertClipboardToMarkdownProfile(
+    { text: '.1 Heading\n\n[docs/Guide.md|Guide||]' },
+    'commonmark'
+  );
+  assert.equal(convertedWmdx.markdown, '# Heading\n\n[Guide](docs/Guide.md)');
+
+  const lossyWmdx = '±warning- Keep this callout\n  body';
+  assert.equal(
+    convertClipboardToMarkdownProfile(
+      { text: lossyWmdx },
+      'commonmark'
+    ).markdown,
+    lossyWmdx
+  );
+});
+
+test('HTML clipboard is converted semantically, but lossy HTML stays plain', () => {
+  const Parser = new JSDOM('').window.DOMParser;
+  const rich = convertClipboardToMarkdownProfile({
+    text: 'Title\nbold',
+    html: '<h1>Title</h1><p><strong>bold</strong></p>'
+  }, 'commonmark', Parser);
+  assert.equal(rich.sourceDialect, 'html');
+  assert.equal(rich.converted, true);
+  assert.match(rich.markdown, /^# Title/m);
+  assert.match(rich.markdown, /\*\*bold\*\*/);
+
+  const lossy = convertClipboardToMarkdownProfile({
+    text: 'Visible fallback',
+    html: '<p>Visible fallback</p><script>secret()</script>'
+  }, 'wmdx', Parser);
+  assert.equal(lossy.converted, false);
+  assert.equal(lossy.markdown, 'Visible fallback');
 });
 
 test('multiline paste preserves explicit and nested blockquote context', () => {

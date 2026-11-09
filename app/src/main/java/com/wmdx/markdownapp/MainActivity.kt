@@ -6289,6 +6289,27 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun readClipboardPayload(): String {
+            val payload = JSONObject()
+            return try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager ?: return payload.toString()
+                val clip = clipboard.primaryClip ?: return payload.toString()
+                if (clip.itemCount == 0) return payload.toString()
+                val item = clip.getItemAt(0)
+                item.coerceToText(this@MainActivity)?.toString()
+                    ?.take(200_000)
+                    ?.let { payload.put("text", it) }
+                item.htmlText
+                    ?.takeIf { it.length <= 200_000 }
+                    ?.let { payload.put("html", it) }
+                payload.toString()
+            } catch (_: Exception) {
+                payload.toString()
+            }
+        }
+
+        @JavascriptInterface
         fun saveMarkdownExport(
             dialectText: String?,
             markdownText: String?,
