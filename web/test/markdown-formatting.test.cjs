@@ -103,6 +103,31 @@ test('Wmdx subscript formatting can be detected and toggled', async () => {
   assert.equal(view.state.doc.toString(), 'sub and plain');
 });
 
+test('Wmdx superscript formatting can be detected and toggled', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { getMarkdownFormattingState, isMarkdownFormatActive, toggleMarkdownFormat } =
+    await import('../src/markdownFormatting.js');
+  const doc = 'x^2^ and plain';
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(2),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(isMarkdownFormatActive(view, 'superscript'), true);
+  assert.equal(getMarkdownFormattingState(view).superscript, true);
+  assert.equal(toggleMarkdownFormat(view, 'superscript'), true);
+  assert.equal(view.state.doc.toString(), 'x2 and plain');
+});
+
 test('toolbar formatting can preserve a closed keyboard without refocusing the editor', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');

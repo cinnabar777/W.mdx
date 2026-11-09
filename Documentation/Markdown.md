@@ -97,6 +97,12 @@ extension, not GFM strikethrough; GFM strikethrough uses double tildes,
 `~~text~~`. CommonMark, GFM, and Obsidian exports represent subscript with
 `<sub>text</sub>`.
 
+### Wmdx superscript
+
+Wrap text in paired carets to display superscript, as in `x^2^`. This is a Wmdx
+extension; CommonMark, GFM, and Obsidian exports represent it with
+`<sup>text</sup>`.
+
 ### Wmdx underline styles
 
 The subscript digit selects the underline style:

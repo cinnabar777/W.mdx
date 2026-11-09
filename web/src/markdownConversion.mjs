@@ -410,7 +410,7 @@ function convertInlineHtmlToMarkdown(line, warnings) {
   return line
     .replace(/<del>([\s\S]*?)<\/del>/gi, '~~$1~~')
     .replace(/<s>([\s\S]*?)<\/s>/gi, '~~$1~~')
-    .replace(/<sup>([\s\S]*?)<\/sup>/gi, '<sup>$1</sup>')
+    .replace(/<sup>([\s\S]*?)<\/sup>/gi, '^$1^')
     .replace(/<sub>([\s\S]*?)<\/sub>/gi, '~$1~')
     .replace(/<mark(?:\s[^>]*)?>([\s\S]*?)<\/mark>/gi, (_, text) => {
       if (/style\s*=/i.test(line)) {
@@ -420,7 +420,7 @@ function convertInlineHtmlToMarkdown(line, warnings) {
     });
 }
 
-function escapeDialectSpecificTildes(line, format) {
+function escapeDialectSpecificWmdxSyntax(line, format) {
   const protectedValues = [];
   let text = String(line ?? '');
   const protect = value => {
@@ -430,7 +430,7 @@ function escapeDialectSpecificTildes(line, format) {
   };
 
   // Markdown is not parsed inside code spans or raw HTML elements. Keep those
-  // regions intact before normalizing single-tilde Wmdx subscript below.
+  // regions intact before normalizing Wmdx subscript and superscript markers.
   text = text
     .replace(/<([a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, protect)
     .replace(/(`+)([\s\S]*?)\1/g, protect);
@@ -445,6 +445,10 @@ function escapeDialectSpecificTildes(line, format) {
   text = text.replace(
     /(?<![~\\])~(?!~)(\S(?:[^~]*?\S)?)~(?!~)/gu,
     match => escapeTildes(match)
+  );
+  text = text.replace(
+    /(?<![\\^])\^([^\s^\n](?:[^^\n]*?[^\s^\n])?)\^(?!\^)/gu,
+    match => match.replace(/\^/g, '\\^')
   );
 
   for (const { marker, value } of protectedValues) {
@@ -470,7 +474,7 @@ export function convertFromMarkdown(source, format = 'commonmark') {
     lines = convertHeadings(lines.join('\n'));
     return lines.map((line, index) => {
       if (protectedLines.has(index)) return line;
-      let text = escapeDialectSpecificTildes(line, format);
+      let text = escapeDialectSpecificWmdxSyntax(line, format);
       text = convertInlineHtmlToMarkdown(text, warnings);
       return convertInlineLinksToWmdx(text, warnings);
     });
@@ -558,7 +562,7 @@ function inlineHtmlNode(node, warnings) {
   if (tag === 'em' || tag === 'i') return `*${content}*`;
   if (tag === 'del' || tag === 's' || tag === 'strike') return `~~${content}~~`;
   if (tag === 'u') return `<u>${content}</u>`;
-  if (tag === 'sup') return `<sup>${content}</sup>`;
+  if (tag === 'sup') return `^${content}^`;
   if (tag === 'sub') return `~${content}~`;
   if (tag === 'code') return `\`${content.replace(/`/g, '\\`')}\``;
   if (tag === 'mark') return `==${content}==`;
@@ -861,6 +865,10 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
         (_, content) => `<del>${content}</del>`
       );
     }
+    text = text.replace(
+      /(?<![\\^])\^([^\s^\n](?:[^^\n]*?[^\s^\n])?)\^(?!\^)/gu,
+      (_, content) => `<sup>${content}</sup>`
+    );
     text = text.replace(
       /(?<![~\\])~(?!~)(\S(?:[^~]*?\S)?)~(?!~)/gu,
       (_, content) => `<sub>${content}</sub>`

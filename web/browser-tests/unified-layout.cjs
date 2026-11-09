@@ -105,16 +105,19 @@ async function main() {
     for (const mode of modes) {
       await page.evaluate(async ({ mode }) => {
         await window.editorBridge.setEditorMode(mode);
-        window.editorBridge.setMarkdown('Water is H~2~O; ~~removed~~.');
+        window.editorBridge.setMarkdown('Water is H~2~O; x^2^; ~~removed~~.');
       }, { mode });
       await page.waitForTimeout(90);
       const inline = await page.evaluate(() => {
         const subscript = document.querySelector('.cm-subscript');
+        const superscript = document.querySelector('.cm-superscript');
         const strikethrough = document.querySelector('.cm-strikethrough');
         return {
           markdown: window.editorBridge.getMarkdown(),
           subscriptText: subscript?.textContent ?? null,
           subscriptFontSize: subscript ? getComputedStyle(subscript).fontSize : null,
+          superscriptText: superscript?.textContent ?? null,
+          superscriptFontSize: superscript ? getComputedStyle(superscript).fontSize : null,
           baseFontSize: document.querySelector('.cm-content')
             ? getComputedStyle(document.querySelector('.cm-content')).fontSize
             : null,
@@ -122,18 +125,26 @@ async function main() {
           text: document.querySelector('.cm-content')?.textContent ?? ''
         };
       });
-      assert.equal(inline.markdown, 'Water is H~2~O; ~~removed~~.', `source changed: ${mode}`);
+      assert.equal(inline.markdown, 'Water is H~2~O; x^2^; ~~removed~~.', `source changed: ${mode}`);
       assert.ok(inline.subscriptText, `subscript styling missing: ${mode}`);
+      assert.ok(inline.superscriptText, `superscript styling missing: ${mode}`);
       assert.ok(
         Number.parseFloat(inline.subscriptFontSize) < Number.parseFloat(inline.baseFontSize),
         `subscript size missing: ${mode}`
       );
+      assert.ok(
+        Number.parseFloat(inline.superscriptFontSize) < Number.parseFloat(inline.baseFontSize),
+        `superscript size missing: ${mode}`
+      );
       assert.ok(inline.hasStrikethrough, `double-tilde strikethrough missing: ${mode}`);
       if (mode === 'source') {
         assert.match(inline.text, /H~2~O/);
+        assert.match(inline.text, /x\^2\^/);
       } else {
         assert.match(inline.text, /H2O/);
+        assert.match(inline.text, /x2/);
         assert.doesNotMatch(inline.text, /H~2~O/);
+        assert.doesNotMatch(inline.text, /x\^2\^/);
       }
       cases++;
     }

@@ -37,6 +37,20 @@ test('subscript converts between Wmdx tilde syntax and portable HTML', async () 
   }
 });
 
+test('superscript imports and exports through semantic HTML without reinterpreting literals', async () => {
+  const { convertFromMarkdown, convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { JSDOM } = require('jsdom');
+  const Parser = new JSDOM('').window.DOMParser;
+  assert.equal(convertFromMarkdown('x^2^', 'gfm').markdown, 'x\\^2\\^');
+  assert.equal(convertFromMarkdown('x<sup>2</sup>', 'commonmark').markdown, 'x^2^');
+  assert.equal(convertFromHtml('<p>x<sup>2</sup></p>', Parser).markdown, 'x^2^');
+
+  for (const dialect of ['commonmark', 'gfm', 'obsidian']) {
+    assert.equal(exportMarkdown('x^2^', dialect).markdown, 'x<sup>2</sup>');
+  }
+});
+
 test('dialect conversion preserves literal tildes and exports CommonMark strike as HTML', async () => {
   const { convertFromMarkdown, exportMarkdown } = await import('../src/markdownConversion.mjs');
   const gfm = convertFromMarkdown(

@@ -43,13 +43,13 @@ for authoring.
 | Callouts | Wmdx `±type`, `±type-`, `±type+`; Obsidian `> [!type]` and fold markers. GitHub alerts overlap with the Obsidian spelling for `note`, `tip`, `important`, `warning`, and `caution`; other alert-like blockquotes remain ordinary quotes on GFM import. |
 | Footnotes | Markdown reference footnotes (`[^label]`), Wmdx numbered footnotes, and Obsidian inline footnotes (`^[text]`) have syntax controls. |
 | Underline | **Use Wmdx syntax** recognizes Wmdx underline forms. When disabled, HTML `<u>...</u>` is the compatibility form. |
-| Tables and inline formatting | GFM pipe tables, task lists, double-tilde strikethrough, and autolinks are parser extensions. Wmdx single-tilde `~text~` is subscript, not GFM strikethrough. Feature settings are separate rather than one global GFM profile. |
+| Tables and inline formatting | GFM pipe tables, task lists, double-tilde strikethrough, and autolinks are parser extensions. Wmdx single-tilde `~text~` is subscript, and paired-caret `^text^` is superscript. Feature settings are separate rather than one global GFM profile. |
 
 The Wmdx extensions include resource links and embeds, decimal headings,
-additional list markers, native tasks, callouts, footnotes, subscript, underline
-styles, highlight/pen color slots, and media/attachment metadata. Subscript is
-recognized without a separate dialect toggle. The cheat sheet gives the exact
-source spelling.
+additional list markers, native tasks, callouts, footnotes, subscript,
+superscript, underline styles, highlight/pen color slots, and media/attachment
+metadata. Script formatting is recognized without a separate dialect toggle.
+The cheat sheet gives the exact source spelling.
 
 ## Convert, paste, and export
 
@@ -102,6 +102,8 @@ Conversion is deliberately explicit and conservative:
   target has no equivalent. Wmdx pen marks have no portable Markdown equivalent
   and are exported as plain text with a warning.
 - Wmdx subscript imports from semantic HTML `<sub>` and exports to `<sub>` in
+  CommonMark, GFM, and Obsidian documents.
+- Wmdx superscript imports from semantic HTML `<sup>` and exports to `<sup>` in
   CommonMark, GFM, and Obsidian documents.
 - Wmdx strikethrough exports as CommonMark `<del>` and stays `~~text~~` in GFM
   and Obsidian.

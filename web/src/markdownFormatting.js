@@ -55,6 +55,7 @@ const MARKDOWN_FORMATS = {
   italic: { node: 'Emphasis', open: '*', close: '*' },
   strikethrough: { node: 'Strikethrough', open: '~~', close: '~~' },
   subscript: { node: 'Subscript', open: '~', close: '~' },
+  superscript: { open: '^', close: '^' },
   code: { node: 'InlineCode', open: '`', close: '`' },
   underline: { htmlTag: 'u', open: '<u>', close: '</u>' }
 };
@@ -256,6 +257,32 @@ function expandedLineBounds(state, from, to) {
   };
 }
 
+function getWmdxSuperscriptRanges(state, bounds = null) {
+  const scanBounds = bounds
+    ? expandedLineBounds(state, bounds.from, Math.max(bounds.from, bounds.to - 1))
+    : { from: 0, to: state.doc.length };
+  const source = state.doc.sliceString(scanBounds.from, scanBounds.to);
+  const code = codeRanges(state, scanBounds);
+  const ranges = [];
+  const expression = /(?<![\\])\^([^\s^\n](?:[^^\n]*?[^\s^\n])?)\^/gu;
+  let match;
+  while ((match = expression.exec(source))) {
+    const wrapperFrom = scanBounds.from + match.index;
+    const wrapperTo = wrapperFrom + match[0].length;
+    if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
+    ranges.push({
+      wrapperFrom,
+      wrapperTo,
+      contentFrom: wrapperFrom + 1,
+      contentTo: wrapperTo - 1,
+      open: '^',
+      close: '^',
+      kind: 'superscript'
+    });
+  }
+  return ranges;
+}
+
 export function getMarkdownFormatRanges(view, formatName, bounds = null) {
   const state = view?.state;
   if (WMDX_COLOR_ACTION_IDS.includes(formatName)) {
@@ -286,6 +313,9 @@ export function getMarkdownFormatRanges(view, formatName, bounds = null) {
       ));
     }
     return ranges;
+  }
+  if (formatName === 'superscript') {
+    return getWmdxSuperscriptRanges(state, scanBounds);
   }
   if (formatName === 'underline') {
     return [
@@ -408,6 +438,9 @@ export function getMarkdownFormattingState(view) {
     }
   }
   const underline = getMarkdownFormatRanges(view, 'underline', bounds).find(range =>
+    selection.head >= range.contentFrom && selection.head < range.contentTo
+  );
+  state.superscript = getMarkdownFormatRanges(view, 'superscript', bounds).some(range =>
     selection.head >= range.contentFrom && selection.head < range.contentTo
   );
   if (underline) {
@@ -663,12 +696,6 @@ function getInlineFormattingRanges(view, bounds) {
       openLength: 2,
       closeLength: 1,
       kind: 'footnote'
-    },
-    {
-      expression: /(?<![\\])\^([^\s^\n](?:[^^\n]*?[^\s^\n])?)\^/gu,
-      openLength: 1,
-      closeLength: 1,
-      kind: 'superscript'
     },
     {
       expression: /(?<![\\])\^(\d+)(?!\^)/gu,

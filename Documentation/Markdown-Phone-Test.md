@@ -241,6 +241,8 @@ Pen slots: =pen 1=, =₀pen 2=, =₁pen 3=, and =₂pen 4=.
 
 Single tilde is Wmdx subscript, not GFM strikethrough: H~2~O.
 
+Paired carets form Wmdx superscript: x^2^.
+
 ### W.mdx ordered-list styles and task markers
 
 The app supports additional ordered markers and its native task form:

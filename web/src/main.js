@@ -3001,6 +3001,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const colorSyntaxRanges = [...new Map(decorationRanges
       .flatMap(range => getWmdxColorSyntaxRanges(view.state, range))
       .map(range => [`${range.group}:${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
+    const superscriptSyntaxRanges = [...new Map(decorationRanges
+      .flatMap(range => getMarkdownFormatRanges(view, 'superscript', range))
+      .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
 
     const calloutOpenerInfo = layout.calloutOpeners;
     const calloutLineAttributes = new Map(
@@ -3653,6 +3656,21 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }
       builder.push(Decoration.mark({
         class: `cm-wmdx-${range.group}-${range.color}`
+      }).range(range.contentFrom, range.contentTo));
+    }
+
+    for (const range of superscriptSyntaxRanges) {
+      const isRangeActive = isSourceMode || (!isPureWysiwyg && (
+        selection.empty
+          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
+          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
+      ));
+      if (!isRangeActive) {
+        hideSyntax(range.wrapperFrom, range.contentFrom);
+        hideSyntax(range.contentTo, range.wrapperTo);
+      }
+      builder.push(Decoration.mark({
+        class: 'cm-superscript'
       }).range(range.contentFrom, range.contentTo));
     }
 
