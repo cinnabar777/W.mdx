@@ -27,8 +27,37 @@ function setDiagnostic(items, line, code, message, severity = 'warning') {
   items.push({ line, code, message, severity });
 }
 
+function containsWmdxOnlySyntax(line, dialect) {
+  if (
+    /^[ \t]*\.[1-6][ \t]+\S/.test(line) ||
+    /^[ \t]*±[A-Za-z][\w-]*(?:[+-])?(?:[ \t]|$)/.test(line) ||
+    /(?<![~\\])~(?!~)(\S(?:[^~\n]*?\S)?)~(?!~)/u.test(line) ||
+    /(?<![\\^])\^([^\s^\n](?:[^^\n]*?[^\s^\n])?)\^(?!\^)/u.test(line) ||
+    /==[₀₁₂]\S[^=\n]*==/u.test(line) ||
+    /(?<![=\\])=(?:[₀₁₂])?\S[^=\n]*?=(?![=])/u.test(line) ||
+    /(?<![_\\])_[₀₁₂₃]\S[^_\n]*?_/u.test(line) ||
+    /^[ \t]*[A-Za-z]+[.)][ \t]+\S/.test(line) ||
+    /^[ \t]*\[[ xX]\][ \t]+\S/.test(line)
+  ) {
+    return true;
+  }
+  if (/==[^=\n]+==/u.test(line) && dialect !== 'obsidian') return true;
+
+  const resourcePattern = /!?(\[[^\]\n]*\])/g;
+  let match;
+  while ((match = resourcePattern.exec(line))) {
+    if ((match[1].match(/\|/g) ?? []).length !== 3) continue;
+    const syntax = `${match[0][0] === '!' ? '!' : ''}${match[1]}`;
+    if (parseWmdxResourceSyntax(syntax)) return true;
+  }
+  return false;
+}
+
 export function lintMarkdown(source, { dialect = 'wmdx' } = {}) {
   const text = String(source ?? '');
+  const selectedDialect = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(dialect)
+    ? dialect
+    : 'wmdx';
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const diagnostics = [];
   const codeLines = new Set();
@@ -66,6 +95,28 @@ export function lintMarkdown(source, { dialect = 'wmdx' } = {}) {
     if (codeLines.has(index)) continue;
     const line = lines[index];
     const number = index + 1;
+    if (selectedDialect !== 'wmdx' &&
+        containsWmdxOnlySyntax(line, selectedDialect)) {
+      setDiagnostic(diagnostics, number, 'unsupported-wmdx-syntax',
+        `This Wmdx-only syntax may not render in ${selectedDialect}.`);
+    }
+    if (selectedDialect === 'commonmark' &&
+        (/^[ \t]*[-+*][ \t]+\[[ xX]\][ \t]+\S/.test(line) ||
+         /~~[^~\n]+~~/.test(line) ||
+         (index > 0 && /\|/.test(line) &&
+          /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line)))) {
+      setDiagnostic(diagnostics, number, 'unsupported-gfm-syntax',
+        'GFM task, strikethrough, or table syntax is not part of CommonMark.');
+    }
+    if (
+      ['commonmark', 'gfm'].includes(selectedDialect) &&
+      (/!?\[\[[^\]\n]+\]\]|%%|(?<![\\])\^\[[^\]\n]+\]/.test(line) ||
+       (selectedDialect === 'commonmark' &&
+        />[ \t]*\[![A-Za-z][\w-]*\]/.test(line)))
+    ) {
+      setDiagnostic(diagnostics, number, 'unsupported-obsidian-syntax',
+        `This Obsidian-only syntax may not render in ${selectedDialect}.`);
+    }
     const referenceDefinition = /^ {0,3}\[([^\]]+)\]:\s*(\S.*)?$/.exec(line);
     if (referenceDefinition) {
       const label = referenceDefinition[1].trim().toLowerCase();
@@ -112,7 +163,7 @@ export function lintMarkdown(source, { dialect = 'wmdx' } = {}) {
       }
     }
 
-    if (dialect === 'obsidian' &&
+    if (selectedDialect === 'obsidian' &&
         /!\[\[[^\]\n]*#[^\]\n]+\]\]/.test(line)) {
       setDiagnostic(diagnostics, number, 'unsupported-obsidian-transclusion',
         'Heading or block transclusion is not supported; this embed will not resolve as it does in Obsidian.');

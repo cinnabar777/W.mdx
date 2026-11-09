@@ -158,8 +158,10 @@ are curated feature tests rather than an official versioned conformance suite.
 The conversion and linter tests therefore do **not** certify complete
 CommonMark, GFM, Obsidian, or HTML conformance.
 
-The linter is a small structural checker for common errors such as unclosed
-code fences, unresolved references/footnotes, malformed Wmdx resource fields,
-table row widths, empty callouts, active HTML, and Obsidian transclusion. A
-clean lint result is not proof that a document is valid in every target
+The linter checks common structural errors such as unclosed code fences,
+unresolved references/footnotes, malformed Wmdx resource fields, table row
+widths, empty callouts, active HTML, and Obsidian transclusion. It also reports
+known Wmdx-only syntax for non-Wmdx targets and GFM-only task, strike, and table
+syntax for CommonMark. Code-fenced examples are excluded from syntax warnings.
+A clean lint result is not proof that a document is valid in every target
 renderer.
