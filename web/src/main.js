@@ -126,6 +126,9 @@ import {
   getWmdxUnderlineSyntaxDelimiterRanges,
   getWmdxColorSyntaxRanges,
   isWmdxUnderlineSyntaxEnabled,
+  setObsidianHighlightSyntaxEnabled,
+  setWmdxColorSyntaxEnabled,
+  setWmdxSuperscriptSyntaxEnabled,
   setWmdxUnderlineSyntaxEnabled,
   clearMarkdownFormatting,
   cycleMarkdownListType,
@@ -11961,6 +11964,15 @@ window.editorBridge = {
     }
     markdownIndentSpaces = getMarkdownIndentSpaces(
       prefs.pref_indent_step_spaces
+    );
+    setWmdxSuperscriptSyntaxEnabled(
+      prefs.pref_wmdx_superscript_enabled !== false
+    );
+    setWmdxColorSyntaxEnabled(
+      prefs.pref_wmdx_color_syntax_enabled !== false
+    );
+    setObsidianHighlightSyntaxEnabled(
+      prefs.pref_obsidian_highlight_enabled === true
     );
     const limitedInteraction =
       prefs.pref_embedded_content_limited_interaction !== false;

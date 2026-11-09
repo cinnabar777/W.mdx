@@ -45,13 +45,15 @@ conversion remain separate actions.
 | Footnotes | Markdown reference footnotes (`[^label]`), Wmdx numbered footnotes, and Obsidian inline footnotes (`^[text]`) have syntax controls. |
 | Underline | **Use Wmdx syntax** recognizes Wmdx underline forms. When disabled, HTML `<u>...</u>` is the compatibility form. |
 | Wmdx subscript | **Wmdx Subscript Syntax** independently controls single-tilde `~text~`. It defaults on for Wmdx and off for CommonMark, GFM, and Obsidian profiles, so single tildes stay literal in standard-only profiles. |
+| Wmdx superscript | **Wmdx Superscript Syntax** controls paired-caret `^text^`. It defaults on for Wmdx and off for CommonMark, GFM, and Obsidian profiles; export converts it to semantic HTML where Markdown has no native equivalent. |
+| Highlight and pen | **Wmdx Highlight and Pen Syntax** controls Wmdx color-slot highlights and pen marks. It defaults on only for Wmdx. **Obsidian Highlight Syntax** separately enables plain `==text==` highlights for Obsidian. |
 | Tables and inline formatting | GFM pipe tables, task markers, double-tilde strikethrough, and bare-URL autolinks are parsed when GFM Extensions is enabled. Wmdx paired-caret `^text^` superscript is described in the cheat sheet. |
 
 The Wmdx extensions include resource links and embeds, decimal headings,
 additional list markers, native tasks, callouts, footnotes, subscript,
 superscript, underline styles, highlight/pen color slots, and media/attachment
-metadata. Wmdx superscript is currently recognized without a separate dialect
-toggle.
+metadata. Wmdx-only syntax is controlled by its feature preferences; syntax
+shared with a target profile follows that profile's behavior.
 The cheat sheet gives the exact source spelling.
 
 ## Convert, paste, and export

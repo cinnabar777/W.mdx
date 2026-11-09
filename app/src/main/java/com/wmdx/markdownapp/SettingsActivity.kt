@@ -135,7 +135,10 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to false,
                 "pref_footnote_authoring_syntax" to "markdown",
+                "pref_wmdx_color_syntax_enabled" to false,
+                "pref_obsidian_highlight_enabled" to false,
                 "pref_wmdx_subscript_enabled" to false,
+                "pref_wmdx_superscript_enabled" to false,
                 "pref_underline_use_wmdx_syntax" to false
             )
             "gfm" -> mapOf(
@@ -154,7 +157,10 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to false,
                 "pref_footnote_authoring_syntax" to "markdown",
+                "pref_wmdx_color_syntax_enabled" to false,
+                "pref_obsidian_highlight_enabled" to false,
                 "pref_wmdx_subscript_enabled" to false,
+                "pref_wmdx_superscript_enabled" to false,
                 "pref_underline_use_wmdx_syntax" to false
             )
             "obsidian" -> mapOf(
@@ -173,7 +179,10 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to true,
                 "pref_footnote_authoring_syntax" to "markdown",
+                "pref_wmdx_color_syntax_enabled" to false,
+                "pref_obsidian_highlight_enabled" to true,
                 "pref_wmdx_subscript_enabled" to false,
+                "pref_wmdx_superscript_enabled" to false,
                 "pref_underline_use_wmdx_syntax" to false
             )
             else -> mapOf(
@@ -193,7 +202,10 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_footnote_syntax_wmdx_enabled" to true,
                 "pref_footnote_syntax_obsidian_inline_enabled" to true,
                 "pref_footnote_authoring_syntax" to "wmdx",
+                "pref_wmdx_color_syntax_enabled" to true,
+                "pref_obsidian_highlight_enabled" to false,
                 "pref_wmdx_subscript_enabled" to true,
+                "pref_wmdx_superscript_enabled" to true,
                 "pref_underline_use_wmdx_syntax" to true
             )
         }
@@ -4173,18 +4185,25 @@ class MarkdownDialectSettingsFragment : BaseSettingsFragment() {
         sharedPreferences: SharedPreferences,
         key: String
     ) {
-        if (key != "pref_markdown_profile" ||
-            sharedPreferences.contains("pref_wmdx_subscript_enabled")
-        ) {
-            return
-        }
-        val subscriptPreference =
-            findPreference<ResetSwitchPreference>("pref_wmdx_subscript_enabled")
-                ?: return
+        if (key != "pref_markdown_profile") return
         val profile = sharedPreferences.getString("pref_markdown_profile", "wmdx")
-        subscriptPreference.isPersistent = false
-        subscriptPreference.isChecked = profile == "wmdx"
-        subscriptPreference.isPersistent = true
+        for (preferenceKey in listOf(
+            "pref_wmdx_color_syntax_enabled",
+            "pref_obsidian_highlight_enabled",
+            "pref_wmdx_subscript_enabled",
+            "pref_wmdx_superscript_enabled"
+        )) {
+            if (sharedPreferences.contains(preferenceKey)) continue
+            val preference =
+                findPreference<ResetSwitchPreference>(preferenceKey) ?: continue
+            preference.isPersistent = false
+            preference.isChecked = if (preferenceKey == "pref_obsidian_highlight_enabled") {
+                profile == "obsidian"
+            } else {
+                profile == "wmdx"
+            }
+            preference.isPersistent = true
+        }
     }
 }
 

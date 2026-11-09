@@ -17,7 +17,10 @@ const BASE_FEATURE_DEFAULTS = Object.freeze({
   pref_links_reference_enabled: true,
   pref_footnote_syntax_enabled: true,
   pref_footnote_syntax_markdown_enabled: true,
+  pref_wmdx_color_syntax_enabled: true,
+  pref_obsidian_highlight_enabled: false,
   pref_wmdx_subscript_enabled: true,
+  pref_wmdx_superscript_enabled: true,
   pref_underline_use_wmdx_syntax: true
 });
 
@@ -58,7 +61,10 @@ const PROFILE_DEFAULTS = Object.freeze({
     pref_footnote_syntax_wmdx_enabled: false,
     pref_footnote_syntax_obsidian_inline_enabled: false,
     pref_footnote_authoring_syntax: 'markdown',
+    pref_wmdx_color_syntax_enabled: false,
+    pref_obsidian_highlight_enabled: false,
     pref_wmdx_subscript_enabled: false,
+    pref_wmdx_superscript_enabled: false,
     pref_underline_use_wmdx_syntax: false
   }),
   gfm: Object.freeze({
@@ -78,7 +84,10 @@ const PROFILE_DEFAULTS = Object.freeze({
     pref_footnote_syntax_wmdx_enabled: false,
     pref_footnote_syntax_obsidian_inline_enabled: false,
     pref_footnote_authoring_syntax: 'markdown',
+    pref_wmdx_color_syntax_enabled: false,
+    pref_obsidian_highlight_enabled: false,
     pref_wmdx_subscript_enabled: false,
+    pref_wmdx_superscript_enabled: false,
     pref_underline_use_wmdx_syntax: false
   }),
   obsidian: Object.freeze({
@@ -98,7 +107,10 @@ const PROFILE_DEFAULTS = Object.freeze({
     pref_footnote_syntax_wmdx_enabled: false,
     pref_footnote_syntax_obsidian_inline_enabled: true,
     pref_footnote_authoring_syntax: 'markdown',
+    pref_wmdx_color_syntax_enabled: false,
+    pref_obsidian_highlight_enabled: true,
     pref_wmdx_subscript_enabled: false,
+    pref_wmdx_superscript_enabled: false,
     pref_underline_use_wmdx_syntax: false
   })
 });

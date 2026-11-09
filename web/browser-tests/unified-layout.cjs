@@ -1360,7 +1360,8 @@ async function main() {
     );
     cases += 1;
 
-    const tildeFixture = '~subscript~ ~~strike~~';
+    const tildeFixture =
+      '~subscript~ ~~strike~~ ^superscript^ ==highlight== =pen=';
     await page.evaluate(markdown => {
       window.editorBridge.applyAllPreferences({
         pref_markdown_profile: 'wmdx'
@@ -1371,8 +1372,13 @@ async function main() {
     await page.waitForTimeout(120);
     assert.ok(await page.locator('.cm-subscript').count() > 0,
       'Wmdx profile recognizes its single-tilde subscript');
+    assert.ok(await page.locator('.cm-superscript').count() > 0,
+      'Wmdx profile recognizes paired-caret superscript');
+    assert.ok(await page.locator('.cm-wmdx-highlight-yellow').count() > 0);
+    assert.ok(await page.locator('.cm-wmdx-pen-red').count() > 0);
 
-    const gfmFixture = '| Name | Value |\n| --- | --- |\n| Item | 2 |\n\n~~removed~~\n\n~literal~';
+    const gfmFixture =
+      '| Name | Value |\n| --- | --- |\n| Item | 2 |\n\n~~removed~~\n\n~literal~ ^literal^ ==literal== =literal=';
     await page.evaluate(markdown => {
       window.editorBridge.applyAllPreferences({
         pref_markdown_profile: 'gfm'
@@ -1388,6 +1394,13 @@ async function main() {
       0,
       'GFM profile must leave Wmdx single-tilde subscript disabled'
     );
+    assert.equal(
+      await page.locator('.cm-superscript').count(),
+      0,
+      'GFM profile leaves Wmdx paired-caret superscript literal'
+    );
+    assert.equal(await page.locator('.cm-wmdx-highlight-yellow').count(), 0);
+    assert.equal(await page.locator('.cm-wmdx-pen-red').count(), 0);
 
     await page.evaluate(markdown => {
       window.editorBridge.applyAllPreferences({
@@ -1411,7 +1424,28 @@ async function main() {
       0,
       'CommonMark profile leaves single tilde literal'
     );
-    cases += 4;
+    assert.equal(
+      await page.locator('.cm-superscript').count(),
+      0,
+      'CommonMark profile leaves paired carets literal'
+    );
+    assert.equal(await page.locator('.cm-wmdx-highlight-yellow').count(), 0);
+    assert.equal(await page.locator('.cm-wmdx-pen-red').count(), 0);
+
+    await page.evaluate(() => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_profile: 'obsidian'
+      });
+      window.editorBridge.setMarkdown('==highlight== ==₀literal== =pen=');
+    });
+    await page.waitForTimeout(100);
+    assert.equal(
+      await page.locator('.cm-wmdx-highlight-yellow').count(),
+      1,
+      'Obsidian profile recognizes only its uncolored ==highlight== form'
+    );
+    assert.equal(await page.locator('.cm-wmdx-pen-red').count(), 0);
+    cases += 7;
 
     assert.deepEqual(failures, [], 'uncaught browser exceptions');
     assert.deepEqual(await page.evaluate(() => window.layoutDiagnostics), [], 'editor diagnostics');

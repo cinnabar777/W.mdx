@@ -1185,19 +1185,21 @@ object PreferenceResetHelper {
         } else {
             null
         }
-        val inheritedMarkdownProfileValue = if (
-            key == "pref_wmdx_subscript_enabled"
-        ) {
-            prefs.getString("pref_markdown_profile", "wmdx") == "wmdx"
-        } else {
-            null
+        val markdownProfile = prefs.getString("pref_markdown_profile", "wmdx")
+        val inheritedMarkdownSyntaxValue = when (key) {
+            "pref_obsidian_highlight_enabled" -> markdownProfile == "obsidian"
+            "pref_wmdx_color_syntax_enabled",
+            "pref_wmdx_subscript_enabled",
+            "pref_wmdx_superscript_enabled" -> markdownProfile == "wmdx"
+            else -> null
         }
-        val keepsInheritedValue = isHeadingOverride || inheritedMarkdownProfileValue != null
+        val keepsInheritedValue =
+            isHeadingOverride || inheritedMarkdownSyntaxValue != null
 
         prefs.edit().remove(key).apply()
 
         val defVal = when {
-            inheritedMarkdownProfileValue != null -> inheritedMarkdownProfileValue
+            inheritedMarkdownSyntaxValue != null -> inheritedMarkdownSyntaxValue
             isHeadingOverride ->
             inheritedHeadingValue ?: getDefaultValue(key)
             else -> getDefaultValue(key)

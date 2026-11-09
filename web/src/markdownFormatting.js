@@ -30,6 +30,7 @@ const UNDERLINE_STYLE_MARKERS = Object.freeze({
 });
 const UNDERLINE_CYCLE = Object.keys(UNDERLINE_STYLE_MARKERS);
 let wmdxUnderlineSyntaxEnabled = false;
+let wmdxSuperscriptSyntaxEnabled = true;
 
 const WMDX_COLOR_GROUPS = Object.freeze({
   highlight: Object.freeze({
@@ -58,6 +59,8 @@ const WMDX_COLOR_ACTION_IDS = Object.freeze(
     )
   )
 );
+let wmdxColorSyntaxEnabled = true;
+let obsidianHighlightSyntaxEnabled = false;
 
 const MARKDOWN_FORMATS = {
   bold: { node: 'StrongEmphasis', open: '**', close: '**' },
@@ -155,7 +158,10 @@ function colorActionId(group, color) {
 }
 
 export function getWmdxColorSyntaxRanges(state, bounds = null) {
-  if (!state) return [];
+  if (
+    !state ||
+    (!wmdxColorSyntaxEnabled && !obsidianHighlightSyntaxEnabled)
+  ) return [];
   const scanBounds = bounds
     ? expandedLineBounds(state, bounds.from, Math.max(bounds.from, bounds.to - 1))
     : { from: 0, to: state.doc.length };
@@ -180,9 +186,12 @@ export function getWmdxColorSyntaxRanges(state, bounds = null) {
   const ranges = [];
 
   for (const [group, config] of Object.entries(WMDX_COLOR_GROUPS)) {
-    const expressions = group === 'highlight'
-      ? [/(?<![\\])==([₀₁₂]?)(?![₀₁₂]==)(\S(?:[^\n]*?\S)?)(?<![\\])==/gu]
-      : [/(?<![=\\])=(?![=])([₀₁₂]?)(?![₀₁₂]=)(\S(?:[^\n]*?\S)?)(?<![\\])=(?![=])/gu];
+    if (!wmdxColorSyntaxEnabled && group !== 'highlight') continue;
+    const expressions = !wmdxColorSyntaxEnabled
+      ? [/(?<![\\])==(?![₀₁₂])(\S(?:[^\n]*?\S)?)(?<![\\])==/gu]
+      : group === 'highlight'
+        ? [/(?<![\\])==([₀₁₂]?)(?![₀₁₂]==)(\S(?:[^\n]*?\S)?)(?<![\\])==/gu]
+        : [/(?<![=\\])=(?![=])([₀₁₂]?)(?![₀₁₂]=)(\S(?:[^\n]*?\S)?)(?<![\\])=(?![=])/gu];
     for (const expression of expressions) {
       let match;
       while ((match = expression.exec(source))) {
@@ -190,7 +199,7 @@ export function getWmdxColorSyntaxRanges(state, bounds = null) {
         const wrapperTo = wrapperFrom + match[0].length;
         if (setextUnderlineLines.has(state.doc.lineAt(wrapperFrom).from)) continue;
         if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
-        const marker = match[1] ?? '';
+        const marker = wmdxColorSyntaxEnabled ? (match[1] ?? '') : '';
         const color = config.colors.find(([, value]) => value === marker)?.[0];
         if (!color) continue;
         const open = `${config.delimiter}${marker}`;
@@ -215,6 +224,18 @@ export function getWmdxColorSyntaxRanges(state, bounds = null) {
 
 export function setWmdxUnderlineSyntaxEnabled(enabled) {
   wmdxUnderlineSyntaxEnabled = Boolean(enabled);
+}
+
+export function setWmdxSuperscriptSyntaxEnabled(enabled) {
+  wmdxSuperscriptSyntaxEnabled = Boolean(enabled);
+}
+
+export function setWmdxColorSyntaxEnabled(enabled) {
+  wmdxColorSyntaxEnabled = Boolean(enabled);
+}
+
+export function setObsidianHighlightSyntaxEnabled(enabled) {
+  obsidianHighlightSyntaxEnabled = Boolean(enabled);
 }
 
 export function isWmdxUnderlineSyntaxEnabled() {
@@ -324,7 +345,9 @@ export function getMarkdownFormatRanges(view, formatName, bounds = null) {
     return ranges;
   }
   if (formatName === 'superscript') {
-    return getWmdxSuperscriptRanges(state, scanBounds);
+    return wmdxSuperscriptSyntaxEnabled
+      ? getWmdxSuperscriptRanges(state, scanBounds)
+      : [];
   }
   if (formatName === 'underline') {
     return [
@@ -1268,6 +1291,7 @@ function applyFormatToSelection(view, selection, ranges, format, options = {}) {
 
 function toggleMarkdownFormatInternal(view, formatName, options = {}) {
   if (!view?.state) return false;
+  if (formatName === 'superscript' && !wmdxSuperscriptSyntaxEnabled) return false;
   const format = MARKDOWN_FORMATS[formatName];
   if (!format || !format.open || !format.close) return false;
 
@@ -1650,6 +1674,19 @@ export function toggleWmdxColorFormat(view, action = null, options = {}) {
     }
     if (!requestedColor) return false;
   }
+  const availableColors = !wmdxColorSyntaxEnabled
+    ? (
+        group === 'highlight' && obsidianHighlightSyntaxEnabled
+          ? ['yellow']
+          : []
+      )
+    : group
+      ? WMDX_COLOR_GROUPS[group].colors.map(([name]) => name)
+      : [];
+  if (action && (!availableColors.length ||
+      (requestedColor && !availableColors.includes(requestedColor)))) {
+    return false;
+  }
 
   const ranges = getWmdxColorSyntaxRanges(view.state);
   const current = ranges.find(range =>
@@ -1667,7 +1704,7 @@ export function toggleWmdxColorFormat(view, action = null, options = {}) {
 
   let color = requestedColor;
   if (isCycle) {
-    const colors = WMDX_COLOR_GROUPS[group].colors.map(([name]) => name);
+    const colors = availableColors;
     if (!current) {
       color = colors[0];
     } else {

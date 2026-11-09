@@ -24,6 +24,24 @@
             app:defaultValue="true" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_wmdx_superscript_enabled"
+            app:title="Wmdx Superscript Syntax"
+            app:summary="Recognize paired-caret superscript; enabled by the Wmdx profile unless changed"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_wmdx_color_syntax_enabled"
+            app:title="Wmdx Highlight and Pen Syntax"
+            app:summary="Recognize Wmdx highlight color slots and pen colors"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_obsidian_highlight_enabled"
+            app:title="Obsidian Highlight Syntax"
+            app:summary="Recognize Obsidian's uncolored ==highlight== syntax"
+            app:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_markdown_auto_paste_enabled"
             app:title="Convert Recognized Clipboard Content"
             app:summary="Convert supported Markdown or rich HTML to this profile when conversion is safe; leave ambiguous or lossy content unchanged"

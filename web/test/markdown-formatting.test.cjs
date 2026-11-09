@@ -128,6 +128,37 @@ test('Wmdx superscript formatting can be detected and toggled', async () => {
   assert.equal(view.state.doc.toString(), 'x2 and plain');
 });
 
+test('disabled Wmdx superscript stays literal and cannot be authored accidentally', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const {
+    getMarkdownFormatRanges,
+    setWmdxSuperscriptSyntaxEnabled,
+    toggleMarkdownFormat
+  } = await import('../src/markdownFormatting.js');
+  const doc = 'x^2^ and plain';
+  const view = {
+    state: EditorState.create({
+      doc,
+      selection: EditorSelection.cursor(2),
+      extensions: [markdown()]
+    }),
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  setWmdxSuperscriptSyntaxEnabled(false);
+  try {
+    assert.deepEqual(getMarkdownFormatRanges(view, 'superscript'), []);
+    assert.equal(toggleMarkdownFormat(view, 'superscript'), false);
+    assert.equal(view.state.doc.toString(), doc);
+  } finally {
+    setWmdxSuperscriptSyntaxEnabled(true);
+  }
+});
+
 test('toolbar formatting can preserve a closed keyboard without refocusing the editor', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
@@ -571,6 +602,65 @@ test('every inline format removes its existing wrapper when toggled again', asyn
     };
     toggleMarkdownFormat(view, format.name);
     assert.equal(view.state.doc.toString(), format.plain, `${format.name} removes its existing syntax`);
+  }
+});
+
+test('Wmdx color slots and Obsidian highlight syntax follow the active flavor', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const {
+    getWmdxColorSyntaxRanges,
+    setObsidianHighlightSyntaxEnabled,
+    setWmdxColorSyntaxEnabled,
+    toggleWmdxColorFormat
+  } = await import('../src/markdownFormatting.js');
+  const source = '==highlight== ==₀green== =pen=';
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdown()]
+  });
+
+  try {
+    setWmdxColorSyntaxEnabled(false);
+    setObsidianHighlightSyntaxEnabled(false);
+    assert.deepEqual(getWmdxColorSyntaxRanges(state), []);
+
+    setObsidianHighlightSyntaxEnabled(true);
+    const obsidianRanges = getWmdxColorSyntaxRanges(state);
+    assert.deepEqual(
+      obsidianRanges.map(range => [
+        range.group,
+        range.color,
+        source.slice(range.wrapperFrom, range.wrapperTo)
+      ]),
+      [['highlight', 'yellow', '==highlight==']]
+    );
+    const obsidianView = {
+      state: EditorState.create({
+        doc: 'text',
+        selection: { anchor: 0, head: 4 },
+        extensions: [markdown()]
+      }),
+      dispatch(transaction) {
+        this.state = this.state.update(transaction).state;
+      },
+      focus() {}
+    };
+    assert.equal(toggleWmdxColorFormat(obsidianView, 'highlightGreen'), false);
+    assert.equal(toggleWmdxColorFormat(obsidianView, 'penRed'), false);
+    assert.equal(toggleWmdxColorFormat(obsidianView, 'highlightYellow'), true);
+    assert.equal(obsidianView.state.doc.toString(), '==text==');
+
+    setWmdxColorSyntaxEnabled(true);
+    setObsidianHighlightSyntaxEnabled(false);
+    const wmdxRanges = getWmdxColorSyntaxRanges(state);
+    assert.deepEqual(
+      wmdxRanges.map(range => [range.group, range.color]),
+      [['highlight', 'yellow'], ['highlight', 'green'], ['pen', 'red']]
+    );
+  } finally {
+    setWmdxColorSyntaxEnabled(true);
+    setObsidianHighlightSyntaxEnabled(false);
   }
 });
 
