@@ -141,7 +141,8 @@ test('obsolete Files & Tabs toolbar action is removed from saved layouts', async
     oldLayout.popupGroups.menu.order,
     [
       'newTab', 'newFile', 'settings', 'saveAsMdzip',
-      'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown'
+      'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown',
+      'sourceLanguage'
     ]
   );
   assert.ok(!oldLayout.holding.includes('leftPanel'));
@@ -163,7 +164,8 @@ test('existing menu layouts gain New Tab without losing their saved actions', as
     config.popupGroups.menu.order,
     [
       'newTab', 'newFile', 'settings', 'saveFile',
-      'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown'
+      'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown',
+      'sourceLanguage'
     ]
   );
 });
@@ -180,8 +182,39 @@ test('version 13 menu layouts gain the linter without restoring deleted conversi
   });
 
   assert.deepEqual(config.popupGroups.menu.order, [
-    'newFile', 'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown'
+    'newFile', 'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown',
+    'sourceLanguage'
   ]);
+});
+
+test('version 14 menu layouts gain the Source language picker', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 14,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: {
+      menu: { order: ['newFile', 'settings'], hidden: [] }
+    }
+  });
+
+  assert.deepEqual(config.popupGroups.menu.order, [
+    'newFile', 'settings', 'sourceLanguage'
+  ]);
+  assert.ok(!config.holding.includes('sourceLanguage'));
+});
+
+test('deleted Menu groups do not leak the Source language picker into the toolbar tray', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const config = normalizeBottomToolbarConfig({
+    version: 14,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert'],
+    deletedGroups: ['menu'],
+    popupGroups: {}
+  });
+
+  assert.ok(config.deletedKeys.includes('sourceLanguage'));
+  assert.ok(!config.holding.includes('sourceLanguage'));
+  assert.ok(!config.order.includes('sourceLanguage'));
 });
 
 test('invalid saved configuration falls back to the current toolbar order', async () => {

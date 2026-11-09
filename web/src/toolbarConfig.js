@@ -40,7 +40,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   menu: Object.freeze([
     'newTab', 'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack', 'saveAsMdzip',
     'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown',
-    'exportHtml', 'search', 'switchView', 'newWindow', 'settings'
+    'exportHtml', 'search', 'switchView', 'sourceLanguage', 'newWindow', 'settings'
   ])
 });
 
@@ -104,7 +104,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 14,
+  version: 15,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -309,6 +309,13 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     parsed.deletedKeys,
     new Set(BUILT_IN_DELETABLE_KEY_IDS)
   );
+  if (
+    parsedVersion < 15 &&
+    deletedGroupIds.has('menu') &&
+    !deletedKeys.includes('sourceLanguage')
+  ) {
+    deletedKeys.push('sourceLanguage');
+  }
   const deletedKeyIds = new Set(deletedKeys);
 
   const customGroups = {};
@@ -570,6 +577,20 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       !legacyHidden.includes('lintMarkdown')
     ) {
       popupGroups.menu.order.push('lintMarkdown');
+    }
+  }
+
+  if (parsedVersion < 15 && popupGroups.menu) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    const heldActions = new Set(migrateToolbarActionIds(parsed.holding, parsedVersion));
+    if (
+      !assignedActions.has('sourceLanguage') &&
+      !deletedKeyIds.has('sourceLanguage') &&
+      !legacyHeldKeys.includes('sourceLanguage') &&
+      !legacyHidden.includes('sourceLanguage') &&
+      !heldActions.has('sourceLanguage')
+    ) {
+      popupGroups.menu.order.push('sourceLanguage');
     }
   }
 

@@ -1900,7 +1900,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "menu" to listOf(
                 "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
                 "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
-                "exportHtml", "search", "switchView", "newWindow", "settings"
+                "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings"
             )
         )
         private val TOOLBAR_DELETABLE_KEY_IDS =
@@ -1922,7 +1922,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "codeBlock", "horizontalLine", "footnote",
             "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
-            "exportHtml", "search", "switchView", "newWindow", "settings",
+            "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID
         )
         private val TOOLBAR_GESTURE_IDS = listOf(
@@ -2344,6 +2344,13 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 deletedKeys.add(id)
             }
         }
+        if (
+            input.optInt("version", 1) < 15 &&
+            "menu" in deletedGroups &&
+            "sourceLanguage" !in deletedKeys
+        ) {
+            deletedKeys.add("sourceLanguage")
+        }
         val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten()
             .filterNot { it in deletedKeys }.toSet()
         val validRootIds = TOOLBAR_ITEM_IDS.filterNot {
@@ -2441,6 +2448,23 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             for (index in 0 until items.length()) {
                 assignedActions.add(items.optString(index))
             }
+        }
+
+        val storedHoldingIds = input.optJSONArray("holding")?.let { items ->
+            (0 until items.length()).map { items.optString(it) }
+        }.orEmpty()
+        if (
+            input.optInt("version", 1) < 15 &&
+            "menu" in groupIds &&
+            "sourceLanguage" !in assignedActions &&
+            "sourceLanguage" !in deletedKeys &&
+            "sourceLanguage" !in hidden &&
+            "sourceLanguage" !in legacyHeldActions &&
+            "sourceLanguage" !in storedHoldingIds
+        ) {
+            popupGroups.optJSONObject("menu")?.optJSONArray("order")
+                ?.put("sourceLanguage")
+            assignedActions.add("sourceLanguage")
         }
 
         if (input.optInt("version", 1) < 9 &&

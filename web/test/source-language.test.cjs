@@ -8,13 +8,22 @@ test('Source selects a parser from common code-file extensions', async () => {
     await import('../src/sourceLanguage.js');
   const expected = new Map([
     ['/project/example.js', 'javascript'],
-    ['example.json', 'javascript'],
+    ['example.json', 'json'],
     ['component.jsx', 'jsx'],
     ['module.ts', 'typescript'],
     ['component.tsx', 'tsx'],
     ['page.html', 'html'],
     ['document.xml', 'html'],
     ['styles.css', 'css'],
+    ['settings.yaml', 'yaml'],
+    ['settings.yml', 'yaml'],
+    ['script.py', 'python'],
+    ['query.sql', 'sql'],
+    ['Main.java', 'java'],
+    ['lib.rs', 'rust'],
+    ['engine.cpp', 'cpp'],
+    ['module.go', 'go'],
+    ['index.php', 'php'],
     ['notes.md', 'markdown'],
     ['archive.mdz', 'markdown'],
     ['readme.wmdx', 'markdown'],
@@ -35,6 +44,10 @@ test('Source selects a parser from common code-file extensions', async () => {
       assert.ok(extension, `${fileName} should have a CodeMirror language extension`);
     }
   }
+
+  assert.equal(getSourceLanguageMode('notes.txt', 'python'), 'python');
+  assert.equal(getSourceLanguageMode('notes.txt', 'invalid'), 'plain');
+  assert.equal(getSourceLanguageMode('notes.md', 'json'), 'json');
 });
 
 test('the Android document filename selects a parser only in Source/Code', () => {
@@ -47,11 +60,14 @@ test('the Android document filename selects a parser only in Source/Code', () =>
 
   assert.match(
     main,
-    /function getEditorLanguageExtension\(\) \{[\s\S]*?currentEditorMode === 'source'[\s\S]*?sourceLanguageExtension\(currentEditorFileName\)[\s\S]*?return createMarkdownLanguageExtension\(true\)/
+    /function getEditorLanguageExtension\(\) \{[\s\S]*?currentEditorMode === 'source'[\s\S]*?sourceLanguageExtension\([\s\S]*?currentEditorFileName,[\s\S]*?getCurrentSourceLanguageOverride\(\)[\s\S]*?if \(sourceExtension !== null\) return sourceExtension/
   );
   assert.match(main, /registerMarkdownParserView\([\s\S]*?getEditorLanguageExtension/);
+  assert.match(main, /id: 'sourceLanguage', title: 'Source \/ Code Language'/);
+  assert.match(main, /function openSourceLanguageDialog\(\)/);
   assert.match(main, /setDocumentTitle: function\(title, documentKey, fileName\)/);
-  assert.match(main, /setCurrentEditorFileName\(fileName\)/);
+  assert.match(main, /setCurrentSourceDocumentKey\(String\(documentKey\)\)/);
+  assert.match(main, /setCurrentEditorFileName\(fileName, documentIdentityChanged\)/);
   assert.match(activity, /val escapedFileName = JSONObjectWrapper\.quote\(currentFileName\)/);
   assert.match(activity, /setDocumentTitle\(\$escapedTitle, \$escapedDocumentKey, \$escapedFileName\)/);
 });

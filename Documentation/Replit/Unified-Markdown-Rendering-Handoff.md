@@ -87,10 +87,11 @@ have separate policy branches and the full mode consolidation is unfinished:
   Live-Preview-only contextual behavior are still mode branches that need to be
   translated into explicit syntax-exposure policy.
 - Source has its own font, text-color, and token-color settings. Markdown uses
-  the Markdown parser; Source/Code selects JavaScript/TypeScript/JSX/TSX,
-  JavaScript-based JSON, HTML/XML/SVG, or CSS from the filename, and leaves
-  unknown extensions as plain text. Other language packages and a per-document
-  manual language override remain to be added.
+  the Markdown parser; Source/Code detects JavaScript/TypeScript/JSX/TSX,
+  HTML/XML/SVG, CSS, JSON, YAML, Python, SQL, Java, Rust, C/C++, Go, and PHP
+  from the filename, and leaves unknown extensions as plain text. A
+  Source/Code Language action in the toolbar menu can override the language for
+  the current document; overrides are stored separately by document identity.
 
 ## Implementation status
 
@@ -105,15 +106,19 @@ The first user-facing consolidation is implemented on the working branch:
 - In a rendered mode with syntax exposure enabled, entering a table exposes all
   rows as raw Markdown inside one local horizontal scroller; surrounding content
   remains in the normal viewport.
+- Source/Code now auto-detects a wider set of CodeMirror language parsers and
+  offers a per-document language override from the toolbar menu. Existing Source
+  Editor token-color settings remain independent of Document Appearance.
 - Browser coverage exercises the scope policy, mode transitions, and table
-  source exposure. Android compilation still requires the Android SDK; the
-  branch's GitHub Actions build remains the authoritative Android check.
+  source exposure, plus independent Source/Code language overrides. Android
+  compilation still requires the Android SDK locally; the branch's GitHub
+  Actions build remains the authoritative Android check.
 
 Still planned: inspect and retire remaining internal mode-only branches where
-behavior is fully represented by exposure policy; offer per-file language
-selection and configurable language highlighting in Source/Code; verify each
-language with representative editing fixtures. Import/export fidelity across
-CommonMark, GFM, Obsidian, and Wmdx remains a separate compatibility workstream.
+behavior is fully represented by exposure policy; validate each supported code
+language against editing fixtures and refine language-specific token controls.
+Import/export fidelity across CommonMark, GFM, Obsidian, and Wmdx remains a
+separate compatibility workstream.
 
 ## Implementation and verification requirements
 

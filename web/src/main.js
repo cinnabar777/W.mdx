@@ -41,7 +41,11 @@ import {
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
-import { sourceLanguageExtension } from './sourceLanguage.js';
+import {
+  SOURCE_LANGUAGE_OPTIONS,
+  normalizeSourceLanguageOverride,
+  sourceLanguageExtension
+} from './sourceLanguage.js';
 import { SourceTableWidget } from './sourceTableWidget.js';
 import {
   applyMarkdownIndent,
@@ -295,6 +299,9 @@ let currentModePreference = 'rendered'; // 'rendered' | 'source' | legacy test p
 let markdownSyntaxExposureScope = 'hidden';
 let activeSyntaxExposureScope = 'hidden';
 let currentEditorFileName = 'Untitled.md';
+let currentSourceDocumentKey = 'untitled';
+const sourceLanguageOverridesStorageKey = 'wmdx.source-language-overrides.v1';
+const sessionSourceLanguageOverrides = new Map();
 let markdownIndentSpaces = getMarkdownIndentSpaces('1');
 
 function getUndoTargetView(parentView) {
@@ -450,12 +457,108 @@ function createMarkdownLanguageExtension(includeTables = false) {
   return cmMarkdown({ extensions });
 }
 
+function readSourceLanguageOverrides() {
+  try {
+    const stored = window.localStorage.getItem(sourceLanguageOverridesStorageKey);
+    const parsed = stored ? JSON.parse(stored) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function getCurrentSourceLanguageOverride() {
+  if (sessionSourceLanguageOverrides.has(currentSourceDocumentKey)) {
+    return normalizeSourceLanguageOverride(
+      sessionSourceLanguageOverrides.get(currentSourceDocumentKey)
+    );
+  }
+  const overrides = readSourceLanguageOverrides();
+  return normalizeSourceLanguageOverride(
+    overrides[currentSourceDocumentKey] || 'auto'
+  );
+}
+
+function saveCurrentSourceLanguageOverride(value) {
+  const normalized = normalizeSourceLanguageOverride(value);
+  if (normalized === 'auto') {
+    sessionSourceLanguageOverrides.delete(currentSourceDocumentKey);
+  } else {
+    sessionSourceLanguageOverrides.set(currentSourceDocumentKey, normalized);
+  }
+  const overrides = readSourceLanguageOverrides();
+  if (normalized === 'auto') {
+    delete overrides[currentSourceDocumentKey];
+  } else {
+    overrides[currentSourceDocumentKey] = normalized;
+  }
+  try {
+    window.localStorage.setItem(
+      sourceLanguageOverridesStorageKey,
+      JSON.stringify(overrides)
+    );
+  } catch {
+    // The current selection still applies for this editor session if storage is unavailable.
+  }
+  return normalized;
+}
+
 function getEditorLanguageExtension() {
   if (currentEditorMode === 'source') {
-    const sourceExtension = sourceLanguageExtension(currentEditorFileName);
+    const sourceExtension = sourceLanguageExtension(
+      currentEditorFileName,
+      getCurrentSourceLanguageOverride()
+    );
     if (sourceExtension !== null) return sourceExtension;
   }
   return createMarkdownLanguageExtension(true);
+}
+
+function openSourceLanguageDialog() {
+  const view = activeAdapter?.view;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!view || !overlay || !dialog) return false;
+
+  const options = SOURCE_LANGUAGE_OPTIONS.map(option =>
+    `<option value="${option.value}">${option.label}</option>`
+  ).join('');
+  dialog.innerHTML = `
+    <h3 class="modal-title">Source / Code Language</h3>
+    <p class="modal-message">Choose how this document is highlighted in Source / Code. Automatic uses its filename.</p>
+    <div class="modal-field-group">
+      <label class="modal-label" for="source-language-override">Language</label>
+      <select id="source-language-override" class="modal-select">${options}</select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="source-language-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="source-language-apply">Apply</button>
+    </div>`;
+  const select = dialog.querySelector('#source-language-override');
+  select.value = getCurrentSourceLanguageOverride();
+  overlay.classList.add('open');
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#source-language-cancel').addEventListener('click', close);
+  dialog.querySelector('#source-language-apply').addEventListener('click', () => {
+    saveCurrentSourceLanguageOverride(select.value);
+    if (activeAdapter?.view === view) {
+      view.dispatch({
+        effects: activeAdapter.markdownLanguageCompartment.reconfigure(
+          getEditorLanguageExtension()
+        )
+      });
+      activeAdapter.scheduleSyntaxRefresh();
+    }
+    close();
+  });
+  return true;
 }
 
 function registerMarkdownParserView(
@@ -7055,9 +7158,9 @@ async function setEditorMode(mode) {
   return activeAdapter;
 }
 
-function setCurrentEditorFileName(fileName) {
+function setCurrentEditorFileName(fileName, forceRefresh = false) {
   const nextFileName = String(fileName || 'Untitled.md');
-  if (nextFileName === currentEditorFileName) return;
+  if (nextFileName === currentEditorFileName && !forceRefresh) return;
   currentEditorFileName = nextFileName;
   if (!activeAdapter?.view || currentEditorMode !== 'source') return;
   activeAdapter.view.dispatch({
@@ -7066,6 +7169,13 @@ function setCurrentEditorFileName(fileName) {
     )
   });
   activeAdapter.scheduleSyntaxRefresh();
+}
+
+function setCurrentSourceDocumentKey(documentKey) {
+  const nextKey = String(documentKey || 'untitled');
+  if (nextKey === currentSourceDocumentKey) return false;
+  currentSourceDocumentKey = nextKey;
+  return true;
 }
 
 function installToolbarTapActions(container) {
@@ -7355,6 +7465,7 @@ function setupGroupedControlBar() {
         { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
         { id: 'switchView', icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
+        { id: 'sourceLanguage', icon: svgIcons.codeBlock, title: 'Source / Code Language', action: () => { hidePopupStrip(); openSourceLanguageDialog(); } },
         { id: 'newWindow', icon: svgIcons.newWindow, title: 'New Window', action: () => {
           hidePopupStrip();
           if (window.AndroidNative && typeof window.AndroidNative.onNativeAction === 'function') {
@@ -7728,6 +7839,10 @@ function createToolbarActionRegistry() {
       { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
       { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
       { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView, action: () => openWithOtherEngine() },
+      { id: 'sourceLanguage', title: 'Source / Code Language', icon: svgIcons.codeBlock, action: () => {
+        hidePopupStrip();
+        openSourceLanguageDialog();
+      } },
       { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow, action: () => {
         hidePopupStrip();
         window.AndroidNative?.onNativeAction('new_window');
@@ -12062,6 +12177,9 @@ window.editorBridge = {
   getSyntaxExposureScope: function() {
     return activeSyntaxExposureScope;
   },
+  openSourceLanguageDialog: function() {
+    return openSourceLanguageDialog();
+  },
   applyBottomToolbarConfig: function(rawConfig) {
     const nextConfig = normalizeBottomToolbarConfig(rawConfig);
     if (JSON.stringify(nextConfig) === JSON.stringify(bottomToolbarConfig)) return;
@@ -13437,13 +13555,16 @@ window.editorBridge = {
     if (titleEl) {
       titleEl.textContent = title;
     }
+    const documentIdentityChanged = documentKey !== undefined && documentKey !== null
+      ? setCurrentSourceDocumentKey(String(documentKey))
+      : false;
     if (fileName !== undefined && fileName !== null) {
-      setCurrentEditorFileName(fileName);
+      setCurrentEditorFileName(fileName, documentIdentityChanged);
+    } else if (documentIdentityChanged) {
+      setCurrentEditorFileName(currentEditorFileName, true);
     }
     const displayName = String(title || '').replace(/\s+\*$/, '');
-    if (documentKey !== undefined && documentKey !== null) {
-      setActiveTocDocumentKey(String(documentKey));
-    }
+    if (documentKey !== undefined && documentKey !== null) setActiveTocDocumentKey(String(documentKey));
     const nameInput = document.querySelector('#toc-document-name');
     if (nameInput) {
       nameInput.dataset.fullName = displayName;

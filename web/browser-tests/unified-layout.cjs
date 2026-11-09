@@ -895,7 +895,10 @@ async function main() {
           view.dispatch({ selection: { anchor: view.state.doc.length } });
           view.focus();
         });
-        await page.keyboard.type(' | Edited');
+        await page.waitForFunction(() =>
+          document.activeElement?.closest('.cm-source-table-editor') !== null
+        );
+        await page.keyboard.type(' | Edited', { delay: 20 });
         await page.waitForTimeout(250);
         const editedTableState = await page.evaluate(() => ({
           markdown: window.editorBridge.getMarkdown(),
@@ -1206,7 +1209,7 @@ async function main() {
       `- Anchor-${String(index).padStart(3, '0')} wrapped list text with **bold syntax** and enough words to exercise line wrapping across source and rendered modes.`
     ).join('\n');
     await page.evaluate(async scrollFixture => {
-      await window.editorBridge.setEditorMode('wysiwyg');
+      await window.editorBridge.setEditorMode('rendered');
       window.editorBridge.setMarkdown(scrollFixture);
     }, scrollFixture);
     await page.waitForTimeout(120);
@@ -1215,7 +1218,7 @@ async function main() {
       if (scroller) scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * 0.5;
     });
     await page.waitForTimeout(80);
-    for (const mode of ['source', 'live_preview', 'wysiwyg', 'source']) {
+    for (const mode of ['source', 'rendered', 'source', 'rendered']) {
       const anchor = await page.evaluate(() => {
         const scroller = document.querySelector('.cm-scroller');
         if (!scroller) return null;
@@ -1260,6 +1263,7 @@ async function main() {
         }, anchor.token);
         if (
           Number.isFinite(anchoredAfter) &&
+          Math.abs(anchoredAfter - anchor.offset) < 4 &&
           previousOffset !== null &&
           Math.abs(anchoredAfter - previousOffset) < 0.5
         ) {
@@ -1270,7 +1274,8 @@ async function main() {
         previousOffset = anchoredAfter;
       }
       assert.ok(Number.isFinite(anchoredAfter), `missing scroll anchor after ${mode}`);
-      assert.ok(stableFrames >= 3, `scroll anchor did not settle after switching to ${mode}`);
+      assert.ok(stableFrames >= 3,
+        `scroll anchor did not settle near its prior position after switching to ${mode}`);
       assert.ok(Math.abs(anchoredAfter - anchor.offset) < 4,
         `mode switch moved the visible document position: ${mode} (${anchor.offset}px -> ${anchoredAfter}px)`);
     }
@@ -1647,6 +1652,55 @@ async function main() {
     await page.waitForFunction(() =>
       document.querySelectorAll('.cm-source-table-widget').length === 0 &&
       document.querySelectorAll('.cm-wp-table-container').length === 1
+    );
+    cases++;
+
+    const firstSourceKey = 'browser-test://language/first';
+    const secondSourceKey = 'browser-test://language/second';
+    await page.evaluate(({ firstSourceKey, secondSourceKey }) => {
+      localStorage.removeItem('wmdx.source-language-overrides.v1');
+      window.editorBridge.setDocumentTitle('First code file', firstSourceKey, 'first.txt');
+      window.editorBridge.setMarkdown('def greet(name):\n    return f"Hello, {name}"\n');
+    }, { firstSourceKey, secondSourceKey });
+    await page.evaluate(() => window.editorBridge.setEditorMode('source'));
+    const openSourceLanguageDialog = async expected => {
+      await page.evaluate(() => window.editorBridge.openSourceLanguageDialog());
+      await page.waitForSelector('#source-language-override');
+      assert.equal(
+        await page.locator('#source-language-override').inputValue(),
+        expected
+      );
+    };
+    await openSourceLanguageDialog('auto');
+    await page.locator('#source-language-override').selectOption('python');
+    await page.locator('#source-language-apply').click();
+    await page.waitForFunction(() =>
+      document.querySelector('#editor-modal-overlay')?.classList.contains('open') === false
+    );
+    assert.ok(
+      await page.evaluate(() => localStorage.getItem('wmdx.source-language-overrides.v1'))
+        .then(value => value.includes(firstSourceKey) && value.includes('python')),
+      'manual language selection is saved for the active document'
+    );
+    await page.evaluate(({ secondSourceKey }) => {
+      window.editorBridge.setDocumentTitle('Second code file', secondSourceKey, 'second.txt');
+    }, { secondSourceKey });
+    await openSourceLanguageDialog('auto');
+    await page.locator('#source-language-override').selectOption('sql');
+    await page.locator('#source-language-apply').click();
+    await page.waitForFunction(() =>
+      document.querySelector('#editor-modal-overlay')?.classList.contains('open') === false
+    );
+    await page.evaluate(({ firstSourceKey }) => {
+      window.editorBridge.setDocumentTitle('First code file', firstSourceKey, 'first.txt');
+    }, { firstSourceKey });
+    await openSourceLanguageDialog('python');
+    await page.locator('#source-language-cancel').click();
+    await page.evaluate(() => window.editorBridge.setEditorMode('rendered'));
+    assert.equal(
+      await page.locator('#source-language-override').count(),
+      0,
+      'the Source language dialog closes before returning to the rendered editor'
     );
     cases++;
 
