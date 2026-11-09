@@ -14,13 +14,13 @@ families in one editor, not separate document modes.
 
 | Editor surface | Behavior |
 | --- | --- |
-| Rendered Markdown editor | One shared block/layout pipeline. A syntax-exposure setting controls whether syntax stays hidden, appears around the caret, or expands to the active line/block. The old WYSIWYG and Live Preview options should become presets for this setting, not separate renderers. |
-| Source/Code editor | Raw editable text with extension-based highlighting for Markdown, JavaScript/TypeScript/JSX/TSX, JSON, HTML/XML/SVG, and CSS; unknown extensions stay plain text. All source characters remain visible; Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded. |
+| Rendered Markdown editor | One shared block/layout pipeline. A syntax-exposure setting controls whether syntax stays hidden, appears around the caret, or expands to the active line/block. WYSIWYG and Live Preview are exposure presets, not separate renderers. |
+| Source/Code editor | Raw editable text with filename-based highlighting for Markdown, JavaScript/TypeScript/JSX/TSX, JSON, YAML, Python, SQL, Java, Rust, C/C++, Go, PHP, HTML/XML/SVG, and CSS. A Menu action can override the language per document; unknown extensions default to plain text. All source characters remain visible; Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded. |
 
 Source-editor appearance and token colors are separate from rendered
 Document Appearance settings. In the interim, the app still exposes the
-legacy WYSIWYG, Live Preview, and Source values while the rendered-mode
-consolidation is implemented.
+Rendered syntax exposure and Source/Code language highlighting are configured
+separately; Source token colors do not change Document Appearance.
 
 Source pipe tables stay literal and editable. A nested Source editor scrolls
 the whole table as a unit, keeping columns aligned without shifting surrounding
@@ -150,8 +150,11 @@ Conversion is deliberately explicit and conservative:
 - GFM pipe tables are preserved in CommonMark output with a warning. Pipe tables
   are not defined by CommonMark, so a strict CommonMark renderer may show the
   source as text instead of a table.
-- Obsidian heading/block transclusion, plugin syntax, YAML properties, math,
-  Mermaid, semantic tags, and full vault resolution are not supported.
+- YAML frontmatter is preserved verbatim and is not interpreted as Wmdx
+  metadata; importing it warns that properties remain unparsed, and exporting
+  to CommonMark/GFM warns that those formats do not standardize frontmatter.
+- Obsidian heading/block transclusion, plugin syntax, math, Mermaid, semantic
+  tags, and full vault resolution are not supported.
 
 The pinned CommonMark 0.31.2 corpus contains 652 examples; parser-family checks
 and import/export round-trip checks cover 575 non-HTML examples. The GFM 0.29

@@ -132,6 +132,33 @@ test('external-open URI permission flags survive until the editor is ready', () 
   );
 });
 
+test('Android Open With advertises text and supported source-code MIME types', () => {
+  const viewFilter = appManifestXml.match(
+    /<intent-filter>\s*<action android:name="android.intent.action.VIEW"[\s\S]*?<\/intent-filter>/
+  )?.[0];
+  assert.ok(viewFilter, 'external file opening has a VIEW intent filter');
+  for (const mimeType of [
+    'text/*',
+    'application/json',
+    'application/xml',
+    'application/javascript',
+    'application/yaml',
+    'application/x-yaml',
+    'application/sql',
+    'application/x-sql',
+    'application/toml'
+  ]) {
+    assert.ok(
+      viewFilter.includes(`android:mimeType="${mimeType}"`),
+      `the app should appear for ${mimeType} documents`
+    );
+  }
+  assert.ok(
+    !viewFilter.includes('android:mimeType="application/octet-stream"'),
+    'generic binary files should not be offered as text documents'
+  );
+});
+
 test('returning to the app keeps the keyboard hidden until the user touches the editor', () => {
   assert.ok(mainActivitySource.includes('suppressImeUntilUserTouch = true'));
   assert.ok(mainActivitySource.includes('SOFT_INPUT_STATE_ALWAYS_HIDDEN'));

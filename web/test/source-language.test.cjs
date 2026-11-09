@@ -50,6 +50,44 @@ test('Source selects a parser from common code-file extensions', async () => {
   assert.equal(getSourceLanguageMode('notes.md', 'json'), 'json');
 });
 
+test('Source language parsers tokenize representative code samples', async () => {
+  const [{ EditorState }, { syntaxTree }, { sourceLanguageExtension }] =
+    await Promise.all([
+      import('@codemirror/state'),
+      import('@codemirror/language'),
+      import('../src/sourceLanguage.js')
+    ]);
+  const cases = [
+    ['JavaScript', 'module.js', 'const answer = "x";', 'VariableDeclaration'],
+    ['JSON', 'data.json', '{"key": true}', 'Property'],
+    ['YAML', 'data.yaml', 'name: test', 'BlockMapping'],
+    ['Python', 'script.py', 'def greet(name): return name', 'FunctionDefinition'],
+    ['SQL', 'query.sql', 'SELECT * FROM users;', 'Keyword'],
+    ['Java', 'Example.java', 'class Example { int value = 1; }', 'ClassDeclaration'],
+    ['Rust', 'main.rs', 'fn main() { let value = 1; }', 'FunctionItem'],
+    ['C++', 'main.cpp', 'int main() { return 0; }', 'FunctionDefinition'],
+    ['Go', 'main.go', 'package main\nfunc main() {}', 'FunctionDecl'],
+    ['PHP', 'index.php', '<?php echo "hello";', 'EchoStatement'],
+    ['HTML', 'page.html', '<p>hello</p>', 'Element'],
+    ['CSS', 'styles.css', '.thing { color: red; }', 'RuleSet'],
+    ['manual Python override', 'notes.txt', 'def greet(name): return name', 'FunctionDefinition', 'python']
+  ];
+
+  for (const [label, fileName, source, expectedNode, override = 'auto'] of cases) {
+    const state = EditorState.create({
+      doc: source,
+      extensions: sourceLanguageExtension(fileName, override)
+    });
+    const nodeNames = new Set();
+    syntaxTree(state).iterate({
+      enter(node) {
+        nodeNames.add(node.name);
+      }
+    });
+    assert.ok(nodeNames.has(expectedNode), `${label} should produce ${expectedNode}`);
+  }
+});
+
 test('the Android document filename selects a parser only in Source/Code', () => {
   const projectRoot = path.join(__dirname, '../../');
   const main = fs.readFileSync(path.join(projectRoot, 'web/src/main.js'), 'utf8');

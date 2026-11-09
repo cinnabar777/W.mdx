@@ -213,6 +213,34 @@ test('Obsidian inline footnotes warn when exported to a dialect without footnote
   assert.deepEqual(obsidian.warnings, []);
 });
 
+test('YAML frontmatter stays byte-for-byte intact across Markdown conversion', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const frontmatter = [
+    '---',
+    'title: _A_filename_with_underscores_',
+    'tags:',
+    '  - ==literal==',
+    'description: ~not Wmdx subscript~',
+    'heading: "# Metadata, not a heading"',
+    '---'
+  ].join('\r\n');
+  const source = `${frontmatter}\r\n\r\n# Actual heading\r\n`;
+  const imported = convertFromMarkdown(source, 'obsidian');
+  const expectedWmdx = `${frontmatter}\r\n\r\n.1 Actual heading\r\n`;
+
+  assert.equal(imported.markdown, expectedWmdx);
+  assert.ok(imported.warnings.some(warning => warning.includes('frontmatter')));
+
+  const exported = exportMarkdown(imported.markdown, 'commonmark');
+  assert.equal(exported.markdown, `${frontmatter}\r\n\r\n# Actual heading\r\n`);
+  assert.ok(exported.warnings.some(warning => warning.includes('frontmatter')));
+
+  const obsidianExport = exportMarkdown(imported.markdown, 'obsidian');
+  assert.equal(obsidianExport.markdown, `${frontmatter}\r\n\r\n# Actual heading\r\n`);
+  assert.deepEqual(obsidianExport.warnings, []);
+});
+
 test('Markdown export maps Wmdx headings, links, tables, and callout states by target', async () => {
   const { exportMarkdown } = await import('../src/markdownConversion.mjs');
   const source = [

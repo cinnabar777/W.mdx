@@ -35,6 +35,16 @@ function addWarning(warnings, message) {
   if (!warnings.includes(message)) warnings.push(message);
 }
 
+function findYamlFrontmatterEndLine(lines) {
+  const opening = String(lines[0] ?? '').replace(/^\uFEFF/, '').replace(/\r$/, '');
+  if (!/^---[ \t]*$/.test(opening)) return -1;
+  for (let index = 1; index < lines.length; index += 1) {
+    const line = String(lines[index] ?? '').replace(/\r$/, '');
+    if (/^(?:---|\.\.\.)[ \t]*$/.test(line)) return index;
+  }
+  return -1;
+}
+
 function protectCodeFences(source, transformLines) {
   const newline = String(source).includes('\r\n') ? '\r\n' : '\n';
   const lines = String(source).replace(/\r\n/g, '\n').split('\n');
@@ -52,6 +62,13 @@ function protectCodeFences(source, transformLines) {
     const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
     if (opening) {
       fence = { character: opening[1][0], length: opening[1].length };
+      protectedLines.add(index);
+    }
+  }
+
+  const frontmatterEndLine = findYamlFrontmatterEndLine(lines);
+  if (frontmatterEndLine >= 0) {
+    for (let index = 0; index <= frontmatterEndLine; index += 1) {
       protectedLines.add(index);
     }
   }
@@ -308,6 +325,18 @@ function convertObsidianLinksToWmdx(line, warnings) {
 }
 
 function normalizeStandardMarkdownMarkers(source) {
+  const sourceText = String(source);
+  const newline = sourceText.includes('\r\n') ? '\r\n' : '\n';
+  const lines = sourceText.replace(/\r\n/g, '\n').split('\n');
+  const frontmatterEndLine = findYamlFrontmatterEndLine(lines);
+  if (frontmatterEndLine >= 0) {
+    const frontmatter = lines.slice(0, frontmatterEndLine + 1).join('\n');
+    const body = lines.slice(frontmatterEndLine + 1).join('\n');
+    return (
+      `${frontmatter}${frontmatterEndLine < lines.length - 1 ? '\n' : ''}` +
+      normalizeStandardMarkdownMarkers(body)
+    ).replace(/\n/g, newline);
+  }
   const state = EditorState.create({
     doc: source,
     extensions: [markdownConversionParser]
@@ -405,7 +434,7 @@ function normalizeStandardMarkdownMarkers(source) {
   return normalizeNode(root);
 }
 
-function convertHeadings(source) {
+function convertHeadings(source, protectedLines = new Set()) {
   const state = EditorState.create({
     doc: source,
     extensions: [markdownConversionParser]
@@ -414,6 +443,11 @@ function convertHeadings(source) {
 
   syntaxTree(state).iterate({
     enter(node) {
+      const firstLine = state.doc.lineAt(node.from).number - 1;
+      const lastLine = state.doc.lineAt(Math.max(node.from, node.to - 1)).number - 1;
+      for (let line = firstLine; line <= lastLine; line += 1) {
+        if (protectedLines.has(line)) return;
+      }
       const atx = /^ATXHeading([1-6])$/.exec(node.name);
       if (atx) {
         const raw = source.slice(node.from, node.to);
@@ -571,6 +605,12 @@ export function convertFromMarkdown(source, format = 'commonmark') {
     throw new TypeError(`Unsupported Markdown import format: ${format}`);
   }
   const warnings = [];
+  if (findYamlFrontmatterEndLine(String(source ?? '').replace(/\r\n/g, '\n').split('\n')) >= 0) {
+    addWarning(
+      warnings,
+      'YAML frontmatter was preserved verbatim; Wmdx does not interpret frontmatter properties.'
+    );
+  }
   if (format === 'obsidian' && /%%/.test(String(source ?? ''))) {
     addWarning(warnings, 'Obsidian comments have no native Wmdx equivalent and were kept unchanged.');
   }
@@ -580,7 +620,7 @@ export function convertFromMarkdown(source, format = 'commonmark') {
     if (format === 'obsidian' || format === 'gfm') {
       lines = convertObsidianCallouts(lines, protectedLines, format);
     }
-    lines = convertHeadings(lines.join('\n'));
+    lines = convertHeadings(lines.join('\n'), protectedLines);
     return lines.map((line, index) => {
       if (protectedLines.has(index)) return line;
       let text = escapeDialectSpecificWmdxSyntax(line, format);
@@ -1143,6 +1183,15 @@ export function exportMarkdown(source, dialect = 'commonmark') {
     throw new TypeError(`Unsupported Markdown export format: ${dialect}`);
   }
   const warnings = [];
+  if (
+    dialect !== 'obsidian' &&
+    findYamlFrontmatterEndLine(String(source ?? '').replace(/\r\n/g, '\n').split('\n')) >= 0
+  ) {
+    addWarning(
+      warnings,
+      'YAML frontmatter was preserved verbatim; this target does not standardize frontmatter properties.'
+    );
+  }
   const markdown = protectCodeFences(source, (originalLines, protectedLines) => {
     if (dialect !== 'obsidian' && originalLines.some((line, index) =>
       !protectedLines.has(index) && /(?<!\\)\^\[[^\]\n]+\]/.test(line)
