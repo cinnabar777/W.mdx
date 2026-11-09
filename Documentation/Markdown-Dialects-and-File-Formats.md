@@ -14,13 +14,14 @@ families in one editor, not separate document modes.
 
 | View | Behavior |
 | --- | --- |
-| Source | Shows raw Markdown and syntax, including table pipes. Shared block geometry stays stable, but styling must not compete with syntax: callout `>` markers remain at the left edge, with no colored card or automatic body folding. Generated widgets must not replace, prepend, or overlap source characters. |
-| Live Preview | Keeps rendered structures and reveals relevant syntax while editing; tables remain rendered and editable. |
+| Source | A raw text/code editor: all source characters remain visible and editable. Syntax highlighting may color Markdown or code tokens, but Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded in Source. |
+| Live Preview | Shares rendered block layout with WYSIWYG and reveals syntax contextually. Its syntax-exposure scope may be configurable; tables remain rendered and editable unless the user explicitly enters a source-editing action. |
 | WYSIWYG | Shows rendered structures with most syntax hidden; interactive features such as task checkboxes remain available. |
 
-Visible syntax can naturally change inline width and line wrapping. It should
-not switch the document to a competing block-layout algorithm. Hidden syntax
-does not reserve placeholder width.
+Source-editor appearance and token colors are separate from rendered
+Document Appearance settings. Visible syntax in Live Preview can naturally
+change inline width and line wrapping. Hidden syntax does not reserve
+placeholder width.
 
 ## What the syntax toggles do
 

@@ -24,33 +24,34 @@ the syntax the current app supports.
 
 ### Editor view modes and layout
 
-- Source, Live Preview, and WYSIWYG share one semantic block-layout model for
-  paragraphs, headings, lists, quotes, code blocks, indentation, and wrapping.
-  A view mode must not select a separate layout algorithm for those blocks.
-- Source shows recognized Markdown syntax and keeps structures such as tables
-  in source form. Live Preview is nearly WYSIWYG: rich structures such as tables
-  stay rendered and editable, while relevant inline or text-based syntax may
-  appear contextually when that text is being edited. Being inside a rendered
-  structure does not turn it into raw source. WYSIWYG keeps supported syntax
-  hidden and may use interactive widgets, such as checkboxes.
-- These are syntax-visibility and editing differences, not separate block-
-  layout systems. Live Preview must not become a raw-source view when the caret
-  enters a rendered table or another rich structure.
-- Apply the shared structural layout in Source too. Source-only line handling
-  may compensate for visible markers or indentation, but must not replace the
-  shared paragraph, heading, list, and quote layout.
-- Source may apply semantic text or block styling, but it must preserve every
-  source character in order. It must not replace visible syntax with a widget
-  or insert rendered labels, controls, or previews over the source line. For
-  example, an auto-numbered Wmdx list marker stays as authored, and a code
-  fence is not prefixed by a rendered language/copy header.
-- Visible syntax occupies its natural inline width, so exposing it can shift
-  text and change wrap points. Hidden syntax occupies no reserved or phantom
-  width. In particular, hiding a heading marker must not leave its width as an
-  indent before the heading text.
-- Keep the underlying Markdown source unchanged when switching modes. Shared
-  block layout does not require identical inline positions or line breaks when
-  syntax visibility differs.
+- Live Preview and WYSIWYG share one semantic block-layout model for
+  paragraphs, headings, lists, quotes, code blocks, indentation, tables, and
+  wrapping. These rendered views must not select competing layout algorithms.
+- **Source is the raw editor surface**, not a third Markdown document renderer.
+  It shows every source character in order, without hiding syntax, rendering
+  Markdown blocks, inserting widgets over source, or folding source text.
+  Markdown syntax highlighting may color tokens without changing their
+  visibility or layout. Source typography, wrapping, and syntax colors belong
+  to the source-editor appearance settings, independently of Document
+  Appearance styling for rendered Markdown.
+- Source may select a language grammar for syntax highlighting: Markdown for
+  Markdown documents, no grammar for plain text, and a supported code-language
+  grammar for code documents. Token themes should use shared token categories
+  where possible rather than requiring a separate full theme for every
+  language.
+- Live Preview keeps rich structures such as tables rendered and editable,
+  while relevant syntax may be exposed contextually when that text is being
+  edited. A configurable exposure scope may reveal syntax around the caret, on
+  its line, or across its semantic block. Entering a rich structure does not
+  automatically replace it with raw source; source editing of a structure
+  should be an explicit interaction if needed.
+- WYSIWYG keeps supported syntax hidden and may use interactive widgets, such
+  as checkboxes. Live Preview and WYSIWYG preserve callout folding. Source shows
+  the raw fold marker and the complete callout body, regardless of the rendered
+  fold state.
+- Keep the underlying document text unchanged when switching views. Source
+  follows editor line-wrap and indentation settings; rendered-view geometry is
+  shared between Live Preview and WYSIWYG.
 
 ### Editor syntax preferences
 
