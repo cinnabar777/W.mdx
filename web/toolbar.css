@@ -49,6 +49,11 @@ body.light-theme .popup-toolbar-strip {
 
 .popup-strip-btn {
   position: relative;
+  box-sizing: border-box !important;
+  width: 60px !important;
+  min-width: 44px !important;
+  max-width: 72px !important;
+  overflow: hidden !important;
   background: var(--toolbar-key-bg-color, transparent) !important;
   color: var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)) !important;
   border: none !important;
@@ -87,13 +92,16 @@ body.light-theme .popup-toolbar-strip {
 
 .popup-strip-btn .toolbar-key-label {
   display: var(--toolbar-label-display, none);
-  max-width: 110px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   overflow: hidden;
   color: var(--toolbar-label-color, var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)));
   font-size: var(--toolbar-label-size, 8px);
   font-weight: 500;
   line-height: 1;
   text-overflow: ellipsis;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -166,7 +174,7 @@ body.light-theme .popup-toolbar-strip {
   width: max-content !important;
   max-width: calc(100vw - 24px) !important;
   justify-content: flex-start !important;
-  height: calc(var(--toolbar-floating-key-height, 36px) + 12px) !important;
+  height: calc(var(--toolbar-floating-content-height, var(--toolbar-floating-key-height, 36px)) + 12px) !important;
   padding: 4px !important;
   gap: var(--toolbar-floating-padding, 10px) !important;
   background-color: var(--toolbar-floating-bg, var(--toolbar-bg, #121212)) !important;
@@ -178,7 +186,7 @@ body.light-theme .popup-toolbar-strip {
   width: var(--toolbar-floating-key-width, 48px) !important;
   min-width: 24px !important;
   max-width: none !important;
-  height: var(--toolbar-floating-key-height, 36px) !important;
+  height: var(--toolbar-floating-content-height, var(--toolbar-floating-key-height, 36px)) !important;
   color: var(--toolbar-floating-icon-color, var(--toolbar-icon-color, #fff)) !important;
 }
 
@@ -199,6 +207,11 @@ body.light-theme .popup-toolbar-strip {
   display: var(--toolbar-floating-label-display, none) !important;
   color: var(--toolbar-floating-label-color, var(--toolbar-floating-icon-color, var(--toolbar-icon-color, #fff))) !important;
   font-size: var(--toolbar-floating-label-size, 8px) !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .floating-selection-toolbar {
@@ -211,7 +224,7 @@ body.light-theme .popup-toolbar-strip {
   display: flex !important;
   width: max-content !important;
   max-width: calc(100vw - 16px) !important;
-  height: calc(var(--toolbar-floating-key-height, 36px) + 12px) !important;
+  height: calc(var(--toolbar-floating-content-height, var(--toolbar-floating-key-height, 36px)) + 12px) !important;
   align-items: center !important;
   justify-content: flex-start !important;
   overflow-x: auto !important;
@@ -244,7 +257,7 @@ body.light-theme .popup-toolbar-strip {
   width: var(--toolbar-floating-key-width, 48px) !important;
   min-width: 24px !important;
   max-width: none !important;
-  height: var(--toolbar-floating-key-height, 36px) !important;
+  height: var(--toolbar-floating-content-height, var(--toolbar-floating-key-height, 36px)) !important;
   color: var(--toolbar-floating-icon-color, var(--toolbar-icon-color, #fff)) !important;
   touch-action: pan-x !important;
 }
@@ -259,6 +272,11 @@ body.light-theme .popup-toolbar-strip {
   display: var(--toolbar-floating-label-display, none) !important;
   color: var(--toolbar-floating-label-color, var(--toolbar-floating-icon-color, var(--toolbar-icon-color, #fff))) !important;
   font-size: var(--toolbar-floating-label-size, 8px) !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .floating-selection-toolbar .grouped-key-btn:active,
@@ -340,6 +358,8 @@ body.light-theme .popup-toolbar-strip {
 
 .grouped-key-btn .toolbar-key-label {
   display: var(--toolbar-label-display, none);
+  box-sizing: border-box;
+  width: 100%;
   max-width: 100%;
   overflow: hidden;
   color: var(--toolbar-label-color, var(--toolbar-key-icon-color, var(--toolbar-icon-color, #fff)));
@@ -347,6 +367,7 @@ body.light-theme .popup-toolbar-strip {
   font-weight: 500;
   line-height: 1;
   text-overflow: ellipsis;
+  text-align: center;
   white-space: nowrap;
 }
 

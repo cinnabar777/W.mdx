@@ -699,6 +699,29 @@ test('runtime toolbar consumes the saved bottom toolbar configuration', () => {
   assert.match(mainSource, /renderBottomToolbarKeys\(bar, bottomToolbarConfig, svgIcons/);
 });
 
+test('toolbar labels stay inside their keys and floating rows grow when needed', () => {
+  assert.match(
+    mainSource,
+    /floatingContentHeight = floatingShowLabels[\s\S]*?floatingIconSize \+ floatingLabelSize \+ 6/
+  );
+  assert.match(
+    sharedCss,
+    /\.floating-selection-toolbar\s*\{[\s\S]*?height:\s*calc\(var\(--toolbar-floating-content-height/
+  );
+  assert.match(
+    sharedCss,
+    /\.floating-selection-toolbar \.grouped-key-btn\s*\{[\s\S]*?height:\s*var\(--toolbar-floating-content-height/
+  );
+  assert.match(
+    sharedCss,
+    /\.floating-selection-toolbar \.grouped-key-btn \.toolbar-key-label\s*\{[\s\S]*?text-overflow:\s*ellipsis/
+  );
+  assert.match(
+    sharedCss,
+    /\.popup-strip-btn\s*\{[\s\S]*?max-width:\s*72px\s*!important/
+  );
+});
+
 test('Paste as Plain Text is available as an action and configurable shortcut', () => {
   assert.match(mainSource, /id: 'pasteAsPlainText'[\s\S]*?title: 'Paste as Plain Text'/);
   assert.match(mainSource, /actionId === 'paste' \|\| actionId === 'pasteAsPlainText'/);

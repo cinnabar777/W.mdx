@@ -12843,9 +12843,10 @@ window.editorBridge = {
       androidArgbToCss(prefs.pref_toolbar_floating_active_key_bg_color ?? '#000000')
     );
     setCssVar('--toolbar-floating-label-color', androidArgbToCss(prefs.pref_toolbar_floating_label_color));
+    const floatingShowLabels = prefs.pref_toolbar_floating_show_labels === true;
     setCssVar(
       '--toolbar-floating-label-display',
-      prefs.pref_toolbar_floating_show_labels === true ? 'flex' : 'none'
+      floatingShowLabels ? 'flex' : 'none'
     );
     const floatingKeyHeight = Number(prefs.pref_toolbar_floating_key_height ?? 36);
     setCssVar(
@@ -12877,11 +12878,19 @@ window.editorBridge = {
     const safeFloatingKeyHeight = Number.isFinite(floatingKeyHeight)
       ? Math.max(20, Math.min(64, floatingKeyHeight))
       : 36;
+    const floatingIconSize = Math.max(
+      12,
+      Math.round(Math.min(safeFloatingKeyWidth * 0.45, safeFloatingKeyHeight - 8))
+    );
     setCssVar(
       '--toolbar-floating-icon-size',
-      Math.max(12, Math.round(Math.min(safeFloatingKeyWidth * 0.45, safeFloatingKeyHeight - 8))),
+      floatingIconSize,
       'px'
     );
+    const floatingContentHeight = floatingShowLabels
+      ? Math.max(safeFloatingKeyHeight, floatingIconSize + floatingLabelSize + 6)
+      : safeFloatingKeyHeight;
+    setCssVar('--toolbar-floating-content-height', floatingContentHeight, 'px');
     const floatingCornerRadius = Number(prefs.pref_toolbar_floating_corner_radius ?? 24);
     setCssVar(
       '--toolbar-floating-corner-radius',

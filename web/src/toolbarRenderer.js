@@ -18,7 +18,11 @@ export function setToolbarTooltip(element, title) {
   if (!element) return;
   const view = element.ownerDocument?.defaultView;
   const hoverMedia = view?.matchMedia?.('(hover: hover) and (pointer: fine)');
-  const touchCapable = Number(view?.navigator?.maxTouchPoints) > 0;
+  const coarsePointer = view?.matchMedia?.('(pointer: coarse)')?.matches === true;
+  const touchCapable =
+    Number(view?.navigator?.maxTouchPoints) > 0 ||
+    coarsePointer ||
+    /Android|iPhone|iPad|iPod/i.test(view?.navigator?.userAgent || '');
   if (touchCapable || (hoverMedia && !hoverMedia.matches)) {
     element.removeAttribute('title');
     return;

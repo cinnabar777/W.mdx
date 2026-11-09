@@ -111,10 +111,25 @@ test('toolbar tooltips are suppressed on touch pointers without losing accessibl
   Object.defineProperty(dom.window, 'matchMedia', {
     configurable: true,
     writable: true,
-    value: query => ({ media: query, matches: true })
+    value: query => ({
+      media: query,
+      matches: query.includes('(hover: hover)')
+    })
   });
   setToolbarTooltip(button, 'Paste from Markdown dialect');
   assert.equal(button.title, 'Paste from Markdown dialect');
+
+  Object.defineProperty(dom.window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: query => ({
+      media: query,
+      matches: query.includes('(hover: hover)') || query.includes('(pointer: coarse)')
+    })
+  });
+  setToolbarTooltip(button, 'Paste from Markdown dialect');
+  assert.equal(button.hasAttribute('title'), false,
+    'coarse-pointer devices should not show native title popovers');
 
   Object.defineProperty(dom.window.navigator, 'maxTouchPoints', {
     configurable: true,

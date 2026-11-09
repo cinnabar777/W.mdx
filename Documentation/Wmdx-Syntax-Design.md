@@ -781,7 +781,7 @@ worktree now includes:
 - An offline MDZip phone fixture with packaged images, audio, video, and
   attachments, plus a separate interaction checklist.
 
-**Latest local verification (2026-11-09):** 592 web tests and 260
+**Latest local verification (2026-11-09):** 593 web tests and 260
 real-browser layout/interaction cases pass. The browser run does not prove
 Android WebView touch, keyboard, URI-provider, media playback, or device
 rendering behavior. GitHub Actions verification of the latest changes is
