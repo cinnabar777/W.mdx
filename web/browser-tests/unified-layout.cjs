@@ -260,6 +260,7 @@ async function main() {
         return {
           markdown: window.editorBridge.getMarkdown(),
           subscriptText: subscript?.textContent ?? null,
+          subscriptCount: document.querySelectorAll('.cm-subscript').length,
           subscriptFontSize: subscript ? getComputedStyle(subscript).fontSize : null,
           superscriptText: superscript?.textContent ?? null,
           superscriptFontSize: superscript ? getComputedStyle(superscript).fontSize : null,
@@ -272,6 +273,7 @@ async function main() {
       });
       assert.equal(inline.markdown, 'Water is H~2~O; x^2^; ~~removed~~.', `source changed: ${mode}`);
       assert.ok(inline.subscriptText, `subscript styling missing: ${mode}`);
+      assert.equal(inline.subscriptCount, 1, `subscript renderer duplicated its mark: ${mode}`);
       assert.ok(inline.superscriptText, `superscript styling missing: ${mode}`);
       assert.ok(
         Number.parseFloat(inline.subscriptFontSize) < Number.parseFloat(inline.baseFontSize),

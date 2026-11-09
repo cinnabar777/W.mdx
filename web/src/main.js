@@ -3367,7 +3367,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'StrikethroughMark' && !isNodeActive) {
             if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
-          if (node.name === 'Subscript') {
+          if (node.name === 'Subscript' && !isPureWysiwyg) {
             builder.push(Decoration.mark({ class: 'cm-subscript' }).range(node.from, node.to));
           }
           if (node.name === 'SubscriptMark' && !isNodeActive && !isPureWysiwyg) {
