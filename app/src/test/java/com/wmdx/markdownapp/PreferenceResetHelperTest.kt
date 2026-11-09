@@ -104,6 +104,7 @@ class PreferenceResetHelperTest {
 
         for ((key, expectedColor) in expectedColors) {
             assertEquals(key, expectedColor, PreferenceResetHelper.getDefaultColorHex(key))
+            assertEquals(key, "default", PreferenceResetHelper.getDefaultValue(key))
         }
     }
 
