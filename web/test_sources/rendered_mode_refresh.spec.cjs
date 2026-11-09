@@ -93,7 +93,7 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
     window.editorBridge.setMarkdown(markdownText);
     window.editorBridge.setScrollPosition(targetScroll);
 
-    for (const mode of ['live_preview', 'source', 'wysiwyg']) {
+    for (const mode of ['rendered', 'source', 'rendered']) {
       await window.editorBridge.setEditorMode(mode);
 
       const scroller = document.querySelector('#editor .cm-scroller');
@@ -158,9 +158,9 @@ test('rendered mode transitions preserve WYSIWYG headings, body font scaling, an
   }
 
   // 1. Verify WYSIWYG heading rendering
-  await window.editorBridge.setEditorMode('wysiwyg');
+  await window.editorBridge.setEditorMode('rendered');
   window.editorBridge.setMarkdown(mostlyPlainDoc);
-  assert.equal(window.editorBridge.getEditorMode(), 'wysiwyg');
+  assert.equal(window.editorBridge.getEditorMode(), 'rendered');
   let headingLines = dom.window.document.querySelectorAll('.cm-line.cm-heading');
   assert.ok(headingLines.length > 0, 'WYSIWYG mode renders .cm-heading line classes');
 

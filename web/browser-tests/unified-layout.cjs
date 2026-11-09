@@ -896,8 +896,17 @@ async function main() {
           view.focus();
         });
         await page.keyboard.type(' | Edited');
-        await page.waitForFunction(() =>
-          window.editorBridge.getMarkdown().includes('| Keep every pipe and separator intact | | Edited')
+        await page.waitForTimeout(250);
+        const editedTableState = await page.evaluate(() => ({
+          markdown: window.editorBridge.getMarkdown(),
+          child: document.querySelector('.cm-source-table-editor')
+            ?._sourceTableEditor?.state.doc.toString() ?? null
+        }));
+        assert.ok(
+          editedTableState.markdown.includes(
+            '| Keep every pipe and separator intact | | Edited'
+          ),
+          `Source table edits must reach the parent document: ${JSON.stringify(editedTableState)}`
         );
         await page.keyboard.press('Control+Z');
         await page.waitForFunction(markdown =>
@@ -921,7 +930,7 @@ async function main() {
       const layouts = [];
       for (const position of [0, 0.4, 0.65, 1]) {
         scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight) * position;
-        await new Promise(resolve => setTimeout(resolve, 80));
+        await new Promise(resolve => setTimeout(resolve, 200));
         const content = document.querySelector('.cm-content');
         const tableWidgets = [...document.querySelectorAll('.cm-source-table-widget')];
         const tableRows = tableWidgets.flatMap(widget =>
@@ -1545,6 +1554,101 @@ async function main() {
     );
     assert.equal(await page.locator('.cm-wmdx-pen-red').count(), 0);
     cases += 7;
+
+    const exposureMarkdown =
+      'First line has **bold** and *italic* formatting.\n' +
+      'Second line has ~~strike~~ formatting.\n\n' +
+      'Outside paragraph has **separate** formatting.';
+    await page.evaluate(async markdown => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_profile: 'gfm',
+        pref_markdown_syntax_exposure: 'hidden'
+      });
+      window.editorBridge.setMarkdown(markdown);
+      await window.editorBridge.setEditorMode('rendered');
+    }, exposureMarkdown);
+    await page.waitForTimeout(140);
+    assert.equal(
+      await page.evaluate(() => window.editorBridge.getEditorMode()),
+      'rendered',
+      'the user-facing rendered editor is a single mode'
+    );
+    assert.equal(
+      (await page.locator('.cm-content').textContent()).includes('**bold**'),
+      false,
+      'hidden exposure keeps Markdown delimiters invisible'
+    );
+
+    await page.evaluate(() => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_syntax_exposure: 'line'
+      });
+    });
+    await page.waitForTimeout(120);
+    await page.locator('.cm-content .cm-line').filter({ hasText: 'First line has' })
+      .first().click({ position: { x: 8, y: 8 } });
+    await page.waitForTimeout(80);
+    const lineExposureText = await page.locator('.cm-content').textContent();
+    assert.ok(lineExposureText.includes('**bold**'), 'line exposure reveals syntax on the active line');
+    assert.ok(!lineExposureText.includes('~~strike~~'), 'line exposure keeps other lines rendered');
+    assert.ok(!lineExposureText.includes('**separate**'), 'line exposure keeps other blocks rendered');
+
+    await page.evaluate(() => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_syntax_exposure: 'block'
+      });
+    });
+    await page.waitForTimeout(100);
+    const blockExposureText = await page.locator('.cm-content').textContent();
+    assert.ok(blockExposureText.includes('**bold**'), 'block exposure retains syntax in the active block');
+    assert.ok(blockExposureText.includes('~~strike~~'), 'block exposure spans soft-wrapped source lines');
+    assert.ok(!blockExposureText.includes('**separate**'), 'block exposure does not reveal a neighboring paragraph');
+    assert.equal(await page.evaluate(() => window.editorBridge.getMarkdown()), exposureMarkdown);
+    cases += 3;
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const exposedTable =
+      '| Name | Description |\n' +
+      '| --- | --- |\n' +
+      '| WMDX-001 | A deliberately wide source cell that should remain grouped with every other row while scrolling. |';
+    const exposureTableDocument = `Before table\n\n${exposedTable}\n\nAfter table`;
+    await page.evaluate(async markdown => {
+      window.editorBridge.applyAllPreferences({
+        pref_markdown_profile: 'gfm',
+        pref_markdown_syntax_exposure: 'caret'
+      });
+      window.editorBridge.setMarkdown(markdown);
+      await window.editorBridge.setEditorMode('rendered');
+    }, exposureTableDocument);
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('.cm-wp-table-container').count(), 1);
+    const tableCursor = exposureTableDocument.indexOf('WMDX-001') + 2;
+    await page.evaluate(position => {
+      window.editorBridge.setSelectionState(
+        JSON.stringify({ anchor: position, head: position })
+      );
+    }, tableCursor);
+    await page.waitForFunction(() =>
+      document.querySelectorAll('.cm-source-table-widget').length === 1
+    );
+    assert.equal(await page.locator('.cm-wp-table-container').count(), 0,
+      'entering a table reveals the complete raw table instead of hiding its syntax');
+    assert.equal(await page.locator('.cm-source-table-editor .cm-line').count(), 3);
+    assert.equal(
+      await page.evaluate(() => window.editorBridge.getMarkdown()),
+      exposureTableDocument,
+      'showing table syntax does not modify the document'
+    );
+    await page.evaluate(position => {
+      window.editorBridge.setSelectionState(
+        JSON.stringify({ anchor: position, head: position })
+      );
+    }, exposureTableDocument.indexOf('After table') + 2);
+    await page.waitForFunction(() =>
+      document.querySelectorAll('.cm-source-table-widget').length === 0 &&
+      document.querySelectorAll('.cm-wp-table-container').length === 1
+    );
+    cases++;
 
     assert.deepEqual(failures, [], 'uncaught browser exceptions');
     assert.deepEqual(await page.evaluate(() => window.layoutDiagnostics), [], 'editor diagnostics');

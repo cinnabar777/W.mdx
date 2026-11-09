@@ -36,10 +36,10 @@
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_editor_mode"
             app:title="Editor Mode"
-            app:summary="Select Pure WYSIWYG, Obsidian Live Preview, or Raw Source View"
+            app:summary="Choose the rendered Markdown editor or raw Source / Code editor"
             app:entries="@array/pref_editor_mode_entries"
             app:entryValues="@array/pref_editor_mode_values"
-            app:defaultValue="wysiwyg" />
+            app:defaultValue="rendered" />
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_storage_access"
             app:title="File &amp; Folder Access"

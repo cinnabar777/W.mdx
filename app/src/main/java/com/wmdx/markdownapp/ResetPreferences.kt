@@ -662,7 +662,8 @@ object PreferenceResetHelper {
             key == "pref_settings_bg_color" -> "#000000"
             key == "pref_hide_status_bar" -> false
             key == "pref_hide_nav_bar" -> false
-            key == "pref_editor_mode" -> "wysiwyg"
+            key == "pref_editor_mode" -> "rendered"
+            key == "pref_markdown_syntax_exposure" -> "hidden"
             key == "pref_export_format" -> "html"
             key == "pref_export_include_css" -> true
             key == "pref_export_css_placement" -> "head"

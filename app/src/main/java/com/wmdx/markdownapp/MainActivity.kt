@@ -117,7 +117,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     @Volatile private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
     @Volatile private var isDirty: Boolean = false
     private var isEditorReady: Boolean = false
-    private var currentEditorMode: String = "rich_text"
+    private var currentEditorMode: String = "rendered"
     @Volatile private var currentRevision: Long = 0
     @Volatile private var currentEmptyContentExplicitlyEdited: Boolean = false
     private var hasBom: Boolean = false
@@ -526,6 +526,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onCreate(savedInstanceState)
         WindowRegistry.registerActivity(this)
         val startupPreferences = PreferenceManager.getDefaultSharedPreferences(this)
+        migrateEditorModePreferences(startupPreferences)
         migrateFloatingToolbarHideDelayPreference(startupPreferences)
         if (!startupPreferences.getBoolean("pref_toolbar_default_corrected", false)) {
             val editor = startupPreferences.edit()
@@ -605,6 +606,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             .putInt(tenthsKey, oldSeconds.coerceIn(0, 5) * 10)
             .remove(secondsKey)
             .apply()
+    }
+
+    private fun migrateEditorModePreferences(preferences: SharedPreferences) {
+        val previousMode = preferences.getString("pref_editor_mode", "rendered")
+            ?.takeIf { it.isNotBlank() } ?: "rendered"
+        if (previousMode !in setOf("wysiwyg", "live_preview", "rich_text")) return
+
+        val editor = preferences.edit().putString("pref_editor_mode", "rendered")
+        if (!preferences.contains("pref_markdown_syntax_exposure")) {
+            editor.putString(
+                "pref_markdown_syntax_exposure",
+                if (previousMode == "live_preview") "caret" else "hidden"
+            )
+        }
+        editor.apply()
     }
 
     override fun onDestroy() {
@@ -838,7 +854,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key == null || !key.startsWith("pref_")) return
         if (key == "pref_editor_mode") {
-            val newMode = sharedPreferences?.getString("pref_editor_mode", "rich_text") ?: "rich_text"
+            val newMode = sharedPreferences?.getString("pref_editor_mode", "rendered") ?: "rendered"
             if (newMode != currentEditorMode) {
                 if (isDirty) {
                     showUnsavedChangesDialog {
@@ -5271,7 +5287,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             runOnUiThread {
                 AppDiagnostics.record(this@MainActivity, "web_host_ready")
                 val prefs = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
-                val selectedMode = prefs.getString("pref_editor_mode", "rich_text") ?: "rich_text"
+                val selectedMode = prefs.getString("pref_editor_mode", "rendered") ?: "rendered"
                 currentEditorMode = selectedMode
                 AppDiagnostics.record(this@MainActivity, "init_mode_requested", "mode=$selectedMode")
                 webView.evaluateJavascript("window.editorBridge.setEditorMode('$selectedMode');", null)

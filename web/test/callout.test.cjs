@@ -347,9 +347,10 @@ test('callout title layout and editing behavior match each view', () => {
   assert.ok(mainSource.includes('.range(info.titleStart, line.to)'), 'Custom title text remains in the document and receives a text mark');
   assert.ok(mainSource.includes('if (!this.titleIsInSource)'), 'Only generated labels are rendered inside the widget');
   assert.ok(
-    mainSource.includes('const isMarkerActive = !isPureWysiwyg && (') &&
-      mainSource.includes('selection.head >= info.markerStart && selection.head <= info.markerEnd') &&
-      mainSource.includes('selection.from < info.markerEnd && selection.to > info.markerStart'),
+    mainSource.includes('const isMarkerActive = !isPureWysiwyg &&') &&
+      mainSource.includes('isSyntaxRangeActiveForCurrentExposure(') &&
+      mainSource.includes('selection.head >= from && selection.head <= to') &&
+      mainSource.includes('selection.from < to && selection.to > from'),
     'Live Preview checks whether the selection touches the callout marker itself'
   );
   assert.ok(

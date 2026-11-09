@@ -143,7 +143,7 @@ test('rendering and interaction regressions stay covered without changing table 
   );
   assert.match(
     main,
-    /export function buildPersistentLayoutDecorations\(state\) \{[\s\S]*?if \(renderPlan\.raw\) \{[\s\S]*?for \(const table of renderPlan\.sourceTables\)/
+    /export function buildPersistentLayoutDecorations\(state\) \{[\s\S]*?const sourceTables = renderPlan\.raw[\s\S]*?for \(const table of sourceTables\)/
   );
   assert.match(
     styles,

@@ -19,14 +19,24 @@
         <item>#FF4081</item>
     </string-array>
     <string-array name="pref_editor_mode_entries">
-        <item>Pure WYSIWYG (WYSIWYG)</item>
-        <item>Obsidian Live Preview (Live Preview)</item>
-        <item>Raw Source View (Source View)</item>
+        <item>Rendered Markdown Editor</item>
+        <item>Raw Source / Code Editor</item>
     </string-array>
     <string-array name="pref_editor_mode_values">
-        <item>wysiwyg</item>
-        <item>live_preview</item>
+        <item>rendered</item>
         <item>source</item>
+    </string-array>
+    <string-array name="pref_syntax_exposure_entries">
+        <item>Keep syntax hidden</item>
+        <item>Show syntax at the caret</item>
+        <item>Show syntax on the current line</item>
+        <item>Show syntax for the current block</item>
+    </string-array>
+    <string-array name="pref_syntax_exposure_values">
+        <item>hidden</item>
+        <item>caret</item>
+        <item>line</item>
+        <item>block</item>
     </string-array>
     <string-array name="link_authoring_syntax_entries">
         <item>Wmdx</item>

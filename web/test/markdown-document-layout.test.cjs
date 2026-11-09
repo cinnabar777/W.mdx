@@ -81,9 +81,9 @@ test('all document block renderers consume the shared mode-aware plan', () => {
     'utf8'
   );
   assert.match(main, /function markdownRenderPlan\(state, mode = currentEditorMode\)/);
-  assert.match(main, /const renderPlan = markdownRenderPlan\(state\);\s*if \(renderPlan\.raw\)/);
+  assert.match(main, /const renderPlan = markdownRenderPlan\(state\);[\s\S]*?const sourceTables = renderPlan\.raw/);
   assert.match(main, /for \(const line of renderPlan\.lines\.values\(\)\)/);
-  assert.match(main, /for \(const table of renderPlan\.sourceTables\)/);
+  assert.match(main, /for \(const table of sourceTables\)/);
   assert.match(main, /for \(const node of renderPlan\.renderedTables\)/);
   assert.match(main, /for \(const node of renderPlan\.renderedCodeBlocks\)/);
   assert.match(main, /const renderPlan = markdownRenderPlan\(view\.state\)/);

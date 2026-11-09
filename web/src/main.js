@@ -3,6 +3,10 @@ import {
   getMarkdownRenderPlan,
   mapMarkdownDocumentLayout
 } from './markdownDocumentLayout.js';
+import {
+  normalizeMarkdownSyntaxExposureScope,
+  syntaxExposureRangeIsActive
+} from './markdownSyntaxExposure.mjs';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
@@ -286,7 +290,10 @@ let activeEmbeddedEditSaveWarning = null;
 let activeEmbeddedEditSaveWarningKey = null;
 let refreshOpenTocPanel = null;
 let revealActiveTocHeading = null;
-let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
+let currentEditorMode = 'wysiwyg'; // internal rendered presentation or 'source'
+let currentModePreference = 'rendered'; // 'rendered' | 'source' | legacy test preset
+let markdownSyntaxExposureScope = 'hidden';
+let activeSyntaxExposureScope = 'hidden';
 let currentEditorFileName = 'Untitled.md';
 let markdownIndentSpaces = getMarkdownIndentSpaces('1');
 
@@ -3173,11 +3180,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         const semantic = layout.lines.get(line.from);
         if (!semantic || semantic.kind === 'code' || semantic.kind === 'table') continue;
 
-        const isLineActive = isSourceMode || (!isPureWysiwyg && (
-          selection.empty
-            ? selection.head >= line.from && selection.head <= line.to
-            : selection.from < line.to && selection.to > line.from
-        ));
+        const isLineActive = isSourceMode || (!isPureWysiwyg &&
+          isSyntaxRangeActiveForCurrentExposure(
+            selection, doc, layout, line.from, line.to
+          ));
 
         if (isLinkFlavorEnabledNow('obsidian')) {
           const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
@@ -3245,11 +3251,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       if (attrs.indentToHide > 0) {
         const line = doc.lineAt(lineFrom);
         const end = Math.min(line.from + attrs.indentToHide, line.to);
-        const isIndentActive = !isPureWysiwyg && (
-          selection.empty
-            ? selection.head >= line.from && selection.head <= end
-            : selection.from < end && selection.to > line.from
-        );
+        const isIndentActive = !isPureWysiwyg &&
+          isSyntaxRangeActiveForCurrentExposure(
+            selection, doc, layout, line.from, end
+          );
         if (!isIndentActive) hideSyntax(line.from, end);
       }
     }
@@ -3268,11 +3273,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         to,
         enter: (node) => {
           const line = view.state.doc.lineAt(node.from);
-          const isNodeActive = isSourceMode || (!isPureWysiwyg && (
-            selection.empty
-              ? selection.head >= node.from && selection.head <= node.to
-              : selection.from < node.to && selection.to > node.from
-          ));
+          const isNodeActive = isSourceMode || (!isPureWysiwyg &&
+            isSyntaxRangeActiveForCurrentExposure(
+              selection, doc, layout, node.from, node.to
+            ));
 
           if (node.name === 'WmdxResource') {
             const resource = parseWmdxResourceSyntax(
@@ -3537,11 +3541,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               if (insideCodeOrTable) return false;
 
               if (node.from > line.from) {
-                const indentIsActive = !isPureWysiwyg && (
-                  selection.empty
-                    ? selection.head >= line.from && selection.head <= node.from
-                    : selection.from < node.from && selection.to > line.from
-                );
+                const indentIsActive = !isPureWysiwyg &&
+                  isSyntaxRangeActiveForCurrentExposure(
+                    selection, doc, layout, line.from, node.from
+                  );
                 if (!indentIsActive) hideSyntax(line.from, node.from);
               }
             }
@@ -3745,11 +3748,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const range of underlineSyntaxRanges) {
-      const isRangeActive = isSourceMode || (!isPureWysiwyg && (
-        selection.empty
-          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
-          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
-      ));
+      const isRangeActive = isSourceMode || (!isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, range.wrapperFrom, range.wrapperTo
+        ));
       if (range.kind === 'html' && !isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
@@ -3769,11 +3771,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const range of colorSyntaxRanges) {
-      const isRangeActive = isSourceMode || (!isPureWysiwyg && (
-        selection.empty
-          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
-          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
-      ));
+      const isRangeActive = isSourceMode || (!isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, range.wrapperFrom, range.wrapperTo
+        ));
       if (!isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
@@ -3784,11 +3785,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const range of superscriptSyntaxRanges) {
-      const isRangeActive = isSourceMode || (!isPureWysiwyg && (
-        selection.empty
-          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
-          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
-      ));
+      const isRangeActive = isSourceMode || (!isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, range.wrapperFrom, range.wrapperTo
+        ));
       if (!isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
@@ -3808,11 +3808,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         info,
         line.to
       );
-      const isMarkerActive = !isPureWysiwyg && (
-        selection.empty
-          ? selection.head >= info.markerStart && selection.head <= info.markerEnd
-          : selection.from < info.markerEnd && selection.to > info.markerStart
-      );
+      const isMarkerActive = !isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, info.markerStart, info.markerEnd
+        );
 
       const hasBody = info.bodyTo > info.bodyFrom;
 
@@ -4470,6 +4469,13 @@ function buildTableBlockDecorations(state) {
   if (!renderPlan.renderedTables.length) return Decoration.none;
   const builder = [];
   for (const node of renderPlan.renderedTables) {
+        if (
+          renderPlan.contextual &&
+          activeSyntaxExposureScope !== 'hidden' &&
+          shouldExposeTableSyntax(
+            state.selection.main, state.doc, renderPlan.semantic, node
+          )
+        ) continue;
         const tableText = state.doc.sliceString(node.from, node.to);
         const widget = new WordProcessorTableWidget(tableText, node.from, node.to);
 
@@ -4487,6 +4493,21 @@ function buildTableBlockDecorations(state) {
 
   builder.sort((a, b) => a.from - b.from || a.to - b.to);
   return Decoration.set(builder, true);
+}
+
+function shouldExposeTableSyntax(selection, doc, layout, table) {
+  if (activeSyntaxExposureScope === 'hidden') return false;
+  if (activeSyntaxExposureScope === 'caret' && selection.empty) {
+    return selection.head > table.from && selection.head < table.to;
+  }
+  return syntaxExposureRangeIsActive(
+    selection,
+    doc,
+    layout,
+    table.from,
+    table.to,
+    activeSyntaxExposureScope
+  );
 }
 
 export function updateTableDocumentSelection(view) {
@@ -5348,15 +5369,28 @@ class LayoutAnchorWidget extends WidgetType {
 export function buildPersistentLayoutDecorations(state) {
   const ranges = [];
   const renderPlan = markdownRenderPlan(state);
-  if (renderPlan.raw) {
-    // Raw Source keeps a pipe table editable as literal Markdown, but groups
-    // its rows into one local scroller so surrounding text cannot shift.
-    for (const table of renderPlan.sourceTables) {
+  const doc = state.doc;
+  const selection = state.selection.main;
+  const sourceTables = renderPlan.raw
+    ? renderPlan.sourceTables
+    : renderPlan.contextual
+      ? renderPlan.renderedTables.filter(table =>
+          shouldExposeTableSyntax(selection, doc, renderPlan.semantic, table)
+        )
+      : [];
+  const sourceTableLines = new Set();
+  if (renderPlan.raw || sourceTables.length) {
+    // Raw Source always groups a pipe table into one local scroller. In the
+    // rendered editor, entering a table can expose that same editable raw block.
+    for (const table of sourceTables) {
       const firstLine = state.doc.line(table.first);
       const lastLine = state.doc.line(table.last);
       const from = firstLine.from;
       const to = lastLine.to;
       if (to <= from) continue;
+      for (let number = table.first; number <= table.last; number++) {
+        sourceTableLines.add(number);
+      }
       ranges.push(
         Decoration.replace({
           widget: new SourceTableWidget({
@@ -5370,10 +5404,13 @@ export function buildPersistentLayoutDecorations(state) {
         }).range(from, to)
       );
     }
-    return ranges.length ? Decoration.set(ranges, true) : Decoration.none;
+    if (renderPlan.raw) {
+      return ranges.length ? Decoration.set(ranges, true) : Decoration.none;
+    }
   }
 
   for (const line of renderPlan.lines.values()) {
+    if (sourceTableLines.has(line.number)) continue;
     if (!line.classes.size) continue;
     ranges.push(
       Decoration.line({
@@ -5422,6 +5459,22 @@ function markdownRenderPlan(state, mode = currentEditorMode) {
   return getMarkdownRenderPlan(state, mode, documentLayoutSettings());
 }
 
+function isSyntaxRangeActiveForCurrentExposure(selection, doc, layout, from, to) {
+  if (currentModePreference === 'legacy_live_preview') {
+    return selection.empty
+      ? selection.head >= from && selection.head <= to
+      : selection.from < to && selection.to > from;
+  }
+  return syntaxExposureRangeIsActive(
+    selection,
+    doc,
+    layout,
+    from,
+    to,
+    activeSyntaxExposureScope
+  );
+}
+
 function documentLayout(state) {
   return markdownRenderPlan(state).semantic;
 }
@@ -5460,7 +5513,17 @@ export const persistentLayoutField = StateField.define({
       effect.is(typographySettingsEffect) ||
       effect.is(heightMapRefreshEffect)
     );
-    if (!tr.docChanged && !refresh && syntaxTree(tr.startState) === syntaxTree(tr.state)) return current;
+    const tableExposureSelectionChanged =
+      currentModePreference === 'rendered' &&
+      currentEditorMode === 'live_preview' &&
+      activeSyntaxExposureScope !== 'hidden' &&
+      tr.selection !== undefined;
+    if (
+      !tr.docChanged &&
+      !refresh &&
+      !tableExposureSelectionChanged &&
+      syntaxTree(tr.startState) === syntaxTree(tr.state)
+    ) return current;
     return buildPersistentLayoutDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
@@ -5476,7 +5539,12 @@ export const tableStateField = StateField.define({
       effect.is(heightMapRefreshEffect) ||
       effect.is(typographySettingsEffect)
     ) || (!tr.docChanged && syntaxTree(tr.startState) !== syntaxTree(tr.state));
-    if (!tr.docChanged && !refresh) return current;
+    const tableExposureSelectionChanged =
+      currentModePreference === 'rendered' &&
+      currentEditorMode === 'live_preview' &&
+      activeSyntaxExposureScope !== 'hidden' &&
+      tr.selection !== undefined;
+    if (!tr.docChanged && !refresh && !tableExposureSelectionChanged) return current;
     if (
       tr.docChanged &&
       !refresh &&
@@ -6564,6 +6632,39 @@ class CodeMirrorAdapter {
     return this.view.state.doc.toString();
   }
 
+  getSelectionState() {
+    if (!this.view) return null;
+    const selection = this.view.state.selection.main;
+    return JSON.stringify({
+      anchor: selection.anchor,
+      head: selection.head
+    });
+  }
+
+  setSelectionState(stateJson, scrollTop = null) {
+    if (!this.view) return;
+    let state = stateJson;
+    if (typeof stateJson === 'string') {
+      try {
+        state = JSON.parse(stateJson);
+      } catch {
+        return;
+      }
+    }
+    if (!state || typeof state !== 'object') return;
+    const docLength = this.view.state.doc.length;
+    const requestedAnchor = Number(state.anchor ?? state.from);
+    const requestedHead = Number(state.head ?? state.to ?? requestedAnchor);
+    if (!Number.isFinite(requestedAnchor) || !Number.isFinite(requestedHead)) return;
+    const anchor = Math.max(0, Math.min(docLength, Math.trunc(requestedAnchor)));
+    const head = Math.max(0, Math.min(docLength, Math.trunc(requestedHead)));
+    this.view.dispatch({
+      selection: EditorSelection.range(anchor, head)
+    });
+    if (Number.isFinite(Number(scrollTop))) {
+      this.view.scrollDOM.scrollTop = Math.max(0, Number(scrollTop));
+    }
+  }
 
   undo() {
     const targetView = getUndoTargetView(this.view);
@@ -6823,7 +6924,28 @@ function restoreModeScrollAnchor(view, anchor) {
 }
 
 async function setEditorMode(mode) {
-  const targetMode = (mode === 'live_preview' || mode === 'source') ? mode : 'wysiwyg';
+  let nextModePreference;
+  let nextSyntaxExposureScope;
+  if (mode === 'source') {
+    nextModePreference = 'source';
+    nextSyntaxExposureScope = 'hidden';
+  } else if (mode === 'live_preview') {
+    // Backward-compatible bridge preset for older callers.
+    nextModePreference = 'legacy_live_preview';
+    nextSyntaxExposureScope = 'caret';
+  } else if (mode === 'wysiwyg') {
+    // Backward-compatible bridge preset for older callers.
+    nextModePreference = 'legacy_wysiwyg';
+    nextSyntaxExposureScope = 'hidden';
+  } else {
+    nextModePreference = 'rendered';
+    nextSyntaxExposureScope = markdownSyntaxExposureScope;
+  }
+  const targetMode = nextModePreference === 'source'
+    ? 'source'
+    : nextSyntaxExposureScope === 'hidden'
+      ? 'wysiwyg'
+      : 'live_preview';
 
   // Commit the table's textarea before taking the document/history snapshot.
   // Removing a focused textarea does not reliably dispatch blur in WebViews.
@@ -6848,6 +6970,8 @@ async function setEditorMode(mode) {
     pendingMarkdown = null;
   }
 
+  currentModePreference = nextModePreference;
+  activeSyntaxExposureScope = nextSyntaxExposureScope;
   currentEditorMode = targetMode;
   const container = document.querySelector('#editor-container');
   if (container) {
@@ -6923,7 +7047,9 @@ async function setEditorMode(mode) {
   }
 
   if (window.AndroidNative && typeof window.AndroidNative.onEditorReady === 'function') {
-    window.AndroidNative.onEditorReady(targetMode);
+    window.AndroidNative.onEditorReady(
+      currentModePreference === 'source' ? 'source' : 'rendered'
+    );
   }
 
   return activeAdapter;
@@ -11641,14 +11767,12 @@ function setupTocGestureAndPanel(scrollDOM) {
 }
 
 function openWithOtherEngine() {
-  const modes = ['wysiwyg', 'live_preview', 'source'];
-  const nextIdx = (modes.indexOf(currentEditorMode) + 1) % modes.length;
-  const targetMode = modes[nextIdx];
+  const targetMode = currentModePreference === 'source' ? 'rendered' : 'source';
 
   setEditorMode(targetMode).then(() => {
     toggleBottomToolbar(true);
     if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
-      const names = { wysiwyg: 'Pure WYSIWYG', live_preview: 'Obsidian Live Preview', source: 'Raw Source View' };
+      const names = { rendered: 'Rendered Markdown Editor', source: 'Raw Source / Code Editor' };
       window.AndroidNative.showToast(`Switched to ${names[targetMode]}`);
     }
   });
@@ -11831,7 +11955,7 @@ function setupKeyboardShortcuts() {
       window.editorBridge.toggleLineNumbers();
     } else if (parseAndMatchHotkey(e, customHotkeys.sourceEditing)) {
       e.preventDefault();
-      setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source');
+      setEditorMode(currentModePreference === 'source' ? 'rendered' : 'source');
     } else if (parseAndMatchHotkey(e, customHotkeys.findAndReplace)) {
       e.preventDefault();
       toggleFindAndReplaceBar();
@@ -11930,7 +12054,13 @@ window.editorBridge = {
     return setEditorMode(mode);
   },
   getEditorMode: function() {
+    return currentModePreference === 'source' ? 'source' : 'rendered';
+  },
+  getEditorPresentation: function() {
     return currentEditorMode;
+  },
+  getSyntaxExposureScope: function() {
+    return activeSyntaxExposureScope;
   },
   applyBottomToolbarConfig: function(rawConfig) {
     const nextConfig = normalizeBottomToolbarConfig(rawConfig);
@@ -11972,6 +12102,19 @@ window.editorBridge = {
     const prefs = applyMarkdownDialectProfile(storedPreferences);
     currentMarkdownProfile = prefs.pref_markdown_profile;
     markdownAutoPasteEnabled = prefs.pref_markdown_auto_paste_enabled !== false;
+    const hasSyntaxExposurePreference = Object.prototype.hasOwnProperty.call(
+      prefs,
+      'pref_markdown_syntax_exposure'
+    );
+    const nextSyntaxExposure = hasSyntaxExposurePreference
+      ? normalizeMarkdownSyntaxExposureScope(prefs.pref_markdown_syntax_exposure)
+      : markdownSyntaxExposureScope;
+    const syntaxExposureChanged =
+      nextSyntaxExposure !== markdownSyntaxExposureScope;
+    markdownSyntaxExposureScope = nextSyntaxExposure;
+    if (currentModePreference === 'rendered' && hasSyntaxExposurePreference) {
+      activeSyntaxExposureScope = nextSyntaxExposure;
+    }
     const nextGfmExtensionsEnabled = prefs.pref_gfm_extensions_enabled !== false;
     const nextWmdxSubscriptEnabled =
       prefs.pref_wmdx_subscript_enabled !== false;
@@ -13153,6 +13296,19 @@ window.editorBridge = {
       premeasureTableHeights(activeAdapter.view);
       activeAdapter.view.requestMeasure();
     }
+    if (syntaxExposureChanged && currentModePreference === 'rendered' && activeAdapter?.view) {
+      const expectedInternalMode = nextSyntaxExposure === 'hidden'
+        ? 'wysiwyg'
+        : 'live_preview';
+      if (currentEditorMode !== expectedInternalMode) {
+        void setEditorMode('rendered');
+      } else {
+        dispatchWithScrollSnapshot(
+          activeAdapter.view,
+          heightMapRefreshEffect.of(null)
+        );
+      }
+    }
   },
   getMarkdown: function() {
     // Flush active table cell draft if an overlay editor is open
@@ -14090,7 +14246,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (window.AndroidNative && typeof window.AndroidNative.onHostReady === 'function') {
     window.AndroidNative.onHostReady();
   } else {
-    setEditorMode('wysiwyg');
+    setEditorMode('rendered');
   }
 });
 

@@ -698,7 +698,7 @@ test('every visible hotkey preference reaches a matching editor action', () => {
     assert.ok(keyboardHandler.includes('customHotkeys.' + editorKey), 'Missing editor handler for ' + preferenceKey);
   }
   assert.ok(keyboardHandler.includes("execCmd('InsertFootnote')"));
-  assert.ok(keyboardHandler.includes("setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source')"));
+  assert.ok(keyboardHandler.includes("setEditorMode(currentModePreference === 'source' ? 'rendered' : 'source')"));
 });
 
 test('Ctrl+O is intercepted before the editor handles the key', () => {

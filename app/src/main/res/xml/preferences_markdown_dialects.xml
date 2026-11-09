@@ -11,6 +11,14 @@
             app:entryValues="@array/markdown_profile_values"
             app:defaultValue="wmdx" />
 
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_markdown_syntax_exposure"
+            app:title="Rendered Syntax Exposure"
+            app:summary="Choose how much Markdown syntax appears as you edit the rendered document"
+            app:entries="@array/pref_syntax_exposure_entries"
+            app:entryValues="@array/pref_syntax_exposure_values"
+            app:defaultValue="hidden" />
+
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_gfm_extensions_enabled"
             app:title="GFM Extensions"

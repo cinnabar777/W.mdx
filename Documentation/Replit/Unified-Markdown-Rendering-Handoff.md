@@ -13,39 +13,32 @@ settings distinct from rendered Document Appearance.
 
 ## Current agreed view contract
 
-- **WYSIWYG:** Render Markdown structures. Tables are rendered tables with
-  editable cells. Most Markdown syntax is hidden.
-- **Live Preview:** Keep the same rendered structures and block styling as
-  WYSIWYG. Reveal relevant syntax contextually when the user is editing or
-  interacting with that syntax. Syntax exposure should be configurable from the
-  caret's inline range to its line or semantic block. A table remains rendered
-  and editable by default; entering it must not silently replace it with raw
-  pipe syntax.
-- **Source:** A raw, language-aware text editor. Show every source character,
-  including table and callout syntax, with optional syntax-token highlighting.
+- **Rendered Markdown editor:** One word-processing surface with the shared
+  Markdown structures and block styling. A global syntax-exposure preference
+  controls whether syntax stays hidden, appears around the caret, appears on the
+  current line, or appears for the current semantic block. The default is hidden.
+  When syntax exposure is active and the caret enters a table, expose the entire
+  Markdown table in its local horizontal scroller so pipes remain aligned.
+- **Source / Code editor:** A raw text editor. Show every source character,
+  including table and callout syntax, with optional language-token highlighting.
   Do not apply Markdown block layout, rendered media/table/callout widgets,
   hidden syntax, or folding to Source. Source-editor typography, wrapping, and
   token colors are independent of Document Appearance settings.
 
-Live Preview and WYSIWYG share semantic structure and rendered block geometry.
-Source uses ordinary editor line layout. Syntax highlighting changes token
-appearance only; it never removes or replaces source characters. All views edit
-the same underlying document text.
+These are the two user-facing editor modes. The former WYSIWYG and Live Preview
+choices are compatibility aliases during migration, not separate product modes.
+Both surfaces edit the same underlying document text. Syntax highlighting
+changes token appearance only; it never removes or replaces source characters.
 
 ## Rendered-mode simplification
 
-The product should have two editor surfaces, not three Markdown renderers:
-
-- **Rendered Markdown editor:** one block/layout pipeline with a configurable
-  syntax-exposure policy. The old WYSIWYG choice maps to syntax hidden; the old
-  Live Preview choice maps to syntax revealed around the caret. A future policy
-  may reveal a whole line or semantic block without changing the renderer.
-- **Source/Code editor:** literal text with language-aware token highlighting
-  and independent source-editor appearance settings.
-
-Keep the old mode preference values as compatibility aliases while migrating
-existing settings. Do not remove Live Preview behavior until its per-element
-differences have been represented and tested as syntax-exposure rules.
+There are two user-facing editor surfaces, not three Markdown modes. The
+Rendered Markdown editor uses a syntax-exposure policy; Source/Code is literal
+text with language-aware token highlighting and independent appearance
+settings. Android migrates saved `wysiwyg`, `live_preview`, and `rich_text`
+mode values to `rendered`, preserving the former Live Preview caret behavior
+when no exposure preference has been saved. The JavaScript bridge still accepts
+the old values for compatibility.
 
 ## Whole-document scope
 
@@ -99,9 +92,28 @@ have separate policy branches and the full mode consolidation is unfinished:
   unknown extensions as plain text. Other language packages and a per-document
   manual language override remain to be added.
 
-The next architectural work is to map every remaining WYSIWYG/Live Preview
-branch to either shared rendering behavior or a syntax-exposure policy, then
-preserve the old mode settings as aliases. Keep Source separate.
+## Implementation status
+
+The first user-facing consolidation is implemented on the working branch:
+
+- Editor settings expose `rendered` and `source`; syntax exposure offers hidden,
+  caret, line, and semantic-block scopes. Existing mode preferences are migrated.
+- Rendered mode maps hidden syntax to the existing hidden-syntax presentation and
+  the other scopes to contextual syntax, keeping the shared block model in use.
+  This is a compatibility-preserving first step, not proof that every internal
+  WYSIWYG/Live Preview branch has been eliminated.
+- In a rendered mode with syntax exposure enabled, entering a table exposes all
+  rows as raw Markdown inside one local horizontal scroller; surrounding content
+  remains in the normal viewport.
+- Browser coverage exercises the scope policy, mode transitions, and table
+  source exposure. Android compilation still requires the Android SDK; the
+  branch's GitHub Actions build remains the authoritative Android check.
+
+Still planned: inspect and retire remaining internal mode-only branches where
+behavior is fully represented by exposure policy; offer per-file language
+selection and configurable language highlighting in Source/Code; verify each
+language with representative editing fixtures. Import/export fidelity across
+CommonMark, GFM, Obsidian, and Wmdx remains a separate compatibility workstream.
 
 ## Implementation and verification requirements
 
