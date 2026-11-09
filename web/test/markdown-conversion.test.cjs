@@ -345,6 +345,7 @@ test('HTML import preserves ordered-list marker styles, starts, and nested task 
 test('HTML import preserves list paragraphs and table formatting plus merged-cell markers', async () => {
   const { JSDOM } = require('jsdom');
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const { TableModel } = await import('../src/tableModule.js');
   const Parser = new JSDOM('').window.DOMParser;
   const result = convertFromHtml(
     '<ul><li><p>First paragraph</p><p>Second paragraph</p>' +
@@ -360,6 +361,12 @@ test('HTML import preserves list paragraphs and table formatting plus merged-cel
   assert.match(result.markdown, /\| Keep \*\*rich\*\* \| \[A\\\|B\]\(\/a\) \|/);
   assert.match(result.markdown, /\| \^ \| Second row \|/);
   assert.equal(result.warnings.length, 0);
+
+  const tableSource = result.markdown.slice(result.markdown.indexOf('| Summary'));
+  const matrix = TableModel.parse(tableSource).getRenderMatrix();
+  assert.equal(matrix[0][0].colSpan, 2);
+  assert.equal(matrix[1][0].rowSpan, 2);
+  assert.equal(matrix[2][0].isCovered, true);
 });
 
 test('Markdown import and export process the complete document beyond the preview limit', async () => {
