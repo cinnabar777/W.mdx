@@ -413,6 +413,39 @@ function convertInlineHtmlToMarkdown(line, warnings) {
     });
 }
 
+function escapeDialectSpecificTildes(line, format) {
+  const protectedValues = [];
+  let text = String(line ?? '');
+  const protect = value => {
+    const marker = `\uE000${protectedValues.length}\uE001`;
+    protectedValues.push({ marker, value });
+    return marker;
+  };
+
+  // Markdown is not parsed inside code spans or raw HTML elements. Keep those
+  // regions intact before normalizing single-tilde Wmdx subscript below.
+  text = text
+    .replace(/<([a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, protect)
+    .replace(/(`+)([\s\S]*?)\1/g, protect);
+
+  const escapeTildes = value => value.replace(/~/g, '\\~');
+  if (format === 'commonmark') {
+    text = text.replace(
+      /(?<![~\\])~~(?!~)(\S(?:[^~]*?\S)?)~~(?!~)/gu,
+      match => escapeTildes(match)
+    );
+  }
+  text = text.replace(
+    /(?<![~\\])~(?!~)(\S(?:[^~]*?\S)?)~(?!~)/gu,
+    match => escapeTildes(match)
+  );
+
+  for (const { marker, value } of protectedValues) {
+    text = text.replace(marker, value);
+  }
+  return text;
+}
+
 export function convertFromMarkdown(source, format = 'commonmark') {
   if (!MARKDOWN_IMPORT_FORMATS.includes(format) || format === 'html') {
     throw new TypeError(`Unsupported Markdown import format: ${format}`);
@@ -430,7 +463,8 @@ export function convertFromMarkdown(source, format = 'commonmark') {
     lines = convertHeadings(lines.join('\n'));
     return lines.map((line, index) => {
       if (protectedLines.has(index)) return line;
-      let text = convertInlineHtmlToMarkdown(line, warnings);
+      let text = escapeDialectSpecificTildes(line, format);
+      text = convertInlineHtmlToMarkdown(text, warnings);
       return convertInlineLinksToWmdx(text, warnings);
     });
   });
@@ -814,6 +848,12 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
         return `<u>${content}</u>`;
       }
     );
+    if (dialect === 'commonmark') {
+      text = text.replace(
+        /(?<![~\\])~~(?!~)(\S(?:[^~]*?\S)?)~~(?!~)/gu,
+        (_, content) => `<del>${content}</del>`
+      );
+    }
     text = text.replace(
       /(?<![~\\])~(?!~)(\S(?:[^~]*?\S)?)~(?!~)/gu,
       (_, content) => `<sub>${content}</sub>`

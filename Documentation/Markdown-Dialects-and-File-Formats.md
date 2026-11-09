@@ -14,7 +14,7 @@ families in one editor, not separate document modes.
 
 | View | Behavior |
 | --- | --- |
-| Source | Shows raw Markdown and syntax, including table pipes; block styling and layout still come from the shared document model. Semantic styling may remain, but generated widgets must not replace, prepend, or overlap source characters. |
+| Source | Shows raw Markdown and syntax, including table pipes. Shared block geometry stays stable, but styling must not compete with syntax: callout `>` markers remain at the left edge, with no colored card or automatic body folding. Generated widgets must not replace, prepend, or overlap source characters. |
 | Live Preview | Keeps rendered structures and reveals relevant syntax while editing; tables remain rendered and editable. |
 | WYSIWYG | Shows rendered structures with most syntax hidden; interactive features such as task checkboxes remain available. |
 
@@ -43,12 +43,13 @@ for authoring.
 | Callouts | Wmdx `±type`, `±type-`, `±type+`; Obsidian `> [!type]` and fold markers. GitHub alerts overlap with the Obsidian spelling. |
 | Footnotes | Markdown reference footnotes (`[^label]`), Wmdx numbered footnotes, and Obsidian inline footnotes (`^[text]`) have syntax controls. |
 | Underline | **Use Wmdx syntax** recognizes Wmdx underline forms. When disabled, HTML `<u>...</u>` is the compatibility form. |
-| Tables and inline formatting | GFM pipe tables, task lists, strikethrough, and autolinks are parser extensions; the supported settings are attached to the corresponding feature rather than a global GFM profile. |
+| Tables and inline formatting | GFM pipe tables, task lists, double-tilde strikethrough, and autolinks are parser extensions. Wmdx single-tilde `~text~` is subscript, not GFM strikethrough. Feature settings are separate rather than one global GFM profile. |
 
 The Wmdx extensions include resource links and embeds, decimal headings,
-additional list markers, native tasks, callouts, footnotes, underline styles,
-highlight/pen color slots, and media/attachment metadata. The cheat sheet gives
-the exact source spelling.
+additional list markers, native tasks, callouts, footnotes, subscript, underline
+styles, highlight/pen color slots, and media/attachment metadata. Subscript is
+recognized without a separate dialect toggle. The cheat sheet gives the exact
+source spelling.
 
 ## Convert, paste, and export
 
@@ -81,6 +82,10 @@ Conversion is deliberately explicit and conservative:
 - Markdown emphasis written with underscores becomes asterisk emphasis on
   import, avoiding a collision with Wmdx underscore-underlining. Underscore
   thematic breaks normalize to `---`.
+- Standard-dialect single-tilde text is escaped on import so it remains literal
+  rather than becoming Wmdx subscript. CommonMark double-tilde text is also
+  escaped because CommonMark does not define strikethrough; GFM and Obsidian
+  double-tilde strikethrough remains semantic.
 - Simple Markdown links become Wmdx resource links. Link tooltip titles and
   formatted link labels stay in Markdown syntax rather than losing their detail.
 - GFM alerts and Obsidian callouts become Wmdx callouts. Obsidian folding markers
@@ -96,6 +101,10 @@ Conversion is deliberately explicit and conservative:
 - Wmdx colored underline/highlight slots lose their custom style/color when the
   target has no equivalent. Wmdx pen marks have no portable Markdown equivalent
   and are exported as plain text with a warning.
+- Wmdx subscript imports from semantic HTML `<sub>` and exports to `<sub>` in
+  CommonMark, GFM, and Obsidian documents.
+- Wmdx strikethrough exports as CommonMark `<del>` and stays `~~text~~` in GFM
+  and Obsidian.
 - GFM pipe tables are preserved in CommonMark output with a warning. Pipe tables
   are not defined by CommonMark, so a strict CommonMark renderer may show the
   source as text instead of a table.

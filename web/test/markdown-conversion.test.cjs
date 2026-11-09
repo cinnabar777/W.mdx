@@ -37,6 +37,25 @@ test('subscript converts between Wmdx tilde syntax and portable HTML', async () 
   }
 });
 
+test('dialect conversion preserves literal tildes and exports CommonMark strike as HTML', async () => {
+  const { convertFromMarkdown, exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const gfm = convertFromMarkdown(
+    '~~Hi~~ Hello, ~there~ world! `~code~`',
+    'gfm'
+  );
+  assert.equal(gfm.markdown, '~~Hi~~ Hello, \\~there\\~ world! `~code~`');
+
+  const commonmark = convertFromMarkdown(
+    '~literal~ ~~also literal~~ `~~code~~`',
+    'commonmark'
+  );
+  assert.equal(
+    commonmark.markdown,
+    '\\~literal\\~ \\~\\~also literal\\~\\~ `~~code~~`'
+  );
+  assert.equal(exportMarkdown('~~removed~~', 'commonmark').markdown, '<del>removed</del>');
+});
+
 test('CommonMark import converts parsed headings without consuming nearby rules or blocks', async () => {
   const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
   const source = [
@@ -150,7 +169,7 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   assert.match(commonmark.markdown, /1\. Roman item/);
   assert.match(commonmark.markdown, /2\. Next Roman item/);
   assert.match(commonmark.markdown, /- <input type="checkbox" disabled checked> Complete a task/);
-  assert.match(commonmark.markdown, /H<sub>2<\/sub>O and ~~removed~~\./);
+  assert.match(commonmark.markdown, /H<sub>2<\/sub>O and <del>removed<\/del>\./);
   assert.match(commonmark.markdown, /> \*\*Read carefully\*\*/);
   assert.ok(commonmark.warnings.some(warning => warning.includes('Pipe tables')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('alphabetic and Roman')));
