@@ -30,8 +30,9 @@ the syntax the current app supports.
 - **Source is the raw editor surface**, not a third Markdown document renderer.
   Every source character stays visible and editable in order; syntax is not
   hidden, Markdown blocks are not rendered, and callout bodies are not folded.
-  A wide Markdown table may use one nested raw-text editor to scroll the whole
-  table locally; its syntax and source remain unchanged. Markdown syntax
+  A wide Markdown table may use one nested raw-text editor to align pipe
+  delimiters visually and scroll the whole table locally; its syntax and source
+  remain unchanged. Markdown syntax
   highlighting may color tokens without hiding them. Source typography, wrapping,
   and syntax colors belong to Source/Code settings, independently of Document
   Appearance styling for rendered Markdown.
@@ -794,7 +795,8 @@ exposure is configurable, plus a separate raw Source/Code editor. The legacy
 WYSIWYG and Live Preview choices are compatibility presets, not separate
 rendering engines. Source retains every source character, with its own syntax
   token colors and editor typography; source tables use a nested editable
-  CodeMirror block whose local scroller moves all rows together without shifting
+  CodeMirror block that visually aligns pipe delimiters without rewriting the
+  Markdown and whose local scroller moves all rows together without shifting
   surrounding text or widening the app viewport. Source appearance controls are
   independent from Document Appearance. Initial extension-based code highlighting supports
 JavaScript/TypeScript/JSX/TSX, JSON, HTML/XML/SVG, and CSS; unknown types stay

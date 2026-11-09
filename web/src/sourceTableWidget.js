@@ -1,6 +1,8 @@
 import { EditorState, Transaction } from '@codemirror/state';
 import {
   EditorView,
+  Decoration,
+  ViewPlugin,
   WidgetType,
   drawSelection,
   highlightActiveLine,
@@ -8,6 +10,105 @@ import {
 } from '@codemirror/view';
 import { defaultKeymap, redo, undo } from '@codemirror/commands';
 import { syntaxHighlighting } from '@codemirror/language';
+
+function isEscaped(text, position) {
+  let slashCount = 0;
+  for (let index = position - 1; index >= 0 && text[index] === '\\'; index--) {
+    slashCount++;
+  }
+  return slashCount % 2 === 1;
+}
+
+function getPipeTableCells(text) {
+  const pipes = [];
+  let codeTicks = 0;
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] === '`' && !isEscaped(text, index)) {
+      let end = index + 1;
+      while (text[end] === '`') end++;
+      const runLength = end - index;
+      if (!codeTicks) codeTicks = runLength;
+      else if (codeTicks === runLength) codeTicks = 0;
+      index = end - 1;
+      continue;
+    }
+    if (text[index] === '|' && !codeTicks && !isEscaped(text, index)) {
+      pipes.push(index);
+    }
+  }
+  if (!pipes.length) return null;
+
+  const leadingPipe = pipes[0] === 0;
+  const trailingPipe = pipes[pipes.length - 1] === text.length - 1;
+  const cells = [];
+  let cellStart = leadingPipe ? 1 : 0;
+  for (let index = leadingPipe ? 1 : 0; index < pipes.length; index++) {
+    const pipe = pipes[index];
+    cells.push({ from: cellStart, to: pipe, pipe });
+    cellStart = pipe + 1;
+  }
+  if (!trailingPipe && cellStart <= text.length) {
+    cells.push({ from: cellStart, to: text.length, pipe: null });
+  }
+  return { cells, leadingPipe };
+}
+
+function buildPipeAlignmentDecorations(view) {
+  const rows = [];
+  const columnWidths = [];
+  let hasLeadingPipe = false;
+  let hasUnledRow = false;
+  for (let number = 1; number <= view.state.doc.lines; number++) {
+    const line = view.state.doc.line(number);
+    const parsed = getPipeTableCells(line.text);
+    if (!parsed) continue;
+    hasLeadingPipe ||= parsed.leadingPipe;
+    hasUnledRow ||= !parsed.leadingPipe;
+    rows.push({ line, cells: parsed.cells });
+    parsed.cells.forEach((cell, column) => {
+      columnWidths[column] = Math.max(
+        columnWidths[column] || 0,
+        cell.to - cell.from
+      );
+    });
+  }
+
+  const ranges = [];
+  for (const { line, cells } of rows) {
+    const hasPipePadding = hasLeadingPipe && hasUnledRow && !line.text.startsWith('|');
+    if (hasPipePadding) {
+      ranges.push(Decoration.line({
+        attributes: { class: 'cm-source-table-align-leading-pipe' }
+      }).range(line.from));
+    }
+    for (let column = 0; column < cells.length; column++) {
+      const cell = cells[column];
+      if (cell.pipe === null) continue;
+      const width = columnWidths[column] || 0;
+      const padding = Math.max(0, width - (cell.to - cell.from));
+      ranges.push(Decoration.mark({
+        class: 'cm-source-table-aligned-pipe',
+        attributes: { style: `margin-left:${padding}ch` }
+      }).range(line.from + cell.pipe, line.from + cell.pipe + 1));
+    }
+  }
+  return Decoration.set(ranges, true);
+}
+
+const pipeAlignmentExtension = ViewPlugin.fromClass(
+  class {
+    constructor(view) {
+      this.decorations = buildPipeAlignmentDecorations(view);
+    }
+
+    update(update) {
+      if (update.docChanged) {
+        this.decorations = buildPipeAlignmentDecorations(update.view);
+      }
+    }
+  },
+  { decorations: value => value.decorations }
+);
 
 function minimalChange(before, after) {
   let from = 0;
@@ -93,6 +194,7 @@ export class SourceTableWidget extends WidgetType {
       extensions: [
         this.language,
         syntaxHighlighting(this.highlightStyle),
+        pipeAlignmentExtension,
         drawSelection(),
         highlightActiveLine(),
         keymap.of([

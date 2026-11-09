@@ -784,7 +784,7 @@ async function main() {
     const wideSourceTable = [
       '| Identifier | Description | Owner | Updated | State | Notes |',
       '| :--- | :--- | :--- | ---: | :---: | :--- |',
-      '| WMDX-001 | A deliberately long table row that should remain on one source line | Editor | 2026-11-06 | Open | Keep every pipe and separator intact |'
+      '| WMDX\\|001 | A deliberately long row with \\| escaped and `left | right` in code | Editor | 2026-11-06 | Open | Keep every pipe and separator intact |'
     ].join('\n');
     const wideSourceDocument = [
       'Text before the table stays at the normal editor width.',
@@ -827,12 +827,22 @@ async function main() {
         const afterRowLefts = rows.map(row => row.getBoundingClientRect().left);
         const shifts = afterRowLefts.map((left, index) => left - beforeRowLefts[index]);
         const afterSurroundingLefts = surroundingLines.map(line => line.getBoundingClientRect().left);
+        const pipeColumns = rows.map(row =>
+          [...row.querySelectorAll('.cm-source-table-aligned-pipe')]
+            .map(pipe => pipe.getBoundingClientRect().left)
+        );
+        const pipeBarsAligned = pipeColumns.every(columns =>
+          columns.length === pipeColumns[0]?.length &&
+          columns.every((left, index) => Math.abs(left - pipeColumns[0][index]) < 1)
+        );
         return {
           whiteSpace: style.whiteSpace,
           renderedTables: document.querySelectorAll('.cm-wp-table-container').length,
           tableHorizontalOverflow: tableScroller.scrollWidth > tableScroller.clientWidth + 1,
           tableScrollWorks: tableScroller.scrollLeft > 0,
           outerHorizontalOverflow: outerScroller.scrollWidth > outerScroller.clientWidth + 1,
+          pipeBarsAligned,
+          pipeColumnCount: pipeColumns[0]?.length || 0,
           surroundingTextFixed: beforeLefts.every((left, index) =>
             Math.abs(left - afterSurroundingLefts[index]) < 1
           ),
@@ -845,7 +855,7 @@ async function main() {
           contentWidth: document.querySelector('#editor > .cm-editor > .cm-scroller > .cm-content')
             .getBoundingClientRect().width,
           rawSourcePreserved: window.editorBridge.getMarkdown().includes(
-            '| WMDX-001 | A deliberately long table row'
+            '| WMDX\\|001 | A deliberately long row'
           ),
           childMarkdown: tableWidget.querySelector('.cm-source-table-editor')
             ._sourceTableEditor.state.doc.toString()
@@ -859,6 +869,8 @@ async function main() {
           `The source table's own scroller must move: ${JSON.stringify(tableLayout)}`);
         assert.ok(tableLayout.tableRowsMoveTogether,
           `Every row in the source table must move together: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.pipeColumnCount >= 5 && tableLayout.pipeBarsAligned,
+          `Pipe delimiters should align into vertical columns: ${JSON.stringify(tableLayout)}`);
         assert.ok(tableLayout.surroundingTextFixed,
           `Text above and below the table must not move horizontally: ${JSON.stringify(tableLayout)}`);
         assert.ok(tableLayout.tableWidth <= tableLayout.viewportWidth + 1,
