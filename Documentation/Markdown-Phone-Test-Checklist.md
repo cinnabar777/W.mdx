@@ -70,7 +70,8 @@ as an MDZip package with real media and attachment assets.
   list setting.
 - Test callout title and body as one styled block, inline formatting in the
   body, collapsed/expanded state, and nested callouts. In Source, keep each `>`
-  marker at the left syntax edge while the callout block and body remain aligned.
+  marker at the raw line edge. Do not render a colored callout card under its
+  literal markers; collapsed bodies remain visible in Source.
 - Check all Wmdx underline styles, four highlight slots, and four pen slots.
   Confirm Setext headings are not mistaken for highlight syntax.
 - Confirm the local image, embedded image, WAV, MP4, PDF, text, and ZIP examples
