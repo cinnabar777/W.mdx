@@ -197,7 +197,10 @@ test('embedded Markdown uses GFM tasks and inline syntax without enabling tables
     childExtensions,
     /markdownLanguageCompartment\.of\(createMarkdownLanguageExtension\(\)\)/
   );
-  assert.match(childExtensions, /syntaxHighlighting\(customHighlightStyle\)/);
+  assert.match(
+    childExtensions,
+    /syntaxHighlighting\(\s*currentEditorMode === 'source' \? sourceHighlightStyle : customHighlightStyle\s*\)/
+  );
   assert.doesNotMatch(childExtensions, /GFMTable/);
   assert.match(main, /function createMarkdownLanguageExtension\(includeTables = false\)/);
   assert.match(childExtensions, /EditorState\.readOnly\.of\(!fullInlineEditing\)/);

@@ -13,6 +13,12 @@ function renderedText(line) {
   return copy.textContent;
 }
 
+function sourceText(content) {
+  return [...content.querySelectorAll('.cm-line')]
+    .map(line => line.textContent)
+    .join('\n');
+}
+
 function assertHardBreakRendering(lines, window) {
   assert.equal(lines[2].textContent, 'Hard break by spaces:  ');
   assert.equal(lines[2].querySelector('.cm-hardbreak-syntax'), null);
@@ -151,7 +157,19 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
 
     const inlineFormattingSource = '**bold** *italic* ~~strike~~ H~2~O `code`';
     window.editorBridge.setMarkdown(inlineFormattingSource);
-    for (const mode of ['source', 'live_preview', 'wysiwyg']) {
+    await window.editorBridge.setEditorMode('source');
+    const rawFormattingContent = window.document.querySelector('.cm-content');
+    assert.equal(rawFormattingContent.textContent, inlineFormattingSource);
+    for (const className of [
+      'cm-bold', 'cm-italic', 'cm-strikethrough', 'cm-subscript', 'cm-inline-code'
+    ]) {
+      assert.equal(
+        rawFormattingContent.querySelectorAll(`.${className}`).length,
+        0,
+        `Source does not apply rendered ${className} styling`
+      );
+    }
+    for (const mode of ['live_preview', 'wysiwyg']) {
       await window.editorBridge.setEditorMode(mode);
       const modeContent = window.document.querySelector('.cm-content');
       for (const className of [
@@ -169,12 +187,10 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     const sourceCallout = '> [!warning]- Source title\n> Source body';
     window.editorBridge.setMarkdown(sourceCallout);
     await window.editorBridge.setEditorMode('source');
-    const sourceCalloutLines = [
-      ...window.document.querySelectorAll('.cm-line.cm-callout')
-    ];
-    assert.equal(sourceCalloutLines.length, 2);
-    assert.ok(sourceCalloutLines[0].textContent.includes('> [!warning]- Source title'));
-    assert.ok(sourceCalloutLines[1].textContent.includes('> Source body'));
+    const sourceCalloutContent = window.document.querySelector('.cm-content');
+    assert.equal(sourceText(sourceCalloutContent), sourceCallout);
+    assert.equal(sourceCalloutContent.querySelectorAll('.cm-callout').length, 0);
+    assert.equal(sourceCalloutContent.querySelectorAll('.cm-blockquote').length, 0);
     assert.equal(
       window.document.querySelector('.cm-callout-title-container'),
       null,
@@ -184,11 +200,6 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       window.document.querySelector('.cm-foldPlaceholder'),
       null,
       'Source does not fold callout bodies'
-    );
-    assert.equal(
-      window.getComputedStyle(sourceCalloutLines[0]).backgroundColor,
-      'rgba(0, 0, 0, 0)',
-      'Source keeps callout backgrounds transparent'
     );
     assert.equal(window.editorBridge.getMarkdown(), sourceCallout);
 
@@ -239,6 +250,15 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       await window.editorBridge.setEditorMode(mode);
       await new Promise(resolve => setTimeout(resolve, 20));
       const modeContent = window.document.querySelector('.cm-content');
+      if (mode === 'source') {
+        assert.equal(sourceText(modeContent), sharedLayoutSource);
+        assert.equal(modeContent.querySelectorAll('.cm-blockquote').length, 0);
+        assert.equal(modeContent.querySelectorAll('.cm-list-item').length, 0);
+        assert.equal(modeContent.querySelectorAll('.cm-list-continuation').length, 0);
+        assert.equal(modeContent.querySelectorAll('.cm-paragraph').length, 0);
+        assert.equal(window.editorBridge.getMarkdown(), sharedLayoutSource);
+        continue;
+      }
       assert.ok(
         modeContent.querySelector('.cm-line.cm-blockquote'),
         `${mode} applies shared blockquote layout`
@@ -257,6 +277,8 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       );
       assert.equal(window.editorBridge.getMarkdown(), sharedLayoutSource);
     }
+    await window.editorBridge.setEditorMode('live_preview');
+    await new Promise(resolve => setTimeout(resolve, 20));
     const nestedQuote = [...window.document.querySelectorAll('.cm-line.cm-blockquote')]
       .find(line => line.textContent.includes('nested quoted paragraph'));
     assert.ok(nestedQuote, 'nested quote content keeps shared quote styling');
@@ -476,58 +498,14 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     assert.equal(window.editorBridge.getMarkdown(), listSource);
 
     await window.editorBridge.setEditorMode('source');
-    const sourceListItems = [
-      ...window.document.querySelectorAll('.cm-line.cm-list-item')
-    ];
-    const sourceNestedItem = sourceListItems.find(
-      line => line.textContent.includes('- bar')
-    );
-    assert.ok(sourceNestedItem?.textContent.startsWith('  - bar'));
-    assert.equal(
-      sourceNestedItem.style.getPropertyValue('--list-depth-offset'),
-      '2ch',
-      'Source consumes the same semantic nesting offset as rendered modes'
-    );
-    assert.equal(
-      sourceNestedItem.style.getPropertyValue('--list-depth-offset'),
-      '2ch',
-      'Source keeps wrapped nested text at the nested marker column'
-    );
-    const sourceTaskItem = sourceListItems.find(
-      line => line.textContent.includes('nested task')
-    );
-    assert.ok(sourceTaskItem);
-    assert.ok(
-      Boolean(sourceTaskItem.querySelector('.cm-layout-content')),
-      'Source applies the shared semantic content role to task items'
-    );
-    assert.equal(
-      sourceTaskItem.style.getPropertyValue('--list-depth-offset'),
-      '2ch',
-      'Source retains the nested task marker column'
-    );
-    const sourceAlphaItem = sourceListItems.find(
-      line => line.textContent.includes('Native alphabetic child')
-    );
-    assert.ok(sourceAlphaItem);
-    assert.equal(
-      sourceAlphaItem.style.getPropertyValue('--list-depth-offset'),
-      '2ch',
-      'Source preserves the alphabetic child indentation as its own marker column'
-    );
-    const sourceNumberedChild = sourceListItems.find(
-      line => line.textContent.includes('Numbered child')
-    );
-    assert.ok(sourceNumberedChild);
-    assert.equal(
-      sourceNumberedChild.style.getPropertyValue('--list-depth-offset'),
-      '3ch'
-    );
-    assert.equal(
-      listLine('1. Numbered child').style.getPropertyValue('--list-depth-offset'),
-      sourceNumberedChild.style.getPropertyValue('--list-depth-offset'),
-      'Source and rendered ordered items share the same marker column'
-    );
+    const sourceListContent = window.document.querySelector('.cm-content');
+    assert.equal(sourceText(sourceListContent), listSource,
+      'Source keeps every list marker and authored indent as literal text');
+    assert.equal(sourceListContent.querySelectorAll('.cm-list-item').length, 0,
+      'Source does not apply rendered list layout');
+    assert.equal(sourceListContent.querySelectorAll('.cm-layout-content').length, 0,
+      'Source does not insert semantic list wrappers');
+    assert.equal(window.editorBridge.getMarkdown(), listSource);
 
     const orderedStyleSource = [
       'A. Upper alpha marker with enough text to wrap beneath the item text.',
@@ -564,16 +542,11 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     }
 
     await window.editorBridge.setEditorMode('source');
-    const sourceOrderedLines = [
-      ...window.document.querySelectorAll('.cm-line.cm-list-item')
-    ];
-    assert.equal(sourceOrderedLines.length, 8);
-    for (const line of sourceOrderedLines) {
-      const markerPrefix = /^[A-Za-z]+[.)][ \t]+/.exec(line.textContent)?.[0];
-      assert.ok(markerPrefix, 'Source preserves each alphabetic or Roman marker');
-      assert.ok(line.querySelector('.cm-layout-content'),
-        'Source uses the shared content anchor for every ordered style');
-    }
+    const sourceOrderedContent = window.document.querySelector('.cm-content');
+    assert.equal(sourceText(sourceOrderedContent), orderedStyleSource,
+      'Source preserves every authored ordered-list marker literally');
+    assert.equal(sourceOrderedContent.querySelectorAll('.cm-list-item').length, 0,
+      'Source does not apply rendered ordered-list layout');
     assert.equal(window.editorBridge.getMarkdown(), orderedStyleSource);
     assert.deepEqual(errors, []);
   } finally {

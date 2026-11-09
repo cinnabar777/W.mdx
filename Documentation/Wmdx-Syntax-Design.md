@@ -781,18 +781,20 @@ worktree now includes:
 - An offline MDZip phone fixture with packaged images, audio, video, and
   attachments, plus a separate interaction checklist.
 
-**Latest local verification (2026-11-07):** 559 web tests, 352 real-browser
-layout/interaction cases, and 62 Android unit tests pass; the Debug APK assembles
-with JDK 17 and Android API 34. The browser run does not prove Android touch,
-keyboard, URI-provider, media playback, or device-rendering behavior; those
-remain unverified until an on-device run. GitHub Actions must still verify the
-pushed commit and uploaded APK artifact.
+**Latest local verification (2026-11-09):** 590 web tests and 260
+real-browser layout/interaction cases pass. The browser run does not prove
+Android WebView touch, keyboard, URI-provider, media playback, or device
+rendering behavior. Android compilation and GitHub Actions verification of the
+current changes are still pending.
 
-**View contract:** Source shows complete syntax and raw tables. Live Preview and
-WYSIWYG use the same rendered structures; Live Preview reveals syntax
-contextually. All views consume shared block layout. Visible syntax can
-naturally change inline width and wrapping. Do not reserve placeholder width for
-hidden markers.
+**View contract:** The target is one rendered Markdown editor whose syntax
+exposure is configurable, plus a separate raw Source/Code editor. The legacy
+WYSIWYG and Live Preview choices are compatibility presets, not separate
+rendering engines. Source retains every source character, with its own syntax
+token colors and editor typography; source tables scroll as a synchronized
+block through one CodeMirror editor scroller, so all columns move together
+without widening the app viewport. The rendered-mode consolidation and
+language-mode support for non-Markdown files remain implementation work.
 
 **List contract:** Hanging wrapping is the default for bullets, tasks, and
 ordered markers. Non-hanging mode aligns wrapped rows at the item block edge;

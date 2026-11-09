@@ -74,6 +74,7 @@ class SettingsActivity : AppCompatActivity() {
                 is LeftPanelSettingsFragment -> "Left Panel"
                 is StorageAccessSettingsFragment -> "File & Folder Access"
                 is StylingSettingsFragment -> "Document Appearance"
+                is SourceEditorSettingsFragment -> "Source & Code Editor"
                 is ExportSettingsFragment -> "HTML & MHTML Export"
                 is HotkeysSettingsFragment -> "Keyboard Shortcuts"
                 else -> getString(R.string.settings_title)
@@ -410,6 +411,13 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_markdown_dialects" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, MarkdownDialectSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_source_editor" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, SourceEditorSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -780,6 +788,12 @@ class UIAppearanceSettingsFragment : BaseSettingsFragment() {
             return true
         }
         return super.onPreferenceTreeClick(preference)
+    }
+}
+
+class SourceEditorSettingsFragment : BaseSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_source_editor, rootKey)
     }
 }
 

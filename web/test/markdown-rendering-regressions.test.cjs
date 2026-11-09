@@ -137,17 +137,22 @@ test('rendering and interaction regressions stay covered without changing table 
     /classList\.contains\('list-wrap-under-text'\)/
   );
   assert.match(main, /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)/);
-  assert.match(main, /for \(const line of markdownRenderPlan\(state\)\.lines\.values\(\)\)/);
-  assert.match(main, /getMarkdownSourceIndentRanges\(line\.text\)/);
-  assert.match(main, /paragraphIndentSyntaxRanges/);
-  assert.match(main, /if \(calloutLineAttributes\.has\(lineFrom\)\) continue/);
-  assert.match(main, /hideSyntax\(line\.from \+ range\.from, line\.from \+ range\.to\)/);
-  const indentSyntaxHide = main.match(/for \(const \[lineFrom, ranges\] of paragraphIndentSyntaxRanges\)[\s\S]*?for \(const lineFrom of calloutLineAttributes\.keys\(\)\)/)?.[0] ?? '';
-  assert.doesNotMatch(indentSyntaxHide, /isIndentActive/);
-  assert.match(styles, /cm-source-indented\.cm-paragraph\.cm-blockquote[\s\S]*?padding-left:\s*calc\([\s\S]*?source-indent-offset/);
-  const quoteIndentRule = styles.match(/\.cm-content \.cm-line\.cm-source-indented\.cm-paragraph\.cm-blockquote[\s\S]*?\n    \}/)?.[0] ?? '';
-  assert.doesNotMatch(quoteIndentRule, /margin-left:/);
-  assert.match(quoteIndentRule, /text-indent:\s*calc\(0px - var\(--list-marker-gutter/);
+  assert.match(
+    main,
+    /const renderPlan = markdownRenderPlan\(view\.state\);\s*if \(renderPlan\.raw\) \{\s*\/\/ Source is a language-highlighted text editor[\s\S]*?return Decoration\.none;/
+  );
+  assert.match(
+    main,
+    /export function buildPersistentLayoutDecorations\(state\) \{[\s\S]*?if \(renderPlan\.raw\) \{[\s\S]*?for \(const table of renderPlan\.sourceTables\)/
+  );
+  assert.match(
+    styles,
+    /#editor-container\.source-mode \.cm-scroller\s*\{[^}]*overflow-x:\s*auto\s*!important/
+  );
+  assert.match(
+    styles,
+    /\.cm-content \.cm-table-source-line\s*\{[^}]*overflow:\s*visible\s*!important/
+  );
   assert.match(main, /Table cell\/editing|Table rendering in WYSIWYG/);
 });
 
@@ -167,6 +172,31 @@ test('phone fixture is paired with an interaction checklist and packaged media',
   assert.match(checklist, /Live Preview renders supported structures/);
   assert.match(checklist, /outer quote border should remain continuous/i);
   assert.match(checklist, /nested\s+quotes render farther inward/i);
-  assert.match(checklist, /Source, wide rows scroll horizontally inside the row/);
+  assert.match(checklist, /Source, a wide table uses the editor's single horizontal scrollbar/);
   assert.match(checklist, /CommonMark inline\/reference links and autolinks/);
+});
+
+test('Source editor appearance settings stay separate from Document Appearance', () => {
+  const main = projectFile('web/src/main.js');
+  const preferences = projectFile('app/src/main/res/xml/preferences.xml');
+  const sourceSettings = projectFile('app/src/main/res/xml/preferences_source_editor.xml');
+  const settingsActivity = projectFile('app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
+
+  assert.match(main, /const sourceHighlightStyle = HighlightStyle\.define/);
+  assert.match(
+    main,
+    /currentEditorMode === 'source' \? sourceHighlightStyle : customHighlightStyle/
+  );
+  assert.match(main, /setCssVar\(\s*'--source-editor-font-family'/);
+  assert.match(main, /setCssVar\(\s*'--source-editor-font-size'/);
+  assert.match(main, /pref_source_editor_text_color/);
+  assert.match(preferences, /pref_page_source_editor/);
+  assert.match(settingsActivity, /"pref_page_source_editor"[\s\S]*?SourceEditorSettingsFragment/);
+  assert.match(settingsActivity, /setPreferencesFromResource\(R\.xml\.preferences_source_editor/);
+  for (const token of [
+    'markup', 'heading', 'comment', 'string', 'number', 'keyword',
+    'property', 'type', 'variable', 'function', 'operator', 'link', 'code'
+  ]) {
+    assert.match(sourceSettings, new RegExp(`pref_source_editor_${token}_color`));
+  }
 });

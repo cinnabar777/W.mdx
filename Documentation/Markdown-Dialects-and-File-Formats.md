@@ -6,22 +6,25 @@ operations work. For syntax examples, see the [Wmdx Markdown Cheat Sheet](Markdo
 The [native syntax design](Wmdx-Syntax-Design.md) records Wmdx-specific decisions
 and remaining acceptance work.
 
-## One document, three editor views
+## One document, two editor surfaces
 
 Wmdx keeps one Markdown source and parses CommonMark core syntax, selected GFM
 extensions, selected Obsidian conventions, and Wmdx additions. These are syntax
 families in one editor, not separate document modes.
 
-| View | Behavior |
+| Editor surface | Behavior |
 | --- | --- |
-| Source | A raw text/code editor: all source characters remain visible and editable. Syntax highlighting may color Markdown or code tokens, but Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded in Source. |
-| Live Preview | Shares rendered block layout with WYSIWYG and reveals syntax contextually. Its syntax-exposure scope may be configurable; tables remain rendered and editable unless the user explicitly enters a source-editing action. |
-| WYSIWYG | Shows rendered structures with most syntax hidden; interactive features such as task checkboxes remain available. |
+| Rendered Markdown editor | One shared block/layout pipeline. A syntax-exposure setting controls whether syntax stays hidden, appears around the caret, or expands to the active line/block. The old WYSIWYG and Live Preview options should become presets for this setting, not separate renderers. |
+| Source/Code editor | Raw editable text with language-aware token coloring. All source characters remain visible; Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded. |
 
 Source-editor appearance and token colors are separate from rendered
-Document Appearance settings. Visible syntax in Live Preview can naturally
-change inline width and line wrapping. Hidden syntax does not reserve
-placeholder width.
+Document Appearance settings. In the interim, the app still exposes the
+legacy WYSIWYG, Live Preview, and Source values while the rendered-mode
+consolidation is implemented.
+
+Source pipe tables stay literal and editable. Their rows are unwrapped and move
+together through the CodeMirror editor's single horizontal scroller, keeping
+columns aligned without widening the app's document viewport.
 
 ## What the syntax toggles do
 

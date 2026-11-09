@@ -359,7 +359,7 @@ test('list continuation stays under its item text after a blank line is deleted'
   assert.doesNotMatch(html, /cm-source-list-(?:continuation|wrapped)/);
   assert.match(html, /--layout-visible-indent/);
   const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
-  assert.match(main, /markdownRenderPlan\(state\)\.lines\.values/);
+  assert.match(main, /for \(const line of renderPlan\.lines\.values\(\)\)/);
   const shared = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
   assert.match(shared, /entry\.kind = 'list-continuation'/);
 });

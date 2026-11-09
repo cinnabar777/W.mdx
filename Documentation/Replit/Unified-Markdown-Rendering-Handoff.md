@@ -32,6 +32,21 @@ Source uses ordinary editor line layout. Syntax highlighting changes token
 appearance only; it never removes or replaces source characters. All views edit
 the same underlying document text.
 
+## Rendered-mode simplification
+
+The product should have two editor surfaces, not three Markdown renderers:
+
+- **Rendered Markdown editor:** one block/layout pipeline with a configurable
+  syntax-exposure policy. The old WYSIWYG choice maps to syntax hidden; the old
+  Live Preview choice maps to syntax revealed around the caret. A future policy
+  may reveal a whole line or semantic block without changing the renderer.
+- **Source/Code editor:** literal text with language-aware token highlighting
+  and independent source-editor appearance settings.
+
+Keep the old mode preference values as compatibility aliases while migrating
+existing settings. Do not remove Live Preview behavior until its per-element
+differences have been represented and tested as syntax-exposure rules.
+
 ## Whole-document scope
 
 Apply the shared model to paragraphs, headings, blockquotes, lists, code blocks,
@@ -58,10 +73,8 @@ editable in both rendered views; Source edits the raw table syntax as text.
 
 ## Current code findings
 
-The earlier findings below were stale: the current Source path no longer returns
-early from `livePreviewPlugin`, and the old `.cm-source-list-wrapped` path is
-gone. The repository now has a shared semantic block model, but the complete
-whole-document renderer refactor is still unfinished:
+The repository has a shared semantic document model, but rendered modes still
+have separate policy branches and the full mode consolidation is unfinished:
 
 - `getMarkdownDocumentLayout()` is mode-agnostic and produces the shared line,
   list, quote, callout, code-block, and table model. It is cached by document,
@@ -69,33 +82,24 @@ whole-document renderer refactor is still unfinished:
 - `getMarkdownRenderPlan()` now wraps that shared model with mode-specific
   decisions: Source keeps table source lines, Live Preview and WYSIWYG render
   editable tables, and only WYSIWYG replaces fenced code blocks.
-- The persistent line layout, contextual renderer, table widget field, WYSIWYG
-  code-block field, and Live Preview embedded/code-span fields now consume the
-  same plan. Browser tests cover a single fixture across all modes, including
-  local horizontal scrolling for raw Source tables.
-- `semanticLayoutField` keeps that model current; `persistentLayoutField`
-  applies shared line classes, source-prefix ranges, and semantic layout
-  attributes in all three modes.
-- `livePreviewPlugin` no longer re-emits semantic paragraph/list/heading/
-  blockquote/callout/rule classes; those now come only from
-  `persistentLayoutField`. The plugin retains mode-specific syntax and
-  contextual inline decorations.
-- `livePreviewPlugin._buildDecorationsInternal()` runs in all modes and chooses
-  syntax visibility and contextual inline behavior based on the current mode.
-- `livePreviewPlugin` owns semantic inline-format marks in all three modes;
-  `heightMapField` remains responsible for WYSIWYG syntax hiding and special replacements.
-  The plugin also owns contextual syntax and many other inline widgets.
-  Rendering code is therefore still distributed across fields and plugins,
-  even though their block decisions now come from the shared plan.
+- `persistentLayoutField` applies the semantic block classes to rendered modes.
+  Source exits the shared decoration plugin before Markdown layout decorations
+  are created; its only structural line decorations are for source-table rows.
+- A Source table remains editable literal text and its rows stay unwrapped. One
+  horizontal scroller on the CodeMirror editor moves all rows together, keeping
+  columns aligned without widening the app's document viewport.
+- `livePreviewPlugin` owns much of the contextual syntax and inline behavior.
+  It exits early for Source. WYSIWYG-only code-block replacement and
+  Live-Preview-only contextual behavior are still mode branches that need to be
+  translated into explicit syntax-exposure policy.
+- Source currently has an independent token-highlight style and monospace
+  defaults. User-facing Source appearance controls and language selection for
+  non-Markdown files are not yet implemented; Markdown is still the installed
+  CodeMirror language package.
 
-The shared mode-aware block plan is in place, and the current modes pass browser
-geometry/regression checks. The product direction has since clarified that
-Source should become a raw editor rather than another styled Markdown layout.
-Do not preserve block-layout parity with Source as a goal. The remaining
-unification work is to consolidate rendered-view decisions and keep Source's
-language-aware token highlighting separate from document rendering. The current
-repository still applies Markdown semantic line classes in Source; treat that
-as implementation to simplify, not the target contract.
+The next architectural work is to map every remaining WYSIWYG/Live Preview
+branch to either shared rendering behavior or a syntax-exposure policy, then
+preserve the old mode settings as aliases. Keep Source separate.
 
 ## Implementation and verification requirements
 
@@ -103,11 +107,11 @@ as implementation to simplify, not the target contract.
    affecting document block layout before editing. Trace all list flavors and
    related callout/blockquote behavior; do not patch only a screenshot's list
    style. Keep Source's raw text contract distinct from rendered block styling.
-2. Keep extending the shared mode-aware render plan for Live Preview and
-   WYSIWYG, and reduce duplicate block-rendering decisions in the fields and
-   plugin. Keep their syntax visibility and interaction behavior mode-specific,
-   not block indentation, wrapping, or spacing. Keep Source layout and
-   highlighting independent from rendered block geometry.
+2. Consolidate WYSIWYG and Live Preview behind one rendered Markdown editor.
+   Express syntax visibility as policy (hidden, caret, line, or semantic block)
+   instead of a separate renderer. Verify each element's existing behavior
+   before removing an old mode branch. Keep Source layout and highlighting
+   independent from rendered block geometry.
 3. Add browser-level geometry checks using the same document in Live Preview
    and WYSIWYG. Compare marker, content, and wrapped-row positions for all list
    styles and nesting levels. Include syntax-visible/hidden states, cursor
@@ -115,10 +119,10 @@ as implementation to simplify, not the target contract.
    assert that Source preserves exact text and uses editor wrapping without
    semantic block layout.
 4. Verify paragraph, heading, quote, code-block, and table rendering alongside
-   lists. For tables, assert that WYSIWYG and Live Preview contain an editable
-   rendered table while Source contains editable raw Markdown table syntax.
-   Verify Source token highlighting separately from rendered Document
-   Appearance styling.
+   lists. In Source, assert exact text fidelity, independent token styling, and
+   whole-table horizontal scrolling through the shared editor scroller, without
+   page overflow.
+   Add explicit language detection and manual override tests for text/code files.
 5. Run the full test suite and build. Do not declare completion based only on
    CSS-variable assertions. Confirm phone-sized layout and editing behavior
    with a device or browser rendering check when available. Browser checks do

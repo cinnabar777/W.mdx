@@ -361,10 +361,10 @@ test('callout title layout and editing behavior match each view', () => {
   assert.ok(!mainSource.includes('isTitleActive'), 'Moving the cursor into the title does not reveal syntax');
   assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG replaces the marker while leaving the title editable');
   assert.ok(
-    mainSource.includes('const isSourceMode = renderPlan.raw;') &&
-      mainSource.includes('if (!isSourceMode && to > from)') &&
-      mainSource.includes('for (const line of markdownRenderPlan(state).lines.values())'),
-    'Source keeps syntax visible while the shared mode-aware block plan stays active'
+    mainSource.includes('if (renderPlan.raw) {') &&
+      mainSource.includes('Source is a language-highlighted text editor') &&
+      mainSource.includes('return Decoration.none;'),
+    'Source keeps literal text and skips Markdown render decorations'
   );
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important[^}]*align-self:\s*center\s*!important/s);
@@ -374,7 +374,7 @@ test('callout title layout and editing behavior match each view', () => {
   assert.match(indexHtml, /#editor-container\.source-mode \.cm-content \.cm-line\.cm-callout\s*\{[^}]*background:\s*transparent\s*!important[^}]*padding:\s*0\s*!important/s,
     'Source callouts must show Markdown syntax without rendered block styling');
   assert.match(mainSource, /if \(!isSourceMode &&\s+info\.foldMarker === '-'/,
-    'Source must not hide the body of a callout that is folded in rendered modes');
+    'Rendered modes may fold callouts without changing the raw Source document');
   assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-list-item\[data-callout-depth\]/, 'Nested callout list items retain list indentation');

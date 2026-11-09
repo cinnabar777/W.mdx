@@ -52,18 +52,27 @@ async function placeCursorInListText(page, index, options = {}) {
   else await page.mouse.click(point.x, point.y);
 }
 
-async function placeCursorInListMarker(page, index) {
-  const item = page.locator('.cm-list-item').nth(index);
-  await item.scrollIntoViewIfNeeded();
-  const point = await item.evaluate(element => {
-    const marker = element.querySelector('.cm-list-bullet, .cm-list-number');
-    if (!marker) return null;
-    const rect = marker.getBoundingClientRect();
-    return rect.width && rect.height
-      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-      : null;
-  });
-  assert.ok(point, `list item ${index} should expose a marker position`);
+async function placeCursorInRawLineText(page, lineIndex, textOffset = 0) {
+  const line = page.locator('.cm-line').nth(lineIndex);
+  await line.scrollIntoViewIfNeeded();
+  const point = await line.evaluate((element, offset) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (offset < node.length) {
+        const range = document.createRange();
+        range.setStart(node, offset);
+        range.setEnd(node, Math.min(node.length, offset + 1));
+        const rect = range.getBoundingClientRect();
+        return rect.width && rect.height
+          ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+          : null;
+      }
+      offset -= node.length;
+    }
+    return null;
+  }, textOffset);
+  assert.ok(point, `raw source line ${lineIndex} should expose a text position`);
   await page.mouse.click(point.x, point.y);
 }
 
@@ -120,7 +129,7 @@ async function main() {
 
     const cheatSheet = await fs.readFile(cheatSheetFixture, 'utf8');
     await page.setViewportSize({ width: 390, height: 844 });
-    for (const mode of modes) {
+    for (const mode of ['live_preview', 'wysiwyg', 'source']) {
       await page.evaluate(async ({ mode, markdown }) => {
         await window.editorBridge.setEditorMode(mode);
         window.editorBridge.setMarkdown(markdown);
@@ -272,6 +281,14 @@ async function main() {
         };
       });
       assert.equal(inline.markdown, 'Water is H~2~O; x^2^; ~~removed~~.', `source changed: ${mode}`);
+      if (mode === 'source') {
+        assert.match(inline.text, /H~2~O/);
+        assert.match(inline.text, /x\^2\^/);
+        assert.equal(inline.subscriptCount, 0, 'Source does not apply rendered subscript styling');
+        assert.equal(inline.hasStrikethrough, false, 'Source does not apply rendered strikethrough styling');
+        cases++;
+        continue;
+      }
       assert.ok(inline.subscriptText, `subscript styling missing: ${mode}`);
       assert.equal(inline.subscriptCount, 1, `subscript renderer duplicated its mark: ${mode}`);
       assert.ok(inline.superscriptText, `superscript styling missing: ${mode}`);
@@ -284,15 +301,10 @@ async function main() {
         `superscript size missing: ${mode}`
       );
       assert.ok(inline.hasStrikethrough, `double-tilde strikethrough missing: ${mode}`);
-      if (mode === 'source') {
-        assert.match(inline.text, /H~2~O/);
-        assert.match(inline.text, /x\^2\^/);
-      } else {
-        assert.match(inline.text, /H2O/);
-        assert.match(inline.text, /x2/);
-        assert.doesNotMatch(inline.text, /H~2~O/);
-        assert.doesNotMatch(inline.text, /x\^2\^/);
-      }
+      assert.match(inline.text, /H2O/);
+      assert.match(inline.text, /x2/);
+      assert.doesNotMatch(inline.text, /H~2~O/);
+      assert.doesNotMatch(inline.text, /x\^2\^/);
       cases++;
     }
 
@@ -302,7 +314,7 @@ async function main() {
         for (const hanging of [true, false]) {
           for (const marker of markers) {
             let firstModeGeometry;
-            for (const mode of modes) {
+            for (const mode of ['wysiwyg', 'live_preview']) {
               const markdown = `${marker} ${text}\n\nTail`;
               await page.evaluate(async ({ mode, markdown, hanging, font }) => {
                 await window.editorBridge.setEditorMode(mode);
@@ -384,7 +396,7 @@ async function main() {
       const continuationIndent = indent + (native ? ' ' : '  ');
       const nested = `${marker} Parent\n${indent}${marker} Child ${text}\n\n${continuationIndent}continued text\n\nTail`;
       let nesting;
-      for (const mode of modes) {
+      for (const mode of ['wysiwyg', 'live_preview']) {
         await page.evaluate(async ({ mode, nested }) => {
           await window.editorBridge.setEditorMode(mode);
           window.editorBridge.applyAllPreferences(JSON.stringify({ pref_list_non_hanging: false }));
@@ -513,7 +525,7 @@ async function main() {
     cases++;
     }
 
-    for (const mode of ['wysiwyg', 'live_preview', 'source']) {
+    for (const mode of ['wysiwyg', 'live_preview']) {
       await page.evaluate(async mode => {
         await window.editorBridge.setEditorMode(mode);
         window.editorBridge.applyAllPreferences(JSON.stringify({
@@ -601,7 +613,7 @@ async function main() {
       assert.equal(inactive.markerIsRendered, true, 'ordered list marker should start rendered');
       await page.evaluate(() => window.editorBridge.setEditorMode('source'));
       await page.waitForTimeout(100);
-      await placeCursorInListMarker(page, 9);
+      await placeCursorInRawLineText(page, 9, 0);
       await page.evaluate(() => window.editorBridge.setEditorMode('live_preview'));
       await page.waitForTimeout(80);
       const active = await readTenthItem();
@@ -634,7 +646,7 @@ async function main() {
       '',
       'Tail'
     ].join('\n');
-    for (const mode of modes) {
+    for (const mode of ['wysiwyg', 'live_preview']) {
       await page.evaluate(async ({ mode, markdown }) => {
         await window.editorBridge.setEditorMode(mode);
         window.editorBridge.applyAllPreferences(JSON.stringify({ pref_list_non_hanging: false }));
@@ -780,31 +792,53 @@ async function main() {
         window.editorBridge.setMarkdown(markdown);
       }, { mode, markdown: wideSourceTable });
       await page.waitForTimeout(100);
-      const tableLayout = await page.evaluate(() => {
+      const tableLayout = await page.evaluate(async () => {
         const scroller = document.querySelector('.cm-scroller');
-        const line = document.querySelector('.cm-table-source-line');
+        const rows = [...document.querySelectorAll('.cm-table-source-line')];
         if (!scroller) return null;
-        if (!line) return { renderedTables: document.querySelectorAll('.cm-wp-table-container').length };
-        const style = getComputedStyle(line);
-        line.scrollLeft = line.scrollWidth;
+        if (!rows.length) return {
+          renderedTables: document.querySelectorAll('.cm-wp-table-container').length
+        };
+        const first = rows[0];
+        const style = getComputedStyle(first);
+        const beforeLefts = rows.map(row => row.getBoundingClientRect().left);
+        scroller.scrollLeft = Math.min(180, scroller.scrollWidth - scroller.clientWidth);
+        await new Promise(resolve => requestAnimationFrame(() =>
+          requestAnimationFrame(resolve)
+        ));
+        const afterLefts = rows.map(row => row.getBoundingClientRect().left);
+        const shifts = afterLefts.map((left, index) => left - beforeLefts[index]);
         return {
           whiteSpace: style.whiteSpace,
           renderedTables: document.querySelectorAll('.cm-wp-table-container').length,
           editorHorizontalOverflow: scroller.scrollWidth > scroller.clientWidth + 1,
-          rowHorizontalOverflow: line.scrollWidth > line.clientWidth + 1,
-          rowScrollWorks: line.scrollLeft > 0,
-          rowWidth: line.clientWidth,
+          documentHorizontalOverflow:
+            document.documentElement.scrollWidth > window.innerWidth + 1,
+          rowHorizontalOverflow: first.getBoundingClientRect().width > scroller.clientWidth + 1,
+          rowScrollWorks: scroller.scrollLeft > 0,
+          rowsMoveTogether: shifts.every(shift => Math.abs(shift - shifts[0]) < 1),
+          rowOverflowX: [...new Set(rows.map(row => getComputedStyle(row).overflowX))],
+          contentWidth: document.querySelector('.cm-content').getBoundingClientRect().width,
+          rowWidths: rows.map(row => row.clientWidth),
           viewportWidth: scroller.clientWidth
         };
       });
       if (mode === 'source') {
         assert.equal(tableLayout.whiteSpace, 'pre', 'Source table rows should not wrap');
-        assert.ok(tableLayout.rowHorizontalOverflow, 'Source table row should overflow locally');
-        assert.ok(tableLayout.rowScrollWorks, 'Source table row should scroll horizontally');
-        assert.ok(!tableLayout.editorHorizontalOverflow,
-          `Source table must not widen the document: ${JSON.stringify(tableLayout)}`);
-        assert.ok(tableLayout.rowWidth <= tableLayout.viewportWidth + 1,
-          `Source table scroller should stay within the editor: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.rowHorizontalOverflow,
+          `Source table rows should extend past the editor viewport: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.rowScrollWorks,
+          `Source editor should scroll horizontally: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.rowsMoveTogether,
+          `Every table row must move together: ${JSON.stringify(tableLayout)}`);
+        assert.deepEqual(tableLayout.rowOverflowX, ['visible'],
+          `Rows must not have independent scrollbars: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.editorHorizontalOverflow,
+          `The source editor should own the table's horizontal scroll: ${JSON.stringify(tableLayout)}`);
+        assert.ok(!tableLayout.documentHorizontalOverflow,
+          `Source table must not widen the document viewport: ${JSON.stringify(tableLayout)}`);
+        assert.ok(tableLayout.contentWidth <= tableLayout.viewportWidth + 1,
+          `Source content should stay within the editor viewport: ${JSON.stringify(tableLayout)}`);
         assert.equal(tableLayout.renderedTables, 0, 'Source should retain raw table syntax');
       } else {
         assert.ok(tableLayout.renderedTables >= 1, `${mode}: table should remain rendered and editable`);
@@ -827,8 +861,11 @@ async function main() {
         await new Promise(resolve => setTimeout(resolve, 80));
         const content = document.querySelector('.cm-content');
         const tableRows = [...document.querySelectorAll('.cm-table-source-line')];
-        const overflowingRows = [...document.querySelectorAll('.cm-line')]
-          .filter(line => line.getBoundingClientRect().width > scroller.clientWidth + 1)
+        const nonTableOverflowingRows = [...document.querySelectorAll('.cm-line')]
+          .filter(line =>
+            !line.classList.contains('cm-table-source-line') &&
+            line.getBoundingClientRect().width > scroller.clientWidth + 1
+          )
           .slice(0, 8)
           .map(line => ({
             className: line.className,
@@ -839,10 +876,11 @@ async function main() {
           position,
           scrollerWidth: scroller.clientWidth,
           scrollerScrollWidth: scroller.scrollWidth,
+          documentWidth: document.documentElement.scrollWidth,
           contentWidth: Math.round(content.getBoundingClientRect().width),
           contentScrollWidth: content.scrollWidth,
           tableRowCount: tableRows.length,
-          overflowingRows
+          nonTableOverflowingRows
         });
       }
       return layouts;
@@ -850,11 +888,11 @@ async function main() {
     assert.ok(fullFixtureSourceLayouts.some(layout => layout.tableRowCount >= 3),
       `Phone fixture should expose raw source table rows: ${JSON.stringify(fullFixtureSourceLayouts)}`);
     assert.ok(fullFixtureSourceLayouts.every(layout =>
-      layout.scrollerScrollWidth <= layout.scrollerWidth + 1 &&
+      layout.scrollerScrollWidth >= layout.scrollerWidth - 1 &&
+      layout.documentWidth <= 390 + 1 &&
       layout.contentWidth <= layout.scrollerWidth + 1 &&
-      layout.contentScrollWidth <= layout.scrollerWidth + 1 &&
-      layout.overflowingRows.length === 0
-    ), `Full phone fixture must not widen the Source editor: ${JSON.stringify(fullFixtureSourceLayouts)}`);
+      layout.nonTableOverflowingRows.length === 0
+    ), `Source tables must scroll inside the editor without widening the app viewport: ${JSON.stringify(fullFixtureSourceLayouts)}`);
     cases++;
 
     const repeatedWmdxList = 'A. First item\nA. Second item\n\nTail';
@@ -945,95 +983,34 @@ async function main() {
       window.editorBridge.setMarkdown(markdown);
     }, calloutFixture);
     await page.waitForTimeout(120);
-    const sourceCallout = await page.evaluate(() => {
-      const lines = [...document.querySelectorAll('.cm-line.cm-callout')];
-      const title = lines.find(line => line.classList.contains('cm-callout-title'));
-      const nestedTitle = lines.find(line =>
-        line.classList.contains('cm-callout-title') &&
-        line.textContent.includes('[!tip]')
-      );
-      let markerNode = null;
-      if (title) {
-        const walker = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
-        let node;
-        while ((node = walker.nextNode())) {
-          if (node.textContent.includes('>')) {
-            markerNode = node;
-            break;
-          }
-        }
-      }
-      let markerX = null;
-      if (markerNode) {
-        const offset = markerNode.textContent.indexOf('>');
-        const range = document.createRange();
-        range.setStart(markerNode, offset);
-        range.setEnd(markerNode, offset + 1);
-        markerX = range.getBoundingClientRect().left;
-      }
-      let nestedMarkerX = null;
-      if (nestedTitle) {
-        const walker = document.createTreeWalker(nestedTitle, NodeFilter.SHOW_TEXT);
-        let node;
-        while ((node = walker.nextNode())) {
-          const offset = node.textContent.indexOf('>');
-          if (offset < 0) continue;
-          const range = document.createRange();
-          range.setStart(node, offset);
-          range.setEnd(node, offset + 1);
-          nestedMarkerX = range.getBoundingClientRect().left;
-          break;
-        }
-      }
-      return {
-        text: window.editorBridge.getMarkdown(),
-        sourceModeClass: document.querySelector('#editor-container')
-          ?.classList.contains('source-mode'),
-        titleWidgets: document.querySelectorAll('.cm-callout-title-container').length,
-        calloutIcons: document.querySelectorAll('.cm-callout-icon').length,
-        renderedTitleRows: document.querySelectorAll('.cm-callout-title-rendered').length,
-        calloutRows: lines.length,
-        titleText: title?.textContent ?? '',
-        markerX,
-        lineX: title?.getBoundingClientRect().left ?? null,
-        titleStyle: title ? {
-          background: getComputedStyle(title).backgroundColor,
-          borderLeftWidth: getComputedStyle(title).borderLeftWidth,
-          paddingLeft: getComputedStyle(title).paddingLeft,
-          fontWeight: getComputedStyle(title).fontWeight
-        } : null,
-        nestedTitleText: nestedTitle?.textContent ?? '',
-        nestedMarkerX,
-        nestedLineX: nestedTitle?.getBoundingClientRect().left ?? null,
-        collapsedBodyVisible: lines.some(line =>
-          line.textContent.includes('Its collapsed body must remain visible in Source.')
-        )
-      };
-    });
+    const sourceCallout = await page.evaluate(() => ({
+      text: window.editorBridge.getMarkdown(),
+      sourceText: [...document.querySelectorAll('.cm-line')]
+        .map(line => line.textContent)
+        .join('\n'),
+      sourceModeClass: document.querySelector('#editor-container')
+        ?.classList.contains('source-mode'),
+      renderedMarkdownLines: document.querySelectorAll(
+        '.cm-callout, .cm-blockquote, .cm-list-item, .cm-heading'
+      ).length,
+      titleWidgets: document.querySelectorAll('.cm-callout-title-container').length,
+      calloutIcons: document.querySelectorAll('.cm-callout-icon').length,
+      foldedPlaceholders: document.querySelectorAll('.cm-foldPlaceholder').length,
+      collapsedBodyVisible: [...document.querySelectorAll('.cm-line')].some(line =>
+        line.textContent.includes('Its collapsed body must remain visible in Source.')
+      )
+    }));
     assert.equal(sourceCallout.text, calloutFixture, 'Source must preserve the exact callout Markdown');
-    assert.equal(sourceCallout.sourceModeClass, true, 'Source mode must activate raw callout styling');
+    assert.equal(sourceCallout.sourceText, calloutFixture,
+      'Source editor lines must show the unmodified callout text');
+    assert.equal(sourceCallout.sourceModeClass, true, 'Source editor mode must be active');
+    assert.equal(sourceCallout.renderedMarkdownLines, 0,
+      'Source must not apply Markdown block layout');
     assert.equal(sourceCallout.titleWidgets, 0, 'Source must not replace the callout title with a widget');
     assert.equal(sourceCallout.calloutIcons, 0, 'Source must not overlay a callout icon');
-    assert.equal(sourceCallout.renderedTitleRows, 0, 'Source must not claim a rendered callout title row');
-    assert.ok(sourceCallout.calloutRows >= 5, 'Source should retain callout line semantics for layout');
-    assert.match(sourceCallout.titleText, /^>\s*\[!info\]\s+Information callout/,
-      'Source callout title syntax must stay on its original top row');
-    assert.ok(Number.isFinite(sourceCallout.markerX) &&
-      Math.abs(sourceCallout.markerX - sourceCallout.lineX) < 2,
-    `Source quote marker should stay at the unstyled line edge: ${JSON.stringify(sourceCallout)}`);
-    assert.equal(sourceCallout.titleStyle.background, 'rgba(0, 0, 0, 0)',
-      'Source callout titles must not show a rendered block background');
-    assert.equal(sourceCallout.titleStyle.borderLeftWidth, '0px',
-      'Source callout titles must not paint over the visible quote marker');
-    assert.equal(sourceCallout.titleStyle.paddingLeft, '0px',
-      'Source callout titles must not shift the raw quote syntax');
+    assert.equal(sourceCallout.foldedPlaceholders, 0, 'Source must not fold callout text');
     assert.equal(sourceCallout.collapsedBodyVisible, true,
       'Source must expose the body of callouts collapsed in rendered modes');
-    assert.match(sourceCallout.nestedTitleText, /^>\s*>\s*\[!tip\]/,
-      'Nested callout quote markers must remain literal and ordered');
-    assert.ok(Number.isFinite(sourceCallout.nestedMarkerX) &&
-      Math.abs(sourceCallout.nestedMarkerX - sourceCallout.nestedLineX) < 2,
-    `Nested source callouts should begin at the raw line edge: ${JSON.stringify(sourceCallout)}`);
 
     for (const mode of ['live_preview', 'wysiwyg']) {
       await page.evaluate(async ({ mode, markdown }) => {
@@ -1076,7 +1053,7 @@ async function main() {
     }
 
     const mixed = '# Heading\n\nParagraph.\n\n> Quote text that should retain the same border and typography.\n\n```js\n- not a list\n```\n\n    literal code\n\n| Head | Other |\n| --- | --- |\n| Cell | Value |\n\nTail';
-    for (const mode of modes) {
+    for (const mode of ['source', 'live_preview', 'wysiwyg']) {
       await page.evaluate(async ({ mode, mixed }) => {
         await window.editorBridge.setEditorMode(mode);
         window.editorBridge.setMarkdown(mixed);
@@ -1090,11 +1067,18 @@ async function main() {
         tables: document.querySelectorAll('.cm-wp-table-container').length,
         markdown: window.editorBridge.getMarkdown()
       }));
-      assert.ok(blocks.code >= 4, `${mode}: code styling missing`);
-      assert.equal(blocks.codeLists, 0);
-      assert.equal(blocks.headings, 1);
-      assert.ok(blocks.quote >= 1);
-      assert.equal(blocks.tables, mode === 'source' ? 0 : 1);
+      if (mode === 'source') {
+        assert.equal(blocks.code, 0, 'Source should not apply Markdown code-block layout');
+        assert.equal(blocks.headings, 0, 'Source should not apply rendered heading layout');
+        assert.equal(blocks.quote, 0, 'Source should not apply rendered blockquote layout');
+        assert.equal(blocks.tables, 0, 'Source should keep tables as raw source text');
+      } else {
+        assert.ok(blocks.code >= 4, `${mode}: code styling missing`);
+        assert.equal(blocks.codeLists, 0);
+        assert.equal(blocks.headings, 1);
+        assert.ok(blocks.quote >= 1);
+        assert.equal(blocks.tables, 1);
+      }
       assert.equal(blocks.markdown, mixed);
     }
 
@@ -1127,9 +1111,9 @@ async function main() {
       syntaxVisible: document.querySelector('.cm-content')?.textContent.includes('==₀highlight') &&
         document.querySelector('.cm-content')?.textContent.includes('=₀pen')
     }));
-    assert.equal(sourceColors.highlights, 4, 'Source should style all highlights');
-    assert.equal(sourceColors.pens, 4, 'Source should style all pen colors');
-    assert.ok(sourceColors.underlines >= 1, 'Source should style W.mdx underline');
+    assert.equal(sourceColors.highlights, 0, 'Source should not apply rendered highlight styling');
+    assert.equal(sourceColors.pens, 0, 'Source should not apply rendered pen styling');
+    assert.equal(sourceColors.underlines, 0, 'Source should not apply rendered underline styling');
     assert.equal(sourceColors.syntaxVisible, true, 'Source should keep W.mdx delimiters visible');
 
     const scrollFixture = Array.from({ length: 140 }, (_, index) =>

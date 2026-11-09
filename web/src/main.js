@@ -2227,6 +2227,32 @@ const customHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: '#ff4081', fontWeight: 'bold' }
 ]);
 
+const sourceHighlightStyle = HighlightStyle.define([
+  { tag: tags.heading1, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading2, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading3, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading4, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading5, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading6, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.meta, color: 'var(--source-markup-color, #89ddff)' },
+  { tag: tags.comment, color: 'var(--source-comment-color, #808080)' },
+  { tag: tags.string, color: 'var(--source-string-color, #c3e88d)' },
+  { tag: tags.number, color: 'var(--source-number-color, #f78c6c)' },
+  { tag: tags.keyword, color: 'var(--source-keyword-color, #c792ea)' },
+  { tag: tags.propertyName, color: 'var(--source-property-color, #ffcb6b)' },
+  { tag: tags.typeName, color: 'var(--source-type-color, #f07178)' },
+  { tag: tags.variableName, color: 'var(--source-variable-color, #eeffff)' },
+  { tag: tags.function, color: 'var(--source-function-color, #82aaff)' },
+  { tag: tags.operator, color: 'var(--source-operator-color, #89ddff)' },
+  { tag: tags.punctuation, color: 'var(--source-punctuation-color, #89ddff)' },
+  { tag: tags.link, color: 'var(--source-link-color, #89ddff)' },
+  { tag: tags.url, color: 'var(--source-link-color, #89ddff)' },
+  { tag: tags.monospace, color: 'var(--source-code-color, #c3e88d)' },
+  { tag: tags.strong, color: 'inherit' },
+  { tag: tags.emphasis, color: 'inherit' },
+  { tag: tags.strikethrough, color: 'inherit' }
+]);
+
 export { EditorState } from '@codemirror/state';
 export { EditorView } from '@codemirror/view';
 export { cursorLineDown, cursorLineUp } from '@codemirror/commands';
@@ -2681,7 +2707,9 @@ class EmbeddedDocumentWidget extends WidgetType {
           transformMarkdownPaste,
           isBlockquoteSyntaxEnabledNow
         ),
-        syntaxHighlighting(customHighlightStyle),
+        syntaxHighlighting(
+          currentEditorMode === 'source' ? sourceHighlightStyle : customHighlightStyle
+        ),
         ...(fullInlineEditing
           ? [
               history(),
@@ -3067,6 +3095,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const builder = [];
     const hiddenSyntaxRanges = [];
     const renderPlan = markdownRenderPlan(view.state);
+    if (renderPlan.raw) {
+      // Source is a language-highlighted text editor. Keep its characters and
+      // token colors, but do not layer Markdown render decorations over them.
+      return Decoration.none;
+    }
     const isSourceMode = renderPlan.raw;
     const hideSyntax = (from, to) => {
       if (!isSourceMode && to > from) {
@@ -5300,7 +5333,24 @@ class LayoutAnchorWidget extends WidgetType {
 
 export function buildPersistentLayoutDecorations(state) {
   const ranges = [];
-  for (const line of markdownRenderPlan(state).lines.values()) {
+  const renderPlan = markdownRenderPlan(state);
+  if (renderPlan.raw) {
+    // Raw Source has no Markdown block layout. Keep pipe-table rows unwrapped;
+    // their shared editor scroller moves every row together.
+    for (const table of renderPlan.sourceTables) {
+      for (let number = table.first; number <= table.last; number++) {
+        const line = state.doc.line(number);
+        ranges.push(
+          Decoration.line({
+            attributes: { class: 'cm-table-source-line' }
+          }).range(line.from)
+        );
+      }
+    }
+    return ranges.length ? Decoration.set(ranges, true) : Decoration.none;
+  }
+
+  for (const line of renderPlan.lines.values()) {
     if (!line.classes.size) continue;
     ranges.push(
       Decoration.line({
@@ -5964,7 +6014,9 @@ class CodeMirrorAdapter {
           transformMarkdownPaste,
           isBlockquoteSyntaxEnabledNow
         ),
-        syntaxHighlighting(customHighlightStyle),
+        syntaxHighlighting(
+          currentEditorMode === 'source' ? sourceHighlightStyle : customHighlightStyle
+        ),
         semanticLayoutField,
         livePreviewPlugin,
         listMarkerMeasurementPlugin,
@@ -12100,6 +12152,29 @@ window.editorBridge = {
     setCssVar('--selection-highlight-text', androidArgbToCss(prefs.pref_selection_highlight_text_color));
 
     // Body & Paragraph
+    setCssVar(
+      '--source-editor-font-family',
+      toCssFontFamily(prefs.pref_source_editor_font_family)
+    );
+    setCssVar(
+      '--source-editor-font-size',
+      prefs.pref_source_editor_font_size ?? 14,
+      'px'
+    );
+    setCssVar(
+      '--source-editor-text-color',
+      androidArgbToCss(prefs.pref_source_editor_text_color)
+    );
+    for (const token of [
+      'markup', 'heading', 'comment', 'string', 'number', 'keyword',
+      'property', 'type', 'variable', 'function', 'operator', 'link', 'code'
+    ]) {
+      setCssVar(
+        `--source-${token}-color`,
+        androidArgbToCss(prefs[`pref_source_editor_${token}_color`])
+      );
+    }
+
     const paragraphAlignment = prefs.pref_justify_paragraph === true
       ? 'justify'
       : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify || 'left');
