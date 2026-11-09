@@ -74,7 +74,13 @@ unsupported structures produce warnings or are not retained.
 
 Conversion is deliberately explicit and conservative:
 
-- ATX and Setext headings become Wmdx decimal headings.
+- Parser-recognized ATX headings and simple top-level Setext headings become
+  Wmdx decimal headings. Setext headings inside lists or blockquotes, and
+  headings with explicit hard breaks, retain their Markdown spelling so their
+  enclosing structure and line-break semantics are not changed.
+- Markdown emphasis written with underscores becomes asterisk emphasis on
+  import, avoiding a collision with Wmdx underscore-underlining. Underscore
+  thematic breaks normalize to `---`.
 - Simple Markdown links become Wmdx resource links. Link tooltip titles and
   formatted link labels stay in Markdown syntax rather than losing their detail.
 - GFM alerts and Obsidian callouts become Wmdx callouts. Obsidian folding markers
@@ -96,9 +102,17 @@ Conversion is deliberately explicit and conservative:
 - Obsidian heading/block transclusion, plugin syntax, YAML properties, math,
   Mermaid, semantic tags, and full vault resolution are not supported.
 
-The conversion and linter tests cover the mappings named above; they do **not**
-certify complete CommonMark, GFM, Obsidian, or HTML conformance. The linter is a
-small structural checker for common errors such as unclosed code fences,
-unresolved references/footnotes, malformed Wmdx resource fields, table row
-widths, empty callouts, active HTML, and Obsidian transclusion. A clean lint
-result is not a proof that a document is valid in every target renderer.
+The pinned CommonMark 0.31.2 corpus contains 652 examples; parser-family checks
+and import/export round-trip checks cover 575 non-HTML examples. The GFM 0.29
+extension fixture checks 21 non-HTML examples through import and export. These
+tests check semantic parser families, not every tree detail or rendered result.
+Raw HTML cases are excluded by the no-active-HTML policy, and the Obsidian tests
+are curated feature tests rather than an official versioned conformance suite.
+The conversion and linter tests therefore do **not** certify complete
+CommonMark, GFM, Obsidian, or HTML conformance.
+
+The linter is a small structural checker for common errors such as unclosed
+code fences, unresolved references/footnotes, malformed Wmdx resource fields,
+table row widths, empty callouts, active HTML, and Obsidian transclusion. A
+clean lint result is not proof that a document is valid in every target
+renderer.

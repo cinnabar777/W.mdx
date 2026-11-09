@@ -114,6 +114,82 @@ test('CommonMark 0.31.2 fixtures expose expected core parser node families', () 
   );
 });
 
+test('CommonMark import and export preserve parser families across all non-HTML fixtures', async () => {
+  const { convertFromMarkdown, exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const [
+    { EditorState: ImportedEditorState },
+    { markdown: importedMarkdown },
+    { syntaxTree: importedSyntaxTree },
+    { GFM, Strikethrough, Table, TaskList }
+  ] = await Promise.all([
+    import('@codemirror/state'),
+    import('@codemirror/lang-markdown'),
+    import('@codemirror/language'),
+    import('@lezer/markdown')
+  ]);
+  const { wmdxCommonMarkCompatibility: importedCompatibility } =
+    await import('../src/commonmark-compat.mjs');
+  const importedParser = importedMarkdown({
+    extensions: [
+      GFM,
+      Table,
+      Strikethrough,
+      TaskList,
+      importedCompatibility
+    ]
+  });
+  const importNodeFamilies = {
+    ...htmlTagNodes,
+    a: [...htmlTagNodes.a, 'WmdxResource'],
+    img: [...htmlTagNodes.img, 'WmdxResource']
+  };
+  const getImportedNodeNames = source => {
+    const state = ImportedEditorState.create({
+      doc: source,
+      extensions: [importedParser]
+    });
+    const names = new Set();
+    importedSyntaxTree(state).iterate({
+      enter(node) {
+        names.add(node.name);
+      }
+    });
+    return names;
+  };
+  const failures = [];
+
+  for (const example of activeCases) {
+    const imported = convertFromMarkdown(example.markdown, 'commonmark');
+    const expectedTags = [...new Set(getExpectedTags(example.html))];
+    const exported = exportMarkdown(imported.markdown, 'commonmark');
+
+    for (const [stage, markdownText] of [
+      ['import', imported.markdown],
+      ['import/export roundtrip', exported.markdown]
+    ]) {
+      const nodeNames = getImportedNodeNames(markdownText);
+      const missing = expectedTags.filter(tag =>
+        !importNodeFamilies[tag].some(nodeName => nodeNames.has(nodeName))
+      );
+      if (missing.length) {
+        failures.push({
+          example: example.example,
+          section: example.section,
+          stage,
+          missing,
+          markdown: markdownText.slice(0, 160)
+        });
+      }
+    }
+  }
+
+  assert.deepEqual(
+    failures,
+    [],
+    'CommonMark import and export preserve the expected semantic node families'
+  );
+});
+
 test('CommonMark tab-separated headings and undefined-reference emphasis parse correctly', () => {
   const tabHeading = parsedCases.find(example => example.example === 10);
   const unresolvedReference = parsedCases.find(example => example.example === 523);
@@ -166,6 +242,31 @@ test('native decimal heading markers parse as the six structural heading levels'
   ]);
   assert.deepEqual(markers, ['.1 ', '.2 ', '.3 ', '.4 ', '.5 ', '.6 ']);
   assert.equal(state.doc.toString(), source, 'parsing leaves the saved source unchanged');
+});
+
+test('native decimal headings interrupt paragraphs and work inside indented quotes', () => {
+  const source = [
+    'Paragraph before.',
+    '.1 Heading within the flow',
+    'Paragraph after.',
+    '',
+    '   > .2 Quoted heading',
+    '   > Quoted body.'
+  ].join('\n');
+  const state = EditorState.create({
+    doc: source,
+    extensions: [wmdxMarkdown]
+  });
+  const headings = [];
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (/^ATXHeading[1-6]$/.test(node.name)) headings.push(node.name);
+    }
+  });
+
+  assert.deepEqual(headings, ['ATXHeading1', 'ATXHeading2']);
+  assert.ok(syntaxTree(state).toString().includes('Blockquote'));
+  assert.equal(state.doc.toString(), source);
 });
 
 test('native task markers parse as checkbox markers, not shortcut links', () => {
@@ -244,7 +345,7 @@ test('representative CommonMark HTML examples convert through the explicit HTML 
   assert.doesNotMatch(comment.markdown, /Foo|bar|baz/);
 });
 
-test('CommonMark fixtures check parser semantics, not full WYSIWYG rendering or export', () => {
+test('CommonMark corpus coverage does not claim exact rendering or full conformance', () => {
   assert.ok(parserComparableCases.length < commonmarkCases.length);
   assert.ok(htmlInteropCases.length > 0);
   assert.ok(

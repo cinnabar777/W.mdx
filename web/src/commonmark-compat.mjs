@@ -186,12 +186,15 @@ function tabSeparatedAtxHeading(cx, line) {
   return true;
 }
 
-function wmdxDecimalHeading(cx, line) {
-  if (line.indent > 3) return false;
+function isWmdxDecimalHeading(line) {
+  if (line.indent - line.baseIndent > 3) return false;
+  return /^\.([1-6])(?=[ \t])/.test(line.text.slice(line.pos));
+}
 
+function wmdxDecimalHeading(cx, line) {
+  if (!isWmdxDecimalHeading(line)) return false;
   const offset = line.pos;
   const marker = /^\.([1-6])(?=[ \t])/.exec(line.text.slice(offset));
-  if (!marker) return false;
 
   let contentStart = offset + marker[0].length;
   while (line.text[contentStart] === ' ' || line.text[contentStart] === '\t') {
@@ -350,6 +353,7 @@ export const wmdxCommonMarkCompatibility = {
   parseBlock: [{
     name: 'WmdxDecimalHeading',
     before: 'ATXHeading',
+    endLeaf: (_cx, line) => isWmdxDecimalHeading(line),
     parse: wmdxDecimalHeading
   }, {
     name: 'WmdxTabSeparatedATXHeading',

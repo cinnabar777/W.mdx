@@ -26,6 +26,60 @@ test('CommonMark import converts headings and ordinary links without touching co
   assert.deepEqual(result.warnings, []);
 });
 
+test('CommonMark import converts parsed headings without consuming nearby rules or blocks', async () => {
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = [
+    'Paragraph before.',
+    '# Heading within the flow',
+    'Paragraph after.',
+    '',
+    '> Quoted paragraph.',
+    '---',
+    '',
+    '- List item.',
+    '---',
+    '',
+    '---',
+    '---',
+    '',
+    '    Indented code.',
+    '---',
+    '',
+    'Setext heading.',
+    '================'
+  ].join('\n');
+
+  const result = convertFromMarkdown(source, 'commonmark');
+  assert.match(result.markdown, /Paragraph before\.\n\.1 Heading within the flow\nParagraph after\./);
+  assert.match(result.markdown, /> Quoted paragraph\.\n---/);
+  assert.match(result.markdown, /- List item\.\n---/);
+  assert.match(result.markdown, /\n---\n---/);
+  assert.match(result.markdown, /    Indented code\.\n---/);
+  assert.match(result.markdown, /\.1 Setext heading\./);
+});
+
+test('CommonMark underscore emphasis and thematic breaks avoid Wmdx underline collisions', async () => {
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = [
+    '_italic_ and __bold__',
+    '',
+    '____',
+    '',
+    'foo _*_',
+    'foo __*__',
+    '*_foo_*',
+    '*foo __bar *baz bim__ bam*'
+  ].join('\n');
+  const result = convertFromMarkdown(source, 'commonmark');
+
+  assert.match(result.markdown, /^\*italic\* and \*\*bold\*\*$/m);
+  assert.match(result.markdown, /^---$/m);
+  assert.match(result.markdown, /^foo \*\\\*\*$/m);
+  assert.match(result.markdown, /^foo \*\*\\\*\*\*$/m);
+  assert.match(result.markdown, /^\*foo\*$/m);
+  assert.match(result.markdown, /^\*foo \*\*bar \\\*baz bim\*\* bam\*$/m);
+});
+
 test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies', async () => {
   const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
   const obsidian = convertFromMarkdown([

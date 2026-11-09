@@ -1,12 +1,27 @@
+import { EditorState } from '@codemirror/state';
+import { markdown } from '@codemirror/lang-markdown';
+import { syntaxTree } from '@codemirror/language';
+import { GFM, Strikethrough, Table, TaskList } from '@lezer/markdown';
 import {
   formatWmdxResourceSyntax,
   getWmdxResourceFallbackTitle,
   parseWmdxResourceSyntax
 } from './wmdxResources.js';
+import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
 import {
   getWmdxOrderedListSequence,
   parseWmdxOrderedListMarker
 } from './listSyntax.mjs';
+
+const markdownConversionParser = markdown({
+  extensions: [
+    GFM,
+    Table,
+    Strikethrough,
+    TaskList,
+    wmdxCommonMarkCompatibility
+  ]
+});
 
 export const MARKDOWN_IMPORT_FORMATS = Object.freeze([
   'commonmark', 'gfm', 'obsidian', 'html'
@@ -183,25 +198,159 @@ function convertInlineLinksToWmdx(line, warnings) {
   return output;
 }
 
-function convertHeadings(lines, protectedLines) {
-  const output = [...lines];
-  for (let index = 0; index < output.length; index += 1) {
-    if (protectedLines.has(index)) continue;
-    const line = output[index];
-    const atx = /^ {0,3}(#{1,6})[ \t]+(.+?)\s*#*[ \t]*$/.exec(line);
-    if (atx) {
-      output[index] = `.${atx[1].length} ${atx[2].trim()}`;
-      continue;
+function normalizeStandardMarkdownMarkers(source) {
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdownConversionParser]
+  });
+  const cursor = syntaxTree(state).cursor();
+  const readNode = () => {
+    const node = {
+      name: cursor.name,
+      from: cursor.from,
+      to: cursor.to,
+      children: []
+    };
+    if (cursor.firstChild()) {
+      do {
+        node.children.push(readNode());
+      } while (cursor.nextSibling());
+      cursor.parent();
     }
-    if (index + 1 >= output.length || protectedLines.has(index + 1) ||
-        !line.trim()) continue;
-    const setext = /^ {0,3}(=+|-+)[ \t]*$/.exec(output[index + 1]);
-    if (!setext) continue;
-    output[index] = `.${setext[1][0] === '=' ? 1 : 2} ${line.trim()}`;
-    output[index + 1] = '';
-    index += 1;
+    return node;
+  };
+  const root = readNode();
+  const normalizationCache = new WeakMap();
+  const needsNormalization = node => {
+    if (normalizationCache.has(node)) return normalizationCache.get(node);
+    if (node.name === 'EmphasisMark' && /^_+$/.test(source.slice(node.from, node.to))) {
+      normalizationCache.set(node, true);
+      return true;
+    }
+    if (node.name === 'HorizontalRule' &&
+        /^([ \t]*)_{3,}[ \t]*$/.test(source.slice(node.from, node.to))) {
+      normalizationCache.set(node, true);
+      return true;
+    }
+    const needed = node.children.some(needsNormalization);
+    normalizationCache.set(node, needed);
+    return needed;
+  };
+  const escapeEmphasisText = text => {
+    let output = '';
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index];
+      if (character === '*' || character === '_') {
+        let backslashes = 0;
+        for (let cursorIndex = index - 1;
+          cursorIndex >= 0 && text[cursorIndex] === '\\';
+          cursorIndex -= 1) {
+          backslashes += 1;
+        }
+        if (backslashes % 2 === 0) output += '\\';
+      }
+      output += character;
+    }
+    return output;
+  };
+  const normalizeNode = (node, parentEmphasis = null) => {
+    const isEmphasis = node.name === 'Emphasis' || node.name === 'StrongEmphasis';
+    if (isEmphasis && (needsNormalization(node) || parentEmphasis === node.name)) {
+      const delimiter = node.name === 'StrongEmphasis' ? '**' : '*';
+      let content = '';
+      let position = node.from;
+      for (const child of node.children) {
+        if (child.name === 'EmphasisMark') {
+          content += escapeEmphasisText(source.slice(position, child.from));
+          position = child.to;
+          continue;
+        }
+        content += escapeEmphasisText(source.slice(position, child.from));
+        content += normalizeNode(child, node.name);
+        position = child.to;
+      }
+      content += escapeEmphasisText(source.slice(position, node.to));
+      return parentEmphasis === node.name
+        ? content
+        : `${delimiter}${content}${delimiter}`;
+    }
+
+    if (node.name === 'HorizontalRule') {
+      const marker = /^([ \t]*)_{3,}[ \t]*$/.exec(source.slice(node.from, node.to));
+      if (marker) return `${marker[1]}---`;
+    }
+    if (!node.children.length || !needsNormalization(node)) {
+      return source.slice(node.from, node.to);
+    }
+
+    let output = '';
+    let position = node.from;
+    for (const child of node.children) {
+      output += source.slice(position, child.from);
+      output += normalizeNode(child);
+      position = child.to;
+    }
+    return output + source.slice(position, node.to);
+  };
+
+  return normalizeNode(root);
+}
+
+function convertHeadings(source) {
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdownConversionParser]
+  });
+  const replacements = [];
+
+  syntaxTree(state).iterate({
+    enter(node) {
+      const atx = /^ATXHeading([1-6])$/.exec(node.name);
+      if (atx) {
+        const raw = source.slice(node.from, node.to);
+        const closing = /^(#{1,6})[ \t]+([\s\S]*?)(?:[ \t]+#+[ \t]*)?$/.exec(raw);
+        if (!closing) return;
+        replacements.push({
+          from: node.from,
+          to: node.to,
+          text: `.${atx[1]} ${closing[2].trimEnd()}`
+        });
+        return;
+      }
+
+      const setext = /^SetextHeading([12])$/.exec(node.name);
+      if (!setext) return;
+
+      const line = state.doc.lineAt(node.from);
+      const prefix = source.slice(line.from, node.from);
+      // Leave container-nested Setext headings in their standards-based form.
+      // Their continuation prefixes are dialect syntax too; converting only
+      // part of that structure would risk changing list/quote semantics.
+      if (!/^ {0,3}$/.test(prefix)) return;
+
+      const raw = source.slice(node.from, node.to);
+      const lines = raw.split('\n');
+      const underline = lines.pop() ?? '';
+      if (!/^[ \t]*[=-]+[ \t]*$/.test(underline)) return;
+      if (lines.some(line => /(?: {2,}|\\)$/.test(line))) return;
+
+      const title = lines.map(line => line.trim()).filter(Boolean).join(' ');
+      if (!title) return;
+      replacements.push({
+        from: node.from,
+        to: node.to,
+        text: `.${setext[1]} ${title}`
+      });
+    }
+  });
+
+  let output = source;
+  for (const replacement of replacements.sort((left, right) => right.from - left.from)) {
+    output = output.slice(0, replacement.from) +
+      replacement.text +
+      output.slice(replacement.to);
   }
-  return output;
+  return output.split('\n');
 }
 
 function parseQuoteLine(line) {
@@ -272,12 +421,13 @@ export function convertFromMarkdown(source, format = 'commonmark') {
   if (format === 'obsidian' && /%%/.test(String(source ?? ''))) {
     addWarning(warnings, 'Obsidian comments have no native Wmdx equivalent and were kept unchanged.');
   }
-  const converted = protectCodeFences(source, (originalLines, protectedLines) => {
+  const normalizedSource = normalizeStandardMarkdownMarkers(String(source ?? ''));
+  const converted = protectCodeFences(normalizedSource, (originalLines, protectedLines) => {
     let lines = [...originalLines];
     if (format === 'obsidian' || format === 'gfm') {
       lines = convertObsidianCallouts(lines, protectedLines);
     }
-    lines = convertHeadings(lines, protectedLines);
+    lines = convertHeadings(lines.join('\n'));
     return lines.map((line, index) => {
       if (protectedLines.has(index)) return line;
       let text = convertInlineHtmlToMarkdown(line, warnings);
@@ -656,10 +806,13 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
   let index = 0;
   const transform = plainText => {
     let text = plainText;
-    text = text.replace(/(?<!\\)_([₀₁₂₃]?)(\S(?:.*?\S)?)_/g, (_, style, content) => {
-      if (style) addWarning(warnings, 'Colored or styled underline is exported as plain underline.');
-      return `<u>${content}</u>`;
-    });
+    text = text.replace(
+      /(?<![\w\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?!\w)/gu,
+      (_, style, content) => {
+        if (style) addWarning(warnings, 'Colored or styled underline is exported as plain underline.');
+        return `<u>${content}</u>`;
+      }
+    );
     text = text.replace(/==([₀₁₂]?)(\S(?:.*?\S)?)==/g, (_, slot, content) => {
       if (slot) addWarning(warnings, 'Colored highlight slots export without their custom color.');
       return dialect === 'obsidian'

@@ -8,7 +8,7 @@ const fixture = JSON.parse(fs.readFileSync(
   'utf8'
 ));
 
-test('GFM 0.29 non-HTML extension examples expose expected parser semantics', async () => {
+test('GFM 0.29 non-HTML extension examples preserve semantics through import and export', async () => {
   const { EditorState } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
   const { syntaxTree } = await import('@codemirror/language');
@@ -17,6 +17,8 @@ test('GFM 0.29 non-HTML extension examples expose expected parser semantics', as
   const { wmdxGfmStrikethrough } = await import('../src/gfm-strikethrough.mjs');
   const { wmdxCommonMarkCompatibility } = await import('../src/commonmark-compat.mjs');
   const { getMarkdownLinkInfo } = await import('../src/markdown-link-utils.mjs');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
   const extensions = [
     Autolink,
     Table,
@@ -60,6 +62,51 @@ test('GFM 0.29 non-HTML extension examples expose expected parser semantics', as
       actual,
       example.expected,
       `GFM ${example.section} example ${example.number}`
+    );
+
+    const imported = convertFromMarkdown(example.markdown, 'gfm');
+    const importedState = EditorState.create({
+      doc: imported.markdown,
+      extensions: [markdown({ extensions })]
+    });
+    const importedActual = {
+      tables: 0,
+      strikethrough: 0,
+      autolinks: 0
+    };
+    syntaxTree(importedState).iterate({
+      enter(node) {
+        if (node.name === 'Table') importedActual.tables++;
+        if (node.name === 'Strikethrough') importedActual.strikethrough++;
+        if (node.name === 'URL') importedActual.autolinks++;
+      }
+    });
+    assert.deepEqual(
+      importedActual,
+      example.expected,
+      `GFM import ${example.section} example ${example.number}`
+    );
+    const exported = exportMarkdown(imported.markdown, 'gfm');
+    const exportedState = EditorState.create({
+      doc: exported.markdown,
+      extensions: [markdown({ extensions })]
+    });
+    const exportedActual = {
+      tables: 0,
+      strikethrough: 0,
+      autolinks: 0
+    };
+    syntaxTree(exportedState).iterate({
+      enter(node) {
+        if (node.name === 'Table') exportedActual.tables++;
+        if (node.name === 'Strikethrough') exportedActual.strikethrough++;
+        if (node.name === 'URL') exportedActual.autolinks++;
+      }
+    });
+    assert.deepEqual(
+      exportedActual,
+      example.expected,
+      `GFM import/export ${example.section} example ${example.number}`
     );
 
     if (example.number === 628) {
