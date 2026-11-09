@@ -37,6 +37,12 @@ const htmlTagNodes = {
   img: ['Image'],
   br: ['HardBreak']
 };
+const renderedBlockTags = new Set([
+  'address', 'article', 'aside', 'blockquote', 'div', 'dl', 'fieldset',
+  'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5',
+  'h6', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre', 'section',
+  'table', 'ul'
+]);
 
 function getExpectedTags(html) {
   return [...html.matchAll(/<\/?([A-Za-z][\w-]*)\b[^>]*>/g)]
@@ -63,6 +69,62 @@ function isRawHtmlCase(example) {
     example.nodeNames.has('HTMLTag') ||
     example.nodeNames.has('HTMLBlock') ||
     expectedTags.some(tag => !htmlTagNodes[tag]);
+}
+
+function canonicalizeRenderedHtml(html, template) {
+  template.innerHTML = html;
+  const serialize = (node, parentTag = '') => {
+    if (node.nodeType === 3) {
+      const text = parentTag === 'code' || parentTag === 'pre'
+        ? node.nodeValue
+        : node.nodeValue.replace(/\s+/g, ' ');
+      return text ? ['#text', text] : null;
+    }
+    if (node.nodeType !== 1) return null;
+
+    const tag = node.tagName.toLowerCase();
+    const attributes = [...node.attributes]
+      .map(attribute => {
+        let value = attribute.value;
+        if (attribute.name === 'href' || attribute.name === 'src') {
+          try {
+            value = new URL(value, 'https://commonmark.example/base/').href;
+          } catch {
+            // Keep invalid URLs as authored so the differing semantics remain visible.
+          }
+        }
+        return [attribute.name, value];
+      })
+      .sort(([left], [right]) => left.localeCompare(right));
+    let children = [...node.childNodes]
+      .map(child => serialize(child, tag))
+      .filter(Boolean);
+    if (renderedBlockTags.has(tag)) {
+      children = children.filter(child =>
+        child[0] !== '#text' || child[1].trim()
+      );
+    }
+    if (tag === 'em' || tag === 'strong') {
+      children = children.flatMap(child =>
+        child[0] === tag && child[1].length === 0 ? child[2] : [child]
+      );
+    }
+    const mergedChildren = [];
+    for (const child of children) {
+      const previous = mergedChildren.at(-1);
+      if (child[0] === '#text' && previous?.[0] === '#text') {
+        previous[1] += child[1];
+      } else {
+        mergedChildren.push(child);
+      }
+    }
+    return [tag, attributes, mergedChildren];
+  };
+  return JSON.stringify(
+    [...template.content.childNodes]
+      .map(node => serialize(node, ''))
+      .filter(Boolean)
+  );
 }
 
 before(async () => {
@@ -187,6 +249,51 @@ test('CommonMark import and export preserve parser families across all non-HTML 
     failures,
     [],
     'CommonMark import and export preserve the expected semantic node families'
+  );
+});
+
+test('CommonMark import/export preserve rendered meaning across all non-HTML fixtures', async () => {
+  const { Parser, HtmlRenderer } = require('commonmark');
+  const { JSDOM } = require('jsdom');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const parser = new Parser();
+  const renderer = new HtmlRenderer();
+  const template = new JSDOM('').window.document.createElement('template');
+  const failures = [];
+
+  for (const example of activeCases) {
+    const expectedSourceHtml = renderer.render(parser.parse(example.markdown));
+    if (canonicalizeRenderedHtml(expectedSourceHtml, template) !==
+        canonicalizeRenderedHtml(example.html, template)) {
+      failures.push({
+        example: example.example,
+        section: example.section,
+        stage: 'pinned fixture does not match the pinned renderer'
+      });
+      continue;
+    }
+
+    const imported = convertFromMarkdown(example.markdown, 'commonmark');
+    const exported = exportMarkdown(imported.markdown, 'commonmark');
+    const actualHtml = renderer.render(parser.parse(exported.markdown));
+    if (canonicalizeRenderedHtml(actualHtml, template) !==
+        canonicalizeRenderedHtml(example.html, template)) {
+      failures.push({
+        example: example.example,
+        section: example.section,
+        stage: 'import/export rendering',
+        imported: imported.markdown.slice(0, 120),
+        exported: exported.markdown.slice(0, 120),
+        warnings: exported.warnings
+      });
+    }
+  }
+
+  assert.deepEqual(
+    failures,
+    [],
+    'CommonMark conversion should preserve rendered semantics for every non-HTML fixture'
   );
 });
 
@@ -345,7 +452,7 @@ test('representative CommonMark HTML examples convert through the explicit HTML 
   assert.doesNotMatch(comment.markdown, /Foo|bar|baz/);
 });
 
-test('CommonMark corpus coverage does not claim exact rendering or full conformance', () => {
+test('CommonMark semantic comparison excludes raw HTML and does not claim full conformance', () => {
   assert.ok(parserComparableCases.length < commonmarkCases.length);
   assert.ok(htmlInteropCases.length > 0);
   assert.ok(

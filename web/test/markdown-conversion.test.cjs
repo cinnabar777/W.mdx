@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-test('CommonMark import converts headings and ordinary links without touching code', async () => {
+test('CommonMark import converts headings and preserves ordinary links and code', async () => {
   const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
   const source = [
     '# Main title',
@@ -20,7 +20,7 @@ test('CommonMark import converts headings and ordinary links without touching co
   const result = convertFromMarkdown(source, 'commonmark');
   assert.match(result.markdown, /^\.1 Main title/m);
   assert.match(result.markdown, /^\.1 Section title/m);
-  assert.match(result.markdown, /\[docs\/Project%20Notes\.md\|Project\|\|\]/);
+  assert.match(result.markdown, /^\[Project\]\(docs\/Project%20Notes\.md\)$/m);
   assert.match(result.markdown, /# literal heading/);
   assert.match(result.markdown, /\[literal\]\(https:\/\/example\.com\)/);
   assert.deepEqual(result.warnings, []);
@@ -122,6 +122,21 @@ test('CommonMark underscore emphasis and thematic breaks avoid Wmdx underline co
   assert.match(result.markdown, /^foo \*\*\\\*\*\*$/m);
   assert.match(result.markdown, /^\*foo\*$/m);
   assert.match(result.markdown, /^\*foo \*\*bar \\\*baz bim\*\* bam\*$/m);
+});
+
+test('only Obsidian import treats double equals as highlight syntax', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const standard = convertFromMarkdown(
+    'Literal ==equals== and =pen= markers.',
+    'commonmark'
+  );
+  assert.equal(exportMarkdown(standard.markdown, 'commonmark').markdown,
+    'Literal \\=\\=equals\\=\\= and \\=pen\\= markers.');
+
+  const obsidian = convertFromMarkdown('==highlight==', 'obsidian');
+  assert.equal(obsidian.markdown, '==highlight==');
+  assert.equal(exportMarkdown(obsidian.markdown, 'obsidian').markdown, '==highlight==');
 });
 
 test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies', async () => {

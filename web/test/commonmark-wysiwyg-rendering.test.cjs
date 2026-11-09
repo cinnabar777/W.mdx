@@ -20,10 +20,10 @@ function sourceText(content) {
 }
 
 function assertHardBreakRendering(lines, window) {
-  assert.equal(lines[2].textContent, 'Hard break by spaces:  ');
-  assert.equal(lines[2].querySelector('.cm-hardbreak-syntax'), null);
+  assert.ok(lines[0].textContent.endsWith('Hard break by spaces:  '));
+  assert.equal(lines[0].querySelector('.cm-hardbreak-syntax'), null);
 
-  const backslashMarker = lines[4].querySelector('.cm-hardbreak-syntax');
+  const backslashMarker = lines[1].querySelector('.cm-hardbreak-syntax');
   assert.ok(backslashMarker, 'the backslash hard-break marker has a rendering decoration');
   assert.equal(backslashMarker.textContent, '\\');
   assert.equal(window.getComputedStyle(backslashMarker).display, 'none');
@@ -114,13 +114,10 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     const content = window.document.querySelector('.cm-content');
     assert.ok(content, 'the editor content is mounted');
     const renderedLines = [...content.querySelectorAll('.cm-line')];
-    assert.deepEqual(renderedLines.slice(0, 6).map(renderedText), [
-      'Entities: & © 🙂',
-      'Escaped punctuation: *literal* &amp; |',
-      'Hard break by spaces:  ',
-      'continued after spaces',
-      'Hard break by slash',
-      'continued after slash'
+    assert.deepEqual(renderedLines.slice(0, 3).map(renderedText), [
+      'Entities: & © 🙂 Escaped punctuation: *literal* &amp; | Hard break by spaces:  ',
+      'continued after spaces Hard break by slash',
+      'continued after slash Code span edge spaces:  foo  Code span newline: foo bar Code span multiline spaces: foo bar   baz'
     ], content.innerHTML);
     assertHardBreakRendering(renderedLines, window);
     assert.deepEqual(
@@ -132,13 +129,10 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     await window.editorBridge.setEditorMode('live_preview');
     const livePreviewContent = window.document.querySelector('.cm-content');
     const livePreviewLines = [...livePreviewContent.querySelectorAll('.cm-line')];
-    assert.deepEqual(livePreviewLines.slice(0, 6).map(renderedText), [
-      'Entities: & © 🙂',
-      'Escaped punctuation: *literal* &amp; |',
-      'Hard break by spaces:  ',
-      'continued after spaces',
-      'Hard break by slash',
-      'continued after slash'
+    assert.deepEqual(livePreviewLines.slice(0, 3).map(renderedText), [
+      'Entities: & © 🙂 Escaped punctuation: *literal* &amp; | Hard break by spaces:  ',
+      'continued after spaces Hard break by slash',
+      'continued after slash Code span edge spaces:  foo  Code span newline: foo bar Code span multiline spaces: foo bar   baz'
     ]);
     assertHardBreakRendering(livePreviewLines, window);
     assert.deepEqual(
@@ -267,9 +261,16 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
         modeContent.querySelector('.cm-line.cm-list-item'),
         `${mode} applies shared list-item layout`
       );
+      const continuedItem = [...modeContent.querySelectorAll('.cm-line.cm-list-item')]
+        .find(line => line.textContent.includes('its continuation'));
       assert.ok(
+        continuedItem?.textContent.includes('a list item'),
+        `${mode} joins a soft-wrapped list continuation to its item`
+      );
+      assert.equal(
         modeContent.querySelector('.cm-line.cm-list-continuation'),
-        `${mode} applies shared list-continuation layout`
+        null,
+        `${mode} does not retain a separate visual line for a soft break`
       );
       assert.ok(
         modeContent.querySelector('.cm-line.cm-paragraph'),

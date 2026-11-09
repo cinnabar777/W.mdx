@@ -147,9 +147,9 @@ function escapeMarkdownLabel(value) {
 }
 
 export function encodeMarkdownDestination(value) {
-  return encodeURI(String(value ?? '').trim()).replace(/[()]/g, character =>
-    character === '(' ? '%28' : '%29'
-  );
+  return encodeURI(String(value ?? '').trim())
+    .replace(/%25([0-9a-f]{2})/gi, '%$1')
+    .replace(/[()]/g, character => character === '(' ? '%28' : '%29');
 }
 
 export function normalizeBareWebDestination(value, { force = false } = {}) {

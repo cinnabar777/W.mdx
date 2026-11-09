@@ -72,7 +72,7 @@ test('Markdown paste converts only when the source and target profiles differ', 
   );
   assert.equal(wmdx.converted, true);
   assert.match(wmdx.markdown, /^\.1 Heading/m);
-  assert.match(wmdx.markdown, /\[https:\/\/example\.test\|Read\|\|\]/);
+  assert.match(wmdx.markdown, /\[Read\]\(https:\/\/example\.test\)/);
 
   const convertedWikiLink = convertClipboardToMarkdownProfile(
     { text: '[[Project Notes#Setup|Read this]]' },

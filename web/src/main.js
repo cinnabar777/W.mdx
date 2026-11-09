@@ -1,7 +1,8 @@
 import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect, Facet, Prec } from '@codemirror/state';
 import {
   getMarkdownRenderPlan,
-  mapMarkdownDocumentLayout
+  mapMarkdownDocumentLayout,
+  collectMarkdownSoftBreaks
 } from './markdownDocumentLayout.js';
 import {
   normalizeMarkdownSyntaxExposureScope,
@@ -5560,11 +5561,35 @@ class LayoutAnchorWidget extends WidgetType {
   }
 }
 
+class MarkdownSoftBreakSpaceWidget extends WidgetType {
+  eq() { return true; }
+  toDOM() {
+    const space = document.createElement('span');
+    space.className = 'cm-markdown-soft-break-space';
+    space.textContent = ' ';
+    space.setAttribute('aria-hidden', 'true');
+    return space;
+  }
+}
+
 export function buildPersistentLayoutDecorations(state) {
   const ranges = [];
   const renderPlan = markdownRenderPlan(state);
   const doc = state.doc;
   const selection = state.selection.main;
+  const softBreaks = renderPlan.raw
+    ? []
+    : collectMarkdownSoftBreaks(state, undefined, renderPlan.semantic);
+  const softBreakContinuationLines = new Set(
+    softBreaks.map(softBreak => softBreak.nextLineFrom)
+  );
+  for (const softBreak of softBreaks) {
+    ranges.push(
+      Decoration.replace({
+        widget: new MarkdownSoftBreakSpaceWidget()
+      }).range(softBreak.from, softBreak.to)
+    );
+  }
   const sourceTables = renderPlan.raw
     ? renderPlan.sourceTables
     : renderPlan.contextual
@@ -5605,6 +5630,15 @@ export function buildPersistentLayoutDecorations(state) {
 
   for (const line of renderPlan.lines.values()) {
     if (sourceTableLines.has(line.number)) continue;
+    if (
+      softBreakContinuationLines.has(line.from) &&
+      line.kind === 'list-continuation'
+    ) {
+      if (line.indentTo > line.from) {
+        ranges.push(Decoration.replace({}).range(line.from, line.indentTo));
+      }
+      continue;
+    }
     if (!line.classes.size) continue;
     ranges.push(
       Decoration.line({

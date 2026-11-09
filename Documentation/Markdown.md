@@ -64,11 +64,11 @@ Heading 2
 ```
 
 Separate paragraphs with a blank line. A normal newline within a paragraph is
-a soft break; renderers may display it as a space or as a line break. Two
-trailing spaces or a backslash immediately before the newline request a hard
-line break, which also matters when exporting Markdown to HTML or another
-renderer. W.mdx keeps the two spaces visible in every view; it may hide the
-backslash marker in visual modes.
+a soft break; W.mdx renders it as a space in Live Preview and WYSIWYG while
+Source preserves the literal newline. Two trailing spaces or a backslash
+immediately before the newline request a hard line break, which also matters
+when exporting Markdown to HTML or another renderer. W.mdx keeps the two spaces
+visible in every view; it may hide the backslash marker in visual modes.
 
 ## Text formatting
 
@@ -576,9 +576,10 @@ breaks, thematic breaks, reference links, and autolinks.
 
 **Remaining compatibility work:**
 
-- The pinned CommonMark 0.31.2 corpus now checks parser-level semantic nodes for
-  all 575 non-HTML examples. This does not yet verify exact WYSIWYG rendering,
-  edits, or exported Markdown.
+- The pinned CommonMark 0.31.2 corpus compares rendered semantics after
+  import/export for all 575 non-HTML examples using the official reference
+  renderer. This verifies conversion output, not every in-editor interaction or
+  Android file-provider behavior.
 - The explicit HTML-to-Wmdx conversion action now maps common semantic content.
   It still needs broad HTML-interoperability coverage and Android file-provider
   verification; unsupported styles and structures are reported as warnings.
@@ -660,14 +661,15 @@ round-trip/device acceptance work is complete.
 
 Focused tests verify named Wmdx behaviors; they do not establish full
 specification compatibility or identical rendering in another application.
-The official CommonMark 0.31.2 corpus has 575 non-HTML cases checked for parser
-semantics. The remaining 77 HTML-interoperability cases are not certification
-of HTML conversion. The project does not claim a complete GFM or Obsidian
-conformance suite.
+The official CommonMark 0.31.2 corpus has 575 non-HTML cases checked for
+import/export rendered semantics against the reference renderer. The remaining
+77 HTML-interoperability cases are excluded from that comparison and are not
+certification of HTML conversion. The project does not claim a complete GFM or
+Obsidian conformance suite.
 
 | Area | Implemented behavior and tests | Known remaining work |
 | --- | --- | --- |
-| CommonMark core | Parser-semantic checks cover the 575 non-HTML examples. Focused editor tests cover character references, escapes, hard breaks, code spans, nested lists, and lists in quotes while preserving source. | Full rendering, editing, file-provider, and export comparisons against the specification are not complete. |
+| CommonMark core | Import/export rendered-semantic comparisons cover all 575 non-HTML examples against the pinned reference renderer. Focused editor tests cover character references, escapes, hard breaks, code spans, nested lists, and lists in quotes while preserving source. | In-editor interactions and Android file-provider behavior still need acceptance testing; raw-HTML cases are excluded. |
 | GFM extensions | Pipe tables, tasks, strikethrough, and autolinks are recognized; focused fixtures cover GFM extension examples and editable tables. | GitHub-specific mentions/issue references and full GFM interoperability are not promised. |
 | Obsidian conventions | Wiki links/aliases, document and image embeds, callouts, and footnotes are supported. | Heading/block transclusion, plugin syntax, YAML properties, and full vault behavior are outside scope. |
 | Wmdx syntax | Decimal headings, alphabetic/Roman list markers, native tasks, resource links, media/attachment metadata, callouts, numbered footnotes, underline styles, highlight slots, and pen slots are implemented. | App/device acceptance remains necessary; export can lose style or dialect-specific semantics and reports known losses. |

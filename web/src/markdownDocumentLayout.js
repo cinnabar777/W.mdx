@@ -61,6 +61,54 @@ export function getMarkdownRenderPlan(state, mode, settings) {
   return plan;
 }
 
+export function collectMarkdownSoftBreaks(
+  state,
+  tree = syntaxTree(state),
+  layout = null
+) {
+  const { doc } = state;
+  const paragraphs = [];
+  const hardBreaks = [];
+  tree.iterate({
+    enter(node) {
+      if (node.name === 'Paragraph') paragraphs.push({ from: node.from, to: node.to });
+      else if (node.name === 'HardBreak') hardBreaks.push({ from: node.from, to: node.to });
+    }
+  });
+
+  const softBreaks = [];
+  for (const paragraph of paragraphs) {
+    const firstLine = doc.lineAt(paragraph.from).number;
+    const lastLine = doc.lineAt(Math.max(paragraph.from, paragraph.to - 1)).number;
+    for (let number = firstLine; number < lastLine; number++) {
+      const line = doc.line(number);
+      const nextLine = doc.line(number + 1);
+      const from = line.to;
+      const to = nextLine.from;
+      if (from >= to || from < paragraph.from || to > paragraph.to) continue;
+      const previousLayout = layout?.lines?.get(line.from);
+      const nextLayout = layout?.lines?.get(nextLine.from);
+      if (
+        nextLayout?.kind === 'list' ||
+        nextLayout?.kind === 'heading' ||
+        nextLayout?.kind === 'code' ||
+        nextLayout?.kind === 'table' ||
+        previousLayout?.callout?.isTitle ||
+        nextLayout?.callout?.isTitle ||
+        nextLayout?.classes?.has('cm-hr')
+      ) continue;
+      if (hardBreaks.some(range => range.from < to && range.to > from)) continue;
+      softBreaks.push({
+        from,
+        to,
+        lineFrom: line.from,
+        nextLineFrom: nextLine.from
+      });
+    }
+  }
+  return softBreaks;
+}
+
 // For edits that cannot change block structure, move semantic source positions
 // through CodeMirror's ChangeSet instead of reparsing the whole document.
 export function mapMarkdownDocumentLayout(previous, transaction, settings) {

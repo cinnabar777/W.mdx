@@ -130,8 +130,9 @@ Conversion is deliberately explicit and conservative:
   rather than becoming Wmdx subscript. CommonMark double-tilde text is also
   escaped because CommonMark does not define strikethrough; GFM and Obsidian
   double-tilde strikethrough remains semantic.
-- Simple Markdown links become Wmdx resource links. Link tooltip titles and
-  formatted link labels stay in Markdown syntax rather than losing their detail.
+- Standard Markdown links stay in their original syntax, preserving empty labels,
+  titles, nested formatting, and CommonMark edge cases. Obsidian wikilinks become
+  Wmdx resource links.
 - Obsidian wikilinks become Wmdx resource links, and supported image/audio/video
   or attachment embeds become Wmdx embedded resources. Note transclusions are
   retained with a warning because Wmdx does not embed another Markdown document.
@@ -166,14 +167,14 @@ Conversion is deliberately explicit and conservative:
 - Obsidian heading/block transclusion, plugin syntax, math, Mermaid, semantic
   tags, and full vault resolution are not supported.
 
-The pinned CommonMark 0.31.2 corpus contains 652 examples; parser-family checks
-and import/export round-trip checks cover 575 non-HTML examples. The GFM 0.29
-extension fixture checks 21 non-HTML examples through import and export. These
-tests check semantic parser families, not every tree detail or rendered result.
+The pinned CommonMark 0.31.2 corpus contains 652 examples. All 575 non-HTML
+examples are imported, exported, and compared for rendered semantics using the
+official reference renderer. GFM's 21 non-HTML extension examples have
+parser-family and conversion checks, but not the same full rendered comparison.
 Raw HTML cases are excluded by the no-active-HTML policy, and the Obsidian tests
 are curated feature tests rather than an official versioned conformance suite.
-The conversion and linter tests therefore do **not** certify complete
-CommonMark, GFM, Obsidian, or HTML conformance.
+These checks do **not** certify complete CommonMark, GFM, Obsidian, or HTML
+conformance.
 
 The linter checks common structural errors such as unclosed code fences,
 unresolved references/footnotes, malformed Wmdx resource fields, table row

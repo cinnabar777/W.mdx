@@ -457,9 +457,14 @@ function convertHeadings(source, protectedLines = new Set()) {
     extensions: [markdownConversionParser]
   });
   const replacements = [];
+  const ancestors = [];
 
   completeMarkdownSyntaxTree(state).iterate({
     enter(node) {
+      const nestedInContainer = ancestors.some(name =>
+        name === 'Blockquote' || name === 'ListItem'
+      );
+      ancestors.push(node.name);
       const firstLine = state.doc.lineAt(node.from).number - 1;
       const lastLine = state.doc.lineAt(Math.max(node.from, node.to - 1)).number - 1;
       for (let line = firstLine; line <= lastLine; line += 1) {
@@ -467,6 +472,9 @@ function convertHeadings(source, protectedLines = new Set()) {
       }
       const atx = /^ATXHeading([1-6])$/.exec(node.name);
       if (atx) {
+        // Wmdx decimal markers are not recognized consistently inside Markdown
+        // containers; retain the already-supported ATX spelling there.
+        if (nestedInContainer) return;
         const raw = source.slice(node.from, node.to);
         const closing = /^(#{1,6})[ \t]+([\s\S]*?)(?:[ \t]+#+[ \t]*)?$/.exec(raw);
         if (!closing) return;
@@ -501,6 +509,9 @@ function convertHeadings(source, protectedLines = new Set()) {
         to: node.to,
         text: `.${setext[1]} ${title}`
       });
+    },
+    leave() {
+      ancestors.pop();
     }
   });
 
@@ -593,7 +604,8 @@ function escapeDialectSpecificWmdxSyntax(line, format) {
   // regions intact before normalizing Wmdx subscript and superscript markers.
   text = text
     .replace(/<([a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, protect)
-    .replace(/(`+)([\s\S]*?)\1/g, protect);
+    .replace(/(`+)([\s\S]*?)\1/g, protect)
+    .replace(/<(?:https?|ftp):\/\/[^>\s]+>|<mailto:[^>\s]+>|<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>/gi, protect);
 
   const escapeTildes = value => value.replace(/~/g, '\\~');
   if (format === 'commonmark') {
@@ -603,6 +615,22 @@ function escapeDialectSpecificWmdxSyntax(line, format) {
     );
   }
   text = text.replace(
+    /(?<![\p{L}\p{N}\p{M}_\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?![\p{L}\p{N}\p{M}_])/gu,
+    match => match.replace(/(?<!\\)_/g, '\\_')
+  );
+  const escapeEquals = match => match.replace(/(?<!\\)=/g, '\\=');
+  if (format !== 'obsidian') {
+    text = text.replace(
+      /(?<![=\\])==([₀₁₂]?)(\S(?:.*?\S)?)(?<!\\)==(?![=])/g,
+      escapeEquals
+    );
+    text = text.replace(/(?<![=\\])={3,}(?![=])/g, escapeEquals);
+  }
+  text = text.replace(
+    /(?<![=\\])=(?![=])(?:[₀₁₂])?(\S(?:[^\n]*?\S)?)(?<!\\)=(?![=])/gu,
+    escapeEquals
+  );
+  text = text.replace(
     /(?<![~\\])~(?!~)(\S(?:[^~]*?\S)?)~(?!~)/gu,
     match => escapeTildes(match)
   );
@@ -611,7 +639,7 @@ function escapeDialectSpecificWmdxSyntax(line, format) {
     match => match.replace(/\^/g, '\\^')
   );
 
-  for (const { marker, value } of protectedValues) {
+  for (const { marker, value } of protectedValues.reverse()) {
     text = text.replace(marker, value);
   }
   return text;
@@ -645,7 +673,7 @@ export function convertFromMarkdown(source, format = 'commonmark') {
       if (format === 'obsidian') {
         text = convertObsidianLinksToWmdx(text, warnings);
       }
-      return convertInlineLinksToWmdx(text, warnings);
+      return text;
     });
   });
   return { markdown: converted, warnings };
@@ -1129,7 +1157,7 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
   const transform = plainText => {
     let text = plainText;
     text = text.replace(
-      /(?<![\w\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?!\w)/gu,
+      /(?<![\p{L}\p{N}\p{M}_\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?![\p{L}\p{N}\p{M}_])/gu,
       (_, style, content) => {
         if (style) addWarning(warnings, 'Colored or styled underline is exported as plain underline.');
         return `<u>${content}</u>`;
@@ -1149,22 +1177,39 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
       /(?<![~\\])~(?!~)(\S(?:[^~]*?\S)?)~(?!~)/gu,
       (_, content) => `<sub>${content}</sub>`
     );
-    text = text.replace(/==([₀₁₂]?)(\S(?:.*?\S)?)==/g, (_, slot, content) => {
+    text = text.replace(
+      /(?<![=\\])==([₀₁₂]?)(\S(?:.*?\S)?)(?<!\\)==(?![=])/g,
+      (_, slot, content) => {
       if (slot) addWarning(warnings, 'Colored highlight slots export without their custom color.');
       return dialect === 'obsidian'
         ? `==${content}==`
         : `<mark>${content}</mark>`;
-    });
-    text = text.replace(/=(?:[₀₁₂])?(\S(?:.*?\S)?)=(?![=])/g, (_, content) => {
+      }
+    );
+    text = text.replace(
+      /(?<![=\\])=(?![=])(?:[₀₁₂])?(\S(?:.*?\S)?)(?<![=\\])=(?![=])/g,
+      (_, content) => {
       addWarning(warnings, 'Wmdx pen colors have no portable Markdown equivalent; pen markers were removed.');
       return content;
-    });
+      }
+    );
     return text.replace(/(?<!\\)(!?)\[[^\]\n]*\]/g, raw =>
       convertWmdxResourceToMarkdown(raw, dialect, warnings)
     );
   };
 
   while (index < line.length) {
+    if (line[index] === '<') {
+      const autolink = /^(?:<(?:https?|ftp):\/\/[^>\s]+>|<mailto:[^>\s]+>|<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>)/i
+        .exec(line.slice(index));
+      if (autolink) {
+        output += transform(line.slice(plainStart, index));
+        output += autolink[0];
+        index += autolink[0].length;
+        plainStart = index;
+        continue;
+      }
+    }
     if (line[index] !== '`' || line[index - 1] === '\\') {
       index += 1;
       continue;
@@ -1219,8 +1264,39 @@ function mapWmdxOrderedLists(lines, protectedLines, warnings) {
     offset = line.to + 1;
     return line;
   });
+  const listProtectedLines = new Set(protectedLines);
+  let linkDestinationDepth = 0;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    if (protectedLines.has(lineIndex)) continue;
+    const line = lines[lineIndex];
+    if (linkDestinationDepth > 0) listProtectedLines.add(lineIndex);
+    let codeTicks = 0;
+    for (let index = 0; index < line.length; index += 1) {
+      if (line[index] === '\\') {
+        index += 1;
+        continue;
+      }
+      if (line[index] === '`') {
+        let end = index;
+        while (line[end] === '`') end += 1;
+        const count = end - index;
+        if (!codeTicks) codeTicks = count;
+        else if (codeTicks === count) codeTicks = 0;
+        index = end - 1;
+        continue;
+      }
+      if (codeTicks) continue;
+      if (linkDestinationDepth > 0) {
+        if (line[index] === '(') linkDestinationDepth += 1;
+        else if (line[index] === ')') linkDestinationDepth -= 1;
+      } else if (line[index] === ']' && line[index + 1] === '(') {
+        linkDestinationDepth = 1;
+        index += 1;
+      }
+    }
+  }
   const excludedPositions = new Set();
-  for (const index of protectedLines) {
+  for (const index of listProtectedLines) {
     const parsed = parseWmdxOrderedListMarker(lines[index]);
     if (parsed) excludedPositions.add(sourceLines[index].from + parsed.markerFrom);
   }
@@ -1248,8 +1324,10 @@ function mapWmdxOrderedLists(lines, protectedLines, warnings) {
 function mapWmdxHeadings(lines, protectedLines) {
   return lines.map((line, index) => {
     if (protectedLines.has(index)) return line;
-    const match = /^([ \t]*)\.([1-6])[ \t]+(.+)$/.exec(line);
-    return match ? `${match[1]}${'#'.repeat(Number(match[2]))} ${match[3]}` : line;
+    const match = /^([ \t]*)\.([1-6])(?:[ \t]+(.*))?$/.exec(line);
+    return match
+      ? `${match[1]}${'#'.repeat(Number(match[2]))}${match[3] ? ` ${match[3]}` : ' '}`
+      : line;
   });
 }
 

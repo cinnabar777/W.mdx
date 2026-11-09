@@ -7,6 +7,10 @@ const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '../../app/src/main/assets/www');
 const phoneFixture = path.resolve(__dirname, '../../Documentation/Markdown-Phone-Test.md');
 const cheatSheetFixture = path.resolve(__dirname, '../../Documentation/Markdown.md');
+const dialectGuideFixture = path.resolve(
+  __dirname,
+  '../../Documentation/Markdown-Dialects-and-File-Formats.md'
+);
 const modes = ['wysiwyg', 'live_preview', 'source'];
 const text = 'Item text with **bold words** and enough ordinary words to wrap onto several rows at phone width, testing that every wrapped row starts underneath the content rather than underneath the marker. ';
 const markers = ['-', '+', '*', '1.', '1)', 'a.', 'A.', 'i.', 'I.', '- [ ]', '- [x]', '[ ]'];
@@ -125,6 +129,49 @@ async function main() {
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(() => window.editorBridge);
+    await page.evaluate(() => window.editorBridge.setEditorMode('wysiwyg'));
+
+    const softBreakDocument = [
+      'First paragraph line one',
+      'continues in the same paragraph.',
+      '',
+      '- List item first line',
+      '  list continuation stays with its item.',
+      '',
+      '> Quote first line',
+      '> quote continuation.',
+      '',
+      'Hard break first line  ',
+      'hard break begins on the next rendered line.'
+    ].join('\n');
+    await page.evaluate(text => window.editorBridge.setMarkdown(text), softBreakDocument);
+    const renderedSoftBreakText = await page.locator('.cm-content').innerText();
+    assert.match(
+      renderedSoftBreakText,
+      /First paragraph line one continues in the same paragraph\./,
+      'single Markdown newlines render as spaces inside a paragraph'
+    );
+    assert.match(
+      renderedSoftBreakText,
+      /• List item first line list continuation stays with its item\./,
+      'list continuation source indentation is hidden while its text stays in the item'
+    );
+    assert.match(
+      renderedSoftBreakText,
+      /Quote first line quote continuation\./,
+      'blockquote soft breaks remain in the same rendered paragraph'
+    );
+    assert.match(
+      renderedSoftBreakText,
+      /Hard break first line  \nhard break begins on the next rendered line\./,
+      'explicit Markdown hard breaks remain line breaks'
+    );
+    await page.evaluate(() => window.editorBridge.setEditorMode('source'));
+    await page.evaluate(text => window.editorBridge.setMarkdown(text), softBreakDocument);
+    const rawSoftBreakText = await page.locator('.cm-content').innerText();
+    assert.match(rawSoftBreakText, /First paragraph line one\ncontinues in the same paragraph\./);
+    assert.match(rawSoftBreakText, /- List item first line\n  list continuation stays with its item\./);
+    cases += 5;
     await page.evaluate(() => window.editorBridge.setEditorMode('wysiwyg'));
 
     const jsonDocuments = [
@@ -247,6 +294,43 @@ async function main() {
       );
       cases++;
     }
+
+    const dialectGuide = await fs.readFile(dialectGuideFixture, 'utf8');
+    await page.evaluate(async markdown => {
+      await window.editorBridge.setEditorMode('wysiwyg');
+      window.editorBridge.setMarkdown(markdown);
+    }, dialectGuide);
+    await page.waitForTimeout(160);
+    await page.evaluate(offset => {
+      window.editorBridge.setSelectionState({ anchor: offset, head: offset });
+    }, dialectGuide.indexOf('The editor has explicit conversion actions'));
+    await page.waitForTimeout(100);
+    const guideFlow = await page.locator('.cm-paragraph')
+      .filter({ hasText: "The editor has explicit conversion actions" })
+      .innerText();
+    assert.match(
+      guideFlow,
+      /Menu group\. They operate on the currently open document or clipboard; they are not a file picker\./,
+      'source-wrapped guide prose must render as continuous Markdown paragraphs'
+    );
+    await page.evaluate(offset => {
+      window.editorBridge.setSelectionState({ anchor: offset, head: offset });
+    }, dialectGuide.indexOf('Parser-recognized ATX headings'));
+    await page.waitForTimeout(100);
+    const guideRule = await page.locator('.cm-list-item')
+      .filter({ hasText: 'Parser-recognized ATX headings' })
+      .innerText();
+    assert.match(
+      guideRule,
+      /Wmdx decimal headings\. Setext headings inside lists or blockquotes/,
+      'source-wrapped guide list items must remain one correctly indented item'
+    );
+    assert.equal(
+      await page.evaluate(() => window.editorBridge.getMarkdown()),
+      dialectGuide,
+      'rendered soft-break layout must preserve the documentation source'
+    );
+    cases += 2;
 
     const touchContext = await browser.newContext({
       viewport: { width: 412, height: 915 },
@@ -1228,9 +1312,12 @@ async function main() {
           };
         });
       });
-      assert.ok(calloutGeometry.length >= 3, `${mode}: callout title and body should share the styled block`);
+      assert.ok(calloutGeometry.length >= 2, `${mode}: callout title and body should share the styled block`);
       assert.ok(calloutGeometry[0].text.includes('Information callout'),
         `${mode}: title should remain on the callout's first row`);
+      assert.ok(calloutGeometry.slice(1).some(row =>
+        row.text.includes('The title and body stay in one styled callout.')
+      ), `${mode}: body paragraphs should remain inside the callout`);
       assert.ok(calloutGeometry.every(row => row.borderLeft !== '0px'),
         `${mode}: the callout border should continue across title and body rows`);
       for (let index = 1; index < calloutGeometry.length; index++) {
@@ -1429,12 +1516,12 @@ async function main() {
     await page.locator('#markdown-conversion-preview-button').click();
     const conversionPreview = await page.locator('#markdown-conversion-preview').inputValue();
     assert.match(conversionPreview, /^\.1 Imported title/m);
-    assert.match(conversionPreview, /\[docs\/Project%20Notes\.md\|Project\|\|\]/);
+    assert.match(conversionPreview, /\[Project\]\(docs\/Project%20Notes\.md\)/);
     await page.locator('#markdown-conversion-apply').click();
     await page.waitForTimeout(80);
     const convertedDocument = await page.evaluate(() => window.editorBridge.getMarkdown());
     assert.match(convertedDocument, /^\.1 Imported title/m);
-    assert.match(convertedDocument, /\[docs\/Project%20Notes\.md\|Project\|\|\]/);
+    assert.match(convertedDocument, /\[Project\]\(docs\/Project%20Notes\.md\)/);
 
     const longConversionSource =
       `# Beginning\n\n${'A paragraph in the middle of the complete document.\n\n'.repeat(180)}# Final heading`;
@@ -1492,7 +1579,7 @@ async function main() {
     await page.waitForTimeout(80);
     const pastedDocument = await page.evaluate(() => window.editorBridge.getMarkdown());
     assert.match(pastedDocument, /^\.1 Pasted heading/m);
-    assert.match(pastedDocument, /\[https:\/\/example\.com\|Site\|\|\]/);
+    assert.match(pastedDocument, /\[Site\]\(https:\/\/example\.com\)/);
 
     await page.evaluate(() => {
       window.editorBridge.applyAllPreferences({
