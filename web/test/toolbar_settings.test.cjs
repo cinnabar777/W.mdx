@@ -583,6 +583,14 @@ test('popup toolbar actions accept the same persisted styles in web preview and 
     ])
   );
   assert.deepEqual(kotlinGroups, BOTTOM_TOOLBAR_GROUP_ITEM_IDS);
+  assert.match(
+    androidSource,
+    /input\.optInt\("version", 1\) < 16[\s\S]*?"formatJson" !in deletedKeys/
+  );
+  assert.match(
+    androidSource,
+    /input\.optInt\("version", 1\) < 16[\s\S]*?"formatJson" !in assignedActions/
+  );
   assert.match(androidSource, /put\("popupGroups", popupGroups\)/);
   assert.match(mainSource, /orderBottomToolbarPopupItems\(\s*groupKey/);
   assert.match(mainSource, /function createRuntimeToolbarItemRegistry\(\)/);

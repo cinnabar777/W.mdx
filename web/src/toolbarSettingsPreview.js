@@ -193,6 +193,7 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'pasteFromDialect', title: 'Paste from Markdown dialect', icon: svgIcons.pasteAsPlainText },
     { id: 'exportMarkdown', title: 'Export Markdown dialect', icon: svgIcons.exportHtml },
     { id: 'lintMarkdown', title: 'Lint document', icon: svgIcons.search },
+    { id: 'formatJson', title: 'Format JSON', icon: svgIcons.format },
     { id: 'search', title: 'Find & Replace', icon: svgIcons.search },
     { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView },
     { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow },

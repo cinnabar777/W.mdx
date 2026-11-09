@@ -1900,7 +1900,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "menu" to listOf(
                 "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
                 "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
-                "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings"
+                "formatJson", "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings"
             )
         )
         private val TOOLBAR_DELETABLE_KEY_IDS =
@@ -1922,6 +1922,7 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "codeBlock", "horizontalLine", "footnote",
             "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
+            "formatJson",
             "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID
         )
@@ -2351,6 +2352,13 @@ class StylingControlbarFragment : StylingSettingsFragment() {
         ) {
             deletedKeys.add("sourceLanguage")
         }
+        if (
+            input.optInt("version", 1) < 16 &&
+            "menu" in deletedGroups &&
+            "formatJson" !in deletedKeys
+        ) {
+            deletedKeys.add("formatJson")
+        }
         val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten()
             .filterNot { it in deletedKeys }.toSet()
         val validRootIds = TOOLBAR_ITEM_IDS.filterNot {
@@ -2465,6 +2473,20 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             popupGroups.optJSONObject("menu")?.optJSONArray("order")
                 ?.put("sourceLanguage")
             assignedActions.add("sourceLanguage")
+        }
+
+        if (
+            input.optInt("version", 1) < 16 &&
+            "menu" in groupIds &&
+            "formatJson" !in assignedActions &&
+            "formatJson" !in deletedKeys &&
+            "formatJson" !in hidden &&
+            "formatJson" !in legacyHeldActions &&
+            "formatJson" !in storedHoldingIds
+        ) {
+            popupGroups.optJSONObject("menu")?.optJSONArray("order")
+                ?.put("formatJson")
+            assignedActions.add("formatJson")
         }
 
         if (input.optInt("version", 1) < 9 &&

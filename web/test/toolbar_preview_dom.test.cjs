@@ -255,6 +255,7 @@ test('toolbar settings preview opens a dismissible icon picker popup above spaci
         'Paste from Markdown dialect',
         'Export Markdown dialect',
         'Lint document',
+        'Format JSON',
         'Export HTML / MHTML',
         'Find & Replace',
         'Switch View Mode',

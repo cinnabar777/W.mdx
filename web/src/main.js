@@ -43,9 +43,11 @@ import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
 import {
   SOURCE_LANGUAGE_OPTIONS,
+  getSourceLanguageMode,
   normalizeSourceLanguageOverride,
   sourceLanguageExtension
 } from './sourceLanguage.js';
+import { formatJsonWhitespace } from './jsonFormatter.mjs';
 import { SourceTableWidget } from './sourceTableWidget.js';
 import {
   applyMarkdownIndent,
@@ -519,6 +521,14 @@ function getEditorLanguageExtension() {
   return createMarkdownLanguageExtension(true);
 }
 
+function isCurrentJsonSourceDocument() {
+  return currentEditorMode === 'source' &&
+    getSourceLanguageMode(
+      currentEditorFileName,
+      getCurrentSourceLanguageOverride()
+    ) === 'json';
+}
+
 function openSourceLanguageDialog() {
   const view = activeAdapter?.view;
   const overlay = document.querySelector('#editor-modal-overlay');
@@ -558,9 +568,87 @@ function openSourceLanguageDialog() {
         )
       });
       activeAdapter.scheduleSyntaxRefresh();
+      setupGroupedControlBar();
     }
     close();
   });
+  return true;
+}
+
+function openJsonFormatErrorDialog(view, result) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) {
+    window.AndroidNative?.showToast?.(
+      `Invalid JSON at line ${result.line}, column ${result.column}. No changes were made.`
+    );
+    return false;
+  }
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">JSON is invalid</h3>
+    <p class="modal-message" id="json-format-error" aria-live="polite"></p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="json-format-close">Close</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="json-format-goto">Go to error</button>
+    </div>`;
+  dialog.querySelector('#json-format-error').textContent =
+    `No changes were made. The parse error is near line ${result.line}, column ${result.column}.`;
+  overlay.classList.add('open');
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#json-format-close').addEventListener('click', close);
+  dialog.querySelector('#json-format-goto').addEventListener('click', () => {
+    const position = Math.max(0, Math.min(result.offset, view.state.doc.length));
+    close();
+    view.dispatch({
+      selection: EditorSelection.cursor(position),
+      effects: EditorView.scrollIntoView(position, { y: 'center' })
+    });
+    view.focus();
+  });
+  return true;
+}
+
+function formatJsonSourceDocument() {
+  const view = activeAdapter?.view;
+  if (
+    !view ||
+    currentEditorMode !== 'source' ||
+    getSourceLanguageMode(
+      currentEditorFileName,
+      getCurrentSourceLanguageOverride()
+    ) !== 'json'
+  ) {
+    return false;
+  }
+
+  const source = view.state.doc.toString();
+  const result = formatJsonWhitespace(source);
+  if (!result.ok) {
+    openJsonFormatErrorDialog(view, result);
+    return false;
+  }
+
+  if (result.formatted === source) {
+    window.AndroidNative?.showToast?.('JSON is already formatted.');
+    return true;
+  }
+
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: result.formatted },
+    selection: EditorSelection.cursor(0),
+    effects: EditorView.scrollIntoView(0, { y: 'start' }),
+    userEvent: 'input.format-json'
+  });
+  view.focus();
+  window.AndroidNative?.showToast?.(
+    'JSON formatted with two-space indentation. Undo restores the original.'
+  );
   return true;
 }
 
@@ -7175,6 +7263,7 @@ function setCurrentEditorFileName(fileName, forceRefresh = false) {
     )
   });
   activeAdapter.scheduleSyntaxRefresh();
+  setupGroupedControlBar();
 }
 
 function setCurrentSourceDocumentKey(documentKey) {
@@ -7468,6 +7557,13 @@ function setupGroupedControlBar() {
         { id: 'pasteFromDialect', icon: svgIcons.pasteAsPlainText, title: 'Paste from Markdown dialect', action: () => { hidePopupStrip(); openMarkdownConversionDialog('paste'); } },
         { id: 'exportMarkdown', icon: svgIcons.exportHtml, title: 'Export Markdown dialect', action: () => { hidePopupStrip(); openMarkdownConversionDialog('export'); } },
         { id: 'lintMarkdown', icon: svgIcons.search, title: 'Lint document', action: () => { hidePopupStrip(); openMarkdownLintDialog(); } },
+        {
+          id: 'formatJson',
+          icon: svgIcons.format,
+          title: 'Format JSON',
+          disabled: !isCurrentJsonSourceDocument(),
+          action: () => { hidePopupStrip(); formatJsonSourceDocument(); }
+        },
         { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
         { id: 'switchView', icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
@@ -7842,6 +7938,13 @@ function createToolbarActionRegistry() {
       { id: 'pasteFromDialect', title: 'Paste from Markdown dialect', icon: svgIcons.pasteAsPlainText, action: () => { hidePopupStrip(); openMarkdownConversionDialog('paste'); } },
       { id: 'exportMarkdown', title: 'Export Markdown dialect', icon: svgIcons.exportHtml, action: () => { hidePopupStrip(); openMarkdownConversionDialog('export'); } },
       { id: 'lintMarkdown', title: 'Lint document', icon: svgIcons.search, action: () => { hidePopupStrip(); openMarkdownLintDialog(); } },
+      {
+        id: 'formatJson',
+        title: 'Format JSON',
+        icon: svgIcons.format,
+        disabled: !isCurrentJsonSourceDocument(),
+        action: () => { hidePopupStrip(); formatJsonSourceDocument(); }
+      },
       { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
       { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
       { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView, action: () => openWithOtherEngine() },

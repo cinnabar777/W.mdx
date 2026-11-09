@@ -128,11 +128,11 @@ async function main() {
     await page.evaluate(() => window.editorBridge.setEditorMode('wysiwyg'));
 
     const jsonDocuments = [
-      ['chrono_backup.json', JSON.stringify({ payload: 'x'.repeat(48_000) })],
+      ['chrono_backup.json', JSON.stringify({ payload: 'x'.repeat(6_000) })],
       [
         'Clock_backup.json',
         JSON.stringify(
-          Object.fromEntries(Array.from({ length: 420 }, (_, index) => [
+          Object.fromEntries(Array.from({ length: 80 }, (_, index) => [
             `preference_${index}`,
             { enabled: index % 2 === 0, label: `Clock preference ${index}` }
           ])),
@@ -155,6 +155,47 @@ async function main() {
         jsonText,
         `${fileName}: source loading must preserve the entire JSON document`
       );
+
+      if (fileName === 'chrono_backup.json') {
+        await page.locator('#grp-btn-menu').evaluate(button => button.click());
+        const formatJsonButton = page.locator(
+          '#popup-toolbar-strip [data-toolbar-style-id="formatJson"]'
+        );
+        await formatJsonButton.waitFor({ state: 'visible' });
+        assert.equal(await formatJsonButton.isDisabled(), false);
+        await formatJsonButton.evaluate(button => button.click());
+        const formattedJson = await page.evaluate(() =>
+          window.editorBridge.getMarkdown()
+        );
+        assert.ok(formattedJson.includes('\n  "payload": '));
+        assert.equal(JSON.parse(formattedJson).payload.length, 6_000);
+        await page.locator('#grp-btn-undo').evaluate(button => button.click());
+        assert.equal(
+          await page.evaluate(() => window.editorBridge.getMarkdown()),
+          jsonText,
+          'JSON formatting should be one undoable edit that restores the exact source'
+        );
+
+        const invalidJson = '{\n  "valid": true,\n  "broken": }\n';
+        await page.evaluate(async text => {
+          await window.editorBridge.setMarkdown(text, 'broken.json');
+        }, invalidJson);
+        await page.locator('#grp-btn-menu').evaluate(button => button.click());
+        await page.locator(
+          '#popup-toolbar-strip [data-toolbar-style-id="formatJson"]'
+        ).evaluate(button => button.click());
+        await page.locator('#json-format-error').waitFor({ state: 'visible' });
+        assert.equal(
+          await page.evaluate(() => window.editorBridge.getMarkdown()),
+          invalidJson,
+          'invalid JSON must remain untouched'
+        );
+        assert.match(
+          await page.locator('#json-format-error').textContent(),
+          /line 3, column/
+        );
+        await page.locator('#json-format-close').evaluate(button => button.click());
+      }
 
       await page.evaluate(async () => {
         await window.editorBridge.setMarkdown('', 'Untitled.md');

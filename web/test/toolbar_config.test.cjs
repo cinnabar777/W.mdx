@@ -142,7 +142,7 @@ test('obsolete Files & Tabs toolbar action is removed from saved layouts', async
     [
       'newTab', 'newFile', 'settings', 'saveAsMdzip',
       'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown',
-      'sourceLanguage'
+      'sourceLanguage', 'formatJson'
     ]
   );
   assert.ok(!oldLayout.holding.includes('leftPanel'));
@@ -165,7 +165,7 @@ test('existing menu layouts gain New Tab without losing their saved actions', as
     [
       'newTab', 'newFile', 'settings', 'saveFile',
       'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown',
-      'sourceLanguage'
+      'sourceLanguage', 'formatJson'
     ]
   );
 });
@@ -183,7 +183,7 @@ test('version 13 menu layouts gain the linter without restoring deleted conversi
 
   assert.deepEqual(config.popupGroups.menu.order, [
     'newFile', 'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown',
-    'sourceLanguage'
+    'sourceLanguage', 'formatJson'
   ]);
 });
 
@@ -198,12 +198,12 @@ test('version 14 menu layouts gain the Source language picker', async () => {
   });
 
   assert.deepEqual(config.popupGroups.menu.order, [
-    'newFile', 'settings', 'sourceLanguage'
+    'newFile', 'settings', 'sourceLanguage', 'formatJson'
   ]);
   assert.ok(!config.holding.includes('sourceLanguage'));
 });
 
-test('deleted Menu groups do not leak the Source language picker into the toolbar tray', async () => {
+test('deleted Menu groups do not leak new actions into the toolbar tray', async () => {
   const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
   const config = normalizeBottomToolbarConfig({
     version: 14,
@@ -213,8 +213,31 @@ test('deleted Menu groups do not leak the Source language picker into the toolba
   });
 
   assert.ok(config.deletedKeys.includes('sourceLanguage'));
+  assert.ok(config.deletedKeys.includes('formatJson'));
   assert.ok(!config.holding.includes('sourceLanguage'));
+  assert.ok(!config.holding.includes('formatJson'));
   assert.ok(!config.order.includes('sourceLanguage'));
+  assert.ok(!config.order.includes('formatJson'));
+});
+
+test('version 15 menu layouts gain Format JSON unless the action was deleted', async () => {
+  const { normalizeBottomToolbarConfig } = await import('../src/toolbarConfig.js');
+  const migrated = normalizeBottomToolbarConfig({
+    version: 15,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: { menu: { order: ['newFile', 'lintMarkdown'], hidden: [] } }
+  });
+  const deleted = normalizeBottomToolbarConfig({
+    version: 15,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    popupGroups: { menu: { order: ['newFile'], hidden: [] } },
+    deletedKeys: ['formatJson']
+  });
+
+  assert.deepEqual(migrated.popupGroups.menu.order, [
+    'newFile', 'lintMarkdown', 'formatJson'
+  ]);
+  assert.deepEqual(deleted.popupGroups.menu.order, ['newFile']);
 });
 
 test('invalid saved configuration falls back to the current toolbar order', async () => {

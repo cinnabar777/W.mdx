@@ -39,7 +39,7 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   ]),
   menu: Object.freeze([
     'newTab', 'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack', 'saveAsMdzip',
-    'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown',
+    'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown', 'formatJson',
     'exportHtml', 'search', 'switchView', 'sourceLanguage', 'newWindow', 'settings'
   ])
 });
@@ -104,7 +104,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 15,
+  version: 16,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -315,6 +315,13 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     !deletedKeys.includes('sourceLanguage')
   ) {
     deletedKeys.push('sourceLanguage');
+  }
+  if (
+    parsedVersion < 16 &&
+    deletedGroupIds.has('menu') &&
+    !deletedKeys.includes('formatJson')
+  ) {
+    deletedKeys.push('formatJson');
   }
   const deletedKeyIds = new Set(deletedKeys);
 
@@ -591,6 +598,20 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       !heldActions.has('sourceLanguage')
     ) {
       popupGroups.menu.order.push('sourceLanguage');
+    }
+  }
+
+  if (parsedVersion < 16 && popupGroups.menu) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    const heldActions = new Set(migrateToolbarActionIds(parsed.holding, parsedVersion));
+    if (
+      !assignedActions.has('formatJson') &&
+      !deletedKeyIds.has('formatJson') &&
+      !legacyHeldKeys.includes('formatJson') &&
+      !legacyHidden.includes('formatJson') &&
+      !heldActions.has('formatJson')
+    ) {
+      popupGroups.menu.order.push('formatJson');
     }
   }
 
