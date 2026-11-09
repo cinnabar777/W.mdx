@@ -28,11 +28,12 @@ the syntax the current app supports.
   paragraphs, headings, lists, quotes, code blocks, indentation, tables, and
   wrapping. These rendered views must not select competing layout algorithms.
 - **Source is the raw editor surface**, not a third Markdown document renderer.
-  It shows every source character in order, without hiding syntax, rendering
-  Markdown blocks, inserting widgets over source, or folding source text.
-  Markdown syntax highlighting may color tokens without changing their
-  visibility or layout. Source typography, wrapping, and syntax colors belong
-  to the source-editor appearance settings, independently of Document
+  Every source character stays visible and editable in order; syntax is not
+  hidden, Markdown blocks are not rendered, and callout bodies are not folded.
+  A wide Markdown table may use one nested raw-text editor to scroll the whole
+  table locally; its syntax and source remain unchanged. Markdown syntax
+  highlighting may color tokens without hiding them. Source typography, wrapping,
+  and syntax colors belong to Source/Code settings, independently of Document
   Appearance styling for rendered Markdown.
 - Source may select a language grammar for syntax highlighting: Markdown for
   Markdown documents, no grammar for plain text, and a supported code-language
@@ -768,10 +769,11 @@ The user selected the broader CommonMark/GFM/Obsidian/Wmdx implementation,
 including import, paste conversion, Markdown export, and a linter. The current
 worktree now includes:
 
-- A shared whole-document semantic layout module consumed by the three editor
-  views, with browser geometry coverage for list flavors, nesting, mixed blocks,
-  source-table local scrolling and editing, table edits, keyboard viewport changes, and scroll
-  anchoring across mode switches.
+- A shared whole-document semantic layout module for the two rendered modes,
+  with browser geometry coverage for list flavors, nesting, mixed blocks,
+  source-table local scrolling and editing, table edits, keyboard viewport
+  changes, and scroll anchoring across mode switches. Raw Source bypasses
+  rendered Markdown decorations except for its local-scroll table editor.
 - A conversion module for CommonMark, GFM, Obsidian, and HTML input, with a
   preview-before-replace flow and a shared clipboard-paste flow.
 - CommonMark, GFM, and Obsidian Markdown export, with warnings when a target
@@ -791,10 +793,10 @@ pending.
 exposure is configurable, plus a separate raw Source/Code editor. The legacy
 WYSIWYG and Live Preview choices are compatibility presets, not separate
 rendering engines. Source retains every source character, with its own syntax
-token colors and editor typography; source tables use a nested editable
-CodeMirror block whose local scroller moves all rows together without shifting
-surrounding text or widening the app viewport. Source appearance controls are independent
-from Document Appearance. Initial extension-based code highlighting supports
+  token colors and editor typography; source tables use a nested editable
+  CodeMirror block whose local scroller moves all rows together without shifting
+  surrounding text or widening the app viewport. Source appearance controls are
+  independent from Document Appearance. Initial extension-based code highlighting supports
 JavaScript/TypeScript/JSX/TSX, JSON, HTML/XML/SVG, and CSS; unknown types stay
 plain text. Additional language packages, per-document language override, and
 the rendered-mode consolidation remain implementation work.

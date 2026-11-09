@@ -81,8 +81,9 @@ as an MDZip package with real media and attachment assets.
   rendered widget for the original syntax.
 - Confirm Source keeps the authored Wmdx alphabetic/Roman list markers instead
   of auto-numbered display labels, and does not prepend a language/copy widget
-  to a code fence. Semantic styling may remain, but the source line's visible
-  characters must stay in their original order without widget overlays.
+  to a code fence. Semantic styling may remain, but visible characters must stay
+  in order; a wide table may use a nested raw-text editor only if every Markdown
+  marker remains visible and the table scrolls as one aligned block.
 
 ## Feature-toggle checks
 
