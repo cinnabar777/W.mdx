@@ -6,6 +6,7 @@ const { chromium } = require('playwright');
 
 const root = path.resolve(__dirname, '../../app/src/main/assets/www');
 const phoneFixture = path.resolve(__dirname, '../../Documentation/Markdown-Phone-Test.md');
+const cheatSheetFixture = path.resolve(__dirname, '../../Documentation/Markdown.md');
 const modes = ['wysiwyg', 'live_preview', 'source'];
 const text = 'Item text with **bold words** and enough ordinary words to wrap onto several rows at phone width, testing that every wrapped row starts underneath the content rather than underneath the marker. ';
 const markers = ['-', '+', '*', '1.', '1)', 'a.', 'A.', 'i.', 'I.', '- [ ]', '- [x]', '[ ]'];
@@ -109,6 +110,27 @@ async function main() {
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(() => window.editorBridge);
     await page.evaluate(() => window.editorBridge.setEditorMode('wysiwyg'));
+
+    const cheatSheet = await fs.readFile(cheatSheetFixture, 'utf8');
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const mode of modes) {
+      await page.evaluate(async ({ mode, markdown }) => {
+        await window.editorBridge.setEditorMode(mode);
+        window.editorBridge.setMarkdown(markdown);
+      }, { mode, markdown: cheatSheet });
+      await page.waitForTimeout(160);
+      assert.equal(
+        await page.evaluate(() => window.editorBridge.getMarkdown()),
+        cheatSheet,
+        `${mode}: the packaged Markdown cheat sheet must remain source-stable`
+      );
+      assert.deepEqual(
+        await page.evaluate(() => window.layoutDiagnostics),
+        [],
+        `${mode}: cheat-sheet rendering must not fail and retain stale decorations`
+      );
+      cases++;
+    }
 
     const touchContext = await browser.newContext({
       viewport: { width: 412, height: 915 },

@@ -2963,14 +2963,30 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
   buildDecorations(view) {
     recordDecorationBuild(currentEditorMode, 'live_preview_plugin');
-    const previousHiddenSyntaxRanges = this.hiddenSyntaxRanges;
     this.hiddenSyntaxRanges = Decoration.none;
     try {
       return this._buildDecorationsInternal(view);
     } catch (e) {
-      window.AndroidNative?.reportDiagnostic?.('decoration_error', 0);
-      this.hiddenSyntaxRanges = previousHiddenSyntaxRanges;
-      return this.decorations || Decoration.none;
+      const message = String(e?.message || '');
+      const errorKind = /Cannot read properties of undefined/.test(message)
+        ? 'undefined-property'
+        : /Cannot read properties of null/.test(message)
+          ? 'null-property'
+          : /not a function/.test(message)
+            ? 'not-callable'
+            : /range|offset|position/i.test(message)
+              ? 'range'
+              : String(e?.name || 'Error').slice(0, 24);
+      window.AndroidNative?.reportDiagnostic?.(
+        'decoration_error',
+        `mode=${currentEditorMode};kind=${errorKind};docLength=${view?.state?.doc?.length ?? -1}`
+      );
+      // Old decoration ranges may point into the previous document after an
+      // edit. Expose raw source rather than reusing stale positions and
+      // shifting unrelated text when this rendering pass fails.
+      this.hiddenSyntaxRanges = Decoration.none;
+      this.decorations = Decoration.none;
+      return Decoration.none;
     }
   }
 
