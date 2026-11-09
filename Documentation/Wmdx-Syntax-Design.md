@@ -600,8 +600,12 @@ replacing the link label or image title. These mappings follow [CommonMark links
 | Unmerged tables | CommonMark has no native table syntax, so export as HTML `<table>`. GFM uses pipe tables. | Use GFM pipe tables. |
 | Merged tables | Export as HTML `<table>` with `colspan`/`rowspan`; pipe-table syntax cannot represent merged cells. | Same. |
 
-For imports, convert HTML ordered-list `type` and checkbox state to the matching
-Wmdx list style/task state. Preserve list nesting. These mappings follow
+For HTML imports, `ol type` (`1`, `a`, `A`, `i`, or `I`) and a supported
+positive `start` value map to Wmdx numbering markers. A reversed list is
+normalized to ascending numbering with a warning; custom `li[value]` markers are
+written where possible and reported because Wmdx auto-numbering may normalize
+nonsequential values. Checkbox state, including checkboxes inside a list
+paragraph, maps to Wmdx task state. Preserve list nesting. These mappings follow
 [CommonMark raw HTML](https://spec.commonmark.org/0.31.2/#html-blocks),
 [GFM tables](https://github.github.com/gfm/#tables-extension-) and
 [task lists](https://github.github.com/gfm/#task-list-items-extension-), and
@@ -662,8 +666,8 @@ batch implementation plan.
 | HTML construct | Wmdx conversion |
 | --- | --- |
 | `h1`–`h6`, paragraphs, line breaks, and thematic breaks | `.1`–`.6`, normal paragraphs, the existing hard-break spelling, and the existing thematic-break syntax |
-| Lists and nested lists | Existing list markers and nesting; HTML checkboxes inside list items map to task items |
-| Block quotes and simple tables | Existing `>` quotes and current pipe tables; do not change table syntax or editing behavior |
+| Lists and nested lists | Existing list markers and nesting; ordered marker styles and starts, multiple paragraphs, and HTML checkboxes inside list items map to their Wmdx equivalents |
+| Block quotes and HTML tables with cell spans | Existing `>` quotes and current pipe tables; preserve HTML `rowspan`/`colspan` with the existing merge markers and do not change table syntax or editing behavior |
 | Bold, italic, underline, strike, superscript, subscript, highlight, and inline code | Existing Wmdx inline formatting markers |
 | Links, images, audio, video, and supported documents | The unified resource syntax; map URL, label/alt text, size, and alignment where present |
 | HTML media `width`/`height` attributes | Resource size with proportions preserved; do not derive dimensions from CSS |
@@ -685,7 +689,7 @@ The following entries record agreed conversion behavior:
 | CSS stylesheets, `<style>` blocks, and `style` attributes | **Agreed direction:** do not import or apply them; CSS is not document content. Convert semantic HTML formatting elements instead |
 | `<script>` blocks | **Agreed direction:** never execute them; omit script behavior as non-document content |
 | Malformed HTML | **Agreed direction:** recover and convert recognizable document content, reporting meaningful losses. If no usable content can be recovered, stop and leave the destination unchanged |
-| HTML tables with `rowspan`/`colspan` | **Agreed direction:** preserve spans using the existing Wmdx merge markers: `<` for horizontally covered cells and `^` for vertically covered cells. Keep the source cell content once in its origin cell. Do not change table syntax or editing behavior |
+| HTML tables with `rowspan`/`colspan` | **Implemented:** preserve spans using the existing Wmdx merge markers: `<` for horizontally covered cells and `^` for vertically covered cells. Keep the source cell content once in its origin cell. Do not change table syntax or editing behavior |
 | Forms, iframes, custom elements, and other active or unknown content | **Agreed direction:** retain readable text, labels, and ordinary links; convert recognized media to resource syntax; omit interactive controls and behavior; never execute active content or retain raw tags; report meaningful losses |
 
 HTML document metadata such as `<title>` and `<meta>` is not ordinary body text.

@@ -101,6 +101,49 @@ object PreferenceResetHelper {
             "pref_pen_green_text_color" -> "#2ec4b6"
             "pref_pen_blue_text_color" -> "#4dabf7"
             "pref_pen_purple_text_color" -> "#845ef7"
+            "pref_source_editor_text_color" -> "#FFFFFF"
+            "pref_source_editor_markup_color",
+            "pref_source_editor_link_color",
+            "pref_source_editor_operator_color" -> "#89ddff"
+            "pref_source_editor_heading_color",
+            "pref_source_editor_function_color" -> "#82aaff"
+            "pref_source_editor_code_color",
+            "pref_source_editor_string_color" -> "#c3e88d"
+            "pref_source_editor_comment_color" -> "#808080"
+            "pref_source_editor_number_color" -> "#f78c6c"
+            "pref_source_editor_keyword_color" -> "#c792ea"
+            "pref_source_editor_property_color" -> "#ffcb6b"
+            "pref_source_editor_type_color" -> "#f07178"
+            "pref_source_editor_variable_color" -> "#eeffff"
+            "pref_cursor_color" -> "#FFFFFF"
+            "pref_left_panel_bg_color" -> "#121212"
+            "pref_left_panel_border_color" -> "#444444"
+            "pref_left_panel_text_color" -> "#FFFFFF"
+            "pref_start_page_bg_color" -> "#000000"
+            "pref_start_page_title_color",
+            "pref_start_page_action_text_color" -> "#FFFFFF"
+            "pref_start_page_action_bg_color" -> "#00000000"
+            "pref_start_page_action_border_color" -> "#3DFFFFFF"
+            "pref_underline_solid_color",
+            "pref_underline_dotted_color",
+            "pref_underline_dashed_color",
+            "pref_underline_double_color",
+            "pref_underline_wavy_color" -> "#FFFFFF"
+            "pref_callout_type_faq_bg_color" -> "rgba(255,152,0,0.12)"
+            "pref_callout_type_question_bg_color" -> "rgba(255,152,0,0.12)"
+            "pref_callout_type_todo_bg_color" -> "rgba(0,188,212,0.12)"
+            "pref_callout_type_example_bg_color" -> "rgba(171,71,188,0.12)"
+            "pref_callout_type_info_bg_color" -> "rgba(41,182,246,0.12)"
+            "pref_callout_type_info_title_color",
+            "pref_callout_type_faq_title_color",
+            "pref_callout_type_question_title_color",
+            "pref_callout_type_todo_title_color",
+            "pref_callout_type_example_title_color" -> "#FFFFFF"
+            "pref_callout_type_info_accent_color" -> "#29B6F6"
+            "pref_callout_type_faq_accent_color",
+            "pref_callout_type_question_accent_color" -> "#FF9800"
+            "pref_callout_type_todo_accent_color" -> "#00BCD4"
+            "pref_callout_type_example_accent_color" -> "#AB47BC"
             "pref_code_color" -> "#FF80AB"
             "pref_code_bg_color" -> "#212121"
             "pref_code_block_color" -> "#E0E0E0"
@@ -166,6 +209,36 @@ object PreferenceResetHelper {
     fun getDefaultColorHex(context: Context, key: String?): String {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
+        val calloutOverride = Regex(
+            "^pref_callout_type_(info|faq|question|todo|example)_(bg|title|accent)_color$"
+        ).matchEntire(key.orEmpty())
+        if (calloutOverride != null) {
+            val type = calloutOverride.groupValues[1]
+            val kind = calloutOverride.groupValues[2]
+            val inheritedKeys = when (kind) {
+                "bg" -> listOf("pref_callout_header_bg_color", "pref_callout_bg_color")
+                "title" -> listOf(
+                    "pref_callout_header_title_color",
+                    "pref_callout_text_color",
+                    "pref_body_text_color"
+                )
+                else -> listOf(
+                    "pref_callout_header_accent_color",
+                    "pref_callout_line_color"
+                )
+            }
+            inheritedKeys.forEach { inheritedKey ->
+                val inherited = prefs.getString(inheritedKey, "default")
+                if (!inherited.isNullOrBlank() && inherited != "default") return inherited
+            }
+            if (kind == "title") {
+                return if (isLightTheme) "#111111" else "#FFFFFF"
+            }
+            if (kind == "bg") {
+                return getDefaultColorHex("pref_callout_type_${type}_bg_color")
+            }
+            return getDefaultColorHex(key)
+        }
         return when (key) {
             "pref_media_player_background_color" ->
                 if (isLightTheme) "#FFFFFF" else "#111111"
@@ -194,15 +267,64 @@ object PreferenceResetHelper {
             "pref_embedded_content_title_text_color" ->
                 if (isLightTheme) "#111111" else "#F1F3F4"
             "pref_start_page_bg_color" ->
-                if (isLightTheme) "#FFFFFF" else "#000000"
+                prefs.getString("pref_body_background_color", "default")
+                    ?.takeIf { it.isNotBlank() && it != "default" }
+                    ?: if (isLightTheme) "#FFFFFF" else "#000000"
             "pref_start_page_title_color", "pref_start_page_action_text_color" ->
-                if (isLightTheme) "#111111" else "#FFFFFF"
-            "pref_start_page_action_bg_color" ->
-                if (isLightTheme) "#F8F9FA" else "#111111"
-            "pref_start_page_action_border_color" ->
-                if (isLightTheme) "#D0D5DB" else "#555555"
+                prefs.getString("pref_body_text_color", "default")
+                    ?.takeIf { it.isNotBlank() && it != "default" }
+                    ?: if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_start_page_action_bg_color" -> "#00000000"
+            "pref_start_page_action_border_color" -> {
+                val bodyText = prefs.getString("pref_body_text_color", "default")
+                    ?.takeIf { it.isNotBlank() && it != "default" }
+                    ?: if (isLightTheme) "#111111" else "#FFFFFF"
+                val base = ColorPickerDialog.parseHexColor(
+                    bodyText,
+                    if (isLightTheme) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                )
+                val alpha = Math.round(android.graphics.Color.alpha(base) * 0.24).toInt()
+                String.format(
+                    Locale.ROOT,
+                    "#%08X",
+                    android.graphics.Color.argb(
+                        alpha,
+                        android.graphics.Color.red(base),
+                        android.graphics.Color.green(base),
+                        android.graphics.Color.blue(base)
+                    )
+                )
+            }
             "pref_body_text_color", "pref_list_text_color" ->
                 if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_source_editor_text_color" ->
+                if (isLightTheme) "#111111" else "#FFFFFF"
+            "pref_cursor_color" -> {
+                val bodyColor = prefs.getString("pref_body_text_color", "default")
+                if (!bodyColor.isNullOrBlank() && bodyColor != "default") {
+                    bodyColor
+                } else if (isLightTheme) {
+                    "#111111"
+                } else {
+                    "#FFFFFF"
+                }
+            }
+            "pref_left_panel_bg_color" -> {
+                val toolbarColor = prefs.getString("pref_toolbar_bg_color", "default")
+                if (!toolbarColor.isNullOrBlank() && toolbarColor != "default") {
+                    toolbarColor
+                } else if (isLightTheme) {
+                    "#F8F9FA"
+                } else {
+                    "#121212"
+                }
+            }
+            "pref_left_panel_border_color" ->
+                if (isLightTheme) "#E0E0E0" else "#444444"
+            "pref_left_panel_text_color" ->
+                prefs.getString("pref_body_text_color", "default")
+                    ?.takeIf { it.isNotBlank() && it != "default" }
+                    ?: if (isLightTheme) "#111111" else "#FFFFFF"
             "pref_toc_panel_bg_color" -> {
                 val toolbarColor = prefs.getString("pref_toolbar_bg_color", "default")
                 if (!toolbarColor.isNullOrBlank() && toolbarColor != "default") {
@@ -653,6 +775,17 @@ object PreferenceResetHelper {
             key == "pref_embedded_content_limited_interaction" -> true
             key == "pref_embedded_content_full_inline_editing" -> false
             key == "pref_embedded_document_method" -> "copy"
+            key == "pref_gfm_extensions_enabled" -> true
+            key == "pref_markdown_auto_paste_enabled" -> true
+            key == "pref_media_controls_accent_color" ||
+                key == "pref_media_controls_background_color" ||
+                key == "pref_media_controls_text_color" ||
+                key == "pref_media_player_background_color" -> "default"
+            key == "pref_media_playback_speed" -> "1.0"
+            key == "pref_hotkey_clearFormatting" -> "ctrl+\\"
+            key == "pref_source_editor_font_size" -> 14
+            key == "pref_source_editor_text_color" ||
+                key.startsWith("pref_source_editor_") && key.endsWith("_color") -> "default"
             key == "pref_settings_category_title_color" -> "#00E5FF"
             key == "pref_settings_title_color" -> "#FFFFFF"
             key == "pref_settings_summary_color" -> "#AAAAAA"
@@ -1491,6 +1624,45 @@ class HelpResetSwitchPreference : ResetSwitchPreference {
 
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
+        val button = holder.itemView.findViewById<android.widget.ImageButton>(
+            R.id.preference_help
+        ) ?: return
+        val message = helpMessage
+        if (message.isNullOrBlank()) {
+            button.visibility = View.GONE
+            button.setOnClickListener(null)
+            return
+        }
+
+        button.visibility = View.VISIBLE
+        button.contentDescription = "Help for ${title ?: helpTitle ?: "setting"}"
+        button.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(context)
+                .setTitle(helpTitle ?: title)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+        }
+    }
+}
+
+class HelpPreference @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = androidx.preference.R.attr.preferenceStyle
+) : Preference(context, attrs, defStyleAttr) {
+    private var helpTitle: CharSequence? = null
+    private var helpMessage: CharSequence? = null
+
+    fun setHelpContent(title: CharSequence, message: CharSequence) {
+        helpTitle = title
+        helpMessage = message
+        notifyChanged()
+    }
+
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
+        super.onBindViewHolder(holder)
+        PreferenceResetHelper.applySettingsTheme(holder, this)
         val button = holder.itemView.findViewById<android.widget.ImageButton>(
             R.id.preference_help
         ) ?: return

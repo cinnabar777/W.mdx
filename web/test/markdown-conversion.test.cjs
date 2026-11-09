@@ -324,3 +324,58 @@ test('HTML import converts semantic content and omits active elements', async ()
   const comments = convertFromHtml('<p>Text</p><!-- hidden note -->', Parser);
   assert.ok(comments.warnings.some(warning => warning.includes('comments')));
 });
+
+test('HTML import preserves ordered-list marker styles, starts, and nested task state', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const result = convertFromHtml(
+    '<ol type="a" start="3"><li>Third</li><li value="7">Seventh</li><li>Next</li></ol>' +
+    '<ol type="I" start="4"><li>Fourth</li><li>Fifth</li></ol>' +
+    '<ul><li><p><input type="checkbox" checked>Done</p></li></ul>',
+    Parser
+  );
+
+  assert.match(result.markdown, /^c\. Third\ng\. Seventh\nh\. Next$/m);
+  assert.match(result.markdown, /^IV\. Fourth\nV\. Fifth$/m);
+  assert.match(result.markdown, /^- \[x\] Done$/m);
+  assert.ok(result.warnings.some(warning => warning.includes('Custom ordered-list item values')));
+});
+
+test('HTML import preserves list paragraphs and table formatting plus merged-cell markers', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const result = convertFromHtml(
+    '<ul><li><p>First paragraph</p><p>Second paragraph</p>' +
+    '<ul><li>Nested item</li></ul></li></ul>' +
+    '<table><thead><tr><th colspan="2">Summary</th></tr></thead><tbody>' +
+    '<tr><td rowspan="2">Keep <strong>rich</strong></td><td><a href="/a">A|B</a></td></tr>' +
+    '<tr><td>Second row</td></tr></tbody></table>',
+    Parser
+  );
+
+  assert.match(result.markdown, /- First paragraph\n\n  Second paragraph\n  - Nested item/);
+  assert.match(result.markdown, /\| Summary \| < \|\n\| --- \| --- \|/);
+  assert.match(result.markdown, /\| Keep \*\*rich\*\* \| \[A\\\|B\]\(\/a\) \|/);
+  assert.match(result.markdown, /\| \^ \| Second row \|/);
+  assert.equal(result.warnings.length, 0);
+});
+
+test('Markdown import and export process the complete document beyond the preview limit', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const longBody = 'A paragraph that remains part of this complete document.\n\n'.repeat(150);
+  const source = `# First heading\n\n${longBody}# Final heading`;
+
+  assert.ok(source.length > 6000);
+  for (const dialect of ['commonmark', 'gfm', 'obsidian']) {
+    const result = convertFromMarkdown(source, dialect);
+    assert.ok(result.markdown.length > 6000, `${dialect} import retains the full source`);
+    assert.match(result.markdown, /\.1 Final heading$/, `${dialect} import converts the tail`);
+  }
+
+  const exported = exportMarkdown(`.1 First heading\n\n${longBody}.2 Final heading`, 'gfm');
+  assert.ok(exported.markdown.length > 6000);
+  assert.match(exported.markdown, /^## Final heading$/m);
+});

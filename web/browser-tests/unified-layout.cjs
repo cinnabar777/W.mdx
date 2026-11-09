@@ -1436,6 +1436,24 @@ async function main() {
     assert.match(convertedDocument, /^\.1 Imported title/m);
     assert.match(convertedDocument, /\[docs\/Project%20Notes\.md\|Project\|\|\]/);
 
+    const longConversionSource =
+      `# Beginning\n\n${'A paragraph in the middle of the complete document.\n\n'.repeat(180)}# Final heading`;
+    await page.evaluate(source => window.editorBridge.setMarkdown(source), longConversionSource);
+    await page.waitForTimeout(100);
+    await openMenuAction('Convert from Markdown dialect');
+    await page.locator('#markdown-conversion-format').selectOption('commonmark');
+    await page.locator('#markdown-conversion-preview-button').click();
+    const longConversionPreview =
+      await page.locator('#markdown-conversion-preview').inputValue();
+    assert.match(longConversionPreview, /\[Preview truncated\]/);
+    assert.doesNotMatch(longConversionPreview, /Final heading/);
+    await page.locator('#markdown-conversion-apply').click();
+    await page.waitForTimeout(100);
+    const wholeConvertedDocument =
+      await page.evaluate(() => window.editorBridge.getMarkdown());
+    assert.ok(wholeConvertedDocument.length > 6000);
+    assert.match(wholeConvertedDocument, /\.1 Final heading$/);
+
     await page.evaluate(() => window.editorBridge.setMarkdown('Note.[^missing]'));
     await page.waitForTimeout(60);
     await openMenuAction('Lint document');

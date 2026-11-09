@@ -269,7 +269,7 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
             if (pref is androidx.preference.PreferenceCategory) {
                 pref.layoutResource = R.layout.preference_category_custom
                 applyCustomLayouts(pref)
-            } else if (pref is HelpResetSwitchPreference) {
+            } else if (pref is HelpResetSwitchPreference || pref is HelpPreference) {
                 pref.layoutResource = R.layout.preference_help_switch
             } else if (pref is androidx.preference.SeekBarPreference) {
                 if (pref is androidx.preference.PreferenceGroup) {
@@ -1628,6 +1628,25 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
             "todo" to Color.parseColor("#00BCD4"),
             "example" to Color.parseColor("#AB47BC")
         )
+        val defaultAccentHexes = mapOf(
+            "info" to "#29B6F6",
+            "faq" to "#FF9800",
+            "question" to "#FF9800",
+            "todo" to "#00BCD4",
+            "example" to "#AB47BC"
+        )
+        val defaultBackgrounds = mapOf(
+            "info" to "rgba(41,182,246,0.12)",
+            "faq" to "rgba(255,152,0,0.12)",
+            "question" to "rgba(255,152,0,0.12)",
+            "todo" to "rgba(0,188,212,0.12)",
+            "example" to "rgba(171,71,188,0.12)"
+        )
+        val calloutBgHex = prefs.getString("pref_callout_bg_color", "default") ?: "default"
+        val calloutTextHex = prefs.getString("pref_callout_text_color", "default") ?: "default"
+        val bodyTextHex = prefs.getString("pref_body_text_color", "default") ?: "default"
+        val calloutLineHex = prefs.getString("pref_callout_line_color", "default") ?: "default"
+        val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
 
         for (t in supportedTypes) {
             val box = previewCardViews[t] ?: continue
@@ -1637,13 +1656,35 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
             val typeTitleHex = prefs.getString("pref_callout_type_${t}_title_color", "default") ?: "default"
             val typeAccentHex = prefs.getString("pref_callout_type_${t}_accent_color", "default") ?: "default"
 
-            val effectiveBgHex = if (typeBgHex != "default") typeBgHex else sharedHeaderBgHex
-            val effectiveTitleHex = if (typeTitleHex != "default") typeTitleHex else sharedHeaderTitleHex
-            val effectiveAccentHex = if (typeAccentHex != "default") typeAccentHex else sharedHeaderAccentHex
+            val effectiveBgHex = when {
+                typeBgHex != "default" -> typeBgHex
+                sharedHeaderBgHex != "default" -> sharedHeaderBgHex
+                calloutBgHex != "default" -> calloutBgHex
+                else -> defaultBackgrounds[t] ?: "rgba(41,182,246,0.12)"
+            }
+            val effectiveTitleHex = when {
+                typeTitleHex != "default" -> typeTitleHex
+                sharedHeaderTitleHex != "default" -> sharedHeaderTitleHex
+                calloutTextHex != "default" -> calloutTextHex
+                bodyTextHex != "default" -> bodyTextHex
+                isLightTheme -> "#111111"
+                else -> "#FFFFFF"
+            }
+            val effectiveAccentHex = when {
+                typeAccentHex != "default" -> typeAccentHex
+                sharedHeaderAccentHex != "default" -> sharedHeaderAccentHex
+                calloutLineHex != "default" -> calloutLineHex
+                else -> defaultAccentHexes[t] ?: "#29B6F6"
+            }
 
-            val bgColor = if (effectiveBgHex == "default") Color.parseColor("#1A232A") else ColorPickerDialog.parseHexColor(effectiveBgHex, Color.parseColor("#1A232A"))
-            val titleColor = if (effectiveTitleHex == "default") Color.WHITE else ColorPickerDialog.parseHexColor(effectiveTitleHex, Color.WHITE)
-            val accentColor = if (effectiveAccentHex == "default") (defaultBorders[t] ?: Color.parseColor("#29B6F6")) else ColorPickerDialog.parseHexColor(effectiveAccentHex, defaultBorders[t] ?: Color.parseColor("#29B6F6"))
+            val fallbackBackground = if (isLightTheme) Color.WHITE else Color.BLACK
+            val bgColor = ColorPickerDialog.parseHexColor(effectiveBgHex, fallbackBackground)
+            val fallbackTitle = if (isLightTheme) Color.BLACK else Color.WHITE
+            val titleColor = ColorPickerDialog.parseHexColor(effectiveTitleHex, fallbackTitle)
+            val accentColor = ColorPickerDialog.parseHexColor(
+                effectiveAccentHex,
+                defaultBorders[t] ?: Color.parseColor("#29B6F6")
+            )
 
             box.setBackgroundColor(bgColor)
             titleTv.setTextColor(titleColor)
@@ -1700,6 +1741,14 @@ class StylingEmbeddedContentFragment : StylingSettingsFragment() {
                 "Allows editing embedded text directly in the document. Changes save to the " +
                     "selected copy or linked file. A failed save keeps a warning at the top " +
                     "until the edits save successfully."
+            )
+        findPreference<HelpPreference>("pref_embedded_content_saving_info")
+            ?.setHelpContent(
+                "Saving embedded edits",
+                "With Copy into parent assets, edits are saved to the independent copy inside " +
+                    "the parent document's assets. Save the MDZip or TextPack parent to include " +
+                    "that copy in its archive. With Link to original file, edits are written " +
+                    "back to the selected file and require write access."
             )
 
         findPreference<ResetSwitchPreference>("pref_embedded_document_method_copy")

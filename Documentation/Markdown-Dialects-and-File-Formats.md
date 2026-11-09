@@ -71,6 +71,9 @@ The cheat sheet gives the exact source spelling.
 The editor has explicit conversion actions in the toolbar's Menu group. They
 operate on the currently open document or clipboard; they are not a file picker.
 Each conversion previews the result and reports known losses before applying it.
+The preview display is limited to the first 6,000 converted characters for
+phone-sized screens; conversion, replacement, and export still use the complete
+document. A browser regression test checks content beyond that preview limit.
 
 | Action | Source and result |
 | --- | --- |
@@ -108,8 +111,9 @@ device-specific clipboard providers still need acceptance testing.
 HTML conversion is semantic, not a browser snapshot. It maps supported headings,
 paragraphs, lists/tasks, quotes, code, tables, links, images, audio/video,
 attachments, details, and alignment where possible. Scripts and active embedded
-content are omitted; inline CSS, merged table cells, HTML comments, and
-unsupported structures produce warnings or are not retained.
+content are omitted; multi-paragraph list items, rich table-cell inline content,
+and HTML table spans are preserved where Wmdx has equivalent syntax. Inline CSS,
+HTML comments, and unsupported structures produce warnings or are not retained.
 
 ## Conversion rules and known limits
 

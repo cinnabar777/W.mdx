@@ -1,6 +1,6 @@
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
-import { syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree } from '@codemirror/language';
 import { GFM, Strikethrough, Table, TaskList } from '@lezer/markdown';
 import {
   formatWmdxResourceSyntax,
@@ -9,6 +9,7 @@ import {
 } from './wmdxResources.js';
 import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
 import {
+  getOrderedMarkerLabel,
   getWmdxOrderedListSequence,
   parseWmdxOrderedListMarker
 } from './listSyntax.mjs';
@@ -23,6 +24,22 @@ const markdownConversionParser = markdown({
     wmdxCommonMarkCompatibility
   ]
 });
+
+const MARKDOWN_CONVERSION_PARSE_TIMEOUT_MS = 10_000;
+
+function completeMarkdownSyntaxTree(state) {
+  const tree = ensureSyntaxTree(
+    state,
+    state.doc.length,
+    MARKDOWN_CONVERSION_PARSE_TIMEOUT_MS
+  );
+  if (!tree || tree.length < state.doc.length) {
+    throw new Error(
+      'Conversion stopped because the complete Markdown document could not be parsed safely.'
+    );
+  }
+  return tree;
+}
 
 export const MARKDOWN_IMPORT_FORMATS = Object.freeze([
   'commonmark', 'gfm', 'obsidian', 'html'
@@ -341,7 +358,7 @@ function normalizeStandardMarkdownMarkers(source) {
     doc: source,
     extensions: [markdownConversionParser]
   });
-  const cursor = syntaxTree(state).cursor();
+  const cursor = completeMarkdownSyntaxTree(state).cursor();
   const readNode = () => {
     const node = {
       name: cursor.name,
@@ -441,7 +458,7 @@ function convertHeadings(source, protectedLines = new Set()) {
   });
   const replacements = [];
 
-  syntaxTree(state).iterate({
+  completeMarkdownSyntaxTree(state).iterate({
     enter(node) {
       const firstLine = state.doc.lineAt(node.from).number - 1;
       const lastLine = state.doc.lineAt(Math.max(node.from, node.to - 1)).number - 1;
@@ -786,51 +803,128 @@ function htmlBlock(node, warnings, depth = 0) {
   }
   if (tag === 'ul' || tag === 'ol') {
     const ordered = tag === 'ol';
-    const start = Number(node.getAttribute('start')) || 1;
+    const htmlType = node.getAttribute('type');
+    const orderedStyle = ({
+      '1': 'decimal',
+      a: 'alpha_lower',
+      A: 'alpha_upper',
+      i: 'roman_lower',
+      I: 'roman_upper'
+    })[htmlType] || 'decimal';
+    const reversed = ordered && node.hasAttribute('reversed');
+    if (reversed) {
+      addWarning(
+        warnings,
+        'Reversed HTML ordered lists were converted to ascending Wmdx numbering.'
+      );
+    }
+    const rawStart = Number(node.getAttribute('start'));
+    let nextOrdinal = node.hasAttribute('start') && Number.isFinite(rawStart)
+      ? rawStart
+      : reversed
+        ? node.querySelectorAll(':scope > li').length
+        : 1;
+    if (nextOrdinal < 1) {
+      addWarning(
+        warnings,
+        'HTML ordered-list start values below 1 cannot be represented in Wmdx and were normalized.'
+      );
+      nextOrdinal = 1;
+    }
     return Array.from(node.children).filter(child => child.tagName.toLowerCase() === 'li')
-      .map((item, index) => {
+      .map(item => {
+        let itemOrdinal = nextOrdinal;
         if (item.hasAttribute('value')) {
+          const explicitValue = Number(item.getAttribute('value'));
           addWarning(warnings, 'Custom ordered-list item values were normalized during HTML import.');
+          if (Number.isFinite(explicitValue) && explicitValue >= 1) {
+            itemOrdinal = explicitValue;
+          }
         }
-        if (item.querySelectorAll(':scope > p').length > 1) {
-          addWarning(warnings, 'Multiple paragraphs within an HTML list item were flattened.');
-        }
-        const checkbox = item.querySelector(':scope > input[type="checkbox"]');
-        const marker = ordered ? `${start + index}.` : '-';
+        const checkbox = item.querySelector(
+          ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]'
+        );
+        const marker = ordered
+          ? getOrderedMarkerLabel(orderedStyle, itemOrdinal)
+          : '-';
         const task = checkbox ? `[${checkbox.checked ? 'x' : ' '}] ` : '';
-        const body = Array.from(item.childNodes)
+        const bodyBlocks = Array.from(item.childNodes)
           .filter(child => !(child.nodeType === 1 &&
             ['input', 'ul', 'ol'].includes(child.tagName.toLowerCase())))
           .map(child => htmlBlock(child, warnings, depth + 1))
-          .filter(Boolean)
-          .join(' ')
-          .trim();
+          .filter(value => value.trim() !== '');
         const nested = Array.from(item.children)
           .filter(child => ['ul', 'ol'].includes(child.tagName.toLowerCase()))
           .map(child => htmlBlock(child, warnings, depth + 1))
           .filter(Boolean)
           .join('\n');
-        const prefix = `${'  '.repeat(depth)}${marker} ${task}${body}`;
-        return nested ? `${prefix}\n${nested}` : prefix;
+        const itemIndent = '  '.repeat(depth);
+        const continuationIndent = '  '.repeat(depth + 1);
+        const body = bodyBlocks.shift() || '';
+        const prefix = `${itemIndent}${marker} ${task}${body}`;
+        const continuation = bodyBlocks.map(block => block.split('\n')
+          .map(line => `${continuationIndent}${line}`)
+          .join('\n')).join('\n\n');
+        const output = `${prefix}${continuation ? `\n\n${continuation}` : ''}` +
+          `${nested ? `\n${nested}` : ''}`;
+        nextOrdinal = itemOrdinal + 1;
+        return output;
       }).join('\n');
   }
   if (tag === 'table') {
-    if (node.querySelector('[rowspan], [colspan]')) {
-      addWarning(warnings, 'Merged HTML table cells were flattened; row and column spans are not retained yet.');
-    }
-    if (node.querySelector('a, img, strong, b, em, i, code, del, s, u, mark, br')) {
-      addWarning(warnings, 'Rich formatting, links, or media inside HTML table cells were flattened to text.');
-    }
-    const rows = Array.from(node.querySelectorAll('tr')).map(row =>
-      Array.from(row.children).map(cell =>
-        cell.textContent.replace(/\|/g, '\\|').trim()
-      )
-    ).filter(row => row.length);
-    if (!rows.length) return '';
-    const width = Math.max(...rows.map(row => row.length));
-    const normalized = rows.map(row => [...row, ...Array(Math.max(0, width - row.length)).fill('')]);
+    const rowNodes = Array.from(node.querySelectorAll('tr'))
+      .filter(row => row.closest('table') === node);
+    if (!rowNodes.length) return '';
+    const normalized = rowNodes.map(() => []);
+    rowNodes.forEach((row, rowIndex) => {
+      let columnIndex = 0;
+      const cells = Array.from(row.children).filter(cell =>
+        ['th', 'td'].includes(cell.tagName.toLowerCase())
+      );
+      for (const cell of cells) {
+        while (normalized[rowIndex][columnIndex] !== undefined) columnIndex++;
+        const rawColSpan = Number(cell.getAttribute('colspan'));
+        const rawRowSpan = Number(cell.getAttribute('rowspan'));
+        const colSpan = Number.isFinite(rawColSpan) && rawColSpan > 1
+          ? Math.floor(rawColSpan)
+          : 1;
+        let rowSpan = Number.isFinite(rawRowSpan) && rawRowSpan > 0
+          ? Math.floor(rawRowSpan)
+          : 1;
+        if (cell.getAttribute('rowspan') === '0') {
+          const group = row.closest('thead, tbody, tfoot');
+          const groupRows = group
+            ? Array.from(group.querySelectorAll('tr')).filter(candidate =>
+              candidate.closest('table') === node
+            )
+            : rowNodes;
+          const localIndex = Math.max(0, groupRows.indexOf(row));
+          rowSpan = groupRows.length - localIndex;
+        }
+        const content = Array.from(cell.childNodes)
+          .map(child => inlineHtmlNode(child, warnings))
+          .join('')
+          .trim();
+        normalized[rowIndex][columnIndex] = content;
+        for (let offset = 1; offset < colSpan; offset++) {
+          normalized[rowIndex][columnIndex + offset] = '<';
+        }
+        for (let rowOffset = 1; rowOffset < rowSpan; rowOffset++) {
+          const coveredRow = normalized[rowIndex + rowOffset];
+          if (!coveredRow) break;
+          for (let columnOffset = 0; columnOffset < colSpan; columnOffset++) {
+            coveredRow[columnIndex + columnOffset] = '^';
+          }
+        }
+        columnIndex += colSpan;
+      }
+    });
+    const width = Math.max(...normalized.map(row => row.length));
+    const rectangular = normalized.map(row =>
+      [...row, ...Array(Math.max(0, width - row.length)).fill('')]
+    );
     const divider = Array(width).fill('---');
-    return [normalized[0], divider, ...normalized.slice(1)]
+    return [rectangular[0], divider, ...rectangular.slice(1)]
       .map(row => `| ${row.join(' | ')} |`).join('\n');
   }
   if (tag === 'details') {
