@@ -968,16 +968,32 @@ async function main() {
       await page.evaluate(async mode => {
         await window.editorBridge.setEditorMode(mode);
       }, mode);
-      await page.waitForTimeout(240);
-      const anchoredAfter = await page.evaluate(token => {
-        const scroller = document.querySelector('.cm-scroller');
-        const target = [...document.querySelectorAll('.cm-line')]
-          .find(line => line.textContent.includes(token));
-        return scroller && target
-          ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-          : null;
-      }, anchor.token);
+      let anchoredAfter = null;
+      let previousOffset = null;
+      let stableFrames = 0;
+      for (let attempt = 0; attempt < 120 && stableFrames < 3; attempt++) {
+        await page.waitForTimeout(16);
+        anchoredAfter = await page.evaluate(token => {
+          const scroller = document.querySelector('.cm-scroller');
+          const target = [...document.querySelectorAll('.cm-line')]
+            .find(line => line.textContent.includes(token));
+          return scroller && target
+            ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+            : null;
+        }, anchor.token);
+        if (
+          Number.isFinite(anchoredAfter) &&
+          previousOffset !== null &&
+          Math.abs(anchoredAfter - previousOffset) < 0.5
+        ) {
+          stableFrames++;
+        } else {
+          stableFrames = 0;
+        }
+        previousOffset = anchoredAfter;
+      }
       assert.ok(Number.isFinite(anchoredAfter), `missing scroll anchor after ${mode}`);
+      assert.ok(stableFrames >= 3, `scroll anchor did not settle after switching to ${mode}`);
       assert.ok(Math.abs(anchoredAfter - anchor.offset) < 4,
         `mode switch moved the visible document position: ${mode} (${anchor.offset}px -> ${anchoredAfter}px)`);
     }

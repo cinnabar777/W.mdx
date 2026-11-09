@@ -360,14 +360,21 @@ function parseQuoteLine(line) {
   return { depth, content: match[2] };
 }
 
-function convertObsidianCallouts(lines, protectedLines) {
+const GFM_ALERT_TYPES = new Set(['note', 'tip', 'important', 'warning', 'caution']);
+
+function convertObsidianCallouts(lines, protectedLines, format) {
   const output = [...lines];
   const stack = [];
   for (let index = 0; index < output.length; index += 1) {
     if (protectedLines.has(index)) continue;
     const line = output[index];
     const quote = parseQuoteLine(line);
-    const opener = quote && /^\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?$/.exec(quote.content);
+    const parsedOpener = quote &&
+      /^\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?$/.exec(quote.content);
+    const opener = parsedOpener &&
+      (format !== 'gfm' || GFM_ALERT_TYPES.has(parsedOpener[1].toLowerCase()))
+      ? parsedOpener
+      : null;
 
     while (stack.length && (!quote || quote.depth < stack.at(-1).quoteDepth)) {
       stack.pop();
@@ -458,7 +465,7 @@ export function convertFromMarkdown(source, format = 'commonmark') {
   const converted = protectCodeFences(normalizedSource, (originalLines, protectedLines) => {
     let lines = [...originalLines];
     if (format === 'obsidian' || format === 'gfm') {
-      lines = convertObsidianCallouts(lines, protectedLines);
+      lines = convertObsidianCallouts(lines, protectedLines, format);
     }
     lines = convertHeadings(lines.join('\n'));
     return lines.map((line, index) => {

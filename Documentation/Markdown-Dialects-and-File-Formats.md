@@ -40,7 +40,7 @@ for authoring.
 | Headings | CommonMark/GFM/Obsidian ATX (`#`) and Setext (`===` / `---`) headings, plus Wmdx decimal headings (`.1`–`.6`). |
 | Lists | Standard Markdown lists, Wmdx bullet and ordered-marker styles, and standalone Wmdx tasks. GFM/Obsidian task-list recognition has its own switch. |
 | Block quotes | Shared Markdown `>` syntax with one feature switch. |
-| Callouts | Wmdx `±type`, `±type-`, `±type+`; Obsidian `> [!type]` and fold markers. GitHub alerts overlap with the Obsidian spelling. |
+| Callouts | Wmdx `±type`, `±type-`, `±type+`; Obsidian `> [!type]` and fold markers. GitHub alerts overlap with the Obsidian spelling for `note`, `tip`, `important`, `warning`, and `caution`; other alert-like blockquotes remain ordinary quotes on GFM import. |
 | Footnotes | Markdown reference footnotes (`[^label]`), Wmdx numbered footnotes, and Obsidian inline footnotes (`^[text]`) have syntax controls. |
 | Underline | **Use Wmdx syntax** recognizes Wmdx underline forms. When disabled, HTML `<u>...</u>` is the compatibility form. |
 | Tables and inline formatting | GFM pipe tables, task lists, double-tilde strikethrough, and autolinks are parser extensions. Wmdx single-tilde `~text~` is subscript, not GFM strikethrough. Feature settings are separate rather than one global GFM profile. |

@@ -133,6 +133,22 @@ test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies
   ].join('\n'), 'gfm');
   assert.match(gfm.markdown, /^±tip Heading$/m);
   assert.match(gfm.markdown, /^  Useful detail\.$/m);
+
+  const unsupportedGfmAlert = convertFromMarkdown([
+    '> [!custom] This is an ordinary quote',
+    '> It is not a GitHub alert type.'
+  ].join('\n'), 'gfm');
+  assert.equal(
+    unsupportedGfmAlert.markdown,
+    '> [!custom] This is an ordinary quote\n> It is not a GitHub alert type.'
+  );
+
+  const customObsidianCallout = convertFromMarkdown([
+    '> [!custom] Custom Obsidian type',
+    '> Its body is retained.'
+  ].join('\n'), 'obsidian');
+  assert.match(customObsidianCallout.markdown, /^±custom Custom Obsidian type$/m);
+  assert.match(customObsidianCallout.markdown, /^  Its body is retained\.$/m);
 });
 
 test('Markdown export maps Wmdx headings, links, tables, and callout states by target', async () => {
