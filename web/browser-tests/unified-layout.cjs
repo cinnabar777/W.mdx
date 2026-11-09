@@ -310,7 +310,10 @@ async function main() {
               }, { mode, markdown, hanging, font });
               await page.waitForTimeout(90);
               await page.locator('.cm-line').last().click();
-              await page.waitForTimeout(40);
+              await page.waitForFunction(() => {
+                const line = document.querySelector('.cm-list-item');
+                return line?.style.getPropertyValue('--list-marker-gutter');
+              }, null, { timeout: 2000 });
               const geometry = await page.evaluate(() => {
                 const line = document.querySelector('.cm-list-item');
                 if (!line) return null;
@@ -346,7 +349,11 @@ async function main() {
               assert.equal(geometry.markdown, markdown, `source changed: ${label}`);
               assert.equal(geometry.duplicateWrappers, 0, `duplicate wrappers: ${label}`);
               assert.ok(geometry.rows.length >= 2, `fixture must wrap: ${label}`);
-              assert.notEqual(geometry.prefix, '', `prefix was not measured: ${label}`);
+              assert.notEqual(
+                geometry.prefix,
+                '',
+                `prefix was not measured: ${label}: ${JSON.stringify(geometry)}`
+              );
               if (hanging) {
                 for (const x of geometry.rows.slice(1)) {
                   assert.ok(Math.abs(x - geometry.rows[0]) < 1.5,

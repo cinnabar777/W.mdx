@@ -9,6 +9,7 @@ import { getIndentedCodeBlockRenderLayout, getMarkdownSourceIndentColumns } from
 // model; parser progress and syntax preference changes invalidate it. No mode,
 // selection, DOM measurement, or editor-global document is part of this cache.
 const documentCache = new WeakMap();
+const renderPlanCache = new WeakMap();
 
 export function markdownPresentation(mode) {
   return {
@@ -26,6 +27,38 @@ export function getMarkdownDocumentLayout(state, settings) {
   const model = buildMarkdownDocumentLayout(state, settings, tree);
   documentCache.set(state.doc, { tree, signature, model });
   return model;
+}
+
+/**
+ * Build the shared, mode-aware block render plan. Semantic geometry is always
+ * derived from the same model; only syntax visibility and block replacements
+ * differ by view mode.
+ */
+export function getMarkdownRenderPlan(state, mode, settings) {
+  const tree = syntaxTree(state);
+  const semantic = getMarkdownDocumentLayout(state, settings);
+  const presentation = markdownPresentation(mode);
+  const signature = `${mode}:${JSON.stringify(settings)}`;
+  const cached = renderPlanCache.get(state.doc);
+  if (cached?.tree === tree && cached.signature === signature) return cached.plan;
+
+  const plan = Object.freeze({
+    mode,
+    raw: presentation.raw,
+    contextual: presentation.contextual,
+    wysiwyg: mode === 'wysiwyg',
+    semantic,
+    lines: semantic.lines,
+    blocks: semantic.blocks,
+    orderedItems: semantic.orderedItems,
+    calloutOpeners: semantic.calloutOpeners,
+    sourceTables: presentation.raw ? semantic.tables : [],
+    renderedTables: presentation.renderedTables ? semantic.tables : [],
+    codeBlocks: semantic.codeBlocks,
+    renderedCodeBlocks: mode === 'wysiwyg' ? semantic.codeBlocks : []
+  });
+  renderPlanCache.set(state.doc, { tree, signature, plan });
+  return plan;
 }
 
 // For edits that cannot change block structure, move semantic source positions

@@ -1,5 +1,8 @@
 import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect, Facet, Prec } from '@codemirror/state';
-import { getMarkdownDocumentLayout, mapMarkdownDocumentLayout, markdownPresentation } from './markdownDocumentLayout.js';
+import {
+  getMarkdownRenderPlan,
+  mapMarkdownDocumentLayout
+} from './markdownDocumentLayout.js';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
@@ -3051,7 +3054,8 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
   _buildDecorationsInternal(view) {
     const builder = [];
     const hiddenSyntaxRanges = [];
-    const isSourceMode = currentEditorMode === 'source';
+    const renderPlan = markdownRenderPlan(view.state);
+    const isSourceMode = renderPlan.raw;
     const hideSyntax = (from, to) => {
       if (!isSourceMode && to > from) {
         const range = Decoration.replace({}).range(from, to);
@@ -3073,9 +3077,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     // persistentLayoutField in ALL modes, including raw Source.
     const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
-    const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
+    const isPureWysiwyg = renderPlan.wysiwyg;
     const doc = view.state.doc;
-    const layout = documentLayout(view.state);
+    const layout = renderPlan.semantic;
     const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
     const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
     const markdownLinkRanges = [];
@@ -3546,17 +3550,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
-            if (currentEditorMode === 'wysiwyg') {
+            if (renderPlan.wysiwyg) {
               return;
             }
-            const codeBlockLayout = documentLayout(view.state).codeBlocks
+            const codeBlockLayout = renderPlan.semantic.codeBlocks
               .find(block => block.from === node.from)?.indent;
             if (node.name === 'CodeBlock' && codeBlockLayout) {
               for (const range of codeBlockLayout.hiddenRanges) {
                 hideSyntax(range.from, range.to);
               }
             }
-            if (currentEditorMode !== 'source' && line.from === node.from) {
+            if (!renderPlan.raw && line.from === node.from) {
               const codeText = view.state.doc.sliceString(node.from, node.to);
               const firstLineText = line.text;
               const langMatch = firstLineText.match(/^```(\w+)/);
@@ -4469,9 +4473,10 @@ function isHorizontalRuleLine(state, lineNumber) {
 }
 
 function buildTableBlockDecorations(state) {
-  if (!markdownPresentation(currentEditorMode).renderedTables) return Decoration.none;
+  const renderPlan = markdownRenderPlan(state);
+  if (!renderPlan.renderedTables.length) return Decoration.none;
   const builder = [];
-  for (const node of documentLayout(state).tables) {
+  for (const node of renderPlan.renderedTables) {
         const tableText = state.doc.sliceString(node.from, node.to);
         const widget = new WordProcessorTableWidget(tableText, node.from, node.to);
 
@@ -4510,7 +4515,8 @@ export function updateTableDocumentSelection(view) {
 }
 
 function buildWysiwygCodeBlockDecorations(state) {
-  if (currentEditorMode !== 'wysiwyg') {
+  const renderPlan = markdownRenderPlan(state);
+  if (!renderPlan.wysiwyg) {
     return {
       decorations: Decoration.none,
       hiddenSyntaxRanges: Decoration.none
@@ -4522,7 +4528,7 @@ function buildWysiwygCodeBlockDecorations(state) {
   const builder = [];
   const hiddenSyntaxRanges = [];
 
-  for (const node of documentLayout(state).codeBlocks) {
+  for (const node of renderPlan.renderedCodeBlocks) {
       const codeBlockLayout = node.indent;
       const firstLine = doc.lineAt(node.from);
       const lastLine = doc.lineAt(node.to);
@@ -4674,7 +4680,8 @@ const wysiwygCodeBlockField = StateField.define({
 });
 
 function buildHeightMapValue(state) {
-  if (currentEditorMode !== 'wysiwyg') {
+  const renderPlan = markdownRenderPlan(state);
+  if (!renderPlan.wysiwyg) {
     return {
       decorations: Decoration.none,
       hiddenSyntaxRanges: Decoration.none
@@ -4685,7 +4692,7 @@ function buildHeightMapValue(state) {
   const doc = state.doc;
   const tree = syntaxTree(state);
   const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
-  const layout = documentLayout(state);
+  const layout = renderPlan.semantic;
   const wmdxOrderedListItems = layout.orderedItems;
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
   const replacements = [];
@@ -5168,7 +5175,7 @@ function buildHeightMapValue(state) {
 }
 
 function buildLiveEmbeddedDocumentValue(state) {
-  if (currentEditorMode !== 'live_preview') {
+  if (!markdownRenderPlan(state).contextual) {
     return {
       decorations: Decoration.none,
       hiddenSyntaxRanges: Decoration.none
@@ -5213,7 +5220,8 @@ function buildLiveEmbeddedDocumentValue(state) {
 const liveEmbeddedDocumentField = StateField.define({
   create: buildLiveEmbeddedDocumentValue,
   update(current, tr) {
-    if (currentEditorMode !== 'live_preview') return current;
+    const renderPlan = markdownRenderPlan(tr.state);
+    if (!renderPlan.contextual) return buildLiveEmbeddedDocumentValue(tr.state);
     const refresh = tr.effects.some(effect =>
       effect.is(heightMapRefreshEffect) ||
       effect.is(typographySettingsEffect)
@@ -5236,7 +5244,7 @@ const liveEmbeddedDocumentField = StateField.define({
 });
 
 function buildLivePreviewCodeSpanValue(state) {
-  if (currentEditorMode !== 'live_preview') return Decoration.none;
+  if (!markdownRenderPlan(state).contextual) return Decoration.none;
 
   const doc = state.doc;
   const decorations = [];
@@ -5265,7 +5273,11 @@ function buildLivePreviewCodeSpanValue(state) {
 const livePreviewCodeSpanField = StateField.define({
   create: buildLivePreviewCodeSpanValue,
   update(current, tr) {
-    if (tr.docChanged || tr.selectionSet) {
+    const refresh = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect) ||
+      effect.is(typographySettingsEffect)
+    );
+    if (tr.docChanged || tr.selectionSet || refresh) {
       return buildLivePreviewCodeSpanValue(tr.state);
     }
     return current.map(tr.changes);
@@ -5347,7 +5359,7 @@ class LayoutAnchorWidget extends WidgetType {
 
 export function buildPersistentLayoutDecorations(state) {
   const ranges = [];
-  for (const line of documentLayout(state).lines.values()) {
+  for (const line of markdownRenderPlan(state).lines.values()) {
     if (!line.classes.size) continue;
     ranges.push(
       Decoration.line({
@@ -5392,8 +5404,12 @@ function documentLayoutSettings() {
   };
 }
 
+function markdownRenderPlan(state, mode = currentEditorMode) {
+  return getMarkdownRenderPlan(state, mode, documentLayoutSettings());
+}
+
 function documentLayout(state) {
-  return getMarkdownDocumentLayout(state, documentLayoutSettings());
+  return markdownRenderPlan(state).semantic;
 }
 
 const semanticLayoutField = StateField.define({

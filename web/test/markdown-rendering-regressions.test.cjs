@@ -137,7 +137,7 @@ test('rendering and interaction regressions stay covered without changing table 
     /classList\.contains\('list-wrap-under-text'\)/
   );
   assert.match(main, /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)/);
-  assert.match(main, /for \(const line of documentLayout\(state\)\.lines\.values\(\)\)/);
+  assert.match(main, /for \(const line of markdownRenderPlan\(state\)\.lines\.values\(\)\)/);
   assert.match(main, /getMarkdownSourceIndentRanges\(line\.text\)/);
   assert.match(main, /paragraphIndentSyntaxRanges/);
   assert.match(main, /if \(calloutLineAttributes\.has\(lineFrom\)\) continue/);

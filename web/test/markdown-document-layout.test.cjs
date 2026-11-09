@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { EditorState } = require('@codemirror/state');
 const { markdown } = require('@codemirror/lang-markdown');
 const { Table, TaskList } = require('@lezer/markdown');
@@ -48,6 +50,42 @@ test('one mode-independent semantic model covers the entire mixed document', asy
     assert.equal(f.markdownPresentation(mode).renderedTables, mode !== 'source');
   }
   assert.equal(f.state.doc.toString(), source);
+});
+
+test('mode-aware block plan shares geometry and varies only rendering choices', async () => {
+  const f = await fixture('Paragraph\n\n```js\ncode\n```\n\n| Head | Value |\n| --- | --- |\n| A | B |');
+  const semantic = f.getMarkdownDocumentLayout(f.state, f.settings);
+  const source = f.getMarkdownRenderPlan(f.state, 'source', f.settings);
+  const preview = f.getMarkdownRenderPlan(f.state, 'live_preview', f.settings);
+  const wysiwyg = f.getMarkdownRenderPlan(f.state, 'wysiwyg', f.settings);
+
+  for (const plan of [source, preview, wysiwyg]) {
+    assert.strictEqual(plan.semantic, semantic);
+    assert.strictEqual(plan.lines, semantic.lines);
+    assert.strictEqual(plan.blocks, semantic.blocks);
+  }
+  assert.equal(source.raw, true);
+  assert.equal(source.sourceTables.length, 1);
+  assert.equal(source.renderedTables.length, 0);
+  assert.equal(preview.contextual, true);
+  assert.equal(preview.renderedTables.length, 1);
+  assert.equal(preview.renderedCodeBlocks.length, 0);
+  assert.equal(wysiwyg.wysiwyg, true);
+  assert.equal(wysiwyg.renderedTables.length, 1);
+  assert.equal(wysiwyg.renderedCodeBlocks.length, 1);
+});
+
+test('all document block renderers consume the shared mode-aware plan', () => {
+  const main = fs.readFileSync(
+    path.join(__dirname, '../src/main.js'),
+    'utf8'
+  );
+  assert.match(main, /function markdownRenderPlan\(state, mode = currentEditorMode\)/);
+  assert.match(main, /for \(const line of markdownRenderPlan\(state\)\.lines\.values\(\)\)/);
+  assert.match(main, /for \(const node of renderPlan\.renderedTables\)/);
+  assert.match(main, /for \(const node of renderPlan\.renderedCodeBlocks\)/);
+  assert.match(main, /const renderPlan = markdownRenderPlan\(view\.state\)/);
+  assert.match(main, /const renderPlan = markdownRenderPlan\(state\);\s*if \(!renderPlan\.wysiwyg\)/);
 });
 
 test('top-level optional spaces are not nesting; nested syntax is semantic', async () => {

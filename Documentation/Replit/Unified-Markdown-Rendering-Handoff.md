@@ -54,7 +54,7 @@ Blockquote borders and wrapped content must stay aligned in every mode. Preserve
 existing code-block behavior. Keep tables rendered and editable in both
 WYSIWYG and Live Preview; Source shows the raw table syntax.
 
-## Current code findings (audited at `4dd6b8b`)
+## Current code findings
 
 The earlier findings below were stale: the current Source path no longer returns
 early from `livePreviewPlugin`, and the old `.cm-source-list-wrapped` path is
@@ -64,25 +64,29 @@ whole-document renderer refactor is still unfinished:
 - `getMarkdownDocumentLayout()` is mode-agnostic and produces the shared line,
   list, quote, callout, code-block, and table model. It is cached by document,
   syntax tree, and syntax settings.
+- `getMarkdownRenderPlan()` now wraps that shared model with mode-specific
+  decisions: Source keeps table source lines, Live Preview and WYSIWYG render
+  editable tables, and only WYSIWYG replaces fenced code blocks.
+- The persistent line layout, contextual renderer, table widget field, WYSIWYG
+  code-block field, and Live Preview embedded/code-span fields now consume the
+  same plan. Browser tests cover a single fixture across all modes, including
+  local horizontal scrolling for raw Source tables.
 - `semanticLayoutField` keeps that model current; `persistentLayoutField`
   applies shared line classes, source-prefix ranges, and semantic layout
   attributes in all three modes.
 - `livePreviewPlugin._buildDecorationsInternal()` runs in all modes and chooses
   syntax visibility and contextual inline behavior based on the current mode.
-- `heightMapField` still returns no decorations outside WYSIWYG and separately
-  builds WYSIWYG syntax hiding, inline formatting, widgets, and block
-  replacements. This duplicates rendering decisions made by
-  `livePreviewPlugin`.
-- `tableStateField` separately inserts editable table widgets in WYSIWYG and
-  Live Preview while Source keeps table syntax. `wysiwygCodeBlockField` also
-  carries a WYSIWYG-specific code-block renderer.
+- `heightMapField` still owns WYSIWYG inline formatting and syntax hiding, while
+  `livePreviewPlugin` owns contextual syntax and many other inline widgets.
+  Rendering code is therefore still distributed across fields and plugins,
+  even though their block decisions now come from the shared plan.
 
-So the semantic block source is shared, and the three modes currently pass
-browser geometry/regression checks, but rendering is still split among plugins,
-state fields, and CSS. Do not describe the architecture as a completed unified
-renderer until those paths consume one mode-aware render plan. The recent
-callout correction is an intentional exception to matching block appearance:
-Source keeps raw quote syntax instead of painting a card over it.
+The shared mode-aware block plan is in place, and the three modes pass browser
+geometry/regression checks. Do not describe the architecture as a completely
+unified renderer until duplicated rendering decisions are consolidated further
+and the full suite remains green. The callout correction is an intentional
+exception to matching block appearance: Source keeps raw quote syntax instead
+of painting a card over it.
 
 ## Implementation and verification requirements
 
@@ -90,9 +94,10 @@ Source keeps raw quote syntax instead of painting a card over it.
    affecting document block layout before editing. Trace all list flavors and
    related callout/blockquote behavior; do not patch only the screenshot's list
    style.
-2. Extend the existing semantic model into one mode-aware render plan and make
-   all three modes consume it. Keep syntax visibility and interaction behavior
-   mode-specific, not block indentation, wrapping, or spacing.
+2. Keep extending the shared mode-aware render plan and reduce duplicate
+   block-rendering decisions in the fields and plugin. Keep syntax visibility
+   and interaction behavior mode-specific, not block indentation, wrapping,
+   or spacing.
 3. Add browser-level geometry checks using the same document in all three modes.
    Compare marker, content, and wrapped-row positions for all list styles and
    nesting levels. Include syntax-visible/hidden states, cursor inside/outside

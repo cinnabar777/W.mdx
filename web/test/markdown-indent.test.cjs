@@ -359,7 +359,7 @@ test('list continuation stays under its item text after a blank line is deleted'
   assert.doesNotMatch(html, /cm-source-list-(?:continuation|wrapped)/);
   assert.match(html, /--layout-visible-indent/);
   const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
-  assert.match(main, /documentLayout\(state\)\.lines\.values/);
+  assert.match(main, /markdownRenderPlan\(state\)\.lines\.values/);
   const shared = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
   assert.match(shared, /entry\.kind = 'list-continuation'/);
 });
@@ -426,7 +426,7 @@ test('rendered indented code moves shared leading spaces to every wrapped row', 
   const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   const shared = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
   assert.match(shared, /getIndentedCodeBlockRenderLayout\(state,\s*node\.from,\s*node\.to\s*\)/);
-  assert.match(main, /documentLayout\(view\.state\)\.codeBlocks/);
+  assert.match(main, /renderPlan\.semantic\.codeBlocks/);
   assert.match(html, /padding-left:\s*calc\([\s\S]*?--code-block-common-indent/);
   assert.match(shared, /--code-block-common-indent:\$\{[^}]+}ch/);
   assert.match(main, /codeBlockLayout\.hiddenRanges/);
@@ -767,7 +767,7 @@ test('Tab and toolbar indent actions share the same Markdown-aware implementatio
   );
   assert.match(
     main,
-    /getMarkdownDocumentLayout\(state,/
+    /getMarkdownRenderPlan\(state, mode, documentLayoutSettings\(\)\)/
   );
   assert.match(main, /selection:\s*indentSelection/);
   assert.match(
