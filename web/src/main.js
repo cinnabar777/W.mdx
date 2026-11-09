@@ -3483,14 +3483,16 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               isLinkFlavorEnabledNow('wmdx') &&
               !isNodeActive
             ) {
-              addWmdxResourceLinkDecorations({
-                node,
-                doc,
-                resource,
-                pushDecoration: decoration => builder.push(decoration),
-                hideSyntax,
-                hiddenSyntaxRanges
-              });
+              if (!isPureWysiwyg) {
+                addWmdxResourceLinkDecorations({
+                  node,
+                  doc,
+                  resource,
+                  pushDecoration: decoration => builder.push(decoration),
+                  hideSyntax,
+                  hiddenSyntaxRanges
+                });
+              }
             }
             return false;
           }
@@ -3510,19 +3512,23 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             if (!isLinkFlavorEnabledNow('commonmark')) return false;
             const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
             if (linkInfo) {
-              builder.push(
-                Decoration.mark({
-                  tagName: 'a',
-                  class: 'cm-link',
-                  attributes: {
-                    href: linkInfo.target,
-                    'data-wmdx-link-target': linkInfo.target,
-                    'data-wmdx-link-from': String(node.from),
-                    'data-wmdx-link-to': String(node.to)
-                  }
-                })
-                  .range(linkInfo.labelFrom, linkInfo.labelTo)
-              );
+              // WYSIWYG has a dedicated decoration field for link marks.
+              // Adding another anchor mark here nests anchors in the DOM.
+              if (!isPureWysiwyg) {
+                builder.push(
+                  Decoration.mark({
+                    tagName: 'a',
+                    class: 'cm-link',
+                    attributes: {
+                      href: linkInfo.target,
+                      'data-wmdx-link-target': linkInfo.target,
+                      'data-wmdx-link-from': String(node.from),
+                      'data-wmdx-link-to': String(node.to)
+                    }
+                  })
+                    .range(linkInfo.labelFrom, linkInfo.labelTo)
+                );
+              }
               if (!isPureWysiwyg && !isNodeActive) {
                 hideSyntax(node.from, linkInfo.labelFrom);
                 hideSyntax(linkInfo.labelTo, node.to);
@@ -3895,18 +3901,20 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
             if (linkInfo) {
               const { labelFrom, labelTo } = linkInfo;
-              builder.push(
-                Decoration.mark({
-                  tagName: 'a',
-                  class: 'cm-link',
-                  attributes: {
-                    href: linkInfo.target,
-                    'data-wmdx-link-target': linkInfo.target,
-                    'data-wmdx-link-from': String(node.from),
-                    'data-wmdx-link-to': String(node.to)
-                  }
-                }).range(labelFrom, labelTo)
-              );
+              if (!isPureWysiwyg) {
+                builder.push(
+                  Decoration.mark({
+                    tagName: 'a',
+                    class: 'cm-link',
+                    attributes: {
+                      href: linkInfo.target,
+                      'data-wmdx-link-target': linkInfo.target,
+                      'data-wmdx-link-from': String(node.from),
+                      'data-wmdx-link-to': String(node.to)
+                    }
+                  }).range(labelFrom, labelTo)
+                );
+              }
 
               if (!isPureWysiwyg && !isNodeActive) {
                 if (labelFrom > node.from) {

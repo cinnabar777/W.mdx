@@ -1,15 +1,8 @@
 # W.mdx Markdown Cheat Sheet
 
-This guide covers standard Markdown, GitHub Flavored Markdown (GFM), and the
-additional syntax W.mdx recognizes. Settings can change the appearance of
-formatting, but do not change the syntax shown here. The code samples show what
-to type; the examples labeled **Rendered** show the result in the editor.
+This guide covers standard Markdown, GitHub Flavored Markdown (GFM), and the additional syntax W.mdx recognizes. Settings can change the appearance of formatting, but do not change the syntax shown here. The code samples show what to type; the examples labeled **Rendered** show the result in the editor.
 
-For the agreed W.mdx-native syntax and its current implementation status, see
-[W.mdx Native Syntax — Design Draft](Wmdx-Syntax-Design.md).
-For how CommonMark, GFM, Obsidian, and Wmdx settings interact with file opening,
-saving, and export, see
-[Markdown Dialects, Settings, and File Formats](Markdown-Dialects-and-File-Formats.md).
+For the agreed W.mdx-native syntax and its current implementation status, see [W.mdx Native Syntax — Design Draft](Wmdx-Syntax-Design.md). For how CommonMark, GFM, Obsidian, and Wmdx settings interact with file opening, saving, and export, see [Markdown Dialects, Settings, and File Formats](Markdown-Dialects-and-File-Formats.md).
 
 ## Quick reference
 
@@ -63,12 +56,7 @@ Heading 2
 ---------
 ```
 
-Separate paragraphs with a blank line. A normal newline within a paragraph is
-a soft break; W.mdx renders it as a space in Live Preview and WYSIWYG while
-Source preserves the literal newline. Two trailing spaces or a backslash
-immediately before the newline request a hard line break, which also matters
-when exporting Markdown to HTML or another renderer. W.mdx keeps the two spaces
-visible in every view; it may hide the backslash marker in visual modes.
+Separate paragraphs with a blank line. A normal newline within a paragraph is a soft break; W.mdx renders it as a space in Live Preview and WYSIWYG while Source preserves the literal newline. Two trailing spaces or a backslash immediately before the newline request a hard line break, which also matters when exporting Markdown to HTML or another renderer. W.mdx keeps the two spaces visible in every view; it may hide the backslash marker in visual modes.
 
 ## Text formatting
 
@@ -86,22 +74,15 @@ __Bold also works__
 
 **Rendered:** **Bold**, *italic*, ***bold italic***, and ~~strikethrough~~.
 
-When **Use Wmdx syntax** is enabled in Underline settings, underscores mark
-underlined text instead of italic text. Use `*asterisks*` for italics in that
-setting.
+When **Use Wmdx syntax** is enabled in Underline settings, underscores mark underlined text instead of italic text. Use `*asterisks*` for italics in that setting.
 
 ### Wmdx subscript
 
-Wrap text in single tildes to display subscript, as in `H~2~O`. This is a Wmdx
-extension, not GFM strikethrough; GFM strikethrough uses double tildes,
-`~~text~~`. CommonMark, GFM, and Obsidian exports represent subscript with
-`<sub>text</sub>`.
+Wrap text in single tildes to display subscript, as in `H~2~O`. This is a Wmdx extension, not GFM strikethrough; GFM strikethrough uses double tildes, `~~text~~`. CommonMark, GFM, and Obsidian exports represent subscript with `<sub>text</sub>`.
 
 ### Wmdx superscript
 
-Wrap text in paired carets to display superscript, as in `x^2^`. This is a Wmdx
-extension; CommonMark, GFM, and Obsidian exports represent it with
-`<sup>text</sup>`.
+Wrap text in paired carets to display superscript, as in `x^2^`. This is a Wmdx extension; CommonMark, GFM, and Obsidian exports represent it with `<sup>text</sup>`.
 
 ### Wmdx underline styles
 
@@ -115,17 +96,13 @@ The subscript digit selects the underline style:
 | Double | `_₂text_` |
 | Wavy | `_₃text_` |
 
-The style and color are controlled by Underline settings. The digits are
-subscript characters: `₀`, `₁`, `₂`, and `₃`.
+The style and color are controlled by Underline settings. The digits are subscript characters: `₀`, `₁`, `₂`, and `₃`.
 
-**Rendered:** _Solid underline_, _₀dotted underline_, _₁dashed underline_,
-_₂double underline_, and _₃wavy underline_.
+**Rendered:** _Solid underline_, _₀dotted underline_, _₁dashed underline_, _₂double underline_, and _₃wavy underline_.
 
 ### Wmdx highlighter and pen
 
-These are Wmdx extensions, not standard Markdown. The subscript digit selects
-one of four configurable color slots. Set the slot colors in **Typography →
-Highlights & Pens**.
+These are Wmdx extensions, not standard Markdown. The subscript digit selects one of four configurable color slots. Set the slot colors in **Typography → Highlights & Pens**.
 
 | Tool | Slot | Syntax |
 | --- | --- | --- |
@@ -138,12 +115,9 @@ Highlights & Pens**.
 | Pen | 3 | `=₁text=` |
 | Pen | 4 | `=₂text=` |
 
-The slot numbers identify settings; they do not lock a slot to a particular
-color. Keep the text snug against the markers: write `==text==`, not
-`== text ==`.
+The slot numbers identify settings; they do not lock a slot to a particular color. Keep the text snug against the markers: write `==text==`, not `== text ==`.
 
-**Rendered:** ==Highlight 1==, ==₀highlight 2==, ==₁highlight 3==,
-==₂highlight 4==; =Pen 1=, =₀pen 2=, =₁pen 3=, and =₂pen 4=.
+**Rendered:** ==Highlight 1==, ==₀highlight 2==, ==₁highlight 3==, ==₂highlight 4==; =Pen 1=, =₀pen 2=, =₁pen 3=, and =₂pen 4=.
 
 ### Inline code
 
@@ -163,8 +137,7 @@ If the text itself contains a backtick, use a longer backtick delimiter:
 
 ## Escaping Markdown and Wmdx markers
 
-Place a backslash before Markdown punctuation when it should appear as ordinary
-text. For example:
+Place a backslash before Markdown punctuation when it should appear as ordinary text. For example:
 
 ```markdown
 \*literal asterisks\*
@@ -180,15 +153,11 @@ Escape Wmdx markers when they should not format the following text:
 \=literal pen markers\=
 ```
 
-You can also put syntax in inline code or a code block to show it literally.
-Backslash escapes do not apply inside code.
+You can also put syntax in inline code or a code block to show it literally. Backslash escapes do not apply inside code.
 
-**Rendered:** Literal markers: \*asterisks\*, \_underscores\_,
-\==highlight\==, and \=pen\=.
+**Rendered:** Literal markers: \*asterisks\*, \_underscores\_, \==highlight\==, and \=pen\=.
 
-For a literal wiki-link example such as `[[Target]]`, use code formatting.
-W.mdx's wiki-link recognizer does not treat a backslash as an escape for its
-opening brackets.
+For a literal wiki-link example such as `[[Target]]`, use code formatting. W.mdx's wiki-link recognizer does not treat a backslash as an escape for its opening brackets.
 
 ## Code blocks
 
@@ -202,10 +171,7 @@ function greet(name) {
 ```
 ````
 
-The language after the opening fence enables syntax highlighting when that
-language is available. The closing fence must use the same character and at
-least as many marks as the opening fence. Indented code blocks are also part of
-Markdown, but fenced blocks are easier to edit and label.
+The language after the opening fence enables syntax highlighting when that language is available. The closing fence must use the same character and at least as many marks as the opening fence. Indented code blocks are also part of Markdown, but fenced blocks are easier to edit and label.
 
 **Rendered:**
 
@@ -260,8 +226,7 @@ Task lists use GFM checkbox syntax:
 - [x] Finished
 ```
 
-Use a space inside the brackets for an unchecked task and `x` for a checked
-task.
+Use a space inside the brackets for an unchecked task and `x` for a checked task.
 
 **Rendered:**
 
@@ -288,8 +253,7 @@ Start each quoted line with `>`:
 
 ### W.mdx callouts
 
-Callouts extend block quotes. Put `[!type]` after the quote marker. An optional
-title follows the type:
+Callouts extend block quotes. Put `[!type]` after the quote marker. An optional title follows the type:
 
 ```markdown
 > [!info] Optional title
@@ -328,9 +292,7 @@ Nested callouts use additional quote markers:
 > > [!info] Nested callout
 > > The nested message.
 
-The type is an identifier beginning with a letter; it may also contain digits,
-underscores, or hyphens. Common labels include `note`, `info`, `tip`, `warning`,
-`question`, `example`, and `todo`.
+The type is an identifier beginning with a letter; it may also contain digits, underscores, or hyphens. Common labels include `note`, `info`, `tip`, `warning`, `question`, `example`, and `todo`.
 
 ## Links and images
 
@@ -342,8 +304,7 @@ underscores, or hyphens. Common labels include `note`, `info`, `tip`, `warning`,
 [A link with a title](https://example.com "Optional title")
 ```
 
-For spaces in a URL or file path, use `%20`. In link text, escape a closing
-bracket as `\]` when necessary.
+For spaces in a URL or file path, use `%20`. In link text, escape a closing bracket as `\]` when necessary.
 
 **Rendered:** [W.mdx website](https://example.com)
 
@@ -357,14 +318,11 @@ W.mdx recognizes these Obsidian-style link forms:
 [[Target|Display text]]
 ```
 
-`[[#Heading]]` links to a heading in the current document. The `|` separates
-the target from its display text. Wiki links are an extension, not standard
-Markdown.
+`[[#Heading]]` links to a heading in the current document. The `|` separates the target from its display text. Wiki links are an extension, not standard Markdown.
 
 **Rendered:** [[#Quick reference|Jump to the quick reference]].
 
-`[[Target]]` is an Obsidian-style wikilink. Prefixing it with `!` embeds a
-supported local document inline; see [Embedded documents](#embedded-documents).
+`[[Target]]` is an Obsidian-style wikilink. Prefixing it with `!` embeds a supported local document inline; see [Embedded documents](#embedded-documents).
 
 ### Images
 
@@ -380,14 +338,9 @@ W.mdx also accepts a pixel width after a vertical bar in the description:
 ![Diagram|640](images/diagram.png)
 ```
 
-The width must be a whole number from 1 to 10,000. If no width is supplied, the
-image uses its natural size, subject to the editor's available width.
+The width must be a whole number from 1 to 10,000. If no width is supplied, the image uses its natural size, subject to the editor's available width.
 
-The **Insert image** action can use a selected image file, embed a selected file
-as Base64, or insert pasted Base64 data. When entering a URL, leave both options
-unchecked to keep the URL as the image source; alternatively, download the image
-to the document's assets or embed it as Base64. The download and Base64 options
-are mutually exclusive.
+The **Insert image** action can use a selected image file, embed a selected file as Base64, or insert pasted Base64 data. When entering a URL, leave both options unchecked to keep the URL as the image source; alternatively, download the image to the document's assets or embed it as Base64. The download and Base64 options are mutually exclusive.
 
 **Rendered:**
 
@@ -395,19 +348,14 @@ are mutually exclusive.
 
 ## Audio and video
 
-W.mdx recognizes links to supported audio and video files and renders them as
-players. The link text is the displayed title; changing it does not rename the
-file.
+W.mdx recognizes links to supported audio and video files and renders them as players. The link text is the displayed title; changing it does not rename the file.
 
 ```markdown
 [Voice memo](audio/voice-memo.m4a)
 [Trip video](video/trip.mp4)
 ```
 
-Supported audio file extensions are `.mp3`, `.aac`, `.m4a`, `.wav`, `.flac`,
-`.opus`, `.ogg`, and `.oga`. Recognized video extensions are `.mp4`, `.m4v`,
-`.webm`, `.3gp`, `.mov`, `.mkv`, `.avi`, `.mpeg`, `.mpg`, `.ogv`, and `.wmv`.
-Actual playback depends on Android and the device's codec support.
+Supported audio file extensions are `.mp3`, `.aac`, `.m4a`, `.wav`, `.flac`, `.opus`, `.ogg`, and `.oga`. Recognized video extensions are `.mp4`, `.m4v`, `.webm`, `.3gp`, `.mov`, `.mkv`, `.avi`, `.mpeg`, `.mpg`, `.ogv`, and `.wmv`. Actual playback depends on Android and the device's codec support.
 
 The optional Markdown link title can store W.mdx display width and alignment:
 
@@ -416,31 +364,23 @@ The optional Markdown link title can store W.mdx display width and alignment:
 [Trip video](video/trip.mp4 "wmdx-video:width=80;align=right")
 ```
 
-The width is a whole-number percentage from 40 to 100. Alignment is `left`,
-`center`, or `right`. The default full-width, left-aligned layout needs no
-additional title metadata. These `wmdx-audio` and `wmdx-video` titles are W.mdx
-extensions, not standard Markdown.
+The width is a whole-number percentage from 40 to 100. Alignment is `left`, `center`, or `right`. The default full-width, left-aligned layout needs no additional title metadata. These `wmdx-audio` and `wmdx-video` titles are W.mdx extensions, not standard Markdown.
 
 ## Attachments
 
-Use a Markdown link to create a downloadable/openable attachment button. The
-link text is its displayed title:
+Use a Markdown link to create a downloadable/openable attachment button. The link text is its displayed title:
 
 ```markdown
 [Project files](attachments/project-files.zip "wmdx-attachment")
 ```
 
-The `wmdx-attachment` link title tells W.mdx to render the link as an attachment
-rather than an ordinary text link. Attachment buttons can also store width and
-alignment:
+The `wmdx-attachment` link title tells W.mdx to render the link as an attachment rather than an ordinary text link. Attachment buttons can also store width and alignment:
 
 ```markdown
 [Project files](attachments/project-files.zip "wmdx-attachment:width=75;align=center")
 ```
 
-The width and alignment rules are the same as for audio and video. Tapping an
-attachment opens the file with a compatible app. The inserted title is display
-text; it does not rename the file.
+The width and alignment rules are the same as for audio and video. Tapping an attachment opens the file with a compatible app. The inserted title is display text; it does not rename the file.
 
 ## Embedded documents
 
@@ -451,30 +391,17 @@ W.mdx uses Obsidian's embed form for supported local documents:
 ![[notes.md|Project notes]]
 ```
 
-The part after `|` is an optional display alias. W.mdx embeds the whole document;
-Obsidian heading and block selectors are not currently supported.
+The part after `|` is an optional display alias. W.mdx embeds the whole document; Obsidian heading and block selectors are not currently supported.
 
-The Embed action can copy the selected document into the current document's
-assets or link to the original file. Choose the method in **Document Appearance
-→ Embedded Content**. A copied MDZip embed is stored inside the MDZip archive;
-Markdown documents use the configured Markdown asset storage. A linked embed
-continues to use the original file, so it must remain available to W.mdx.
+The Embed action can copy the selected document into the current document's assets or link to the original file. Choose the method in **Document Appearance → Embedded Content**. A copied MDZip embed is stored inside the MDZip archive; Markdown documents use the configured Markdown asset storage. A linked embed continues to use the original file, so it must remain available to W.mdx.
 
-Embeds can use MDZip files and UTF-8 text-based files the renderer can display,
-including Markdown, plain text, and code files. Legacy TextPack documents and
-remote URLs are not supported as embedded documents.
+Embeds can use MDZip files and UTF-8 text-based files the renderer can display, including Markdown, plain text, and code files. Legacy TextPack documents and remote URLs are not supported as embedded documents.
 
-Embedded interaction is also controlled in **Document Appearance → Embedded
-Content**. **Limited interaction** allows checkboxes to be toggled without
-editing the rest of the document. **Full inline editing** allows editing within
-the embed. When full editing is enabled, the **Save edited to** setting chooses
-whether edits go to the copy in the parent document's assets or back to the
-original linked file.
+Embedded interaction is also controlled in **Document Appearance → Embedded Content**. **Limited interaction** allows checkboxes to be toggled without editing the rest of the document. **Full inline editing** allows editing within the embed. When full editing is enabled, the **Save edited to** setting chooses whether edits go to the copy in the parent document's assets or back to the original linked file.
 
 ## Tables
 
-Tables use GFM pipe syntax. The separator row divides the header from the body;
-colons set alignment:
+Tables use GFM pipe syntax. The separator row divides the header from the body; colons set alignment:
 
 ```markdown
 | Left | Center | Right |
@@ -490,14 +417,11 @@ colons set alignment:
 | **Bold** | centered | right |
 | A | B | C |
 
-The outside pipes are optional. Escape a pipe that belongs inside a cell as
-`\|`. Basic inline Markdown can be used in cells; tables cannot contain
-multi-paragraph cell content.
+The outside pipes are optional. Escape a pipe that belongs inside a cell as `\|`. Basic inline Markdown can be used in cells; tables cannot contain multi-paragraph cell content.
 
 ## Horizontal rules
 
-Put at least three matching hyphens, asterisks, or underscores on a line by
-themselves:
+Put at least three matching hyphens, asterisks, or underscores on a line by themselves:
 
 ```markdown
 ---
@@ -514,13 +438,11 @@ Text above the rule.
 
 Text below the rule.
 
-Use a blank line before the rule. A line of hyphens directly below text creates
-a level-two Setext heading instead.
+Use a blank line before the rule. A line of hyphens directly below text creates a level-two Setext heading instead.
 
 ## Footnotes
 
-Add a reference in the text and a matching definition, preferably in a
-footnotes section near the end of the document:
+Add a reference in the text and a matching definition, preferably in a footnotes section near the end of the document:
 
 ```markdown
 This sentence has a footnote.[^source]
@@ -537,111 +459,61 @@ This sentence has a rendered footnote.[^rendered]
 
 [^rendered]: The footnote appears with the document's other footnotes.
 
-Labels must not contain spaces or closing brackets. Matching is
-case-insensitive. A reference is only treated as a footnote when a definition
-with that label exists. Continuation lines need at least four leading spaces.
-Obsidian also supports inline footnotes such as `^[footnote text]`. Wmdx can
-recognize and render that syntax when the Obsidian inline footnote flavor is
-enabled; it is not part of GFM or CommonMark.
+Labels must not contain spaces or closing brackets. Matching is case-insensitive. A reference is only treated as a footnote when a definition with that label exists. Continuation lines need at least four leading spaces. Obsidian also supports inline footnotes such as `^[footnote text]`. Wmdx can recognize and render that syntax when the Obsidian inline footnote flavor is enabled; it is not part of GFM or CommonMark.
 
 ## HTML and other app-specific syntax
 
-The old `md...` entries were text-expansion abbreviations, not Markdown syntax.
-Any expansion depends on your keyboard or an external text expander; Wmdx does
-not define those abbreviations.
+The old `md...` entries were text-expansion abbreviations, not Markdown syntax. Any expansion depends on your keyboard or an external text expander; Wmdx does not define those abbreviations.
 
-Wmdx does not use HTML as its native authoring syntax. The editor can export
-HTML/MHTML and explicitly convert HTML input to Wmdx. That conversion maps
-common semantic blocks, lists, links, images, media, attachments, and tables;
-unsupported active content is omitted, and known losses are shown as warnings.
-It is a semantic conversion, not a browser-layout snapshot. See
-[Markdown Dialects, Settings, and File Formats](Markdown-Dialects-and-File-Formats.md).
+Wmdx does not use HTML as its native authoring syntax. The editor can export HTML/MHTML and explicitly convert HTML input to Wmdx. That conversion maps common semantic blocks, lists, links, images, media, attachments, and tables; unsupported active content is omitted, and known losses are shown as warnings. It is a semantic conversion, not a browser-layout snapshot. See [Markdown Dialects, Settings, and File Formats](Markdown-Dialects-and-File-Formats.md).
 
-When **Use Wmdx syntax** is disabled, underline formatting uses the `<u>...</u>`
-compatibility form; when enabled, it uses Wmdx's text-based underline markers.
+When **Use Wmdx syntax** is disabled, underline formatting uses the `<u>...</u>` compatibility form; when enabled, it uses Wmdx's text-based underline markers.
 
 ## Markdown dialect compatibility
 
-W.mdx is a combination rather than a strict implementation of one flavor: it
-uses a CommonMark-based parser with GFM extensions, Wmdx formatting, and selected
-Obsidian conventions. “Supported” below means the syntax is implemented in the
-current editor; it does not claim exact compatibility with every edge case in
-another renderer.
+W.mdx is a combination rather than a strict implementation of one flavor: it uses a CommonMark-based parser with GFM extensions, Wmdx formatting, and selected Obsidian conventions. “Supported” below means the syntax is implemented in the current editor; it does not claim exact compatibility with every edge case in another renderer.
 
 ### CommonMark
 
-**Implemented for everyday documents:** headings, paragraphs, lists, block
-quotes, code spans and blocks, emphasis, links, images, escapes, hard line
-breaks, thematic breaks, reference links, and autolinks.
+**Implemented for everyday documents:** headings, paragraphs, lists, block quotes, code spans and blocks, emphasis, links, images, escapes, hard line breaks, thematic breaks, reference links, and autolinks.
 
 **Remaining compatibility work:**
 
-- The pinned CommonMark 0.31.2 corpus compares rendered semantics after
-  import/export for all 575 non-HTML examples using the official reference
-  renderer. This verifies conversion output, not every in-editor interaction or
-  Android file-provider behavior.
-- The explicit HTML-to-Wmdx conversion action now maps common semantic content.
-  It still needs broad HTML-interoperability coverage and Android file-provider
-  verification; unsupported styles and structures are reported as warnings.
-- Keep the optional **Use Wmdx syntax** underline setting in mind: when enabled,
-  `_text_` means underline rather than CommonMark italic. Use `*text*` for
-  portable italics in that setting.
+- The pinned CommonMark 0.31.2 corpus compares rendered semantics after import/export for all 575 non-HTML examples using the official reference renderer. This verifies conversion output, not every in-editor interaction or Android file-provider behavior.
+- The explicit HTML-to-Wmdx conversion action now maps common semantic content. It still needs broad HTML-interoperability coverage and Android file-provider verification; unsupported styles and structures are reported as warnings.
+- Keep the optional **Use Wmdx syntax** underline setting in mind: when enabled, `_text_` means underline rather than CommonMark italic. Use `*text*` for portable italics in that setting.
 
 ### GitHub Flavored Markdown
 
-**Implemented:** pipe tables, task-list checkboxes, double-tilde strikethrough,
-and GFM autolinks. Single tilde is reserved for Wmdx subscript. Tables and
-tasks are editable in W.mdx.
+**Implemented:** pipe tables, task-list checkboxes, double-tilde strikethrough, and GFM autolinks. Single tilde is reserved for Wmdx subscript. Tables and tasks are editable in W.mdx.
 
 **Remaining compatibility work:**
 
-- The GFM 0.29 extension corpus now has parser-semantic checks for all 21
-  non-HTML table, strikethrough, and autolink examples. This does not yet verify
-  exact WYSIWYG rendering or full Markdown import/export round trips.
-- GitHub.com alerts share the `> [!type]` callout marker with W.mdx, but exact
-  alert types and rendering are not a compatibility promise.
-- Raw HTML can be passed through the explicit HTML-to-Wmdx conversion action;
-  raw HTML in ordinary Markdown is not a promise of browser-equivalent output.
-- GitHub-specific issue, pull-request, commit, and `@mention` links are not
-  general Markdown syntax; W.mdx does not resolve them to GitHub or send
-  notifications.
+- All 21 non-HTML examples from the GFM 0.29 table, strikethrough, and autolink extensions are compared against upstream expected HTML semantics in WYSIWYG, and each fixture verifies that source remains unchanged. This does not cover full GFM core behavior or certify import/export compatibility.
+- GitHub.com alerts share the `> [!type]` callout marker with W.mdx, but exact alert types and rendering are not a compatibility promise.
+- Raw HTML can be passed through the explicit HTML-to-Wmdx conversion action; raw HTML in ordinary Markdown is not a promise of browser-equivalent output.
+- GitHub-specific issue, pull-request, commit, and `@mention` links are not general Markdown syntax; W.mdx does not resolve them to GitHub or send notifications.
 
 ### Obsidian Flavored Markdown
 
-**Implemented:** `[[target]]` wiki links, aliases such as
-`[[target|display text]]`, current-document heading links such as
-`[[#Heading]]`, whole-document `![[path]]` embeds with optional aliases,
-local image embeds such as `![[image.png]]` (including pixel-size modifiers),
-Obsidian-style callout markers, highlights, task lists, and reference footnotes.
+**Implemented:** `[[target]]` wiki links, aliases such as `[[target|display text]]`, current-document heading links such as `[[#Heading]]`, whole-document `![[path]]` embeds with optional aliases, local image embeds such as `![[image.png]]` (including pixel-size modifiers), Obsidian-style callout markers, highlights, task lists, and reference footnotes.
 
 **Not implemented or only partially compatible:**
 
-- Heading and block transclusion such as `![[note#Heading]]` and
-  `![[note#^block]]`; W.mdx embeds the whole supported document.
-- Obsidian audio, video, and PDF embed forms. Use W.mdx's Markdown media links
-  or attachment links for these files.
-- `%% comments %%`, semantic tags (a `#tag` is plain text), YAML
-  properties/frontmatter, math, Mermaid diagrams, and plugin-specific syntax.
-- Exact Obsidian vault resolution and app behavior. W.mdx's file access and
-  linked-file behavior follow its own folder permissions and document settings.
+- Heading and block transclusion such as `![[note#Heading]]` and `![[note#^block]]`; W.mdx embeds the whole supported document.
+- Obsidian audio, video, and PDF embed forms. Use W.mdx's Markdown media links or attachment links for these files.
+- `%% comments %%`, semantic tags (a `#tag` is plain text), YAML properties/frontmatter, math, Mermaid diagrams, and plugin-specific syntax.
+- Exact Obsidian vault resolution and app behavior. W.mdx's file access and linked-file behavior follow its own folder permissions and document settings.
 
-Callouts deliberately share Obsidian's `> [!type]` form; W.mdx also supports
-nested callouts and `+`/`-` initial folding markers. This is syntax overlap, not
-full Obsidian callout or plugin parity.
+Callouts deliberately share Obsidian's `> [!type]` form; W.mdx also supports nested callouts and `+`/`-` initial folding markers. This is syntax overlap, not full Obsidian callout or plugin parity.
 
 ### Other dialects outside the current scope
 
-Pandoc Markdown and Markdown Extra are not current targets. Consider them only
-after the CommonMark, GFM, and Obsidian acceptance work is complete. Specify
-individual extensions rather than promising compatibility with an entire
-dialect.
+Pandoc Markdown and Markdown Extra are not current targets. Consider them only after the CommonMark, GFM, and Obsidian acceptance work is complete. Specify individual extensions rather than promising compatibility with an entire dialect.
 
-MDX combines Markdown with JSX and JavaScript expressions; it is not a plain
-Markdown dialect or a compatibility target for Wmdx documents.
+MDX combines Markdown with JSX and JavaScript expressions; it is not a plain Markdown dialect or a compatibility target for Wmdx documents.
 
-**Current scope:** CommonMark, GFM, and Obsidian's built-in Markdown syntax.
-Do not add another dialect target until the current feature matrix and
-round-trip/device acceptance work is complete.
+**Current scope:** CommonMark, GFM, and Obsidian's built-in Markdown syntax. Do not add another dialect target until the current feature matrix and round-trip/device acceptance work is complete.
 
 ### Specifications and references
 
@@ -649,29 +521,21 @@ round-trip/device acceptance work is complete.
 - [GitHub Flavored Markdown specification](https://github.github.com/gfm/)
 - [Obsidian basic syntax](https://obsidian.md/help/syntax)
 - [Obsidian advanced syntax](https://obsidian.md/help/advanced-syntax)
-- [Obsidian internal links](https://obsidian.md/help/links) and
-  [embeds](https://obsidian.md/help/embeds)
-- [Obsidian callouts](https://obsidian.md/help/callouts) and
-  [properties](https://obsidian.md/help/properties)
+- [Obsidian internal links](https://obsidian.md/help/links) and [embeds](https://obsidian.md/help/embeds)
+- [Obsidian callouts](https://obsidian.md/help/callouts) and [properties](https://obsidian.md/help/properties)
 - [Pandoc's Markdown](https://pandoc.org/MANUAL.html#pandocs-markdown)
 - [Markdown Extra](https://michelf.ca/projects/php-markdown/extra/)
 - [MDX: Markdown for the component era](https://mdxjs.com/docs/what-is-mdx/)
 
 ## Compatibility and verification status
 
-Focused tests verify named Wmdx behaviors; they do not establish full
-specification compatibility or identical rendering in another application.
-The official CommonMark 0.31.2 corpus has 575 non-HTML cases checked for
-import/export rendered semantics against the reference renderer. The remaining
-77 HTML-interoperability cases are excluded from that comparison and are not
-certification of HTML conversion. The project does not claim a complete GFM or
-Obsidian conformance suite.
+Focused tests verify named Wmdx behaviors; they do not establish full specification compatibility or identical rendering in another application. The official CommonMark 0.31.2 corpus has 575 non-HTML cases checked for import/export rendered semantics against the reference renderer. The remaining 77 HTML-interoperability cases are excluded from that comparison and are not certification of HTML conversion. The 21 GFM extension examples have WYSIWYG comparisons against upstream expected HTML; seven curated Obsidian fixtures check wikilinks, heading links, highlights, image embeds, callouts, tasks, and footnotes. The project does not claim complete GFM or Obsidian conformance.
 
 | Area | Implemented behavior and tests | Known remaining work |
 | --- | --- | --- |
 | CommonMark core | Import/export rendered-semantic comparisons cover all 575 non-HTML examples against the pinned reference renderer. Focused editor tests cover character references, escapes, hard breaks, code spans, nested lists, and lists in quotes while preserving source. | In-editor interactions and Android file-provider behavior still need acceptance testing; raw-HTML cases are excluded. |
-| GFM extensions | Pipe tables, tasks, strikethrough, and autolinks are recognized; focused fixtures cover GFM extension examples and editable tables. | GitHub-specific mentions/issue references and full GFM interoperability are not promised. |
-| Obsidian conventions | Wiki links/aliases, document and image embeds, callouts, and footnotes are supported. | Heading/block transclusion, plugin syntax, YAML properties, and full vault behavior are outside scope. |
+| GFM extensions | Pipe tables, tasks, strikethrough, and autolinks are recognized; all 21 non-HTML GFM 0.29 extension examples compare WYSIWYG semantics with upstream expected HTML. | GitHub-specific mentions/issue references and full GFM interoperability are not promised. |
+| Obsidian conventions | Wiki links/aliases, heading links, image embeds, highlights, callouts, tasks, and footnotes have curated WYSIWYG fixtures. | Heading/block transclusion, plugin syntax, YAML properties, and full vault behavior are outside scope. |
 | Wmdx syntax | Decimal headings, alphabetic/Roman list markers, native tasks, resource links, media/attachment metadata, callouts, numbered footnotes, underline styles, highlight slots, and pen slots are implemented. | App/device acceptance remains necessary; export can lose style or dialect-specific semantics and reports known losses. |
 | Import and paste | Menu actions preview conversion from CommonMark, GFM, Obsidian, or HTML into Wmdx. Paste uses the same conversion engine. | Complex HTML styling, HTML comments, merged table cells, and unsupported dialect features may be omitted with warnings. |
 | Markdown export | Menu action exports CommonMark, GFM, or Obsidian and saves a separate Markdown file. Headings, links, supported callouts/tasks, and Wmdx formatting have explicit mappings. | CommonMark tables are preserved as pipe-table source with a warning; Wmdx ordered styles become decimal; color and pen semantics may be lost. Test all target renderers and round trips. |
@@ -680,8 +544,4 @@ Obsidian conformance suite.
 
 ### Wmdx authoring goal
 
-Wmdx is a readable, text-based word processor. It uses standard Markdown where
-that syntax is clear and sufficient, and adds native syntax for word-processing
-features that Markdown does not express well. Import/export may use portable
-HTML fallbacks for specific semantics, but the editor's authoring syntax should
-remain readable in plain text and avoid silently discarding information.
+Wmdx is a readable, text-based word processor. It uses standard Markdown where that syntax is clear and sufficient, and adds native syntax for word-processing features that Markdown does not express well. Import/export may use portable HTML fallbacks for specific semantics, but the editor's authoring syntax should remain readable in plain text and avoid silently discarding information.
