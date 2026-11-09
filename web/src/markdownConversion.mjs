@@ -404,7 +404,7 @@ function convertInlineHtmlToMarkdown(line, warnings) {
     .replace(/<del>([\s\S]*?)<\/del>/gi, '~~$1~~')
     .replace(/<s>([\s\S]*?)<\/s>/gi, '~~$1~~')
     .replace(/<sup>([\s\S]*?)<\/sup>/gi, '<sup>$1</sup>')
-    .replace(/<sub>([\s\S]*?)<\/sub>/gi, '<sub>$1</sub>')
+    .replace(/<sub>([\s\S]*?)<\/sub>/gi, '~$1~')
     .replace(/<mark(?:\s[^>]*)?>([\s\S]*?)<\/mark>/gi, (_, text) => {
       if (/style\s*=/i.test(line)) {
         addWarning(warnings, 'HTML highlight colors are not retained; highlight meaning is preserved.');
@@ -517,7 +517,8 @@ function inlineHtmlNode(node, warnings) {
   if (tag === 'em' || tag === 'i') return `*${content}*`;
   if (tag === 'del' || tag === 's' || tag === 'strike') return `~~${content}~~`;
   if (tag === 'u') return `<u>${content}</u>`;
-  if (tag === 'sup' || tag === 'sub') return `<${tag}>${content}</${tag}>`;
+  if (tag === 'sup') return `<sup>${content}</sup>`;
+  if (tag === 'sub') return `~${content}~`;
   if (tag === 'code') return `\`${content.replace(/`/g, '\\`')}\``;
   if (tag === 'mark') return `==${content}==`;
   if (tag === 'br') return '  \n';
@@ -812,6 +813,10 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
         if (style) addWarning(warnings, 'Colored or styled underline is exported as plain underline.');
         return `<u>${content}</u>`;
       }
+    );
+    text = text.replace(
+      /(?<![~\\])~(?!~)(\S(?:[^~]*?\S)?)~(?!~)/gu,
+      (_, content) => `<sub>${content}</sub>`
     );
     text = text.replace(/==([₀₁₂]?)(\S(?:.*?\S)?)==/g, (_, slot, content) => {
       if (slot) addWarning(warnings, 'Colored highlight slots export without their custom color.');

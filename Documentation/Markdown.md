@@ -90,6 +90,13 @@ When **Use Wmdx syntax** is enabled in Underline settings, underscores mark
 underlined text instead of italic text. Use `*asterisks*` for italics in that
 setting.
 
+### Wmdx subscript
+
+Wrap text in single tildes to display subscript, as in `H~2~O`. This is a Wmdx
+extension, not GFM strikethrough; GFM strikethrough uses double tildes,
+`~~text~~`. CommonMark, GFM, and Obsidian exports represent subscript with
+`<sub>text</sub>`.
+
 ### Wmdx underline styles
 
 The subscript digit selects the underline style:
@@ -575,8 +582,9 @@ breaks, thematic breaks, reference links, and autolinks.
 
 ### GitHub Flavored Markdown
 
-**Implemented:** pipe tables, task-list checkboxes, single- and double-tilde
-strikethrough, and GFM autolinks. Tables and tasks are editable in W.mdx.
+**Implemented:** pipe tables, task-list checkboxes, double-tilde strikethrough,
+and GFM autolinks. Single tilde is reserved for Wmdx subscript. Tables and
+tasks are editable in W.mdx.
 
 **Remaining compatibility work:**
 

@@ -26,6 +26,17 @@ test('CommonMark import converts headings and ordinary links without touching co
   assert.deepEqual(result.warnings, []);
 });
 
+test('subscript converts between Wmdx tilde syntax and portable HTML', async () => {
+  const { convertFromMarkdown, exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const importedMarkdown = convertFromMarkdown('H<sub>2</sub>O', 'commonmark');
+  assert.equal(importedMarkdown.markdown, 'H~2~O');
+
+  for (const dialect of ['commonmark', 'gfm', 'obsidian']) {
+    const exported = exportMarkdown('H~2~O', dialect);
+    assert.equal(exported.markdown, 'H<sub>2</sub>O');
+  }
+});
+
 test('CommonMark import converts parsed headings without consuming nearby rules or blocks', async () => {
   const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
   const source = [
@@ -124,6 +135,8 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
     '',
     '[x] Complete a task',
     '',
+    'H~2~O and ~~removed~~.',
+    '',
     '±warning- Read carefully',
     '  This body is folded.'
   ].join('\n');
@@ -137,6 +150,7 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   assert.match(commonmark.markdown, /1\. Roman item/);
   assert.match(commonmark.markdown, /2\. Next Roman item/);
   assert.match(commonmark.markdown, /- <input type="checkbox" disabled checked> Complete a task/);
+  assert.match(commonmark.markdown, /H<sub>2<\/sub>O and ~~removed~~\./);
   assert.match(commonmark.markdown, /> \*\*Read carefully\*\*/);
   assert.ok(commonmark.warnings.some(warning => warning.includes('Pipe tables')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('alphabetic and Roman')));
@@ -162,7 +176,7 @@ test('HTML import converts semantic content and omits active elements', async ()
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');
   const Parser = new JSDOM('').window.DOMParser;
   const result = convertFromHtml(
-    '<h1>Title</h1><p><strong>Bold</strong> and <u>underlined</u>.</p>' +
+    '<h1>Title</h1><p><strong>Bold</strong> and <u>underlined</u> with H<sub>2</sub>O.</p>' +
     '<ul><li>One<ul><li>Nested</li></ul></li><li><input type="checkbox" checked>Done</li></ul>' +
     '<div align="center"><p>Centered</p></div>' +
     '<figure style="text-align:center"><img src="images/photo.png" alt="Photo" width="120" height="60">' +
@@ -174,6 +188,7 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.match(result.markdown, /^\.1 Title/m);
   assert.match(result.markdown, /\*\*Bold\*\*/);
   assert.match(result.markdown, /<u>underlined<\/u>/);
+  assert.match(result.markdown, /H~2~O/);
   assert.match(result.markdown, /- One\n  - Nested/);
   assert.match(result.markdown, /- \[x\] Done/);
   assert.match(result.markdown, /^><\nCentered$/m);

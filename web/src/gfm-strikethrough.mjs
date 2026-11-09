@@ -1,8 +1,8 @@
 import { tags } from '@lezer/highlight';
 
 const singleTildeDelimiter = {
-  resolve: 'Strikethrough',
-  mark: 'StrikethroughMark'
+  resolve: 'Subscript',
+  mark: 'SubscriptMark'
 };
 const doubleTildeDelimiter = {
   resolve: 'Strikethrough',
@@ -17,6 +17,13 @@ export const wmdxGfmStrikethrough = {
     },
     {
       name: 'StrikethroughMark',
+      style: tags.processingInstruction
+    },
+    {
+      name: 'Subscript'
+    },
+    {
+      name: 'SubscriptMark',
       style: tags.processingInstruction
     }
   ],

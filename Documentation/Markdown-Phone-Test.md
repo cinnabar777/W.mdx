@@ -160,8 +160,6 @@ These examples cover the GFM features that CommonMark does not define.
 
 Double tilde: ~~removed text~~.
 
-Single tilde: ~also removed~.
-
 Three tildes should stay literal: This will ~~~not~~~ strike.
 
 ### Tables
@@ -240,6 +238,8 @@ Highlighter slots: ==highlight 1==, ==₀highlight 2==, ==₁highlight 3==, and
 ==₂highlight 4==.
 
 Pen slots: =pen 1=, =₀pen 2=, =₁pen 3=, and =₂pen 4=.
+
+Single tilde is Wmdx subscript, not GFM strikethrough: H~2~O.
 
 ### W.mdx ordered-list styles and task markers
 

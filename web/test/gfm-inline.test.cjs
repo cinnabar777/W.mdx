@@ -12,7 +12,7 @@ const gfmInlineExamples = [
   '- [X] bar',
   '  - [ ] baz',
   '',
-  '~~Hi~~ Hello, ~there~ world!',
+  '~~Hi~~ Hello, there world!',
   'This will ~~~not~~~ strike.',
   'www.commonmark.org.',
   'Visit https://commonmark.org/help.',
@@ -69,7 +69,7 @@ for (const embedded of [false, true]) {
     assert.equal(nodes.filter(node => node.name === 'TaskMarker').length, 3);
     assert.deepEqual(
       nodes.filter(node => node.name === 'Strikethrough').map(node => node.text),
-      ['~~Hi~~', '~there~']
+      ['~~Hi~~']
     );
     assert.deepEqual(
       nodes.filter(node => node.name === 'URL').map(node => node.text),
@@ -100,7 +100,7 @@ for (const embedded of [false, true]) {
     assert.equal(nodes.filter(node => node.name === 'TaskMarker').length, 3);
     assert.deepEqual(
       nodes.filter(node => node.name === 'Strikethrough').map(node => node.text),
-      ['~~Hi~~', '~there~']
+      ['~~Hi~~']
     );
     assert.deepEqual(
       nodes.filter(node => node.name === 'URL').map(node => node.text),
@@ -113,6 +113,24 @@ for (const embedded of [false, true]) {
     );
   });
 }
+
+test('single tilde is Wmdx subscript, not GFM strikethrough', async () => {
+  const { syntaxTree } = await import('@codemirror/language');
+  const state = await createEditorState(
+    '~sub~ ~~strike~~ \\~literal\\~ `~code~` ~~~literal~~~',
+    { embedded: false }
+  );
+  const nodes = collectNodes(state, syntaxTree);
+
+  assert.deepEqual(
+    nodes.filter(node => node.name === 'Subscript').map(node => node.text),
+    ['~sub~']
+  );
+  assert.deepEqual(
+    nodes.filter(node => node.name === 'Strikethrough').map(node => node.text),
+    ['~~strike~~']
+  );
+});
 
 test('main and embedded parser configurations use explicit GFM extensions', () => {
   const source = readProjectFile('web/src/main.js');

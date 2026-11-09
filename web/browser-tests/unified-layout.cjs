@@ -102,6 +102,42 @@ async function main() {
     await page.waitForFunction(() => window.editorBridge);
     await page.evaluate(() => window.editorBridge.setEditorMode('wysiwyg'));
 
+    for (const mode of modes) {
+      await page.evaluate(async ({ mode }) => {
+        await window.editorBridge.setEditorMode(mode);
+        window.editorBridge.setMarkdown('Water is H~2~O; ~~removed~~.');
+      }, { mode });
+      await page.waitForTimeout(90);
+      const inline = await page.evaluate(() => {
+        const subscript = document.querySelector('.cm-subscript');
+        const strikethrough = document.querySelector('.cm-strikethrough');
+        return {
+          markdown: window.editorBridge.getMarkdown(),
+          subscriptText: subscript?.textContent ?? null,
+          subscriptFontSize: subscript ? getComputedStyle(subscript).fontSize : null,
+          baseFontSize: document.querySelector('.cm-content')
+            ? getComputedStyle(document.querySelector('.cm-content')).fontSize
+            : null,
+          hasStrikethrough: Boolean(strikethrough),
+          text: document.querySelector('.cm-content')?.textContent ?? ''
+        };
+      });
+      assert.equal(inline.markdown, 'Water is H~2~O; ~~removed~~.', `source changed: ${mode}`);
+      assert.ok(inline.subscriptText, `subscript styling missing: ${mode}`);
+      assert.ok(
+        Number.parseFloat(inline.subscriptFontSize) < Number.parseFloat(inline.baseFontSize),
+        `subscript size missing: ${mode}`
+      );
+      assert.ok(inline.hasStrikethrough, `double-tilde strikethrough missing: ${mode}`);
+      if (mode === 'source') {
+        assert.match(inline.text, /H~2~O/);
+      } else {
+        assert.match(inline.text, /H2O/);
+        assert.doesNotMatch(inline.text, /H~2~O/);
+      }
+      cases++;
+    }
+
     for (const width of [390, 980]) {
       await page.setViewportSize({ width, height: 844 });
       for (const font of ['Arial', 'monospace']) {

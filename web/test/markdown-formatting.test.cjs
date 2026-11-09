@@ -77,6 +77,32 @@ test('the same inline toolbar action toggles formatting instead of nesting it', 
   assert.equal(view.state.doc.toString(), 'bold text and plain');
 });
 
+test('Wmdx subscript formatting can be detected and toggled', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { getMarkdownFormattingState, isMarkdownFormatActive, toggleMarkdownFormat } =
+    await import('../src/markdownFormatting.js');
+  const { wmdxGfmStrikethrough } = await import('../src/gfm-strikethrough.mjs');
+  const doc = '~sub~ and plain';
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(2),
+    extensions: [markdown({ extensions: [wmdxGfmStrikethrough] })]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(isMarkdownFormatActive(view, 'subscript'), true);
+  assert.equal(getMarkdownFormattingState(view).subscript, true);
+  assert.equal(toggleMarkdownFormat(view, 'subscript'), true);
+  assert.equal(view.state.doc.toString(), 'sub and plain');
+});
+
 test('toolbar formatting can preserve a closed keyboard without refocusing the editor', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
