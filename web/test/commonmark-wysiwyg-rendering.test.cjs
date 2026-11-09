@@ -166,6 +166,32 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       assert.equal(window.editorBridge.getMarkdown(), inlineFormattingSource);
     }
 
+    const sourceCallout = '> [!warning]- Source title\n> Source body';
+    window.editorBridge.setMarkdown(sourceCallout);
+    await window.editorBridge.setEditorMode('source');
+    const sourceCalloutLines = [
+      ...window.document.querySelectorAll('.cm-line.cm-callout')
+    ];
+    assert.equal(sourceCalloutLines.length, 2);
+    assert.ok(sourceCalloutLines[0].textContent.includes('> [!warning]- Source title'));
+    assert.ok(sourceCalloutLines[1].textContent.includes('> Source body'));
+    assert.equal(
+      window.document.querySelector('.cm-callout-title-container'),
+      null,
+      'Source does not insert a rendered callout header over the source markers'
+    );
+    assert.equal(
+      window.document.querySelector('.cm-foldPlaceholder'),
+      null,
+      'Source does not fold callout bodies'
+    );
+    assert.equal(
+      window.getComputedStyle(sourceCalloutLines[0]).backgroundColor,
+      'rgba(0, 0, 0, 0)',
+      'Source keeps callout backgrounds transparent'
+    );
+    assert.equal(window.editorBridge.getMarkdown(), sourceCallout);
+
     const tableSource = [
       '| Left | Center | Right |',
       '| :--- | :---: | ---: |',
