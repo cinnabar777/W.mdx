@@ -10,13 +10,15 @@ const modes = ['wysiwyg', 'live_preview', 'source'];
 const text = 'Item text with **bold words** and enough ordinary words to wrap onto several rows at phone width, testing that every wrapped row starts underneath the content rather than underneath the marker. ';
 const markers = ['-', '+', '*', '1.', '1)', 'a.', 'A.', 'i.', 'I.', '- [ ]', '- [x]', '[ ]'];
 
-async function placeCursorInListText(page, index) {
+async function placeCursorInListText(page, index, options = {}) {
   const item = page.locator('.cm-list-item').nth(index);
   await item.scrollIntoViewIfNeeded();
-  const point = await item.evaluate(element => {
+  const point = await item.evaluate((element, { wrapped }) => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const rows = new Map();
     let node;
     let fallback = null;
+    let preferred = null;
     while ((node = walker.nextNode())) {
       if (node.parentElement.closest(
         '.cm-layout-prefix, .cm-list-bullet, .cm-list-number, .cm-todo-checkbox'
@@ -31,16 +33,22 @@ async function placeCursorInListText(page, index) {
         const rect = range.getBoundingClientRect();
         if (rect.width && rect.height) {
           const point = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-          if (boldOffset >= 0) return point;
+          const y = Math.round(rect.top);
+          if (!rows.has(y)) rows.set(y, point);
+          if (boldOffset >= 0 && !preferred) preferred = point;
           fallback ??= point;
-          break;
         }
       }
     }
-    return fallback;
-  });
+    if (wrapped) {
+      const lastRow = [...rows.entries()].sort((a, b) => a[0] - b[0]).at(-1);
+      return lastRow?.[1] ?? fallback;
+    }
+    return preferred ?? fallback;
+  }, { wrapped: options.wrapped === true });
   assert.ok(point, `list item ${index} should expose a text position`);
-  await page.mouse.click(point.x, point.y);
+  if (options.touch) await page.touchscreen.tap(point.x, point.y);
+  else await page.mouse.click(point.x, point.y);
 }
 
 async function placeCursorInListMarker(page, index) {
@@ -132,6 +140,83 @@ async function main() {
       await pasteTooltipAction.getAttribute('aria-label'),
       'Paste from Markdown dialect'
     );
+
+    const mobileListFixture = [
+      '- First item wraps naturally in a phone-sized view.',
+      '- Second **formatted** item has enough words to wrap onto multiple rows and reveal the cursor reflow bug when the caret enters the last visible line.',
+      '  - A nested item also wraps independently beneath its own marker.',
+      ''
+    ].join('\n');
+    await touchPage.evaluate(async markdown => {
+      await window.editorBridge.setEditorMode('live_preview');
+      window.editorBridge.applyAllPreferences(JSON.stringify({ pref_list_non_hanging: false }));
+      window.editorBridge.setMarkdown(markdown);
+    }, mobileListFixture);
+    await touchPage.waitForFunction(() => {
+      const lines = [...document.querySelectorAll('.cm-list-item')];
+      return lines.length === 3 &&
+        lines.every(line => line.style.getPropertyValue('--list-marker-gutter') !== '');
+    });
+    const readMobileListGeometry = () => touchPage.evaluate(() => {
+      const line = document.querySelectorAll('.cm-list-item')[1];
+      const starts = new Map();
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.parentElement.closest(
+          '.cm-layout-prefix, .cm-list-bullet, .cm-list-number, .cm-todo-checkbox'
+        )) continue;
+        for (let index = 0; index < node.length; index++) {
+          if (/\s/.test(node.data[index])) continue;
+          const range = document.createRange();
+          range.setStart(node, index);
+          range.setEnd(node, index + 1);
+          const rect = range.getBoundingClientRect();
+          if (rect.width && rect.height) {
+            const y = Math.round(rect.top);
+            if (!starts.has(y)) starts.set(y, rect.left);
+          }
+        }
+      }
+      return {
+        markdown: window.editorBridge.getMarkdown(),
+        active: line.classList.contains('cm-activeLine'),
+        left: line.getBoundingClientRect().left,
+        contentX: line.querySelector('.cm-layout-content')?.getBoundingClientRect().left,
+        margin: getComputedStyle(line).marginLeft,
+        rows: [...starts.entries()].sort((a, b) => a[0] - b[0]).map(([, x]) => x)
+      };
+    });
+    const mobileListBefore = await readMobileListGeometry();
+    assert.ok(mobileListBefore.rows.length >= 2, 'mobile fixture must wrap before cursor entry');
+    await placeCursorInListText(touchPage, 1, { touch: true, wrapped: true });
+    await touchPage.waitForFunction(() =>
+      document.querySelectorAll('.cm-list-item')[1]?.classList.contains('cm-activeLine')
+    );
+    const mobileListAfterTouch = await readMobileListGeometry();
+    assert.equal(mobileListAfterTouch.markdown, mobileListFixture,
+      'touching wrapped list text must not edit source');
+    assert.equal(mobileListAfterTouch.active, true, 'touch should place the caret in the wrapped item');
+    assert.ok(Math.abs(mobileListAfterTouch.left - mobileListBefore.left) < 1.5);
+    assert.ok(Math.abs(mobileListAfterTouch.contentX - mobileListBefore.contentX) < 1.5);
+    assert.equal(mobileListAfterTouch.rows.length, mobileListBefore.rows.length);
+    for (let row = 1; row < mobileListBefore.rows.length; row++) {
+      assert.ok(Math.abs(mobileListAfterTouch.rows[row] - mobileListAfterTouch.rows[0]) < 1.5,
+        'wrapped list text should retain its alignment after touch cursor entry');
+    }
+    await touchPage.setViewportSize({ width: 412, height: 500 });
+    await touchPage.waitForTimeout(100);
+    await touchPage.setViewportSize({ width: 412, height: 915 });
+    await touchPage.waitForTimeout(100);
+    const mobileListAfterResize = await readMobileListGeometry();
+    assert.equal(mobileListAfterResize.markdown, mobileListFixture,
+      'simulated keyboard close must not edit list source');
+    assert.equal(mobileListAfterResize.rows.length, mobileListBefore.rows.length);
+    assert.ok(Math.abs(mobileListAfterResize.contentX - mobileListBefore.contentX) < 1.5);
+    assert.ok(Math.abs(
+      Number.parseFloat(mobileListAfterResize.margin) -
+      Number.parseFloat(mobileListBefore.margin)
+    ) < 1.5);
 
     for (const mode of modes) {
       await page.evaluate(async ({ mode }) => {
