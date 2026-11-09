@@ -39,6 +39,11 @@ the syntax the current app supports.
 - Apply the shared structural layout in Source too. Source-only line handling
   may compensate for visible markers or indentation, but must not replace the
   shared paragraph, heading, list, and quote layout.
+- Source may apply semantic text or block styling, but it must preserve every
+  source character in order. It must not replace visible syntax with a widget
+  or insert rendered labels, controls, or previews over the source line. For
+  example, an auto-numbered Wmdx list marker stays as authored, and a code
+  fence is not prefixed by a rendered language/copy header.
 - Visible syntax occupies its natural inline width, so exposing it can shift
   text and change wrap points. Hidden syntax occupies no reserved or phantom
   width. In particular, hiding a heading marker must not leave its width as an

@@ -614,6 +614,77 @@ async function main() {
     ), `Full phone fixture must not widen the Source editor: ${JSON.stringify(fullFixtureSourceLayouts)}`);
     cases++;
 
+    const repeatedWmdxList = 'A. First item\nA. Second item\n\nTail';
+    for (const mode of modes) {
+      await page.evaluate(async ({ mode, markdown }) => {
+        await window.editorBridge.setEditorMode(mode);
+        window.editorBridge.setMarkdown(markdown);
+      }, { mode, markdown: repeatedWmdxList });
+      await page.waitForTimeout(100);
+      await page.locator('.cm-line').last().click();
+      const sourceLines = await page.locator('.cm-line').evaluateAll(lines =>
+        lines.map(line => line.textContent)
+      );
+      assert.equal(
+        sourceLines[1],
+        mode === 'source' ? 'A. Second item' : 'B. Second item',
+        `${mode}: rendered list numbering must not replace the authored source marker`
+      );
+      assert.equal(
+        await page.evaluate(() => window.editorBridge.getMarkdown()),
+        repeatedWmdxList,
+        `${mode}: list marker rendering must not change the document source`
+      );
+      cases++;
+    }
+
+    const rawSourceFixture = [
+      '# Raw ATX heading',
+      'Paragraph **bold**, *italic*, ~~strike~~, `code`, ==highlight==, =pen=, and _underline_.',
+      '',
+      '> [!info] Callout title',
+      '> Callout body with **formatting** and a [link](https://example.test).',
+      '',
+      '- [ ] Markdown task',
+      '[ ] Wmdx task',
+      'A. First ordered item',
+      'A. Second ordered item',
+      '',
+      '[[notes/companion.md|Companion]] and [assets/guide.pdf|Guide||].',
+      '![Image alt](assets/image.png)',
+      '![assets/image.png|Caption|320|><]',
+      '[^note] Reference.',
+      '[^note]: Footnote definition.',
+      '',
+      '| Head | Tail |',
+      '| --- | --- |',
+      '| cell | value |',
+      '',
+      '```js',
+      'const literal = "**not rendered**";',
+      '```'
+    ].join('\n');
+    await page.evaluate(async markdown => {
+      await window.editorBridge.setEditorMode('source');
+      window.editorBridge.setMarkdown(markdown);
+    }, rawSourceFixture);
+    await page.waitForTimeout(120);
+    await page.locator('.cm-line').last().click();
+    const visibleSourceLines = await page.locator('.cm-line').evaluateAll(lines =>
+      lines.map(line => line.textContent)
+    );
+    assert.deepEqual(
+      visibleSourceLines.slice(0, rawSourceFixture.split('\n').length),
+      rawSourceFixture.split('\n'),
+      'Source must show the literal characters where rendered views hide or replace syntax'
+    );
+    assert.equal(
+      await page.evaluate(() => window.editorBridge.getMarkdown()),
+      rawSourceFixture,
+      'Source rendering must not rewrite the document'
+    );
+    cases++;
+
     const calloutFixture = [
       '# Callout source contract',
       '',

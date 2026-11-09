@@ -78,6 +78,10 @@ as an MDZip package with real media and attachment assets.
   attachment actions and the configured width/alignment metadata.
 - Source should display raw links and media metadata; it should not substitute a
   rendered widget for the original syntax.
+- Confirm Source keeps the authored Wmdx alphabetic/Roman list markers instead
+  of auto-numbered display labels, and does not prepend a language/copy widget
+  to a code fence. Semantic styling may remain, but the source line's visible
+  characters must stay in their original order without widget overlays.
 
 ## Feature-toggle checks
 

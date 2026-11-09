@@ -14,7 +14,7 @@ families in one editor, not separate document modes.
 
 | View | Behavior |
 | --- | --- |
-| Source | Shows raw Markdown and syntax, including table pipes; block styling and layout still come from the shared document model. |
+| Source | Shows raw Markdown and syntax, including table pipes; block styling and layout still come from the shared document model. Semantic styling may remain, but generated widgets must not replace, prepend, or overlap source characters. |
 | Live Preview | Keeps rendered structures and reveals relevant syntax while editing; tables remain rendered and editable. |
 | WYSIWYG | Shows rendered structures with most syntax hidden; interactive features such as task checkboxes remain available. |
 

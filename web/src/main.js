@@ -3449,7 +3449,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                 hideSyntax(range.from, range.to);
               }
             }
-            if (line.from === node.from) {
+            if (currentEditorMode !== 'source' && line.from === node.from) {
               const codeText = view.state.doc.sliceString(node.from, node.to);
               const firstLineText = line.text;
               const langMatch = firstLineText.match(/^```(\w+)/);
@@ -3752,7 +3752,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         continue;
       }
       addLineClass(item.line.from, 'cm-list-item');
-      const active = view.state.selection.ranges.some(range =>
+      const active = isSourceMode || view.state.selection.ranges.some(range =>
         range.empty
           ? range.head >= item.from && range.head <= item.to
           : range.from < item.to && range.to > item.from
