@@ -282,6 +282,28 @@ test('only Obsidian import treats double equals as highlight syntax', async () =
   assert.equal(exportMarkdown(obsidian.markdown, 'obsidian').markdown, '==highlight==');
 });
 
+test('unintegrated LaTeX math delimiters stay byte-for-byte intact in Markdown conversion', async () => {
+  const { convertFromMarkdown, exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = [
+    'Inline math $x^2 + y_1$ and \\(a^2 + b^2 = c^2\\).',
+    'The Obsidian examples 100m$_2$ and Word$_{label}$ keep their delimiters.',
+    '',
+    '$$',
+    '\\int_{0}^{1} x^2\\,dx = \\frac{1}{3}',
+    '$$',
+    '',
+    '\\[',
+    '\\sum_{n=1}^{N} n',
+    '\\]'
+  ].join('\n');
+
+  for (const profile of ['commonmark', 'obsidian']) {
+    const imported = convertFromMarkdown(source, profile);
+    const exported = exportMarkdown(imported.markdown, profile);
+    assert.equal(exported.markdown, source, `${profile} math round trip`);
+  }
+});
+
 test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies', async () => {
   const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
   const obsidian = convertFromMarkdown([
@@ -451,6 +473,12 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   assert.ok(commonmark.warnings.some(warning => warning.includes('CommonMark has no task-list')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('callout')));
 
+  const quotedExample = exportMarkdown(
+    '> ex.  \n> Stories are just data with a soul.',
+    'gfm'
+  );
+  assert.equal(quotedExample.markdown, '> ex.  \n> Stories are just data with a soul.');
+
   const obsidian = exportMarkdown(source, 'obsidian');
   assert.match(obsidian.markdown, /^\[\[docs\/Project\.md\|Project\]\]/m);
   assert.match(obsidian.markdown, /^- \[x\] Complete a task/m);
@@ -495,6 +523,40 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.ok(result.warnings.some(warning => warning.includes('script')));
   const comments = convertFromHtml('<p>Text</p><!-- hidden note -->', Parser);
   assert.ok(comments.warnings.some(warning => warning.includes('comments')));
+});
+
+test('generated HTML table of contents imports as working links in every Markdown flavor', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const html = [
+    '<nav class="toc-container"><h2 class="toc-title">Table of Contents</h2><ul class="toc-list">',
+    '<li class="toc-item"><a href="#heading-1" class="toc-link">Project setup</a></li>',
+    '<li class="toc-item" style="margin-left: 16px"><a href="#heading-2" class="toc-link">Second copy</a></li>',
+    '</ul></nav>',
+    '<h1 id="heading-1">Project Setup</h1>',
+    '<h2 id="heading-2">Project Setup</h2>'
+  ].join('');
+
+  const imported = convertFromHtml(html, Parser);
+  assert.deepEqual(imported.warnings, []);
+  assert.match(imported.markdown, /\[#Project Setup\|Project setup\|\|\]/);
+  assert.match(imported.markdown, /\[#Project Setup 1\|Second copy\|\|\]/);
+
+  const commonmark = exportMarkdown(imported.markdown, 'commonmark');
+  assert.match(commonmark.markdown, /\[Project setup\]\(#project-setup\)/);
+  assert.match(commonmark.markdown, /<a id="project-setup"><\/a>\n\n# Project Setup/);
+  assert.match(commonmark.markdown, /\[Second copy\]\(#project-setup-1\)/);
+  assert.match(commonmark.markdown, /<a id="project-setup-1"><\/a>\n\n## Project Setup/);
+
+  const gfm = exportMarkdown(imported.markdown, 'gfm');
+  assert.match(gfm.markdown, /\[Project setup\]\(#project-setup\)/);
+  assert.match(gfm.markdown, /\[Second copy\]\(#project-setup-1\)/);
+
+  const obsidian = exportMarkdown(imported.markdown, 'obsidian');
+  assert.match(obsidian.markdown, /\[\[#Project Setup\|Project setup\]\]/);
+  assert.match(obsidian.markdown, /\[\[#Project Setup 1\|Second copy\]\]/);
 });
 
 test('HTML conversion reports tooltip and CSS losses that Markdown cannot represent', async () => {

@@ -85,4 +85,32 @@ class HtmlExportDocumentBuilderTest {
         )
         assertEquals(css, separateCss)
     }
+
+    @Test
+    fun generatedTocAndHeadingLinksUseTheSameHeadingIds() {
+        val body = """
+            <p><a href="#Project Setup">Project setup</a> and <a href="#Project%20Setup">Encoded setup</a> and <a href="#project-setup-1">Second copy</a></p>
+            <h1>Project Setup</h1>
+            <h2>Project Setup</h2>
+            <h2 id="custom-heading">Custom heading</h2>
+            <p><a href="#custom-heading">Custom link</a></p>
+        """.trimIndent()
+
+        val (html, _) = HtmlExportDocumentBuilder.build(
+            editorHtml = body,
+            documentTitle = "Guide",
+            includeToc = true,
+            tocLevels = 3,
+            includeCss = false,
+            cssPlacement = "head",
+            cssContent = ""
+        )
+
+        assertTrue(html.contains("""<a href="#heading-1">Project setup</a>"""))
+        assertTrue(html.contains("""<a href="#heading-1">Encoded setup</a>"""))
+        assertTrue(html.contains("""<a href="#heading-2">Second copy</a>"""))
+        assertTrue(html.contains("""<a href="#custom-heading">Custom link</a>"""))
+        assertTrue(html.contains("""<a href="#heading-1" class="toc-link">Project Setup</a>"""))
+        assertTrue(html.contains("""<a href="#heading-2" class="toc-link">Project Setup</a>"""))
+    }
 }

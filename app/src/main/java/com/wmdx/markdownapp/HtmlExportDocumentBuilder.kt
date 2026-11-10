@@ -62,23 +62,38 @@ internal object HtmlExportDocumentBuilder {
         var headingIndex = 0
         val tocItems = mutableListOf<Pair<Int, String>>()
         val tocAnchors = mutableListOf<String>()
+        val headingTargets = mutableMapOf<String, String>()
+        val headingOccurrences = mutableMapOf<String, Int>()
 
         val processedHtml = headingRegex.replace(html) { match ->
             headingIndex++
             val level = match.groupValues[1].toIntOrNull() ?: 1
             val attrs = match.groupValues[2]
             val innerHtml = match.groupValues[3]
-            val anchorId = "heading-$headingIndex"
+            val existingId = Regex("""\bid\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .find(attrs)?.groupValues?.get(1)
+            val anchorId = existingId ?: "heading-$headingIndex"
             val plainTitle = decodeHtmlEntities(
                 innerHtml.replace(Regex("""<[^>]*>"""), "").trim()
             )
+            if (plainTitle.isNotBlank()) {
+                val titleKey = normalizeHeadingReference(plainTitle)
+                val occurrence = headingOccurrences[titleKey] ?: 0
+                headingOccurrences[titleKey] = occurrence + 1
+                headingTargets.putIfAbsent(titleKey, anchorId)
+                headingTargets.putIfAbsent(normalizeHeadingReference(slugHeading(plainTitle)), anchorId)
+                headingTargets[normalizeHeadingReference("$plainTitle $occurrence")] = anchorId
+                headingTargets[normalizeHeadingReference(slugHeading("$plainTitle $occurrence"))] =
+                    anchorId
+            }
+            headingTargets[normalizeHeadingReference(anchorId)] = anchorId
 
             if (level <= maxLevel) {
                 tocItems.add(Pair(level, plainTitle))
                 tocAnchors.add(anchorId)
             }
 
-            val newAttrs = if (attrs.contains("id=", ignoreCase = true)) {
+            val newAttrs = if (existingId != null) {
                 attrs
             } else {
                 """ id="$anchorId"$attrs"""
@@ -86,8 +101,22 @@ internal object HtmlExportDocumentBuilder {
 
             "<h$level$newAttrs>$innerHtml</h$level>"
         }
+        val linkedHtml = Regex(
+            """href=(["'])#([^"']+)\1""",
+            RegexOption.IGNORE_CASE
+        ).replace(processedHtml) { match ->
+            val target = decodeHeadingReference(match.groupValues[2])
+            val normalizedTarget = normalizeHeadingReference(target)
+            val headingId = headingTargets[normalizedTarget]
+                ?: headingTargets[normalizeHeadingReference(slugHeading(target))]
+            if (headingId == null) {
+                match.value
+            } else {
+                "href=${match.groupValues[1]}#${escapeHtml(headingId)}${match.groupValues[1]}"
+            }
+        }
 
-        if (!includeToc || tocItems.isEmpty()) return Pair(processedHtml, "")
+        if (!includeToc || tocItems.isEmpty()) return Pair(linkedHtml, "")
 
         val tocHtml = buildString {
             append("<nav class=\"toc-container\">\n")
@@ -103,8 +132,26 @@ internal object HtmlExportDocumentBuilder {
             }
             append("  </ul>\n</nav>")
         }
-        return Pair(processedHtml, tocHtml)
+        return Pair(linkedHtml, tocHtml)
     }
+
+    private fun normalizeHeadingReference(value: String): String =
+        value.trim().lowercase().replace(Regex("""\s+"""), " ")
+
+    private fun decodeHeadingReference(value: String): String {
+        val decodedUrl = runCatching {
+            java.net.URLDecoder.decode(value.replace("+", "%2B"), Charsets.UTF_8.name())
+        }.getOrDefault(value)
+        return decodeHtmlEntities(decodedUrl)
+    }
+
+    private fun slugHeading(value: String): String =
+        java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKC)
+            .lowercase()
+            .replace(Regex("""[^\p{L}\p{N}\s_-]"""), "")
+            .trim()
+            .replace(Regex("""\s+"""), "-")
+            .replace(Regex("""-+"""), "-")
 
     private fun decodeHtmlEntities(value: String): String =
         Regex("&(#x[0-9a-fA-F]+|#[0-9]+|amp|lt|gt|quot|apos|#39|nbsp);")

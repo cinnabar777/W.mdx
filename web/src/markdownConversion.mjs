@@ -82,6 +82,7 @@ function protectCodeFences(source, transformLines) {
   const lines = String(source).replace(/\r\n/g, '\n').split('\n');
   const protectedLines = new Set();
   let fence = null;
+  let mathFence = null;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -91,9 +92,36 @@ function protectCodeFences(source, transformLines) {
       if (close.test(line)) fence = null;
       continue;
     }
+    if (mathFence) {
+      protectedLines.add(index);
+      if (
+        (mathFence === '$$' && /^\s*\$\$\s*$/.test(line)) ||
+        (mathFence === '\\]' && /^\s*\\\]\s*$/.test(line)) ||
+        (mathFence.startsWith('\\end{') && line.includes(mathFence))
+      ) {
+        mathFence = null;
+      }
+      continue;
+    }
     const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
     if (opening) {
       fence = { character: opening[1][0], length: opening[1].length };
+      protectedLines.add(index);
+      continue;
+    }
+    if (/^\s*\$\$\s*$/.test(line)) {
+      mathFence = '$$';
+      protectedLines.add(index);
+      continue;
+    }
+    if (/^\s*\\\[\s*$/.test(line)) {
+      mathFence = '\\]';
+      protectedLines.add(index);
+      continue;
+    }
+    const mathEnvironment = /^\s*\\begin\{(equation|align|gather|multline)\*?\}/.exec(line);
+    if (mathEnvironment) {
+      mathFence = `\\end{${mathEnvironment[1]}}`;
       protectedLines.add(index);
     }
   }
@@ -106,6 +134,50 @@ function protectCodeFences(source, transformLines) {
   }
 
   return transformLines(lines, protectedLines).join(newline);
+}
+
+function protectInlineMathSyntax(text, protect) {
+  return String(text ?? '')
+    .replace(/(?<!\\)\$\$[\s\S]*?(?<!\\)\$\$/g, protect)
+    .replace(/\\\([\s\S]*?\\\)/g, protect)
+    .replace(/\\\[[\s\S]*?\\\]/g, protect)
+    .replace(
+      /(?<!\\)\$(?!\$)([^$\n]*[\\^_{}=+*/-][^$\n]*)(?<!\\)\$(?!\$)/g,
+      protect
+    );
+}
+
+function protectMathForStandardNormalization(source) {
+  const values = [];
+  const protect = value => {
+    const marker = `\uE000MATH${values.length}\uE001`;
+    values.push({ marker, value });
+    return marker;
+  };
+  let masked = String(source ?? '')
+    .replace(
+      /^ {0,3}\$\$[ \t]*\r?\n[\s\S]*?^ {0,3}\$\$[ \t]*(?=\r?$)/gm,
+      protect
+    )
+    .replace(
+      /^ {0,3}\\\[[ \t]*\r?\n[\s\S]*?^ {0,3}\\\][ \t]*(?=\r?$)/gm,
+      protect
+    )
+    .replace(
+      /^ {0,3}\\begin\{(equation|align|gather|multline)\*?\}[\s\S]*?^ {0,3}\\end\{\1\}[ \t]*(?=\r?$)/gm,
+      protect
+    );
+  masked = protectInlineMathSyntax(masked, protect);
+  if (!values.length) return null;
+  return {
+    masked,
+    restore(value) {
+      for (const { marker, value: original } of values.reverse()) {
+        value = value.replace(marker, () => original);
+      }
+      return value;
+    }
+  };
 }
 
 function findClosingBracket(text, start, open = '[', close = ']') {
@@ -368,6 +440,11 @@ function normalizeStandardMarkdownMarkers(source) {
       `${frontmatter}${frontmatterEndLine < lines.length - 1 ? '\n' : ''}` +
       normalizeStandardMarkdownMarkers(body)
     ).replace(/\n/g, newline);
+  }
+  const math = protectMathForStandardNormalization(sourceText);
+  if (math) {
+    const normalizedMath = normalizeStandardMarkdownMarkers(math.masked);
+    return math.restore(normalizedMath);
   }
   const state = EditorState.create({
     doc: source,
@@ -676,7 +753,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
     return isEscapedMarkdownDelimiter(wholeText, offset) ? source : '  \n';
   });
   for (const { marker, value } of protectedValues.reverse()) {
-    text = text.replace(marker, value);
+    text = text.replace(marker, () => value);
   }
   return text;
 }
@@ -730,7 +807,7 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
     restore(text) {
       let restored = text;
       for (const { marker, value } of replacements) {
-        restored = restored.replace(marker, value);
+        restored = restored.replace(marker, () => value);
       }
       return restored;
     }
@@ -793,6 +870,7 @@ function escapeDialectSpecificWmdxSyntax(line, format) {
     .replace(/<(?:img|br)\b[^>]*\/?>/gi, protect)
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<(?:https?|ftp):\/\/[^>\s]+>|<mailto:[^>\s]+>|<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>/gi, protect);
+  text = protectInlineMathSyntax(text, protect);
 
   const escapeTildes = value => value.replace(/~/g, '\\~');
   if (format === 'commonmark') {
@@ -827,7 +905,7 @@ function escapeDialectSpecificWmdxSyntax(line, format) {
   );
 
   for (const { marker, value } of protectedValues.reverse()) {
-    text = text.replace(marker, value);
+    text = text.replace(marker, () => value);
   }
   return text;
 }
@@ -998,6 +1076,42 @@ function markdownLinkDestination(value) {
     .replace(/([()<>])/g, '\\$1');
 }
 
+function annotateHtmlHeadingLinks(document) {
+  const headings = Array.from(
+    document.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]')
+  );
+  if (!headings.length) return;
+
+  const occurrences = new Map();
+  const targetsById = new Map();
+  for (const heading of headings) {
+    const title = heading.textContent?.trim() ?? '';
+    const key = title.toLocaleLowerCase();
+    const occurrence = occurrences.get(key) ?? 0;
+    occurrences.set(key, occurrence + 1);
+    const targetTitle = occurrence === 0 ? title : `${title} ${occurrence}`;
+    if (heading.id && title) targetsById.set(heading.id, `#${targetTitle}`);
+  }
+
+  for (const anchor of document.querySelectorAll('a[href^="#"]')) {
+    const rawFragment = anchor.getAttribute('href')?.slice(1) ?? '';
+    let fragment = rawFragment;
+    try {
+      fragment = decodeURIComponent(rawFragment);
+    } catch {
+      // Preserve malformed percent escapes and leave unmatched links untouched.
+    }
+    const target = targetsById.get(fragment);
+    if (!target) continue;
+    anchor.setAttribute('data-wmdx-kind', 'heading-link');
+    anchor.setAttribute('data-wmdx-target', target);
+  }
+}
+
+function isGeneratedTocNode(node) {
+  return Boolean(node.closest?.('nav.toc-container'));
+}
+
 function inlineHtmlNode(node, warnings) {
   if (node.nodeType === 3) return markdownText(node.nodeValue);
   if (node.nodeType === 8) {
@@ -1006,7 +1120,7 @@ function inlineHtmlNode(node, warnings) {
   }
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
-  if (node.hasAttribute('style')) {
+  if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
   }
   const content = Array.from(node.childNodes)
@@ -1022,6 +1136,15 @@ function inlineHtmlNode(node, warnings) {
   if (tag === 'br') return '  \n';
   if (tag === 'a') {
     const href = node.getAttribute('href');
+    if (node.getAttribute('data-wmdx-kind') === 'heading-link') {
+      const target = node.getAttribute('data-wmdx-target');
+      if (target) {
+        return formatWmdxResourceSyntax({
+          source: target,
+          title: node.textContent?.trim() ?? content
+        });
+      }
+    }
     if (node.getAttribute('data-wmdx-kind') === 'wikilink') {
       const target = node.getAttribute('data-wmdx-target') || href;
       if (target) {
@@ -1063,7 +1186,7 @@ function htmlBlock(node, warnings, depth = 0) {
   }
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
-  if (node.hasAttribute('style')) {
+  if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
   }
   const children = () => Array.from(node.childNodes)
@@ -1439,6 +1562,7 @@ export function convertFromHtml(
   }
   const warnings = [];
   const document = new Parser().parseFromString(String(source ?? ''), 'text/html');
+  annotateHtmlHeadingLinks(document);
   resolveEmbeddedHtmlResources(
     document,
     embeddedResources,
@@ -1464,12 +1588,33 @@ export function convertFromHtml(
   return { markdown, warnings };
 }
 
+function headingFragmentSlug(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[`*_~]/g, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
 function convertWmdxResourceToMarkdown(raw, dialect, warnings) {
   const resource = parseWmdxResourceSyntax(raw);
   if (!resource) return raw;
   const { source, title, size, alignment, embed } = resource;
   const extension = resourceExtensionFromSource(source);
   if (!embed) {
+    if (source.startsWith('#') && source.length > 1) {
+      const heading = source.slice(1).trim();
+      if (dialect === 'obsidian') {
+        return `[[#${heading}${title && title !== heading ? `|${title}` : ''}]]`;
+      }
+      const fragment = headingFragmentSlug(heading);
+      return `[${title || heading}](#${encodeMarkdownDestination(fragment)})`;
+    }
     if (dialect === 'obsidian' && !/^([a-z][a-z\d+.-]*:|\/|\.\/|\.\.\/|#)/i.test(source)) {
       return `[[${source}${title && title !== getWmdxResourceFallbackTitle(source) ? `|${title}` : ''}]]`;
     }
@@ -1635,7 +1780,13 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
   let plainStart = 0;
   let index = 0;
   const transformText = plainText => {
-    let text = plainText;
+    const protectedValues = [];
+    const protect = value => {
+      const marker = `\uE000math${protectedValues.length}\uE001`;
+      protectedValues.push({ marker, value });
+      return marker;
+    };
+    let text = protectInlineMathSyntax(plainText, protect);
     text = text.replace(
       /(?<![\p{L}\p{N}\p{M}_\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?![\p{L}\p{N}\p{M}_])/gu,
       (_, style, content) => {
@@ -1673,9 +1824,13 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
       return content;
       }
     );
-    return text.replace(/(?<!\\)(!?)\[[^\]\n]*\]/g, raw =>
+    text = text.replace(/(?<!\\)(!?)\[[^\]\n]*\]/g, raw =>
       convertWmdxResourceToMarkdown(raw, dialect, warnings)
     );
+    for (const { marker, value } of protectedValues.reverse()) {
+      text = text.replace(marker, () => value);
+    }
+    return text;
   };
   const transform = plainText =>
     transformTextOutsideHtmlTags(plainText, transformText);
@@ -1782,6 +1937,19 @@ function mapWmdxOrderedLists(lines, protectedLines, warnings) {
     const parsed = parseWmdxOrderedListMarker(lines[index]);
     if (parsed) excludedPositions.add(sourceLines[index].from + parsed.markerFrom);
   }
+  for (let index = 0; index < lines.length; index += 1) {
+    const parsed = parseWmdxOrderedListMarker(lines[index]);
+    if (
+      parsed &&
+      /^[ \t]*>/.test(lines[index]) &&
+      lines[index].slice(parsed.textFrom).trim() === ''
+    ) {
+      // Empty alphabetic markers inside quotes collide with ordinary quoted
+      // prose such as "ex.". Keep that text rather than changing it to a
+      // numbered list item during dialect export.
+      excludedPositions.add(sourceLines[index].from + parsed.markerFrom);
+    }
+  }
   const items = getWmdxOrderedListSequence(
     sourceLines,
     position => excludedPositions.has(position)
@@ -1841,6 +2009,34 @@ function mapWmdxTaskItems(lines, protectedLines, dialect, warnings) {
   return output;
 }
 
+function addCommonMarkHeadingAnchors(lines) {
+  const linkedFragments = new Set();
+  for (const line of lines) {
+    for (const match of line.matchAll(/\]\(#([^)]+)\)/g)) {
+      let fragment = match[1];
+      try {
+        fragment = decodeURIComponent(fragment);
+      } catch {
+        // Keep the fragment as authored when it is not valid percent encoding.
+      }
+      linkedFragments.add(fragment.toLocaleLowerCase());
+    }
+  }
+
+  const occurrences = new Map();
+  return lines.flatMap(line => {
+    const heading = /^ {0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(line);
+    if (!heading) return [line];
+    const base = headingFragmentSlug(heading[1]);
+    if (!base) return [line];
+    const occurrence = occurrences.get(base) ?? 0;
+    occurrences.set(base, occurrence + 1);
+    const fragment = occurrence === 0 ? base : `${base}-${occurrence}`;
+    if (!linkedFragments.has(fragment.toLocaleLowerCase())) return [line];
+    return [`<a id="${escapeHtml(fragment)}"></a>`, '', line];
+  });
+}
+
 export function exportMarkdown(source, dialect = 'commonmark') {
   if (!MARKDOWN_EXPORT_FORMATS.includes(dialect)) {
     throw new TypeError(`Unsupported Markdown export format: ${dialect}`);
@@ -1883,9 +2079,12 @@ export function exportMarkdown(source, dialect = 'commonmark') {
     if (dialect === 'commonmark') {
       warnCommonMarkTables(lines, protectedLines, warnings);
     }
-    return lines.map((line, index) => protectedLines.has(index)
+    const output = lines.map((line, index) => protectedLines.has(index)
       ? line
       : convertWmdxInlineToMarkdown(line, dialect, warnings));
+    return dialect === 'commonmark'
+      ? addCommonMarkHeadingAnchors(output)
+      : output;
   });
   return { markdown, warnings };
 }
