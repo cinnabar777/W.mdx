@@ -585,7 +585,10 @@ function convertInlineHtmlToMarkdown(line, warnings) {
     return marker;
   };
   let text = String(line ?? '')
-    .replace(/<(script|style|pre)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, protect)
+    .replace(
+      /<((?!(?:strong|b|em|i|del|s|sup|sub|mark)\b)[a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      protect
+    )
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<!--[\s\S]*?-->/g, protect);
   text = text
@@ -605,6 +608,46 @@ function convertInlineHtmlToMarkdown(line, warnings) {
     text = text.replace(marker, value);
   }
   return text;
+}
+
+const RAW_HTML_BLOCK_TAGS = new Set([
+  'address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body',
+  'caption', 'center', 'col', 'colgroup', 'dd', 'details', 'dialog', 'dir',
+  'div', 'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form',
+  'frame', 'frameset', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header',
+  'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main', 'menu', 'menuitem',
+  'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search',
+  'pre', 'script', 'section', 'style', 'summary', 'table', 'tbody', 'td',
+  'tfoot', 'th', 'thead', 'title', 'tr', 'track', 'ul'
+]);
+const RAW_HTML_BLOCK_START = new RegExp(
+  `^\\s*(?:>\\s*)*<(${[...RAW_HTML_BLOCK_TAGS].join('|')})\\b`,
+  'i'
+);
+
+function isRawHtmlBlockLine(line, state) {
+  const opensBlock = RAW_HTML_BLOCK_START.test(line);
+  if (!state.tags.length && !state.comment && !opensBlock && !line.includes('<!--')) {
+    return false;
+  }
+  if (state.comment || line.includes('<!--')) {
+    const commentStart = state.comment ? -1 : line.indexOf('<!--');
+    const commentEnd = line.indexOf('-->', commentStart >= 0 ? commentStart + 4 : 0);
+    state.comment = commentEnd < 0;
+    return true;
+  }
+  const tags = line.matchAll(/<\/?([a-z][\w:-]*)\b[^>]*>/gi);
+  for (const match of tags) {
+    const tag = match[1].toLowerCase();
+    if (!RAW_HTML_BLOCK_TAGS.has(tag)) continue;
+    if (match[0].startsWith('</')) {
+      const index = state.tags.lastIndexOf(tag);
+      if (index >= 0) state.tags.splice(index, 1);
+    } else if (!/\/\s*>$/.test(match[0])) {
+      state.tags.push(tag);
+    }
+  }
+  return true;
 }
 
 function escapeDialectSpecificWmdxSyntax(line, format) {
@@ -682,8 +725,10 @@ export function convertFromMarkdown(source, format = 'commonmark') {
       lines = convertObsidianCallouts(lines, protectedLines, format);
     }
     lines = convertHeadings(lines.join('\n'), protectedLines);
+    const rawHtmlBlockState = { tags: [], comment: false };
     return lines.map((line, index) => {
       if (protectedLines.has(index)) return line;
+      if (isRawHtmlBlockLine(line, rawHtmlBlockState)) return line;
       let text = escapeDialectSpecificWmdxSyntax(line, format);
       text = convertInlineHtmlToMarkdown(text, warnings);
       if (format === 'obsidian') {

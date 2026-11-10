@@ -43,14 +43,22 @@ test('raw HTML inline emphasis converts semantically while code and active block
     'HTML <strong class="lead">bold</strong>, <em>italic</em>, ' +
     '<b>bold too</b>, and <i>italic too</i>. ' +
     '`<strong>code</strong>`\n\n' +
-    '<script><strong>not active</strong></script>';
+    '<div><strong>raw block content</strong></div>\n\n' +
+    '<div>\n<strong>multiline raw block</strong>\n</div>\n\n' +
+    '<!--\n<strong>comment content</strong>\n-->\n\n' +
+    '<script><strong>not active</strong></script>\n\n' +
+    '<script>\n<strong>multiline script content</strong>\n</script>';
   const result = convertFromMarkdown(source, 'commonmark');
 
   assert.equal(
     result.markdown,
     'HTML **bold**, *italic*, **bold too**, and *italic too*. ' +
       '`<strong>code</strong>`\n\n' +
-      '<script><strong>not active</strong></script>'
+      '<div><strong>raw block content</strong></div>\n\n' +
+      '<div>\n<strong>multiline raw block</strong>\n</div>\n\n' +
+      '<!--\n<strong>comment content</strong>\n-->\n\n' +
+      '<script><strong>not active</strong></script>\n\n' +
+      '<script>\n<strong>multiline script content</strong>\n</script>'
   );
 });
 
