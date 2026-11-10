@@ -5731,10 +5731,14 @@ export function buildPersistentLayoutDecorations(state) {
       continue;
     }
     if (!line.classes.size) continue;
+    const lineClasses = [...line.classes];
+    if (!renderPlan.raw && line.callout?.isTitle) {
+      lineClasses.push('cm-callout-title-rendered');
+    }
     ranges.push(
       Decoration.line({
         attributes: {
-          class: [...line.classes].join(' '),
+          class: lineClasses.join(' '),
           'data-layout-kind': line.kind,
           ...(line.callout
             ? {

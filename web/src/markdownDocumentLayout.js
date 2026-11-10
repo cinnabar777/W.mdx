@@ -237,24 +237,6 @@ export function buildMarkdownDocumentLayout(state, settings, tree = syntaxTree(s
     lines.set(line.from, entry);
     const code = codeByLine.get(number);
     const table = tableByLine.get(number);
-    if (code) {
-      entry.kind = 'code';
-      entry.code = code;
-      entry.classes.add('cm-codeblock-line');
-      if (number === code.first) entry.classes.add('cm-codeblock-first');
-      if (number === code.last) entry.classes.add('cm-codeblock-last');
-      if (code.indent.commonIndentColumns) {
-        entry.styles.push(`--code-block-common-indent:${code.indent.commonIndentColumns}ch`);
-      }
-      continue;
-    }
-    if (table) {
-      entry.kind = 'table';
-      entry.table = table;
-      entry.classes.add('cm-table-source-line');
-      if (number === table.first) entry.classes.add('cm-table-header-source-line');
-      continue;
-    }
     const quotePrefix = /^[ \t]*(?:>[ \t]*)+/.exec(line.text)?.[0] ?? '';
     entry.contentFrom = line.from + quotePrefix.length;
     const leading = /^[ \t]*/.exec(line.text)[0];
@@ -312,6 +294,24 @@ export function buildMarkdownDocumentLayout(state, settings, tree = syntaxTree(s
     } else if (quoteDepth && settings.blockquote?.enabled !== false) {
       entry.classes.add('cm-blockquote');
       entry.styles.push(`--blockquote-depth-offset:${Math.max(0, quoteDepth - 1) * 12}px`);
+    }
+    if (code) {
+      entry.kind = 'code';
+      entry.code = code;
+      entry.classes.add('cm-codeblock-line');
+      if (number === code.first) entry.classes.add('cm-codeblock-first');
+      if (number === code.last) entry.classes.add('cm-codeblock-last');
+      if (code.indent.commonIndentColumns) {
+        entry.styles.push(`--code-block-common-indent:${code.indent.commonIndentColumns}ch`);
+      }
+      continue;
+    }
+    if (table) {
+      entry.kind = 'table';
+      entry.table = table;
+      entry.classes.add('cm-table-source-line');
+      if (number === table.first) entry.classes.add('cm-table-header-source-line');
+      continue;
     }
     if (heading) {
       const level = getHeadingLevel(heading.name);

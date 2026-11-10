@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node build.cjs",
     "test": "node build_tests.cjs && node --test test/*.test.cjs dist/*.test.cjs",
-    "test:browser": "node browser-tests/unified-layout.cjs"
+    "test:browser": "node browser-tests/unified-layout.cjs && node browser-tests/editor-interaction-regressions.cjs",
+    "test:browser:interactions": "node browser-tests/editor-interaction-regressions.cjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",

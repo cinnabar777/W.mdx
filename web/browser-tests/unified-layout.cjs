@@ -1620,11 +1620,49 @@ async function main() {
       const scroller = document.querySelector('.cm-scroller');
       return scroller && scroller.scrollHeight > scroller.clientHeight * 2;
     }, null, { timeout: 10000 });
-    await page.evaluate(() => {
+    const centeredScroll = await page.evaluate(async () => {
       const scroller = document.querySelector('.cm-scroller');
-      if (scroller) scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * 0.5;
+      let stableFrames = 0;
+      let previousHeight = -1;
+      let previousTop = -1;
+      for (let frame = 0; frame < 120 && stableFrames < 3; frame++) {
+        const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        scroller.scrollTop = maxScroll * 0.5;
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const currentHeight = scroller.scrollHeight;
+        const currentTop = scroller.scrollTop;
+        const currentMax = Math.max(0, currentHeight - scroller.clientHeight);
+        if (
+          Math.abs(currentTop - currentMax * 0.5) < 4 &&
+          Math.abs(currentHeight - previousHeight) < 2 &&
+          Math.abs(currentTop - previousTop) < 2
+        ) {
+          stableFrames++;
+        } else {
+          stableFrames = 0;
+        }
+        previousHeight = currentHeight;
+        previousTop = currentTop;
+      }
+      return {
+        stableFrames,
+        scrollTop: scroller.scrollTop,
+        scrollHeight: scroller.scrollHeight,
+        clientHeight: scroller.clientHeight
+      };
     });
-    await page.waitForTimeout(80);
+    assert.ok(centeredScroll.stableFrames >= 3,
+      `scroll fixture did not settle at its midpoint: ${JSON.stringify(centeredScroll)}`);
+    await page.waitForFunction(() => {
+      const scroller = document.querySelector('.cm-scroller');
+      const bounds = scroller?.getBoundingClientRect();
+      return scroller && scroller.scrollTop > 0 &&
+        [...document.querySelectorAll('.cm-line')].some(line => {
+          const rect = line.getBoundingClientRect();
+          return /\bAnchor-\d{3}\b/.test(line.textContent) &&
+            rect.bottom > bounds.top && rect.top < bounds.bottom;
+        });
+    }, null, { timeout: 10000 });
     for (const mode of ['source', 'rendered', 'source', 'rendered']) {
       const anchor = await page.evaluate(() => {
         const scroller = document.querySelector('.cm-scroller');
@@ -2309,6 +2347,15 @@ async function main() {
           window.editorBridge.setMarkdown(listCase.markdown);
         }, { viewConfig, listCase });
         await page.waitForTimeout(80);
+        if (
+          viewConfig.mode !== 'source' &&
+          viewConfig.scope !== 'block' &&
+          listCase.itemCount > 0
+        ) {
+          await page.waitForFunction(expectedCount =>
+            document.querySelectorAll('.cm-list-item').length === expectedCount,
+          listCase.itemCount, { timeout: 10000 });
+        }
         const syntaxDiagnostics = await page.evaluate(() =>
           (window.layoutDiagnostics || []).filter(item =>
             item.name === 'syntax_parse_timeout'
