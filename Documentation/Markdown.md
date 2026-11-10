@@ -491,7 +491,7 @@ W.mdx is a combination rather than a strict implementation of one flavor: it use
 
 - All 21 non-HTML examples from the GFM 0.29 table, strikethrough, and autolink extensions are compared against upstream expected HTML semantics in WYSIWYG, and each fixture verifies that source remains unchanged. This does not cover full GFM core behavior or certify import/export compatibility.
 - GitHub.com alerts share the `> [!type]` callout marker with W.mdx, but exact alert types and rendering are not a compatibility promise.
-- Raw HTML can be passed through the explicit HTML-to-Wmdx conversion action; raw HTML in ordinary Markdown is not a promise of browser-equivalent output.
+- Inline raw HTML emphasis, strike, sub/superscript, mark, code, and underline tags render in Live/WYSIWYG and remain literal in Source. Raw HTML links, images, breaks, CSS-specific styling, and block HTML are still not browser-equivalent; explicit HTML conversion handles a larger semantic subset and warns about retained content.
 - GitHub-specific issue, pull-request, commit, and `@mention` links are not general Markdown syntax; W.mdx does not resolve them to GitHub or send notifications.
 
 ### Obsidian Flavored Markdown
