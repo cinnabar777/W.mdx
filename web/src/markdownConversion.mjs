@@ -623,6 +623,7 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
   const replacements = [];
   const chunks = [];
   let cursor = 0;
+  let markerIndex = 0;
   for (const token of tokens) {
     const raw = String(token.raw ?? '');
     if (!raw) continue;
@@ -632,7 +633,10 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
     let replacement = raw;
     if (token.type === 'html' && token.block === true) {
       const converted = convertFromHtml(token.text ?? raw, Parser);
-      const marker = `\uE020MDXHTMLBLOCK${replacements.length}\uE021`;
+      let marker;
+      do {
+        marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
+      } while (source.includes(marker));
       replacements.push({ marker, value: converted.markdown });
       for (const warning of converted.warnings) addWarning(warnings, warning);
       replacement = marker;

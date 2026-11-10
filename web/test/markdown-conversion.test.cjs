@@ -86,16 +86,17 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
     '',
     'After.'
   ].join('\n');
-  const result = convertFromMarkdown(source, 'commonmark', { DOMParser });
-
-  assert.match(result.markdown, /A \*\*bold\*\* paragraph\./);
-  assert.match(result.markdown, /^\| A \| B \|$/m);
-  assert.match(result.markdown, /^\| x \| 2 \|$/m);
-  assert.match(result.markdown, /\\\. This is a paragraph, not a list\./);
-  assert.match(result.markdown, /```html\n<div>literal code<\/div>\n```/);
-  assert.match(result.markdown, /After\.$/);
-  assert.doesNotMatch(result.markdown, /<div><p>A/);
-  assert.deepEqual(result.warnings, []);
+  for (const format of ['commonmark', 'gfm', 'obsidian']) {
+    const result = convertFromMarkdown(source, format, { DOMParser });
+    assert.match(result.markdown, /A \*\*bold\*\* paragraph\./, format);
+    assert.match(result.markdown, /^\| A \| B \|$/m, format);
+    assert.match(result.markdown, /^\| x \| 2 \|$/m, format);
+    assert.match(result.markdown, /\\\. This is a paragraph, not a list\./, format);
+    assert.match(result.markdown, /```html\n<div>literal code<\/div>\n```/, format);
+    assert.match(result.markdown, /After\.$/, format);
+    assert.doesNotMatch(result.markdown, /<div><p>A/, format);
+    assert.deepEqual(result.warnings, [], format);
+  }
 
   const nested = convertFromMarkdown(
     '- item\n\n  <div>\n    <p>nested HTML block</p>\n  </div>',
@@ -104,6 +105,14 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
   );
   assert.match(nested.markdown, /<div>\n    <p>nested HTML block<\/p>\n  <\/div>/);
   assert.ok(nested.warnings.some(warning => warning.includes('Raw HTML was preserved')));
+
+  const markerCollision = convertFromMarkdown(
+    '\uE020MDXHTMLBLOCK0\uE021\n\n<div>converted block</div>',
+    'commonmark',
+    { DOMParser }
+  );
+  assert.match(markerCollision.markdown, /\uE020MDXHTMLBLOCK0\uE021/);
+  assert.match(markerCollision.markdown, /converted block/);
 });
 
 test('superscript imports and exports through semantic HTML without reinterpreting literals', async () => {
