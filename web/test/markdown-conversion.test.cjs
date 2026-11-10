@@ -43,6 +43,7 @@ test('raw HTML inline emphasis converts semantically while code and active block
     'HTML <strong class="lead">bold</strong>, <em>italic</em>, ' +
     '<b>bold too</b>, and <i>italic too</i>. ' +
     'Raw <a href="/link">HTML link</a>. ' +
+    'Escaped \\<br/> is not a hard break; escaped \\<img src="/literal.png"> is not an image. ' +
     '`<strong>code</strong>`\n\n' +
     '<div><strong>raw block content</strong></div>\n\n' +
     '<div>\n<strong>multiline raw block</strong>\n</div>\n\n' +
@@ -55,6 +56,7 @@ test('raw HTML inline emphasis converts semantically while code and active block
     result.markdown,
     'HTML **bold**, *italic*, **bold too**, and *italic too*. ' +
       'Raw <a href="/link">HTML link</a>. ' +
+      'Escaped \\<br/> is not a hard break; escaped \\<img src="/literal.png"> is not an image. ' +
       '`<strong>code</strong>`\n\n' +
       '<div><strong>raw block content</strong></div>\n\n' +
       '<div>\n<strong>multiline raw block</strong>\n</div>\n\n' +
@@ -96,6 +98,14 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
     assert.match(result.markdown, /After\.$/, format);
     assert.doesNotMatch(result.markdown, /<div><p>A/, format);
     assert.deepEqual(result.warnings, [], format);
+
+    const inline = convertFromMarkdown(
+      'Caption <img src="/photo.png" alt="Sunset"> then line<br>break.',
+      format,
+      { DOMParser }
+    );
+    assert.match(inline.markdown, /!\[\/photo\.png\|Sunset\|\|\]/, format);
+    assert.match(inline.markdown, /then line  \nbreak\./, format);
   }
 
   const nested = convertFromMarkdown(

@@ -578,7 +578,7 @@ function convertObsidianCallouts(lines, protectedLines, format) {
   return output;
 }
 
-function convertInlineHtmlToMarkdown(line, warnings) {
+function convertInlineHtmlToMarkdown(line, warnings, Parser) {
   const protectedValues = [];
   const protect = value => {
     const marker = `\uE010${protectedValues.length}\uE011`;
@@ -611,6 +611,25 @@ function convertInlineHtmlToMarkdown(line, warnings) {
       }
       return `==${text}==`;
     });
+  if (Parser) {
+    text = text.replace(/<img\b[^>]*\/?>/gi, (source, offset, wholeText) => {
+      let backslashes = 0;
+      for (let index = offset - 1; index >= 0 && wholeText[index] === '\\'; index--) {
+        backslashes++;
+      }
+      if (backslashes % 2 === 1) return source;
+      const image = new Parser().parseFromString(source, 'text/html').querySelector('img');
+      if (!image) return source;
+      return htmlImageResource(image, warnings) || source;
+    });
+  }
+  text = text.replace(/<br\s*\/?>/gi, (source, offset, wholeText) => {
+    let backslashes = 0;
+    for (let index = offset - 1; index >= 0 && wholeText[index] === '\\'; index--) {
+      backslashes++;
+    }
+    return backslashes % 2 === 1 ? source : '  \n';
+  });
   for (const { marker, value } of protectedValues.reverse()) {
     text = text.replace(marker, value);
   }
@@ -726,6 +745,7 @@ function escapeDialectSpecificWmdxSyntax(line, format) {
   // regions intact before normalizing Wmdx subscript and superscript markers.
   text = text
     .replace(/<([a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, protect)
+    .replace(/<(?:img|br)\b[^>]*\/?>/gi, protect)
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<(?:https?|ftp):\/\/[^>\s]+>|<mailto:[^>\s]+>|<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>/gi, protect);
 
@@ -782,11 +802,11 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
   if (format === 'obsidian' && /%%/.test(sourceText)) {
     addWarning(warnings, 'Obsidian comments have no native Wmdx equivalent and were kept unchanged.');
   }
+  const htmlParser = options.DOMParser === null
+    ? null
+    : options.DOMParser ?? globalThis.DOMParser;
   const protectedHtml = protectTopLevelMarkdownHtmlBlocks(
-    sourceText,
-    format,
-    options.DOMParser === null ? null : options.DOMParser ?? globalThis.DOMParser,
-    warnings
+    sourceText, format, htmlParser, warnings
   );
   const normalizedSource = normalizeStandardMarkdownMarkers(protectedHtml.source);
   const converted = protectCodeFences(normalizedSource, (originalLines, protectedLines) => {
@@ -811,7 +831,7 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
         return line;
       }
       let text = escapeDialectSpecificWmdxSyntax(line, format);
-      text = convertInlineHtmlToMarkdown(text, warnings);
+      text = convertInlineHtmlToMarkdown(text, warnings, htmlParser);
       if (format === 'obsidian') {
         text = convertObsidianLinksToWmdx(text, warnings);
       }
