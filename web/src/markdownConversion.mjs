@@ -595,7 +595,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
   };
   let text = String(line ?? '')
     .replace(
-      /<((?!(?:a|audio|video|strong|b|em|i|del|s|sup|sub|mark|u|ins)\b)[a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      /<((?!(?:a|audio|video|strong|b|em|i|del|s|strike|sup|sub|mark|code|u|ins)\b)[a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
       value => {
         addWarning(
           warnings,
@@ -625,8 +625,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
   text = text
     .replace(/<(strong|b)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '**$2**')
     .replace(/<(em|i)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '*$2*')
-    .replace(/<del>([\s\S]*?)<\/del>/gi, '~~$1~~')
-    .replace(/<s>([\s\S]*?)<\/s>/gi, '~~$1~~')
+    .replace(/<(del|s|strike)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '~~$2~~')
     .replace(/<(u|ins)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi, (_, _tag, attributes, content) => {
       if (/\bstyle\s*=/i.test(attributes)) {
         addWarning(warnings, 'Inline CSS underline styling was ignored during Markdown import.');
@@ -635,6 +634,9 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
     })
     .replace(/<sup>([\s\S]*?)<\/sup>/gi, '^$1^')
     .replace(/<sub>([\s\S]*?)<\/sub>/gi, '~$1~')
+    .replace(/<code(?:\s[^>]*)?>([\s\S]*?)<\/code\s*>/gi, (_, content) =>
+      `\`${content.replace(/`/g, '\\`')}\``
+    )
     .replace(/<mark(?:\s[^>]*)?>([\s\S]*?)<\/mark>/gi, (_, text) => {
       if (/style\s*=/i.test(line)) {
         addWarning(warnings, 'HTML highlight colors are not retained; highlight meaning is preserved.');
