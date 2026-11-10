@@ -3402,6 +3402,26 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const superscriptSyntaxRanges = [...new Map(decorationRanges
       .flatMap(range => getMarkdownFormatRanges(view, 'superscript', range))
       .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
+    const htmlInlineFormatClasses = {
+      bold: 'cm-bold',
+      italic: 'cm-italic',
+      strikethrough: 'cm-strikethrough',
+      subscript: 'cm-subscript',
+      superscript: 'cm-superscript',
+      code: 'cm-inline-code'
+    };
+    const htmlInlineFormatRanges = [...new Map(
+      Object.entries(htmlInlineFormatClasses).flatMap(([formatName, className]) =>
+        decorationRanges.flatMap(range =>
+          getMarkdownFormatRanges(view, formatName, range)
+            .filter(formatRange => formatRange.kind === 'html')
+            .map(formatRange => [
+              `${formatName}:${formatRange.wrapperFrom}:${formatRange.wrapperTo}`,
+              { ...formatRange, className }
+            ])
+        )
+      )
+    ).values()];
 
     const calloutOpenerInfo = layout.calloutOpeners;
     const calloutLineAttributes = new Map(
@@ -4040,6 +4060,20 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }
       builder.push(Decoration.mark({
         class: 'cm-superscript'
+      }).range(range.contentFrom, range.contentTo));
+    }
+
+    for (const range of htmlInlineFormatRanges) {
+      const isRangeActive = !isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, range.wrapperFrom, range.wrapperTo
+        );
+      if (!isRangeActive) {
+        hideSyntax(range.wrapperFrom, range.contentFrom);
+        hideSyntax(range.contentTo, range.wrapperTo);
+      }
+      builder.push(Decoration.mark({
+        class: range.className
       }).range(range.contentFrom, range.contentTo));
     }
 

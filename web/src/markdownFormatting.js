@@ -63,13 +63,15 @@ let wmdxColorSyntaxEnabled = true;
 let obsidianHighlightSyntaxEnabled = false;
 
 const MARKDOWN_FORMATS = {
-  bold: { node: 'StrongEmphasis', open: '**', close: '**' },
-  italic: { node: 'Emphasis', open: '*', close: '*' },
-  strikethrough: { node: 'Strikethrough', open: '~~', close: '~~' },
-  subscript: { node: 'Subscript', open: '~', close: '~' },
-  superscript: { open: '^', close: '^' },
-  code: { node: 'InlineCode', open: '`', close: '`' },
-  underline: { htmlTag: 'u', open: '<u>', close: '</u>' }
+  bold: { node: 'StrongEmphasis', htmlTag: ['strong', 'b'], open: '**', close: '**' },
+  italic: { node: 'Emphasis', htmlTag: ['em', 'i'], open: '*', close: '*' },
+  strikethrough: {
+    node: 'Strikethrough', htmlTag: ['del', 's', 'strike'], open: '~~', close: '~~'
+  },
+  subscript: { node: 'Subscript', htmlTag: ['sub'], open: '~', close: '~' },
+  superscript: { htmlTag: ['sup'], open: '^', close: '^' },
+  code: { node: 'InlineCode', htmlTag: ['code'], open: '`', close: '`' },
+  underline: { htmlTag: ['u', 'ins'], open: '<u>', close: '</u>' }
 };
 
 function rangeFromSyntaxNode(state, node, format) {
@@ -120,13 +122,18 @@ function isInsideRanges(position, ranges) {
 function htmlFormatRanges(state, format, bounds = null) {
   const openings = [];
   const ranges = [];
+  const tags = new Set(
+    (Array.isArray(format.htmlTag) ? format.htmlTag : [format.htmlTag])
+      .filter(Boolean)
+      .map(tag => tag.toLowerCase())
+  );
   syntaxTree(state).iterate({
     ...(bounds ? { from: bounds.from, to: bounds.to } : {}),
     enter(node) {
       if (node.name !== 'HTMLTag') return;
       const source = state.doc.sliceString(node.from, node.to);
       const tag = /^<\s*(\/?)\s*([a-z][\w-]*)\b([^>]*)>/i.exec(source);
-      if (!tag || tag[2].toLowerCase() !== format.htmlTag) return;
+      if (!tag || !tags.has(tag[2].toLowerCase())) return;
       if (!tag[1]) {
         let eligible = true;
         if (format.htmlColor) {
@@ -134,19 +141,20 @@ function htmlFormatRanges(state, format, bounds = null) {
           const color = /\bcolor\s*:\s*([a-z]+)/i.exec(style)?.[1]?.toLowerCase();
           eligible = color === format.htmlColor;
         }
-        openings.push({ from: node.from, to: node.to, eligible });
+        openings.push({ from: node.from, to: node.to, eligible, tag: tag[2].toLowerCase() });
         return;
       }
 
       const opening = openings.pop();
-      if (!opening?.eligible) return;
+      if (!opening?.eligible || opening.tag !== tag[2].toLowerCase()) return;
       ranges.push({
         wrapperFrom: opening.from,
         wrapperTo: node.to,
         contentFrom: opening.to,
         contentTo: node.from,
         open: state.doc.sliceString(opening.from, opening.to),
-        close: source
+        close: source,
+        kind: 'html'
       });
     }
   });
@@ -326,7 +334,7 @@ export function getMarkdownFormatRanges(view, formatName, bounds = null) {
     ? expandedLineBounds(state, bounds.from, bounds.to)
     : null;
   if (format.node) {
-    const ranges = [];
+    let ranges = [];
     syntaxTree(state).iterate({
       ...(scanBounds ? { from: scanBounds.from, to: scanBounds.to } : {}),
       enter(node) {
@@ -337,17 +345,21 @@ export function getMarkdownFormatRanges(view, formatName, bounds = null) {
     });
     if (formatName === 'italic' && wmdxUnderlineSyntaxEnabled) {
       const customRanges = getWmdxUnderlineSyntaxRanges(state, scanBounds);
-      return ranges.filter(range => !customRanges.some(custom =>
+      ranges = ranges.filter(range => !customRanges.some(custom =>
         custom.wrapperFrom === range.wrapperFrom &&
         custom.wrapperTo === range.wrapperTo
       ));
     }
-    return ranges;
+    if (format.htmlTag) {
+      ranges.push(...htmlFormatRanges(state, format, scanBounds));
+    }
+    return ranges.sort((a, b) => a.wrapperFrom - b.wrapperFrom);
   }
   if (formatName === 'superscript') {
-    return wmdxSuperscriptSyntaxEnabled
-      ? getWmdxSuperscriptRanges(state, scanBounds)
-      : [];
+    return [
+      ...(wmdxSuperscriptSyntaxEnabled ? getWmdxSuperscriptRanges(state, scanBounds) : []),
+      ...htmlFormatRanges(state, format, scanBounds)
+    ].sort((a, b) => a.wrapperFrom - b.wrapperFrom);
   }
   if (formatName === 'underline') {
     return [
@@ -459,9 +471,10 @@ export function getMarkdownFormattingState(view) {
 
   for (const [formatName, format] of Object.entries(MARKDOWN_FORMATS)) {
     if (!format.htmlTag) continue;
-    state[formatName] = htmlFormatRanges(view.state, format, bounds).some(range =>
-      selection.head >= range.contentFrom && selection.head < range.contentTo
-    );
+    state[formatName] = state[formatName] ||
+      htmlFormatRanges(view.state, format, bounds).some(range =>
+        selection.head >= range.contentFrom && selection.head < range.contentTo
+      );
   }
   for (const range of getWmdxColorSyntaxRanges(view.state, bounds)) {
     if (selection.head >= range.contentFrom && selection.head < range.contentTo) {

@@ -49,6 +49,51 @@ test('inline formatting state follows the syntax at the cursor and selection', a
   assert.equal(isMarkdownFormatActive(view, 'highlightBlue'), false);
 });
 
+test('supported inline HTML tags expose semantic formatting ranges', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { GFM, Strikethrough } = await import('@lezer/markdown');
+  const { getMarkdownFormatRanges, isMarkdownFormatActive } =
+    await import('../src/markdownFormatting.js');
+  const cases = [
+    ['bold', '<strong>bold</strong>'],
+    ['bold', '<b>bold</b>'],
+    ['italic', '<em>italic</em>'],
+    ['italic', '<i>italic</i>'],
+    ['strikethrough', '<del>strike</del>'],
+    ['strikethrough', '<s>strike</s>'],
+    ['subscript', '<sub>sub</sub>'],
+    ['superscript', '<sup>super</sup>'],
+    ['code', '<code>code</code>'],
+    ['underline', '<u>underline</u>'],
+    ['underline', '<ins>underline</ins>']
+  ];
+  const doc = cases.map(([, source]) => source).join(' ');
+  const view = {
+    state: EditorState.create({
+      doc,
+      selection: EditorSelection.cursor(doc.indexOf('bold') + 1),
+      extensions: [markdown({ extensions: [GFM, Strikethrough] })]
+    })
+  };
+
+  let offset = 0;
+  for (const [format, source] of cases) {
+    const range = getMarkdownFormatRanges(view, format).find(
+      candidate => candidate.kind === 'html' &&
+        candidate.wrapperFrom >= offset &&
+        candidate.wrapperTo <= offset + source.length
+    );
+    assert.ok(range, `${source} should yield a ${format} range`);
+    assert.equal(doc.slice(range.contentFrom, range.contentTo), source.match(/>([^<>]+)</)[1]);
+    view.state = view.state.update({
+      selection: EditorSelection.cursor(range.contentFrom + 1)
+    }).state;
+    assert.equal(isMarkdownFormatActive(view, format), true, `${source} should activate ${format}`);
+    offset += source.length + 1;
+  }
+});
+
 test('the same inline toolbar action toggles formatting instead of nesting it', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');

@@ -492,6 +492,47 @@ async function main() {
       cases++;
     }
 
+    const rawHtmlInlineDocument = [
+      '<strong>bold</strong> <em>italic</em> <del>strike</del> ' +
+        '<sub>sub</sub> <sup>super</sup> <code>code</code> <ins>under</ins>',
+      'Outside the raw HTML formatting.'
+    ].join('\n');
+    for (const mode of modes) {
+      await page.evaluate(async ({ mode, markdown }) => {
+        await window.editorBridge.setEditorMode(mode);
+        window.editorBridge.setMarkdown(markdown);
+        const end = markdown.length;
+        window.editorBridge.setSelectionState(JSON.stringify({ anchor: end, head: end }));
+      }, { mode, markdown: rawHtmlInlineDocument });
+      await page.waitForTimeout(90);
+      const rawHtmlInline = await page.evaluate(() => ({
+        markdown: window.editorBridge.getMarkdown(),
+        content: document.querySelector('.cm-content')?.textContent ?? '',
+        bold: document.querySelector('.cm-bold')?.textContent ?? null,
+        italic: document.querySelector('.cm-italic')?.textContent ?? null,
+        strike: document.querySelector('.cm-strikethrough')?.textContent ?? null,
+        sub: document.querySelector('.cm-subscript')?.textContent ?? null,
+        sup: document.querySelector('.cm-superscript')?.textContent ?? null,
+        code: document.querySelector('.cm-inline-code')?.textContent ?? null,
+        underline: document.querySelector('.cm-underline')?.textContent ?? null
+      }));
+      assert.equal(rawHtmlInline.markdown, rawHtmlInlineDocument);
+      if (mode === 'source') {
+        assert.match(rawHtmlInline.content, /<strong>bold<\/strong>/);
+        assert.equal(rawHtmlInline.bold, null);
+      } else {
+        assert.doesNotMatch(rawHtmlInline.content, /<strong>|<\/strong>/);
+        assert.equal(rawHtmlInline.bold, 'bold');
+        assert.equal(rawHtmlInline.italic, 'italic');
+        assert.equal(rawHtmlInline.strike, 'strike');
+        assert.equal(rawHtmlInline.sub, 'sub');
+        assert.equal(rawHtmlInline.sup, 'super');
+        assert.equal(rawHtmlInline.code, 'code');
+        assert.equal(rawHtmlInline.underline, 'under');
+      }
+      cases++;
+    }
+
     for (const width of [390, 980]) {
       await page.setViewportSize({ width, height: 844 });
       for (const font of ['Arial', 'monospace']) {
