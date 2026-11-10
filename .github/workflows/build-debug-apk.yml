@@ -66,4 +66,15 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-boot-timeout: 1200
-          script: ./gradlew connectedDebugAndroidTest
+          script: sh scripts/run-android-webview-tests.sh
+
+      - name: Upload Android WebView test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-WebView-Test-Diagnostics
+          path: |
+            app/build/outputs/androidTest-results/connected/**
+            app/build/reports/androidTests/connected/**
+            app/build/diagnostics/android-webview-logcat.txt
+          if-no-files-found: ignore
