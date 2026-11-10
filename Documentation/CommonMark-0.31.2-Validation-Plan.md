@@ -61,12 +61,14 @@ Do not convert a Known gap or Pending case into Pass merely because import/expor
 | Wmdx parser node families for CommonMark core examples | 575 | 575 individual checks pass |
 | CommonMark → Wmdx → CommonMark rendered semantics | 575 | 575 pass |
 | Raw HTML conversion smoke checks | 77 | 77 individual no-crash checks pass; this is not semantic compatibility |
-| Raw HTML semantic parity, preservation, and security-loss assertions | 77 | 77 individual TODO gates |
+| Raw HTML semantic parity, preservation, and security-loss assertions | 77 | Examples 613–632 pass in all three Markdown profiles; 57 individual TODO gates remain |
 | GFM and Obsidian round trips for every CommonMark example | 652 per target | Pending |
 | HTML and MHTML import/export for every applicable feature case | Per-case matrix | Pending |
 | Four editor configurations, editing, caret, scrolling, and host contexts | Per feature/context | Tracked separately in `Markdown-Element-Compatibility-Test-Plan.md`; not complete |
 
-Previously failing examples **373, 389, 407, 408, 425, 426, 461, 463, 465, and 468** in “Emphasis and strong emphasis” used nested emphasis/strong-emphasis that Wmdx normalization flattened. Normalization now retains same-kind nested semantics by protecting inline `<em>` or `<strong>` markers until Markdown import finishes, then restoring them inside the outer Markdown delimiter. All 575 parser-comparable round trips now pass the pinned CommonMark renderer comparison. The separate 77 raw-HTML semantic cases remain TODO and are not included in that pass count.
+Previously failing examples **373, 389, 407, 408, 425, 426, 461, 463, 465, and 468** in “Emphasis and strong emphasis” used nested emphasis/strong-emphasis that Wmdx normalization flattened. Normalization now retains same-kind nested semantics by protecting inline `<em>` or `<strong>` markers until Markdown import finishes, then restoring them inside the outer Markdown delimiter. All 575 parser-comparable round trips now pass the pinned CommonMark renderer comparison. Raw HTML examples **613–632** now each round-trip through CommonMark, GFM, and Obsidian; exact source restoration is required except where a redundant escape is removed, and every remaining backslash is checked for semantic necessity. There are 57 raw-HTML semantic cases left TODO.
+
+The raw HTML round-trip also checks escape minimality: CommonMark example **632** contained a backslash-escaped quote in plain text that did not affect rendered output, so import now removes it. Example **631** keeps its backslash in the `href` value because removing it changes the rendered attribute value.
 
 ## Required case gates
 

@@ -26,6 +26,23 @@ test('CommonMark import converts headings and preserves ordinary links and code'
   assert.deepEqual(result.warnings, []);
 });
 
+test('CommonMark removes quote escapes only from plain text, not link titles or code', async () => {
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = [
+    'A \\"quote\\" in prose.',
+    '[A](url "the \\"quoted\\" title")',
+    '`literal \\"quoted\\" code`'
+  ].join('\n');
+  const result = convertFromMarkdown(source, 'commonmark');
+
+  assert.equal(result.markdown, [
+    'A "quote" in prose.',
+    '[A](url "the \\"quoted\\" title")',
+    '`literal \\"quoted\\" code`'
+  ].join('\n'));
+  assert.deepEqual(result.warnings, []);
+});
+
 test('subscript converts between Wmdx tilde syntax and portable HTML', async () => {
   const { convertFromMarkdown, exportMarkdown } = await import('../src/markdownConversion.mjs');
   const importedMarkdown = convertFromMarkdown('H<sub>2</sub>O', 'commonmark');

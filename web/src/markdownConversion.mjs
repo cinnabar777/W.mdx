@@ -65,6 +65,84 @@ function restoreNestedEmphasisMarkers(source) {
     .replaceAll(nestedEmphasisMarkers.strongClose, '</strong>');
 }
 
+function protectHtmlTagTokens(source, protect) {
+  const htmlTagStart = /^<\/?[a-z][\w:-]*/i;
+  let output = '';
+  for (let index = 0; index < source.length;) {
+    if (source[index] !== '<' || !htmlTagStart.test(source.slice(index))) {
+      output += source[index++];
+      continue;
+    }
+
+    let quote = null;
+    let end = source.length;
+    for (let cursor = index + 1; cursor < source.length; cursor++) {
+      const character = source[cursor];
+      if (quote) {
+        if (character === quote) quote = null;
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === '>') {
+        end = cursor + 1;
+        break;
+      }
+    }
+    output += protect(source.slice(index, end));
+    index = end;
+  }
+  return output;
+}
+
+function protectTagMarkupInsideAttributes(source, protect) {
+  const htmlTagStart = /^<\/?[a-z][\w:-]*/i;
+  const tagEnd = (text, start) => {
+    let quote = null;
+    for (let index = start + 1; index < text.length; index++) {
+      const character = text[index];
+      if (quote) {
+        if (character === quote) quote = null;
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === '>') {
+        return index + 1;
+      }
+    }
+    return text.length;
+  };
+  let output = '';
+  for (let index = 0; index < source.length;) {
+    if (source[index] !== '<' || !htmlTagStart.test(source.slice(index))) {
+      output += source[index++];
+      continue;
+    }
+
+    const start = index;
+    let quote = null;
+    let containsTagMarkup = false;
+    let end = source.length;
+    for (let cursor = start + 1; cursor < source.length; cursor++) {
+      const character = source[cursor];
+      if (quote) {
+        if (character === quote) {
+          quote = null;
+        } else if (character === '<' && htmlTagStart.test(source.slice(cursor))) {
+          containsTagMarkup = true;
+          cursor = tagEnd(source, cursor) - 1;
+        }
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === '>') {
+        end = cursor + 1;
+        break;
+      }
+    }
+    const markup = source.slice(start, end);
+    output += containsTagMarkup ? protect(markup) : markup;
+    index = end;
+  }
+  return output;
+}
+
 function nestedInlineEmphasisHtmlRanges(source) {
   if (!/[*_]/.test(source) || !/<\/?(?:em|i|strong|b)\b/i.test(source)) return [];
   const state = EditorState.create({
@@ -651,6 +729,10 @@ function normalizeStandardMarkdownMarkers(source) {
   const normalizationCache = new WeakMap();
   const needsNormalization = node => {
     if (normalizationCache.has(node)) return normalizationCache.get(node);
+    if (node.name === 'Escape' && /^\\["']$/.test(source.slice(node.from, node.to))) {
+      normalizationCache.set(node, true);
+      return true;
+    }
     if (node.name === 'EmphasisMark' && /^_+$/.test(source.slice(node.from, node.to))) {
       normalizationCache.set(node, true);
       return true;
@@ -681,7 +763,20 @@ function normalizeStandardMarkdownMarkers(source) {
     }
     return output;
   };
-  const normalizeNode = (node, parentEmphasis = null) => {
+  const protectedEscapeContexts = new Set([
+    'Autolink', 'CodeBlock', 'FencedCode', 'HTMLTag', 'Image', 'InlineCode',
+    'Link', 'LinkTitle', 'URL'
+  ]);
+  const normalizeNode = (node, parentEmphasis = null, insideProtectedContext = false) => {
+    const protectedContext = insideProtectedContext ||
+      protectedEscapeContexts.has(node.name);
+    if (
+      node.name === 'Escape' &&
+      !protectedContext &&
+      /^\\["']$/.test(source.slice(node.from, node.to))
+    ) {
+      return source.slice(node.from + 1, node.to);
+    }
     const isEmphasis = node.name === 'Emphasis' || node.name === 'StrongEmphasis';
     if (isEmphasis && (needsNormalization(node) || parentEmphasis === node.name)) {
       const delimiter = node.name === 'StrongEmphasis' ? '**' : '*';
@@ -694,7 +789,7 @@ function normalizeStandardMarkdownMarkers(source) {
           continue;
         }
         content += escapeEmphasisText(source.slice(position, child.from));
-        content += normalizeNode(child, node.name);
+        content += normalizeNode(child, node.name, protectedContext);
         position = child.to;
       }
       content += escapeEmphasisText(source.slice(position, node.to));
@@ -722,7 +817,7 @@ function normalizeStandardMarkdownMarkers(source) {
     let position = node.from;
     for (const child of node.children) {
       output += source.slice(position, child.from);
-      output += normalizeNode(child);
+      output += normalizeNode(child, null, protectedContext);
       position = child.to;
     }
     return output + source.slice(position, node.to);
@@ -880,6 +975,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
       (match, fence) => fence ? protect(match) : match
     )
     .replace(/<!--[\s\S]*?-->/g, protect);
+  text = protectTagMarkupInsideAttributes(text, protect);
   for (const range of nestedInlineEmphasisHtmlRanges(text).sort((left, right) =>
     right.from - left.from
   )) {
@@ -1085,6 +1181,7 @@ function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = ne
     .replace(/<(?:img|br)\b[^>]*\/?>/gi, protect)
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<(?:https?|ftp):\/\/[^>\s]+>|<mailto:[^>\s]+>|<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>/gi, protect);
+  text = protectHtmlTagTokens(text, protect);
   text = protectInlineMathSyntax(text, protect);
   if (format === 'commonmark') {
     text = text.replace(
@@ -2235,7 +2332,12 @@ function transformTextOutsideHtmlTags(value, transform) {
       }
     }
     if (end >= value.length) {
-      index += 1;
+      const nextTag = value.indexOf('<', index + 1);
+      const literalEnd = nextTag >= 0 ? nextTag : value.length;
+      output += transform(value.slice(plainStart, index));
+      output += value.slice(index, literalEnd);
+      index = literalEnd;
+      plainStart = literalEnd;
       continue;
     }
     output += transform(value.slice(plainStart, index));
