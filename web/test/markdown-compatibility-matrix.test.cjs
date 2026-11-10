@@ -187,3 +187,39 @@ test('MHTML resource handles load embedded bytes lazily and only once per part',
   assert.equal(resourceLoads[0], 'resource-1');
   assert.equal((imported.markdown.match(/data:image\/png;base64,AQIDBA==/g) || []).length, 2);
 });
+
+test('shared Markdown semantics survive all nine CommonMark, GFM, and Obsidian conversions', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const profiles = ['commonmark', 'gfm', 'obsidian'];
+  const source = [
+    '# Shared syntax',
+    '',
+    'A **bold** and *italic* [link](https://example.test "title") with `code`.',
+    '',
+    '- first item',
+    '- second item',
+    '',
+    '> A quoted paragraph.'
+  ].join('\n');
+  const document = new JSDOM('').window.document;
+  const expected = canonicalizeHtml(renderCommonMark(source), document);
+
+  for (const sourceProfile of profiles) {
+    for (const targetProfile of profiles) {
+      const imported = convertFromMarkdown(source, sourceProfile);
+      const exported = exportMarkdown(imported.markdown, targetProfile);
+      const reimported = convertFromMarkdown(exported.markdown, targetProfile);
+      const normalized = exportMarkdown(reimported.markdown, 'commonmark');
+
+      assert.deepEqual(imported.warnings, [], `${sourceProfile} import warnings`);
+      assert.deepEqual(exported.warnings, [], `${sourceProfile} → ${targetProfile} warnings`);
+      assert.deepEqual(reimported.warnings, [], `${targetProfile} re-import warnings`);
+      assert.deepEqual(
+        canonicalizeHtml(renderCommonMark(normalized.markdown), document),
+        expected,
+        `${sourceProfile} → Wmdx → ${targetProfile} → Wmdx changed shared Markdown meaning`
+      );
+    }
+  }
+});
