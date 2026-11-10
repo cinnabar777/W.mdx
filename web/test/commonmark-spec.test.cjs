@@ -14,9 +14,11 @@ const nestedCommonMarkEmphasisExamples = [373, 389, 407, 408, 425, 426, 461, 463
 const verifiedHtmlSemanticExamples = new Set(
   Array.from({ length: 20 }, (_, index) => index + 613)
 );
+const verifiedHtmlBlockExamples = new Set([168, 175, 187]);
 const verifiedHtmlLinkExamples = new Set([201, 491, 494, 524, 536]);
 const verifiedHtmlInteropExamples = new Set([
   ...verifiedHtmlSemanticExamples,
+  ...verifiedHtmlBlockExamples,
   ...verifiedHtmlLinkExamples
 ]);
 let wmdxMarkdown;
@@ -159,7 +161,7 @@ before(async () => {
 test('CommonMark 0.31.2 upstream corpus inventory is complete', () => {
   assert.equal(commonmarkCases.length, 652, 'the pinned upstream corpus is complete');
   assert.equal(htmlInteropCases.length, 77, 'HTML interoperability cases stay outside Wmdx-native parsing');
-  assert.equal(pendingHtmlSemanticCases.length, 52, 'every HTML case is either verified or a TODO');
+  assert.equal(pendingHtmlSemanticCases.length, 49, 'every HTML case is either verified or a TODO');
   assert.equal(parserComparableCases.length, 575, 'all non-HTML examples are classified');
   assert.equal(activeCases.length, 575, 'all parser-comparable examples are checked');
   assert.deepEqual(
@@ -515,6 +517,56 @@ test('CommonMark raw HTML examples 613-632 round-trip through all Markdown flavo
             'the removed quote escape is redundant in CommonMark text'
           );
         }
+
+        for (const escape of commonMark.markdown.matchAll(/\\/g)) {
+          const withoutEscape = commonMark.markdown.slice(0, escape.index) +
+            commonMark.markdown.slice(escape.index + 1);
+          const withoutEscapeHtml = renderer.render(parser.parse(withoutEscape));
+          assert.notEqual(
+            canonicalizeRenderedHtml(withoutEscapeHtml, template),
+            canonicalizeRenderedHtml(example.html, template),
+            `CM-EX-${number} has an unnecessary escape at ${escape.index}`
+          );
+        }
+      });
+    }
+  }
+});
+
+test('selected CommonMark HTML block examples round-trip through all Markdown flavors', async t => {
+  const { JSDOM } = require('jsdom');
+  const { Parser, HtmlRenderer } = require('commonmark');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const DOMParser = new JSDOM('').window.DOMParser;
+  const parser = new Parser();
+  const renderer = new HtmlRenderer();
+  const template = new JSDOM('').window.document.createElement('template');
+
+  for (const number of verifiedHtmlBlockExamples) {
+    const example = commonmarkCases.find(candidate => candidate.example === number);
+    for (const target of ['commonmark', 'gfm', 'obsidian']) {
+      await t.test(`CM-EX-${number} → ${target} → CommonMark`, () => {
+        const imported = convertFromMarkdown(example.markdown, 'commonmark', { DOMParser });
+        const exported = exportMarkdown(imported.markdown, target);
+        const returned = convertFromMarkdown(exported.markdown, target, { DOMParser });
+        const commonMark = exportMarkdown(returned.markdown, 'commonmark');
+
+        assert.deepEqual(imported.warnings, [], `CM-EX-${number} CommonMark import warnings`);
+        assert.deepEqual(exported.warnings, [], `CM-EX-${number} ${target} export warnings`);
+        assert.deepEqual(returned.warnings, [], `CM-EX-${number} ${target} import warnings`);
+        assert.deepEqual(commonMark.warnings, [], `CM-EX-${number} CommonMark return warnings`);
+        assert.equal(
+          commonMark.markdown,
+          example.markdown,
+          `CM-EX-${number} must return byte-for-byte after ${target}`
+        );
+        const actualHtml = renderer.render(parser.parse(commonMark.markdown));
+        assert.equal(
+          canonicalizeRenderedHtml(actualHtml, template),
+          canonicalizeRenderedHtml(example.html, template),
+          `CM-EX-${number} changed CommonMark semantics through ${target}`
+        );
 
         for (const escape of commonMark.markdown.matchAll(/\\/g)) {
           const withoutEscape = commonMark.markdown.slice(0, escape.index) +
