@@ -87,6 +87,28 @@ test('HTML export removes active script content and event-handler attributes', (
   assert.equal(document.querySelector('img')?.getAttribute('src'), 'https://example.test/pixel.png');
 });
 
+test('GFM HTML export applies the specification tagfilter to raw HTML', () => {
+  const source = [
+    '<script>alert(1)</script>',
+    '',
+    '<textarea>text</textarea>',
+    '',
+    '<div><iframe src="https://example.test"></iframe></div>',
+    '',
+    '```html',
+    '<script>literal code</script>',
+    '```'
+  ].join('\n');
+  const { dom, result } = render(source, 'gfm');
+  const document = new dom.window.DOMParser().parseFromString(result.html, 'text/html');
+
+  assert.equal(document.querySelector('script, textarea, iframe'), null);
+  assert.match(document.body.textContent, /<script>alert\(1\)<\/script>/);
+  assert.match(document.body.textContent, /<textarea>text<\/textarea>/);
+  assert.match(document.body.textContent, /<iframe src="https:\/\/example\.test"><\/iframe>/);
+  assert.match(document.querySelector('pre code')?.textContent ?? '', /<script>literal code<\/script>/);
+});
+
 test('HTML export preserves safe embedded document attachments but rejects active data links', () => {
   const { dom, result } = render(
     '[PDF](data:application/pdf;base64,AQID "wmdx-attachment")\n\n' +

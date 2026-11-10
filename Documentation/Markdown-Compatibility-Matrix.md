@@ -17,7 +17,8 @@ original clipboard text rather than silently dropping content.
 | CommonMark 0.31.2 → Wmdx → CommonMark | 575 non-raw-HTML upstream examples are checked for parser families and rendered meaning across conversion. All 77 HTML-interoperability cases are separately run through import to ensure conversion completes or preserves content with warnings; their rendered meaning is not compared. | `web/test/commonmark-spec.test.cjs` | **Verified for the 575 non-HTML examples; raw HTML is crash-tested only, not conformant.** |
 | Inline HTML in Markdown rendered views | `<strong>/<b>`, `<em>/<i>`, `<del>/<s>/<strike>`, `<sub>`, `<sup>`, `<mark>`, `<code>`, and `<u>/<ins>` receive semantic styling in Live/WYSIWYG; Source retains literal tags. | `web/test/markdown-formatting.test.cjs`, `web/browser-tests/unified-layout.cjs` | **Verified for these inline tags.** Raw HTML links, images, breaks, CSS-specific styling, and HTML blocks remain incomplete. |
 | Raw HTML during explicit Markdown conversion | Inline emphasis/strike/sub/sup/highlight tags map to Wmdx syntax. Top-level HTML blocks convert through the semantic HTML importer, including tables; code fences remain literal. The pinned 77-case CommonMark HTML corpus completes without runtime errors. | `web/test/markdown-conversion.test.cjs`, `web/test/commonmark-spec.test.cjs` | **Partial.** Nested HTML blocks inside lists/quotes, retained unsupported tags, and full CommonMark/GFM HTML conformance still need fixtures. |
-| GFM 0.29 → Wmdx → GFM | 21 upstream extension examples cover tables, task lists, strikethrough, and autolinks through import/export; rendered fixture checks compare WYSIWYG meaning. | `web/test/gfm-spec-extensions.test.cjs`, `web/test/dialect-rendering-fixtures.test.cjs` | **Verified for the pinned extension fixtures.** GFM raw-HTML tag filtering is explicitly excluded by policy. |
+| GFM 0.29 → Wmdx → GFM | 21 upstream extension examples cover tables, task lists, strikethrough, and autolinks through import/export; rendered fixture checks compare WYSIWYG meaning. | `web/test/gfm-spec-extensions.test.cjs`, `web/test/dialect-rendering-fixtures.test.cjs` | **Verified for the pinned extension fixtures.** This is not complete GFM core conformance. |
+| GFM raw-HTML tagfilter in HTML export | The nine GFM-disallowed raw tag names are escaped in semantic HTML export; code fences stay literal code. | `web/test/html-export.test.cjs` | **Verified for the tagfilter list.** This does not establish complete raw-HTML parity in editor views. |
 | Obsidian → Wmdx → Obsidian | Curated examples cover wikilinks, heading links, highlights, image embeds, callouts, tasks, and footnotes; conversion tests cover additional warning and preservation cases. | `web/test/dialect-rendering-fixtures.test.cjs`, `web/test/markdown-conversion.test.cjs` | **Partial, curated coverage.** Obsidian's full app-specific syntax and plugin ecosystem are not fully represented by an upstream conformance corpus. |
 | Shared core across all nine profile pairs | CommonMark, GFM, and Obsidian shared headings, emphasis, links, code, lists, and quotes are imported, converted to each target profile, re-imported, and compared by rendered meaning. | `web/test/markdown-compatibility-matrix.test.cjs` | **Verified for this shared-core fixture.** Dialect-specific features still use their separate rows and warning rules. |
 | HTML → Wmdx → CommonMark → HTML | Semantic HTML fixture covers headings, emphasis, links, lists, and blockquotes, with output compared using the CommonMark renderer. | `web/test/markdown-compatibility-matrix.test.cjs` | **Verified for this semantic fixture.** HTML import separately checks active-element omission and warnings. |
@@ -49,10 +50,10 @@ Run the HTML wrapper tests through the Android unit-test task:
 ## Known exclusions and next gates
 
 - CommonMark raw HTML interoperability remains separate from native Markdown
-  parsing. The corpus classifies those examples, but only selected examples are
-  currently checked through the HTML importer.
-- GFM tag filtering for raw HTML is excluded; it must not be confused with
-  support for ordinary Markdown features or safe HTML import.
+  parsing. All 77 upstream HTML cases now complete explicit conversion without
+  crashes, but only selected examples have semantic conversion assertions.
+- GFM's nine-tag raw-HTML tagfilter is applied during HTML export. Raw HTML is
+  still not fully rendered or converted identically in every editor view.
 - The Obsidian fixture set is intentionally curated, not a claim of complete
   Obsidian compatibility. Plugin-defined syntax, transclusion behavior, and
   other app-only features need explicit support decisions and fixtures.

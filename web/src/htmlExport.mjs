@@ -41,6 +41,20 @@ function normalizeCalloutTitle(value) {
     .toLocaleLowerCase();
 }
 
+function createGfmRenderer() {
+  const renderer = new marked.Renderer();
+  renderer.html = token => {
+    const source = typeof token === 'string'
+      ? token
+      : String(token.text ?? token.raw ?? '');
+    return source.replace(
+      /<(\/?)(title|textarea|style|xmp|iframe|noembed|noframes|script|plaintext)\b/gi,
+      '&lt;$1$2'
+    );
+  };
+  return renderer;
+}
+
 function enhanceCallouts(document, descriptors) {
   let descriptorIndex = 0;
   const blockquotes = Array.from(document.querySelectorAll('blockquote'));
@@ -398,6 +412,7 @@ export function renderMarkdownHtml(source, {
     .filter(warning => !warning.includes('GFM alerts do not preserve the Wmdx expanded or collapsed state.'));
   const markdownHtml = marked.parse(exported.markdown, {
     gfm: targetDialect !== 'commonmark',
+    ...(targetDialect === 'gfm' ? { renderer: createGfmRenderer() } : {}),
     breaks: false,
     async: false
   });
