@@ -578,7 +578,19 @@ function convertObsidianCallouts(lines, protectedLines, format) {
 }
 
 function convertInlineHtmlToMarkdown(line, warnings) {
-  return line
+  const protectedValues = [];
+  const protect = value => {
+    const marker = `\uE010${protectedValues.length}\uE011`;
+    protectedValues.push({ marker, value });
+    return marker;
+  };
+  let text = String(line ?? '')
+    .replace(/<(script|style|pre)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, protect)
+    .replace(/(`+)([\s\S]*?)\1/g, protect)
+    .replace(/<!--[\s\S]*?-->/g, protect);
+  text = text
+    .replace(/<(strong|b)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '**$2**')
+    .replace(/<(em|i)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '*$2*')
     .replace(/<del>([\s\S]*?)<\/del>/gi, '~~$1~~')
     .replace(/<s>([\s\S]*?)<\/s>/gi, '~~$1~~')
     .replace(/<sup>([\s\S]*?)<\/sup>/gi, '^$1^')
@@ -589,6 +601,10 @@ function convertInlineHtmlToMarkdown(line, warnings) {
       }
       return `==${text}==`;
     });
+  for (const { marker, value } of protectedValues.reverse()) {
+    text = text.replace(marker, value);
+  }
+  return text;
 }
 
 function escapeDialectSpecificWmdxSyntax(line, format) {

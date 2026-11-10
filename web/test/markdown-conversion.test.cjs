@@ -37,6 +37,23 @@ test('subscript converts between Wmdx tilde syntax and portable HTML', async () 
   }
 });
 
+test('raw HTML inline emphasis converts semantically while code and active blocks stay literal', async () => {
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const source =
+    'HTML <strong class="lead">bold</strong>, <em>italic</em>, ' +
+    '<b>bold too</b>, and <i>italic too</i>. ' +
+    '`<strong>code</strong>`\n\n' +
+    '<script><strong>not active</strong></script>';
+  const result = convertFromMarkdown(source, 'commonmark');
+
+  assert.equal(
+    result.markdown,
+    'HTML **bold**, *italic*, **bold too**, and *italic too*. ' +
+      '`<strong>code</strong>`\n\n' +
+      '<script><strong>not active</strong></script>'
+  );
+});
+
 test('superscript imports and exports through semantic HTML without reinterpreting literals', async () => {
   const { convertFromMarkdown, convertFromHtml, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
