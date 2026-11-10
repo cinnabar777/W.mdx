@@ -64,6 +64,7 @@ test('supported inline HTML tags expose semantic formatting ranges', async () =>
     ['strikethrough', '<s>strike</s>'],
     ['subscript', '<sub>sub</sub>'],
     ['superscript', '<sup>super</sup>'],
+    ['mark', '<mark>highlight</mark>'],
     ['code', '<code>code</code>'],
     ['underline', '<u>underline</u>'],
     ['underline', '<ins>underline</ins>']

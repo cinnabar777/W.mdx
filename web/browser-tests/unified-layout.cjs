@@ -494,7 +494,8 @@ async function main() {
 
     const rawHtmlInlineDocument = [
       '<strong>bold</strong> <em>italic</em> <del>strike</del> ' +
-        '<sub>sub</sub> <sup>super</sup> <code>code</code> <ins>under</ins>',
+        '<sub>sub</sub> <sup>super</sup> <mark>highlight</mark> ' +
+        '<code>code</code> <ins>under</ins>',
       'Outside the raw HTML formatting.'
     ].join('\n');
     for (const mode of modes) {
@@ -513,6 +514,7 @@ async function main() {
         strike: document.querySelector('.cm-strikethrough')?.textContent ?? null,
         sub: document.querySelector('.cm-subscript')?.textContent ?? null,
         sup: document.querySelector('.cm-superscript')?.textContent ?? null,
+        highlight: document.querySelector('.cm-wmdx-highlight-yellow')?.textContent ?? null,
         code: document.querySelector('.cm-inline-code')?.textContent ?? null,
         underline: document.querySelector('.cm-underline')?.textContent ?? null
       }));
@@ -527,6 +529,7 @@ async function main() {
         assert.equal(rawHtmlInline.strike, 'strike');
         assert.equal(rawHtmlInline.sub, 'sub');
         assert.equal(rawHtmlInline.sup, 'super');
+        assert.equal(rawHtmlInline.highlight, 'highlight');
         assert.equal(rawHtmlInline.code, 'code');
         assert.equal(rawHtmlInline.underline, 'under');
       }
@@ -1225,12 +1228,20 @@ async function main() {
       await window.editorBridge.setEditorMode('wysiwyg');
       window.editorBridge.setMarkdown(markdown);
     }, renderedCellDocument);
-    const renderedCell = page.locator(
-      '.cm-wp-table-container tbody td[data-row="1"][data-col="0"]'
-    );
-    await renderedCell.waitFor();
-    await renderedCell.scrollIntoViewIfNeeded();
-    const renderedCellBox = await renderedCell.boundingBox();
+    const renderedCellSelector =
+      '.cm-wp-table-container tbody td[data-row="1"][data-col="0"]';
+    let renderedCellBox = null;
+    for (let attempt = 0; attempt < 4 && !renderedCellBox; attempt++) {
+      const renderedCell = page.locator(renderedCellSelector);
+      await renderedCell.waitFor();
+      try {
+        await renderedCell.scrollIntoViewIfNeeded();
+        renderedCellBox = await renderedCell.boundingBox();
+      } catch (error) {
+        if (!/not attached to the DOM/i.test(String(error))) throw error;
+        await page.waitForTimeout(50);
+      }
+    }
     assert.ok(renderedCellBox, 'the WYSIWYG cell is visible for a real pointer tap');
     await page.mouse.click(
       renderedCellBox.x + Math.min(20, renderedCellBox.width / 2),

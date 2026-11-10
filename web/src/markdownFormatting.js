@@ -70,6 +70,7 @@ const MARKDOWN_FORMATS = {
   },
   subscript: { node: 'Subscript', htmlTag: ['sub'], open: '~', close: '~' },
   superscript: { htmlTag: ['sup'], open: '^', close: '^' },
+  mark: { htmlTag: ['mark'], open: '<mark>', close: '</mark>' },
   code: { node: 'InlineCode', htmlTag: ['code'], open: '`', close: '`' },
   underline: { htmlTag: ['u', 'ins'], open: '<u>', close: '</u>' }
 };

@@ -3408,6 +3408,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       strikethrough: 'cm-strikethrough',
       subscript: 'cm-subscript',
       superscript: 'cm-superscript',
+      mark: 'cm-wmdx-highlight-yellow',
       code: 'cm-inline-code'
     };
     const htmlInlineFormatRanges = [...new Map(
