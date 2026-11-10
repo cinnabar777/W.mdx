@@ -1230,7 +1230,31 @@ function markdownLinkDestination(value) {
     .replace(/([()<>])/g, '\\$1');
 }
 
-function annotateHtmlHeadingLinks(document) {
+function fragmentForSameDocumentHref(href, baseLocation, document) {
+  if (href.startsWith('#')) return href.slice(1);
+
+  const base = document.querySelector('base[href]')?.getAttribute('href') ||
+    baseLocation ||
+    document.URL;
+  if (!base) return null;
+  try {
+    const page = new URL(base);
+    const target = new URL(href, page);
+    if (
+      target.hash &&
+      target.origin === page.origin &&
+      target.pathname === page.pathname &&
+      target.search === page.search
+    ) {
+      return target.hash.slice(1);
+    }
+  } catch {
+    // Unknown or malformed bases leave the original link as an ordinary URL.
+  }
+  return null;
+}
+
+function annotateHtmlHeadingLinks(document, baseLocation = '') {
   const headings = Array.from(
     document.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]')
   );
@@ -1247,8 +1271,14 @@ function annotateHtmlHeadingLinks(document) {
     if (heading.id && title) targetsById.set(heading.id, `#${targetTitle}`);
   }
 
-  for (const anchor of document.querySelectorAll('a[href^="#"]')) {
-    const rawFragment = anchor.getAttribute('href')?.slice(1) ?? '';
+  for (const anchor of document.querySelectorAll('a[href]')) {
+    const href = anchor.getAttribute('href') ?? '';
+    const rawFragment = fragmentForSameDocumentHref(
+      href,
+      baseLocation,
+      document
+    );
+    if (rawFragment === null) continue;
     let fragment = rawFragment;
     try {
       fragment = decodeURIComponent(rawFragment);
@@ -1282,7 +1312,7 @@ function inlineHtmlNode(node, warnings) {
   if (tag === 'strong' || tag === 'b') return `**${content}**`;
   if (tag === 'em' || tag === 'i') return `*${content}*`;
   if (tag === 'del' || tag === 's' || tag === 'strike') return `~~${content}~~`;
-  if (tag === 'u') return `<u>${content}</u>`;
+  if (tag === 'u' || tag === 'ins') return `<u>${content}</u>`;
   if (tag === 'sup') return `^${content}^`;
   if (tag === 'sub') return `~${content}~`;
   if (tag === 'code') return `\`${content.replace(/`/g, '\\`')}\``;
@@ -1716,7 +1746,7 @@ export function convertFromHtml(
   }
   const warnings = [];
   const document = new Parser().parseFromString(String(source ?? ''), 'text/html');
-  annotateHtmlHeadingLinks(document);
+  annotateHtmlHeadingLinks(document, baseLocation);
   resolveEmbeddedHtmlResources(
     document,
     embeddedResources,

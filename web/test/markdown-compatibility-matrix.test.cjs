@@ -434,3 +434,43 @@ test('Obsidian callout, wikilink, highlight, and footnote survive HTML round tri
   assert.match(commonMark.markdown, /\[\^1\]: Definition\./);
   assert.match(commonMark.markdown, /Definition\./);
 });
+
+test('MHTML TOC HTML imports into the selected Markdown flavor', async () => {
+  const { convertHtmlToMarkdownProfile } = await import('../src/markdownPaste.mjs');
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('');
+  const root = 'https://appassets.androidplatform.net/assets/www/';
+  const html = [
+    '<nav><a href="https://appassets.androidplatform.net/assets/www/#heading-1">Project setup</a></nav>',
+    '<h1 id="heading-1">Project Setup</h1>',
+    '<p><a href="https://outside.example/#heading-1">External reference</a></p>'
+  ].join('');
+
+  const expected = {
+    wmdx: /^\[#Project Setup\|Project setup\|\|\]$/m,
+    commonmark: /\[Project setup\]\(#project-setup\)/,
+    gfm: /\[Project setup\]\(#project-setup\)/,
+    obsidian: /^\[\[#Project Setup\|Project setup\]\]$/m
+  };
+
+  for (const profile of ['wmdx', 'commonmark', 'gfm', 'obsidian']) {
+    const converted = convertHtmlToMarkdownProfile(
+      html,
+      profile,
+      dom.window.DOMParser,
+      { baseLocation: root }
+    );
+    assert.deepEqual(converted.warnings, [], `${profile} warnings`);
+    assert.match(converted.markdown, expected[profile], `${profile} TOC syntax`);
+    assert.match(
+      converted.markdown,
+      /\[External reference\]\(https:\/\/outside\.example\/#heading-1\)/,
+      `${profile} must leave a real external destination intact`
+    );
+    assert.doesNotMatch(
+      converted.markdown,
+      /appassets\.androidplatform\.net/,
+      `${profile} must not leak the MHTML archive base into Markdown`
+    );
+  }
+});

@@ -603,6 +603,36 @@ test('CommonMark heading links re-import as native Obsidian links without genera
   assert.doesNotMatch(obsidian.markdown, /<a id="target-heading">/);
 });
 
+test('MHTML absolute same-document TOC URLs re-import as flavor-native heading links', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const baseLocation = 'https://appassets.androidplatform.net/assets/www/';
+  const imported = convertFromHtml(
+    '<nav class="toc-container"><a href="' + baseLocation +
+      '#heading-1">Project setup</a></nav>' +
+      '<p><a href="https://outside.example/#heading-1">External link</a></p>' +
+      '<h1 id="heading-1">Project Setup</h1>',
+    Parser,
+    { baseLocation }
+  );
+
+  assert.match(imported.markdown, /\[#Project Setup\|Project setup\|\|\]/);
+  assert.match(
+    imported.markdown,
+    /\[External link\]\(https:\/\/outside\.example\/#heading-1\)/
+  );
+
+  const obsidian = exportMarkdown(imported.markdown, 'obsidian');
+  assert.match(obsidian.markdown, /\[\[#Project Setup\|Project setup\]\]/);
+  assert.match(
+    obsidian.markdown,
+    /\[External link\]\(https:\/\/outside\.example\/#heading-1\)/
+  );
+  assert.doesNotMatch(obsidian.markdown, /appassets\.androidplatform\.net/);
+});
+
 test('HTML conversion reports tooltip and CSS losses that Markdown cannot represent', async () => {
   const { JSDOM } = require('jsdom');
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');

@@ -115,6 +115,14 @@ test('HTML clipboard is converted semantically, but lossy HTML stays plain', () 
   assert.match(rich.markdown, /^# Title/m);
   assert.match(rich.markdown, /\*\*bold\*\*/);
 
+  const richWmdx = convertClipboardToMarkdownProfile({
+    text: 'Title\nbold',
+    html: '<h1>Title</h1><p><strong>bold</strong></p>'
+  }, 'wmdx', Parser);
+  assert.equal(richWmdx.converted, true);
+  assert.match(richWmdx.markdown, /^\.1 Title/m);
+  assert.match(richWmdx.markdown, /\*\*bold\*\*/);
+
   const lossy = convertClipboardToMarkdownProfile({
     text: 'Visible fallback',
     html: '<p>Visible fallback</p><script>secret()</script>'

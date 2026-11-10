@@ -63,6 +63,7 @@ import {
 import {
   createMarkdownBlockquotePaste,
   convertClipboardToMarkdownProfile,
+  convertHtmlToMarkdownProfile,
   quoteMultilinePaste,
   quotePasteInsertionRange
 } from './markdownPaste.mjs';
@@ -13738,15 +13739,20 @@ window.editorBridge = {
   ) {
     try {
       const resourceHandles = JSON.parse(embeddedResourcesJson || '{}');
-      const imported = convertFromHtml(String(htmlSource ?? ''), globalThis.DOMParser, {
-        embeddedResources: resourceHandles,
-        baseLocation: String(baseLocation ?? ''),
-        resolveEmbeddedResource: resourceId =>
-          window.AndroidNative?.loadMhtmlResourceDataUriForImport?.(
-            String(resourceId),
-            documentSessionId ?? null
-          ) ?? ''
-      });
+      const imported = convertHtmlToMarkdownProfile(
+        String(htmlSource ?? ''),
+        currentMarkdownProfile,
+        globalThis.DOMParser,
+        {
+          embeddedResources: resourceHandles,
+          baseLocation: String(baseLocation ?? ''),
+          resolveEmbeddedResource: resourceId =>
+            window.AndroidNative?.loadMhtmlResourceDataUriForImport?.(
+              String(resourceId),
+              documentSessionId ?? null
+            ) ?? ''
+        }
+      );
       if (!imported.markdown.trim()) {
         throw new Error('No readable HTML content was found in the MHTML archive.');
       }

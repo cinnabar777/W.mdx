@@ -56,6 +56,30 @@ function conversionHasLoss(warnings) {
   return Array.isArray(warnings) && warnings.length > 0;
 }
 
+export function convertHtmlToMarkdownProfile(
+  htmlSource,
+  profileValue = 'wmdx',
+  Parser = globalThis.DOMParser,
+  conversionOptions = {}
+) {
+  const imported = convertFromHtml(
+    String(htmlSource ?? ''),
+    Parser,
+    conversionOptions
+  );
+  const profile = normalizeMarkdownDialectProfile(profileValue);
+  const exported = profile === 'wmdx'
+    ? imported
+    : exportMarkdown(imported.markdown, profile);
+  return {
+    markdown: exported.markdown,
+    warnings: [...new Set([
+      ...(imported.warnings ?? []),
+      ...(profile === 'wmdx' ? [] : exported.warnings ?? [])
+    ])]
+  };
+}
+
 /**
  * Convert confidently recognized clipboard Markdown/HTML to the selected
  * authoring dialect. Ambiguous text and lossy conversions remain untouched;
@@ -72,19 +96,14 @@ export function convertClipboardToMarkdownProfile(
 
   if (htmlSource.trim() && htmlSource.length <= MAX_AUTO_PASTE_HTML_LENGTH) {
     try {
-      const imported = convertFromHtml(htmlSource, Parser);
-      if (imported.markdown && !conversionHasLoss(imported.warnings)) {
-        const output = profile === 'wmdx'
-          ? imported.markdown
-          : exportMarkdown(imported.markdown, profile);
-        if (!conversionHasLoss(output.warnings)) {
-          return {
-            markdown: output.markdown,
-            converted: output.markdown !== plain,
-            sourceDialect: 'html',
-            warnings: []
-          };
-        }
+      const output = convertHtmlToMarkdownProfile(htmlSource, profile, Parser);
+      if (output.markdown && !conversionHasLoss(output.warnings)) {
+        return {
+          markdown: output.markdown,
+          converted: output.markdown !== plain,
+          sourceDialect: 'html',
+          warnings: []
+        };
       }
     } catch {
       // Fall through to the clipboard's plain-text representation.
