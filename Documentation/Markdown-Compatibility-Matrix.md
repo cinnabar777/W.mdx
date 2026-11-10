@@ -1,0 +1,61 @@
+# Markdown compatibility matrix
+
+This is the working, evidence-backed compatibility gate for opening, importing,
+rendering, and exporting Markdown dialects. “Verified” means the named fixtures
+and operations pass; it does **not** mean every feature in a dialect's entire
+ecosystem is supported. Unsupported or untested cases must stay visible here
+instead of being described as fully compatible.
+
+The implementation targets Wmdx as its editable internal Markdown form. A
+conversion that cannot preserve meaning should report a warning and retain the
+original clipboard text rather than silently dropping content.
+
+## Executable matrix
+
+| Input and route | Verified scope | Evidence | Status / boundary |
+| --- | --- | --- | --- |
+| CommonMark 0.31.2 → Wmdx → CommonMark | 575 non-raw-HTML upstream examples are checked for parser families and rendered meaning across conversion. The 652-example corpus is pinned; 77 HTML-interoperability cases are classified separately. | `web/test/commonmark-spec.test.cjs` | **Verified for the 575 non-HTML examples.** This is not a claim that raw HTML is fully interoperable. |
+| GFM 0.29 → Wmdx → GFM | 21 upstream extension examples cover tables, task lists, strikethrough, and autolinks through import/export; rendered fixture checks compare WYSIWYG meaning. | `web/test/gfm-spec-extensions.test.cjs`, `web/test/dialect-rendering-fixtures.test.cjs` | **Verified for the pinned extension fixtures.** GFM raw-HTML tag filtering is explicitly excluded by policy. |
+| Obsidian → Wmdx → Obsidian | Curated examples cover wikilinks, heading links, highlights, image embeds, callouts, tasks, and footnotes; conversion tests cover additional warning and preservation cases. | `web/test/dialect-rendering-fixtures.test.cjs`, `web/test/markdown-conversion.test.cjs` | **Partial, curated coverage.** Obsidian's full app-specific syntax and plugin ecosystem are not fully represented by an upstream conformance corpus. |
+| HTML → Wmdx → CommonMark → HTML | Semantic HTML fixture covers headings, emphasis, links, lists, and blockquotes, with output compared using the CommonMark renderer. | `web/test/markdown-compatibility-matrix.test.cjs` | **Verified for this semantic fixture.** HTML import separately checks active-element omission and warnings. |
+| HTML → Wmdx → GFM | Full-document fixture covers a checked task, table, and a final heading after content beyond 6,000 characters. | `web/test/markdown-compatibility-matrix.test.cjs`, `web/test/markdown-conversion.test.cjs` | **Verified for this fixture and supported HTML structures.** Not a complete HTML-to-Markdown specification. |
+| HTML document export wrapper | Checks that exported body markup and inline whitespace survive the standalone-document wrapper, that long bodies are retained, and that the title is escaped. | `app/src/test/java/com/wmdx/markdownapp/HtmlExportDocumentBuilderTest.kt` | **Verified for the wrapper.** The Android bridge's rendered DOM capture for every editor mode is not yet end-to-end verified. |
+| Clipboard HTML / Markdown → selected profile | Conservative source detection, HTML semantic conversion, loss fallback, and dialect conversion have focused unit tests. | `web/test/markdown-paste.test.cjs` | **Verified for tested cases.** Device-specific clipboard HTML availability still requires Android acceptance testing. |
+
+Run the web gate from `web/` with:
+
+```sh
+node --test test/markdown-compatibility-matrix.test.cjs \
+  test/commonmark-spec.test.cjs \
+  test/gfm-spec-extensions.test.cjs \
+  test/dialect-rendering-fixtures.test.cjs \
+  test/markdown-conversion.test.cjs \
+  test/markdown-paste.test.cjs
+```
+
+Run the HTML wrapper tests through the Android unit-test task:
+
+```sh
+./gradlew testDebugUnitTest
+```
+
+## Known exclusions and next gates
+
+- CommonMark raw HTML interoperability remains separate from native Markdown
+  parsing. The corpus classifies those examples, but only selected examples are
+  currently checked through the HTML importer.
+- GFM tag filtering for raw HTML is excluded; it must not be confused with
+  support for ordinary Markdown features or safe HTML import.
+- The Obsidian fixture set is intentionally curated, not a claim of complete
+  Obsidian compatibility. Plugin-defined syntax, transclusion behavior, and
+  other app-only features need explicit support decisions and fixtures.
+- HTML export's document wrapper is covered, but the Android export path still
+  needs an end-to-end test proving the editor supplies rendered document HTML
+  (not source-editor markup) in each mode.
+- LaTeX, AsciiMath, Typst, and a WYSIWYG equation editor are not integrated.
+  Treat math as unsupported unless a future implementation adds a parser,
+  renderer, editing behavior, and import/export fixtures.
+
+Do not mark a row fully compatible just because import and export return text.
+The acceptance test must compare rendered meaning, verify the entire document
+including its tail, and record any warning or intentional loss.

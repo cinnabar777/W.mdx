@@ -1,6 +1,6 @@
 # Markdown Dialects, Settings, and File Formats
 
-This guide explains how the editor combines Markdown dialects, which syntax preferences control recognition and authoring, and how conversion and file operations work. For syntax examples, see the [Wmdx Markdown Cheat Sheet](Markdown.md). The [native syntax design](Wmdx-Syntax-Design.md) records Wmdx-specific decisions and remaining acceptance work.
+This guide explains how the editor combines Markdown dialects, which syntax preferences control recognition and authoring, and how conversion and file operations work. For syntax examples, see the [Wmdx Markdown Cheat Sheet](Markdown.md). The [native syntax design](Wmdx-Syntax-Design.md) records Wmdx-specific decisions and remaining acceptance work; the [Markdown compatibility matrix](Markdown-Compatibility-Matrix.md) tracks executable coverage and known gaps.
 
 ## One document, two editor surfaces
 
@@ -41,7 +41,7 @@ Treat math as a separate compatibility item rather than assuming Markdown flavor
 
 ## Compatibility completion gate
 
-Parser support alone is not proof of full dialect compatibility. Track each flavor and syntax feature across recognition/rendering, editing round-trip, document conversion, clipboard paste, Markdown export, HTML import, and HTML/MHTML export. Mark a combination as verified only when a fixture covers the relevant operation and confirms either preserved semantics or an explicit loss warning. Unsupported or untested syntax must remain visibly identified as unverified; do not infer complete parity from a successful build or from another flavor's tests.
+Parser support alone is not proof of full dialect compatibility. Track each flavor and syntax feature across recognition/rendering, editing round-trip, document conversion, clipboard paste, Markdown export, HTML import, and HTML/MHTML export. Mark a combination as verified only when a fixture covers the relevant operation and confirms either preserved semantics or an explicit loss warning. Unsupported or untested syntax must remain visibly identified as unverified; do not infer complete parity from a successful build or from another flavor's tests. The current evidence and explicit boundaries are maintained in the [compatibility matrix](Markdown-Compatibility-Matrix.md).
 
 | Feature | Syntax families and relevant controls |
 | --- | --- |
