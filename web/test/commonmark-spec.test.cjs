@@ -435,7 +435,7 @@ test('native resource references parse as one token without changing source', ()
 
 test('representative CommonMark HTML examples convert through the explicit HTML importer', async () => {
   const { JSDOM } = require('jsdom');
-  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const { convertFromHtml, convertFromMarkdown } = await import('../src/markdownConversion.mjs');
   const Parser = new JSDOM('').window.DOMParser;
   const examples = new Map(commonmarkCases.map(example => [example.example, example]));
 
@@ -447,9 +447,39 @@ test('representative CommonMark HTML examples convert through the explicit HTML 
   assert.match(activeHtml.markdown, /okay/);
   assert.doesNotMatch(activeHtml.markdown, /Hello JavaScript|document\.getElementById/);
 
+  const activeMarkdown = convertFromMarkdown(examples.get(170).markdown, 'commonmark', {
+    DOMParser: Parser
+  });
+  assert.match(activeMarkdown.markdown, /okay/);
+  assert.doesNotMatch(activeMarkdown.markdown, /<script|Hello JavaScript|document\.getElementById/);
+
   const comment = convertFromHtml(examples.get(179).html, Parser);
   assert.match(comment.markdown, /okay/);
   assert.doesNotMatch(comment.markdown, /Foo|bar|baz/);
+});
+
+test('all pinned CommonMark raw HTML cases complete explicit conversion without crashing', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const failures = [];
+  for (const example of htmlInteropCases) {
+    try {
+      const result = convertFromMarkdown(example.markdown, 'commonmark', {
+        DOMParser: Parser
+      });
+      if (typeof result.markdown !== 'string') {
+        failures.push({ example: example.example, error: 'no Markdown output' });
+      }
+    } catch (error) {
+      failures.push({ example: example.example, error: String(error) });
+    }
+  }
+  assert.deepEqual(
+    failures,
+    [],
+    'all 77 raw-HTML corpus examples should convert or be preserved with warnings'
+  );
 });
 
 test('CommonMark semantic comparison excludes raw HTML and does not claim full conformance', () => {

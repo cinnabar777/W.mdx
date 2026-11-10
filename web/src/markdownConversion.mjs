@@ -632,14 +632,30 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
     chunks.push(source.slice(cursor, from));
     let replacement = raw;
     if (token.type === 'html' && token.block === true) {
-      const converted = convertFromHtml(token.text ?? raw, Parser);
-      let marker;
-      do {
-        marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
-      } while (source.includes(marker));
-      replacements.push({ marker, value: converted.markdown });
-      for (const warning of converted.warnings) addWarning(warnings, warning);
-      replacement = marker;
+      try {
+        const converted = convertFromHtml(token.text ?? raw, Parser);
+        let marker;
+        do {
+          marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
+        } while (source.includes(marker));
+        replacements.push({ marker, value: converted.markdown });
+        for (const warning of converted.warnings) addWarning(warnings, warning);
+        replacement = marker;
+      } catch (error) {
+        if (!String(error?.message).includes('No readable document content')) throw error;
+        const activeElement = raw.match(
+          /<\s*(script|style|iframe|object|embed|form)\b/i
+        )?.[1]?.toLowerCase();
+        if (activeElement) {
+          addWarning(warnings, `Active HTML element <${activeElement}> was omitted.`);
+          replacement = '';
+        } else {
+          addWarning(
+            warnings,
+            'An HTML block without convertible text was preserved unchanged.'
+          );
+        }
+      }
     }
     chunks.push(replacement);
     cursor = from + raw.length;

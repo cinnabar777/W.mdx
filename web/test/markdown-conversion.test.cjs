@@ -113,6 +113,24 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
   );
   assert.match(markerCollision.markdown, /\uE020MDXHTMLBLOCK0\uE021/);
   assert.match(markerCollision.markdown, /converted block/);
+
+  const emptyBlock = convertFromMarkdown(
+    'Before.\n\n<div id="empty"></div>\n\nAfter.',
+    'commonmark',
+    { DOMParser }
+  );
+  assert.match(emptyBlock.markdown, /<div id="empty"><\/div>/);
+  assert.match(emptyBlock.markdown, /Before\.[\s\S]*After\./);
+  assert.ok(emptyBlock.warnings.some(warning => warning.includes('preserved unchanged')));
+
+  const activeBlock = convertFromMarkdown(
+    '<script>runUnsafeCode()</script>\n\nSafe paragraph.',
+    'commonmark',
+    { DOMParser }
+  );
+  assert.doesNotMatch(activeBlock.markdown, /<script|runUnsafeCode/);
+  assert.match(activeBlock.markdown, /Safe paragraph\./);
+  assert.ok(activeBlock.warnings.some(warning => warning.includes('Active HTML element <script>')));
 });
 
 test('superscript imports and exports through semantic HTML without reinterpreting literals', async () => {
