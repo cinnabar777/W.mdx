@@ -71,6 +71,7 @@ import {
   convertFromMarkdown,
   exportMarkdown
 } from './markdownConversion.mjs';
+import { renderMarkdownHtml } from './htmlExport.mjs';
 import { applyMarkdownDialectProfile } from './markdownDialectPreferences.mjs';
 import { lintMarkdown } from './markdownLinter.mjs';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
@@ -8481,6 +8482,24 @@ function openMarkdownConversionDialog(action) {
   applyButton.addEventListener('click', () => {
     if (!pending) return;
     if (action === 'convert') {
+      const sourceFileName = currentEditorFileName;
+      const sourceDocumentSessionId = activeAdapter?.documentSessionId ?? null;
+      const importingHtmlFile = formatSelect.value === 'html' &&
+        /\.html?$/i.test(sourceFileName);
+      if (
+        importingHtmlFile &&
+        typeof window.AndroidNative?.importHtmlAsMarkdown === 'function'
+      ) {
+        close();
+        window.AndroidNative.importHtmlAsMarkdown(
+          pending.markdown,
+          sourceFileName,
+          sourceDocumentSessionId,
+          JSON.stringify(pending.warnings)
+        );
+        return;
+      }
+
       const oldLength = view.state.doc.length;
       const cursor = Math.min(view.state.selection.main.from, pending.markdown.length);
       view.dispatch({
@@ -13653,6 +13672,67 @@ window.editorBridge = {
     if (typeof activeAdapter !== 'undefined' && activeAdapter) return activeAdapter.getMarkdown();
     if (pendingMarkdown !== null) return pendingMarkdown;
     return '';
+  },
+  getHtmlExportPayload: function() {
+    try {
+      const result = renderMarkdownHtml(this.getMarkdown(), {
+        profile: currentMarkdownProfile,
+        window,
+        resolveAssetDataUri: reference =>
+          window.AndroidNative?.loadAssetDataUriForExport?.(
+            reference,
+            activeAdapter?.documentSessionId ?? null
+          ) ?? '',
+        footnoteSyntaxSettings
+      });
+      return JSON.stringify(result);
+    } catch (error) {
+      return JSON.stringify({
+        html: '',
+        warnings: [],
+        error: error?.message || 'Could not render semantic HTML.'
+      });
+    }
+  },
+  importMhtmlAsMarkdown: function(
+    htmlSource,
+    embeddedResourcesJson,
+    baseLocation,
+    sourceFileName,
+    documentSessionId
+  ) {
+    try {
+      const resourceHandles = JSON.parse(embeddedResourcesJson || '{}');
+      const imported = convertFromHtml(String(htmlSource ?? ''), globalThis.DOMParser, {
+        embeddedResources: resourceHandles,
+        baseLocation: String(baseLocation ?? ''),
+        resolveEmbeddedResource: resourceId =>
+          window.AndroidNative?.loadMhtmlResourceDataUriForImport?.(
+            String(resourceId),
+            documentSessionId ?? null
+          ) ?? ''
+      });
+      if (!imported.markdown.trim()) {
+        throw new Error('No readable HTML content was found in the MHTML archive.');
+      }
+      if (typeof window.AndroidNative?.importHtmlAsMarkdown !== 'function') {
+        throw new Error('This app version cannot import MHTML archives.');
+      }
+      window.AndroidNative.importHtmlAsMarkdown(
+        imported.markdown,
+        String(sourceFileName ?? ''),
+        documentSessionId ?? null,
+        JSON.stringify(imported.warnings)
+      );
+      return { imported: true, warnings: imported.warnings };
+    } catch (error) {
+      window.AndroidNative?.showToast?.(
+        error?.message || 'MHTML import failed.'
+      );
+      return { imported: false, error: error?.message || 'MHTML import failed.' };
+    } finally {
+      window.AndroidNative?.clearMhtmlImportResources?.(documentSessionId ?? null);
+    }
   },
   setMarkdown: function(markdownText, fileName) {
     const hasDocumentFileName = typeof fileName === 'string' && fileName.trim();

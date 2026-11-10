@@ -136,3 +136,54 @@ test('HTML import to GFM processes the complete document including its tail', as
   assert.match(exported.markdown, /\| Tail item \| 3 \|/);
   assert.match(exported.markdown, /^## Final heading marker$/m);
 });
+
+test('MHTML related resources become self-contained embeds during HTML conversion', async () => {
+  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const document = new JSDOM('').window.document;
+  const Parser = document.defaultView.DOMParser;
+  const image = 'data:image/png;base64,AQIDBA==';
+  const imported = convertFromHtml(
+    '<h1>Archive</h1><p>Saved page.</p><img src="images/pixel.png" alt="Pixel">' +
+      '<audio controls src="cid:voice"></audio>',
+    Parser,
+    {
+      baseLocation: 'https://example.test/docs/page.html',
+      embeddedResources: {
+        'https://example.test/docs/images/pixel.png': image,
+        'cid:voice': 'data:audio/ogg;base64,BAUG'
+      }
+    }
+  );
+
+  assert.deepEqual(imported.warnings, []);
+  assert.match(imported.markdown, /data:image\/png;base64,AQIDBA==/);
+  assert.match(imported.markdown, /data:audio\/ogg;base64,BAUG/);
+});
+
+test('MHTML resource handles load embedded bytes lazily and only once per part', async () => {
+  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const document = new JSDOM('').window.document;
+  const Parser = document.defaultView.DOMParser;
+  const image = 'data:image/png;base64,AQIDBA==';
+  const resourceLoads = [];
+  const imported = convertFromHtml(
+    '<img src="images/pixel.png" alt="First">' +
+      '<img src="images/pixel.png" alt="Second">',
+    Parser,
+    {
+      baseLocation: 'https://example.test/docs/page.html',
+      embeddedResources: {
+        'https://example.test/docs/images/pixel.png': 'resource-1'
+      },
+      resolveEmbeddedResource: resourceId => {
+        resourceLoads.push(resourceId);
+        return image;
+      }
+    }
+  );
+
+  assert.deepEqual(imported.warnings, []);
+  assert.equal(resourceLoads.length, 1);
+  assert.equal(resourceLoads[0], 'resource-1');
+  assert.equal((imported.markdown.match(/data:image\/png;base64,AQIDBA==/g) || []).length, 2);
+});

@@ -7,15 +7,24 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.preference.PreferenceManager
 import java.io.File
+import java.io.IOException
 
 object DocumentExporter {
 
-    fun generateCleanHtml(context: Context, editorData: String, documentTitle: String): Pair<String, String?> {
+    fun generateCleanHtml(
+        context: Context,
+        editorData: String,
+        documentTitle: String,
+        cssPlacementOverride: String? = null,
+        cssFileName: String = "styles.css"
+    ): Pair<String, String?> {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val includeToc = prefs.getBoolean("pref_export_include_toc", true)
         val tocLevels = prefs.getInt("pref_export_toc_levels", 3)
         val includeCss = prefs.getBoolean("pref_export_include_css", true)
-        val cssPlacement = prefs.getString("pref_export_css_placement", "head") ?: "head"
+        val cssPlacement = cssPlacementOverride
+            ?: prefs.getString("pref_export_css_placement", "head")
+            ?: "head"
 
         val cssContent = if (includeCss) buildExportCss(context) else ""
         return HtmlExportDocumentBuilder.build(
@@ -25,7 +34,8 @@ object DocumentExporter {
             tocLevels = tocLevels,
             includeCss = includeCss,
             cssPlacement = cssPlacement,
-            cssContent = cssContent
+            cssContent = cssContent,
+            cssFileName = cssFileName
         )
     }
 
@@ -54,22 +64,31 @@ object DocumentExporter {
                                     webView.destroy()
                                     if (savedPath != null && tempMhtFile.exists()) {
                                         try {
-                                            context.contentResolver.openOutputStream(targetUri, "rwt")?.use { out ->
+                                            val output = context.contentResolver.openOutputStream(
+                                                targetUri,
+                                                "rwt"
+                                            ) ?: throw IOException(
+                                                "Could not open the MHTML export destination."
+                                            )
+                                            output.use { out ->
                                                 tempMhtFile.inputStream().use { input ->
                                                     input.copyTo(out)
                                                 }
                                             }
-                                            tempMhtFile.delete()
                                             onComplete(true, null)
                                         } catch (e: Exception) {
                                             onComplete(false, "Failed to write MHT to destination: ${e.localizedMessage}")
+                                        } finally {
+                                            tempMhtFile.delete()
                                         }
                                     } else {
+                                        tempMhtFile.delete()
                                         onComplete(false, "WebView failed to generate MHT archive")
                                     }
                                 })
                             } catch (e: Exception) {
                                 webView.destroy()
+                                tempMhtFile.delete()
                                 onComplete(false, "MHT Save Error: ${e.localizedMessage}")
                             }
                         }, 200)
@@ -111,10 +130,27 @@ object DocumentExporter {
             code { color: $codeColor; background-color: $codeBgColor; padding: 3px 6px; border-radius: 4px; font-family: monospace; }
             pre { color: $codeBlockColor; background-color: $codeBlockBgColor; padding: 16px; border-radius: 6px; overflow-x: auto; font-family: monospace; }
             blockquote { border-left: 4px solid #444444; margin-left: 0; padding-left: 16px; color: #888888; font-style: italic; }
+            .wmdx-callout {
+                border-left: 4px solid $linkColor;
+                border-radius: 6px;
+                background: rgba(128, 128, 128, 0.12);
+                margin: 16px 0;
+                padding: 12px 16px;
+            }
+            .wmdx-callout-title { font-weight: 700; margin: 0 0 8px; }
+            .wmdx-callout-body > :first-child { margin-top: 0; }
+            .wmdx-callout-body > :last-child { margin-bottom: 0; }
+            details.wmdx-callout > summary { cursor: pointer; }
+            .wmdx-footnotes { margin-top: 32px; border-top: 1px solid #444444; padding-top: 16px; }
+            .wmdx-footnotes h2 { font-size: 1.15em; }
+            .wmdx-footnote-reference, .wmdx-footnote-backref { font-size: 0.8em; }
             table { border-collapse: collapse; width: 100%; margin: 16px 0; }
             th, td { border: 1px solid #444444; padding: 8px 12px; text-align: left; }
             th { background-color: rgba(255, 255, 255, 0.1); font-weight: bold; }
             img { max-width: 100%; height: auto; border-radius: 4px; }
+            audio, video { max-width: 100%; }
+            pre { white-space: pre; }
+            input[type="checkbox"] { accent-color: $linkColor; }
             .toc-container { background: rgba(255, 255, 255, 0.05); border: 1px solid #444444; border-radius: 6px; padding: 16px; margin-bottom: 24px; }
             .toc-title { margin-top: 0; font-size: 18px; border-bottom: 1px solid #444444; padding-bottom: 8px; }
             .toc-list { list-style: none; padding-left: 0; margin: 0; }

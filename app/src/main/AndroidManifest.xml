@@ -46,6 +46,9 @@
                 <data android:mimeType="application/x-zip-compressed" />
                 <data android:mimeType="application/vnd.mdzip" />
                 <data android:mimeType="application/vnd.wmdx.tabs-session+json" />
+                <data android:mimeType="application/x-mimearchive" />
+                <data android:mimeType="message/rfc822" />
+                <data android:mimeType="multipart/related" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -64,6 +67,9 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
                 <data android:mimeType="application/vnd.mdzip" />
+                <data android:mimeType="application/x-mimearchive" />
+                <data android:mimeType="message/rfc822" />
+                <data android:mimeType="multipart/related" />
             </intent-filter>
         </activity>
 

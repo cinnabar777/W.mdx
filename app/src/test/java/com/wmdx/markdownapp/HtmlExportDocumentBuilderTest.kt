@@ -7,6 +7,14 @@ import org.junit.Test
 
 class HtmlExportDocumentBuilderTest {
     @Test
+    fun importedHtmlGetsANewMarkdownNameRatherThanReusingTheHtmlFile() {
+        assertEquals("Guide.md", ImportedMarkdownFileName.fromHtmlSource("Guide.html"))
+        assertEquals("Release.notes.md", ImportedMarkdownFileName.fromHtmlSource("Release.notes.htm"))
+        assertEquals("Archive.md", ImportedMarkdownFileName.fromHtmlSource("Archive.mhtml"))
+        assertEquals("Imported.md", ImportedMarkdownFileName.fromHtmlSource(null))
+    }
+
+    @Test
     fun preservesInlineWhitespaceAndStructuredBodyWhenWrappingHtml() {
         val body = """
             <h1>Guide</h1>
@@ -66,10 +74,15 @@ class HtmlExportDocumentBuilderTest {
             tocLevels = 3,
             includeCss = true,
             cssPlacement = "file",
-            cssContent = css
+            cssContent = css,
+            cssFileName = """Notes "final".css"""
         )
 
-        assertTrue(html.contains("""<link rel="stylesheet" href="styles.css">"""))
+        assertTrue(
+            html.contains(
+                """<link rel="stylesheet" href="Notes &quot;final&quot;.css">"""
+            )
+        )
         assertEquals(css, separateCss)
     }
 }

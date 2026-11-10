@@ -146,7 +146,10 @@ test('Android Open With advertises text and supported source-code MIME types', (
     'application/x-yaml',
     'application/sql',
     'application/x-sql',
-    'application/toml'
+    'application/toml',
+    'application/x-mimearchive',
+    'message/rfc822',
+    'multipart/related'
   ]) {
     assert.ok(
       viewFilter.includes(`android:mimeType="${mimeType}"`),

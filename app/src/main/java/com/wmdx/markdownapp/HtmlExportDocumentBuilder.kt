@@ -14,13 +14,15 @@ internal object HtmlExportDocumentBuilder {
         tocLevels: Int,
         includeCss: Boolean,
         cssPlacement: String,
-        cssContent: String
+        cssContent: String,
+        cssFileName: String = "styles.css"
     ): Pair<String, String?> {
         val (processedBodyHtml, tocHtml) =
             processHeadingsAndToc(editorHtml, includeToc, tocLevels)
         val styleTag = when {
             !includeCss -> ""
-            cssPlacement == "file" -> """    <link rel="stylesheet" href="styles.css">"""
+            cssPlacement == "file" ->
+                """    <link rel="stylesheet" href="${escapeHtml(cssFileName)}">"""
             else -> "    <style>\n${cssContent.prependIndent("        ")}\n    </style>"
         }
         val toc = if (includeToc && tocHtml.isNotEmpty()) {

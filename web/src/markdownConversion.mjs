@@ -730,6 +730,43 @@ function htmlImageResource(node, warnings, titleOverride = '', alignmentOverride
   });
 }
 
+function resourceExtensionFromSource(source) {
+  const dataMimeType = /^data:([^;,]+)/i.exec(String(source ?? ''))?.[1]?.toLowerCase();
+  const dataMimeExtensions = {
+    'image/avif': 'avif',
+    'image/bmp': 'bmp',
+    'image/gif': 'gif',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/svg+xml': 'svg',
+    'image/webp': 'webp',
+    'audio/aac': 'aac',
+    'audio/flac': 'flac',
+    'audio/mp4': 'm4a',
+    'audio/mpeg': 'mp3',
+    'audio/ogg': 'ogg',
+    'audio/wav': 'wav',
+    'video/3gpp': '3gp',
+    'video/mp4': 'mp4',
+    'video/ogg': 'ogv',
+    'video/quicktime': 'mov',
+    'video/webm': 'webm',
+    'video/x-msvideo': 'avi',
+    'video/x-ms-wmv': 'wmv',
+    'application/epub+zip': 'epub',
+    'application/json': 'json',
+    'application/msword': 'doc',
+    'application/octet-stream': 'bin',
+    'application/pdf': 'pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/zip': 'zip',
+    'text/plain': 'txt'
+  };
+  return dataMimeExtensions[dataMimeType] ??
+    String(source ?? '').split(/[?#]/, 1)[0].split('.').at(-1)?.toLowerCase() ??
+    '';
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, character => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -1012,12 +1049,80 @@ function htmlBlock(node, warnings, depth = 0) {
   return children().join(tag === 'div' || tag === 'section' ? '\n\n' : '');
 }
 
-export function convertFromHtml(source, Parser = globalThis.DOMParser) {
+function resolveEmbeddedHtmlResources(
+  document,
+  embeddedResources,
+  baseLocation,
+  warnings,
+  resolveEmbeddedResource
+) {
+  if (!embeddedResources || typeof embeddedResources !== 'object') return;
+  const base = document.querySelector('base[href]')?.getAttribute('href') ||
+    baseLocation ||
+    '';
+  const resolvedById = new Map();
+  const resolveValue = value => {
+    const embedded = embeddedResources[value];
+    if (typeof embedded !== 'string') return '';
+    if (embedded.startsWith('data:')) return embedded;
+    if (typeof resolveEmbeddedResource !== 'function') return '';
+    if (!resolvedById.has(embedded)) {
+      resolvedById.set(embedded, String(resolveEmbeddedResource(embedded) ?? ''));
+    }
+    return resolvedById.get(embedded);
+  };
+  const elements = document.querySelectorAll('[src], [href], [poster], [background]');
+  for (const element of elements) {
+    for (const attribute of ['src', 'href', 'poster', 'background']) {
+      const value = element.getAttribute(attribute);
+      if (!value) continue;
+      const key = value.trim();
+      let lookupKey = key;
+      let embedded = resolveValue(key);
+      if (!embedded && base) {
+        try {
+          lookupKey = new URL(key, base).href;
+          embedded = resolveValue(lookupKey);
+        } catch {
+          // The authored reference remains unchanged when it cannot be resolved.
+        }
+      }
+      if (typeof embedded === 'string' && embedded.startsWith('data:')) {
+        element.setAttribute(attribute, embedded);
+      } else if (
+        embeddedResources[lookupKey] &&
+        typeof resolveEmbeddedResource === 'function'
+      ) {
+        addWarning(
+          warnings,
+          'An embedded MHTML resource could not be read; its original link was retained.'
+        );
+      }
+    }
+  }
+}
+
+export function convertFromHtml(
+  source,
+  Parser = globalThis.DOMParser,
+  {
+    embeddedResources = null,
+    baseLocation = '',
+    resolveEmbeddedResource = null
+  } = {}
+) {
   if (typeof Parser !== 'function') {
     throw new Error('HTML conversion requires a DOMParser implementation.');
   }
   const warnings = [];
   const document = new Parser().parseFromString(String(source ?? ''), 'text/html');
+  resolveEmbeddedHtmlResources(
+    document,
+    embeddedResources,
+    baseLocation,
+    warnings,
+    resolveEmbeddedResource
+  );
   const body = document.body;
   const markdown = Array.from(body.childNodes)
     .map(node => htmlBlock(node, warnings))
@@ -1035,7 +1140,7 @@ function convertWmdxResourceToMarkdown(raw, dialect, warnings) {
   const resource = parseWmdxResourceSyntax(raw);
   if (!resource) return raw;
   const { source, title, size, alignment, embed } = resource;
-  const extension = source.split(/[?#]/, 1)[0].split('.').at(-1)?.toLowerCase() ?? '';
+  const extension = resourceExtensionFromSource(source);
   if (!embed) {
     if (dialect === 'obsidian' && !/^([a-z][a-z\d+.-]*:|\/|\.\/|\.\.\/|#)/i.test(source)) {
       return `[[${source}${title && title !== getWmdxResourceFallbackTitle(source) ? `|${title}` : ''}]]`;
@@ -1150,11 +1255,47 @@ function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
   return output;
 }
 
+function transformTextOutsideHtmlTags(value, transform) {
+  let output = '';
+  let plainStart = 0;
+  let index = 0;
+  while (index < value.length) {
+    if (
+      value[index] !== '<' ||
+      !/[A-Za-z!/]/.test(value[index + 1] ?? '')
+    ) {
+      index += 1;
+      continue;
+    }
+    let quote = '';
+    let end = index + 1;
+    for (; end < value.length; end += 1) {
+      const character = value[end];
+      if (quote) {
+        if (character === quote) quote = '';
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === '>') {
+        break;
+      }
+    }
+    if (end >= value.length) {
+      index += 1;
+      continue;
+    }
+    output += transform(value.slice(plainStart, index));
+    output += value.slice(index, end + 1);
+    index = end + 1;
+    plainStart = index;
+  }
+  return output + transform(value.slice(plainStart));
+}
+
 function convertWmdxInlineToMarkdown(line, dialect, warnings) {
   let output = '';
   let plainStart = 0;
   let index = 0;
-  const transform = plainText => {
+  const transformText = plainText => {
     let text = plainText;
     text = text.replace(
       /(?<![\p{L}\p{N}\p{M}_\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?![\p{L}\p{N}\p{M}_])/gu,
@@ -1197,6 +1338,8 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
       convertWmdxResourceToMarkdown(raw, dialect, warnings)
     );
   };
+  const transform = plainText =>
+    transformTextOutsideHtmlTags(plainText, transformText);
 
   while (index < line.length) {
     if (line[index] === '<') {

@@ -70,7 +70,8 @@ The editor has explicit conversion actions in the toolbar's Menu group. They ope
 | Paste from Markdown dialect | Choose CommonMark, GFM, Obsidian, or HTML for clipboard text; review the preview, then insert converted Wmdx at the current selection. |
 | Regular paste | When enabled in Markdown & Dialects, safely recognized Markdown or rich HTML is converted to the primary profile. Ambiguous plain text and conversions that report losses are left unchanged. |
 | Export Markdown dialect | Choose CommonMark, GFM, or Obsidian; review the converted text and warnings, then save a separate `.md` copy with Android's Save As dialog. |
-| HTML / MHTML export | Existing HTML/MHTML export remains a separate action; it exports rendered content, not a Markdown dialect. |
+| HTML / MHTML export | A semantic renderer converts the active Markdown profile to HTML; it does not export CodeMirror's editor DOM. HTML and MHTML remain separate actions from Markdown-dialect export. |
+| Open MHTML | `.mht` and `.mhtml` files are parsed as bounded MIME archives; the HTML part and related image/media parts are converted into a new, unsaved Markdown document. |
 | Open/save Markdown or MDZip | Opens and saves source or packages it with its related assets; file operations do not silently convert syntax. |
 
 ## Primary flavor and paste behavior
@@ -82,6 +83,10 @@ Regular paste inspects plain text and, on Android, the clipboard's HTML represen
 Automatic conversion uses heuristic flavor detection, so it is intentionally conservative rather than a full dialect validator. Clipboard HTML is available only when the source app publishes that representation. The Android clipboard path and the profile-specific paste cases are covered by browser/unit tests; device-specific clipboard providers still need acceptance testing.
 
 HTML conversion is semantic, not a browser snapshot. It maps supported headings, paragraphs, lists/tasks, quotes, code, tables, links, images, audio/video, attachments, details, and alignment where possible. Scripts and active embedded content are omitted; multi-paragraph list items, rich table-cell inline content, and HTML table spans are preserved where Wmdx has equivalent syntax. Inline CSS, HTML comments, and unsupported structures produce warnings or are not retained.
+
+HTML export is semantic as well: it renders the complete Markdown source rather than copying the editor's presentation DOM, preserves supported callout folding and footnotes, sanitizes active scripts and event handlers, and embeds local images, media, and safe document attachments when the Android bridge can read them (8 MiB per file). Separate-CSS export falls back to inline styles when the selected file provider cannot create a sibling stylesheet. MHTML import is limited to 16 MiB and resolves MIME `Content-Location` and `Content-ID` resources into data URLs; CSS-driven layout and provider-specific media behavior remain acceptance-test items.
+
+MHTML export uses Android WebView's archive writer after generating the HTML document. The JVM tests cover the MIME importer and HTML document builder, but cannot verify that WebView creates a standards-compatible archive or that each Android document provider saves all related resources. Treat actual MHTML export and reopen as device verification still required.
 
 ## Conversion rules and known limits
 

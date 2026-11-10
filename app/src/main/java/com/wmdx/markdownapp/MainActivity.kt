@@ -54,6 +54,7 @@ private const val WMDX_TAB_SESSION_MIME = "application/vnd.wmdx.tabs-session+jso
 private const val MAX_WMDX_TAB_SESSION_BYTES = 512 * 1024
 private const val MAX_EMBEDDED_DOCUMENT_BYTES = 16L * 1024L * 1024L
 private const val MAX_DOWNLOADED_IMAGE_BYTES = 32L * 1024L * 1024L
+private const val MAX_HTML_EXPORT_ASSET_BYTES = 8L * 1024L * 1024L
 private const val EMBEDDED_MARKDOWN_READ_ACCESS_MESSAGE =
     "Could not load this embedded document. Check that it exists and grant read access to its folder in Settings > File & Folder Access, then reopen it. Read access is enough to display it; write access is only needed to save edits."
 
@@ -115,6 +116,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     private var currentFileName: String = "Untitled.md"
     @Volatile private var currentDocumentSessionId: String = java.util.UUID.randomUUID().toString()
+    @Volatile private var currentMhtmlImportResourcesById: Map<String, String> = emptyMap()
     @Volatile private var isDirty: Boolean = false
     private var isEditorReady: Boolean = false
     private var currentEditorMode: String = "rendered"
@@ -1937,6 +1939,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "text/plain",
             "application/zip",
             "application/x-zip-compressed",
+            "application/x-mimearchive",
+            "message/rfc822",
+            "multipart/related",
             "*/*"
         )
         return android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -1979,6 +1984,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             pendingOpenPermissionFlags = permissionFlags
             return
         }
+        currentMhtmlImportResourcesById = emptyMap()
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         if (isWmdxTabSession(uri)) {
@@ -2070,6 +2076,53 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                         webView.postInvalidate()
                     }
                 }
+            } else if (MhtmlArchiveImporter.isMhtmlFileName(fileName)) {
+                val archive = contentResolver.openInputStream(uri)?.use {
+                    MhtmlArchiveImporter.parse(it)
+                } ?: throw java.io.FileNotFoundException("Could not read the selected MHTML archive")
+                val readMs = android.os.SystemClock.elapsedRealtime() - readStarted
+                AppDiagnostics.record(
+                    this,
+                    "mhtml_read_done",
+                    "htmlChars=${archive.html.length} resources=${archive.embeddedResources.size} ms=$readMs"
+                )
+
+                currentTextPackSession = null
+                currentMdzipSession = null
+                currentDocumentFormat = DocumentFormat.MARKDOWN
+                clearEmbeddedMdzipSessions()
+                currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+                currentRevision = 0
+                currentEmptyContentExplicitlyEdited = false
+                latestMarkdownContent = ""
+                currentFileUri = uri
+                currentFileName = fileName
+                isDirty = false
+                updateTitle()
+                prefs.edit().putString("last_opened_uri", uri.toString()).apply()
+
+                val resourceHandles = JSONObject()
+                val resourcesById = LinkedHashMap<String, String>()
+                archive.embeddedResources.entries.forEachIndexed { index, entry ->
+                    val resourceId = "mhtml-resource-$index"
+                    resourceHandles.put(entry.key, resourceId)
+                    resourcesById[resourceId] = entry.value
+                }
+                currentMhtmlImportResourcesById = resourcesById
+                val importScript = buildString {
+                    append("window.editorBridge.importMhtmlAsMarkdown(")
+                    append(JSONObjectWrapper.quote(archive.html))
+                    append(',')
+                    append(JSONObjectWrapper.quote(resourceHandles.toString()))
+                    append(',')
+                    append(JSONObjectWrapper.quote(archive.baseLocation.orEmpty()))
+                    append(',')
+                    append(JSONObjectWrapper.quote(fileName))
+                    append(',')
+                    append(JSONObjectWrapper.quote(currentDocumentSessionId))
+                    append(");")
+                }
+                webView.evaluateJavascript(importScript, null)
             } else {
                 currentTextPackSession = null
                 currentMdzipSession = null
@@ -2674,31 +2727,162 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     targetName.endsWith(".mhtml", ignoreCase = true) ||
                     PreferenceManager.getDefaultSharedPreferences(this).getString("pref_export_format", "html") == "mhtml"
 
-        webView.evaluateJavascript("document.querySelector('.cm-content')?.innerHTML || document.querySelector('.cm-editor')?.innerHTML || '';") { htmlResult ->
-            val htmlPayload = JSONObjectWrapper.unquote(htmlResult)
-            val (cleanHtml, _) = DocumentExporter.generateCleanHtml(this, htmlPayload, currentFileName)
+        webView.evaluateJavascript(
+            "window.editorBridge?.getHtmlExportPayload?.() || '';"
+        ) { htmlResult ->
+            val htmlExportPayload = runCatching {
+                org.json.JSONObject(JSONObjectWrapper.unquote(htmlResult))
+            }.getOrNull()
+            val exportError = htmlExportPayload?.optString("error").orEmpty()
+            if (htmlExportPayload == null || exportError.isNotBlank()) {
+                ThemedToast.show(
+                    this,
+                    exportError.ifBlank { "Could not render semantic HTML for export." },
+                    Toast.LENGTH_LONG
+                )
+                return@evaluateJavascript
+            }
+            val semanticHtml = htmlExportPayload.optString("html")
+            val conversionWarnings = htmlExportPayload.optJSONArray("warnings")
+                ?.let { warnings ->
+                    (0 until warnings.length()).mapNotNull(warnings::optString)
+                }
+                .orEmpty()
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val cssPlacement = prefs.getString("pref_export_css_placement", "head") ?: "head"
+            val cssFileName = targetName.substringBeforeLast('.', targetName) + ".css"
+            val (cleanHtml, separateCss) = DocumentExporter.generateCleanHtml(
+                this,
+                semanticHtml,
+                currentFileName,
+                cssPlacementOverride = if (isMht) "head" else null,
+                cssFileName = cssFileName
+            )
+            val separateCssFile = if (
+                !isMht && cssPlacement == "file" && separateCss != null
+            ) {
+                writeSeparateCssSibling(targetUri, cssFileName, separateCss)
+            } else {
+                null
+            }
+            val separateCssUri = separateCssFile?.first
+            val separateCssWritten = separateCssFile != null
+            val embedCssFallback = separateCss != null &&
+                (!separateCssWritten || isMht)
+            val finalHtml = if (separateCssFile != null) {
+                DocumentExporter.generateCleanHtml(
+                    this,
+                    semanticHtml,
+                    currentFileName,
+                    cssPlacementOverride = "file",
+                    cssFileName = separateCssFile.second
+                ).first
+            } else if (embedCssFallback) {
+                DocumentExporter.generateCleanHtml(
+                    this,
+                    semanticHtml,
+                    currentFileName,
+                    cssPlacementOverride = "head"
+                ).first
+            } else {
+                cleanHtml
+            }
+            val exportWarnings = conversionWarnings.toMutableList().apply {
+                if (embedCssFallback && !isMht) {
+                    add("A separate stylesheet could not be created; styles were embedded in the HTML.")
+                }
+            }
+            val warningMessage = exportWarnings
+                .take(3)
+                .joinToString(" ")
+                .let { if (exportWarnings.size > 3) "$it Additional notes omitted." else it }
 
             if (isMht) {
                 ThemedToast.show(this, "Generating MHTML archive...", Toast.LENGTH_SHORT)
-                DocumentExporter.exportToMht(this, cleanHtml, targetUri) { success, errorMsg ->
+                DocumentExporter.exportToMht(this, finalHtml, targetUri) { success, errorMsg ->
                     if (success) {
-                        ThemedToast.show(this, "MHTML archive exported successfully!", Toast.LENGTH_SHORT)
+                        ThemedToast.show(
+                            this,
+                            if (exportWarnings.isEmpty()) {
+                                "MHTML archive exported successfully!"
+                            } else {
+                                "MHTML exported; notes: $warningMessage"
+                            },
+                            if (exportWarnings.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                        )
                     } else {
                         ThemedToast.show(this, "Export failed: $errorMsg", Toast.LENGTH_LONG)
                     }
                 }
             } else {
                 try {
-                    contentResolver.openOutputStream(targetUri, "rwt")?.use { out ->
-                        val writer = OutputStreamWriter(out)
-                        writer.write(cleanHtml)
+                    val output = contentResolver.openOutputStream(targetUri, "rwt")
+                        ?: throw IOException("Could not open the HTML export destination.")
+                    output.use { out ->
+                        val writer = OutputStreamWriter(out, Charsets.UTF_8)
+                        writer.write(finalHtml)
                         writer.flush()
                     }
-                    ThemedToast.show(this, "HTML document exported successfully!", Toast.LENGTH_SHORT)
+                    ThemedToast.show(
+                        this,
+                        if (exportWarnings.isEmpty()) {
+                            "HTML document exported successfully!"
+                        } else {
+                            "HTML exported; notes: $warningMessage"
+                        },
+                        if (exportWarnings.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                    )
                 } catch (e: Exception) {
+                    separateCssUri?.let { cssUri ->
+                        runCatching {
+                            android.provider.DocumentsContract.deleteDocument(
+                                contentResolver,
+                                cssUri
+                            )
+                        }
+                    }
                     ThemedToast.show(this, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG)
                 }
             }
+        }
+    }
+
+    private fun writeSeparateCssSibling(
+        htmlUri: Uri,
+        cssFileName: String,
+        cssContent: String
+    ): Pair<Uri, String>? {
+        return try {
+            val authority = htmlUri.authority ?: return null
+            val documentPath = android.provider.DocumentsContract
+                .findDocumentPath(contentResolver, htmlUri)
+                ?.path
+                ?: return null
+            val parentDocumentId = documentPath.dropLast(1).lastOrNull() ?: return null
+            val parentUri = android.provider.DocumentsContract.buildDocumentUri(
+                authority,
+                parentDocumentId
+            )
+            val cssUri = android.provider.DocumentsContract.createDocument(
+                contentResolver,
+                parentUri,
+                "text/css",
+                cssFileName
+            ) ?: return null
+            try {
+                contentResolver.openOutputStream(cssUri, "w")?.use { output ->
+                    output.write(cssContent.toByteArray(Charsets.UTF_8))
+                    output.flush()
+                } ?: throw IOException("Could not open the separate stylesheet.")
+                cssUri to getFileNameFromUri(cssUri).ifBlank { cssFileName }
+            } catch (error: Exception) {
+                runCatching {
+                    android.provider.DocumentsContract.deleteDocument(contentResolver, cssUri)
+                }
+                throw error
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -5337,6 +5521,61 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         @JavascriptInterface
+        fun importHtmlAsMarkdown(
+            markdownText: String?,
+            sourceFileName: String?,
+            documentSessionId: String?,
+            conversionWarningsJson: String?
+        ) {
+            if (documentSessionId != currentDocumentSessionId || markdownText == null) return
+            runOnUiThread {
+                if (documentSessionId != currentDocumentSessionId) return@runOnUiThread
+
+                val importedFileName = ImportedMarkdownFileName.fromHtmlSource(sourceFileName)
+                currentTextPackSession = null
+                currentMdzipSession = null
+                clearEmbeddedMdzipSessions()
+                currentDocumentFormat = DocumentFormat.MARKDOWN
+                currentFileUri = null
+                currentFileName = importedFileName
+                currentDocumentSessionId = java.util.UUID.randomUUID().toString()
+                currentRevision = 0
+                currentEmptyContentExplicitlyEdited = false
+                latestMarkdownContent = markdownText
+                hasBom = false
+                hasCrlf = false
+                isDirty = markdownText.isNotEmpty()
+                PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                    .edit()
+                    .remove("last_opened_uri")
+                    .apply()
+                updateTitle()
+
+                val warnings = runCatching {
+                    val array = org.json.JSONArray(conversionWarningsJson.orEmpty())
+                    (0 until array.length()).mapNotNull(array::optString)
+                }.getOrDefault(emptyList())
+                val message = if (warnings.isEmpty()) {
+                    "Imported as a new Markdown document. Save to keep the original file unchanged."
+                } else {
+                    "Imported with conversion warnings: " + warnings.joinToString(" ")
+                }
+                ThemedToast.show(
+                    this@MainActivity,
+                    message,
+                    if (warnings.isEmpty()) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                )
+
+                webView.evaluateJavascript(
+                    "window.editorBridge.setMarkdown(" +
+                        "${JSONObjectWrapper.quote(markdownText)}, " +
+                        "${JSONObjectWrapper.quote(importedFileName)});",
+                    null
+                )
+            }
+        }
+
+        @JavascriptInterface
         fun reportDiagnostic(event: String, detail: String = "") {
             if (BuildConfig.DEBUG) {
                 AppDiagnostics.record(this@MainActivity, event, detail)
@@ -5543,6 +5782,101 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     relativeLink
                 )
             }.getOrNull().orEmpty()
+        }
+
+        @JavascriptInterface
+        fun loadAssetDataUriForExport(
+            relativeLink: String,
+            documentSessionId: String?
+        ): String {
+            if (documentSessionId != currentDocumentSessionId) return ""
+            val reference = relativeLink.trim()
+            if (
+                reference.isBlank() ||
+                reference.startsWith("/") ||
+                reference.startsWith("//") ||
+                Regex("^[A-Za-z][A-Za-z0-9+.-]*:").containsMatchIn(reference)
+            ) {
+                return ""
+            }
+            return runCatching {
+                val (input, mimeType, displayName) = when (currentDocumentFormat) {
+                    DocumentFormat.MDZIP -> {
+                        val session = currentMdzipSession ?: return ""
+                        val archivePath = MdzipManager.resolveRelativeArchivePath(
+                            session.entryPoint,
+                            reference
+                        ) ?: return ""
+                        val file = MdzipManager.assetArchiveFile(session, archivePath)
+                            ?: return ""
+                        Triple(FileInputStream(file), null, file.name)
+                    }
+                    DocumentFormat.TEXT_PACK -> {
+                        val session = currentTextPackSession ?: return ""
+                        val file = TextPackManager.resolveAssetFile(session, reference)
+                            ?: return ""
+                        Triple(FileInputStream(file), null, file.name)
+                    }
+                    DocumentFormat.MARKDOWN -> {
+                        val documentUri = currentFileUri ?: return ""
+                        val location = MarkdownAssetManager.locateDocument(
+                            this@MainActivity,
+                            documentUri,
+                            requireWrite = false
+                        ) ?: return ""
+                        val assetUri = MarkdownAssetManager.resolveImageUri(
+                            this@MainActivity,
+                            location,
+                            reference
+                        ) ?: return ""
+                        val input = contentResolver.openInputStream(assetUri) ?: return ""
+                        Triple(
+                            input,
+                            contentResolver.getType(assetUri),
+                            getFileNameFromUri(assetUri)
+                        )
+                    }
+                }
+                val bytes = input.use(::readHtmlExportAssetBytes) ?: return ""
+                val extension = displayName.substringAfterLast('.', "").lowercase()
+                val resolvedMimeType = mimeType
+                    ?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+                    ?: android.webkit.MimeTypeMap.getSingleton()
+                        .getMimeTypeFromExtension(extension)
+                    ?: MarkdownAssetManager.mimeTypeForExtension(extension)
+                "data:$resolvedMimeType;base64," +
+                    Base64.encodeToString(bytes, Base64.NO_WRAP)
+            }.getOrDefault("")
+        }
+
+        @JavascriptInterface
+        fun loadMhtmlResourceDataUriForImport(
+            resourceId: String,
+            documentSessionId: String?
+        ): String {
+            if (documentSessionId != currentDocumentSessionId) return ""
+            return currentMhtmlImportResourcesById[resourceId].orEmpty()
+        }
+
+        @JavascriptInterface
+        fun clearMhtmlImportResources(documentSessionId: String?) {
+            if (documentSessionId == currentDocumentSessionId) {
+                currentMhtmlImportResourcesById = emptyMap()
+            }
+        }
+
+        private fun readHtmlExportAssetBytes(input: InputStream): ByteArray? {
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > MAX_HTML_EXPORT_ASSET_BYTES) return null
+                output.write(buffer, 0, count)
+            }
+            return output.toByteArray()
         }
 
         @JavascriptInterface

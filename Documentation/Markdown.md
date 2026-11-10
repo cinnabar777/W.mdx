@@ -465,7 +465,7 @@ Labels must not contain spaces or closing brackets. Matching is case-insensitive
 
 The old `md...` entries were text-expansion abbreviations, not Markdown syntax. Any expansion depends on your keyboard or an external text expander; Wmdx does not define those abbreviations.
 
-Wmdx does not use HTML as its native authoring syntax. The editor can export HTML/MHTML and explicitly convert HTML input to Wmdx. That conversion maps common semantic blocks, lists, links, images, media, attachments, and tables; unsupported active content is omitted, and known losses are shown as warnings. It is a semantic conversion, not a browser-layout snapshot. See [Markdown Dialects, Settings, and File Formats](Markdown-Dialects-and-File-Formats.md).
+Wmdx does not use HTML as its native authoring syntax. The editor can export HTML/MHTML and convert HTML or MHTML input into a new Markdown document. Import maps supported semantic blocks, lists, links, images, media, attachments, and tables; scripts and active embedded content are omitted, and known losses are shown as warnings. Export renders the complete Markdown source into semantic HTML rather than copying the editor DOM, then sanitizes active content. Local assets and MHTML archive behavior still require device acceptance. See [Markdown Dialects, Settings, and File Formats](Markdown-Dialects-and-File-Formats.md) and the [compatibility matrix](Markdown-Compatibility-Matrix.md).
 
 When **Use Wmdx syntax** is disabled, underline formatting uses the `<u>...</u>` compatibility form; when enabled, it uses Wmdx's text-based underline markers.
 
@@ -539,7 +539,7 @@ Focused tests verify named Wmdx behaviors; they do not establish full specificat
 | Wmdx syntax | Decimal headings, alphabetic/Roman list markers, native tasks, resource links, media/attachment metadata, callouts, numbered footnotes, underline styles, highlight slots, and pen slots are implemented. | App/device acceptance remains necessary; export can lose style or dialect-specific semantics and reports known losses. |
 | Import and paste | Menu actions preview conversion from CommonMark, GFM, Obsidian, or HTML into Wmdx. Paste uses the same conversion engine. | Complex HTML styling, HTML comments, merged table cells, and unsupported dialect features may be omitted with warnings. |
 | Markdown export | Menu action exports CommonMark, GFM, or Obsidian and saves a separate Markdown file. Headings, links, supported callouts/tasks, and Wmdx formatting have explicit mappings. | CommonMark tables are preserved as pipe-table source with a warning; Wmdx ordered styles become decimal; color and pen semantics may be lost. Test all target renderers and round trips. |
-| HTML/MHTML | Existing rendered-document export remains separate from Markdown export. | Verify on Android and review media/resource URI handling on devices. |
+| HTML/MHTML | Semantic HTML export covers supported rendered structures; HTML/MHTML import converts the HTML part and related MHTML resources to Markdown. | Verify local asset access, separate stylesheet providers, and WebView MHTML creation/reopen on Android devices. |
 | Linter | In-app structural checks cover unclosed fences, missing references/footnotes, malformed Wmdx resources, table row width, empty callouts, active HTML, and unsupported Obsidian transclusion. | A clean lint report is not a complete dialect validator; grow checks only with regression tests. |
 
 ### Wmdx authoring goal

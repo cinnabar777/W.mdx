@@ -1660,6 +1660,86 @@ async function main() {
     assert.ok(wholeConvertedDocument.length > 6000);
     assert.match(wholeConvertedDocument, /\.1 Final heading$/);
 
+    await page.evaluate(async () => {
+      window.importedHtmlCapture = null;
+      window.AndroidNative.getCurrentDocumentSessionId = () => 'html-import-session';
+      window.AndroidNative.importHtmlAsMarkdown = (markdown, sourceFileName, sessionId) => {
+        window.importedHtmlCapture = { markdown, sourceFileName, sessionId };
+        const markdownFileName = sourceFileName.replace(/\.(?:html?|mht|mhtml)$/i, '.md');
+        void window.editorBridge.setMarkdown(markdown, markdownFileName);
+      };
+      await window.editorBridge.setEditorMode('wysiwyg');
+      await window.editorBridge.setMarkdown(
+        '<h1>Imported title</h1><p>Imported <strong>HTML</strong>.</p>',
+        'Imported.html'
+      );
+    });
+    assert.equal(await page.evaluate(() => window.editorBridge.getEditorMode()), 'source');
+    await openMenuAction('Convert from Markdown dialect');
+    await page.locator('#markdown-conversion-format').selectOption('html');
+    await page.locator('#markdown-conversion-preview-button').click();
+    assert.match(
+      await page.locator('#markdown-conversion-preview').inputValue(),
+      /^\.1 Imported title/m
+    );
+    await page.locator('#markdown-conversion-apply').click();
+    await page.waitForFunction(() =>
+      window.editorBridge.getEditorMode() !== 'source' &&
+      window.editorBridge.getMarkdown().includes('Imported **HTML**')
+    );
+    const htmlImportCapture = await page.evaluate(() => window.importedHtmlCapture);
+    assert.equal(htmlImportCapture.sourceFileName, 'Imported.html');
+    assert.ok(htmlImportCapture.sessionId);
+    assert.match(htmlImportCapture.markdown, /^\.1 Imported title/m);
+    assert.match(await page.evaluate(() => window.editorBridge.getMarkdown()), /Imported \*\*HTML\*\*/);
+
+    const mhtmlImportResult = await page.evaluate(async () => {
+      await window.editorBridge.setEditorMode('wysiwyg');
+      window.mhtmlResourceLoads = [];
+      window.mhtmlResourcesCleared = false;
+      window.AndroidNative.loadMhtmlResourceDataUriForImport = (resourceId, sessionId) => {
+        window.mhtmlResourceLoads.push({ resourceId, sessionId });
+        return resourceId === 'resource-0' ? 'data:image/png;base64,AQIDBA==' : '';
+      };
+      window.AndroidNative.clearMhtmlImportResources = sessionId => {
+        window.mhtmlResourcesCleared = sessionId === 'html-import-session';
+      };
+      return window.editorBridge.importMhtmlAsMarkdown(
+        '<h1>Archived page</h1><p>Saved <strong>meaning</strong>.</p>' +
+          '<img src="images/pixel.png" alt="Pixel">',
+        JSON.stringify({
+          'https://example.test/archive/images/pixel.png': 'resource-0'
+        }),
+        'https://example.test/archive/page.mhtml',
+        'Archive.mhtml',
+        'html-import-session'
+      );
+    });
+    assert.equal(mhtmlImportResult.imported, true);
+    await page.waitForFunction(() =>
+      window.editorBridge.getMarkdown().includes('Archived page') &&
+      window.editorBridge.getMarkdown().includes('data:image/png;base64,AQIDBA==')
+    );
+    const mhtmlImportCapture = await page.evaluate(() => window.importedHtmlCapture);
+    assert.equal(mhtmlImportCapture.sourceFileName, 'Archive.mhtml');
+    assert.match(mhtmlImportCapture.markdown, /^\.1 Archived page/m);
+    assert.match(mhtmlImportCapture.markdown, /Saved \*\*meaning\*\*/);
+    const mhtmlBridgeState = await page.evaluate(() => ({
+      loads: window.mhtmlResourceLoads,
+      cleared: window.mhtmlResourcesCleared
+    }));
+    assert.deepEqual(mhtmlBridgeState.loads, [{
+      resourceId: 'resource-0',
+      sessionId: 'html-import-session'
+    }]);
+    assert.equal(mhtmlBridgeState.cleared, true);
+    const htmlExportPayload = await page.evaluate(() =>
+      JSON.parse(window.editorBridge.getHtmlExportPayload())
+    );
+    assert.match(htmlExportPayload.html, /<h1>Archived page<\/h1>/);
+    assert.match(htmlExportPayload.html, /<img src="data:image\/png;base64,AQIDBA==" alt="Pixel">/);
+    assert.doesNotMatch(htmlExportPayload.html, /cm-content|cm-line|cm-editor/);
+
     await page.evaluate(() => window.editorBridge.setMarkdown('Note.[^missing]'));
     await page.waitForTimeout(60);
     await openMenuAction('Lint document');
