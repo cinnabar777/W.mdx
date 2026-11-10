@@ -54,9 +54,12 @@ Run the HTML wrapper tests through the Android unit-test task:
 - The Obsidian fixture set is intentionally curated, not a claim of complete
   Obsidian compatibility. Plugin-defined syntax, transclusion behavior, and
   other app-only features need explicit support decisions and fixtures.
-- HTML export's document wrapper is covered, but the Android export path still
-  needs an end-to-end test proving the editor supplies rendered document HTML
-  (not source-editor markup) in each mode.
+- The web export bridge now renders semantic HTML from the full Markdown source
+  independently of editor mode, and browser tests verify it does not export
+  CodeMirror markup. Android document-provider asset reads, separate CSS, and
+  WebView MHTML capture/reopen still need device acceptance.
+- MHTML import now honors the MIME `start` root and `Content-Base`; broader
+  real-world archive samples and CSS-dependent layouts still need fixtures.
 - LaTeX, AsciiMath, Typst, and a WYSIWYG equation editor are not integrated.
   Treat math as unsupported unless a future implementation adds a parser,
   renderer, editing behavior, and import/export fixtures.

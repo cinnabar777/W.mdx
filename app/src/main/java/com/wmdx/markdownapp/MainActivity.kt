@@ -2103,10 +2103,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 val resourceHandles = JSONObject()
                 val resourcesById = LinkedHashMap<String, String>()
-                archive.embeddedResources.entries.forEachIndexed { index, entry ->
-                    val resourceId = "mhtml-resource-$index"
+                val resourceIdsByDataUri = java.util.IdentityHashMap<String, String>()
+                archive.embeddedResources.entries.forEach { entry ->
+                    val resourceId = resourceIdsByDataUri[entry.value] ?: run {
+                        val nextId = "mhtml-resource-${resourcesById.size}"
+                        resourceIdsByDataUri[entry.value] = nextId
+                        resourcesById[nextId] = entry.value
+                        nextId
+                    }
                     resourceHandles.put(entry.key, resourceId)
-                    resourcesById[resourceId] = entry.value
                 }
                 currentMhtmlImportResourcesById = resourcesById
                 val importScript = buildString {
