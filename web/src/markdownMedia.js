@@ -1,3 +1,5 @@
+import { escapeMarkdownField } from './markdownEscaping.js';
+
 function unescapeMarkdown(value) {
   return value.replace(/\\([\\`*_{}\[\]()#+\-.!<>|])/g, '$1');
 }
@@ -323,9 +325,7 @@ export function extractMarkdownVideoLinks(markdown) {
 }
 
 export function formatMarkdownAudioLink(label, url, layout = null) {
-  const safeLabel = String(label ?? 'audio')
-    .replace(/\\/g, '\\\\')
-    .replace(/\]/g, '\\]');
+  const safeLabel = escapeMarkdownField(label ?? 'audio', { escapeCharacters: ']' });
   const rawUrl = String(url ?? '').trim();
   const queryIndex = rawUrl.indexOf('?');
   const fragmentIndex = rawUrl.indexOf('#');
@@ -370,9 +370,7 @@ export function formatMarkdownAudioLink(label, url, layout = null) {
 }
 
 export function formatMarkdownVideoLink(label, url, layout = null) {
-  const safeLabel = String(label ?? 'video')
-    .replace(/\\/g, '\\\\')
-    .replace(/\]/g, '\\]');
+  const safeLabel = escapeMarkdownField(label ?? 'video', { escapeCharacters: ']' });
   const rawUrl = String(url ?? '').trim();
   const suffixIndices = ['?', '#']
     .map(character => rawUrl.indexOf(character))
@@ -412,9 +410,7 @@ export function formatMarkdownVideoLink(label, url, layout = null) {
 }
 
 export function formatMarkdownAttachmentLink(label, url, layout = null) {
-  const safeLabel = String(label ?? 'attachment')
-    .replace(/\\/g, '\\\\')
-    .replace(/\]/g, '\\]');
+  const safeLabel = escapeMarkdownField(label ?? 'attachment', { escapeCharacters: ']' });
   const safePath = String(url ?? '').trim().split('/').map(segment => {
     let decoded = segment;
     try {

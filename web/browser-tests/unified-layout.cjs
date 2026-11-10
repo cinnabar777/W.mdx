@@ -18,20 +18,23 @@ const markers = ['-', '+', '*', '1.', '1)', 'a.', 'A.', 'i.', 'I.', '- [ ]', '- 
 async function placeCursorInListText(page, index, options = {}) {
   const item = page.locator('.cm-list-item').nth(index);
   await item.scrollIntoViewIfNeeded();
-  const point = await item.evaluate((element, { wrapped, preferBold }) => {
+  const point = await item.evaluate((element, { wrapped, preferBold, contentOffset }) => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const rows = new Map();
     let node;
     let fallback = null;
     let preferred = null;
     while ((node = walker.nextNode())) {
+      if (node.parentElement.closest('.cm-list-item') !== element) continue;
+      if (node.parentElement.closest('.cm-list-continuation')) continue;
       if (node.parentElement.closest(
         '.cm-layout-prefix, .cm-list-bullet, .cm-list-number, .cm-todo-checkbox'
       )) continue;
       const boldOffset = node.data.indexOf('bold');
+      const firstContentOffset = Math.max(0, node.data.search(/\S/));
       const startOffset = preferBold !== false && boldOffset >= 0
         ? boldOffset + 1
-        : 0;
+        : Math.min(firstContentOffset + contentOffset, Math.max(0, node.length - 1));
       for (let offset = startOffset; offset < node.length; offset++) {
         if (/\s/.test(node.data[offset])) continue;
         const range = document.createRange();
@@ -48,12 +51,52 @@ async function placeCursorInListText(page, index, options = {}) {
       }
     }
     if (wrapped) {
-      const lastRow = [...rows.entries()].sort((a, b) => a[0] - b[0]).at(-1);
-      return lastRow?.[1] ?? fallback;
+      const visualRows = [...rows.entries()].sort((a, b) => a[0] - b[0]);
+      return visualRows[1]?.[1] ?? visualRows[0]?.[1] ?? fallback;
     }
     return preferred ?? fallback;
-  }, { wrapped: options.wrapped === true, preferBold: options.preferBold !== false });
+  }, {
+    wrapped: options.wrapped === true,
+    preferBold: options.preferBold !== false,
+    contentOffset: Math.max(0, Number(options.contentOffset) || 0)
+  });
   assert.ok(point, `list item ${index} should expose a text position`);
+  if (options.touch) await page.touchscreen.tap(point.x, point.y);
+  else await page.mouse.click(point.x, point.y);
+}
+
+async function placeCursorInRenderedLineText(page, target, options = {}) {
+  const line = page.locator('.cm-line').filter({ hasText: target }).first();
+  await line.scrollIntoViewIfNeeded();
+  const point = await line.evaluate((element, { target, wrapped }) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const rows = new Map();
+    let node;
+    let preferred = null;
+    let fallback = null;
+    while ((node = walker.nextNode())) {
+      if (node.parentElement.closest('.cm-layout-prefix, .cm-list-bullet, .cm-list-number')) {
+        continue;
+      }
+      const targetOffset = node.data.indexOf(target);
+      for (let offset = 0; offset < node.length; offset++) {
+        if (/\s/.test(node.data[offset])) continue;
+        const range = document.createRange();
+        range.setStart(node, offset);
+        range.setEnd(node, offset + 1);
+        const rect = range.getBoundingClientRect();
+        if (!rect.width || !rect.height) continue;
+        const point = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        const row = Math.round(rect.top);
+        if (!rows.has(row)) rows.set(row, point);
+        if (targetOffset >= 0 && offset === targetOffset + 1 && !preferred) preferred = point;
+        fallback ??= point;
+      }
+    }
+    if (wrapped) return [...rows.entries()].sort((a, b) => a[0] - b[0]).at(-1)?.[1] ?? fallback;
+    return preferred ?? fallback;
+  }, { target, wrapped: options.wrapped === true });
+  assert.ok(point, `rendered line containing ${target} should expose a text position`);
   if (options.touch) await page.touchscreen.tap(point.x, point.y);
   else await page.mouse.click(point.x, point.y);
 }
@@ -1573,7 +1616,10 @@ async function main() {
       await window.editorBridge.setEditorMode('rendered');
       window.editorBridge.setMarkdown(scrollFixture);
     }, scrollFixture);
-    await page.waitForTimeout(120);
+    await page.waitForFunction(() => {
+      const scroller = document.querySelector('.cm-scroller');
+      return scroller && scroller.scrollHeight > scroller.clientHeight * 2;
+    }, null, { timeout: 10000 });
     await page.evaluate(() => {
       const scroller = document.querySelector('.cm-scroller');
       if (scroller) scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * 0.5;
@@ -1592,16 +1638,46 @@ async function main() {
         if (!target) return null;
         const token = /\bAnchor-\d{3}\b/.exec(target.textContent)?.[0];
         if (!token) return null;
-        const targetBounds = target.getBoundingClientRect();
+        const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+        let tokenRange = null;
+        let textNode;
+        while ((textNode = walker.nextNode())) {
+          const tokenOffset = textNode.nodeValue.indexOf(token);
+          if (tokenOffset < 0) continue;
+          tokenRange = document.createRange();
+          tokenRange.setStart(textNode, tokenOffset);
+          tokenRange.setEnd(textNode, tokenOffset + token.length);
+          break;
+        }
+        if (!tokenRange) return null;
+        // Match captureModeScrollAnchor's 35% viewport anchor rather than
+        // comparing the line's top edge to a different in-app anchor character.
         const desiredOffset = Math.round(scroller.clientHeight * 0.35);
-        scroller.scrollTop += targetBounds.top - bounds.top - desiredOffset;
+        scroller.scrollTop += tokenRange.getBoundingClientRect().top -
+          bounds.top - desiredOffset;
         return new Promise(resolve => requestAnimationFrame(() => {
           const nextBounds = scroller.getBoundingClientRect();
           const nextTarget = [...document.querySelectorAll('.cm-line')]
             .find(line => line.textContent.includes(token));
-          resolve(nextTarget ? {
+          if (!nextTarget) return resolve(null);
+          const nextWalker = document.createTreeWalker(nextTarget, NodeFilter.SHOW_TEXT);
+          let nextRange = null;
+          let nextTextNode;
+          while ((nextTextNode = nextWalker.nextNode())) {
+            const tokenOffset = nextTextNode.nodeValue.indexOf(token);
+            if (tokenOffset < 0) continue;
+            nextRange = document.createRange();
+            nextRange.setStart(nextTextNode, tokenOffset);
+            nextRange.setEnd(nextTextNode, tokenOffset + token.length);
+            break;
+          }
+          resolve(nextRange ? {
             token,
-            offset: nextTarget.getBoundingClientRect().top - nextBounds.top
+            offset: nextRange.getBoundingClientRect().top - nextBounds.top,
+            desiredOffset,
+            scrollTop: scroller.scrollTop,
+            clientHeight: scroller.clientHeight,
+            lineText: nextTarget.textContent.trim().slice(0, 90)
           } : null);
         }));
       });
@@ -1618,9 +1694,19 @@ async function main() {
           const scroller = document.querySelector('.cm-scroller');
           const target = [...document.querySelectorAll('.cm-line')]
             .find(line => line.textContent.includes(token));
-          return scroller && target
-            ? target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-            : null;
+          if (!scroller || !target) return null;
+          const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+          let textNode;
+          while ((textNode = walker.nextNode())) {
+            const tokenOffset = textNode.nodeValue.indexOf(token);
+            if (tokenOffset < 0) continue;
+            const range = document.createRange();
+            range.setStart(textNode, tokenOffset);
+            range.setEnd(textNode, tokenOffset + token.length);
+            return range.getBoundingClientRect().top -
+              scroller.getBoundingClientRect().top;
+          }
+          return null;
         }, anchor.token);
         if (
           Number.isFinite(anchoredAfter) &&
@@ -1636,7 +1722,7 @@ async function main() {
       }
       assert.ok(Number.isFinite(anchoredAfter), `missing scroll anchor after ${mode}`);
       assert.ok(stableFrames >= 3,
-        `scroll anchor did not settle near its prior position after switching to ${mode}: ${JSON.stringify({ before: anchor.offset, after: anchoredAfter, stableFrames })}`);
+        `scroll anchor did not settle near its prior position after switching to ${mode}: ${JSON.stringify({ anchor, after: anchoredAfter, stableFrames })}`);
       assert.ok(Math.abs(anchoredAfter - anchor.offset) < 4,
         `mode switch moved the visible document position: ${mode} (${anchor.offset}px -> ${anchoredAfter}px)`);
     }
@@ -2121,12 +2207,27 @@ async function main() {
           'Neutral paragraph before the list.',
           '',
           `- Root bullet ${text}`,
-          '  Continuation paragraph stays with the root item.',
+          `  Continuation paragraph stays with the root item. ${text}`,
           `  - Nested bullet ${text}`,
-          `1. Numbered item ${text}`
+          `1. Numbered item ${text}`,
+          `* Star bullet ${text}`,
+          `+ Plus bullet ${text}`,
+          `1) Parenthetical numbered item ${text}`,
+          `- [ ] Open task ${text}`,
+          `- [x] Completed task ${text}`
         ].join('\n'),
-        target: 'Root bullet',
-        itemCount: 3
+        targets: [
+          'Root bullet',
+          'Continuation paragraph',
+          'Nested bullet',
+          'Numbered item',
+          'Star bullet',
+          'Plus bullet',
+          'Parenthetical numbered item',
+          'Open task',
+          'Completed task'
+        ],
+        itemCount: 8
       },
       {
         name: 'blockquote list',
@@ -2134,10 +2235,19 @@ async function main() {
           'Neutral paragraph before the quote.',
           '',
           `> - Quoted bullet ${text}`,
-          `>   - Nested quoted bullet ${text}`
+          `>   Continuation paragraph stays in the quoted item. ${text}`,
+          `>   - Nested quoted bullet ${text}`,
+          `> 1. Quoted numbered item ${text}`,
+          `> - [ ] Quoted task ${text}`
         ].join('\n'),
-        target: 'Quoted bullet',
-        itemCount: 2
+        targets: [
+          'Quoted bullet',
+          'Continuation paragraph',
+          'Nested quoted bullet',
+          'Quoted numbered item',
+          'Quoted task'
+        ],
+        itemCount: 4
       },
       {
         name: 'callout list',
@@ -2146,15 +2256,36 @@ async function main() {
           '',
           '> [!note] List inside callout',
           `> - Callout bullet ${text}`,
-          `>   - Nested callout bullet ${text}`
+          `>   - Nested callout bullet ${text}`,
+          `> 1. Callout numbered item ${text}`,
+          `> - [ ] Callout task ${text}`
         ].join('\n'),
-        target: 'Callout bullet',
+        targets: [
+          'Callout bullet',
+          'Nested callout bullet',
+          'Callout numbered item',
+          'Callout task'
+        ],
+        itemCount: 4
+      },
+      {
+        name: 'nested callout list',
+        markdown: [
+          'Neutral paragraph before the callout.',
+          '',
+          '> [!note] Outer callout',
+          '> Outer callout paragraph.',
+          '> > [!tip] Nested callout',
+          `> > - Nested callout list item ${text}`,
+          `> >   - Nested callout child ${text}`
+        ].join('\n'),
+        targets: ['Nested callout list item', 'Nested callout child'],
         itemCount: 2
       },
       {
         name: 'literal list-like code',
         markdown: 'Neutral paragraph before the code.\n\n```markdown\n- This source is literal, not a list.\n```',
-        target: 'literal, not a list',
+        targets: ['literal, not a list'],
         itemCount: 0
       }
     ];
@@ -2178,94 +2309,187 @@ async function main() {
           window.editorBridge.setMarkdown(listCase.markdown);
         }, { viewConfig, listCase });
         await page.waitForTimeout(80);
+        const syntaxDiagnostics = await page.evaluate(() =>
+          (window.layoutDiagnostics || []).filter(item =>
+            item.name === 'syntax_parse_timeout'
+          )
+        );
+        assert.deepEqual(
+          syntaxDiagnostics,
+          [],
+          `${viewConfig.name} / ${listCase.name}: syntax parsing timed out`
+        );
 
         const sourceBefore = await page.evaluate(() => window.editorBridge.getMarkdown());
         assert.equal(sourceBefore, listCase.markdown,
           `${viewConfig.name} / ${listCase.name}: fixture source must load exactly`);
-        if (viewConfig.mode === 'source') {
-          const lineIndex = listCase.markdown.split('\n').findIndex(line =>
-            line.includes(listCase.target)
-          );
-          assert.ok(lineIndex >= 0);
-          await placeCursorInRawLineText(page, lineIndex, 2);
+        const testTarget = async target => {
+          if (viewConfig.mode === 'source') {
+            const lineIndex = listCase.markdown.split('\n').findIndex(line =>
+              line.includes(target)
+            );
+            assert.ok(lineIndex >= 0,
+              `Source/Code / ${listCase.name}: target ${target} should have a source line`);
+            await placeCursorInRawLineText(page, lineIndex, 2);
+          } else {
+            if (viewConfig.scope === 'block') {
+              const targetPosition = listCase.markdown.indexOf(target) + 2;
+              await page.evaluate(position => {
+                window.editorBridge.setSelectionState(
+                  JSON.stringify({ anchor: position, head: position })
+                );
+              }, targetPosition);
+              await page.waitForTimeout(60);
+            }
+            const listItems = page.locator('.cm-list-item');
+            const observedListItems = await listItems.evaluateAll(items =>
+              items.map(item => item.textContent.trim())
+            );
+            if (viewConfig.scope === 'block') {
+              if (listCase.itemCount) {
+                assert.ok(
+                  observedListItems.some(text => text.includes(target)),
+                  `${viewConfig.name} / ${listCase.name}: active list block is not rendered; ` +
+                  `found ${JSON.stringify(observedListItems)}`
+                );
+              } else {
+                assert.equal(observedListItems.length, 0,
+                  `${viewConfig.name} / ${listCase.name}: code must not render as a list`);
+              }
+            } else {
+              assert.equal(
+                observedListItems.length,
+                listCase.itemCount,
+                `${viewConfig.name} / ${listCase.name}: unexpected list structure; ` +
+                `found ${JSON.stringify(observedListItems)}`
+              );
+            }
+            if (listCase.itemCount) {
+              const targetIndex = await listItems.evaluateAll((items, targetText) =>
+                items.findIndex(item => item.textContent.includes(targetText)),
+              target);
+              assert.ok(targetIndex >= 0,
+                `${viewConfig.name} / ${listCase.name}: target item ${target} should exist`);
+              const readGeometry = () => listItems.nth(targetIndex).evaluate(item => ({
+                active: item.classList.contains('cm-activeLine'),
+                left: item.getBoundingClientRect().left,
+              top: item.getBoundingClientRect().top +
+                document.querySelector('.cm-scroller').scrollTop,
+                contentX: item.querySelector('.cm-layout-content')?.getBoundingClientRect().left,
+                markerGutter: item.style.getPropertyValue('--list-marker-gutter'),
+                paddingLeft: getComputedStyle(item).paddingLeft
+              }));
+              await placeCursorInListText(page, targetIndex, {
+                preferBold: false,
+                contentOffset: 4
+              });
+              await page.waitForTimeout(40);
+              const firstCaretGeometry = await readGeometry();
+              await placeCursorInListText(page, targetIndex, {
+                wrapped: true,
+                preferBold: false,
+                contentOffset: 4
+              });
+              await page.waitForTimeout(40);
+              const wrappedCaretGeometry = await readGeometry();
+              assert.equal(firstCaretGeometry.active, true,
+                `${viewConfig.name} / ${listCase.name} / ${target}: caret should enter the item`);
+              assert.equal(wrappedCaretGeometry.active, true,
+                `${viewConfig.name} / ${listCase.name} / ${target}: wrapped-row caret should stay in the item`);
+              assert.ok(Math.abs(wrappedCaretGeometry.left - firstCaretGeometry.left) < 1.5,
+                `${viewConfig.name} / ${listCase.name} / ${target}: moving within the item shifted its block`);
+              assert.ok(Math.abs(wrappedCaretGeometry.top - firstCaretGeometry.top) < 1.5,
+                `${viewConfig.name} / ${listCase.name} / ${target}: moving within the item jumped it vertically`);
+              if (firstCaretGeometry.contentX !== undefined) {
+                assert.ok(Math.abs(wrappedCaretGeometry.contentX - firstCaretGeometry.contentX) < 1.5,
+                  `${viewConfig.name} / ${listCase.name} / ${target}: wrapped text moved within one exposure state: ${JSON.stringify({ firstCaretGeometry, wrappedCaretGeometry })}`);
+              }
+              assert.equal(wrappedCaretGeometry.markerGutter, firstCaretGeometry.markerGutter,
+                `${viewConfig.name} / ${listCase.name} / ${target}: marker gutter changed within one exposure state: ${JSON.stringify({ firstCaretGeometry, wrappedCaretGeometry })}`);
+            } else {
+              const lineIndex = listCase.markdown.split('\n').findIndex(line =>
+                line.includes(target)
+              );
+              await placeCursorInRawLineText(page, lineIndex, 2);
+            }
+          }
           assert.equal(
             await page.evaluate(() => window.editorBridge.getMarkdown()),
             listCase.markdown,
-            `Source/Code / ${listCase.name}: cursor entry must not edit source`
+            `${viewConfig.name} / ${listCase.name} / ${target}: caret movement changed source`
           );
-        } else {
-          const listItems = page.locator('.cm-list-item');
+          await page.keyboard.insertText('X');
+          const edited = await page.evaluate(() => window.editorBridge.getMarkdown());
+          assert.notEqual(edited, listCase.markdown,
+            `${viewConfig.name} / ${listCase.name} / ${target}: editor should accept a text edit`);
+          await page.keyboard.press('Control+z');
+          await page.waitForTimeout(40);
           assert.equal(
-            await listItems.count(),
-            listCase.itemCount,
-            `${viewConfig.name} / ${listCase.name}: unexpected list structure`
+            await page.evaluate(() => window.editorBridge.getMarkdown()),
+            listCase.markdown,
+            `${viewConfig.name} / ${listCase.name} / ${target}: undo should restore exact Markdown`
           );
-          if (listCase.itemCount) {
-            const targetIndex = await listItems.evaluateAll((items, target) =>
-              items.findIndex(item => item.textContent.includes(target)),
-            listCase.target);
-            assert.ok(targetIndex >= 0,
-              `${viewConfig.name} / ${listCase.name}: target item should exist`);
-            const readGeometry = () => listItems.nth(targetIndex).evaluate(item => ({
-              active: item.classList.contains('cm-activeLine'),
-              left: item.getBoundingClientRect().left,
-              top: item.getBoundingClientRect().top,
-              contentX: item.querySelector('.cm-layout-content')?.getBoundingClientRect().left,
-              markerGutter: item.style.getPropertyValue('--list-marker-gutter'),
-              paddingLeft: getComputedStyle(item).paddingLeft
-            }));
-            await placeCursorInListText(page, targetIndex, { preferBold: false });
-            await page.waitForTimeout(40);
-            const firstCaretGeometry = await readGeometry();
-            await placeCursorInListText(page, targetIndex, {
-              wrapped: true,
-              preferBold: false
-            });
-            await page.waitForTimeout(40);
-            const wrappedCaretGeometry = await readGeometry();
-            assert.equal(firstCaretGeometry.active, true,
-              `${viewConfig.name} / ${listCase.name}: caret should enter the chosen item`);
-            assert.equal(wrappedCaretGeometry.active, true,
-              `${viewConfig.name} / ${listCase.name}: wrapped-row caret should remain in the item`);
-            assert.ok(Math.abs(wrappedCaretGeometry.left - firstCaretGeometry.left) < 1.5,
-              `${viewConfig.name} / ${listCase.name}: moving within the item shifted its block`);
-            assert.ok(Math.abs(wrappedCaretGeometry.top - firstCaretGeometry.top) < 1.5,
-              `${viewConfig.name} / ${listCase.name}: moving within the item jumped it vertically`);
-            if (firstCaretGeometry.contentX !== undefined) {
-              assert.ok(Math.abs(wrappedCaretGeometry.contentX - firstCaretGeometry.contentX) < 1.5,
-                `${viewConfig.name} / ${listCase.name}: wrapped text moved within one exposure state: ${JSON.stringify({ firstCaretGeometry, wrappedCaretGeometry })}`);
-            }
-            assert.equal(wrappedCaretGeometry.markerGutter, firstCaretGeometry.markerGutter,
-              `${viewConfig.name} / ${listCase.name}: marker gutter changed within one exposure state`);
-            assert.equal(
-              await page.evaluate(() => window.editorBridge.getMarkdown()),
-              listCase.markdown,
-              `${viewConfig.name} / ${listCase.name}: no-op caret movement changed source`
-            );
-          } else {
+        };
+
+        for (const target of listCase.targets) {
+          await testTarget(target);
+          cases++;
+        }
+        if (listCase.continuationTarget) {
+          if (viewConfig.mode === 'source') {
             const lineIndex = listCase.markdown.split('\n').findIndex(line =>
-              line.includes(listCase.target)
+              line.includes(listCase.continuationTarget)
             );
             await placeCursorInRawLineText(page, lineIndex, 2);
-            assert.equal(
-              await page.evaluate(() => window.editorBridge.getMarkdown()),
-              listCase.markdown,
-              `${viewConfig.name} / ${listCase.name}: code syntax must remain literal`
-            );
+          } else {
+            await placeCursorInRenderedLineText(page, listCase.continuationTarget);
+            await page.waitForTimeout(40);
+            const line = page.locator('.cm-line').filter({ hasText: listCase.continuationTarget }).first();
+            const first = await line.evaluate(element => ({
+              active: element.classList.contains('cm-activeLine'),
+              left: element.getBoundingClientRect().left,
+              top: element.getBoundingClientRect().top +
+                document.querySelector('.cm-scroller').scrollTop,
+              contentX: element.querySelector('.cm-layout-content')?.getBoundingClientRect().left
+            }));
+            await placeCursorInRenderedLineText(page, listCase.continuationTarget, { wrapped: true });
+            await page.waitForTimeout(40);
+            const wrapped = await line.evaluate(element => ({
+              active: element.classList.contains('cm-activeLine'),
+              left: element.getBoundingClientRect().left,
+              top: element.getBoundingClientRect().top +
+                document.querySelector('.cm-scroller').scrollTop,
+              contentX: element.querySelector('.cm-layout-content')?.getBoundingClientRect().left
+            }));
+            assert.equal(first.active, true,
+              `${viewConfig.name} / ${listCase.name}: continuation should become active`);
+            assert.equal(wrapped.active, true,
+              `${viewConfig.name} / ${listCase.name}: wrapped continuation should remain active`);
+            assert.ok(Math.abs(wrapped.left - first.left) < 1.5 &&
+              Math.abs(wrapped.top - first.top) < 1.5 &&
+              (first.contentX === undefined || Math.abs(wrapped.contentX - first.contentX) < 1.5),
+            `${viewConfig.name} / ${listCase.name}: continuation alignment changed while moving within its text`);
           }
+          assert.equal(
+            await page.evaluate(() => window.editorBridge.getMarkdown()),
+            listCase.markdown,
+            `${viewConfig.name} / ${listCase.name}: continuation caret movement changed source`
+          );
+          await page.keyboard.insertText('X');
+          assert.notEqual(
+            await page.evaluate(() => window.editorBridge.getMarkdown()),
+            listCase.markdown,
+            `${viewConfig.name} / ${listCase.name}: continuation should accept text edits`
+          );
+          await page.keyboard.press('Control+z');
+          await page.waitForTimeout(40);
+          assert.equal(
+            await page.evaluate(() => window.editorBridge.getMarkdown()),
+            listCase.markdown,
+            `${viewConfig.name} / ${listCase.name}: undo should restore continuation Markdown`
+          );
+          cases++;
         }
-
-        await page.keyboard.insertText('X');
-        const edited = await page.evaluate(() => window.editorBridge.getMarkdown());
-        assert.notEqual(edited, listCase.markdown,
-          `${viewConfig.name} / ${listCase.name}: editor should accept a text edit`);
-        await page.keyboard.press('Control+z');
-        await page.waitForTimeout(40);
-        assert.equal(
-          await page.evaluate(() => window.editorBridge.getMarkdown()),
-          listCase.markdown,
-          `${viewConfig.name} / ${listCase.name}: undo should restore exact Markdown`
-        );
         await page.setViewportSize({ width: 390, height: 480 });
         await page.waitForTimeout(40);
         await page.setViewportSize({ width: 390, height: 620 });
@@ -2274,7 +2498,6 @@ async function main() {
           listCase.markdown,
           `${viewConfig.name} / ${listCase.name}: keyboard close must not alter source`
         );
-        cases++;
       }
     }
 

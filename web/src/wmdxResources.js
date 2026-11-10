@@ -1,3 +1,5 @@
+import { escapeMarkdownField } from './markdownEscaping.js';
+
 const ALIGNMENT_NAMES = new Map([
   ['<', 'left'],
   ['><', 'center'],
@@ -195,7 +197,10 @@ function serializeSize(value) {
 }
 
 function escapeField(value) {
-  return String(value ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+  return escapeMarkdownField(value, {
+    escapeCharacters: '|',
+    backslashSpecialCharacters: '|'
+  });
 }
 
 export function formatWmdxResourceSyntax({

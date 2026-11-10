@@ -6134,6 +6134,45 @@ export const resetRenderedVerticalGoal = EditorView.domEventHandlers({
 
 
 
+export const renderedListPointerHandler = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    if (event.button !== 0 || currentEditorMode === 'source') return false;
+    const line = event.target?.closest?.(
+      '.cm-line.cm-list-item, .cm-line.cm-list-continuation'
+    );
+    if (!line || !view.contentDOM.contains(line)) return false;
+
+    const direct = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (direct == null || renderedLineForPosition(view, direct, 1) === line) {
+      return false;
+    }
+
+    const targetRow = renderedVisualRows(view)
+      .filter(row => row.element === line)
+      .sort((left, right) =>
+        Math.abs(left.center - event.clientY) - Math.abs(right.center - event.clientY)
+      )[0];
+    if (!targetRow) return false;
+
+    const direction = event.clientY >= targetRow.center ? 1 : -1;
+    let position = positionOnRenderedRow(view, targetRow, event.clientX, direction);
+    if (position == null) return false;
+    position = leaveHiddenSyntax(view, position, direction);
+    if (renderedLineForPosition(view, position, direction) !== line) return false;
+
+    const current = view.state.selection.main;
+    event.preventDefault();
+    view.dispatch({
+      selection: event.shiftKey
+        ? EditorSelection.range(current.anchor, position)
+        : EditorSelection.cursor(position),
+      userEvent: event.shiftKey ? 'select.pointer' : 'input.pointer',
+      scrollIntoView: false
+    });
+    return true;
+  }
+});
+
 class CodeMirrorAdapter {
   constructor() {
     this.mode = currentEditorMode;
@@ -6551,6 +6590,7 @@ class CodeMirrorAdapter {
         ]),
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
+        renderedListPointerHandler,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap

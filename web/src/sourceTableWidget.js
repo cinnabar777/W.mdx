@@ -157,9 +157,8 @@ export class SourceTableWidget extends WidgetType {
 
   eq(other) {
     return other instanceof SourceTableWidget &&
-      other.markdown === this.markdown &&
-      other.from === this.from &&
-      other.to === this.to &&
+      other.language === this.language &&
+      other.highlightStyle === this.highlightStyle &&
       other.horizontalScrollEnabled === this.horizontalScrollEnabled;
   }
 

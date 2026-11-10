@@ -1,3 +1,5 @@
+import { escapeMarkdownField } from './markdownEscaping.js';
+
 export function parseMarkdownImage(text) {
   const match = String(text).match(/^!\[((?:\\.|[^\]])*)\]\(([\s\S]+)\)$/);
   if (!match) return null;
@@ -60,7 +62,7 @@ export function parseObsidianImageEmbed(text) {
 }
 
 export function formatMarkdownImage(alt, url, width = null) {
-  let safeAlt = String(alt ?? '').replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+  let safeAlt = escapeMarkdownField(alt, { escapeCharacters: ']' });
   if (width != null && String(width).trim() !== '') {
     const parsedWidth = Number(width);
     if (!Number.isInteger(parsedWidth) || parsedWidth < 1 || parsedWidth > 10000) {

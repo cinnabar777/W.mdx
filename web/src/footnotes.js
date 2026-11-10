@@ -1,4 +1,6 @@
 import { syntaxTree } from '@codemirror/language';
+import { escapeMarkdownField } from './markdownEscaping.js';
+
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { normalizeFootnoteSyntaxSettings } from './footnoteSyntax.mjs';
 
@@ -528,7 +530,9 @@ export function formatObsidianInlineFootnote(body) {
     .replace(/\r\n?/g, '\n')
     .trim()
     .replace(/\s*\n\s*/g, ' ');
-  const escapedBody = normalizedBody.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+  const escapedBody = escapeMarkdownField(normalizedBody, {
+    escapeCharacters: ']'
+  });
   return `^[${escapedBody}]`;
 }
 

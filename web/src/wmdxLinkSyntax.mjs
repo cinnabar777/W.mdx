@@ -3,6 +3,8 @@ import {
   getWmdxResourceFallbackTitle
 } from './wmdxResources.js';
 
+import { escapeMarkdownField } from './markdownEscaping.js';
+
 export const DEFAULT_LINK_SYNTAX_SETTINGS = Object.freeze({
   enabled: true,
   commonmark: true,
@@ -141,9 +143,7 @@ function enabledAuthoringSyntax(settings, kind) {
 }
 
 function escapeMarkdownLabel(value) {
-  return String(value ?? '')
-    .replace(/\\/g, '\\\\')
-    .replace(/([[\]])/g, '\\$1');
+  return escapeMarkdownField(value, { escapeCharacters: '[]' });
 }
 
 export function encodeMarkdownDestination(value) {
@@ -236,15 +236,16 @@ export function formatMarkdownLinkForFlavor({
   const escapedTitle = escapeMarkdownLabel(cleanTitle);
 
   if (flavor === 'obsidian') {
-    const escapedTarget = cleanTarget
-      .replace(/\\/g, '\\\\')
-      .replace(/\|/g, '\\|');
+    const escapedTarget = escapeMarkdownField(cleanTarget, {
+      escapeCharacters: '|'
+    });
+    const escapedAlias = escapeMarkdownField(cleanTitle);
     const fallbackTitle = cleanTarget.startsWith('#')
       ? cleanTarget.slice(1)
       : getWmdxResourceFallbackTitle(cleanTarget);
     return !aliasPresent && cleanTitle === fallbackTitle
       ? `[[${escapedTarget}]]`
-      : `[[${escapedTarget}|${escapedTitle}]]`;
+      : `[[${escapedTarget}|${escapedAlias}]]`;
   }
   if (flavor === 'reference') {
     const id = String(referenceLabel ?? '').trim();
@@ -301,7 +302,9 @@ export function formatMarkdownLinkInsertion({
   );
   const escapedTitle = escapeMarkdownLabel(cleanTitle);
   if (syntax === 'obsidian' && kind === 'internal') {
-    const escapedTarget = String(cleanTarget).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+    const escapedTarget = escapeMarkdownField(cleanTarget, {
+      escapeCharacters: '|'
+    });
     return {
       markdown: cleanTitle === cleanTarget
         ? `[[${escapedTarget}]]`

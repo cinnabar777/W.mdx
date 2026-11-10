@@ -1,22 +1,17 @@
 # Markdown compatibility matrix
 
-This is the working, evidence-backed compatibility gate for opening, importing,
-rendering, and exporting Markdown dialects. “Verified” means the named fixtures
-and operations pass; it does **not** mean every feature in a dialect's entire
-ecosystem is supported. Unsupported or untested cases must stay visible here
-instead of being described as fully compatible.
+This is the working, evidence-backed compatibility gate for opening, importing, rendering, and exporting Markdown dialects. “Verified” means the named fixtures and operations pass; it does **not** mean every feature in a dialect's entire ecosystem is supported. Unsupported or untested cases must stay visible here instead of being described as fully compatible.
 
-The implementation targets Wmdx as its editable internal Markdown form. A
-conversion that cannot preserve meaning should report a warning and retain the
-original clipboard text rather than silently dropping content.
+The implementation targets Wmdx as its editable internal Markdown form. A conversion that cannot preserve meaning should report a warning and retain the original clipboard text rather than silently dropping content.
 
 ## Executable matrix
 
 | Input and route | Verified scope | Evidence | Status / boundary |
 | --- | --- | --- | --- |
-| CommonMark 0.31.2 → Wmdx → CommonMark | 575 non-raw-HTML upstream examples are checked for parser families and rendered meaning across conversion. All 77 HTML-interoperability cases are separately run through import; unsupported fragments are preserved with warnings and active elements are omitted with warnings. Their rendered meaning is not compared. | `web/test/commonmark-spec.test.cjs` | **Verified for the 575 non-HTML examples; raw HTML is crash-tested only, not conformant.** |
+| CommonMark 0.31.2 reference corpus | All 652 upstream examples are individually checked against the pinned `commonmark@0.31.2` JavaScript reference renderer; 575 core examples also have individual parser-family and round-trip checks. | `Documentation/CommonMark-0.31.2-Validation-Plan.md`, `web/test/commonmark-spec.test.cjs` | **Reference baseline passes. CommonMark → Wmdx → CommonMark passes 565/575 core cases; examples 373, 389, 407, 408, 425, 426, 461, 463, 465, and 468 remain known nested-emphasis gaps. Raw HTML semantics remain pending for all 77 interoperability cases.** |
 | Inline HTML in Markdown rendered views | `<strong>/<b>`, `<em>/<i>`, `<del>/<s>/<strike>`, `<sub>`, `<sup>`, `<mark>`, `<code>`, and `<u>/<ins>` receive semantic styling in Live/WYSIWYG; Source retains literal tags. | `web/test/markdown-formatting.test.cjs`, `web/browser-tests/unified-layout.cjs` | **Verified for these inline tags.** Raw HTML links, images, breaks, CSS-specific styling, and HTML blocks are not yet styled as rendered objects in the editor. |
-| Raw HTML during explicit Markdown conversion | Inline links, emphasis/strike/sub/sup/highlight/underline/code tags, `<img>`, `<br>`, `<audio>`, and `<video>` map to Wmdx syntax. Top-level HTML blocks convert through the semantic HTML importer, including tables; code fences remain literal. The pinned 77-case CommonMark HTML corpus completes without runtime errors. | `web/test/markdown-conversion.test.cjs`, `web/test/commonmark-spec.test.cjs` | **Partial.** Nested HTML blocks inside lists/quotes, retained unsupported tags, and full CommonMark/GFM HTML conformance still need fixtures. |
+| Raw HTML during explicit Markdown conversion | Inline links, emphasis/strike/sub/sup/highlight/underline/code tags, `<img>`, `<br>`, `<audio>`, and `<video>` map to Wmdx syntax. Top-level HTML blocks convert through the semantic HTML importer, including tables; code fences remain literal. All 77 CommonMark raw-HTML cases have individual smoke checks and individual semantic-parity TODOs. | `web/test/markdown-conversion.test.cjs`, `web/test/commonmark-spec.test.cjs` | **Partial; smoke checks do not establish semantic compatibility.** Nested HTML blocks inside lists/quotes, retained unsupported tags, and full CommonMark/GFM HTML conformance still need assertions. |
+| Escape minimality | A target-parser check enumerates every backslash in each fixture, records its producer/target/reason, removes each one individually, and verifies the semantic effect. Selected cases now cover prose/block contexts, code-span backtick delimiters, common link labels and destinations, Wmdx resource fields, image/media labels, inline footnotes, table cells, and Wmdx collision delimiters. | `Documentation/Markdown-Escape-Minimality-Validation.md`, `web/test/markdown-escape-audit.test.cjs`, `web/src/markdownEscaping.js` | **Selected helper cases pass and have already exposed/fixed redundant escapes.** This is not exhaustive: every remaining serializer branch, URL combination, corpus example, dialect pair, and view interaction still needs reconciliation. |
 | GFM 0.29 → Wmdx → GFM | 21 upstream extension examples cover tables, task lists, strikethrough, and autolinks through import/export; rendered fixture checks compare WYSIWYG meaning. | `web/test/gfm-spec-extensions.test.cjs`, `web/test/dialect-rendering-fixtures.test.cjs` | **Verified for the pinned extension fixtures.** This is not complete GFM core conformance. |
 | GFM raw-HTML tagfilter in HTML export | The nine GFM-disallowed raw tag names are escaped in semantic HTML export; code fences stay literal code. | `web/test/html-export.test.cjs` | **Verified for the tagfilter list.** This does not establish complete raw-HTML parity in editor views. |
 | Obsidian → Wmdx → Obsidian | Curated examples cover wikilinks, heading links, highlights, image/audio/video/PDF embeds, callouts, tasks, and footnotes; conversion tests cover additional warning and preservation cases. | `web/test/dialect-rendering-fixtures.test.cjs`, `web/test/markdown-conversion.test.cjs` | **Partial, curated coverage.** Obsidian's full app-specific syntax and plugin ecosystem are not fully represented by an upstream conformance corpus. |
@@ -42,6 +37,7 @@ Run the web gate from `web/` with:
 node --test test/markdown-compatibility-matrix.test.cjs \
   test/markdown-element-compatibility.test.cjs \
   test/commonmark-spec.test.cjs \
+  test/markdown-escape-audit.test.cjs \
   test/gfm-spec-extensions.test.cjs \
   test/dialect-rendering-fixtures.test.cjs \
   test/markdown-conversion.test.cjs \
@@ -58,30 +54,14 @@ Run the HTML wrapper tests through the Android unit-test task:
 
 ## Known exclusions and next gates
 
-- CommonMark raw HTML interoperability remains separate from native Markdown
-  parsing. All 77 upstream HTML cases now complete explicit conversion without
-  crashes, but only selected examples have semantic conversion assertions.
-- GFM's nine-tag raw-HTML tagfilter is applied during HTML export. Raw HTML is
-  still not fully rendered or converted identically in every editor view.
-- The Obsidian fixture set is intentionally curated, not a claim of complete
-  Obsidian compatibility. Plugin-defined syntax, transclusion behavior, and
-  other app-only features need explicit support decisions and fixtures.
-- The web export bridge now renders semantic HTML from the full Markdown source
-  independently of editor mode, and browser tests verify it does not export
-  CodeMirror markup. Android document-provider asset reads, separate CSS, and
-  post-fix MHTML TOC-link behavior still need device acceptance.
-- MHTML import now honors the MIME `start` root and `Content-Base`; broader
-  real-world archive samples and CSS-dependent layouts still need fixtures.
-- HTML/MHTML conversions preserve tested semantic content and related media
-  bytes, but source-only distinctions can change: CommonMark has no native task
-  list, CommonMark pipe tables are not standard, and arbitrary HTML does not
-  carry Obsidian wikilink/callout identity unless the app adds metadata. Known
-  losses are reported where the converter can identify them. HTML link tooltip
-  titles and custom CSS have no general Wmdx equivalent.
-- LaTeX, AsciiMath, Typst, and a WYSIWYG equation editor are not integrated.
-  Treat math as unsupported unless a future implementation adds a parser,
-  renderer, editing behavior, and import/export fixtures.
+- CommonMark raw HTML interoperability remains separate from native Markdown parsing. All 77 upstream HTML cases have individual smoke checks, but their semantic-preservation and intentional security-loss assertions are pending.
+- The upstream CommonMark baseline still has 10 individually tracked nested emphasis mismatches. Do not report the 575 core round trips as fully verified.
+- Escape minimality now has per-backslash checks for selected link, resource, media, table, footnote, and Wmdx-specific cases. The code-search inventory, complete corpus coverage, and all remaining serializer branches are still pending; do not mark Markdown flavor compatibility complete on this basis.
+- GFM's nine-tag raw-HTML tagfilter is applied during HTML export. Raw HTML is still not fully rendered or converted identically in every editor view.
+- The Obsidian fixture set is intentionally curated, not a claim of complete Obsidian compatibility. Plugin-defined syntax, transclusion behavior, and other app-only features need explicit support decisions and fixtures.
+- The web export bridge now renders semantic HTML from the full Markdown source independently of editor mode, and browser tests verify it does not export CodeMirror markup. Android document-provider asset reads, separate CSS, and post-fix MHTML TOC-link behavior still need device acceptance.
+- MHTML import now honors the MIME `start` root and `Content-Base`; broader real-world archive samples and CSS-dependent layouts still need fixtures.
+- HTML/MHTML conversions preserve tested semantic content and related media bytes, but source-only distinctions can change: CommonMark has no native task list, CommonMark pipe tables are not standard, and arbitrary HTML does not carry Obsidian wikilink/callout identity unless the app adds metadata. Known losses are reported where the converter can identify them. HTML link tooltip titles and custom CSS have no general Wmdx equivalent.
+- LaTeX, AsciiMath, Typst, and a WYSIWYG equation editor are not integrated. Treat math as unsupported unless a future implementation adds a parser, renderer, editing behavior, and import/export fixtures.
 
-Do not mark a row fully compatible just because import and export return text.
-The acceptance test must compare rendered meaning, verify the entire document
-including its tail, and record any warning or intentional loss.
+Do not mark a row fully compatible just because import and export return text. The acceptance test must compare rendered meaning, verify the entire document including its tail, and record any warning or intentional loss.

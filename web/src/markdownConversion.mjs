@@ -15,6 +15,7 @@ import {
   parseWmdxOrderedListMarker
 } from './listSyntax.mjs';
 import { encodeMarkdownDestination } from './wmdxLinkSyntax.mjs';
+import { escapeMarkdownField } from './markdownEscaping.js';
 
 const markdownConversionParser = markdown({
   extensions: [
@@ -788,7 +789,10 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
         return protect(value);
       }
     )
-    .replace(/(`+)([\s\S]*?)\1/g, protect)
+    .replace(
+      /<code\b[^>]*>[\s\S]*?<\/code\s*>|(`+)([\s\S]*?)\1/g,
+      (match, fence) => fence ? protect(match) : match
+    )
     .replace(/<!--[\s\S]*?-->/g, protect);
   if (Parser) {
     text = text.replace(
@@ -833,7 +837,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
     })
     .replace(/<code\b([^>]*)>([\s\S]*?)<\/code\s*>/gi, (_, attributes, content) => {
       warnInlineHtmlStyle(attributes, warnings);
-      return `\`${content.replace(/`/g, '\\`')}\``;
+      return formatMarkdownCodeSpan(content);
     })
     .replace(/<mark\b([^>]*)>([\s\S]*?)<\/mark\s*>/gi, (_, attributes, content) => {
       if (/\bstyle\s*=/i.test(attributes)) {
@@ -999,13 +1003,13 @@ function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = ne
         );
         if (commonMarkReferences.has(referenceLabel)) return match;
         return embedMarker
-          ? `\\!\\[\\[${target}]]`
-          : `\\[\\[${target}]]`;
+          ? `\\![[${target}]]`
+          : `\\[[${target}]]`;
       }
     );
   }
 
-  const escapeTildes = value => value.replace(/~/g, '\\~');
+  const escapeTildes = value => `\\~${value.slice(1)}`;
   if (format === 'commonmark') {
     text = text.replace(
       /(?<![~\\])~~(?!~)(\S(?:[^~]*?\S)?)~~(?!~)/gu,
@@ -1016,13 +1020,14 @@ function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = ne
     /(?<![\p{L}\p{N}\p{M}_\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?![\p{L}\p{N}\p{M}_])/gu,
     match => match.replace(/(?<!\\)_/g, '\\_')
   );
-  const escapeEquals = match => match.replace(/(?<!\\)=/g, '\\=');
+  const escapeEquals = match => {
+    return `\\=${match.slice(1)}`;
+  };
   if (format !== 'obsidian') {
     text = text.replace(
       /(?<![=\\])==([₀₁₂]?)(\S(?:.*?\S)?)(?<!\\)==(?![=])/g,
       escapeEquals
     );
-    text = text.replace(/(?<![=\\])={3,}(?![=])/g, escapeEquals);
   }
   text = text.replace(
     /(?<![=\\])=(?![=])(?:[₀₁₂])?(\S(?:[^\n]*?\S)?)(?<!\\)=(?![=])/gu,
@@ -1034,7 +1039,7 @@ function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = ne
   );
   text = text.replace(
     /(?<![\\^])\^([^\s^\n](?:[^^\n]*?[^\s^\n])?)\^(?!\^)/gu,
-    match => match.replace(/\^/g, '\\^')
+    match => `\\^${match.slice(1)}`
   );
 
   for (const { marker, value } of protectedValues.reverse()) {
@@ -1214,20 +1219,191 @@ function escapeHtml(value) {
   })[character]);
 }
 
-function markdownText(value) {
-  return String(value ?? '')
-    .replace(/\\/g, '\\\\')
-    .replace(/([`*_{}\[\]<>#+|])/g, '\\$1')
-    .replace(/(^|\n)([ \t]*)(\d+|[A-Za-z]+)([.)])(?=[ \t])/g, '$1$2$3\\$4')
-    .replace(/(^|\n)([ \t]*)([-+])(?=[ \t])/g, '$1$2\\$3')
-    .replace(/(^|\n)([ \t]*)\.(?=[1-6][ \t])/g, '$1$2\\.');
+function delimiterCanOpenOrClose(source, from, to, marker) {
+  const before = source[from - 1] ?? '';
+  const after = source[to] ?? '';
+  const beforeWhitespace = !before || /\s/.test(before);
+  const afterWhitespace = !after || /\s/.test(after);
+  const beforePunctuation = Boolean(before && /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/.test(before));
+  const afterPunctuation = Boolean(after && /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/.test(after));
+  const leftFlanking = !afterWhitespace &&
+    (!afterPunctuation || beforeWhitespace || beforePunctuation);
+  const rightFlanking = !beforeWhitespace &&
+    (!beforePunctuation || afterWhitespace || afterPunctuation);
+  if (marker === '_') {
+    return {
+      canOpen: leftFlanking && (!rightFlanking || beforePunctuation),
+      canClose: rightFlanking && (!leftFlanking || afterPunctuation)
+    };
+  }
+  return { canOpen: leftFlanking, canClose: rightFlanking };
+}
+
+function pairedMarkdownDelimiterPositions(source, marker, { commonMarkEmphasis = false } = {}) {
+  const runs = [];
+  for (let index = 0; index < source.length;) {
+    if (source[index] !== marker) {
+      index++;
+      continue;
+    }
+    let end = index + 1;
+    while (source[end] === marker) end++;
+    runs.push({ from: index, to: end, length: end - index });
+    index = end;
+  }
+
+  const positions = new Set();
+  for (let openingIndex = 0; openingIndex < runs.length; openingIndex++) {
+    const opening = runs[openingIndex];
+    const openState = commonMarkEmphasis
+      ? delimiterCanOpenOrClose(source, opening.from, opening.to, marker)
+      : { canOpen: true };
+    if (!openState.canOpen) continue;
+    for (let closingIndex = openingIndex + 1; closingIndex < runs.length; closingIndex++) {
+      const closing = runs[closingIndex];
+      if (marker === '`' && closing.length !== opening.length) continue;
+      if (!source.slice(opening.to, closing.from).trim()) continue;
+      const closeState = commonMarkEmphasis
+        ? delimiterCanOpenOrClose(source, closing.from, closing.to, marker)
+        : { canClose: true };
+      if (closeState.canClose) {
+        for (let position = opening.from; position < opening.to; position++) {
+          positions.add(position);
+        }
+        break;
+      }
+    }
+  }
+  return positions;
+}
+
+function markdownText(value, {
+  escapeBlockSyntax = true,
+  tableCell = false,
+  wmdxSyntax = true
+} = {}) {
+  const source = String(value ?? '');
+  const escapePositions = new Set();
+  const addMatches = (pattern, captureIndex = 0) => {
+    for (const match of source.matchAll(pattern)) {
+      const capture = match[captureIndex] ?? '';
+      const start = match.index + Math.max(0, match[0].indexOf(capture));
+      const end = start + capture.length;
+      for (let index = start; index < end; index++) escapePositions.add(index);
+    }
+  };
+  const markPaired = (marker, options) => {
+    for (const position of pairedMarkdownDelimiterPositions(source, marker, options)) {
+      escapePositions.add(position);
+    }
+  };
+
+  markPaired('*', { commonMarkEmphasis: true });
+  markPaired('_', { commonMarkEmphasis: true });
+  markPaired('`');
+  markPaired('~');
+  if (wmdxSyntax) {
+    markPaired('^');
+    markPaired('=');
+  }
+
+  addMatches(/(&)(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]+);/gi, 1);
+  addMatches(/(<)(?=\/?[a-z][\w:-]*(?:\s[^<>]*?)?\/?>|!--[\s\S]*?-->|![A-Z]|!\[CDATA\[|\?)/gi, 1);
+  addMatches(/(<)(?=(?:https?|ftp):\/\/[^>\s]+|mailto:[^>\s]+|[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)/gi, 1);
+  const linkPattern = /!?\[[^\]\n]*\]\([^)\n]*\)/g;
+  for (const match of source.matchAll(linkPattern)) {
+    const open = match.index + match[0].indexOf('[');
+    escapePositions.add(open);
+  }
+  if (wmdxSyntax) {
+    for (const match of source.matchAll(/(!?\[[^\]\n]*\|[^\]\n]*\])/g)) {
+      const open = match.index + match[0].indexOf('[');
+      escapePositions.add(open);
+    }
+  }
+
+  if (tableCell) {
+    for (let index = 0; index < source.length; index++) {
+      if (source[index] === '|') escapePositions.add(index);
+    }
+  }
+  if (escapeBlockSyntax) {
+    addMatches(/(^|\n)([ \t]*)(#{1,6})(?=[ \t]|$)/gm, 3);
+    addMatches(/(^|\n)([ \t]*)(\d+|[A-Za-z]+)([.)])(?=[ \t])/gm, 4);
+    addMatches(/(^|\n)([ \t]*)([-+])(?=[ \t]|$)/gm, 3);
+    addMatches(/(^|\n)([ \t]*)(>)(?=[ \t]|$)/gm, 3);
+    addMatches(/(^|\n)([ \t]*)(\.)([1-6])(?=[ \t])/gm, 3);
+    addMatches(/(^|\n)([ \t]*)([-*_])(?:[ \t]*\3){2,}[ \t]*(?=\n|$)/gm, 3);
+    addMatches(/(^|\n)([ \t]*)([=-])\3*[ \t]*(?=\n|$)/gm, 3);
+    addMatches(/(^|\n)([ \t]*)(\[)(?=[^\]\n]+\]:)/gm, 3);
+  }
+
+  const escapablePunctuation = /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/;
+  let escaped = '';
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index];
+    if (character === '\\') {
+      let runEnd = index + 1;
+      while (source[runEnd] === '\\') runEnd++;
+      const runLength = runEnd - index;
+      const next = source[runEnd] ?? '';
+      const protectFollowingSyntax = !next ||
+        next === '\n' ||
+        next === '\r' ||
+        escapePositions.has(runEnd) ||
+        escapablePunctuation.test(next);
+      const outputSlashCount = protectFollowingSyntax
+        ? runLength * 2
+        : runLength === 1
+          ? 1
+          : runLength * 2 - 1;
+      escaped += '\\'.repeat(outputSlashCount);
+      index = runEnd - 1;
+      continue;
+    }
+    if (escapePositions.has(index)) escaped += '\\';
+    escaped += character;
+  }
+  return escaped;
 }
 
 function markdownLinkDestination(value) {
-  return String(value ?? '')
-    .replace(/\\/g, '\\\\')
+  const destination = String(value ?? '')
     .replace(/\s/g, '%20')
-    .replace(/([()<>])/g, '\\$1');
+    .replace(/</g, '%3C')
+    .replace(/>/g, '%3E');
+  let depth = 0;
+  let balancedParentheses = true;
+  for (const character of destination) {
+    if (character === '(') depth++;
+    else if (character === ')' && --depth < 0) {
+      balancedParentheses = false;
+      break;
+    }
+  }
+  balancedParentheses &&= depth === 0;
+  return escapeMarkdownField(destination, {
+    escapeCharacters: balancedParentheses ? '' : '()'
+  });
+}
+
+function formatMarkdownCodeSpan(value) {
+  const content = String(value ?? '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\n/g, ' ');
+  let longestBacktickRun = 0;
+  for (const match of content.matchAll(/`+/g)) {
+    longestBacktickRun = Math.max(longestBacktickRun, match[0].length);
+  }
+  const fence = '`'.repeat(longestBacktickRun + 1);
+  const needsPadding =
+    content.startsWith('`') ||
+    content.endsWith('`') ||
+    (content.startsWith(' ') &&
+      content.endsWith(' ') &&
+      /\S/.test(content));
+  const serializedContent = needsPadding ? ` ${content} ` : content;
+  return `${fence}${serializedContent}${fence}`;
 }
 
 function fragmentForSameDocumentHref(href, baseLocation, document) {
@@ -1296,8 +1472,8 @@ function isGeneratedTocNode(node) {
   return Boolean(node.closest?.('nav.toc-container'));
 }
 
-function inlineHtmlNode(node, warnings) {
-  if (node.nodeType === 3) return markdownText(node.nodeValue);
+function inlineHtmlNode(node, warnings, options = {}) {
+  if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
     return '';
@@ -1307,15 +1483,15 @@ function inlineHtmlNode(node, warnings) {
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
   }
+  if (tag === 'code') return formatMarkdownCodeSpan(node.textContent);
   const content = Array.from(node.childNodes)
-    .map(child => inlineHtmlNode(child, warnings)).join('');
+    .map(child => inlineHtmlNode(child, warnings, options)).join('');
   if (tag === 'strong' || tag === 'b') return `**${content}**`;
   if (tag === 'em' || tag === 'i') return `*${content}*`;
   if (tag === 'del' || tag === 's' || tag === 'strike') return `~~${content}~~`;
   if (tag === 'u' || tag === 'ins') return `<u>${content}</u>`;
   if (tag === 'sup') return `^${content}^`;
   if (tag === 'sub') return `~${content}~`;
-  if (tag === 'code') return `\`${content.replace(/`/g, '\\`')}\``;
   if (tag === 'mark') return `==${content}==`;
   if (tag === 'br') return '  \n';
   if (tag === 'a') {
@@ -1362,8 +1538,8 @@ function inlineHtmlNode(node, warnings) {
   return content;
 }
 
-function htmlBlock(node, warnings, depth = 0) {
-  if (node.nodeType === 3) return markdownText(node.nodeValue);
+function htmlBlock(node, warnings, depth = 0, options = {}) {
+  if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
     return '';
@@ -1373,11 +1549,11 @@ function htmlBlock(node, warnings, depth = 0) {
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
   }
-  const children = () => Array.from(node.childNodes)
-    .map(child => htmlBlock(child, warnings, depth + 1))
+  const children = (childOptions = options) => Array.from(node.childNodes)
+    .map(child => htmlBlock(child, warnings, depth + 1, childOptions))
     .filter(value => value.trim() !== '');
-  const inline = () => Array.from(node.childNodes)
-    .map(child => inlineHtmlNode(child, warnings)).join('');
+  const inline = (inlineOptions = options) => Array.from(node.childNodes)
+    .map(child => inlineHtmlNode(child, warnings, inlineOptions)).join('');
 
   if (['script', 'style', 'iframe', 'object', 'embed', 'form'].includes(tag)) {
     addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
@@ -1385,10 +1561,10 @@ function htmlBlock(node, warnings, depth = 0) {
   }
   if (/^h[1-6]$/.test(tag)) {
     const level = Number(tag[1]);
-    return `.${level} ${inline().trim()}`;
+    return `.${level} ${inline({ ...options, escapeBlockSyntax: false }).trim()}`;
   }
-  if (tag === 'p') return inline().trim();
-  if (tag === 'a') return inlineHtmlNode(node, warnings);
+  if (tag === 'p') return inline(options).trim();
+  if (tag === 'a') return inlineHtmlNode(node, warnings, options);
   if (tag === 'br') return '  \n';
   if (tag === 'hr') return '---';
   if (tag === 'pre') {
@@ -1401,7 +1577,8 @@ function htmlBlock(node, warnings, depth = 0) {
     return `${fence}${language}\n${content}\n${fence}`;
   }
   if (tag === 'blockquote') {
-    return children().join('\n\n').split('\n').map(line => `> ${line}`).join('\n');
+    return children({ ...options, escapeBlockSyntax: true })
+      .join('\n\n').split('\n').map(line => `> ${line}`).join('\n');
   }
   if (tag === 'ul' || tag === 'ol') {
     const ordered = tag === 'ol';
@@ -1453,11 +1630,17 @@ function htmlBlock(node, warnings, depth = 0) {
         const bodyBlocks = Array.from(item.childNodes)
           .filter(child => !(child.nodeType === 1 &&
             ['input', 'ul', 'ol'].includes(child.tagName.toLowerCase())))
-          .map(child => htmlBlock(child, warnings, depth + 1))
+          .map(child => htmlBlock(child, warnings, depth + 1, {
+            ...options,
+            escapeBlockSyntax: true
+          }))
           .filter(value => value.trim() !== '');
         const nested = Array.from(item.children)
           .filter(child => ['ul', 'ol'].includes(child.tagName.toLowerCase()))
-          .map(child => htmlBlock(child, warnings, depth + 1))
+          .map(child => htmlBlock(child, warnings, depth + 1, {
+            ...options,
+            escapeBlockSyntax: true
+          }))
           .filter(Boolean)
           .join('\n');
         const itemIndent = '  '.repeat(depth);
@@ -1504,7 +1687,11 @@ function htmlBlock(node, warnings, depth = 0) {
           rowSpan = groupRows.length - localIndex;
         }
         const content = Array.from(cell.childNodes)
-          .map(child => inlineHtmlNode(child, warnings))
+          .map(child => inlineHtmlNode(child, warnings, {
+            ...options,
+            escapeBlockSyntax: false,
+            tableCell: true
+          }))
           .join('')
           .trim();
         normalized[rowIndex][columnIndex] = content;
@@ -1556,11 +1743,15 @@ function htmlBlock(node, warnings, depth = 0) {
     const titleNode = node.querySelector(':scope > .wmdx-callout-title');
     const bodyNode = node.querySelector(':scope > .wmdx-callout-body');
     const title = titleNode
-      ? Array.from(titleNode.childNodes).map(child => inlineHtmlNode(child, warnings)).join('').trim()
+      ? Array.from(titleNode.childNodes)
+        .map(child => inlineHtmlNode(child, warnings, {
+          ...options,
+          escapeBlockSyntax: false
+        })).join('').trim()
       : 'Callout';
     const body = bodyNode
       ? Array.from(bodyNode.childNodes)
-        .map(child => htmlBlock(child, warnings, depth + 1))
+        .map(child => htmlBlock(child, warnings, depth + 1, options))
         .filter(value => value.trim())
         .join('\n\n')
       : '';
@@ -1573,11 +1764,14 @@ function htmlBlock(node, warnings, depth = 0) {
     const title = summary?.textContent?.trim() || 'Details';
     const body = Array.from(node.childNodes)
       .filter(child => child !== summary)
-      .map(child => htmlBlock(child, warnings, depth + 1))
+      .map(child => htmlBlock(child, warnings, depth + 1, options))
       .filter(value => value.trim())
       .join('\n\n');
     const marker = node.hasAttribute('open') ? '+' : '-';
-    return `±dropdown${marker} ${markdownText(title)}\n${body.split('\n')
+    return `±dropdown${marker} ${markdownText(title, {
+      ...options,
+      escapeBlockSyntax: false
+    })}\n${body.split('\n')
       .map(line => line ? `  ${line}` : '').join('\n')}`;
   }
   if (tag === 'figure') {
@@ -1601,7 +1795,7 @@ function htmlBlock(node, warnings, depth = 0) {
       return `[${markdownText(title)}](${source} "wmdx-${tag}")`;
     }
   }
-  if (tag === 'img') return inlineHtmlNode(node, warnings);
+  if (tag === 'img') return inlineHtmlNode(node, warnings, options);
   if (tag === 'div' && (node.hasAttribute('align') ||
       /text-align\s*:/i.test(node.getAttribute('style') ?? ''))) {
     const alignment = htmlAlignment(node);

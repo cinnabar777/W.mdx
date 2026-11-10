@@ -129,7 +129,7 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
     );
     assert.match(
       rawAnchor.markdown,
-      /\[\*\*the guide\*\*\]\(\/docs\/my%20\\\(file\\\)\.md\)/
+      /\[\*\*the guide\*\*\]\(\/docs\/my%20\(file\)\.md\)/
     );
     assert.match(rawAnchor.markdown, /escaped \\<a href="\/literal">text<\/a>/);
     assert.match(rawAnchor.markdown, /`<a href="\/code">code<\/a>`/);
@@ -185,7 +185,7 @@ test('superscript imports and exports through semantic HTML without reinterpreti
     await import('../src/markdownConversion.mjs');
   const { JSDOM } = require('jsdom');
   const Parser = new JSDOM('').window.DOMParser;
-  assert.equal(convertFromMarkdown('x^2^', 'gfm').markdown, 'x\\^2\\^');
+  assert.equal(convertFromMarkdown('x^2^', 'gfm').markdown, 'x\\^2^');
   assert.equal(convertFromMarkdown('x<sup>2</sup>', 'commonmark').markdown, 'x^2^');
   assert.equal(convertFromHtml('<p>x<sup>2</sup></p>', Parser).markdown, 'x^2^');
 
@@ -200,7 +200,7 @@ test('dialect conversion preserves literal tildes and exports CommonMark strike 
     '~~Hi~~ Hello, ~there~ world! `~code~`',
     'gfm'
   );
-  assert.equal(gfm.markdown, '~~Hi~~ Hello, \\~there\\~ world! `~code~`');
+  assert.equal(gfm.markdown, '~~Hi~~ Hello, \\~there~ world! `~code~`');
 
   const commonmark = convertFromMarkdown(
     '~literal~ ~~also literal~~ `~~code~~`',
@@ -208,7 +208,7 @@ test('dialect conversion preserves literal tildes and exports CommonMark strike 
   );
   assert.equal(
     commonmark.markdown,
-    '\\~literal\\~ \\~\\~also literal\\~\\~ `~~code~~`'
+    '\\~literal~ \\~~also literal~~ `~~code~~`'
   );
   assert.equal(exportMarkdown('~~removed~~', 'commonmark').markdown, '<del>removed</del>');
 });
@@ -275,7 +275,7 @@ test('only Obsidian import treats double equals as highlight syntax', async () =
     'commonmark'
   );
   assert.equal(exportMarkdown(standard.markdown, 'commonmark').markdown,
-    'Literal \\=\\=equals\\=\\= and \\=pen\\= markers.');
+    'Literal \\==equals== and \\=pen= markers.');
 
   const obsidian = convertFromMarkdown('==highlight==', 'obsidian');
   assert.equal(obsidian.markdown, '==highlight==');
@@ -362,11 +362,11 @@ test('CommonMark wikilink-like text stays literal when exported to Obsidian', as
     'commonmark'
   );
 
-  assert.ok(imported.markdown.includes(String.raw`\[\[not a link]]`));
-  assert.ok(imported.markdown.includes(String.raw`\!\[\[not-an-embed.png]]`));
+  assert.ok(imported.markdown.includes(String.raw`\[[not a link]]`));
+  assert.ok(imported.markdown.includes(String.raw`\![[not-an-embed.png]]`));
   const obsidian = exportMarkdown(imported.markdown, 'obsidian');
-  assert.ok(obsidian.markdown.includes(String.raw`\[\[not a link]]`));
-  assert.ok(obsidian.markdown.includes(String.raw`\!\[\[not-an-embed.png]]`));
+  assert.ok(obsidian.markdown.includes(String.raw`\[[not a link]]`));
+  assert.ok(obsidian.markdown.includes(String.raw`\![[not-an-embed.png]]`));
 });
 
 test('Obsidian wikilinks and media embeds import to Wmdx resources outside code', async () => {
@@ -541,7 +541,7 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.match(result.markdown, /!\[images\/photo\.png\|Caption\|120x60\|><\]/);
   assert.match(
     result.markdown,
-    /\[PDF attachment\]\(files\/notes%20\\\(1\\\)\.pdf "wmdx-attachment"\)/
+    /\[PDF attachment\]\(files\/notes%20\(1\)\.pdf "wmdx-attachment"\)/
   );
   assert.doesNotMatch(result.markdown, /alert\(1\)/);
   assert.ok(result.warnings.some(warning => warning.includes('script')));

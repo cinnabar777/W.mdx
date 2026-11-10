@@ -97,7 +97,7 @@ test('escapes literal pipes and backslashes inside resource fields', async () =>
   const syntax = formatWmdxResourceSyntax(input);
   assert.equal(
     syntax,
-    '![assets/one\\|two\\\\photo.png|Rain \\| shine|80%|><]'
+    '![assets/one\\|two\\photo.png|Rain \\| shine|80%|><]'
   );
   const parsed = parseWmdxResourceSyntax(syntax);
   assert.equal(parsed.source, input.source);
