@@ -587,7 +587,13 @@ function convertInlineHtmlToMarkdown(line, warnings) {
   let text = String(line ?? '')
     .replace(
       /<((?!(?:strong|b|em|i|del|s|sup|sub|mark)\b)[a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
-      protect
+      value => {
+        addWarning(
+          warnings,
+          'Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'
+        );
+        return protect(value);
+      }
     )
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<!--[\s\S]*?-->/g, protect);
@@ -728,7 +734,18 @@ export function convertFromMarkdown(source, format = 'commonmark') {
     const rawHtmlBlockState = { tags: [], comment: false };
     return lines.map((line, index) => {
       if (protectedLines.has(index)) return line;
-      if (isRawHtmlBlockLine(line, rawHtmlBlockState)) return line;
+      if (isRawHtmlBlockLine(line, rawHtmlBlockState)) {
+        if (!rawHtmlBlockState.comment &&
+            !line.includes('<!--') &&
+            !line.includes('-->') &&
+            /<\/?[a-z][\w:-]*\b/i.test(line)) {
+          addWarning(
+            warnings,
+            'Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'
+          );
+        }
+        return line;
+      }
       let text = escapeDialectSpecificWmdxSyntax(line, format);
       text = convertInlineHtmlToMarkdown(text, warnings);
       if (format === 'obsidian') {

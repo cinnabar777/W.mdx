@@ -42,6 +42,7 @@ test('raw HTML inline emphasis converts semantically while code and active block
   const source =
     'HTML <strong class="lead">bold</strong>, <em>italic</em>, ' +
     '<b>bold too</b>, and <i>italic too</i>. ' +
+    'Raw <a href="/link">HTML link</a>. ' +
     '`<strong>code</strong>`\n\n' +
     '<div><strong>raw block content</strong></div>\n\n' +
     '<div>\n<strong>multiline raw block</strong>\n</div>\n\n' +
@@ -53,6 +54,7 @@ test('raw HTML inline emphasis converts semantically while code and active block
   assert.equal(
     result.markdown,
     'HTML **bold**, *italic*, **bold too**, and *italic too*. ' +
+      'Raw <a href="/link">HTML link</a>. ' +
       '`<strong>code</strong>`\n\n' +
       '<div><strong>raw block content</strong></div>\n\n' +
       '<div>\n<strong>multiline raw block</strong>\n</div>\n\n' +
@@ -60,6 +62,9 @@ test('raw HTML inline emphasis converts semantically while code and active block
       '<script><strong>not active</strong></script>\n\n' +
       '<script>\n<strong>multiline script content</strong>\n</script>'
   );
+  assert.deepEqual(result.warnings, [
+    'Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'
+  ]);
 });
 
 test('superscript imports and exports through semantic HTML without reinterpreting literals', async () => {
