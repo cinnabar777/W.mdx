@@ -67,6 +67,45 @@ test('raw HTML inline emphasis converts semantically while code and active block
   ]);
 });
 
+test('top-level raw HTML blocks in Markdown use semantic HTML import without touching code', async () => {
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const { JSDOM } = require('jsdom');
+  const DOMParser = new JSDOM('').window.DOMParser;
+  const source = [
+    'Before.',
+    '',
+    '<div><p>A <strong>bold</strong> paragraph.</p></div>',
+    '',
+    '<table><tr><th>A</th><th>B</th></tr><tr><td>x</td><td>2</td></tr></table>',
+    '',
+    '<p>1. This is a paragraph, not a list.</p>',
+    '',
+    '```html',
+    '<div>literal code</div>',
+    '```',
+    '',
+    'After.'
+  ].join('\n');
+  const result = convertFromMarkdown(source, 'commonmark', { DOMParser });
+
+  assert.match(result.markdown, /A \*\*bold\*\* paragraph\./);
+  assert.match(result.markdown, /^\| A \| B \|$/m);
+  assert.match(result.markdown, /^\| x \| 2 \|$/m);
+  assert.match(result.markdown, /\\\. This is a paragraph, not a list\./);
+  assert.match(result.markdown, /```html\n<div>literal code<\/div>\n```/);
+  assert.match(result.markdown, /After\.$/);
+  assert.doesNotMatch(result.markdown, /<div><p>A/);
+  assert.deepEqual(result.warnings, []);
+
+  const nested = convertFromMarkdown(
+    '- item\n\n  <div>\n    <p>nested HTML block</p>\n  </div>',
+    'commonmark',
+    { DOMParser }
+  );
+  assert.match(nested.markdown, /<div>\n    <p>nested HTML block<\/p>\n  <\/div>/);
+  assert.ok(nested.warnings.some(warning => warning.includes('Raw HTML was preserved')));
+});
+
 test('superscript imports and exports through semantic HTML without reinterpreting literals', async () => {
   const { convertFromMarkdown, convertFromHtml, exportMarkdown } =
     await import('../src/markdownConversion.mjs');

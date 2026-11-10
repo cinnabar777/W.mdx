@@ -2,6 +2,7 @@ import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { GFM, Strikethrough, Table, TaskList } from '@lezer/markdown';
+import { marked } from 'marked';
 import {
   formatWmdxResourceSyntax,
   getWmdxResourceFallbackTitle,
@@ -616,6 +617,42 @@ function convertInlineHtmlToMarkdown(line, warnings) {
   return text;
 }
 
+function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
+  if (!Parser) return { source, restore: text => text };
+  const tokens = marked.lexer(source, { gfm: format !== 'commonmark' });
+  const replacements = [];
+  const chunks = [];
+  let cursor = 0;
+  for (const token of tokens) {
+    const raw = String(token.raw ?? '');
+    if (!raw) continue;
+    const from = source.indexOf(raw, cursor);
+    if (from < 0) continue;
+    chunks.push(source.slice(cursor, from));
+    let replacement = raw;
+    if (token.type === 'html' && token.block === true) {
+      const converted = convertFromHtml(token.text ?? raw, Parser);
+      const marker = `\uE020MDXHTMLBLOCK${replacements.length}\uE021`;
+      replacements.push({ marker, value: converted.markdown });
+      for (const warning of converted.warnings) addWarning(warnings, warning);
+      replacement = marker;
+    }
+    chunks.push(replacement);
+    cursor = from + raw.length;
+  }
+  chunks.push(source.slice(cursor));
+  return {
+    source: chunks.join(''),
+    restore(text) {
+      let restored = text;
+      for (const { marker, value } of replacements) {
+        restored = restored.replace(marker, value);
+      }
+      return restored;
+    }
+  };
+}
+
 const RAW_HTML_BLOCK_TAGS = new Set([
   'address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body',
   'caption', 'center', 'col', 'colgroup', 'dd', 'details', 'dialog', 'dir',
@@ -710,21 +747,28 @@ function escapeDialectSpecificWmdxSyntax(line, format) {
   return text;
 }
 
-export function convertFromMarkdown(source, format = 'commonmark') {
+export function convertFromMarkdown(source, format = 'commonmark', options = {}) {
   if (!MARKDOWN_IMPORT_FORMATS.includes(format) || format === 'html') {
     throw new TypeError(`Unsupported Markdown import format: ${format}`);
   }
   const warnings = [];
-  if (findYamlFrontmatterEndLine(String(source ?? '').replace(/\r\n/g, '\n').split('\n')) >= 0) {
+  const sourceText = String(source ?? '');
+  if (findYamlFrontmatterEndLine(sourceText.replace(/\r\n/g, '\n').split('\n')) >= 0) {
     addWarning(
       warnings,
       'YAML frontmatter was preserved verbatim; Wmdx does not interpret frontmatter properties.'
     );
   }
-  if (format === 'obsidian' && /%%/.test(String(source ?? ''))) {
+  if (format === 'obsidian' && /%%/.test(sourceText)) {
     addWarning(warnings, 'Obsidian comments have no native Wmdx equivalent and were kept unchanged.');
   }
-  const normalizedSource = normalizeStandardMarkdownMarkers(String(source ?? ''));
+  const protectedHtml = protectTopLevelMarkdownHtmlBlocks(
+    sourceText,
+    format,
+    options.DOMParser ?? globalThis.DOMParser,
+    warnings
+  );
+  const normalizedSource = normalizeStandardMarkdownMarkers(protectedHtml.source);
   const converted = protectCodeFences(normalizedSource, (originalLines, protectedLines) => {
     let lines = [...originalLines];
     if (format === 'obsidian' || format === 'gfm') {
@@ -754,7 +798,7 @@ export function convertFromMarkdown(source, format = 'commonmark') {
       return text;
     });
   });
-  return { markdown: converted, warnings };
+  return { markdown: protectedHtml.restore(converted), warnings };
 }
 
 function htmlAlignment(node) {
@@ -854,7 +898,10 @@ function escapeHtml(value) {
 function markdownText(value) {
   return String(value ?? '')
     .replace(/\\/g, '\\\\')
-    .replace(/([`*_{}\[\]<>#+.!|])/g, '\\$1');
+    .replace(/([`*_{}\[\]<>#+|])/g, '\\$1')
+    .replace(/(^|\n)([ \t]*)(\d+|[A-Za-z]+)([.)])(?=[ \t])/g, '$1$2$3\\$4')
+    .replace(/(^|\n)([ \t]*)([-+])(?=[ \t])/g, '$1$2\\$3')
+    .replace(/(^|\n)([ \t]*)\.(?=[1-6][ \t])/g, '$1$2\\.');
 }
 
 function inlineHtmlNode(node, warnings) {
