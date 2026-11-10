@@ -111,6 +111,9 @@ test('ordered Wmdx list markers auto-increment alphabetic and Roman labels', asy
     5
   );
   assert.equal(parseWmdxOrderedListMarker('inline a. text'), null);
+  assert.equal(parseWmdxOrderedListMarker('Definition.'), null);
+  assert.equal(parseWmdxOrderedListMarker('Definition. This is prose.'), null);
+  assert.equal(parseWmdxOrderedListMarker('AAA. Large alphabetic list item').ordinal, 703);
 });
 
 test('ordered Wmdx numbering restarts at each indentation level', async () => {

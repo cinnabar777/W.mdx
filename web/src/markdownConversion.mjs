@@ -928,10 +928,12 @@ function htmlImageSize(node, warnings) {
 function htmlImageResource(node, warnings, titleOverride = '', alignmentOverride = '') {
   const source = node.getAttribute('src');
   if (!source) return '';
+  const displaySource = node.getAttribute('data-wmdx-original-src') || source;
   return formatWmdxResourceSyntax({
     embed: true,
     source,
-    title: titleOverride || node.getAttribute('alt') || '',
+    title: titleOverride || node.getAttribute('alt') ||
+      getWmdxResourceFallbackTitle(displaySource),
     size: htmlImageSize(node, warnings),
     alignment: alignmentOverride || htmlAlignment(node)
   });
@@ -1020,6 +1022,15 @@ function inlineHtmlNode(node, warnings) {
   if (tag === 'br') return '  \n';
   if (tag === 'a') {
     const href = node.getAttribute('href');
+    if (node.getAttribute('data-wmdx-kind') === 'wikilink') {
+      const target = node.getAttribute('data-wmdx-target') || href;
+      if (target) {
+        return formatWmdxResourceSyntax({
+          source: target,
+          title: node.textContent?.trim() ?? content
+        });
+      }
+    }
     if (node.hasAttribute('title')) {
       addWarning(warnings, 'HTML link tooltip titles have no native Wmdx field and were omitted.');
     }
@@ -1057,7 +1068,7 @@ function htmlBlock(node, warnings, depth = 0) {
   }
   const children = () => Array.from(node.childNodes)
     .map(child => htmlBlock(child, warnings, depth + 1))
-    .filter(value => value !== '');
+    .filter(value => value.trim() !== '');
   const inline = () => Array.from(node.childNodes)
     .map(child => inlineHtmlNode(child, warnings)).join('');
 
@@ -1207,9 +1218,48 @@ function htmlBlock(node, warnings, depth = 0) {
     const rectangular = normalized.map(row =>
       [...row, ...Array(Math.max(0, width - row.length)).fill('')]
     );
-    const divider = Array(width).fill('---');
+    const headerCells = Array.from(rowNodes[0]?.children ?? []).filter(cell =>
+      ['th', 'td'].includes(cell.tagName.toLowerCase())
+    );
+    const divider = Array.from({ length: width }, (_, index) => {
+      const cell = headerCells[index];
+      const alignment = (
+        cell?.getAttribute('align') ??
+        /text-align\s*:\s*(left|center|right)/i.exec(cell?.getAttribute('style') ?? '')?.[1] ??
+        ''
+      ).toLowerCase();
+      if (alignment === 'left') return ':---';
+      if (alignment === 'center') return ':---:';
+      if (alignment === 'right') return '---:';
+      return '---';
+    });
     return [rectangular[0], divider, ...rectangular.slice(1)]
       .map(row => `| ${row.join(' | ')} |`).join('\n');
+  }
+  const calloutType = node.classList?.contains('wmdx-callout')
+    ? [...node.classList]
+      .find(className => className.startsWith('wmdx-callout-') && className !== 'wmdx-callout')
+      ?.slice('wmdx-callout-'.length)
+    : '';
+  if (
+    calloutType &&
+    /^[A-Za-z][A-Za-z0-9_-]*$/.test(calloutType) &&
+    ['aside', 'details'].includes(tag)
+  ) {
+    const titleNode = node.querySelector(':scope > .wmdx-callout-title');
+    const bodyNode = node.querySelector(':scope > .wmdx-callout-body');
+    const title = titleNode
+      ? Array.from(titleNode.childNodes).map(child => inlineHtmlNode(child, warnings)).join('').trim()
+      : 'Callout';
+    const body = bodyNode
+      ? Array.from(bodyNode.childNodes)
+        .map(child => htmlBlock(child, warnings, depth + 1))
+        .filter(value => value.trim())
+        .join('\n\n')
+      : '';
+    const folded = tag === 'details' ? (node.hasAttribute('open') ? '+' : '-') : '';
+    return `±${calloutType}${folded} ${title}` +
+      (body ? `\n${body.split('\n').map(line => line ? `  ${line}` : '').join('\n')}` : '');
   }
   if (tag === 'details') {
     const summary = node.querySelector(':scope > summary');
@@ -1217,7 +1267,7 @@ function htmlBlock(node, warnings, depth = 0) {
     const body = Array.from(node.childNodes)
       .filter(child => child !== summary)
       .map(child => htmlBlock(child, warnings, depth + 1))
-      .filter(Boolean)
+      .filter(value => value.trim())
       .join('\n\n');
     const marker = node.hasAttribute('open') ? '+' : '-';
     return `±dropdown${marker} ${markdownText(title)}\n${body.split('\n')
@@ -1231,11 +1281,16 @@ function htmlBlock(node, warnings, depth = 0) {
     }
   }
   if (tag === 'audio' || tag === 'video') {
-    const source = node.getAttribute('src') || node.querySelector('source')?.getAttribute('src');
+    const sourceNode = node.querySelector('source');
+    const source = node.getAttribute('src') || sourceNode?.getAttribute('src');
     if (source) {
       const title = node.getAttribute('aria-label') ||
-        node.querySelector('source')?.getAttribute('title') ||
-        getWmdxResourceFallbackTitle(source);
+        sourceNode?.getAttribute('title') ||
+        getWmdxResourceFallbackTitle(
+          node.getAttribute('data-wmdx-original-src') ||
+          sourceNode?.getAttribute('data-wmdx-original-src') ||
+          source
+        );
       return `[${markdownText(title)}](${source} "wmdx-${tag}")`;
     }
   }
@@ -1307,6 +1362,9 @@ function resolveEmbeddedHtmlResources(
         }
       }
       if (typeof embedded === 'string' && embedded.startsWith('data:')) {
+        if (!element.hasAttribute(`data-wmdx-original-${attribute}`)) {
+          element.setAttribute(`data-wmdx-original-${attribute}`, key);
+        }
         element.setAttribute(attribute, embedded);
       } else if (
         embeddedResources[lookupKey] &&
@@ -1319,6 +1377,52 @@ function resolveEmbeddedHtmlResources(
       }
     }
   }
+}
+
+function extractWmdxHtmlFootnotes(document, warnings) {
+  const section = document.querySelector('section.wmdx-footnotes');
+  if (!section) return { definitions: [], restored: false };
+  const items = Array.from(section.querySelectorAll(':scope > ol > li'));
+  if (!items.length) return { definitions: [], restored: false };
+  const labelsById = new Map(items.map((item, index) => [item.id, String(index + 1)]));
+  const references = Array.from(
+    document.querySelectorAll('sup.wmdx-footnote-reference')
+  );
+  if (!references.length) return { definitions: [], restored: false };
+
+  const referenceLabels = references.map(reference => {
+    const href = reference.querySelector('a[href^="#"]')?.getAttribute('href') ?? '';
+    return labelsById.get(href.slice(1)) ?? '';
+  });
+  if (referenceLabels.some(label => !label)) {
+    addWarning(warnings, 'HTML footnote references could not be matched to their definitions.');
+    return { definitions: [], restored: false };
+  }
+
+  const definitions = items.map((item, index) => {
+    const copy = item.cloneNode(true);
+    copy.querySelectorAll('.wmdx-footnote-backref').forEach(backref => backref.remove());
+    const body = Array.from(copy.childNodes)
+      .map(child => htmlBlock(child, warnings))
+      .filter(value => value.trim())
+      .join('\n\n');
+    if (!body) return '';
+    const lines = body.split('\n');
+    return `[^${index + 1}]: ${lines[0]}` +
+      lines.slice(1).map(line => `\n    ${line}`).join('');
+  }).filter(Boolean);
+  if (definitions.length !== items.length) {
+    addWarning(warnings, 'An empty HTML footnote definition could not be restored.');
+    return { definitions: [], restored: false };
+  }
+
+  references.forEach((reference, index) => {
+    reference.replaceWith(
+      document.createTextNode(`WMDXFOOTNOTEREF${referenceLabels[index]}END`)
+    );
+  });
+  section.remove();
+  return { definitions, restored: true };
 }
 
 export function convertFromHtml(
@@ -1342,13 +1446,18 @@ export function convertFromHtml(
     warnings,
     resolveEmbeddedResource
   );
+  const footnotes = extractWmdxHtmlFootnotes(document, warnings);
   const body = document.body;
-  const markdown = Array.from(body.childNodes)
+  const mainMarkdown = Array.from(body.childNodes)
     .map(node => htmlBlock(node, warnings))
     .filter(Boolean)
     .join('\n\n')
     .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    .trim()
+    .replace(/WMDXFOOTNOTEREF(\d+)END/g, '[^$1]');
+  const markdown = [mainMarkdown, ...footnotes.definitions]
+    .filter(Boolean)
+    .join('\n\n');
   if (!markdown && String(source ?? '').trim()) {
     throw new Error('No readable document content could be converted from this HTML.');
   }
@@ -1367,7 +1476,12 @@ function convertWmdxResourceToMarkdown(raw, dialect, warnings) {
     return `[${title || getWmdxResourceFallbackTitle(source)}](${encodeMarkdownDestination(source)})`;
   }
 
-  if (dialect === 'obsidian' && !alignment && (!size || size.unit === 'px')) {
+  if (
+    dialect === 'obsidian' &&
+    !alignment &&
+    (!size?.unit || size.unit === 'px') &&
+    !/^[a-z][a-z\d+.-]*:/i.test(source)
+  ) {
     const alias = title && title !== getWmdxResourceFallbackTitle(source)
       ? title
       : size?.width ? String(size.width) : '';
@@ -1424,6 +1538,12 @@ function convertWmdxResourceToMarkdown(raw, dialect, warnings) {
 function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
   const output = [...lines];
   const openerPattern = /^([ \t]*)±([A-Za-z](?:[A-Za-z0-9_-]*[A-Za-z0-9])?)([+-]?)(?:[ \t]+(.*))?$/;
+  const emphasizeTitle = value => {
+    const title = String(value ?? '').trim();
+    return /^\*\*[\s\S]*\*\*$/.test(title) || /^__[\s\S]*__$/.test(title)
+      ? title
+      : `**${title}**`;
+  };
   for (let index = 0; index < lines.length; index += 1) {
     if (protectedLines.has(index)) continue;
     const opener = openerPattern.exec(lines[index]);
@@ -1457,14 +1577,14 @@ function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
       ['note', 'info', 'tip', 'important', 'warning', 'caution'].includes(type)) {
       const mapped = ['info', 'note'].includes(type) ? 'NOTE' : type.toUpperCase();
       const quoted = bodyText.split('\n').map(line => `> ${line}`).join('\n');
-      const titleLine = title ? `> **${title}**\n` : '';
+      const titleLine = title ? `> ${emphasizeTitle(title)}\n` : '';
       output[index] = `> [!${mapped}]\n${titleLine}${quoted}`;
       for (let row = index + 1; row < end; row += 1) output[row] = '';
       if (state) {
         addWarning(warnings, 'GFM alerts do not preserve the Wmdx expanded or collapsed state.');
       }
     } else {
-      const titleLine = title ? `> **${title}**\n` : `> **${type}**\n`;
+      const titleLine = title ? `> ${emphasizeTitle(title)}\n` : `> **${type}**\n`;
       output[index] = `${titleLine}${bodyText.split('\n').map(line => `> ${line}`).join('\n')}`;
       for (let row = index + 1; row < end; row += 1) output[row] = '';
       addWarning(warnings, 'Wmdx callout type, styling, and fold state were exported as a standard block quote.');
@@ -1697,16 +1817,25 @@ function mapWmdxTaskItems(lines, protectedLines, dialect, warnings) {
   let used = false;
   const output = lines.map((line, index) => {
     if (protectedLines.has(index)) return line;
-    const match = /^([ \t]*)\[([ xX])\][ \t]+(.*)$/.exec(line);
-    if (!match) return line;
+    const wmdxTask = /^([ \t]*)\[([ xX])\][ \t]+(.*)$/.exec(line);
+    const markdownTask = /^([ \t]*)([-+*]|\d+[.)])[ \t]+\[([ xX])\][ \t]+(.*)$/.exec(line);
+    const task = wmdxTask
+      ? { indent: wmdxTask[1], marker: '-', checked: wmdxTask[2], text: wmdxTask[3] }
+      : markdownTask
+        ? { indent: markdownTask[1], marker: markdownTask[2], checked: markdownTask[3], text: markdownTask[4] }
+        : null;
+    if (!task) return line;
+    if (dialect !== 'commonmark') {
+      return wmdxTask
+        ? `${task.indent}- [${task.checked.toLowerCase()}] ${task.text}`
+        : line;
+    }
     used = true;
-    const checked = match[2].toLowerCase() === 'x';
-    const checkbox = dialect === 'commonmark'
-      ? `<input type="checkbox" disabled${checked ? ' checked' : ''}>`
-      : `[${checked ? 'x' : ' '}]`;
-    return `${match[1]}- ${checkbox} ${match[3]}`;
+    const checked = task.checked.toLowerCase() === 'x';
+    const checkbox = `<input type="checkbox" disabled${checked ? ' checked' : ''}>`;
+    return `${task.indent}${task.marker} ${checkbox} ${task.text}`;
   });
-  if (used && dialect === 'commonmark') {
+  if (used) {
     addWarning(warnings, 'CommonMark has no task-list extension; checkboxes use inline HTML.');
   }
   return output;
@@ -1727,6 +1856,17 @@ export function exportMarkdown(source, dialect = 'commonmark') {
     );
   }
   const markdown = protectCodeFences(source, (originalLines, protectedLines) => {
+    if (
+      dialect === 'commonmark' &&
+      originalLines.some((line, index) =>
+        !protectedLines.has(index) && /^[ \t]*\[\^[^\]\s]+\]:/.test(line)
+      )
+    ) {
+      addWarning(
+        warnings,
+        'CommonMark has no footnote syntax; footnote source was preserved but may render as ordinary text.'
+      );
+    }
     if (dialect !== 'obsidian' && originalLines.some((line, index) =>
       !protectedLines.has(index) && /(?<!\\)\^\[[^\]\n]+\]/.test(line)
     )) {

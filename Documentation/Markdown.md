@@ -496,12 +496,12 @@ W.mdx is a combination rather than a strict implementation of one flavor: it use
 
 ### Obsidian Flavored Markdown
 
-**Implemented:** `[[target]]` wiki links, aliases such as `[[target|display text]]`, current-document heading links such as `[[#Heading]]`, whole-document `![[path]]` embeds with optional aliases, local image embeds such as `![[image.png]]` (including pixel-size modifiers), Obsidian-style callout markers, highlights, task lists, and reference footnotes.
+**Implemented:** `[[target]]` wiki links, aliases such as `[[target|display text]]`, current-document heading links such as `[[#Heading]]`, whole-document `![[path]]` embeds with optional aliases, and local image/audio/video/PDF and supported attachment embeds such as `![[image.png]]` or `![[clip.mp4]]` (including pixel-size modifiers where applicable). Obsidian-style callout markers, highlights, task lists, and reference footnotes are also supported.
 
 **Not implemented or only partially compatible:**
 
 - Heading and block transclusion such as `![[note#Heading]]` and `![[note#^block]]`; W.mdx embeds the whole supported document.
-- Obsidian audio, video, and PDF embed forms. Use W.mdx's Markdown media links or attachment links for these files.
+- Exact vault resolution and application-specific embed behavior. Local audio/video/PDF embeds map to Wmdx media or attachment resources and export back to Obsidian embed syntax when their metadata is representable; external vault resolution still depends on the receiving app.
 - `%% comments %%`, semantic tags (a `#tag` is plain text), YAML properties/frontmatter, math, Mermaid diagrams, and plugin-specific syntax.
 - Exact Obsidian vault resolution and app behavior. W.mdx's file access and linked-file behavior follow its own folder permissions and document settings.
 
@@ -535,7 +535,7 @@ Focused tests verify named Wmdx behaviors; they do not establish full specificat
 | --- | --- | --- |
 | CommonMark core | Import/export rendered-semantic comparisons cover all 575 non-HTML examples against the pinned reference renderer. Focused editor tests cover character references, escapes, hard breaks, code spans, nested lists, and lists in quotes while preserving source. | In-editor interactions and Android file-provider behavior still need acceptance testing; raw-HTML cases are excluded. |
 | GFM extensions | Pipe tables, tasks, strikethrough, and autolinks are recognized; all 21 non-HTML GFM 0.29 extension examples compare WYSIWYG semantics with upstream expected HTML. | GitHub-specific mentions/issue references and full GFM interoperability are not promised. |
-| Obsidian conventions | Wiki links/aliases, heading links, image embeds, highlights, callouts, tasks, and footnotes have curated WYSIWYG fixtures. | Heading/block transclusion, plugin syntax, YAML properties, and full vault behavior are outside scope. |
+| Obsidian conventions | Wiki links/aliases, heading links, image/audio/video/PDF embeds, highlights, callouts, tasks, and footnotes have focused conversion fixtures; a round-trip test covers callout type/fold state, wikilink identity, highlight, and footnote content through HTML. | Heading/block transclusion, plugin syntax, YAML properties, and full vault behavior are outside scope. |
 | Wmdx syntax | Decimal headings, alphabetic/Roman list markers, native tasks, resource links, media/attachment metadata, callouts, numbered footnotes, underline styles, highlight slots, and pen slots are implemented. | App/device acceptance remains necessary; export can lose style or dialect-specific semantics and reports known losses. |
 | Import and paste | Menu actions preview conversion from CommonMark, GFM, Obsidian, or HTML into Wmdx. Paste uses the same conversion engine. | Complex HTML styling, HTML comments, merged table cells, and unsupported dialect features may be omitted with warnings. |
 | Markdown export | Menu action exports CommonMark, GFM, or Obsidian and saves a separate Markdown file. Headings, links, supported callouts/tasks, and Wmdx formatting have explicit mappings. | CommonMark tables are preserved as pipe-table source with a warning; Wmdx ordered styles become decimal; color and pen semantics may be lost. Test all target renderers and round trips. |

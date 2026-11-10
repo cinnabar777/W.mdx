@@ -2,6 +2,10 @@ import { marked } from 'marked';
 import createDOMPurify from 'dompurify';
 import { convertFromMarkdown, exportMarkdown } from './markdownConversion.mjs';
 import { parseFootnotes } from './footnotes.js';
+import {
+  getWmdxResourceFallbackTitle,
+  parseWmdxResourceSyntax
+} from './wmdxResources.js';
 
 function calloutDescriptors(markdown) {
   const descriptors = [];
@@ -385,6 +389,81 @@ function normalizeProfileSource(source, profile) {
   return convertFromMarkdown(source, profile, { DOMParser: null });
 }
 
+function annotateObsidianWikiLinks(document, markdown) {
+  const resources = [];
+  let fenceCharacter = '';
+  let fenceLength = 0;
+  for (const line of String(markdown ?? '').split(/\r?\n/)) {
+    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      if (!fenceCharacter) {
+        fenceCharacter = fence[1][0];
+        fenceLength = fence[1].length;
+      } else if (fence[1][0] === fenceCharacter && fence[1].length >= fenceLength) {
+        fenceCharacter = '';
+        fenceLength = 0;
+      }
+      continue;
+    }
+    if (fenceCharacter) continue;
+
+    let codeTicks = 0;
+    for (let index = 0; index < line.length;) {
+      if (line[index] === '\\') {
+        index += 2;
+        continue;
+      }
+      if (line[index] === '`') {
+        let end = index + 1;
+        while (line[end] === '`') end++;
+        const length = end - index;
+        codeTicks = codeTicks === length ? 0 : codeTicks || length;
+        index = end;
+        continue;
+      }
+      if (!codeTicks) {
+        const start = line[index] === '!' && line[index + 1] === '[' ? index : index;
+        if (line[start] === '[') {
+          const end = line.indexOf(']', start + 1);
+          if (end >= 0) {
+            const resource = parseWmdxResourceSyntax(line.slice(start, end + 1));
+            if (resource && !resource.embed) {
+              resources.push({
+                source: resource.source,
+                title: resource.displayTitle
+              });
+            }
+            index = end + 1;
+            continue;
+          }
+        }
+      }
+      index++;
+    }
+  }
+
+  const anchors = Array.from(document.querySelectorAll('a[href]'));
+  const hrefKey = value => {
+    try {
+      return new URL(String(value ?? ''), 'https://wmdx.invalid/').href;
+    } catch {
+      return String(value ?? '');
+    }
+  };
+  const usedAnchors = new Set();
+  for (const resource of resources) {
+    const anchor = anchors.find(candidate =>
+      !usedAnchors.has(candidate) &&
+      hrefKey(candidate.getAttribute('href')) === hrefKey(resource.source) &&
+      candidate.textContent.trim() === resource.title
+    );
+    if (!anchor) continue;
+    anchor.setAttribute('data-wmdx-kind', 'wikilink');
+    anchor.setAttribute('data-wmdx-target', resource.source);
+    usedAnchors.add(anchor);
+  }
+}
+
 /**
  * Produces standalone semantic HTML from the document's Markdown source.
  * The editor's CodeMirror DOM is intentionally not used as an export format.
@@ -417,6 +496,9 @@ export function renderMarkdownHtml(source, {
     .filter(warning => !warning.includes('GFM alerts do not preserve the Wmdx expanded or collapsed state.'));
   const markdownHtml = renderMarkdownForDialect(exported.markdown, targetDialect);
   const parsed = new window.DOMParser().parseFromString(markdownHtml, 'text/html');
+  if (normalizedProfile === 'obsidian') {
+    annotateObsidianWikiLinks(parsed, normalized.markdown);
+  }
   replaceFootnoteTokens(parsed, footnotes.references);
   enhanceCallouts(parsed, calloutDescriptors(normalized.markdown));
   enhanceImportedMediaLinks(parsed);
@@ -465,7 +547,8 @@ export function renderMarkdownHtml(source, {
     ADD_TAGS: ['audio', 'video', 'source', 'track', 'figure', 'figcaption', 'mark', 'details', 'summary'],
     ADD_ATTR: [
       'controls', 'preload', 'poster', 'width', 'height', 'download',
-      'start', 'checked', 'disabled', 'colspan', 'rowspan', 'data-wmdx-kind'
+      'start', 'checked', 'disabled', 'colspan', 'rowspan',
+      'data-wmdx-kind', 'data-wmdx-target'
     ],
     ADD_DATA_URI_TAGS: ['audio', 'video', 'source', 'a'],
     FORBID_TAGS: ['style', 'link', 'iframe', 'object', 'embed', 'form']

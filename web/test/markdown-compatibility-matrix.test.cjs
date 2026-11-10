@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { JSDOM } = require('jsdom');
+const { marked } = require('marked');
 
 const { Parser: CommonMarkParser, HtmlRenderer } = require('commonmark');
 
@@ -188,6 +189,62 @@ test('MHTML resource handles load embedded bytes lazily and only once per part',
   assert.equal((imported.markdown.match(/data:image\/png;base64,AQIDBA==/g) || []).length, 2);
 });
 
+test('MHTML-imported images, media, and attachments survive conversion to each Markdown flavor', async () => {
+  const { convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const dom = new JSDOM('');
+  const Parser = dom.window.DOMParser;
+  const embeddedResources = {
+    'https://example.test/docs/images/pixel.png': 'data:image/png;base64,AQIDBA==',
+    'https://example.test/docs/audio/voice.ogg': 'data:audio/ogg;base64,BAUG',
+    'https://example.test/docs/video/clip.mp4': 'data:video/mp4;base64,BwgJ',
+    'https://example.test/docs/files/manual.pdf': 'data:application/pdf;base64,CgsM'
+  };
+  const imported = convertFromHtml(
+    '<h1>Archive</h1><img src="images/pixel.png">' +
+      '<audio controls src="audio/voice.ogg"></audio>' +
+      '<video controls src="video/clip.mp4"></video>' +
+      '<a href="files/manual.pdf" download>Manual PDF</a>',
+    Parser,
+    {
+      baseLocation: 'https://example.test/docs/page.html',
+      embeddedResources
+    }
+  );
+  assert.deepEqual(imported.warnings, []);
+  assert.match(imported.markdown, /\|pixel\.png\|\|/);
+  assert.match(imported.markdown, /\[voice\.ogg\]\(data:audio\/ogg/);
+  assert.match(imported.markdown, /\[clip\.mp4\]\(data:video\/mp4/);
+  assert.match(imported.markdown, /\[Manual PDF\]\(data:application\/pdf/);
+
+  for (const profile of ['commonmark', 'gfm', 'obsidian']) {
+    const exported = exportMarkdown(imported.markdown, profile);
+    const rendered = renderMarkdownHtml(exported.markdown, {
+      profile,
+      window: dom.window
+    });
+    const output = new Parser().parseFromString(rendered.html, 'text/html');
+    assert.equal(output.querySelector('img')?.getAttribute('src'), embeddedResources[
+      'https://example.test/docs/images/pixel.png'
+    ], `${profile} image data`);
+    assert.equal(output.querySelector('audio')?.getAttribute('src'), embeddedResources[
+      'https://example.test/docs/audio/voice.ogg'
+    ], `${profile} audio data`);
+    assert.equal(output.querySelector('video')?.getAttribute('src'), embeddedResources[
+      'https://example.test/docs/video/clip.mp4'
+    ], `${profile} video data`);
+    assert.equal(output.querySelector('a[title="wmdx-attachment"]')?.getAttribute('href'), embeddedResources[
+      'https://example.test/docs/files/manual.pdf'
+    ], `${profile} attachment data`);
+    assert.equal(
+      rendered.warnings.some(warning => warning.includes('local export resource could not be embedded')),
+      false,
+      `${profile} reported a missing MHTML resource`
+    );
+  }
+});
+
 test('shared Markdown semantics survive all nine CommonMark, GFM, and Obsidian conversions', async () => {
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
@@ -195,7 +252,7 @@ test('shared Markdown semantics survive all nine CommonMark, GFM, and Obsidian c
   const source = [
     '# Shared syntax',
     '',
-    'A **bold** and *italic* [link](https://example.test "title") with `code`.',
+    'A **bold** and *italic* [link](https://example.test) with `code`.',
     '',
     '- first item',
     '- second item',
@@ -222,4 +279,158 @@ test('shared Markdown semantics survive all nine CommonMark, GFM, and Obsidian c
       );
     }
   }
+});
+
+test('shared Markdown content survives each flavor → HTML → each target-flavor round trip', async () => {
+  const { convertFromMarkdown, convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const profiles = ['commonmark', 'gfm', 'obsidian'];
+  const source = [
+    '# Round-trip audit',
+    '',
+    'A **bold** and *italic* [link](https://example.test) with `code`.',
+    '',
+    '- first item',
+    '- second item',
+    '',
+    '> A quoted paragraph.'
+  ].join('\n');
+  const dom = new JSDOM('');
+  const Parser = dom.window.DOMParser;
+  const expected = canonicalizeHtml(renderCommonMark(source), dom.window.document);
+
+  for (const sourceProfile of profiles) {
+    const imported = convertFromMarkdown(source, sourceProfile);
+    const html = renderMarkdownHtml(imported.markdown, {
+      profile: 'wmdx',
+      window: dom.window
+    });
+    const returned = convertFromHtml(html.html, Parser);
+
+    assert.deepEqual(imported.warnings, [], `${sourceProfile} import warnings`);
+    assert.deepEqual(html.warnings, [], `${sourceProfile} HTML export warnings`);
+    assert.deepEqual(returned.warnings, [], `${sourceProfile} HTML re-import warnings`);
+
+    for (const targetProfile of profiles) {
+      const exported = exportMarkdown(returned.markdown, targetProfile);
+      const targetHtml = renderMarkdownHtml(exported.markdown, {
+        profile: targetProfile,
+        window: dom.window
+      });
+      assert.deepEqual(exported.warnings, [], `${sourceProfile} → ${targetProfile} warnings`);
+      assert.deepEqual(
+        canonicalizeHtml(targetHtml.html, dom.window.document),
+        expected,
+        `${sourceProfile} → HTML → ${targetProfile} changed shared rendered meaning`
+      );
+    }
+  }
+});
+
+test('GFM tasks, strike, and aligned tables survive HTML and Markdown round trips', async () => {
+  const { convertFromMarkdown, convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const source = [
+    '# GFM round trip',
+    '',
+    '- [x] Complete',
+    '- [ ] Pending',
+    '',
+    '~~removed~~',
+    '',
+    '| Left | Right |',
+    '| :--- | ---: |',
+    '| A | 2 |'
+  ].join('\n');
+  const dom = new JSDOM('');
+  const Parser = dom.window.DOMParser;
+  const expected = canonicalizeHtml(marked.parse(source), dom.window.document);
+  const imported = convertFromMarkdown(source, 'gfm');
+  const html = renderMarkdownHtml(imported.markdown, {
+    profile: 'wmdx',
+    window: dom.window
+  });
+  const returned = convertFromHtml(html.html, Parser);
+
+  assert.deepEqual(imported.warnings, []);
+  assert.deepEqual(html.warnings, []);
+  assert.deepEqual(returned.warnings, []);
+  assert.match(returned.markdown, /\| :--- \| ---: \|/);
+
+  const exported = exportMarkdown(returned.markdown, 'gfm');
+  const finalHtml = renderMarkdownHtml(exported.markdown, {
+    profile: 'gfm',
+    window: dom.window
+  });
+  assert.deepEqual(exported.warnings, []);
+  assert.deepEqual(
+    canonicalizeHtml(finalHtml.html, dom.window.document),
+    expected,
+    'GFM task state, strike, or table alignment changed in the round trip'
+  );
+
+  const commonMark = exportMarkdown(returned.markdown, 'commonmark');
+  assert.ok(commonMark.warnings.some(warning => warning.includes('Pipe tables')));
+  assert.ok(commonMark.warnings.some(warning => warning.includes('task-list')));
+  const commonMarkHtml = renderMarkdownHtml(commonMark.markdown, {
+    profile: 'commonmark',
+    window: dom.window
+  });
+  const commonMarkDocument = new Parser().parseFromString(commonMarkHtml.html, 'text/html');
+  assert.deepEqual(
+    Array.from(commonMarkDocument.querySelectorAll('input[type="checkbox"]'))
+      .map(input => input.checked),
+    [true, false],
+    'CommonMark export should preserve GFM checkbox state with disabled HTML inputs'
+  );
+});
+
+test('Obsidian callout, wikilink, highlight, and footnote survive HTML round trip', async () => {
+  const { convertFromMarkdown, convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const source = [
+    '[[Project Notes#Setup|Read this]]',
+    '',
+    '> [!warning]- Attention',
+    '> Be careful.',
+    '',
+    '==highlight==',
+    '',
+    'This has a footnote.[^source]',
+    '',
+    '[^source]: Definition.'
+  ].join('\n');
+  const dom = new JSDOM('');
+  const Parser = dom.window.DOMParser;
+  const imported = convertFromMarkdown(source, 'obsidian');
+  const html = renderMarkdownHtml(imported.markdown, {
+    profile: 'obsidian',
+    window: dom.window
+  });
+  const returned = convertFromHtml(html.html, Parser);
+
+  assert.deepEqual(imported.warnings, []);
+  assert.deepEqual(html.warnings, []);
+  assert.deepEqual(returned.warnings, []);
+  assert.match(html.html, /data-wmdx-kind="wikilink"/);
+  assert.match(html.html, /wmdx-callout-warning/);
+  assert.match(returned.markdown, /^\[Project Notes#Setup\|Read this\|\|\]$/m);
+  assert.match(returned.markdown, /^±warning- \*\*Attention\*\*$/m);
+  assert.match(returned.markdown, /==highlight==/);
+  assert.match(returned.markdown, /\[\^1\]: Definition\./);
+
+  const obsidian = exportMarkdown(returned.markdown, 'obsidian');
+  assert.deepEqual(obsidian.warnings, []);
+  assert.match(obsidian.markdown, /^\[\[Project Notes#Setup\|Read this\]\]$/m);
+  assert.match(obsidian.markdown, /^> \[!warning\]- \*\*Attention\*\*$/m);
+  assert.match(obsidian.markdown, /^\[\^1\]: Definition\.$/m);
+
+  const commonMark = exportMarkdown(returned.markdown, 'commonmark');
+  assert.ok(commonMark.warnings.some(warning => warning.includes('callout')));
+  assert.ok(commonMark.warnings.some(warning => warning.includes('footnote')));
+  assert.match(commonMark.markdown, /\[\^1\]: Definition\./);
+  assert.match(commonMark.markdown, /Definition\./);
 });

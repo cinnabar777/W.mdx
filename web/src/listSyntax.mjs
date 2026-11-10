@@ -19,7 +19,7 @@ const ORDERED_STYLES = new Set([
   'roman_upper'
 ]);
 const LIST_ITEM_PREFIX =
-  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|[A-Za-z]+[.)][ \t]+)/;
+  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|[A-Za-z]{1,3}[.)][ \t]+)/;
 
 export function normalizeListSyntaxSettings(preferences = {}) {
   const settings = {
@@ -156,7 +156,7 @@ export function getOrderedListPrefixGenerator(style, delimiter = '.') {
 }
 
 export function parseWmdxOrderedListMarker(lineText, preferredStyle = null) {
-  const match = /^([ \t]*(?:>\s*)*)([A-Za-z]+)([.)])(?=[ \t]|$)/.exec(
+  const match = /^([ \t]*(?:>\s*)*)([A-Za-z]{1,3})([.)])(?=[ \t])/.exec(
     String(lineText ?? '')
   );
   if (!match) return null;

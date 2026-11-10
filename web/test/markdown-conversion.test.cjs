@@ -324,11 +324,14 @@ test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies
 });
 
 test('Obsidian wikilinks and media embeds import to Wmdx resources outside code', async () => {
-  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
   const result = convertFromMarkdown([
     '[[Project Notes#Setup|Read this]] and `[[literal]]`.',
     '',
     '![[assets/diagram.png|640]]',
+    '![[audio/voice.ogg]]',
+    '![[video/clip.mp4]]',
     '![[manual.pdf]]',
     '![[Another Note]]'
   ].join('\n'), 'obsidian');
@@ -338,9 +341,17 @@ test('Obsidian wikilinks and media embeds import to Wmdx resources outside code'
     /^\[Project Notes#Setup\|Read this\|\|\] and `\[\[literal\]\]`\.$/m
   );
   assert.match(result.markdown, /^!\[assets\/diagram\.png\|\|640\|\]$/m);
+  assert.match(result.markdown, /^!\[audio\/voice\.ogg\|\|\|\]$/m);
+  assert.match(result.markdown, /^!\[video\/clip\.mp4\|\|\|\]$/m);
   assert.match(result.markdown, /^!?\[manual\.pdf\|\|\|\]$/m);
   assert.match(result.markdown, /^!\[\[Another Note\]\]$/m);
   assert.ok(result.warnings.some(warning => warning.includes('transclusion')));
+
+  const exported = exportMarkdown(result.markdown, 'obsidian');
+  assert.match(exported.markdown, /^!\[\[assets\/diagram\.png\|640\]\]$/m);
+  assert.match(exported.markdown, /^!\[\[audio\/voice\.ogg\]\]$/m);
+  assert.match(exported.markdown, /^!\[\[video\/clip\.mp4\]\]$/m);
+  assert.match(exported.markdown, /^!\[\[manual\.pdf\]\]$/m);
 });
 
 test('Markdown export uses media elements and attachment links for embedded resources', async () => {
@@ -484,6 +495,22 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.ok(result.warnings.some(warning => warning.includes('script')));
   const comments = convertFromHtml('<p>Text</p><!-- hidden note -->', Parser);
   assert.ok(comments.warnings.some(warning => warning.includes('comments')));
+});
+
+test('HTML conversion reports tooltip and CSS losses that Markdown cannot represent', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const result = convertFromHtml(
+    '<p><a href="https://example.test" title="Link tooltip">Link</a> ' +
+      '<span style="color: red">colored</span></p>',
+    Parser
+  );
+
+  assert.match(result.markdown, /\[Link\]\(https:\/\/example\.test\)/);
+  assert.doesNotMatch(result.markdown, /Link tooltip/);
+  assert.ok(result.warnings.some(warning => warning.includes('tooltip titles')));
+  assert.ok(result.warnings.some(warning => warning.includes('inline CSS')));
 });
 
 test('HTML import preserves ordered-list marker styles, starts, and nested task state', async () => {
