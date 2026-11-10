@@ -1188,6 +1188,7 @@ async function main() {
       '.cm-wp-table-container tbody td[data-row="1"][data-col="0"]'
     );
     await renderedCell.waitFor();
+    await renderedCell.scrollIntoViewIfNeeded();
     const renderedCellBox = await renderedCell.boundingBox();
     assert.ok(renderedCellBox, 'the WYSIWYG cell is visible for a real pointer tap');
     await page.mouse.click(
