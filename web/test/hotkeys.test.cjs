@@ -57,7 +57,8 @@ test('editing actions have editable shortcuts with matching reset defaults', () 
     ['redo', 'redo', 'ctrl+y'],
     ['save_as_mdzip', 'save_as_mdzip', 'ctrl+shift+alt+m'],
     ['attachment', 'attachment', 'ctrl+shift+a'],
-    ['link', 'link', '']
+    ['link', 'link', ''],
+    ['toggleTableScroll', 'toggle_table_scroll', '']
   ];
   const hotkeysXml = fs.readFileSync(
     path.join(root, 'app/src/main/res/xml/preferences_hotkeys.xml'),

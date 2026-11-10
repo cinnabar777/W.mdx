@@ -187,13 +187,13 @@ test('wide rendered tables keep their content width inside a viewport-bounded ho
 
   assert.match(
     tableWidgetCode,
-    /overflow-x:\s*auto;[^']*max-width:\s*100%/,
+    /overflow-x: \$\{this\.horizontalScrollEnabled \? 'auto' : 'hidden'\}; max-width: 100%/,
     'Each rendered table has its own width-constrained horizontal scroll container'
   );
   assert.match(
     tableWidgetCode,
-    /width:\s*max-content;\s*min-width:\s*100%/,
-    'The rendered table can overflow when its content is wider than the viewport'
+    /width: \$\{this\.horizontalScrollEnabled \? 'max-content' : '100%'\}; min-width: 100%/,
+    'The rendered table can overflow when scrolling is enabled and fit when disabled'
   );
   assert.match(
     indexHtml,
@@ -208,6 +208,42 @@ test('wide rendered tables keep their content width inside a viewport-bounded ho
     indexHtml.includes('calc(100vw - 32px - var(--table-margin-left, 0px) - var(--table-margin-right, 0px))'),
     'The table scroller is capped to the viewport content width even if editor content expands'
   );
+});
+
+test('rendered and source table scrolling have independent persisted controls and a toolbar toggle', () => {
+  const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+  const sourceTableWidget = fs.readFileSync(
+    path.join(__dirname, '../src/sourceTableWidget.js'),
+    'utf8'
+  );
+  const tableWidget = fs.readFileSync(path.join(__dirname, '../src/tableWidget.js'), 'utf8');
+  const settings = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_tables.xml'),
+    'utf8'
+  );
+  const activity = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/MainActivity.kt'),
+    'utf8'
+  );
+  const resets = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
+    'utf8'
+  );
+
+  for (const key of [
+    'pref_table_scroll_wysiwyg_enabled',
+    'pref_table_scroll_source_enabled'
+  ]) {
+    assert.ok(settings.includes(`app:key="${key}"`), `${key} is configurable`);
+    assert.ok(settings.includes('android:defaultValue="true"'), `${key} defaults to the existing scroll behavior`);
+    assert.ok(resets.includes(`key == "${key}" -> true`), `${key} resets to the existing behavior`);
+    assert.ok(activity.includes(key), `${key} persists through the native bridge`);
+    assert.ok(main.includes(key), `${key} is applied in the web editor`);
+  }
+  assert.match(tableWidget, /horizontalScrollEnabled[\s\S]*?overflow-x: \$\{this\.horizontalScrollEnabled \? 'auto' : 'hidden'\}/);
+  assert.match(sourceTableWidget, /horizontalScrollEnabled \? 'auto' : 'hidden'/);
+  assert.ok(main.includes('id: \'toggleTableScroll\''), 'the Table toolbar exposes a scroll toggle');
+  assert.ok(main.includes('window.editorBridge.toggleTableScrolling()'), 'the toolbar toggle switches the active view setting');
 });
 
 test('Table widget exports tableHeightEstimatesChanged and measureTableWidgetHeight', async () => {

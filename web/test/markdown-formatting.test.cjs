@@ -470,7 +470,7 @@ test('clear formatting handles an active table-cell editor and commits a closed 
   const { markdown } = await import('@codemirror/lang-markdown');
   const { JSDOM } = require('jsdom');
   const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
-  const dom = new JSDOM('<textarea class="cm-wp-cell-editor"></textarea>');
+  const dom = new JSDOM('<div class="cm-wp-cell-editor" contenteditable="true"></div>');
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
   globalThis.document = dom.window.document;
@@ -485,13 +485,22 @@ test('clear formatting handles an active table-cell editor and commits a closed 
     };
     const overlay = dom.window.document.querySelector('.cm-wp-cell-editor');
     const activeModel = { rows: [['**bold** and ==marked==']] };
-    overlay.value = activeModel.rows[0][0];
+    let cellValue = activeModel.rows[0][0];
+    let cellSelection = { from: 2, to: 6 };
+    overlay.textContent = 'bold and ==marked==';
+    overlay._getMarkdownValue = () => cellValue;
+    overlay._getSelectionOffsets = () => cellSelection;
+    overlay._setMarkdownValue = (value, from, to) => {
+      cellValue = value;
+      cellSelection = { from, to };
+      overlay.textContent = value;
+    };
     overlay._cellMeta = { model: activeModel, row: 0, col: 0, widget: {} };
-    overlay.setSelectionRange(2, 6);
     dom.window.wmdxTableActions = { active: { view } };
 
     assert.equal(clearMarkdownFormatting(view), true);
-    assert.equal(overlay.value, 'bold and ==marked==');
+    assert.equal(cellValue, 'bold and ==marked==');
+    assert.equal(overlay.textContent, 'bold and ==marked==');
     assert.equal(activeModel.rows[0][0], 'bold and ==marked==');
 
     overlay.remove();

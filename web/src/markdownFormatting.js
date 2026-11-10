@@ -1025,13 +1025,14 @@ function clearTableCellFormatting(view, options = {}) {
   const modelRow = rows[cellMeta.row];
   if (!Array.isArray(modelRow) || cellMeta.col >= modelRow.length) return null;
   const cellText = useOverlay
-    ? String(overlay.value ?? '')
+    ? String(overlay._getMarkdownValue?.() ?? overlay.value ?? overlay.textContent ?? '')
     : String(snapshot.cellValue ?? modelRow[cellMeta.col] ?? '');
+  const overlaySelection = useOverlay ? overlay._getSelectionOffsets?.() : null;
   const selectionStart = useOverlay
-    ? (overlay.selectionStart ?? 0)
+    ? (overlaySelection?.from ?? overlay.selectionStart ?? 0)
     : (snapshot.selStart ?? cellText.length);
   const selectionEnd = useOverlay
-    ? (overlay.selectionEnd ?? selectionStart)
+    ? (overlaySelection?.to ?? overlay.selectionEnd ?? selectionStart)
     : (snapshot.selEnd ?? selectionStart);
   const selection = selectionStart === selectionEnd
     ? EditorSelection.cursor(selectionStart)
@@ -1071,11 +1072,24 @@ function clearTableCellFormatting(view, options = {}) {
   const cleaned = state.doc.toString();
   const mappedSelection = state.selection.main;
   const serialized = cleaned.replace(/\r\n?/g, '\n').replace(/\n/g, '<br>');
-  cellMeta.model.rows[cellMeta.row][cellMeta.col] = serialized;
 
   if (useOverlay) {
-    overlay.value = cleaned;
-    overlay.setSelectionRange(mappedSelection.from, mappedSelection.to);
+    if (typeof overlay._setMarkdownValue === 'function') {
+      overlay._setMarkdownValue(
+        serialized,
+        mappedSelection.from,
+        mappedSelection.to
+      );
+    } else if ('value' in overlay) {
+      overlay.value = cleaned;
+      overlay.setSelectionRange?.(mappedSelection.from, mappedSelection.to);
+    } else {
+      overlay.textContent = cleaned;
+    }
+    const updatedCellText = String(
+      overlay._getMarkdownValue?.() ?? overlay.value ?? cleaned
+    );
+    cellMeta.model.rows[cellMeta.row][cellMeta.col] = updatedCellText;
     if (globalThis.window) {
       globalThis.window._lastActiveCellSelection = {
         widget: meta.widget,
@@ -1084,7 +1098,7 @@ function clearTableCellFormatting(view, options = {}) {
         col: meta.col,
         selStart: mappedSelection.from,
         selEnd: mappedSelection.to,
-        cellValue: cleaned,
+        cellValue: updatedCellText,
         selectedText: cleaned.slice(mappedSelection.from, mappedSelection.to),
         timestamp: Date.now()
       };
@@ -1092,7 +1106,8 @@ function clearTableCellFormatting(view, options = {}) {
     return true;
   }
 
-  snapshot.cellValue = cleaned;
+  cellMeta.model.rows[cellMeta.row][cellMeta.col] = serialized;
+  snapshot.cellValue = serialized;
   snapshot.selStart = mappedSelection.from;
   snapshot.selEnd = mappedSelection.to;
   snapshot.selectedText = cleaned.slice(mappedSelection.from, mappedSelection.to);

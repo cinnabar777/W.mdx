@@ -138,20 +138,29 @@ function minimalChange(before, after) {
 }
 
 export class SourceTableWidget extends WidgetType {
-  constructor({ markdown, from, to, language, highlightStyle }) {
+  constructor({
+    markdown,
+    from,
+    to,
+    language,
+    highlightStyle,
+    horizontalScrollEnabled = true
+  }) {
     super();
     this.markdown = markdown;
     this.from = from;
     this.to = to;
     this.language = language;
     this.highlightStyle = highlightStyle;
+    this.horizontalScrollEnabled = horizontalScrollEnabled !== false;
   }
 
   eq(other) {
     return other instanceof SourceTableWidget &&
       other.markdown === this.markdown &&
       other.from === this.from &&
-      other.to === this.to;
+      other.to === this.to &&
+      other.horizontalScrollEnabled === this.horizontalScrollEnabled;
   }
 
   updateDOM(dom, parentView) {
@@ -182,6 +191,7 @@ export class SourceTableWidget extends WidgetType {
     wrapper.className = 'cm-source-table-widget';
     wrapper.dataset.tableFrom = String(this.from);
     wrapper.dataset.tableTo = String(this.to);
+    wrapper.dataset.horizontalScrollEnabled = String(this.horizontalScrollEnabled);
 
     const mount = doc.createElement('div');
     mount.className = 'cm-source-table-editor';
@@ -235,18 +245,19 @@ export class SourceTableWidget extends WidgetType {
             fontSize: 'var(--source-editor-font-size, 14px)'
           },
           '.cm-scroller': {
-            overflowX: 'auto',
+            overflowX: this.horizontalScrollEnabled ? 'auto' : 'hidden',
             overflowY: 'hidden'
           },
           '.cm-content': {
-            width: 'max-content',
+            width: this.horizontalScrollEnabled ? 'max-content' : '100%',
             minWidth: '100%',
-            maxWidth: 'none'
+            maxWidth: this.horizontalScrollEnabled ? 'none' : '100%'
           },
           '.cm-line': {
-            width: 'max-content',
+            width: this.horizontalScrollEnabled ? 'max-content' : '100%',
             minWidth: '100%',
-            whiteSpace: 'pre'
+            whiteSpace: this.horizontalScrollEnabled ? 'pre' : 'pre-wrap',
+            overflowWrap: this.horizontalScrollEnabled ? 'normal' : 'anywhere'
           }
         })
       ]

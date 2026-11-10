@@ -297,8 +297,8 @@ test('custom underline syntax, styles, toolbar actions, and shortcuts are wired 
   assert.ok(source.includes('`--underline-${style}-color`'));
 });
 
-test('table hyphenation wraps nested cell text without horizontal scrolling', () => {
-  assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table-container[\s\S]*?overflow-x:\s*hidden\s*!important/);
+test('table hyphenation hides horizontal scrolling only when the rendered table setting is disabled', () => {
+  assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table-container\[data-horizontal-scroll-enabled="false"\][\s\S]*?overflow-x:\s*hidden\s*!important/);
   assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table td \*[\s\S]*?white-space:\s*normal\s*!important/);
   assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table td \*[\s\S]*?overflow-wrap:\s*anywhere\s*!important/);
 });

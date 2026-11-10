@@ -1631,6 +1631,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "toggle_toolbar" to prefs.getString("pref_hotkey_toggle_toolbar", "ctrl+t"),
             "line_numbers" to prefs.getString("pref_hotkey_line_numbers", "ctrl+alt+l"),
             "line_wrap" to prefs.getString("pref_hotkey_line_wrap", "ctrl+alt+w"),
+            "toggleTableScroll" to prefs.getString("pref_hotkey_toggle_table_scroll", ""),
             "bold" to prefs.getString("pref_hotkey_bold", "ctrl+b"),
             "italic" to prefs.getString("pref_hotkey_italic", "ctrl+i"),
             "underline" to prefs.getString("pref_hotkey_underline", "ctrl+u"),
@@ -5455,6 +5456,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                     "history_back" -> navigateCombinedHistory("back")
                     "history_forward" -> navigateCombinedHistory("forward")
                 }
+            }
+        }
+
+        @JavascriptInterface
+        fun setTableScrollEnabled(viewName: String, enabled: Boolean) {
+            val key = when (viewName.lowercase()) {
+                "source" -> "pref_table_scroll_source_enabled"
+                else -> "pref_table_scroll_wysiwyg_enabled"
+            }
+            runOnUiThread {
+                PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                    .edit()
+                    .putBoolean(key, enabled)
+                    .apply()
             }
         }
 

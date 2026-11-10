@@ -1340,7 +1340,7 @@
       box-sizing: border-box;
       contain: inline-size;
     }
-    body.table-hyphenate .cm-wp-table-container,
+    body.table-hyphenate .cm-wp-table-container[data-horizontal-scroll-enabled="false"],
     body.table-hyphenate .cm-gfm-table-container {
       overflow-x: hidden !important;
     }
@@ -1372,7 +1372,7 @@
       hyphens: var(--table-hyphens, none);
       border: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444444);
     }
-    body.table-hyphenate .cm-wp-table {
+    body.table-hyphenate .cm-wp-table-container[data-horizontal-scroll-enabled="false"] .cm-wp-table {
       width: 100% !important;
       min-width: 100% !important;
       table-layout: fixed !important;
@@ -1484,15 +1484,14 @@
       position: absolute;
       box-sizing: border-box;
       font-family: inherit;
-      font-size: 14px;
-      padding: 6px;
-      border: 2px solid #0078d4;
-      background: var(--bg-color, #000000);
-      color: var(--text-color, #ffffff);
+      font-size: inherit;
+      line-height: inherit;
+      caret-color: currentColor;
       z-index: 100;
       outline: none;
-      resize: none;
       border-radius: 4px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
       user-select: text !important;
       -webkit-user-select: text !important;
     }
@@ -1778,7 +1777,7 @@
       max-width: 100% !important;
       overflow: hidden !important;
     }
-    .cm-source-table-editor .cm-scroller {
+    .cm-source-table-widget[data-horizontal-scroll-enabled="true"] .cm-source-table-editor .cm-scroller {
       box-sizing: border-box !important;
       width: 100% !important;
       max-width: 100% !important;
@@ -1793,18 +1792,33 @@
       background: rgba(180, 180, 190, 0.7);
       border-radius: 4px;
     }
-    .cm-source-table-editor .cm-content {
+    .cm-source-table-widget[data-horizontal-scroll-enabled="true"] .cm-source-table-editor .cm-content {
       box-sizing: border-box !important;
       width: max-content !important;
       min-width: 100% !important;
       max-width: none !important;
     }
-    .cm-source-table-editor .cm-line {
+    .cm-source-table-widget[data-horizontal-scroll-enabled="true"] .cm-source-table-editor .cm-line {
       box-sizing: border-box !important;
       width: max-content !important;
       min-width: 100% !important;
       max-width: none !important;
       white-space: pre !important;
+    }
+    .cm-source-table-widget[data-horizontal-scroll-enabled="false"] .cm-source-table-editor .cm-scroller {
+      overflow-x: hidden !important;
+    }
+    .cm-source-table-widget[data-horizontal-scroll-enabled="false"] .cm-source-table-editor .cm-content {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+    .cm-source-table-widget[data-horizontal-scroll-enabled="false"] .cm-source-table-editor .cm-line {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      white-space: pre-wrap !important;
+      overflow-wrap: anywhere !important;
     }
     .cm-source-table-editor .cm-source-table-aligned-pipe {
       display: inline-block;

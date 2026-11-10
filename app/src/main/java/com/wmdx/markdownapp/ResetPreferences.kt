@@ -581,6 +581,8 @@ object PreferenceResetHelper {
             key.startsWith("pref_callout_type_") -> "default"
             key == "pref_table_margin_left" -> 0
             key == "pref_table_margin_right" -> 0
+            key == "pref_table_scroll_wysiwyg_enabled" -> true
+            key == "pref_table_scroll_source_enabled" -> true
             key == "pref_table_inherit_body_typography" -> true
             key == "pref_table_font_family" -> "default"
             key == "pref_table_font_weight" -> 400
@@ -809,6 +811,7 @@ object PreferenceResetHelper {
             key == "pref_hotkey_lint_markdown" -> "ctrl+shift+alt+l"
             key == "pref_hotkey_open_with" -> "ctrl+shift+o"
             key == "pref_hotkey_line_numbers" -> "ctrl+alt+l"
+            key == "pref_hotkey_toggle_table_scroll" -> ""
             key == "pref_hotkey_footnote" -> "ctrl+shift+f"
             key == "pref_footnote_inherit_body_typography" -> true
             key == "pref_footnote_font_weight" -> 400

@@ -300,6 +300,8 @@ let revealActiveTocHeading = null;
 let currentEditorMode = 'wysiwyg'; // internal rendered presentation or 'source'
 let currentModePreference = 'rendered'; // 'rendered' | 'source' | legacy test preset
 let preferredMarkdownMode = 'rendered';
+let tableScrollWysiwygEnabled = true;
+let tableScrollSourceEnabled = true;
 let markdownSyntaxExposureScope = 'hidden';
 let activeSyntaxExposureScope = 'hidden';
 let currentEditorFileName = 'Untitled.md';
@@ -309,6 +311,44 @@ let editorDocumentLoadGeneration = 0;
 const sourceLanguageOverridesStorageKey = 'wmdx.source-language-overrides.v1';
 const sessionSourceLanguageOverrides = new Map();
 let markdownIndentSpaces = getMarkdownIndentSpaces('1');
+
+function applyTableScrollSettingToCurrentDom() {
+  const root = document;
+  const sourceView = currentModePreference === 'source';
+  const enabled = sourceView
+    ? tableScrollSourceEnabled
+    : tableScrollWysiwygEnabled;
+
+  root.querySelectorAll('.cm-source-table-widget').forEach(widget => {
+    widget.dataset.horizontalScrollEnabled = String(enabled);
+    const scroller = widget.querySelector('.cm-source-table-editor .cm-scroller');
+    const content = widget.querySelector('.cm-source-table-editor .cm-content');
+    if (!scroller || !content) return;
+    scroller.style.overflowX = enabled ? 'auto' : 'hidden';
+    content.style.width = enabled ? 'max-content' : '100%';
+    content.style.minWidth = enabled ? '100%' : '0';
+    content.style.maxWidth = enabled ? 'none' : '100%';
+    widget.querySelectorAll('.cm-source-table-editor .cm-line').forEach(line => {
+      line.style.width = enabled ? 'max-content' : '100%';
+      line.style.minWidth = enabled ? '100%' : '0';
+      line.style.whiteSpace = enabled ? 'pre' : 'pre-wrap';
+      line.style.overflowWrap = enabled ? 'normal' : 'anywhere';
+    });
+  });
+
+  root.querySelectorAll('.cm-wp-table-container').forEach(container => {
+    container.dataset.horizontalScrollEnabled = String(enabled);
+    container.style.overflowX = enabled ? 'auto' : 'hidden';
+    const table = container.querySelector('.cm-wp-table');
+    if (!table) return;
+    table.style.width = enabled ? 'max-content' : '100%';
+    table.style.maxWidth = enabled ? 'none' : '100%';
+    table.style.tableLayout = enabled ? 'auto' : 'fixed';
+    table.querySelectorAll('th, td').forEach(cell => {
+      cell.style.overflowWrap = enabled ? 'normal' : 'anywhere';
+    });
+  });
+}
 
 function getUndoTargetView(parentView) {
   if (!parentView) return null;
@@ -376,6 +416,7 @@ let customHotkeys = {
   settings: 'ctrl+,',
   toggle_toolbar: 'ctrl+t',
   line_wrap: 'ctrl+alt+w',
+  toggleTableScroll: '',
   open_with: 'ctrl+shift+o',
   line_numbers: 'ctrl+alt+l',
   bold: 'ctrl+b',
@@ -4680,7 +4721,9 @@ function buildTableBlockDecorations(state) {
           )
         ) continue;
         const tableText = state.doc.sliceString(node.from, node.to);
-        const widget = new WordProcessorTableWidget(tableText, node.from, node.to);
+        const widget = new WordProcessorTableWidget(tableText, node.from, node.to, {
+          horizontalScrollEnabled: tableScrollWysiwygEnabled
+        });
 
         builder.push(Decoration.widget({
           widget,
@@ -5625,7 +5668,10 @@ export function buildPersistentLayoutDecorations(state) {
             from,
             to,
             language: createMarkdownLanguageExtension(true),
-            highlightStyle: sourceHighlightStyle
+            highlightStyle: sourceHighlightStyle,
+            horizontalScrollEnabled: renderPlan.raw
+              ? tableScrollSourceEnabled
+              : tableScrollWysiwygEnabled
           }),
           block: true
         }).range(from, to)
@@ -7544,6 +7590,12 @@ function setupGroupedControlBar() {
             showTableGridPickerModal();
           }
         },
+        {
+          id: 'toggleTableScroll',
+          icon: svgIcons.tableScroll,
+          title: 'Toggle Horizontal Table Scrolling',
+          action: () => window.editorBridge.toggleTableScrolling()
+        },
         ...TABLE_ACTIONS.map(item => ({
           id: item.id,
           icon: item.icon,
@@ -7939,6 +7991,7 @@ function createToolbarActionRegistry() {
         hidePopupStrip();
         showTableGridPickerModal();
       } },
+      { id: 'toggleTableScroll', title: 'Toggle Horizontal Table Scrolling', icon: svgIcons.tableScroll, action: () => window.editorBridge.toggleTableScrolling() },
       ...TABLE_ACTIONS.map(item => ({
         id: item.id,
         title: item.title,
@@ -12213,6 +12266,13 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.line_wrap)) {
       e.preventDefault();
       window.editorBridge.toggleLineWrap();
+    } else if (
+      !focusedFormField &&
+      !e.target?.closest?.('.cm-wp-cell-editor') &&
+      parseAndMatchHotkey(e, customHotkeys.toggleTableScroll)
+    ) {
+      e.preventDefault();
+      window.editorBridge.toggleTableScrolling();
     } else if (parseAndMatchHotkey(e, customHotkeys.open_with)) {
       e.preventDefault();
       openWithOtherEngine();
@@ -13055,6 +13115,11 @@ window.editorBridge = {
     });
 
     // Tables
+    tableScrollWysiwygEnabled =
+      prefs.pref_table_scroll_wysiwyg_enabled !== false;
+    tableScrollSourceEnabled =
+      prefs.pref_table_scroll_source_enabled !== false;
+    applyTableScrollSettingToCurrentDom();
     const inheritTableTypography =
       prefs.pref_table_inherit_body_typography !== false;
     const tableHyphenation = inheritTableTypography
@@ -13667,6 +13732,31 @@ window.editorBridge = {
     if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
       window.AndroidNative.showToast(isLineWrapEnabled ? 'Line wrap enabled' : 'Line wrap disabled');
     }
+  },
+  toggleTableScrolling: function() {
+    const sourceView = currentModePreference === 'source';
+    const enabled = !(sourceView
+      ? tableScrollSourceEnabled
+      : tableScrollWysiwygEnabled);
+    const preferenceKey = sourceView
+      ? 'pref_table_scroll_source_enabled'
+      : 'pref_table_scroll_wysiwyg_enabled';
+    if (sourceView) tableScrollSourceEnabled = enabled;
+    else tableScrollWysiwygEnabled = enabled;
+
+    document.querySelector('.cm-wp-cell-editor')?.blur();
+    window.AndroidNative?.setTableScrollEnabled?.(
+      sourceView ? 'source' : 'wysiwyg',
+      enabled
+    );
+    if (activeAdapter?.view) {
+      dispatchWithScrollSnapshot(
+        activeAdapter.view,
+        heightMapRefreshEffect.of(null)
+      );
+    }
+    applyTableScrollSettingToCurrentDom();
+    return { preferenceKey, enabled };
   },
   setLineWrap: function(enabled) {
     isLineWrapEnabled = !!enabled;

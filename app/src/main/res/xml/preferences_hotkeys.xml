@@ -329,6 +329,12 @@
         app:defaultValue="ctrl+shift+x" />
 
     <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_toggle_table_scroll"
+        app:title="Table Scrolling: Toggle"
+        app:summary="Toggle horizontal scrolling for the current editor view"
+        app:defaultValue="" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
         app:key="pref_hotkey_save_tabs"
         app:title="Tabs: Save"
         app:summary="Key combination (leave empty to disable)"

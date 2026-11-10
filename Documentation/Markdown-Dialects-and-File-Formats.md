@@ -15,13 +15,17 @@ JSON files are not reformatted when opened. In Source/Code, **Menu → Format JS
 
 Source-editor appearance and token colors are separate from rendered Document Appearance settings. In the interim, the app still exposes the Rendered syntax exposure and Source/Code language highlighting are configured separately; Source token colors do not change Document Appearance.
 
-Source pipe tables stay literal and editable. A nested Source editor scrolls the whole table as a unit, keeping columns aligned without shifting surrounding text or widening the app's document viewport.
+Source pipe tables stay literal and editable. A nested Source editor scrolls the whole table as a unit by default, keeping columns aligned without shifting surrounding text or widening the app's document viewport. Separate settings control horizontal scrolling in Source and rendered views; the Table toolbar can toggle the setting for the current view, with an optional user-assigned shortcut.
 
 ## What the syntax toggles do
 
 Settings are app-wide, not stored in each document. **Markdown & Dialects** provides a primary Wmdx, CommonMark, GFM, or Obsidian profile. The profile sets default syntax recognition and authoring choices for supported features. A saved feature-specific choice overrides the profile; changing the profile does not rewrite source or replace an explicitly saved choice.
 
 Turning a feature or spelling off does not rewrite or delete source. It only changes recognition/rendering and authoring behavior. Import and export conversion remain separate actions.
+
+## Compatibility completion gate
+
+Parser support alone is not proof of full dialect compatibility. Track each flavor and syntax feature across recognition/rendering, editing round-trip, document conversion, clipboard paste, Markdown export, HTML import, and HTML/MHTML export. Mark a combination as verified only when a fixture covers the relevant operation and confirms either preserved semantics or an explicit loss warning. Unsupported or untested syntax must remain visibly identified as unverified; do not infer complete parity from a successful build or from another flavor's tests.
 
 | Feature | Syntax families and relevant controls |
 | --- | --- |

@@ -118,11 +118,12 @@ function estimateTableHeight(model, availableWidth = 360) {
 }
 
 export class WordProcessorTableWidget extends WidgetType {
-  constructor(tableMarkdown, from, to) {
+  constructor(tableMarkdown, from, to, { horizontalScrollEnabled = true } = {}) {
     super();
     this.tableMarkdown = tableMarkdown;
     this.from = from;
     this.to = to;
+    this.horizontalScrollEnabled = horizontalScrollEnabled !== false;
     this.model = TableModel.parse(tableMarkdown);
     const content = activeEditorContent();
     this.heightEstimate =
@@ -143,6 +144,7 @@ export class WordProcessorTableWidget extends WidgetType {
       other.tableMarkdown === this.tableMarkdown &&
       other.from === this.from &&
       other.to === this.to &&
+      other.horizontalScrollEnabled === this.horizontalScrollEnabled &&
       other.heightEstimate === this.heightEstimate
     );
   }
@@ -157,7 +159,8 @@ export class WordProcessorTableWidget extends WidgetType {
     const container = document.createElement('div');
     container.className = 'cm-wp-table-container';
     container.dataset.tableFrom = String(this.from);
-    container.style.cssText = 'position: relative; margin: 12px 0; overflow-x: auto; max-width: 100%; border-radius: 6px; box-sizing: border-box; overflow-anchor: none;';
+    container.style.cssText = `position: relative; margin: 12px 0; overflow-x: ${this.horizontalScrollEnabled ? 'auto' : 'hidden'}; max-width: 100%; border-radius: 6px; box-sizing: border-box; overflow-anchor: none;`;
+    container.dataset.horizontalScrollEnabled = String(this.horizontalScrollEnabled);
 
     if (!this.model) {
       container.textContent = this.tableMarkdown;
@@ -213,7 +216,7 @@ export class WordProcessorTableWidget extends WidgetType {
 
     const table = document.createElement('table');
     table.className = 'cm-wp-table';
-    table.style.cssText = `width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))); font-family: var(--table-font-family, var(--body-font-family, inherit)); font-size: var(--table-font-size, 15px); font-weight: var(--table-font-weight, 400); letter-spacing: var(--table-letter-spacing, 0px); line-height: var(--table-line-height, 1.6); hyphens: var(--table-hyphens, none); border: ${borderCss};`;
+    table.style.cssText = `width: ${this.horizontalScrollEnabled ? 'max-content' : '100%'}; min-width: 100%; max-width: ${this.horizontalScrollEnabled ? 'none' : '100%'}; border-collapse: collapse; table-layout: ${this.horizontalScrollEnabled ? 'auto' : 'fixed'}; color: var(--table-cell-color, var(--body-text-color, var(--text-color, #fff))); font-family: var(--table-font-family, var(--body-font-family, inherit)); font-size: var(--table-font-size, 15px); font-weight: var(--table-font-weight, 400); letter-spacing: var(--table-letter-spacing, 0px); line-height: var(--table-line-height, 1.6); hyphens: var(--table-hyphens, none); border: ${borderCss};`;
 
     const renderTableCells = () => {
       table.innerHTML = '';
@@ -229,7 +232,7 @@ export class WordProcessorTableWidget extends WidgetType {
         if (cellData.isCovered) continue;
 
         const th = document.createElement('th');
-        th.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-header-bg, rgba(255,255,255,0.12)); color: var(--table-header-color, var(--text-color, #fff)); font-weight: var(--table-header-font-weight, 700); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer;`;
+        th.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-header-bg, rgba(255,255,255,0.12)); color: var(--table-header-color, var(--text-color, #fff)); font-weight: var(--table-header-font-weight, 700); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer; overflow-wrap: ${this.horizontalScrollEnabled ? 'normal' : 'anywhere'};`;
         if (cellData.colSpan > 1) th.colSpan = cellData.colSpan;
         if (cellData.rowSpan > 1) th.rowSpan = cellData.rowSpan;
         th.dataset.row = '0';
@@ -250,7 +253,7 @@ export class WordProcessorTableWidget extends WidgetType {
           if (cellData.isCovered) continue;
 
           const td = document.createElement('td');
-          td.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-cell-bg, transparent); color: var(--table-cell-color, var(--text-color, #fff)); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer;`;
+          td.style.cssText = `border: ${borderCss}; padding: var(--table-cell-padding, 8px); background: var(--table-cell-bg, transparent); color: var(--table-cell-color, var(--text-color, #fff)); text-align: ${this.model.alignments[c] || 'left'}; position: relative; cursor: pointer; overflow-wrap: ${this.horizontalScrollEnabled ? 'normal' : 'anywhere'};`;
           if (cellData.colSpan > 1) td.colSpan = cellData.colSpan;
           if (cellData.rowSpan > 1) td.rowSpan = cellData.rowSpan;
           td.dataset.row = String(r);
@@ -392,7 +395,8 @@ export class WordProcessorTableWidget extends WidgetType {
       row,
       col,
       editor = activeOverlay,
-      targetTableFrom = this.from
+      targetTableFrom = this.from,
+      point = null
     ) => {
       if (!editor) return false;
       const current = editor._cellMeta;
@@ -413,7 +417,7 @@ export class WordProcessorTableWidget extends WidgetType {
         const targetCell = liveContainer?.querySelector(
           `[data-row="${row}"][data-col="${col}"]`
         );
-        tableCellSelectors.get(targetCell)?.({ openEditor: true });
+        tableCellSelectors.get(targetCell)?.({ openEditor: true, point });
       }));
       return true;
     };
@@ -421,9 +425,9 @@ export class WordProcessorTableWidget extends WidgetType {
     const attachCellEvents = (cellEl, r, c) => {
       let cellPointerStart = null;
 
-      tableCellSelectors.set(cellEl, ({ openEditor = false } = {}) => {
+      tableCellSelectors.set(cellEl, ({ openEditor = false, point = null } = {}) => {
         selectCell(r, c);
-        if (openEditor) openCellEditor(cellEl, r, c);
+        if (openEditor) openCellEditor(cellEl, r, c, point);
       });
 
       const startLongPress = (e) => {
@@ -499,11 +503,14 @@ export class WordProcessorTableWidget extends WidgetType {
             activeOverlay.focus();
             showCellEditorKeyboard();
           } else {
-            handoffToCell(r, c, activeOverlay, this.from);
+            handoffToCell(r, c, activeOverlay, this.from, {
+              x: e.clientX,
+              y: e.clientY
+            });
           }
         } else {
           selectCell(r, c);
-          openCellEditor(cellEl, r, c);
+          openCellEditor(cellEl, r, c, { x: e.clientX, y: e.clientY });
         }
         e.preventDefault();
       }, true);
@@ -526,10 +533,13 @@ export class WordProcessorTableWidget extends WidgetType {
           ) {
             return;
           }
-          if (handoffToCell(r, c, activeOverlay, this.from)) e.preventDefault();
+          if (handoffToCell(r, c, activeOverlay, this.from, {
+            x: e.clientX,
+            y: e.clientY
+          })) e.preventDefault();
         } else {
           selectCell(r, c);
-          openCellEditor(cellEl, r, c);
+          openCellEditor(cellEl, r, c, { x: e.clientX, y: e.clientY });
           e.preventDefault();
         }
       });
@@ -686,7 +696,7 @@ export class WordProcessorTableWidget extends WidgetType {
       container._clearActiveSelectionHandler = clearActiveSelectionOutsideTables;
     }
 
-    const openCellEditor = (cellEl, r, c) => {
+    const openCellEditor = (cellEl, r, c, point = null) => {
       if (activeOverlay) activeOverlay.remove();
 
       const overlayContainer = container;
@@ -697,20 +707,226 @@ export class WordProcessorTableWidget extends WidgetType {
       const left = cellRect.left - containerRect.left +
         overlayContainer.scrollLeft - overlayContainer.clientLeft;
 
-      const overlay = document.createElement('textarea');
+      const overlay = document.createElement('div');
       overlay.className = 'cm-wp-cell-editor';
-      overlay.value = (this.model.rows[r][c] || '')
-        .replace(/\s*<br\s*\/?>\s*/gi, '\n');
-      overlay.style.cssText = `position: absolute; top: ${top}px; left: ${left}px; width: ${cellRect.width}px; height: ${cellRect.height}px; box-sizing: border-box; font-family: inherit; font-size: 14px; padding: 6px; border: 2px solid #0078d4; background: var(--bg-color, #000); color: var(--text-color, #fff); z-index: 100; outline: none; resize: none; border-radius: 4px;`;
+      overlay.setAttribute('contenteditable', 'true');
+      overlay.setAttribute('role', 'textbox');
+      overlay.setAttribute('aria-multiline', 'true');
+      overlay.setAttribute('aria-label', `Table cell, row ${r + 1}, column ${c + 1}`);
+      overlay.tabIndex = 0;
+      overlay.spellcheck = false;
+      overlay.innerHTML = renderMarkdownInline(
+        (this.model.rows[r][c] || '').replace(/\s*<br\s*\/?>\s*/gi, '<br>')
+      );
+      const cellStyle = document.defaultView?.getComputedStyle?.(cellEl);
+      overlay.style.cssText = `position: absolute; top: ${top}px; left: ${left}px; width: ${cellRect.width}px; height: ${cellRect.height}px; box-sizing: border-box; font-family: ${cellStyle?.fontFamily || 'inherit'}; font-size: ${cellStyle?.fontSize || 'inherit'}; font-weight: ${cellStyle?.fontWeight || 'inherit'}; line-height: ${cellStyle?.lineHeight || 'inherit'}; letter-spacing: ${cellStyle?.letterSpacing || 'inherit'}; text-align: ${cellStyle?.textAlign || 'left'}; hyphens: ${cellStyle?.hyphens || 'none'}; overflow-wrap: anywhere; white-space: pre-wrap; padding: ${cellStyle?.padding || 'var(--table-cell-padding, 8px)'}; border: 2px solid #0078d4; background: ${cellStyle?.backgroundColor || 'var(--table-cell-bg, transparent)'}; color: ${cellStyle?.color || 'var(--table-cell-color, var(--body-text-color, var(--text-color, #fff)))'}; z-index: 100; outline: none; resize: none; border-radius: 4px; overflow: auto;`;
+
+      const serializeInlineNode = node => {
+        if (node.nodeType === 3) {
+          return (node.nodeValue || '').replace(/\r\n?|\n/g, '<br>');
+        }
+        if (node.nodeType !== 1) return '';
+        const content = [...node.childNodes].map(serializeInlineNode).join('');
+        switch (node.tagName) {
+          case 'BR': return '<br>';
+          case 'STRONG':
+          case 'B': return `**${content}**`;
+          case 'EM':
+          case 'I': return `*${content}*`;
+          case 'CODE': return `\`${content}\``;
+          case 'DIV':
+          case 'P': return content;
+          default: return content;
+        }
+      };
+      const serializeCellEditor = () => {
+        let value = '';
+        [...overlay.childNodes].forEach((node, index) => {
+          if (
+            index > 0 &&
+            node.nodeType === 1 &&
+            ['DIV', 'P'].includes(node.tagName) &&
+            !value.endsWith('<br>')
+          ) value += '<br>';
+          value += serializeInlineNode(node);
+        });
+
+        // Preserve Wmdx resource-link pipes; escape other pipes so they remain
+        // cell content instead of becoming table column separators.
+        const resourceTokens = [];
+        value = value.replace(/!?\[\[[^\]]+\]\]/g, token => {
+          const marker = `\uE000${resourceTokens.length}\uE001`;
+          resourceTokens.push(token);
+          return marker;
+        });
+        let escaped = '';
+        let precedingBackslashes = 0;
+        for (const character of value) {
+          if (character === '|' && precedingBackslashes % 2 === 0) escaped += '\\';
+          escaped += character;
+          precedingBackslashes = character === '\\' ? precedingBackslashes + 1 : 0;
+        }
+        return escaped.replace(/\uE000(\d+)\uE001/g, (_match, index) =>
+          resourceTokens[Number(index)] || ''
+        );
+      };
+
+      const caretOffsetAtPoint = () => {
+        if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+        const doc = overlay.ownerDocument;
+        const caret = doc.caretPositionFromPoint?.(point.x, point.y) ||
+          doc.caretRangeFromPoint?.(point.x, point.y);
+        const node = caret?.offsetNode || caret?.startContainer;
+        const offset = caret?.offset ?? caret?.startOffset;
+        return node && (node === overlay || overlay.contains(node)) &&
+          Number.isInteger(offset)
+          ? { node, offset }
+          : null;
+      };
+
+      const placeCaret = () => {
+        const doc = overlay.ownerDocument;
+        const selection = doc.defaultView?.getSelection?.();
+        if (!selection) return;
+        const pointCaret = caretOffsetAtPoint();
+        const range = doc.createRange();
+        if (pointCaret) {
+          range.setStart(pointCaret.node, pointCaret.offset);
+        } else {
+          range.selectNodeContents(overlay);
+          range.collapse(false);
+        }
+        selection.removeAllRanges();
+        selection.addRange(range);
+      };
+
+      const markdownOffsetForPosition = (targetNode, targetOffset) => {
+        let markdownOffset = 0;
+        let result = null;
+        const visit = node => {
+          if (node === targetNode) {
+            if (node.nodeType === 3) {
+              result = markdownOffset + Math.max(
+                0,
+                Math.min(targetOffset, node.nodeValue?.length || 0)
+              );
+            } else {
+              for (let index = 0; index < targetOffset; index += 1) {
+                const child = node.childNodes[index];
+                if (child) markdownOffset += serializeInlineNode(child).length;
+              }
+              result = markdownOffset;
+            }
+            return true;
+          }
+          if (node.nodeType === 3) {
+            markdownOffset += node.nodeValue?.length || 0;
+            return false;
+          }
+          if (node.nodeType !== 1) return false;
+          if (node.tagName === 'BR') {
+            markdownOffset += 4;
+            return false;
+          }
+          const prefix = ['STRONG', 'B'].includes(node.tagName)
+            ? '**'
+            : ['EM', 'I'].includes(node.tagName)
+              ? '*'
+              : node.tagName === 'CODE'
+                ? '`'
+                : '';
+          markdownOffset += prefix.length;
+          for (const child of node.childNodes) {
+            if (visit(child)) return true;
+          }
+          markdownOffset += prefix.length;
+          return false;
+        };
+        visit(overlay);
+        return result ?? serializeCellEditor().length;
+      };
+      const getMarkdownSelectionOffsets = () => {
+        const selection = overlay.ownerDocument.defaultView?.getSelection?.();
+        if (!selection?.rangeCount) return { from: 0, to: 0 };
+        const range = selection.getRangeAt(0);
+        return {
+          from: markdownOffsetForPosition(range.startContainer, range.startOffset),
+          to: markdownOffsetForPosition(range.endContainer, range.endOffset)
+        };
+      };
+      const setVisibleSelection = (from, to = from) => {
+        const doc = overlay.ownerDocument;
+        const walker = doc.createTreeWalker(overlay, 4);
+        const textNodes = [];
+        let total = 0;
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          textNodes.push({ node, from: total, to: total + (node.nodeValue?.length || 0) });
+          total += node.nodeValue?.length || 0;
+        }
+        const locate = offset => {
+          const bounded = Math.max(0, Math.min(offset, total));
+          const match = textNodes.find(entry => bounded <= entry.to) || textNodes.at(-1);
+          return match
+            ? { node: match.node, offset: Math.max(0, bounded - match.from) }
+            : { node: overlay, offset: 0 };
+        };
+        const start = locate(from);
+        const end = locate(to);
+        const range = doc.createRange();
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset);
+        const selection = doc.defaultView?.getSelection?.();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      };
+      overlay._getMarkdownValue = serializeCellEditor;
+      overlay._getSelectionOffsets = getMarkdownSelectionOffsets;
+      overlay._setMarkdownValue = (markdown, selectionFrom = 0, selectionTo = selectionFrom) => {
+        overlay.innerHTML = renderMarkdownInline(
+          String(markdown || '').replace(/\s*<br\s*\/?>\s*/gi, '<br>')
+        );
+        setVisibleSelection(selectionFrom, selectionTo);
+      };
+
+      const scrollSnapshot = {
+        editorTop: view?.scrollDOM?.scrollTop ?? 0,
+        editorLeft: view?.scrollDOM?.scrollLeft ?? 0,
+        tableTop: overlayContainer.scrollTop,
+        tableLeft: overlayContainer.scrollLeft,
+        windowX: document.defaultView?.scrollX ?? 0,
+        windowY: document.defaultView?.scrollY ?? 0
+      };
+      const restoreScroll = () => {
+        if (!overlay.isConnected) return;
+        if (view?.scrollDOM) {
+          view.scrollDOM.scrollTop = scrollSnapshot.editorTop;
+          view.scrollDOM.scrollLeft = scrollSnapshot.editorLeft;
+        }
+        overlayContainer.scrollTop = scrollSnapshot.tableTop;
+        overlayContainer.scrollLeft = scrollSnapshot.tableLeft;
+        if (
+          document.defaultView &&
+          (document.defaultView.scrollX !== scrollSnapshot.windowX ||
+            document.defaultView.scrollY !== scrollSnapshot.windowY)
+        ) {
+          document.defaultView.scrollTo?.(scrollSnapshot.windowX, scrollSnapshot.windowY);
+        }
+      };
+      const restoreAfterViewportResize = () => requestAnimationFrame(restoreScroll);
+      const visualViewport = document.defaultView?.visualViewport;
+      visualViewport?.addEventListener('resize', restoreAfterViewportResize);
+      document.defaultView?.addEventListener('resize', restoreAfterViewportResize);
 
       let isCommitted = false;
       const commitAndClose = (nextNavigation, refreshWidget = true) => {
         if (isCommitted) return;
         isCommitted = true;
-        const newValue = overlay.value
-          .replace(/\r\n?/g, '\n')
-          .replace(/\n/g, '<br>');
+        const newValue = serializeCellEditor();
         activeOverlay = null;
+        visualViewport?.removeEventListener('resize', restoreAfterViewportResize);
+        document.defaultView?.removeEventListener('resize', restoreAfterViewportResize);
+        overlay.ownerDocument.removeEventListener('selectionchange', updateCellSnap);
         overlay.remove();
         const saveCellValue = () => {
           this.model.rows[r][c] = newValue;
@@ -756,7 +972,11 @@ export class WordProcessorTableWidget extends WidgetType {
           commitAndClose({ rowDelta: 0, colDelta: e.shiftKey ? -1 : 1 });
         } else if (e.key === 'Escape') {
           e.preventDefault();
+          isCommitted = true;
           activeOverlay = null;
+          visualViewport?.removeEventListener('resize', restoreAfterViewportResize);
+          document.defaultView?.removeEventListener('resize', restoreAfterViewportResize);
+          overlay.ownerDocument.removeEventListener('selectionchange', updateCellSnap);
           overlay.remove();
         }
       });
@@ -767,33 +987,61 @@ export class WordProcessorTableWidget extends WidgetType {
 
       const updateCellSnap = () => {
         if (typeof window === 'undefined') return;
+        const selection = overlay.ownerDocument.defaultView?.getSelection?.();
+        const selectionRange = selection?.rangeCount ? selection.getRangeAt(0) : null;
+        const offsetFor = (node, offset) => {
+          if (!node || (node !== overlay && !overlay.contains(node))) return 0;
+          const range = overlay.ownerDocument.createRange();
+          range.selectNodeContents(overlay);
+          try {
+            range.setEnd(node, offset);
+            return range.toString().length;
+          } catch {
+            return 0;
+          }
+        };
+        const selStart = selectionRange
+          ? offsetFor(selectionRange.startContainer, selectionRange.startOffset)
+          : 0;
+        const selEnd = selectionRange
+          ? offsetFor(selectionRange.endContainer, selectionRange.endOffset)
+          : selStart;
+        const plainText = overlay.textContent || '';
         window._lastActiveCellSelection = {
           widget: this,
           model: this.model,
           row: r,
           col: c,
-          selStart: overlay.selectionStart ?? 0,
-          selEnd: overlay.selectionEnd ?? 0,
-          cellValue: overlay.value || '',
-          selectedText: (overlay.value || '').substring(overlay.selectionStart ?? 0, overlay.selectionEnd ?? 0),
+          selStart,
+          selEnd,
+          cellValue: serializeCellEditor(),
+          selectedText: selection?.toString?.() || plainText.substring(selStart, selEnd),
           timestamp: Date.now()
         };
       };
 
       overlay.addEventListener('keyup', updateCellSnap);
-      overlay.addEventListener('mouseup', updateCellSnap);
-      overlay.addEventListener('touchend', updateCellSnap);
-      overlay.addEventListener('select', updateCellSnap);
+      overlay.addEventListener('pointerup', updateCellSnap);
+      overlay.addEventListener('input', updateCellSnap);
+      overlay.ownerDocument.addEventListener('selectionchange', updateCellSnap);
       overlay.addEventListener('blur', () => {
         updateCellSnap();
         commitAndClose();
       });
 
       table.parentElement.appendChild(overlay);
-      overlay.focus();
-      overlay.setSelectionRange(overlay.value.length, overlay.value.length);
       activeOverlay = overlay;
+      try {
+        overlay.focus({ preventScroll: true });
+      } catch {
+        overlay.focus();
+      }
+      placeCaret();
       showCellEditorKeyboard();
+      requestAnimationFrame(() => {
+        restoreScroll();
+        requestAnimationFrame(restoreScroll);
+      });
     };
 
     const navigateCell = (r, c, rowDelta, colDelta) => {

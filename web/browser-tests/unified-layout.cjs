@@ -1099,11 +1099,130 @@ async function main() {
         await page.waitForFunction(markdown =>
           window.editorBridge.getMarkdown() === markdown
         , wideSourceDocument);
+        const sourceToggle = await page.evaluate(() =>
+          window.editorBridge.toggleTableScrolling()
+        );
+        assert.deepEqual(sourceToggle, {
+          preferenceKey: 'pref_table_scroll_source_enabled',
+          enabled: false
+        });
+        await page.waitForTimeout(100);
+        const wrappedSourceTable = await page.evaluate(() => {
+          const table = document.querySelector('.cm-source-table-widget');
+          const line = table?.querySelector('.cm-source-table-editor .cm-line');
+          const scroller = table?.querySelector('.cm-source-table-editor .cm-scroller');
+          return {
+            whiteSpace: line ? getComputedStyle(line).whiteSpace : null,
+            inlineWhiteSpace: line?.style.whiteSpace ?? null,
+            overflowX: scroller ? getComputedStyle(scroller).overflowX : null,
+            inlineOverflowX: scroller?.style.overflowX ?? null,
+            enabled: table?.dataset.horizontalScrollEnabled ?? null,
+            outerOverflow: document.querySelector(
+              '#editor > .cm-editor > .cm-scroller'
+            ).scrollWidth > document.querySelector(
+              '#editor > .cm-editor > .cm-scroller'
+            ).clientWidth + 1
+          };
+        });
+        assert.equal(wrappedSourceTable.whiteSpace, 'pre-wrap',
+          `Disabling Source scrolling should wrap source lines: ${JSON.stringify(wrappedSourceTable)}`);
+        assert.equal(wrappedSourceTable.overflowX, 'hidden',
+          `Disabled Source scrolling should not keep a nested horizontal scroller: ${JSON.stringify(wrappedSourceTable)}`);
+        assert.ok(!wrappedSourceTable.outerOverflow,
+          `Wrapped Source tables must not widen the document: ${JSON.stringify(wrappedSourceTable)}`);
+        const sourceRestore = await page.evaluate(() =>
+          window.editorBridge.toggleTableScrolling()
+        );
+        assert.deepEqual(sourceRestore, {
+          preferenceKey: 'pref_table_scroll_source_enabled',
+          enabled: true
+        });
       } else {
         assert.ok(tableLayout.renderedTables >= 1, `${mode}: table should remain rendered and editable`);
+        if (mode === 'wysiwyg') {
+          const renderedToggle = await page.evaluate(() =>
+            window.editorBridge.toggleTableScrolling()
+          );
+          assert.deepEqual(renderedToggle, {
+            preferenceKey: 'pref_table_scroll_wysiwyg_enabled',
+            enabled: false
+          });
+          await page.waitForTimeout(100);
+          const wrappedRenderedTable = await page.evaluate(() => {
+            const container = document.querySelector('.cm-wp-table-container');
+            const table = container?.querySelector('.cm-wp-table');
+            const cell = container?.querySelector('td');
+            return {
+              enabled: container?.dataset.horizontalScrollEnabled,
+              overflowX: container ? getComputedStyle(container).overflowX : null,
+              tableWidth: table ? getComputedStyle(table).width : null,
+              cellWrap: cell ? getComputedStyle(cell).overflowWrap : null
+            };
+          });
+          assert.equal(wrappedRenderedTable.enabled, 'false',
+            `Rendered table scrolling should be independently switchable: ${JSON.stringify(wrappedRenderedTable)}`);
+          assert.equal(wrappedRenderedTable.overflowX, 'hidden');
+          assert.equal(wrappedRenderedTable.cellWrap, 'anywhere');
+          const renderedRestore = await page.evaluate(() =>
+            window.editorBridge.toggleTableScrolling()
+          );
+          assert.deepEqual(renderedRestore, {
+            preferenceKey: 'pref_table_scroll_wysiwyg_enabled',
+            enabled: true
+          });
+        }
       }
       cases++;
     }
+
+    const renderedCellDocument = [
+      '| Name | Value |',
+      '| --- | --- |',
+      '| **Bold** tail | Plain |'
+    ].join('\n');
+    await page.evaluate(async markdown => {
+      await window.editorBridge.setEditorMode('wysiwyg');
+      window.editorBridge.setMarkdown(markdown);
+    }, renderedCellDocument);
+    const renderedCell = page.locator(
+      '.cm-wp-table-container tbody td[data-row="1"][data-col="0"]'
+    );
+    await renderedCell.waitFor();
+    const renderedCellBox = await renderedCell.boundingBox();
+    assert.ok(renderedCellBox, 'the WYSIWYG cell is visible for a real pointer tap');
+    await page.mouse.click(
+      renderedCellBox.x + Math.min(20, renderedCellBox.width / 2),
+      renderedCellBox.y + renderedCellBox.height / 2
+    );
+    await page.locator('.cm-wp-cell-editor').waitFor();
+    const renderedCellEditState = await page.evaluate(() => {
+      const editor = document.querySelector('.cm-wp-cell-editor');
+      const selection = window.getSelection();
+      return {
+        isContentEditable: editor?.isContentEditable,
+        html: editor?.innerHTML,
+        active: document.activeElement === editor,
+        caretInsideEmphasis: Boolean(
+          selection?.anchorNode?.parentElement?.closest('strong')
+        ),
+        caretOffset: selection?.anchorOffset,
+        textLength: selection?.anchorNode?.textContent?.length
+      };
+    });
+    assert.equal(renderedCellEditState.isContentEditable, true,
+      `WYSIWYG table cells should remain rendered while editing: ${JSON.stringify(renderedCellEditState)}`);
+    assert.equal(renderedCellEditState.html, '<strong>Bold</strong> tail');
+    assert.ok(renderedCellEditState.active, 'the tapped cell editor receives focus');
+    assert.ok(renderedCellEditState.caretInsideEmphasis,
+      `The tap should position the caret within the rendered bold run: ${JSON.stringify(renderedCellEditState)}`);
+    assert.ok(renderedCellEditState.caretOffset < renderedCellEditState.textLength,
+      `The caret should not jump to the end of the cell: ${JSON.stringify(renderedCellEditState)}`);
+    const renderedCellAfterEdit = await page.evaluate(() =>
+      window.editorBridge.getMarkdown()
+    );
+    assert.ok(renderedCellAfterEdit.includes('| **Bold** tail | Plain |'),
+      'Opening a rendered cell without editing must preserve the Markdown source');
+    cases++;
 
     await page.setViewportSize({ width: 390, height: 844 });
     const phoneMarkdown = await fs.readFile(phoneFixture, 'utf8');

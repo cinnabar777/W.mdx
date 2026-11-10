@@ -54,10 +54,16 @@ as an MDZip package with real media and attachment assets.
 - In Source, a wide table scrolls as one local block; pipe delimiters align,
   every row moves together, surrounding text stays put, the source text is not
   rewritten, and the app's document viewport does not widen.
-- In rendered views, enter a cell and verify the caret and keyboard enter that
-  cell without moving to the line after the table or revealing raw table source.
+- Toggle horizontal scrolling independently in rendered views and Source. Verify
+  the Table toolbar toggle and configured shortcut affect only the current view;
+  the default shortcut is unassigned.
+- With rendered scrolling disabled, verify wide cells wrap within the document
+  width. Re-enable it and verify the whole table scrolls locally.
+- In rendered views, tap near the start, middle, and end of a formatted cell.
+  The caret should land at each tap, the cell should retain rendered inline
+  styling and its table typography, and the document must not jump.
 - Edit a cell, move to another cell, return, and confirm the first edit remains.
-  Check the floating toolbar and table actions do not overlap.
+  Check clear formatting, the floating toolbar, and table actions still work.
 - Save and reopen the MDZ to verify cell edits persist.
 
 ## Syntax, links, and media
