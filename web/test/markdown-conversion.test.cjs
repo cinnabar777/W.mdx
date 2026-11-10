@@ -120,6 +120,15 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
     assert.match(rawAnchor.markdown, /escaped \\<a href="\/literal">text<\/a>/);
     assert.match(rawAnchor.markdown, /`<a href="\/code">code<\/a>`/);
     assert.ok(rawAnchor.warnings.some(warning => warning.includes('tooltip titles')));
+
+    const inlineMedia = convertFromMarkdown(
+      'Listen <audio src="assets/voice.ogg"></audio> then ' +
+        '<video src="assets/clip.mp4"></video>.',
+      format,
+      { DOMParser }
+    );
+    assert.match(inlineMedia.markdown, /\[voice\.ogg\]\(assets\/voice\.ogg "wmdx-audio"\)/, format);
+    assert.match(inlineMedia.markdown, /\[clip\.mp4\]\(assets\/clip\.mp4 "wmdx-video"\)/, format);
   }
 
   const nested = convertFromMarkdown(

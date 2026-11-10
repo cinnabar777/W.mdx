@@ -595,7 +595,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
   };
   let text = String(line ?? '')
     .replace(
-      /<((?!(?:a|strong|b|em|i|del|s|sup|sub|mark|u|ins)\b)[a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      /<((?!(?:a|audio|video|strong|b|em|i|del|s|sup|sub|mark|u|ins)\b)[a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
       value => {
         addWarning(
           warnings,
@@ -607,6 +607,15 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<!--[\s\S]*?-->/g, protect);
   if (Parser) {
+    text = text.replace(
+      /<(audio|video)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      (source, tag, offset, wholeText) => {
+        if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
+        const media = new Parser().parseFromString(source, 'text/html')
+          .querySelector(tag.toLowerCase());
+        return media ? htmlBlock(media, warnings) : source;
+      }
+    );
     text = text.replace(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi, (source, offset, wholeText) => {
       if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
       const anchor = new Parser().parseFromString(source, 'text/html').querySelector('a');
