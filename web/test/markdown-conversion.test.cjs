@@ -305,7 +305,8 @@ test('unintegrated LaTeX math delimiters stay byte-for-byte intact in Markdown c
 });
 
 test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies', async () => {
-  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
   const obsidian = convertFromMarkdown([
     '> [!warning]- Careful',
     '> First paragraph.',
@@ -337,12 +338,35 @@ test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies
     '> [!custom] This is an ordinary quote\n> It is not a GitHub alert type.'
   );
 
+  const commonmarkLiteral = convertFromMarkdown([
+    '> [!NOTE] CommonMark treats this as plain quote text.',
+    '> The marker must not turn into a GFM alert on export.'
+  ].join('\n'), 'commonmark');
+  assert.match(commonmarkLiteral.markdown, /^> \\\[!NOTE\]/m);
+  const commonmarkToGfm = exportMarkdown(commonmarkLiteral.markdown, 'gfm');
+  assert.match(commonmarkToGfm.markdown, /^> \\\[!NOTE\]/m);
+
   const customObsidianCallout = convertFromMarkdown([
     '> [!custom] Custom Obsidian type',
     '> Its body is retained.'
   ].join('\n'), 'obsidian');
   assert.match(customObsidianCallout.markdown, /^±custom Custom Obsidian type$/m);
   assert.match(customObsidianCallout.markdown, /^  Its body is retained\.$/m);
+});
+
+test('CommonMark wikilink-like text stays literal when exported to Obsidian', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const imported = convertFromMarkdown(
+    'Literal [[not a link]] and ![[not-an-embed.png]].',
+    'commonmark'
+  );
+
+  assert.ok(imported.markdown.includes(String.raw`\[\[not a link]]`));
+  assert.ok(imported.markdown.includes(String.raw`\!\[\[not-an-embed.png]]`));
+  const obsidian = exportMarkdown(imported.markdown, 'obsidian');
+  assert.ok(obsidian.markdown.includes(String.raw`\[\[not a link]]`));
+  assert.ok(obsidian.markdown.includes(String.raw`\!\[\[not-an-embed.png]]`));
 });
 
 test('Obsidian wikilinks and media embeds import to Wmdx resources outside code', async () => {

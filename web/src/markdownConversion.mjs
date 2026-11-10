@@ -955,7 +955,24 @@ function isRawHtmlBlockLine(line, state) {
   return true;
 }
 
-function escapeDialectSpecificWmdxSyntax(line, format) {
+function normalizeCommonMarkReferenceLabel(value) {
+  return String(value ?? '')
+    .replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase();
+}
+
+function collectCommonMarkReferenceLabels(source) {
+  const labels = new Set();
+  for (const line of String(source ?? '').replace(/\r\n/g, '\n').split('\n')) {
+    const definition = /^ {0,3}\[([^\]\n]+)\]:/.exec(line);
+    if (definition) labels.add(normalizeCommonMarkReferenceLabel(definition[1]));
+  }
+  return labels;
+}
+
+function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = new Set()) {
   const protectedValues = [];
   let text = String(line ?? '');
   const protect = value => {
@@ -972,6 +989,21 @@ function escapeDialectSpecificWmdxSyntax(line, format) {
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<(?:https?|ftp):\/\/[^>\s]+>|<mailto:[^>\s]+>|<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>/gi, protect);
   text = protectInlineMathSyntax(text, protect);
+  if (format === 'commonmark') {
+    text = text.replace(
+      /(?<!\\)(!?)\[\[([^\[\]\n]+)\]\]/g,
+      (match, embedMarker, target) => {
+        if (/[*_`<>]/.test(target)) return match;
+        const referenceLabel = normalizeCommonMarkReferenceLabel(
+          target.split(/[|#]/, 1)[0]
+        );
+        if (commonMarkReferences.has(referenceLabel)) return match;
+        return embedMarker
+          ? `\\!\\[\\[${target}]]`
+          : `\\[\\[${target}]]`;
+      }
+    );
+  }
 
   const escapeTildes = value => value.replace(/~/g, '\\~');
   if (format === 'commonmark') {
@@ -1011,12 +1043,23 @@ function escapeDialectSpecificWmdxSyntax(line, format) {
   return text;
 }
 
+function escapeForeignCalloutMarkers(line, format) {
+  if (format !== 'commonmark') return line;
+  return line.replace(
+    /^(\s*(?:>\s*)+)\[!([^\]\r\n]+)\]/,
+    '$1\\[!$2]'
+  );
+}
+
 export function convertFromMarkdown(source, format = 'commonmark', options = {}) {
   if (!MARKDOWN_IMPORT_FORMATS.includes(format) || format === 'html') {
     throw new TypeError(`Unsupported Markdown import format: ${format}`);
   }
   const warnings = [];
   const sourceText = String(source ?? '');
+  const commonMarkReferences = format === 'commonmark'
+    ? collectCommonMarkReferenceLabels(sourceText)
+    : new Set();
   if (findYamlFrontmatterEndLine(sourceText.replace(/\r\n/g, '\n').split('\n')) >= 0) {
     addWarning(
       warnings,
@@ -1058,7 +1101,8 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
         }
         return line;
       }
-      let text = escapeDialectSpecificWmdxSyntax(line, format);
+      let text = escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences);
+      text = escapeForeignCalloutMarkers(text, format);
       text = convertInlineHtmlToMarkdown(text, warnings, htmlParser);
       if (format === 'obsidian') {
         text = convertObsidianLinksToWmdx(text, warnings);
