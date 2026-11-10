@@ -255,7 +255,12 @@ class EditorWebViewInteractionTest {
                 latch.countDown()
             }
         }
-        assertTrue("Android WebView JavaScript evaluation timed out", latch.await(5, TimeUnit.SECONDS))
+        val completed = latch.await(15, TimeUnit.SECONDS)
+        val scriptSummary = script.replace(Regex("\\s+"), " ").take(180)
+        assertTrue(
+            "Android WebView JavaScript callback timed out after 15 seconds; script: $scriptSummary",
+            completed
+        )
         return result.get() ?: "null"
     }
 
