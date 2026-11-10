@@ -1662,6 +1662,22 @@ function isGeneratedTocNode(node) {
   return Boolean(node.closest?.('nav.toc-container'));
 }
 
+function htmlMediaResource(node) {
+  const tag = node.tagName.toLowerCase();
+  if (tag !== 'audio' && tag !== 'video') return '';
+  const sourceNode = node.querySelector('source');
+  const source = node.getAttribute('src') || sourceNode?.getAttribute('src');
+  if (!source) return '';
+  const title = node.getAttribute('aria-label') ||
+    sourceNode?.getAttribute('title') ||
+    getWmdxResourceFallbackTitle(
+      node.getAttribute('data-wmdx-original-src') ||
+      sourceNode?.getAttribute('data-wmdx-original-src') ||
+      source
+    );
+  return `[${markdownText(title)}](${markdownLinkDestination(source)} "wmdx-${tag}")`;
+}
+
 function inlineHtmlNode(node, warnings, options = {}) {
   if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
@@ -1670,6 +1686,7 @@ function inlineHtmlNode(node, warnings, options = {}) {
   }
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
+  if (tag === 'audio' || tag === 'video') return htmlMediaResource(node);
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
   }
@@ -1972,18 +1989,7 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     }
   }
   if (tag === 'audio' || tag === 'video') {
-    const sourceNode = node.querySelector('source');
-    const source = node.getAttribute('src') || sourceNode?.getAttribute('src');
-    if (source) {
-      const title = node.getAttribute('aria-label') ||
-        sourceNode?.getAttribute('title') ||
-        getWmdxResourceFallbackTitle(
-          node.getAttribute('data-wmdx-original-src') ||
-          sourceNode?.getAttribute('data-wmdx-original-src') ||
-          source
-        );
-      return `[${markdownText(title)}](${source} "wmdx-${tag}")`;
-    }
+    return htmlMediaResource(node);
   }
   if (tag === 'img') return inlineHtmlNode(node, warnings, options);
   if (tag === 'div' && (node.hasAttribute('align') ||

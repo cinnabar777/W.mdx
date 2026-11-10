@@ -189,6 +189,78 @@ test('MHTML resource handles load embedded bytes lazily and only once per part',
   assert.equal((imported.markdown.match(/data:image\/png;base64,AQIDBA==/g) || []).length, 2);
 });
 
+test('standalone MHTML audio and video survive each flavor HTML round trip', async t => {
+  const { convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const dom = new JSDOM('');
+  const Parser = dom.window.DOMParser;
+  const baseLocation = 'https://example.test/docs/page.html';
+  const mediaCases = [
+    {
+      kind: 'audio',
+      html: '<audio controls src="audio/voice.ogg" aria-label="Voice"></audio>',
+      source: 'data:audio/ogg;base64,BAUG',
+      resourceUrl: 'https://example.test/docs/audio/voice.ogg'
+    },
+    {
+      kind: 'video',
+      html: '<video controls src="video/clip.mp4" aria-label="Clip"></video>',
+      source: 'data:video/mp4;base64,BwgJ',
+      resourceUrl: 'https://example.test/docs/video/clip.mp4'
+    }
+  ];
+
+  for (const media of mediaCases) {
+    await t.test(`${media.kind} resource returns from every Markdown flavor`, async () => {
+      const imported = convertFromHtml(
+        media.html,
+        Parser,
+        {
+          baseLocation,
+          embeddedResources: {
+            [media.resourceUrl]: media.source
+          }
+        }
+      );
+      assert.deepEqual(imported.warnings, []);
+
+      for (const profile of ['commonmark', 'gfm', 'obsidian']) {
+        const exported = exportMarkdown(imported.markdown, profile);
+        const rendered = renderMarkdownHtml(exported.markdown, {
+          profile,
+          window: dom.window
+        });
+        const output = new Parser().parseFromString(rendered.html, 'text/html');
+        assert.deepEqual(exported.warnings, [], `${profile} export warnings`);
+        assert.deepEqual(rendered.warnings, [], `${profile} HTML warnings`);
+        assert.equal(
+          output.querySelector(media.kind)?.getAttribute('src'),
+          media.source,
+          `${profile} exported ${media.kind} source`
+        );
+
+        const returned = convertFromHtml(rendered.html, Parser);
+        assert.deepEqual(
+          returned.warnings,
+          [],
+          `${profile} ${media.kind} HTML re-import warnings`
+        );
+        assert.equal(
+          returned.markdown,
+          imported.markdown,
+          `${profile} ${media.kind} must return to the same Wmdx resource`
+        );
+        assert.equal(
+          exportMarkdown(returned.markdown, profile).markdown,
+          exported.markdown,
+          `${profile} ${media.kind} source must round-trip without rewriting`
+        );
+      }
+    });
+  }
+});
+
 test('MHTML-imported images, media, and attachments survive conversion to each Markdown flavor', async () => {
   const { convertFromHtml, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
