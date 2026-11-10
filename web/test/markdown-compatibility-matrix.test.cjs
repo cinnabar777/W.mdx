@@ -261,6 +261,88 @@ test('standalone MHTML audio and video survive each flavor HTML round trip', asy
   }
 });
 
+test('standalone MHTML images and attachments survive each flavor HTML round trip', async t => {
+  const { convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const dom = new JSDOM('');
+  const Parser = dom.window.DOMParser;
+  const baseLocation = 'https://example.test/docs/page.html';
+  const resourceCases = [
+    {
+      kind: 'image',
+      html: '<img src="images/pixel.png" alt="Pixel">',
+      resourceUrl: 'https://example.test/docs/images/pixel.png',
+      source: 'data:image/png;base64,AQIDBA=='
+    },
+    {
+      kind: 'attachment',
+      html: '<a href="files/manual.pdf" download>Manual PDF</a>',
+      resourceUrl: 'https://example.test/docs/files/manual.pdf',
+      source: 'data:application/pdf;base64,CgsM'
+    }
+  ];
+
+  for (const resource of resourceCases) {
+    await t.test(`${resource.kind} resource returns from every Markdown flavor`, async () => {
+      const imported = convertFromHtml(
+        resource.html,
+        Parser,
+        {
+          baseLocation,
+          embeddedResources: {
+            [resource.resourceUrl]: resource.source
+          }
+        }
+      );
+      assert.deepEqual(imported.warnings, []);
+
+      for (const profile of ['commonmark', 'gfm', 'obsidian']) {
+        const exported = exportMarkdown(imported.markdown, profile);
+        const rendered = renderMarkdownHtml(exported.markdown, {
+          profile,
+          window: dom.window
+        });
+        const output = new Parser().parseFromString(rendered.html, 'text/html');
+        assert.deepEqual(exported.warnings, [], `${profile} export warnings`);
+        if (resource.kind === 'image') {
+          assert.deepEqual(
+            rendered.warnings,
+            ['Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'],
+            `${profile} image HTML fallback warning`
+          );
+        } else {
+          assert.deepEqual(rendered.warnings, [], `${profile} HTML warnings`);
+        }
+
+        if (resource.kind === 'image') {
+          assert.equal(output.querySelector('img')?.getAttribute('src'), resource.source);
+        } else {
+          const link = output.querySelector('a[title="wmdx-attachment"]');
+          assert.equal(link?.getAttribute('href'), resource.source);
+        }
+
+        const returned = convertFromHtml(rendered.html, Parser);
+        assert.deepEqual(
+          returned.warnings,
+          [],
+          `${profile} ${resource.kind} HTML re-import warnings`
+        );
+        assert.equal(
+          returned.markdown,
+          imported.markdown,
+          `${profile} ${resource.kind} must return to the same Wmdx resource`
+        );
+        assert.equal(
+          exportMarkdown(returned.markdown, profile).markdown,
+          exported.markdown,
+          `${profile} ${resource.kind} source must round-trip without rewriting`
+        );
+      }
+    });
+  }
+});
+
 test('MHTML-imported images, media, and attachments survive conversion to each Markdown flavor', async () => {
   const { convertFromHtml, exportMarkdown } =
     await import('../src/markdownConversion.mjs');

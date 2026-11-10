@@ -1721,6 +1721,12 @@ function inlineHtmlNode(node, warnings, options = {}) {
         });
       }
     }
+    if (
+      href &&
+      node.getAttribute('title') === 'wmdx-attachment'
+    ) {
+      return `[${content || markdownText(href)}](${markdownLinkDestination(href)} "wmdx-attachment")`;
+    }
     if (node.hasAttribute('title')) {
       addWarning(warnings, 'HTML link tooltip titles have no native Wmdx field and were omitted.');
     }
