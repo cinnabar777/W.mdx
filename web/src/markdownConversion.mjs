@@ -53,6 +53,14 @@ function addWarning(warnings, message) {
   if (!warnings.includes(message)) warnings.push(message);
 }
 
+function isEscapedMarkdownDelimiter(text, offset) {
+  let backslashes = 0;
+  for (let index = offset - 1; index >= 0 && text[index] === '\\'; index--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 1;
+}
+
 function findYamlFrontmatterEndLine(lines) {
   const opening = String(lines[0] ?? '').replace(/^\uFEFF/, '').replace(/\r$/, '');
   if (!/^---[ \t]*$/.test(opening)) return -1;
@@ -587,7 +595,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
   };
   let text = String(line ?? '')
     .replace(
-      /<((?!(?:strong|b|em|i|del|s|sup|sub|mark)\b)[a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      /<((?!(?:a|strong|b|em|i|del|s|sup|sub|mark)\b)[a-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
       value => {
         addWarning(
           warnings,
@@ -598,6 +606,13 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
     )
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<!--[\s\S]*?-->/g, protect);
+  if (Parser) {
+    text = text.replace(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi, (source, offset, wholeText) => {
+      if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
+      const anchor = new Parser().parseFromString(source, 'text/html').querySelector('a');
+      return anchor ? inlineHtmlNode(anchor, warnings) : source;
+    });
+  }
   text = text
     .replace(/<(strong|b)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '**$2**')
     .replace(/<(em|i)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '*$2*')
@@ -613,22 +628,14 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
     });
   if (Parser) {
     text = text.replace(/<img\b[^>]*\/?>/gi, (source, offset, wholeText) => {
-      let backslashes = 0;
-      for (let index = offset - 1; index >= 0 && wholeText[index] === '\\'; index--) {
-        backslashes++;
-      }
-      if (backslashes % 2 === 1) return source;
+      if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
       const image = new Parser().parseFromString(source, 'text/html').querySelector('img');
       if (!image) return source;
       return htmlImageResource(image, warnings) || source;
     });
   }
   text = text.replace(/<br\s*\/?>/gi, (source, offset, wholeText) => {
-    let backslashes = 0;
-    for (let index = offset - 1; index >= 0 && wholeText[index] === '\\'; index--) {
-      backslashes++;
-    }
-    return backslashes % 2 === 1 ? source : '  \n';
+    return isEscapedMarkdownDelimiter(wholeText, offset) ? source : '  \n';
   });
   for (const { marker, value } of protectedValues.reverse()) {
     text = text.replace(marker, value);

@@ -106,6 +106,20 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
     );
     assert.match(inline.markdown, /!\[\/photo\.png\|Sunset\|\|\]/, format);
     assert.match(inline.markdown, /then line  \nbreak\./, format);
+
+    const rawAnchor = convertFromMarkdown(
+      'Read <a href="/docs/my (file).md" title="Tooltip"><strong>the guide</strong></a>; ' +
+        'escaped \\<a href="/literal">text</a>; `<a href="/code">code</a>`.',
+      format,
+      { DOMParser }
+    );
+    assert.match(
+      rawAnchor.markdown,
+      /\[\*\*the guide\*\*\]\(\/docs\/my%20\\\(file\\\)\.md\)/
+    );
+    assert.match(rawAnchor.markdown, /escaped \\<a href="\/literal">text<\/a>/);
+    assert.match(rawAnchor.markdown, /`<a href="\/code">code<\/a>`/);
+    assert.ok(rawAnchor.warnings.some(warning => warning.includes('tooltip titles')));
   }
 
   const nested = convertFromMarkdown(
