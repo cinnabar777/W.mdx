@@ -61,6 +61,12 @@ function isEscapedMarkdownDelimiter(text, offset) {
   return backslashes % 2 === 1;
 }
 
+function warnInlineHtmlStyle(attributes, warnings) {
+  if (/\bstyle\s*=/i.test(attributes ?? '')) {
+    addWarning(warnings, 'Unmapped inline CSS styling was ignored during Markdown import.');
+  }
+}
+
 function findYamlFrontmatterEndLine(lines) {
   const opening = String(lines[0] ?? '').replace(/^\uFEFF/, '').replace(/\r$/, '');
   if (!/^---[ \t]*$/.test(opening)) return -1;
@@ -623,31 +629,46 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
     });
   }
   text = text
-    .replace(/<(strong|b)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '**$2**')
-    .replace(/<(em|i)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '*$2*')
-    .replace(/<(del|s|strike)(?:\s[^>]*)?>([\s\S]*?)<\/\1\s*>/gi, '~~$2~~')
+    .replace(/<(strong|b)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi, (_, _tag, attributes, content) => {
+      warnInlineHtmlStyle(attributes, warnings);
+      return `**${content}**`;
+    })
+    .replace(/<(em|i)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi, (_, _tag, attributes, content) => {
+      warnInlineHtmlStyle(attributes, warnings);
+      return `*${content}*`;
+    })
+    .replace(/<(del|s|strike)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi, (_, _tag, attributes, content) => {
+      warnInlineHtmlStyle(attributes, warnings);
+      return `~~${content}~~`;
+    })
     .replace(/<(u|ins)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi, (_, _tag, attributes, content) => {
-      if (/\bstyle\s*=/i.test(attributes)) {
-        addWarning(warnings, 'Inline CSS underline styling was ignored during Markdown import.');
-      }
+      warnInlineHtmlStyle(attributes, warnings);
       return `<u>${content}</u>`;
     })
-    .replace(/<sup>([\s\S]*?)<\/sup>/gi, '^$1^')
-    .replace(/<sub>([\s\S]*?)<\/sub>/gi, '~$1~')
-    .replace(/<code(?:\s[^>]*)?>([\s\S]*?)<\/code\s*>/gi, (_, content) =>
-      `\`${content.replace(/`/g, '\\`')}\``
-    )
-    .replace(/<mark(?:\s[^>]*)?>([\s\S]*?)<\/mark>/gi, (_, text) => {
-      if (/style\s*=/i.test(line)) {
+    .replace(/<sup\b([^>]*)>([\s\S]*?)<\/sup\s*>/gi, (_, attributes, content) => {
+      warnInlineHtmlStyle(attributes, warnings);
+      return `^${content}^`;
+    })
+    .replace(/<sub\b([^>]*)>([\s\S]*?)<\/sub\s*>/gi, (_, attributes, content) => {
+      warnInlineHtmlStyle(attributes, warnings);
+      return `~${content}~`;
+    })
+    .replace(/<code\b([^>]*)>([\s\S]*?)<\/code\s*>/gi, (_, attributes, content) => {
+      warnInlineHtmlStyle(attributes, warnings);
+      return `\`${content.replace(/`/g, '\\`')}\``;
+    })
+    .replace(/<mark\b([^>]*)>([\s\S]*?)<\/mark\s*>/gi, (_, attributes, content) => {
+      if (/\bstyle\s*=/i.test(attributes)) {
         addWarning(warnings, 'HTML highlight colors are not retained; highlight meaning is preserved.');
       }
-      return `==${text}==`;
+      return `==${content}==`;
     });
   if (Parser) {
     text = text.replace(/<img\b[^>]*\/?>/gi, (source, offset, wholeText) => {
       if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
       const image = new Parser().parseFromString(source, 'text/html').querySelector('img');
       if (!image) return source;
+      if (image.hasAttribute('style')) warnInlineHtmlStyle('style=', warnings);
       return htmlImageResource(image, warnings) || source;
     });
   }

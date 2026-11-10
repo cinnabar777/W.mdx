@@ -71,6 +71,18 @@ test('raw HTML inline emphasis converts semantically while code and active block
   ]);
 });
 
+test('raw HTML conversion reports inline CSS that Markdown cannot preserve', async () => {
+  const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
+  const result = convertFromMarkdown(
+    '<strong style="color:red">red</strong> and ' +
+      '<mark style="background-color:gold">highlight</mark>.',
+    'commonmark'
+  );
+  assert.equal(result.markdown, '**red** and ==highlight==.');
+  assert.ok(result.warnings.some(warning => warning.includes('Unmapped inline CSS')));
+  assert.ok(result.warnings.some(warning => warning.includes('highlight colors')));
+});
+
 test('top-level raw HTML blocks in Markdown use semantic HTML import without touching code', async () => {
   const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
   const { JSDOM } = require('jsdom');
