@@ -22,6 +22,12 @@ class EditorWebViewInteractionTest {
 
     @Test
     fun touchWrappedListsKeepsCaretAndIndentAcrossWebViewResize() {
+        InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .getSharedPreferences("diagnostic_report", 0)
+            .edit()
+            .clear()
+            .commit()
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         try {
             var candidate: WebView? = null
@@ -238,15 +244,52 @@ class EditorWebViewInteractionTest {
     }
 
     private fun await(webView: WebView, expression: String) {
-        val deadline = SystemClock.uptimeMillis() + 15_000
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        var lastCallbackFailure: String? = null
         while (SystemClock.uptimeMillis() < deadline) {
-            if (evaluate(webView, expression) == "true") return
+            try {
+                if (evaluate(webView, expression, callbackTimeoutMs = 3_000) == "true") return
+            } catch (error: AssertionError) {
+                // Do not keep queueing JavaScript evaluations behind an unresponsive
+                // WebView renderer; capture startup state and native diagnostics below.
+                lastCallbackFailure = error.message
+                break
+            }
             Thread.sleep(80)
         }
-        throw AssertionError("Timed out waiting for Android WebView condition: $expression")
+        val pageState = runCatching {
+            evaluate(
+                webView,
+                """
+                    JSON.stringify({
+                      url: location.href,
+                      readyState: document.readyState,
+                      bridge: typeof window.editorBridge,
+                      nativeBridge: typeof window.AndroidNative,
+                      editor: Boolean(document.querySelector('.cm-content')),
+                      editorContainer: Boolean(document.querySelector('#editor-container')),
+                      bodyChildren: document.body?.children.length || 0
+                    })
+                """.trimIndent(),
+                callbackTimeoutMs = 1_000
+            )
+        }.getOrElse { "unavailable (${it.message})" }
+        val appEvents = InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .getSharedPreferences("diagnostic_report", 0)
+            .getString("events", "<no native diagnostic events>")
+        throw AssertionError(
+            "Timed out waiting for Android WebView condition: $expression; " +
+                "page=$pageState; appEvents=$appEvents; " +
+                "lastCallbackFailure=$lastCallbackFailure"
+        )
     }
 
-    private fun evaluate(webView: WebView, script: String): String {
+    private fun evaluate(
+        webView: WebView,
+        script: String,
+        callbackTimeoutMs: Long = 15_000
+    ): String {
         val result = AtomicReference<String?>()
         val latch = CountDownLatch(1)
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -255,10 +298,10 @@ class EditorWebViewInteractionTest {
                 latch.countDown()
             }
         }
-        val completed = latch.await(15, TimeUnit.SECONDS)
+        val completed = latch.await(callbackTimeoutMs, TimeUnit.MILLISECONDS)
         val scriptSummary = script.replace(Regex("\\s+"), " ").take(180)
         assertTrue(
-            "Android WebView JavaScript callback timed out after 15 seconds; script: $scriptSummary",
+            "Android WebView JavaScript callback timed out after ${callbackTimeoutMs}ms; script: $scriptSummary",
             completed
         )
         return result.get() ?: "null"
