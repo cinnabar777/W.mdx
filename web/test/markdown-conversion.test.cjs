@@ -427,7 +427,7 @@ test('HTML import converts semantic content and omits active elements', async ()
     '<div align="center"><p>Centered</p></div>' +
     '<figure style="text-align:center"><img src="images/photo.png" alt="Photo" width="120" height="60">' +
     '<figcaption>Caption</figcaption></figure>' +
-    '<a href="files/notes.pdf" download>PDF attachment</a>' +
+    '<a href="files/notes (1).pdf" download>PDF attachment</a>' +
     '<script>alert(1)</script>',
     Parser
   );
@@ -439,7 +439,10 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.match(result.markdown, /- \[x\] Done/);
   assert.match(result.markdown, /^><\nCentered$/m);
   assert.match(result.markdown, /!\[images\/photo\.png\|Caption\|120x60\|><\]/);
-  assert.match(result.markdown, /\[PDF attachment\]\(files\/notes\.pdf "wmdx-attachment"\)/);
+  assert.match(
+    result.markdown,
+    /\[PDF attachment\]\(files\/notes%20\\\(1\\\)\.pdf "wmdx-attachment"\)/
+  );
   assert.doesNotMatch(result.markdown, /alert\(1\)/);
   assert.ok(result.warnings.some(warning => warning.includes('script')));
   const comments = convertFromHtml('<p>Text</p><!-- hidden note -->', Parser);

@@ -944,6 +944,13 @@ function markdownText(value) {
     .replace(/(^|\n)([ \t]*)\.(?=[1-6][ \t])/g, '$1$2\\.');
 }
 
+function markdownLinkDestination(value) {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\s/g, '%20')
+    .replace(/([()<>])/g, '\\$1');
+}
+
 function inlineHtmlNode(node, warnings) {
   if (node.nodeType === 3) return markdownText(node.nodeValue);
   if (node.nodeType === 8) {
@@ -973,9 +980,11 @@ function inlineHtmlNode(node, warnings) {
     }
     if (href && (node.hasAttribute('download') ||
         node.getAttribute('data-wmdx-kind') === 'attachment')) {
-      return `[${content || markdownText(href)}](${href} "wmdx-attachment")`;
+      return `[${content || markdownText(href)}](${markdownLinkDestination(href)} "wmdx-attachment")`;
     }
-    return href ? `[${content || markdownText(href)}](${href})` : content;
+    return href
+      ? `[${content || markdownText(href)}](${markdownLinkDestination(href)})`
+      : content;
   }
   if (tag === 'img') {
     const src = node.getAttribute('src');
