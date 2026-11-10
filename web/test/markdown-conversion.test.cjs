@@ -263,7 +263,7 @@ test('CommonMark underscore emphasis and thematic breaks avoid Wmdx underline co
   assert.match(result.markdown, /^---$/m);
   assert.match(result.markdown, /^foo \*\\\*\*$/m);
   assert.match(result.markdown, /^foo \*\*\\\*\*\*$/m);
-  assert.match(result.markdown, /^\*foo\*$/m);
+  assert.match(result.markdown, /^\*<em>foo<\/em>\*$/m);
   assert.match(result.markdown, /^\*foo \*\*bar \\\*baz bim\*\* bam\*$/m);
 });
 

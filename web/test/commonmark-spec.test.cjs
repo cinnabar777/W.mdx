@@ -10,18 +10,7 @@ const { GFM, Table, Strikethrough, TaskList } = require('@lezer/markdown');
 const corpusPath = path.join(__dirname, 'fixtures/commonmark-0.31.2.json');
 const commonmarkCases = JSON.parse(fs.readFileSync(corpusPath, 'utf8'));
 const htmlSections = new Set(['HTML blocks', 'Raw HTML']);
-const knownCommonMarkRoundTripGaps = new Map([
-  [373, '*(foo)*\n'],
-  [389, '**foo, bar, baz**\n'],
-  [407, '*foo bar baz*\n'],
-  [408, '*foo bar*\n'],
-  [425, '**foo bar baz**\n'],
-  [426, '**foo bar**\n'],
-  [461, '*foo*\n'],
-  [463, '*foo*\n'],
-  [465, '**foo**\n'],
-  [468, '***foo***\n']
-]);
+const nestedCommonMarkEmphasisExamples = [373, 389, 407, 408, 425, 426, 461, 463, 465, 468];
 let wmdxMarkdown;
 let parsedCases;
 let htmlInteropCases;
@@ -220,10 +209,9 @@ test('Wmdx CommonMark import/export semantics are checked per core example', asy
   const template = new JSDOM('').window.document.createElement('template');
 
   for (const example of activeCases) {
-    const knownGap = knownCommonMarkRoundTripGaps.has(example.example);
     await t.test(
       `CM-EX-${String(example.example).padStart(3, '0')} ${example.section}: ` +
-      `Wmdx import/export semantics${knownGap ? ' [known gap baseline]' : ''}`,
+      'Wmdx import/export semantics',
       () => {
         const imported = convertFromMarkdown(example.markdown, 'commonmark');
         const exported = exportMarkdown(imported.markdown, 'commonmark');
@@ -233,21 +221,6 @@ test('Wmdx CommonMark import/export semantics are checked per core example', asy
           canonicalizeRenderedHtml(actualHtml, template) ===
           canonicalizeRenderedHtml(expectedHtml, template);
 
-        if (knownGap) {
-          assert.equal(
-            exported.markdown,
-            knownCommonMarkRoundTripGaps.get(example.example),
-            `known gap output changed for CommonMark example ${example.example}; ` +
-            'review and update its status instead of silently changing the baseline'
-          );
-          assert.equal(
-            matchesReference,
-            false,
-            `example ${example.example} now matches the reference; remove it from the known-gap list`
-          );
-          return;
-        }
-
         assert.equal(
           matchesReference,
           true,
@@ -256,6 +229,41 @@ test('Wmdx CommonMark import/export semantics are checked per core example', asy
         );
       }
     );
+  }
+});
+
+test('nested CommonMark emphasis survives conversion through every Markdown flavor', async t => {
+  const { Parser, HtmlRenderer } = require('commonmark');
+  const { JSDOM } = require('jsdom');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const parser = new Parser();
+  const renderer = new HtmlRenderer();
+  const template = new JSDOM('').window.document.createElement('template');
+
+  for (const number of nestedCommonMarkEmphasisExamples) {
+    const example = commonmarkCases.find(candidate => candidate.example === number);
+    await t.test(`CM-EX-${String(number).padStart(3, '0')}: nested delimiter round trips`, () => {
+      const imported = convertFromMarkdown(example.markdown, 'commonmark');
+      const expectedHtml = renderer.render(parser.parse(example.markdown));
+      assert.deepEqual(imported.warnings, []);
+
+      for (const target of ['commonmark', 'gfm', 'obsidian']) {
+        const exported = exportMarkdown(imported.markdown, target);
+        const returned = convertFromMarkdown(exported.markdown, target);
+        const commonMark = exportMarkdown(returned.markdown, 'commonmark');
+        const actualHtml = renderer.render(parser.parse(commonMark.markdown));
+
+        assert.deepEqual(exported.warnings, [], `CM-EX-${number} ${target} export warnings`);
+        assert.deepEqual(returned.warnings, [], `CM-EX-${number} ${target} import warnings`);
+        assert.deepEqual(commonMark.warnings, [], `CM-EX-${number} ${target} return warnings`);
+        assert.equal(
+          canonicalizeRenderedHtml(actualHtml, template),
+          canonicalizeRenderedHtml(expectedHtml, template),
+          `CM-EX-${number} lost nested emphasis through ${target}`
+        );
+      }
+    });
   }
 });
 
@@ -465,7 +473,6 @@ test('CommonMark raw HTML semantic parity has an explicit per-example TODO gate'
 test('CommonMark raw HTML semantic parity remains explicitly incomplete', () => {
   assert.ok(parserComparableCases.length < commonmarkCases.length);
   assert.ok(htmlInteropCases.length > 0);
-  assert.equal(knownCommonMarkRoundTripGaps.size, 10);
   assert.ok(
     fs.existsSync(path.join(__dirname, 'fixtures/COMMONMARK-LICENSE.md')),
     'the upstream fixture attribution and license are present'

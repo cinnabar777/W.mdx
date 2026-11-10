@@ -59,14 +59,14 @@ Do not convert a Known gap or Pending case into Pass merely because import/expor
 | --- | ---: | --- |
 | Pinned reference renderer versus fixture HTML | 652 | 652 individual checks pass |
 | Wmdx parser node families for CommonMark core examples | 575 | 575 individual checks pass |
-| CommonMark → Wmdx → CommonMark rendered semantics | 575 | 565 pass; 10 Known gaps listed below |
+| CommonMark → Wmdx → CommonMark rendered semantics | 575 | 575 pass |
 | Raw HTML conversion smoke checks | 77 | 77 individual no-crash checks pass; this is not semantic compatibility |
 | Raw HTML semantic parity, preservation, and security-loss assertions | 77 | 77 individual TODO gates |
 | GFM and Obsidian round trips for every CommonMark example | 652 per target | Pending |
 | HTML and MHTML import/export for every applicable feature case | Per-case matrix | Pending |
 | Four editor configurations, editing, caret, scrolling, and host contexts | Per feature/context | Tracked separately in `Markdown-Element-Compatibility-Test-Plan.md`; not complete |
 
-The 10 CommonMark round-trip gaps are examples **373, 389, 407, 408, 425, 426, 461, 463, 465, and 468**, all in “Emphasis and strong emphasis.” They use nested emphasis/strong-emphasis whose nesting is flattened during Wmdx normalization. The individual tests assert the current known-gap output so the cases cannot disappear from reporting; each remains non-conformant until its semantics match the upstream renderer.
+Previously failing examples **373, 389, 407, 408, 425, 426, 461, 463, 465, and 468** in “Emphasis and strong emphasis” used nested emphasis/strong-emphasis that Wmdx normalization flattened. Normalization now retains same-kind nested semantics by protecting inline `<em>` or `<strong>` markers until Markdown import finishes, then restoring them inside the outer Markdown delimiter. All 575 parser-comparable round trips now pass the pinned CommonMark renderer comparison. The separate 77 raw-HTML semantic cases remain TODO and are not included in that pass count.
 
 ## Required case gates
 

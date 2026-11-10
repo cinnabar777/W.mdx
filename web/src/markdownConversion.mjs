@@ -50,6 +50,85 @@ export const MARKDOWN_EXPORT_FORMATS = Object.freeze([
   'commonmark', 'gfm', 'obsidian'
 ]);
 
+const nestedEmphasisMarkers = Object.freeze({
+  emOpen: '\uE000WMDX_NESTED_EM_OPEN\uE001',
+  emClose: '\uE000WMDX_NESTED_EM_CLOSE\uE001',
+  strongOpen: '\uE000WMDX_NESTED_STRONG_OPEN\uE001',
+  strongClose: '\uE000WMDX_NESTED_STRONG_CLOSE\uE001'
+});
+
+function restoreNestedEmphasisMarkers(source) {
+  return String(source ?? '')
+    .replaceAll(nestedEmphasisMarkers.emOpen, '<em>')
+    .replaceAll(nestedEmphasisMarkers.emClose, '</em>')
+    .replaceAll(nestedEmphasisMarkers.strongOpen, '<strong>')
+    .replaceAll(nestedEmphasisMarkers.strongClose, '</strong>');
+}
+
+function nestedInlineEmphasisHtmlRanges(source) {
+  if (!/[*_]/.test(source) || !/<\/?(?:em|i|strong|b)\b/i.test(source)) return [];
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdownConversionParser]
+  });
+  const cursor = completeMarkdownSyntaxTree(state).cursor();
+  const readNode = () => {
+    const node = {
+      name: cursor.name,
+      from: cursor.from,
+      to: cursor.to,
+      children: []
+    };
+    if (cursor.firstChild()) {
+      do {
+        node.children.push(readNode());
+      } while (cursor.nextSibling());
+      cursor.parent();
+    }
+    return node;
+  };
+  const root = readNode();
+  const ranges = [];
+  const visit = node => {
+    const matchingTags = node.name === 'Emphasis'
+      ? new Set(['em', 'i'])
+      : node.name === 'StrongEmphasis'
+        ? new Set(['strong', 'b'])
+        : null;
+    if (matchingTags) {
+      const openTags = [];
+      for (const child of node.children) {
+        if (child.name !== 'HTMLTag') continue;
+        const token = /^<\s*(\/?)\s*([a-z]+)/i.exec(source.slice(child.from, child.to));
+        if (!token || !matchingTags.has(token[2].toLowerCase())) continue;
+        const name = token[2].toLowerCase();
+        if (!token[1]) {
+          openTags.push({ name, from: child.from });
+          continue;
+        }
+        const openIndex = openTags.map(open => open.name).lastIndexOf(name);
+        if (openIndex >= 0) {
+          ranges.push({ from: openTags[openIndex].from, to: child.to });
+          openTags.splice(openIndex, 1);
+        }
+      }
+    }
+    node.children.forEach(visit);
+  };
+  visit(root);
+
+  const outermost = [];
+  for (const range of ranges.sort((left, right) =>
+    left.from - right.from || right.to - left.to
+  )) {
+    if (outermost.some(parent => parent.from <= range.from && parent.to >= range.to)) {
+      continue;
+    }
+    outermost.push(range);
+  }
+  return outermost;
+}
+
 function addWarning(warnings, message) {
   if (!warnings.includes(message)) warnings.push(message);
 }
@@ -619,9 +698,16 @@ function normalizeStandardMarkdownMarkers(source) {
         position = child.to;
       }
       content += escapeEmphasisText(source.slice(position, node.to));
-      return parentEmphasis === node.name
-        ? content
-        : `${delimiter}${content}${delimiter}`;
+      if (parentEmphasis === node.name) {
+        const open = node.name === 'StrongEmphasis'
+          ? nestedEmphasisMarkers.strongOpen
+          : nestedEmphasisMarkers.emOpen;
+        const close = node.name === 'StrongEmphasis'
+          ? nestedEmphasisMarkers.strongClose
+          : nestedEmphasisMarkers.emClose;
+        return `${open}${content}${close}`;
+      }
+      return `${delimiter}${content}${delimiter}`;
     }
 
     if (node.name === 'HorizontalRule') {
@@ -794,6 +880,13 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
       (match, fence) => fence ? protect(match) : match
     )
     .replace(/<!--[\s\S]*?-->/g, protect);
+  for (const range of nestedInlineEmphasisHtmlRanges(text).sort((left, right) =>
+    right.from - left.from
+  )) {
+    text = text.slice(0, range.from) +
+      protect(text.slice(range.from, range.to)) +
+      text.slice(range.to);
+  }
   if (Parser) {
     text = text.replace(
       /<(audio|video)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
@@ -1120,7 +1213,7 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
   const cleaned = protectCodeFences(restored, (lines, protectedLines) =>
     removeRedundantHeadingAnchors(lines, protectedLines).lines
   );
-  return { markdown: cleaned, warnings };
+  return { markdown: restoreNestedEmphasisMarkers(cleaned), warnings };
 }
 
 function htmlAlignment(node) {
