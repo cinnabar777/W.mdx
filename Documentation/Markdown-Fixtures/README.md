@@ -17,7 +17,7 @@ For each entry document, record the starting profile, convert to each of the oth
 
 Then export the same document to standalone HTML and MHTML, reimport it, verify the generated table-of-contents links resolve to their headings, and compare all content including the final section and every local media/attachment. The parent-relative and root-relative examples in the CommonMark pack remain deliberate portability probes rather than broken package assets.
 
-Run `node Documentation/Markdown-Fixtures/audit_roundtrips.mjs` to print the complete line-by-line diffs and warnings for every cross-flavor round trip. Pass `CommonMark`, `GFM`, `Obsidian`, or `Markdown-Syntax` to inspect one fixture. A zero exit code means only that the audit ran; any printed difference still needs classification and resolution before that route can be marked compatible.
+Run `node Documentation/Markdown-Fixtures/audit_roundtrips.mjs` to print complete line-by-line diffs, conversion warnings, and a rendered-HTML meaning comparison for every cross-flavor round trip. Pass `CommonMark`, `GFM`, `Obsidian`, or `Markdown-Syntax` to inspect one fixture. A zero exit code means only that the audit ran; any printed difference still needs classification and resolution before that route can be marked compatible.
 
 The packages can be regenerated with `python3 Documentation/Markdown-Fixtures/build_mdz.py` and checked without rewriting them with `python3 Documentation/Markdown-Fixtures/build_mdz.py --check`. The builder includes the original file plus every resource in its fixture folder and validates relative Markdown, HTML, and Obsidian links before writing each archive.
 

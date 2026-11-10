@@ -559,6 +559,26 @@ test('generated HTML table of contents imports as working links in every Markdow
   assert.match(obsidian.markdown, /\[\[#Project Setup 1\|Second copy\]\]/);
 });
 
+test('CommonMark heading links re-import as native Obsidian links without generated anchors', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const source = [
+    '[Jump to target](#target-heading)',
+    '',
+    '<a id="target-heading"></a>',
+    '',
+    '# Target heading'
+  ].join('\n');
+
+  const imported = convertFromMarkdown(source, 'commonmark');
+  assert.match(imported.markdown, /\[#Target heading\|Jump to target\|\|\]/);
+  assert.doesNotMatch(imported.markdown, /<a id="target-heading">/);
+
+  const obsidian = exportMarkdown(imported.markdown, 'obsidian');
+  assert.match(obsidian.markdown, /\[\[#Target heading\|Jump to target\]\]/);
+  assert.doesNotMatch(obsidian.markdown, /<a id="target-heading">/);
+});
+
 test('HTML conversion reports tooltip and CSS losses that Markdown cannot represent', async () => {
   const { JSDOM } = require('jsdom');
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');

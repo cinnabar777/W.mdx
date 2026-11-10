@@ -320,6 +320,107 @@ function convertInlineLinksToWmdx(line, warnings) {
   return output;
 }
 
+function buildHeadingFragmentLookup(lines, protectedLines) {
+  const headings = new Map();
+  for (let index = 0; index < lines.length; index += 1) {
+    if (protectedLines.has(index)) continue;
+    const match = /^\.([1-6])\s+(.+?)\s*$/.exec(lines[index]);
+    if (!match) continue;
+    const title = match[2].trim();
+    const slug = headingFragmentSlug(title);
+    if (slug && !headings.has(slug)) headings.set(slug, title);
+  }
+  return headings;
+}
+
+function removeRedundantHeadingAnchors(lines, protectedLines) {
+  const nextLines = [];
+  const nextProtectedLines = new Set();
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!protectedLines.has(index)) {
+      const anchor = /^\s*<a\s+id=["']([^"']+)["']\s*><\/a>\s*$/i.exec(lines[index]);
+      if (anchor) {
+        let headingIndex = index + 1;
+        while (headingIndex < lines.length && !lines[headingIndex].trim()) headingIndex += 1;
+        const heading = !protectedLines.has(headingIndex)
+          ? /^\.([1-6])\s+(.+?)\s*$/.exec(lines[headingIndex] ?? '')
+          : null;
+        if (heading &&
+            headingFragmentSlug(anchor[1]) === headingFragmentSlug(heading[2])) {
+          index = headingIndex - 1;
+          continue;
+        }
+      }
+    }
+    if (protectedLines.has(index)) nextProtectedLines.add(nextLines.length);
+    nextLines.push(lines[index]);
+  }
+  return { lines: nextLines, protectedLines: nextProtectedLines };
+}
+
+function convertInternalHeadingLinksToWmdx(line, headings) {
+  let output = '';
+  let index = 0;
+  let codeTicks = 0;
+
+  while (index < line.length) {
+    if (line[index] === '\\') {
+      output += line.slice(index, index + 2);
+      index += 2;
+      continue;
+    }
+    if (line[index] === '`') {
+      let end = index;
+      while (line[end] === '`') end += 1;
+      const count = end - index;
+      if (!codeTicks) codeTicks = count;
+      else if (codeTicks === count) codeTicks = 0;
+      output += line.slice(index, end);
+      index = end;
+      continue;
+    }
+    if (codeTicks || line[index] === '!' || line[index] !== '[') {
+      output += line[index++];
+      continue;
+    }
+
+    const labelEnd = findClosingBracket(line, index);
+    if (labelEnd < 0 || line[labelEnd + 1] !== '(') {
+      output += line[index++];
+      continue;
+    }
+    const parsed = parseInlineDestination(line, labelEnd + 2);
+    if (!parsed || !parsed.destination.startsWith('#') || parsed.title) {
+      output += line[index++];
+      continue;
+    }
+
+    let fragment = parsed.destination.slice(1);
+    try {
+      fragment = decodeURIComponent(fragment);
+    } catch {
+      // Retain malformed percent escapes for a literal, non-matching link.
+    }
+    const heading = headings.get(headingFragmentSlug(fragment));
+    if (!heading) {
+      output += line[index++];
+      continue;
+    }
+
+    const label = unescapeMarkdown(line.slice(index + 1, labelEnd));
+    try {
+      output += formatWmdxResourceSyntax({
+        source: `#${heading}`,
+        title: label
+      });
+    } catch {
+      output += line.slice(index, parsed.end);
+    }
+    index = parsed.end;
+  }
+  return output;
+}
+
 function findObsidianLinkEnd(line, start) {
   for (let index = start; index < line.length - 1; index += 1) {
     if (line[index] === '\\') {
@@ -938,9 +1039,13 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
       lines = convertObsidianCallouts(lines, protectedLines, format);
     }
     lines = convertHeadings(lines.join('\n'), protectedLines);
+    const anchorNormalization = removeRedundantHeadingAnchors(lines, protectedLines);
+    lines = anchorNormalization.lines;
+    const headingProtectedLines = anchorNormalization.protectedLines;
+    const headingFragments = buildHeadingFragmentLookup(lines, headingProtectedLines);
     const rawHtmlBlockState = { tags: [], comment: false };
     return lines.map((line, index) => {
-      if (protectedLines.has(index)) return line;
+      if (headingProtectedLines.has(index)) return line;
       if (isRawHtmlBlockLine(line, rawHtmlBlockState)) {
         if (!rawHtmlBlockState.comment &&
             !line.includes('<!--') &&
@@ -958,10 +1063,15 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
       if (format === 'obsidian') {
         text = convertObsidianLinksToWmdx(text, warnings);
       }
+      text = convertInternalHeadingLinksToWmdx(text, headingFragments);
       return text;
     });
   });
-  return { markdown: protectedHtml.restore(converted), warnings };
+  const restored = protectedHtml.restore(converted);
+  const cleaned = protectCodeFences(restored, (lines, protectedLines) =>
+    removeRedundantHeadingAnchors(lines, protectedLines).lines
+  );
+  return { markdown: cleaned, warnings };
 }
 
 function htmlAlignment(node) {
