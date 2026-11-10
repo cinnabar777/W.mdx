@@ -75,7 +75,7 @@ test('strict CommonMark HTML export does not silently render pipe tables as GFM'
   assert.ok(result.warnings.some(warning => warning.includes('not CommonMark')));
 });
 
-test('HTML export removes active script content and event-handler attributes', () => {
+test('HTML export keeps script markup inert and removes event-handler attributes', () => {
   const { dom, result } = render(
     '<script>window.compromised = true</script>\n' +
     '<img src="https://example.test/pixel.png" onerror="alert(1)">'
@@ -84,28 +84,26 @@ test('HTML export removes active script content and event-handler attributes', (
 
   assert.equal(document.querySelector('script'), null);
   assert.equal(document.querySelector('[onerror]'), null);
+  assert.match(document.body.textContent, /<script>window\.compromised = true<\/script>/);
   assert.equal(document.querySelector('img')?.getAttribute('src'), 'https://example.test/pixel.png');
 });
 
 test('GFM HTML export applies the specification tagfilter to raw HTML', () => {
-  const source = [
-    '<script>alert(1)</script>',
-    '',
-    '<textarea>text</textarea>',
-    '',
-    '<div><iframe src="https://example.test"></iframe></div>',
-    '',
-    '```html',
-    '<script>literal code</script>',
-    '```'
-  ].join('\n');
-  const { dom, result } = render(source, 'gfm');
-  const document = new dom.window.DOMParser().parseFromString(result.html, 'text/html');
+  for (const tag of [
+    'title', 'textarea', 'style', 'xmp', 'iframe',
+    'noembed', 'noframes', 'script', 'plaintext'
+  ]) {
+    const { dom, result } = render(`<${tag}>filtered</${tag}>`, 'gfm');
+    const document = new dom.window.DOMParser().parseFromString(result.html, 'text/html');
+    assert.equal(document.querySelector(tag), null, `${tag} must not become an active element`);
+    assert.ok(
+      document.body.textContent.includes(`<${tag}>filtered</${tag}>`),
+      `${tag} remains visible as escaped source`
+    );
+  }
 
-  assert.equal(document.querySelector('script, textarea, iframe'), null);
-  assert.match(document.body.textContent, /<script>alert\(1\)<\/script>/);
-  assert.match(document.body.textContent, /<textarea>text<\/textarea>/);
-  assert.match(document.body.textContent, /<iframe src="https:\/\/example\.test"><\/iframe>/);
+  const { dom, result } = render('```html\n<script>literal code</script>\n```', 'gfm');
+  const document = new dom.window.DOMParser().parseFromString(result.html, 'text/html');
   assert.match(document.querySelector('pre code')?.textContent ?? '', /<script>literal code<\/script>/);
 });
 

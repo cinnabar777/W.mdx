@@ -785,7 +785,7 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
   const protectedHtml = protectTopLevelMarkdownHtmlBlocks(
     sourceText,
     format,
-    options.DOMParser ?? globalThis.DOMParser,
+    options.DOMParser === null ? null : options.DOMParser ?? globalThis.DOMParser,
     warnings
   );
   const normalizedSource = normalizeStandardMarkdownMarkers(protectedHtml.source);

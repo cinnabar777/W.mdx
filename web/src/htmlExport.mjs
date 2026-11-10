@@ -55,6 +55,15 @@ function createGfmRenderer() {
   return renderer;
 }
 
+function renderMarkdownForDialect(markdown, targetDialect) {
+  return marked.parse(markdown, {
+    gfm: targetDialect !== 'commonmark',
+    ...(targetDialect === 'gfm' ? { renderer: createGfmRenderer() } : {}),
+    breaks: false,
+    async: false
+  });
+}
+
 function enhanceCallouts(document, descriptors) {
   let descriptorIndex = 0;
   const blockquotes = Array.from(document.querySelectorAll('blockquote'));
@@ -345,11 +354,7 @@ function appendFootnoteSection(document, rows, profile) {
     item.id = row.id;
     const body = exportMarkdown(row.body, targetDialect);
     warnings.push(...body.warnings);
-    const bodyHtml = marked.parse(body.markdown, {
-      gfm: targetDialect !== 'commonmark',
-      breaks: false,
-      async: false
-    });
+    const bodyHtml = renderMarkdownForDialect(body.markdown, targetDialect);
     const template = document.createElement('template');
     template.innerHTML = bodyHtml;
     while (template.content.firstChild) {
@@ -377,7 +382,7 @@ function isSafeAttachmentDataUri(value) {
 
 function normalizeProfileSource(source, profile) {
   if (profile === 'wmdx') return { markdown: String(source ?? ''), warnings: [] };
-  return convertFromMarkdown(source, profile);
+  return convertFromMarkdown(source, profile, { DOMParser: null });
 }
 
 /**
@@ -410,12 +415,7 @@ export function renderMarkdownHtml(source, {
   const markdownWarnings = [...normalized.warnings, ...exported.warnings]
     .filter((warning, index, all) => all.indexOf(warning) === index)
     .filter(warning => !warning.includes('GFM alerts do not preserve the Wmdx expanded or collapsed state.'));
-  const markdownHtml = marked.parse(exported.markdown, {
-    gfm: targetDialect !== 'commonmark',
-    ...(targetDialect === 'gfm' ? { renderer: createGfmRenderer() } : {}),
-    breaks: false,
-    async: false
-  });
+  const markdownHtml = renderMarkdownForDialect(exported.markdown, targetDialect);
   const parsed = new window.DOMParser().parseFromString(markdownHtml, 'text/html');
   replaceFootnoteTokens(parsed, footnotes.references);
   enhanceCallouts(parsed, calloutDescriptors(normalized.markdown));
