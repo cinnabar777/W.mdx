@@ -41,7 +41,7 @@ test('raw HTML inline emphasis converts semantically while code and active block
   const { convertFromMarkdown } = await import('../src/markdownConversion.mjs');
   const source =
     'HTML <strong class="lead">bold</strong>, <em>italic</em>, ' +
-    '<b>bold too</b>, and <i>italic too</i>. ' +
+    '<b>bold too</b>, <i>italic too</i>, and <ins>underlined</ins>. ' +
     'Raw <a href="/link">HTML link</a>. ' +
     'Escaped \\<br/> is not a hard break; escaped \\<img src="/literal.png"> is not an image. ' +
     '`<strong>code</strong>`\n\n' +
@@ -54,7 +54,7 @@ test('raw HTML inline emphasis converts semantically while code and active block
 
   assert.equal(
     result.markdown,
-    'HTML **bold**, *italic*, **bold too**, and *italic too*. ' +
+    'HTML **bold**, *italic*, **bold too**, *italic too*, and <u>underlined</u>. ' +
       'Raw <a href="/link">HTML link</a>. ' +
       'Escaped \\<br/> is not a hard break; escaped \\<img src="/literal.png"> is not an image. ' +
       '`<strong>code</strong>`\n\n' +
