@@ -55,13 +55,36 @@ internal object MhtmlArchiveImporter {
 
         val parts = splitParts(topBody, boundary)
             .mapNotNull(::parsePart)
-        val htmlPart = parts.firstOrNull {
-            mediaType(it.headers["content-type"].orEmpty()) == "text/html"
-        } ?: throw IllegalArgumentException("The MHTML archive contains no HTML document part.")
+        val startContentId = parameter(topContentType, "start")
+            ?.trim()
+            ?.removePrefix("<")
+            ?.removeSuffix(">")
+        val htmlPart = if (startContentId.isNullOrBlank()) {
+            parts.firstOrNull {
+                mediaType(it.headers["content-type"].orEmpty()) == "text/html"
+            }
+        } else {
+            parts.firstOrNull {
+                mediaType(it.headers["content-type"].orEmpty()) == "text/html" &&
+                    it.headers["content-id"]
+                        ?.trim()
+                        ?.removePrefix("<")
+                        ?.removeSuffix(">")
+                        ?.equals(startContentId, ignoreCase = true) == true
+            }
+        } ?: throw IllegalArgumentException(
+            if (startContentId.isNullOrBlank()) {
+                "The MHTML archive contains no HTML document part."
+            } else {
+                "The MHTML archive's root HTML part could not be found."
+            }
+        )
         val htmlLocation = htmlPart.headers["content-location"]
             ?: topHeaders["snapshot-content-location"]
             ?: topHeaders["content-location"]
-        val baseLocation = htmlPart.headers["content-base"] ?: htmlLocation
+        val baseLocation = htmlPart.headers["content-base"]
+            ?: topHeaders["content-base"]
+            ?: htmlLocation
         val html = decodeText(
             htmlPart.body,
             htmlPart.headers["content-type"].orEmpty()
