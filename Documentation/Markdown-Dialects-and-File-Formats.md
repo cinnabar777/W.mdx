@@ -23,6 +23,22 @@ Settings are app-wide, not stored in each document. **Markdown & Dialects** prov
 
 Turning a feature or spelling off does not rewrite or delete source. It only changes recognition/rendering and authoring behavior. Import and export conversion remain separate actions.
 
+## Official dialect references
+
+Use these primary sources when defining compatibility fixtures. A link to a specification is a reference for implementation and testing; it does not by itself mean every feature is implemented in Wmdx.
+
+- [CommonMark project](https://commonmark.org/)
+- [CommonMark specification 0.31.2](https://spec.commonmark.org/0.31.2/)
+- [CommonMark reference implementations and validation test suite](https://github.com/commonmark)
+- [GitHub Flavored Markdown specification](https://github.github.com/gfm/)
+- [Obsidian Flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown)
+
+## Math and equation editing: not integrated
+
+The current codebase has no integrated math parser, renderer, or equation editor. LaTeX, AsciiMath, and Typst are candidate math notations or toolchains; a WYSIWYG equation editor is a separate authoring interface. None is currently promised by a Wmdx, CommonMark, GFM, or Obsidian profile.
+
+Treat math as a separate compatibility item rather than assuming Markdown flavor support includes it. Future evaluation should decide which inline and block forms to support, how source stays editable, and how rendering, clipboard/HTML conversion, export, accessibility, and round-tripping behave. Possible plugin boundaries to investigate are a CodeMirror extension for source/selection-aware editing, a math renderer, and an equation-authoring UI; no specific plugin has been selected or integrated.
+
 ## Compatibility completion gate
 
 Parser support alone is not proof of full dialect compatibility. Track each flavor and syntax feature across recognition/rendering, editing round-trip, document conversion, clipboard paste, Markdown export, HTML import, and HTML/MHTML export. Mark a combination as verified only when a fixture covers the relevant operation and confirms either preserved semantics or an explicit loss warning. Unsupported or untested syntax must remain visibly identified as unverified; do not infer complete parity from a successful build or from another flavor's tests.
