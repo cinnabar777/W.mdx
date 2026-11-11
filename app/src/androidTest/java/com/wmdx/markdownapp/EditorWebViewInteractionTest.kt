@@ -74,6 +74,34 @@ class EditorWebViewInteractionTest {
                     val point = touchPoint(webView, fixture.marker)
                     tap(webView, point.getDouble("x"), point.getDouble("y"), point.getDouble("dpr"))
                     await(webView, caretInLineScript(fixture.source, fixture.marker))
+                    val selection = JSONObject(
+                        decode(evaluate(webView, "window.editorBridge.getSelectionState()"))
+                    )
+                    val expectedEdit =
+                        fixture.source.substring(0, selection.getInt("head")) +
+                            "X" + fixture.source.substring(selection.getInt("head"))
+                    InstrumentationRegistry.getInstrumentation().sendStringSync("X")
+                    await(webView, "window.editorBridge.getMarkdown() === ${JSONObject.quote(expectedEdit)}")
+                    assertEquals(
+                        expectedEdit,
+                        decode(evaluate(webView, "window.editorBridge.getMarkdown()")),
+                        "${fixture.context}/$scope typing must insert at the touched list caret"
+                    )
+                    val undoAvailable = decode(
+                        evaluate(
+                            webView,
+                            """
+                                (() => {
+                                  const button = document.querySelector('#grp-btn-undo');
+                                  if (!button) return false;
+                                  button.click();
+                                  return true;
+                                })()
+                            """.trimIndent()
+                        )
+                    )
+                    assertEquals("true", undoAvailable, "The list edit must expose the toolbar undo action")
+                    await(webView, "window.editorBridge.getMarkdown() === ${JSONObject.quote(fixture.source)}")
                     assertSource(webView, fixture.source, fixture.context, scope)
                     assertRowsAlign(listGeometry(webView, fixture.marker), fixture.context, scope)
 
