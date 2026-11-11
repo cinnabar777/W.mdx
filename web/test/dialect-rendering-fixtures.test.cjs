@@ -22,6 +22,15 @@ function normalizeHref(href, label) {
     : href;
 }
 
+async function waitForDomCondition(window, predicate, message, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(predicate(), message);
+}
+
 function serializeInline(node) {
   const serialize = child => {
     if (child.nodeType === 3) return child.nodeValue.replace(/\s+/g, ' ');
@@ -230,9 +239,26 @@ test('curated Obsidian syntax fixtures render in the Obsidian profile', async ()
     for (const example of obsidian.cases) {
       window.editorBridge.setMarkdown(example.markdown);
       await window.editorBridge.setEditorMode('wysiwyg');
-      await new Promise(resolve => setTimeout(resolve, 5));
-      const content = window.document.querySelector('.cm-content');
       const expected = example.expected;
+      await waitForDomCondition(
+        window,
+        () => {
+          const content = window.document.querySelector('.cm-content');
+          return Boolean(content) &&
+            (!expected.link || content.querySelector('a.cm-wikilink')) &&
+            (!expected.highlight || content.querySelector('.cm-wmdx-highlight-yellow')) &&
+            (!expected.image || content.querySelector('.cm-image-preview-wrapper img')) &&
+            (!expected.callout || content.querySelector('.cm-callout-title-text')) &&
+            (!expected.tasks ||
+              content.querySelectorAll('.cm-line.cm-todo-list-item').length ===
+                expected.tasks.length) &&
+            (!expected.footnote ||
+              (content.querySelector('.cm-footnote-reference') &&
+                content.querySelector('.cm-footnote-text')));
+        },
+        `${example.feature} finishes rendering before its assertions`
+      );
+      const content = window.document.querySelector('.cm-content');
 
       if (expected.link) {
         const link = content.querySelector('a.cm-wikilink');
@@ -293,6 +319,52 @@ test('curated Obsidian syntax fixtures render in the Obsidian profile', async ()
         `${example.feature} keeps its source unchanged`
       );
     }
+    assert.deepEqual(editor.errors, []);
+  } finally {
+    editor.close();
+  }
+});
+
+test('escaped CommonMark bracket references stay out of Obsidian wikilink rendering', async () => {
+  const editor = await createEditor();
+
+  try {
+    const { window } = editor;
+    window.editorBridge.applyAllPreferences({
+      pref_markdown_profile: 'obsidian'
+    });
+    window.editorBridge.setMarkdown(
+      '\\[[*foo* bar]]\n\n' +
+      '[*foo* bar]: /url "title"\n\n' +
+      '!\\[[foo]]\n\n' +
+      '\\[[foo]]: /url "title"'
+    );
+    await window.editorBridge.setEditorMode('wysiwyg');
+    await new Promise(resolve => setTimeout(resolve, 5));
+
+    const content = window.document.querySelector('.cm-content');
+    assert.ok(content, 'the Obsidian-profile editor mounts');
+    assert.equal(
+      content.querySelectorAll('a.cm-wikilink').length,
+      0,
+      'escaped CommonMark references are not decorated as internal links'
+    );
+    assert.equal(
+      content.querySelectorAll('.cm-image-preview-wrapper, .cm-embed-widget').length,
+      0,
+      'escaped CommonMark text is not rendered as an embed'
+    );
+
+    window.editorBridge.setMarkdown(
+      '[[*foo* bar]]\n\n' +
+      '[*foo* bar]: /url "title"'
+    );
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const unescapedContent = window.document.querySelector('.cm-content');
+    assert.ok(
+      unescapedContent.querySelector('a.cm-wikilink'),
+      'removing the protective bracket escape activates Obsidian wikilink rendering'
+    );
     assert.deepEqual(editor.errors, []);
   } finally {
     editor.close();

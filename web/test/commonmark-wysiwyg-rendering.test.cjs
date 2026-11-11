@@ -29,6 +29,15 @@ function assertHardBreakRendering(lines, window) {
   assert.equal(window.getComputedStyle(backslashMarker).display, 'none');
 }
 
+async function waitForDomCondition(window, predicate, message, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(predicate(), message);
+}
+
 test('CommonMark inline syntax, hard breaks, and list indentation render without changing source', async () => {
   const html = fs.readFileSync(path.join(appAssets, 'index.html'), 'utf8');
   const bundle = fs.readFileSync(path.join(appAssets, 'bundle.js'), 'utf8');
@@ -338,12 +347,8 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       'hanging item-text alignment is the default'
     );
     window.editorBridge.setMarkdown(listSource);
-    await new Promise(resolve => setTimeout(resolve, 20));
     await window.editorBridge.setEditorMode('wysiwyg');
-    const wysiwygListItems = [...window.document.querySelectorAll('.cm-line.cm-list-item')];
-    const normalizedListText = line =>
-      line.textContent.replace(/\s{2,}/g, ' ');
-    assert.deepEqual(wysiwygListItems.map(normalizedListText), [
+    const expectedListItems = [
       '• a', '• b', '• c', '• d', '• e', '• f', '• g',
       '• foo', '• bar', '• baz', '• quoted item',
       '• task parent', '• nested task',
@@ -358,7 +363,17 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       'A. Native alphabetic child with a long line to wrap and verify nested marker alignment.',
       'I. Native ordered parent',
       'I. Native ordered child with a long line to wrap and verify nested marker alignment.'
-    ]);
+    ];
+    await waitForDomCondition(
+      window,
+      () => window.document.querySelectorAll('.cm-line.cm-list-item').length ===
+        expectedListItems.length,
+      'all CommonMark list items are rendered before asserting their structure'
+    );
+    const wysiwygListItems = [...window.document.querySelectorAll('.cm-line.cm-list-item')];
+    const normalizedListText = line =>
+      line.textContent.replace(/\s{2,}/g, ' ');
+    assert.deepEqual(wysiwygListItems.map(normalizedListText), expectedListItems);
     const listLine = text =>
       wysiwygListItems.find(line => line.textContent === text);
     assert.equal(

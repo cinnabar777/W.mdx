@@ -173,6 +173,58 @@ test('block-start escapes depend on paragraph, heading, list, and quote context'
   }
 });
 
+test('CommonMark bracket collisions use only necessary Obsidian-target escapes', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const cases = [
+    {
+      id: 'ESC-OBSIDIAN-CM-REF-559',
+      source: '[[*foo* bar]]\n\n[*foo* bar]: /url "title"\n',
+      expected:
+        '\\[[*foo* bar]]\n\n[*foo* bar]: /url "title"\n',
+      reason: 'prevent a CommonMark shortcut reference from becoming an Obsidian wikilink'
+    },
+    {
+      id: 'ESC-OBSIDIAN-CM-IMAGE-590',
+      source: '![[foo]]\n\n[[foo]]: /url "title"\n',
+      expected:
+        '!\\[[foo]]\n\n\\[[foo]]: /url "title"\n',
+      reason: 'keep CommonMark literal image/reference syntax from becoming Obsidian embeds or wikilinks'
+    }
+  ];
+
+  for (const item of cases) {
+    const commonMark = convertFromMarkdown(
+      item.source,
+      'commonmark',
+      { DOMParser: dom.window.DOMParser }
+    );
+    const exported = exportMarkdown(commonMark.markdown, 'obsidian');
+    assert.equal(exported.markdown, item.expected, item.id);
+
+    const parseObsidian = markdown => {
+      const parsed = convertFromMarkdown(
+        markdown,
+        'obsidian',
+        { DOMParser: dom.window.DOMParser }
+      );
+      return { markdown: parsed.markdown, warnings: parsed.warnings };
+    };
+    const expectedSemantics = parseObsidian(exported.markdown);
+    assertEveryEscapeIsNecessary(
+      exported.markdown,
+      expectedSemantics,
+      parseObsidian,
+      {
+        id: item.id,
+        helper: 'protectObsidianCommonMarkReferenceCollisions',
+        target: 'Wmdx Obsidian-profile importer',
+        reason: item.reason
+      }
+    );
+  }
+});
+
 test('block-start escape audit covers rules, Setext, reference definitions, and HTML declarations', async () => {
   const { convertFromHtml, exportMarkdown } =
     await import('../src/markdownConversion.mjs');

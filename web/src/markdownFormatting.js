@@ -17,6 +17,7 @@ import {
   getIndentedCodeBlockAtLine,
   getIndentedCodeBlockRenderLayout
 } from './markdownIndent.js';
+import { isMarkdownCharacterEscaped } from './markdownEscaping.js';
 import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
 import { wmdxGfmFtpAutolink } from './gfm-autolink.mjs';
 import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
@@ -773,6 +774,7 @@ function getInlineFormattingRanges(view, bounds) {
   const wikiLinks = /\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/gu;
   let wikiMatch;
   while ((wikiMatch = wikiLinks.exec(source))) {
+    if (isMarkdownCharacterEscaped(source, wikiMatch.index)) continue;
     const wrapperFrom = scanFrom + wikiMatch.index;
     const wrapperTo = wrapperFrom + wikiMatch[0].length;
     if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;

@@ -17,6 +17,7 @@ import { getResourceLinkActionTop } from './resourceLinkMenuPosition.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
 import { parseAndMatchHotkey } from './hotkeys.js';
+import { isMarkdownCharacterEscaped } from './markdownEscaping.js';
 import {
   filterSelectionOutsideHiddenSyntax,
   mapSelectionOutsideHiddenSyntax
@@ -3448,6 +3449,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
           let wikilinkMatch;
           while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+            if (isMarkdownCharacterEscaped(line.text, wikilinkMatch.index)) continue;
             if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
 
             const matchStart = line.from + wikilinkMatch.index;
@@ -5014,6 +5016,7 @@ function buildHeightMapValue(state) {
       const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
       let wikilinkMatch;
       while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+        if (isMarkdownCharacterEscaped(line.text, wikilinkMatch.index)) continue;
         if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
 
         const matchStart = line.from + wikilinkMatch.index;

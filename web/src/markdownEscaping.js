@@ -52,3 +52,12 @@ export function escapeMarkdownField(
 
   return result;
 }
+
+export function isMarkdownCharacterEscaped(source, index) {
+  const text = String(source ?? '');
+  let backslashes = 0;
+  for (let cursor = Math.trunc(index) - 1; cursor >= 0 && text[cursor] === '\\'; cursor--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 1;
+}

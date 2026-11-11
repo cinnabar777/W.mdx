@@ -53,6 +53,15 @@ function getLineIndex(node) {
   return 0;
 }
 
+async function waitForDomCondition(predicate, message, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(predicate(), message);
+}
+
 Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetHeight', {
   get() { return 20; }
 });
@@ -195,6 +204,15 @@ const x = 42;
   assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
 
   // 2. Confirm blocks exist in rendered DOM
+  await waitForDomCondition(
+    () =>
+      dom.window.document.querySelector('.cm-codeblock-header') &&
+      dom.window.document.querySelector('.cm-codeblock-text') &&
+      dom.window.document.querySelector('.cm-wp-table-container') &&
+      dom.window.document.querySelector('.cm-line.cm-list-item .cm-layout-prefix') &&
+      dom.window.document.querySelectorAll('.cm-line.cm-callout').length >= 9,
+    'all configured WYSIWYG blocks finish rendering before style assertions'
+  );
   const codeHeader = dom.window.document.querySelector('.cm-codeblock-header');
   assert.ok(codeHeader !== null, 'Code block header widget is rendered');
   assert.ok(

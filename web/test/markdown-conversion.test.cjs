@@ -383,7 +383,7 @@ test('CommonMark wikilink-like text stays literal when exported to Obsidian', as
   assert.ok(imported.markdown.includes(String.raw`\![[not-an-embed.png]]`));
   const obsidian = exportMarkdown(imported.markdown, 'obsidian');
   assert.ok(obsidian.markdown.includes(String.raw`\[[not a link]]`));
-  assert.ok(obsidian.markdown.includes(String.raw`\![[not-an-embed.png]]`));
+  assert.ok(obsidian.markdown.includes(String.raw`!\[[not-an-embed.png]]`));
 });
 
 test('Obsidian wikilinks and media embeds import to Wmdx resources outside code', async () => {

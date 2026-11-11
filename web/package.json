@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.cjs",
-    "test": "node build_tests.cjs && node --test test/*.test.cjs dist/*.test.cjs",
+    "test": "node build_tests.cjs && node --test --test-concurrency=2 test/*.test.cjs dist/*.test.cjs",
     "test:browser": "node browser-tests/unified-layout.cjs && node browser-tests/editor-interaction-regressions.cjs",
     "test:browser:interactions": "node browser-tests/editor-interaction-regressions.cjs"
   },

@@ -747,10 +747,17 @@ function normalizeStandardMarkdownMarkers(source) {
     return needed;
   };
   const escapeEmphasisText = text => {
+    const underlineDelimiterOffsets = new Set();
+    const underlineExpression =
+      /(?<![\w\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?!\w)/gu;
+    for (const match of text.matchAll(underlineExpression)) {
+      underlineDelimiterOffsets.add(match.index);
+    }
     let output = '';
     for (let index = 0; index < text.length; index += 1) {
       const character = text[index];
-      if (character === '*' || character === '_') {
+      if (character === '*' ||
+          (character === '_' && underlineDelimiterOffsets.has(index))) {
         let backslashes = 0;
         for (let cursorIndex = index - 1;
           cursorIndex >= 0 && text[cursorIndex] === '\\';
@@ -1165,6 +1172,41 @@ function collectCommonMarkReferenceLabels(source) {
   return labels;
 }
 
+function protectObsidianCommonMarkReferenceCollisions(
+  lines,
+  protectedLines,
+  referenceLabels
+) {
+  return lines.map((line, index) => {
+    if (protectedLines.has(index)) return line;
+    let text = line;
+
+    // The CommonMark importer escapes `![[...]]` to keep it literal in Wmdx.
+    // Obsidian still sees the unescaped `[[` as an embed, so escape its first
+    // bracket and let the target dialect display the same literal text.
+    text = text.replace(/\\!\[\[([^\]\n]+)\]\]/g, (_, target) =>
+      `!\\[[${target}]]`
+    );
+
+    // A definition beginning with `[[` is not an Obsidian wikilink when it is
+    // CommonMark reference syntax. Escaping its first bracket is sufficient:
+    // the remaining single bracket cannot start a wikilink by itself.
+    text = text.replace(
+      /(?<!\\)(\\?)\[\[([^\]\n]+)\]\](?=[ \t]*:)/g,
+      (_, _existingEscape, target) => `\\[[${target}]]`
+    );
+
+    // CommonMark can use a nested bracket label such as [[*text*]] as a
+    // shortcut reference link. Obsidian would parse the same characters as a
+    // wikilink; escaping only the outer bracket preserves the reference link.
+    text = text.replace(/(?<!\\)\[\[([^\]\n]+)\]\]/g, (match, target) => {
+      const referenceLabel = normalizeCommonMarkReferenceLabel(target);
+      return referenceLabels.has(referenceLabel) ? `\\${match}` : match;
+    });
+    return text;
+  });
+}
+
 function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = new Set()) {
   const protectedValues = [];
   let text = String(line ?? '');
@@ -1208,7 +1250,7 @@ function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = ne
   }
   text = text.replace(
     /(?<![\p{L}\p{N}\p{M}_\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?![\p{L}\p{N}\p{M}_])/gu,
-    match => match.replace(/(?<!\\)_/g, '\\_')
+    match => `\\${match}`
   );
   const escapeEquals = match => {
     return `\\=${match.slice(1)}`;
@@ -2360,6 +2402,32 @@ function transformTextOutsideHtmlTags(value, transform) {
   return output + transform(value.slice(plainStart));
 }
 
+function removeRedundantMarkdownUnderscoreEscapes(source) {
+  let text = String(source ?? '');
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] !== '\\') {
+      index += 1;
+      continue;
+    }
+    let runEnd = index;
+    while (text[runEnd] === '\\') runEnd += 1;
+    const runLength = runEnd - index;
+    if (text[runEnd] !== '_' || runLength % 2 === 0) {
+      index = runEnd + 1;
+      continue;
+    }
+    const candidate = text.slice(0, runEnd - 1) + text.slice(runEnd);
+    if (marked.parseInline(candidate) === marked.parseInline(text)) {
+      text = candidate;
+      index = Math.max(0, index - 1);
+    } else {
+      index = runEnd + 1;
+    }
+  }
+  return text;
+}
+
 function convertWmdxInlineToMarkdown(line, dialect, warnings) {
   let output = '';
   let plainStart = 0;
@@ -2412,6 +2480,7 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
     text = text.replace(/(?<!\\)(!?)\[[^\]\n]*\]/g, raw =>
       convertWmdxResourceToMarkdown(raw, dialect, warnings)
     );
+    text = removeRedundantMarkdownUnderscoreEscapes(text);
     for (const { marker, value } of protectedValues.reverse()) {
       text = text.replace(marker, () => value);
     }
@@ -2627,6 +2696,9 @@ export function exportMarkdown(source, dialect = 'commonmark') {
     throw new TypeError(`Unsupported Markdown export format: ${dialect}`);
   }
   const warnings = [];
+  const commonMarkReferences = dialect === 'obsidian'
+    ? collectCommonMarkReferenceLabels(source)
+    : new Set();
   if (
     dialect !== 'obsidian' &&
     findYamlFrontmatterEndLine(String(source ?? '').replace(/\r\n/g, '\n').split('\n')) >= 0
@@ -2657,6 +2729,13 @@ export function exportMarkdown(source, dialect = 'commonmark') {
       );
     }
     let lines = [...originalLines];
+    if (dialect === 'obsidian') {
+      lines = protectObsidianCommonMarkReferenceCollisions(
+        lines,
+        protectedLines,
+        commonMarkReferences
+      );
+    }
     lines = mapWmdxHeadings(lines, protectedLines);
     lines = convertWmdxCallouts(lines, dialect, warnings, protectedLines);
     lines = mapWmdxOrderedLists(lines, protectedLines, warnings);

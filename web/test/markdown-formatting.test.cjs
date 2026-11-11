@@ -486,6 +486,28 @@ test('clear formatting removes CommonMark, reference, and Obsidian link syntax',
   );
 });
 
+test('clear formatting ignores escaped Obsidian-looking brackets', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '\\[[plain target]]';
+  const from = doc.indexOf('plain target');
+  const view = {
+    state: EditorState.create({
+      doc,
+      selection: EditorSelection.range(from, from + 'plain target'.length),
+      extensions: [markdown()]
+    }),
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), false);
+  assert.equal(view.state.doc.toString(), doc);
+});
+
 test('clear formatting removes WMDX resource-link syntax but keeps its title', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');

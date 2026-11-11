@@ -153,6 +153,18 @@ function canonicalizeRenderedHtml(html, template) {
   );
 }
 
+function assertEveryEscapeIsNecessary(markdown, expectedHtml, renderAfterRemoval, label) {
+  for (const escape of markdown.matchAll(/\\/g)) {
+    const withoutEscape = markdown.slice(0, escape.index) +
+      markdown.slice(escape.index + 1);
+    assert.notEqual(
+      renderAfterRemoval(withoutEscape),
+      expectedHtml,
+      `${label} contains an unnecessary backslash at offset ${escape.index}`
+    );
+  }
+}
+
 before(async () => {
   const { wmdxCommonMarkCompatibility } = await import('../src/commonmark-compat.mjs');
   wmdxMarkdown = markdown({
@@ -239,7 +251,8 @@ test('Wmdx CommonMark import/export semantics are checked per core example', asy
     await import('../src/markdownConversion.mjs');
   const parser = new Parser();
   const renderer = new HtmlRenderer();
-  const template = new JSDOM('').window.document.createElement('template');
+  const window = new JSDOM('').window;
+  const template = window.document.createElement('template');
 
   for (const example of activeCases) {
     await t.test(
@@ -262,6 +275,188 @@ test('Wmdx CommonMark import/export semantics are checked per core example', asy
         );
       }
     );
+  }
+});
+
+test('all CommonMark core cases survive GFM and Obsidian conversion with explicit warnings', async () => {
+  const { Parser, HtmlRenderer } = require('commonmark');
+  const { JSDOM } = require('jsdom');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { createWmdxGfmTildeExtension } =
+    await import('../src/gfm-strikethrough.mjs');
+  const {
+    getMarkdownFormatRanges,
+    getWmdxColorSyntaxRanges,
+    setWmdxColorSyntaxEnabled,
+    setWmdxSuperscriptSyntaxEnabled,
+    setWmdxUnderlineSyntaxEnabled
+  } = await import('../src/markdownFormatting.js');
+  const parser = new Parser();
+  const renderer = new HtmlRenderer();
+  const window = new JSDOM('').window;
+  const template = window.document.createElement('template');
+  const wmdxFormattingLanguage = markdown({
+    extensions: [
+      Table,
+      TaskList,
+      createWmdxGfmTildeExtension()
+    ]
+  });
+  setWmdxColorSyntaxEnabled(true);
+  setWmdxSuperscriptSyntaxEnabled(true);
+  setWmdxUnderlineSyntaxEnabled(true);
+  const wmdxFormattingFingerprint = source => {
+    const state = EditorState.create({
+      doc: source,
+      extensions: [wmdxFormattingLanguage]
+    });
+    ensureSyntaxTree(state, state.doc.length, 1000);
+    const view = { state };
+    const formats = [
+      'bold', 'italic', 'strikethrough', 'subscript',
+      'superscript', 'mark', 'code', 'underline'
+    ];
+    const renderedFormats = Object.fromEntries(formats.map(format => [
+      format,
+      getMarkdownFormatRanges(view, format).map(range => ({
+        kind: range.kind ?? '',
+        style: range.style ?? '',
+        content: state.doc.sliceString(range.contentFrom, range.contentTo)
+      }))
+    ]));
+    return JSON.stringify({
+      formats: renderedFormats,
+      colors: getWmdxColorSyntaxRanges(state).map(range => ({
+        actionId: range.actionId,
+        content: state.doc.sliceString(range.contentFrom, range.contentTo)
+      }))
+    });
+  };
+  const wmdxSemantics = (source, canonicalHtml) => JSON.stringify({
+    commonMarkHtml: canonicalHtml,
+    wmdxFormatting: wmdxFormattingFingerprint(source)
+  });
+  const frontmatterWarnings = [
+    'YAML frontmatter was preserved verbatim; Wmdx does not interpret frontmatter properties.',
+    'YAML frontmatter was preserved verbatim; this target does not standardize frontmatter properties.'
+  ];
+  const expectedWarnings = new Map([
+    [96, frontmatterWarnings],
+    [98, frontmatterWarnings],
+    [308, ['An HTML block without convertible text was preserved unchanged.']],
+    [309, ['An HTML block without convertible text was preserved unchanged.']]
+  ]);
+
+  assert.equal(activeCases.length, 575, 'the matrix covers every non-HTML CommonMark example');
+  for (const example of activeCases) {
+    const expectedHtml = renderer.render(parser.parse(example.markdown));
+    const expectedCanonicalHtml = canonicalizeRenderedHtml(expectedHtml, template);
+    // Authored escapes and bracket-like links have separate source-fidelity and
+    // link-structure assertions; this loop audits newly generated inline escapes.
+    const auditGeneratedEscapes =
+      !example.markdown.includes('\\') && !example.markdown.includes('[[');
+    for (const target of ['gfm', 'obsidian']) {
+      const imported = convertFromMarkdown(example.markdown, 'commonmark', {
+        DOMParser: window.DOMParser
+      });
+      if (auditGeneratedEscapes) {
+        assertEveryEscapeIsNecessary(
+          imported.markdown,
+          wmdxSemantics(imported.markdown, expectedCanonicalHtml),
+          source => {
+            const commonMark = exportMarkdown(source, 'commonmark');
+            const canonicalHtml = canonicalizeRenderedHtml(
+              renderer.render(parser.parse(commonMark.markdown)),
+              template
+            );
+            return wmdxSemantics(source, canonicalHtml);
+          },
+          `CM-EX-${String(example.example).padStart(3, '0')} Wmdx import`
+        );
+      }
+      const directCommonMark = exportMarkdown(imported.markdown, 'commonmark');
+      if (auditGeneratedEscapes) {
+        assertEveryEscapeIsNecessary(
+          directCommonMark.markdown,
+          expectedCanonicalHtml,
+          source => canonicalizeRenderedHtml(
+            renderer.render(parser.parse(source)),
+            template
+          ),
+          `CM-EX-${String(example.example).padStart(3, '0')} CommonMark export`
+        );
+      }
+      const exported = exportMarkdown(imported.markdown, target);
+      const targetRenderAfterRemoval = source => {
+        const targetImport = convertFromMarkdown(source, target, {
+          DOMParser: window.DOMParser
+        });
+        const commonMark = exportMarkdown(targetImport.markdown, 'commonmark');
+        const canonicalHtml = canonicalizeRenderedHtml(
+          renderer.render(parser.parse(commonMark.markdown)),
+          template
+        );
+        return wmdxSemantics(targetImport.markdown, canonicalHtml);
+      };
+      const returned = convertFromMarkdown(exported.markdown, target, {
+        DOMParser: window.DOMParser
+      });
+      if (auditGeneratedEscapes) {
+        assertEveryEscapeIsNecessary(
+          exported.markdown,
+          wmdxSemantics(returned.markdown, expectedCanonicalHtml),
+          targetRenderAfterRemoval,
+          `CM-EX-${String(example.example).padStart(3, '0')} ${target} export`
+        );
+      }
+      if (auditGeneratedEscapes) {
+        assertEveryEscapeIsNecessary(
+          returned.markdown,
+          wmdxSemantics(returned.markdown, expectedCanonicalHtml),
+          source => {
+            const commonMark = exportMarkdown(source, 'commonmark');
+            const canonicalHtml = canonicalizeRenderedHtml(
+              renderer.render(parser.parse(commonMark.markdown)),
+              template
+            );
+            return wmdxSemantics(source, canonicalHtml);
+          },
+          `CM-EX-${String(example.example).padStart(3, '0')} ${target} reimport`
+        );
+      }
+      const commonMark = exportMarkdown(returned.markdown, 'commonmark');
+      if (auditGeneratedEscapes) {
+        assertEveryEscapeIsNecessary(
+          commonMark.markdown,
+          expectedCanonicalHtml,
+          source => canonicalizeRenderedHtml(
+            renderer.render(parser.parse(source)),
+            template
+          ),
+          `CM-EX-${String(example.example).padStart(3, '0')} ${target} CommonMark export`
+        );
+      }
+      const actualHtml = renderer.render(parser.parse(commonMark.markdown));
+      const warnings = [...new Set([
+        ...imported.warnings,
+        ...exported.warnings,
+        ...returned.warnings,
+        ...commonMark.warnings
+      ])].sort();
+
+      assert.equal(
+        canonicalizeRenderedHtml(actualHtml, template),
+        canonicalizeRenderedHtml(expectedHtml, template),
+        `CM-EX-${String(example.example).padStart(3, '0')} lost semantics through ${target}; ` +
+          `returned Markdown: ${JSON.stringify(commonMark.markdown)}`
+      );
+      assert.deepEqual(
+        warnings,
+        [...(expectedWarnings.get(example.example) ?? [])].sort(),
+        `CM-EX-${String(example.example).padStart(3, '0')} ${target} warnings must be explicit`
+      );
+    }
   }
 });
 
@@ -536,16 +731,6 @@ test('CommonMark raw HTML examples 613-632 round-trip through all Markdown flavo
           );
         }
 
-        for (const escape of commonMark.markdown.matchAll(/\\/g)) {
-          const withoutEscape = commonMark.markdown.slice(0, escape.index) +
-            commonMark.markdown.slice(escape.index + 1);
-          const withoutEscapeHtml = renderer.render(parser.parse(withoutEscape));
-          assert.notEqual(
-            canonicalizeRenderedHtml(withoutEscapeHtml, template),
-            canonicalizeRenderedHtml(example.html, template),
-            `CM-EX-${number} has an unnecessary escape at ${escape.index}`
-          );
-        }
       });
     }
   }
@@ -606,16 +791,6 @@ test('selected CommonMark HTML cases round-trip through all flavors with explici
           );
         }
 
-        for (const escape of commonMark.markdown.matchAll(/\\/g)) {
-          const withoutEscape = commonMark.markdown.slice(0, escape.index) +
-            commonMark.markdown.slice(escape.index + 1);
-          const withoutEscapeHtml = renderer.render(parser.parse(withoutEscape));
-          assert.notEqual(
-            canonicalizeRenderedHtml(withoutEscapeHtml, template),
-            canonicalizeRenderedHtml(example.html, template),
-            `CM-EX-${number} has an unnecessary escape at ${escape.index}`
-          );
-        }
       });
     }
   }

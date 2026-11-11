@@ -20,6 +20,7 @@ The executable cases live in `web/test/markdown-escape-audit.test.cjs`. `web/src
 
 | Case IDs | Producer / target | What the test proves |
 | --- | --- | --- |
+| ESC-CM-CORE-01 | CommonMark 0.31.2 core corpus / CommonMark reference renderer plus Wmdx formatting parser | Removes every generated backslash individually across 523 parser-comparable examples whose source has no authored backslash or bracket-collision syntax, checking CommonMark HTML and Wmdx inline-format semantics through GFM and Obsidian round trips. Authored escapes and bracket-link collisions remain separate gates. |
 | ESC-TXT-01/02 | `markdownText` through HTML import and CommonMark export | Plain punctuation stays bare; literal emphasis, code, entity-like text, links, and HTML-looking text retain their source meaning. |
 | ESC-BLK-01, ESC-HDG-01, ESC-LST-01, ESC-QUO-01 | `markdownText` in paragraph, heading, list, and quote contexts | `5. Item` is escaped only where it would start an ordered list; heading numbers remain unescaped; quote/list markers are protected only in their ambiguous block context. |
 | ESC-BLK-02, ESC-REF-01, ESC-HTML-01 | `markdownText` block syntax | Thematic rules, Setext underlines, reference definitions, and HTML declarations remain literal when the test context requires it. |
@@ -35,6 +36,7 @@ The executable cases live in `web/test/markdown-escape-audit.test.cjs`. `web/src
 | ESC-WMDX-STRIKE-LITERAL-01 | CommonMark import collision handling | A literal `~~` sequence is preserved with only the necessary opening protection. |
 | ESC-WMDX-WIKILINK-01, ESC-WMDX-IMAGE-EMBED-01 | Wmdx/Obsidian link and image parsers | Literal bracket strings do not become wikilinks or embeds; the embed marker is protected without redundantly escaping its brackets. |
 | ESC-WMDX-CALLOUT-01 | `escapeForeignCalloutMarkers` / editor callout layout parser | A CommonMark quote containing `[!note]` stays an ordinary quote rather than activating Obsidian callout layout. |
+| ESC-OBSIDIAN-CM-REF-559, ESC-OBSIDIAN-CM-IMAGE-590 | `protectObsidianCommonMarkReferenceCollisions` / Wmdx Obsidian-profile importer | CommonMark examples 559 and 590 preserve literal bracket/reference and image-like syntax; every emitted target escape is removed individually and the Obsidian-profile importer must then detect changed link/embed semantics or warnings. |
 | ESC-WMDX-EQUALS-RUN-01 | CommonMark import | A bare `===` run, which is not a Wmdx delimiter, receives no unnecessary escape. |
 | ESC-CM-UNDERSCORE-EMPHASIS-01 | CommonMark import/export | CommonMark `_emphasis_` and `__strong__` are normalized to asterisk emphasis rather than escaped into literal underscores or confused with Wmdx underline. |
 | ESC-LINK-COMMONMARK-01, ESC-LINK-REFERENCE-01 | CommonMark inline/reference link formatters and renderer | Link-label brackets and destination parentheses are checked against actual link semantics, including a literal backslash in the label. |
@@ -48,6 +50,8 @@ The helper fails if a fixture omits its case ID, producer, target, or case ratio
 
 - A backslash before an ordinary filename/word character was doubled even though both the CommonMark and Wmdx resource parsers preserve a single backslash there.
 - Paired Wmdx-only `~`, `=`, and `^` delimiters escaped both opening and closing markers. Escaping the opening marker alone is sufficient to prevent the pair from activating; the closing escape was redundant.
+- Wmdx underline protection escaped both boundaries of a delimiter even though protecting its opening marker alone disables the syntax. It now escapes only that opener, and standard Markdown export removes a guard backslash when the target inline parser confirms it is redundant.
+- CommonMark-to-Obsidian reference collision handling initially escaped both opening brackets in a `[[...]]:` definition. The remove-one-escape test showed only the first bracket needs protection; the redundant second escape was removed.
 - Obsidian image import escaped both `!` and an opening bracket. The import now protects the embed marker, not every character in the token.
 - Literal `===` was escaped despite not forming an active Wmdx construct.
 - Balanced parentheses in an HTML link destination were escaped even though CommonMark accepts them. Only unmatched parentheses require protection.
@@ -67,7 +71,7 @@ The following work is still required before escape minimality can be called comp
 - Add escaped/unescaped pairs for image URLs and every media URL/layout title; current media tests focus on labels and rely on percent-encoding tests for their URL paths.
 - Cover every footnote flavor and definition/reference form, not only Obsidian inline footnotes.
 - Inventory any remaining serializer in media, embeds, paste conversion, HTML/MHTML conversion, and Markdown flavor export that emits a backslash.
-- Apply the same remove-one-escape audit across the complete upstream CommonMark/GFM fixtures and the full Obsidian/Wmdx conversion matrix. Current source/output helper cases do not certify every corpus example.
+- Extend the corpus audit to the 52 CommonMark core cases with authored backslashes or bracket-collision syntax, all 48 raw-HTML/link semantic cases, and the full Obsidian/Wmdx conversion matrix. The 523-case generated-escape check excludes those inputs because their source spelling or link semantics requires separate assertions; the CommonMark 559/590 cases remain targeted regressions, not a complete escape audit.
 - Pair the text conversion assertions with the all-view interaction matrix: Source/Code, WYSIWYG, and both exposed-syntax settings, including caret movement, edits/undo, scrolling, and nested contexts.
 - Add a separate, conservative Markdown style check for test fixtures and documentation. Evaluate the user-referenced [Obsidian Linter](https://github.com/platers/obsidian-linter) rules in check-only mode first; do not let formatting rules rewrite source wrapping, soft breaks, list structure, or escape semantics. Style linting is a hygiene gate, not a dialect conformance test. Code-file beautification is a separate future task.
 
