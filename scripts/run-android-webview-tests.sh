@@ -15,11 +15,33 @@ while [ "$(adb -s "$device" shell getprop sys.boot_completed 2>/dev/null | tr -d
 done
 
 if [ "$booted" -eq 1 ]; then
-  # The API 35 CI image continues first-boot provider work after boot_completed.
-  # Give those services time to settle before starting the instrumented app.
-  sleep 15
-  ./gradlew connectedDebugAndroidTest --stacktrace --console=plain --max-workers=1
-  test_status=$?
+  user_id=$(adb -s "$device" shell am get-current-user 2>/dev/null | tr -d '\r')
+  unlock_wait=0
+  unlocked=0
+  while [ "$unlock_wait" -lt 180 ]; do
+    unlock_state=$(adb -s "$device" shell cmd user is-user-unlocked "$user_id" 2>/dev/null | tr -d '\r')
+    if [ "$unlock_state" = "true" ]; then
+      unlocked=1
+      break
+    fi
+    if adb -s "$device" shell dumpsys user 2>/dev/null | grep -q 'RUNNING_UNLOCKED'; then
+      unlocked=1
+      break
+    fi
+    sleep 1
+    unlock_wait=$((unlock_wait + 1))
+  done
+
+  if [ "$unlocked" -eq 1 ]; then
+    # boot_completed can precede user unlock and provider initialization.
+    # Avoid launching the WebView process while Android is still unlocking.
+    sleep 15
+    ./gradlew connectedDebugAndroidTest --stacktrace --console=plain --max-workers=1
+    test_status=$?
+  else
+    echo "Android user $user_id did not reach RUNNING_UNLOCKED within 180 seconds."
+    test_status=1
+  fi
 else
   test_status=1
 fi
