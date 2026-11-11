@@ -424,6 +424,19 @@ async function main() {
           `${view.name}/${listContext.name}: wrapped-row tap changed the marker gutter`);
         assert.equal(wrappedTap.rowTops.length, firstTap.rowTops.length,
           `${view.name}/${listContext.name}: wrapped-row tap changed the line count`);
+        const expectedListEdit =
+          listContext.source.slice(0, wrappedSelection) + 'X' +
+          listContext.source.slice(wrappedSelection);
+        await page.keyboard.insertText('X');
+        await page.waitForFunction(source =>
+          window.editorBridge.getMarkdown() === source, expectedListEdit);
+        assert.equal(await page.evaluate(() => window.editorBridge.getMarkdown()), expectedListEdit,
+          `${view.name}/${listContext.name}: typing after wrapped-row entry must occur at the tapped character`);
+        await page.keyboard.press('Control+Z');
+        await page.waitForFunction(source =>
+          window.editorBridge.getMarkdown() === source, listContext.source);
+        assert.equal(await page.evaluate(() => window.editorBridge.getMarkdown()), listContext.source,
+          `${view.name}/${listContext.name}: undo must restore every nested-list source character`);
         await page.setViewportSize({ width: 412, height: 480 });
         await page.waitForTimeout(80);
         await page.setViewportSize({ width: 412, height: 844 });
