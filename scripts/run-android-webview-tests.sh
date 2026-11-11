@@ -1,33 +1,72 @@
 #!/bin/sh
 
 device="emulator-${EMULATOR_PORT:-5554}"
+diagnostics_dir="app/build/diagnostics"
+runner_log="$diagnostics_dir/android-webview-runner.txt"
+mkdir -p "$diagnostics_dir"
+: > "$runner_log"
 
-wait_for_cpu_pressure() {
+log() {
+  printf '%s\n' "$*" | tee -a "$runner_log"
+}
+
+read_cpu_counters() {
+  adb -s "$device" shell cat /proc/stat 2>/dev/null |
+    awk 'NR == 1 {
+      total = $2 + $3 + $4 + $5 + $6 + $7 + $8 + $9
+      idle = $5 + $6
+      print total, idle
+      exit
+    }' | tr -d '\r'
+}
+
+wait_for_cpu_idle() {
   phase="$1"
-  pressure_wait=0
+  idle_wait=0
   stable_samples=0
-  pressure_available=1
-  while [ "$pressure_wait" -lt 180 ] && [ "$stable_samples" -lt 3 ]; do
-    cpu_pressure=$(adb -s "$device" shell cat /proc/pressure/cpu 2>/dev/null |
-      sed -n 's/^some .*avg10=\([0-9.]*\).*/\1/p' | tr -d '\r')
-    if [ -z "$cpu_pressure" ]; then
-      pressure_available=0
-      echo "Android CPU pressure metrics are unavailable; skipping the $phase idle gate."
+  before=$(read_cpu_counters)
+  if [ -z "$before" ]; then
+    log "Android /proc/stat counters are unavailable; allowing 60 seconds for $phase to settle."
+    sleep 60
+    return
+  fi
+
+  while [ "$idle_wait" -lt 180 ] && [ "$stable_samples" -lt 3 ]; do
+    sleep 5
+    after=$(read_cpu_counters)
+    if [ -z "$after" ]; then
+      log "Android /proc/stat counters became unavailable during $phase; allowing 60 seconds to settle."
+      sleep 60
       break
     fi
-    if awk "BEGIN { exit !($cpu_pressure < 35) }"; then
+
+    cpu_busy=$(awk -v before="$before" -v after="$after" '
+      BEGIN {
+        split(before, start, " ")
+        split(after, finish, " ")
+        total = finish[1] - start[1]
+        idle = finish[2] - start[2]
+        if (total <= 0 || idle < 0) exit 1
+        printf "%.1f", 100 * (total - idle) / total
+      }')
+    if [ -z "$cpu_busy" ]; then
+      log "Could not calculate Android CPU usage during $phase; allowing 60 seconds to settle."
+      sleep 60
+      break
+    fi
+
+    if awk "BEGIN { exit !($cpu_busy < 70) }"; then
       stable_samples=$((stable_samples + 1))
     else
       stable_samples=0
     fi
-    echo "Android CPU pressure after $phase avg10=$cpu_pressure; stable samples=${stable_samples}/3."
-    if [ "$stable_samples" -lt 3 ]; then
-      sleep 10
-      pressure_wait=$((pressure_wait + 10))
-    fi
+    log "Android CPU busy after $phase=${cpu_busy}%; stable samples=${stable_samples}/3."
+    before="$after"
+    idle_wait=$((idle_wait + 5))
   done
-  if [ "$pressure_available" -eq 1 ] && [ "$stable_samples" -lt 3 ]; then
-    echo "Android CPU pressure did not settle after $phase within 180 seconds; continuing with diagnostics enabled."
+
+  if [ "$stable_samples" -lt 3 ]; then
+    log "Android CPU usage did not settle after $phase within 180 seconds; continuing with diagnostics enabled."
   fi
 }
 
@@ -64,21 +103,26 @@ if [ "$booted" -eq 1 ]; then
 
   if [ "$unlocked" -eq 1 ]; then
     # Let app/package installation and Android startup settle before opening WebView.
+    log "Installing app and instrumentation APKs."
     ./gradlew installDebug installDebugAndroidTest --stacktrace --console=plain --max-workers=1
     test_status=$?
+    log "APK installation exit status: $test_status"
     if [ "$test_status" -eq 0 ]; then
-      wait_for_cpu_pressure "APK installation"
+      wait_for_cpu_idle "APK installation"
       warmup_output=$(timeout 90s adb -s "$device" shell am start -W \
         -n com.wmdx.markdownapp.debug/.DocumentDispatchActivity 2>&1)
       warmup_status=$?
-      echo "Android app warm-up (exit $warmup_status):"
-      echo "$warmup_output"
+      log "Android app warm-up (exit $warmup_status):"
+      log "$warmup_output"
       if [ "$warmup_status" -eq 0 ]; then
         # Wait through first-run WebView/provider initialization before instrumentation.
         sleep 15
         app_pid=$(adb -s "$device" shell pidof com.wmdx.markdownapp.debug 2>/dev/null |
           tr -d '\r')
         if [ -n "$app_pid" ]; then
+          log "WebView warm-up app process is alive (pid $app_pid); waiting for Android CPU idle."
+          wait_for_cpu_idle "WebView warm-up"
+          log "Starting Android WebView instrumentation."
           ./gradlew connectedDebugAndroidTest \
             -x installDebug -x installDebugAndroidTest \
             --stacktrace --console=plain --max-workers=1
@@ -89,35 +133,39 @@ if [ "$booted" -eq 1 ]; then
             report_tests=$(sed -n '1s/.*tests="\([0-9][0-9]*\)".*/\1/p' "$test_report")
             reported_tests=$((reported_tests + ${report_tests:-0}))
           done
-          echo "Android instrumentation XML reports $reported_tests test(s)."
+          log "Android instrumentation XML reports $reported_tests test(s)."
           if [ "$reported_tests" -eq 0 ]; then
-            echo "Android instrumentation did not execute any tests; treating this as a failure."
+            log "Android instrumentation did not execute any tests; treating this as a failure."
             test_status=1
           fi
         else
-          echo "The app process did not survive the WebView warm-up."
+          log "The app process did not survive the WebView warm-up."
           test_status=1
         fi
       else
-        echo "The app launcher could not complete its WebView warm-up."
+        log "The app launcher could not complete its WebView warm-up."
         test_status=1
       fi
     fi
   else
-    echo "Android user $user_id did not reach RUNNING_UNLOCKED within 180 seconds."
+    log "Android user $user_id did not reach RUNNING_UNLOCKED within 180 seconds."
     test_status=1
   fi
 else
+  log "Emulator boot did not complete."
   test_status=1
 fi
 
-mkdir -p app/build/diagnostics
 adb -s "$device" logcat -d -t 3000 \
   > app/build/diagnostics/android-webview-logcat.txt 2>&1 || true
 {
+  echo "=== Android runner diagnostics ==="
+  cat "$runner_log"
   echo "=== Android emulator diagnostics ==="
   echo "CPU pressure:"
   adb -s "$device" shell cat /proc/pressure/cpu 2>&1 || true
+  echo "CPU counters from /proc/stat:"
+  adb -s "$device" shell cat /proc/stat 2>&1 | head -n 1 || true
   echo "Memory pressure:"
   adb -s "$device" shell cat /proc/pressure/memory 2>&1 || true
   echo "I/O pressure:"
