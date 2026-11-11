@@ -90,9 +90,9 @@ class EditorWebViewInteractionTest {
                     InstrumentationRegistry.getInstrumentation().sendStringSync("X")
                     await(webView, "window.editorBridge.getMarkdown() === ${JSONObject.quote(expectedEdit)}")
                     assertEquals(
+                        "${fixture.context}/$scope typing must insert at the touched list caret",
                         expectedEdit,
-                        decode(evaluate(webView, "window.editorBridge.getMarkdown()")),
-                        "${fixture.context}/$scope typing must insert at the touched list caret"
+                        decode(evaluate(webView, "window.editorBridge.getMarkdown()"))
                     )
                     val undoAvailable = decode(
                         evaluate(
@@ -107,7 +107,11 @@ class EditorWebViewInteractionTest {
                             """.trimIndent()
                         )
                     )
-                    assertEquals("true", undoAvailable, "The list edit must expose the toolbar undo action")
+                    assertEquals(
+                        "The list edit must expose the toolbar undo action",
+                        "true",
+                        undoAvailable
+                    )
                     await(webView, "window.editorBridge.getMarkdown() === ${JSONObject.quote(fixture.source)}")
                     assertSource(webView, fixture.source, fixture.context, scope)
                     assertRowsAlign(listGeometry(webView, fixture.marker), fixture.context, scope)
@@ -172,9 +176,9 @@ class EditorWebViewInteractionTest {
                     kotlin.math.abs(sourceListSelection.getInt("head") - sourceListExpectedCaret) <= 24
             )
             assertEquals(
+                "Source-view cursor entry must preserve nested-list bytes",
                 sourceNestedList.source,
-                decode(evaluate(webView, "window.editorBridge.getMarkdown()")),
-                "Source-view cursor entry must preserve nested-list bytes"
+                decode(evaluate(webView, "window.editorBridge.getMarkdown()"))
             )
             val editedSourceList =
                 sourceNestedList.source.substring(0, sourceListSelection.getInt("head")) +
@@ -185,9 +189,9 @@ class EditorWebViewInteractionTest {
                 "window.editorBridge.getMarkdown() === ${JSONObject.quote(editedSourceList)}"
             )
             assertEquals(
+                "Source-view nested-list typing must occur at the tapped caret",
                 editedSourceList,
-                decode(evaluate(webView, "window.editorBridge.getMarkdown()")),
-                "Source-view nested-list typing must occur at the tapped caret"
+                decode(evaluate(webView, "window.editorBridge.getMarkdown()"))
             )
 
             val renderedTableSource = """
