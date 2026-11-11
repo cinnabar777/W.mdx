@@ -538,26 +538,36 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
 test('strict CommonMark converts GFM tables nested in blockquotes and lists to raw HTML', async () => {
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
+  const { JSDOM } = require('jsdom');
+  const { Parser, HtmlRenderer } = require('commonmark');
   const sources = [
     {
       source: '> | A | B |\n> | --- | --- |\n> | 1 | 2 |',
-      expectedContainer: /^> <table>/m
+      expectedContainer: /^> <table>/m,
+      expectedContext: 'blockquote table'
     },
     {
       source: '- Parent item\n\n  | A | B |\n  | --- | --- |\n  | 1 | 2 |',
-      expectedContainer: /^  <table>/m
+      expectedContainer: /^  <table>/m,
+      expectedContext: 'li table'
     },
     {
       source: '> - Parent item\n>\n>   | A | B |\n>   | --- | --- |\n>   | 1 | 2 |',
-      expectedContainer: /^>   <table>/m
+      expectedContainer: /^>   <table>/m,
+      expectedContext: 'blockquote li table'
     }
   ];
 
-  for (const { source, expectedContainer } of sources) {
+  for (const { source, expectedContainer, expectedContext } of sources) {
     const exported = exportMarkdown(source, 'commonmark');
     assert.match(exported.markdown, expectedContainer);
     assert.match(exported.markdown, /<td>1<\/td>/);
     assert.doesNotMatch(exported.markdown, /^\s*[>| ]*\| --- \| --- \|/m);
+    const commonMarkHtml = new HtmlRenderer().render(new Parser().parse(exported.markdown));
+    const document = new JSDOM(commonMarkHtml).window.document;
+    const table = document.querySelector(expectedContext);
+    assert.ok(table, `The strict CommonMark parser should keep the table in ${expectedContext}`);
+    assert.equal(table.querySelector('td')?.textContent, '1');
     const returned = convertFromMarkdown(exported.markdown, 'commonmark');
     const roundTrip = exportMarkdown(returned.markdown, 'commonmark');
     assert.match(roundTrip.markdown, /<td>1<\/td>/);
