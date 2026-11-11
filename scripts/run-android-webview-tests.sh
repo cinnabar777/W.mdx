@@ -2,7 +2,7 @@
 
 device="emulator-${EMULATOR_PORT:-5554}"
 diagnostics_dir="app/build/diagnostics"
-runner_log="$diagnostics_dir/android-webview-runner.txt"
+runner_log="$diagnostics_dir/android-webview-logcat.txt"
 mkdir -p "$diagnostics_dir"
 : > "$runner_log"
 
@@ -156,11 +156,10 @@ else
   test_status=1
 fi
 
+log "=== Android device logcat ==="
 adb -s "$device" logcat -d -t 3000 \
-  > app/build/diagnostics/android-webview-logcat.txt 2>&1 || true
+  >> "$runner_log" 2>&1 || true
 {
-  echo "=== Android runner diagnostics ==="
-  cat "$runner_log"
   echo "=== Android emulator diagnostics ==="
   echo "CPU pressure:"
   adb -s "$device" shell cat /proc/pressure/cpu 2>&1 || true
@@ -172,11 +171,11 @@ adb -s "$device" logcat -d -t 3000 \
   adb -s "$device" shell cat /proc/pressure/io 2>&1 || true
   echo "Last activity ANR:"
   adb -s "$device" shell dumpsys activity lastanr 2>&1 || true
-} >> app/build/diagnostics/android-webview-logcat.txt
+} >> "$runner_log"
 if [ "$test_status" -ne 0 ]; then
   adb -s "$device" shell dumpsys activity processes 2>&1 |
     grep -E -C 2 'com\.wmdx\.markdownapp|ANR|not responding' \
-    >> app/build/diagnostics/android-webview-logcat.txt || true
+    >> "$runner_log" || true
 fi
 
 exit "$test_status"
