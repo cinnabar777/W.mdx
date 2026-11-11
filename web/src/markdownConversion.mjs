@@ -2608,22 +2608,55 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
 }
 
 function convertGfmTablesToCommonMarkHtml(source) {
-  const tokens = marked.lexer(source, { gfm: true });
-  const chunks = [];
-  let cursor = 0;
+  const tables = [];
+  const collectTables = tokens => {
+    for (const token of tokens ?? []) {
+      if (token.type === 'table' && token.raw) tables.push(token.raw);
+      if (token.tokens) collectTables(token.tokens);
+      for (const item of token.items ?? []) {
+        if (item.tokens) collectTables(item.tokens);
+      }
+    }
+  };
+  collectTables(marked.lexer(source, { gfm: true }));
 
-  for (const token of tokens) {
-    if (token.type !== 'table' || !token.raw) continue;
-    const start = source.indexOf(token.raw, cursor);
-    if (start < 0) continue;
-    chunks.push(source.slice(cursor, start));
-    const tableHtml = marked.parse(token.raw, { gfm: true }).trim();
-    chunks.push(`\n${tableHtml}\n\n`);
-    cursor = start + token.raw.length;
+  const lines = source.split('\n');
+  const occupiedLines = new Set();
+  const replacements = [];
+  const containerPrefix = line => /^[ \t]*(?:>[ \t]*)*/.exec(line)?.[0] ?? '';
+
+  for (const table of tables) {
+    const tableLines = table.replace(/\n$/, '').split('\n');
+    for (let start = 0; start <= lines.length - tableLines.length; start += 1) {
+      const prefix = containerPrefix(lines[start]);
+      const matches = tableLines.every((line, offset) =>
+        !occupiedLines.has(start + offset) &&
+        lines[start + offset].startsWith(prefix) &&
+        lines[start + offset].slice(prefix.length).trimEnd() === line.trimEnd()
+      );
+      if (!matches) continue;
+
+      const htmlLines = marked.parse(table, { gfm: true })
+        .trim()
+        .split('\n')
+        .map(line => `${prefix}${line}`);
+      const terminator = prefix.trim() ? prefix : '';
+      replacements.push({
+        start,
+        length: tableLines.length,
+        lines: [...htmlLines, terminator]
+      });
+      for (let offset = 0; offset < tableLines.length; offset += 1) {
+        occupiedLines.add(start + offset);
+      }
+      break;
+    }
   }
 
-  chunks.push(source.slice(cursor));
-  return chunks.join('');
+  for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
+    lines.splice(replacement.start, replacement.length, ...replacement.lines);
+  }
+  return lines.join('\n');
 }
 
 function mapWmdxOrderedLists(lines, protectedLines, warnings) {

@@ -535,6 +535,35 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   assert.ok(inline.warnings.some(warning => warning.includes('Colored or styled underline')));
 });
 
+test('strict CommonMark converts GFM tables nested in blockquotes and lists to raw HTML', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const sources = [
+    {
+      source: '> | A | B |\n> | --- | --- |\n> | 1 | 2 |',
+      expectedContainer: /^> <table>/m
+    },
+    {
+      source: '- Parent item\n\n  | A | B |\n  | --- | --- |\n  | 1 | 2 |',
+      expectedContainer: /^  <table>/m
+    },
+    {
+      source: '> - Parent item\n>\n>   | A | B |\n>   | --- | --- |\n>   | 1 | 2 |',
+      expectedContainer: /^>   <table>/m
+    }
+  ];
+
+  for (const { source, expectedContainer } of sources) {
+    const exported = exportMarkdown(source, 'commonmark');
+    assert.match(exported.markdown, expectedContainer);
+    assert.match(exported.markdown, /<td>1<\/td>/);
+    assert.doesNotMatch(exported.markdown, /^\s*[>| ]*\| --- \| --- \|/m);
+    const returned = convertFromMarkdown(exported.markdown, 'commonmark');
+    const roundTrip = exportMarkdown(returned.markdown, 'commonmark');
+    assert.match(roundTrip.markdown, /<td>1<\/td>/);
+  }
+});
+
 test('HTML import converts semantic content and omits active elements', async () => {
   const { JSDOM } = require('jsdom');
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');
