@@ -1003,6 +1003,17 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
     text = text.replace(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi, (source, offset, wholeText) => {
       if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
       const anchor = new Parser().parseFromString(source, 'text/html').querySelector('a');
+      if (
+        anchor &&
+        !anchor.textContent?.trim() &&
+        !anchor.querySelector('img, audio, video, br, svg, canvas, input')
+      ) {
+        addWarning(
+          warnings,
+          'Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'
+        );
+        return protect(source);
+      }
       return anchor ? inlineHtmlNode(anchor, warnings) : source;
     });
   }
@@ -1074,28 +1085,47 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
     chunks.push(source.slice(cursor, from));
     let replacement = raw;
     if (token.type === 'html' && token.block === true) {
-      try {
-        const converted = convertFromHtml(token.text ?? raw, Parser);
-        let marker;
-        do {
-          marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
-        } while (source.includes(marker));
-        replacements.push({ marker, value: converted.markdown });
-        for (const warning of converted.warnings) addWarning(warnings, warning);
-        replacement = marker;
-      } catch (error) {
-        if (!String(error?.message).includes('No readable document content')) throw error;
-        const activeElement = raw.match(
-          /<\s*(script|style|iframe|object|embed|form)\b/i
-        )?.[1]?.toLowerCase();
-        if (activeElement) {
-          addWarning(warnings, `Active HTML element <${activeElement}> was omitted.`);
-          replacement = '';
-        } else {
-          addWarning(
-            warnings,
-            'An HTML block without convertible text was preserved unchanged.'
+      const standaloneEmptyAnchor = /^\s*<a\b/i.test(raw) &&
+        (() => {
+          const document = new Parser().parseFromString(raw, 'text/html');
+          const anchor = document.body?.querySelector('a[href]');
+          return Boolean(
+            anchor &&
+            document.body.children.length === 1 &&
+            document.body.children[0] === anchor &&
+            !anchor.textContent?.trim() &&
+            !anchor.querySelector('img, audio, video, br, svg, canvas, input')
           );
+        })();
+      if (standaloneEmptyAnchor) {
+        addWarning(
+          warnings,
+          'Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'
+        );
+      } else {
+        try {
+          const converted = convertFromHtml(token.text ?? raw, Parser);
+          let marker;
+          do {
+            marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
+          } while (source.includes(marker));
+          replacements.push({ marker, value: converted.markdown });
+          for (const warning of converted.warnings) addWarning(warnings, warning);
+          replacement = marker;
+        } catch (error) {
+          if (!String(error?.message).includes('No readable document content')) throw error;
+          const activeElement = raw.match(
+            /<\s*(script|style|iframe|object|embed|form)\b/i
+          )?.[1]?.toLowerCase();
+          if (activeElement) {
+            addWarning(warnings, `Active HTML element <${activeElement}> was omitted.`);
+            replacement = '';
+          } else {
+            addWarning(
+              warnings,
+              'An HTML block without convertible text was preserved unchanged.'
+            );
+          }
         }
       }
     }
