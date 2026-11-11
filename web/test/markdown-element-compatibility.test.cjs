@@ -247,7 +247,7 @@ test('TSK-01: task state round-trips in GFM and Obsidian and warns for CommonMar
   assert.match(commonmark.markdown, /<input type="checkbox" disabled>/);
 });
 
-test('TBL-01: GFM table columns and alignment survive GFM/Obsidian; CommonMark warns', async () => {
+test('TBL-01: GFM table columns and alignment survive all dialects', async () => {
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
   const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
@@ -278,7 +278,18 @@ test('TBL-01: GFM table columns and alignment survive GFM/Obsidian; CommonMark w
   }
 
   const commonmark = exportMarkdown(initial.markdown, 'commonmark');
-  assert.ok(commonmark.warnings.some(warning => warning.includes('Pipe tables')));
+  assert.deepEqual(commonmark.warnings, []);
+  assert.match(commonmark.markdown, /<table>/);
+  assert.doesNotMatch(commonmark.markdown, /^\s*\| Left \| Center \| Right \|/m);
+  const commonmarkReturn = convertFromMarkdown(commonmark.markdown, 'commonmark');
+  const commonmarkActual = canonicalizeHtml(
+    renderMarkdownHtml(commonmarkReturn.markdown, {
+      profile: 'gfm',
+      window: dom.window
+    }).html,
+    dom.window.document
+  );
+  assert.equal(commonmarkActual, baseline, 'CommonMark raw HTML changed table cells or alignment');
 });
 
 test('SUB-01 and SUP-01: Wmdx subscripts and superscripts use portable HTML in each flavor', async () => {

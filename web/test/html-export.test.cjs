@@ -64,15 +64,16 @@ test('HTML export converts Obsidian links and folded callouts to readable HTML',
   assert.match(document.body.textContent, /Keep this collapsed/);
 });
 
-test('strict CommonMark HTML export does not silently render pipe tables as GFM', () => {
+test('strict CommonMark HTML export preserves tables using valid raw HTML', () => {
   const { dom, result } = render(
     '| A | B |\n| --- | --- |\n| 1 | 2 |',
     'commonmark'
   );
   const document = new dom.window.DOMParser().parseFromString(result.html, 'text/html');
 
-  assert.equal(document.querySelector('table'), null);
-  assert.ok(result.warnings.some(warning => warning.includes('not CommonMark')));
+  assert.equal(document.querySelector('table tbody tr td')?.textContent, '1');
+  assert.equal(document.querySelector('table thead tr th')?.textContent, 'A');
+  assert.deepEqual(result.warnings, []);
 });
 
 test('HTML export keeps script markup inert and removes event-handler attributes', () => {

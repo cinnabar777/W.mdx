@@ -15,7 +15,7 @@ const verifiedHtmlSemanticExamples = new Set(
   Array.from({ length: 20 }, (_, index) => index + 613)
 );
 const verifiedHtmlBlockExamples = new Set([
-  21, 31, 152, 153, 154, 156, 157, 158, 167, 168, 174, 175, 179, 181,
+  21, 31, 148, 149, 152, 153, 154, 156, 157, 158, 160, 167, 168, 174, 175, 179, 181,
   182, 183, 184, 187, 188, 191, 344, 476, 477, 642, 643
 ]);
 const verifiedHtmlLinkExamples = new Set([201, 491, 494, 524, 536]);
@@ -29,8 +29,8 @@ const rawHtmlPreservedWarning =
 const unconvertedHtmlBlockWarning =
   'An HTML block without convertible text was preserved unchanged.';
 const expectedHtmlInteropWarnings = new Map([
-  ...[21, 31].map(number => [number, [rawHtmlPreservedWarning]]),
-  ...[152, 153, 154, 156, 157, 158, 184, 188, 191].map(number => [
+  ...[21, 31, 148, 149, 160, 191].map(number => [number, [rawHtmlPreservedWarning]]),
+  ...[152, 153, 154, 156, 157, 158, 184, 188].map(number => [
     number,
     [rawHtmlPreservedWarning, unconvertedHtmlBlockWarning]
   ]),
@@ -192,7 +192,7 @@ before(async () => {
 test('CommonMark 0.31.2 upstream corpus inventory is complete', () => {
   assert.equal(commonmarkCases.length, 652, 'the pinned upstream corpus is complete');
   assert.equal(htmlInteropCases.length, 77, 'HTML interoperability cases stay outside Wmdx-native parsing');
-  assert.equal(pendingHtmlSemanticCases.length, 27, 'every HTML case is verified or explicitly pending');
+  assert.equal(pendingHtmlSemanticCases.length, 24, 'every HTML case is verified or explicitly pending');
   assert.equal(parserComparableCases.length, 575, 'all non-HTML examples are classified');
   assert.equal(activeCases.length, 575, 'all parser-comparable examples are checked');
   assert.deepEqual(

@@ -294,6 +294,17 @@ function protectCodeFences(source, transformLines) {
   return transformLines(lines, protectedLines).join(newline);
 }
 
+function protectRawHtmlTableLines(lines, protectedLines) {
+  let tableDepth = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const openingTables = [...line.matchAll(/<table\b[^>]*>/gi)].length;
+    const closingTables = [...line.matchAll(/<\/table\s*>/gi)].length;
+    if (tableDepth > 0 || openingTables > 0) protectedLines.add(index);
+    tableDepth = Math.max(0, tableDepth + openingTables - closingTables);
+  }
+}
+
 function protectInlineMathSyntax(text, protect) {
   return String(text ?? '')
     .replace(/(?<!\\)\$\$[\s\S]*?(?<!\\)\$\$/g, protect)
@@ -1077,34 +1088,66 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
   const chunks = [];
   let cursor = 0;
   let markerIndex = 0;
-  for (const token of tokens) {
-    const raw = String(token.raw ?? '');
+  for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+    const token = tokens[tokenIndex];
+    let raw = String(token.raw ?? '');
     if (!raw) continue;
+    if (
+      token.type === 'html' &&
+      token.block === true &&
+      /^\s*<table\b/i.test(raw) &&
+      !/<\/table\s*>/i.test(raw)
+    ) {
+      while (
+        tokenIndex + 1 < tokens.length &&
+        !/<\/table\s*>/i.test(raw)
+      ) {
+        tokenIndex += 1;
+        raw += String(tokens[tokenIndex].raw ?? '');
+      }
+    }
     const from = source.indexOf(raw, cursor);
     if (from < 0) continue;
     chunks.push(source.slice(cursor, from));
     let replacement = raw;
     if (token.type === 'html' && token.block === true) {
-      const standaloneEmptyAnchor = /^\s*<a\b/i.test(raw) &&
-        (() => {
-          const document = new Parser().parseFromString(raw, 'text/html');
-          const anchor = document.body?.querySelector('a[href]');
-          return Boolean(
-            anchor &&
-            document.body.children.length === 1 &&
-            document.body.children[0] === anchor &&
-            !anchor.textContent?.trim() &&
-            !anchor.querySelector('img, audio, video, br, svg, canvas, input')
-          );
-        })();
-      if (standaloneEmptyAnchor) {
+      const document = /^\s*<(?:a|table)\b/i.test(raw)
+        ? new Parser().parseFromString(raw, 'text/html')
+        : null;
+      const anchor = document?.body?.querySelector('a[href]');
+      const standaloneEmptyAnchor = Boolean(
+        /^\s*<a\b/i.test(raw) &&
+        anchor &&
+        document.body.children.length === 1 &&
+        document.body.children[0] === anchor &&
+        !anchor.textContent?.trim() &&
+        !anchor.querySelector('img, audio, video, br, svg, canvas, input')
+      );
+      const table = document?.body?.querySelector('table');
+      const standaloneHeaderlessTable = Boolean(
+        /^\s*<table\b/i.test(raw) &&
+        table &&
+        !table.querySelector('thead, th')
+      );
+      if (standaloneHeaderlessTable) {
+        let marker;
+        do {
+          marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
+        } while (source.includes(marker));
+        replacements.push({ marker, value: raw });
+        replacement = marker;
+        addWarning(
+          warnings,
+          'Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'
+        );
+      } else if (standaloneEmptyAnchor) {
         addWarning(
           warnings,
           'Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'
         );
       } else {
         try {
-          const converted = convertFromHtml(token.text ?? raw, Parser);
+          const converted = convertFromHtml(raw, Parser);
           let marker;
           do {
             marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
@@ -2564,18 +2607,23 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
   return output + transform(line.slice(plainStart));
 }
 
-function warnCommonMarkTables(lines, protectedLines, warnings) {
-  for (let index = 0; index < lines.length - 1; index += 1) {
-    if (protectedLines.has(index) || protectedLines.has(index + 1)) continue;
-    if (lines[index].includes('|') &&
-        /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[index + 1])) {
-      addWarning(
-        warnings,
-        'Pipe tables are a GFM extension, not CommonMark; the source was preserved, but a strict CommonMark renderer may not display a table.'
-      );
-      return;
-    }
+function convertGfmTablesToCommonMarkHtml(source) {
+  const tokens = marked.lexer(source, { gfm: true });
+  const chunks = [];
+  let cursor = 0;
+
+  for (const token of tokens) {
+    if (token.type !== 'table' || !token.raw) continue;
+    const start = source.indexOf(token.raw, cursor);
+    if (start < 0) continue;
+    chunks.push(source.slice(cursor, start));
+    const tableHtml = marked.parse(token.raw, { gfm: true }).trim();
+    chunks.push(`\n${tableHtml}\n\n`);
+    cursor = start + token.raw.length;
   }
+
+  chunks.push(source.slice(cursor));
+  return chunks.join('');
 }
 
 function mapWmdxOrderedLists(lines, protectedLines, warnings) {
@@ -2693,9 +2741,11 @@ function mapWmdxTaskItems(lines, protectedLines, dialect, warnings) {
   return output;
 }
 
-function addCommonMarkHeadingAnchors(lines) {
+function addCommonMarkHeadingAnchors(lines, protectedLines = new Set()) {
   const linkedFragments = new Set();
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    if (protectedLines.has(index)) continue;
+    const line = lines[index];
     for (const match of line.matchAll(/\]\(#([^)]+)\)/g)) {
       let fragment = match[1];
       try {
@@ -2708,7 +2758,8 @@ function addCommonMarkHeadingAnchors(lines) {
   }
 
   const occurrences = new Map();
-  return lines.flatMap(line => {
+  return lines.flatMap((line, index) => {
+    if (protectedLines.has(index)) return [line];
     const heading = /^ {0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(line);
     if (!heading) return [line];
     const base = headingFragmentSlug(heading[1]);
@@ -2739,6 +2790,7 @@ export function exportMarkdown(source, dialect = 'commonmark') {
     );
   }
   const markdown = protectCodeFences(source, (originalLines, protectedLines) => {
+    protectRawHtmlTableLines(originalLines, protectedLines);
     if (
       dialect === 'commonmark' &&
       originalLines.some((line, index) =>
@@ -2770,15 +2822,14 @@ export function exportMarkdown(source, dialect = 'commonmark') {
     lines = convertWmdxCallouts(lines, dialect, warnings, protectedLines);
     lines = mapWmdxOrderedLists(lines, protectedLines, warnings);
     lines = mapWmdxTaskItems(lines, protectedLines, dialect, warnings);
-    if (dialect === 'commonmark') {
-      warnCommonMarkTables(lines, protectedLines, warnings);
-    }
-    const output = lines.map((line, index) => protectedLines.has(index)
+    let output = lines.map((line, index) => protectedLines.has(index)
       ? line
       : convertWmdxInlineToMarkdown(line, dialect, warnings));
-    return dialect === 'commonmark'
-      ? addCommonMarkHeadingAnchors(output)
-      : output;
+    if (dialect === 'commonmark') {
+      output = addCommonMarkHeadingAnchors(output, protectedLines);
+      return convertGfmTablesToCommonMarkHtml(output.join('\n')).split('\n');
+    }
+    return output;
   });
   return { markdown, warnings };
 }

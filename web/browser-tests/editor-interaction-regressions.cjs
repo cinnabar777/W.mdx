@@ -234,13 +234,15 @@ async function main() {
     assert.equal(selectionAfterTap.markdown, tableSource,
       'Moving the source-table caret must not modify the parent document');
     await page.keyboard.insertText('X');
+    const expectedSourceTableAfterTyping =
+      tableSource.slice(0, selectionAfterTap.head) + 'X' + tableSource.slice(selectionAfterTap.head);
     const tableAfterTyping = await page.evaluate(() => ({
       parent: window.editorBridge.getMarkdown(),
       child: document.querySelector('.cm-source-table-editor')
         ?._sourceTableEditor?.state.doc.toString()
     }));
-    assert.notEqual(tableAfterTyping.parent, tableSource,
-      `A real source-table tap must allow typing into the parent document: ${JSON.stringify(tableAfterTyping)}`);
+    assert.equal(tableAfterTyping.parent, expectedSourceTableAfterTyping,
+      `Typing after a source-table tap must edit at the tapped caret instead of the document start: ${JSON.stringify(tableAfterTyping)}`);
     assert.equal(tableAfterTyping.child, tableAfterTyping.parent,
       'The child editor and parent Markdown must stay synchronized after typing');
     await page.keyboard.press('Control+z');
@@ -338,6 +340,22 @@ async function main() {
           'After the list.'
         ].join('\n'),
         target: 'ROOT-TAP-01'
+      },
+      {
+        name: 'nested list item',
+        profile: 'gfm',
+        source: [
+          'Before the list.',
+          '',
+          '- Parent root item.',
+          '  - NESTED-LIST-TAP-01 child text long enough to wrap across multiple visual rows on a phone, while its continuation stays aligned with this nested item.',
+          '    The nested continuation belongs to the same child item and must not shift when the cursor enters it.',
+          '  - Second nested child item.',
+          '- Second root item.',
+          '',
+          'After the list.'
+        ].join('\n'),
+        target: 'NESTED-LIST-TAP-01'
       },
       {
         name: 'nested blockquote list',
@@ -587,6 +605,12 @@ async function main() {
       });
       assert.equal(afterHeaderTap.source, calloutSource,
         `${view.name}: tapping an ordinary callout header must not rewrite syntax`);
+      const headerStart = calloutSource.indexOf('Header stays beside its icon');
+      assert.ok(
+        afterHeaderTap.selection.head >= headerStart &&
+          afterHeaderTap.selection.head <= headerStart + 'Header stays beside its icon'.length,
+        `${view.name}: the tapped callout heading must retain the caret: ${JSON.stringify(afterHeaderTap)}`
+      );
       assert.ok(afterHeaderTap.titleLineTop !== null &&
         Math.abs(afterHeaderTap.titleLineTop - calloutGeometry.titleLineTop) < 8,
       `${view.name}: tapping the title jumped the header line: ${JSON.stringify({ before: calloutGeometry, after: afterHeaderTap })}`);

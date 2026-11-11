@@ -526,13 +526,25 @@ test('GFM tasks, strike, and aligned tables survive HTML and Markdown round trip
   );
 
   const commonMark = exportMarkdown(returned.markdown, 'commonmark');
-  assert.ok(commonMark.warnings.some(warning => warning.includes('Pipe tables')));
+  assert.ok(!commonMark.warnings.some(warning => warning.includes('Pipe tables')));
   assert.ok(commonMark.warnings.some(warning => warning.includes('task-list')));
   const commonMarkHtml = renderMarkdownHtml(commonMark.markdown, {
     profile: 'commonmark',
     window: dom.window
   });
   const commonMarkDocument = new Parser().parseFromString(commonMarkHtml.html, 'text/html');
+  const commonMarkTable = commonMarkDocument.querySelector('table');
+  assert.ok(commonMarkTable, 'strict CommonMark output must preserve the table through raw HTML');
+  assert.deepEqual(
+    [...commonMarkTable.querySelectorAll('th')].map(cell => cell.getAttribute('align')),
+    ['left', 'right'],
+    'CommonMark HTML fallback must preserve table column alignment'
+  );
+  assert.deepEqual(
+    [...commonMarkTable.querySelectorAll('td')].map(cell => cell.textContent),
+    ['A', '2'],
+    'CommonMark HTML fallback must preserve table cell content'
+  );
   assert.deepEqual(
     Array.from(commonMarkDocument.querySelectorAll('input[type="checkbox"]'))
       .map(input => input.checked),

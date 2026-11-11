@@ -43,6 +43,12 @@ class EditorWebViewInteractionTest {
                     "Before the list.\n\n- ANDROID-ROOT-01 wrapped list text has enough words to span several lines on a phone-sized WebView, with every continuation row aligned beneath the item text rather than the marker.\n- Second root item."
                 ),
                 Fixture(
+                    "nested ordered list item",
+                    "gfm",
+                    "ANDROID-NESTED-LIST-01",
+                    "Before the list.\n\n1. Parent ordered item.\n   - ANDROID-NESTED-LIST-01 nested child text has enough words to wrap across several visual rows on a phone-sized WebView, and the continuation must remain aligned under this child after the caret enters it.\n     This nested continuation belongs to the child item and must not shift any source character.\n   - Second nested child item.\n2. Second ordered item."
+                ),
+                Fixture(
                     "nested quote",
                     "gfm",
                     "ANDROID-QUOTE-01",
@@ -176,6 +182,92 @@ class EditorWebViewInteractionTest {
             await(webView, "!document.querySelector('.cm-wp-cell-editor')")
             assertSource(webView, renderedTableSource, "rendered table cell", "hidden")
 
+            val sourceTableSource = """
+                | Item | Description | Status |
+                | --- | --- | --- |
+                | SRC-TAP-01 | Tap here to edit this source cell. | Open |
+            """.trimIndent()
+            val sourceTableTarget = "Tap here to edit this source cell."
+            evaluate(
+                webView,
+                """
+                    (async () => {
+                      await window.editorBridge.setEditorMode('source');
+                      window.editorBridge.applyAllPreferences({
+                        pref_markdown_profile: 'gfm',
+                        pref_markdown_syntax_exposure: 'hidden',
+                        pref_table_scroll_source_enabled: true
+                      });
+                      window.editorBridge.setMarkdown(${JSONObject.quote(sourceTableSource)});
+                    })();
+                    true;
+                """.trimIndent()
+            )
+            await(
+                webView,
+                "Boolean(document.querySelector('.cm-source-table-editor') && " +
+                    "document.querySelector('.cm-source-table-editor').textContent.includes('SRC-TAP-01'))"
+            )
+            val sourceTablePoint = sourceTableTouchPoint(webView, sourceTableTarget)
+            tap(
+                webView,
+                sourceTablePoint.getDouble("x"),
+                sourceTablePoint.getDouble("y"),
+                sourceTablePoint.getDouble("dpr")
+            )
+            await(
+                webView,
+                """
+                    (() => {
+                      const child = document.querySelector('.cm-source-table-editor')?._sourceTableEditor;
+                      return Boolean(child && document.activeElement === child.contentDOM &&
+                        child.state.selection.main.head > 0);
+                    })()
+                """.trimIndent()
+            )
+            val sourceTableCaret = JSONObject(
+                decode(
+                    evaluate(
+                        webView,
+                        """
+                            (() => {
+                              const child = document.querySelector('.cm-source-table-editor')?._sourceTableEditor;
+                              return JSON.stringify({
+                                focused: Boolean(child && document.activeElement === child.contentDOM),
+                                head: child?.state.selection.main.head ?? -1,
+                                length: child?.state.doc.length ?? 0,
+                                childMarkdown: child?.state.doc.toString() ?? null,
+                                parentMarkdown: window.editorBridge.getMarkdown()
+                              });
+                            })()
+                        """.trimIndent()
+                    )
+                )
+            )
+            val expectedSourceOffset =
+                sourceTableSource.indexOf(sourceTableTarget) + sourceTableTarget.length / 2
+            assertTrue(
+                "Source table tap must focus its nested editor and place the caret in the tapped cell, not at document start: $sourceTableCaret",
+                sourceTableCaret.getBoolean("focused") &&
+                    sourceTableCaret.getInt("head") > 0 &&
+                    sourceTableCaret.getInt("head") < sourceTableCaret.getInt("length") - 5 &&
+                    kotlin.math.abs(sourceTableCaret.getInt("head") - expectedSourceOffset) <= 24
+            )
+            assertEquals(sourceTableSource, sourceTableCaret.getString("childMarkdown"))
+            assertEquals(sourceTableSource, sourceTableCaret.getString("parentMarkdown"))
+            val editedSourceTable = sourceTableSource.substring(0, sourceTableCaret.getInt("head")) +
+                "X" + sourceTableSource.substring(sourceTableCaret.getInt("head"))
+            InstrumentationRegistry.getInstrumentation().sendStringSync("X")
+            await(
+                webView,
+                "window.editorBridge.getMarkdown() === ${JSONObject.quote(editedSourceTable)}"
+            )
+            assertEquals(
+                "Typing after a source-table tap must edit at the caret, not at the start of the document",
+                editedSourceTable,
+                decode(evaluate(webView, "window.editorBridge.getMarkdown()"))
+            )
+
             val calloutSource = """
                 Outside paragraph before callouts.
 
@@ -256,7 +348,18 @@ class EditorWebViewInteractionTest {
                         after.getJSONObject("icon").getDouble("right") + 1.0 <=
                             after.getJSONObject("text").getDouble("left")
                     )
+                    assertTrue(
+                        "callout/$scope icon jumped onto or away from its title after caret entry: $after",
+                        kotlin.math.abs(
+                            after.getJSONObject("icon").getDouble("top") -
+                                after.getJSONObject("text").getDouble("top")
+                        ) < 8.0
+                    )
                 }
+                assertTrue(
+                    "callout/$scope caret entry moved the title row: before=$before after=$after",
+                    kotlin.math.abs(after.getDouble("lineTop") - before.getDouble("lineTop")) < 8.0
+                )
 
                 var oldHeight = 0
                 var shortHeight = 0
@@ -278,6 +381,13 @@ class EditorWebViewInteractionTest {
                         "callout/$scope WebView resize caused icon/title overlap: $afterResize",
                         afterResize.getJSONObject("icon").getDouble("right") + 1.0 <=
                             afterResize.getJSONObject("text").getDouble("left")
+                    )
+                    assertTrue(
+                        "callout/$scope WebView resize moved the icon onto a different row: $afterResize",
+                        kotlin.math.abs(
+                            afterResize.getJSONObject("icon").getDouble("top") -
+                                afterResize.getJSONObject("text").getDouble("top")
+                        ) < 8.0
                     )
                 }
                 assertEquals(
@@ -387,6 +497,51 @@ class EditorWebViewInteractionTest {
             )
         )
         assertTrue("No rendered-table tap point for $cellLabel: $result", result != "null")
+        return JSONObject(result)
+    }
+
+    private fun sourceTableTouchPoint(webView: WebView, target: String): JSONObject {
+        val result = decode(
+            evaluate(
+                webView,
+                """
+                    (() => {
+                      const host = document.querySelector('.cm-source-table-editor');
+                      const child = host?._sourceTableEditor;
+                      const line = [...(host?.querySelectorAll('.cm-line') || [])]
+                        .find(item => item.textContent.includes(${JSONObject.quote(target)}));
+                      if (!host || !child || !line) return null;
+                      line.scrollIntoView({ block: 'center', inline: 'nearest' });
+                      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                      let node;
+                      while ((node = walker.nextNode())) {
+                        const offset = node.nodeValue.indexOf(${JSONObject.quote(target)});
+                        if (offset < 0) continue;
+                        const caret = offset + Math.floor(${target.length} / 2);
+                        const range = document.createRange();
+                        range.setStart(node, caret);
+                        range.setEnd(node, caret + 1);
+                        let rect = range.getBoundingClientRect();
+                        const scroller = child.scrollDOM;
+                        if (scroller && (rect.left < 0 || rect.right > window.innerWidth)) {
+                          scroller.scrollLeft += rect.left + rect.width / 2 - window.innerWidth / 2;
+                          rect = range.getBoundingClientRect();
+                        }
+                        if (!rect.width || !rect.height) return null;
+                        return JSON.stringify({
+                          x: rect.left + rect.width / 2,
+                          y: rect.top + rect.height / 2,
+                          dpr: window.devicePixelRatio,
+                          expectedCaretOffset: child.state.doc.toString().indexOf(${JSONObject.quote(target)}) +
+                            Math.floor(${target.length} / 2)
+                        });
+                      }
+                      return null;
+                    })()
+                """.trimIndent()
+            )
+        )
+        assertTrue("No source-table tap point for $target: $result", result != "null")
         return JSONObject(result)
     }
 

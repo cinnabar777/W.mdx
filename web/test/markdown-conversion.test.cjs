@@ -501,7 +501,8 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   const commonmark = exportMarkdown(source, 'commonmark');
   assert.match(commonmark.markdown, /^# Overview/m);
   assert.match(commonmark.markdown, /\[Project\]\(docs\/Project\.md\)/);
-  assert.match(commonmark.markdown, /\| Name \| Count \|/);
+  assert.match(commonmark.markdown, /<table>/);
+  assert.match(commonmark.markdown, /<th>Name<\/th>/);
   assert.match(commonmark.markdown, /1\. Alpha item/);
   assert.match(commonmark.markdown, /2\. Next alpha item/);
   assert.match(commonmark.markdown, /1\. Roman item/);
@@ -509,7 +510,7 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   assert.match(commonmark.markdown, /- <input type="checkbox" disabled checked> Complete a task/);
   assert.match(commonmark.markdown, /H<sub>2<\/sub>O and <del>removed<\/del>\./);
   assert.match(commonmark.markdown, /> \*\*Read carefully\*\*/);
-  assert.ok(commonmark.warnings.some(warning => warning.includes('Pipe tables')));
+  assert.ok(!commonmark.warnings.some(warning => warning.includes('Pipe tables')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('alphabetic and Roman')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('CommonMark has no task-list')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('callout')));

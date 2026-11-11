@@ -1185,9 +1185,15 @@ async function main() {
           `Source table edits must reach the parent document: ${JSON.stringify(editedTableState)}`
         );
         await page.keyboard.press('Control+Z');
-        await page.waitForFunction(markdown =>
-          window.editorBridge.getMarkdown() === markdown
-        , wideSourceDocument);
+        await page.waitForTimeout(250);
+        const sourceTableAfterUndo = await page.evaluate(() =>
+          window.editorBridge.getMarkdown()
+        );
+        assert.equal(
+          sourceTableAfterUndo,
+          wideSourceDocument,
+          `Undo should restore the exact source-table document: ${JSON.stringify(sourceTableAfterUndo)}`
+        );
         const sourceToggle = await page.evaluate(() =>
           window.editorBridge.toggleTableScrolling()
         );
@@ -1326,6 +1332,7 @@ async function main() {
     const phoneMarkdown = await fs.readFile(phoneFixture, 'utf8');
     await page.evaluate(async markdown => {
       await window.editorBridge.setEditorMode('source');
+      window.editorBridge.applyAllPreferences({ pref_markdown_profile: 'gfm' });
       window.editorBridge.setMarkdown(markdown);
     }, phoneMarkdown);
     await page.waitForFunction(() => window.editorBridge.getMarkdown().includes('WMDX-001'));
@@ -1389,6 +1396,7 @@ async function main() {
     for (const mode of modes) {
       await page.evaluate(async ({ mode, markdown }) => {
         await window.editorBridge.setEditorMode(mode);
+        window.editorBridge.applyAllPreferences({ pref_markdown_profile: 'wmdx' });
         window.editorBridge.setMarkdown(markdown);
       }, { mode, markdown: repeatedWmdxList });
       await page.waitForTimeout(100);
