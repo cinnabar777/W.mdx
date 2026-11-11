@@ -64,6 +64,7 @@ jobs:
           api-level: 35
           arch: x86_64
           profile: pixel_2
+          cores: 4
           disable-animations: true
           emulator-boot-timeout: 1200
           script: sh scripts/run-android-webview-tests.sh
