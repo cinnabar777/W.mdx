@@ -141,10 +141,21 @@ async function readListGeometry(item, text) {
       contentX: element.querySelector('.cm-layout-content')?.getBoundingClientRect().left,
       markerGutter: getComputedStyle(element).getPropertyValue('--list-marker-gutter'),
       rowTops: [...rows.keys()].sort((a, b) => a - b),
+      rowStarts: [...rows.values()],
       source: window.editorBridge.getMarkdown(),
       selection: window.editorBridge.getSelectionState()
     };
   }, text);
+}
+
+function assertWrappedRowsStayUnderItemText(geometry, label) {
+  assert.ok(geometry.rowStarts.length >= 2,
+    `${label}: expected wrapped text rows: ${JSON.stringify(geometry)}`);
+  const first = geometry.rowStarts[0];
+  for (let row = 1; row < geometry.rowStarts.length; row++) {
+    assert.ok(Math.abs(geometry.rowStarts[row] - first) < 3,
+      `${label}: wrapped row ${row} shifted away from the item text: ${JSON.stringify(geometry)}`);
+  }
 }
 
 async function main() {
@@ -177,11 +188,14 @@ async function main() {
     await page.goto(url);
     await page.waitForFunction(() => window.editorBridge);
 
-    const tableSource = [
+    const tableMarkdown = [
       '| Item | Description | Status |',
       '| --- | --- | --- |',
       '| TAP-01 | Tap here to edit this source cell | Open |'
     ].join('\n');
+    const tablePrefix = 'Text before the table.\n\n';
+    const tableSource = tablePrefix + tableMarkdown;
+    const tableFrom = tablePrefix.length;
     await setDocument(page, tableSource, { mode: 'source' });
     const tableState = await page.evaluate(() => {
       const editor = document.querySelector('#editor > .cm-editor');
@@ -211,7 +225,7 @@ async function main() {
       `The replaced parent table source must not paint underneath its editable widget: ${JSON.stringify(tableState)}`);
     assert.equal(tableState.matchingChildLines, 1,
       `Each source-table character must be painted once: ${JSON.stringify(tableState)}`);
-    assert.equal(tableState.childMarkdown, tableSource);
+    assert.equal(tableState.childMarkdown, tableMarkdown);
 
     const sourceTapPoint = await tapText(page, '.cm-source-table-editor .cm-line', 'Tap here');
     await page.waitForTimeout(100);
@@ -222,6 +236,7 @@ async function main() {
         hit: document.elementFromPoint(x, y)?.className ?? null,
         head: child?.state.selection.main.head,
         length: child?.state.doc.length,
+        parentSelection: JSON.parse(window.editorBridge.getSelectionState()),
         markdown: window.editorBridge.getMarkdown()
       };
     }, sourceTapPoint);
@@ -229,22 +244,34 @@ async function main() {
       `A real touch must focus the nested source editor: ${JSON.stringify(selectionAfterTap)}`);
     assert.ok(selectionAfterTap.head > 0 && selectionAfterTap.head < selectionAfterTap.length - 5,
       `Touch should place the source caret at the tapped cell, not at the end: ${JSON.stringify({ sourceTapPoint, selectionAfterTap })}`);
-    assert.ok(Math.abs(selectionAfterTap.head - tableSource.indexOf('Tap here')) < 24,
+    assert.ok(Math.abs(selectionAfterTap.head - tableMarkdown.indexOf('Tap here')) < 24,
       `Source-table caret should land near the tapped cell text: ${JSON.stringify(selectionAfterTap)}`);
+    assert.equal(selectionAfterTap.parentSelection.head, tableFrom + selectionAfterTap.head,
+      `The parent editor caret must follow the nested source-table caret to avoid jumping to an old document position: ${JSON.stringify(selectionAfterTap)}`);
     assert.equal(selectionAfterTap.markdown, tableSource,
       'Moving the source-table caret must not modify the parent document');
     await page.keyboard.insertText('X');
     const expectedSourceTableAfterTyping =
-      tableSource.slice(0, selectionAfterTap.head) + 'X' + tableSource.slice(selectionAfterTap.head);
-    const tableAfterTyping = await page.evaluate(() => ({
-      parent: window.editorBridge.getMarkdown(),
-      child: document.querySelector('.cm-source-table-editor')
-        ?._sourceTableEditor?.state.doc.toString()
-    }));
+      tableSource.slice(0, tableFrom + selectionAfterTap.head) + 'X' +
+      tableSource.slice(tableFrom + selectionAfterTap.head);
+    const tableAfterTyping = await page.evaluate(() => {
+      const child = document.querySelector('.cm-source-table-editor')?._sourceTableEditor;
+      return {
+        parent: window.editorBridge.getMarkdown(),
+        childMarkdown: child?.state.doc.toString() ?? null,
+        childHead: child?.state.selection.main.head ?? null,
+        parentSelection: JSON.parse(window.editorBridge.getSelectionState())
+      };
+    });
     assert.equal(tableAfterTyping.parent, expectedSourceTableAfterTyping,
       `Typing after a source-table tap must edit at the tapped caret instead of the document start: ${JSON.stringify(tableAfterTyping)}`);
-    assert.equal(tableAfterTyping.child, tableAfterTyping.parent,
+    const expectedChildTableAfterTyping =
+      tableMarkdown.slice(0, selectionAfterTap.head) + 'X' +
+      tableMarkdown.slice(selectionAfterTap.head);
+    assert.equal(tableAfterTyping.childMarkdown, expectedChildTableAfterTyping,
       'The child editor and parent Markdown must stay synchronized after typing');
+    assert.equal(tableAfterTyping.parentSelection.head, tableFrom + tableAfterTyping.childHead,
+      'The parent cursor must track the nested table editor after typing');
     await page.keyboard.press('Control+z');
     await page.waitForFunction(markdown =>
       window.editorBridge.getMarkdown() === markdown, tableSource);
@@ -393,6 +420,10 @@ async function main() {
         const initialGeometry = await readListGeometry(item, listContext.target);
         assert.ok(initialGeometry.rowTops.length >= 2,
           `${view.name}/${listContext.name} must truly wrap at phone width: ${JSON.stringify(initialGeometry)}`);
+        assertWrappedRowsStayUnderItemText(
+          initialGeometry,
+          `${view.name}/${listContext.name} before cursor entry`
+        );
         const firstTapPoint = await tapTextRow(page, itemSelector, listContext.target, false);
         await page.waitForTimeout(100);
         const firstTap = await readListGeometry(item, listContext.target);
@@ -400,6 +431,10 @@ async function main() {
           `${view.name}/${listContext.name}: first-row touch should enter the list item: ${JSON.stringify({ firstTapPoint, firstTap })}`);
         assert.equal(firstTap.source, listContext.source,
           `${view.name}/${listContext.name}: cursor entry must preserve every source character`);
+        assertWrappedRowsStayUnderItemText(
+          firstTap,
+          `${view.name}/${listContext.name} after cursor entry`
+        );
         const itemStart = listContext.source.indexOf(listContext.target);
         const itemEnd = listContext.source.indexOf('\n', itemStart);
         const firstSelection = JSON.parse(firstTap.selection).head;
@@ -412,6 +447,10 @@ async function main() {
           `${view.name}/${listContext.name}: wrapped-row touch should remain in the same item`);
         assert.equal(wrappedTap.source, listContext.source,
           `${view.name}/${listContext.name}: wrapped-row cursor placement must not insert/delete characters`);
+        assertWrappedRowsStayUnderItemText(
+          wrappedTap,
+          `${view.name}/${listContext.name} after wrapped-row tap`
+        );
         const wrappedSelection = JSON.parse(wrappedTap.selection).head;
         assert.ok(wrappedSelection >= itemStart && wrappedSelection < itemEnd,
           `${view.name}/${listContext.name}: wrapped-row caret should remain in its item: ${JSON.stringify(wrappedTap)}`);

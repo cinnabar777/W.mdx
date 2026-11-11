@@ -58,13 +58,22 @@ jobs:
           name: Wmdx-Debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Run Android WebView Interaction Tests
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_2
+          ram-size: 4096M
+          heap-size: 1024M
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           emulator-boot-timeout: 1200
           script: sh scripts/run-android-webview-tests.sh
 
