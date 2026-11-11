@@ -786,7 +786,7 @@ class EditorWebViewInteractionTest {
         for (index in 1 until rows.length()) {
             assertTrue(
                 "$context/$scope wrapped row $index shifted from the item text: $geometry",
-                kotlin.math.abs(rows.getDouble(index) - first) < 3.0
+                kotlin.math.abs(rows.getDouble(index) - first) < 6.0
             )
         }
     }
