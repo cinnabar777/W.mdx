@@ -346,6 +346,45 @@ export class WordProcessorTableWidget extends WidgetType {
       }
     };
 
+    const normalizeSelectionAfterModelChange = () => {
+      if (!selectedRange) return;
+      const matrix = this.model.getRenderMatrix();
+      const maxRow = matrix.length - 1;
+      const maxCol = (matrix[0]?.length || 1) - 1;
+      const row = Math.max(0, Math.min(selectedRange.endR, maxRow));
+      const col = Math.max(0, Math.min(selectedRange.endC, maxCol));
+
+      let anchor = { r: row, c: col };
+      for (let candidateRow = 0; candidateRow <= row; candidateRow += 1) {
+        for (let candidateCol = 0; candidateCol <= col; candidateCol += 1) {
+          const cell = matrix[candidateRow]?.[candidateCol];
+          if (
+            cell &&
+            !cell.isCovered &&
+            row < candidateRow + cell.rowSpan &&
+            col < candidateCol + cell.colSpan
+          ) {
+            anchor = { r: candidateRow, c: candidateCol };
+            candidateRow = row + 1;
+            break;
+          }
+        }
+      }
+
+      activeCell = anchor;
+      selectedRange = {
+        startR: anchor.r,
+        startC: anchor.c,
+        endR: anchor.r,
+        endC: anchor.c
+      };
+      selections?.set(this.from, selectedRange);
+      const bridge = tableActionBridge();
+      if (bridge?.active?.view === view && bridge.active.from === this.from) {
+        bridge.active = { ...bridge.active, r: anchor.r, c: anchor.c };
+      }
+    };
+
     if (!measurementOnly) {
       this.commitModel = (targetView, newModel) => {
         const v = targetView || view;
@@ -376,7 +415,9 @@ export class WordProcessorTableWidget extends WidgetType {
       };
 
       mutate();
+      normalizeSelectionAfterModelChange();
       renderTableCells();
+      publishActiveCell();
       commitTableChange();
 
       // Wait for CodeMirror to rebuild and measure the replacement block widget.
@@ -804,6 +845,11 @@ export class WordProcessorTableWidget extends WidgetType {
         }
       };
       const serializeCellEditor = () => {
+        if (
+          !overlay.textContent &&
+          overlay.querySelectorAll('br').length === 1
+        ) return '';
+
         let value = '';
         [...overlay.childNodes].forEach((node, index) => {
           if (
@@ -999,30 +1045,58 @@ export class WordProcessorTableWidget extends WidgetType {
         else saveCellValue();
 
         if (nextNavigation) {
-          requestAnimationFrame(() => {
-            const selector = '.cm-wp-table-container[data-table-from="' + this.from + '"]';
-            const newContainer = view.dom.querySelector(selector) || document.querySelector('.cm-wp-table-container');
-            if (newContainer) {
-              const { rowDelta, colDelta } = nextNavigation;
-              let targetR = r + rowDelta;
-              let targetC = c + colDelta;
-              if (targetC >= colCount) {
-                targetC = 0;
-                targetR++;
-              } else if (targetC < 0) {
-                targetC = colCount - 1;
-                targetR--;
+          const selector = '.cm-wp-table-container[data-table-from="' + this.from + '"]';
+          const { rowDelta, colDelta } = nextNavigation;
+          let previousContainer = null;
+          let stableFrames = 0;
+          let attempts = 0;
+          const openTargetAfterRender = () => {
+            requestAnimationFrame(() => {
+              const newContainer = view.dom.querySelector(selector);
+              const sameContainer = Boolean(
+                newContainer?.isConnected && newContainer === previousContainer
+              );
+              if (newContainer?.isConnected && newContainer === previousContainer) {
+                stableFrames++;
+              } else {
+                stableFrames = 0;
+              }
+              previousContainer = newContainer;
+              attempts++;
+
+              if (newContainer?.isConnected && stableFrames >= 2) {
+                const targetR = r + rowDelta;
+                let targetC = c + colDelta;
+                let normalizedTargetR = targetR;
+                if (targetC >= colCount) {
+                  targetC = 0;
+                  normalizedTargetR++;
+                } else if (targetC < 0) {
+                  targetC = colCount - 1;
+                  normalizedTargetR--;
+                }
+
+                if (
+                  normalizedTargetR >= 0 &&
+                  normalizedTargetR < rowCount &&
+                  targetC >= 0 &&
+                  targetC < colCount
+                ) {
+                  const targetEl = newContainer.querySelector(
+                    `[data-row="${normalizedTargetR}"][data-col="${targetC}"]`
+                  );
+                  const openTargetCell = tableCellSelectors.get(targetEl);
+                  if (targetEl?.isConnected && openTargetCell) {
+                    openTargetCell({ openEditor: true });
+                  }
+                }
+                return;
               }
 
-              if (targetR >= 0 && targetR < rowCount && targetC >= 0 && targetC < colCount) {
-                const targetEl = newContainer.querySelector(`[data-row="${targetR}"][data-col="${targetC}"]`);
-                if (targetEl) {
-                  targetEl.click();
-                  targetEl.click();
-                }
-              }
-            }
-          });
+              if (attempts < 6) openTargetAfterRender();
+            });
+          };
+          openTargetAfterRender();
         }
       };
 

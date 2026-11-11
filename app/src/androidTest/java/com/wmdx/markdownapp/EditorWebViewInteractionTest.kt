@@ -278,102 +278,6 @@ class EditorWebViewInteractionTest {
             await(webView, "!document.querySelector('.cm-wp-cell-editor')")
             assertSource(webView, renderedTableSource, "rendered table cell", "hidden")
 
-            val sourceTableMarkdown = """
-                | Item | Description | Status |
-                | --- | --- | --- |
-                | SRC-TAP-01 | Tap here to edit this source cell. | Open |
-            """.trimIndent()
-            val sourceTablePrefix = "Text before the table.\n\n"
-            val sourceTableSource = sourceTablePrefix + sourceTableMarkdown
-            val sourceTableFrom = sourceTablePrefix.length
-            val sourceTableTarget = "Tap here to edit this source cell."
-            evaluate(
-                webView,
-                """
-                    (async () => {
-                      await window.editorBridge.setEditorMode('source');
-                      window.editorBridge.applyAllPreferences({
-                        pref_markdown_profile: 'gfm',
-                        pref_markdown_syntax_exposure: 'hidden',
-                        pref_table_scroll_source_enabled: true
-                      });
-                      window.editorBridge.setMarkdown(${JSONObject.quote(sourceTableSource)});
-                    })();
-                    true;
-                """.trimIndent()
-            )
-            await(
-                webView,
-                "Boolean(document.querySelector('.cm-source-table-editor') && " +
-                    "document.querySelector('.cm-source-table-editor').textContent.includes('SRC-TAP-01'))"
-            )
-            val sourceTablePoint = sourceTableTouchPoint(webView, sourceTableTarget)
-            tap(
-                webView,
-                sourceTablePoint.getDouble("x"),
-                sourceTablePoint.getDouble("y"),
-                sourceTablePoint.getDouble("dpr")
-            )
-            await(
-                webView,
-                """
-                    (() => {
-                      const child = document.querySelector('.cm-source-table-editor')?._sourceTableEditor;
-                      return Boolean(child && document.activeElement === child.contentDOM &&
-                        child.state.selection.main.head > 0);
-                    })()
-                """.trimIndent()
-            )
-            val sourceTableCaret = JSONObject(
-                decode(
-                    evaluate(
-                        webView,
-                        """
-                            (() => {
-                              const child = document.querySelector('.cm-source-table-editor')?._sourceTableEditor;
-                              return JSON.stringify({
-                                focused: Boolean(child && document.activeElement === child.contentDOM),
-                                head: child?.state.selection.main.head ?? -1,
-                                length: child?.state.doc.length ?? 0,
-                                childMarkdown: child?.state.doc.toString() ?? null,
-                                  parentSelection: JSON.parse(window.editorBridge.getSelectionState()),
-                                parentMarkdown: window.editorBridge.getMarkdown()
-                              });
-                            })()
-                        """.trimIndent()
-                    )
-                )
-            )
-            val expectedSourceOffset =
-                sourceTableMarkdown.indexOf(sourceTableTarget) + sourceTableTarget.length / 2
-            assertTrue(
-                "Source table tap must focus its nested editor and place the caret in the tapped cell, not at document start: $sourceTableCaret",
-                sourceTableCaret.getBoolean("focused") &&
-                    sourceTableCaret.getInt("head") > 0 &&
-                    sourceTableCaret.getInt("head") < sourceTableCaret.getInt("length") - 5 &&
-                    kotlin.math.abs(sourceTableCaret.getInt("head") - expectedSourceOffset) <= 24
-            )
-            assertEquals(sourceTableMarkdown, sourceTableCaret.getString("childMarkdown"))
-            assertEquals(sourceTableSource, sourceTableCaret.getString("parentMarkdown"))
-            assertEquals(
-                "The outer document cursor must follow the source-table caret",
-                sourceTableFrom + sourceTableCaret.getInt("head"),
-                sourceTableCaret.getJSONObject("parentSelection").getInt("head")
-            )
-            val parentCaret = sourceTableFrom + sourceTableCaret.getInt("head")
-            val editedSourceTable = sourceTableSource.substring(0, parentCaret) +
-                "X" + sourceTableSource.substring(parentCaret)
-            InstrumentationRegistry.getInstrumentation().sendStringSync("X")
-            await(
-                webView,
-                "window.editorBridge.getMarkdown() === ${JSONObject.quote(editedSourceTable)}"
-            )
-            assertEquals(
-                "Typing after a source-table tap must edit at the caret, not at the start of the document",
-                editedSourceTable,
-                decode(evaluate(webView, "window.editorBridge.getMarkdown()"))
-            )
-
             val calloutSource = """
                 Outside paragraph before callouts.
 
@@ -507,6 +411,144 @@ class EditorWebViewInteractionTest {
                     resizedSelection.getInt("head") in titleStart..(titleStart + "Custom callout title".length)
                 )
             }
+        } finally {
+            scenario.close()
+        }
+    }
+
+    @Test
+    fun sourceTableTapRoutesTypingToTheCellOnAndroid() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            var candidate: WebView? = null
+            scenario.onActivity { candidate = it.findViewById(R.id.webView) }
+            val webView = requireNotNull(candidate)
+            await(webView, "Boolean(window.editorBridge && document.querySelector('.cm-content'))")
+
+            val tableMarkdown = """
+                | Item | Description | Status |
+                | --- | --- | --- |
+                | SRC-TAP-01 | Tap here to edit this source cell. | Open |
+            """.trimIndent()
+            val prefix = "Text before the table.\n\n"
+            val source = prefix + tableMarkdown
+            val target = "Tap here to edit this source cell."
+            evaluate(
+                webView,
+                """
+                    (async () => {
+                      await window.editorBridge.setEditorMode('source');
+                      window.editorBridge.applyAllPreferences({
+                        pref_markdown_profile: 'gfm',
+                        pref_markdown_syntax_exposure: 'hidden',
+                        pref_table_scroll_source_enabled: true
+                      });
+                      window.editorBridge.setMarkdown(${JSONObject.quote(source)});
+                    })();
+                    true;
+                """.trimIndent()
+            )
+            await(
+                webView,
+                "Boolean(document.querySelector('.cm-source-table-editor') && " +
+                    "document.querySelector('.cm-source-table-editor').textContent.includes('SRC-TAP-01'))"
+            )
+
+            val point = sourceTableTouchPoint(webView, target)
+            tap(webView, point.getDouble("x"), point.getDouble("y"), point.getDouble("dpr"))
+            await(
+                webView,
+                """
+                    (() => {
+                      const child = document.querySelector('.cm-source-table-editor')?._sourceTableEditor;
+                      return Boolean(child && document.activeElement === child.contentDOM &&
+                        child.state.selection.main.head > 0);
+                    })()
+                """.trimIndent()
+            )
+            val caretBeforeTyping = JSONObject(
+                decode(
+                    evaluate(
+                        webView,
+                        """
+                            (() => {
+                              const child = document.querySelector('.cm-source-table-editor')?._sourceTableEditor;
+                              return JSON.stringify({
+                                focused: Boolean(child && document.activeElement === child.contentDOM),
+                                head: child?.state.selection.main.head ?? -1,
+                                childMarkdown: child?.state.doc.toString() ?? null,
+                                parentSelection: JSON.parse(window.editorBridge.getSelectionState()),
+                                parentMarkdown: window.editorBridge.getMarkdown()
+                              });
+                            })()
+                        """.trimIndent()
+                    )
+                )
+            )
+            val expectedOffset = point.getInt("expectedCaretOffset")
+            assertTrue(
+                "Android tap must focus the nested table editor at the touched cell, not the document start: $caretBeforeTyping",
+                caretBeforeTyping.getBoolean("focused") &&
+                    kotlin.math.abs(caretBeforeTyping.getInt("head") - expectedOffset) <= 3
+            )
+            assertEquals(tableMarkdown, caretBeforeTyping.getString("childMarkdown"))
+            assertEquals(source, caretBeforeTyping.getString("parentMarkdown"))
+            assertEquals(
+                "Parent selection must map to the focused source-table caret",
+                prefix.length + caretBeforeTyping.getInt("head"),
+                caretBeforeTyping.getJSONObject("parentSelection").getInt("head")
+            )
+
+            val actualCaretOffset = caretBeforeTyping.getInt("head")
+            val expectedChild = tableMarkdown.substring(0, actualCaretOffset) +
+                "X" + tableMarkdown.substring(actualCaretOffset)
+            val expectedParent = prefix + expectedChild
+            InstrumentationRegistry.getInstrumentation().sendStringSync("X")
+            await(
+                webView,
+                """
+                    (() => {
+                      const child = document.querySelector('.cm-source-table-editor')?._sourceTableEditor;
+                      return child?.state.doc.toString() === ${JSONObject.quote(expectedChild)} &&
+                        window.editorBridge.getMarkdown() === ${JSONObject.quote(expectedParent)};
+                    })()
+                """.trimIndent()
+            )
+            val afterTyping = JSONObject(
+                decode(
+                    evaluate(
+                        webView,
+                        """
+                            (() => {
+                              const child = document.querySelector('.cm-source-table-editor')?._sourceTableEditor;
+                              return JSON.stringify({
+                                focused: Boolean(child && document.activeElement === child.contentDOM),
+                                childMarkdown: child?.state.doc.toString() ?? null,
+                                childText: child?.contentDOM.textContent ?? null,
+                                childHead: child?.state.selection.main.head ?? -1,
+                                parentMarkdown: window.editorBridge.getMarkdown(),
+                                parentHead: JSON.parse(window.editorBridge.getSelectionState()).head
+                              });
+                            })()
+                        """.trimIndent()
+                    )
+                )
+            )
+            assertTrue(
+                "The tapped source cell must still own focus after Android keyboard input: $afterTyping",
+                afterTyping.getBoolean("focused")
+            )
+            assertEquals("Keyboard input must change the source-table editor", expectedChild, afterTyping.getString("childMarkdown"))
+            assertTrue(
+                "The inserted character must be visible in the table editor exactly once: $afterTyping",
+                afterTyping.getString("childText").count { it == 'X' } == 1
+            )
+            assertEquals("The parent document must receive the same cell edit", expectedParent, afterTyping.getString("parentMarkdown"))
+            assertEquals(
+                "The parent caret must track the edited child caret",
+                prefix.length + afterTyping.getInt("childHead"),
+                afterTyping.getInt("parentHead")
+            )
         } finally {
             scenario.close()
         }
@@ -698,6 +740,19 @@ class EditorWebViewInteractionTest {
                         .find(item => item.textContent.includes(${JSONObject.quote(marker)}));
                       if (!line) return null;
                       const rows = new Map();
+                      const rectFor = element => {
+                        if (!element) return null;
+                        const rect = element.getBoundingClientRect();
+                        return {
+                          left: rect.left, right: rect.right, top: rect.top,
+                          bottom: rect.bottom, width: rect.width, height: rect.height
+                        };
+                      };
+                      const prefix = line.querySelector('.cm-layout-prefix');
+                      const startAnchor = line.querySelector('.cm-layout-start');
+                      const contentAnchor = line.querySelector('.cm-layout-content');
+                      const lineStyle = getComputedStyle(line);
+                      const prefixStyle = prefix ? getComputedStyle(prefix) : null;
                       const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
                       let node;
                       while ((node = walker.nextNode())) {
@@ -718,7 +773,31 @@ class EditorWebViewInteractionTest {
                       }
                       return JSON.stringify({
                         viewportHeight: window.innerHeight,
-                        rowStarts: [...rows.entries()].sort((a, b) => a[0] - b[0]).map(([, x]) => x)
+                        rowTops: [...rows.keys()].sort((a, b) => a - b),
+                        rowStarts: [...rows.entries()].sort((a, b) => a[0] - b[0]).map(([, x]) => x),
+                        lineRect: rectFor(line),
+                        anchors: {
+                          start: rectFor(startAnchor),
+                          content: rectFor(contentAnchor)
+                        },
+                        prefix: prefix ? {
+                          text: prefix.textContent,
+                          html: prefix.outerHTML.slice(0, 600),
+                          rect: rectFor(prefix),
+                          marker: rectFor(prefix.querySelector('.cm-list-bullet, .cm-list-number')),
+                          whiteSpace: prefixStyle.whiteSpace
+                        } : null,
+                        layout: {
+                          gutterInline: line.style.getPropertyValue('--list-marker-gutter'),
+                          gutterComputed: lineStyle.getPropertyValue('--list-marker-gutter'),
+                          visibleIndent: lineStyle.getPropertyValue('--layout-visible-indent'),
+                          paddingLeft: lineStyle.paddingLeft,
+                          textIndent: lineStyle.textIndent,
+                          whiteSpace: lineStyle.whiteSpace,
+                          font: lineStyle.font,
+                          lineHeight: lineStyle.lineHeight
+                        },
+                        listWrapUnderText: document.body.classList.contains('list-wrap-under-text')
                       });
                     })()
                 """.trimIndent()

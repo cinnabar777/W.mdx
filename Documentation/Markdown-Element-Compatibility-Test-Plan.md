@@ -4,13 +4,13 @@ This is the element-level gate for CommonMark, GFM, Obsidian, Wmdx, HTML, and MH
 
 ## Current handoff (2026-11-11)
 
-Work from branch `main-clean-textpack-wmds`, now at `7b45c5e` (handoff documentation), based on `cbaad3d` (`Fix Android WebView test assertion arguments`). The local checkout was fast-forwarded through the test-fix commit before this handoff update. Recent commits corrected the app warm-up target and timeout handling, restored the emulator's two-core configuration, added KVM/install diagnostics, and fixed JUnit assertion argument order. The user confirms the incoming session can modify the workflow and install the Android SDK; do not treat either as a blocker.
+Work from branch `main-clean-textpack-wmds`, now at `888604b` (`Hand off full compatibility effort`), descended from `7b45c5e` and `cbaad3d` (`Fix Android WebView test assertion arguments`). The handoff commit updates documentation only. Recent commits corrected the app warm-up target and timeout handling, restored the emulator's two-core configuration, added KVM/install diagnostics, and fixed JUnit assertion argument order. The user confirms the incoming session can modify the workflow and install the Android SDK; do not treat either as a blocker.
 
 The incoming session owns the complete remaining app and compatibility effort, not only the Android geometry issue: fix and extend the view/interaction tests, complete the CommonMark/GFM/Obsidian/HTML/MHTML conversion matrix and import/export checks, then run the full-document MDZip fixtures as the final gate. Use the available Android SDK and workflow to verify device behavior, keep the test plan current, and continue beyond any single passing APK or CI run.
 
 Latest verification is [GitHub Actions run 43030976067](https://github.com/cinnabar777/W.mdx/actions/runs/43030976067): web unit tests, browser layout tests, Android build/unit tests, and Debug APK upload passed. Android instrumentation installed and launched successfully and executed one test, but the job failed on a real geometry assertion: `touchWrappedListsKeepsCaretAndIndentAcrossWebViewResize` reported `root/hidden after cursor entry wrapped row 1 shifted from the item text`, with row starts `[59.2083, 64, 64, 64, 64, 64]` and a `<3px` alignment tolerance. This now reproduces the cursor-entry list-wrap defect instead of failing before the test body. The run's Debug APK is artifact `13861555462` (6,713,340 bytes, not expired); Android diagnostics are artifact `13860449022` (100,683 bytes, not expired).
 
-**Next:** investigate the first root/hidden geometry mismatch in `EditorWebViewInteractionTest.kt` (`listGeometry` / `assertRowsAlign`, failure at test line 79 and assertion helper line 791). Inspect the measured DOM rectangles and source/live styling before changing CSS or the tolerance; do not weaken the assertion to make CI green. Once root/hidden alignment is fixed, rerun the API 35 instrumentation test to expose later list contexts and the existing source-table caret/edit/undo and callout-title caret geometry assertions. Record each executed test count and result; a passed build or uploaded APK is not an interaction pass.
+**Next:** investigate the first root/hidden geometry mismatch in `EditorWebViewInteractionTest.kt` (`listGeometry` / `assertRowsAlign`, failure at test line 79 and assertion helper line 791). The Android geometry diagnostic now includes line/prefix/anchor rectangles, inline and computed gutter values, padding, text indent, font, and white-space; the `<3px` assertion is unchanged. Use the API 35 run to inspect those values before changing rendering code. Once root/hidden alignment is fixed, rerun instrumentation to expose later list contexts and the existing source-table caret/edit/undo and callout-title caret geometry assertions. Record each executed test count and result; a passed build or uploaded APK is not an interaction pass.
 
 After the Android slice, continue the conversion matrix in this document rather than treating it as finished: GFM↔Obsidian, many per-element HTML/MHTML round trips, the complete feature/context/view matrix, and the four full-document MDZip integration fixtures remain open. Preserve the CommonMark corpus results and explicit loss/warning rules below.
 
@@ -31,14 +31,15 @@ For every case:
 
 ## Mandatory view and interaction gate
 
-Every supported element must pass in all four editor configurations. These are distinct test targets, not interchangeable snapshots:
+Every supported element must pass in all five editor configurations. These are distinct test targets, not interchangeable snapshots:
 
 | View ID | Configuration |
 | --- | --- |
 | VIEW-1 | WYSIWYG with Markdown syntax hidden |
 | VIEW-2 | WYSIWYG with syntax exposed at the caret |
-| VIEW-3 | WYSIWYG with the active line or block's syntax exposed |
-| VIEW-4 | Source/Code view, with literal Markdown and no rendered document widgets |
+| VIEW-3 | WYSIWYG with the active line's syntax exposed |
+| VIEW-4 | WYSIWYG with the active block's syntax exposed |
+| VIEW-5 | Source/Code view, with literal Markdown and no rendered document widgets |
 
 For each feature case and every applicable view, test the following behaviors with browser automation against the real editor:
 
@@ -52,7 +53,7 @@ Use a context matrix as well as the view matrix. Test a block element at the doc
 
 ### Required list interaction matrix
 
-Lists have enough interacting states to require their own generated fixture family; a single nested-list example is not adequate. For every list type, combine applicable marker styles and nesting with each valid host context and all four view IDs:
+Lists have enough interacting states to require their own generated fixture family; a single nested-list example is not adequate. For every list type, combine applicable marker styles and nesting with each valid host context and all five view IDs:
 
 - Bullet markers `-`, `*`, and `+`; decimal `.` and `)`; Wmdx alphabetic/Roman markers; checked and unchecked tasks.
 - Flat, two-level, and deeper nesting; mixed ordered/unordered children; continuing numbering; a child with its own nested list.
@@ -62,21 +63,82 @@ Lists have enough interacting states to require their own generated fixture fami
 
 Each list assertion must verify that the item's marker, text, wrapped lines, continuation paragraph, and descendants remain one logical item; the visual hanging indent stays stable; numbering and nesting remain correct; and visiting a wrapped line does not rewrite or shift a character. Re-run after switching between all view IDs.
 
+### Required real-user workflow suites
+
+These are behavior tests, separate from conversion checks and source-code assertions. Use actual taps/clicks, keyboard input, Enter/Backspace, and visible menu/button actions. JavaScript may seed a fixture and inspect exact state, but must not stand in for the user action being tested. After each action, assert the resulting Markdown, selection/caret, rendered state, and persisted setting where applicable. Keep high-risk feature workflows independently reported so an earlier list or geometry failure cannot prevent table, callout, or color tests from executing.
+
+Run each workflow in every applicable `VIEW-1` through `VIEW-5` configuration and in the CommonMark, GFM, Obsidian, and Wmdx profiles that support that syntax. For unsupported profile/feature pairs, assert literal preservation or the documented warning; do not silently skip them. Use exhaustive coverage for the high-risk workflows below and pairwise coverage for lower-risk profile/context combinations.
+
+#### Color picker and preference reset
+
+- Open the picker from a real setting. Verify the current-color swatch and old/new previews match the effective default or saved override, including translucent defaults and the active light/dark theme.
+- Change the hue and saturation/value field from a translucent or dark starting color. Verify the picked color becomes visibly opaque, the preview changes to the chosen color, and the actual setting target updates after confirmation. Then adjust alpha explicitly and verify the chosen transparency is preserved.
+- Enter valid RGB and RGBA hex values, press the keyboard Enter action, and assert the preview reflects the parsed value; confirm with OK and verify the setting's real preview/rendering changes. Verify Cancel leaves the setting unchanged, and invalid or incomplete input cannot silently replace it.
+- Verify reset affordances start inactive at the effective default, become active after changing the setting, actually restore the stored default when pressed, and return inactive afterward. Cover representative color, text, numeric, and boolean preferences so this shared behavior cannot regress by setting type.
+
+#### Tables
+
+- In Source/Code view, tap into a cell after preceding document content, type and replace text, delete text, press Enter, and use undo/redo. Assert the correct source offset changes and the surrounding document remains byte-for-byte intact. Repeat after switching from a rendered view.
+- In rendered views, enter and edit cells using real taps and keyboard input; test cell-to-cell movement, row/column insertion and deletion, alignment, clear-formatting, copy/paste, Escape/cancel, and every exposed table menu action. Assert the Markdown and rendered table after each operation.
+- Cover empty and ordinary cells, escaped and literal pipes, emphasis, code, links, images, and other supported inline content. Explicitly mark block-level content that the active table syntax cannot contain as `N/A`; verify supported HTML-imported cell content separately.
+- Repeat applicable cases in all five views, dialect profiles, and valid nesting contexts. Verify view switches, save/reopen, and undo/redo preserve cell contents, alignment, and table boundaries.
+
+The Word Processor table context menu currently exposes nine structural actions; exercise each by opening the real menu with a long press and tapping its visible button. Do not call `window.wmdxTableActions.run()` as a substitute:
+
+| Action ID | Visible action | Required result |
+| --- | --- | --- |
+| `insertRowBelow` | Add Row Below | One row is added after the active row; prior cells stay unchanged |
+| `insertColumnRight` | Add Column Right | One column is added after the active column; prior cells and alignments stay unchanged |
+| `deleteRow` | Delete Row | The active row is removed; other rows stay unchanged |
+| `deleteColumn` | Delete Column | The active column is removed; other columns and alignments stay unchanged |
+| `mergeLeft` | Merge Left | Adjacent cells become one visible span and both contents remain |
+| `mergeRight` | Merge Right | Adjacent cells become one visible span and both contents remain |
+| `mergeUp` | Merge Up | Adjacent cells become one visible span and both contents remain |
+| `mergeDown` | Merge Down | Adjacent cells become one visible span and both contents remain |
+| `splitCell` | Split Cell | The span is removed and table structure remains valid |
+
+Also test the toolbar's `Insert Table` action and each action's enabled/disabled boundary (for example, deleting the last row or column and merging past an edge). Each action case must assert the exact resulting Markdown, rendered cell text/count/spans, and the same result after reopening the table.
+
+All 26 table preference keys in `preferences_styling_tables.xml` need an effect test and a reset test. Change each through its actual Settings control, verify the reset control becomes active, verify the rendered table or menu reflects the selected value, reset it, and verify the default appearance and inactive reset state return:
+
+| Setting group | Preference keys |
+| --- | --- |
+| Scrolling | `pref_table_scroll_wysiwyg_enabled`, `pref_table_scroll_source_enabled` |
+| Typography | `pref_table_inherit_body_typography`, `pref_table_font_family`, `pref_font_file_table`, `pref_table_font_weight`, `pref_table_font_size`, `pref_table_letter_spacing`, `pref_table_hyphenate`, `pref_table_line_height` |
+| Margins | `pref_table_margin_left`, `pref_table_margin_right` |
+| Borders | `pref_table_border_style`, `pref_table_border_thickness`, `pref_table_border_color` |
+| Header | `pref_table_header_bg_color`, `pref_table_header_text_color`, `pref_table_header_font_weight` |
+| Cells | `pref_table_cell_bg_color`, `pref_table_cell_text_color`, `pref_table_cell_padding` |
+| Action menu | `pref_table_menu_bg_color`, `pref_table_menu_action_bg_color`, `pref_table_menu_text_color`, `pref_table_menu_disabled_color`, `pref_table_menu_pressed_bg_color` |
+
+For cell editing, use actual keyboard input—not `textContent` assignment—and cover insertion, selection/replacement, Backspace/Delete, Enter within a cell, Tab/Shift+Tab navigation, Escape cancellation, undo/redo, and paste. After each action, verify the focused cell, child editor value, parent Markdown, rendered cell, and reopened value. Run these cases independently so one failure does not skip the rest. Cover supported inline cell contents (plain/empty text, escaped pipes, emphasis, code, links, images, and Wmdx resources); test unsupported block content as an explicit literal-preservation or `N/A` case.
+
+#### Callouts and other block widgets
+
+- For every supported callout type, edit the title and body, press Enter/Backspace at ordinary text and block boundaries, toggle folded state, invoke insertion/menu actions, and undo/redo. Test empty/custom titles and body content containing paragraphs, lists, code, and nested callouts.
+- Exercise lists, task lists, blockquotes, and callouts at root and in every valid parent/child combination. Tap marker, title, body, continuation, and nested child; insert, replace, delete, indent/outdent, check/uncheck, and exit empty items with Enter. Assert the block remains in the intended parent and that invalid nesting stays literal or reports the documented warning.
+- Repeat these edits across view switches and syntax exposure settings. Assert exact Markdown, numbering/fold state, caret location, nesting, and visible rendering; a cursor-only pass does not count as an edit pass.
+
+#### Cost-conscious validation
+
+Batch related behavior tests before running Android compilation or building an APK. Run fast web tests first, then one focused Android compile/device run for the completed batch; do not rebuild an APK for each assertion or small test adjustment. A test is not marked passed until its test body ran and its behavior assertions passed on the target device.
+
 ### Automated browser coverage recorded so far
 
 | Suite | Coverage exercised | Result | Remaining list work |
 | --- | --- | --- | --- |
+| `web/browser-tests/table-workflow-matrix.cjs` | 128 real-browser cases: 9 visible table menu actions × GFM/Obsidian/Wmdx × hidden/caret/line/block syntax exposure; multi-word cell replacement, Return, Tab/Shift+Tab, clipboard paste, Delete, Escape cancellation, exact Markdown/rendering, undo/redo; Source-view phrase replacement and undo/redo in all four profiles; CommonMark literal-table behavior in all four exposure settings | **128 passed in Chromium** after rebuilding the WebView assets. | Add the 26 table-setting effect/reset workflows, table-action boundaries and toolbar insertion, rich inline cell content, save/reopen, and Android-device acceptance. |
 | `web/browser-tests/unified-layout.cjs` list interaction slice | Root mixed list, quoted list, callout list, and list-looking fenced code; WYSIWYG hidden/caret/line/block exposure plus Source/Code; cursor entry and movement from first to wrapped text; text edit/undo; keyboard-size resize; exact source preservation | **Passes in Chromium.** | Add all marker families and nesting permutations to each context, selection/indent/outdent operations, explicit scroll restoration checks, and Android-device acceptance. |
 | `web/browser-tests/editor-interaction-regressions.cjs` | Mobile-touch Source table caret/edit/undo with exact insertion at the tapped offset; rendered WYSIWYG table overlay opacity, tapped caret, typing at the tapped offset, and cancel; wrapped root, actual nested ordered→bullet child, nested-quote, and callout list taps in hidden/caret/block syntax exposure; each tap is followed by exact-offset typing and undo; Source/Code nested-list tap, edit, and undo preserve the exact caret offset and source; each list state's wrapped rows stay aligned with item text before and after first cursor entry (allowing the expected horizontal shift when syntax appears); nested quote/callout borders continue through list and fenced-code lines; callout title tap preserves caret and icon/title row geometry | **Passes in Chromium mobile emulation.** The rendered-cell test reproduced text painted twice: the selected cell's `rgba(0, 120, 212, 0.2)` background was copied to the editor overlay, leaving the original text visible underneath. The overlay now composites cell/ancestor backgrounds to an opaque color. | Expand to deeper marker/nesting permutations, fold/collapse interactions, scroll restoration, and Android-WebView/device acceptance. |
-| `app/src/androidTest/.../EditorWebViewInteractionTest.kt` | Real Android WebView touch at wrapped rows in root, nested ordered→bullet child, nested quote, and callout lists across hidden/caret/block syntax exposure; every list tap is followed by insertion at the exact caret and toolbar undo; each state's wrapped rows align under the item text before and after cursor entry; Source/Code nested-list caret and exact text insertion; rendered table overlay opacity and tapped caret; source-view table after preceding text, with parent caret mapped to the tapped child-editor offset and text inserted there; callout icon/title geometry and caret placement before and after entry/resize; source integrity and wrapping before and after WebView height changes | **Not yet executed on Android.** Run 43020615029 passed web tests, Android unit tests, and APK upload, but the launcher warm-up returned `Status: timeout` after about 23 seconds; its diagnostics show Android system-service ANRs and high CPU pressure, not a conclusive app exception. Run 43022811862 then failed during `installDebug installDebugAndroidTest` with exit status 1, before warm-up or interaction tests; the artifact did not contain Gradle's failure output, so the install cause remains unknown. The workflow now applies the emulator action's documented KVM permissions, records whether `/dev/kvm` is accessible, restores the action's default two cores, and uploads Gradle install output for diagnosis if it fails again. | Verify the next API 35 run confirms KVM access, installs the APKs, and reports actual Android test results; do not count any interaction as passed until the test body completes. |
+| `app/src/androidTest/.../EditorWebViewInteractionTest.kt` | Real Android WebView touch at wrapped rows in root, nested ordered→bullet child, nested quote, and callout lists across hidden/caret/block syntax exposure; every list tap is followed by insertion at the exact caret and toolbar undo; each state's wrapped rows align under the item text before and after cursor entry; Source/Code nested-list caret and exact text insertion; rendered table overlay opacity and tapped caret; source-view table after preceding text, with parent caret mapped to the tapped child-editor offset and text inserted there; callout icon/title geometry and caret placement before and after entry/resize; source integrity and wrapping before and after WebView height changes | **Not yet executed on Android.** Run 43020615029 passed web tests, Android unit tests, and APK upload, but the launcher warm-up returned `Status: timeout` after about 23 seconds; its diagnostics show Android system-service ANRs and high CPU pressure, not a conclusive app exception. Run 43022811862 then failed during `installDebug installDebugAndroidTest` with exit status 1, before warm-up or interaction tests; the artifact did not contain Gradle's failure output, so the install cause remains unknown. Android WebView interactions now run only when selected in the `Focused Interaction Tests` workflow; that job retains KVM checks and uploads diagnostics. | Run the API 35 suite when validating native WebView behavior; do not count any interaction as passed until its test body completes. |
 
-These browser results are a first slice, not the full required list matrix or Android-device acceptance. The existing Chromium suite passes for the listed cases, but that does not establish the reported device failures are fixed; Android now has explicit nested-list caret, source-table edit-offset, and callout-title tap assertions awaiting execution. Earlier test gaps included nesting only quotes rather than lists, checking only rendered-table input on Android, and not asserting callout geometry after title caret entry. Browser and Android tap helpers scroll targets into view before measuring and tapping them. Do not infer that every marker, nesting/context combination, or device behavior works from these passing cases.
+These browser results are a first slice, not complete table-preference coverage, the full required list matrix, or Android-device acceptance. The table workflow's 128 Chromium cases passed, but its 26 Settings effect/reset tests and richer cell-content cases remain open; Android behavior is not established by the browser run. Earlier test gaps included nesting only quotes rather than lists, checking only rendered-table input on Android, and not asserting callout geometry after title caret entry. Browser and Android tap helpers scroll targets into view before measuring and tapping them. Do not infer that every marker, nesting/context combination, setting, or device behavior works from these passing cases.
 
 JSDOM fixtures must wait on bounded DOM conditions for expected list-item counts and rendered table, callout, and task widgets before asserting. Fixed 5–20 ms sleeps caused false failures when parsing or decoration ran later under load; keep each wait finite so genuinely missing output still fails.
 
 ### Feature-to-view coverage status
 
-The master inventory is the row list below. For every row, its `Element gate` status is only the Markdown/HTML conversion result; a separate view-interaction result must be recorded for VIEW-1 through VIEW-4 and each applicable context. Until that second result exists, the feature remains incomplete, even if export/import passes.
+The master inventory is the row list below. For every row, its `Element gate` status is only the Markdown/HTML conversion result; a separate view-interaction result must be recorded for VIEW-1 through VIEW-5 and each applicable context. Until that second result exists, the feature remains incomplete, even if export/import passes.
 
 ## Master inventory
 

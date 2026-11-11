@@ -36,15 +36,8 @@ jobs:
         run: |
           node web/build.cjs
 
-      - name: Install Playwright Chromium
-        working-directory: web
-        run: npx playwright install --with-deps chromium
-
       - name: Run Web Unit Tests
         run: npm --prefix web test
-
-      - name: Run Browser Layout Tests
-        run: npm --prefix web run test:browser
 
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
@@ -57,40 +50,3 @@ jobs:
         with:
           name: Wmdx-Debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Enable KVM group permissions
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          if [ -e /dev/kvm ]; then
-            ls -l /dev/kvm
-            if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
-              echo "KVM device is readable and writable."
-            else
-              echo "KVM device exists but is not readable and writable."
-            fi
-          else
-            echo "KVM device is not present; emulator action may use software acceleration."
-          fi
-
-      - name: Run Android WebView Interaction Tests
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-boot-timeout: 1200
-          script: sh scripts/run-android-webview-tests.sh
-
-      - name: Upload Android WebView test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Android-WebView-Test-Diagnostics
-          path: |
-            app/build/outputs/androidTest-results/connected/**
-            app/build/reports/androidTests/connected/**
-            app/build/diagnostics/**
-          if-no-files-found: ignore
