@@ -51,7 +51,9 @@ async function setDocument(page, markdown, {
 }
 
 async function tapText(page, selector, text, { lastRect = false } = {}) {
-  const point = await page.locator(selector).filter({ hasText: text }).first().evaluate((root, options) => {
+  const target = page.locator(selector).filter({ hasText: text }).first();
+  await target.scrollIntoViewIfNeeded();
+  const point = await target.evaluate((root, options) => {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
@@ -74,8 +76,9 @@ async function tapText(page, selector, text, { lastRect = false } = {}) {
 }
 
 async function tapTextRow(page, selector, text, lastRow) {
-  const point = await page.locator(selector).filter({ hasText: text }).first()
-    .evaluate((root, options) => {
+  const target = page.locator(selector).filter({ hasText: text }).first();
+  await target.scrollIntoViewIfNeeded();
+  const point = await target.evaluate((root, options) => {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       const rows = new Map();
       let node;
@@ -244,6 +247,78 @@ async function main() {
     await page.waitForFunction(markdown =>
       window.editorBridge.getMarkdown() === markdown, tableSource);
 
+    const renderedTableSource = [
+      '| Mode | Description |',
+      '| --- | --- |',
+      '| Rendered Markdown editor | The active cell must hide its original text. |',
+      '| Source Code editor | Tap here to place the cursor in this cell. |'
+    ].join('\n');
+    const tappedCellText = 'Tap here to place the cursor in this cell.';
+    const caretTarget = 'place the cursor';
+    await setDocument(page, renderedTableSource, {
+      mode: 'rendered',
+      scope: 'hidden',
+      profile: 'gfm'
+    });
+    await tapText(page, '.cm-wp-table-container td', caretTarget);
+    await page.waitForTimeout(100);
+    const renderedTableEditorState = await page.evaluate(() => ({
+      editorCount: document.querySelectorAll('.cm-wp-cell-editor[contenteditable="true"]').length,
+      tables: [...document.querySelectorAll('.cm-wp-table-container td')]
+        .map(cell => cell.textContent.trim())
+    }));
+    assert.equal(renderedTableEditorState.editorCount, 1,
+      `Tapping a rendered cell should open exactly one editor: ${JSON.stringify(renderedTableEditorState)}`);
+    const renderedCellState = await page.evaluate(target => {
+      const editor = document.querySelector('.cm-wp-cell-editor');
+      if (!editor) return null;
+      const cell = editor.parentElement.querySelector('[data-row="2"][data-col="1"]');
+      const selection = window.getSelection();
+      const range = document.createRange();
+      if (selection?.anchorNode) {
+        range.selectNodeContents(editor);
+        range.setEnd(selection.anchorNode, selection.anchorOffset);
+      }
+      const background = getComputedStyle(editor).backgroundColor;
+      const rgba = background.match(/^rgba?\(([^)]+)\)$/);
+      const channels = rgba?.[1].split(/[\s,/]+/).filter(Boolean) ?? [];
+      const opaque = background !== 'transparent' &&
+        (channels.length < 4 || Number.parseFloat(channels.at(-1)) > 0.99);
+      const visibleText = editor.textContent || '';
+      return {
+        text: visibleText,
+        originalText: cell?.textContent || '',
+        caretOffset: range.toString().length,
+        expectedCaretOffset: visibleText.indexOf(target) + Math.floor(target.length / 2),
+        background,
+        opaque,
+        selectionCollapsed: selection?.isCollapsed ?? false
+      };
+    }, caretTarget);
+    assert.ok(renderedCellState,
+      'Tapping a rendered table cell must open its inline text editor');
+    assert.equal(renderedCellState.text, tappedCellText,
+      `The active cell copy must start with its complete text: ${JSON.stringify(renderedCellState)}`);
+    assert.equal(renderedCellState.originalText, tappedCellText,
+      'The active rendered cell must retain its source text beneath the overlay');
+    assert.ok(renderedCellState.opaque,
+      `The active cell overlay must cover its original text instead of painting twice: ${JSON.stringify(renderedCellState)}`);
+    assert.ok(renderedCellState.selectionCollapsed &&
+      Math.abs(renderedCellState.caretOffset - renderedCellState.expectedCaretOffset) <= 2,
+    `A cell tap must put the caret at the tapped character, not at the end: ${JSON.stringify(renderedCellState)}`);
+    await page.keyboard.type('X');
+    const typedCellText = await page.locator('.cm-wp-cell-editor').textContent();
+    assert.equal(
+      typedCellText,
+      tappedCellText.slice(0, renderedCellState.caretOffset) + 'X' +
+        tappedCellText.slice(renderedCellState.caretOffset),
+      `Typing must occur at the tapped cell position: ${typedCellText}`
+    );
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.cm-wp-cell-editor'));
+    assert.equal(await page.evaluate(() => window.editorBridge.getMarkdown()), renderedTableSource,
+      'Cancelling a rendered-cell edit must not modify the table source');
+
     const views = [
       { name: 'WYSIWYG hidden', mode: 'rendered', scope: 'hidden' },
       { name: 'WYSIWYG caret syntax', mode: 'rendered', scope: 'caret' },
@@ -362,6 +437,19 @@ async function main() {
     const calloutSource = [
       'Outside paragraph before callout.',
       '',
+      '> [!note] Note',
+      '> This is a note callout.',
+      '> [!warning] Custom callout title',
+      '> This warning has a custom title.',
+      '> > [!tip] Nested callout title',
+      '> > Nested callout paragraph.',
+      '> > - Nested callout list item.',
+      '> > ```text',
+      '> > Code inside the nested callout.',
+      '> > ```',
+      '> > End of nested callout.',
+      '> Outer callout resumes.',
+      '',
       '> [!note] Header stays beside its icon',
       '> Body line remains in the callout.',
       '> > [!tip] Nested callout title',
@@ -407,12 +495,27 @@ async function main() {
 
       await setDocument(page, calloutSource, { ...view, profile: 'obsidian' });
       await page.evaluate(position => {
+        window.editorBridge.applyAllPreferences({ pref_body_font_size: 24 });
         window.editorBridge.setSelectionState(
           JSON.stringify({ anchor: position, head: position })
         );
       }, calloutSource.indexOf('Outside paragraph') + 2);
-      await page.waitForTimeout(100);
+      await page.waitForTimeout(160);
       const calloutGeometry = await page.evaluate(() => {
+        const headerGeometry = title => {
+          const line = [...document.querySelectorAll('.cm-line.cm-callout-title-rendered')]
+            .find(candidate =>
+              candidate.querySelector('.cm-callout-title-text')?.textContent.trim() === title
+            );
+          const icon = line?.querySelector('.cm-callout-icon')?.getBoundingClientRect();
+          const text = line?.querySelector('.cm-callout-title-text')?.getBoundingClientRect();
+          return {
+            title,
+            icon: icon && { left: icon.left, right: icon.right, top: icon.top, bottom: icon.bottom },
+            text: text && { left: text.left, right: text.right, top: text.top, bottom: text.bottom },
+            lineTop: line?.getBoundingClientRect().top ?? null
+          };
+        };
         const titleLine = [...document.querySelectorAll('.cm-line.cm-callout-title-rendered')]
           .find(line => line.textContent.includes('Header stays beside its icon'));
         const icon = titleLine?.querySelector('.cm-callout-icon');
@@ -425,12 +528,21 @@ async function main() {
           presentation: window.editorBridge.getEditorPresentation(),
           exposure: window.editorBridge.getSyntaxExposureScope(),
           selection: window.editorBridge.getSelectionState(),
+          headers: [
+            headerGeometry('Note'),
+            headerGeometry('Custom callout title'),
+            headerGeometry('Header stays beside its icon')
+          ],
           iconCount: document.querySelectorAll('.cm-callout-icon').length,
           titleLines: [...document.querySelectorAll('.cm-line.cm-callout-title')]
             .map(line => ({ text: line.textContent.trim(), classes: [...line.classList] })),
           titleLineClasses: titleLine ? [...titleLine.classList] : [],
-          icon: iconRect && { x: iconRect.x, y: iconRect.y, height: iconRect.height },
-          title: titleRect && { x: titleRect.x, y: titleRect.y, height: titleRect.height },
+          icon: iconRect && {
+            x: iconRect.x, right: iconRect.right, y: iconRect.y, height: iconRect.height
+          },
+          title: titleRect && {
+            x: titleRect.x, right: titleRect.right, y: titleRect.y, height: titleRect.height
+          },
           titleLineTop: titleLine?.getBoundingClientRect().top ?? null,
           nestedLines: lines.map(line => ({
             text: line.textContent.trim(),
@@ -444,6 +556,12 @@ async function main() {
         `${view.name}: callout title widget is missing: ${JSON.stringify(calloutGeometry)}`);
       assert.ok(Math.abs(calloutGeometry.icon.y - calloutGeometry.title.y) < 5,
         `${view.name}: callout icon and header text must share a row: ${JSON.stringify(calloutGeometry)}`);
+      for (const header of calloutGeometry.headers) {
+        assert.ok(header.icon && header.text,
+          `${view.name}: ${header.title} must render its icon and title: ${JSON.stringify(header)}`);
+        assert.ok(header.icon.right + 1 <= header.text.left,
+          `${view.name}: ${header.title} icon overlaps its title text: ${JSON.stringify(header)}`);
+      }
       assert.ok(calloutGeometry.nestedLines.length >= 4,
         `${view.name}: nested callout body/list/code lines must all have geometry: ${JSON.stringify(calloutGeometry)}`);
       for (const line of calloutGeometry.nestedLines) {
@@ -460,10 +578,11 @@ async function main() {
         const icon = titleLine?.querySelector('.cm-callout-icon')?.getBoundingClientRect();
         const title = titleLine?.querySelector('.cm-callout-title-text')?.getBoundingClientRect();
         return {
-          icon: icon && { x: icon.x, y: icon.y },
+          icon: icon && { x: icon.x, right: icon.right, y: icon.y },
           title: title && { x: title.x, y: title.y },
           titleLineTop: titleLine?.getBoundingClientRect().top ?? null,
-          source: window.editorBridge.getMarkdown()
+          source: window.editorBridge.getMarkdown(),
+          selection: JSON.parse(window.editorBridge.getSelectionState())
         };
       });
       assert.equal(afterHeaderTap.source, calloutSource,
@@ -474,10 +593,16 @@ async function main() {
       if (afterHeaderTap.icon && afterHeaderTap.title) {
         assert.ok(Math.abs(afterHeaderTap.icon.y - afterHeaderTap.title.y) < 5,
           `${view.name}: tapping the title moved its icon off the header row: ${JSON.stringify(afterHeaderTap)}`);
+        assert.ok(afterHeaderTap.icon.right + 1 <= afterHeaderTap.title.x,
+          `${view.name}: tapping the title caused icon/text overlap: ${JSON.stringify(afterHeaderTap)}`);
       } else {
         assert.notEqual(view.scope, 'hidden',
           `${view.name}: WYSIWYG without syntax exposure must retain its title icon`);
       }
+      const titleStart = calloutSource.indexOf('Header stays beside its icon');
+      assert.ok(afterHeaderTap.selection.head >= titleStart &&
+        afterHeaderTap.selection.head <= titleStart + 'Header stays beside its icon'.length,
+      `${view.name}: tapping the callout title did not place the caret in its text: ${JSON.stringify(afterHeaderTap)}`);
     }
 
     await setDocument(page, quoteSource, { mode: 'source' });

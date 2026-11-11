@@ -91,6 +91,206 @@ class EditorWebViewInteractionTest {
                     assertRowsAlign(listGeometry(webView, fixture.marker), fixture.context, scope)
                 }
             }
+
+            val renderedTableSource = """
+                | Mode | Description |
+                | --- | --- |
+                | Rendered Markdown editor | The active cell must hide its original text. |
+                | Source Code editor | Tap here to place the cursor in this cell. |
+            """.trimIndent()
+            val tableCellLabel = "Source Code editor"
+            val tableCaretTarget = "place the cursor"
+            evaluate(
+                webView,
+                """
+                    (async () => {
+                      await window.editorBridge.setEditorMode('rendered');
+                      window.editorBridge.applyAllPreferences({
+                        pref_markdown_profile: 'gfm',
+                        pref_markdown_syntax_exposure: 'hidden'
+                      });
+                      window.editorBridge.setMarkdown(${JSONObject.quote(renderedTableSource)});
+                    })();
+                    true;
+                """.trimIndent()
+            )
+            await(
+                webView,
+                "Boolean([...document.querySelectorAll('.cm-wp-table-container td')].some(cell => " +
+                    "cell.textContent.includes(${JSONObject.quote(tableCellLabel)})))"
+            )
+            val cellPoint = tableCellTouchPoint(webView, tableCellLabel, tableCaretTarget)
+            tap(webView, cellPoint.getDouble("x"), cellPoint.getDouble("y"), cellPoint.getDouble("dpr"))
+            await(webView, "Boolean(document.querySelector('.cm-wp-cell-editor[contenteditable=\"true\"]'))")
+            val activeCell = decode(
+                evaluate(
+                    webView,
+                    """
+                        (() => {
+                          const overlay = document.querySelector('.cm-wp-cell-editor');
+                          const cell = document.querySelector('.cm-wp-table-container td[data-row="2"][data-col="1"]');
+                          if (!overlay || !cell) return null;
+                          const selection = window.getSelection();
+                          const range = document.createRange();
+                          if (selection?.anchorNode) {
+                            range.selectNodeContents(overlay);
+                            range.setEnd(selection.anchorNode, selection.anchorOffset);
+                          }
+                          const background = getComputedStyle(overlay).backgroundColor;
+                          const rgba = background.match(/^rgba?\(([^)]+)\)$/);
+                          const channels = rgba?.[1].split(/[\\s,/]+/).filter(Boolean) || [];
+                          return JSON.stringify({
+                            text: overlay.textContent,
+                            originalText: cell.textContent,
+                            background,
+                            opaque: background !== 'transparent' &&
+                              (channels.length < 4 || Number.parseFloat(channels[channels.length - 1]) > 0.99),
+                            caretOffset: range.toString().length,
+                            selectionCollapsed: selection?.isCollapsed || false
+                          });
+                        })()
+                    """.trimIndent()
+                )
+            )
+            val activeCellState = JSONObject(activeCell)
+            val expectedTableCell = "Tap here to place the cursor in this cell."
+            assertEquals(expectedTableCell, activeCellState.getString("text"))
+            assertEquals(expectedTableCell, activeCellState.getString("originalText"))
+            assertTrue(
+                "Android WebView table overlay must cover the original cell text: $activeCellState",
+                activeCellState.getBoolean("opaque")
+            )
+            assertTrue(
+                "A rendered cell tap must place the caret at the touched phrase, not the end: $activeCellState",
+                activeCellState.getBoolean("selectionCollapsed") &&
+                    kotlin.math.abs(
+                        activeCellState.getInt("caretOffset") -
+                            cellPoint.getInt("expectedCaretOffset")
+                    ) <= 3
+            )
+            evaluate(
+                webView,
+                "document.querySelector('.cm-wp-cell-editor')?.dispatchEvent(" +
+                    "new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); true;"
+            )
+            await(webView, "!document.querySelector('.cm-wp-cell-editor')")
+            assertSource(webView, renderedTableSource, "rendered table cell", "hidden")
+
+            val calloutSource = """
+                Outside paragraph before callouts.
+
+                > [!note] Note
+                > This is a note callout.
+                > [!warning] Custom callout title
+                > This warning has a custom title.
+            """.trimIndent()
+            for (scope in listOf("hidden", "caret", "block")) {
+                evaluate(
+                    webView,
+                    """
+                        (async () => {
+                          await window.editorBridge.setEditorMode('rendered');
+                          window.editorBridge.applyAllPreferences({
+                            pref_markdown_profile: 'obsidian',
+                            pref_markdown_syntax_exposure: ${JSONObject.quote(scope)},
+                            pref_body_font_size: 24
+                          });
+                          window.editorBridge.setMarkdown(${JSONObject.quote(calloutSource)});
+                          window.editorBridge.setSelectionState(JSON.stringify({
+                            anchor: ${calloutSource.indexOf("Outside") + 2},
+                            head: ${calloutSource.indexOf("Outside") + 2}
+                          }));
+                        })();
+                        true;
+                    """.trimIndent()
+                )
+                await(
+                    webView,
+                    "Boolean(document.querySelector('.cm-callout-title-rendered') && " +
+                        "[...document.querySelectorAll('.cm-callout-title-text')].some(el => el.textContent.trim() === 'Note'))"
+                )
+
+                for (title in listOf("Note", "Custom callout title")) {
+                    val geometry = calloutHeaderGeometry(webView, title)
+                    val icon = geometry.getJSONObject("icon")
+                    val text = geometry.getJSONObject("text")
+                    assertTrue(
+                        "callout/$scope/$title icon overlaps title before touch: $geometry",
+                        icon.getDouble("right") + 1.0 <= text.getDouble("left")
+                    )
+                    assertTrue(
+                        "callout/$scope/$title icon is not aligned with title: $geometry",
+                        kotlin.math.abs(icon.getDouble("top") - text.getDouble("top")) < 8.0
+                    )
+                }
+
+                val titleStart = calloutSource.indexOf("Custom callout title")
+                val before = calloutHeaderGeometry(webView, "Custom callout title")
+                val text = before.getJSONObject("text")
+                tap(
+                    webView,
+                    (text.getDouble("left") + text.getDouble("right")) / 2,
+                    (text.getDouble("top") + text.getDouble("bottom")) / 2,
+                    evaluate(webView, "window.devicePixelRatio").toDouble()
+                )
+                await(
+                    webView,
+                    "(() => { const s = JSON.parse(window.editorBridge.getSelectionState()); " +
+                        "return s.head >= $titleStart && s.head <= ${titleStart + "Custom callout title".length}; })()"
+                )
+                val selection = JSONObject(decode(evaluate(webView, "window.editorBridge.getSelectionState()")))
+                assertTrue(
+                    "callout/$scope touch must leave the caret in the custom title: $selection",
+                    selection.getInt("head") in titleStart..(titleStart + "Custom callout title".length)
+                )
+                assertEquals(
+                    "callout/$scope touch changed Markdown",
+                    calloutSource,
+                    decode(evaluate(webView, "window.editorBridge.getMarkdown()"))
+                )
+
+                val after = calloutHeaderGeometry(webView, "Custom callout title")
+                if (after.has("icon") && after.has("text")) {
+                    assertTrue(
+                        "callout/$scope title overlap appeared after caret entry: $after",
+                        after.getJSONObject("icon").getDouble("right") + 1.0 <=
+                            after.getJSONObject("text").getDouble("left")
+                    )
+                }
+
+                var oldHeight = 0
+                var shortHeight = 0
+                scenario.onActivity {
+                    oldHeight = webView.layoutParams.height
+                    shortHeight = (webView.height * 0.55f).toInt().coerceAtLeast(320)
+                    webView.layoutParams = webView.layoutParams.apply { height = shortHeight }
+                    webView.requestLayout()
+                }
+                await(webView, "window.innerHeight < ${before.getInt("viewportHeight")}")
+                scenario.onActivity {
+                    webView.layoutParams = webView.layoutParams.apply { height = oldHeight }
+                    webView.requestLayout()
+                }
+                await(webView, "window.innerHeight >= ${before.getInt("viewportHeight")}")
+                val afterResize = calloutHeaderGeometry(webView, "Custom callout title")
+                if (afterResize.has("icon") && afterResize.has("text")) {
+                    assertTrue(
+                        "callout/$scope WebView resize caused icon/title overlap: $afterResize",
+                        afterResize.getJSONObject("icon").getDouble("right") + 1.0 <=
+                            afterResize.getJSONObject("text").getDouble("left")
+                    )
+                }
+                assertEquals(
+                    "callout/$scope resize changed Markdown",
+                    calloutSource,
+                    decode(evaluate(webView, "window.editorBridge.getMarkdown()"))
+                )
+                val resizedSelection = JSONObject(decode(evaluate(webView, "window.editorBridge.getSelectionState()")))
+                assertTrue(
+                    "callout/$scope resize lost caret in title: $resizedSelection",
+                    resizedSelection.getInt("head") in titleStart..(titleStart + "Custom callout title".length)
+                )
+            }
         } finally {
             scenario.close()
         }
@@ -128,6 +328,7 @@ class EditorWebViewInteractionTest {
                       const line = [...document.querySelectorAll('.cm-line.cm-list-item')]
                         .find(item => item.textContent.includes(${JSONObject.quote(marker)}));
                       if (!line) return null;
+                      line.scrollIntoView({ block: 'center', inline: 'nearest' });
                       const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
                       let node;
                       while ((node = walker.nextNode())) {
@@ -150,6 +351,42 @@ class EditorWebViewInteractionTest {
             )
         )
         assertTrue("No wrapped-row tap point for $marker: $result", result != "null")
+        return JSONObject(result)
+    }
+
+    private fun tableCellTouchPoint(webView: WebView, cellLabel: String, target: String): JSONObject {
+        val result = decode(
+            evaluate(
+                webView,
+                """
+                    (() => {
+                      const cell = [...document.querySelectorAll('.cm-wp-table-container td')]
+                        .find(item => item.textContent.includes(${JSONObject.quote(cellLabel)}));
+                      if (!cell) return null;
+                      cell.scrollIntoView({ block: 'center', inline: 'nearest' });
+                      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+                      let node;
+                      while ((node = walker.nextNode())) {
+                        const offset = node.nodeValue.indexOf(${JSONObject.quote(target)});
+                        if (offset < 0) continue;
+                        const caret = offset + Math.floor(${target.length} / 2);
+                        const range = document.createRange();
+                        range.setStart(node, caret);
+                        range.setEnd(node, caret + 1);
+                        const rect = range.getBoundingClientRect();
+                        return JSON.stringify({
+                          x: rect.left + rect.width / 2,
+                          y: rect.top + rect.height / 2,
+                          dpr: window.devicePixelRatio,
+                          expectedCaretOffset: caret
+                        });
+                      }
+                      return null;
+                    })()
+                """.trimIndent()
+            )
+        )
+        assertTrue("No rendered-table tap point for $cellLabel: $result", result != "null")
         return JSONObject(result)
     }
 
@@ -190,6 +427,40 @@ class EditorWebViewInteractionTest {
             )
         )
         assertTrue("List item disappeared for $marker: $result", result != "null")
+        return JSONObject(result)
+    }
+
+    private fun calloutHeaderGeometry(webView: WebView, title: String): JSONObject {
+        val result = decode(
+            evaluate(
+                webView,
+                """
+                    (() => {
+                      const line = [...document.querySelectorAll('.cm-line.cm-callout-title')]
+                        .find(item => item.textContent.includes(${JSONObject.quote(title)}));
+                      if (!line) return null;
+                      const lineRect = line.getBoundingClientRect();
+                      if (lineRect.top < 0 || lineRect.bottom > window.innerHeight) {
+                        line.scrollIntoView({ block: 'center', inline: 'nearest' });
+                      }
+                      const bounds = selector => {
+                        const rect = line.querySelector(selector)?.getBoundingClientRect();
+                        return rect ? {
+                          left: rect.left, right: rect.right, top: rect.top,
+                          bottom: rect.bottom, width: rect.width, height: rect.height
+                        } : null;
+                      };
+                      return JSON.stringify({
+                        lineTop: line.getBoundingClientRect().top,
+                        viewportHeight: window.innerHeight,
+                        icon: bounds('.cm-callout-icon'),
+                        text: bounds('.cm-callout-title-text')
+                      });
+                    })()
+                """.trimIndent()
+            )
+        )
+        assertTrue("Callout title disappeared for $title: $result", result != "null")
         return JSONObject(result)
     }
 

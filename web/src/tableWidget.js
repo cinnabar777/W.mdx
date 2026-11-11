@@ -36,6 +36,69 @@ function tableHeightCacheKey(markdown, contentElement) {
   return `${Math.round(width)}|${signature}|${markdown}`;
 }
 
+function parsedRgbColor(color) {
+  const value = String(color ?? '').trim().toLowerCase();
+  if (!value || value === 'transparent') return null;
+  const functional = value.match(/^rgba?\((.*)\)$/);
+  if (!functional) return null;
+  const channels = functional[1].split(/[\s,/]+/).filter(Boolean);
+  if (channels.length < 3) return null;
+  const parseChannel = channel => {
+    const number = Number.parseFloat(channel);
+    return channel.endsWith('%') ? number * 2.55 : number;
+  };
+  const alphaValue = channels[3] ?? '1';
+  const alphaNumber = Number.parseFloat(alphaValue);
+  const alpha = alphaValue.endsWith('%') ? alphaNumber / 100 : alphaNumber;
+  return {
+    red: parseChannel(channels[0]),
+    green: parseChannel(channels[1]),
+    blue: parseChannel(channels[2]),
+    alpha: Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1
+  };
+}
+
+function opaqueTableCellBackground(cell) {
+  const layers = [];
+  for (let element = cell; element; element = element.parentElement) {
+    const color = parsedRgbColor(getComputedStyle(element).backgroundColor);
+    if (color?.alpha > 0) layers.push(color);
+  }
+
+  const root = cell?.ownerDocument?.documentElement;
+  const bodyColor = parsedRgbColor(
+    root ? getComputedStyle(root).backgroundColor : ''
+  );
+  let composite = parsedRgbColor(
+    cell?.ownerDocument?.body
+      ? getComputedStyle(cell.ownerDocument.body).backgroundColor
+      : ''
+  ) ?? bodyColor ?? { red: 0, green: 0, blue: 0, alpha: 1 };
+
+  for (let index = layers.length - 1; index >= 0; index--) {
+    const foreground = layers[index];
+    const alpha = foreground.alpha + composite.alpha * (1 - foreground.alpha);
+    if (alpha <= 0) continue;
+    composite = {
+      red: (
+        foreground.red * foreground.alpha +
+        composite.red * composite.alpha * (1 - foreground.alpha)
+      ) / alpha,
+      green: (
+        foreground.green * foreground.alpha +
+        composite.green * composite.alpha * (1 - foreground.alpha)
+      ) / alpha,
+      blue: (
+        foreground.blue * foreground.alpha +
+        composite.blue * composite.alpha * (1 - foreground.alpha)
+      ) / alpha,
+      alpha
+    };
+  }
+
+  return `rgb(${Math.round(composite.red)}, ${Math.round(composite.green)}, ${Math.round(composite.blue)})`;
+}
+
 function cachedTableHeight(markdown, contentElement = activeEditorContent()) {
   const key = tableHeightCacheKey(markdown, contentElement);
   return key ? (tableHeightCache.get(key) ?? null) : null;
@@ -719,7 +782,8 @@ export class WordProcessorTableWidget extends WidgetType {
         (this.model.rows[r][c] || '').replace(/\s*<br\s*\/?>\s*/gi, '<br>')
       );
       const cellStyle = document.defaultView?.getComputedStyle?.(cellEl);
-      overlay.style.cssText = `position: absolute; top: ${top}px; left: ${left}px; width: ${cellRect.width}px; height: ${cellRect.height}px; box-sizing: border-box; font-family: ${cellStyle?.fontFamily || 'inherit'}; font-size: ${cellStyle?.fontSize || 'inherit'}; font-weight: ${cellStyle?.fontWeight || 'inherit'}; line-height: ${cellStyle?.lineHeight || 'inherit'}; letter-spacing: ${cellStyle?.letterSpacing || 'inherit'}; text-align: ${cellStyle?.textAlign || 'left'}; hyphens: ${cellStyle?.hyphens || 'none'}; overflow-wrap: anywhere; white-space: pre-wrap; padding: ${cellStyle?.padding || 'var(--table-cell-padding, 8px)'}; border: 2px solid #0078d4; background: ${cellStyle?.backgroundColor || 'var(--table-cell-bg, transparent)'}; color: ${cellStyle?.color || 'var(--table-cell-color, var(--body-text-color, var(--text-color, #fff)))'}; z-index: 100; outline: none; resize: none; border-radius: 4px; overflow: auto;`;
+      const cellBackground = opaqueTableCellBackground(cellEl);
+      overlay.style.cssText = `position: absolute; top: ${top}px; left: ${left}px; width: ${cellRect.width}px; height: ${cellRect.height}px; box-sizing: border-box; font-family: ${cellStyle?.fontFamily || 'inherit'}; font-size: ${cellStyle?.fontSize || 'inherit'}; font-weight: ${cellStyle?.fontWeight || 'inherit'}; line-height: ${cellStyle?.lineHeight || 'inherit'}; letter-spacing: ${cellStyle?.letterSpacing || 'inherit'}; text-align: ${cellStyle?.textAlign || 'left'}; hyphens: ${cellStyle?.hyphens || 'none'}; overflow-wrap: anywhere; white-space: pre-wrap; padding: ${cellStyle?.padding || 'var(--table-cell-padding, 8px)'}; border: 2px solid #0078d4; background: ${cellBackground}; color: ${cellStyle?.color || 'var(--table-cell-color, var(--body-text-color, var(--text-color, #fff)))'}; z-index: 100; outline: none; resize: none; border-radius: 4px; overflow: auto;`;
 
       const serializeInlineNode = node => {
         if (node.nodeType === 3) {

@@ -846,12 +846,12 @@ test('CommonMark angle-bracket link examples round-trip through all Markdown fla
   }
 });
 
-test('CommonMark raw HTML semantic parity has an explicit per-example TODO gate', async t => {
+test('CommonMark raw HTML semantic parity has explicit per-example pending cases', async t => {
   for (const example of pendingHtmlSemanticCases) {
     await t.test(
       `CM-EX-${String(example.example).padStart(3, '0')} ${example.section}: ` +
       'raw HTML semantic parity',
-      { todo: 'Define and assert exact safe-HTML preservation or documented sanitization loss' },
+      { skip: 'TODO: define exact safe-HTML preservation or documented sanitization loss' },
       () => {
         assert.fail(
           `semantic parity for CommonMark example ${example.example} has not been asserted`
