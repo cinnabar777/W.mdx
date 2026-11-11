@@ -61,7 +61,7 @@ jobs:
       - name: Run Android WebView Interaction Tests
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 35
           arch: x86_64
           profile: pixel_2
           disable-animations: true
