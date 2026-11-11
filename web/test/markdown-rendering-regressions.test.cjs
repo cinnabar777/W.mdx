@@ -73,6 +73,7 @@ test('rendering and interaction regressions stay covered without changing table 
   const main = projectFile('web/src/main.js');
   const activity = projectFile('app/src/main/java/com/wmdx/markdownapp/MainActivity.kt');
   const styles = projectFile('web/index.html');
+  const layout = projectFile('web/src/markdownDocumentLayout.js');
   const heightMapStart = main.indexOf('function buildHeightMapValue(state)');
   const heightMapEnd = main.indexOf('const heightMapField =', heightMapStart);
   const heightMapBuilder = main.slice(heightMapStart, heightMapEnd);
@@ -82,8 +83,9 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(main, /tagName: 'a'[\s\S]*?'data-wmdx-link-target'/);
   assert.match(main, /a\.cm-link\[data-wmdx-link-target\]/);
   assert.match(main, /new WikilinkWidget\([\s\S]*?embeddedDocumentSourceFacet/);
-  assert.match(main, /openMarkdownLink\?\.\(/);
-  assert.match(main, /const isBlockquoteLine = insideBlockquote \|\| Boolean\(quotePrefix\)/);
+  assert.match(main, /markdownLinkClickHandler = event =>/);
+  assert.match(main, /nativeBridge\.openMarkdownLink\(/);
+  assert.match(layout, /node\.name === 'Blockquote'/);
   assert.match(main, /activeSelectionDragView = this\.view/);
   assert.match(main, /window\.addEventListener\('pointermove', onGlobalPointerMove, true\)/);
   assert.doesNotMatch(main, /EmptyLineCursorAnchorWidget|emptyLineCursorAnchorWidget/);
@@ -104,16 +106,97 @@ test('rendering and interaction regressions stay covered without changing table 
   assert.match(styles, /left:\s*calc\([\s\S]*blockquote-depth-offset[\s\S]*blockquote-border-width/);
   assert.match(styles, /cm-paragraph-first\.cm-blockquote[\s\S]*?padding-top:/);
   assert.match(styles, /cm-paragraph-last\.cm-blockquote[\s\S]*?padding-bottom:/);
+  assert.match(layout, /--source-indent-offset:/);
+  assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?padding-left:\s*max\(/);
+  assert.match(styles, /cm-source-indented\.cm-paragraph[\s\S]*?text-indent:\s*0\s*!important/);
+  assert.match(styles, /cm-source-indented\.cm-paragraph-first[\s\S]*?text-indent:\s*0\s*!important/);
+  assert.doesNotMatch(styles, /cm-source-(?:paragraph|quote|list)-wrapped/);
+  assert.match(
+    styles,
+    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*padding-left:\s*0[\s\S]*?text-indent:\s*0/
+  );
+  assert.doesNotMatch(
+    styles.match(/body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/)?.[0] ?? '',
+    /display:\s*flex/
+  );
+  assert.match(styles, /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*display:\s*block/);
+  assert.match(styles, /padding-left:\s*var\(--list-marker-gutter/);
+  assert.match(
+    main,
+    /else \{\s*builder\.push\(\s*Decoration\.mark\(\{\s*class: isBullet \? 'cm-list-bullet' : 'cm-list-number'/
+  );
+  assert.doesNotMatch(main, /Decoration\.mark\(\{ class: 'cm-list-block-text'/);
+  assert.match(main, /else if \(isWmdxTask\)[\s\S]*?cm-list-marker-syntax/);
+  assert.match(layout, /entry\.contentFrom = entry\.marker\.to/);
+  assert.match(
+    main,
+    /'list-wrap-under-text',\s*prefs\.pref_list_non_hanging !== true/
+  );
+  assert.doesNotMatch(
+    main.match(/function scheduleListMarkerMeasurements\([\s\S]*?const listMarkerMeasurementPlugin/)?.[0] ?? '',
+    /classList\.contains\('list-wrap-under-text'\)/
+  );
+  assert.match(main, /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)/);
+  assert.match(
+    main,
+    /const renderPlan = markdownRenderPlan\(view\.state\);\s*if \(renderPlan\.raw\) \{\s*\/\/ Source is a language-highlighted text editor[\s\S]*?return Decoration\.none;/
+  );
+  assert.match(
+    main,
+    /export function buildPersistentLayoutDecorations\(state\) \{[\s\S]*?const sourceTables = renderPlan\.raw[\s\S]*?for \(const table of sourceTables\)/
+  );
+  assert.match(
+    styles,
+    /\.cm-source-table-editor \.cm-scroller\s*\{[^}]*overflow-x:\s*auto\s*!important/
+  );
+  assert.match(
+    styles,
+    /#editor-container\.source-mode \.cm-source-table-widget\s*\{[^}]*overflow:\s*hidden\s*!important/
+  );
   assert.match(main, /Table cell\/editing|Table rendering in WYSIWYG/);
 });
 
-test('phone fixture states the manual expected behavior and its limited coverage', () => {
+test('phone fixture is paired with an interaction checklist and packaged media', () => {
   const fixture = projectFile('Documentation/Markdown-Phone-Test.md');
-  assert.match(fixture, /visual smoke test/i);
-  assert.match(fixture, /inline and reference-link source syntax should be hidden/i);
-  assert.match(fixture, /outer quote border should continue/i);
-  assert.match(fixture, /nested quote.*indent/i);
-  assert.match(fixture, /up to three leading spaces before its markers\s+should stay flat/i);
+  assert.match(fixture, /Markdown-Phone-Test-Checklist\.md/);
+  assert.match(fixture, /GFM additions/);
+  assert.match(fixture, /W\.mdx word-processing syntax/);
+  assert.match(fixture, /Packaged audio, video, and attachments/i);
+  assert.match(fixture, /wide table for horizontal Source scrolling/i);
+  assert.match(fixture, /Up to three leading spaces do not create another list level/);
   assert.match(fixture, /> - A list item inside a block quote/);
-  assert.match(fixture, /tap.*automatic links/i);
+  assert.match(fixture, /Markdown-Phone-Test-Image\.png/);
+
+  const checklist = projectFile('Documentation/Markdown-Phone-Test-Checklist.md');
+  assert.match(checklist, /Source shows original syntax/);
+  assert.match(checklist, /Live Preview renders supported structures/);
+  assert.match(checklist, /outer quote border should remain continuous/i);
+  assert.match(checklist, /nested\s+quotes render farther inward/i);
+  assert.match(checklist, /In Source, a wide table scrolls as one local block/);
+  assert.match(checklist, /CommonMark inline\/reference links and autolinks/);
+});
+
+test('Source editor appearance settings stay separate from Document Appearance', () => {
+  const main = projectFile('web/src/main.js');
+  const preferences = projectFile('app/src/main/res/xml/preferences.xml');
+  const sourceSettings = projectFile('app/src/main/res/xml/preferences_source_editor.xml');
+  const settingsActivity = projectFile('app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt');
+
+  assert.match(main, /const sourceHighlightStyle = HighlightStyle\.define/);
+  assert.match(
+    main,
+    /currentEditorMode === 'source' \? sourceHighlightStyle : customHighlightStyle/
+  );
+  assert.match(main, /setCssVar\(\s*'--source-editor-font-family'/);
+  assert.match(main, /setCssVar\(\s*'--source-editor-font-size'/);
+  assert.match(main, /pref_source_editor_text_color/);
+  assert.match(preferences, /pref_page_source_editor/);
+  assert.match(settingsActivity, /"pref_page_source_editor"[\s\S]*?SourceEditorSettingsFragment/);
+  assert.match(settingsActivity, /setPreferencesFromResource\(R\.xml\.preferences_source_editor/);
+  for (const token of [
+    'markup', 'heading', 'comment', 'string', 'number', 'keyword',
+    'property', 'type', 'variable', 'function', 'operator', 'link', 'code'
+  ]) {
+    assert.match(sourceSettings, new RegExp(`pref_source_editor_${token}_color`));
+  }
 });

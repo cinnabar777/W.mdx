@@ -195,10 +195,14 @@ test('embedded Markdown uses GFM tasks and inline syntax without enabling tables
   assert.ok(childExtensions, 'the embedded document must create its own editor');
   assert.match(
     childExtensions,
-    /cmMarkdown\(\{\s*extensions:\s*\[\s*GFMAutolink,\s*GFMTaskList,\s*wmdxGfmFtpAutolink,\s*wmdxGfmStrikethrough,\s*wmdxCommonMarkCompatibility\s*\]\s*\}\)/
+    /markdownLanguageCompartment\.of\(createMarkdownLanguageExtension\(\)\)/
   );
-  assert.match(childExtensions, /syntaxHighlighting\(customHighlightStyle\)/);
+  assert.match(
+    childExtensions,
+    /syntaxHighlighting\(\s*currentEditorMode === 'source' \? sourceHighlightStyle : customHighlightStyle\s*\)/
+  );
   assert.doesNotMatch(childExtensions, /GFMTable/);
+  assert.match(main, /function createMarkdownLanguageExtension\(includeTables = false\)/);
   assert.match(childExtensions, /EditorState\.readOnly\.of\(!fullInlineEditing\)/);
   assert.match(childExtensions, /drawSelection\(\)/);
   assert.match(childExtensions, /\.cm-cursor, \.cm-dropCursor/);

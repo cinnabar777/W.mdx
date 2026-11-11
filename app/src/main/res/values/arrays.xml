@@ -19,14 +19,44 @@
         <item>#FF4081</item>
     </string-array>
     <string-array name="pref_editor_mode_entries">
-        <item>Pure WYSIWYG (WYSIWYG)</item>
-        <item>Obsidian Live Preview (Live Preview)</item>
-        <item>Raw Source View (Source View)</item>
+        <item>Rendered Markdown Editor</item>
+        <item>Raw Source / Code Editor</item>
     </string-array>
     <string-array name="pref_editor_mode_values">
-        <item>wysiwyg</item>
-        <item>live_preview</item>
+        <item>rendered</item>
         <item>source</item>
+    </string-array>
+    <string-array name="pref_syntax_exposure_entries">
+        <item>Keep syntax hidden</item>
+        <item>Show syntax at the caret</item>
+        <item>Show syntax on the current line</item>
+        <item>Show syntax for the current block</item>
+    </string-array>
+    <string-array name="pref_syntax_exposure_values">
+        <item>hidden</item>
+        <item>caret</item>
+        <item>line</item>
+        <item>block</item>
+    </string-array>
+    <string-array name="link_authoring_syntax_entries">
+        <item>Wmdx</item>
+        <item>CommonMark</item>
+        <item>Obsidian</item>
+    </string-array>
+    <string-array name="link_authoring_syntax_values">
+        <item>wmdx</item>
+        <item>commonmark</item>
+        <item>obsidian</item>
+    </string-array>
+    <string-array name="heading_authoring_syntax_entries">
+        <item>Wmdx Decimal</item>
+        <item>Hash (#)</item>
+        <item>Underline (Setext)</item>
+    </string-array>
+    <string-array name="heading_authoring_syntax_values">
+        <item>wmdx</item>
+        <item>hash</item>
+        <item>setext</item>
     </string-array>
     <string-array name="pref_theme_entries">
         <item>Dark AMOLED (Black)</item>
@@ -62,6 +92,19 @@
         <item>assets</item>
         <item>same-folder</item>
     </string-array>
+    <string-array name="markdown_profile_entries">
+        <item>Wmdx (all supported syntax)</item>
+        <item>CommonMark</item>
+        <item>GitHub Flavored Markdown (GFM)</item>
+        <item>Obsidian</item>
+    </string-array>
+    <string-array name="markdown_profile_values">
+        <item>wmdx</item>
+        <item>commonmark</item>
+        <item>gfm</item>
+        <item>obsidian</item>
+    </string-array>
+
     <string-array name="align_entries">
         <item>Default</item>
         <item>Left</item>
@@ -75,6 +118,14 @@
         <item>center</item>
         <item>right</item>
         <item>justify</item>
+    </string-array>
+    <string-array name="indent_step_entries">
+        <item>One space</item>
+        <item>Two spaces</item>
+    </string-array>
+    <string-array name="indent_step_values">
+        <item>1</item>
+        <item>2</item>
     </string-array>
 
     <string-array name="toc_text_overflow_entries">
@@ -174,6 +225,56 @@
         <item>question</item>
         <item>todo</item>
         <item>example</item>
+    </string-array>
+    <string-array name="callout_authoring_syntax_entries">
+        <item>Wmdx</item>
+        <item>Obsidian</item>
+    </string-array>
+    <string-array name="callout_authoring_syntax_values">
+        <item>wmdx</item>
+        <item>obsidian</item>
+    </string-array>
+    <string-array name="footnote_authoring_syntax_entries">
+        <item>Wmdx</item>
+        <item>Markdown Reference</item>
+        <item>Obsidian Inline</item>
+    </string-array>
+    <string-array name="footnote_authoring_syntax_values">
+        <item>wmdx</item>
+        <item>markdown</item>
+        <item>obsidian_inline</item>
+    </string-array>
+    <string-array name="list_bullet_marker_entries">
+        <item>Filled circle (-)</item>
+        <item>Open circle (+)</item>
+        <item>Square (*)</item>
+    </string-array>
+    <string-array name="list_bullet_marker_values">
+        <item>-</item>
+        <item>+</item>
+        <item>*</item>
+    </string-array>
+    <string-array name="list_authoring_syntax_entries">
+        <item>Wmdx</item>
+        <item>Markdown</item>
+    </string-array>
+    <string-array name="list_authoring_syntax_values">
+        <item>wmdx</item>
+        <item>markdown</item>
+    </string-array>
+    <string-array name="list_ordered_style_entries">
+        <item>Numbers (1.)</item>
+        <item>Lowercase letters (a.)</item>
+        <item>Uppercase letters (A.)</item>
+        <item>Lowercase Roman (i.)</item>
+        <item>Uppercase Roman (I.)</item>
+    </string-array>
+    <string-array name="list_ordered_style_values">
+        <item>decimal</item>
+        <item>alpha_lower</item>
+        <item>alpha_upper</item>
+        <item>roman_lower</item>
+        <item>roman_upper</item>
     </string-array>
 
     <string-array name="callout_icon_entries">

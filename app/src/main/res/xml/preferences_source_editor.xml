@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Source Editor">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_source_editor_font_family"
+            app:title="Editor Font"
+            app:summary="Font used only in Source and Code editing"
+            android:entries="@array/font_family_entries"
+            android:entryValues="@array/font_family_values"
+            app:defaultValue="default" />
+
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_source_editor_font_size"
+            app:title="Editor Text Size (px)"
+            app:summary="Text size used only in Source and Code editing"
+            app:min="10"
+            android:max="28"
+            app:defaultValue="14"
+            app:showSeekBarValue="true" />
+
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_text_color"
+            app:title="Editor Text Color"
+            app:summary="Base text color for unclassified source text"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Syntax Colors">
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_markup_color"
+            app:title="Markdown Markers"
+            app:summary="Headings, punctuation, and structural Markdown syntax"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_heading_color"
+            app:title="Markdown Headings"
+            app:summary="Heading text in Markdown source"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_link_color"
+            app:title="Links"
+            app:summary="Link text and URL tokens"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_code_color"
+            app:title="Code"
+            app:summary="Inline code and code tokens"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_comment_color"
+            app:title="Comments"
+            app:summary="Comment tokens in source languages"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_string_color"
+            app:title="Strings"
+            app:summary="Quoted text and string literals"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_number_color"
+            app:title="Numbers"
+            app:summary="Numeric literals"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_keyword_color"
+            app:title="Keywords"
+            app:summary="Language keywords and control words"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_property_color"
+            app:title="Properties"
+            app:summary="Object properties and member names"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_type_color"
+            app:title="Types"
+            app:summary="Type and class names"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_variable_color"
+            app:title="Variables"
+            app:summary="Variable names and identifiers"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_function_color"
+            app:title="Functions"
+            app:summary="Function and method names"
+            app:defaultValue="default" />
+        <com.wmdx.markdownapp.ResetColorPickerPreference
+            app:key="pref_source_editor_operator_color"
+            app:title="Operators"
+            app:summary="Operators and separators"
+            app:defaultValue="default" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+</androidx.preference.PreferenceScreen>

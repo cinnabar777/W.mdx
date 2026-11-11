@@ -53,6 +53,15 @@ function getLineIndex(node) {
   return 0;
 }
 
+async function waitForDomCondition(predicate, message, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(predicate(), message);
+}
+
 Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetHeight', {
   get() { return 20; }
 });
@@ -137,7 +146,7 @@ const x = 42;
     pref_hr_margin_left: 24,
     pref_hr_margin_right: 24,
     pref_hr_centered: true,
-    pref_list_wrap_under_text: true,
+    pref_list_non_hanging: false,
     pref_font_weight_heading: 500,
     pref_heading_1_font_weight: 400,
     pref_heading_1_align: 'center',
@@ -195,6 +204,15 @@ const x = 42;
   assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
 
   // 2. Confirm blocks exist in rendered DOM
+  await waitForDomCondition(
+    () =>
+      dom.window.document.querySelector('.cm-codeblock-header') &&
+      dom.window.document.querySelector('.cm-codeblock-text') &&
+      dom.window.document.querySelector('.cm-wp-table-container') &&
+      dom.window.document.querySelector('.cm-line.cm-list-item .cm-layout-prefix') &&
+      dom.window.document.querySelectorAll('.cm-line.cm-callout').length >= 9,
+    'all configured WYSIWYG blocks finish rendering before style assertions'
+  );
   const codeHeader = dom.window.document.querySelector('.cm-codeblock-header');
   assert.ok(codeHeader !== null, 'Code block header widget is rendered');
   assert.ok(
@@ -205,13 +223,15 @@ const x = 42;
   const wpTable = dom.window.document.querySelector('.cm-wp-table-container');
   assert.ok(wpTable !== null, 'WYSIWYG table container is rendered');
 
+  const listLine = dom.window.document.querySelector('.cm-line.cm-list-item');
+  const listPrefix = listLine?.querySelector('.cm-layout-prefix');
+  const listContentAnchor = listLine?.querySelector('.cm-layout-content');
+  assert.ok(listPrefix, 'list marker syntax shares the semantic layout prefix');
+  assert.ok(listContentAnchor, 'list item content has a shared semantic layout anchor');
   assert.ok(
-    dom.window.document.querySelector('.cm-line.cm-list-item .cm-list-block-text'),
-    'list item text has a dedicated block wrapper for hanging-indent wrapping'
-  );
-  assert.ok(
-    !dom.window.document.querySelector('.cm-line.cm-list-item .cm-list-block-text').textContent.startsWith(' '),
-    'the block wrapper begins after marker padding so wrapped lines align with the first text character'
+    listPrefix.compareDocumentPosition(listContentAnchor) &
+      dom.window.Node.DOCUMENT_POSITION_FOLLOWING,
+    'the shared content anchor follows the list marker prefix'
   );
 
   const calloutLines = Array.from(
@@ -263,7 +283,7 @@ const x = 42;
     pref_hr_margin_left: 0,
     pref_hr_margin_right: 0,
     pref_hr_centered: false,
-    pref_list_wrap_under_text: false
+    pref_list_non_hanging: false
   };
 
   window.editorBridge.applyAllPreferences(JSON.stringify(defaultPrefs));
@@ -280,14 +300,14 @@ const x = 42;
   }
 
   window.editorBridge.applyAllPreferences(JSON.stringify({
-    pref_list_wrap_under_text: true
-  }));
-  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
-
-  window.editorBridge.applyAllPreferences(JSON.stringify({
-    pref_list_wrap_under_text: false
+    pref_list_non_hanging: true
   }));
   assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), false);
+
+  window.editorBridge.applyAllPreferences(JSON.stringify({
+    pref_list_non_hanging: false
+  }));
+  assert.equal(dom.window.document.body.classList.contains('list-wrap-under-text'), true);
 });
 
 test.after(() => dom.window.close());

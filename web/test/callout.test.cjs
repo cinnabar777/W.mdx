@@ -9,6 +9,10 @@ const { syntaxTree } = require('@codemirror/language');
 
 const mainJsPath = path.join(__dirname, '../src/main.js');
 const mainSource = fs.readFileSync(mainJsPath, 'utf8');
+const documentLayoutSource = fs.readFileSync(
+  path.join(__dirname, '../src/markdownDocumentLayout.js'),
+  'utf8'
+);
 
 test('Callout regex pattern logic matches types and optional fold markers', () => {
   const re = /^(\s*>\s*)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i;
@@ -67,10 +71,12 @@ test('Callout widget structure and eq implementation', () => {
 test('callout title wraps after its icon and keeps a unified rounded card background', () => {
   const indexHtml = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[\s\S]*?display:\s*flex[\s\S]*?position:\s*relative/);
-  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*inline-flex[\s\S]*?position:\s*static/);
-  assert.match(indexHtml, /\.cm-callout-icon\s*\{[\s\S]*?position:\s*static[\s\S]*?flex:\s*0 0 16px/);
+  assert.match(indexHtml, /\.cm-callout-title-container\s*\{[\s\S]*?display:\s*inline-flex[\s\S]*?align-items:\s*center[\s\S]*?position:\s*static/);
+  assert.match(indexHtml, /\.cm-callout-icon\s*\{[\s\S]*?position:\s*static[\s\S]*?flex:\s*0 0 16px[\s\S]*?align-self:\s*center/);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[\s\S]*?flex:\s*1 1 auto/);
-  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[\s\S]*?position:\s*absolute/);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[\s\S]*?position:\s*static[\s\S]*?width:\s*24px/);
+  assert.ok(mainSource.includes("btn.textContent = currentlyFolded ? '+' : '−'"), 'Fold state uses a leading plus or minus indicator');
+  assert.ok(mainSource.includes("span.addEventListener('click', event => {"), 'The callout heading itself toggles its fold state');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title\s*\{[\s\S]*?border-top-left-radius/);
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-body:not\(:has\(\+ \.cm-line\.cm-callout-body\)\)/);
   assert.match(indexHtml, /--callout-type-header-bg:[\s\S]*?var\(--callout-bg-color/);
@@ -95,20 +101,19 @@ test('code text background is applied to the text mark, not substituted for the 
   assert.ok(mainSource.includes("Decoration.mark({ class: 'cm-codeblock-text' })"));
 });
 
-test('Callout line classification and marker detection logic in main.js', () => {
-  assert.ok(mainSource.includes('cm-callout'), 'Main JS assigns cm-callout line class');
-  assert.ok(mainSource.includes('cm-callout-title'), 'Main JS assigns cm-callout-title line class');
-  assert.ok(mainSource.includes('cm-blockquote'), 'Main JS retains cm-blockquote line class');
+test('shared document layout owns callout and blockquote line classification', () => {
+  assert.ok(documentLayoutSource.includes("'cm-callout'"), 'shared layout assigns cm-callout');
+  assert.ok(documentLayoutSource.includes("'cm-callout-title'"), 'shared layout assigns callout title class');
+  assert.ok(documentLayoutSource.includes("'cm-blockquote'"), 'shared layout assigns cm-blockquote');
 });
 
 test('callout quote syntax hides its separator space so wrapped text aligns', () => {
-  const quoteMarkBranch = mainSource.match(
-    /if \(node\.name === 'QuoteMark' && !isNodeActive\) \{([\s\S]*?)\n          \}/
+  assert.match(
+    mainSource,
+    /node\.name === 'QuoteMark'[\s\S]{0,300}isBlockquoteSyntaxEnabledNow\(\)/
   );
-  assert.ok(quoteMarkBranch, 'QuoteMark decoration branch exists');
-  assert.match(quoteMarkBranch[1], /const end = Math\.min\(node\.to \+ 1, line\.to\)/);
-  assert.match(quoteMarkBranch[1], /hideSyntax\(node\.from, end\)/);
-  assert.doesNotMatch(quoteMarkBranch[1], /isCalloutLine/);
+  assert.match(mainSource, /const end = Math\.min\(node\.to \+ 1, line\.to\)/);
+  assert.match(mainSource, /hideSyntax\(node\.from, end\)/);
 });
 
 test('Callout parsing excludes code blocks and stops at unquoted lines', () => {
@@ -172,17 +177,15 @@ test('Per-type icons and accessibility attributes on CalloutTitleWidget', () => 
   assert.ok(mainSource.includes('cm-callout-title-container'), 'Title container class exists');
   assert.ok(mainSource.includes("btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`"), 'Fold button has an accessible expand/collapse label');
   assert.ok(mainSource.includes("btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true')"), 'Fold button exposes its current state');
-  assert.ok(mainSource.includes("btn.addEventListener('click', toggleFold)"), 'Chevron button toggles callout folding');
-  assert.ok(!mainSource.includes("iconSpan.addEventListener('click', toggleFold)"), 'Type icon does not toggle folding');
+  assert.ok(mainSource.includes("btn.addEventListener('click', toggleFold)"), 'Leading plus/minus control toggles callout folding');
   const titleWidget = mainSource.slice(
     mainSource.indexOf('class CalloutTitleWidget'),
     mainSource.indexOf('export function cleanHeadingText')
   );
-  assert.ok(!titleWidget.includes("span.addEventListener('keydown'"), 'The whole title row is not a fold control');
+  assert.ok(titleWidget.includes("span.addEventListener('click', event => {"), 'The heading icon and generated title toggle the callout');
   assert.ok(mainSource.includes('foldEffect.of'), 'Title container dispatches foldEffect');
   assert.ok(mainSource.includes('unfoldEffect.of'), 'Title container dispatches unfoldEffect');
-  assert.match(mainSource, /foldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Folding refreshes the title widget so the arrow reflects the folded state');
-  assert.match(mainSource, /unfoldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Unfolding refreshes the title widget so the arrow reflects the expanded state');
+  assert.match(mainSource, /unfoldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\)\s*:\s*foldEffect\.of\(\{ from: this\.foldFrom, to: this\.foldTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Toggling refreshes the title widget so the leading indicator reflects its folded state');
   assert.match(mainSource, /foldEffect\.of\(\{ from: info\.bodyFrom, to: info\.bodyTo \}\),\s*heightMapRefreshEffect\.of\(null\)/, 'Callouts that start collapsed also refresh their initial arrow state');
 });
 
@@ -197,9 +200,10 @@ test('Nested callout rendering and attributes at depths 1, 2, and 3', () => {
 
   const state = EditorState.create({ doc: nestedMd, extensions: [markdown()] });
   assert.equal(state.doc.toString(), nestedMd, 'Nested document text remains byte-for-byte identical');
-  assert.ok(mainSource.includes("data-callout-type': attrs.type"), 'Line decoration sets data-callout-type attribute');
-  assert.ok(mainSource.includes("data-callout-depth': String(attrs.depth)"), 'Line decoration sets data-callout-depth attribute');
-  assert.ok(mainSource.includes('ancestor.info.bodyTo = line.to'), 'Ancestor bodyTo extended across 3-level callout depths');
+  assert.ok(mainSource.includes("data-callout-type': line.callout.type"), 'Shared line decoration sets data-callout-type attribute');
+  assert.ok(mainSource.includes("data-callout-depth': String(line.callout.depth)"), 'Shared line decoration sets data-callout-depth attribute');
+  const shared = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
+  assert.ok(shared.includes('ancestor.info.bodyTo = line.to'), 'Semantic model extends ancestor body ranges across nested callouts');
 });
 
 test('Callout fold placeholder is hidden via CSS in index.html', () => {
@@ -343,30 +347,63 @@ test('callout title layout and editing behavior match each view', () => {
   assert.ok(mainSource.includes('.range(info.titleStart, line.to)'), 'Custom title text remains in the document and receives a text mark');
   assert.ok(mainSource.includes('if (!this.titleIsInSource)'), 'Only generated labels are rendered inside the widget');
   assert.ok(
-    mainSource.includes('const isMarkerActive = !isPureWysiwyg && (') &&
-      mainSource.includes('selection.head >= info.markerStart && selection.head <= info.markerEnd') &&
-      mainSource.includes('selection.from < info.markerEnd && selection.to > info.markerStart'),
+    mainSource.includes('const isMarkerActive = !isPureWysiwyg &&') &&
+      mainSource.includes('isSyntaxRangeActiveForCurrentExposure(') &&
+      mainSource.includes('selection.head >= from && selection.head <= to') &&
+      mainSource.includes('selection.from < to && selection.to > from'),
     'Live Preview checks whether the selection touches the callout marker itself'
   );
-  assert.ok(mainSource.includes('if (!isMarkerActive && !isPureWysiwyg)'), 'Live Preview renders the callout unless its marker syntax is active');
+  assert.ok(
+    mainSource.includes('isWmdxCalloutTitleDraftActive(') &&
+      mainSource.includes('const isTitleDraftActive =') &&
+      mainSource.includes('state.selection.main, info, line.to'),
+    'Live Preview and WYSIWYG keep an empty title editable while its opener is active'
+  );
   assert.ok(!mainSource.includes('isTitleActive'), 'Moving the cursor into the title does not reveal syntax');
   assert.ok(mainSource.includes('replacements.push(Decoration.replace({'), 'WYSIWYG replaces the marker while leaving the title editable');
   assert.ok(
-    mainSource.includes("if (currentEditorMode === 'source') {\n      return Decoration.none;"),
-    'Source view leaves the callout Markdown visible'
+    mainSource.includes('if (renderPlan.raw) {') &&
+      mainSource.includes('Source is a language-highlighted text editor') &&
+      mainSource.includes('return Decoration.none;'),
+    'Source keeps literal text and skips Markdown render decorations'
   );
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered\s*\{[^}]*display:\s*flex\s*!important/s);
-  assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-icon\s*\{[^}]*position:\s*static\s*!important[^}]*align-self:\s*center\s*!important/s);
   assert.match(indexHtml, /\.cm-callout-title-text\s*\{[^}]*flex:\s*1 1 auto\s*!important/s);
-  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*absolute\s*!important/s);
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-title-rendered > \.cm-callout-title-text\.is-source\s*\{[^}]*flex:\s*0 1 auto\s*!important/s);
+  assert.match(indexHtml, /\.cm-callout-fold-btn\s*\{[^}]*position:\s*static\s*!important[^}]*width:\s*24px\s*!important/s);
+  assert.match(indexHtml, /#editor-container\.source-mode \.cm-content \.cm-line\.cm-callout\s*\{[^}]*background:\s*transparent\s*!important[^}]*padding:\s*0\s*!important/s,
+    'Source callouts must show Markdown syntax without rendered block styling');
+  assert.match(mainSource, /if \(!isSourceMode &&\s+info\.foldMarker === '-'/,
+    'Rendered modes may fold callouts without changing the raw Source document');
   assert.match(mainSource, /hideSyntax\(node\.from, Math\.min\(node\.to \+ 1, line\.to\)\)/, 'WYSIWYG hides the quote marker and its separator space together');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout\[data-callout-depth\]:not\(\.cm-callout-list-item\)/, 'Nested callout indentation overrides the base line margins');
   assert.match(indexHtml, /\.cm-content \.cm-line\.cm-callout-list-item\[data-callout-depth\]/, 'Nested callout list items retain list indentation');
-  assert.ok(mainSource.includes('style: `--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`'), 'Preview lines calculate indentation from nesting depth');
-  assert.ok(mainSource.includes('style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`'), 'WYSIWYG lines calculate indentation from nesting depth');
+  const shared = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
+  assert.ok(shared.includes('`--callout-depth-offset:${Math.max(0, callout.depth - 1) * 12}px`'),
+    'Every mode consumes one callout nesting calculation');
   assert.ok(
     indexHtml.includes('border-left: max(var(--callout-header-accent-thickness, 0px), var(--callout-border-width, 4px))'),
     'The existing callout border styling remains unchanged'
+  );
+  assert.ok(
+    mainSource.includes("view.dom.addEventListener('keydown', this.calloutEnterHandler, true)") &&
+      mainSource.includes("view.dom.addEventListener('beforeinput', this.calloutBeforeInputHandler, true)") &&
+      mainSource.includes('isWmdxCalloutEnterEvent(event)') &&
+      mainSource.includes('getWmdxCalloutEnterEdit('),
+    'Keyboard and mobile paragraph events continue native callout indentation'
+  );
+  assert.ok(
+    mainSource.includes('getWmdxCalloutEnterEdit(') &&
+      mainSource.includes('selection: EditorSelection.cursor(edit.cursor)'),
+    'Enter on an indented blank line exits one callout level'
+  );
+  assert.ok(
+    mainSource.includes('data-wmdx-callout-title-from') &&
+      mainSource.includes('handleWmdxCalloutTitleClick') &&
+      mainSource.includes('view.posAtCoords({ x: event.clientX, y: event.clientY })') &&
+      mainSource.includes('data-wmdx-callout-fold-from'),
+    'Tapping an editable callout title places the cursor there and toggles the callout'
   );
 });
 
@@ -380,11 +417,12 @@ test('wysiwygCodeBlockField, coordsForTargetRow, and selection paint styling', (
   assert.ok(indexHtml.includes('.cm-wp-table-container.cm-document-selection .cm-wp-table th'), 'index.html has gradient overlay rule for selected tables');
 });
 
-test('persistentLayoutField StateField and persistentLayoutClasses filtering in main.js', () => {
+test('persistentLayoutField owns semantic block classes in every mode', () => {
   assert.ok(mainSource.includes('export function buildPersistentLayoutDecorations'), 'buildPersistentLayoutDecorations function exists');
   assert.ok(mainSource.includes('export const persistentLayoutField = StateField.define'), 'persistentLayoutField StateField exists');
-  assert.ok(mainSource.includes('const persistentLayoutClasses = new Set(['), 'persistentLayoutClasses Set exists');
-  assert.ok(mainSource.includes('!persistentLayoutClasses.has(className)'), 'persistentLayoutClasses is filtered in WYSIWYG mode');
+  assert.ok(mainSource.includes("'data-layout-kind': line.kind"), 'shared layout decorates semantic lines');
+  assert.ok(mainSource.includes("class: [...classes].join(' ')"), 'contextual decorations emit only their own line classes');
+  assert.equal(mainSource.includes('persistentLayoutClasses'), false, 'the contextual plugin does not duplicate shared block classes');
 });
 
 test('typographySettingsEffect, no viewportMargin, and ImagePreviewWidget estimatedHeight', () => {

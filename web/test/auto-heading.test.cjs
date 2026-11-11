@@ -22,7 +22,7 @@ test('auto heading cycles below, equal to, above, then to H1', async () => {
 
   for (const level of [6, 5, 4, 1]) {
     assert.equal(applyAutoHeading(view), true);
-    assert.equal(view.state.doc.line(6).text, `${'#'.repeat(level)} text`);
+    assert.equal(view.state.doc.line(6).text, `.${level} text`);
   }
 });
 
@@ -49,13 +49,13 @@ test('auto heading starts at H1 without a previous heading and clamps at documen
   const noPreviousHeading = createView('text');
   for (let tap = 0; tap < 4; tap += 1) {
     applyAutoHeading(noPreviousHeading);
-    assert.equal(noPreviousHeading.state.doc.toString(), '# text');
+    assert.equal(noPreviousHeading.state.doc.toString(), '.1 text');
   }
 
   const previousH6 = createView('# One\n###### Six\ntext', 3);
   for (const level of [6, 6, 5, 1]) {
     applyAutoHeading(previousH6);
-    assert.equal(previousH6.state.doc.line(3).text, `${'#'.repeat(level)} text`);
+    assert.equal(previousH6.state.doc.line(3).text, `.${level} text`);
   }
 });
 
@@ -79,7 +79,7 @@ test('auto heading replaces a setext heading without leaving its underline', asy
   };
 
   assert.equal(applyAutoHeading(view), true);
-  assert.equal(view.state.doc.toString(), '##### Previous\n###### Title\nNext');
+  assert.equal(view.state.doc.toString(), '##### Previous\n.6 Title\nNext');
 });
 
 test('auto heading ignores headings inside fenced code and does not edit code', async () => {

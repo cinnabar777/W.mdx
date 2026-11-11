@@ -1,0 +1,88 @@
+{
+  "source": "Curated syntax examples based on Obsidian's basic and advanced syntax documentation.",
+  "documentation": [
+    "https://obsidian.md/help/syntax",
+    "https://obsidian.md/help/advanced-syntax",
+    "https://obsidian.md/help/links",
+    "https://obsidian.md/help/callouts"
+  ],
+  "cases": [
+    {
+      "feature": "wikilink alias",
+      "markdown": "[[Target|Display text]]",
+      "expected": {
+        "link": {
+          "href": "Target",
+          "text": "Display text"
+        }
+      }
+    },
+    {
+      "feature": "current-document heading link",
+      "markdown": "[[#Heading]]",
+      "expected": {
+        "link": {
+          "href": "#Heading",
+          "text": "Heading"
+        }
+      }
+    },
+    {
+      "feature": "highlight",
+      "markdown": "==highlight==",
+      "expected": {
+        "highlight": "highlight"
+      }
+    },
+    {
+      "feature": "local image embed with width",
+      "markdown": "![[assets/photo.png|320]]",
+      "expected": {
+        "image": {
+          "src": "assets/photo.png",
+          "alt": "photo",
+          "width": "320px"
+        }
+      }
+    },
+    {
+      "feature": "callout with formatted body",
+      "markdown": "> [!note] Details\n> Body **bold**",
+      "expected": {
+        "callout": {
+          "type": "note",
+          "title": "Details",
+          "body": "Body bold",
+          "strong": "bold"
+        }
+      }
+    },
+    {
+      "feature": "task list",
+      "markdown": "- [x] completed\n- [ ] pending",
+      "expected": {
+        "tasks": [
+          {
+            "checked": true,
+            "text": "completed"
+          },
+          {
+            "checked": false,
+            "text": "pending"
+          }
+        ]
+      }
+    },
+    {
+      "feature": "reference footnote",
+      "markdown": "A note[^source].\n\n[^source]: Footnote text.",
+      "expected": {
+        "footnote": {
+          "label": "source",
+          "reference": "source",
+          "definition": "Footnote text."
+        }
+      }
+    }
+  ]
+}

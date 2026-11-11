@@ -14,6 +14,23 @@ export function toToolbarCssColor(value) {
   return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
 }
 
+export function setToolbarTooltip(element, title) {
+  if (!element) return;
+  const view = element.ownerDocument?.defaultView;
+  const hoverMedia = view?.matchMedia?.('(hover: hover) and (pointer: fine)');
+  const coarsePointer = view?.matchMedia?.('(pointer: coarse)')?.matches === true;
+  const touchCapable =
+    Number(view?.navigator?.maxTouchPoints) > 0 ||
+    coarsePointer ||
+    /Android|iPhone|iPad|iPod/i.test(view?.navigator?.userAgent || '');
+  if (touchCapable || (hoverMedia && !hoverMedia.matches)) {
+    element.removeAttribute('title');
+    return;
+  }
+  if (title) element.setAttribute('title', title);
+  else element.removeAttribute('title');
+}
+
 export function sanitizeToolbarSvg(rawSvg, preserveColors = false, documentRef = globalThis.document) {
   if (typeof rawSvg !== 'string' || rawSvg.length > 65536 || !documentRef) return '';
   const Parser = documentRef.defaultView?.DOMParser || globalThis.DOMParser;
@@ -173,7 +190,7 @@ export function renderBottomToolbarKeys(container, rawConfig, icons, options = {
     button.id = `grp-btn-${id}`;
     button.dataset.toolbarKey = id;
     const title = config.styles[id]?.title || definition.title;
-    button.title = title;
+    setToolbarTooltip(button, title);
     button.setAttribute('aria-label', title);
     button.setAttribute('data-toolbar-kind', definition.kind);
     if (definition.command) {

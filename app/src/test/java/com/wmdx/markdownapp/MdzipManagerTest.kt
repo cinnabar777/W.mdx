@@ -719,6 +719,45 @@ Links: www.example.com, https://example.com/path, person@example.com.
         }
     }
 
+    @Test
+    fun opensTheComprehensivePhoneTestPackageAndItsMediaAssets() {
+        val archiveFile = findProjectFile("Documentation/Markdown-Phone-Test.mdz")
+        assertTrue("The phone-test MDZip should be present in Documentation.", archiveFile.isFile)
+        val sessionDir = createSessionDirectory()
+        try {
+            val contents = MdzipManager.loadArchive(archiveFile, sessionDir)
+            assertEquals("Markdown-Phone-Test.md", contents.entryPoint)
+            assertEquals("1.2.1", contents.manifest.getJSONObject("spec").getString("version"))
+            assertTrue(contents.markdownContent.contains("audio/phone-test-chime.wav"))
+            assertTrue(contents.markdownContent.contains("video/phone-test-portrait.mp4"))
+            assertTrue(contents.markdownContent.contains("attachments/phone-test-attachment.pdf"))
+            listOf(
+                "Markdown-Phone-Test-Embed.md",
+                "media/phone-test-lake.jpg",
+                "media/phone-test-fern.png",
+                "audio/phone-test-chime.wav",
+                "video/phone-test-portrait.mp4",
+                "attachments/phone-test-attachment.pdf",
+                "attachments/phone-test-notes.txt",
+                "attachments/phone-test-data.zip"
+            ).forEach { path ->
+                assertTrue("Missing packaged MDZip asset: $path", File(sessionDir, path).isFile)
+            }
+        } finally {
+            sessionDir.deleteRecursively()
+        }
+    }
+
+    private fun findProjectFile(relativePath: String): File {
+        var directory = File(System.getProperty("user.dir")).canonicalFile
+        repeat(6) {
+            val candidate = File(directory, relativePath)
+            if (candidate.isFile) return candidate
+            directory = directory.parentFile ?: return@repeat
+        }
+        throw AssertionError("Could not find project file: $relativePath")
+    }
+
     private fun assertArchiveRejected(entries: List<Pair<String, String>>) {
         try {
             loadArchiveContents(entries)

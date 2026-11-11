@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-debug:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -37,8 +37,7 @@ jobs:
           node web/build.cjs
 
       - name: Run Web Unit Tests
-        run: |
-          node --test web/test/*.test.cjs
+        run: npm --prefix web test
 
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew

@@ -74,6 +74,7 @@ class SettingsActivity : AppCompatActivity() {
                 is LeftPanelSettingsFragment -> "Left Panel"
                 is StorageAccessSettingsFragment -> "File & Folder Access"
                 is StylingSettingsFragment -> "Document Appearance"
+                is SourceEditorSettingsFragment -> "Source & Code Editor"
                 is ExportSettingsFragment -> "HTML & MHTML Export"
                 is HotkeysSettingsFragment -> "Keyboard Shortcuts"
                 else -> getString(R.string.settings_title)
@@ -109,6 +110,132 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
         preferenceScreen?.let {
             applyCustomLayouts(it)
             configureDeviceFontChoices(it)
+            applyMarkdownProfileDefaults(it)
+        }
+    }
+
+    private fun applyMarkdownProfileDefaults(group: androidx.preference.PreferenceGroup) {
+        val storedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val profile = storedPreferences.getString("pref_markdown_profile", "wmdx")
+            ?.takeIf { it in setOf("wmdx", "commonmark", "gfm", "obsidian") }
+            ?: "wmdx"
+        val defaults = when (profile) {
+            "commonmark" -> mapOf(
+                "pref_gfm_extensions_enabled" to false,
+                "pref_heading_syntax_wmdx_enabled" to false,
+                "pref_heading_authoring_syntax" to "hash",
+                "pref_list_syntax_gfm_tasks_enabled" to false,
+                "pref_list_syntax_wmdx_enabled" to false,
+                "pref_list_authoring_syntax" to "markdown",
+                "pref_links_obsidian_enabled" to false,
+                "pref_links_wmdx_enabled" to false,
+                "pref_links_authoring_syntax" to "commonmark",
+                "pref_callout_syntax_enabled" to false,
+                "pref_callout_syntax_wmdx_enabled" to false,
+                "pref_callout_syntax_obsidian_enabled" to false,
+                "pref_footnote_syntax_wmdx_enabled" to false,
+                "pref_footnote_syntax_obsidian_inline_enabled" to false,
+                "pref_footnote_authoring_syntax" to "markdown",
+                "pref_wmdx_color_syntax_enabled" to false,
+                "pref_obsidian_highlight_enabled" to false,
+                "pref_wmdx_subscript_enabled" to false,
+                "pref_wmdx_superscript_enabled" to false,
+                "pref_underline_use_wmdx_syntax" to false
+            )
+            "gfm" -> mapOf(
+                "pref_gfm_extensions_enabled" to true,
+                "pref_heading_syntax_wmdx_enabled" to false,
+                "pref_heading_authoring_syntax" to "hash",
+                "pref_list_syntax_gfm_tasks_enabled" to true,
+                "pref_list_syntax_wmdx_enabled" to false,
+                "pref_list_authoring_syntax" to "markdown",
+                "pref_links_obsidian_enabled" to false,
+                "pref_links_wmdx_enabled" to false,
+                "pref_links_authoring_syntax" to "commonmark",
+                "pref_callout_syntax_wmdx_enabled" to false,
+                "pref_callout_syntax_obsidian_enabled" to true,
+                "pref_callout_authoring_syntax" to "obsidian",
+                "pref_footnote_syntax_wmdx_enabled" to false,
+                "pref_footnote_syntax_obsidian_inline_enabled" to false,
+                "pref_footnote_authoring_syntax" to "markdown",
+                "pref_wmdx_color_syntax_enabled" to false,
+                "pref_obsidian_highlight_enabled" to false,
+                "pref_wmdx_subscript_enabled" to false,
+                "pref_wmdx_superscript_enabled" to false,
+                "pref_underline_use_wmdx_syntax" to false
+            )
+            "obsidian" -> mapOf(
+                "pref_gfm_extensions_enabled" to true,
+                "pref_heading_syntax_wmdx_enabled" to false,
+                "pref_heading_authoring_syntax" to "hash",
+                "pref_list_syntax_gfm_tasks_enabled" to true,
+                "pref_list_syntax_wmdx_enabled" to false,
+                "pref_list_authoring_syntax" to "markdown",
+                "pref_links_obsidian_enabled" to true,
+                "pref_links_wmdx_enabled" to false,
+                "pref_links_authoring_syntax" to "obsidian",
+                "pref_callout_syntax_wmdx_enabled" to false,
+                "pref_callout_syntax_obsidian_enabled" to true,
+                "pref_callout_authoring_syntax" to "obsidian",
+                "pref_footnote_syntax_wmdx_enabled" to false,
+                "pref_footnote_syntax_obsidian_inline_enabled" to true,
+                "pref_footnote_authoring_syntax" to "markdown",
+                "pref_wmdx_color_syntax_enabled" to false,
+                "pref_obsidian_highlight_enabled" to true,
+                "pref_wmdx_subscript_enabled" to false,
+                "pref_wmdx_superscript_enabled" to false,
+                "pref_underline_use_wmdx_syntax" to false
+            )
+            else -> mapOf(
+                "pref_gfm_extensions_enabled" to true,
+                "pref_heading_syntax_wmdx_enabled" to true,
+                "pref_heading_authoring_syntax" to "wmdx",
+                "pref_list_syntax_gfm_tasks_enabled" to true,
+                "pref_list_syntax_wmdx_enabled" to true,
+                "pref_list_authoring_syntax" to "wmdx",
+                "pref_links_obsidian_enabled" to true,
+                "pref_links_wmdx_enabled" to true,
+                "pref_links_authoring_syntax" to "wmdx",
+                "pref_callout_syntax_enabled" to true,
+                "pref_callout_syntax_wmdx_enabled" to true,
+                "pref_callout_syntax_obsidian_enabled" to true,
+                "pref_callout_authoring_syntax" to "wmdx",
+                "pref_footnote_syntax_wmdx_enabled" to true,
+                "pref_footnote_syntax_obsidian_inline_enabled" to true,
+                "pref_footnote_authoring_syntax" to "wmdx",
+                "pref_wmdx_color_syntax_enabled" to true,
+                "pref_obsidian_highlight_enabled" to false,
+                "pref_wmdx_subscript_enabled" to true,
+                "pref_wmdx_superscript_enabled" to true,
+                "pref_underline_use_wmdx_syntax" to true
+            )
+        }
+
+        for (index in 0 until group.preferenceCount) {
+            val preference = group.getPreference(index)
+            if (preference is androidx.preference.PreferenceGroup) {
+                applyMarkdownProfileDefaults(preference)
+                continue
+            }
+            val key = preference.key ?: continue
+            val value = defaults[key] ?: continue
+            if (storedPreferences.contains(key)) continue
+            when {
+                preference is androidx.preference.TwoStatePreference &&
+                    value is Boolean -> {
+                    preference.setDefaultValue(value)
+                    preference.isPersistent = false
+                    preference.isChecked = value
+                    preference.isPersistent = true
+                }
+                preference is androidx.preference.ListPreference &&
+                    value is String -> {
+                    preference.setDefaultValue(value)
+                    preference.isPersistent = false
+                    preference.value = value
+                    preference.isPersistent = true
+                }
+            }
         }
     }
 
@@ -142,7 +269,7 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
             if (pref is androidx.preference.PreferenceCategory) {
                 pref.layoutResource = R.layout.preference_category_custom
                 applyCustomLayouts(pref)
-            } else if (pref is HelpResetSwitchPreference) {
+            } else if (pref is HelpResetSwitchPreference || pref is HelpPreference) {
                 pref.layoutResource = R.layout.preference_help_switch
             } else if (pref is androidx.preference.SeekBarPreference) {
                 if (pref is androidx.preference.PreferenceGroup) {
@@ -277,6 +404,20 @@ class SettingsFragment : BaseSettingsFragment() {
             "pref_page_export", "pref_export_page" -> {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.settings_container, ExportSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_markdown_dialects" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, MarkdownDialectSettingsFragment())
+                    .addToBackStack(null)
+                    .commit()
+                return true
+            }
+            "pref_page_source_editor" -> {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings_container, SourceEditorSettingsFragment())
                     .addToBackStack(null)
                     .commit()
                 return true
@@ -647,6 +788,12 @@ class UIAppearanceSettingsFragment : BaseSettingsFragment() {
             return true
         }
         return super.onPreferenceTreeClick(preference)
+    }
+}
+
+class SourceEditorSettingsFragment : BaseSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_source_editor, rootKey)
     }
 }
 
@@ -1043,6 +1190,43 @@ class StylingHeadingsFragment : StylingSettingsFragment() {
         addHeadingLevelPreferences()
         configureFontPreferences()
     }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (
+            key != "pref_heading_syntax_enabled" &&
+            key != "pref_heading_syntax_wmdx_enabled" &&
+            key != "pref_heading_syntax_hash_enabled" &&
+            key != "pref_heading_syntax_setext_enabled" &&
+            key != "pref_heading_authoring_syntax"
+        ) {
+            return
+        }
+        if (!sharedPreferences.getBoolean("pref_heading_syntax_enabled", true)) return
+
+        val enabledFlavors = listOf(
+            "wmdx" to "pref_heading_syntax_wmdx_enabled",
+            "hash" to "pref_heading_syntax_hash_enabled",
+            "setext" to "pref_heading_syntax_setext_enabled"
+        ).filter { (_, preferenceKey) ->
+            sharedPreferences.getBoolean(preferenceKey, true)
+        }.map { (flavor, _) -> flavor }
+        if (enabledFlavors.isEmpty()) return
+
+        val current = sharedPreferences.getString("pref_heading_authoring_syntax", "wmdx")
+        val resolved = when {
+            enabledFlavors.size == 1 -> enabledFlavors.single()
+            current != null && enabledFlavors.contains(current) -> current
+            else -> enabledFlavors.first()
+        }
+        if (resolved != current) {
+            sharedPreferences.edit()
+                .putString("pref_heading_authoring_syntax", resolved)
+                .apply()
+        }
+    }
 }
 
 class StylingParagraphFragment : StylingSettingsFragment() {
@@ -1169,12 +1353,84 @@ class StylingFootnotesFragment : StylingSettingsFragment() {
         setPreferencesFromResource(R.xml.preferences_styling_footnotes, rootKey)
         configureFontPreferences()
     }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (
+            key != "pref_footnote_syntax_enabled" &&
+            key != "pref_footnote_syntax_wmdx_enabled" &&
+            key != "pref_footnote_syntax_markdown_enabled" &&
+            key != "pref_footnote_syntax_obsidian_inline_enabled" &&
+            key != "pref_footnote_authoring_syntax"
+        ) {
+            return
+        }
+        if (!sharedPreferences.getBoolean("pref_footnote_syntax_enabled", true)) return
+
+        val enabledFlavors = listOf(
+            "wmdx" to "pref_footnote_syntax_wmdx_enabled",
+            "markdown" to "pref_footnote_syntax_markdown_enabled",
+            "obsidian_inline" to "pref_footnote_syntax_obsidian_inline_enabled"
+        ).filter { (_, preferenceKey) ->
+            sharedPreferences.getBoolean(preferenceKey, true)
+        }.map { (flavor, _) -> flavor }
+        if (enabledFlavors.isEmpty()) return
+
+        val current = sharedPreferences.getString("pref_footnote_authoring_syntax", "wmdx")
+        val resolved = when {
+            enabledFlavors.size == 1 -> enabledFlavors.single()
+            current != null && enabledFlavors.contains(current) -> current
+            else -> enabledFlavors.first()
+        }
+        if (resolved != current) {
+            sharedPreferences.edit()
+                .putString("pref_footnote_authoring_syntax", resolved)
+                .apply()
+        }
+    }
 }
 
 class StylingListsFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_lists, rootKey)
         configureFontPreferences()
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (
+            key != "pref_list_syntax_enabled" &&
+            key != "pref_list_syntax_markdown_enabled" &&
+            key != "pref_list_syntax_wmdx_enabled" &&
+            key != "pref_list_authoring_syntax"
+        ) {
+            return
+        }
+        if (!sharedPreferences.getBoolean("pref_list_syntax_enabled", true)) return
+
+        val enabledFlavors = listOf(
+            "markdown" to "pref_list_syntax_markdown_enabled",
+            "wmdx" to "pref_list_syntax_wmdx_enabled"
+        ).filter { (_, preferenceKey) ->
+            sharedPreferences.getBoolean(preferenceKey, true)
+        }.map { (flavor, _) -> flavor }
+        if (enabledFlavors.isEmpty()) return
+
+        val current = sharedPreferences.getString("pref_list_authoring_syntax", "wmdx")
+        val resolved = when {
+            enabledFlavors.size == 1 -> enabledFlavors.single()
+            current != null && enabledFlavors.contains(current) -> current
+            else -> enabledFlavors.first()
+        }
+        if (resolved != current) {
+            sharedPreferences.edit()
+                .putString("pref_list_authoring_syntax", resolved)
+                .apply()
+        }
     }
 }
 
@@ -1194,6 +1450,7 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences_styling_blockquotes, rootKey)
         keepPreferenceCategories(
+            "styling_callout_syntax",
             "styling_callout_body_typography",
             "styling_callout_settings",
             "styling_callout_shared_header",
@@ -1214,11 +1471,43 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
 
     override fun onSettingPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {
         super.onSettingPreferenceChanged(sharedPreferences, key)
+        if (
+            key == "pref_callout_syntax_enabled" ||
+            key == "pref_callout_syntax_wmdx_enabled" ||
+            key == "pref_callout_syntax_obsidian_enabled" ||
+            key == "pref_callout_authoring_syntax"
+        ) {
+            updateCalloutAuthoringPreference(sharedPreferences)
+        }
         if (key == "pref_callout_type_selector") {
             updateTypeOverrideVisibility()
         }
         if (key.startsWith("pref_callout_")) {
             refreshCalloutPreview(sharedPreferences)
+        }
+    }
+
+    private fun updateCalloutAuthoringPreference(sharedPreferences: SharedPreferences) {
+        if (!sharedPreferences.getBoolean("pref_callout_syntax_enabled", true)) return
+
+        val enabledFlavors = listOf(
+            "wmdx" to "pref_callout_syntax_wmdx_enabled",
+            "obsidian" to "pref_callout_syntax_obsidian_enabled"
+        ).filter { (_, preferenceKey) ->
+            sharedPreferences.getBoolean(preferenceKey, true)
+        }.map { (flavor, _) -> flavor }
+        if (enabledFlavors.isEmpty()) return
+
+        val current = sharedPreferences.getString("pref_callout_authoring_syntax", "wmdx")
+        val resolved = when {
+            enabledFlavors.size == 1 -> enabledFlavors.single()
+            current != null && enabledFlavors.contains(current) -> current
+            else -> enabledFlavors.first()
+        }
+        if (resolved != current) {
+            sharedPreferences.edit()
+                .putString("pref_callout_authoring_syntax", resolved)
+                .apply()
         }
     }
 
@@ -1339,6 +1628,25 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
             "todo" to Color.parseColor("#00BCD4"),
             "example" to Color.parseColor("#AB47BC")
         )
+        val defaultAccentHexes = mapOf(
+            "info" to "#29B6F6",
+            "faq" to "#FF9800",
+            "question" to "#FF9800",
+            "todo" to "#00BCD4",
+            "example" to "#AB47BC"
+        )
+        val defaultBackgrounds = mapOf(
+            "info" to "rgba(41,182,246,0.12)",
+            "faq" to "rgba(255,152,0,0.12)",
+            "question" to "rgba(255,152,0,0.12)",
+            "todo" to "rgba(0,188,212,0.12)",
+            "example" to "rgba(171,71,188,0.12)"
+        )
+        val calloutBgHex = prefs.getString("pref_callout_bg_color", "default") ?: "default"
+        val calloutTextHex = prefs.getString("pref_callout_text_color", "default") ?: "default"
+        val bodyTextHex = prefs.getString("pref_body_text_color", "default") ?: "default"
+        val calloutLineHex = prefs.getString("pref_callout_line_color", "default") ?: "default"
+        val isLightTheme = prefs.getString("pref_app_theme", "amoled") == "light"
 
         for (t in supportedTypes) {
             val box = previewCardViews[t] ?: continue
@@ -1348,13 +1656,35 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
             val typeTitleHex = prefs.getString("pref_callout_type_${t}_title_color", "default") ?: "default"
             val typeAccentHex = prefs.getString("pref_callout_type_${t}_accent_color", "default") ?: "default"
 
-            val effectiveBgHex = if (typeBgHex != "default") typeBgHex else sharedHeaderBgHex
-            val effectiveTitleHex = if (typeTitleHex != "default") typeTitleHex else sharedHeaderTitleHex
-            val effectiveAccentHex = if (typeAccentHex != "default") typeAccentHex else sharedHeaderAccentHex
+            val effectiveBgHex = when {
+                typeBgHex != "default" -> typeBgHex
+                sharedHeaderBgHex != "default" -> sharedHeaderBgHex
+                calloutBgHex != "default" -> calloutBgHex
+                else -> defaultBackgrounds[t] ?: "rgba(41,182,246,0.12)"
+            }
+            val effectiveTitleHex = when {
+                typeTitleHex != "default" -> typeTitleHex
+                sharedHeaderTitleHex != "default" -> sharedHeaderTitleHex
+                calloutTextHex != "default" -> calloutTextHex
+                bodyTextHex != "default" -> bodyTextHex
+                isLightTheme -> "#111111"
+                else -> "#FFFFFF"
+            }
+            val effectiveAccentHex = when {
+                typeAccentHex != "default" -> typeAccentHex
+                sharedHeaderAccentHex != "default" -> sharedHeaderAccentHex
+                calloutLineHex != "default" -> calloutLineHex
+                else -> defaultAccentHexes[t] ?: "#29B6F6"
+            }
 
-            val bgColor = if (effectiveBgHex == "default") Color.parseColor("#1A232A") else ColorPickerDialog.parseHexColor(effectiveBgHex, Color.parseColor("#1A232A"))
-            val titleColor = if (effectiveTitleHex == "default") Color.WHITE else ColorPickerDialog.parseHexColor(effectiveTitleHex, Color.WHITE)
-            val accentColor = if (effectiveAccentHex == "default") (defaultBorders[t] ?: Color.parseColor("#29B6F6")) else ColorPickerDialog.parseHexColor(effectiveAccentHex, defaultBorders[t] ?: Color.parseColor("#29B6F6"))
+            val fallbackBackground = if (isLightTheme) Color.WHITE else Color.BLACK
+            val bgColor = ColorPickerDialog.parseHexColor(effectiveBgHex, fallbackBackground)
+            val fallbackTitle = if (isLightTheme) Color.BLACK else Color.WHITE
+            val titleColor = ColorPickerDialog.parseHexColor(effectiveTitleHex, fallbackTitle)
+            val accentColor = ColorPickerDialog.parseHexColor(
+                effectiveAccentHex,
+                defaultBorders[t] ?: Color.parseColor("#29B6F6")
+            )
 
             box.setBackgroundColor(bgColor)
             titleTv.setTextColor(titleColor)
@@ -1411,6 +1741,14 @@ class StylingEmbeddedContentFragment : StylingSettingsFragment() {
                 "Allows editing embedded text directly in the document. Changes save to the " +
                     "selected copy or linked file. A failed save keeps a warning at the top " +
                     "until the edits save successfully."
+            )
+        findPreference<HelpPreference>("pref_embedded_content_saving_info")
+            ?.setHelpContent(
+                "Saving embedded edits",
+                "With Copy into parent assets, edits are saved to the independent copy inside " +
+                    "the parent document's assets. Save the MDZip or TextPack parent to include " +
+                    "that copy in its archive. With Link to original file, edits are written " +
+                    "back to the selected file and require write access."
             )
 
         findPreference<ResetSwitchPreference>("pref_embedded_document_method_copy")
@@ -1610,8 +1948,8 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             ),
             "menu" to listOf(
                 "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
-                "saveAsMdzip",
-                "exportHtml", "search", "switchView", "newWindow", "settings"
+                "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
+                "formatJson", "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings"
             )
         )
         private val TOOLBAR_DELETABLE_KEY_IDS =
@@ -1632,8 +1970,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "image", "audio", "video", "attachment", "embed", "link", "callout", "inlineCode", "blockQuote",
             "codeBlock", "horizontalLine", "footnote",
             "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
-            "saveAsMdzip",
-            "exportHtml", "search", "switchView", "newWindow", "settings",
+            "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
+            "formatJson",
+            "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings",
             "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID
         )
         private val TOOLBAR_GESTURE_IDS = listOf(
@@ -2055,6 +2394,20 @@ class StylingControlbarFragment : StylingSettingsFragment() {
                 deletedKeys.add(id)
             }
         }
+        if (
+            input.optInt("version", 1) < 15 &&
+            "menu" in deletedGroups &&
+            "sourceLanguage" !in deletedKeys
+        ) {
+            deletedKeys.add("sourceLanguage")
+        }
+        if (
+            input.optInt("version", 1) < 16 &&
+            "menu" in deletedGroups &&
+            "formatJson" !in deletedKeys
+        ) {
+            deletedKeys.add("formatJson")
+        }
         val popupActionIds = TOOLBAR_GROUP_ITEM_IDS.values.flatten()
             .filterNot { it in deletedKeys }.toSet()
         val validRootIds = TOOLBAR_ITEM_IDS.filterNot {
@@ -2152,6 +2505,37 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             for (index in 0 until items.length()) {
                 assignedActions.add(items.optString(index))
             }
+        }
+
+        val storedHoldingIds = input.optJSONArray("holding")?.let { items ->
+            (0 until items.length()).map { items.optString(it) }
+        }.orEmpty()
+        if (
+            input.optInt("version", 1) < 15 &&
+            "menu" in groupIds &&
+            "sourceLanguage" !in assignedActions &&
+            "sourceLanguage" !in deletedKeys &&
+            "sourceLanguage" !in hidden &&
+            "sourceLanguage" !in legacyHeldActions &&
+            "sourceLanguage" !in storedHoldingIds
+        ) {
+            popupGroups.optJSONObject("menu")?.optJSONArray("order")
+                ?.put("sourceLanguage")
+            assignedActions.add("sourceLanguage")
+        }
+
+        if (
+            input.optInt("version", 1) < 16 &&
+            "menu" in groupIds &&
+            "formatJson" !in assignedActions &&
+            "formatJson" !in deletedKeys &&
+            "formatJson" !in hidden &&
+            "formatJson" !in legacyHeldActions &&
+            "formatJson" !in storedHoldingIds
+        ) {
+            popupGroups.optJSONObject("menu")?.optJSONArray("order")
+                ?.put("formatJson")
+            assignedActions.add("formatJson")
         }
 
         if (input.optInt("version", 1) < 9 &&
@@ -3901,6 +4285,36 @@ class ExportSettingsFragment : BaseSettingsFragment() {
     }
 }
 
+class MarkdownDialectSettingsFragment : BaseSettingsFragment() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.preferences_markdown_dialects, rootKey)
+    }
+
+    override fun onSettingPreferenceChanged(
+        sharedPreferences: SharedPreferences,
+        key: String
+    ) {
+        if (key != "pref_markdown_profile") return
+        val profile = sharedPreferences.getString("pref_markdown_profile", "wmdx")
+        for (preferenceKey in listOf(
+            "pref_wmdx_color_syntax_enabled",
+            "pref_obsidian_highlight_enabled",
+            "pref_wmdx_subscript_enabled",
+            "pref_wmdx_superscript_enabled"
+        )) {
+            if (sharedPreferences.contains(preferenceKey)) continue
+            val preference =
+                findPreference<ResetSwitchPreference>(preferenceKey) ?: continue
+            preference.isPersistent = false
+            preference.isChecked = if (preferenceKey == "pref_obsidian_highlight_enabled") {
+                profile == "obsidian"
+            } else {
+                profile == "wmdx"
+            }
+            preference.isPersistent = true
+        }
+    }
+}
 
 class SettingsThemeFragment : BaseSettingsFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {

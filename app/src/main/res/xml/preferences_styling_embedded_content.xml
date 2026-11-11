@@ -15,10 +15,9 @@
             app:summary="Use the original file; edits are saved back to it"
             android:defaultValue="false" />
 
-        <Preference
+        <com.wmdx.markdownapp.HelpPreference
             app:key="pref_embedded_content_saving_info"
-            app:title="Saving embedded edits"
-            app:summary="Edits are saved according to the selected copy or link method" />
+            app:title="Saving embedded edits" />
 
         <com.wmdx.markdownapp.HelpResetSwitchPreference
             app:key="pref_embedded_content_limited_interaction"

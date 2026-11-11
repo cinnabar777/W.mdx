@@ -1,12 +1,23 @@
 import { EditorState, EditorSelection, Compartment, Transaction, StateField, StateEffect, Facet, Prec } from '@codemirror/state';
+import {
+  getMarkdownRenderPlan,
+  mapMarkdownDocumentLayout,
+  collectMarkdownSoftBreaks
+} from './markdownDocumentLayout.js';
+import {
+  normalizeMarkdownSyntaxExposureScope,
+  syntaxExposureRangeIsActive
+} from './markdownSyntaxExposure.mjs';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
 import { getUnescapedPipeOffsets, hasTrailingUnescapedPipe, isEscapedPipe } from './tableModule.js';
 import { separateTableMenuFromFloatingToolbar } from './toolbarOverlap.js';
+import { getResourceLinkActionTop } from './resourceLinkMenuPosition.js';
 import { createDeferredViewCallback } from './deferredViewCallback.js';
 import { withScrollSnapshot } from './scrollSnapshot.js';
 import { parseAndMatchHotkey } from './hotkeys.js';
+import { isMarkdownCharacterEscaped } from './markdownEscaping.js';
 import {
   filterSelectionOutsideHiddenSyntax,
   mapSelectionOutsideHiddenSyntax
@@ -16,7 +27,9 @@ import {
   buildFootnoteDecorations,
   footnoteEditRequiresReparse,
   formatFootnoteDefinition,
-  nextFootnoteLabel,
+  formatObsidianInlineFootnote,
+  formatWmdxFootnoteDefinition,
+  parseFootnotesForState,
   updateFootnoteDecorationsFromCached
 } from './footnotes.js';
 import {
@@ -30,12 +43,39 @@ import {
 } from './renderLayoutDiagnostics.js';
 import { setupFullNavigationCapture } from './navigationCapture.js';
 import { extractTocHeadings } from './tocHeadings.js';
-import { applyMarkdownIndent } from './markdownIndent.js';
 import {
-  markdownBlockquotePaste,
+  SOURCE_LANGUAGE_OPTIONS,
+  getSourceLanguageMode,
+  normalizeSourceLanguageOverride,
+  sourceLanguageExtension
+} from './sourceLanguage.js';
+import { formatJsonWhitespace } from './jsonFormatter.mjs';
+import { SourceTableWidget } from './sourceTableWidget.js';
+import {
+  applyMarkdownIndent,
+  backspaceIndentedCodeBlockIndent,
+  getMarkdownIndentSpaces,
+  getMarkdownIndentTargetSelection,
+  getMarkdownListItemLineRange,
+  getMarkdownSourceIndentColumns,
+  getMarkdownSourceIndentRanges,
+  getWmdxOrderedListItemLineRange
+} from './markdownIndent.js';
+import {
+  createMarkdownBlockquotePaste,
+  convertClipboardToMarkdownProfile,
+  convertHtmlToMarkdownProfile,
   quoteMultilinePaste,
   quotePasteInsertionRange
 } from './markdownPaste.mjs';
+import {
+  convertFromHtml,
+  convertFromMarkdown,
+  exportMarkdown
+} from './markdownConversion.mjs';
+import { renderMarkdownHtml } from './htmlExport.mjs';
+import { applyMarkdownDialectProfile } from './markdownDialectPreferences.mjs';
+import { lintMarkdown } from './markdownLinter.mjs';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
 import { applyAutoHeading } from './autoHeading.js';
 import { toCssFontFamily } from './fontFamilies.js';
@@ -49,8 +89,31 @@ import {
 } from './markdownImages.js';
 import {
   collectMarkdownReferenceTargets,
-  getMarkdownLinkInfo
+  getMarkdownLinkInfo,
+  getMarkdownReferenceDefinitionInfo,
+  normalizeMarkdownReferenceLabel
 } from './markdown-link-utils.mjs';
+import { findMarkdownLinkNodeAtRange } from './markdownLinkTree.mjs';
+import {
+  encodeMarkdownDestination,
+  formatMarkdownLinkInsertion,
+  formatMarkdownLinkForFlavor,
+  getMarkdownReferenceLabel,
+  getMarkdownLinkFlavor,
+  isLinkFlavorEnabled,
+  linkActionAvailability,
+  normalizeBareWebDestination,
+  normalizeLinkSyntaxSettings,
+  parseObsidianLinkSyntax
+} from './wmdxLinkSyntax.mjs';
+import {
+  getHeadingFlavor,
+  getHeadingLevel,
+  getHeadingPrefix,
+  isHeadingFlavorEnabled,
+  isHeadingLevelAvailable,
+  normalizeHeadingSyntaxSettings
+} from './headingSyntax.mjs';
 import {
   extractMarkdownAudioLinks,
   extractMarkdownVideoLinks,
@@ -63,6 +126,13 @@ import {
   parseMarkdownEmbeddedDocumentLink,
   parseMarkdownVideoLink
 } from './markdownMedia.js';
+import {
+  formatWmdxResourceSyntax,
+  getWmdxResourceTitleEscapeRanges,
+  getWmdxResourceTitleRange,
+  parseWmdxResourceSyntax,
+  resolveWmdxResourceTarget
+} from './wmdxResources.js';
 import { MdzipAttachmentWidget } from './mdzipAttachmentWidget.js';
 import { AudioPreviewWidget } from './audioPreviewWidget.js';
 import { VideoPreviewWidget } from './videoPreviewWidget.js';
@@ -72,6 +142,9 @@ import {
   getWmdxUnderlineSyntaxDelimiterRanges,
   getWmdxColorSyntaxRanges,
   isWmdxUnderlineSyntaxEnabled,
+  setObsidianHighlightSyntaxEnabled,
+  setWmdxColorSyntaxEnabled,
+  setWmdxSuperscriptSyntaxEnabled,
   setWmdxUnderlineSyntaxEnabled,
   clearMarkdownFormatting,
   cycleMarkdownListType,
@@ -107,6 +180,48 @@ document.addEventListener('pointerdown', event => {
 }, true);
 import { calloutTypeIcons } from './calloutIcons.js';
 import {
+  getBlockquoteNestingChanges,
+  getBlockquoteOutdentChanges,
+  getBlockquoteEnterEdit,
+  normalizeBlockquoteSyntaxSettings
+} from './blockquoteSyntax.mjs';
+import {
+  buildWmdxCalloutInsertion,
+  getWmdxCalloutEnterEdit,
+  isWmdxCalloutEnterEvent,
+  isWmdxCalloutTitleDraftActive,
+  parseWmdxCallouts as parseWmdxCalloutsRaw
+} from './wmdxCallouts.js';
+import {
+  buildObsidianCalloutInsertion,
+  getObsidianCalloutEnterEdit,
+  isCalloutFlavorEnabled,
+  normalizeCalloutSyntaxSettings
+} from './calloutSyntax.mjs';
+import {
+  isFootnoteAuthoringAvailable,
+  isFootnoteFlavorEnabled,
+  normalizeFootnoteSyntaxSettings
+} from './footnoteSyntax.mjs';
+import {
+  getDefaultBulletPrefix,
+  getDefaultOrderedPrefix,
+  getDefaultOrderedStyle,
+  getDefaultTaskPrefix,
+  getSelectedListPrefixChanges,
+  getSelectedListLineNumbers,
+  getOrderedMarkerLabel,
+  getOrderedListPrefixGenerator,
+  getWmdxOrderedListSequence,
+  getMarkdownOrderedListSequence,
+  isListAuthoringAvailable,
+  isListFlavorEnabled,
+  normalizeListSyntaxSettings,
+  getWmdxOrderedListEnterEdit,
+  getTaskListEnterEdit,
+  normalizeMarkdownOrderedListText
+} from './listSyntax.mjs';
+import {
   BUILT_IN_HOLDING_ITEMS,
   BOTTOM_TOOLBAR_ITEMS,
   DEFAULT_FLOATING_TOOLBAR_CONFIG,
@@ -127,6 +242,7 @@ import {
 import {
   renderBottomToolbarKeys,
   sanitizeToolbarSvg,
+  setToolbarTooltip,
   toToolbarCssColor
 } from './toolbarRenderer.js';
 import {
@@ -173,7 +289,7 @@ import {
 } from '@lezer/markdown';
 import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
 import { wmdxGfmFtpAutolink } from './gfm-autolink.mjs';
-import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
+import { createWmdxGfmTildeExtension } from './gfm-strikethrough.mjs';
 
 let activeAdapter = null;
 let lastFocusedEditorView = null;
@@ -184,7 +300,58 @@ let activeEmbeddedEditSaveWarning = null;
 let activeEmbeddedEditSaveWarningKey = null;
 let refreshOpenTocPanel = null;
 let revealActiveTocHeading = null;
-let currentEditorMode = 'wysiwyg'; // 'wysiwyg' | 'live_preview' | 'source'
+let currentEditorMode = 'wysiwyg'; // internal rendered presentation or 'source'
+let currentModePreference = 'rendered'; // 'rendered' | 'source' | legacy test preset
+let preferredMarkdownMode = 'rendered';
+let tableScrollWysiwygEnabled = true;
+let tableScrollSourceEnabled = true;
+let markdownSyntaxExposureScope = 'hidden';
+let activeSyntaxExposureScope = 'hidden';
+let currentEditorFileName = 'Untitled.md';
+let currentSourceDocumentKey = 'untitled';
+let lastLoadedEditorFileName = 'Untitled.md';
+let editorDocumentLoadGeneration = 0;
+const sourceLanguageOverridesStorageKey = 'wmdx.source-language-overrides.v1';
+const sessionSourceLanguageOverrides = new Map();
+let markdownIndentSpaces = getMarkdownIndentSpaces('1');
+
+function applyTableScrollSettingToCurrentDom() {
+  const root = document;
+  const sourceView = currentModePreference === 'source';
+  const enabled = sourceView
+    ? tableScrollSourceEnabled
+    : tableScrollWysiwygEnabled;
+
+  root.querySelectorAll('.cm-source-table-widget').forEach(widget => {
+    widget.dataset.horizontalScrollEnabled = String(enabled);
+    const scroller = widget.querySelector('.cm-source-table-editor .cm-scroller');
+    const content = widget.querySelector('.cm-source-table-editor .cm-content');
+    if (!scroller || !content) return;
+    scroller.style.overflowX = enabled ? 'auto' : 'hidden';
+    content.style.width = enabled ? 'max-content' : '100%';
+    content.style.minWidth = enabled ? '100%' : '0';
+    content.style.maxWidth = enabled ? 'none' : '100%';
+    widget.querySelectorAll('.cm-source-table-editor .cm-line').forEach(line => {
+      line.style.width = enabled ? 'max-content' : '100%';
+      line.style.minWidth = enabled ? '100%' : '0';
+      line.style.whiteSpace = enabled ? 'pre' : 'pre-wrap';
+      line.style.overflowWrap = enabled ? 'normal' : 'anywhere';
+    });
+  });
+
+  root.querySelectorAll('.cm-wp-table-container').forEach(container => {
+    container.dataset.horizontalScrollEnabled = String(enabled);
+    container.style.overflowX = enabled ? 'auto' : 'hidden';
+    const table = container.querySelector('.cm-wp-table');
+    if (!table) return;
+    table.style.width = enabled ? 'max-content' : '100%';
+    table.style.maxWidth = enabled ? 'none' : '100%';
+    table.style.tableLayout = enabled ? 'auto' : 'fixed';
+    table.querySelectorAll('th, td').forEach(cell => {
+      cell.style.overflowWrap = enabled ? 'normal' : 'anywhere';
+    });
+  });
+}
 
 function getUndoTargetView(parentView) {
   if (!parentView) return null;
@@ -244,10 +411,15 @@ let customHotkeys = {
   save_as_textpack: 'ctrl+shift+alt+s',
   save_as_mdzip: 'ctrl+shift+alt+m',
   export: 'ctrl+shift+e',
+  convert_from: 'ctrl+shift+alt+c',
+  paste_from: 'ctrl+shift+alt+p',
+  export_markdown: 'ctrl+shift+alt+x',
+  lint_markdown: 'ctrl+shift+alt+l',
   image: 'ctrl+shift+i',
   settings: 'ctrl+,',
   toggle_toolbar: 'ctrl+t',
   line_wrap: 'ctrl+alt+w',
+  toggleTableScroll: '',
   open_with: 'ctrl+shift+o',
   line_numbers: 'ctrl+alt+l',
   bold: 'ctrl+b',
@@ -261,7 +433,7 @@ let customHotkeys = {
   strikethrough: 'ctrl+shift+x',
   code: 'ctrl+e',
   clearFormatting: 'ctrl+\\',
-  link: 'ctrl+k',
+  link: '',
   footnote: 'ctrl+shift+f',
   sourceEditing: 'ctrl+shift+u',
   blockQuote: 'ctrl+shift+q',
@@ -300,24 +472,511 @@ let customHotkeys = {
   penPurple: ''
 };
 
+let linkSyntaxSettings = normalizeLinkSyntaxSettings();
+let headingSyntaxSettings = normalizeHeadingSyntaxSettings();
+let calloutSyntaxSettings = normalizeCalloutSyntaxSettings();
+let blockquoteSyntaxSettings = normalizeBlockquoteSyntaxSettings();
+let footnoteSyntaxSettings = normalizeFootnoteSyntaxSettings();
+let listSyntaxSettings = normalizeListSyntaxSettings();
+let currentMarkdownProfile = 'wmdx';
+let markdownAutoPasteEnabled = true;
+let gfmExtensionsEnabled = true;
+let wmdxSubscriptEnabled = true;
+const markdownParserViewRegistry = new Map();
+
+function createMarkdownLanguageExtension(includeTables = false) {
+  const extensions = [];
+  if (gfmExtensionsEnabled) {
+    extensions.push(
+      GFMAutolink,
+      GFMTaskList,
+      createWmdxGfmTildeExtension({
+        gfmStrikethrough: true,
+        wmdxSubscript: wmdxSubscriptEnabled
+      }),
+      wmdxGfmFtpAutolink
+    );
+    if (includeTables) extensions.push(GFMTable);
+  } else if (wmdxSubscriptEnabled) {
+    extensions.push(createWmdxGfmTildeExtension({
+      gfmStrikethrough: false,
+      wmdxSubscript: true
+    }));
+  }
+  extensions.push(wmdxCommonMarkCompatibility);
+  return cmMarkdown({ extensions });
+}
+
+function readSourceLanguageOverrides() {
+  try {
+    const stored = window.localStorage.getItem(sourceLanguageOverridesStorageKey);
+    const parsed = stored ? JSON.parse(stored) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function getCurrentSourceLanguageOverride() {
+  if (sessionSourceLanguageOverrides.has(currentSourceDocumentKey)) {
+    return normalizeSourceLanguageOverride(
+      sessionSourceLanguageOverrides.get(currentSourceDocumentKey)
+    );
+  }
+  const overrides = readSourceLanguageOverrides();
+  return normalizeSourceLanguageOverride(
+    overrides[currentSourceDocumentKey] || 'auto'
+  );
+}
+
+function saveCurrentSourceLanguageOverride(value) {
+  const normalized = normalizeSourceLanguageOverride(value);
+  if (normalized === 'auto') {
+    sessionSourceLanguageOverrides.delete(currentSourceDocumentKey);
+  } else {
+    sessionSourceLanguageOverrides.set(currentSourceDocumentKey, normalized);
+  }
+  const overrides = readSourceLanguageOverrides();
+  if (normalized === 'auto') {
+    delete overrides[currentSourceDocumentKey];
+  } else {
+    overrides[currentSourceDocumentKey] = normalized;
+  }
+  try {
+    window.localStorage.setItem(
+      sourceLanguageOverridesStorageKey,
+      JSON.stringify(overrides)
+    );
+  } catch {
+    // The current selection still applies for this editor session if storage is unavailable.
+  }
+  return normalized;
+}
+
+function getEditorLanguageExtension() {
+  if (currentEditorMode === 'source') {
+    const sourceExtension = sourceLanguageExtension(
+      currentEditorFileName,
+      getCurrentSourceLanguageOverride()
+    );
+    if (sourceExtension !== null) return sourceExtension;
+  }
+  return createMarkdownLanguageExtension(true);
+}
+
+function isCurrentJsonSourceDocument() {
+  return currentEditorMode === 'source' &&
+    getSourceLanguageMode(
+      currentEditorFileName,
+      getCurrentSourceLanguageOverride()
+    ) === 'json';
+}
+
+function openSourceLanguageDialog() {
+  const view = activeAdapter?.view;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!view || !overlay || !dialog) return false;
+
+  const options = SOURCE_LANGUAGE_OPTIONS.map(option =>
+    `<option value="${option.value}">${option.label}</option>`
+  ).join('');
+  dialog.innerHTML = `
+    <h3 class="modal-title">Source / Code Language</h3>
+    <p class="modal-message">Choose how this document is highlighted in Source / Code. Automatic uses its filename.</p>
+    <div class="modal-field-group">
+      <label class="modal-label" for="source-language-override">Language</label>
+      <select id="source-language-override" class="modal-select">${options}</select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="source-language-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="source-language-apply">Apply</button>
+    </div>`;
+  const select = dialog.querySelector('#source-language-override');
+  select.value = getCurrentSourceLanguageOverride();
+  overlay.classList.add('open');
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#source-language-cancel').addEventListener('click', close);
+  dialog.querySelector('#source-language-apply').addEventListener('click', () => {
+    saveCurrentSourceLanguageOverride(select.value);
+    if (activeAdapter?.view === view) {
+      view.dispatch({
+        effects: activeAdapter.markdownLanguageCompartment.reconfigure(
+          getEditorLanguageExtension()
+        )
+      });
+      activeAdapter.scheduleSyntaxRefresh();
+      setupGroupedControlBar();
+    }
+    close();
+  });
+  return true;
+}
+
+function openJsonFormatErrorDialog(view, result) {
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) {
+    window.AndroidNative?.showToast?.(
+      `Invalid JSON at line ${result.line}, column ${result.column}. No changes were made.`
+    );
+    return false;
+  }
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">JSON is invalid</h3>
+    <p class="modal-message" id="json-format-error" aria-live="polite"></p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="json-format-close">Close</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="json-format-goto">Go to error</button>
+    </div>`;
+  dialog.querySelector('#json-format-error').textContent =
+    `No changes were made. The parse error is near line ${result.line}, column ${result.column}.`;
+  overlay.classList.add('open');
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#json-format-close').addEventListener('click', close);
+  dialog.querySelector('#json-format-goto').addEventListener('click', () => {
+    const position = Math.max(0, Math.min(result.offset, view.state.doc.length));
+    close();
+    view.dispatch({
+      selection: EditorSelection.cursor(position),
+      effects: EditorView.scrollIntoView(position, { y: 'center' })
+    });
+    view.focus();
+  });
+  return true;
+}
+
+function formatJsonSourceDocument() {
+  const view = activeAdapter?.view;
+  if (
+    !view ||
+    currentEditorMode !== 'source' ||
+    getSourceLanguageMode(
+      currentEditorFileName,
+      getCurrentSourceLanguageOverride()
+    ) !== 'json'
+  ) {
+    return false;
+  }
+
+  const source = view.state.doc.toString();
+  const result = formatJsonWhitespace(source);
+  if (!result.ok) {
+    openJsonFormatErrorDialog(view, result);
+    return false;
+  }
+
+  if (result.formatted === source) {
+    window.AndroidNative?.showToast?.('JSON is already formatted.');
+    return true;
+  }
+
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: result.formatted },
+    selection: EditorSelection.cursor(0),
+    effects: EditorView.scrollIntoView(0, { y: 'start' }),
+    userEvent: 'input.format-json'
+  });
+  view.focus();
+  window.AndroidNative?.showToast?.(
+    'JSON formatted with two-space indentation. Undo restores the original.'
+  );
+  return true;
+}
+
+function registerMarkdownParserView(
+  view,
+  compartment,
+  includeTables = false,
+  getExtension = () => createMarkdownLanguageExtension(includeTables)
+) {
+  if (view && compartment) {
+    markdownParserViewRegistry.set(view, { compartment, getExtension });
+  }
+}
+
+function unregisterMarkdownParserView(view) {
+  if (view) markdownParserViewRegistry.delete(view);
+}
+
+function reconfigureMarkdownParserViews() {
+  for (const [view, config] of markdownParserViewRegistry) {
+    try {
+      dispatchWithScrollSnapshot(
+        view,
+        config.compartment.reconfigure(config.getExtension())
+      );
+      forceParsing(view, view.state.doc.length, 40);
+      dispatchWithScrollSnapshot(view, heightMapRefreshEffect.of(null));
+    } catch (error) {
+      window.AndroidNative?.reportDiagnostic?.(
+        'markdown_parser_reconfigure_failed',
+        error?.message || 'parser reconfiguration failed'
+      );
+    }
+  }
+}
+
+function transformMarkdownPaste(text, payload = {}) {
+  let transformed = String(text ?? '');
+  if (payload.isPaste && markdownAutoPasteEnabled) {
+    transformed = convertClipboardToMarkdownProfile(
+      { text: transformed, html: payload.html },
+      currentMarkdownProfile
+    ).markdown;
+  }
+  return isListFlavorEnabledNow('markdown')
+    ? normalizeMarkdownOrderedListText(transformed)
+    : transformed;
+}
+
+function isHeadingFlavorEnabledNow(flavor) {
+  return isHeadingFlavorEnabled(headingSyntaxSettings, flavor);
+}
+
+function isCalloutFlavorEnabledNow(flavor) {
+  return isCalloutFlavorEnabled(calloutSyntaxSettings, flavor);
+}
+
+function isBlockquoteSyntaxEnabledNow() {
+  return blockquoteSyntaxSettings.enabled;
+}
+
+function isFootnoteAuthoringAvailableNow() {
+  return isFootnoteAuthoringAvailable(footnoteSyntaxSettings) &&
+    isFootnoteFlavorEnabled(
+      footnoteSyntaxSettings,
+      footnoteSyntaxSettings.authoringSyntax
+    );
+}
+
+function isListAuthoringAvailableNow() {
+  return isListAuthoringAvailable(listSyntaxSettings);
+}
+
+function isListFlavorEnabledNow(flavor) {
+  return isListFlavorEnabled(listSyntaxSettings, flavor);
+}
+
+function isMarkdownTaskSyntaxEnabledNow() {
+  return isListFlavorEnabledNow('markdown') &&
+    listSyntaxSettings.gfmTasks;
+}
+
+function isCalloutAuthoringAvailable() {
+  return calloutSyntaxSettings.enabled &&
+    Boolean(calloutSyntaxSettings.authoringSyntax) &&
+    ['wmdx', 'obsidian'].some(isCalloutFlavorEnabledNow);
+}
+
+function parseWmdxCallouts(text, isExcluded) {
+  if (!isCalloutFlavorEnabledNow('wmdx')) {
+    return {
+      openers: [],
+      lineAttributes: new Map(),
+      returnIndentByLine: new Map()
+    };
+  }
+  return parseWmdxCalloutsRaw(text, isExcluded);
+}
+
+function getHeadingFlavorAtNode(node, doc) {
+  return getHeadingFlavor(
+    node?.name,
+    doc?.sliceString(node.from, node.to) ?? ''
+  );
+}
+
+function isLinkFlavorEnabledNow(flavor) {
+  return isLinkFlavorEnabled(linkSyntaxSettings, flavor);
+}
+
+function isMarkdownLinkEnabledNow(node, doc) {
+  const flavor = getMarkdownLinkFlavor(node, doc);
+  return flavor !== null && isLinkFlavorEnabledNow(flavor);
+}
+
 class ListMarkerWidget extends WidgetType {
-  constructor(source, isBullet) {
+  constructor(source, isBullet, displayText = null) {
     super();
     this.source = source;
     this.isBullet = isBullet;
+    this.displayText = displayText;
   }
   eq(other) {
     return other instanceof ListMarkerWidget &&
       other.source === this.source &&
-      other.isBullet === this.isBullet;
+      other.isBullet === this.isBullet &&
+      other.displayText === this.displayText;
   }
   toDOM() {
     const span = document.createElement('span');
     span.className = this.isBullet ? 'cm-list-bullet' : 'cm-list-number';
-    span.textContent = this.isBullet ? '•' : this.source;
+    span.textContent = this.displayText ??
+      (this.isBullet ? '•' : this.source);
     span.setAttribute('aria-hidden', 'true');
     return span;
   }
+}
+
+function collectOrderedListMarkerLabels(tree, doc) {
+  const markerPositions = new Set();
+  tree.iterate({
+    enter(node) {
+      if (node.name === 'ListMark') {
+        const marker = doc.sliceString(node.from, node.to);
+        if (/^\d+[.)]$/.test(marker)) markerPositions.add(node.from);
+      }
+    }
+  });
+  const lines = Array.from(
+    { length: doc.lines },
+    (_, index) => doc.line(index + 1)
+  );
+  return new Map(
+    getMarkdownOrderedListSequence(
+      lines,
+      position => !markerPositions.has(position)
+    ).map(item => [item.from, item.displayText])
+  );
+}
+
+function getListMarkerDisplayText(marker, isBullet, position, orderedLabels) {
+  if (!isBullet) return orderedLabels.get(position) ?? marker;
+  if (!isListFlavorEnabledNow('wmdx')) return '•';
+  const bulletShapes = { '-': '•', '+': '◦', '*': '▪' };
+  return bulletShapes[marker.trim()] ?? '•';
+}
+
+function findTaskMarkerForListMark(tree, listMarkTo, lineTo) {
+  let taskMarker = null;
+  tree.iterate({
+    from: listMarkTo,
+    to: lineTo,
+    enter(node) {
+      if (node.name === 'TaskMarker') {
+        taskMarker = { from: node.from, to: node.to };
+        return false;
+      }
+      if (node.name === 'ListItem' && node.from > listMarkTo) return false;
+    }
+  });
+  return taskMarker;
+}
+
+function wmdxOrderedListPositionIsExcluded(tree, position) {
+  for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
+    if (
+      node.name === 'FencedCode' ||
+      node.name === 'CodeBlock' ||
+      node.name === 'Table'
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getWmdxOrderedListItems(doc, tree) {
+  if (!isListFlavorEnabledNow('wmdx')) return [];
+  const lines = Array.from(
+    { length: doc.lines },
+    (_, index) => doc.line(index + 1)
+  );
+  return getWmdxOrderedListSequence(
+    lines,
+    position => wmdxOrderedListPositionIsExcluded(tree, position)
+  );
+}
+
+function getCurrentParagraphLineRange(state, position, options = {}) {
+  const tree = syntaxTree(state);
+  let paragraph = null;
+  let insideListItem = false;
+  for (
+    let node = tree.resolveInner(position, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === 'Paragraph') {
+      paragraph = node;
+    }
+    if (node.name === 'ListItem') insideListItem = true;
+  }
+  if (!paragraph || (options.excludeListItems && insideListItem)) return null;
+
+  const lastPosition = Math.max(paragraph.from, paragraph.to - 1);
+  return {
+    first: state.doc.lineAt(paragraph.from).number,
+    last: state.doc.lineAt(lastPosition).number
+  };
+}
+
+function applyEditorMarkdownIndent(
+  view,
+  direction,
+  spaces = markdownIndentSpaces,
+  options = {}
+) {
+  if (direction === 'outdent') {
+    const selection = view.state.selection.main;
+    const quoteChanges = getBlockquoteOutdentChanges(
+      view.state.doc,
+      selection,
+      selection.empty
+        ? getCurrentParagraphLineRange(view.state, selection.head)
+        : null
+    );
+    if (quoteChanges.length) {
+      const changeSet = view.state.changes(quoteChanges);
+      view.dispatch({
+        changes: changeSet,
+        selection: view.state.selection.map(changeSet, 1)
+      });
+      if (options.preserveKeyboard !== true) view.focus();
+      return true;
+    }
+  }
+
+  const selection = view.state.selection.main;
+  const tree = syntaxTree(view.state);
+  const wmdxListItems = getWmdxOrderedListItems(view.state.doc, tree);
+  const paragraphRange = selection.empty
+    ? getMarkdownListItemLineRange(view.state, selection.head) ??
+      getWmdxOrderedListItemLineRange(
+        view.state.doc,
+        selection.head,
+        wmdxListItems
+      ) ??
+      getCurrentParagraphLineRange(view.state, selection.head, {
+        excludeListItems: true
+      })
+    : null;
+  const indentSelection = getMarkdownIndentTargetSelection(
+    view.state.doc,
+    selection,
+    paragraphRange
+  );
+  return applyMarkdownIndent(view, direction, spaces, {
+    ...options,
+    selection: indentSelection,
+    renumberWmdx: isListFlavorEnabledNow('wmdx'),
+    renumberMarkdown: isListFlavorEnabledNow('markdown'),
+    isExcluded: position => wmdxOrderedListPositionIsExcluded(tree, position)
+  });
 }
 
 const markdownEntityDisplayCache = new Map();
@@ -461,61 +1120,33 @@ const listMarkerMeasurementKey = {};
 function measureListMarkerGutter(line, marker) {
   const lineRect = line.getBoundingClientRect();
   if (!lineRect.width) return null;
-
-  const ownerDocument = line.ownerDocument;
-  const textBlock = line.querySelector('.cm-list-block-text');
-  if (textBlock) {
-    const textRect = Array.from(textBlock.getClientRects()).find(
-      candidate => candidate.width > 0 && candidate.height > 0
-    ) || textBlock.getBoundingClientRect();
-    if (textRect.width > 0 && textRect.height > 0) {
-      return Math.max(0, textRect.left - lineRect.left);
-    }
-  }
-
-  const showText = ownerDocument.defaultView.NodeFilter.SHOW_TEXT;
-  const walker = ownerDocument.createTreeWalker(line, showText);
-  let textNode;
-
-  while ((textNode = walker.nextNode())) {
-    if (textNode.parentElement?.closest(
-      '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox, .cm-hidden-syntax'
-    )) {
-      continue;
-    }
-
-    for (let offset = 0; offset < textNode.nodeValue.length; offset++) {
-      const range = ownerDocument.createRange();
-      range.setStart(textNode, offset);
-      range.setEnd(textNode, offset + 1);
-      const rect = Array.from(range.getClientRects()).find(
-        candidate => candidate.width > 0 && candidate.height > 0
-      );
-      if (rect) {
-        return Math.max(0, rect.left - lineRect.left);
-      }
-    }
-  }
-
-  const markerRect = marker.getBoundingClientRect();
-  const markerStyle = ownerDocument.defaultView.getComputedStyle(marker);
-  const markerGap = Number.parseFloat(markerStyle.marginRight) || 4;
-  return Math.max(0, markerRect.right - lineRect.left + markerGap);
+  // The same semantic prefix range contains raw syntax, rendered markers, or
+  // zero-width hidden syntax. Measure its actual inline width in every mode.
+  const start = line.querySelector('.cm-layout-start');
+  const content = line.querySelector('.cm-layout-content');
+  return start && content
+    ? Math.max(0, content.getBoundingClientRect().left - start.getBoundingClientRect().left)
+    : 0;
 }
 
-function listItemTextRange(tree, doc, line, markerEnd) {
-  let from = markerEnd;
-  tree.iterate({
-    from: markerEnd,
-    to: line.to,
-    enter: node => {
-      if (node.name === 'TaskMarker') from = Math.max(from, node.to);
-    }
-  });
-  while (from < line.to && /[ \t]/.test(doc.sliceString(from, from + 1))) {
-    from++;
+function inlineRangeWidth(line, selector) {
+  let width = 0;
+  for (const span of line.querySelectorAll(selector)) {
+    if (span.parentElement?.closest(selector)) continue;
+    for (const rect of span.getClientRects()) width += rect.width;
   }
-  return from < line.to ? { from, to: line.to } : null;
+  return width;
+}
+function listMarkerMeasurementSignature(marker) {
+  const style = marker.ownerDocument.defaultView.getComputedStyle(marker);
+  return JSON.stringify([
+    String(marker.className),
+    marker.textContent,
+    style.font,
+    style.marginRight,
+    style.paddingLeft,
+    style.paddingRight
+  ]);
 }
 
 function listMarkerIndentRange(doc, node) {
@@ -527,28 +1158,10 @@ function listMarkerIndentRange(doc, node) {
     : null;
 }
 
-function collectListMarkerNestingDepths(tree, from = 0, to = tree.length) {
-  const depths = new Map();
-  let listItemDepth = 0;
-  tree.iterate({
-    from,
-    to,
-    enter(node) {
-      if (node.name === 'ListItem') listItemDepth++;
-      if (node.name === 'ListMark') depths.set(node.from, Math.max(0, listItemDepth - 1));
-    },
-    leave(node) {
-      if (node.name === 'ListItem') listItemDepth--;
-    }
-  });
-  return depths;
-}
-
-function scheduleListMarkerMeasurements(view, force = false) {
+function scheduleListMarkerMeasurements(view, force = false, retryAttempt = 0) {
   if (
     !view ||
-    !view.dom?.isConnected ||
-    !document.body.classList.contains('list-wrap-under-text')
+    !view.dom?.isConnected
   ) {
     return;
   }
@@ -557,32 +1170,26 @@ function scheduleListMarkerMeasurements(view, force = false) {
   view.requestMeasure({
     key: listMarkerMeasurementKey,
     read: () => {
-      const lines = Array.from(
-        view.contentDOM.querySelectorAll('.cm-line.cm-list-item')
-      );
+      const lines = Array.from(view.contentDOM.querySelectorAll('.cm-line[data-layout-kind]'));
 
       const measurements = [];
       for (const line of lines) {
+        const marker = line.querySelector('.cm-layout-prefix') || line;
+        const signature = listMarkerMeasurementSignature(marker);
         if (
           !force &&
-          line.style.getPropertyValue('--list-marker-gutter')
+          line.style.getPropertyValue('--list-marker-gutter') &&
+          line.dataset.listMarkerMeasurementSignature === signature
         ) {
           continue;
         }
 
-        const marker = line.querySelector(
-          '.cm-list-bullet, .cm-list-number, .cm-todo-checkbox'
-        );
-        if (!marker) {
-          measurements.push({ line });
-          continue;
-        }
-
         const gutter = measureListMarkerGutter(line, marker);
-        if (Number.isFinite(gutter) && gutter > 0) {
-          measurements.push({ line, gutter });
-        } else {
-          measurements.push({ line });
+        if (Number.isFinite(gutter)) {
+          measurements.push({
+            line, gutter, signature,
+            visibleIndent: inlineRangeWidth(line, '.cm-layout-indent')
+          });
         }
       }
       recordListMarkerRead(measurementMode, lines.length, measurements.length);
@@ -590,12 +1197,21 @@ function scheduleListMarkerMeasurements(view, force = false) {
     },
     write: result => {
       if (!result) return;
+      if (measurementMode !== currentEditorMode) {
+        scheduleListMarkerMeasurements(view, true);
+        return;
+      }
       let changedCount = 0;
       let totalDeltaPx = 0;
       let maxDeltaPx = 0;
-      for (const { line, gutter } of result.measurements) {
-        if (!line.isConnected || !view.contentDOM.contains(line)) continue;
-        if (result.enabled && Number.isFinite(gutter) && gutter > 0) {
+      let staleLineCount = 0;
+      for (const { line, gutter, signature, visibleIndent } of result.measurements) {
+        if (!line.isConnected || !view.contentDOM.contains(line)) {
+          staleLineCount++;
+          continue;
+        }
+        line.style.setProperty('--layout-visible-indent', `${visibleIndent}px`);
+        if (result.enabled && Number.isFinite(gutter) && gutter >= 0) {
           const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
           const nextValue = `${gutter}px`;
           if (line.style.getPropertyValue('--list-marker-gutter') !== nextValue) {
@@ -605,6 +1221,7 @@ function scheduleListMarkerMeasurements(view, force = false) {
             maxDeltaPx = Math.max(maxDeltaPx, delta);
           }
           line.style.setProperty('--list-marker-gutter', nextValue);
+          line.dataset.listMarkerMeasurementSignature = signature;
         } else {
           const previous = Number.parseFloat(line.style.getPropertyValue('--list-marker-gutter')) || 0;
           if (line.style.getPropertyValue('--list-marker-gutter')) {
@@ -613,9 +1230,22 @@ function scheduleListMarkerMeasurements(view, force = false) {
             maxDeltaPx = Math.max(maxDeltaPx, previous);
           }
           line.style.removeProperty('--list-marker-gutter');
+          delete line.dataset.listMarkerMeasurementSignature;
         }
       }
       recordListMarkerWrite(measurementMode, changedCount, totalDeltaPx, maxDeltaPx);
+      const hasUnmeasuredListLine = Array.from(
+        view.contentDOM.querySelectorAll('.cm-line.cm-list-item[data-layout-kind]')
+      ).some(line => !line.style.getPropertyValue('--list-marker-gutter'));
+      if (
+        (staleLineCount > 0 || hasUnmeasuredListLine) &&
+        retryAttempt < 3 &&
+        view.dom?.isConnected
+      ) {
+        requestAnimationFrame(() =>
+          scheduleListMarkerMeasurements(view, false, retryAttempt + 1)
+        );
+      }
     }
   });
 }
@@ -634,13 +1264,15 @@ const listMarkerMeasurementPlugin = ViewPlugin.fromClass(class {
     );
     if (
       update.docChanged ||
+      update.selectionSet ||
+      update.focusChanged ||
       update.viewportChanged ||
       update.geometryChanged ||
       typographyChanged
     ) {
       scheduleListMarkerMeasurements(
         update.view,
-        update.docChanged || typographyChanged
+        typographyChanged
       );
     }
   }
@@ -806,10 +1438,12 @@ class CodeBlockHeaderWidget extends WidgetType {
 let calloutTypeIconOverrides = {};
 
 function getCalloutTitleStart(line, match) {
-  const customTitle = match[5];
-  if (!customTitle || !customTitle.trim()) return null;
-  const index = line.text.indexOf(customTitle, match[1].length + match[2].length);
-  return index < 0 ? null : line.from + index;
+  if (match[5] === undefined) return null;
+  const markerEnd = match[1].length + match[2].length;
+  const separator = /^[ \t]+/.exec(line.text.slice(markerEnd));
+  return separator
+    ? line.from + markerEnd + separator[0].length
+    : null;
 }
 
 class CalloutTitleWidget extends WidgetType {
@@ -862,6 +1496,48 @@ class CalloutTitleWidget extends WidgetType {
       (this.foldMarker ? ' is-foldable' : '') +
       (this.titleIsInSource ? ' has-source-title' : '');
 
+    const toggleFold = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.foldFrom == null || this.foldTo == null || this.foldTo <= this.foldFrom) {
+        return;
+      }
+
+      const liveFolds = foldedRanges(view.state);
+      let isFoldedNow = false;
+      liveFolds.between(this.foldFrom, this.foldTo, (from, to) => {
+        if (from === this.foldFrom && to === this.foldTo) isFoldedNow = true;
+      });
+
+      view.dispatch({
+        effects: [
+          isFoldedNow
+            ? unfoldEffect.of({ from: this.foldFrom, to: this.foldTo })
+            : foldEffect.of({ from: this.foldFrom, to: this.foldTo }),
+          heightMapRefreshEffect.of(null)
+        ]
+      });
+    };
+
+    if (this.foldMarker) {
+      const btn = document.createElement('button');
+      btn.className = 'cm-callout-fold-btn';
+      btn.type = 'button';
+      btn.tabIndex = 0;
+      btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
+      btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
+      btn.textContent = currentlyFolded ? '+' : '−';
+      btn.addEventListener('click', toggleFold);
+      span.appendChild(btn);
+      span.addEventListener('click', event => {
+        const clickedElement = event.target instanceof Element
+          ? event.target
+          : event.target?.parentElement;
+        if (clickedElement?.closest('.cm-callout-fold-btn')) return;
+        toggleFold(event);
+      });
+    }
+
     const iconOverride = calloutTypeIconOverrides[this.type];
     const allowedIcons = ['info', 'question', 'faq', 'todo', 'example', 'note', 'tip', 'warning', 'important', 'danger'];
     const activeIconKey = (iconOverride && iconOverride !== 'default' && allowedIcons.includes(iconOverride))
@@ -882,50 +1558,6 @@ class CalloutTitleWidget extends WidgetType {
       span.appendChild(titleSpan);
     }
 
-    if (this.foldMarker) {
-      const btn = document.createElement('button');
-      btn.className = 'cm-callout-fold-btn';
-      btn.type = 'button';
-      btn.tabIndex = 0;
-      btn.setAttribute('aria-expanded', currentlyFolded ? 'false' : 'true');
-      btn.setAttribute('aria-label', `${currentlyFolded ? 'Expand' : 'Collapse'} callout ${this.title}`);
-      btn.innerHTML = currentlyFolded ? svgIcons.chevronRight : svgIcons.chevronDown;
-
-      span.appendChild(btn);
-
-      const toggleFold = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (this.foldFrom != null && this.foldTo != null && this.foldTo > this.foldFrom) {
-          const liveFolds = foldedRanges(view.state);
-          let isFoldedNow = false;
-          liveFolds.between(this.foldFrom, this.foldTo, (from, to) => {
-            if (from === this.foldFrom && to === this.foldTo) {
-              isFoldedNow = true;
-            }
-          });
-
-          if (isFoldedNow) {
-            view.dispatch({
-              effects: [
-                unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }),
-                heightMapRefreshEffect.of(null)
-              ]
-            });
-          } else {
-            view.dispatch({
-              effects: [
-                foldEffect.of({ from: this.foldFrom, to: this.foldTo }),
-                heightMapRefreshEffect.of(null)
-              ]
-            });
-          }
-        }
-      };
-
-      btn.addEventListener('click', toggleFold);
-    }
-
     rememberWidgetHeight(view, this.heightKey, span, 'callout_title', this.heightEstimate);
     return span;
   }
@@ -941,6 +1573,7 @@ class CalloutTitleWidget extends WidgetType {
 export function cleanHeadingText(rawText) {
   return rawText
     .replace(/^#{1,6}\s+/, '')
+    .replace(/^\.([1-6])[ \t]+/, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1')
@@ -1150,12 +1783,24 @@ function navigateTocHistory(direction) {
 export function scrollToHeading(view, targetHeading) {
   if (!view || !targetHeading) return false;
   const targetClean = cleanHeadingText(targetHeading).toLowerCase();
+  const targetSlug = targetClean
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .trim()
+    .replace(/\s+/g, '-');
   const doc = view.state.doc;
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
-    if (/^#{1,6}\s+/.test(line.text.trim())) {
+    if (/^(?:#{1,6}|\.([1-6]))[ \t]+/.test(line.text.trim())) {
       const lineClean = cleanHeadingText(line.text).toLowerCase();
-      if (lineClean === targetClean) {
+      const lineSlug = lineClean
+        .normalize('NFKD')
+        .replace(/\p{M}/gu, '')
+        .replace(/[^\p{L}\p{N}\s-]/gu, '')
+        .trim()
+        .replace(/\s+/g, '-');
+      if (lineClean === targetClean || lineSlug === targetSlug) {
         recordTocNavigation(view, line.from);
         return scrollToPositionUpperMiddle(view, line.from);
       }
@@ -1165,11 +1810,13 @@ export function scrollToHeading(view, targetHeading) {
 }
 
 class WikilinkWidget extends WidgetType {
-  constructor(label, target, sourceContextJson = '[]') {
+  constructor(label, target, sourceContextJson = '[]', from = null, to = null) {
     super();
     this.label = label;
     this.target = target;
     this.sourceContextJson = sourceContextJson;
+    this.from = from;
+    this.to = to;
   }
 
   eq(other) {
@@ -1177,50 +1824,117 @@ class WikilinkWidget extends WidgetType {
       other instanceof WikilinkWidget &&
       other.label === this.label &&
       other.target === this.target &&
-      other.sourceContextJson === this.sourceContextJson
+      other.sourceContextJson === this.sourceContextJson &&
+      other.from === this.from &&
+      other.to === this.to
     );
   }
 
-  toDOM(view) {
-    const span = document.createElement('span');
-    span.className = 'cm-link cm-wikilink';
-    span.textContent = this.label;
-
-    const activate = () => {
-      if (this.target.startsWith('#')) {
-        scrollToHeading(view, this.target.slice(1));
-        return;
-      }
-      window.AndroidNative?.openMarkdownLink?.(
-        this.target,
-        window.AndroidNative?.getCurrentDocumentSessionId?.(),
-        this.sourceContextJson
-      );
-    };
-
-    if (this.target) {
-      span.setAttribute('role', 'link');
-      span.setAttribute('tabindex', '0');
-      span.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        activate();
-      });
-      span.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          e.stopPropagation();
-          activate();
-        }
-      });
-    }
-
-    return span;
+  toDOM() {
+    const link = document.createElement('a');
+    link.className = 'cm-link cm-wikilink';
+    link.href = this.target.startsWith('#')
+      ? this.target
+      : resolveWmdxResourceTarget(this.target);
+    link.textContent = this.label;
+    link.setAttribute('data-wmdx-link-target', this.target);
+    link.setAttribute('data-wmdx-link-from', String(this.from));
+    link.setAttribute('data-wmdx-link-to', String(this.to));
+    return link;
   }
 }
 
 export const typographySettingsEffect = StateEffect.define();
 
+class WmdxResourceLinkWidget extends WidgetType {
+  constructor(title, target, alignment = null, from = null, to = null) {
+    super();
+    this.title = title;
+    this.target = target;
+    this.alignment = alignment;
+    this.from = from;
+    this.to = to;
+  }
+
+  eq(other) {
+    return other instanceof WmdxResourceLinkWidget &&
+      other.title === this.title &&
+      other.target === this.target &&
+      other.alignment === this.alignment &&
+      other.from === this.from &&
+      other.to === this.to;
+  }
+
+  toDOM() {
+    const link = document.createElement('a');
+    link.className = 'cm-link';
+    link.href = resolveWmdxResourceTarget(this.target);
+    link.textContent = this.title;
+    link.setAttribute('data-wmdx-link-target', this.target);
+    link.setAttribute('data-wmdx-link-from', String(this.from));
+    link.setAttribute('data-wmdx-link-to', String(this.to));
+    if (this.alignment) {
+      link.style.cssText = `display:block;text-align:${this.alignment};`;
+    }
+    return link;
+  }
+}
+
+function addWmdxResourceLinkDecorations({
+  node,
+  doc,
+  resource,
+  pushDecoration,
+  hideSyntax,
+  hiddenSyntaxRanges
+}) {
+  const raw = doc.sliceString(node.from, node.to);
+  const titleRange = getWmdxResourceTitleRange(raw);
+  const line = doc.lineAt(node.from);
+  const alignment = line.from === node.from && line.to === node.to
+    ? resource.alignment
+    : null;
+  const linkAttributes = {
+    href: resolveWmdxResourceTarget(resource.source),
+    'data-wmdx-link-target': resource.source,
+    'data-wmdx-link-from': String(node.from),
+    'data-wmdx-link-to': String(node.to),
+    ...(alignment
+      ? { style: `display:block;text-align:${alignment};` }
+      : {})
+  };
+
+  if (resource.title && titleRange && titleRange.to > titleRange.from) {
+    const labelFrom = node.from + titleRange.from;
+    const labelTo = node.from + titleRange.to;
+    pushDecoration(Decoration.mark({
+      tagName: 'a',
+      class: 'cm-link',
+      attributes: linkAttributes
+    }).range(labelFrom, labelTo));
+    hideSyntax(node.from, labelFrom);
+    for (const escapeRange of getWmdxResourceTitleEscapeRanges(raw)) {
+      hideSyntax(
+        node.from + escapeRange.from,
+        node.from + escapeRange.to
+      );
+    }
+    hideSyntax(labelTo, node.to);
+    return;
+  }
+
+  const decoration = Decoration.replace({
+    widget: new WmdxResourceLinkWidget(
+      resource.displayTitle,
+      resource.source,
+      alignment,
+      node.from,
+      node.to
+    )
+  }).range(node.from, node.to);
+  pushDecoration(decoration);
+  hiddenSyntaxRanges.push(decoration);
+}
 
 const imageAspectCache = new Map();
 
@@ -1773,6 +2487,32 @@ const customHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: '#ff4081', fontWeight: 'bold' }
 ]);
 
+const sourceHighlightStyle = HighlightStyle.define([
+  { tag: tags.heading1, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading2, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading3, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading4, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading5, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.heading6, color: 'var(--source-heading-color, #82aaff)' },
+  { tag: tags.meta, color: 'var(--source-markup-color, #89ddff)' },
+  { tag: tags.comment, color: 'var(--source-comment-color, #808080)' },
+  { tag: tags.string, color: 'var(--source-string-color, #c3e88d)' },
+  { tag: tags.number, color: 'var(--source-number-color, #f78c6c)' },
+  { tag: tags.keyword, color: 'var(--source-keyword-color, #c792ea)' },
+  { tag: tags.propertyName, color: 'var(--source-property-color, #ffcb6b)' },
+  { tag: tags.typeName, color: 'var(--source-type-color, #f07178)' },
+  { tag: tags.variableName, color: 'var(--source-variable-color, #eeffff)' },
+  { tag: tags.function, color: 'var(--source-function-color, #82aaff)' },
+  { tag: tags.operator, color: 'var(--source-operator-color, #89ddff)' },
+  { tag: tags.punctuation, color: 'var(--source-punctuation-color, #89ddff)' },
+  { tag: tags.link, color: 'var(--source-link-color, #89ddff)' },
+  { tag: tags.url, color: 'var(--source-link-color, #89ddff)' },
+  { tag: tags.monospace, color: 'var(--source-code-color, #c3e88d)' },
+  { tag: tags.strong, color: 'inherit' },
+  { tag: tags.emphasis, color: 'inherit' },
+  { tag: tags.strikethrough, color: 'inherit' }
+]);
+
 export { EditorState } from '@codemirror/state';
 export { EditorView } from '@codemirror/view';
 export { cursorLineDown, cursorLineUp } from '@codemirror/commands';
@@ -2218,20 +2958,18 @@ class EmbeddedDocumentWidget extends WidgetType {
       flushEmbeddedSave();
     });
 
+    const markdownLanguageCompartment = new Compartment();
     const state = EditorState.create({
       doc: markdownText,
       extensions: [
-        cmMarkdown({
-          extensions: [
-            GFMAutolink,
-            GFMTaskList,
-            wmdxGfmFtpAutolink,
-            wmdxGfmStrikethrough,
-            wmdxCommonMarkCompatibility
-          ]
-        }),
-        markdownBlockquotePaste,
-        syntaxHighlighting(customHighlightStyle),
+        markdownLanguageCompartment.of(createMarkdownLanguageExtension()),
+        createMarkdownBlockquotePaste(
+          transformMarkdownPaste,
+          isBlockquoteSyntaxEnabledNow
+        ),
+        syntaxHighlighting(
+          currentEditorMode === 'source' ? sourceHighlightStyle : customHighlightStyle
+        ),
         ...(fullInlineEditing
           ? [
               history(),
@@ -2251,6 +2989,7 @@ class EmbeddedDocumentWidget extends WidgetType {
               })
             ]
           : []),
+        semanticLayoutField,
         livePreviewPlugin,
         tableStateField,
         wysiwygCodeBlockField,
@@ -2295,6 +3034,7 @@ class EmbeddedDocumentWidget extends WidgetType {
       ]
     });
     childEditor = new EditorView({ state, parent: content });
+    registerMarkdownParserView(childEditor, markdownLanguageCompartment);
     childEditor.dom.classList.add('cm-embedded-document-child');
     childEditor.dom.style.background = 'transparent';
     childEditor.dom.style.color = 'inherit';
@@ -2317,6 +3057,7 @@ class EmbeddedDocumentWidget extends WidgetType {
     }
     shell.__flushEmbeddedDocumentSave = flushEmbeddedSave;
     shell.__embeddedDocumentEditor = childEditor;
+    shell.__markdownLanguageCompartment = markdownLanguageCompartment;
     if (pendingEmbeddedDocumentEdits.has(saveKey)) {
       saveTimer = setTimeout(flushEmbeddedSave, 0);
     }
@@ -2327,6 +3068,7 @@ class EmbeddedDocumentWidget extends WidgetType {
     dom?._clearEmbeddedPressTimer?.();
     dom?.__flushEmbeddedDocumentSave?.();
     const embeddedEditor = dom?.__embeddedDocumentEditor;
+    unregisterMarkdownParserView(embeddedEditor);
     clearLastFocusedEditorViewWithin(embeddedEditor);
     embeddedEditor?.destroy?.();
   }
@@ -2336,11 +3078,233 @@ class EmbeddedDocumentWidget extends WidgetType {
   }
 }
 
+function wmdxCalloutPositionIsExcluded(state, position) {
+  for (
+    let node = syntaxTree(state).resolveInner(position, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'Table') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function calloutFoldToggleEffect(view, from, to) {
+  if (!Number.isInteger(from) || !Number.isInteger(to) || to <= from) return null;
+
+  let isFolded = false;
+  foldedRanges(view.state).between(from, to, (foldFrom, foldTo) => {
+    if (foldFrom === from && foldTo === to) isFolded = true;
+  });
+  return isFolded
+    ? unfoldEffect.of({ from, to })
+    : foldEffect.of({ from, to });
+}
+
+function handleWmdxCalloutTitleClick(view, event) {
+  const eventTarget = event.target instanceof Element
+    ? event.target
+    : event.target?.parentElement;
+  const titleElement = eventTarget?.closest?.(
+    '.cm-callout-title-text.is-source[data-wmdx-callout-title-from]'
+  );
+  if (!titleElement) return false;
+
+  const from = Number(titleElement.dataset.wmdxCalloutTitleFrom);
+  const to = Number(titleElement.dataset.wmdxCalloutTitleTo);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || to < from) return false;
+
+  const mapped = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  const position = mapped == null || mapped < from || mapped > to
+    ? to
+    : mapped;
+  const foldFrom = Number(titleElement.dataset.wmdxCalloutFoldFrom);
+  const foldTo = Number(titleElement.dataset.wmdxCalloutFoldTo);
+  const foldEffect = calloutFoldToggleEffect(view, foldFrom, foldTo);
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({
+    selection: EditorSelection.cursor(position),
+    ...(foldEffect
+      ? { effects: [foldEffect, heightMapRefreshEffect.of(null)] }
+      : {})
+  });
+  view.focus();
+  return true;
+}
+
+function handleCalloutEnter(view, event) {
+  if (
+    !isWmdxCalloutEnterEvent(event)
+  ) {
+    return false;
+  }
+
+  const state = view.state;
+  const selection = state.selection.main;
+  const source = state.doc.toString();
+  const isExcluded = position =>
+    wmdxCalloutPositionIsExcluded(state, position);
+  const edit = (
+    isCalloutFlavorEnabledNow('wmdx') &&
+    getWmdxCalloutEnterEdit(source, selection, isExcluded)
+  ) || (
+    isCalloutFlavorEnabledNow('obsidian') &&
+    getObsidianCalloutEnterEdit(source, selection, isExcluded)
+  );
+  if (!edit) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(edit.cursor),
+    userEvent: 'input'
+  });
+  return true;
+}
+
+function handleBlockquoteEnter(view, event) {
+  if (
+    !isBlockquoteSyntaxEnabledNow() ||
+    !isWmdxCalloutEnterEvent(event)
+  ) {
+    return false;
+  }
+
+  const state = view.state;
+  const selection = state.selection.main;
+  const tree = syntaxTree(state);
+  const edit = getBlockquoteEnterEdit(
+    state.doc.toString(),
+    selection,
+    position => {
+      for (
+        let node = tree.resolveInner(Math.min(position, state.doc.length), 1);
+        node;
+        node = node.parent
+      ) {
+        if (
+          node.name === 'FencedCode' ||
+          node.name === 'CodeBlock' ||
+          node.name === 'Table'
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+  );
+  if (!edit) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(edit.cursor),
+    userEvent: 'input'
+  });
+  return true;
+}
+
+function handleWmdxOrderedListEnter(view, event) {
+  if (
+    !isWmdxCalloutEnterEvent(event) ||
+    !isListFlavorEnabledNow('wmdx')
+  ) {
+    return false;
+  }
+
+  const state = view.state;
+  const selection = state.selection.main;
+  const tree = syntaxTree(state);
+  const edit = getWmdxOrderedListEnterEdit(
+    state.doc.toString(),
+    selection,
+    position => wmdxOrderedListPositionIsExcluded(tree, position)
+  );
+  if (!edit) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(edit.cursor),
+    userEvent: 'input'
+  });
+  return true;
+}
+
+function handleTaskListEnter(view, event) {
+  if (!isWmdxCalloutEnterEvent(event)) return false;
+
+  const state = view.state;
+  const selection = state.selection.main;
+  const edit = getTaskListEnterEdit(
+    state.doc.toString(),
+    selection,
+    (_lineText, match) => match[2]
+      ? isListFlavorEnabledNow('markdown') &&
+        listSyntaxSettings.gfmTasks !== false
+      : isListFlavorEnabledNow('wmdx')
+  );
+  if (!edit) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  view.dispatch({
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: EditorSelection.cursor(edit.cursor),
+    userEvent: 'input'
+  });
+  return true;
+}
+
 export const livePreviewPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
     this.initializedFoldLines = new Set();
     this.hiddenSyntaxRanges = Decoration.none;
+    this.calloutEventDom = view.dom;
+    this.calloutTitleClickHandler = event =>
+      handleWmdxCalloutTitleClick(view, event);
+    this.calloutEnterHandler = event =>
+      handleCalloutEnter(view, event) ||
+      handleTaskListEnter(view, event) ||
+      handleWmdxOrderedListEnter(view, event) ||
+      handleBlockquoteEnter(view, event);
+    this.calloutBeforeInputHandler = event =>
+      handleCalloutEnter(view, event) ||
+      handleTaskListEnter(view, event) ||
+      handleWmdxOrderedListEnter(view, event) ||
+      handleBlockquoteEnter(view, event);
+    view.dom.addEventListener('click', this.calloutTitleClickHandler, true);
+    view.dom.addEventListener('keydown', this.calloutEnterHandler, true);
+    view.dom.addEventListener('beforeinput', this.calloutBeforeInputHandler, true);
     this.decorations = this.buildDecorations(view);
+  }
+
+  destroy() {
+    this.calloutEventDom?.removeEventListener(
+      'click',
+      this.calloutTitleClickHandler,
+      true
+    );
+    this.calloutEventDom?.removeEventListener(
+      'keydown',
+      this.calloutEnterHandler,
+      true
+    );
+    this.calloutEventDom?.removeEventListener(
+      'beforeinput',
+      this.calloutBeforeInputHandler,
+      true
+    );
+    this.calloutEventDom = null;
+    this.calloutTitleClickHandler = null;
+    this.calloutEnterHandler = null;
+    this.calloutBeforeInputHandler = null;
   }
 
   update(update) {
@@ -2348,6 +3312,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       update.docChanged ||
       update.viewportChanged ||
       update.selectionSet ||
+      syntaxTree(update.startState) !== syntaxTree(update.state) ||
       update.transactions.some((transaction) =>
         transaction.effects.some((effect) => effect.is(heightMapRefreshEffect))
       );
@@ -2359,28 +3324,52 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
   buildDecorations(view) {
     recordDecorationBuild(currentEditorMode, 'live_preview_plugin');
-    const previousHiddenSyntaxRanges = this.hiddenSyntaxRanges;
     this.hiddenSyntaxRanges = Decoration.none;
     try {
       return this._buildDecorationsInternal(view);
     } catch (e) {
-      window.AndroidNative?.reportDiagnostic?.('decoration_error', 0);
-      this.hiddenSyntaxRanges = previousHiddenSyntaxRanges;
-      return this.decorations || Decoration.none;
+      const message = String(e?.message || '');
+      const errorKind = /Cannot read properties of undefined/.test(message)
+        ? 'undefined-property'
+        : /Cannot read properties of null/.test(message)
+          ? 'null-property'
+          : /not a function/.test(message)
+            ? 'not-callable'
+            : /range|offset|position/i.test(message)
+              ? 'range'
+              : String(e?.name || 'Error').slice(0, 24);
+      window.AndroidNative?.reportDiagnostic?.(
+        'decoration_error',
+        `mode=${currentEditorMode};kind=${errorKind};docLength=${view?.state?.doc?.length ?? -1}`
+      );
+      // Old decoration ranges may point into the previous document after an
+      // edit. Expose raw source rather than reusing stale positions and
+      // shifting unrelated text when this rendering pass fails.
+      this.hiddenSyntaxRanges = Decoration.none;
+      this.decorations = Decoration.none;
+      return Decoration.none;
     }
   }
 
   _buildDecorationsInternal(view) {
     const builder = [];
     const hiddenSyntaxRanges = [];
+    const renderPlan = markdownRenderPlan(view.state);
+    if (renderPlan.raw) {
+      // Source is a language-highlighted text editor. Keep its characters and
+      // token colors, but do not layer Markdown render decorations over them.
+      return Decoration.none;
+    }
+    const isSourceMode = renderPlan.raw;
     const hideSyntax = (from, to) => {
-      if (to > from) {
+      if (!isSourceMode && to > from) {
         const range = Decoration.replace({}).range(from, to);
         builder.push(range);
         hiddenSyntaxRanges.push(range);
       }
     };
     const lineClasses = new Map();
+    const paragraphIndentSyntaxRanges = new Map();
 
     const addLineClass = (lineFrom, ...classNames) => {
       if (!lineClasses.has(lineFrom)) lineClasses.set(lineFrom, new Set());
@@ -2389,24 +3378,18 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }
     };
 
-    if (currentEditorMode === 'source') {
-      return Decoration.none;
-    }
-
+    // This plugin owns contextual syntax only. Block layout is supplied by
+    // persistentLayoutField in ALL modes, including raw Source.
     const tree = syntaxTree(view.state);
     const selection = view.state.selection.main;
-    const isPureWysiwyg = (currentEditorMode === 'wysiwyg');
+    const isPureWysiwyg = renderPlan.wysiwyg;
     const doc = view.state.doc;
+    const layout = renderPlan.semantic;
+    const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
     const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
     const markdownLinkRanges = [];
     const decorationRanges = view.visibleRanges;
-    const firstVisibleRange = decorationRanges[0];
-    const lastVisibleRange = decorationRanges[decorationRanges.length - 1];
-    const listMarkerDepths = collectListMarkerNestingDepths(
-      tree,
-      firstVisibleRange?.from ?? 0,
-      lastVisibleRange?.to ?? doc.length
-    );
+    const wmdxOrderedListItems = layout.orderedItems;
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
@@ -2418,33 +3401,35 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const colorSyntaxRanges = [...new Map(decorationRanges
       .flatMap(range => getWmdxColorSyntaxRanges(view.state, range))
       .map(range => [`${range.group}:${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
-
-    const getQuotedLineInfo = (lineNum) => {
-      if (lineNum < 1 || lineNum > doc.lines) return null;
-      const l = doc.line(lineNum);
-      const match = l.text.match(/^(\s*(?:>\s*)+)/);
-      if (!match) return null;
-
-      const firstText = /\S/.exec(l.text);
-      const probe = firstText ? l.from + firstText.index : l.from;
-      const resolvedNode = tree.resolveInner(probe, 1);
-
-      for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
-        if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock' || ancestor.name === 'Table') {
-          return null;
-        }
-      }
-
-      const quotePrefix = match[1];
-      const depth = (quotePrefix.match(/>/g) || []).length;
-      return { line: l, quotePrefix, depth };
+    const superscriptSyntaxRanges = [...new Map(decorationRanges
+      .flatMap(range => getMarkdownFormatRanges(view, 'superscript', range))
+      .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
+    const htmlInlineFormatClasses = {
+      bold: 'cm-bold',
+      italic: 'cm-italic',
+      strikethrough: 'cm-strikethrough',
+      subscript: 'cm-subscript',
+      superscript: 'cm-superscript',
+      mark: 'cm-wmdx-highlight-yellow',
+      code: 'cm-inline-code'
     };
+    const htmlInlineFormatRanges = [...new Map(
+      Object.entries(htmlInlineFormatClasses).flatMap(([formatName, className]) =>
+        decorationRanges.flatMap(range =>
+          getMarkdownFormatRanges(view, formatName, range)
+            .filter(formatRange => formatRange.kind === 'html')
+            .map(formatRange => [
+              `${formatName}:${formatRange.wrapperFrom}:${formatRange.wrapperTo}`,
+              { ...formatRange, className }
+            ])
+        )
+      )
+    ).values()];
 
-    const isQuotedLine = (lineNum) => getQuotedLineInfo(lineNum) !== null;
-
-    const calloutOpenerInfo = new Map();
-    const processedBlockquoteLines = new Set();
-    const calloutLineAttributes = new Map(); // lineFrom -> { type, depth }
+    const calloutOpenerInfo = layout.calloutOpeners;
+    const calloutLineAttributes = new Map(
+      [...layout.lines].filter(([, line]) => line.callout).map(([from, line]) => [from, line.callout])
+    );
 
     for (const { from, to } of decorationRanges) {
       const firstVisibleLine = doc.lineAt(from).number;
@@ -2452,219 +3437,94 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
       for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
         const line = doc.line(lineNumber);
-        const quotePrefix = getQuotedLineInfo(lineNumber)?.quotePrefix || '';
-        const firstText = /\S/.exec(line.text.slice(quotePrefix.length));
-        const probe = firstText
-          ? line.from + quotePrefix.length + firstText.index
-          : line.from;
-        const resolvedNode = tree.resolveInner(probe, 1);
+        const semantic = layout.lines.get(line.from);
+        if (!semantic || semantic.kind === 'code' || semantic.kind === 'table') continue;
 
-        let paragraphNode = null;
-        let insideListItem = false;
-        let insideCodeBlock = false;
-        let insideTable = false;
+        const isLineActive = isSourceMode || (!isPureWysiwyg &&
+          isSyntaxRangeActiveForCurrentExposure(
+            selection, doc, layout, line.from, line.to
+          ));
 
-        for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
-          if (ancestor.name === 'Paragraph') paragraphNode = ancestor;
-          if (ancestor.name === 'ListItem') insideListItem = true;
-          if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock') {
-            insideCodeBlock = true;
-          }
-          if (ancestor.name === 'Table') insideTable = true;
-        }
+        if (isLinkFlavorEnabledNow('obsidian')) {
+          const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+          let wikilinkMatch;
+          while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+            if (isMarkdownCharacterEscaped(line.text, wikilinkMatch.index)) continue;
+            if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
 
-        if (insideCodeBlock || insideTable) continue;
+            const matchStart = line.from + wikilinkMatch.index;
+            const matchEnd = matchStart + wikilinkMatch[0].length;
+            const target = wikilinkMatch[1];
+            const alias = wikilinkMatch[2];
+            const displayLabel = (alias !== undefined && alias.trim().length > 0)
+              ? alias
+              : (target.startsWith('#') ? target.slice(1) : target);
 
-        if (insideListItem) {
-          addLineClass(line.from, 'cm-list-item');
-          if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
-            addLineClass(line.from, 'cm-todo-list-item');
-          }
-        }
-
-        const isLineActive = !isPureWysiwyg && (
-          selection.empty
-            ? selection.head >= line.from && selection.head <= line.to
-            : selection.from < line.to && selection.to > line.from
-        );
-
-        const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
-        let wikilinkMatch;
-        while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
-          if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
-
-          const matchStart = line.from + wikilinkMatch.index;
-          const matchEnd = matchStart + wikilinkMatch[0].length;
-          const target = wikilinkMatch[1];
-          const alias = wikilinkMatch[2];
-          const displayLabel = (alias !== undefined && alias.trim().length > 0)
-            ? alias
-            : (target.startsWith('#') ? target.slice(1) : target);
-
-          let labelStart, labelEnd;
-          if (alias !== undefined) {
-            labelStart = matchStart + 2 + target.length + 1;
-            labelEnd = matchEnd - 2;
-          } else {
-            labelStart = matchStart + 2;
-            labelEnd = matchEnd - 2;
-          }
-
-          if (!isLineActive) {
-            if (!isPureWysiwyg) {
-              builder.push(Decoration.replace({
-                widget: new WikilinkWidget(
-                  displayLabel,
-                  target,
-                  JSON.stringify(view.state.facet(embeddedDocumentSourceFacet))
-                )
-              }).range(matchStart, matchEnd));
-            }
-          } else if (labelEnd > labelStart) {
-            builder.push(Decoration.mark({ class: 'cm-link cm-wikilink' }).range(labelStart, labelEnd));
-          }
-        }
-
-        if (insideListItem) {
-          continue;
-        }
-
-        if (paragraphNode) {
-          addLineClass(line.from, 'cm-paragraph');
-
-          const paragraphFirstLine = doc.lineAt(paragraphNode.from);
-          const paragraphLastLine = doc.lineAt(
-            Math.max(paragraphNode.from, paragraphNode.to - 1)
-          );
-
-          if (line.from === paragraphFirstLine.from) {
-            addLineClass(line.from, 'cm-paragraph-first');
-          }
-          if (line.from === paragraphLastLine.from) {
-            addLineClass(line.from, 'cm-paragraph-last');
-          }
-        }
-      }
-    }
-    for (const { from, to } of view.visibleRanges) {
-      const firstVisibleLine = doc.lineAt(from).number;
-      const lastVisibleLine = doc.lineAt(Math.max(from, to - 1)).number;
-
-      for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
-        if (processedBlockquoteLines.has(lineNumber)) continue;
-
-        if (isQuotedLine(lineNumber)) {
-          let blockStart = lineNumber;
-          while (blockStart > 1 && isQuotedLine(blockStart - 1)) {
-            blockStart--;
-          }
-
-          let curLine = blockStart;
-          let inCallout = false;
-
-          let openerLineNum = null;
-          let lastBodyLineNum = null;
-
-          const activeCalloutsStack = []; // [{ depth, type, openerLineNum, lastBodyLineNum }]
-
-          while (curLine <= doc.lines && isQuotedLine(curLine)) {
-            processedBlockquoteLines.add(curLine);
-            const lineInfo = getQuotedLineInfo(curLine);
-            const line = lineInfo.line;
-            const currentDepth = lineInfo.depth;
-
-            // Unwind stack if current line depth is shallow
-            while (activeCalloutsStack.length > 0 && activeCalloutsStack[activeCalloutsStack.length - 1].depth > currentDepth) {
-              activeCalloutsStack.pop();
-            }
-
-            const match = line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i);
-
-            if (match) {
-              const type = match[3].toLowerCase();
-              const foldMarker = match[4]; // '+' or '-' or undefined
-              const customTitle = match[5];
-              const markerStart = line.from + match[1].length;
-              const markerEnd = markerStart + match[2].length;
-              const titleStart = getCalloutTitleStart(line, match);
-
-              const calloutObj = {
-                depth: currentDepth,
-                type,
-                openerLineNum: curLine,
-                lastBodyLineNum: curLine,
-                info: {
-                  type,
-                  depth: currentDepth,
-                  foldMarker,
-                  customTitle,
-                  markerStart,
-                  markerEnd,
-                  titleStart,
-                  bodyFrom: line.to,
-                  bodyTo: line.to
-                }
-              };
-
-              activeCalloutsStack.push(calloutObj);
-              calloutOpenerInfo.set(line.from, calloutObj.info);
-
-              // Update bodyTo for all ancestor callouts on stack
-              for (const ancestor of activeCalloutsStack) {
-                if (ancestor !== calloutObj) {
-                  ancestor.lastBodyLineNum = curLine;
-                  ancestor.info.bodyTo = line.to;
-                }
-              }
-
-              addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-title');
-              calloutLineAttributes.set(line.from, { type, depth: currentDepth });
-            } else if (activeCalloutsStack.length > 0) {
-              // Update all callouts on stack whose depth <= currentDepth
-              for (const calloutObj of activeCalloutsStack) {
-                if (calloutObj.depth <= currentDepth) {
-                  calloutObj.lastBodyLineNum = curLine;
-                  calloutObj.info.bodyTo = line.to;
-                }
-              }
-
-              const currentCallout = activeCalloutsStack[activeCalloutsStack.length - 1];
-              addLineClass(line.from, 'cm-blockquote', 'cm-callout', 'cm-callout-body');
-              calloutLineAttributes.set(line.from, { type: currentCallout.type, depth: currentCallout.depth });
+            let labelStart, labelEnd;
+            if (alias !== undefined) {
+              labelStart = matchStart + 2 + target.length + 1;
+              labelEnd = matchEnd - 2;
             } else {
-              addLineClass(line.from, 'cm-blockquote');
+              labelStart = matchStart + 2;
+              labelEnd = matchEnd - 2;
             }
 
-            curLine++;
-          }
-
-          if (openerLineNum && lastBodyLineNum && lastBodyLineNum > openerLineNum) {
-            const openerLine = doc.line(openerLineNum);
-            const lastBodyLine = doc.line(lastBodyLineNum);
-            const info = calloutOpenerInfo.get(openerLine.from);
-            if (info) {
-              info.bodyFrom = openerLine.to;
-              info.bodyTo = lastBodyLine.to;
+            if (!isLineActive) {
+              if (!isPureWysiwyg) {
+                builder.push(Decoration.replace({
+                  widget: new WikilinkWidget(
+                    displayLabel,
+                    target,
+                    JSON.stringify(view.state.facet(embeddedDocumentSourceFacet)),
+                    matchStart,
+                    matchEnd
+                  )
+                }).range(matchStart, matchEnd));
+              }
+            } else if (labelEnd > labelStart) {
+              builder.push(Decoration.mark({
+                tagName: 'a',
+                class: 'cm-link cm-wikilink',
+                attributes: {
+                  href: target.startsWith('#') ? target : resolveWmdxResourceTarget(target),
+                  'data-wmdx-link-target': target,
+                  'data-wmdx-link-from': String(matchStart),
+                  'data-wmdx-link-to': String(matchEnd)
+                }
+              }).range(labelStart, labelEnd));
             }
           }
+        }
+
+        if (semantic.kind === 'paragraph' || semantic.kind === 'heading') {
+          const indentRanges = getMarkdownSourceIndentRanges(line.text);
+          if (indentRanges.length) {
+            paragraphIndentSyntaxRanges.set(line.from, indentRanges);
+          }
+
         }
       }
     }
-    for (const lineFrom of calloutLineAttributes.keys()) {
+    const nativeCallouts = layout.nativeCallouts;
+    for (const [lineFrom, attrs] of nativeCallouts.lineAttributes) {
+      calloutLineAttributes.set(lineFrom, attrs);
+
+      if (attrs.indentToHide > 0) {
+        const line = doc.lineAt(lineFrom);
+        const end = Math.min(line.from + attrs.indentToHide, line.to);
+        const isIndentActive = !isPureWysiwyg &&
+          isSyntaxRangeActiveForCurrentExposure(
+            selection, doc, layout, line.from, end
+          );
+        if (!isIndentActive) hideSyntax(line.from, end);
+      }
+    }
+
+    for (const [lineFrom, ranges] of paragraphIndentSyntaxRanges) {
+      if (calloutLineAttributes.has(lineFrom)) continue;
       const line = doc.lineAt(lineFrom);
-      const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
-      const hasTaskMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text);
-      const classes = lineClasses.get(lineFrom);
-      if (classes) {
-        if (hasListMarker) {
-          classes.add('cm-list-item');
-          classes.add('cm-callout-list-item');
-        } else {
-          classes.delete('cm-list-item');
-          classes.delete('cm-callout-list-item');
-        }
-        if (hasTaskMarker) classes.add('cm-todo-list-item');
-        else classes.delete('cm-todo-list-item');
+      for (const range of ranges) {
+        hideSyntax(line.from + range.from, line.from + range.to);
       }
     }
 
@@ -2674,14 +3534,37 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         to,
         enter: (node) => {
           const line = view.state.doc.lineAt(node.from);
-          const isNodeActive = !isPureWysiwyg && (
-            selection.empty
-              ? selection.head >= node.from && selection.head <= node.to
-              : selection.from < node.to && selection.to > node.from
-          );
+          const isNodeActive = isSourceMode || (!isPureWysiwyg &&
+            isSyntaxRangeActiveForCurrentExposure(
+              selection, doc, layout, node.from, node.to
+            ));
+
+          if (node.name === 'WmdxResource') {
+            const resource = parseWmdxResourceSyntax(
+              doc.sliceString(node.from, node.to)
+            );
+            if (
+              resource &&
+              !resource.embed &&
+              isLinkFlavorEnabledNow('wmdx') &&
+              !isNodeActive
+            ) {
+              if (!isPureWysiwyg) {
+                addWmdxResourceLinkDecorations({
+                  node,
+                  doc,
+                  resource,
+                  pushDecoration: decoration => builder.push(decoration),
+                  hideSyntax,
+                  hiddenSyntaxRanges
+                });
+              }
+            }
+            return false;
+          }
 
           if (node.name === 'LinkReference') {
-            if (!isNodeActive) {
+            if (isLinkFlavorEnabledNow('reference') && !isNodeActive) {
               const firstLine = doc.lineAt(node.from).number;
               const lastLine = doc.lineAt(Math.max(node.from, node.to - 1)).number;
               for (let lineNumber = firstLine; lineNumber <= lastLine; lineNumber++) {
@@ -2692,20 +3575,27 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (node.name === 'Autolink') {
+            if (!isLinkFlavorEnabledNow('commonmark')) return false;
             const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
             if (linkInfo) {
-              builder.push(
-                Decoration.mark({
-                  tagName: 'a',
-                  class: 'cm-link',
-                  attributes: {
-                    href: linkInfo.target,
-                    'data-wmdx-link-target': linkInfo.target
-                  }
-                })
-                  .range(linkInfo.labelFrom, linkInfo.labelTo)
-              );
+              // WYSIWYG has a dedicated decoration field for link marks.
+              // Adding another anchor mark here nests anchors in the DOM.
               if (!isPureWysiwyg) {
+                builder.push(
+                  Decoration.mark({
+                    tagName: 'a',
+                    class: 'cm-link',
+                    attributes: {
+                      href: linkInfo.target,
+                      'data-wmdx-link-target': linkInfo.target,
+                      'data-wmdx-link-from': String(node.from),
+                      'data-wmdx-link-to': String(node.to)
+                    }
+                  })
+                    .range(linkInfo.labelFrom, linkInfo.labelTo)
+                );
+              }
+              if (!isPureWysiwyg && !isNodeActive) {
                 hideSyntax(node.from, linkInfo.labelFrom);
                 hideSyntax(linkInfo.labelTo, node.to);
               }
@@ -2734,24 +3624,34 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             return false;
           }
 
-          const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
-          const setextHeading = /^SetextHeading([12])$/.exec(node.name);
-          const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
+          const headingLevel = getHeadingLevel(node.name);
+          const headingEnabled = isHeadingFlavorEnabledNow(
+            getHeadingFlavorAtNode(node, doc)
+          );
 
-          if (headingLevel && !isPureWysiwyg) {
-            addLineClass(
-              line.from,
-              'cm-heading',
-              `cm-heading-${headingLevel}`
-            );
+          if (headingLevel && !headingEnabled && !isPureWysiwyg) {
+            addLineClass(line.from, 'cm-heading-syntax-literal');
           }
 
           if (node.name === 'HeaderMark' && !isNodeActive) {
-            if (!isPureWysiwyg) {
+            if (headingEnabled && !isPureWysiwyg) {
               const end = Math.min(node.to + 1, line.to);
               if (end > node.from && end <= line.to) {
                 hideSyntax(node.from, end);
               }
+            } else if (!headingEnabled && !isPureWysiwyg) {
+              addLineClass(line.from, 'cm-heading-syntax-literal');
+            }
+          }
+          if (
+            node.name === 'WmdxHeadingMarker' &&
+            !isNodeActive &&
+            !isPureWysiwyg
+          ) {
+            if (isHeadingFlavorEnabledNow('wmdx')) {
+              hideSyntax(node.from, node.to);
+            } else {
+              addLineClass(line.from, 'cm-heading-syntax-literal');
             }
           }
 
@@ -2785,6 +3685,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'StrikethroughMark' && !isNodeActive) {
             if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
+          if (node.name === 'Subscript') {
+            builder.push(Decoration.mark({ class: 'cm-subscript' }).range(node.from, node.to));
+          }
+          if (node.name === 'SubscriptMark' && !isNodeActive && !isPureWysiwyg) {
+            hideSyntax(node.from, node.to);
+          }
 
           if (node.name === 'InlineCode') {
             const codeSpan = markdownCodeSpanDisplayText(doc, node);
@@ -2806,35 +3712,62 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
 
           if (node.name === 'ListMark') {
+            if (isPureWysiwyg) return false;
+            if (
+              !listSyntaxSettings.enabled ||
+              (!isListFlavorEnabledNow('markdown') &&
+                !isListFlavorEnabledNow('wmdx'))
+            ) {
+              return false;
+            }
             const marker = view.state.doc.sliceString(node.from, node.to);
             const isBullet = /^[-*+]$/.test(marker.trim());
+            const indentRange = listMarkerIndentRange(doc, node);
+            if (indentRange) hideSyntax(indentRange.from, indentRange.to);
+            const displayText = getListMarkerDisplayText(
+              marker,
+              isBullet,
+              node.from,
+              orderedListLabels
+            );
             if (!isNodeActive) {
               if (!isPureWysiwyg) {
-                if (listMarkerDepths.get(node.from) === 0) {
-                  const indentRange = listMarkerIndentRange(doc, node);
-                  if (indentRange) hideSyntax(indentRange.from, indentRange.to);
-                }
                 builder.push(Decoration.replace({
-                  widget: new ListMarkerWidget(marker, isBullet)
+                  widget: new ListMarkerWidget(
+                    marker,
+                    isBullet,
+                    displayText
+                  )
                 }).range(node.from, node.to));
+              } else {
+                builder.push(
+                  Decoration.mark({
+                    class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
+                  }).range(node.from, node.to)
+                );
               }
             } else {
               builder.push(Decoration.mark({
                 class: isBullet ? 'cm-list-bullet' : 'cm-list-number'
               }).range(node.from, node.to));
             }
-            if (!isPureWysiwyg) {
-              const textRange = listItemTextRange(tree, doc, line, node.to);
-              if (textRange) {
-                builder.push(
-                  Decoration.mark({ class: 'cm-list-block-text' })
-                    .range(textRange.from, textRange.to)
-                );
-              }
+            const taskMarker = findTaskMarkerForListMark(tree, node.to, line.to);
+            if (taskMarker && taskMarker.from > node.to) {
+              builder.push(
+                Decoration.mark({ class: 'cm-todo-bullet-separator' })
+                  .range(node.to, taskMarker.from)
+              );
             }
           }
 
-          if (node.name === 'QuoteMark' && !isNodeActive) {
+          if (
+            node.name === 'QuoteMark' &&
+            !isNodeActive &&
+            (
+              isBlockquoteSyntaxEnabledNow() ||
+              calloutLineAttributes.has(line.from)
+            )
+          ) {
             if (!isPureWysiwyg) {
               // Hide the quote marker and its separator together. Leaving the
               // separator visible shifts the first callout line relative to
@@ -2846,43 +3779,80 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             }
           }
 
-          if (node.name === 'TaskMarker') {
+          if (node.name === 'TaskMarker' || node.name === 'WmdxTaskMarker') {
+            if (isPureWysiwyg) return false;
+            const isWmdxTask = node.name === 'WmdxTaskMarker';
+            if (
+              isWmdxTask
+                ? !isListFlavorEnabledNow('wmdx')
+                : !isMarkdownTaskSyntaxEnabledNow()
+            ) {
+              return false;
+            }
+            if (isWmdxTask) {
+              let insideCodeOrTable = false;
+              for (
+                let ancestor = tree.resolveInner(node.from, 1);
+                ancestor;
+                ancestor = ancestor.parent
+              ) {
+                if (
+                  ancestor.name === 'FencedCode' ||
+                  ancestor.name === 'CodeBlock' ||
+                  ancestor.name === 'Table'
+                ) {
+                  insideCodeOrTable = true;
+                  break;
+                }
+              }
+              if (insideCodeOrTable) return false;
+
+              if (node.from > line.from) {
+                const indentIsActive = !isPureWysiwyg &&
+                  isSyntaxRangeActiveForCurrentExposure(
+                    selection, doc, layout, line.from, node.from
+                  );
+                if (!indentIsActive) hideSyntax(line.from, node.from);
+              }
+            }
             const taskText = view.state.doc.sliceString(node.from, node.to);
             const isChecked = taskText.toLowerCase().includes('x');
             if (!isNodeActive && node.to > node.from) {
               if (!isPureWysiwyg) {
                 builder.push(Decoration.replace({ widget: new CheckboxWidget(isChecked, node.from, node.to - node.from) }).range(node.from, node.to));
+              } else if (isWmdxTask) {
+                builder.push(
+                  Decoration.mark({ class: 'cm-list-marker-syntax' })
+                    .range(node.from, node.to)
+                );
               }
+            }
+            if (isWmdxTask && isNodeActive && !isPureWysiwyg) {
+              builder.push(
+                Decoration.mark({ class: 'cm-list-marker-syntax' })
+                  .range(node.from, node.to)
+              );
             }
           }
 
           if (node.name === 'HorizontalRule') {
-            addLineClass(line.from, 'cm-hr');
             if (!isNodeActive && node.to > node.from) {
               if (!isPureWysiwyg) hideSyntax(node.from, node.to);
             }
           }
 
           if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
-            if (currentEditorMode === 'wysiwyg') {
+            if (renderPlan.wysiwyg) {
               return;
             }
-            const startLine = view.state.doc.lineAt(node.from);
-            const endLine = view.state.doc.lineAt(node.to);
-            for (let l = startLine.number; l <= endLine.number; l++) {
-              const codeLine = view.state.doc.line(l);
-              addLineClass(codeLine.from, 'cm-codeblock-line');
-              if (l === startLine.number) addLineClass(codeLine.from, 'cm-codeblock-first');
-              if (l === endLine.number) addLineClass(codeLine.from, 'cm-codeblock-last');
-              const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(codeLine.text);
-              if (codeLine.to > codeLine.from && !isFenceLine) {
-                builder.push(
-                  Decoration.mark({ class: 'cm-codeblock-text' })
-                    .range(codeLine.from, codeLine.to)
-                );
+            const codeBlockLayout = renderPlan.semantic.codeBlocks
+              .find(block => block.from === node.from)?.indent;
+            if (node.name === 'CodeBlock' && codeBlockLayout) {
+              for (const range of codeBlockLayout.hiddenRanges) {
+                hideSyntax(range.from, range.to);
               }
             }
-            if (line.from === node.from) {
+            if (!renderPlan.raw && line.from === node.from) {
               const codeText = view.state.doc.sliceString(node.from, node.to);
               const firstLineText = line.text;
               const langMatch = firstLineText.match(/^```(\w+)/);
@@ -2963,7 +3933,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               ? window.AndroidNative?.getCurrentDocumentSessionId?.()
               : null;
             const attachmentSourceContext = attachmentLink
-              ? state.facet(embeddedDocumentSourceFacet)
+              ? view.state.facet(embeddedDocumentSourceFacet)
               : [];
             const attachmentExists = attachmentLink && window.AndroidNative
               ?.canOpenAttachment?.(
@@ -2988,21 +3958,31 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
               hiddenSyntaxRanges.push(attachmentDecoration);
               return false;
             }
+            if (
+              node.name !== 'Image' &&
+              !isMarkdownLinkEnabledNow(node, doc)
+            ) {
+              return false;
+            }
             const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
             if (linkInfo) {
               const { labelFrom, labelTo } = linkInfo;
-              builder.push(
-                Decoration.mark({
-                  tagName: 'a',
-                  class: 'cm-link',
-                  attributes: {
-                    href: linkInfo.target,
-                    'data-wmdx-link-target': linkInfo.target
-                  }
-                }).range(labelFrom, labelTo)
-              );
-
               if (!isPureWysiwyg) {
+                builder.push(
+                  Decoration.mark({
+                    tagName: 'a',
+                    class: 'cm-link',
+                    attributes: {
+                      href: linkInfo.target,
+                      'data-wmdx-link-target': linkInfo.target,
+                      'data-wmdx-link-from': String(node.from),
+                      'data-wmdx-link-to': String(node.to)
+                    }
+                  }).range(labelFrom, labelTo)
+                );
+              }
+
+              if (!isPureWysiwyg && !isNodeActive) {
                 if (labelFrom > node.from) {
                   hideSyntax(node.from, labelFrom);
                 }
@@ -3037,11 +4017,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const range of underlineSyntaxRanges) {
-      const isRangeActive = !isPureWysiwyg && (
-        selection.empty
-          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
-          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
-      );
+      const isRangeActive = isSourceMode || (!isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, range.wrapperFrom, range.wrapperTo
+        ));
       if (range.kind === 'html' && !isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
@@ -3061,11 +4040,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     for (const range of colorSyntaxRanges) {
-      const isRangeActive = !isPureWysiwyg && (
-        selection.empty
-          ? selection.head >= range.wrapperFrom && selection.head <= range.wrapperTo
-          : selection.from < range.wrapperTo && selection.to > range.wrapperFrom
-      );
+      const isRangeActive = isSourceMode || (!isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, range.wrapperFrom, range.wrapperTo
+        ));
       if (!isRangeActive) {
         hideSyntax(range.wrapperFrom, range.contentFrom);
         hideSyntax(range.contentTo, range.wrapperTo);
@@ -3075,16 +4053,48 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       }).range(range.contentFrom, range.contentTo));
     }
 
+    for (const range of superscriptSyntaxRanges) {
+      const isRangeActive = isSourceMode || (!isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, range.wrapperFrom, range.wrapperTo
+        ));
+      if (!isRangeActive) {
+        hideSyntax(range.wrapperFrom, range.contentFrom);
+        hideSyntax(range.contentTo, range.wrapperTo);
+      }
+      builder.push(Decoration.mark({
+        class: 'cm-superscript'
+      }).range(range.contentFrom, range.contentTo));
+    }
+
+    for (const range of htmlInlineFormatRanges) {
+      const isRangeActive = !isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, range.wrapperFrom, range.wrapperTo
+        );
+      if (!isRangeActive) {
+        hideSyntax(range.wrapperFrom, range.contentFrom);
+        hideSyntax(range.contentTo, range.wrapperTo);
+      }
+      builder.push(Decoration.mark({
+        class: range.className
+      }).range(range.contentFrom, range.contentTo));
+    }
+
     const activeFolds = foldedRanges(view.state);
 
     for (const [lineFrom, info] of calloutOpenerInfo) {
       const line = doc.lineAt(lineFrom);
       const customTitle = info.customTitle?.trim() || '';
-      const isMarkerActive = !isPureWysiwyg && (
-        selection.empty
-          ? selection.head >= info.markerStart && selection.head <= info.markerEnd
-          : selection.from < info.markerEnd && selection.to > info.markerStart
+      const isTitleDraftActive = isWmdxCalloutTitleDraftActive(
+        selection,
+        info,
+        line.to
       );
+      const isMarkerActive = !isPureWysiwyg &&
+        isSyntaxRangeActiveForCurrentExposure(
+          selection, doc, layout, info.markerStart, info.markerEnd
+        );
 
       const hasBody = info.bodyTo > info.bodyFrom;
 
@@ -3096,7 +4106,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
         });
 
-        if (info.foldMarker === '-' && !isCurrentlyFolded && !this.initializedFoldLines.has(info.bodyFrom)) {
+        if (!isSourceMode &&
+            info.foldMarker === '-' &&
+            !isCurrentlyFolded &&
+            !this.initializedFoldLines.has(info.bodyFrom)) {
           this.initializedFoldLines.add(info.bodyFrom);
           Promise.resolve().then(() => {
             view.dispatch({
@@ -3109,7 +4122,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         }
       }
 
-      if (!isMarkerActive && !isPureWysiwyg) {
+      // Source is an exact Markdown surface: never replace the callout marker
+      // or title with the rendered header widget there. Live Preview can render
+      // the same semantic block when its syntax is not the active edit target.
+      if (!isSourceMode && !isMarkerActive && !isTitleDraftActive && !isPureWysiwyg) {
         let isFolded = false;
         if (hasBody) {
           activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
@@ -3121,7 +4137,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         const displayTitle = customTitle ||
           (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
-        const titleIsInSource = info.titleStart != null;
+        const titleIsInSource = Boolean(customTitle);
         const widgetEnd = titleIsInSource ? info.titleStart : line.to;
 
         builder.push(Decoration.replace({
@@ -3138,49 +4154,65 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
         if (titleIsInSource) {
           builder.push(Decoration.mark({
-            class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`
+            class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`,
+            attributes: {
+              'data-wmdx-callout-title-from': String(info.titleStart),
+              'data-wmdx-callout-title-to': String(line.to),
+              ...(info.foldMarker
+                ? {
+                    'data-wmdx-callout-fold-from': String(info.bodyFrom),
+                    'data-wmdx-callout-fold-to': String(info.bodyTo)
+                  }
+                : {})
+            }
           }).range(info.titleStart, line.to));
         }
         lineClasses.get(lineFrom)?.add('cm-callout-title-rendered');
       }
     }
 
-    for (const [lineFrom, attrs] of calloutLineAttributes) {
-      builder.push(Decoration.line({
-        attributes: {
-          'data-callout-type': attrs.type,
-          'data-callout-depth': String(attrs.depth),
-          style: `--callout-depth-offset:${Math.max(0, attrs.depth - 1) * 12}px`
-        }
-      }).range(lineFrom));
+    for (const item of wmdxOrderedListItems) {
+      if (isPureWysiwyg) continue;
+      const leadingIndent = /^[ \t]*/.exec(item.line.text)?.[0] ?? '';
+      if (leadingIndent.length > 0) {
+        hideSyntax(item.line.from, item.line.from + leadingIndent.length);
+      }
+      if (
+        !decorationRanges.some(range =>
+          item.from <= range.to && item.to >= range.from
+        )
+      ) {
+        continue;
+      }
+      const active = isSourceMode || view.state.selection.ranges.some(range =>
+        range.empty
+          ? range.head >= item.from && range.head <= item.to
+          : range.from < item.to && range.to > item.from
+      );
+      if (active) {
+        builder.push(
+          Decoration.mark({
+            class: 'cm-list-number'
+          }).range(item.from, item.to)
+        );
+      } else {
+        const decoration = Decoration.replace({
+          widget: new ListMarkerWidget(item.marker, false, item.displayText)
+        }).range(item.from, item.to);
+        builder.push(decoration);
+        hiddenSyntaxRanges.push(decoration);
+      }
     }
 
-    const persistentLayoutClasses = new Set([
-      'cm-paragraph',
-      'cm-paragraph-first',
-      'cm-paragraph-last',
-      'cm-list-item',
-      'cm-heading',
-      'cm-heading-1',
-      'cm-heading-2',
-      'cm-heading-3',
-      'cm-heading-4',
-      'cm-heading-5',
-      'cm-heading-6',
-      'cm-blockquote',
-      'cm-hr'
-    ]);
-
     for (const [lineFrom, classes] of lineClasses) {
-      const remaining = [...classes].filter(className =>
-        currentEditorMode === 'source' ||
-        !persistentLayoutClasses.has(className)
-      );
-      if (!remaining.length) continue;
-
+      if (!classes.size) continue;
+      const lineStyles = [];
       builder.push(
         Decoration.line({
-          attributes: { class: remaining.join(' ') }
+          attributes: {
+            class: [...classes].join(' '),
+            ...(lineStyles.length ? { style: lineStyles.join(';') } : {})
+          }
         }).range(lineFrom)
       );
     }
@@ -3203,6 +4235,7 @@ const footnoteStateField = StateField.define({
   create(state) {
     return buildFootnoteDecorations(state, {
       mode: currentEditorMode,
+      syntaxSettings: footnoteSyntaxSettings,
       onEdit: definition => openFootnoteInsertionDialog({ definition }),
       onNavigate: navigateFootnote
     });
@@ -3210,7 +4243,7 @@ const footnoteStateField = StateField.define({
   update(current, tr) {
     const refresh = tr.effects.some(effect => effect.is(typographySettingsEffect));
     const revealRefresh =
-      currentEditorMode === 'live_preview' &&
+      currentEditorMode !== 'source' &&
       tr.selectionSet &&
       current.hasFootnotes;
     if (
@@ -3222,6 +4255,7 @@ const footnoteStateField = StateField.define({
     }
     const options = {
       mode: currentEditorMode,
+      syntaxSettings: footnoteSyntaxSettings,
       onEdit: definition => openFootnoteInsertionDialog({ definition }),
       onNavigate: navigateFootnote
     };
@@ -3344,33 +4378,160 @@ export const hiddenSyntaxAtomicRanges = EditorView.atomicRanges.of(
   view => hiddenSyntaxRangesForView(view)
 );
 
+const toolbarLinePrefixPattern =
+  /^(?:[-+*][ \t]+\[[ xX]\][ \t]+|\d+[.)][ \t]+\[[ xX]\][ \t]+|\[[ xX]\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+|[A-Za-z]+[.)][ \t]+|#{1,6}[ \t]+|\.([1-6])[ \t]+|> ?)/;
+
+function getSetextHeadingAtLine(state, lineNumber) {
+  let match = null;
+  syntaxTree(state).iterate({
+    enter(node) {
+      const level = getHeadingLevel(node.name);
+      if (
+        node.name.startsWith('SetextHeading') &&
+        level &&
+        state.doc.lineAt(node.from).number === lineNumber
+      ) {
+        match = { from: node.from, to: node.to, level };
+        return false;
+      }
+    }
+  });
+  return match;
+}
+
+function cmToggleSelectedListPrefix(view, prefix) {
+  if (!view) return false;
+  const { doc, selection } = view.state;
+  const selectedLines = getSelectedListLineNumbers(doc, selection)
+    .map(number => doc.line(number));
+  const lines = selectedLines.length > 1
+    ? selectedLines.filter(line =>
+      line.text.replace(/^[ \t]*(?:>[ \t]*)*/, '').trim()
+    )
+    : selectedLines;
+  const changes = getSelectedListPrefixChanges(lines, prefix);
+  if (!changes.length) return false;
+  view.dispatch({ changes });
+  focusEditorAfterCommand(view);
+  return true;
+}
+
 function cmToggleLinePrefix(view, prefix) {
   if (!view) return;
   const selection = view.state.selection.main;
   const line = view.state.doc.lineAt(selection.head);
   const lineText = line.text;
+  const indent = /^[ \t]*/.exec(lineText)?.[0] ?? '';
+  const content = lineText.slice(indent.length);
+  const setextHeading = getSetextHeadingAtLine(view.state, line.number);
 
   if (prefix === '') {
-    const cleanText = lineText.replace(/^(#{1,6}\s+|- \[\s?[xX]?\]\s+|- |\d+\.\s+|> )/, '');
+    const cleanText = content.replace(toolbarLinePrefixPattern, '');
     view.dispatch({
-      changes: { from: line.from, to: line.to, insert: cleanText }
+      changes: {
+        from: line.from,
+        to: setextHeading?.to ?? line.to,
+        insert: indent + cleanText
+      }
     });
     return;
   }
 
-  if (lineText.startsWith(prefix)) {
+  if (setextHeading) {
+    const cleanText = content.replace(toolbarLinePrefixPattern, '');
+    const newText = indent + prefix + cleanText;
     view.dispatch({
-      changes: { from: line.from, to: line.from + prefix.length, insert: '' }
+      changes: { from: line.from, to: setextHeading.to, insert: newText },
+      selection: {
+        anchor: line.from + indent.length + prefix.length,
+        head: line.from + indent.length + prefix.length
+      }
+    });
+    focusEditorAfterCommand(view);
+    return;
+  }
+
+  if (content.startsWith(prefix)) {
+    view.dispatch({
+      changes: {
+        from: line.from + indent.length,
+        to: line.from + indent.length + prefix.length,
+        insert: ''
+      }
     });
   } else {
-    const cleanText = lineText.replace(/^(#{1,6}\s+|- \[\s?[xX]?\]\s+|- |\d+\.\s+|> )/, '');
-    const newText = prefix + cleanText;
+    const cleanText = content.replace(toolbarLinePrefixPattern, '');
+    const newText = indent + prefix + cleanText;
     view.dispatch({
       changes: { from: line.from, to: line.to, insert: newText },
-      selection: { anchor: line.from + prefix.length, head: line.from + prefix.length }
+      selection: {
+        anchor: line.from + indent.length + prefix.length,
+        head: line.from + indent.length + prefix.length
+      }
     });
   }
   focusEditorAfterCommand(view);
+}
+
+function applySetextHeading(view, level) {
+  if (!view || (level !== 1 && level !== 2)) return false;
+  const state = view.state;
+  const selection = state.selection.main;
+  const line = state.doc.lineAt(selection.head);
+  const indent = /^[ \t]*/.exec(line.text)?.[0] ?? '';
+  const content = line.text.slice(indent.length);
+  const setextHeading = getSetextHeadingAtLine(state, line.number);
+  const prefix = getHeadingPrefix(level, 'setext');
+  if (!prefix) return false;
+
+  if (setextHeading?.level === level) {
+    view.dispatch({
+      changes: { from: line.from, to: setextHeading.to, insert: line.text },
+      selection: {
+        anchor: line.from + indent.length,
+        head: line.from + indent.length
+      }
+    });
+    focusEditorAfterCommand(view);
+    return true;
+  }
+
+  const cleanTitle = content.replace(toolbarLinePrefixPattern, '');
+  const titleLength = Math.max(1, cleanTitle.trim().length);
+  const underline = prefix.repeat(titleLength);
+  const replacement = `${indent}${cleanTitle}\n${indent}${underline}`;
+  view.dispatch({
+    changes: {
+      from: line.from,
+      to: setextHeading?.to ?? line.to,
+      insert: replacement
+    },
+    selection: {
+      anchor: line.from + indent.length,
+      head: line.from + indent.length
+    }
+  });
+  focusEditorAfterCommand(view);
+  return true;
+}
+
+function applyHeadingCommand(view, value) {
+  if (!view || !headingSyntaxSettings.enabled) return false;
+  if (value === 'paragraph') {
+    cmToggleLinePrefix(view, '');
+    return true;
+  }
+
+  const match = /^heading([1-6])$/.exec(String(value ?? ''));
+  if (!match) return false;
+  const level = Number(match[1]);
+  if (!isHeadingLevelAvailable(headingSyntaxSettings, level)) return false;
+  const syntax = headingSyntaxSettings.authoringSyntax;
+  if (syntax === 'setext') return applySetextHeading(view, level);
+  const prefix = getHeadingPrefix(level, syntax);
+  if (!prefix) return false;
+  cmToggleLinePrefix(view, prefix);
+  return true;
 }
 
 function cmWrapSelection(view, before, after = before, options = {}) {
@@ -3587,18 +4748,21 @@ function isHorizontalRuleLine(state, lineNumber) {
 }
 
 function buildTableBlockDecorations(state) {
-  if (currentEditorMode === 'source') return Decoration.none;
-
+  const renderPlan = markdownRenderPlan(state);
+  if (!renderPlan.renderedTables.length) return Decoration.none;
   const builder = [];
-  const tree = syntaxTree(state);
-
-  tree.iterate({
-    from: 0,
-    to: state.doc.length,
-    enter: (node) => {
-      if (node.name === 'Table') {
+  for (const node of renderPlan.renderedTables) {
+        if (
+          renderPlan.contextual &&
+          activeSyntaxExposureScope !== 'hidden' &&
+          shouldExposeTableSyntax(
+            state.selection.main, state.doc, renderPlan.semantic, node
+          )
+        ) continue;
         const tableText = state.doc.sliceString(node.from, node.to);
-        const widget = new WordProcessorTableWidget(tableText, node.from, node.to);
+        const widget = new WordProcessorTableWidget(tableText, node.from, node.to, {
+          horizontalScrollEnabled: tableScrollWysiwygEnabled
+        });
 
         builder.push(Decoration.widget({
           widget,
@@ -3610,13 +4774,25 @@ function buildTableBlockDecorations(state) {
           block: true
         }).range(node.from, node.to));
 
-        return false;
-      }
-    }
-  });
+  }
 
   builder.sort((a, b) => a.from - b.from || a.to - b.to);
   return Decoration.set(builder, true);
+}
+
+function shouldExposeTableSyntax(selection, doc, layout, table) {
+  if (activeSyntaxExposureScope === 'hidden') return false;
+  if (activeSyntaxExposureScope === 'caret' && selection.empty) {
+    return selection.head > table.from && selection.head < table.to;
+  }
+  return syntaxExposureRangeIsActive(
+    selection,
+    doc,
+    layout,
+    table.from,
+    table.to,
+    activeSyntaxExposureScope
+  );
 }
 
 export function updateTableDocumentSelection(view) {
@@ -3638,7 +4814,8 @@ export function updateTableDocumentSelection(view) {
 }
 
 function buildWysiwygCodeBlockDecorations(state) {
-  if (currentEditorMode !== 'wysiwyg') {
+  const renderPlan = markdownRenderPlan(state);
+  if (!renderPlan.wysiwyg) {
     return {
       decorations: Decoration.none,
       hiddenSyntaxRanges: Decoration.none
@@ -3650,32 +4827,24 @@ function buildWysiwygCodeBlockDecorations(state) {
   const builder = [];
   const hiddenSyntaxRanges = [];
 
-  syntaxTree(state).iterate({
-    from: 0,
-    to: doc.length,
-    enter(node) {
-      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') return;
-
+  for (const node of renderPlan.renderedCodeBlocks) {
+      const codeBlockLayout = node.indent;
       const firstLine = doc.lineAt(node.from);
       const lastLine = doc.lineAt(node.to);
+      if (node.kind === 'CodeBlock') {
+        for (const range of codeBlockLayout.hiddenRanges) {
+          const hiddenRange = Decoration.replace({}).range(
+            range.from,
+            range.to
+          );
+          builder.push(hiddenRange);
+          hiddenSyntaxRanges.push(hiddenRange);
+        }
+      }
 
       for (let number = firstLine.number; number <= lastLine.number; number++) {
         const line = doc.line(number);
-        const classes = ['cm-codeblock-line'];
-        if (number === firstLine.number) classes.push('cm-codeblock-first');
-        if (number === lastLine.number) classes.push('cm-codeblock-last');
-        builder.push(
-          Decoration.line({
-            attributes: { class: classes.join(' ') }
-          }).range(line.from)
-        );
         const isFenceLine = /^\s*(?:`{3,}|~{3,})/.test(line.text);
-        if (line.to > line.from && !isFenceLine) {
-          builder.push(
-            Decoration.mark({ class: 'cm-codeblock-text' })
-              .range(line.from, line.to)
-          );
-        }
         if (
           isFenceLine &&
           number === lastLine.number &&
@@ -3701,9 +4870,7 @@ function buildWysiwygCodeBlockDecorations(state) {
         hiddenSyntaxRanges.push(headerRange);
       }
 
-      return false;
-    }
-  });
+  }
 
   builder.sort((a, b) => a.from - b.from || a.to - b.to);
   hiddenSyntaxRanges.sort((a, b) => a.from - b.from || a.to - b.to);
@@ -3746,7 +4913,8 @@ function rangeTouchesSyntaxNode(state, from, to, nodeNames) {
 
 function transactionTouchesStructure(tr, {
   nodeNames = [],
-  markerPattern = /[\n`~|>#*+\-[\]{}]/
+  markerPattern = /[\n`~|>#*+\-[\]{}]/,
+  linePattern = null
 } = {}) {
   if (!tr.docChanged) return false;
   const names = new Set(nodeNames);
@@ -3762,10 +4930,14 @@ function transactionTouchesStructure(tr, {
     const newTo = Math.max(newFrom, Math.min(toB, newDoc.length));
     const oldText = oldDoc.sliceString(oldFrom, oldTo);
     const newText = newDoc.sliceString(newFrom, newTo);
+    const oldLineText = oldDoc.lineAt(oldFrom).text;
+    const newLineText = newDoc.lineAt(newFrom).text;
 
     if (
       markerPattern.test(oldText) ||
       markerPattern.test(newText) ||
+      (linePattern &&
+        (linePattern.test(oldLineText) || linePattern.test(newLineText))) ||
       oldDoc.lineAt(oldFrom).from === oldFrom ||
       newDoc.lineAt(newFrom).from === newFrom ||
       rangeTouchesSyntaxNode(tr.startState, oldFrom, oldTo, names) ||
@@ -3785,7 +4957,7 @@ const wysiwygCodeBlockField = StateField.define({
   update(current, tr) {
     const refresh = tr.effects.some(effect =>
       effect.is(heightMapRefreshEffect) || effect.is(typographySettingsEffect)
-    );
+    ) || (!tr.docChanged && syntaxTree(tr.startState) !== syntaxTree(tr.state));
     if (!tr.docChanged && !refresh) return current;
     if (
       tr.docChanged &&
@@ -3807,7 +4979,8 @@ const wysiwygCodeBlockField = StateField.define({
 });
 
 function buildHeightMapValue(state) {
-  if (currentEditorMode !== 'wysiwyg') {
+  const renderPlan = markdownRenderPlan(state);
+  if (!renderPlan.wysiwyg) {
     return {
       decorations: Decoration.none,
       hiddenSyntaxRanges: Decoration.none
@@ -3817,7 +4990,9 @@ function buildHeightMapValue(state) {
 
   const doc = state.doc;
   const tree = syntaxTree(state);
-  const listMarkerDepths = collectListMarkerNestingDepths(tree);
+  const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
+  const layout = renderPlan.semantic;
+  const wmdxOrderedListItems = layout.orderedItems;
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
   const replacements = [];
   const hiddenSyntaxRanges = [];
@@ -3830,140 +5005,37 @@ function buildHeightMapValue(state) {
     }
   };
 
-  const calloutOpenerInfo = new Map();
-  const processedBlockquoteLines = new Set();
-
-  const getQuotedLineInfo = (lineNum) => {
-    if (lineNum < 1 || lineNum > doc.lines) return null;
-    const l = doc.line(lineNum);
-    const match = l.text.match(/^(\s*(?:>\s*)+)/);
-    if (!match) return null;
-
-    const firstText = /\S/.exec(l.text);
-    const probe = firstText ? l.from + firstText.index : l.from;
-    const resolvedNode = tree.resolveInner(probe, 1);
-
-    for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
-      if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock' || ancestor.name === 'Table') {
-        return null;
-      }
-    }
-
-    const quotePrefix = match[1];
-    const depth = (quotePrefix.match(/>/g) || []).length;
-    return { line: l, quotePrefix, depth };
-  };
-
-  const isQuotedLine = (lineNum) => getQuotedLineInfo(lineNum) !== null;
+  const calloutOpenerInfo = layout.calloutOpeners;
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
     const line = doc.line(lineNumber);
-    const firstText = /\S/.exec(line.text);
-    const probe = firstText ? line.from + firstText.index : line.from;
-    const resolvedNode = tree.resolveInner(probe, 1);
+    const semantic = layout.lines.get(line.from);
+    if (semantic?.kind === 'code' || semantic?.kind === 'table') continue;
 
-    let insideCodeBlock = false;
-    let insideTable = false;
+    if (isLinkFlavorEnabledNow('obsidian')) {
+      const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
+      let wikilinkMatch;
+      while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
+        if (isMarkdownCharacterEscaped(line.text, wikilinkMatch.index)) continue;
+        if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
 
-    for (let ancestor = resolvedNode; ancestor; ancestor = ancestor.parent) {
-      if (ancestor.name === 'FencedCode' || ancestor.name === 'CodeBlock') insideCodeBlock = true;
-      if (ancestor.name === 'Table') insideTable = true;
-    }
+        const matchStart = line.from + wikilinkMatch.index;
+        const matchEnd = matchStart + wikilinkMatch[0].length;
+        const target = wikilinkMatch[1];
+        const alias = wikilinkMatch[2];
+        const displayLabel = (alias !== undefined && alias.trim().length > 0)
+          ? alias
+          : (target.startsWith('#') ? target.slice(1) : target);
 
-    if (insideCodeBlock || insideTable) continue;
-
-    const wikilinkRegex = /(?<!\!)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g;
-    let wikilinkMatch;
-    while ((wikilinkMatch = wikilinkRegex.exec(line.text)) !== null) {
-      if (wikilinkMatch.index > 0 && line.text[wikilinkMatch.index - 1] === '!') continue;
-
-      const matchStart = line.from + wikilinkMatch.index;
-      const matchEnd = matchStart + wikilinkMatch[0].length;
-      const target = wikilinkMatch[1];
-      const alias = wikilinkMatch[2];
-      const displayLabel = (alias !== undefined && alias.trim().length > 0)
-        ? alias
-        : (target.startsWith('#') ? target.slice(1) : target);
-
-      replacements.push(Decoration.replace({
-        widget: new WikilinkWidget(
-          displayLabel,
-          target,
-          JSON.stringify(state.facet(embeddedDocumentSourceFacet))
-        )
-      }).range(matchStart, matchEnd));
-    }
-  }
-
-  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
-    if (processedBlockquoteLines.has(lineNumber)) continue;
-
-    if (isQuotedLine(lineNumber)) {
-      let blockStart = lineNumber;
-      while (blockStart > 1 && isQuotedLine(blockStart - 1)) {
-        blockStart--;
-      }
-
-      let curLine = blockStart;
-      const activeCalloutsStack = [];
-
-      while (curLine <= doc.lines && isQuotedLine(curLine)) {
-        processedBlockquoteLines.add(curLine);
-        const lineInfo = getQuotedLineInfo(curLine);
-        const line = lineInfo.line;
-        const currentDepth = lineInfo.depth;
-
-        while (activeCalloutsStack.length > 0 && activeCalloutsStack[activeCalloutsStack.length - 1].depth > currentDepth) {
-          activeCalloutsStack.pop();
-        }
-
-        const match = line.text.match(/^(\s*(?:>\s*)+)(\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?)(?:[ \t]+(.*))?\s*$/i);
-
-        if (match) {
-          const type = match[3].toLowerCase();
-          const foldMarker = match[4];
-          const customTitle = match[5];
-          const markerStart = line.from + match[1].length;
-          const markerEnd = markerStart + match[2].length;
-          const titleStart = getCalloutTitleStart(line, match);
-
-          const calloutObj = {
-            depth: currentDepth,
-            type,
-            openerLineNum: curLine,
-            lastBodyLineNum: curLine,
-            info: {
-              type,
-              depth: currentDepth,
-              foldMarker,
-              customTitle,
-              markerStart,
-              markerEnd,
-              titleStart,
-              bodyFrom: line.to,
-              bodyTo: line.to
-            }
-          };
-
-          activeCalloutsStack.push(calloutObj);
-          calloutOpenerInfo.set(line.from, calloutObj.info);
-
-          for (const ancestor of activeCalloutsStack) {
-            if (ancestor !== calloutObj) {
-              ancestor.lastBodyLineNum = curLine;
-              ancestor.info.bodyTo = line.to;
-            }
-          }
-        } else if (activeCalloutsStack.length > 0) {
-          for (const calloutObj of activeCalloutsStack) {
-            if (calloutObj.depth <= currentDepth) {
-              calloutObj.lastBodyLineNum = curLine;
-              calloutObj.info.bodyTo = line.to;
-            }
-          }
-        }
-
-        curLine++;
+        replacements.push(Decoration.replace({
+          widget: new WikilinkWidget(
+            displayLabel,
+            target,
+            JSON.stringify(state.facet(embeddedDocumentSourceFacet)),
+            matchStart,
+            matchEnd
+          )
+        }).range(matchStart, matchEnd));
       }
     }
   }
@@ -3974,25 +5046,23 @@ function buildHeightMapValue(state) {
     enter: (node) => {
       const line = doc.lineAt(node.from);
 
-      const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
-      const setextHeading = /^SetextHeading([12])$/.exec(node.name);
-      const headingLevel = atxHeading?.[1] ?? setextHeading?.[1];
+      const headingLevel = getHeadingLevel(node.name);
+      const headingEnabled = isHeadingFlavorEnabledNow(
+        getHeadingFlavorAtNode(node, doc)
+      );
 
-      if (headingLevel) {
-        const headingLine = doc.lineAt(node.from);
-        replacements.push(
-          Decoration.line({
-            attributes: {
-              class: `cm-heading cm-heading-${headingLevel}`
-            }
-          }).range(headingLine.from)
-        );
-      }
 
       if (node.name === 'HeaderMark') {
-        const end = Math.min(node.to + 1, line.to);
-        if (end > node.from && end <= line.to) {
-          hideSyntax(node.from, end);
+        if (isHeadingFlavorEnabledNow(getHeadingFlavorAtNode(node, doc))) {
+          const end = Math.min(node.to + 1, line.to);
+          if (end > node.from && end <= line.to) {
+            hideSyntax(node.from, end);
+          }
+        }
+      }
+      if (node.name === 'WmdxHeadingMarker') {
+        if (isHeadingFlavorEnabledNow('wmdx')) {
+          hideSyntax(node.from, node.to);
         }
       }
 
@@ -4001,6 +5071,9 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'StrikethroughMark') {
+        hideSyntax(node.from, node.to);
+      }
+      if (node.name === 'SubscriptMark') {
         hideSyntax(node.from, node.to);
       }
 
@@ -4021,25 +5094,45 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'ListMark') {
+        if (
+          !listSyntaxSettings.enabled ||
+          (!isListFlavorEnabledNow('markdown') &&
+            !isListFlavorEnabledNow('wmdx'))
+        ) {
+          return false;
+        }
         const marker = doc.sliceString(node.from, node.to);
         const isBullet = /^[-*+]$/.test(marker.trim());
-        if (listMarkerDepths.get(node.from) === 0) {
-          const indentRange = listMarkerIndentRange(doc, node);
-          if (indentRange) hideSyntax(indentRange.from, indentRange.to);
-        }
+        const indentRange = listMarkerIndentRange(doc, node);
+        if (indentRange) hideSyntax(indentRange.from, indentRange.to);
         replacements.push(Decoration.replace({
-          widget: new ListMarkerWidget(marker, isBullet)
+          widget: new ListMarkerWidget(
+            marker,
+            isBullet,
+            getListMarkerDisplayText(
+              marker,
+              isBullet,
+              node.from,
+              orderedListLabels
+            )
+          )
         }).range(node.from, node.to));
-        const textRange = listItemTextRange(tree, doc, line, node.to);
-        if (textRange) {
+        const taskMarker = findTaskMarkerForListMark(tree, node.to, line.to);
+        if (taskMarker && taskMarker.from > node.to) {
           replacements.push(
-            Decoration.mark({ class: 'cm-list-block-text' })
-              .range(textRange.from, textRange.to)
+            Decoration.mark({ class: 'cm-todo-bullet-separator' })
+              .range(node.to, taskMarker.from)
           );
         }
       }
 
-      if (node.name === 'QuoteMark') {
+      if (
+        node.name === 'QuoteMark' &&
+        (
+          isBlockquoteSyntaxEnabledNow() ||
+          layout.lines.get(line.from)?.callout
+        )
+      ) {
         hideSyntax(node.from, Math.min(node.to + 1, line.to));
       }
 
@@ -4064,7 +5157,35 @@ function buildHeightMapValue(state) {
         return false;
       }
 
-      if (node.name === 'TaskMarker') {
+      if (node.name === 'TaskMarker' || node.name === 'WmdxTaskMarker') {
+        const isWmdxTask = node.name === 'WmdxTaskMarker';
+        if (
+          isWmdxTask
+            ? !isListFlavorEnabledNow('wmdx')
+            : !isMarkdownTaskSyntaxEnabledNow()
+        ) {
+          return false;
+        }
+        if (isWmdxTask) {
+          let insideCodeOrTable = false;
+          for (
+            let ancestor = tree.resolveInner(node.from, 1);
+            ancestor;
+            ancestor = ancestor.parent
+          ) {
+            if (
+              ancestor.name === 'FencedCode' ||
+              ancestor.name === 'CodeBlock' ||
+              ancestor.name === 'Table'
+            ) {
+              insideCodeOrTable = true;
+              break;
+            }
+          }
+          if (insideCodeOrTable) return false;
+          const line = doc.lineAt(node.from);
+          if (node.from > line.from) hideSyntax(line.from, node.from);
+        }
         const taskText = doc.sliceString(node.from, node.to);
         const isChecked = taskText.toLowerCase().includes('x');
         if (node.to > node.from) {
@@ -4087,15 +5208,43 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'LinkReference') {
-        hideSyntax(node.from, node.to);
+        if (isLinkFlavorEnabledNow('reference')) hideSyntax(node.from, node.to);
         return false;
       }
 
       if (node.name === 'Autolink') {
+        if (!isLinkFlavorEnabledNow('commonmark')) return false;
         const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
         if (linkInfo) {
+          replacements.push(Decoration.mark({
+            tagName: 'a',
+            class: 'cm-link',
+            attributes: {
+              href: linkInfo.target,
+              'data-wmdx-link-target': linkInfo.target,
+              'data-wmdx-link-from': String(node.from),
+              'data-wmdx-link-to': String(node.to)
+            }
+          }).range(linkInfo.labelFrom, linkInfo.labelTo));
           hideSyntax(node.from, linkInfo.labelFrom);
           hideSyntax(linkInfo.labelTo, node.to);
+        }
+        return false;
+      }
+
+      if (node.name === 'WmdxResource') {
+        const resource = parseWmdxResourceSyntax(
+          doc.sliceString(node.from, node.to)
+        );
+        if (resource && !resource.embed && isLinkFlavorEnabledNow('wmdx')) {
+          addWmdxResourceLinkDecorations({
+            node,
+            doc,
+            resource,
+            pushDecoration: decoration => replacements.push(decoration),
+            hideSyntax,
+            hiddenSyntaxRanges
+          });
         }
         return false;
       }
@@ -4194,9 +5343,25 @@ function buildHeightMapValue(state) {
           hiddenSyntaxRanges.push(attachmentDecoration);
           return false;
         }
+        if (
+          node.name !== 'Image' &&
+          !isMarkdownLinkEnabledNow(node, doc)
+        ) {
+          return false;
+        }
         const linkInfo = getMarkdownLinkInfo(node, doc, linkReferenceTargets);
         if (linkInfo) {
           const { labelFrom, labelTo } = linkInfo;
+          replacements.push(Decoration.mark({
+            tagName: 'a',
+            class: 'cm-link',
+            attributes: {
+              href: linkInfo.target,
+              'data-wmdx-link-target': linkInfo.target,
+              'data-wmdx-link-from': String(node.from),
+              'data-wmdx-link-to': String(node.to)
+            }
+          }).range(labelFrom, labelTo));
           if (labelFrom > node.from) {
             hideSyntax(node.from, labelFrom);
           }
@@ -4234,6 +5399,9 @@ function buildHeightMapValue(state) {
     const hasBody = info.bodyTo > info.bodyFrom;
     const line = doc.lineAt(lineFrom);
     const customTitle = info.customTitle?.trim() || '';
+    if (isWmdxCalloutTitleDraftActive(state.selection.main, info, line.to)) {
+      continue;
+    }
     let isFolded = false;
     if (hasBody) {
       activeFolds.between(info.bodyFrom, info.bodyTo, (from, to) => {
@@ -4245,7 +5413,7 @@ function buildHeightMapValue(state) {
 
     const displayTitle = customTitle ||
       (info.type.charAt(0).toUpperCase() + info.type.slice(1).toLowerCase());
-    const titleIsInSource = info.titleStart != null;
+    const titleIsInSource = Boolean(customTitle);
     const widgetEnd = titleIsInSource ? info.titleStart : line.to;
 
     replacements.push(Decoration.replace({
@@ -4262,9 +5430,31 @@ function buildHeightMapValue(state) {
 
     if (titleIsInSource) {
       replacements.push(Decoration.mark({
-        class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`
+        class: `cm-callout-title-text is-source${info.foldMarker ? ' is-foldable' : ''}`,
+        attributes: {
+          'data-wmdx-callout-title-from': String(info.titleStart),
+          'data-wmdx-callout-title-to': String(line.to),
+          ...(info.foldMarker
+            ? {
+                'data-wmdx-callout-fold-from': String(info.bodyFrom),
+                'data-wmdx-callout-fold-to': String(info.bodyTo)
+              }
+            : {})
+        }
       }).range(info.titleStart, line.to));
     }
+  }
+
+  for (const item of wmdxOrderedListItems) {
+    const leadingIndent = /^[ \t]*/.exec(item.line.text)?.[0] ?? '';
+    if (leadingIndent.length > 0) {
+      hideSyntax(item.line.from, item.line.from + leadingIndent.length);
+    }
+      const decoration = Decoration.replace({
+        widget: new ListMarkerWidget(item.marker, false, item.displayText)
+      }).range(item.from, item.to);
+      replacements.push(decoration);
+      hiddenSyntaxRanges.push(decoration);
   }
 
   const validReplacements = replacements.filter(d => 0 <= d.from && d.from <= d.to && d.to <= doc.length);
@@ -4280,7 +5470,7 @@ function buildHeightMapValue(state) {
 }
 
 function buildLiveEmbeddedDocumentValue(state) {
-  if (currentEditorMode !== 'live_preview') {
+  if (!markdownRenderPlan(state).contextual) {
     return {
       decorations: Decoration.none,
       hiddenSyntaxRanges: Decoration.none
@@ -4325,7 +5515,8 @@ function buildLiveEmbeddedDocumentValue(state) {
 const liveEmbeddedDocumentField = StateField.define({
   create: buildLiveEmbeddedDocumentValue,
   update(current, tr) {
-    if (currentEditorMode !== 'live_preview') return current;
+    const renderPlan = markdownRenderPlan(tr.state);
+    if (!renderPlan.contextual) return buildLiveEmbeddedDocumentValue(tr.state);
     const refresh = tr.effects.some(effect =>
       effect.is(heightMapRefreshEffect) ||
       effect.is(typographySettingsEffect)
@@ -4348,7 +5539,7 @@ const liveEmbeddedDocumentField = StateField.define({
 });
 
 function buildLivePreviewCodeSpanValue(state) {
-  if (currentEditorMode !== 'live_preview') return Decoration.none;
+  if (!markdownRenderPlan(state).contextual) return Decoration.none;
 
   const doc = state.doc;
   const decorations = [];
@@ -4377,7 +5568,11 @@ function buildLivePreviewCodeSpanValue(state) {
 const livePreviewCodeSpanField = StateField.define({
   create: buildLivePreviewCodeSpanValue,
   update(current, tr) {
-    if (tr.docChanged || tr.selectionSet) {
+    const refresh = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect) ||
+      effect.is(typographySettingsEffect)
+    );
+    if (tr.docChanged || tr.selectionSet || refresh) {
       return buildLivePreviewCodeSpanValue(tr.state);
     }
     return current.map(tr.changes);
@@ -4391,7 +5586,7 @@ export const heightMapField = StateField.define({
     const refresh = tr.effects.some(effect =>
       effect.is(heightMapRefreshEffect) ||
       effect.is(typographySettingsEffect)
-    );
+    ) || (!tr.docChanged && syntaxTree(tr.startState) !== syntaxTree(tr.state));
     if (!tr.docChanged && !refresh) return current;
     if (
       tr.docChanged &&
@@ -4403,7 +5598,8 @@ export const heightMapField = StateField.define({
           'SetextHeading1', 'SetextHeading2', 'ListItem',
           'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
           'HorizontalRule', 'TaskMarker', 'Link', 'Image', 'InlineCode'
-        ]
+        ],
+        linePattern: /^[ \t]*[A-Za-z]+[.)](?:[ \t]|$)/
       })
     ) {
       return {
@@ -4444,186 +5640,195 @@ function premeasureTableHeights(view) {
   }
 }
 
+class LayoutAnchorWidget extends WidgetType {
+  constructor(role) { super(); this.role = role; }
+  eq(other) { return other.role === this.role; }
+  toDOM() {
+    const anchor = document.createElement('span');
+    anchor.className = `cm-layout-${this.role}`;
+    anchor.setAttribute('aria-hidden', 'true');
+    anchor.style.cssText = 'display:inline-block;width:0;height:0;overflow:hidden;pointer-events:none';
+    return anchor;
+  }
+}
+
+class MarkdownSoftBreakSpaceWidget extends WidgetType {
+  eq() { return true; }
+  toDOM() {
+    const space = document.createElement('span');
+    space.className = 'cm-markdown-soft-break-space';
+    space.textContent = ' ';
+    space.setAttribute('aria-hidden', 'true');
+    return space;
+  }
+}
+
 export function buildPersistentLayoutDecorations(state) {
-  if (currentEditorMode === 'source') return Decoration.none;
-
-  const { doc } = state;
-  const tree = syntaxTree(state);
-  const classesByLine = new Map();
-  const calloutAttributesByLine = new Map();
-  const blockquoteDepthByLine = new Map();
-  const activeCallouts = [];
-  let currentBlockquoteDepth = 0;
-
-  const addClass = (lineNumber, className) => {
-    if (!classesByLine.has(lineNumber)) {
-      classesByLine.set(lineNumber, new Set());
-    }
-    classesByLine.get(lineNumber).add(className);
-  };
-
-  for (let number = 1; number <= doc.lines; number++) {
-    const line = doc.line(number);
-    const quotePrefix = line.text.match(/^(\s*(?:>\s*)+)/);
-    const quotePrefixLength = quotePrefix?.[1].length ?? 0;
-    const firstText = /\S/.exec(line.text.slice(quotePrefixLength));
-    const probe = firstText
-      ? line.from + quotePrefixLength + firstText.index
-      : line.from;
-    const resolved = tree.resolveInner(probe, 1);
-
-    let paragraphNode = null;
-    let insideListItem = false;
-    let insideCodeBlock = false;
-    let insideTable = false;
-    let insideBlockquote = false;
-    let headingLevel = null;
-    let isHorizontalRule = false;
-
-    for (let node = resolved; node; node = node.parent) {
-      if (node.name === 'Paragraph') paragraphNode = node;
-      if (node.name === 'ListItem') insideListItem = true;
-      if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
-        insideCodeBlock = true;
+  const ranges = [];
+  const renderPlan = markdownRenderPlan(state);
+  const doc = state.doc;
+  const selection = state.selection.main;
+  const softBreaks = renderPlan.raw
+    ? []
+    : collectMarkdownSoftBreaks(state, undefined, renderPlan.semantic);
+  const softBreakContinuationLines = new Set(
+    softBreaks.map(softBreak => softBreak.nextLineFrom)
+  );
+  for (const softBreak of softBreaks) {
+    ranges.push(
+      Decoration.replace({
+        widget: new MarkdownSoftBreakSpaceWidget()
+      }).range(softBreak.from, softBreak.to)
+    );
+  }
+  const sourceTables = renderPlan.raw
+    ? renderPlan.sourceTables
+    : renderPlan.contextual
+      ? renderPlan.renderedTables.filter(table =>
+          shouldExposeTableSyntax(selection, doc, renderPlan.semantic, table)
+        )
+      : [];
+  const sourceTableLines = new Set();
+  if (renderPlan.raw || sourceTables.length) {
+    // Raw Source always groups a pipe table into one local scroller. In the
+    // rendered editor, entering a table can expose that same editable raw block.
+    for (const table of sourceTables) {
+      const firstLine = state.doc.line(table.first);
+      const lastLine = state.doc.line(table.last);
+      const from = firstLine.from;
+      const to = lastLine.to;
+      if (to <= from) continue;
+      for (let number = table.first; number <= table.last; number++) {
+        sourceTableLines.add(number);
       }
-      if (node.name === 'Table') insideTable = true;
-      if (node.name === 'Blockquote') insideBlockquote = true;
-      if (node.name === 'HorizontalRule') isHorizontalRule = true;
-
-      const atxHeading = /^ATXHeading([1-6])$/.exec(node.name);
-      const setextHeading = /^SetextHeading([12])$/.exec(node.name);
-      headingLevel = headingLevel ?? atxHeading?.[1] ?? setextHeading?.[1] ?? null;
-    }
-
-    // These blocks already have their own full-document decoration fields.
-    if (insideTable || insideCodeBlock) continue;
-
-    let calloutInfo = null;
-    const isBlockquoteLine = insideBlockquote || Boolean(quotePrefix);
-    if (!isBlockquoteLine) {
-      activeCallouts.length = 0;
-      currentBlockquoteDepth = 0;
-    } else {
-      const depth = quotePrefix
-        ? (quotePrefix[1].match(/>/g) || []).length
-        : Math.max(1, currentBlockquoteDepth);
-      if (quotePrefix) currentBlockquoteDepth = depth;
-      while (
-        activeCallouts.length > 0 &&
-        activeCallouts[activeCallouts.length - 1].depth > depth
-      ) {
-        activeCallouts.pop();
-      }
-
-      const opener = quotePrefix && line.text.match(
-        /^(\s*(?:>\s*)+)\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-])?(?:[ \t]+(.*))?\s*$/i
-      );
-      if (opener) {
-        calloutInfo = {
-          type: opener[2].toLowerCase(),
-          depth,
-          isTitle: true
-        };
-        activeCallouts.push(calloutInfo);
-      } else {
-        const currentCallout = activeCallouts[activeCallouts.length - 1];
-        if (currentCallout && currentCallout.depth <= depth) {
-          calloutInfo = {
-            type: currentCallout.type,
-            depth: currentCallout.depth,
-            isTitle: false
-          };
-        }
-      }
-    }
-
-    if (headingLevel) {
-      addClass(number, 'cm-heading');
-      addClass(number, `cm-heading-${headingLevel}`);
-    }
-    if (calloutInfo) {
-      addClass(number, 'cm-callout');
-      if (calloutInfo.isTitle) {
-        addClass(number, 'cm-callout-title');
-        addClass(number, 'cm-callout-title-rendered');
-      } else {
-        addClass(number, 'cm-callout-body');
-      }
-      calloutAttributesByLine.set(number, {
-        type: calloutInfo.type,
-        depth: calloutInfo.depth
-      });
-    } else if (isBlockquoteLine) {
-      addClass(number, 'cm-blockquote');
-      blockquoteDepthByLine.set(
-        number,
-        Math.max(1, currentBlockquoteDepth)
+      ranges.push(
+        Decoration.replace({
+          widget: new SourceTableWidget({
+            markdown: state.doc.sliceString(from, to),
+            from,
+            to,
+            language: createMarkdownLanguageExtension(true),
+            highlightStyle: sourceHighlightStyle,
+            horizontalScrollEnabled: renderPlan.raw
+              ? tableScrollSourceEnabled
+              : tableScrollWysiwygEnabled
+          }),
+          block: true
+        }).range(from, to)
       );
     }
-    if (isHorizontalRule) addClass(number, 'cm-hr');
-
-    const hasListMarker = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])(?:\s+\[[ xX]\])?\s+/.test(line.text);
-    if (calloutInfo) {
-      if (hasListMarker) {
-        addClass(number, 'cm-list-item');
-        addClass(number, 'cm-callout-list-item');
-      }
-      if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
-        addClass(number, 'cm-todo-list-item');
-      }
-      continue;
-    }
-    if (insideListItem) {
-      addClass(number, 'cm-list-item');
-      if (/^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(line.text)) {
-        addClass(number, 'cm-todo-list-item');
-      }
-      continue;
-    }
-
-    if (paragraphNode) {
-      addClass(number, 'cm-paragraph');
-      if (line.from === doc.lineAt(paragraphNode.from).from) {
-        addClass(number, 'cm-paragraph-first');
-      }
-      if (
-        line.from ===
-        doc.lineAt(Math.max(paragraphNode.from, paragraphNode.to - 1)).from
-      ) {
-        addClass(number, 'cm-paragraph-last');
-      }
+    if (renderPlan.raw) {
+      return ranges.length ? Decoration.set(ranges, true) : Decoration.none;
     }
   }
 
-  const ranges = [];
-  for (const [lineNumber, classes] of classesByLine) {
-    const lineObj = doc.line(lineNumber);
-    const calloutAttributes = calloutAttributesByLine.get(lineNumber);
-    const blockquoteDepth = blockquoteDepthByLine.get(lineNumber);
+  for (const line of renderPlan.lines.values()) {
+    if (sourceTableLines.has(line.number)) continue;
+    if (
+      softBreakContinuationLines.has(line.from) &&
+      line.kind === 'list-continuation'
+    ) {
+      if (line.indentTo > line.from) {
+        ranges.push(Decoration.replace({}).range(line.from, line.indentTo));
+      }
+      continue;
+    }
+    if (!line.classes.size) continue;
+    const lineClasses = [...line.classes];
+    if (!renderPlan.raw && line.callout?.isTitle) {
+      lineClasses.push('cm-callout-title-rendered');
+    }
     ranges.push(
       Decoration.line({
         attributes: {
-          class: [...classes].join(' '),
-          ...(calloutAttributes
+          class: lineClasses.join(' '),
+          'data-layout-kind': line.kind,
+          ...(line.callout
             ? {
-                'data-callout-type': calloutAttributes.type,
-                'data-callout-depth': String(calloutAttributes.depth),
-                style: `--callout-depth-offset:${Math.max(0, calloutAttributes.depth - 1) * 12}px`
+                'data-callout-type': line.callout.type,
+                'data-callout-depth': String(line.callout.depth)
               }
-            : blockquoteDepth
-              ? {
-                  'data-blockquote-depth': String(blockquoteDepth),
-                  style: `--blockquote-depth-offset:${Math.max(0, blockquoteDepth - 1) * 12}px`
-                }
-              : {})
+            : {}),
+          ...(line.quoteDepth
+            ? { 'data-blockquote-depth': String(line.quoteDepth) }
+            : {}),
+          ...(line.styles.length ? { style: line.styles.join(';') } : {})
         }
-      }).range(lineObj.from)
+      }).range(line.from)
     );
+    if (line.contentFrom > line.from) {
+      ranges.push(Decoration.mark({ class: 'cm-layout-prefix' }).range(line.from, line.contentFrom));
+      ranges.push(Decoration.widget({ widget: new LayoutAnchorWidget('start'), side: -1 }).range(line.from));
+      ranges.push(Decoration.widget({ widget: new LayoutAnchorWidget('content'), side: -1 }).range(line.contentFrom));
+    }
+    if (line.indentTo > line.from && line.kind !== 'code' && line.kind !== 'table') {
+      ranges.push(Decoration.mark({ class: 'cm-layout-indent' }).range(line.from, line.indentTo));
+    }
+    if (line.kind === 'code' && line.to > line.from &&
+        !/^[ \t]*(?:`{3,}|~{3,})/.test(state.doc.sliceString(line.from, line.to))) {
+      ranges.push(Decoration.mark({ class: 'cm-codeblock-text' }).range(line.from, line.to));
+    }
   }
-
-  ranges.sort((a, b) => a.from - b.from);
   return Decoration.set(ranges, true);
 }
+
+function documentLayoutSettings() {
+  return {
+    list: listSyntaxSettings,
+    heading: headingSyntaxSettings,
+    callout: calloutSyntaxSettings,
+    blockquote: blockquoteSyntaxSettings
+  };
+}
+
+function markdownRenderPlan(state, mode = currentEditorMode) {
+  return getMarkdownRenderPlan(state, mode, documentLayoutSettings());
+}
+
+function isSyntaxRangeActiveForCurrentExposure(selection, doc, layout, from, to) {
+  if (currentModePreference === 'legacy_live_preview') {
+    return selection.empty
+      ? selection.head >= from && selection.head <= to
+      : selection.from < to && selection.to > from;
+  }
+  return syntaxExposureRangeIsActive(
+    selection,
+    doc,
+    layout,
+    from,
+    to,
+    activeSyntaxExposureScope
+  );
+}
+
+function documentLayout(state) {
+  return markdownRenderPlan(state).semantic;
+}
+
+const semanticLayoutField = StateField.define({
+  create: documentLayout,
+  update(previous, tr) {
+    const refresh = tr.effects.some(effect =>
+      effect.is(typographySettingsEffect) || effect.is(heightMapRefreshEffect)
+    );
+    if (!tr.docChanged && !refresh && syntaxTree(tr.startState) === syntaxTree(tr.state)) return previous;
+    const nativeCalloutEdit = /(^|\n)[ \t]*±[A-Za-z]/.test(tr.startState.doc.toString()) ||
+      /(^|\n)[ \t]*±[A-Za-z]/.test(tr.newDoc.toString());
+    if (tr.docChanged && !refresh && !nativeCalloutEdit &&
+        !transactionTouchesStructure(tr, {
+          nodeNames: [
+            'ATXHeading1', 'ATXHeading2', 'ATXHeading3', 'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
+            'SetextHeading1', 'SetextHeading2', 'ListItem', 'Blockquote',
+            'FencedCode', 'CodeBlock', 'Table', 'WmdxTaskMarker', 'HorizontalRule'
+          ],
+          markerPattern: /[\n`~|>#*+\-[\]{}()=.:±]/,
+          linePattern: /^[ \t]*[A-Za-z]+[.)](?:[ \t]|$)/
+        })) {
+      return mapMarkdownDocumentLayout(previous, tr, documentLayoutSettings());
+    }
+    return documentLayout(tr.state);
+  }
+});
 
 export const persistentLayoutField = StateField.define({
   create(state) {
@@ -4634,22 +5839,17 @@ export const persistentLayoutField = StateField.define({
       effect.is(typographySettingsEffect) ||
       effect.is(heightMapRefreshEffect)
     );
-    if (!tr.docChanged && !refresh) return current;
+    const tableExposureSelectionChanged =
+      currentModePreference === 'rendered' &&
+      currentEditorMode === 'live_preview' &&
+      activeSyntaxExposureScope !== 'hidden' &&
+      tr.selection !== undefined;
     if (
-      tr.docChanged &&
+      !tr.docChanged &&
       !refresh &&
-      !transactionTouchesStructure(tr, {
-        nodeNames: [
-          'ATXHeading1', 'ATXHeading2', 'ATXHeading3',
-          'ATXHeading4', 'ATXHeading5', 'ATXHeading6',
-          'SetextHeading1', 'SetextHeading2', 'ListItem',
-          'Blockquote', 'FencedCode', 'CodeBlock', 'Table',
-          'HorizontalRule'
-        ]
-      })
-    ) {
-      return current.map(tr.changes);
-    }
+      !tableExposureSelectionChanged &&
+      syntaxTree(tr.startState) === syntaxTree(tr.state)
+    ) return current;
     return buildPersistentLayoutDecorations(tr.state);
   },
   provide: field => EditorView.decorations.from(field)
@@ -4664,8 +5864,13 @@ export const tableStateField = StateField.define({
       effect.is(tableHeightEstimatesChanged) ||
       effect.is(heightMapRefreshEffect) ||
       effect.is(typographySettingsEffect)
-    );
-    if (!tr.docChanged && !refresh) return current;
+    ) || (!tr.docChanged && syntaxTree(tr.startState) !== syntaxTree(tr.state));
+    const tableExposureSelectionChanged =
+      currentModePreference === 'rendered' &&
+      currentEditorMode === 'live_preview' &&
+      activeSyntaxExposureScope !== 'hidden' &&
+      tr.selection !== undefined;
+    if (!tr.docChanged && !refresh && !tableExposureSelectionChanged) return current;
     if (
       tr.docChanged &&
       !refresh &&
@@ -4696,11 +5901,20 @@ export const tableNavigationKeymap = keymap.of([
 export const markdownIndentKeymap = keymap.of([
   {
     key: 'Tab',
-    run: view => applyMarkdownIndent(view, 'indent')
+    run: view => applyEditorMarkdownIndent(view, 'indent')
   },
   {
     key: 'Shift-Tab',
-    run: view => applyMarkdownIndent(view, 'outdent')
+    run: view => applyEditorMarkdownIndent(view, 'outdent')
+  }
+]);
+
+export const indentedCodeBlockBackspaceKeymap = keymap.of([
+  {
+    key: 'Backspace',
+    run: view =>
+      currentEditorMode !== 'source' &&
+      backspaceIndentedCodeBlockIndent(view)
   }
 ]);
 
@@ -4927,6 +6141,45 @@ export const resetRenderedVerticalGoal = EditorView.domEventHandlers({
 
 
 
+export const renderedListPointerHandler = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    if (event.button !== 0 || currentEditorMode === 'source') return false;
+    const line = event.target?.closest?.(
+      '.cm-line.cm-list-item, .cm-line.cm-list-continuation'
+    );
+    if (!line || !view.contentDOM.contains(line)) return false;
+
+    const direct = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (direct == null || renderedLineForPosition(view, direct, 1) === line) {
+      return false;
+    }
+
+    const targetRow = renderedVisualRows(view)
+      .filter(row => row.element === line)
+      .sort((left, right) =>
+        Math.abs(left.center - event.clientY) - Math.abs(right.center - event.clientY)
+      )[0];
+    if (!targetRow) return false;
+
+    const direction = event.clientY >= targetRow.center ? 1 : -1;
+    let position = positionOnRenderedRow(view, targetRow, event.clientX, direction);
+    if (position == null) return false;
+    position = leaveHiddenSyntax(view, position, direction);
+    if (renderedLineForPosition(view, position, direction) !== line) return false;
+
+    const current = view.state.selection.main;
+    event.preventDefault();
+    view.dispatch({
+      selection: event.shiftKey
+        ? EditorSelection.range(current.anchor, position)
+        : EditorSelection.cursor(position),
+      userEvent: event.shiftKey ? 'select.pointer' : 'input.pointer',
+      scrollIntoView: false
+    });
+    return true;
+  }
+});
+
 class CodeMirrorAdapter {
   constructor() {
     this.mode = currentEditorMode;
@@ -4935,6 +6188,7 @@ class CodeMirrorAdapter {
     this.historyCompartment = new Compartment();
     this.lineWrapCompartment = new Compartment();
     this.lineNumbersCompartment = new Compartment();
+    this.markdownLanguageCompartment = new Compartment();
     this.showLineNumbers = false;
     this.revision = 0;
     this.isProgrammatic = false;
@@ -4963,13 +6217,6 @@ class CodeMirrorAdapter {
 
     const refresh = () => {
       if (this.view !== view || !view.dom.isConnected) return;
-
-      if (currentEditorMode === 'source') {
-        this.syntaxRefreshComplete = true;
-        this.syntaxRefreshFrame = null;
-        this.scheduleRestoredScrollTop();
-        return;
-      }
 
       const parsed = forceParsing(view, view.state.doc.length, 8);
       if (parsed) {
@@ -5216,18 +6463,17 @@ class CodeMirrorAdapter {
         crosshairCursor(),
         highlightActiveLine(),
         codeFolding(),
-        cmMarkdown({
-          extensions: [
-            GFMAutolink,
-            GFMTable,
-            GFMTaskList,
-            wmdxGfmFtpAutolink,
-            wmdxGfmStrikethrough,
-            wmdxCommonMarkCompatibility
-          ]
-        }),
-        markdownBlockquotePaste,
-        syntaxHighlighting(customHighlightStyle),
+        this.markdownLanguageCompartment.of(
+          getEditorLanguageExtension()
+        ),
+        createMarkdownBlockquotePaste(
+          transformMarkdownPaste,
+          isBlockquoteSyntaxEnabledNow
+        ),
+        syntaxHighlighting(
+          currentEditorMode === 'source' ? sourceHighlightStyle : customHighlightStyle
+        ),
+        semanticLayoutField,
         livePreviewPlugin,
         listMarkerMeasurementPlugin,
         hiddenSyntaxAtomicRanges,
@@ -5344,9 +6590,14 @@ class CodeMirrorAdapter {
         heightMapField,
         livePreviewCodeSpanField,
         liveEmbeddedDocumentField,
-        Prec.highest([tableNavigationKeymap, markdownIndentKeymap]),
+        Prec.highest([
+          tableNavigationKeymap,
+          markdownIndentKeymap,
+          indentedCodeBlockBackspaceKeymap
+        ]),
         renderedRowNavigationKeymap,
         resetRenderedVerticalGoal,
+        renderedListPointerHandler,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap
@@ -5405,9 +6656,33 @@ class CodeMirrorAdapter {
       parent: containerEl,
       scrollTo: modeSnapshot?.scroll
     });
+    registerMarkdownParserView(
+      this.view,
+      this.markdownLanguageCompartment,
+      true,
+      getEditorLanguageExtension
+    );
     let editorTapStart = null;
     let emptyAreaLongPressTimer = null;
     let emptyAreaLongPressStart = null;
+    this.suppressNextLongPressResourceLinkClick = null;
+    this.longPressResourceLinkClickResetTimer = null;
+    this.longPressResourceLinkClickHandler = event => {
+      const link = event.target?.closest?.(
+        'a.cm-link[data-wmdx-link-from][data-wmdx-link-to]'
+      );
+      if (!link || link !== this.suppressNextLongPressResourceLinkClick) return;
+      this.suppressNextLongPressResourceLinkClick = null;
+      clearTimeout(this.longPressResourceLinkClickResetTimer);
+      this.longPressResourceLinkClickResetTimer = null;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    this.view.contentDOM.addEventListener(
+      'click',
+      this.longPressResourceLinkClickHandler,
+      true
+    );
     const cancelEmptyAreaLongPress = () => {
       clearTimeout(emptyAreaLongPressTimer);
       emptyAreaLongPressTimer = null;
@@ -5417,6 +6692,9 @@ class CodeMirrorAdapter {
       const target = event.target;
       const isTableCell = target instanceof HTMLElement &&
         Boolean(target.closest('.cm-wp-table-container'));
+      const resourceLink = target instanceof HTMLElement
+        ? target.closest('a.cm-link[data-wmdx-link-from][data-wmdx-link-to]')
+        : null;
       if (
         target instanceof HTMLElement &&
         target.closest(
@@ -5441,25 +6719,35 @@ class CodeMirrorAdapter {
         x: event.clientX,
         y: event.clientY,
         isTableCell,
+        resourceLink,
         longPressTriggered: false
       };
       if (event.pointerType === 'touch') {
         emptyAreaLongPressStart = {
           pointerId: event.pointerId,
           x: event.clientX,
-          y: event.clientY
+          y: event.clientY,
+          resourceLink
         };
         emptyAreaLongPressTimer = setTimeout(() => {
           const press = emptyAreaLongPressStart;
           if (!press || press.pointerId !== event.pointerId) return;
           const selection = this.view?.state?.selection?.main;
-          if (selection && !selection.empty) return;
-          if (showFloatingSelectionToolbarAtPoint(press.x, press.y, this.view) && editorTapStart) {
+          if (!press.resourceLink && selection && !selection.empty) return;
+          const toolbarShown = press.resourceLink
+            ? showWmdxResourceLinkActions(
+                this.view,
+                press.resourceLink,
+                press.x,
+                press.y
+              )
+            : showFloatingSelectionToolbarAtPoint(press.x, press.y, this.view);
+          if (toolbarShown && editorTapStart) {
             editorTapStart.longPressTriggered = true;
           }
           emptyAreaLongPressTimer = null;
           emptyAreaLongPressStart = null;
-        }, isTableCell ? 500 : 550);
+        }, resourceLink ? 400 : isTableCell ? 500 : 550);
       }
     }, { capture: true });
     this.view.contentDOM.addEventListener('pointermove', event => {
@@ -5476,6 +6764,14 @@ class CodeMirrorAdapter {
       const start = editorTapStart;
       editorTapStart = null;
       cancelEmptyAreaLongPress();
+      if (start?.longPressTriggered && start.resourceLink) {
+        this.suppressNextLongPressResourceLinkClick = start.resourceLink;
+        clearTimeout(this.longPressResourceLinkClickResetTimer);
+        this.longPressResourceLinkClickResetTimer = setTimeout(() => {
+          this.suppressNextLongPressResourceLinkClick = null;
+          this.longPressResourceLinkClickResetTimer = null;
+        }, 1000);
+      }
       if (
         !start ||
         start.pointerId !== event.pointerId ||
@@ -5532,6 +6828,22 @@ class CodeMirrorAdapter {
       cancelEmptyAreaLongPress();
     };
     this.view.contentDOM.addEventListener('contextmenu', event => {
+      const resourceLink = event.target?.closest?.(
+        'a.cm-link[data-wmdx-link-from][data-wmdx-link-to]'
+      );
+      if (resourceLink && this.view?.contentDOM?.contains(resourceLink)) {
+        event.preventDefault();
+        event.stopPropagation();
+        showWmdxResourceLinkActions(
+          this.view,
+          resourceLink,
+          event.clientX,
+          event.clientY
+        );
+        if (editorTapStart) editorTapStart.longPressTriggered = true;
+        cancelEmptyAreaLongPress();
+        return;
+      }
       const selection = this.view?.state?.selection?.main;
       if (selection && !selection.empty) return;
       if (!showFloatingSelectionToolbarAtPoint(event.clientX, event.clientY, this.view)) return;
@@ -5545,8 +6857,9 @@ class CodeMirrorAdapter {
         'a.cm-link[data-wmdx-link-target]'
       );
       if (!element || !this.view?.contentDOM?.contains(element)) return;
-      const target = element.getAttribute('data-wmdx-link-target');
-      if (!target) return;
+      const rawTarget = element.getAttribute('data-wmdx-link-target');
+      if (!rawTarget) return;
+      const target = resolveWmdxResourceTarget(rawTarget);
 
       event.preventDefault();
       event.stopPropagation();
@@ -5685,6 +6998,39 @@ class CodeMirrorAdapter {
     return this.view.state.doc.toString();
   }
 
+  getSelectionState() {
+    if (!this.view) return null;
+    const selection = this.view.state.selection.main;
+    return JSON.stringify({
+      anchor: selection.anchor,
+      head: selection.head
+    });
+  }
+
+  setSelectionState(stateJson, scrollTop = null) {
+    if (!this.view) return;
+    let state = stateJson;
+    if (typeof stateJson === 'string') {
+      try {
+        state = JSON.parse(stateJson);
+      } catch {
+        return;
+      }
+    }
+    if (!state || typeof state !== 'object') return;
+    const docLength = this.view.state.doc.length;
+    const requestedAnchor = Number(state.anchor ?? state.from);
+    const requestedHead = Number(state.head ?? state.to ?? requestedAnchor);
+    if (!Number.isFinite(requestedAnchor) || !Number.isFinite(requestedHead)) return;
+    const anchor = Math.max(0, Math.min(docLength, Math.trunc(requestedAnchor)));
+    const head = Math.max(0, Math.min(docLength, Math.trunc(requestedHead)));
+    this.view.dispatch({
+      selection: EditorSelection.range(anchor, head)
+    });
+    if (Number.isFinite(Number(scrollTop))) {
+      this.view.scrollDOM.scrollTop = Math.max(0, Number(scrollTop));
+    }
+  }
 
   undo() {
     const targetView = getUndoTargetView(this.view);
@@ -5827,6 +7173,7 @@ class CodeMirrorAdapter {
     this.persistScrollPosition();
     this.pointerGestureCleanup?.();
     this.pointerGestureCleanup = null;
+    closeWmdxResourceLinkActions();
     if (this.markdownLinkClickHandler && this.view?.contentDOM) {
       this.view.contentDOM.removeEventListener(
         'click',
@@ -5834,6 +7181,17 @@ class CodeMirrorAdapter {
       );
       this.markdownLinkClickHandler = null;
     }
+    if (this.longPressResourceLinkClickHandler && this.view?.contentDOM) {
+      this.view.contentDOM.removeEventListener(
+        'click',
+        this.longPressResourceLinkClickHandler,
+        true
+      );
+      this.longPressResourceLinkClickHandler = null;
+    }
+    clearTimeout(this.longPressResourceLinkClickResetTimer);
+    this.longPressResourceLinkClickResetTimer = null;
+    this.suppressNextLongPressResourceLinkClick = null;
     if (this.syntaxRefreshFrame !== null) {
       cancelAnimationFrame(this.syntaxRefreshFrame);
       this.syntaxRefreshFrame = null;
@@ -5874,21 +7232,101 @@ class CodeMirrorAdapter {
 
     if (this.view) {
       clearLastFocusedEditorViewWithin(this.view);
+      unregisterMarkdownParserView(this.view);
       this.view.destroy();
       this.view = null;
     }
   }
 }
 
-async function setEditorMode(mode) {
-  const targetMode = (mode === 'live_preview' || mode === 'source') ? mode : 'wysiwyg';
+function captureModeScrollAnchor(view) {
+  if (!view?.dom?.isConnected) return null;
+  const scroller = view.scrollDOM;
+  const bounds = scroller.getBoundingClientRect();
+  if (scroller.clientHeight < 32 || scroller.clientWidth < 32) return null;
+  const viewportY = Math.min(
+    scroller.clientHeight - 2,
+    Math.max(2, Math.round(scroller.clientHeight * 0.35))
+  );
+  const block = view.lineBlockAtHeight(scroller.scrollTop + viewportY);
+  const position = Number.isInteger(block?.from)
+    ? block.from
+    : view.posAtCoords({
+        x: bounds.left + Math.min(scroller.clientWidth - 2, Math.max(8, Math.round(scroller.clientWidth * 0.12))),
+        y: bounds.top + viewportY
+      });
+  if (!Number.isInteger(position)) return null;
+  const coords = view.coordsAtPos(position, 1);
+  if (!coords || !Number.isFinite(coords.top)) return null;
+  const from = Math.max(0, position - 24);
+  const to = Math.min(view.state.doc.length, position + 24);
+  const anchor = {
+    position,
+    viewportY: coords.top - bounds.top,
+    documentLength: view.state.doc.length,
+    context: view.state.doc.sliceString(from, to)
+  };
+  return anchor;
+}
 
+function restoreModeScrollAnchor(view, anchor) {
+  if (!anchor || !view?.dom?.isConnected) return false;
+  if (
+    anchor.position > view.state.doc.length ||
+    anchor.documentLength !== view.state.doc.length
+  ) return false;
+  const from = Math.max(0, anchor.position - 24);
+  const to = Math.min(view.state.doc.length, anchor.position + 24);
+  if (view.state.doc.sliceString(from, to) !== anchor.context) return false;
+  const scroller = view.scrollDOM;
+  const bounds = scroller.getBoundingClientRect();
+  const coords = view.coordsAtPos(anchor.position, 1);
+  if (!coords || !Number.isFinite(coords.top)) return false;
+  const correction = coords.top - (bounds.top + anchor.viewportY);
+  if (Math.abs(correction) < 1) return true;
+  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  scroller.scrollTop = Math.max(0, Math.min(maxScrollTop, scroller.scrollTop + correction));
+  return true;
+}
+
+async function setEditorMode(mode, { preserveMarkdownPreference = false } = {}) {
+  let nextModePreference;
+  let nextSyntaxExposureScope;
+  if (mode === 'source') {
+    nextModePreference = 'source';
+    nextSyntaxExposureScope = 'hidden';
+  } else if (mode === 'live_preview') {
+    // Backward-compatible bridge preset for older callers.
+    nextModePreference = 'legacy_live_preview';
+    nextSyntaxExposureScope = 'caret';
+  } else if (mode === 'wysiwyg') {
+    // Backward-compatible bridge preset for older callers.
+    nextModePreference = 'legacy_wysiwyg';
+    nextSyntaxExposureScope = 'hidden';
+  } else {
+    nextModePreference = 'rendered';
+    nextSyntaxExposureScope = markdownSyntaxExposureScope;
+  }
+  const targetMode = nextModePreference === 'source'
+    ? 'source'
+    : nextSyntaxExposureScope === 'hidden'
+      ? 'wysiwyg'
+      : 'live_preview';
+  if (!preserveMarkdownPreference) {
+    preferredMarkdownMode = targetMode === 'source' ? 'source' : 'rendered';
+  }
+
+  // Commit the table's textarea before taking the document/history snapshot.
+  // Removing a focused textarea does not reliably dispatch blur in WebViews.
+  const cellEditor = activeAdapter?.view?.dom.querySelector('.cm-wp-cell-editor');
+  cellEditor?._commitAndClose?.();
   const existingText = activeAdapter ? activeAdapter.getMarkdown() : (pendingMarkdown || '');
 
   const modeSnapshot = activeAdapter?.view
     ? {
         selection: activeAdapter.view.state.selection,
         scroll: activeAdapter.view.scrollSnapshot(),
+        scrollAnchor: captureModeScrollAnchor(activeAdapter.view),
         historyState: activeAdapter.view.state.toJSON({
           history: historyField
         })
@@ -5901,9 +7339,12 @@ async function setEditorMode(mode) {
     pendingMarkdown = null;
   }
 
+  currentModePreference = nextModePreference;
+  activeSyntaxExposureScope = nextSyntaxExposureScope;
   currentEditorMode = targetMode;
   const container = document.querySelector('#editor-container');
   if (container) {
+    container.classList.toggle('source-mode', targetMode === 'source');
     let editorEl = container.querySelector('#editor');
     if (!editorEl) {
       editorEl = document.createElement('div');
@@ -5923,6 +7364,47 @@ async function setEditorMode(mode) {
     pendingMarkdown = null;
     window.editorBridge?.setMarkdown?.(latestPendingMarkdown);
   }
+  if (modeSnapshot?.scrollAnchor && adapter.getMarkdown() === existingText) {
+    const view = adapter.view;
+    view.scrollDOM.style.overflowAnchor = 'none';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      let previousOffset = null;
+      let stableFrames = 0;
+      let attempts = 0;
+      const stabilizeAnchor = () => {
+        if (activeAdapter !== adapter) return;
+        if (!adapter.syntaxRefreshComplete) {
+          attempts++;
+          if (attempts < 90) {
+            requestAnimationFrame(stabilizeAnchor);
+          } else {
+            view.scrollDOM.style.overflowAnchor = 'auto';
+          }
+          return;
+        }
+        if (!restoreModeScrollAnchor(view, modeSnapshot.scrollAnchor)) {
+          view.scrollDOM.style.overflowAnchor = 'auto';
+          return;
+        }
+        const bounds = view.scrollDOM.getBoundingClientRect();
+        const coords = view.coordsAtPos(modeSnapshot.scrollAnchor.position, 1);
+        const offset = coords?.top - bounds.top;
+        if (Number.isFinite(offset) && previousOffset !== null && Math.abs(offset - previousOffset) < 0.5) {
+          stableFrames++;
+        } else {
+          stableFrames = 0;
+        }
+        previousOffset = offset;
+        attempts++;
+        if (stableFrames >= 3 || attempts >= 18) {
+          view.scrollDOM.style.overflowAnchor = 'auto';
+          return;
+        }
+        requestAnimationFrame(stabilizeAnchor);
+      };
+      stabilizeAnchor();
+    }));
+  }
 
   if (document.querySelector('#toc-panel')?.classList.contains('open')) {
     tocExpansionState.centerOnNextUpdate = true;
@@ -5934,10 +7416,33 @@ async function setEditorMode(mode) {
   }
 
   if (window.AndroidNative && typeof window.AndroidNative.onEditorReady === 'function') {
-    window.AndroidNative.onEditorReady(targetMode);
+    window.AndroidNative.onEditorReady(
+      currentModePreference === 'source' ? 'source' : 'rendered'
+    );
   }
 
   return activeAdapter;
+}
+
+function setCurrentEditorFileName(fileName, forceRefresh = false) {
+  const nextFileName = String(fileName || 'Untitled.md');
+  if (nextFileName === currentEditorFileName && !forceRefresh) return;
+  currentEditorFileName = nextFileName;
+  if (!activeAdapter?.view || currentEditorMode !== 'source') return;
+  activeAdapter.view.dispatch({
+    effects: activeAdapter.markdownLanguageCompartment.reconfigure(
+      getEditorLanguageExtension()
+    )
+  });
+  activeAdapter.scheduleSyntaxRefresh();
+  setupGroupedControlBar();
+}
+
+function setCurrentSourceDocumentKey(documentKey) {
+  const nextKey = String(documentKey || 'untitled');
+  if (nextKey === currentSourceDocumentKey) return false;
+  currentSourceDocumentKey = nextKey;
+  return true;
 }
 
 function installToolbarTapActions(container) {
@@ -6095,14 +7600,18 @@ function setupGroupedControlBar() {
     headingBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('heading', headingBtn, [
-        { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', action: () => execCmd('heading', { value: 'paragraph' }) },
-        { title: 'Heading 1', icon: 'H1', command: 'heading1', action: () => execCmd('heading', { value: 'heading1' }) },
-        { title: 'Heading 2', icon: 'H2', command: 'heading2', action: () => execCmd('heading', { value: 'heading2' }) },
-        { title: 'Heading 3', icon: 'H3', command: 'heading3', action: () => execCmd('heading', { value: 'heading3' }) },
-        { title: 'Heading 4', icon: 'H4', command: 'heading4', action: () => execCmd('heading', { value: 'heading4' }) },
-        { title: 'Heading 5', icon: 'H5', command: 'heading5', action: () => execCmd('heading', { value: 'heading5' }) },
-        { title: 'Heading 6', icon: 'H6', command: 'heading6', action: () => execCmd('heading', { value: 'heading6' }) },
-        { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
+        { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', disabled: !headingSyntaxSettings.enabled, action: () => execCmd('heading', { value: 'paragraph' }) },
+        ...Array.from({ length: 6 }, (_, index) => {
+          const level = index + 1;
+          return {
+            title: `Heading ${level}`,
+            icon: `H${level}`,
+            command: `heading${level}`,
+            disabled: !isHeadingLevelAvailable(headingSyntaxSettings, level),
+            action: () => execCmd('heading', { value: `heading${level}` })
+          };
+        }),
+        { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', disabled: !headingSyntaxSettings.enabled, action: () => execCmd('autoHeading') },
         { id: 'wrap', icon: svgIcons.wrap, title: 'Toggle Line Wrap', action: () => window.editorBridge.toggleLineWrap() },
         { id: 'line-numbers', icon: svgIcons.lineNumbers, title: 'Toggle Line Numbers', action: () => window.editorBridge.toggleLineNumbers() }
       ]);
@@ -6114,9 +7623,9 @@ function setupGroupedControlBar() {
     listsBtn.onclick = (e) => {
       e.stopPropagation();
       togglePopupStrip('lists', listsBtn, [
-        { title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
-        { title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', action: () => execCmd('numberedList') },
-        { title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', action: () => execCmd('todoList') },
+        { title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', disabled: !isListAuthoringAvailableNow(), action: () => execCmd('bulletedList') },
+        { title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', disabled: !isListAuthoringAvailableNow(), action: () => execCmd('numberedList') },
+        { title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', disabled: !getDefaultTaskPrefix(listSyntaxSettings), action: () => execCmd('todoList') },
         { id: 'indent', title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
         { id: 'outdent', title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
       ]);
@@ -6165,6 +7674,12 @@ function setupGroupedControlBar() {
             showTableGridPickerModal();
           }
         },
+        {
+          id: 'toggleTableScroll',
+          icon: svgIcons.tableScroll,
+          title: 'Toggle Horizontal Table Scrolling',
+          action: () => window.editorBridge.toggleTableScrolling()
+        },
         ...TABLE_ACTIONS.map(item => ({
           id: item.id,
           icon: item.icon,
@@ -6189,13 +7704,13 @@ function setupGroupedControlBar() {
         { id: 'video', icon: svgIcons.video, title: 'Insert Video', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('video') },
         { id: 'attachment', icon: svgIcons.attachment, title: 'Attach File', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('attachment') },
         { id: 'embed', icon: svgIcons.embed, title: 'Embed Document', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('embed') },
-        { id: 'link', icon: svgIcons.link, title: 'Insert Link', action: () => execCmd('link') },
-        { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', action: () => openCalloutInsertionDialog() },
+        { id: 'link', icon: svgIcons.link, title: 'Links', disabled: !linkSyntaxSettings.enabled, action: () => execCmd('link') },
+        { id: 'callout', icon: calloutTypeIcons.info, title: 'Insert Callout', disabled: !isCalloutAuthoringAvailable(), action: () => openCalloutInsertionDialog() },
         { id: 'inlineCode', icon: svgIcons.inlineCode, title: 'Inline Code', command: 'code', action: () => execCmd('code') },
-        { id: 'blockQuote', icon: svgIcons.blockQuote, title: 'Insert Quote', action: () => execCmd('blockQuote') },
+        { id: 'blockQuote', icon: svgIcons.blockQuote, title: 'Insert Quote', disabled: !isBlockquoteSyntaxEnabledNow(), action: () => execCmd('blockQuote') },
         { id: 'codeBlock', icon: svgIcons.codeBlock, title: 'Code Block', action: () => execCmd('codeBlock') },
         { id: 'horizontalLine', icon: svgIcons.horizontalLine, title: 'Insert Line', action: () => execCmd('horizontalLine') },
-        { id: 'footnote', icon: svgIcons.footnote, title: 'Insert Footnote', action: () => openFootnoteInsertionDialog() }
+        { id: 'footnote', icon: svgIcons.footnote, title: 'Insert Footnote', disabled: !isFootnoteAuthoringAvailableNow(), action: () => openFootnoteInsertionDialog() }
       ]);
     };
   }
@@ -6216,9 +7731,21 @@ function setupGroupedControlBar() {
         { id: 'saveTabs', icon: svgIcons.saveTabs, title: 'Save Tabs', action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
         { id: 'saveAsTextPack', icon: svgIcons.saveAsTextPack, title: 'Save as Text Pack', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_textpack') },
         { id: 'saveAsMdzip', icon: svgIcons.saveAsMdzip, title: 'Save as MDZip', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('save_as_mdzip') },
+        { id: 'convertFromMarkdown', icon: svgIcons.openFile, title: 'Convert from Markdown dialect', action: () => { hidePopupStrip(); openMarkdownConversionDialog('convert'); } },
+        { id: 'pasteFromDialect', icon: svgIcons.pasteAsPlainText, title: 'Paste from Markdown dialect', action: () => { hidePopupStrip(); openMarkdownConversionDialog('paste'); } },
+        { id: 'exportMarkdown', icon: svgIcons.exportHtml, title: 'Export Markdown dialect', action: () => { hidePopupStrip(); openMarkdownConversionDialog('export'); } },
+        { id: 'lintMarkdown', icon: svgIcons.search, title: 'Lint document', action: () => { hidePopupStrip(); openMarkdownLintDialog(); } },
+        {
+          id: 'formatJson',
+          icon: svgIcons.format,
+          title: 'Format JSON',
+          disabled: !isCurrentJsonSourceDocument(),
+          action: () => { hidePopupStrip(); formatJsonSourceDocument(); }
+        },
         { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
         { id: 'switchView', icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
+        { id: 'sourceLanguage', icon: svgIcons.codeBlock, title: 'Source / Code Language', action: () => { hidePopupStrip(); openSourceLanguageDialog(); } },
         { id: 'newWindow', icon: svgIcons.newWindow, title: 'New Window', action: () => {
           hidePopupStrip();
           if (window.AndroidNative && typeof window.AndroidNative.onNativeAction === 'function') {
@@ -6501,22 +8028,23 @@ function positionFloatingPopupStrip(targetButton = null) {
 function createToolbarActionRegistry() {
   const groups = [
     [
-      { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', action: () => execCmd('heading', { value: 'paragraph' }) },
+      { id: 'paragraph', title: 'Paragraph', icon: 'P', command: 'paragraph', disabled: !headingSyntaxSettings.enabled, action: () => execCmd('heading', { value: 'paragraph' }) },
       ...Array.from({ length: 6 }, (_, index) => ({
         id: `heading${index + 1}`,
         title: `Heading ${index + 1}`,
         icon: `H${index + 1}`,
         command: `heading${index + 1}`,
+        disabled: !isHeadingLevelAvailable(headingSyntaxSettings, index + 1),
         action: () => execCmd('heading', { value: `heading${index + 1}` })
       })),
-      { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', action: () => execCmd('autoHeading') },
+      { id: 'autoHeading', title: 'Auto Heading', icon: svgIcons.autoHeading, command: 'autoHeading', disabled: !headingSyntaxSettings.enabled, action: () => execCmd('autoHeading') },
       { id: 'wrap', title: 'Toggle Line Wrap', icon: svgIcons.wrap, action: () => window.editorBridge.toggleLineWrap() },
       { id: 'line-numbers', title: 'Toggle Line Numbers', icon: svgIcons.lineNumbers, action: () => window.editorBridge.toggleLineNumbers() }
     ],
     [
-      { id: 'bulletedList', title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', action: () => execCmd('bulletedList') },
-      { id: 'numberedList', title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', action: () => execCmd('numberedList') },
-      { id: 'todoList', title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', action: () => execCmd('todoList') },
+      { id: 'bulletedList', title: 'Bulleted List', icon: svgIcons.bulletedList, command: 'bulletedList', disabled: !isListAuthoringAvailableNow(), action: () => execCmd('bulletedList') },
+      { id: 'numberedList', title: 'Numbered List', icon: svgIcons.numberedList, command: 'numberedList', disabled: !isListAuthoringAvailableNow(), action: () => execCmd('numberedList') },
+      { id: 'todoList', title: 'Todo List', icon: svgIcons.todoList, command: 'todoList', disabled: !getDefaultTaskPrefix(listSyntaxSettings), action: () => execCmd('todoList') },
       { id: 'indent', title: 'Indent', icon: svgIcons.indent, action: () => execCmd('indent') },
       { id: 'outdent', title: 'Outdent', icon: svgIcons.outdent, action: () => execCmd('outdent') }
     ],
@@ -6547,6 +8075,7 @@ function createToolbarActionRegistry() {
         hidePopupStrip();
         showTableGridPickerModal();
       } },
+      { id: 'toggleTableScroll', title: 'Toggle Horizontal Table Scrolling', icon: svgIcons.tableScroll, action: () => window.editorBridge.toggleTableScrolling() },
       ...TABLE_ACTIONS.map(item => ({
         id: item.id,
         title: item.title,
@@ -6564,13 +8093,13 @@ function createToolbarActionRegistry() {
       { id: 'video', title: 'Insert Video', icon: svgIcons.video, action: () => window.AndroidNative?.onNativeAction('video') },
       { id: 'attachment', title: 'Attach File', icon: svgIcons.attachment, action: () => window.AndroidNative?.onNativeAction('attachment') },
       { id: 'embed', title: 'Embed Document', icon: svgIcons.embed, action: () => window.AndroidNative?.onNativeAction('embed') },
-      { id: 'link', title: 'Insert Link', icon: svgIcons.link, action: () => execCmd('link') },
-      { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, action: () => openCalloutInsertionDialog() },
+      { id: 'link', title: 'Links', icon: svgIcons.link, disabled: !linkSyntaxSettings.enabled, action: () => execCmd('link') },
+      { id: 'callout', title: 'Insert Callout', icon: calloutTypeIcons.info, disabled: !isCalloutAuthoringAvailable(), action: () => openCalloutInsertionDialog() },
       { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode, command: 'code', action: () => execCmd('code') },
-      { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote, action: () => execCmd('blockQuote') },
+      { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote, disabled: !isBlockquoteSyntaxEnabledNow(), action: () => execCmd('blockQuote') },
       { id: 'codeBlock', title: 'Code Block', icon: svgIcons.codeBlock, action: () => execCmd('codeBlock') },
       { id: 'horizontalLine', title: 'Insert Line', icon: svgIcons.horizontalLine, action: () => execCmd('horizontalLine') },
-      { id: 'footnote', title: 'Insert Footnote', icon: svgIcons.footnote, action: () => openFootnoteInsertionDialog() }
+      { id: 'footnote', title: 'Insert Footnote', icon: svgIcons.footnote, disabled: !isFootnoteAuthoringAvailableNow(), action: () => openFootnoteInsertionDialog() }
     ],
     [
       { id: 'newTab', title: 'New Tab', icon: svgIcons.newTab, action: () => {
@@ -6584,9 +8113,24 @@ function createToolbarActionRegistry() {
       { id: 'saveTabs', title: 'Save Tabs', icon: svgIcons.saveTabs, action: () => { hidePopupStrip(); void window.leftPanelController?.saveTabSession?.(); } },
       { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack, action: () => window.AndroidNative?.onNativeAction('save_as_textpack') },
       { id: 'saveAsMdzip', title: 'Save as MDZip', icon: svgIcons.saveAsMdzip, action: () => window.AndroidNative?.onNativeAction('save_as_mdzip') },
+      { id: 'convertFromMarkdown', title: 'Convert from Markdown dialect', icon: svgIcons.openFile, action: () => { hidePopupStrip(); openMarkdownConversionDialog('convert'); } },
+      { id: 'pasteFromDialect', title: 'Paste from Markdown dialect', icon: svgIcons.pasteAsPlainText, action: () => { hidePopupStrip(); openMarkdownConversionDialog('paste'); } },
+      { id: 'exportMarkdown', title: 'Export Markdown dialect', icon: svgIcons.exportHtml, action: () => { hidePopupStrip(); openMarkdownConversionDialog('export'); } },
+      { id: 'lintMarkdown', title: 'Lint document', icon: svgIcons.search, action: () => { hidePopupStrip(); openMarkdownLintDialog(); } },
+      {
+        id: 'formatJson',
+        title: 'Format JSON',
+        icon: svgIcons.format,
+        disabled: !isCurrentJsonSourceDocument(),
+        action: () => { hidePopupStrip(); formatJsonSourceDocument(); }
+      },
       { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
       { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
       { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView, action: () => openWithOtherEngine() },
+      { id: 'sourceLanguage', title: 'Source / Code Language', icon: svgIcons.codeBlock, action: () => {
+        hidePopupStrip();
+        openSourceLanguageDialog();
+      } },
       { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow, action: () => {
         hidePopupStrip();
         window.AndroidNative?.onNativeAction('new_window');
@@ -6871,13 +8415,20 @@ async function runToolbarClipboardAction(actionId, preserveKeyboard = false) {
       return false;
     }
     const { from, to } = view.state.selection.main;
-    const pasteRange = quotePasteInsertionRange(view.state, from, to);
-    const pastedText = quoteMultilinePaste(
-      view.state,
-      pasteRange.from,
-      pasteRange.to,
-      text
-    );
+    const pasteRange = isBlockquoteSyntaxEnabledNow()
+      ? quotePasteInsertionRange(view.state, from, to)
+      : { from, to };
+    const sourceText = isListFlavorEnabledNow('markdown')
+      ? normalizeMarkdownOrderedListText(text)
+      : text;
+    const pastedText = isBlockquoteSyntaxEnabledNow()
+      ? quoteMultilinePaste(
+          view.state,
+          pasteRange.from,
+          pasteRange.to,
+          sourceText
+        )
+      : sourceText;
     view.dispatch({
       changes: {
         from: pasteRange.from,
@@ -6892,6 +8443,280 @@ async function runToolbarClipboardAction(actionId, preserveKeyboard = false) {
   }
 
   return false;
+}
+
+function openMarkdownConversionDialog(action) {
+  const view = activeAdapter?.view;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!view || !overlay || !dialog) return false;
+
+  const labels = {
+    commonmark: 'CommonMark',
+    gfm: 'GitHub Flavored Markdown',
+    obsidian: 'Obsidian',
+    html: 'HTML'
+  };
+  const formats = action === 'export'
+    ? ['commonmark', 'gfm', 'obsidian']
+    : ['commonmark', 'gfm', 'obsidian', 'html'];
+  const title = action === 'convert'
+    ? 'Convert current document'
+    : action === 'paste'
+      ? 'Paste from a dialect'
+      : 'Export Markdown';
+  const instruction = action === 'convert'
+    ? 'Choose the source format of the open document. Review the converted preview before replacing its contents.'
+    : action === 'paste'
+      ? 'Choose the source format of the clipboard text. The converted preview is inserted at the current selection.'
+      : 'Choose the target format. Review conversion warnings before saving a Markdown copy.';
+  const optionHtml = formats.map(format =>
+    `<option value="${format}">${labels[format]}</option>`
+  ).join('');
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">${title}</h3>
+    <p class="modal-message">${instruction}</p>
+    <div class="modal-field-group">
+      <label class="modal-label" for="markdown-conversion-format">Format</label>
+      <select id="markdown-conversion-format" class="modal-select">${optionHtml}</select>
+    </div>
+    <p class="modal-message" id="markdown-conversion-status" aria-live="polite"></p>
+    <textarea id="markdown-conversion-preview" class="modal-input modal-textarea" readonly
+      aria-label="Converted Markdown preview" style="display:none"></textarea>
+    <div id="markdown-conversion-warnings" class="modal-message" style="display:none"></div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="markdown-conversion-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="markdown-conversion-preview-button">Preview</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="markdown-conversion-apply" style="display:none"></button>
+    </div>`;
+  overlay.classList.add('open');
+
+  const formatSelect = dialog.querySelector('#markdown-conversion-format');
+  const status = dialog.querySelector('#markdown-conversion-status');
+  const preview = dialog.querySelector('#markdown-conversion-preview');
+  const warningsElement = dialog.querySelector('#markdown-conversion-warnings');
+  const previewButton = dialog.querySelector('#markdown-conversion-preview-button');
+  const applyButton = dialog.querySelector('#markdown-conversion-apply');
+  let pending = null;
+  let sourceText = '';
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  const resetPreview = () => {
+    pending = null;
+    preview.value = '';
+    preview.style.display = 'none';
+    warningsElement.textContent = '';
+    warningsElement.style.display = 'none';
+    applyButton.style.display = 'none';
+    previewButton.textContent = 'Preview';
+    status.textContent = '';
+  };
+
+  formatSelect.addEventListener('change', resetPreview);
+  dialog.querySelector('#markdown-conversion-cancel').addEventListener('click', close);
+  previewButton.addEventListener('click', async () => {
+    const format = formatSelect.value;
+    try {
+      if (action === 'paste') {
+        const clipboard = await readMarkdownClipboardPayload();
+        sourceText = format === 'html' && clipboard.html
+          ? clipboard.html
+          : clipboard.text;
+        if (!sourceText) {
+          status.textContent = 'The clipboard is empty or unavailable.';
+          return;
+        }
+      } else {
+        sourceText = view.state.doc.toString();
+      }
+
+      pending = action === 'export'
+        ? exportMarkdown(sourceText, format)
+        : format === 'html'
+          ? convertFromHtml(sourceText)
+          : convertFromMarkdown(sourceText, format);
+      preview.value = pending.markdown.length > 6000
+        ? `${pending.markdown.slice(0, 6000)}\n\n[Preview truncated]`
+        : pending.markdown;
+      preview.style.display = 'block';
+      warningsElement.style.display = 'block';
+      warningsElement.textContent = pending.warnings.length
+        ? `Review these conversion limits:\n${pending.warnings.map(item => `• ${item}`).join('\n')}`
+        : 'No known conversion warnings for this content.';
+      applyButton.textContent = action === 'convert'
+        ? 'Replace document'
+        : action === 'paste'
+          ? 'Insert converted text'
+          : 'Save Markdown copy';
+      applyButton.style.display = 'inline-flex';
+      previewButton.textContent = 'Refresh preview';
+      status.textContent = `${pending.markdown.length.toLocaleString()} converted characters`;
+    } catch (error) {
+      pending = null;
+      status.textContent = error?.message || 'Conversion preview failed.';
+    }
+  });
+
+  applyButton.addEventListener('click', () => {
+    if (!pending) return;
+    if (action === 'convert') {
+      const sourceFileName = currentEditorFileName;
+      const sourceDocumentSessionId = activeAdapter?.documentSessionId ?? null;
+      const importingHtmlFile = formatSelect.value === 'html' &&
+        /\.html?$/i.test(sourceFileName);
+      if (
+        importingHtmlFile &&
+        typeof window.AndroidNative?.importHtmlAsMarkdown === 'function'
+      ) {
+        close();
+        window.AndroidNative.importHtmlAsMarkdown(
+          pending.markdown,
+          sourceFileName,
+          sourceDocumentSessionId,
+          JSON.stringify(pending.warnings)
+        );
+        return;
+      }
+
+      const oldLength = view.state.doc.length;
+      const cursor = Math.min(view.state.selection.main.from, pending.markdown.length);
+      view.dispatch({
+        changes: { from: 0, to: oldLength, insert: pending.markdown },
+        selection: EditorSelection.cursor(cursor),
+        userEvent: 'input.replace'
+      });
+      close();
+      window.AndroidNative?.showToast?.('Document converted to Wmdx syntax');
+      return;
+    }
+    if (action === 'paste') {
+      const { from, to } = view.state.selection.main;
+      const pasteRange = isBlockquoteSyntaxEnabledNow()
+        ? quotePasteInsertionRange(view.state, from, to)
+        : { from, to };
+      const source = isListFlavorEnabledNow('markdown')
+        ? normalizeMarkdownOrderedListText(pending.markdown)
+        : pending.markdown;
+      const text = isBlockquoteSyntaxEnabledNow()
+        ? quoteMultilinePaste(view.state, pasteRange.from, pasteRange.to, source)
+        : source;
+      view.dispatch({
+        changes: { from: pasteRange.from, to: pasteRange.to, insert: text },
+        selection: EditorSelection.cursor(pasteRange.from + text.length),
+        userEvent: 'input.paste'
+      });
+      close();
+      return;
+    }
+    const native = window.AndroidNative;
+    if (typeof native?.saveMarkdownExport === 'function') {
+      native.saveMarkdownExport(
+        formatSelect.value,
+        pending.markdown,
+        JSON.stringify(pending.warnings)
+      );
+    } else {
+      const blob = new Blob([pending.markdown], { type: 'text/markdown;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'Wmdx-export.md';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+    close();
+  });
+
+  return true;
+}
+
+function openMarkdownLintDialog() {
+  const view = activeAdapter?.view;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!view || !overlay || !dialog) return false;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Markdown linter</h3>
+    <p class="modal-message">Checks common structural problems and unsupported syntax. It does not change the document or replace a full dialect conformance test.</p>
+    <div class="modal-field-group">
+      <label class="modal-label" for="markdown-lint-dialect">Check dialect</label>
+      <select id="markdown-lint-dialect" class="modal-select">
+        <option value="wmdx">Wmdx</option>
+        <option value="commonmark">CommonMark</option>
+        <option value="gfm">GitHub Flavored Markdown</option>
+        <option value="obsidian">Obsidian</option>
+      </select>
+    </div>
+    <p class="modal-message" id="markdown-lint-status" aria-live="polite"></p>
+    <div id="markdown-lint-results" class="markdown-lint-results"></div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="markdown-lint-close">Close</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="markdown-lint-run">Run again</button>
+    </div>`;
+  overlay.classList.add('open');
+
+  const status = dialog.querySelector('#markdown-lint-status');
+  const results = dialog.querySelector('#markdown-lint-results');
+  const dialect = dialog.querySelector('#markdown-lint-dialect');
+  if (['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(currentMarkdownProfile)) {
+    dialect.value = currentMarkdownProfile;
+  }
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  const run = () => {
+    const diagnostics = lintMarkdown(view.state.doc.toString(), {
+      dialect: dialect.value
+    });
+    results.replaceChildren();
+    status.textContent = diagnostics.length
+      ? `${diagnostics.length} check${diagnostics.length === 1 ? '' : 's'} to review`
+      : 'No issues found by these checks.';
+    if (!diagnostics.length) {
+      const empty = document.createElement('p');
+      empty.className = 'modal-message';
+      empty.textContent = 'The document passed the current structural checks.';
+      results.appendChild(empty);
+      return;
+    }
+    for (const diagnostic of diagnostics) {
+      const row = document.createElement('div');
+      row.className = 'markdown-lint-item';
+      const jump = document.createElement('button');
+      jump.type = 'button';
+      jump.className = 'markdown-lint-line';
+      jump.textContent = `Line ${diagnostic.line}`;
+      jump.setAttribute('aria-label', `Go to line ${diagnostic.line}`);
+      jump.addEventListener('click', () => {
+        const line = view.state.doc.line(
+          Math.max(1, Math.min(diagnostic.line, view.state.doc.lines))
+        );
+        close();
+        view.dispatch({
+          selection: EditorSelection.cursor(line.from),
+          effects: EditorView.scrollIntoView(line.from, { y: 'center' })
+        });
+        view.focus();
+      });
+      const message = document.createElement('span');
+      message.className = `markdown-lint-message is-${diagnostic.severity}`;
+      message.textContent = diagnostic.message;
+      row.append(jump, message);
+      results.appendChild(row);
+    }
+  };
+  dialog.querySelector('#markdown-lint-close').addEventListener('click', close);
+  dialog.querySelector('#markdown-lint-run').addEventListener('click', run);
+  dialect.addEventListener('change', run);
+  run();
+  return true;
 }
 
 function installPopupToolbarSwipeUp(
@@ -7018,20 +8843,31 @@ function getRuntimeToolbarGroupItemsForConfig(groupId, toolbarConfig) {
     .filter(Boolean);
 }
 
-export function getDocumentHeadings(doc) {
+export function getDocumentHeadings(doc, settings = headingSyntaxSettings) {
   const headings = [];
-  if (!doc) return headings;
+  if (!doc || settings?.enabled === false) return headings;
   for (let i = 1; i <= doc.lines; i++) {
-    const lineText = doc.line(i).text.trim();
-    if (/^#{1,6}\s+/.test(lineText)) {
-      headings.push(cleanHeadingText(lineText));
+    const lineText = doc.line(i).text;
+    const atxOrWmdx = /^\s{0,3}(#{1,6}|\.([1-6]))[ \t]+/.exec(lineText);
+    if (atxOrWmdx) {
+      const flavor = atxOrWmdx[2] ? 'wmdx' : 'hash';
+      if (isHeadingFlavorEnabled(settings, flavor)) {
+        headings.push(cleanHeadingText(lineText));
+      }
+      continue;
+    }
+    if (i < doc.lines && lineText.trim()) {
+      const underline = /^\s{0,3}(=+|-+)\s*$/.exec(doc.line(i + 1).text);
+      if (underline && isHeadingFlavorEnabled(settings, 'setext')) {
+        headings.push(cleanHeadingText(lineText));
+      }
     }
   }
   return headings;
 }
 
 export function openLinkInsertionDialog() {
-  if (!activeAdapter || !activeAdapter.view) return;
+  if (!activeAdapter || !activeAdapter.view || !linkSyntaxSettings.enabled) return;
   const view = activeAdapter.view;
 
   let selectionSnapshot = null;
@@ -7081,61 +8917,110 @@ export function openLinkInsertionDialog() {
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog) return;
-
+  const availability = linkActionAvailability(linkSyntaxSettings);
   const headings = getDocumentHeadings(view.state.doc);
+  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]);
+  const hasAvailableLinkType = Object.values(availability).some(Boolean);
+  const initialLinkType =
+    ['external', 'internal', 'reference'].find(kind => availability[kind]) || 'external';
 
   dialog.innerHTML = `
-    <h3 class="modal-title">Insert Link</h3>
+    <h3 class="modal-title">Links</h3>
     <div class="modal-field-group">
-      <label class="modal-label">Link Kind</label>
+      <label class="modal-label" for="modal-link-kind">Link type</label>
       <select id="modal-link-kind" class="modal-select">
-        <option value="web">Web URL</option>
-        <option value="heading">Heading in this document</option>
+        <option value="external" ${availability.external ? '' : 'disabled'} ${initialLinkType === 'external' ? 'selected' : ''}>External link</option>
+        <option value="internal" ${availability.internal ? '' : 'disabled'} ${initialLinkType === 'internal' ? 'selected' : ''}>Internal link</option>
+        <option value="reference" ${availability.reference ? '' : 'disabled'} ${initialLinkType === 'reference' ? 'selected' : ''}>Reference link</option>
       </select>
     </div>
     <div class="modal-field-group">
-      <label class="modal-label" id="modal-label-text">Display Text</label>
-      <input type="text" id="modal-link-text" class="modal-input" placeholder="Text to display" value="${selectedText.replace(/"/g, '&quot;')}" />
+      <label class="modal-label" for="modal-link-text">Text to display</label>
+      <input type="text" id="modal-link-text" class="modal-input" placeholder="Text to display" value="${escapeHtml(selectedText)}" />
     </div>
-    <div class="modal-field-group" id="group-web-url">
-      <label class="modal-label">Web URL</label>
-      <input type="text" id="modal-link-url" class="modal-input" placeholder="https://" value="https://" />
+    <div class="modal-field-group">
+      <label class="modal-label" id="modal-link-target-label" for="modal-link-target">Destination</label>
+      <input type="text" id="modal-link-target" class="modal-input" placeholder="example.com" value="" />
     </div>
-    <div class="modal-field-group hidden" id="group-heading-picker" style="display:none;">
-      <label class="modal-label">Target Heading</label>
+    <div class="modal-field-group" id="group-heading-picker" style="display:none;">
+      <label class="modal-label" for="modal-heading-select">Or choose a heading here</label>
       <select id="modal-heading-select" class="modal-select">
-        ${headings.length > 0
-          ? headings.map(h => `<option value="${h.replace(/"/g, '&quot;')}">${h}</option>`).join('')
-          : '<option value="">(No headings found in document)</option>'}
+        <option value="">Choose a heading</option>
+        ${headings.map(heading =>
+          `<option value="${escapeHtml(`#${heading}`)}">${escapeHtml(heading)}</option>`
+        ).join('')}
+      </select>
+    </div>
+    <p class="modal-message" id="modal-link-help"></p>
+    <div class="modal-field-group" id="group-link-alignment">
+      <label class="modal-label" for="modal-link-alignment">Standalone alignment</label>
+      <select id="modal-link-alignment" class="modal-select">
+        <option value="">Default</option>
+        <option value="&lt;">Left</option>
+        <option value="&gt;&lt;">Center</option>
+        <option value="&gt;">Right</option>
+        <option value="&lt;&gt;">Justified</option>
       </select>
     </div>
     <div class="modal-actions">
       <button type="button" class="modal-btn modal-btn-cancel" id="modal-btn-cancel">Cancel</button>
-      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm">Insert</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-btn-confirm" ${hasAvailableLinkType ? '' : 'disabled'}>Insert</button>
     </div>
   `;
 
   const kindSelect = dialog.querySelector('#modal-link-kind');
-  const groupWeb = dialog.querySelector('#group-web-url');
-  const groupHeading = dialog.querySelector('#group-heading-picker');
-  const labelText = dialog.querySelector('#modal-label-text');
   const textInput = dialog.querySelector('#modal-link-text');
-  const urlInput = dialog.querySelector('#modal-link-url');
+  const targetInput = dialog.querySelector('#modal-link-target');
+  const targetLabel = dialog.querySelector('#modal-link-target-label');
+  const headingGroup = dialog.querySelector('#group-heading-picker');
   const headingSelect = dialog.querySelector('#modal-heading-select');
+  const helpText = dialog.querySelector('#modal-link-help');
+  const alignmentGroup = dialog.querySelector('#group-link-alignment');
+  const alignmentSelect = dialog.querySelector('#modal-link-alignment');
   const btnCancel = dialog.querySelector('#modal-btn-cancel');
   const btnConfirm = dialog.querySelector('#modal-btn-confirm');
 
-  kindSelect.addEventListener('change', () => {
-    if (kindSelect.value === 'web') {
-      groupWeb.style.display = 'flex';
-      groupHeading.style.display = 'none';
-      labelText.textContent = 'Display Text';
+  const updateLinkDialog = () => {
+    const kind = kindSelect.value;
+    const enabled = availability[kind] === true;
+    btnConfirm.disabled = !enabled;
+    alignmentGroup.style.display =
+      kind !== 'reference' &&
+      linkSyntaxSettings.wmdx &&
+      linkSyntaxSettings.authoringSyntax === 'wmdx'
+        ? 'flex'
+        : 'none';
+    if (kind === 'internal') {
+      targetLabel.textContent = 'File path or heading';
+      targetInput.placeholder = 'Notes.md or #Heading';
+      headingGroup.style.display = headings.length ? 'flex' : 'none';
+      helpText.textContent = '';
+    } else if (kind === 'reference') {
+      targetLabel.textContent = 'Destination';
+      targetInput.placeholder = 'URL or local path';
+      headingGroup.style.display = 'none';
+      helpText.textContent = 'A matching reference definition is added at the end of the document.';
     } else {
-      groupWeb.style.display = 'none';
-      groupHeading.style.display = 'flex';
-      labelText.textContent = 'Link Alias (Optional)';
+      targetLabel.textContent = 'Web address';
+      targetInput.placeholder = 'example.com';
+      headingGroup.style.display = 'none';
+      helpText.textContent = '';
     }
+    if (!hasAvailableLinkType) {
+      helpText.textContent = 'Enable a link syntax in Typography → Links to insert links.';
+    }
+  };
+  kindSelect.addEventListener('change', updateLinkDialog);
+  headingSelect.addEventListener('change', () => {
+    if (headingSelect.value) targetInput.value = headingSelect.value;
   });
+  updateLinkDialog();
 
   const closeModal = () => {
     overlay.classList.remove('open');
@@ -7153,26 +9038,30 @@ export function openLinkInsertionDialog() {
     e.preventDefault();
     const kind = kindSelect.value;
     const displayText = textInput.value.trim();
-    let replacement = '';
-
-    if (kind === 'web') {
-      const url = urlInput.value.trim() || 'https://';
-      const label = displayText || url;
-      replacement = `[${label}](${url})`;
-    } else {
-      const targetHeading = headingSelect.value;
-      if (!targetHeading) {
-        window._lastActiveCellSelection = null;
-        closeModal();
-        view.focus();
-        return;
-      }
-      if (displayText) {
-        replacement = `[[#${targetHeading}|${displayText}]]`;
-      } else {
-        replacement = `[[#${targetHeading}]]`;
-      }
+    const target = targetInput.value.trim();
+    if (!target || !availability[kind]) {
+      targetInput.focus();
+      return;
     }
+
+    let insertion;
+    try {
+      insertion = formatMarkdownLinkInsertion({
+        kind,
+        target,
+        title: displayText,
+        alignment: alignmentSelect.value,
+        settings: linkSyntaxSettings,
+        existingTargets: collectMarkdownReferenceTargets(
+          view.state.doc,
+          syntaxTree(view.state)
+        )
+      });
+    } catch (error) {
+      helpText.textContent = error?.message || 'Could not create this link.';
+      return;
+    }
+    const replacement = insertion.markdown;
 
     if (selectionSnapshot && selectionSnapshot.type === 'table-cell') {
       const snap = selectionSnapshot;
@@ -7207,6 +9096,29 @@ export function openLinkInsertionDialog() {
       });
     }
 
+    if (insertion.definition) {
+      const currentDocument = view.state.doc.toString();
+      const separator = currentDocument.length === 0
+        ? ''
+        : currentDocument.endsWith('\n\n')
+          ? ''
+          : currentDocument.endsWith('\n')
+            ? '\n'
+            : '\n\n';
+      const definitionText = `${separator}${insertion.definition}\n`;
+      const definitionStart = view.state.doc.length;
+      const definitionEnd = definitionStart + definitionText.length;
+      view.dispatch({
+        changes: {
+          from: definitionStart,
+          to: definitionStart,
+          insert: definitionText
+        },
+        selection: { anchor: definitionEnd, head: definitionEnd },
+        effects: EditorView.scrollIntoView(definitionEnd, { y: 'nearest' })
+      });
+    }
+
     closeModal();
     view.focus();
   });
@@ -7217,19 +9129,624 @@ export function openLinkInsertionDialog() {
   });
 }
 
+async function readMarkdownClipboardPayload() {
+  try {
+    const raw = window.AndroidNative?.readClipboardPayload?.();
+    if (raw) {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (parsed && typeof parsed === 'object') {
+        return {
+          text: String(parsed.text ?? ''),
+          html: String(parsed.html ?? '')
+        };
+      }
+    }
+  } catch {
+    // Older Android builds and clipboard providers expose plain text only.
+  }
+  try {
+    const readClipboard = window.AndroidNative?.readClipboard;
+    if (typeof readClipboard === 'function') {
+      const text = String(readClipboard() ?? '');
+      if (text) return { text, html: '' };
+    }
+  } catch {
+    // Use the browser clipboard API when the native fallback is unavailable.
+  }
+  try {
+    if (typeof navigator.clipboard?.read === 'function') {
+      const payload = { text: '', html: '' };
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        if (!payload.html && item.types.includes('text/html')) {
+          payload.html = await (await item.getType('text/html')).text();
+        }
+        if (!payload.text && item.types.includes('text/plain')) {
+          payload.text = await (await item.getType('text/plain')).text();
+        }
+      }
+      if (payload.text || payload.html) return payload;
+    }
+  } catch {
+    // Fall back to the widely supported text-only clipboard API.
+  }
+  try {
+    const readText = navigator.clipboard?.readText;
+    return {
+      text: typeof readText === 'function' ? await readText.call(navigator.clipboard) : '',
+      html: ''
+    };
+  } catch {
+    return { text: '', html: '' };
+  }
+}
+
+let activeWmdxResourceLinkActions = null;
+
+function closeWmdxResourceLinkActions() {
+  const active = activeWmdxResourceLinkActions;
+  if (!active) return;
+  activeWmdxResourceLinkActions = null;
+  document.removeEventListener('pointerdown', active.dismiss, true);
+  document.removeEventListener('keydown', active.keydown, true);
+  document.removeEventListener('selectionchange', active.reposition);
+  window.visualViewport?.removeEventListener('resize', active.reposition);
+  active.menu.remove();
+}
+
+function showWmdxResourceLinkActions(view, link, x, y) {
+  if (activeWmdxResourceLinkActions?.link === link) {
+    const active = activeWmdxResourceLinkActions;
+    active.point.x = Number.isFinite(x) ? x : active.point.x;
+    active.point.y = Number.isFinite(y) ? y : active.point.y;
+    active.reposition();
+    return true;
+  }
+  closeWmdxResourceLinkActions();
+  const from = Number(link.getAttribute('data-wmdx-link-from'));
+  const to = Number(link.getAttribute('data-wmdx-link-to'));
+  if (
+    !Number.isInteger(from) ||
+    !Number.isInteger(to) ||
+    from >= to ||
+    !getEditableMarkdownLinkAtRange(view, from, to)
+  ) {
+    return;
+  }
+
+  const menu = document.createElement('div');
+  menu.className = 'cm-image-actions cm-link-actions visible';
+  menu.setAttribute('role', 'toolbar');
+  menu.setAttribute('aria-label', 'Link actions');
+
+  const editButton = document.createElement('button');
+  editButton.type = 'button';
+  editButton.className = 'cm-image-action-edit';
+  editButton.innerHTML = `${svgIcons.edit}<span>Edit</span>`;
+  editButton.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeWmdxResourceLinkActions();
+    const current = getEditableMarkdownLinkAtRange(view, from, to);
+    if (current?.flavor === 'wmdx') {
+      openWmdxResourceLinkEditDialog(view, from, to);
+    } else {
+      openMarkdownLinkEditDialog(view, from, to);
+    }
+  });
+
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'cm-image-action-delete';
+  deleteButton.innerHTML = `${svgIcons.delete}<span>Delete</span>`;
+  deleteButton.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeWmdxResourceLinkActions();
+    openMarkdownLinkDeleteConfirmation(view, from, to);
+  });
+
+  menu.append(editButton, deleteButton);
+  document.body.appendChild(menu);
+  const point = {
+    x: Number.isFinite(x) ? x : window.innerWidth / 2,
+    y: Number.isFinite(y) ? y : window.innerHeight / 2
+  };
+  const reposition = () => {
+    if (!menu.isConnected) return;
+    const viewport = window.visualViewport;
+    const leftEdge = viewport?.offsetLeft ?? 0;
+    const topEdge = viewport?.offsetTop ?? 0;
+    const width = viewport?.width ?? window.innerWidth;
+    const height = viewport?.height ?? window.innerHeight;
+    const menuWidth = menu.offsetWidth || 150;
+    const menuHeight = menu.offsetHeight || 48;
+    const left = Math.max(
+      leftEdge + 8,
+      Math.min(point.x - menuWidth / 2, leftEdge + width - menuWidth - 8)
+    );
+    menu.style.left = `${left}px`;
+    const floatingToolbar = document.querySelector('#floating-selection-toolbar');
+    let targetRect = link.getBoundingClientRect();
+    const selection = window.getSelection?.();
+    if (selection?.rangeCount) {
+      try {
+        const range = selection.getRangeAt(0);
+        if (range.intersectsNode?.(link)) {
+          const rangeRect = range.getBoundingClientRect();
+          if (rangeRect.width > 0 || rangeRect.height > 0) {
+            targetRect = rangeRect;
+          }
+        }
+      } catch {
+        // A stale native selection can briefly reference a detached editor node.
+      }
+    }
+    const avoidRects = [];
+    if (floatingToolbar?.classList.contains('is-visible')) {
+      avoidRects.push(floatingToolbar.getBoundingClientRect());
+    }
+    const bottomToolbar = document.querySelector('#bottom-toolbar');
+    if (bottomToolbar) avoidRects.push(bottomToolbar.getBoundingClientRect());
+    const popupToolbar = document.querySelector('#popup-toolbar-strip');
+    if (popupToolbar) avoidRects.push(popupToolbar.getBoundingClientRect());
+    menu.style.top = `${getResourceLinkActionTop({
+      targetRect,
+      menuHeight,
+      menuLeft: left,
+      menuWidth,
+      viewportTop: topEdge,
+      viewportBottom: topEdge + height,
+      avoidRects
+    })}px`;
+  };
+  const dismiss = event => {
+    if (!menu.contains(event.target)) closeWmdxResourceLinkActions();
+  };
+  const keydown = event => {
+    if (event.key === 'Escape') closeWmdxResourceLinkActions();
+  };
+  activeWmdxResourceLinkActions = { menu, link, point, dismiss, keydown, reposition };
+  document.addEventListener('pointerdown', dismiss, true);
+  document.addEventListener('keydown', keydown, true);
+  document.addEventListener('selectionchange', reposition);
+  window.visualViewport?.addEventListener('resize', reposition);
+  reposition();
+  return true;
+}
+
+function getWmdxResourceLinkAtRange(view, from, to) {
+  if (!view || from < 0 || to > view.state.doc.length || from >= to) return null;
+  const raw = view.state.doc.sliceString(from, to);
+  const resource = parseWmdxResourceSyntax(raw);
+  return resource && !resource.embed ? { raw, resource } : null;
+}
+
+function unescapeLinkDisplayText(value) {
+  return String(value ?? '').replace(
+    /\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g,
+    '$1'
+  );
+}
+
+function getEditableMarkdownLinkAtRange(view, from, to) {
+  if (!view || from < 0 || to > view.state.doc.length || from >= to) return null;
+  const doc = view.state.doc;
+  const raw = doc.sliceString(from, to);
+  const resource = parseWmdxResourceSyntax(raw);
+  if (resource && !resource.embed) {
+    return {
+      raw,
+      flavor: 'wmdx',
+      target: resource.source,
+      title: resource.title || resource.displayTitle,
+      alignment: resource.alignmentMarker
+    };
+  }
+
+  const obsidian = parseObsidianLinkSyntax(raw);
+  if (obsidian && !obsidian.embed && isLinkFlavorEnabledNow('obsidian')) {
+    return {
+      raw,
+      flavor: 'obsidian',
+      target: obsidian.target,
+      title: obsidian.title,
+      alias: obsidian.alias
+    };
+  }
+
+  const tree = syntaxTree(view.state);
+  const linkNode = findMarkdownLinkNodeAtRange(view.state, from, to);
+  if (!linkNode) return null;
+
+  const flavor = getMarkdownLinkFlavor(linkNode, doc);
+  if (!flavor || !isLinkFlavorEnabledNow(flavor)) return null;
+  const referenceTargets = collectMarkdownReferenceTargets(doc, tree);
+  const info = getMarkdownLinkInfo(linkNode, doc, referenceTargets);
+  if (!info) return null;
+  return {
+    raw,
+    flavor,
+    target: info.target,
+    title: unescapeLinkDisplayText(doc.sliceString(info.labelFrom, info.labelTo)),
+    referenceLabel: flavor === 'reference'
+      ? getMarkdownReferenceLabel(raw)
+      : null
+  };
+}
+
+function findMarkdownReferenceDefinition(view, referenceLabel) {
+  const wanted = normalizeMarkdownReferenceLabel(referenceLabel);
+  if (!wanted) return null;
+  const doc = view.state.doc;
+  let result = null;
+  syntaxTree(view.state).iterate({
+    enter(node) {
+      if (node.name !== 'LinkReference') return;
+      const definition = getMarkdownReferenceDefinitionInfo(node, doc);
+      if (definition?.normalizedLabel === wanted) {
+        result = { node, definition };
+        return false;
+      }
+    }
+  });
+  return result;
+}
+
+function openWmdxResourceLinkEditDialog(view, from, to) {
+  const current = getWmdxResourceLinkAtRange(view, from, to);
+  if (!current) return;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+  const { resource } = current;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Link</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-wmdx-link-source">Destination</label>
+      <input id="modal-wmdx-link-source" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-wmdx-link-title">Displayed text</label>
+      <input id="modal-wmdx-link-title" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-wmdx-link-alignment">Standalone alignment</label>
+      <select id="modal-wmdx-link-alignment" class="modal-select">
+        <option value="">Default</option>
+        <option value="&lt;">Left</option>
+        <option value="&gt;&lt;">Center</option>
+        <option value="&gt;">Right</option>
+        <option value="&lt;&gt;">Justified</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-wmdx-link-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-wmdx-link-save">Save</button>
+    </div>
+  `;
+
+  const titleInput = dialog.querySelector('#modal-wmdx-link-title');
+  const sourceInput = dialog.querySelector('#modal-wmdx-link-source');
+  const alignmentInput = dialog.querySelector('#modal-wmdx-link-alignment');
+  const error = document.createElement('p');
+  error.className = 'modal-error';
+  error.setAttribute('role', 'alert');
+  error.hidden = true;
+  dialog.querySelector('.modal-actions').before(error);
+  titleInput.value = resource.title || resource.displayTitle;
+  sourceInput.value = resource.source;
+  alignmentInput.value = ({
+    left: '<',
+    center: '><',
+    right: '>',
+    justify: '<>'
+  })[resource.alignment] || '';
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-wmdx-link-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-wmdx-link-save').addEventListener('click', event => {
+    event.preventDefault();
+    const source = sourceInput.value.trim();
+    if (!source) {
+      error.textContent = 'Enter a destination before saving.';
+      error.hidden = false;
+      sourceInput.focus();
+      return;
+    }
+    const currentAtRange = getWmdxResourceLinkAtRange(view, from, to);
+    if (!currentAtRange || currentAtRange.raw !== current.raw) {
+      error.textContent = 'This link is no longer in the document.';
+      error.hidden = false;
+      return;
+    }
+    let replacement;
+    try {
+      replacement = formatWmdxResourceSyntax({
+        source,
+        title: titleInput.value,
+        alignment: alignmentInput.value
+      });
+    } catch (formatError) {
+      error.textContent = formatError.message;
+      error.hidden = false;
+      sourceInput.focus();
+      return;
+    }
+    view.dispatch({
+      changes: { from, to, insert: replacement },
+      selection: { anchor: from + replacement.length, head: from + replacement.length },
+      userEvent: 'input.wmdx-link-edit'
+    });
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => titleInput.focus());
+}
+
+function openMarkdownLinkEditDialog(view, from, to) {
+  const current = getEditableMarkdownLinkAtRange(view, from, to);
+  if (!current || current.flavor === 'wmdx') return;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Edit Link</h3>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-markdown-link-target">Destination</label>
+      <input id="modal-markdown-link-target" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <div class="modal-field-group">
+      <label class="modal-label" for="modal-markdown-link-title">Displayed text</label>
+      <input id="modal-markdown-link-title" class="modal-input" type="text" autocomplete="off" />
+    </div>
+    <p class="modal-message" id="modal-markdown-link-help"></p>
+    <p class="modal-error" id="modal-markdown-link-error" role="alert" hidden></p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-markdown-link-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-confirm" id="modal-markdown-link-save">Save</button>
+    </div>
+  `;
+
+  const targetInput = dialog.querySelector('#modal-markdown-link-target');
+  const titleInput = dialog.querySelector('#modal-markdown-link-title');
+  const help = dialog.querySelector('#modal-markdown-link-help');
+  const error = dialog.querySelector('#modal-markdown-link-error');
+  targetInput.value = current.target;
+  titleInput.value = current.title;
+  if (current.flavor === 'reference') {
+    help.textContent = 'This reference destination is shared; changing it updates every link that uses it.';
+  }
+
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-markdown-link-cancel').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-markdown-link-save').addEventListener('click', event => {
+    event.preventDefault();
+    const target = targetInput.value.trim();
+    if (!target) {
+      error.textContent = 'Enter a destination before saving.';
+      error.hidden = false;
+      targetInput.focus();
+      return;
+    }
+
+    const latest = getEditableMarkdownLinkAtRange(view, from, to);
+    if (!latest || latest.raw !== current.raw) {
+      error.textContent = 'This link is no longer in the document.';
+      error.hidden = false;
+      return;
+    }
+
+    let replacement;
+    let linkDestination = target;
+    let referenceDefinition = null;
+    try {
+      linkDestination = latest.flavor === 'reference'
+        ? normalizeBareWebDestination(target)
+        : target;
+      replacement = formatMarkdownLinkForFlavor({
+        flavor: latest.flavor,
+        target: linkDestination,
+        title: titleInput.value,
+        referenceLabel: latest.referenceLabel,
+        aliasPresent: latest.flavor === 'obsidian' && Boolean(latest.alias)
+      });
+      if (latest.flavor === 'reference' && linkDestination !== latest.target) {
+        referenceDefinition = findMarkdownReferenceDefinition(
+          view,
+          latest.referenceLabel
+        );
+        if (!referenceDefinition) {
+          error.textContent = 'The definition for this reference could not be found.';
+          error.hidden = false;
+          return;
+        }
+      }
+    } catch (formatError) {
+      error.textContent = formatError.message;
+      error.hidden = false;
+      targetInput.focus();
+      return;
+    }
+
+    const changes = [];
+    if (replacement !== latest.raw) {
+      changes.push({ from, to, insert: replacement });
+    }
+    if (referenceDefinition) {
+      const { definition } = referenceDefinition;
+      const encodedTarget = encodeMarkdownDestination(linkDestination);
+      if (encodedTarget !== definition.target) {
+        changes.push({
+          from: definition.targetFrom,
+          to: definition.targetTo,
+          insert: encodedTarget
+        });
+      }
+    }
+    if (changes.length) {
+      changes.sort((left, right) => left.from - right.from);
+      const shiftBeforeLink = changes
+        .filter(change => change.to <= from)
+        .reduce(
+          (total, change) => total + change.insert.length - (change.to - change.from),
+          0
+        );
+      const cursor = from + shiftBeforeLink + replacement.length;
+      view.dispatch({
+        changes,
+        selection: { anchor: cursor, head: cursor },
+        userEvent: 'input.markdown-link-edit'
+      });
+    }
+    close();
+  });
+
+  overlay.classList.add('open');
+  requestAnimationFrame(() => titleInput.focus());
+}
+
+function openMarkdownLinkDeleteConfirmation(view, from, to) {
+  const current = getEditableMarkdownLinkAtRange(view, from, to);
+  if (!current) return;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  const referenceNote = current.flavor === 'reference'
+    ? ' Its shared definition is kept in case another link uses it.'
+    : '';
+  dialog.innerHTML = `
+    <h3 class="modal-title">Delete Link?</h3>
+    <p class="modal-message">This removes the link and keeps its displayed text as plain text.${referenceNote}</p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-markdown-link-keep">Keep Link</button>
+      <button type="button" class="modal-btn modal-btn-delete" id="modal-markdown-link-delete">Delete</button>
+    </div>
+  `;
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-markdown-link-keep').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-markdown-link-delete').addEventListener('click', event => {
+    event.preventDefault();
+    const latest = getEditableMarkdownLinkAtRange(view, from, to);
+    if (latest && latest.raw === current.raw) {
+      const plainText = latest.title;
+      view.dispatch({
+        changes: { from, to, insert: plainText },
+        selection: { anchor: from + plainText.length, head: from + plainText.length },
+        userEvent: 'input.markdown-link-delete'
+      });
+    }
+    close();
+  });
+  overlay.classList.add('open');
+}
+
+function openWmdxResourceLinkDeleteConfirmation(view, from, to) {
+  const current = getWmdxResourceLinkAtRange(view, from, to);
+  if (!current) return;
+  const overlay = document.querySelector('#editor-modal-overlay');
+  const dialog = document.querySelector('#editor-modal-dialog');
+  if (!overlay || !dialog) return;
+
+  dialog.innerHTML = `
+    <h3 class="modal-title">Delete Link?</h3>
+    <p class="modal-message">This removes the link and keeps its displayed text as plain text.</p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-btn-cancel" id="modal-wmdx-link-keep">Keep Link</button>
+      <button type="button" class="modal-btn modal-btn-delete" id="modal-wmdx-link-delete">Delete</button>
+    </div>
+  `;
+  const close = () => {
+    overlay.classList.remove('open');
+    dialog.innerHTML = '';
+    view.focus();
+  };
+  dialog.querySelector('#modal-wmdx-link-keep').addEventListener('click', event => {
+    event.preventDefault();
+    close();
+  });
+  dialog.querySelector('#modal-wmdx-link-delete').addEventListener('click', event => {
+    event.preventDefault();
+    const currentAtRange = getWmdxResourceLinkAtRange(view, from, to);
+    if (currentAtRange && currentAtRange.raw === current.raw) {
+      const plainText = currentAtRange.resource.displayTitle;
+      view.dispatch({
+        changes: { from, to, insert: plainText },
+        selection: { anchor: from + plainText.length, head: from + plainText.length },
+        userEvent: 'input.wmdx-link-delete'
+      });
+    }
+    close();
+  });
+  overlay.classList.add('open');
+}
+
 export function openFootnoteInsertionDialog(options = {}) {
-  if (!activeAdapter || !activeAdapter.view) return;
+  if (
+    (!options.definition && !isFootnoteAuthoringAvailableNow()) ||
+    !activeAdapter ||
+    !activeAdapter.view
+  ) return;
   const view = activeAdapter.view;
   const definition = options.definition ?? null;
+  const authoringSyntax = footnoteSyntaxSettings.authoringSyntax;
   const selection = view.state.selection.main;
   const selectionSnapshot = { from: selection.from, to: selection.to };
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog) return;
 
+  const reusableFootnoteLabels = definition
+    ? []
+    : authoringSyntax === 'obsidian_inline'
+      ? []
+      : [...new Set(
+          parseFootnotesForState(view.state, {
+            syntaxSettings: footnoteSyntaxSettings
+          }).definitions
+            .map(item => String(item.label))
+            .filter(label => /^\d+$/.test(label))
+        )].sort((a, b) => Number(a) - Number(b));
+
   dialog.innerHTML = `
     <h3 class="modal-title">${definition ? 'Edit Footnote' : 'Insert Footnote'}</h3>
-    <div class="modal-field-group">
+    ${reusableFootnoteLabels.length ? `
+      <div class="modal-field-group">
+        <label class="modal-label" for="modal-footnote-action">Footnote</label>
+        <select id="modal-footnote-action" class="modal-input">
+          <option value="new">Create a new footnote</option>
+          ${reusableFootnoteLabels.map(label =>
+            `<option value="reuse:${label}">Reuse footnote ${label}</option>`
+          ).join('')}
+        </select>
+      </div>
+    ` : ''}
+    <div class="modal-field-group" id="modal-footnote-text-group">
       <label class="modal-label" for="modal-footnote-text">Footnote text</label>
       <textarea id="modal-footnote-text" class="modal-input modal-textarea"
         placeholder="Write the footnote here"></textarea>
@@ -7243,9 +9760,15 @@ export function openFootnoteInsertionDialog(options = {}) {
   `;
 
   const textInput = dialog.querySelector('#modal-footnote-text');
+  const textGroup = dialog.querySelector('#modal-footnote-text-group');
+  const actionSelect = dialog.querySelector('#modal-footnote-action');
   const btnCancel = dialog.querySelector('#modal-btn-cancel');
   const btnConfirm = dialog.querySelector('#modal-btn-confirm');
   textInput.value = definition?.body ?? '';
+
+  actionSelect?.addEventListener('change', () => {
+    textGroup.hidden = actionSelect.value.startsWith('reuse:');
+  });
 
   const closeModal = () => {
     overlay.classList.remove('open');
@@ -7260,6 +9783,22 @@ export function openFootnoteInsertionDialog(options = {}) {
 
   btnConfirm.addEventListener('click', event => {
     event.preventDefault();
+    const action = actionSelect?.value ?? 'new';
+    if (!definition && action.startsWith('reuse:')) {
+      const label = action.slice('reuse:'.length);
+      const marker = authoringSyntax === 'markdown'
+        ? `[^${label}]`
+        : `^${label}`;
+      const markerEnd = selectionSnapshot.to + marker.length;
+      view.dispatch({
+        changes: { from: selectionSnapshot.to, insert: marker },
+        selection: EditorSelection.cursor(markerEnd)
+      });
+      closeModal();
+      view.focus();
+      return;
+    }
+
     const body = textInput.value.trim();
     if (!body) {
       textInput.focus();
@@ -7267,22 +9806,45 @@ export function openFootnoteInsertionDialog(options = {}) {
     }
 
     if (definition) {
-      const formattedDefinition = formatFootnoteDefinition(definition.label, body);
+      const formattedDefinition = definition.syntax === 'wmdx'
+        ? formatWmdxFootnoteDefinition(body)
+        : definition.syntax === 'obsidian_inline'
+          ? formatObsidianInlineFootnote(body)
+          : formatFootnoteDefinition(definition.label, body);
       view.dispatch({
         changes: {
           from: definition.from,
           to: definition.to,
           insert: formattedDefinition
         },
-        selection: {
-          anchor: definition.from + formattedDefinition.length,
-          head: definition.from + formattedDefinition.length
-        }
+        selection: EditorSelection.cursor(definition.from + formattedDefinition.length)
       });
     } else {
-      const label = nextFootnoteLabel(view.state.doc.toString());
-      const marker = `[^${label}]`;
-      const formattedDefinition = formatFootnoteDefinition(label, body);
+      if (authoringSyntax === 'obsidian_inline') {
+        const marker = formatObsidianInlineFootnote(body);
+        view.dispatch({
+          changes: { from: selectionSnapshot.to, insert: marker },
+          selection: EditorSelection.cursor(
+            selectionSnapshot.to + marker.length
+          )
+        });
+        closeModal();
+        view.focus();
+        return;
+      }
+
+      const currentDefinitions =
+        parseFootnotesForState(view.state).definitions;
+      const usedNumbers = currentDefinitions
+        .map(item => Number(item.label))
+        .filter(number => Number.isInteger(number) && number > 0);
+      const label = String(Math.max(0, ...usedNumbers) + 1);
+      const marker = authoringSyntax === 'markdown'
+        ? `[^${label}]`
+        : '^';
+      const formattedDefinition = authoringSyntax === 'markdown'
+        ? formatFootnoteDefinition(label, body)
+        : formatWmdxFootnoteDefinition(body);
       const docText = view.state.doc.toString();
       const separatorFor = text => {
         if (!text) return '\n\n';
@@ -7308,7 +9870,7 @@ export function openFootnoteInsertionDialog(options = {}) {
 
       view.dispatch({
         changes,
-        selection: { anchor: markerEnd, head: markerEnd }
+        selection: EditorSelection.cursor(markerEnd)
       });
     }
 
@@ -7874,10 +10436,10 @@ function openImageDeleteConfirmation(
 }
 
 export function openCalloutInsertionDialog() {
-  if (!activeAdapter || !activeAdapter.view) return;
+  if (!activeAdapter?.view || !isCalloutAuthoringAvailable()) return;
   const view = activeAdapter.view;
   const sel = view.state.selection.main;
-  const selectedText = view.state.doc.sliceString(sel.from, sel.to);
+  const sourceText = view.state.doc.toString();
 
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
@@ -7933,25 +10495,24 @@ export function openCalloutInsertionDialog() {
     const type = typeSelect.value || 'note';
     const fold = foldSelect.value;
     const title = titleInput.value.trim();
-
-    let opener = `> [!${type}${fold}]`;
-    if (title) opener += ` ${title}`;
-
-    let replacement = '';
-    let caretOffset = 0;
-
-    if (selectedText.length > 0) {
-      const quotedBody = selectedText.split('\n').map(l => `> ${l}`).join('\n');
-      replacement = `${opener}\n${quotedBody}\n`;
-      caretOffset = replacement.length;
-    } else {
-      replacement = `${opener}\n> `;
-      caretOffset = replacement.length;
-    }
+    const buildInsertion =
+      calloutSyntaxSettings.authoringSyntax === 'obsidian'
+        ? buildObsidianCalloutInsertion
+        : buildWmdxCalloutInsertion;
+    const insertion = buildInsertion(
+      sourceText,
+      { from: sel.from, to: sel.to },
+      { type, fold, title }
+    );
+    if (!insertion) return;
 
     view.dispatch({
-      changes: { from: sel.from, to: sel.to, insert: replacement },
-      selection: { anchor: sel.from + caretOffset, head: sel.from + caretOffset }
+      changes: {
+        from: insertion.from,
+        to: insertion.to,
+        insert: insertion.insert
+      },
+      selection: EditorSelection.cursor(insertion.cursor)
     });
 
     closeModal();
@@ -8069,16 +10630,56 @@ function execCmd(cmdName, options) {
         cmdName.slice('underline'.length).toLowerCase(),
         editorCommandOptions
       );
-    } else if (cmdName === 'blockQuote') cmToggleLinePrefix(view, '> ');
+    } else if (cmdName === 'blockQuote') {
+      if (isBlockquoteSyntaxEnabledNow()) {
+        const selection = view.state.selection.main;
+        const changes = getBlockquoteNestingChanges(
+          view.state.doc,
+          selection,
+          selection.empty
+            ? getCurrentParagraphLineRange(view.state, selection.head)
+            : null
+        );
+        if (changes.length) {
+          const changeSet = view.state.changes(changes);
+          view.dispatch({
+            changes: changeSet,
+            selection: view.state.selection.map(changeSet, 1)
+          });
+          focusEditorAfterCommand(view);
+        }
+      }
+    }
     else if (cmdName === 'codeBlock') cmWrapSelection(view, '```\n', '\n```');
-    else if (cmdName === 'bulletedList') cmToggleLinePrefix(view, '- ');
-    else if (cmdName === 'numberedList') cmToggleLinePrefix(view, '1. ');
-    else if (cmdName === 'todoList') cmToggleLinePrefix(view, '- [ ] ');
-    else if (cmdName === 'cycleListType') cycleMarkdownListType(view);
+    else if (cmdName === 'bulletedList') {
+      const prefix = getDefaultBulletPrefix(listSyntaxSettings);
+      if (prefix) cmToggleSelectedListPrefix(view, prefix);
+    } else if (cmdName === 'numberedList') {
+      const prefix = getDefaultOrderedPrefix(listSyntaxSettings);
+      if (prefix) {
+        const orderedStyle = getDefaultOrderedStyle(listSyntaxSettings);
+        const selectedPrefix = getOrderedListPrefixGenerator(
+          orderedStyle,
+          prefix.trimEnd().slice(-1)
+        );
+        cmToggleSelectedListPrefix(view, selectedPrefix);
+      }
+    } else if (cmdName === 'todoList') {
+      const prefix = getDefaultTaskPrefix(listSyntaxSettings);
+      if (prefix) cmToggleSelectedListPrefix(view, prefix);
+    } else if (cmdName === 'cycleListType') {
+      if (isListAuthoringAvailableNow()) {
+        cycleMarkdownListType(view, {
+          bulletPrefix: getDefaultBulletPrefix(listSyntaxSettings) ?? '- ',
+          orderedPrefix: getDefaultOrderedPrefix(listSyntaxSettings) ?? '1. ',
+          taskPrefix: getDefaultTaskPrefix(listSyntaxSettings)
+        });
+      }
+    }
     else if (cmdName === 'indent') {
-      applyMarkdownIndent(view, 'indent', '  ', editorCommandOptions);
+      applyEditorMarkdownIndent(view, 'indent', markdownIndentSpaces, editorCommandOptions);
     } else if (cmdName === 'outdent') {
-      applyMarkdownIndent(view, 'outdent', '  ', editorCommandOptions);
+      applyEditorMarkdownIndent(view, 'outdent', markdownIndentSpaces, editorCommandOptions);
     }
     else if (cmdName === 'moveLineUp') {
       if (cmMoveLineUp(view)) focusEditorAfterCommand(view);
@@ -8092,16 +10693,12 @@ function execCmd(cmdName, options) {
     else if (cmdName === 'link') openLinkInsertionDialog();
     else if (cmdName === 'callout') openCalloutInsertionDialog();
     else if (cmdName === 'insertTable') cmWrapSelection(view, '\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '');
-    else if (cmdName === 'autoHeading') applyAutoHeading(view);
+    else if (cmdName === 'autoHeading') {
+      applyAutoHeading(view, headingSyntaxSettings);
+    }
     else if (cmdName === 'heading') {
       const val = options ? options.value : '';
-      if (val === 'paragraph') cmToggleLinePrefix(view, '');
-      else if (val === 'heading1') cmToggleLinePrefix(view, '# ');
-      else if (val === 'heading2') cmToggleLinePrefix(view, '## ');
-      else if (val === 'heading3') cmToggleLinePrefix(view, '### ');
-      else if (val === 'heading4') cmToggleLinePrefix(view, '#### ');
-      else if (val === 'heading5') cmToggleLinePrefix(view, '##### ');
-      else if (val === 'heading6') cmToggleLinePrefix(view, '###### ');
+      applyHeadingCommand(view, val);
     } else if (cmdName === 'highlight') {
       const val = options ? options.value : null;
       toggleWmdxColorFormat(view, val, editorCommandOptions);
@@ -8212,7 +10809,7 @@ function togglePopupStrip(
     }
     const title = style.title || item.title;
     if (title) {
-      btn.title = title;
+      setToolbarTooltip(btn, title);
       btn.setAttribute('aria-label', title);
     }
     if (item.disabled) {
@@ -8299,14 +10896,35 @@ function getToolbarSyntaxState(view) {
   if (!view?.state) return {};
   const state = getMarkdownFormattingState(view);
   const selection = view.state.selection.main;
-  const line = view.state.doc.lineAt(selection.head).text;
-  const heading = /^\s{0,3}(#{1,6})\s+/.exec(line);
-  const todo = /^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+/.test(line);
-  const numbered = /^\s*\d+[.)]\s+/.test(line);
-  const bullet = /^\s*[-*+]\s+/.test(line) && !todo;
+  const editorLine = view.state.doc.lineAt(selection.head);
+  const line = editorLine.text;
+  const heading = /^\s{0,3}(?:(#{1,6})|\.([1-6]))[ \t]+/.exec(line);
+  const headingFlavor = heading
+    ? heading[1] ? 'hash' : 'wmdx'
+    : getSetextHeadingAtLine(view.state, editorLine.number)
+      ? 'setext'
+      : null;
+  const headingLevel = headingFlavor &&
+    isHeadingFlavorEnabledNow(headingFlavor)
+    ? heading
+      ? heading[1]?.length ?? Number(heading[2])
+      : getSetextHeadingAtLine(view.state, editorLine.number)?.level ?? null
+    : null;
+  const listsEnabled = listSyntaxSettings.enabled &&
+    (isListFlavorEnabledNow('markdown') || isListFlavorEnabledNow('wmdx'));
+  const wmdxTask = isListFlavorEnabledNow('wmdx') &&
+    /^\s*\[[ xX]\][ \t]+/.test(line);
+  const markdownTask = isMarkdownTaskSyntaxEnabledNow() &&
+    /^\s*(?:[-*+]\s+\[[ xX]\]|\d+[.)]\s+\[[ xX]\])[ \t]+/.test(line);
+  const todo = listsEnabled && (wmdxTask || markdownTask);
+  const wmdxOrdered = isListFlavorEnabledNow('wmdx') &&
+    /^\s*[A-Za-z]+[.)][ \t]+/.test(line);
+  const numbered = listsEnabled &&
+    (/^\s*\d+[.)]\s+/.test(line) || wmdxOrdered);
+  const bullet = listsEnabled && /^\s*[-*+][ \t]+/.test(line) && !todo;
   state.paragraph = !heading && !todo && !numbered && !bullet;
   for (let level = 1; level <= 6; level++) {
-    state[`heading${level}`] = Number(heading?.[1].length) === level;
+    state[`heading${level}`] = headingLevel === level;
   }
   state.todoList = todo;
   state.numberedList = numbered && !todo;
@@ -8340,6 +10958,51 @@ function refreshToolbarSyntaxState(view = activeAdapter?.view) {
         button.classList.toggle('has-active-syntax', active);
         button.setAttribute('aria-pressed', String(active));
       });
+  }
+  const headingActionAvailable = headingSyntaxSettings.enabled &&
+    ['wmdx', 'hash', 'setext'].some(flavor =>
+      isHeadingFlavorEnabledNow(flavor)
+    );
+  document.querySelectorAll(
+    '#grp-btn-heading, [data-toolbar-key="heading"]'
+  ).forEach(button => {
+    if ('disabled' in button) button.disabled = !headingActionAvailable;
+    button.setAttribute('aria-disabled', String(!headingActionAvailable));
+  });
+  const calloutActionAvailable = isCalloutAuthoringAvailable();
+  document.querySelectorAll(
+    '#grp-btn-callout, [data-toolbar-key="callout"]'
+  ).forEach(button => {
+    if ('disabled' in button) button.disabled = !calloutActionAvailable;
+    button.setAttribute('aria-disabled', String(!calloutActionAvailable));
+  });
+  document.querySelectorAll(
+    '#grp-btn-footnote, [data-toolbar-key="footnote"]'
+  ).forEach(button => {
+    if ('disabled' in button) button.disabled = !isFootnoteAuthoringAvailableNow();
+    button.setAttribute(
+      'aria-disabled',
+      String(!isFootnoteAuthoringAvailableNow())
+    );
+  });
+  const listActionAvailable = isListAuthoringAvailableNow();
+  document.querySelectorAll(
+    '#grp-btn-lists, [data-toolbar-key="lists"]'
+  ).forEach(button => {
+    if ('disabled' in button) button.disabled = !listActionAvailable;
+    button.setAttribute('aria-disabled', String(!listActionAvailable));
+  });
+  const taskActionAvailable = Boolean(getDefaultTaskPrefix(listSyntaxSettings));
+  for (const [command, available] of [
+    ['bulletedList', listActionAvailable],
+    ['numberedList', listActionAvailable],
+    ['todoList', taskActionAvailable]
+  ]) {
+    document.querySelectorAll(`[data-toolbar-command="${command}"]`).forEach(button => {
+      if ('disabled' in button) button.disabled = !available;
+      button.setAttribute('aria-disabled', String(!available));
+      button.classList.toggle('disabled', !available);
+    });
   }
 }
 
@@ -9193,7 +11856,7 @@ function setupTocGestureAndPanel(scrollDOM) {
       characters.textContent = `Characters: ${counts.characters.toLocaleString()}`;
       documentStatsRow.append(words, characters);
     }
-    const items = extractTocHeadings(markdown);
+    const items = extractTocHeadings(markdown, headingSyntaxSettings);
 
     if (items.length === 0) {
       tocExpansionState.collapsedHeadingKeys.clear();
@@ -9525,14 +12188,12 @@ function setupTocGestureAndPanel(scrollDOM) {
 }
 
 function openWithOtherEngine() {
-  const modes = ['wysiwyg', 'live_preview', 'source'];
-  const nextIdx = (modes.indexOf(currentEditorMode) + 1) % modes.length;
-  const targetMode = modes[nextIdx];
+  const targetMode = currentModePreference === 'source' ? 'rendered' : 'source';
 
   setEditorMode(targetMode).then(() => {
     toggleBottomToolbar(true);
     if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
-      const names = { wysiwyg: 'Pure WYSIWYG', live_preview: 'Obsidian Live Preview', source: 'Raw Source View' };
+      const names = { rendered: 'Rendered Markdown Editor', source: 'Raw Source / Code Editor' };
       window.AndroidNative.showToast(`Switched to ${names[targetMode]}`);
     }
   });
@@ -9639,6 +12300,26 @@ function setupKeyboardShortcuts() {
       void runToolbarClipboardAction('pasteAsPlainText');
       return;
     }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.convert_from)) {
+      e.preventDefault();
+      openMarkdownConversionDialog('convert');
+      return;
+    }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.paste_from)) {
+      e.preventDefault();
+      openMarkdownConversionDialog('paste');
+      return;
+    }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.export_markdown)) {
+      e.preventDefault();
+      openMarkdownConversionDialog('export');
+      return;
+    }
+    if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.lint_markdown)) {
+      e.preventDefault();
+      openMarkdownLintDialog();
+      return;
+    }
     if (!focusedFormField && parseAndMatchHotkey(e, customHotkeys.attachment)) {
       e.preventDefault();
       window.AndroidNative?.onNativeAction('attachment');
@@ -9687,6 +12368,13 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.line_wrap)) {
       e.preventDefault();
       window.editorBridge.toggleLineWrap();
+    } else if (
+      !focusedFormField &&
+      !e.target?.closest?.('.cm-wp-cell-editor') &&
+      parseAndMatchHotkey(e, customHotkeys.toggleTableScroll)
+    ) {
+      e.preventDefault();
+      window.editorBridge.toggleTableScrolling();
     } else if (parseAndMatchHotkey(e, customHotkeys.open_with)) {
       e.preventDefault();
       openWithOtherEngine();
@@ -9695,7 +12383,7 @@ function setupKeyboardShortcuts() {
       window.editorBridge.toggleLineNumbers();
     } else if (parseAndMatchHotkey(e, customHotkeys.sourceEditing)) {
       e.preventDefault();
-      setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source');
+      setEditorMode(currentModePreference === 'source' ? 'rendered' : 'source');
     } else if (parseAndMatchHotkey(e, customHotkeys.findAndReplace)) {
       e.preventDefault();
       toggleFindAndReplaceBar();
@@ -9715,16 +12403,19 @@ function setupKeyboardShortcuts() {
     else if (parseAndMatchHotkey(e, customHotkeys.code)) { e.preventDefault(); execCmd('code'); }
     else if (parseAndMatchHotkey(e, customHotkeys.link)) { e.preventDefault(); execCmd('link'); }
     else if (parseAndMatchHotkey(e, customHotkeys.footnote)) { e.preventDefault(); execCmd('InsertFootnote'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.callout)) { e.preventDefault(); execCmd('callout'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
+    else if (
+      isCalloutAuthoringAvailable() &&
+      parseAndMatchHotkey(e, customHotkeys.callout)
+    ) { e.preventDefault(); execCmd('callout'); }
+    else if (isBlockquoteSyntaxEnabledNow() && parseAndMatchHotkey(e, customHotkeys.blockQuote)) { e.preventDefault(); execCmd('blockQuote'); }
     else if (parseAndMatchHotkey(e, customHotkeys.codeBlock)) { e.preventDefault(); execCmd('codeBlock'); }
     else if (parseAndMatchHotkey(e, customHotkeys.moveLineUp)) { e.preventDefault(); execCmd('moveLineUp'); }
     else if (parseAndMatchHotkey(e, customHotkeys.moveLineDown)) { e.preventDefault(); execCmd('moveLineDown'); }
     else if (parseAndMatchHotkey(e, customHotkeys.deleteLine)) { e.preventDefault(); execCmd('deleteLine'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.cycleListType)) { e.preventDefault(); execCmd('cycleListType'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.bulletedList)) { e.preventDefault(); execCmd('bulletedList'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.numberedList)) { e.preventDefault(); execCmd('numberedList'); }
-    else if (parseAndMatchHotkey(e, customHotkeys.todoList)) { e.preventDefault(); execCmd('todoList'); }
+    else if (isListAuthoringAvailableNow() && parseAndMatchHotkey(e, customHotkeys.cycleListType)) { e.preventDefault(); execCmd('cycleListType'); }
+    else if (isListAuthoringAvailableNow() && parseAndMatchHotkey(e, customHotkeys.bulletedList)) { e.preventDefault(); execCmd('bulletedList'); }
+    else if (isListAuthoringAvailableNow() && parseAndMatchHotkey(e, customHotkeys.numberedList)) { e.preventDefault(); execCmd('numberedList'); }
+    else if (getDefaultTaskPrefix(listSyntaxSettings) && parseAndMatchHotkey(e, customHotkeys.todoList)) { e.preventDefault(); execCmd('todoList'); }
     else if (parseAndMatchHotkey(e, customHotkeys.indent)) {
       const tabInEditor = e.key === 'Tab' &&
         activeAdapter?.view?.contentDOM?.contains(e.target);
@@ -9791,7 +12482,16 @@ window.editorBridge = {
     return setEditorMode(mode);
   },
   getEditorMode: function() {
+    return currentModePreference === 'source' ? 'source' : 'rendered';
+  },
+  getEditorPresentation: function() {
     return currentEditorMode;
+  },
+  getSyntaxExposureScope: function() {
+    return activeSyntaxExposureScope;
+  },
+  openSourceLanguageDialog: function() {
+    return openSourceLanguageDialog();
   },
   applyBottomToolbarConfig: function(rawConfig) {
     const nextConfig = normalizeBottomToolbarConfig(rawConfig);
@@ -9827,7 +12527,48 @@ window.editorBridge = {
   },
   applyAllPreferences: function(prefsJson) {
     if (!prefsJson) return;
-    const prefs = typeof prefsJson === 'string' ? JSON.parse(prefsJson) : prefsJson;
+    const storedPreferences = typeof prefsJson === 'string'
+      ? JSON.parse(prefsJson)
+      : prefsJson;
+    const prefs = applyMarkdownDialectProfile(storedPreferences);
+    currentMarkdownProfile = prefs.pref_markdown_profile;
+    markdownAutoPasteEnabled = prefs.pref_markdown_auto_paste_enabled !== false;
+    const hasSyntaxExposurePreference = Object.prototype.hasOwnProperty.call(
+      prefs,
+      'pref_markdown_syntax_exposure'
+    );
+    const nextSyntaxExposure = hasSyntaxExposurePreference
+      ? normalizeMarkdownSyntaxExposureScope(prefs.pref_markdown_syntax_exposure)
+      : markdownSyntaxExposureScope;
+    const syntaxExposureChanged =
+      nextSyntaxExposure !== markdownSyntaxExposureScope;
+    markdownSyntaxExposureScope = nextSyntaxExposure;
+    if (currentModePreference === 'rendered' && hasSyntaxExposurePreference) {
+      activeSyntaxExposureScope = nextSyntaxExposure;
+    }
+    const nextGfmExtensionsEnabled = prefs.pref_gfm_extensions_enabled !== false;
+    const nextWmdxSubscriptEnabled =
+      prefs.pref_wmdx_subscript_enabled !== false;
+    if (
+      nextGfmExtensionsEnabled !== gfmExtensionsEnabled ||
+      nextWmdxSubscriptEnabled !== wmdxSubscriptEnabled
+    ) {
+      gfmExtensionsEnabled = nextGfmExtensionsEnabled;
+      wmdxSubscriptEnabled = nextWmdxSubscriptEnabled;
+      reconfigureMarkdownParserViews();
+    }
+    markdownIndentSpaces = getMarkdownIndentSpaces(
+      prefs.pref_indent_step_spaces
+    );
+    setWmdxSuperscriptSyntaxEnabled(
+      prefs.pref_wmdx_superscript_enabled !== false
+    );
+    setWmdxColorSyntaxEnabled(
+      prefs.pref_wmdx_color_syntax_enabled !== false
+    );
+    setObsidianHighlightSyntaxEnabled(
+      prefs.pref_obsidian_highlight_enabled === true
+    );
     const limitedInteraction =
       prefs.pref_embedded_content_limited_interaction !== false;
     const fullInlineEditing =
@@ -9835,8 +12576,61 @@ window.editorBridge = {
     embeddedContentInteractionMode =
       !limitedInteraction && fullInlineEditing ? 'full' : 'checkboxes';
     setWmdxUnderlineSyntaxEnabled(prefs.pref_underline_use_wmdx_syntax !== false);
+    const nextLinkSyntaxSettings = normalizeLinkSyntaxSettings(prefs);
+    const linkSyntaxChanged =
+      JSON.stringify(nextLinkSyntaxSettings) !== JSON.stringify(linkSyntaxSettings);
+    const nextHeadingSyntaxSettings = normalizeHeadingSyntaxSettings(prefs);
+    const headingSyntaxChanged =
+      JSON.stringify(nextHeadingSyntaxSettings) !==
+      JSON.stringify(headingSyntaxSettings);
+    const nextCalloutSyntaxSettings = normalizeCalloutSyntaxSettings(prefs);
+    const calloutSyntaxChanged =
+      JSON.stringify(nextCalloutSyntaxSettings) !==
+      JSON.stringify(calloutSyntaxSettings);
+    const nextBlockquoteSyntaxSettings =
+      normalizeBlockquoteSyntaxSettings(prefs);
+    const blockquoteSyntaxChanged =
+      JSON.stringify(nextBlockquoteSyntaxSettings) !==
+      JSON.stringify(blockquoteSyntaxSettings);
+    const nextFootnoteSyntaxSettings = normalizeFootnoteSyntaxSettings(prefs);
+    const footnoteSyntaxChanged =
+      JSON.stringify(nextFootnoteSyntaxSettings) !==
+      JSON.stringify(footnoteSyntaxSettings);
+    const nextListSyntaxSettings = normalizeListSyntaxSettings(prefs);
+    const listSyntaxChanged =
+      JSON.stringify(nextListSyntaxSettings) !==
+      JSON.stringify(listSyntaxSettings);
+    linkSyntaxSettings = nextLinkSyntaxSettings;
+    headingSyntaxSettings = nextHeadingSyntaxSettings;
+    calloutSyntaxSettings = nextCalloutSyntaxSettings;
+    blockquoteSyntaxSettings = nextBlockquoteSyntaxSettings;
+    footnoteSyntaxSettings = nextFootnoteSyntaxSettings;
+    listSyntaxSettings = nextListSyntaxSettings;
+    if (
+      linkSyntaxChanged ||
+      headingSyntaxChanged ||
+      calloutSyntaxChanged ||
+      blockquoteSyntaxChanged ||
+      footnoteSyntaxChanged ||
+      listSyntaxChanged
+    ) {
+      hidePopupStrip();
+    }
     if (activeAdapter?.view) {
-      activeAdapter.view.dispatch({ effects: heightMapRefreshEffect.of(null) });
+      activeAdapter.view.dispatch({
+        effects:
+          linkSyntaxChanged ||
+          headingSyntaxChanged ||
+          calloutSyntaxChanged ||
+          blockquoteSyntaxChanged ||
+          footnoteSyntaxChanged ||
+          listSyntaxChanged
+          ? [
+              heightMapRefreshEffect.of(null),
+              typographySettingsEffect.of(Date.now())
+            ]
+          : heightMapRefreshEffect.of(null)
+      });
       refreshToolbarSyntaxState(activeAdapter.view);
     }
 
@@ -9945,7 +12739,7 @@ window.editorBridge = {
     }
     document.body.classList.toggle(
       'list-wrap-under-text',
-      prefs.pref_list_wrap_under_text === true
+      prefs.pref_list_non_hanging !== true
     );
     document.body.classList.toggle(
       'todo-hide-extra-bullet',
@@ -9969,6 +12763,29 @@ window.editorBridge = {
     setCssVar('--selection-highlight-text', androidArgbToCss(prefs.pref_selection_highlight_text_color));
 
     // Body & Paragraph
+    setCssVar(
+      '--source-editor-font-family',
+      toCssFontFamily(prefs.pref_source_editor_font_family)
+    );
+    setCssVar(
+      '--source-editor-font-size',
+      prefs.pref_source_editor_font_size ?? 14,
+      'px'
+    );
+    setCssVar(
+      '--source-editor-text-color',
+      androidArgbToCss(prefs.pref_source_editor_text_color)
+    );
+    for (const token of [
+      'markup', 'heading', 'comment', 'string', 'number', 'keyword',
+      'property', 'type', 'variable', 'function', 'operator', 'link', 'code'
+    ]) {
+      setCssVar(
+        `--source-${token}-color`,
+        androidArgbToCss(prefs[`pref_source_editor_${token}_color`])
+      );
+    }
+
     const paragraphAlignment = prefs.pref_justify_paragraph === true
       ? 'justify'
       : (prefs.pref_paragraph_align || prefs.pref_paragraph_justify || 'left');
@@ -10400,6 +13217,11 @@ window.editorBridge = {
     });
 
     // Tables
+    tableScrollWysiwygEnabled =
+      prefs.pref_table_scroll_wysiwyg_enabled !== false;
+    tableScrollSourceEnabled =
+      prefs.pref_table_scroll_source_enabled !== false;
+    applyTableScrollSettingToCurrentDom();
     const inheritTableTypography =
       prefs.pref_table_inherit_body_typography !== false;
     const tableHyphenation = inheritTableTypography
@@ -10600,9 +13422,10 @@ window.editorBridge = {
       androidArgbToCss(prefs.pref_toolbar_floating_active_key_bg_color ?? '#000000')
     );
     setCssVar('--toolbar-floating-label-color', androidArgbToCss(prefs.pref_toolbar_floating_label_color));
+    const floatingShowLabels = prefs.pref_toolbar_floating_show_labels === true;
     setCssVar(
       '--toolbar-floating-label-display',
-      prefs.pref_toolbar_floating_show_labels === true ? 'flex' : 'none'
+      floatingShowLabels ? 'flex' : 'none'
     );
     const floatingKeyHeight = Number(prefs.pref_toolbar_floating_key_height ?? 36);
     setCssVar(
@@ -10634,11 +13457,19 @@ window.editorBridge = {
     const safeFloatingKeyHeight = Number.isFinite(floatingKeyHeight)
       ? Math.max(20, Math.min(64, floatingKeyHeight))
       : 36;
+    const floatingIconSize = Math.max(
+      12,
+      Math.round(Math.min(safeFloatingKeyWidth * 0.45, safeFloatingKeyHeight - 8))
+    );
     setCssVar(
       '--toolbar-floating-icon-size',
-      Math.max(12, Math.round(Math.min(safeFloatingKeyWidth * 0.45, safeFloatingKeyHeight - 8))),
+      floatingIconSize,
       'px'
     );
+    const floatingContentHeight = floatingShowLabels
+      ? Math.max(safeFloatingKeyHeight, floatingIconSize + floatingLabelSize + 6)
+      : safeFloatingKeyHeight;
+    setCssVar('--toolbar-floating-content-height', floatingContentHeight, 'px');
     const floatingCornerRadius = Number(prefs.pref_toolbar_floating_corner_radius ?? 24);
     setCssVar(
       '--toolbar-floating-corner-radius',
@@ -10901,6 +13732,19 @@ window.editorBridge = {
       premeasureTableHeights(activeAdapter.view);
       activeAdapter.view.requestMeasure();
     }
+    if (syntaxExposureChanged && currentModePreference === 'rendered' && activeAdapter?.view) {
+      const expectedInternalMode = nextSyntaxExposure === 'hidden'
+        ? 'wysiwyg'
+        : 'live_preview';
+      if (currentEditorMode !== expectedInternalMode) {
+        void setEditorMode('rendered');
+      } else {
+        dispatchWithScrollSnapshot(
+          activeAdapter.view,
+          heightMapRefreshEffect.of(null)
+        );
+      }
+    }
   },
   getMarkdown: function() {
     // Flush active table cell draft if an overlay editor is open
@@ -10912,22 +13756,136 @@ window.editorBridge = {
     if (pendingMarkdown !== null) return pendingMarkdown;
     return '';
   },
-  setMarkdown: function(markdownText) {
-    if (typeof activeAdapter !== 'undefined' && activeAdapter) {
-      pendingMarkdown = null;
-      isProgrammaticChange = true;
-      try {
-        activeAdapter.setMarkdown(markdownText || '');
-      } catch (e) {
-        console.error('Error setting markdown:', e);
-      }
-      window.leftPanelController?.onNativeDocumentLoaded?.(markdownText || '');
-      window.AndroidNative?.restoreNativeCursorAndScrollState?.(
-        activeAdapter.documentSessionId
+  getHtmlExportPayload: function() {
+    try {
+      const result = renderMarkdownHtml(this.getMarkdown(), {
+        profile: currentMarkdownProfile,
+        window,
+        resolveAssetDataUri: reference =>
+          window.AndroidNative?.loadAssetDataUriForExport?.(
+            reference,
+            activeAdapter?.documentSessionId ?? null
+          ) ?? '',
+        footnoteSyntaxSettings
+      });
+      return JSON.stringify(result);
+    } catch (error) {
+      return JSON.stringify({
+        html: '',
+        warnings: [],
+        error: error?.message || 'Could not render semantic HTML.'
+      });
+    }
+  },
+  importMhtmlAsMarkdown: function(
+    htmlSource,
+    embeddedResourcesJson,
+    baseLocation,
+    sourceFileName,
+    documentSessionId
+  ) {
+    try {
+      const resourceHandles = JSON.parse(embeddedResourcesJson || '{}');
+      const imported = convertHtmlToMarkdownProfile(
+        String(htmlSource ?? ''),
+        currentMarkdownProfile,
+        globalThis.DOMParser,
+        {
+          embeddedResources: resourceHandles,
+          baseLocation: String(baseLocation ?? ''),
+          resolveEmbeddedResource: resourceId =>
+            window.AndroidNative?.loadMhtmlResourceDataUriForImport?.(
+              String(resourceId),
+              documentSessionId ?? null
+            ) ?? ''
+        }
       );
-      setTimeout(() => { isProgrammaticChange = false; }, 50);
-    } else {
-      pendingMarkdown = markdownText;
+      if (!imported.markdown.trim()) {
+        throw new Error('No readable HTML content was found in the MHTML archive.');
+      }
+      if (typeof window.AndroidNative?.importHtmlAsMarkdown !== 'function') {
+        throw new Error('This app version cannot import MHTML archives.');
+      }
+      window.AndroidNative.importHtmlAsMarkdown(
+        imported.markdown,
+        String(sourceFileName ?? ''),
+        documentSessionId ?? null,
+        JSON.stringify(imported.warnings)
+      );
+      return { imported: true, warnings: imported.warnings };
+    } catch (error) {
+      window.AndroidNative?.showToast?.(
+        error?.message || 'MHTML import failed.'
+      );
+      return { imported: false, error: error?.message || 'MHTML import failed.' };
+    } finally {
+      window.AndroidNative?.clearMhtmlImportResources?.(documentSessionId ?? null);
+    }
+  },
+  setMarkdown: function(markdownText, fileName) {
+    const hasDocumentFileName = typeof fileName === 'string' && fileName.trim();
+    const requestGeneration = hasDocumentFileName
+      ? ++editorDocumentLoadGeneration
+      : editorDocumentLoadGeneration;
+    const applyMarkdown = (value) => {
+      const nextMarkdown = value || '';
+      if (typeof activeAdapter !== 'undefined' && activeAdapter) {
+        pendingMarkdown = null;
+        isProgrammaticChange = true;
+        try {
+          activeAdapter.setMarkdown(nextMarkdown);
+        } catch (e) {
+          console.error('Error setting markdown:', e);
+        }
+        window.leftPanelController?.onNativeDocumentLoaded?.(nextMarkdown);
+        window.AndroidNative?.restoreNativeCursorAndScrollState?.(
+          activeAdapter.documentSessionId
+        );
+        setTimeout(() => { isProgrammaticChange = false; }, 50);
+      } else {
+        pendingMarkdown = nextMarkdown;
+      }
+    };
+    if (hasDocumentFileName) {
+      const nextFileName = fileName.trim();
+      const previousLoadedFileName = lastLoadedEditorFileName;
+      setCurrentEditorFileName(nextFileName, true);
+      const isMarkdownFile = sourceLanguageExtension(nextFileName) === null;
+      const targetMode = isMarkdownFile ? preferredMarkdownMode : 'source';
+      const currentDocumentMode = currentEditorMode === 'source' ? 'source' : 'rendered';
+      const applyCurrentDocument = () => {
+        if (requestGeneration !== editorDocumentLoadGeneration) return;
+        lastLoadedEditorFileName = nextFileName;
+        applyMarkdown(markdownText);
+      };
+
+      if (targetMode !== currentDocumentMode) {
+        if (
+          targetMode === 'rendered' &&
+          sourceLanguageExtension(previousLoadedFileName) !== null &&
+          activeAdapter
+        ) {
+          const wasProgrammatic = isProgrammaticChange;
+          isProgrammaticChange = true;
+          try {
+            activeAdapter.setMarkdown('');
+          } finally {
+            isProgrammaticChange = wasProgrammatic;
+          }
+        }
+        return setEditorMode(targetMode, {
+          preserveMarkdownPreference: true
+        }).then(applyCurrentDocument);
+      }
+
+      applyCurrentDocument();
+      return;
+    }
+
+    const generationIsCurrent = () =>
+      requestGeneration === editorDocumentLoadGeneration;
+    if (generationIsCurrent()) {
+      applyMarkdown(markdownText);
     }
   },
   persistCurrentScrollPosition: function() {
@@ -10942,6 +13900,31 @@ window.editorBridge = {
     if (window.AndroidNative && typeof window.AndroidNative.showToast === 'function') {
       window.AndroidNative.showToast(isLineWrapEnabled ? 'Line wrap enabled' : 'Line wrap disabled');
     }
+  },
+  toggleTableScrolling: function() {
+    const sourceView = currentModePreference === 'source';
+    const enabled = !(sourceView
+      ? tableScrollSourceEnabled
+      : tableScrollWysiwygEnabled);
+    const preferenceKey = sourceView
+      ? 'pref_table_scroll_source_enabled'
+      : 'pref_table_scroll_wysiwyg_enabled';
+    if (sourceView) tableScrollSourceEnabled = enabled;
+    else tableScrollWysiwygEnabled = enabled;
+
+    document.querySelector('.cm-wp-cell-editor')?.blur();
+    window.AndroidNative?.setTableScrollEnabled?.(
+      sourceView ? 'source' : 'wysiwyg',
+      enabled
+    );
+    if (activeAdapter?.view) {
+      dispatchWithScrollSnapshot(
+        activeAdapter.view,
+        heightMapRefreshEffect.of(null)
+      );
+    }
+    applyTableScrollSettingToCurrentDom();
+    return { preferenceKey, enabled };
   },
   setLineWrap: function(enabled) {
     isLineWrapEnabled = !!enabled;
@@ -11024,15 +14007,21 @@ window.editorBridge = {
       document.body.classList.remove('light-theme');
     }
   },
-  setDocumentTitle: function(title, documentKey) {
+  setDocumentTitle: function(title, documentKey, fileName) {
     const titleEl = document.querySelector('#file-title');
     if (titleEl) {
       titleEl.textContent = title;
     }
-    const displayName = String(title || '').replace(/\s+\*$/, '');
-    if (documentKey !== undefined && documentKey !== null) {
-      setActiveTocDocumentKey(String(documentKey));
+    const documentIdentityChanged = documentKey !== undefined && documentKey !== null
+      ? setCurrentSourceDocumentKey(String(documentKey))
+      : false;
+    if (fileName !== undefined && fileName !== null) {
+      setCurrentEditorFileName(fileName, documentIdentityChanged);
+    } else if (documentIdentityChanged) {
+      setCurrentEditorFileName(currentEditorFileName, true);
     }
+    const displayName = String(title || '').replace(/\s+\*$/, '');
+    if (documentKey !== undefined && documentKey !== null) setActiveTocDocumentKey(String(documentKey));
     const nameInput = document.querySelector('#toc-document-name');
     if (nameInput) {
       nameInput.dataset.fullName = displayName;
@@ -11193,7 +14182,12 @@ function getBlockCategory(view, pos) {
 
     for (let cur = node; cur; cur = cur.parent) {
       const name = cur.name;
-      if (name.startsWith('ATXHeading') || name.startsWith('SetextHeading') || name === 'HeaderMark') {
+      if (
+        getHeadingLevel(name) &&
+        isHeadingFlavorEnabledNow(
+          getHeadingFlavorAtNode(cur, view.state.doc)
+        )
+      ) {
         return 'heading';
       }
       if (name === 'ListItem' || name === 'ListMark' || name === 'TaskMarker') {
@@ -11830,7 +14824,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (window.AndroidNative && typeof window.AndroidNative.onHostReady === 'function') {
     window.AndroidNative.onHostReady();
   } else {
-    setEditorMode('wysiwyg');
+    setEditorMode('rendered');
   }
 });
 

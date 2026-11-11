@@ -132,6 +132,51 @@ test('external-open URI permission flags survive until the editor is ready', () 
   );
 });
 
+test('Android Open With advertises text and supported source-code MIME types', () => {
+  const viewFilter = appManifestXml.match(
+    /<intent-filter>\s*<action android:name="android.intent.action.VIEW"[\s\S]*?<\/intent-filter>/
+  )?.[0];
+  assert.ok(viewFilter, 'external file opening has a VIEW intent filter');
+  for (const mimeType of [
+    'text/*',
+    'application/json',
+    'application/xml',
+    'application/javascript',
+    'application/yaml',
+    'application/x-yaml',
+    'application/sql',
+    'application/x-sql',
+    'application/toml',
+    'application/x-mimearchive',
+    'message/rfc822',
+    'multipart/related'
+  ]) {
+    assert.ok(
+      viewFilter.includes(`android:mimeType="${mimeType}"`),
+      `the app should appear for ${mimeType} documents`
+    );
+  }
+  assert.ok(
+    !viewFilter.includes('android:mimeType="application/octet-stream"'),
+    'generic binary files should not be offered as text documents'
+  );
+});
+
+test('non-Markdown documents select Source before their text is parsed', () => {
+  assert.match(
+    source,
+    /setMarkdown:\s*function\(markdownText,\s*fileName\)[\s\S]*?sourceLanguageExtension\(nextFileName\)\s*===\s*null[\s\S]*?targetMode\s*=\s*isMarkdownFile\s*\?\s*preferredMarkdownMode\s*:\s*'source'/
+  );
+  assert.match(
+    mainActivitySource,
+    /window\.editorBridge\.setMarkdown\(\$escaped,\s*\$\{JSONObjectWrapper\.quote\(fileName\)\}\)/
+  );
+  assert.match(
+    leftPanelSource,
+    /setMarkdown\?\.\(\s*next\.markdown,\s*next\.isStartPage\s*\?\s*'Untitled\.md'\s*:\s*next\.name\s*\)/s
+  );
+});
+
 test('returning to the app keeps the keyboard hidden until the user touches the editor', () => {
   assert.ok(mainActivitySource.includes('suppressImeUntilUserTouch = true'));
   assert.ok(mainActivitySource.includes('SOFT_INPUT_STATE_ALWAYS_HIDDEN'));
@@ -675,7 +720,7 @@ test('keyboard shortcuts are one flat alphabetical list with no section headings
   assert.doesNotMatch(hotkeysXml, /ResetPreferenceCategory/);
   const titles = [...hotkeysXml.matchAll(/app:title="([^"]+)"/g)]
     .map(([, title]) => title.replace(/&amp;/g, '&'));
-  assert.equal(titles.length, 67, 'All shortcut preferences remain present');
+  assert.equal(titles.length, 72, 'All shortcut preferences remain present');
   assert.deepEqual(
     titles,
     [...titles].sort((first, second) =>
@@ -698,7 +743,7 @@ test('every visible hotkey preference reaches a matching editor action', () => {
     assert.ok(keyboardHandler.includes('customHotkeys.' + editorKey), 'Missing editor handler for ' + preferenceKey);
   }
   assert.ok(keyboardHandler.includes("execCmd('InsertFootnote')"));
-  assert.ok(keyboardHandler.includes("setEditorMode(currentEditorMode === 'source' ? 'wysiwyg' : 'source')"));
+  assert.ok(keyboardHandler.includes("setEditorMode(currentModePreference === 'source' ? 'rendered' : 'source')"));
 });
 
 test('Ctrl+O is intercepted before the editor handles the key', () => {
@@ -1031,9 +1076,12 @@ test('session restore clearly explains when referenced files need folder access'
 test('New tab saves new documents before opening them and keeps an empty launcher at the start page', () => {
   const html = fs.readFileSync(path.join(__dirname, '../../web/index.html'), 'utf8');
 
-  for (const action of ['new-markdown', 'new-mdzip', 'go-to-file', 'open-session']) {
+  for (const action of ['new-markdown', 'new-mdzip', 'go-to-file', 'open-file', 'open-session']) {
     assert.match(html, new RegExp(`data-start-page-action="${action}"`));
   }
+  assert.match(html, /<button[^>]+data-start-page-action="go-to-file"[^>]*>\s*Search\s*<\/button>/);
+  assert.match(html, /<button[^>]+data-start-page-action="open-file"[^>]*>\s*Open file\s*<\/button>/);
+  assert.match(leftPanelSource, /case 'open-file':\s*native\?\.onNativeAction\?\.\('open'\);/);
   assert.match(leftPanelSource, /const activateStartPage = \(\) =>/);
   assert.match(leftPanelSource, /else activateStartPage\(\);/);
   assert.match(leftPanelSource, /false,\s*false,\s*false,\s*false,\s*false,\s*'\{\}'/);

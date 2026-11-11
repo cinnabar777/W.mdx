@@ -1,3 +1,5 @@
+import { escapeMarkdownField } from './markdownEscaping.js';
+
 function unescapeMarkdown(value) {
   return value.replace(/\\([\\`*_{}\[\]()#+\-.!<>|])/g, '$1');
 }
@@ -258,17 +260,57 @@ function extractMarkdownLinks(markdown, parser) {
   const text = String(markdown ?? '');
   const codeRanges = markdownCodeRanges(text);
   const links = [];
-  const pattern = /\[((?:\\.|[^\]])*)\]\(((?:\\.|[^)])*)\)/g;
-  let match;
+  const length = text.length;
+  let index = 0;
 
-  while ((match = pattern.exec(text))) {
-    const from = match.index;
-    const to = pattern.lastIndex;
-    if (from > 0 && text[from - 1] === '!') continue;
-    if (codeRanges.some(range => from < range.to && to > range.from)) continue;
+  while (index < length) {
+    if (text[index] === '[' && (index === 0 || text[index - 1] !== '!')) {
+      const linkStart = index;
+      let labelEnd = -1;
+      let cursor = index + 1;
+      while (cursor < length) {
+        if (text[cursor] === '\\') {
+          cursor += 2;
+          continue;
+        }
+        if (text[cursor] === '[') break;
+        if (text[cursor] === ']') {
+          labelEnd = cursor;
+          break;
+        }
+        cursor++;
+      }
 
-    const parsed = parser(match[0]);
-    if (parsed) links.push({ ...parsed, from, to });
+      if (labelEnd !== -1 && labelEnd + 1 < length && text[labelEnd + 1] === '(') {
+        let destinationEnd = -1;
+        let depth = 1;
+        cursor = labelEnd + 2;
+        while (cursor < length) {
+          if (text[cursor] === '\\') {
+            cursor += 2;
+            continue;
+          }
+          if (text[cursor] === '(') depth++;
+          else if (text[cursor] === ')' && --depth === 0) {
+            destinationEnd = cursor;
+            break;
+          }
+          cursor++;
+        }
+
+        if (destinationEnd !== -1) {
+          const from = linkStart;
+          const to = destinationEnd + 1;
+          if (!codeRanges.some(range => from < range.to && to > range.from)) {
+            const parsed = parser(text.slice(from, to));
+            if (parsed) links.push({ ...parsed, from, to });
+          }
+          index = to;
+          continue;
+        }
+      }
+    }
+    index++;
   }
 
   return links;
@@ -283,9 +325,7 @@ export function extractMarkdownVideoLinks(markdown) {
 }
 
 export function formatMarkdownAudioLink(label, url, layout = null) {
-  const safeLabel = String(label ?? 'audio')
-    .replace(/\\/g, '\\\\')
-    .replace(/\]/g, '\\]');
+  const safeLabel = escapeMarkdownField(label ?? 'audio', { escapeCharacters: ']' });
   const rawUrl = String(url ?? '').trim();
   const queryIndex = rawUrl.indexOf('?');
   const fragmentIndex = rawUrl.indexOf('#');
@@ -330,9 +370,7 @@ export function formatMarkdownAudioLink(label, url, layout = null) {
 }
 
 export function formatMarkdownVideoLink(label, url, layout = null) {
-  const safeLabel = String(label ?? 'video')
-    .replace(/\\/g, '\\\\')
-    .replace(/\]/g, '\\]');
+  const safeLabel = escapeMarkdownField(label ?? 'video', { escapeCharacters: ']' });
   const rawUrl = String(url ?? '').trim();
   const suffixIndices = ['?', '#']
     .map(character => rawUrl.indexOf(character))
@@ -372,9 +410,7 @@ export function formatMarkdownVideoLink(label, url, layout = null) {
 }
 
 export function formatMarkdownAttachmentLink(label, url, layout = null) {
-  const safeLabel = String(label ?? 'attachment')
-    .replace(/\\/g, '\\\\')
-    .replace(/\]/g, '\\]');
+  const safeLabel = escapeMarkdownField(label ?? 'attachment', { escapeCharacters: ']' });
   const safePath = String(url ?? '').trim().split('/').map(segment => {
     let decoded = segment;
     try {

@@ -1,0 +1,4 @@
+W.mdx offline attachment test
+
+This UTF-8 text file is bundled inside the phone-test MDZip.
+Characters to check: café, naïve, and 雪.

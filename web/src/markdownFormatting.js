@@ -1,4 +1,26 @@
+import { EditorSelection, EditorState } from '@codemirror/state';
+import { markdown as cmMarkdown } from '@codemirror/lang-markdown';
+import {
+  Autolink as GFMAutolink,
+  TaskList as GFMTaskList
+} from '@lezer/markdown';
 import { syntaxTree } from '@codemirror/language';
+import {
+  collectMarkdownReferenceTargets,
+  getMarkdownLinkInfo
+} from './markdown-link-utils.mjs';
+import {
+  getWmdxResourceTitleRange,
+  parseWmdxResourceSyntax
+} from './wmdxResources.js';
+import {
+  getIndentedCodeBlockAtLine,
+  getIndentedCodeBlockRenderLayout
+} from './markdownIndent.js';
+import { isMarkdownCharacterEscaped } from './markdownEscaping.js';
+import { wmdxCommonMarkCompatibility } from './commonmark-compat.mjs';
+import { wmdxGfmFtpAutolink } from './gfm-autolink.mjs';
+import { wmdxGfmStrikethrough } from './gfm-strikethrough.mjs';
 
 const UNDERLINE_STYLE_MARKERS = Object.freeze({
   solid: '',
@@ -9,6 +31,7 @@ const UNDERLINE_STYLE_MARKERS = Object.freeze({
 });
 const UNDERLINE_CYCLE = Object.keys(UNDERLINE_STYLE_MARKERS);
 let wmdxUnderlineSyntaxEnabled = false;
+let wmdxSuperscriptSyntaxEnabled = true;
 
 const WMDX_COLOR_GROUPS = Object.freeze({
   highlight: Object.freeze({
@@ -37,13 +60,20 @@ const WMDX_COLOR_ACTION_IDS = Object.freeze(
     )
   )
 );
+let wmdxColorSyntaxEnabled = true;
+let obsidianHighlightSyntaxEnabled = false;
 
 const MARKDOWN_FORMATS = {
-  bold: { node: 'StrongEmphasis', open: '**', close: '**' },
-  italic: { node: 'Emphasis', open: '*', close: '*' },
-  strikethrough: { node: 'Strikethrough', open: '~~', close: '~~' },
-  code: { node: 'InlineCode', open: '`', close: '`' },
-  underline: { htmlTag: 'u', open: '<u>', close: '</u>' }
+  bold: { node: 'StrongEmphasis', htmlTag: ['strong', 'b'], open: '**', close: '**' },
+  italic: { node: 'Emphasis', htmlTag: ['em', 'i'], open: '*', close: '*' },
+  strikethrough: {
+    node: 'Strikethrough', htmlTag: ['del', 's', 'strike'], open: '~~', close: '~~'
+  },
+  subscript: { node: 'Subscript', htmlTag: ['sub'], open: '~', close: '~' },
+  superscript: { htmlTag: ['sup'], open: '^', close: '^' },
+  mark: { htmlTag: ['mark'], open: '<mark>', close: '</mark>' },
+  code: { node: 'InlineCode', htmlTag: ['code'], open: '`', close: '`' },
+  underline: { htmlTag: ['u', 'ins'], open: '<u>', close: '</u>' }
 };
 
 function rangeFromSyntaxNode(state, node, format) {
@@ -94,13 +124,18 @@ function isInsideRanges(position, ranges) {
 function htmlFormatRanges(state, format, bounds = null) {
   const openings = [];
   const ranges = [];
+  const tags = new Set(
+    (Array.isArray(format.htmlTag) ? format.htmlTag : [format.htmlTag])
+      .filter(Boolean)
+      .map(tag => tag.toLowerCase())
+  );
   syntaxTree(state).iterate({
     ...(bounds ? { from: bounds.from, to: bounds.to } : {}),
     enter(node) {
       if (node.name !== 'HTMLTag') return;
       const source = state.doc.sliceString(node.from, node.to);
       const tag = /^<\s*(\/?)\s*([a-z][\w-]*)\b([^>]*)>/i.exec(source);
-      if (!tag || tag[2].toLowerCase() !== format.htmlTag) return;
+      if (!tag || !tags.has(tag[2].toLowerCase())) return;
       if (!tag[1]) {
         let eligible = true;
         if (format.htmlColor) {
@@ -108,19 +143,20 @@ function htmlFormatRanges(state, format, bounds = null) {
           const color = /\bcolor\s*:\s*([a-z]+)/i.exec(style)?.[1]?.toLowerCase();
           eligible = color === format.htmlColor;
         }
-        openings.push({ from: node.from, to: node.to, eligible });
+        openings.push({ from: node.from, to: node.to, eligible, tag: tag[2].toLowerCase() });
         return;
       }
 
       const opening = openings.pop();
-      if (!opening?.eligible) return;
+      if (!opening?.eligible || opening.tag !== tag[2].toLowerCase()) return;
       ranges.push({
         wrapperFrom: opening.from,
         wrapperTo: node.to,
         contentFrom: opening.to,
         contentTo: node.from,
         open: state.doc.sliceString(opening.from, opening.to),
-        close: source
+        close: source,
+        kind: 'html'
       });
     }
   });
@@ -132,26 +168,48 @@ function colorActionId(group, color) {
 }
 
 export function getWmdxColorSyntaxRanges(state, bounds = null) {
-  if (!state) return [];
+  if (
+    !state ||
+    (!wmdxColorSyntaxEnabled && !obsidianHighlightSyntaxEnabled)
+  ) return [];
   const scanBounds = bounds
     ? expandedLineBounds(state, bounds.from, Math.max(bounds.from, bounds.to - 1))
     : { from: 0, to: state.doc.length };
   const scanFrom = scanBounds.from;
   const source = state.doc.sliceString(scanFrom, scanBounds.to);
   const code = codeRanges(state, scanBounds);
+  const setextUnderlineLines = new Set();
+  syntaxTree(state).iterate({
+    from: scanFrom,
+    to: scanBounds.to,
+    enter(node) {
+      if (node.name !== 'SetextHeading1' && node.name !== 'SetextHeading2') return;
+      const underlineLine = state.doc.lineAt(Math.max(node.from, node.to - 1));
+      if (
+        underlineLine.from > node.from &&
+        /^[ \t]*(?:=+|-+)[ \t]*$/.test(underlineLine.text)
+      ) {
+        setextUnderlineLines.add(underlineLine.from);
+      }
+    }
+  });
   const ranges = [];
 
   for (const [group, config] of Object.entries(WMDX_COLOR_GROUPS)) {
-    const expressions = group === 'highlight'
-      ? [/(?<![\\])==([₀₁₂]?)(?![₀₁₂]==)(\S(?:[^\n]*?\S)?)(?<![\\])==/gu]
-      : [/(?<![=\\])=(?![=])([₀₁₂]?)(?![₀₁₂]=)(\S(?:[^\n]*?\S)?)(?<![\\])=(?![=])/gu];
+    if (!wmdxColorSyntaxEnabled && group !== 'highlight') continue;
+    const expressions = !wmdxColorSyntaxEnabled
+      ? [/(?<![\\])==(?![₀₁₂])(\S(?:[^\n]*?\S)?)(?<![\\])==/gu]
+      : group === 'highlight'
+        ? [/(?<![\\])==([₀₁₂]?)(?![₀₁₂]==)(\S(?:[^\n]*?\S)?)(?<![\\])==/gu]
+        : [/(?<![=\\])=(?![=])([₀₁₂]?)(?![₀₁₂]=)(\S(?:[^\n]*?\S)?)(?<![\\])=(?![=])/gu];
     for (const expression of expressions) {
       let match;
       while ((match = expression.exec(source))) {
         const wrapperFrom = scanFrom + match.index;
         const wrapperTo = wrapperFrom + match[0].length;
+        if (setextUnderlineLines.has(state.doc.lineAt(wrapperFrom).from)) continue;
         if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
-        const marker = match[1] ?? '';
+        const marker = wmdxColorSyntaxEnabled ? (match[1] ?? '') : '';
         const color = config.colors.find(([, value]) => value === marker)?.[0];
         if (!color) continue;
         const open = `${config.delimiter}${marker}`;
@@ -176,6 +234,18 @@ export function getWmdxColorSyntaxRanges(state, bounds = null) {
 
 export function setWmdxUnderlineSyntaxEnabled(enabled) {
   wmdxUnderlineSyntaxEnabled = Boolean(enabled);
+}
+
+export function setWmdxSuperscriptSyntaxEnabled(enabled) {
+  wmdxSuperscriptSyntaxEnabled = Boolean(enabled);
+}
+
+export function setWmdxColorSyntaxEnabled(enabled) {
+  wmdxColorSyntaxEnabled = Boolean(enabled);
+}
+
+export function setObsidianHighlightSyntaxEnabled(enabled) {
+  obsidianHighlightSyntaxEnabled = Boolean(enabled);
 }
 
 export function isWmdxUnderlineSyntaxEnabled() {
@@ -227,6 +297,32 @@ function expandedLineBounds(state, from, to) {
   };
 }
 
+function getWmdxSuperscriptRanges(state, bounds = null) {
+  const scanBounds = bounds
+    ? expandedLineBounds(state, bounds.from, Math.max(bounds.from, bounds.to - 1))
+    : { from: 0, to: state.doc.length };
+  const source = state.doc.sliceString(scanBounds.from, scanBounds.to);
+  const code = codeRanges(state, scanBounds);
+  const ranges = [];
+  const expression = /(?<![\\])\^([^\s^\n](?:[^^\n]*?[^\s^\n])?)\^/gu;
+  let match;
+  while ((match = expression.exec(source))) {
+    const wrapperFrom = scanBounds.from + match.index;
+    const wrapperTo = wrapperFrom + match[0].length;
+    if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
+    ranges.push({
+      wrapperFrom,
+      wrapperTo,
+      contentFrom: wrapperFrom + 1,
+      contentTo: wrapperTo - 1,
+      open: '^',
+      close: '^',
+      kind: 'superscript'
+    });
+  }
+  return ranges;
+}
+
 export function getMarkdownFormatRanges(view, formatName, bounds = null) {
   const state = view?.state;
   if (WMDX_COLOR_ACTION_IDS.includes(formatName)) {
@@ -240,7 +336,7 @@ export function getMarkdownFormatRanges(view, formatName, bounds = null) {
     ? expandedLineBounds(state, bounds.from, bounds.to)
     : null;
   if (format.node) {
-    const ranges = [];
+    let ranges = [];
     syntaxTree(state).iterate({
       ...(scanBounds ? { from: scanBounds.from, to: scanBounds.to } : {}),
       enter(node) {
@@ -251,12 +347,21 @@ export function getMarkdownFormatRanges(view, formatName, bounds = null) {
     });
     if (formatName === 'italic' && wmdxUnderlineSyntaxEnabled) {
       const customRanges = getWmdxUnderlineSyntaxRanges(state, scanBounds);
-      return ranges.filter(range => !customRanges.some(custom =>
+      ranges = ranges.filter(range => !customRanges.some(custom =>
         custom.wrapperFrom === range.wrapperFrom &&
         custom.wrapperTo === range.wrapperTo
       ));
     }
-    return ranges;
+    if (format.htmlTag) {
+      ranges.push(...htmlFormatRanges(state, format, scanBounds));
+    }
+    return ranges.sort((a, b) => a.wrapperFrom - b.wrapperFrom);
+  }
+  if (formatName === 'superscript') {
+    return [
+      ...(wmdxSuperscriptSyntaxEnabled ? getWmdxSuperscriptRanges(state, scanBounds) : []),
+      ...htmlFormatRanges(state, format, scanBounds)
+    ].sort((a, b) => a.wrapperFrom - b.wrapperFrom);
   }
   if (formatName === 'underline') {
     return [
@@ -368,9 +473,10 @@ export function getMarkdownFormattingState(view) {
 
   for (const [formatName, format] of Object.entries(MARKDOWN_FORMATS)) {
     if (!format.htmlTag) continue;
-    state[formatName] = htmlFormatRanges(view.state, format, bounds).some(range =>
-      selection.head >= range.contentFrom && selection.head < range.contentTo
-    );
+    state[formatName] = state[formatName] ||
+      htmlFormatRanges(view.state, format, bounds).some(range =>
+        selection.head >= range.contentFrom && selection.head < range.contentTo
+      );
   }
   for (const range of getWmdxColorSyntaxRanges(view.state, bounds)) {
     if (selection.head >= range.contentFrom && selection.head < range.contentTo) {
@@ -379,6 +485,9 @@ export function getMarkdownFormattingState(view) {
     }
   }
   const underline = getMarkdownFormatRanges(view, 'underline', bounds).find(range =>
+    selection.head >= range.contentFrom && selection.head < range.contentTo
+  );
+  state.superscript = getMarkdownFormatRanges(view, 'superscript', bounds).some(range =>
     selection.head >= range.contentFrom && selection.head < range.contentTo
   );
   if (underline) {
@@ -411,6 +520,7 @@ function focusEditor(view, options = {}) {
 
 function unwrapFormattedRange(view, range, selection, format, options = {}) {
   const doc = view.state.doc;
+  const replacementText = range.replacementText;
   const selectedInsideContent =
     selection.from >= range.contentFrom &&
     selection.to <= range.contentTo;
@@ -419,7 +529,8 @@ function unwrapFormattedRange(view, range, selection, format, options = {}) {
     selection.to >= range.wrapperTo;
 
   if (selectsWholeWrapper) {
-    const content = doc.sliceString(range.contentFrom, range.contentTo);
+    const content = replacementText ??
+      doc.sliceString(range.contentFrom, range.contentTo);
     const insertAt = range.wrapperFrom;
     view.dispatch({
       changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: content },
@@ -427,6 +538,22 @@ function unwrapFormattedRange(view, range, selection, format, options = {}) {
         anchor: insertAt,
         head: insertAt + content.length
       }
+    });
+    focusEditor(view, options);
+    return true;
+  }
+
+  if (
+    range.replaceWholeOnPartial &&
+    range.wrapperTo > selection.from &&
+    range.wrapperFrom < selection.to
+  ) {
+    const content = replacementText ??
+      doc.sliceString(range.contentFrom, range.contentTo);
+    const cursor = range.wrapperFrom + content.length;
+    view.dispatch({
+      changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: content },
+      selection: { anchor: cursor, head: cursor }
     });
     focusEditor(view, options);
     return true;
@@ -452,7 +579,8 @@ function unwrapFormattedRange(view, range, selection, format, options = {}) {
   }
 
   if (selection.empty && selection.head >= range.contentFrom && selection.head <= range.contentTo) {
-    const content = doc.sliceString(range.contentFrom, range.contentTo);
+    const content = replacementText ??
+      doc.sliceString(range.contentFrom, range.contentTo);
     const cursor = range.wrapperFrom + Math.min(selection.head - range.contentFrom, content.length);
     view.dispatch({
       changes: { from: range.wrapperFrom, to: range.wrapperTo, insert: content },
@@ -465,22 +593,548 @@ function unwrapFormattedRange(view, range, selection, format, options = {}) {
   return false;
 }
 
+function unwrapRangeWithinSelection(view, range, selection, options = {}) {
+  const state = view.state;
+  const doc = state.doc;
+  if (
+    range.wrapperTo <= selection.from ||
+    range.wrapperFrom >= selection.to
+  ) return false;
+
+  if (range.replacementText !== undefined) {
+    const insert = range.replacementText;
+    const delta = insert.length - (range.wrapperTo - range.wrapperFrom);
+    const mapOutside = position => position >= range.wrapperTo
+      ? position + delta
+      : position;
+    const selectedFrom = selection.from <= range.wrapperFrom
+      ? selection.from
+      : range.wrapperFrom;
+    const selectedTo = selection.to >= range.wrapperTo
+      ? mapOutside(selection.to)
+      : range.wrapperFrom + insert.length;
+    view.dispatch({
+      changes: { from: range.wrapperFrom, to: range.wrapperTo, insert },
+      selection: selection.anchor <= selection.head
+        ? { anchor: selectedFrom, head: selectedTo }
+        : { anchor: selectedTo, head: selectedFrom }
+    });
+    focusEditor(view, options);
+    return true;
+  }
+
+  const selectedContentFrom = Math.max(selection.from, range.contentFrom);
+  const selectedContentTo = Math.min(selection.to, range.contentTo);
+  if (selectedContentTo <= selectedContentFrom) return false;
+
+  const left = doc.sliceString(range.contentFrom, selectedContentFrom);
+  const selected = doc.sliceString(selectedContentFrom, selectedContentTo);
+  const right = doc.sliceString(selectedContentTo, range.contentTo);
+  const wrappedLeft = wrapSegment(
+    left,
+    range.open,
+    range.close
+  );
+  const wrappedRight = wrapSegment(
+    right,
+    range.open,
+    range.close
+  );
+  const insert = `${wrappedLeft}${selected}${wrappedRight}`;
+  const insertedSelectionFrom = range.wrapperFrom + wrappedLeft.length;
+  const insertedSelectionTo = insertedSelectionFrom + selected.length;
+  const delta = insert.length - (range.wrapperTo - range.wrapperFrom);
+  const mappedFrom = selection.from <= range.wrapperFrom
+    ? selection.from
+    : selection.from >= range.wrapperTo
+      ? selection.from + delta
+      : insertedSelectionFrom;
+  const mappedTo = selection.to >= range.wrapperTo
+    ? selection.to + delta
+    : selection.to <= range.wrapperFrom
+      ? selection.to
+      : insertedSelectionTo;
+
+  view.dispatch({
+    changes: { from: range.wrapperFrom, to: range.wrapperTo, insert },
+    selection: selection.anchor <= selection.head
+      ? { anchor: mappedFrom, head: mappedTo }
+      : { anchor: mappedTo, head: mappedFrom }
+  });
+  focusEditor(view, options);
+  return true;
+}
+
 function getInlineFormattingRanges(view, bounds) {
   const ranges = Object.keys(MARKDOWN_FORMATS).flatMap(formatName =>
     getMarkdownFormatRanges(view, formatName, bounds)
   );
   ranges.push(...getWmdxColorSyntaxRanges(view.state, bounds));
 
+  const { state } = view;
+  const { doc } = state;
+  const tree = syntaxTree(state);
+  const referenceTargets = collectMarkdownReferenceTargets(doc, tree);
+  const code = codeRanges(state, bounds);
+  tree.iterate({
+    ...(bounds ? { from: bounds.from, to: bounds.to } : {}),
+    enter(node) {
+      if (node.name === 'Link') {
+        const info = getMarkdownLinkInfo(node, doc, referenceTargets);
+        if (!info) return;
+        ranges.push({
+          wrapperFrom: node.from,
+          wrapperTo: node.to,
+          contentFrom: info.labelFrom,
+          contentTo: info.labelTo,
+          open: doc.sliceString(node.from, info.labelFrom),
+          close: doc.sliceString(info.labelTo, node.to),
+          kind: 'link'
+        });
+      } else if (node.name === 'WmdxResource') {
+        const raw = doc.sliceString(node.from, node.to);
+        const resource = parseWmdxResourceSyntax(raw);
+        if (!resource || resource.embed) return;
+        const titleRange = getWmdxResourceTitleRange(raw);
+        if (!titleRange) return;
+        const contentFrom = node.from + titleRange.from;
+        const contentTo = node.from + titleRange.to;
+        if (contentFrom === contentTo) {
+          ranges.push({
+            wrapperFrom: node.from,
+            wrapperTo: node.to,
+            contentFrom: node.from,
+            contentTo: node.to,
+            replacementText: resource.displayTitle,
+            replaceWholeOnPartial: true,
+            open: '',
+            close: '',
+            kind: 'link'
+          });
+          return;
+        }
+        ranges.push({
+          wrapperFrom: node.from,
+          wrapperTo: node.to,
+          contentFrom,
+          contentTo,
+          open: doc.sliceString(node.from, contentFrom),
+          close: doc.sliceString(contentTo, node.to),
+          kind: 'link'
+        });
+      }
+    }
+  });
+
+  const scanFrom = bounds ? doc.lineAt(bounds.from).from : 0;
+  const scanTo = bounds
+    ? doc.lineAt(Math.max(bounds.from, bounds.to - 1)).to
+    : doc.length;
+  const source = doc.sliceString(scanFrom, scanTo);
+  const footnoteRanges = [
+    {
+      expression: /\^\[([^\]\n]+)\]/gu,
+      openLength: 2,
+      closeLength: 1,
+      kind: 'footnote'
+    },
+    {
+      expression: /\[\^([^\]\n]+)\]/gu,
+      openLength: 2,
+      closeLength: 1,
+      kind: 'footnote'
+    },
+    {
+      expression: /(?<![\\])\^(\d+)(?!\^)/gu,
+      openLength: 1,
+      closeLength: 0,
+      kind: 'footnote'
+    }
+  ];
+  for (const syntax of footnoteRanges) {
+    let match;
+    while ((match = syntax.expression.exec(source))) {
+      const wrapperFrom = scanFrom + match.index;
+      const wrapperTo = wrapperFrom + match[0].length;
+      if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
+      const contentFrom = wrapperFrom + syntax.openLength;
+      const contentTo = wrapperTo - syntax.closeLength;
+      ranges.push({
+        wrapperFrom,
+        wrapperTo,
+        contentFrom,
+        contentTo,
+        open: doc.sliceString(wrapperFrom, contentFrom),
+        close: doc.sliceString(contentTo, wrapperTo),
+        kind: syntax.kind
+      });
+    }
+  }
+
+  const wikiLinks = /\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/gu;
+  let wikiMatch;
+  while ((wikiMatch = wikiLinks.exec(source))) {
+    if (isMarkdownCharacterEscaped(source, wikiMatch.index)) continue;
+    const wrapperFrom = scanFrom + wikiMatch.index;
+    const wrapperTo = wrapperFrom + wikiMatch[0].length;
+    if (code.some(range => range.from < wrapperTo && range.to > wrapperFrom)) continue;
+    const aliasOffset = wikiMatch[2] === undefined
+      ? 2
+      : wikiMatch[0].lastIndexOf('|') + 1;
+    const contentFrom = wrapperFrom + aliasOffset;
+    const contentTo = wrapperTo - 2;
+    ranges.push({
+      wrapperFrom,
+      wrapperTo,
+      contentFrom,
+      contentTo,
+      open: doc.sliceString(wrapperFrom, contentFrom),
+      close: doc.sliceString(contentTo, wrapperTo),
+      kind: 'link'
+    });
+  }
+
   const seen = new Set();
   return ranges.filter(range => {
-    const key = `${range.wrapperFrom}:${range.wrapperTo}:${range.open}:${range.close}`;
+    const key = `${range.wrapperFrom}:${range.wrapperTo}:${range.open}:${range.close}:${range.replacementText ?? ''}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
+function getHeadingNodeAt(state, position) {
+  for (
+    let node = syntaxTree(state).resolveInner(position, 1);
+    node;
+    node = node.parent
+  ) {
+    if (
+      /^(?:ATXHeading|SetextHeading)[1-6]$/.test(node.name) ||
+      node.name === 'WmdxDecimalHeading'
+    ) return node;
+  }
+  return null;
+}
+
+function getClearFormattingScope(state) {
+  const { doc, selection } = state;
+  const main = selection.main;
+  if (!main.empty) {
+    const firstHeading = getHeadingNodeAt(state, main.from);
+    const lastHeading = getHeadingNodeAt(state, Math.max(main.from, main.to - 1));
+    if (
+      firstHeading &&
+      lastHeading &&
+      firstHeading.from === lastHeading.from &&
+      firstHeading.to === lastHeading.to
+    ) {
+      const lastPosition = Math.max(firstHeading.from, firstHeading.to - 1);
+      return {
+        from: doc.lineAt(firstHeading.from).from,
+        to: doc.lineAt(lastPosition).to
+      };
+    }
+    const firstLine = doc.lineAt(main.from);
+    const lastPosition = main.to > main.from ? main.to - 1 : main.to;
+    const lastLine = doc.lineAt(lastPosition);
+    return { from: firstLine.from, to: lastLine.to };
+  }
+
+  const cursorLine = doc.lineAt(main.head);
+  const codeBlock = getIndentedCodeBlockAtLine(state, cursorLine.number);
+  if (codeBlock) {
+    const lastPosition = Math.max(codeBlock.from, codeBlock.to - 1);
+    return {
+      from: doc.lineAt(codeBlock.from).from,
+      to: doc.lineAt(lastPosition).to
+    };
+  }
+
+  let block = getHeadingNodeAt(state, main.head);
+  for (
+    let node = block ? null : syntaxTree(state).resolveInner(main.head, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === 'Paragraph') {
+      block = node;
+      break;
+    }
+  }
+  if (!block) {
+    const line = doc.lineAt(main.head);
+    return { from: line.from, to: line.to };
+  }
+
+  const lastPosition = Math.max(block.from, block.to - 1);
+  return {
+    from: doc.lineAt(block.from).from,
+    to: doc.lineAt(lastPosition).to
+  };
+}
+
+function getBlockFormattingPrefixLength(text) {
+  let offset = 0;
+  const consume = expression => {
+    const match = expression.exec(text.slice(offset));
+    if (!match || match.index !== 0 || !match[0]) return false;
+    offset += match[0].length;
+    return true;
+  };
+
+  consume(/^[ \t]+/);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if (
+      consume(/^(?:>[ \t]*)+/) ||
+      consume(/^\[![A-Za-z][A-Za-z0-9_-]*\][+-]?[ \t]*/) ||
+      consume(/^±[A-Za-z][A-Za-z0-9_-]*[-+]?(?:[ \t]+|$)/) ||
+      consume(/^#{1,6}(?:[ \t]+|$)/) ||
+      consume(/^\.[1-6](?:[ \t]+|$)/) ||
+      consume(/^(?:(?:\d+|[A-Za-z]+)[.)]|[-+*])[ \t]+(?:\[[ xX]\][ \t]+)?/) ||
+      consume(/^\[[ xX]\][ \t]+/) ||
+      consume(/^(?:->|><|<>|<)(?:[ \t]+|$)/) ||
+      consume(/^\[\^[^\]]+\]:[ \t]*/) ||
+      consume(/^\[[^\]]+\]:[ \t]*/)
+    ) {
+      continue;
+    }
+    break;
+  }
+
+  const remainder = text.slice(offset);
+  if (/^(?:={1,}|-{3,})[ \t]*$/.test(remainder)) return text.length;
+  return offset;
+}
+
+function isCodeBlockLine(state, line) {
+  const probe = line.from + (/^[ \t]*/.exec(line.text)?.[0].length ?? 0);
+  for (let node = syntaxTree(state).resolveInner(probe, 1); node; node = node.parent) {
+    if (node.name === 'FencedCode' || node.name === 'CodeBlock') return true;
+  }
+  return false;
+}
+
+function stripBlockFormatting(view, scope) {
+  const { state } = view;
+  const firstLine = state.doc.lineAt(scope.from).number;
+  const lastLine = state.doc.lineAt(Math.max(scope.from, scope.to - 1)).number;
+  const changes = [];
+  const codeBlockLayouts = new Map();
+  for (let number = firstLine; number <= lastLine; number += 1) {
+    const line = state.doc.line(number);
+    const codeBlock = getIndentedCodeBlockAtLine(state, number);
+    if (codeBlock) {
+      const key = `${codeBlock.from}:${codeBlock.to}`;
+      let layout = codeBlockLayouts.get(key);
+      if (!layout) {
+        layout = getIndentedCodeBlockRenderLayout(
+          state,
+          codeBlock.from,
+          codeBlock.to
+        );
+        codeBlockLayouts.set(key, layout);
+      }
+      for (const range of layout.hiddenRanges) {
+        if (range.from >= line.from && range.to <= line.to) {
+          changes.push({ from: range.from, to: range.to, insert: '' });
+        }
+      }
+      continue;
+    }
+    if (isCodeBlockLine(state, line)) continue;
+    const heading = getHeadingNodeAt(state, line.from);
+    if (
+      heading?.name.startsWith('SetextHeading') &&
+      state.doc.lineAt(heading.from).number < number
+    ) {
+      changes.push({
+        from: Math.max(0, line.from - 1),
+        to: line.to,
+        insert: ''
+      });
+      continue;
+    }
+    const prefixLength = getBlockFormattingPrefixLength(line.text);
+    if (prefixLength > 0) {
+      changes.push({
+        from: line.from,
+        to: line.from + prefixLength,
+        insert: ''
+      });
+    }
+  }
+  if (!changes.length) return false;
+  changes.sort((first, second) => first.from - second.from);
+  const changeSet = state.changes(changes);
+  view.dispatch({
+    changes: changeSet,
+    selection: state.selection.map(changeSet, 1)
+  });
+  return true;
+}
+
+function stripCollapsedInlineFormatting(view, scope) {
+  const { state } = view;
+  const ranges = getInlineFormattingRanges(view, scope);
+  const changes = [];
+  for (const range of ranges) {
+    if (
+      range.wrapperFrom < scope.from ||
+      range.wrapperTo > scope.to
+    ) continue;
+    if (range.replacementText !== undefined) {
+      changes.push({
+        from: range.wrapperFrom,
+        to: range.wrapperTo,
+        insert: range.replacementText
+      });
+      continue;
+    }
+    changes.push(
+      { from: range.wrapperFrom, to: range.contentFrom, insert: '' },
+      { from: range.contentTo, to: range.wrapperTo, insert: '' }
+    );
+  }
+  const uniqueChanges = [...new Map(
+    changes
+      .filter(change => change.to > change.from)
+      .map(change => [`${change.from}:${change.to}`, change])
+  ).values()].sort((first, second) => first.from - second.from);
+  if (!uniqueChanges.length) return false;
+
+  const changeSet = state.changes(uniqueChanges);
+  view.dispatch({
+    changes: changeSet,
+    selection: state.selection.map(changeSet, 1)
+  });
+  return true;
+}
+
+function clearTableCellFormatting(view, options = {}) {
+  if (options.skipTableCellRouting === true) return null;
+  const activeTable = globalThis.window?.wmdxTableActions?.active;
+  if (activeTable?.view !== view) return null;
+
+  const overlay = globalThis.document?.querySelector('.cm-wp-cell-editor');
+  const meta = overlay?._cellMeta;
+  const snapshot = globalThis.window?._lastActiveCellSelection;
+  const useOverlay = Boolean(meta?.model && Number.isInteger(meta.row) && Number.isInteger(meta.col));
+  const useSnapshot = !useOverlay &&
+    snapshot?.widget &&
+    snapshot?.model &&
+    Number.isInteger(snapshot.row) &&
+    Number.isInteger(snapshot.col) &&
+    Date.now() - Number(snapshot.timestamp || 0) < 3000;
+  if (!useOverlay && !useSnapshot) return null;
+
+  const cellMeta = useOverlay ? meta : snapshot;
+  const rows = cellMeta.model.rows;
+  if (
+    !Array.isArray(rows) ||
+    cellMeta.row < 0 ||
+    cellMeta.col < 0 ||
+    cellMeta.row >= rows.length
+  ) {
+    return null;
+  }
+  const modelRow = rows[cellMeta.row];
+  if (!Array.isArray(modelRow) || cellMeta.col >= modelRow.length) return null;
+  const cellText = useOverlay
+    ? String(overlay._getMarkdownValue?.() ?? overlay.value ?? overlay.textContent ?? '')
+    : String(snapshot.cellValue ?? modelRow[cellMeta.col] ?? '');
+  const overlaySelection = useOverlay ? overlay._getSelectionOffsets?.() : null;
+  const selectionStart = useOverlay
+    ? (overlaySelection?.from ?? overlay.selectionStart ?? 0)
+    : (snapshot.selStart ?? cellText.length);
+  const selectionEnd = useOverlay
+    ? (overlaySelection?.to ?? overlay.selectionEnd ?? selectionStart)
+    : (snapshot.selEnd ?? selectionStart);
+  const selection = selectionStart === selectionEnd
+    ? EditorSelection.cursor(selectionStart)
+    : EditorSelection.range(selectionStart, selectionEnd);
+  let state = EditorState.create({
+    doc: cellText,
+    selection,
+    extensions: [
+      cmMarkdown({
+        extensions: [
+          GFMAutolink,
+          GFMTaskList,
+          wmdxGfmFtpAutolink,
+          wmdxGfmStrikethrough,
+          wmdxCommonMarkCompatibility
+        ]
+      })
+    ]
+  });
+  const cellView = {
+    get state() {
+      return state;
+    },
+    dispatch(transaction) {
+      state = state.update(transaction).state;
+    },
+    focus() {}
+  };
+  if (!clearMarkdownFormatting(cellView, {
+    ...options,
+    preserveKeyboard: true,
+    skipTableCellRouting: true
+  })) {
+    return false;
+  }
+
+  const cleaned = state.doc.toString();
+  const mappedSelection = state.selection.main;
+  const serialized = cleaned.replace(/\r\n?/g, '\n').replace(/\n/g, '<br>');
+
+  if (useOverlay) {
+    if (typeof overlay._setMarkdownValue === 'function') {
+      overlay._setMarkdownValue(
+        serialized,
+        mappedSelection.from,
+        mappedSelection.to
+      );
+    } else if ('value' in overlay) {
+      overlay.value = cleaned;
+      overlay.setSelectionRange?.(mappedSelection.from, mappedSelection.to);
+    } else {
+      overlay.textContent = cleaned;
+    }
+    const updatedCellText = String(
+      overlay._getMarkdownValue?.() ?? overlay.value ?? cleaned
+    );
+    cellMeta.model.rows[cellMeta.row][cellMeta.col] = updatedCellText;
+    if (globalThis.window) {
+      globalThis.window._lastActiveCellSelection = {
+        widget: meta.widget,
+        model: meta.model,
+        row: meta.row,
+        col: meta.col,
+        selStart: mappedSelection.from,
+        selEnd: mappedSelection.to,
+        cellValue: updatedCellText,
+        selectedText: cleaned.slice(mappedSelection.from, mappedSelection.to),
+        timestamp: Date.now()
+      };
+    }
+    return true;
+  }
+
+  cellMeta.model.rows[cellMeta.row][cellMeta.col] = serialized;
+  snapshot.cellValue = serialized;
+  snapshot.selStart = mappedSelection.from;
+  snapshot.selEnd = mappedSelection.to;
+  snapshot.selectedText = cleaned.slice(mappedSelection.from, mappedSelection.to);
+  snapshot.timestamp = Date.now();
+  snapshot.widget.commitModel?.(view, cellMeta.model);
+  return true;
+}
+
 export function clearMarkdownFormatting(view, options = {}) {
+  const tableCellResult = clearTableCellFormatting(view, options);
+  if (tableCellResult !== null) return tableCellResult;
   if (!view?.state) return false;
 
   const originalState = view.state;
@@ -500,13 +1154,25 @@ export function clearMarkdownFormatting(view, options = {}) {
     focus() {}
   };
 
+  const initiallyCollapsed = originalState.selection.main.empty;
+  let scope = getClearFormattingScope(workingState);
+  stripBlockFormatting(workingView, scope);
+  if (initiallyCollapsed) {
+    scope = getClearFormattingScope(workingState);
+    stripCollapsedInlineFormatting(workingView, scope);
+  }
+
   for (let attempt = 0; attempt < 128; attempt += 1) {
     const selection = workingState.selection.main;
-    const bounds = { from: selection.from, to: selection.to };
+    if (selection.empty && initiallyCollapsed) break;
+    const bounds = selection.empty
+      ? getClearFormattingScope(workingState)
+      : { from: selection.from, to: selection.to };
     const ranges = getInlineFormattingRanges(workingView, bounds)
-      .filter(range => selection.empty
-        ? selection.head >= range.contentFrom && selection.head <= range.contentTo
-        : range.wrapperTo > selection.from && range.wrapperFrom < selection.to)
+      .filter(range =>
+        range.wrapperTo > selection.from &&
+        range.wrapperFrom < selection.to
+      )
       .sort((first, second) =>
         (first.wrapperTo - first.wrapperFrom) - (second.wrapperTo - second.wrapperFrom) ||
         second.wrapperFrom - first.wrapperFrom
@@ -514,11 +1180,10 @@ export function clearMarkdownFormatting(view, options = {}) {
 
     let unwrapped = false;
     for (const range of ranges) {
-      if (unwrapFormattedRange(
+      if (unwrapRangeWithinSelection(
         workingView,
         range,
         selection,
-        { open: range.open, close: range.close },
         options
       )) {
         unwrapped = true;
@@ -657,6 +1322,7 @@ function applyFormatToSelection(view, selection, ranges, format, options = {}) {
 
 function toggleMarkdownFormatInternal(view, formatName, options = {}) {
   if (!view?.state) return false;
+  if (formatName === 'superscript' && !wmdxSuperscriptSyntaxEnabled) return false;
   const format = MARKDOWN_FORMATS[formatName];
   if (!format || !format.open || !format.close) return false;
 
@@ -1039,6 +1705,19 @@ export function toggleWmdxColorFormat(view, action = null, options = {}) {
     }
     if (!requestedColor) return false;
   }
+  const availableColors = !wmdxColorSyntaxEnabled
+    ? (
+        group === 'highlight' && obsidianHighlightSyntaxEnabled
+          ? ['yellow']
+          : []
+      )
+    : group
+      ? WMDX_COLOR_GROUPS[group].colors.map(([name]) => name)
+      : [];
+  if (action && (!availableColors.length ||
+      (requestedColor && !availableColors.includes(requestedColor)))) {
+    return false;
+  }
 
   const ranges = getWmdxColorSyntaxRanges(view.state);
   const current = ranges.find(range =>
@@ -1056,7 +1735,7 @@ export function toggleWmdxColorFormat(view, action = null, options = {}) {
 
   let color = requestedColor;
   if (isCycle) {
-    const colors = WMDX_COLOR_GROUPS[group].colors.map(([name]) => name);
+    const colors = availableColors;
     if (!current) {
       color = colors[0];
     } else {
@@ -1101,28 +1780,32 @@ export function toggleWmdxColorFormat(view, action = null, options = {}) {
   return true;
 }
 
-function cycleMarkdownListLine(lineText) {
+function cycleMarkdownListLine(
+  lineText,
+  { bulletPrefix = '- ', orderedPrefix = '1. ', taskPrefix = '- [ ] ' } = {}
+) {
   const indent = /^[ \t]*/.exec(lineText)?.[0] ?? '';
   const content = lineText.slice(indent.length);
-  const checkbox = /^[-*+]\s+\[[ xX]\](?:\s+|$)/.exec(content);
+  const checkbox = /^(?:[-*+]\s+)?\[[ xX]\](?:\s+|$)/.exec(content);
   if (checkbox) {
-    return `${indent}1. ${content.slice(checkbox[0].length)}`;
+    return `${indent}${orderedPrefix}${content.slice(checkbox[0].length)}`;
   }
 
-  const numbered = /^\d+[.)](?:\s+|$)/.exec(content);
+  const numbered = /^(?:\d+|[A-Za-z]+)[.)](?:\s+|$)/.exec(content);
   if (numbered) {
     return `${indent}${content.slice(numbered[0].length)}`;
   }
 
   const bullet = /^[-*+](?:\s+|$)/.exec(content);
   if (bullet) {
-    return `${indent}- [ ] ${content.slice(bullet[0].length)}`;
+    const prefix = taskPrefix || orderedPrefix;
+    return `${indent}${prefix}${content.slice(bullet[0].length)}`;
   }
 
-  return `${indent}- ${content}`;
+  return `${indent}${bulletPrefix}${content}`;
 }
 
-export function cycleMarkdownListType(view) {
+export function cycleMarkdownListType(view, options = {}) {
   if (!view?.state?.doc || typeof view.dispatch !== 'function') return false;
   const { doc, selection } = view.state;
   const code = codeRanges(view.state);
@@ -1150,7 +1833,7 @@ export function cycleMarkdownListType(view) {
       if (code.some(range => range.from <= line.from && range.to >= line.to)) {
         return [];
       }
-      const insert = cycleMarkdownListLine(line.text);
+      const insert = cycleMarkdownListLine(line.text, options);
       return insert === line.text
         ? []
         : [{ from: line.from, to: line.to, insert }];

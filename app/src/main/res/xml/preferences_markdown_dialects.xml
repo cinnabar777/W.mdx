@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Default Markdown Flavor">
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_markdown_profile"
+            app:title="Primary Flavor"
+            app:summary="Sets default syntax recognition and authoring; feature-specific choices override this profile"
+            app:entries="@array/markdown_profile_entries"
+            app:entryValues="@array/markdown_profile_values"
+            app:defaultValue="wmdx" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_markdown_syntax_exposure"
+            app:title="Rendered Syntax Exposure"
+            app:summary="Choose how much Markdown syntax appears as you edit the rendered document"
+            app:entries="@array/pref_syntax_exposure_entries"
+            app:entryValues="@array/pref_syntax_exposure_values"
+            app:defaultValue="hidden" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_gfm_extensions_enabled"
+            app:title="GFM Extensions"
+            app:summary="Enable GFM tables, task lists, strikethrough, and bare-URL autolinks"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_wmdx_subscript_enabled"
+            app:title="Wmdx Subscript Syntax"
+            app:summary="Recognize single-tilde subscript; enabled by the Wmdx profile unless changed"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_wmdx_superscript_enabled"
+            app:title="Wmdx Superscript Syntax"
+            app:summary="Recognize paired-caret superscript; enabled by the Wmdx profile unless changed"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_wmdx_color_syntax_enabled"
+            app:title="Wmdx Highlight and Pen Syntax"
+            app:summary="Recognize Wmdx highlight color slots and pen colors"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_obsidian_highlight_enabled"
+            app:title="Obsidian Highlight Syntax"
+            app:summary="Recognize Obsidian's uncolored ==highlight== syntax"
+            app:defaultValue="false" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_markdown_auto_paste_enabled"
+            app:title="Convert Recognized Clipboard Content"
+            app:summary="Convert supported Markdown or rich HTML to this profile when conversion is safe; leave ambiguous or lossy content unchanged"
+            app:defaultValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

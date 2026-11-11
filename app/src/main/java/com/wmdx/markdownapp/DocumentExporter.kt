@@ -7,45 +7,36 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.preference.PreferenceManager
 import java.io.File
+import java.io.IOException
 
 object DocumentExporter {
 
-    fun generateCleanHtml(context: Context, editorData: String, documentTitle: String): Pair<String, String?> {
+    fun generateCleanHtml(
+        context: Context,
+        editorData: String,
+        documentTitle: String,
+        cssPlacementOverride: String? = null,
+        cssFileName: String = "styles.css"
+    ): Pair<String, String?> {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val includeToc = prefs.getBoolean("pref_export_include_toc", true)
         val tocLevels = prefs.getInt("pref_export_toc_levels", 3)
         val includeCss = prefs.getBoolean("pref_export_include_css", true)
-        val cssPlacement = prefs.getString("pref_export_css_placement", "head") ?: "head"
-
-        val (processedBodyHtml, tocHtml) = processHeadingsAndToc(editorData, includeToc, tocLevels)
-
-        val formattedBodyHtml = formatHtmlPayload(processedBodyHtml)
+        val cssPlacement = cssPlacementOverride
+            ?: prefs.getString("pref_export_css_placement", "head")
+            ?: "head"
 
         val cssContent = if (includeCss) buildExportCss(context) else ""
-
-        val styleTag = when {
-            !includeCss -> ""
-            cssPlacement == "file" -> "    <link rel=\"stylesheet\" href=\"styles.css\">"
-            else -> "    <style>\n${cssContent.prependIndent("        ")}\n    </style>"
-        }
-
-        val htmlContent = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeXml(documentTitle)}</title>
-$styleTag
-</head>
-<body>
-${if (includeToc && tocHtml.isNotEmpty()) tocHtml.prependIndent("    ") + "\n" else ""}${formattedBodyHtml.prependIndent("    ")}
-</body>
-</html>
-""".trim()
-
-        val separateCss = if (includeCss && cssPlacement == "file") cssContent else null
-        return Pair(htmlContent, separateCss)
+        return HtmlExportDocumentBuilder.build(
+            editorHtml = editorData,
+            documentTitle = documentTitle,
+            includeToc = includeToc,
+            tocLevels = tocLevels,
+            includeCss = includeCss,
+            cssPlacement = cssPlacement,
+            cssContent = cssContent,
+            cssFileName = cssFileName
+        )
     }
 
     fun exportToMht(
@@ -73,22 +64,31 @@ ${if (includeToc && tocHtml.isNotEmpty()) tocHtml.prependIndent("    ") + "\n" e
                                     webView.destroy()
                                     if (savedPath != null && tempMhtFile.exists()) {
                                         try {
-                                            context.contentResolver.openOutputStream(targetUri, "rwt")?.use { out ->
+                                            val output = context.contentResolver.openOutputStream(
+                                                targetUri,
+                                                "rwt"
+                                            ) ?: throw IOException(
+                                                "Could not open the MHTML export destination."
+                                            )
+                                            output.use { out ->
                                                 tempMhtFile.inputStream().use { input ->
                                                     input.copyTo(out)
                                                 }
                                             }
-                                            tempMhtFile.delete()
                                             onComplete(true, null)
                                         } catch (e: Exception) {
                                             onComplete(false, "Failed to write MHT to destination: ${e.localizedMessage}")
+                                        } finally {
+                                            tempMhtFile.delete()
                                         }
                                     } else {
+                                        tempMhtFile.delete()
                                         onComplete(false, "WebView failed to generate MHT archive")
                                     }
                                 })
                             } catch (e: Exception) {
                                 webView.destroy()
+                                tempMhtFile.delete()
                                 onComplete(false, "MHT Save Error: ${e.localizedMessage}")
                             }
                         }, 200)
@@ -101,93 +101,6 @@ ${if (includeToc && tocHtml.isNotEmpty()) tocHtml.prependIndent("    ") + "\n" e
                 onComplete(false, "MHT Initialization Error: ${e.localizedMessage}")
             }
         }
-    }
-
-    private fun processHeadingsAndToc(html: String, includeToc: Boolean, maxLevel: Int): Pair<String, String> {
-        val headingRegex = Regex("""<h([1-6])([^>]*)>(.*?)</h\1>""", RegexOption.IGNORE_CASE)
-        var headingIndex = 0
-        val tocItems = mutableListOf<Pair<Int, String>>()
-        val tocAnchors = mutableListOf<String>()
-
-        val processedHtml = headingRegex.replace(html) { match ->
-            headingIndex++
-            val level = match.groupValues[1].toIntOrNull() ?: 1
-            val attrs = match.groupValues[2]
-            val innerHtml = match.groupValues[3]
-            val anchorId = "heading-$headingIndex"
-            val plainTitle = innerHtml.replace(Regex("""<[^>]*>"""), "").trim()
-
-            if (level <= maxLevel) {
-                tocItems.add(Pair(level, plainTitle))
-                tocAnchors.add(anchorId)
-            }
-
-            val newAttrs = if (attrs.contains("id=", ignoreCase = true)) {
-                attrs
-            } else {
-                """ id="$anchorId"$attrs"""
-            }
-
-            "<h$level$newAttrs>$innerHtml</h$level>"
-        }
-
-        if (!includeToc || tocItems.isEmpty()) {
-            return Pair(processedHtml, "")
-        }
-
-        val sb = StringBuilder()
-        sb.append("<nav class=\"toc-container\">\n")
-        sb.append("  <h2 class=\"toc-title\">Table of Contents</h2>\n")
-        sb.append("  <ul class=\"toc-list\">\n")
-
-        for (i in tocItems.indices) {
-            val (level, title) = tocItems[i]
-            val anchorId = tocAnchors[i]
-            val indentPx = (level - 1) * 16
-            sb.append("""    <li class="toc-item level-$level" style="margin-left: ${indentPx}px;"><a href="#$anchorId" class="toc-link">$title</a></li>""").append("\n")
-        }
-
-        sb.append("  </ul>\n</nav>")
-        return Pair(processedHtml, sb.toString())
-    }
-
-    private fun formatHtmlPayload(html: String): String {
-        val sb = StringBuilder()
-        var indentLevel = 0
-        fun indent() = "  ".repeat(indentLevel)
-
-        val tokenRegex = Regex("""(<[^>]+>|[^<]+)""")
-        val matches = tokenRegex.findAll(html).map { it.value.trim() }.filter { it.isNotEmpty() }.toList()
-
-        val blockTags = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "table", "thead", "tbody", "tr", "th", "td", "div", "nav", "section", "hr", "header", "footer")
-
-        for (token in matches) {
-            if (token.startsWith("<")) {
-                val isClosing = token.startsWith("</")
-                val isSelfClosing = token.endsWith("/>") || token.equals("<hr>", ignoreCase = true) || token.equals("<br>", ignoreCase = true)
-                val tagName = token.replace(Regex("""[</>]"""), "").split(" ").firstOrNull()?.lowercase() ?: ""
-
-                if (isClosing) {
-                    if (blockTags.contains(tagName) && indentLevel > 0) {
-                        indentLevel--
-                        sb.append("\n").append(indent())
-                    }
-                    sb.append(token)
-                } else {
-                    if (blockTags.contains(tagName)) {
-                        sb.append("\n").append(indent())
-                    }
-                    sb.append(token)
-                    if (!isSelfClosing && blockTags.contains(tagName)) {
-                        indentLevel++
-                    }
-                }
-            } else {
-                sb.append(token)
-            }
-        }
-
-        return sb.toString().trim()
     }
 
     private fun buildExportCss(context: Context): String {
@@ -217,10 +130,27 @@ ${if (includeToc && tocHtml.isNotEmpty()) tocHtml.prependIndent("    ") + "\n" e
             code { color: $codeColor; background-color: $codeBgColor; padding: 3px 6px; border-radius: 4px; font-family: monospace; }
             pre { color: $codeBlockColor; background-color: $codeBlockBgColor; padding: 16px; border-radius: 6px; overflow-x: auto; font-family: monospace; }
             blockquote { border-left: 4px solid #444444; margin-left: 0; padding-left: 16px; color: #888888; font-style: italic; }
+            .wmdx-callout {
+                border-left: 4px solid $linkColor;
+                border-radius: 6px;
+                background: rgba(128, 128, 128, 0.12);
+                margin: 16px 0;
+                padding: 12px 16px;
+            }
+            .wmdx-callout-title { font-weight: 700; margin: 0 0 8px; }
+            .wmdx-callout-body > :first-child { margin-top: 0; }
+            .wmdx-callout-body > :last-child { margin-bottom: 0; }
+            details.wmdx-callout > summary { cursor: pointer; }
+            .wmdx-footnotes { margin-top: 32px; border-top: 1px solid #444444; padding-top: 16px; }
+            .wmdx-footnotes h2 { font-size: 1.15em; }
+            .wmdx-footnote-reference, .wmdx-footnote-backref { font-size: 0.8em; }
             table { border-collapse: collapse; width: 100%; margin: 16px 0; }
             th, td { border: 1px solid #444444; padding: 8px 12px; text-align: left; }
             th { background-color: rgba(255, 255, 255, 0.1); font-weight: bold; }
             img { max-width: 100%; height: auto; border-radius: 4px; }
+            audio, video { max-width: 100%; }
+            pre { white-space: pre; }
+            input[type="checkbox"] { accent-color: $linkColor; }
             .toc-container { background: rgba(255, 255, 255, 0.05); border: 1px solid #444444; border-radius: 6px; padding: 16px; margin-bottom: 24px; }
             .toc-title { margin-top: 0; font-size: 18px; border-bottom: 1px solid #444444; padding-bottom: 8px; }
             .toc-list { list-style: none; padding-left: 0; margin: 0; }
@@ -230,11 +160,4 @@ ${if (includeToc && tocHtml.isNotEmpty()) tocHtml.prependIndent("    ") + "\n" e
         """.trimIndent()
     }
 
-    private fun escapeXml(string: String): String {
-        return string.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;")
-    }
 }

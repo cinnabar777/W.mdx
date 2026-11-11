@@ -2,6 +2,44 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Footnote Syntax">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_footnote_syntax_enabled"
+            app:title="Enable Footnotes"
+            app:summary="Recognize and render footnote syntax"
+            app:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_footnote_syntax_wmdx_enabled"
+            app:title="Wmdx Footnotes"
+            app:summary="Recognize ^ references and ^ definitions"
+            app:defaultValue="true"
+            app:dependency="pref_footnote_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_footnote_syntax_markdown_enabled"
+            app:title="Markdown Reference Footnotes"
+            app:summary="Recognize [^label] references used by GFM and Obsidian"
+            app:defaultValue="true"
+            app:dependency="pref_footnote_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_footnote_syntax_obsidian_inline_enabled"
+            app:title="Obsidian Inline Footnotes"
+            app:summary="Recognize ^[note text] inline footnotes"
+            app:defaultValue="true"
+            app:dependency="pref_footnote_syntax_enabled" />
+
+        <com.wmdx.markdownapp.ResetListPreference
+            app:key="pref_footnote_authoring_syntax"
+            app:title="Preferred Footnote Syntax"
+            app:summary="Syntax inserted by the footnote toolbar and shortcut"
+            android:entries="@array/footnote_authoring_syntax_entries"
+            android:entryValues="@array/footnote_authoring_syntax_values"
+            app:defaultValue="wmdx"
+            app:dependency="pref_footnote_syntax_enabled" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Footnote Typography">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_footnote_inherit_body_typography"

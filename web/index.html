@@ -28,6 +28,23 @@
       --bold-font-family: inherit;
       --italic-font-family: inherit;
       --code-font-family: inherit;
+      --source-editor-font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --source-editor-font-size: 14px;
+      --source-editor-line-height: 1.5;
+      --source-markup-color: #89ddff;
+      --source-heading-color: #82aaff;
+      --source-comment-color: #808080;
+      --source-string-color: #c3e88d;
+      --source-number-color: #f78c6c;
+      --source-keyword-color: #c792ea;
+      --source-property-color: #ffcb6b;
+      --source-type-color: #f07178;
+      --source-variable-color: #eeffff;
+      --source-function-color: #82aaff;
+      --source-operator-color: #89ddff;
+      --source-punctuation-color: #89ddff;
+      --source-link-color: #89ddff;
+      --source-code-color: #c3e88d;
       --bold-font-weight: 700;
       --italic-font-weight: 400;
       --heading-font-weight: 700;
@@ -1323,7 +1340,7 @@
       box-sizing: border-box;
       contain: inline-size;
     }
-    body.table-hyphenate .cm-wp-table-container,
+    body.table-hyphenate .cm-wp-table-container[data-horizontal-scroll-enabled="false"],
     body.table-hyphenate .cm-gfm-table-container {
       overflow-x: hidden !important;
     }
@@ -1355,7 +1372,7 @@
       hyphens: var(--table-hyphens, none);
       border: var(--table-border-width, 1px) var(--table-border-style, solid) var(--table-border-color, #444444);
     }
-    body.table-hyphenate .cm-wp-table {
+    body.table-hyphenate .cm-wp-table-container[data-horizontal-scroll-enabled="false"] .cm-wp-table {
       width: 100% !important;
       min-width: 100% !important;
       table-layout: fixed !important;
@@ -1467,15 +1484,14 @@
       position: absolute;
       box-sizing: border-box;
       font-family: inherit;
-      font-size: 14px;
-      padding: 6px;
-      border: 2px solid #0078d4;
-      background: var(--bg-color, #000000);
-      color: var(--text-color, #ffffff);
+      font-size: inherit;
+      line-height: inherit;
+      caret-color: currentColor;
       z-index: 100;
       outline: none;
-      resize: none;
       border-radius: 4px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
       user-select: text !important;
       -webkit-user-select: text !important;
     }
@@ -1672,7 +1688,20 @@
       font-weight: var(--heading-6-font-weight, var(--heading-font-weight, 700)) !important;
     }
 
-    .cm-content .cm-list-item {
+    .cm-content .cm-line.cm-heading-syntax-literal,
+    .cm-content .cm-line.cm-heading-syntax-literal * {
+      color: var(--body-text-color, var(--text-color, inherit)) !important;
+      font-family: var(--body-font-family, inherit) !important;
+      font-size: var(--body-font-size, 16px) !important;
+      font-weight: var(--body-font-weight, 400) !important;
+      line-height: var(--body-line-height, 1.5) !important;
+      letter-spacing: var(--body-letter-spacing, normal) !important;
+      text-transform: none !important;
+      text-decoration: none !important;
+    }
+
+    .cm-content .cm-list-item,
+    .cm-content .cm-list-continuation {
       font-size: var(--list-font-size, 16px) !important;
       font-family: var(--list-font-family, inherit) !important;
       font-weight: var(--list-font-weight, 400) !important;
@@ -1682,37 +1711,143 @@
       hyphens: var(--list-hyphens, none) !important;
       text-indent: 0 !important;
       margin-top: 0 !important;
-      margin-left: var(--list-left-indent, 24px) !important;
+      margin-left: calc(
+        var(--list-left-indent, 24px) +
+        max(0px, calc(var(--list-depth-offset, 0px) - var(--layout-visible-indent, 0px)))
+      ) !important;
       margin-right: var(--list-margin-right, 0px) !important;
       margin-bottom: 0 !important;
       padding-bottom: var(--list-item-spacing, 4px) !important;
       box-sizing: border-box !important;
       line-height: var(--list-line-height, 1.5) !important;
     }
-
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item {
-      display: flex !important;
-      align-items: flex-start !important;
-      column-gap: 0.4em !important;
+    /* Markdown collapses ordinary spaces at soft-wrap boundaries. Keeping
+       CodeMirror's pre-wrap whitespace here lets a wrapped row start one
+       character farther right when its first source space is preserved. Keep
+       the visible syntax prefix and explicit indentation exact. */
+    .cm-content .cm-list-item {
+      white-space: normal !important;
     }
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-bullet,
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-number,
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-todo-checkbox {
-      flex: 0 0 auto !important;
-    }
-    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-block-text {
-      display: block !important;
-      flex: 1 1 0% !important;
-      box-sizing: border-box !important;
-      width: auto !important;
-      min-width: 0 !important;
+    .cm-content .cm-line.cm-list-item .cm-layout-prefix,
+    .cm-content .cm-line.cm-list-continuation .cm-layout-prefix,
+    .cm-content .cm-line.cm-list-item .cm-layout-indent,
+    .cm-content .cm-line.cm-list-continuation .cm-layout-indent,
+    .cm-content .cm-line.cm-list-item .cm-inline-code,
+    .cm-content .cm-line.cm-list-continuation .cm-inline-code {
       white-space: pre-wrap !important;
     }
 
+    .cm-content .cm-line.cm-list-continuation {
+      padding-left: max(0px, calc(var(--list-continuation-offset, 0ch) - var(--layout-visible-indent, 0px))) !important;
+      text-indent: 0 !important;
+      white-space: normal !important;
+    }
+
+    body:not(.list-wrap-under-text) .cm-content .cm-line.cm-list-item {
+      box-sizing: border-box !important;
+      padding-left: 0 !important;
+      text-indent: 0 !important;
+    }
+    /* One inline-flow layout for raw, revealed, and rendered markers. Actual
+       visible prefix width determines hanging wrapping; no hidden syntax gap. */
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item {
+      display: block !important;
+      box-sizing: border-box !important;
+      padding-left: var(--list-marker-gutter, 0px) !important;
+      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-continuation {
+      padding-left: max(0px, calc(var(--list-continuation-offset, 0ch) - var(--layout-visible-indent, 0px))) !important;
+    }
+
+    #editor-container.source-mode .cm-source-table-widget {
+      display: block !important;
+      box-sizing: border-box !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      margin: 10px 0 !important;
+      overflow: hidden !important;
+      contain: inline-size;
+    }
+    .cm-source-table-editor {
+      box-sizing: border-box !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+    .cm-source-table-widget[data-horizontal-scroll-enabled="true"] .cm-source-table-editor .cm-scroller {
+      box-sizing: border-box !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      scrollbar-width: thin;
+    }
+    .cm-source-table-editor .cm-scroller::-webkit-scrollbar {
+      height: 5px;
+    }
+    .cm-source-table-editor .cm-scroller::-webkit-scrollbar-thumb {
+      background: rgba(180, 180, 190, 0.7);
+      border-radius: 4px;
+    }
+    .cm-source-table-widget[data-horizontal-scroll-enabled="true"] .cm-source-table-editor .cm-content {
+      box-sizing: border-box !important;
+      width: max-content !important;
+      min-width: 100% !important;
+      max-width: none !important;
+    }
+    .cm-source-table-widget[data-horizontal-scroll-enabled="true"] .cm-source-table-editor .cm-line {
+      box-sizing: border-box !important;
+      width: max-content !important;
+      min-width: 100% !important;
+      max-width: none !important;
+      white-space: pre !important;
+    }
+    .cm-source-table-widget[data-horizontal-scroll-enabled="false"] .cm-source-table-editor .cm-scroller {
+      overflow-x: hidden !important;
+    }
+    .cm-source-table-widget[data-horizontal-scroll-enabled="false"] .cm-source-table-editor .cm-content {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+    .cm-source-table-widget[data-horizontal-scroll-enabled="false"] .cm-source-table-editor .cm-line {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      white-space: pre-wrap !important;
+      overflow-wrap: anywhere !important;
+    }
+    .cm-source-table-editor .cm-source-table-aligned-pipe {
+      display: inline-block;
+      vertical-align: baseline;
+    }
+    .cm-source-table-editor .cm-source-table-align-leading-pipe {
+      padding-left: 1ch;
+    }
+    .cm-content .cm-table-header-source-line {
+      font-weight: var(--table-header-font-weight, 700) !important;
+      color: var(--table-header-color, var(--text-color, #fff)) !important;
+    }
+    .cm-content .cm-list-bullet,
+    .cm-content .cm-list-number {
+      display: inline-block !important;
+      box-sizing: border-box !important;
+      min-width: 1ch !important;
+      text-align: right !important;
+      white-space: pre !important;
+    }
     .cm-list-bullet { color: var(--list-bullet-color, currentColor) !important; }
     .cm-list-number { color: var(--list-number-color, currentColor) !important; }
-    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item > .cm-list-bullet {
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item .cm-list-bullet,
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item .cm-todo-bullet-separator {
       display: none !important;
+    }
+    body.todo-hide-extra-bullet .cm-content .cm-line.cm-todo-list-item .cm-todo-checkbox {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
     }
 
     .cm-content .cm-bold {
@@ -1727,6 +1862,16 @@
       font-family: var(--italic-font-family, inherit) !important;
       text-decoration-line: var(--italic-decoration-line, none) !important;
       text-decoration-style: var(--italic-decoration-style, solid) !important;
+    }
+    .cm-content .cm-subscript {
+      font-size: 0.75em !important;
+      line-height: 0 !important;
+      vertical-align: sub !important;
+    }
+    .cm-content .cm-superscript {
+      font-size: 0.75em !important;
+      line-height: 0 !important;
+      vertical-align: super !important;
     }
     .cm-content .cm-underline,
     .cm-content u {
@@ -1827,6 +1972,10 @@
       -webkit-hyphens: var(--footnote-hyphens, none);
       hyphens: var(--footnote-hyphens, none);
     }
+    .cm-content .cm-footnote-inline-definitions {
+      display: block;
+      margin-top: 1em;
+    }
     .cm-content .cm-footnote-number {
       flex: 0 0 auto;
       color: var(--footnote-ref-color, var(--link-color, #29b6f6));
@@ -1861,7 +2010,10 @@
       line-height: var(--code-block-line-height, 1.4) !important;
       margin-left: var(--code-block-margin-left, 0px) !important;
       margin-right: var(--code-block-margin-right, 0px) !important;
-      padding-left: var(--code-block-padding, 16px) !important;
+      padding-left: calc(
+        var(--code-block-padding, 16px) +
+        var(--code-block-common-indent, 0ch)
+      ) !important;
       padding-right: var(--code-block-padding, 16px) !important;
       border-left: 1px solid var(--code-block-border-color, transparent) !important;
       border-right: 1px solid var(--code-block-border-color, transparent) !important;
@@ -1930,6 +2082,40 @@
       padding-left: var(--blockquote-padding, 12px) !important;
       position: relative !important;
     }
+    .cm-content .cm-line.cm-blockquote.cm-list-item:not(.cm-callout) {
+      margin-left: calc(
+        var(--blockquote-left-margin, 0px) +
+        var(--blockquote-depth-offset, 0px) +
+        var(--list-quote-inset, 0px) +
+        max(0px, calc(var(--list-depth-offset, 0px) - var(--layout-visible-indent, 0px)))
+      ) !important;
+    }
+    .cm-content .cm-line.cm-source-indented.cm-paragraph:not(.cm-list-item):not(.cm-callout) {
+      padding-left: max(0px, calc(var(--source-indent-offset, 0px) - var(--layout-visible-indent, 0px))) !important;
+      text-indent: 0 !important;
+    }
+    .cm-content .cm-line.cm-source-indented.cm-paragraph-first:not(.cm-blockquote):not(.cm-list-item):not(.cm-callout) {
+      text-indent: 0 !important;
+    }
+    .cm-content .cm-line.cm-source-indented.cm-paragraph.cm-blockquote:not(.cm-list-item):not(.cm-callout) {
+      padding-left: calc(
+        var(--blockquote-padding, 12px) +
+        max(0px, calc(var(--source-indent-offset, 0px) - var(--layout-visible-indent, 0px))) +
+        var(--list-marker-gutter, 0px)
+      ) !important;
+      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
+    }
+    .cm-content .cm-line.cm-source-indented.cm-heading {
+      padding-left: max(0px, calc(var(--source-indent-offset, 0px) - var(--layout-visible-indent, 0px))) !important;
+      text-indent: 0 !important;
+    }
+    .cm-content .cm-line.cm-blockquote:not(.cm-list-item) {
+      padding-left: calc(
+        var(--blockquote-padding, 12px) +
+        var(--list-marker-gutter, 0px)
+      ) !important;
+      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
+    }
     .cm-content .cm-line.cm-blockquote[data-blockquote-depth]:not(.cm-callout)::before {
       content: "" !important;
       position: absolute !important;
@@ -1981,7 +2167,12 @@
     .cm-content .cm-line.cm-callout:not(.cm-list-item) {
       margin-left: var(--callout-margin-left, 0px) !important;
       margin-right: var(--callout-margin-right, 0px) !important;
+      /* Keep the visible quote marker inside the callout's content edge, then
+         hang wrapped source text after the marker. Hidden markers contribute
+         zero measured width in Live Preview and WYSIWYG. */
+      padding-left: calc(var(--callout-padding, 12px) + var(--list-marker-gutter, 0px)) !important;
       padding-right: var(--callout-padding, 12px) !important;
+      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
     }
     .cm-content .cm-line.cm-callout-body:not(.cm-callout-list-item) {
       margin-left: var(--callout-margin-left, 0px) !important;
@@ -1991,7 +2182,11 @@
       text-indent: 0 !important;
     }
     .cm-content .cm-line.cm-callout-list-item {
-      margin-left: calc(var(--callout-margin-left, 0px) + var(--list-left-indent, 24px)) !important;
+      margin-left: calc(
+        var(--callout-margin-left, 0px) +
+        var(--list-left-indent, 24px) +
+        max(0px, calc(var(--list-depth-offset, 0px) - var(--layout-visible-indent, 0px)))
+      ) !important;
       margin-right: var(--callout-margin-right, 0px) !important;
       text-indent: 0 !important;
     }
@@ -1999,7 +2194,7 @@
     .cm-content .cm-paragraph-first.cm-blockquote:not(.cm-callout),
     .cm-content .cm-paragraph-first.cm-callout,
     .cm-content .cm-callout-title {
-      text-indent: 0 !important;
+      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
     }
 
     .cm-content .cm-line.cm-callout[data-callout-depth]:not(.cm-callout-list-item) {
@@ -2008,7 +2203,12 @@
     }
 
     .cm-content .cm-line.cm-callout-list-item[data-callout-depth] {
-      margin-left: calc(var(--callout-margin-left, 0px) + var(--callout-depth-offset, 0px) + var(--list-left-indent, 24px)) !important;
+      margin-left: calc(
+        var(--callout-margin-left, 0px) +
+        var(--callout-depth-offset, 0px) +
+        var(--list-left-indent, 24px) +
+        var(--list-depth-offset, 0px)
+      ) !important;
       margin-right: var(--callout-margin-right, 0px) !important;
     }
 
@@ -2100,7 +2300,7 @@
 
     .cm-callout-title-container {
       display: inline-flex !important;
-      align-items: flex-start !important;
+      align-items: center !important;
       position: static !important;
       flex: 0 0 auto !important;
       width: auto !important;
@@ -2129,7 +2329,7 @@
       margin-right: 8px !important;
       align-items: center !important;
       justify-content: center !important;
-      align-self: start !important;
+      align-self: center !important;
       color: inherit !important;
     }
 
@@ -2143,23 +2343,22 @@
 
     .cm-content .cm-line.cm-callout-title-rendered > .cm-callout-title-text.is-source {
       display: block !important;
-      flex: 1 1 0% !important;
+      flex: 0 1 auto !important;
       min-width: 0 !important;
     }
 
     .cm-content .cm-line.cm-callout-title-rendered > .cm-callout-title-text.is-source.is-foldable {
-      padding-right: 24px !important;
+      padding-right: 0 !important;
     }
 
     .cm-callout-fold-btn {
-      position: absolute !important;
-      top: var(--callout-header-padding, 0px) !important;
-      right: var(--callout-padding, 12px) !important;
-      z-index: 1 !important;
+      position: static !important;
       background: transparent !important;
       border: none !important;
-      padding: 2px !important;
-      margin: 0 !important;
+      width: 24px !important;
+      height: 24px !important;
+      padding: 0 !important;
+      margin: 0 6px 0 0 !important;
       color: inherit !important;
       display: inline-flex !important;
       align-items: center !important;
@@ -2167,11 +2366,50 @@
       border-radius: 3px !important;
       opacity: 0.8 !important;
       line-height: 1 !important;
+      font-size: 1em !important;
+      font-weight: 700 !important;
+      flex: 0 0 24px !important;
       cursor: pointer !important;
     }
 
     .cm-content .cm-callout .cm-foldPlaceholder {
       display: none !important;
+    }
+    /* Source is literal Markdown: don't paint callout blocks beneath the
+       visible `>` and `[!type]` syntax. This avoids combining two competing
+       representations and keeps the authored quote marker at the text edge. */
+    #editor-container.source-mode .cm-content .cm-line.cm-callout {
+      border: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      color: inherit !important;
+      font-family: inherit !important;
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      line-height: inherit !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      text-indent: 0 !important;
+    }
+    #editor-container.source-mode .cm-content,
+    #editor-container.source-mode .cm-content .cm-line {
+      font-family: var(--source-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace) !important;
+      font-size: var(--source-editor-font-size, 14px) !important;
+      line-height: var(--source-editor-line-height, 1.5) !important;
+      color: var(--source-editor-text-color, var(--text-color, #ffffff)) !important;
+    }
+    #editor-container.source-mode .cm-content .cm-line.cm-callout-title {
+      border-left: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      color: inherit !important;
+      font-family: inherit !important;
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      padding: 0 !important;
+    }
+    #editor-container.source-mode .cm-content .cm-line.cm-callout[data-callout-depth] {
+      margin-left: 0 !important;
     }
     .cm-todo-checkbox {
       appearance: none !important;
@@ -2344,6 +2582,55 @@
       line-height: 1.5;
     }
 
+    #markdown-conversion-warnings {
+      white-space: pre-line;
+      max-height: 22vh;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+
+    #markdown-conversion-preview {
+      min-height: 120px;
+      font-family: monospace;
+      white-space: pre;
+      overflow: auto;
+    }
+
+    .markdown-lint-results {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 42vh;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .markdown-lint-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--border-color, #444);
+      border-radius: 7px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .markdown-lint-line {
+      flex: 0 0 auto;
+      border: 0;
+      padding: 0;
+      background: none;
+      color: var(--link-color, #29b6f6);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .markdown-lint-message {
+      min-width: 0;
+    }
+
     .modal-error {
       margin: 0;
       color: #ff8a80;
@@ -2479,7 +2766,10 @@
           New MDZip
         </button>
         <button class="start-page-action" type="button" data-start-page-action="go-to-file">
-          Go to file
+          Search
+        </button>
+        <button class="start-page-action" type="button" data-start-page-action="open-file">
+          Open file
         </button>
         <div class="start-page-session-row">
           <button class="start-page-action" type="button" data-start-page-action="open-session">

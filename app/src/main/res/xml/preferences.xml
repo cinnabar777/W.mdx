@@ -25,13 +25,21 @@
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Documents &amp; Access">
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_markdown_dialects"
+            app:title="Markdown &amp; Dialects"
+            app:summary="Choose a default syntax flavor, control dialect-specific features, and convert recognized clipboard content" />
+        <com.wmdx.markdownapp.ResetPreference
+            app:key="pref_page_source_editor"
+            app:title="Source &amp; Code Editor"
+            app:summary="Set the raw editor font and syntax-token colors independently of document styling" />
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_editor_mode"
             app:title="Editor Mode"
-            app:summary="Select Pure WYSIWYG, Obsidian Live Preview, or Raw Source View"
+            app:summary="Choose the rendered Markdown editor or raw Source / Code editor"
             app:entries="@array/pref_editor_mode_entries"
             app:entryValues="@array/pref_editor_mode_values"
-            app:defaultValue="wysiwyg" />
+            app:defaultValue="rendered" />
         <com.wmdx.markdownapp.ResetPreference
             app:key="pref_page_storage_access"
             app:title="File &amp; Folder Access"

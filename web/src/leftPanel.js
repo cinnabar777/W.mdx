@@ -825,7 +825,10 @@ export function setupLeftPanel() {
     if (Number.isFinite(next.scrollTop)) {
       native?.onScrollChanged?.(Math.round(next.scrollTop), next.documentSessionId);
     }
-    window.editorBridge?.setMarkdown?.(next.markdown);
+    window.editorBridge?.setMarkdown?.(
+      next.markdown,
+      next.isStartPage ? 'Untitled.md' : next.name
+    );
     loadedTabId = next.id;
     if (focusTabsSection) {
       wantedExpanded.tabs = true;
@@ -862,7 +865,7 @@ export function setupLeftPanel() {
     } catch (error) {
       console.error('Could not reset the native document for the New tab page:', error);
     }
-    window.editorBridge?.setMarkdown?.('');
+    window.editorBridge?.setMarkdown?.('', 'Untitled.md');
     switchingTab = false;
     renderTabs();
     persistTabsNow();
@@ -1195,7 +1198,7 @@ export function setupLeftPanel() {
     activeTabId = target.id;
     loadedTabId = target.id;
     switchingTab = true;
-    window.editorBridge?.setMarkdown?.(target.markdown);
+    window.editorBridge?.setMarkdown?.(target.markdown, target.name);
     switchingTab = false;
     persistTabs();
     renderTabs();
@@ -2608,6 +2611,9 @@ export function setupLeftPanel() {
           break;
         case 'go-to-file':
           controller.openStartPageSearch();
+          break;
+        case 'open-file':
+          native?.onNativeAction?.('open');
           break;
         case 'open-session':
           native?.onNativeAction?.(

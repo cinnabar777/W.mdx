@@ -62,14 +62,18 @@ async function withTableEditor(markdown, run) {
       assert.ok(count < 100, 'animation-frame callbacks settle without looping');
     };
 
-    const tapCell = (cell, { dispatchClick = true } = {}) => {
-      cell.dispatchEvent(new dom.window.Event('pointerdown', {
+    const tapCell = (cell, { dispatchClick = true, x = 0, y = 0 } = {}) => {
+      cell.dispatchEvent(new dom.window.MouseEvent('pointerdown', {
         bubbles: true,
-        cancelable: true
+        cancelable: true,
+        clientX: x,
+        clientY: y
       }));
-      cell.dispatchEvent(new dom.window.Event('pointerup', {
+      cell.dispatchEvent(new dom.window.MouseEvent('pointerup', {
         bubbles: true,
-        cancelable: true
+        cancelable: true,
+        clientX: x,
+        clientY: y
       }));
       if (dispatchClick) {
         cell.dispatchEvent(new dom.window.MouseEvent('click', {
@@ -135,7 +139,7 @@ test('one tap enters a cell and switching cells commits the old value', async ()
     assert.ok(cellEditor, 'pointer-up opens the cell editor without a synthesized click');
     assert.equal(document.activeElement, cellEditor, 'the caret is focused inside the tapped cell');
     assert.ok(firstCell.style.outline, 'the selected cell is visibly highlighted');
-    cellEditor.value = 'Alpha edited';
+    cellEditor.textContent = 'Alpha edited';
 
     const nextCellBeforeCommit = container.querySelector('tbody td[data-row="2"][data-col="1"]');
     tapCell(nextCellBeforeCommit, { dispatchClick: false });
@@ -146,8 +150,107 @@ test('one tap enters a cell and switching cells commits the old value', async ()
     assert.equal(view.state.doc.toString().includes('Alpha edited'), true, 'the previous cell is saved before switching');
     cellEditor = currentContainer.querySelector('.cm-wp-cell-editor');
     assert.ok(cellEditor, 'the switch tap enters the newly selected cell');
-    assert.equal(cellEditor.value, 'Two');
+    assert.equal(cellEditor.textContent, 'Two');
     assert.equal(editorPointerDowns, 0, 'table taps do not create a stray document cursor');
+  });
+});
+
+test('cell editing keeps rendered inline styling, places the caret at the tap, and preserves scroll', async () => {
+  const markdown = [
+    '| Name | Value |',
+    '| --- | --- |',
+    '| **Alpha** tail | One |'
+  ].join('\n');
+
+  await withTableEditor(markdown, async ({
+    dom,
+    container,
+    tapCell,
+    scroller,
+    flushFrames
+  }) => {
+    const cell = container.querySelector('tbody td[data-row="1"][data-col="0"]');
+    cell.style.fontSize = '19px';
+    scroller.scrollTop = 42;
+    const originalFocus = dom.window.HTMLElement.prototype.focus;
+    dom.window.HTMLElement.prototype.focus = function(options) {
+      if (this.classList?.contains('cm-wp-cell-editor')) {
+        this.dataset.preventScroll = String(options?.preventScroll === true);
+        scroller.scrollTop = 777;
+      }
+      return originalFocus?.call(this, options);
+    };
+    dom.window.document.caretPositionFromPoint = (x, y) => {
+      assert.equal(x, 32);
+      assert.equal(y, 14);
+      const editor = dom.window.document.querySelector('.cm-wp-cell-editor');
+      const text = editor?.querySelector('strong')?.firstChild;
+      return text ? { offsetNode: text, offset: 2 } : null;
+    };
+
+    try {
+      tapCell(cell, { dispatchClick: false, x: 32, y: 14 });
+      const cellEditor = container.querySelector('.cm-wp-cell-editor');
+      assert.ok(cellEditor, 'the cell editor opens on one tap');
+      assert.equal(cellEditor.innerHTML, '<strong>Alpha</strong> tail', 'Markdown emphasis remains rendered while editing');
+      assert.equal(cellEditor.style.fontSize, '19px', 'the overlay inherits the rendered cell font size');
+      assert.equal(cellEditor.dataset.preventScroll, 'true', 'focus prevents the browser from auto-scrolling');
+      const selection = dom.window.getSelection();
+      assert.equal(selection.anchorNode.nodeValue, 'Alpha');
+      assert.equal(selection.anchorOffset, 2, 'the caret lands at the tapped character position');
+      flushFrames();
+      assert.equal(scroller.scrollTop, 42, 'focus does not move the document scroll position');
+    } finally {
+      dom.window.HTMLElement.prototype.focus = originalFocus;
+    }
+  });
+});
+
+test('rendered tables can disable their local horizontal scroller and wrap cells', async () => {
+  const markdown = [
+    '| Name | Description |',
+    '| --- | --- |',
+    '| A | A deliberately long cell value |'
+  ].join('\n');
+
+  await withTableEditor(markdown, async ({ view, scroller }) => {
+    const { WordProcessorTableWidget } = await import('../src/tableWidget.js');
+    const widget = new WordProcessorTableWidget(markdown, 0, markdown.length, {
+      horizontalScrollEnabled: false
+    });
+    const container = widget.toDOM(view);
+    scroller.appendChild(container);
+    assert.equal(container.dataset.horizontalScrollEnabled, 'false');
+    assert.equal(container.style.overflowX, 'hidden');
+    assert.equal(container.querySelector('table').style.width, '100%');
+    assert.equal(container.querySelector('tbody td').style.overflowWrap, 'anywhere');
+    widget.destroy(container);
+    container.remove();
+  });
+});
+
+test('clear formatting updates the rich rendered cell editor and its Markdown model', async () => {
+  const markdown = [
+    '| Name |',
+    '| --- |',
+    '| **Bold** and ==marked== |'
+  ].join('\n');
+
+  await withTableEditor(markdown, async ({ view, container, tapCell, flushFrames }) => {
+    const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+    const cell = container.querySelector('tbody td[data-row="1"][data-col="0"]');
+    tapCell(cell, { dispatchClick: false });
+    const editor = container.querySelector('.cm-wp-cell-editor');
+    assert.equal(editor?.getAttribute('contenteditable'), 'true');
+    assert.equal(clearMarkdownFormatting(view), true);
+    assert.equal(editor.innerHTML, 'Bold and marked');
+    assert.equal(editor._getMarkdownValue(), 'Bold and marked');
+    editor.blur();
+    flushFrames();
+    assert.ok(
+      view.state.doc.toString().includes('| Bold and marked |'),
+      'the cleared rich cell is committed back to Markdown'
+    );
   });
 });
 
@@ -164,7 +267,7 @@ test('table toolbar actions are enabled for the selected cell and still edit the
     tapCell(cell);
     const cellEditor = container.querySelector('.cm-wp-cell-editor');
     assert.ok(cellEditor, 'one tap opens the cell editor');
-    cellEditor.value = 'Alpha edited';
+    cellEditor.textContent = 'Alpha edited';
 
     const actions = dom.window.wmdxTableActions;
     assert.ok(actions, 'selecting a cell publishes the table toolbar action bridge');
@@ -268,7 +371,7 @@ test('merged-cell selection survives a widget refresh and its editor uses render
 
     const cellEditor = currentContainer.querySelector('.cm-wp-cell-editor');
     assert.ok(cellEditor, 'one tap opens the merged cell editor');
-    assert.equal(cellEditor.value, 'Alpha\nOne', 'saved Markdown line breaks are shown as editable line breaks');
+    assert.equal(cellEditor.innerHTML, 'Alpha<br>One', 'saved Markdown line breaks are shown as editable rendered line breaks');
     assert.equal(cellEditor.style.top, '75px');
     assert.equal(cellEditor.style.left, '110px');
     assert.equal(cellEditor.style.width, '180px');
@@ -283,7 +386,7 @@ test('merged-cell selection survives a widget refresh and its editor uses render
     assert.equal(enter.defaultPrevented, false, 'Return inserts a line break instead of closing the cell');
     assert.equal(cellEditor.isConnected, true, 'Return keeps the text box open in the merged cell');
 
-    cellEditor.value = 'Merged text edited\nsecond line';
+    cellEditor.innerHTML = 'Merged text edited<br>second line';
     cellEditor.blur();
     flushFrames();
     assert.ok(
@@ -352,7 +455,7 @@ test('GFM table cell edits preserve alignment and escaped pipes through serializ
     tapCell(originalCell);
     const cellEditor = container.querySelector('.cm-wp-cell-editor');
     assert.ok(cellEditor, 'the table cell can be edited');
-    cellEditor.value = 'Gamma \\| delta';
+    cellEditor.textContent = 'Gamma | delta';
     cellEditor.blur();
     flushFrames();
 

@@ -87,5 +87,50 @@ test('WYSIWYG renders footnote widgets instead of Markdown syntax', async () => 
   assert.notEqual(firstReferencePosition, secondReferencePosition);
 
   view.destroy();
+});
+
+test('WYSIWYG renders Obsidian inline notes as references with an editable note section', async () => {
+  const [{ EditorState, StateField }, { EditorView }, { markdown }, { buildFootnoteDecorations }] =
+    await Promise.all([
+      import('@codemirror/state'),
+      import('@codemirror/view'),
+      import('@codemirror/lang-markdown'),
+      import('../src/footnotes.js')
+    ]);
+
+  const doc = 'Inline ^[note text] here.';
+  const edits = [];
+  const navigationTargets = [];
+  const build = state => buildFootnoteDecorations(state, {
+    mode: 'wysiwyg',
+    onEdit: definition => edits.push(definition),
+    onNavigate: (_view, position) => navigationTargets.push(position)
+  });
+  const footnoteField = StateField.define({
+    create: build,
+    update: (_value, transaction) => build(transaction.state),
+    provide: field => EditorView.decorations.from(field, value => value.decorations)
+  });
+  const view = new EditorView({
+    state: EditorState.create({ doc, extensions: [markdown(), footnoteField] }),
+    parent: document.querySelector('#mount')
+  });
+
+  const reference = document.querySelector('.cm-footnote-reference');
+  assert.equal(reference?.textContent, '1');
+  assert.equal(
+    document.querySelector('.cm-footnote-inline-definitions .cm-footnote-text')?.textContent,
+    'note text'
+  );
+  assert.doesNotMatch(document.querySelector('.cm-content').textContent, /\^\[note text\]/);
+
+  reference.click();
+  document.querySelector('.cm-footnote-inline-definitions .cm-footnote-text').click();
+  assert.deepEqual(navigationTargets, [doc.indexOf('^[')]);
+  assert.equal(edits.length, 1);
+  assert.equal(edits[0].syntax, 'obsidian_inline');
+  assert.equal(doc.slice(edits[0].from, edits[0].to), '^[note text]');
+
+  view.destroy();
   dom.window.close();
 });

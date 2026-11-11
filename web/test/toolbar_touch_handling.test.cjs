@@ -94,6 +94,53 @@ test('scrollable toolbar surfaces keep pan gestures while preventing button focu
   dom.window.close();
 });
 
+test('toolbar tooltips are suppressed on touch pointers without losing accessible labels', async () => {
+  const { setToolbarTooltip } = await import('../src/toolbarRenderer.js');
+  const dom = new JSDOM('<button id="action" aria-label="Paste from Markdown dialect"></button>');
+  const button = dom.window.document.querySelector('#action');
+  Object.defineProperty(dom.window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: query => ({ media: query, matches: false })
+  });
+
+  setToolbarTooltip(button, 'Paste from Markdown dialect');
+  assert.equal(button.hasAttribute('title'), false);
+  assert.equal(button.getAttribute('aria-label'), 'Paste from Markdown dialect');
+
+  Object.defineProperty(dom.window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: query => ({
+      media: query,
+      matches: query.includes('(hover: hover)')
+    })
+  });
+  setToolbarTooltip(button, 'Paste from Markdown dialect');
+  assert.equal(button.title, 'Paste from Markdown dialect');
+
+  Object.defineProperty(dom.window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: query => ({
+      media: query,
+      matches: query.includes('(hover: hover)') || query.includes('(pointer: coarse)')
+    })
+  });
+  setToolbarTooltip(button, 'Paste from Markdown dialect');
+  assert.equal(button.hasAttribute('title'), false,
+    'coarse-pointer devices should not show native title popovers');
+
+  Object.defineProperty(dom.window.navigator, 'maxTouchPoints', {
+    configurable: true,
+    value: 1
+  });
+  setToolbarTooltip(button, 'Paste from Markdown dialect');
+  assert.equal(button.hasAttribute('title'), false,
+    'touch-capable devices should not show native title popovers, even with a fine pointer');
+  dom.window.close();
+});
+
 test('touch taps re-enter the existing click pipeline for each tap', async () => {
   const { installToolbarTouchHandling } =
     await import('../src/toolbarTouchHandling.js');

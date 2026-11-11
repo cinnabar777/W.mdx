@@ -372,7 +372,13 @@ test('TOC follows Markdown headings and refreshes while open without losing coll
     scrollDOM.scrollTop = 200;
     editorView.dispatch({ selection: { anchor: 0 } });
     scrollDOM.dispatchEvent(new dom.window.Event('scroll'));
-    await new Promise(resolve => setTimeout(resolve, 20));
+    const deadline = Date.now() + 1000;
+    while (
+      (!row.classList.contains('active-section') || row.style.display !== 'flex') &&
+      Date.now() < deadline
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
   };
   await moveViewportToHeading('Great-grandchild', 480);
   assert.equal(

@@ -2,6 +2,20 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Horizontal Scrolling">
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_table_scroll_wysiwyg_enabled"
+            app:title="Enable Scrolling in Rendered Views"
+            app:summary="Allow a rendered table to scroll horizontally without moving the document"
+            android:defaultValue="true" />
+
+        <com.wmdx.markdownapp.ResetSwitchPreference
+            app:key="pref_table_scroll_source_enabled"
+            app:title="Enable Scrolling in Source View"
+            app:summary="Keep each source table together while scrolling across its columns"
+            android:defaultValue="true" />
+    </com.wmdx.markdownapp.ResetPreferenceCategory>
+
     <com.wmdx.markdownapp.ResetPreferenceCategory app:title="Table Typography">
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_table_inherit_body_typography"

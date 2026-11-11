@@ -1,16 +1,34 @@
 import { syntaxTree } from '@codemirror/language';
+import {
+  DEFAULT_HEADING_SYNTAX_SETTINGS,
+  getHeadingFlavor,
+  getHeadingLevel,
+  getHeadingPrefix,
+  isHeadingFlavorEnabled,
+  isHeadingLevelAvailable
+} from './headingSyntax.mjs';
 
-const headingNodePattern = /^(?:ATXHeading|SetextHeading)([1-6])$/;
 const autoHeadingProgress = new WeakMap();
 
-export function getPrecedingHeadingLevel(state, beforeLineNumber) {
+export function getPrecedingHeadingLevel(
+  state,
+  beforeLineNumber,
+  settings = DEFAULT_HEADING_SYNTAX_SETTINGS
+) {
   if (!state || beforeLineNumber <= 1) return null;
 
   let previousHeading = null;
   syntaxTree(state).iterate({
     enter(node) {
-      const match = headingNodePattern.exec(node.name);
-      if (!match) return;
+      const level = getHeadingLevel(node.name);
+      const flavor = getHeadingFlavor(
+        node.name,
+        state.doc.sliceString(node.from, node.to)
+      );
+      if (
+        !level ||
+        !isHeadingFlavorEnabled(settings, flavor)
+      ) return;
 
       const lineNumber = state.doc.lineAt(node.from).number;
       if (
@@ -19,7 +37,7 @@ export function getPrecedingHeadingLevel(state, beforeLineNumber) {
       ) {
         previousHeading = {
           lineNumber,
-          level: Number(match[1])
+          level
         };
       }
     }
@@ -29,9 +47,13 @@ export function getPrecedingHeadingLevel(state, beforeLineNumber) {
 }
 
 export function getAutoHeadingLevel(previousLevel, tapNumber) {
-  const previous = previousLevel ?? 1;
+  return getAutoHeadingLevelForMaximum(previousLevel, tapNumber, 6);
+}
+
+function getAutoHeadingLevelForMaximum(previousLevel, tapNumber, maxLevel) {
+  const previous = Math.max(1, Math.min(previousLevel ?? 1, maxLevel));
   const levels = [
-    previousLevel == null ? 1 : Math.min(previous + 1, 6),
+    previousLevel == null ? 1 : Math.min(previous + 1, maxLevel),
     previous,
     Math.max(previous - 1, 1),
     1
@@ -50,28 +72,31 @@ function isInsideCodeBlock(state, position) {
   return false;
 }
 
-function getSetextHeadingEndLine(state, lineNumber) {
-  let endLine = null;
+function getSetextHeadingRange(state, lineNumber) {
+  let result = null;
   syntaxTree(state).iterate({
     enter(node) {
-      if (!/^SetextHeading[12]$/.test(node.name)) return;
+      const level = getHeadingLevel(node.name);
+      if (!node.name.startsWith('SetextHeading') || !level) return;
       if (state.doc.lineAt(node.from).number !== lineNumber) return;
-      endLine = state.doc.lineAt(node.to);
+      result = { to: node.to, level };
+      return false;
     }
   });
-  return endLine;
+  return result;
 }
 
-function parseCurrentLine(lineText) {
+function parseCurrentLine(lineText, setextLevel = null) {
   const indent = /^( {0,3})/.exec(lineText)?.[1] ?? '';
   let bodyStart = indent.length;
   const quotePrefix = /^(?:>[ \t]?)+/.exec(lineText.slice(bodyStart))?.[0] ?? '';
   bodyStart += quotePrefix.length;
 
   const rest = lineText.slice(bodyStart);
-  const heading = /^(#{1,6})(?:[ \t]+|$)/.exec(rest);
+  const hashHeading = /^(#{1,6})(?:[ \t]+|$)/.exec(rest);
+  const wmdxHeading = /^\.([1-6])(?:[ \t]+|$)/.exec(rest);
   const list = /^(?:- \[[ \t]?[xX ]?\][ \t]+|[-+*][ \t]+|\d+[.)][ \t]+)/.exec(rest);
-  const oldPrefix = heading?.[0] ?? list?.[0] ?? '';
+  const oldPrefix = hashHeading?.[0] ?? wmdxHeading?.[0] ?? list?.[0] ?? '';
   bodyStart += oldPrefix.length;
 
   return {
@@ -79,20 +104,35 @@ function parseCurrentLine(lineText) {
     quotePrefix,
     bodyStart,
     body: lineText.slice(bodyStart),
-    currentLevel: heading ? heading[1].length : null
+    currentLevel: hashHeading
+      ? hashHeading[1].length
+      : wmdxHeading
+        ? Number(wmdxHeading[1])
+        : setextLevel
   };
 }
 
-export function applyAutoHeading(view) {
+export function applyAutoHeading(
+  view,
+  settings = DEFAULT_HEADING_SYNTAX_SETTINGS
+) {
   if (!view?.state || !view?.dispatch) return false;
+  if (settings?.enabled === false || !settings?.authoringSyntax) return false;
 
   const state = view.state;
   const selection = state.selection.main;
   const cursorLine = state.doc.lineAt(selection.head);
   if (isInsideCodeBlock(state, selection.head)) return false;
 
-  const previousLevel = getPrecedingHeadingLevel(state, cursorLine.number);
-  const current = parseCurrentLine(cursorLine.text);
+  const syntax = settings.authoringSyntax;
+  const maxLevel = syntax === 'setext' ? 2 : 6;
+  const previousLevel = getPrecedingHeadingLevel(
+    state,
+    cursorLine.number,
+    settings
+  );
+  const setextHeading = getSetextHeadingRange(state, cursorLine.number);
+  const current = parseCurrentLine(cursorLine.text, setextHeading?.level);
   const priorProgress = autoHeadingProgress.get(view);
   const isContinuation = priorProgress &&
     priorProgress.lineNumber === cursorLine.number &&
@@ -100,11 +140,21 @@ export function applyAutoHeading(view) {
     priorProgress.previousLevel === previousLevel &&
     priorProgress.lastAppliedLevel === current.currentLevel;
   const tapNumber = isContinuation ? priorProgress.nextTap : 0;
-  const level = getAutoHeadingLevel(previousLevel, tapNumber);
-  const nextPrefix = `${current.indent}${current.quotePrefix}${'#'.repeat(level)} `;
-  const replacement = `${nextPrefix}${current.body}`;
-  const setextEndLine = getSetextHeadingEndLine(state, cursorLine.number);
-  const changeEnd = setextEndLine?.to ?? cursorLine.to;
+  const level = getAutoHeadingLevelForMaximum(
+    previousLevel,
+    tapNumber,
+    maxLevel
+  );
+  if (!isHeadingLevelAvailable(settings, level)) return false;
+  const marker = getHeadingPrefix(level, syntax);
+  if (!marker) return false;
+  const nextPrefix = `${current.indent}${current.quotePrefix}${
+    syntax === 'setext' ? '' : marker
+  }`;
+  const replacement = syntax === 'setext'
+    ? `${nextPrefix}${current.body}\n${current.indent}${current.quotePrefix}${marker.repeat(Math.max(1, current.body.trim().length))}`
+    : `${nextPrefix}${current.body}`;
+  const changeEnd = setextHeading?.to ?? cursorLine.to;
 
   autoHeadingProgress.set(view, {
     lineNumber: cursorLine.number,

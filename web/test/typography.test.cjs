@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const mainJsPath = path.join(__dirname, '../src/main.js');
 const source = fs.readFileSync(mainJsPath, 'utf8');
+const layoutSource = fs.readFileSync(path.join(__dirname, '../src/markdownDocumentLayout.js'), 'utf8');
 const settingsSource = fs.readFileSync(
   path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/SettingsActivity.kt'),
   'utf8'
@@ -19,6 +20,7 @@ test('applyAllPreferences handles Android XML preference keys correctly', () => 
   assert.ok(source.includes('pref_paragraph_line_height'), 'Missing pref_paragraph_line_height');
   assert.ok(source.includes('pref_letter_spacing'), 'Missing pref_letter_spacing');
   assert.ok(source.includes('pref_paragraph_align'), 'Missing pref_paragraph_align');
+  assert.ok(source.includes('pref_indent_step_spaces'), 'Missing pref_indent_step_spaces');
   assert.ok(source.includes('pref_paragraph_first_line_indent'), 'Missing pref_paragraph_first_line_indent');
 
   assert.ok(source.includes('pref_heading_scale_percent'), 'Missing pref_heading_scale_percent');
@@ -167,15 +169,49 @@ const codeSettingsPath = path.join(
 const codeSettings = fs.readFileSync(codeSettingsPath, 'utf8');
 
 test('paragraph and list typography selectors have matching editor line classes', () => {
-  assert.match(source, /tree\.resolveInner\(probe, 1\)/);
-  assert.match(source, /ancestor\.name === 'Paragraph'/);
-  assert.match(source, /ancestor\.name === 'ListItem'/);
-  assert.match(source, /addLineClass\(line\.from, 'cm-paragraph'\)/);
-  assert.match(source, /addLineClass\(line\.from, 'cm-list-item'\)/);
-  assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-first'\)/);
-  assert.match(source, /addLineClass\(line\.from, 'cm-paragraph-last'\)/);
+  assert.match(layoutSource, /tree\.resolveInner\(probe, 1\)/);
+  assert.match(layoutSource, /node\.name === 'Paragraph'/);
+  assert.match(layoutSource, /node\.name === 'ListItem'/);
+  assert.match(layoutSource, /entry\.classes\.add\('cm-paragraph'\)/);
+  assert.match(layoutSource, /entry\.kind = 'list-continuation'/);
+  assert.match(layoutSource, /entry\.classes\.add\('cm-list-continuation'\)/);
+  assert.match(layoutSource, /cm-paragraph-first/);
+  assert.match(layoutSource, /cm-paragraph-last/);
   assert.match(indexHtml, /\.cm-content \.cm-paragraph:not\(\.cm-list-item\)/);
+  assert.match(
+    indexHtml,
+    /\.cm-line\.cm-source-indented\.cm-paragraph-first[^{}]*\{[^}]*text-indent:\s*0\s*!important/
+  );
+  assert.match(indexHtml, /\.cm-content \.cm-line\.cm-source-indented\.cm-paragraph/);
+  assert.match(
+    indexHtml,
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item[\s\S]*?text-indent:\s*calc\(0px - var\(--list-marker-gutter/
+  );
+  assert.match(
+    indexHtml,
+    /\.cm-content \.cm-line\.cm-source-indented\.cm-heading[^{}]*\{[^}]*padding-left:\s*max\(0px,\s*calc/
+  );
   assert.match(indexHtml, /\.cm-content \.cm-list-item/);
+});
+
+test('paragraph indent step offers one or two spaces and defaults to one', () => {
+  const arrays = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/values/arrays.xml'),
+    'utf8'
+  );
+  assert.match(
+    paragraphSettings,
+    /app:key="pref_indent_step_spaces"[\s\S]*?android:entries="@array\/indent_step_entries"[\s\S]*?android:entryValues="@array\/indent_step_values"[\s\S]*?android:defaultValue="1"/
+  );
+  assert.match(
+    arrays,
+    /<string-array name="indent_step_entries">[\s\S]*?<item>One space<\/item>[\s\S]*?<item>Two spaces<\/item>/
+  );
+  assert.match(
+    arrays,
+    /<string-array name="indent_step_values">[\s\S]*?<item>1<\/item>[\s\S]*?<item>2<\/item>/
+  );
+  assert.match(resetSource, /key == "pref_indent_step_spaces" -> "1"/);
 });
 
 test('letter-spacing control is labeled as paragraph-only, not global', () => {
@@ -261,8 +297,8 @@ test('custom underline syntax, styles, toolbar actions, and shortcuts are wired 
   assert.ok(source.includes('`--underline-${style}-color`'));
 });
 
-test('table hyphenation wraps nested cell text without horizontal scrolling', () => {
-  assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table-container[\s\S]*?overflow-x:\s*hidden\s*!important/);
+test('table hyphenation hides horizontal scrolling only when the rendered table setting is disabled', () => {
+  assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table-container\[data-horizontal-scroll-enabled="false"\][\s\S]*?overflow-x:\s*hidden\s*!important/);
   assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table td \*[\s\S]*?white-space:\s*normal\s*!important/);
   assert.match(indexHtml, /body\.table-hyphenate \.cm-wp-table td \*[\s\S]*?overflow-wrap:\s*anywhere\s*!important/);
 });
@@ -329,7 +365,11 @@ test('Link underline thickness and dialog insertion helpers in main.js and XML p
 });
 
 test('Heading links inside lists and upper-middle scroll helper', () => {
-  assert.match(source, /if \(insideListItem\) \{\s*addLineClass\(line\.from, 'cm-list-item'\);/);
+  assert.match(
+    source,
+    /getMarkdownListItemLineRange\(view\.state,\s*selection\.head\)/
+  );
+  assert.match(source, /getWmdxOrderedListItemLineRange\(/);
   assert.match(source, /export function scrollToPositionUpperMiddle/);
 });
 
@@ -354,7 +394,7 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
     { key: 'pref_hr_margin_left', default: 0 },
     { key: 'pref_hr_margin_right', default: 0 },
     { key: 'pref_hr_centered', default: false },
-    { key: 'pref_list_wrap_under_text', default: false }
+    { key: 'pref_list_non_hanging', default: false }
   ];
 
   for (const m of marginKeys) {
@@ -377,7 +417,7 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(source.includes("'--hr-margin-left', prefs.pref_hr_margin_left ?? 0, '%'"));
   assert.ok(source.includes("'--hr-margin-right', prefs.pref_hr_margin_right ?? 0, '%'"));
   assert.ok(source.includes("prefs.pref_hr_centered === true"));
-  assert.ok(source.includes("prefs.pref_list_wrap_under_text === true"));
+  assert.ok(source.includes("prefs.pref_list_non_hanging !== true"));
   assert.match(source, /scheduleListMarkerMeasurements\(\s*update\.view,/);
 
   // CSS rules in index.html
@@ -395,19 +435,29 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
   assert.ok(indexHtml.includes('.cm-content .cm-blockquote:not(.cm-callout)'));
   assert.ok(indexHtml.includes('.cm-content .cm-paragraph-first.cm-callout'));
   assert.ok(indexHtml.includes('body.list-wrap-under-text .cm-content .cm-line.cm-list-item'));
-  assert.ok(indexHtml.includes('.cm-list-block-text'));
-  assert.ok(indexHtml.includes('display: flex !important;'));
-  assert.ok(indexHtml.includes('align-items: flex-start !important;'));
-  assert.ok(indexHtml.includes('flex: 1 1 0% !important;'));
+  assert.match(source, /LayoutAnchorWidget\('content'\)/);
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout:not(.cm-list-item)'));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-body:not(.cm-callout-list-item)'));
   assert.ok(indexHtml.includes('.cm-content .cm-line.cm-callout-list-item'));
-  assert.ok(indexHtml.includes('text-indent: 0 !important;'));
+  const standardListWrapRule = indexHtml.match(
+    /body:not\(\.list-wrap-under-text\) \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/
+  )?.[0] ?? '';
+  assert.match(standardListWrapRule, /padding-left:\s*0/);
+  assert.match(standardListWrapRule, /text-indent:\s*0/);
+  const blockListRule = indexHtml.match(
+    /body\.list-wrap-under-text \.cm-content \.cm-line\.cm-list-item\s*\{[^}]*\}/
+  )?.[0] ?? '';
+  assert.match(blockListRule, /display:\s*block/);
+  assert.match(blockListRule, /padding-left:\s*var\(--list-marker-gutter/);
+  assert.ok(source.includes("line.style.setProperty('--list-marker-gutter', nextValue)"));
   assert.ok(indexHtml.includes('body.hr-centered .cm-content .cm-line.cm-hr'));
   assert.ok(indexHtml.includes('margin-left: var(--table-margin-left, 0px) !important;'));
   assert.ok(indexHtml.includes('margin-right: var(--table-margin-right, 0px) !important;'));
   assert.ok(indexHtml.includes('var(--callout-depth-offset, 0px)'));
-  assert.ok(indexHtml.includes('var(--callout-depth-offset, 0px) + var(--list-left-indent, 24px)'));
+  const normalizedIndexHtml = indexHtml.replace(/\s+/g, ' ');
+  assert.ok(normalizedIndexHtml.includes(
+    'var(--callout-depth-offset, 0px) + var(--list-left-indent, 24px) + var(--list-depth-offset, 0px)'
+  ));
   assert.ok(indexHtml.includes('max-width: calc(100% - var(--hr-margin-left, 0%) - var(--hr-margin-right, 0%)) !important;'));
 
   const hrPreferences = fs.readFileSync(
@@ -422,5 +472,6 @@ test('Margin preferences and CSS variable mappings are defined for all block ele
     path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_lists.xml'),
     'utf8'
   );
-  assert.match(listPreferences, /app:key="pref_list_wrap_under_text"[\s\S]*?android:defaultValue="false"/);
+  assert.match(listPreferences, /app:key="pref_list_non_hanging"[\s\S]*?android:defaultValue="false"/);
+  assert.match(listPreferences, /app:title="Non-hanging List Wrapping"/);
 });

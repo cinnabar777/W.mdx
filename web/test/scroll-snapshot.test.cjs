@@ -30,7 +30,7 @@ test('all geometry refresh dispatches carry a scroll snapshot', () => {
 
 test('mode switches capture before destroy and pass both values to the new view', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
-  const start = source.indexOf('async function setEditorMode(mode) {');
+  const start = source.search(/async function setEditorMode\([\s\S]*?\)\s*\{/);
   const end = source.indexOf('function setupGroupedControlBar', start);
   assert.ok(start >= 0 && end > start, 'setEditorMode function exists');
   const modeSwitch = source.slice(start, end);

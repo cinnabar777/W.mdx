@@ -49,6 +49,52 @@ test('inline formatting state follows the syntax at the cursor and selection', a
   assert.equal(isMarkdownFormatActive(view, 'highlightBlue'), false);
 });
 
+test('supported inline HTML tags expose semantic formatting ranges', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { GFM, Strikethrough } = await import('@lezer/markdown');
+  const { getMarkdownFormatRanges, isMarkdownFormatActive } =
+    await import('../src/markdownFormatting.js');
+  const cases = [
+    ['bold', '<strong>bold</strong>'],
+    ['bold', '<b>bold</b>'],
+    ['italic', '<em>italic</em>'],
+    ['italic', '<i>italic</i>'],
+    ['strikethrough', '<del>strike</del>'],
+    ['strikethrough', '<s>strike</s>'],
+    ['subscript', '<sub>sub</sub>'],
+    ['superscript', '<sup>super</sup>'],
+    ['mark', '<mark>highlight</mark>'],
+    ['code', '<code>code</code>'],
+    ['underline', '<u>underline</u>'],
+    ['underline', '<ins>underline</ins>']
+  ];
+  const doc = cases.map(([, source]) => source).join(' ');
+  const view = {
+    state: EditorState.create({
+      doc,
+      selection: EditorSelection.cursor(doc.indexOf('bold') + 1),
+      extensions: [markdown({ extensions: [GFM, Strikethrough] })]
+    })
+  };
+
+  let offset = 0;
+  for (const [format, source] of cases) {
+    const range = getMarkdownFormatRanges(view, format).find(
+      candidate => candidate.kind === 'html' &&
+        candidate.wrapperFrom >= offset &&
+        candidate.wrapperTo <= offset + source.length
+    );
+    assert.ok(range, `${source} should yield a ${format} range`);
+    assert.equal(doc.slice(range.contentFrom, range.contentTo), source.match(/>([^<>]+)</)[1]);
+    view.state = view.state.update({
+      selection: EditorSelection.cursor(range.contentFrom + 1)
+    }).state;
+    assert.equal(isMarkdownFormatActive(view, format), true, `${source} should activate ${format}`);
+    offset += source.length + 1;
+  }
+});
+
 test('the same inline toolbar action toggles formatting instead of nesting it', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
@@ -75,6 +121,88 @@ test('the same inline toolbar action toggles formatting instead of nesting it', 
   assert.equal(view.state.doc.toString(), '**bold text** and plain');
   assert.equal(toggleMarkdownFormat(view, 'bold'), true);
   assert.equal(view.state.doc.toString(), 'bold text and plain');
+});
+
+test('Wmdx subscript formatting can be detected and toggled', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { getMarkdownFormattingState, isMarkdownFormatActive, toggleMarkdownFormat } =
+    await import('../src/markdownFormatting.js');
+  const { wmdxGfmStrikethrough } = await import('../src/gfm-strikethrough.mjs');
+  const doc = '~sub~ and plain';
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(2),
+    extensions: [markdown({ extensions: [wmdxGfmStrikethrough] })]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(isMarkdownFormatActive(view, 'subscript'), true);
+  assert.equal(getMarkdownFormattingState(view).subscript, true);
+  assert.equal(toggleMarkdownFormat(view, 'subscript'), true);
+  assert.equal(view.state.doc.toString(), 'sub and plain');
+});
+
+test('Wmdx superscript formatting can be detected and toggled', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { getMarkdownFormattingState, isMarkdownFormatActive, toggleMarkdownFormat } =
+    await import('../src/markdownFormatting.js');
+  const doc = 'x^2^ and plain';
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(2),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(isMarkdownFormatActive(view, 'superscript'), true);
+  assert.equal(getMarkdownFormattingState(view).superscript, true);
+  assert.equal(toggleMarkdownFormat(view, 'superscript'), true);
+  assert.equal(view.state.doc.toString(), 'x2 and plain');
+});
+
+test('disabled Wmdx superscript stays literal and cannot be authored accidentally', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const {
+    getMarkdownFormatRanges,
+    setWmdxSuperscriptSyntaxEnabled,
+    toggleMarkdownFormat
+  } = await import('../src/markdownFormatting.js');
+  const doc = 'x^2^ and plain';
+  const view = {
+    state: EditorState.create({
+      doc,
+      selection: EditorSelection.cursor(2),
+      extensions: [markdown()]
+    }),
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  setWmdxSuperscriptSyntaxEnabled(false);
+  try {
+    assert.deepEqual(getMarkdownFormatRanges(view, 'superscript'), []);
+    assert.equal(toggleMarkdownFormat(view, 'superscript'), false);
+    assert.equal(view.state.doc.toString(), doc);
+  } finally {
+    setWmdxSuperscriptSyntaxEnabled(true);
+  }
 });
 
 test('toolbar formatting can preserve a closed keyboard without refocusing the editor', async () => {
@@ -162,6 +290,320 @@ test('clear formatting preserves emphasis outside a partially selected word', as
   ), 'ol');
 });
 
+test('clear formatting without a selection strips block and inline syntax from one paragraph', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '> **first**\n>\n> **target**\n\n- **list item**';
+  const cursor = doc.indexOf('target') + 2;
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(cursor),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), '> **first**\n>\ntarget\n\n- **list item**');
+  assert.equal(view.state.selection.main.empty, true);
+});
+
+test('clear formatting removes indented-code syntax from the first paragraph', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '          first line\n          second line\n\noutside';
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(0),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(
+    view.state.doc.toString(),
+    'first line\nsecond line\n\noutside'
+  );
+});
+
+test('clear formatting deindents only selected lines inside an indented code block', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '    first line\n    second line';
+  const from = doc.indexOf('first line');
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.range(from, from + 'first line'.length),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), 'first line\n    second line');
+});
+
+test('clear formatting removes Setext heading syntax with a cursor or selection', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = 'Heading\n===\n\nOther';
+  const from = doc.indexOf('Heading');
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.range(from, from + 'Heading'.length),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), 'Heading\n\nOther');
+});
+
+test('clear formatting without a selection removes list markers from the current item', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '- **target**\n- untouched';
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(doc.indexOf('target') + 2),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), 'target\n- untouched');
+});
+
+test('clear formatting with a selection strips syntax from each selected line only', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '> **one**\n> - **two**\n> **three**\n\noutside';
+  const from = doc.indexOf('one');
+  const to = doc.indexOf('two') + 'two'.length;
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.range(from, to),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), 'one\ntwo\n> **three**\n\noutside');
+});
+
+test('clear formatting strips Obsidian callout markers at the cursor', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '> [!note] **Alert**\n>\n> body';
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.cursor(doc.indexOf('Alert') + 2),
+    extensions: [markdown()]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), 'Alert\n>\n> body');
+});
+
+test('clear formatting removes CommonMark, reference, and Obsidian link syntax', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  let doc = 'Use [common](https://example.com), [reference][ref], and [[#topic|internal]].\n\n[ref]: https://example.org';
+  const clearLabel = label => {
+    const from = doc.indexOf(label);
+    const state = EditorState.create({
+      doc,
+      selection: EditorSelection.range(from, from + label.length),
+      extensions: [markdown()]
+    });
+    const view = {
+      state,
+      dispatch(transaction) {
+        this.state = this.state.update(transaction).state;
+      },
+      focus() {}
+    };
+
+    assert.equal(clearMarkdownFormatting(view), true);
+    doc = view.state.doc.toString();
+  };
+
+  clearLabel('common');
+  clearLabel('reference');
+  clearLabel('internal');
+  assert.equal(
+    doc,
+    'Use common, reference, and internal.\n\n[ref]: https://example.org'
+  );
+});
+
+test('clear formatting ignores escaped Obsidian-looking brackets', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = '\\[[plain target]]';
+  const from = doc.indexOf('plain target');
+  const view = {
+    state: EditorState.create({
+      doc,
+      selection: EditorSelection.range(from, from + 'plain target'.length),
+      extensions: [markdown()]
+    }),
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), false);
+  assert.equal(view.state.doc.toString(), doc);
+});
+
+test('clear formatting removes WMDX resource-link syntax but keeps its title', async () => {
+  const { EditorState, EditorSelection } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { wmdxCommonMarkCompatibility } =
+    await import('../src/commonmark-compat.mjs');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const doc = 'Visit [example.com|Visit site||>] now';
+  const from = doc.indexOf('Visit site');
+  const state = EditorState.create({
+    doc,
+    selection: EditorSelection.range(from, from + 'Visit site'.length),
+    extensions: [markdown({ extensions: [wmdxCommonMarkCompatibility] })]
+  });
+  const view = {
+    state,
+    dispatch(transaction) {
+      this.state = this.state.update(transaction).state;
+    },
+    focus() {}
+  };
+
+  assert.equal(clearMarkdownFormatting(view), true);
+  assert.equal(view.state.doc.toString(), 'Visit Visit site now');
+});
+
+test('clear formatting handles an active table-cell editor and commits a closed cell selection', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const { JSDOM } = require('jsdom');
+  const { clearMarkdownFormatting } = await import('../src/markdownFormatting.js');
+  const dom = new JSDOM('<div class="cm-wp-cell-editor" contenteditable="true"></div>');
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  try {
+    const view = {
+      state: EditorState.create({ doc: '| Cell |', extensions: [markdown()] }),
+      dispatch(transaction) {
+        this.state = this.state.update(transaction).state;
+      },
+      focus() {}
+    };
+    const overlay = dom.window.document.querySelector('.cm-wp-cell-editor');
+    const activeModel = { rows: [['**bold** and ==marked==']] };
+    let cellValue = activeModel.rows[0][0];
+    let cellSelection = { from: 2, to: 6 };
+    overlay.textContent = 'bold and ==marked==';
+    overlay._getMarkdownValue = () => cellValue;
+    overlay._getSelectionOffsets = () => cellSelection;
+    overlay._setMarkdownValue = (value, from, to) => {
+      cellValue = value;
+      cellSelection = { from, to };
+      overlay.textContent = value;
+    };
+    overlay._cellMeta = { model: activeModel, row: 0, col: 0, widget: {} };
+    dom.window.wmdxTableActions = { active: { view } };
+
+    assert.equal(clearMarkdownFormatting(view), true);
+    assert.equal(cellValue, 'bold and ==marked==');
+    assert.equal(overlay.textContent, 'bold and ==marked==');
+    assert.equal(activeModel.rows[0][0], 'bold and ==marked==');
+
+    overlay.remove();
+    const committedModel = { rows: [['**plain**']] };
+    let commitCount = 0;
+    const widget = {
+      commitModel(targetView, model) {
+        assert.strictEqual(targetView, view);
+        assert.strictEqual(model, committedModel);
+        commitCount += 1;
+      }
+    };
+    dom.window._lastActiveCellSelection = {
+      widget,
+      model: committedModel,
+      row: 0,
+      col: 0,
+      cellValue: '**plain**',
+      selStart: 0,
+      selEnd: 0,
+      timestamp: Date.now()
+    };
+
+    assert.equal(clearMarkdownFormatting(view), true);
+    assert.equal(committedModel.rows[0][0], 'plain');
+    assert.equal(commitCount, 1);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    dom.window.close();
+  }
+});
+
 test('partial formatting removal keeps the unselected text formatted', async () => {
   const { EditorState, EditorSelection } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
@@ -237,6 +679,65 @@ test('every inline format removes its existing wrapper when toggled again', asyn
     };
     toggleMarkdownFormat(view, format.name);
     assert.equal(view.state.doc.toString(), format.plain, `${format.name} removes its existing syntax`);
+  }
+});
+
+test('Wmdx color slots and Obsidian highlight syntax follow the active flavor', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { markdown } = await import('@codemirror/lang-markdown');
+  const {
+    getWmdxColorSyntaxRanges,
+    setObsidianHighlightSyntaxEnabled,
+    setWmdxColorSyntaxEnabled,
+    toggleWmdxColorFormat
+  } = await import('../src/markdownFormatting.js');
+  const source = '==highlight== ==₀green== =pen=';
+  const state = EditorState.create({
+    doc: source,
+    extensions: [markdown()]
+  });
+
+  try {
+    setWmdxColorSyntaxEnabled(false);
+    setObsidianHighlightSyntaxEnabled(false);
+    assert.deepEqual(getWmdxColorSyntaxRanges(state), []);
+
+    setObsidianHighlightSyntaxEnabled(true);
+    const obsidianRanges = getWmdxColorSyntaxRanges(state);
+    assert.deepEqual(
+      obsidianRanges.map(range => [
+        range.group,
+        range.color,
+        source.slice(range.wrapperFrom, range.wrapperTo)
+      ]),
+      [['highlight', 'yellow', '==highlight==']]
+    );
+    const obsidianView = {
+      state: EditorState.create({
+        doc: 'text',
+        selection: { anchor: 0, head: 4 },
+        extensions: [markdown()]
+      }),
+      dispatch(transaction) {
+        this.state = this.state.update(transaction).state;
+      },
+      focus() {}
+    };
+    assert.equal(toggleWmdxColorFormat(obsidianView, 'highlightGreen'), false);
+    assert.equal(toggleWmdxColorFormat(obsidianView, 'penRed'), false);
+    assert.equal(toggleWmdxColorFormat(obsidianView, 'highlightYellow'), true);
+    assert.equal(obsidianView.state.doc.toString(), '==text==');
+
+    setWmdxColorSyntaxEnabled(true);
+    setObsidianHighlightSyntaxEnabled(false);
+    const wmdxRanges = getWmdxColorSyntaxRanges(state);
+    assert.deepEqual(
+      wmdxRanges.map(range => [range.group, range.color]),
+      [['highlight', 'yellow'], ['highlight', 'green'], ['pen', 'red']]
+    );
+  } finally {
+    setWmdxColorSyntaxEnabled(true);
+    setObsidianHighlightSyntaxEnabled(false);
   }
 });
 

@@ -29,6 +29,7 @@ test('menu actions use distinct supplied icons for the three save actions and HT
   assert.match(menu, /icon: svgIcons\.saveAsTextPack, title: 'Save as Text Pack'/);
   assert.match(menu, /icon: svgIcons\.exportHtml, title: 'Export HTML \/ MHTML'/);
   assert.match(menu, /icon: svgIcons\.switchView, title: 'Switch View Mode'/);
+  assert.match(menu, /icon: svgIcons\.codeBlock, title: 'Source \/ Code Language'/);
   assert.match(menu, /icon: svgIcons\.newWindow, title: 'New Window'/);
   assert.match(insert, /icon: svgIcons\.footnote, title: 'Insert Footnote'/);
 });

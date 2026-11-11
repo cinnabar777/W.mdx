@@ -81,6 +81,43 @@ function referenceTargetForLink(raw, labelEnd, referenceTargets) {
   return referenceTargets.get(normalizeMarkdownReferenceLabel(referenceLabel)) || null;
 }
 
+export function getMarkdownReferenceDefinitionInfo(node, doc) {
+  if (!node || node.name !== 'LinkReference' || !doc) return null;
+  const raw = doc.sliceString(node.from, node.to);
+  let cursor = 0;
+  while (cursor < raw.length && raw[cursor] === ' ' && cursor < 3) cursor += 1;
+  const labelEnd = findLabelEnd(raw.slice(cursor));
+  if (labelEnd < 1) return null;
+  const labelFrom = cursor + 1;
+  const labelTo = cursor + labelEnd;
+  cursor += labelEnd + 1;
+  if (raw[cursor] !== ':') return null;
+  cursor += 1;
+  while (raw[cursor] === ' ' || raw[cursor] === '\t') cursor += 1;
+
+  const wrappedInAngles = raw[cursor] === '<';
+  let targetFrom = cursor + (wrappedInAngles ? 1 : 0);
+  let targetTo = targetFrom;
+  if (wrappedInAngles) {
+    while (targetTo < raw.length && raw[targetTo] !== '>') targetTo += 1;
+  } else {
+    while (targetTo < raw.length && !/[\s]/.test(raw[targetTo])) targetTo += 1;
+  }
+  if (targetTo <= targetFrom) return null;
+
+  const rawLabel = raw.slice(labelFrom, labelTo);
+  const rawTarget = raw.slice(targetFrom, targetTo);
+  return {
+    raw,
+    label: unescapeMarkdown(rawLabel),
+    normalizedLabel: normalizeMarkdownReferenceLabel(rawLabel),
+    target: unescapeMarkdown(rawTarget),
+    targetFrom: node.from + targetFrom,
+    targetTo: node.from + targetTo,
+    wrappedInAngles
+  };
+}
+
 export function getMarkdownLinkInfo(node, doc, referenceTargets = new Map()) {
   if (!node) return null;
 

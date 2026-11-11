@@ -1,23 +1,8 @@
 # Markdown Phone Rendering Test
 
-This is a visual smoke test, not a complete CommonMark, GFM, or Obsidian
-compatibility suite. It samples common cases for a quick phone check; the
-specification corpora and import/export round trips are tested separately.
-
-Open this file in W.mdx and check it in Live Preview and WYSIWYG. In rendered
-views, inline and reference-link source syntax should be hidden, including while
-the link is active. The reference definition should also be hidden. Autolink
-angle brackets should not appear. Nested quotes should indent farther than their
-parent, and the outer quote border should continue through both paragraphs and
-the nested quote. The list with up to three leading spaces before its markers
-should stay flat, the nested list should stay nested, and the quoted list should
-stay inside its quote. Tap inline, reference, angle, and automatic links to
-confirm they open the browser or email app. Tap the wiki link to confirm it
-opens the sibling Markdown guide. Source view should continue to show the
-original Markdown syntax.
-
-The table below is a rendering check only. Table-cell cursor/editing is a known
-separate issue and is not part of this test.
+Examples in this document cover the common syntax families and packaged media.
+The companion [interaction checklist](Markdown-Phone-Test-Checklist.md) is
+included in this MDZip package; this document stays focused on readable examples.
 
 ## CommonMark
 
@@ -68,8 +53,7 @@ The code span should show `**these marks literally**`, not bold text.
    1. Nested numbered item
 3. Third numbered item
 
-Items indented by up to three spaces before their markers should stay at one
-list level:
+Up to three leading spaces do not create another list level:
 
 - First
  - Second
@@ -90,38 +74,8 @@ list level:
 >
 > - A list item inside a block quote.
 
-The nested quote should be visibly indented farther than the first quote, with
-an inset border while the outer border remains continuous.
-
-#### Pasting multiline content into a quote
-
-Start with this quote and place the cursor at the start of the blank quote
-line, before its `>` marker:
-
-```md
-> Paste here
->
-```
-
-Paste these lines:
-
-```md
-- First
-  - Second
-    - Third
-```
-
-The source should keep every pasted line inside the quote:
-
-```md
-> Paste here
-> - First
->   - Second
->     - Third
-```
-
-Repeat the paste with the long-press Paste action, Ctrl+V, and the keyboard
-clipboard. Each path should produce the same quoted source.
+The quote contains a second paragraph, a nested quote, and a list. The full
+indentation, wrapping, editing, and paste scenarios are in the checklist.
 
 ### Code blocks
 
@@ -155,7 +109,33 @@ Image using a small inline SVG:
 
 ![Cyan sample image|120](data:image/svg+xml,%3Csvg%20xmlns%3D'http://www.w3.org/2000/svg'%20width%3D'120'%20height%3D'60'%3E%3Crect%20width%3D'120'%20height%3D'60'%20fill%3D'%2300bfc5'/%3E%3C/svg%3E)
 
+Packaged PNG image resolved from the MDZ document root:
+
+![Packaged sample image|120](Markdown-Phone-Test-Image.png)
+
+Packaged landscape photograph at a fixed display width:
+
+![Alpine lake at golden hour|240](media/phone-test-lake.jpg)
+
+Packaged close-up photograph using the local Obsidian image-embed form:
+
+![[media/phone-test-fern.png|240]]
+
 [commonmark-spec]: https://spec.commonmark.org/0.31.2/
+
+### Packaged audio, video, and attachments
+
+The sample files are packaged with this document:
+
+[Short WAV chime](audio/phone-test-chime.wav "wmdx-audio:width=80;align=center")
+
+[Portrait MP4 sample](video/phone-test-portrait.mp4 "wmdx-video:width=85;align=center")
+
+[PDF attachment](attachments/phone-test-attachment.pdf "wmdx-attachment")
+
+[Text attachment](attachments/phone-test-notes.txt "wmdx-attachment:width=80;align=center")
+
+[ZIP attachment with a CSV](attachments/phone-test-data.zip "wmdx-attachment")
 
 ### Thematic break
 
@@ -176,13 +156,9 @@ These examples cover the GFM features that CommonMark does not define.
 - [X] Also checked
   - [ ] Nested unchecked task
 
-Checkboxes should render and remain tappable.
-
 ### Strikethrough
 
 Double tilde: ~~removed text~~.
-
-Single tilde: ~also removed~.
 
 Three tildes should stay literal: This will ~~~not~~~ strike.
 
@@ -193,13 +169,11 @@ Three tildes should stay literal: This will ~~~not~~~ strike.
 | left | center | right |
 | **bold** | `code` | ordinary text |
 
-Check the header, column alignment, cell spacing, and inline formatting. In Live
-Preview and WYSIWYG, tap a cell and verify the caret and keyboard enter that
-cell without relying on a synthesized click; they must not move to the line
-after the table. Edit a cell, tap another cell, then return to confirm the first
-edit was saved. Long-press an unedited cell and confirm both the floating
-toolbar and table action menu remain available without overlapping. Save and
-reopen the document to confirm the edit persists.
+#### Wide table for horizontal Source scrolling
+
+| Identifier | Description | Owner | Updated | State | Notes |
+| :--- | :--- | :--- | ---: | :---: | :--- |
+| WMDX-001 | A deliberately long row that should remain on one source line | Editor | 2026-11-06 | Open | Keep every pipe and separator intact |
 
 ### GFM automatic links
 
@@ -211,10 +185,6 @@ reader@example.com
 
 ftp://foo.bar.baz.
 
-Each automatic link should be styled and open its browser or email app when
-tapped. For the FTP example, verify the trailing period is not part of the link;
-`foo.bar.baz` is a specification placeholder, not a live server.
-
 ## Obsidian
 
 These are supported Obsidian-style features, not a promise of full Obsidian app
@@ -222,7 +192,7 @@ or plugin compatibility.
 
 ### Wiki links
 
-[[Markdown.md|Open the Markdown guide in this folder]]
+[[Markdown-Phone-Test-Embed.md|Open the packaged companion document]]
 
 [[#Obsidian|Jump to this section]]
 
@@ -237,18 +207,17 @@ The next card loads a small Markdown file beside this test file:
 The first image should display at its natural size; the second should display
 at 32 pixels wide:
 
-![[Markdown-Phone-Test-Image.png]]
+![[media/phone-test-fern.png]]
 
-![[Markdown-Phone-Test-Image.png|32]]
+![[media/phone-test-fern.png|32]]
 
 ### Callouts
 
-> [!info] Information callout
-> The callout title and body should appear together in a styled block.
-> **Markdown formatting** should work inside the body.
+> [!info] Information
+> A short callout body with **bold text** and a second sentence.
 
 > [!warning]- Collapsed callout
-> This body should be hidden initially and appear when the callout is expanded.
+> This body is revealed when the callout is expanded.
 
 ### Highlight and reference footnote
 
@@ -258,10 +227,9 @@ This sentence has a reference footnote.[^phone-test]
 
 [^phone-test]: The footnote should be displayed with its reference and this definition.
 
-## W.mdx word-processing syntax
+This sentence has an Obsidian inline footnote.^[This note is written at its reference.]
 
-These are W.mdx extensions, separate from CommonMark and GFM. Underline display
-depends on the **Use Wmdx syntax** setting.
+## W.mdx word-processing syntax
 
 Solid _underline_, dotted _₀underline_, dashed _₁underline_, double
 _₂underline_, and wavy _₃underline_.
@@ -271,14 +239,28 @@ Highlighter slots: ==highlight 1==, ==₀highlight 2==, ==₁highlight 3==, and
 
 Pen slots: =pen 1=, =₀pen 2=, =₁pen 3=, and =₂pen 4=.
 
-## Known Obsidian gaps — not expected to pass
+Single tilde is Wmdx subscript, not GFM strikethrough: H~2~O.
 
-The following forms are listed as current limitations, not rendering tests:
+Paired carets form Wmdx superscript: x^2^.
 
-- Heading or block transclusion such as `![[note.md#Heading]]`.
-- Obsidian audio, video, and PDF embeds such as `![[clip.mp4]]`.
-- Inline footnotes such as `^[a short note]`.
-- `%% comments %%`, YAML properties/frontmatter, math, Mermaid, and plugin syntax.
+### W.mdx ordered-list styles and task markers
+
+The app supports additional ordered markers and its native task form:
+
+A. Uppercase alphabetic item
+B. Second uppercase alphabetic item
+
+a. Lowercase alphabetic item
+b. Second lowercase alphabetic item
+
+I. Uppercase Roman item
+II. Second uppercase Roman item
+
+i. Lowercase Roman item
+ii. Second lowercase Roman item
+
+[ ] Native unchecked task
+[x] Native checked task
 
 ## Reference
 

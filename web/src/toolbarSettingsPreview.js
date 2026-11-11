@@ -23,6 +23,7 @@ import { renderIconChoices } from './appIconCatalog.js';
 import {
   renderBottomToolbarKeys,
   sanitizeToolbarSvg,
+  setToolbarTooltip,
   toToolbarCssColor
 } from './toolbarRenderer.js';
 import { TABLE_ACTIONS } from './tableActions.js';
@@ -170,7 +171,7 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'video', title: 'Insert Video', icon: svgIcons.video },
     { id: 'attachment', title: 'Attach File', icon: svgIcons.attachment },
     { id: 'embed', title: 'Embed Document', icon: svgIcons.embed },
-    { id: 'link', title: 'Insert Link', icon: svgIcons.link },
+    { id: 'link', title: 'Links', icon: svgIcons.link },
     { id: 'callout', title: 'Insert Callout', icon: calloutIcon },
     { id: 'inlineCode', title: 'Inline Code', icon: svgIcons.inlineCode },
     { id: 'blockQuote', title: 'Insert Quote', icon: svgIcons.blockQuote },
@@ -188,6 +189,11 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'saveAsMdzip', title: 'Save as MDZip', icon: svgIcons.saveAsMdzip },
     { id: 'saveAsTextPack', title: 'Save as Text Pack', icon: svgIcons.saveAsTextPack },
     { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml },
+    { id: 'convertFromMarkdown', title: 'Convert from Markdown dialect', icon: svgIcons.openFile },
+    { id: 'pasteFromDialect', title: 'Paste from Markdown dialect', icon: svgIcons.pasteAsPlainText },
+    { id: 'exportMarkdown', title: 'Export Markdown dialect', icon: svgIcons.exportHtml },
+    { id: 'lintMarkdown', title: 'Lint document', icon: svgIcons.search },
+    { id: 'formatJson', title: 'Format JSON', icon: svgIcons.format },
     { id: 'search', title: 'Find & Replace', icon: svgIcons.search },
     { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView },
     { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow },
@@ -774,7 +780,7 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
   button.type = 'button';
   button.className = 'popup-strip-btn toolbar-preview-popup-key';
   const title = config.styles[item.id]?.title || item.title;
-  button.title = title;
+  setToolbarTooltip(button, title);
   button.setAttribute('aria-label', title);
   button.setAttribute('aria-current', item.id === selectedPopupItem ? 'true' : 'false');
   button.classList.toggle('active', item.id === selectedPopupItem);
@@ -841,7 +847,7 @@ function createPreviewPopupKey(item, groupId, location, isIndividuallyHidden = f
           `toolbar-key-gesture-indicator toolbar-key-gesture-indicator--${position}`;
         marker.dataset.gesturePosition = position;
         marker.setAttribute('aria-hidden', 'true');
-        marker.title = `${gestureId} action`;
+        setToolbarTooltip(marker, `${gestureId} action`);
         marker.innerHTML = gestureIcon;
         button.appendChild(marker);
       }

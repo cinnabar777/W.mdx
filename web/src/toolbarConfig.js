@@ -39,7 +39,8 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   ]),
   menu: Object.freeze([
     'newTab', 'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack', 'saveAsMdzip',
-    'exportHtml', 'search', 'switchView', 'newWindow', 'settings'
+    'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown', 'formatJson',
+    'exportHtml', 'search', 'switchView', 'sourceLanguage', 'newWindow', 'settings'
   ])
 });
 
@@ -103,7 +104,7 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
 ]);
 
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
-  version: 12,
+  version: 16,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
   hidden: [],
   popupGroups: createDefaultPopupGroups(),
@@ -308,6 +309,20 @@ export function normalizeBottomToolbarConfig(rawConfig) {
     parsed.deletedKeys,
     new Set(BUILT_IN_DELETABLE_KEY_IDS)
   );
+  if (
+    parsedVersion < 15 &&
+    deletedGroupIds.has('menu') &&
+    !deletedKeys.includes('sourceLanguage')
+  ) {
+    deletedKeys.push('sourceLanguage');
+  }
+  if (
+    parsedVersion < 16 &&
+    deletedGroupIds.has('menu') &&
+    !deletedKeys.includes('formatJson')
+  ) {
+    deletedKeys.push('formatJson');
+  }
   const deletedKeyIds = new Set(deletedKeys);
 
   const customGroups = {};
@@ -542,6 +557,61 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       !legacyHidden.includes('newTab')
     ) {
       popupGroups.menu.order.unshift('newTab');
+    }
+  }
+
+  if (parsedVersion > 0 && parsedVersion < 13 && popupGroups.menu) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    for (const id of ['convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown']) {
+      if (
+        !assignedActions.has(id) &&
+        !deletedKeyIds.has(id) &&
+        !legacyHeldKeys.includes(id) &&
+        !legacyHidden.includes(id)
+      ) {
+        popupGroups.menu.order.push(id);
+        assignedActions.add(id);
+      }
+    }
+  }
+
+  if (parsedVersion > 0 && parsedVersion < 14 && popupGroups.menu) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    if (
+      !assignedActions.has('lintMarkdown') &&
+      !deletedKeyIds.has('lintMarkdown') &&
+      !legacyHeldKeys.includes('lintMarkdown') &&
+      !legacyHidden.includes('lintMarkdown')
+    ) {
+      popupGroups.menu.order.push('lintMarkdown');
+    }
+  }
+
+  if (parsedVersion < 15 && popupGroups.menu) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    const heldActions = new Set(migrateToolbarActionIds(parsed.holding, parsedVersion));
+    if (
+      !assignedActions.has('sourceLanguage') &&
+      !deletedKeyIds.has('sourceLanguage') &&
+      !legacyHeldKeys.includes('sourceLanguage') &&
+      !legacyHidden.includes('sourceLanguage') &&
+      !heldActions.has('sourceLanguage')
+    ) {
+      popupGroups.menu.order.push('sourceLanguage');
+    }
+  }
+
+  if (parsedVersion < 16 && popupGroups.menu) {
+    const assignedActions = new Set(Object.values(popupGroups).flatMap(group => group.order));
+    const heldActions = new Set(migrateToolbarActionIds(parsed.holding, parsedVersion));
+    if (
+      !assignedActions.has('formatJson') &&
+      !deletedKeyIds.has('formatJson') &&
+      !legacyHeldKeys.includes('formatJson') &&
+      !legacyHidden.includes('formatJson') &&
+      !heldActions.has('formatJson')
+    ) {
+      popupGroups.menu.order.push('formatJson');
     }
   }
 

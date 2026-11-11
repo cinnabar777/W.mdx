@@ -22,6 +22,60 @@ const mainActivity = fs.readFileSync(
   'utf8'
 );
 
+test('footnote syntax settings cover Wmdx, shared Markdown, and Obsidian inline', async () => {
+  const {
+    DEFAULT_FOOTNOTE_SYNTAX_SETTINGS,
+    isFootnoteAuthoringAvailable,
+    isFootnoteFlavorEnabled,
+    normalizeFootnoteSyntaxSettings
+  } = await import('../src/footnoteSyntax.mjs');
+  const resetPreferences = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/ResetPreferences.kt'),
+    'utf8'
+  );
+  const arrays = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/res/values/arrays.xml'),
+    'utf8'
+  );
+
+  assert.deepEqual(normalizeFootnoteSyntaxSettings(), {
+    ...DEFAULT_FOOTNOTE_SYNTAX_SETTINGS
+  });
+  assert.equal(
+    normalizeFootnoteSyntaxSettings({
+      pref_footnote_authoring_syntax: 'obsidian_inline'
+    }).authoringSyntax,
+    'obsidian_inline'
+  );
+  const onlyMarkdown = normalizeFootnoteSyntaxSettings({
+    pref_footnote_syntax_wmdx_enabled: false,
+    pref_footnote_syntax_obsidian_inline_enabled: false,
+    pref_footnote_authoring_syntax: 'wmdx'
+  });
+  assert.equal(onlyMarkdown.authoringSyntax, 'markdown');
+  assert.equal(isFootnoteFlavorEnabled(onlyMarkdown, 'markdown'), true);
+  assert.equal(isFootnoteFlavorEnabled(onlyMarkdown, 'wmdx'), false);
+  const disabled = normalizeFootnoteSyntaxSettings({
+    pref_footnote_syntax_enabled: false
+  });
+  assert.equal(isFootnoteAuthoringAvailable(disabled), false);
+  assert.equal(isFootnoteFlavorEnabled(disabled, 'obsidian_inline'), false);
+
+  for (const key of [
+    'pref_footnote_syntax_enabled',
+    'pref_footnote_syntax_wmdx_enabled',
+    'pref_footnote_syntax_markdown_enabled',
+    'pref_footnote_syntax_obsidian_inline_enabled',
+    'pref_footnote_authoring_syntax'
+  ]) {
+    assert.ok(footnotePreferences.includes(key), `settings define ${key}`);
+  }
+  assert.match(arrays, /name="footnote_authoring_syntax_values"[\s\S]*?<item>wmdx<\/item>[\s\S]*?<item>markdown<\/item>[\s\S]*?<item>obsidian_inline<\/item>/);
+  assert.match(settingsActivity, /pref_footnote_authoring_syntax/);
+  assert.match(resetPreferences, /pref_footnote_authoring_syntax" -> "wmdx"/);
+  assert.match(source, /normalizeFootnoteSyntaxSettings\(prefs\)/);
+});
+
 test('footnote parsing handles references, numbered definitions, and continued lines', async () => {
   const { parseFootnotes } = await import('../src/footnotes.js');
   const markdown = 'A reference [^1].\n\n[^1]: First line\n    Second line';
@@ -35,6 +89,282 @@ test('footnote parsing handles references, numbered definitions, and continued l
     markdown.slice(parsed.definitions[0].from, parsed.definitions[0].to),
     '[^1]: First line\n    Second line'
   );
+});
+
+test('native footnotes auto-number new notes and reuse existing numbers', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'First note.^',
+    'Reuse the first note.^1',
+    'Second note.^',
+    '',
+    '^ First definition.',
+    '^ Second definition.',
+    '',
+    'Superscript ^text^ and ^2^; escaped \\^.'
+  ].join('\n');
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => [reference.label, reference.syntax]),
+    [['1', 'wmdx'], ['1', 'wmdx'], ['2', 'wmdx']]
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [definition.label, definition.body]),
+    [['1', 'First definition.'], ['2', 'Second definition.']]
+  );
+});
+
+test('native multiline footnotes retain continuations and automatic numbering skips reused numbers', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'First note.^',
+    'Reuse note two.^2',
+    'Third note.^',
+    '',
+    '^ First definition.',
+    '^ Second definition.',
+    '^ Third definition.',
+    '  Continued definition line.'
+  ].join('\n');
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => reference.label),
+    ['1', '2', '3']
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [definition.label, definition.body]),
+    [
+      ['1', 'First definition.'],
+      ['2', 'Second definition.'],
+      ['3', 'Third definition.\nContinued definition line.']
+    ]
+  );
+});
+
+test('Obsidian inline footnotes become numbered references with editable notes', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = 'First ^[inline note], then ^[nested [note] text].';
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => [reference.label, reference.syntax]),
+    [['1', 'obsidian_inline'], ['2', 'obsidian_inline']]
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [
+      definition.label,
+      definition.body,
+      definition.syntax,
+      source.slice(definition.from, definition.to),
+      definition.renderAt
+    ]),
+    [
+      ['1', 'inline note', 'obsidian_inline', '^[inline note]', source.length],
+      ['2', 'nested [note] text', 'obsidian_inline', '^[nested [note] text]', source.length]
+    ]
+  );
+});
+
+test('Obsidian inline footnotes ignore escaped markers, code, and tables', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    String.raw`Escaped \^[not a note].`,
+    'Real ^[note].',
+    '',
+    '`^[inline code]`',
+    '',
+    'Table ^[table text]'
+  ].join('\n');
+  const codeStart = source.indexOf('`^[inline code]`');
+  const codeEnd = codeStart + '`^[inline code]`'.length;
+  const tableStart = source.indexOf('Table');
+  const parsed = parseFootnotes(
+    source,
+    position => position >= codeStart && position < codeEnd,
+    () => false,
+    position => position >= tableStart,
+  );
+
+  assert.deepEqual(
+    parsed.definitions.map(definition => definition.body),
+    ['note']
+  );
+  assert.deepEqual(
+    parsed.references.map(reference => reference.label),
+    ['1']
+  );
+});
+
+test('inline Wmdx and Obsidian footnotes remain distinct when mixed', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'Inline note ^[first note].',
+    'Wmdx note.^',
+    '',
+    '^ Wmdx definition.'
+  ].join('\n');
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => [reference.label, reference.syntax]),
+    [['1', 'obsidian_inline'], ['2', 'wmdx']]
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [definition.label, definition.body]),
+    [['1', 'first note'], ['2', 'Wmdx definition.']]
+  );
+});
+
+test('footnote flavor switches independently gate editor parsing', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'Wmdx.^ Markdown [^md]. Inline ^[note].',
+    '',
+    '^ Wmdx definition.',
+    '[^md]: Markdown definition.'
+  ].join('\n');
+  const wmdxOnly = parseFootnotes(source, () => false, () => false, () => false, {
+    syntaxSettings: {
+      pref_footnote_syntax_wmdx_enabled: true,
+      pref_footnote_syntax_markdown_enabled: false,
+      pref_footnote_syntax_obsidian_inline_enabled: false
+    }
+  });
+  assert.deepEqual(
+    wmdxOnly.references.map(reference => reference.syntax),
+    ['wmdx']
+  );
+  assert.deepEqual(
+    wmdxOnly.definitions.map(definition => definition.syntax),
+    ['wmdx']
+  );
+
+  const allDisabled = parseFootnotes(source, () => false, () => false, () => false, {
+    syntaxSettings: { pref_footnote_syntax_enabled: false }
+  });
+  assert.deepEqual(allDisabled, { definitions: [], references: [] });
+});
+
+test('new native notes continue imported numbering and reserve later explicit references', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'New note.^',
+    'Reuse one.^1',
+    'Reuse two.^2',
+    'Reuse three.^3',
+    '',
+    '[^1]: First imported definition',
+    '[^2]: Second imported definition',
+    '[^3]: Third imported definition',
+    '^ New native definition'
+  ].join('\n');
+  const parsed = parseFootnotes(source);
+
+  assert.deepEqual(
+    parsed.references.map(reference => reference.label),
+    ['4', '1', '2', '3']
+  );
+  assert.deepEqual(
+    parsed.definitions.map(definition => [definition.label, definition.syntax]),
+    [
+      ['1', 'markdown'],
+      ['2', 'markdown'],
+      ['3', 'markdown'],
+      ['4', 'wmdx']
+    ]
+  );
+
+  const nativeSource = [
+    'New note.^',
+    'Reuse one.^1',
+    'Reuse two.^2',
+    'Reuse three.^3',
+    '',
+    '^ First definition',
+    '^ Second definition',
+    '^ Third definition',
+    '^ New definition'
+  ].join('\n');
+  const nativeParsed = parseFootnotes(nativeSource);
+  assert.deepEqual(
+    nativeParsed.references.map(reference => reference.label),
+    ['4', '1', '2', '3']
+  );
+  assert.deepEqual(
+    nativeParsed.definitions.map(definition => definition.label),
+    ['1', '2', '3', '4']
+  );
+});
+
+test('WYSIWYG leaves native footnote markers editable until the cursor leaves', async () => {
+  const { EditorState } = await import('@codemirror/state');
+  const { buildFootnoteDecorations } = await import('../src/footnotes.js');
+  const doc = 'Reuse.^2\n\n^ First definition.\n^ Second definition.';
+  const referenceFrom = doc.indexOf('^2');
+  const activeState = EditorState.create({
+    doc,
+    selection: { anchor: referenceFrom + 2 }
+  });
+  const active = buildFootnoteDecorations(activeState, { mode: 'wysiwyg' });
+  const activeReferenceDecorations = [];
+  active.decorations.between(referenceFrom, referenceFrom + 2, (from, to, decoration) => {
+    if (from === referenceFrom && to === referenceFrom + 2) {
+      activeReferenceDecorations.push(decoration);
+    }
+  });
+  assert.equal(activeReferenceDecorations.length, 0);
+
+  const inactiveState = EditorState.create({ doc, selection: { anchor: 0 } });
+  const inactive = buildFootnoteDecorations(inactiveState, { mode: 'wysiwyg' });
+  const inactiveReferenceDecorations = [];
+  inactive.decorations.between(referenceFrom, referenceFrom + 2, (from, to, decoration) => {
+    if (from === referenceFrom && to === referenceFrom + 2) {
+      inactiveReferenceDecorations.push(decoration);
+    }
+  });
+  assert.equal(inactiveReferenceDecorations.length, 1);
+
+  const unfinishedDoc = 'New note.^\n\n^ First definition.';
+  const bareMarker = unfinishedDoc.indexOf('^');
+  const unfinished = buildFootnoteDecorations(
+    EditorState.create({
+      doc: unfinishedDoc,
+      selection: { anchor: bareMarker + 1 }
+    }),
+    { mode: 'wysiwyg' }
+  );
+  let unfinishedMarkerDecorated = false;
+  unfinished.decorations.between(bareMarker, bareMarker + 1, (from, to) => {
+    if (from === bareMarker && to === bareMarker + 1) {
+      unfinishedMarkerDecorated = true;
+    }
+  });
+  assert.equal(unfinishedMarkerDecorated, false);
+});
+
+test('footnote decorations refresh after the cursor leaves a native marker', () => {
+  assert.match(
+    source,
+    /const revealRefresh =\s*currentEditorMode !== 'source' &&\s*tr\.selectionSet &&\s*current\.hasFootnotes/
+  );
+});
+
+test('native footnote markers are ignored in tables and code', async () => {
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = 'Table cell ^\n\n```\nText.^\n^ code definition\n```';
+  const codeStart = source.indexOf('```');
+  const codeEnd = source.lastIndexOf('```') + 3;
+  const parsed = parseFootnotes(
+    source,
+    position => position >= codeStart && position < codeEnd,
+    position => position >= codeStart && position < codeEnd,
+    position => position < source.indexOf('\n\n')
+  );
+
+  assert.deepEqual(parsed.definitions, []);
+  assert.deepEqual(parsed.references, []);
 });
 
 test('footnote parser ignores references and definitions in code when given syntax ranges', async () => {
@@ -100,17 +430,37 @@ test('ordinary edits reuse cached footnote positions; note edits trigger a full 
   assert.equal(footnoteEditRequiresReparse(noFootnotes, addReference, 'wysiwyg'), true);
 });
 
-test('footnote labels remain unique and multiline definitions use Markdown continuation indentation', async () => {
-  const { formatFootnoteDefinition, nextFootnoteLabel } = await import('../src/footnotes.js');
+test('footnote formatters keep Markdown and native Wmdx definitions distinct', async () => {
+  const {
+    formatFootnoteDefinition,
+    formatObsidianInlineFootnote,
+    formatWmdxFootnoteDefinition,
+    nextFootnoteLabel
+  } = await import('../src/footnotes.js');
 
   assert.equal(nextFootnoteLabel('Text [^1]\n\n[^1]: note\n[^3]: other'), '4');
   assert.equal(formatFootnoteDefinition('4', 'First line\nSecond line'), '[^4]: First line\n    Second line');
+  assert.equal(formatWmdxFootnoteDefinition('First line\nSecond line'), '^ First line\n  Second line');
+  assert.equal(
+    formatObsidianInlineFootnote('First line\nSecond line]'),
+    '^[First line Second line\\]]'
+  );
 });
 
 test('toolbar insertion opens the footnote dialog and all footnote settings reach rendered styles', () => {
-  assert.match(source, /title: 'Insert Footnote', action: \(\) => openFootnoteInsertionDialog\(\)/);
+  assert.match(source, /title: 'Insert Footnote', disabled: !isFootnoteAuthoringAvailableNow\(\), action: \(\) => openFootnoteInsertionDialog\(\)/);
   assert.match(source, /function openFootnoteInsertionDialog/);
   assert.match(source, /formattedDefinition \+ '\\n\\n'/, 'inserted footnotes leave a blank editable line after the final definition');
+  assert.match(source, /: '\^'/, 'new Wmdx toolbar footnotes use the native marker');
+  assert.match(source, /authoringSyntax === 'obsidian_inline'/);
+  assert.match(source, /formatObsidianInlineFootnote/);
+  assert.match(source, /Reuse footnote \$\{label\}/, 'the toolbar can link to an existing numbered note');
+  assert.match(
+    source,
+    /cmdName === 'todoList'\)\s*\{\s*const prefix = getDefaultTaskPrefix\(listSyntaxSettings\);\s*if \(prefix\) cmToggleSelectedListPrefix\(view, prefix\);/
+  );
+  assert.match(source, /applyHeadingCommand\(view, val\)/);
+  assert.match(source, /getHeadingPrefix\(level, syntax\)/);
   assert.match(source, /footnoteStateField/);
   assert.match(source, /--footnote-text-color/);
   assert.match(source, /setCssVar\('--footnote-bg-color', androidArgbToCss/);

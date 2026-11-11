@@ -1,0 +1,316 @@
+function splitLines(text) {
+  const lines = [];
+  let from = 0;
+  for (const rawLine of String(text ?? '').split('\n')) {
+    const content = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+    lines.push({
+      from,
+      to: from + rawLine.length,
+      text: content
+    });
+    from += rawLine.length + 1;
+  }
+  return lines;
+}
+
+function indentationOf(text) {
+  let count = 0;
+  while (text[count] === ' ') count++;
+  return count;
+}
+
+function calloutMarker(line, indent) {
+  const match = /^±([A-Za-z](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?)([-+]?)(?:([ \t]+)(.*))?$/.exec(
+    line.text.slice(indent)
+  );
+  if (!match) return null;
+
+  const markerStart = line.from + indent;
+  const markerLength = 1 + match[1].length + match[2].length;
+  const titleStart = match[3]
+    ? markerStart + markerLength + match[3].length
+    : null;
+  return {
+    type: match[1].toLowerCase(),
+    foldMarker: match[2] || null,
+    customTitle: match[4] || null,
+    markerStart,
+    markerEnd: markerStart + markerLength,
+    titleStart
+  };
+}
+
+export function parseWmdxCallouts(text, isExcluded = () => false) {
+  const lines = splitLines(text);
+  const openers = [];
+  const lineAttributes = new Map();
+  // Keep outside blank-line indentation separate from callout styling so
+  // Markdown's default Enter handling cannot re-indent after an exit.
+  const returnIndentByLine = new Map();
+  const stack = [];
+  let pendingBlankLines = [];
+
+  const markBodyLine = (line, callout, isBlank = false) => {
+    const parentCallout = callout.parent || null;
+    if (!isBlank) callout.hasBodyContent = true;
+    lineAttributes.set(line.from, {
+      type: callout.type,
+      depth: callout.depth,
+      continuationIndent: callout.indent + 2,
+      exitIndent: parentCallout
+        ? parentCallout.indent + 2
+        : callout.indent,
+      indentToHide: isBlank
+        ? 0
+        : Math.min(callout.indent + 2, indentationOf(line.text)),
+      isTitle: false
+    });
+    for (
+      let ancestor = callout;
+      ancestor;
+      ancestor = ancestor.parent
+    ) {
+      if (indentationOf(line.text) > ancestor.indent) {
+        ancestor.info.bodyTo = line.to;
+      }
+    }
+  };
+
+  for (const line of lines) {
+    if (!line.text.trim()) {
+      if (stack.length) pendingBlankLines.push(line);
+      continue;
+    }
+
+    const calloutsBeforeLine = stack.slice();
+    const indent = indentationOf(line.text);
+    while (stack.length && indent <= stack[stack.length - 1].indent) {
+      stack.pop();
+    }
+
+    const parent = stack[stack.length - 1] || null;
+    const isIndentedBody = parent && indent > parent.indent;
+    if (pendingBlankLines.length) {
+      for (const blankLine of pendingBlankLines) {
+        const blankIndent = indentationOf(blankLine.text);
+        const containingCallout = [...calloutsBeforeLine]
+          .reverse()
+          .find(callout => blankIndent > callout.indent);
+        if (containingCallout) {
+          markBodyLine(blankLine, containingCallout, true);
+        } else if (isIndentedBody) {
+          markBodyLine(blankLine, parent, true);
+        } else if (calloutsBeforeLine.length) {
+          returnIndentByLine.set(
+            blankLine.from,
+            calloutsBeforeLine[0].indent
+          );
+        }
+      }
+      pendingBlankLines = [];
+    }
+
+    const marker = calloutMarker(line, indent);
+    const isCalloutOpener = marker && !isExcluded(line.from + indent);
+    if (isCalloutOpener) {
+      if (isIndentedBody) markBodyLine(line, parent);
+
+      const info = {
+        ...marker,
+        depth: stack.length + 1,
+        bodyFrom: line.to,
+        bodyTo: line.to
+      };
+      const callout = {
+        indent,
+        depth: info.depth,
+        type: info.type,
+        parent,
+        hasBodyContent: false,
+        info
+      };
+      openers.push({ lineFrom: line.from, info });
+      lineAttributes.set(line.from, {
+        type: info.type,
+        depth: info.depth,
+        continuationIndent: indent + 2,
+        indentToHide: indent,
+        isTitle: true
+      });
+      stack.push(callout);
+      continue;
+    }
+
+    if (isIndentedBody) markBodyLine(line, parent);
+  }
+
+  if (stack.length && pendingBlankLines.length) {
+    for (const blankLine of pendingBlankLines) {
+      const blankIndent = indentationOf(blankLine.text);
+      const containingCallout = [...stack]
+        .reverse()
+        .find(callout => blankIndent > callout.indent);
+      if (containingCallout && !containingCallout.hasBodyContent) {
+        markBodyLine(blankLine, containingCallout, true);
+      } else {
+        const exitingCallout = containingCallout || stack[0];
+        returnIndentByLine.set(
+          blankLine.from,
+          exitingCallout.parent
+            ? exitingCallout.parent.indent + 2
+            : exitingCallout.indent
+        );
+      }
+    }
+  }
+
+  return { openers, lineAttributes, returnIndentByLine };
+}
+
+export function buildWmdxCalloutInsertion(
+  source,
+  selection,
+  { type = 'note', fold = '', title = '' } = {}
+) {
+  const text = String(source ?? '');
+  const from = selection?.from;
+  const to = selection?.to;
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from > to) {
+    return null;
+  }
+
+  const lines = splitLines(text);
+  const firstLine = lines.find(line => from >= line.from && from <= line.to);
+  const lastPosition = to > from ? to - 1 : to;
+  const lastLine = lines.find(
+    line => lastPosition >= line.from && lastPosition <= line.to
+  );
+  if (!firstLine || !lastLine) return null;
+
+  const firstIndex = lines.indexOf(firstLine);
+  const lastIndex = lines.indexOf(lastLine);
+  if (firstIndex < 0 || lastIndex < firstIndex) return null;
+
+  const indent = /^[ \t]*/.exec(firstLine.text)?.[0] ?? '';
+  const safeType = /^[a-z][a-z0-9_-]*$/i.test(type) ? type : 'note';
+  const safeFold = fold === '+' || fold === '-' ? fold : '';
+  const safeTitle = String(title ?? '').trim();
+  const opener = `±${safeType}${safeFold}${safeTitle ? ` ${safeTitle}` : ''}`;
+  const bodyLines = lines
+    .slice(firstIndex, lastIndex + 1)
+    .map(line => {
+      const body = line.text.startsWith(indent)
+        ? line.text.slice(indent.length)
+        : line.text;
+      return `${indent}  ${body}`;
+    });
+  const insert = `${indent}${opener}\n${bodyLines.join('\n')}`;
+  const changeFrom = firstLine.from;
+
+  return {
+    from: changeFrom,
+    to: lastLine.to,
+    insert,
+    cursor: changeFrom + insert.length
+  };
+}
+
+export function getWmdxCalloutContinuationIndent(
+  text,
+  position,
+  isExcluded = () => false
+) {
+  const source = String(text ?? '');
+  const line = splitLines(source).find(
+    candidate => position >= candidate.from && position <= candidate.to
+  );
+  if (!line) return null;
+
+  const parsed = parseWmdxCallouts(source, isExcluded);
+  const attributes = parsed.lineAttributes.get(line.from);
+  if (!attributes) {
+    return parsed.returnIndentByLine.get(line.from) ?? null;
+  }
+
+  if (!line.text.trim()) {
+    return attributes.exitIndent ?? 0;
+  }
+  if (attributes.isTitle) {
+    return attributes.continuationIndent;
+  }
+  return indentationOf(line.text);
+}
+
+export function isWmdxCalloutEnterEvent(event) {
+  if (
+    !event ||
+    event.isComposing ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey
+  ) {
+    return false;
+  }
+
+  if (event.type === 'beforeinput') {
+    if (event.cancelable === false) return false;
+    return event.inputType === 'insertParagraph' ||
+      event.inputType === 'insertLineBreak' ||
+      (event.inputType === 'insertText' && /^\r?\n$/.test(event.data || ''));
+  }
+
+  return event.type === 'keydown' &&
+    event.key === 'Enter' &&
+    event.keyCode !== 229;
+}
+
+export function getWmdxCalloutEnterEdit(
+  text,
+  selection,
+  isExcluded = () => false
+) {
+  const source = String(text ?? '');
+  const position = selection?.head;
+  if (!Number.isInteger(position)) return null;
+
+  const line = splitLines(source).find(
+    candidate => position >= candidate.from && position <= candidate.to
+  );
+  if (!line) return null;
+
+  const indent = getWmdxCalloutContinuationIndent(
+    source,
+    position,
+    isExcluded
+  );
+  if (indent == null) return null;
+
+  const exitsCurrentCallout = Boolean(
+    selection.empty && !line.text.trim()
+  );
+  const from = exitsCurrentCallout ? line.from : selection.from;
+  const to = exitsCurrentCallout ? line.to : selection.to;
+  const insert = `\n${' '.repeat(indent)}`;
+  return {
+    from,
+    to,
+    insert,
+    cursor: from + insert.length,
+    exitsCurrentCallout
+  };
+}
+
+export function isWmdxCalloutTitleDraftActive(selection, info, lineTo) {
+  if (
+    !selection?.empty ||
+    !info ||
+    !Number.isInteger(info.markerStart) ||
+    !Number.isInteger(lineTo)
+  ) {
+    return false;
+  }
+
+  return !info.customTitle?.trim() &&
+    selection.head >= info.markerStart &&
+    selection.head <= lineTo;
+}

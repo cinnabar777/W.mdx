@@ -151,7 +151,9 @@ test('extracts MP3, AAC, M4A, WAV, FLAC, Opus, OGG, and OGA links without treati
     '[Voice](audio/recording.opus)',
     '[Ogg](audio/recording.ogg)',
     '[Oga](audio/recording.oga)',
+    '[Parenthesized path](audio/voice_(live).mp3)',
     '![Artwork](audio/image.mp3)',
+    `${'['.repeat(128)} [Later link](audio/later.mp3)`,
     '`[Inline example](audio/inline.mp3)`',
     '```md',
     '[Fenced example](audio/fenced.mp3)',
@@ -168,7 +170,9 @@ test('extracts MP3, AAC, M4A, WAV, FLAC, Opus, OGG, and OGA links without treati
       'audio/recording.flac',
       'audio/recording.opus',
       'audio/recording.ogg',
-      'audio/recording.oga'
+      'audio/recording.oga',
+      'audio/voice_(live).mp3',
+      'audio/later.mp3'
     ]
   );
 });
