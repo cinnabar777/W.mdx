@@ -1,6 +1,36 @@
 #!/bin/sh
 
 device="emulator-${EMULATOR_PORT:-5554}"
+
+wait_for_cpu_pressure() {
+  phase="$1"
+  pressure_wait=0
+  stable_samples=0
+  pressure_available=1
+  while [ "$pressure_wait" -lt 180 ] && [ "$stable_samples" -lt 3 ]; do
+    cpu_pressure=$(adb -s "$device" shell cat /proc/pressure/cpu 2>/dev/null |
+      sed -n 's/^some .*avg10=\([0-9.]*\).*/\1/p' | tr -d '\r')
+    if [ -z "$cpu_pressure" ]; then
+      pressure_available=0
+      echo "Android CPU pressure metrics are unavailable; skipping the $phase idle gate."
+      break
+    fi
+    if awk "BEGIN { exit !($cpu_pressure < 35) }"; then
+      stable_samples=$((stable_samples + 1))
+    else
+      stable_samples=0
+    fi
+    echo "Android CPU pressure after $phase avg10=$cpu_pressure; stable samples=${stable_samples}/3."
+    if [ "$stable_samples" -lt 3 ]; then
+      sleep 10
+      pressure_wait=$((pressure_wait + 10))
+    fi
+  done
+  if [ "$pressure_available" -eq 1 ] && [ "$stable_samples" -lt 3 ]; then
+    echo "Android CPU pressure did not settle after $phase within 180 seconds; continuing with diagnostics enabled."
+  fi
+}
+
 adb -s "$device" wait-for-device
 boot_wait=0
 booted=1
@@ -33,37 +63,35 @@ if [ "$booted" -eq 1 ]; then
   done
 
   if [ "$unlocked" -eq 1 ]; then
-    # boot_completed can precede user unlock and provider initialization.
-    # The emulator can still be under severe CPU pressure after unlocking.
-    # Wait for three consecutive low-pressure samples before starting WebView.
-    pressure_wait=0
-    stable_samples=0
-    pressure_available=1
-    while [ "$pressure_wait" -lt 180 ] && [ "$stable_samples" -lt 3 ]; do
-      cpu_pressure=$(adb -s "$device" shell cat /proc/pressure/cpu 2>/dev/null |
-        sed -n 's/^some .*avg10=\([0-9.]*\).*/\1/p' | tr -d '\r')
-      if [ -z "$cpu_pressure" ]; then
-        pressure_available=0
-        echo "Android CPU pressure metrics are unavailable; continuing without the idle gate."
-        break
-      fi
-      if [ -n "$cpu_pressure" ] &&
-        awk "BEGIN { exit !($cpu_pressure < 35) }"; then
-        stable_samples=$((stable_samples + 1))
-      else
-        stable_samples=0
-      fi
-      echo "Android CPU pressure avg10=${cpu_pressure:-unavailable}; stable samples=${stable_samples}/3."
-      if [ "$stable_samples" -lt 3 ]; then
-        sleep 10
-        pressure_wait=$((pressure_wait + 10))
-      fi
-    done
-    if [ "$pressure_available" -eq 1 ] && [ "$stable_samples" -lt 3 ]; then
-      echo "Android CPU pressure did not settle within 180 seconds; continuing with diagnostics enabled."
-    fi
-    ./gradlew connectedDebugAndroidTest --stacktrace --console=plain --max-workers=1
+    # Let app/package installation and Android startup settle before opening WebView.
+    ./gradlew installDebug installDebugAndroidTest --stacktrace --console=plain --max-workers=1
     test_status=$?
+    if [ "$test_status" -eq 0 ]; then
+      wait_for_cpu_pressure "APK installation"
+      warmup_output=$(timeout 90s adb -s "$device" shell am start -W \
+        -n com.wmdx.markdownapp.debug/.DocumentDispatchActivity 2>&1)
+      warmup_status=$?
+      echo "Android app warm-up (exit $warmup_status):"
+      echo "$warmup_output"
+      if [ "$warmup_status" -eq 0 ]; then
+        # Wait through first-run WebView/provider initialization before instrumentation.
+        sleep 15
+        app_pid=$(adb -s "$device" shell pidof com.wmdx.markdownapp.debug 2>/dev/null |
+          tr -d '\r')
+        if [ -n "$app_pid" ]; then
+          ./gradlew connectedDebugAndroidTest \
+            -x installDebug -x installDebugAndroidTest \
+            --stacktrace --console=plain --max-workers=1
+          test_status=$?
+        else
+          echo "The app process did not survive the WebView warm-up."
+          test_status=1
+        fi
+      else
+        echo "The app launcher could not complete its WebView warm-up."
+        test_status=1
+      fi
+    fi
   else
     echo "Android user $user_id did not reach RUNNING_UNLOCKED within 180 seconds."
     test_status=1
