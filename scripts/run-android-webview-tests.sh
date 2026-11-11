@@ -10,66 +10,6 @@ log() {
   printf '%s\n' "$*" | tee -a "$runner_log"
 }
 
-read_cpu_counters() {
-  adb -s "$device" shell cat /proc/stat 2>/dev/null |
-    awk 'NR == 1 {
-      total = $2 + $3 + $4 + $5 + $6 + $7 + $8 + $9
-      idle = $5 + $6
-      print total, idle
-      exit
-    }' | tr -d '\r'
-}
-
-wait_for_cpu_idle() {
-  phase="$1"
-  idle_wait=0
-  stable_samples=0
-  before=$(read_cpu_counters)
-  if [ -z "$before" ]; then
-    log "Android /proc/stat counters are unavailable; allowing 60 seconds for $phase to settle."
-    sleep 60
-    return
-  fi
-
-  while [ "$idle_wait" -lt 180 ] && [ "$stable_samples" -lt 3 ]; do
-    sleep 5
-    after=$(read_cpu_counters)
-    if [ -z "$after" ]; then
-      log "Android /proc/stat counters became unavailable during $phase; allowing 60 seconds to settle."
-      sleep 60
-      break
-    fi
-
-    cpu_busy=$(awk -v before="$before" -v after="$after" '
-      BEGIN {
-        split(before, start, " ")
-        split(after, finish, " ")
-        total = finish[1] - start[1]
-        idle = finish[2] - start[2]
-        if (total <= 0 || idle < 0) exit 1
-        printf "%.1f", 100 * (total - idle) / total
-      }')
-    if [ -z "$cpu_busy" ]; then
-      log "Could not calculate Android CPU usage during $phase; allowing 60 seconds to settle."
-      sleep 60
-      break
-    fi
-
-    if awk "BEGIN { exit !($cpu_busy < 70) }"; then
-      stable_samples=$((stable_samples + 1))
-    else
-      stable_samples=0
-    fi
-    log "Android CPU busy after $phase=${cpu_busy}%; stable samples=${stable_samples}/3."
-    before="$after"
-    idle_wait=$((idle_wait + 5))
-  done
-
-  if [ "$stable_samples" -lt 3 ]; then
-    log "Android CPU usage did not settle after $phase within 180 seconds; continuing with diagnostics enabled."
-  fi
-}
-
 adb -s "$device" wait-for-device
 boot_wait=0
 booted=1
@@ -108,9 +48,8 @@ if [ "$booted" -eq 1 ]; then
     test_status=$?
     log "APK installation exit status: $test_status"
     if [ "$test_status" -eq 0 ]; then
-      wait_for_cpu_idle "APK installation"
       warmup_output=$(timeout 90s adb -s "$device" shell am start -W \
-        -n com.wmdx.markdownapp.debug/.DocumentDispatchActivity 2>&1)
+        -n com.wmdx.markdownapp.debug/com.wmdx.markdownapp.DocumentDispatchActivity 2>&1)
       warmup_status=$?
       log "Android app warm-up (exit $warmup_status):"
       log "$warmup_output"
@@ -120,8 +59,7 @@ if [ "$booted" -eq 1 ]; then
         app_pid=$(adb -s "$device" shell pidof com.wmdx.markdownapp.debug 2>/dev/null |
           tr -d '\r')
         if [ -n "$app_pid" ]; then
-          log "WebView warm-up app process is alive (pid $app_pid); waiting for Android CPU idle."
-          wait_for_cpu_idle "WebView warm-up"
+          log "WebView warm-up app process is alive (pid $app_pid); starting instrumentation."
           log "Starting Android WebView instrumentation."
           ./gradlew connectedDebugAndroidTest \
             -x installDebug -x installDebugAndroidTest \
