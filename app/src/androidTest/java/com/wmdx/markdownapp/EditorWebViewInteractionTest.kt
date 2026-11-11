@@ -98,6 +98,63 @@ class EditorWebViewInteractionTest {
                 }
             }
 
+            val sourceNestedList = fixtures.first { it.context == "nested ordered list item" }
+            val sourceListTarget = "after the caret enters it."
+            evaluate(
+                webView,
+                """
+                    (async () => {
+                      await window.editorBridge.setEditorMode('source');
+                      window.editorBridge.applyAllPreferences({
+                        pref_markdown_profile: 'gfm',
+                        pref_markdown_syntax_exposure: 'hidden'
+                      });
+                      window.editorBridge.setMarkdown(${JSONObject.quote(sourceNestedList.source)});
+                    })();
+                    true;
+                """.trimIndent()
+            )
+            await(
+                webView,
+                "document.querySelector('#editor > .cm-editor .cm-content')?.textContent.includes(" +
+                    "${JSONObject.quote(sourceListTarget)})"
+            )
+            val sourceListPoint = sourceEditorTouchPoint(webView, sourceListTarget)
+            tap(
+                webView,
+                sourceListPoint.getDouble("x"),
+                sourceListPoint.getDouble("y"),
+                sourceListPoint.getDouble("dpr")
+            )
+            val sourceListSelection = JSONObject(
+                decode(evaluate(webView, "window.editorBridge.getSelectionState()"))
+            )
+            val sourceListExpectedCaret =
+                sourceNestedList.source.indexOf(sourceListTarget) + sourceListTarget.length / 2
+            assertTrue(
+                "Source-view tap must put the caret in the touched nested-list text: $sourceListSelection",
+                sourceListSelection.getInt("head") > 0 &&
+                    kotlin.math.abs(sourceListSelection.getInt("head") - sourceListExpectedCaret) <= 24
+            )
+            assertEquals(
+                sourceNestedList.source,
+                decode(evaluate(webView, "window.editorBridge.getMarkdown()")),
+                "Source-view cursor entry must preserve nested-list bytes"
+            )
+            val editedSourceList =
+                sourceNestedList.source.substring(0, sourceListSelection.getInt("head")) +
+                    "X" + sourceNestedList.source.substring(sourceListSelection.getInt("head"))
+            InstrumentationRegistry.getInstrumentation().sendStringSync("X")
+            await(
+                webView,
+                "window.editorBridge.getMarkdown() === ${JSONObject.quote(editedSourceList)}"
+            )
+            assertEquals(
+                editedSourceList,
+                decode(evaluate(webView, "window.editorBridge.getMarkdown()")),
+                "Source-view nested-list typing must occur at the tapped caret"
+            )
+
             val renderedTableSource = """
                 | Mode | Description |
                 | --- | --- |
@@ -542,6 +599,43 @@ class EditorWebViewInteractionTest {
             )
         )
         assertTrue("No source-table tap point for $target: $result", result != "null")
+        return JSONObject(result)
+    }
+
+    private fun sourceEditorTouchPoint(webView: WebView, target: String): JSONObject {
+        val result = decode(
+            evaluate(
+                webView,
+                """
+                    (() => {
+                      const host = document.querySelector('#editor > .cm-editor');
+                      const line = [...(host?.querySelectorAll('.cm-line') || [])]
+                        .find(item => item.textContent.includes(${JSONObject.quote(target)}));
+                      if (!host || !line) return null;
+                      line.scrollIntoView({ block: 'center', inline: 'nearest' });
+                      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                      let node;
+                      while ((node = walker.nextNode())) {
+                        const offset = node.nodeValue.indexOf(${JSONObject.quote(target)});
+                        if (offset < 0) continue;
+                        const caret = offset + Math.floor(${target.length} / 2);
+                        const range = document.createRange();
+                        range.setStart(node, caret);
+                        range.setEnd(node, caret + 1);
+                        const rect = range.getBoundingClientRect();
+                        if (!rect.width || !rect.height) return null;
+                        return JSON.stringify({
+                          x: rect.left + rect.width / 2,
+                          y: rect.top + rect.height / 2,
+                          dpr: window.devicePixelRatio
+                        });
+                      }
+                      return null;
+                    })()
+                """.trimIndent()
+            )
+        )
+        assertTrue("No source-editor tap point for $target: $result", result != "null")
         return JSONObject(result)
     }
 

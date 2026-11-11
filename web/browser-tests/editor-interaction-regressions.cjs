@@ -438,6 +438,42 @@ async function main() {
       }
     }
 
+    const sourceList = listContexts.find(item => item.name === 'nested list item');
+    await setDocument(page, sourceList.source, {
+      mode: 'source',
+      scope: 'hidden',
+      profile: sourceList.profile
+    });
+    const sourceListStart = sourceList.source.indexOf(sourceList.target);
+    const sourceListEnd = sourceList.source.indexOf('\n', sourceListStart);
+    const sourceListTapPoint = await tapTextRow(page, '.cm-line', sourceList.target, true);
+    await page.waitForTimeout(100);
+    const sourceListCaret = await page.evaluate(({ x, y }) => ({
+      source: window.editorBridge.getMarkdown(),
+      selection: JSON.parse(window.editorBridge.getSelectionState()),
+      editorFocused: document.activeElement?.classList?.contains('cm-content') ?? false,
+      hitClass: document.elementFromPoint(x, y)?.className ?? null,
+      hitText: document.elementFromPoint(x, y)?.textContent?.slice(0, 120) ?? null
+    }), sourceListTapPoint);
+    assert.equal(sourceListCaret.source, sourceList.source,
+      'Source-view cursor entry must preserve the nested-list bytes');
+    assert.ok(sourceListCaret.editorFocused,
+      'Source-view nested-list tap should focus the literal code editor');
+    assert.ok(sourceListCaret.selection.head >= sourceListStart &&
+      sourceListCaret.selection.head < sourceListEnd,
+    `Source-view caret should stay in the tapped nested item: ${JSON.stringify({ sourceListCaret, sourceListTapPoint })}`);
+    const expectedSourceListEdit =
+      sourceList.source.slice(0, sourceListCaret.selection.head) + 'X' +
+      sourceList.source.slice(sourceListCaret.selection.head);
+    await page.keyboard.insertText('X');
+    assert.equal(await page.evaluate(() => window.editorBridge.getMarkdown()), expectedSourceListEdit,
+      'Source-view typing should insert at the tapped nested-list caret');
+    await page.keyboard.press('Control+Z');
+    await page.waitForFunction(source =>
+      window.editorBridge.getMarkdown() === source, sourceList.source);
+    assert.equal(await page.evaluate(() => window.editorBridge.getMarkdown()), sourceList.source,
+      'Undo should restore the exact nested-list source');
+
     const quoteSource = [
       '> Outer quote paragraph.',
       '>',
