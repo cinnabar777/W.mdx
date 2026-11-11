@@ -83,6 +83,17 @@ if [ "$booted" -eq 1 ]; then
             -x installDebug -x installDebugAndroidTest \
             --stacktrace --console=plain --max-workers=1
           test_status=$?
+          reported_tests=0
+          for test_report in app/build/outputs/androidTest-results/connected/debug/TEST-*.xml; do
+            [ -f "$test_report" ] || continue
+            report_tests=$(sed -n '1s/.*tests="\([0-9][0-9]*\)".*/\1/p' "$test_report")
+            reported_tests=$((reported_tests + ${report_tests:-0}))
+          done
+          echo "Android instrumentation XML reports $reported_tests test(s)."
+          if [ "$reported_tests" -eq 0 ]; then
+            echo "Android instrumentation did not execute any tests; treating this as a failure."
+            test_status=1
+          fi
         else
           echo "The app process did not survive the WebView warm-up."
           test_status=1
