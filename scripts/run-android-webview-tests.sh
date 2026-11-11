@@ -44,8 +44,14 @@ if [ "$booted" -eq 1 ]; then
   if [ "$unlocked" -eq 1 ]; then
     # Let app/package installation and Android startup settle before opening WebView.
     log "Installing app and instrumentation APKs."
-    ./gradlew installDebug installDebugAndroidTest --stacktrace --console=plain --max-workers=1
+    install_log="$diagnostics_dir/android-webview-install-gradle.txt"
+    ./gradlew installDebug installDebugAndroidTest \
+      --stacktrace --console=plain --max-workers=1 > "$install_log" 2>&1
     test_status=$?
+    if [ "$test_status" -ne 0 ]; then
+      log "Gradle APK installation failed; last 100 lines follow."
+      tail -n 100 "$install_log" | tee -a "$runner_log"
+    fi
     log "APK installation exit status: $test_status"
     if [ "$test_status" -eq 0 ]; then
       warmup_output=$(timeout 90s adb -s "$device" shell am start -W \
