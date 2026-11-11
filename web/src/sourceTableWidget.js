@@ -217,7 +217,7 @@ export class SourceTableWidget extends WidgetType {
           spellcheck: 'false'
         }),
         EditorView.updateListener.of(update => {
-          if (!update.docChanged || mount._syncingFromParent) return;
+          if (mount._syncingFromParent) return;
           if (!parentView.dom.isConnected) return;
           const from = Number(wrapper.dataset.tableFrom);
           const to = Number(wrapper.dataset.tableTo);
@@ -228,11 +228,29 @@ export class SourceTableWidget extends WidgetType {
             to < from ||
             to > parentView.state.doc.length
           ) return;
-          const nextMarkdown = update.state.doc.toString();
-          if (parentView.state.doc.sliceString(from, to) === nextMarkdown) return;
-          parentView.dispatch({
-            changes: { from, to, insert: nextMarkdown }
-          });
+          const spec = {};
+          if (update.docChanged) {
+            const nextMarkdown = update.state.doc.toString();
+            if (parentView.state.doc.sliceString(from, to) !== nextMarkdown) {
+              spec.changes = { from, to, insert: nextMarkdown };
+            }
+          }
+          if (update.docChanged || update.selectionSet) {
+            const selection = update.state.selection.main;
+            const anchor = from + selection.anchor;
+            const head = from + selection.head;
+            const parentSelection = parentView.state.selection.main;
+            if (
+              update.docChanged ||
+              parentSelection.anchor !== anchor ||
+              parentSelection.head !== head
+            ) {
+              spec.selection = { anchor, head };
+            }
+          }
+          if (spec.changes || spec.selection) {
+            parentView.dispatch(spec);
+          }
         }),
         EditorView.theme({
           '&': {

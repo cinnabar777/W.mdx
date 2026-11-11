@@ -70,10 +70,17 @@ class EditorWebViewInteractionTest {
                         "${fixture.context}/$scope fixture must wrap on the emulator: $before",
                         before.getJSONArray("rowStarts").length() >= 2
                     )
+                    assertRowsAlign(before, fixture.context, "$scope before cursor entry")
 
                     val point = touchPoint(webView, fixture.marker)
                     tap(webView, point.getDouble("x"), point.getDouble("y"), point.getDouble("dpr"))
                     await(webView, caretInLineScript(fixture.source, fixture.marker))
+                    val afterCaretEntry = listGeometry(webView, fixture.marker)
+                    assertRowsAlign(
+                        afterCaretEntry,
+                        fixture.context,
+                        "$scope after cursor entry"
+                    )
                     val selection = JSONObject(
                         decode(evaluate(webView, "window.editorBridge.getSelectionState()"))
                     )
@@ -267,11 +274,14 @@ class EditorWebViewInteractionTest {
             await(webView, "!document.querySelector('.cm-wp-cell-editor')")
             assertSource(webView, renderedTableSource, "rendered table cell", "hidden")
 
-            val sourceTableSource = """
+            val sourceTableMarkdown = """
                 | Item | Description | Status |
                 | --- | --- | --- |
                 | SRC-TAP-01 | Tap here to edit this source cell. | Open |
             """.trimIndent()
+            val sourceTablePrefix = "Text before the table.\n\n"
+            val sourceTableSource = sourceTablePrefix + sourceTableMarkdown
+            val sourceTableFrom = sourceTablePrefix.length
             val sourceTableTarget = "Tap here to edit this source cell."
             evaluate(
                 webView,
@@ -322,6 +332,7 @@ class EditorWebViewInteractionTest {
                                 head: child?.state.selection.main.head ?? -1,
                                 length: child?.state.doc.length ?? 0,
                                 childMarkdown: child?.state.doc.toString() ?? null,
+                                  parentSelection: JSON.parse(window.editorBridge.getSelectionState()),
                                 parentMarkdown: window.editorBridge.getMarkdown()
                               });
                             })()
@@ -330,7 +341,7 @@ class EditorWebViewInteractionTest {
                 )
             )
             val expectedSourceOffset =
-                sourceTableSource.indexOf(sourceTableTarget) + sourceTableTarget.length / 2
+                sourceTableMarkdown.indexOf(sourceTableTarget) + sourceTableTarget.length / 2
             assertTrue(
                 "Source table tap must focus its nested editor and place the caret in the tapped cell, not at document start: $sourceTableCaret",
                 sourceTableCaret.getBoolean("focused") &&
@@ -338,10 +349,16 @@ class EditorWebViewInteractionTest {
                     sourceTableCaret.getInt("head") < sourceTableCaret.getInt("length") - 5 &&
                     kotlin.math.abs(sourceTableCaret.getInt("head") - expectedSourceOffset) <= 24
             )
-            assertEquals(sourceTableSource, sourceTableCaret.getString("childMarkdown"))
+            assertEquals(sourceTableMarkdown, sourceTableCaret.getString("childMarkdown"))
             assertEquals(sourceTableSource, sourceTableCaret.getString("parentMarkdown"))
-            val editedSourceTable = sourceTableSource.substring(0, sourceTableCaret.getInt("head")) +
-                "X" + sourceTableSource.substring(sourceTableCaret.getInt("head"))
+            assertEquals(
+                "The outer document cursor must follow the source-table caret",
+                sourceTableFrom + sourceTableCaret.getInt("head"),
+                sourceTableCaret.getJSONObject("parentSelection").getInt("head")
+            )
+            val parentCaret = sourceTableFrom + sourceTableCaret.getInt("head")
+            val editedSourceTable = sourceTableSource.substring(0, parentCaret) +
+                "X" + sourceTableSource.substring(parentCaret)
             InstrumentationRegistry.getInstrumentation().sendStringSync("X")
             await(
                 webView,
