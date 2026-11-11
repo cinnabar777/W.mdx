@@ -49,8 +49,16 @@ if [ "$booted" -eq 1 ]; then
     log "APK installation exit status: $test_status"
     if [ "$test_status" -eq 0 ]; then
       warmup_output=$(timeout 90s adb -s "$device" shell am start -W \
-        -n com.wmdx.markdownapp.debug/com.wmdx.markdownapp.DocumentDispatchActivity 2>&1)
+        -n com.wmdx.markdownapp.debug/com.wmdx.markdownapp.DocumentDispatchActivity \
+        -a android.intent.action.MAIN \
+        -c android.intent.category.LAUNCHER 2>&1)
       warmup_status=$?
+      case "$warmup_output" in
+        *"Status: timeout"*)
+          log "Android reported an activity-start timeout despite adb exit status $warmup_status."
+          warmup_status=1
+          ;;
+      esac
       log "Android app warm-up (exit $warmup_status):"
       log "$warmup_output"
       if [ "$warmup_status" -eq 0 ]; then
