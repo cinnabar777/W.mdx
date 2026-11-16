@@ -103,7 +103,12 @@ test('Obsidian math delimiters stay literal instead of becoming Markdown emphasi
 
   assert.match(imported.markdown, /100m\$_2\$ \\?= 100m\$_2\$/);
   assert.match(imported.markdown, /100m\$\\?\^2\$ = 100m \$\\?\^2\$/);
-  assert.equal(returnedParagraph.textContent, paragraph.textContent);
+  assert.equal(
+    returnedParagraph.textContent,
+    paragraph.textContent,
+    'imported Markdown: ' + JSON.stringify(imported.markdown) +
+      '; exported Markdown: ' + JSON.stringify(exported.markdown)
+  );
   assert.equal(returnedParagraph.querySelectorAll('em').length, 1);
 });
 
