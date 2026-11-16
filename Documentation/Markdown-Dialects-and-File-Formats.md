@@ -155,3 +155,24 @@ Conversion is deliberately explicit and conservative:
 The pinned CommonMark 0.31.2 corpus contains 652 examples. All 575 non-HTML examples are imported, exported, and compared for rendered semantics using the official reference renderer. All 21 non-HTML GFM 0.29 extension examples are compared with upstream expected HTML semantics in WYSIWYG, with source preservation checked. Seven curated Obsidian WYSIWYG fixtures cover wikilinks, heading links, highlights, image embeds, callouts, tasks, and footnotes. Raw HTML cases are excluded by the no-active-HTML policy; the GFM and Obsidian fixtures do not certify full dialect conformance. These checks do **not** certify complete CommonMark, GFM, Obsidian, or HTML conformance.
 
 The linter checks common structural errors such as unclosed code fences, unresolved references/footnotes, malformed Wmdx resource fields, table row widths, empty callouts, active HTML, and Obsidian transclusion. It also reports known Wmdx-only syntax for non-Wmdx targets and GFM-only task, strike, and table syntax for CommonMark. Code-fenced examples are excluded from syntax warnings. A clean lint result is not proof that a document is valid in every target renderer.
+
+## Rendering HTML Embedded in Markdown
+
+CommonMark defines raw HTML blocks and inline raw HTML, so this belongs to the CommonMark renderer. This work covers HTML inside Markdown documents, not standalone HTML or MHTML import/export. Markdown remains the saved source; rendered HTML is a view.
+
+### Resource Audit
+
+- **Existing Wmdx stack (preferred):** Wmdx already includes the CommonMark 0.31.2 JavaScript parser/renderer and DOMPurify. Reuse those rather than introducing a second Markdown parser. The parser supplies CommonMark semantics; DOMPurify supplies the browser safety boundary. Neither by itself maps rendered elements back to CodeMirror source positions.
+- **usememos/editor (MIT; closest design reference):** https://github.com/usememos/editor documents a sanitizer callback that receives an off-page DocumentFragment, can decline rendering so the raw source remains visible, and reveals HTML source while the caret is in the HTML region. Its editor uses a different block model, so it is a pattern and test reference rather than a drop-in Wmdx dependency.
+- **markdown-it (MIT):** https://github.com/markdown-it/markdown-it supports CommonMark and configurable raw HTML, but would add a second parser beside the one already used by Wmdx.
+- **Markor (Apache-2.0):** https://github.com/gsantner/markor is an Android editor and useful behavior reference, not a CodeMirror/WebView renderer to drop in.
+- **Marky (MIT):** https://github.com/metafates/marky is a Rust Markdown-to-HTML site generator with math and Mermaid support, not an interactive source-preserving editor.
+- **obsidian-html (GPL-3.0):** https://github.com/obsidian-html/obsidian-html converts Obsidian vaults to Markdown/HTML; it is not an embedded editor renderer and its GPL code must not be incorporated into Wmdx.
+- **OpenObsidian (GPL-3.0-or-later):** https://github.com/Anon5T4R/OpenObsidian is an Electron/CodeMirror application that may inform behavior, but its code is not compatible with Wmdx's proprietary license without separate permission.
+- **CKEditor 5:** https://ckeditor.com/docs/ckeditor5/latest/features/html/general-html-support.html and https://ckeditor.com/docs/ckeditor5/latest/getting-started/licensing/license-and-legal.html document general HTML support and HTML embedding. CKEditor is a rich-text editor framework, not a Markdown raw-HTML renderer; its open-source distribution is GPL-2+ and commercial use requires the appropriate commercial license, so it is not a direct dependency for this proprietary project.
+- **codemirror-for-writers:** https://github.com/dwaynemcyrus/codemirror-for-writers describes hybrid CodeMirror editing, but GitHub reports no repository license. Do not reuse its code unless a license is added or permission is obtained.
+- **@latentic/live-markdown:** https://github.com/getlatentic/live-markdown is MIT-licensed and useful as a CodeMirror live-rendering reference; its documentation does not establish raw-HTML support, so it is not the solution to this gap.
+
+### Implementation Boundary
+
+Use the existing CommonMark parser to identify and render CommonMark raw-HTML nodes, then sanitize before attaching any rendered DOM. Keep the original Markdown unchanged, preserve source offsets, and reveal raw syntax when the caret enters the HTML span or block. Source view continues to show literal source. Never execute scripts, event handlers, or unsafe URLs; if a sanitizer rejects content, preserve and expose the source instead of silently deleting it. Support ordinary safe HTML through a documented allowlist, and do not claim arbitrary custom or active HTML is fully rendered. Whole-document HTML/MHTML conversion remains a later phase.
