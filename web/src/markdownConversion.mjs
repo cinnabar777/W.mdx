@@ -2688,7 +2688,7 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   }
   if (tag === 'li') return children().join(' ');
   if (
-    preserveRawHtmlContainers &&
+    options.preserveRawHtmlContainers &&
     (tag === 'div' || tag === 'section')
   ) return serializeSafeHtmlBlock(node, warnings);
   return children().join('');

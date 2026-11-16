@@ -101,36 +101,22 @@ before(async () => {
   assert.equal(allRawHtmlCases.length, 77, 'the pinned corpus has 77 raw-HTML examples');
   const rawHtmlIds = new Set(allRawHtmlCases.map(example => example.example));
   const rawImportRequestedText = String(process.env.COMMONMARK_RAW_HTML_CASES ?? '').trim();
-  const rawImportRequestedIds = rawImportRequestedText
+  const rawImportCaseIds = rawImportRequestedText
     ? rawImportRequestedText.split(',').map(value => Number(value.trim()))
     : [];
   assert.ok(
-    rawImportRequestedIds.every(id => Number.isInteger(id) && id > 0),
+    rawImportCaseIds.every(id => Number.isInteger(id) && id > 0),
     'COMMONMARK_RAW_HTML_CASES must be a comma-separated list of positive example numbers'
   );
-  const requestedRaw = new Set(rawImportRequestedIds);
-  assert.equal(requestedRaw.size, rawImportRequestedIds.length, 'raw HTML case numbers must not repeat');
+  const requestedRawHtmlIds = new Set(rawImportCaseIds);
+  assert.equal(requestedRawHtmlIds.size, rawImportCaseIds.length, 'raw HTML case numbers must not repeat');
   assert.deepEqual(
-    [...requestedRaw].filter(id => !rawHtmlIds.has(id)),
+    [...requestedRawHtmlIds].filter(id => !rawHtmlIds.has(id)),
     [],
     'requested raw HTML case numbers must exist in the raw-HTML corpus'
   );
-  rawHtmlCases = requestedRaw.size
-    ? allRawHtmlCases.filter(example => requestedRaw.has(example.example))
-    : allRawHtmlCases;
-  assert.ok(
-    requestedRawIds.every(id => Number.isInteger(id) && id > 0),
-    'COMMONMARK_RAW_HTML_CASES must be a comma-separated list of positive example numbers'
-  );
-  const requestedRaw = new Set(requestedRawIds);
-  assert.equal(requestedRaw.size, requestedRawIds.length, 'raw HTML case numbers must not repeat');
-  assert.deepEqual(
-    [...requestedRaw].filter(id => !rawHtmlIds.has(id)),
-    [],
-    'requested raw HTML case numbers must exist in the raw-HTML corpus'
-  );
-  rawHtmlCases = requestedRaw.size
-    ? allRawHtmlCases.filter(example => requestedRaw.has(example.example))
+  rawHtmlCases = requestedRawHtmlIds.size
+    ? allRawHtmlCases.filter(example => requestedRawHtmlIds.has(example.example))
     : allRawHtmlCases;
   const allCoreCases = commonmarkCases.filter(example => !rawHtmlIds.has(example.example));
   const rawRequestedIds = String(process.env.COMMONMARK_CASES ?? '').trim();
